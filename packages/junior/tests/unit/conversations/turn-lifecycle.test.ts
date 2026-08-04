@@ -42,14 +42,13 @@ class MemoryConversationEventStore implements ConversationEventStore {
       };
       this.history.push(next);
       inserted.push({
-        historyVersion: next.historyVersion,
         seq: next.seq,
       });
     }
     return {
       historyVersion: this.history.at(-1)?.historyVersion ?? 0,
       inserted,
-      nextSeq: this.history.length,
+      committedSeq: this.history.at(-1)?.seq ?? -1,
     };
   }
 

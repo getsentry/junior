@@ -383,11 +383,8 @@ describe("SQL conversation storage", () => {
         },
       ]);
       expect(first.historyVersion).toBe(0);
-      expect(first.nextSeq).toBe(2);
+      expect(first.committedSeq).toBe(1);
       expect(first.inserted.map((event) => event.seq)).toEqual([0, 1]);
-      expect(first.inserted.map((event) => event.historyVersion)).toEqual([
-        0, 0,
-      ]);
 
       const second = await store.append(CONVERSATION_ID, [
         {
@@ -396,9 +393,8 @@ describe("SQL conversation storage", () => {
         },
       ]);
       expect(second.historyVersion).toBe(0);
-      expect(second.nextSeq).toBe(3);
+      expect(second.committedSeq).toBe(2);
       expect(second.inserted.map((event) => event.seq)).toEqual([2]);
-      expect(second.inserted.map((event) => event.historyVersion)).toEqual([0]);
 
       const history = await store.loadHistory(CONVERSATION_ID);
       expect(history.map((event) => event.seq)).toEqual([0, 1, 2]);
@@ -511,7 +507,7 @@ describe("SQL conversation storage", () => {
       expect(duplicate).toEqual({
         historyVersion: 0,
         inserted: [],
-        nextSeq: 1,
+        committedSeq: 0,
       });
 
       expect(await readConversationTimestamps()).toEqual(archived);
@@ -525,9 +521,8 @@ describe("SQL conversation storage", () => {
         },
       ]);
       expect(mixed.historyVersion).toBe(0);
-      expect(mixed.nextSeq).toBe(2);
+      expect(mixed.committedSeq).toBe(1);
       expect(mixed.inserted.map((event) => event.seq)).toEqual([1]);
-      expect(mixed.inserted.map((event) => event.historyVersion)).toEqual([0]);
 
       expect(await readConversationTimestamps()).toEqual({
         archivedAt: null,

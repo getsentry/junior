@@ -221,13 +221,37 @@ function messageTimestamp(message: PiMessage): number {
 }
 
 /**
- * Append newly stable native history items. A shorter or changed prefix indicates
- * that a caller persisted volatile Pi state; only compaction and handoff may
- * intentionally replace active model history.
+ * Already-committed agent history known to the caller.
+ *
+ * When present, the commit path fences on this cursor and appends only the
+ * delta instead of reloading and deep-comparing the full active history.
+ */
+export interface CommitMessagesBase {
+  /** `seq` of the last event already committed for this base. */
+  committedSeq: number;
+  /** History version that owns `committedSeq`. */
+  historyVersion: number;
+  /** Event sequence for every projected agent-history item already committed. */
+  messageSeqs: number[];
+  /** Durable messages already committed for this base. */
+  messages: PiMessage[];
+  /** Provenance aligned one-to-one with `messages`. */
+  provenance: ConversationMessageProvenance[];
+}
+
+/**
+ * Append newly stable native history items.
+ *
+ * Prefer supplying `base` from an already-loaded turn projection so checkpoints
+ * only write the delta. Without `base`, the store loads current history and
+ * rejects a shorter or changed committed prefix. Only compaction and handoff
+ * may intentionally replace active model history.
  */
 export async function commitMessages(args: {
   conversationId: string;
   messages: PiMessage[];
+  /** Already-committed cursor/projection used to fence and append the delta. */
+  base?: CommitMessagesBase;
   /** Explicit per-message provenance aligned one-to-one with `messages`. */
   provenance?: ConversationMessageProvenance[];
   /** Explicit provenance for the trailing newly committed messages. */
@@ -239,7 +263,7 @@ export async function commitMessages(args: {
     contexts: PluginTurnContext[];
     turnId: string;
   };
-  /** SQL authority for the atomic commit; defaults to the process executor. */
+  /** SQL executor for the atomic commit; defaults to the process executor. */
   executor?: JuniorSqlDatabase;
 }): Promise<{
   committedSeq: number;
@@ -303,27 +327,70 @@ export async function commitAcceptedReply(args: {
   );
 }
 
+async function resolveCommitBase(
+  args: Parameters<typeof commitMessages>[0],
+  eventStore: ReturnType<typeof createSqlConversationEventStore>,
+  nextLocalMessages: PiMessage[],
+): Promise<CommitMessagesBase> {
+  if (args.base) {
+    const matchingPrefix = countMatchingPrefix(
+      args.base.messages,
+      nextLocalMessages,
+    );
+    if (matchingPrefix !== args.base.messages.length) {
+      throw new Error(
+        `Agent history for ${args.conversationId} changed before its committed boundary`,
+      );
+    }
+    const live = await eventStore.append(args.conversationId, []);
+    if (
+      live.historyVersion !== args.base.historyVersion ||
+      live.committedSeq !== args.base.committedSeq
+    ) {
+      throw new Error(
+        `Agent history for ${args.conversationId} changed before its committed boundary`,
+      );
+    }
+    return args.base;
+  }
+
+  const currentEvents = await eventStore.loadCurrentHistory(
+    args.conversationId,
+  );
+  const current = projectConversationEvents(currentEvents);
+  const matchingPrefix = countMatchingPrefix(
+    current.messages,
+    nextLocalMessages,
+  );
+  if (matchingPrefix !== current.messages.length) {
+    throw new Error(
+      `Agent history for ${args.conversationId} changed before its committed boundary`,
+    );
+  }
+  return {
+    committedSeq: currentEvents.at(-1)?.seq ?? -1,
+    historyVersion: currentEvents.at(-1)?.historyVersion ?? 0,
+    messageSeqs: current.seqs,
+    messages: current.messages,
+    provenance: current.provenance,
+  };
+}
+
 async function commitMessagesLocked(
   args: Parameters<typeof commitMessages>[0],
   executor: JuniorSqlDatabase,
 ): ReturnType<typeof commitMessages> {
   const eventStore = createSqlConversationEventStore(executor);
-  const currentEvents = await eventStore.loadCurrentHistory(
-    args.conversationId,
-  );
-  const current = projectConversationEvents(currentEvents);
   // Runtime bootstrap is per-run input, not durable agent history. Session
   // records may retain it while a turn is live, but event replay must not need
   // a compensating history rewrite when that bootstrap changes.
   const nextLocalMessages = stripRuntimeTurnContext(args.messages).map(
     normalizeDurableMessage,
   );
-  const matchingPrefix = countMatchingPrefix(
-    current.messages,
-    nextLocalMessages,
-  );
+  const base = await resolveCommitBase(args, eventStore, nextLocalMessages);
+  const matchingPrefix = base.messages.length;
   const nextLocalProvenance = resolveCommitProvenance({
-    existing: current,
+    existing: base,
     nextMessages: nextLocalMessages,
     matchingPrefix,
     ...(args.provenance ? { explicitProvenance: args.provenance } : {}),
@@ -334,11 +401,6 @@ async function commitMessagesLocked(
       ? { newMessageProvenance: args.newMessageProvenance }
       : {}),
   });
-  if (matchingPrefix !== current.messages.length) {
-    throw new Error(
-      `Agent history for ${args.conversationId} changed before its committed boundary`,
-    );
-  }
   const newMessages = nextLocalMessages.slice(matchingPrefix);
   const turnContext = args.turnContext;
   const turnContextEvents =
@@ -356,28 +418,37 @@ async function commitMessagesLocked(
         content: context.content,
       },
     })) ?? [];
-  // Append returns assigned identities in input order. Native messages precede
-  // retry-stable turn context, so their sequence suffix stays aligned without
-  // reloading full history.
-  const appendResult = await eventStore.append(args.conversationId, [
-    ...newMessages.map((message, index) => ({
-      data: historyItemFromPiMessage(
-        message,
-        nextLocalProvenance[matchingPrefix + index]!,
-      ),
-      createdAtMs: messageTimestamp(message),
-    })),
-    ...turnContextEvents,
-  ]);
-  const lastInserted = appendResult.inserted.at(-1);
+
+  // Append native messages and host-only turn context separately so message
+  // sequence assignment never depends on mixed-event ordering assumptions.
+  const messageAppend =
+    newMessages.length === 0
+      ? {
+          historyVersion: base.historyVersion,
+          inserted: [] as Array<{ seq: number }>,
+          committedSeq: base.committedSeq,
+        }
+      : await eventStore.append(
+          args.conversationId,
+          newMessages.map((message, index) => ({
+            data: historyItemFromPiMessage(
+              message,
+              nextLocalProvenance[matchingPrefix + index]!,
+            ),
+            createdAtMs: messageTimestamp(message),
+          })),
+        );
+  const contextAppend =
+    turnContextEvents.length === 0
+      ? messageAppend
+      : await eventStore.append(args.conversationId, turnContextEvents);
+
   return {
-    committedSeq: lastInserted?.seq ?? appendResult.nextSeq - 1,
-    historyVersion: lastInserted?.historyVersion ?? appendResult.historyVersion,
+    committedSeq: contextAppend.committedSeq,
+    historyVersion: contextAppend.historyVersion,
     messageSeqs: [
-      ...current.seqs,
-      ...appendResult.inserted
-        .slice(0, newMessages.length)
-        .map((event) => event.seq),
+      ...base.messageSeqs,
+      ...messageAppend.inserted.map((event) => event.seq),
     ],
     messages: nextLocalMessages,
     provenance: nextLocalProvenance,

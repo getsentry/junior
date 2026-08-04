@@ -68,6 +68,7 @@ export type AgentDispatchOutcome = "blocked" | "completed" | "failed";
 interface ConversationMessageProjection {
   messages: PiMessage[];
   provenance: ConversationMessageProvenance[];
+  seqs: number[];
 }
 
 export interface AgentTurnSessionRecord {
@@ -90,6 +91,15 @@ export interface AgentTurnSessionRecord {
   piMessages: PiMessage[];
   /** Per-message provenance aligned one-to-one with `piMessages`. */
   piMessageProvenance: ConversationMessageProvenance[];
+  /**
+   * `seq` of the last durable event whose projection reproduces `piMessages`
+   * without volatile bootstrap; -1 when nothing was committed.
+   */
+  committedSeq: number;
+  /** History version that owns `committedSeq` and any volatile bootstrap. */
+  historyVersion: number;
+  /** Event sequence for every projected durable agent-history item. */
+  messageSeqs: number[];
   /**
    * All distinct actors annotated on this run's committed instruction-authority
    * messages, in first-seen order. Persisted as an attribution handle so a
@@ -117,21 +127,29 @@ export type AgentTurnSessionSummary = Omit<
   | "actors"
   | "piMessages"
   | "piMessageProvenance"
+  | "committedSeq"
+  | "historyVersion"
+  | "messageSeqs"
   | "turnStartMessageIndex"
 >;
 
 interface StoredAgentTurnSessionRecord extends Omit<
   AgentTurnSessionRecord,
-  "actors" | "piMessages" | "piMessageProvenance" | "turnStartMessageIndex"
+  | "actors"
+  | "piMessages"
+  | "piMessageProvenance"
+  | "messageSeqs"
+  | "historyVersion"
+  | "turnStartMessageIndex"
 > {
   actors?: Actor[];
-  /**
-   * `seq` of the last event in `junior_conversation_events` whose projection reproduces
-   * this record's committed Pi messages; -1 when nothing was committed.
-   */
-  committedSeq: number;
   /** History version that owns `committedSeq` and any volatile bootstrap. */
   historyVersion?: number;
+  /**
+   * Event sequence for every projected durable agent-history item. Optional on
+   * older session records that predate cursor-fenced commits.
+   */
+  messageSeqs?: number[];
   /**
    * `seq` boundary where this turn's fresh prompt starts: the seq of the last
    * projected message before the prompt, or -1 when the turn starts the epoch.
@@ -199,6 +217,7 @@ const storedAgentTurnSessionRecordSchema = agentTurnSessionSummarySchema
     actors: z.array(actorSchema).optional(),
     committedSeq: seqCursorSchema,
     historyVersion: z.number().int().nonnegative().optional(),
+    messageSeqs: z.array(seqCursorSchema).optional(),
     errorMessage: z.string().optional(),
     turnStartSeq: seqCursorSchema.optional(),
     runtimeContext: z.array(piMessageSchema).optional(),
@@ -320,6 +339,9 @@ function materializeAgentTurnSessionRecord(
     updatedAtMs: stored.updatedAtMs,
     piMessages,
     piMessageProvenance: piProjection.provenance,
+    committedSeq: stored.committedSeq,
+    historyVersion: stored.historyVersion ?? 0,
+    messageSeqs: stored.messageSeqs ?? piProjection.seqs,
     actors: stored.actors ?? instructionActors(piProjection.provenance),
     cumulativeDurationMs: stored.cumulativeDurationMs,
     ...(stored.destination ? { destination: stored.destination } : {}),
@@ -488,6 +510,7 @@ function buildStoredRecord(args: {
   source?: Source;
   committedSeq: number;
   historyVersion?: number;
+  messageSeqs?: number[];
   lastProgressAtMs?: number;
   loadedSkillNames?: string[];
   modelId?: string;
@@ -522,6 +545,7 @@ function buildStoredRecord(args: {
     ...(args.historyVersion !== undefined
       ? { historyVersion: args.historyVersion }
       : {}),
+    ...(args.messageSeqs ? { messageSeqs: args.messageSeqs } : {}),
     ...(args.turnStartSeq !== undefined
       ? { turnStartSeq: args.turnStartSeq }
       : {}),
@@ -591,6 +615,7 @@ async function setStoredRecord(args: {
     {
       messages: [...args.piMessages],
       provenance: [...args.piMessageProvenance],
+      seqs: args.record.messageSeqs ?? [],
     },
     args.turnStartMessageIndex,
   );
@@ -629,6 +654,7 @@ async function updateAgentTurnSessionState(args: {
       ...(parsed.historyVersion !== undefined
         ? { historyVersion: parsed.historyVersion }
         : {}),
+      ...(parsed.messageSeqs ? { messageSeqs: parsed.messageSeqs } : {}),
       ...(parsed.turnStartSeq !== undefined
         ? { turnStartSeq: parsed.turnStartSeq }
         : {}),
@@ -714,13 +740,19 @@ export async function upsertAgentTurnSessionRecord(args: {
   turnContexts?: PluginTurnContext[];
   turnStartMessageIndex?: number;
   ttlMs?: number;
+  /** Already-materialized session used to fence commits without another reload. */
+  existing?: AgentTurnSessionRecord;
 }): Promise<AgentTurnSessionRecord> {
-  const existingRecord = await getStoredAgentTurnSessionRecord(
+  const existingRecord =
+    args.existing ??
+    (await getAgentTurnSessionRecord(args.conversationId, args.sessionId));
+  const storedRecord = await getStoredAgentTurnSessionRecord(
     args.conversationId,
     args.sessionId,
   );
   const existingDispatchId =
     existingRecord?.dispatchId ??
+    storedRecord?.dispatchId ??
     (
       await listAgentTurnSessionSummariesForConversation(args.conversationId)
     ).find((summary) => summary.sessionId === args.sessionId)?.dispatchId;
@@ -738,9 +770,29 @@ export async function upsertAgentTurnSessionRecord(args: {
   // store reuses committed provenance for the unchanged prefix and defaults the
   // rest to context. Platform-neutral so local identities are preserved too.
   const instructionActor = args.actor ?? existingRecord?.actor;
+  const durableExistingMessages = existingRecord
+    ? stripRuntimeTurnContext(existingRecord.piMessages)
+    : undefined;
+  const commitBase =
+    existingRecord &&
+    durableExistingMessages &&
+    existingRecord.messageSeqs.length === durableExistingMessages.length &&
+    existingRecord.piMessageProvenance.length === durableExistingMessages.length
+      ? {
+          committedSeq: existingRecord.committedSeq,
+          historyVersion: existingRecord.historyVersion,
+          messageSeqs: existingRecord.messageSeqs,
+          messages: durableExistingMessages,
+          provenance: existingRecord.piMessageProvenance.slice(
+            0,
+            durableExistingMessages.length,
+          ),
+        }
+      : undefined;
   const commit = await commitMessages({
     conversationId: args.conversationId,
     messages: args.piMessages,
+    ...(commitBase ? { base: commitBase } : {}),
     ...(instructionActor
       ? { newMessageProvenance: instructionProvenanceFor(instructionActor) }
       : {}),
@@ -767,13 +819,13 @@ export async function upsertAgentTurnSessionRecord(args: {
     runtimeContext.length > 0
       ? runtimeContext
       : existingRecord?.historyVersion === commit.historyVersion
-        ? existingRecord.runtimeContext
+        ? storedRecord?.runtimeContext
         : undefined;
   // Flip the caller's message-index cursor into a durable seq reference: the
   // seq of the last committed message before the turn's fresh prompt.
   const turnStartSeq =
     durableTurnStartMessageIndex === undefined
-      ? existingRecord?.turnStartSeq
+      ? storedRecord?.turnStartSeq
       : durableTurnStartMessageIndex <= 0
         ? -1
         : (commit.messageSeqs[durableTurnStartMessageIndex - 1] ??
@@ -807,11 +859,12 @@ export async function upsertAgentTurnSessionRecord(args: {
         : {}),
       committedSeq: commit.committedSeq,
       historyVersion: commit.historyVersion,
+      messageSeqs: commit.messageSeqs,
       ...(turnStartSeq !== undefined ? { turnStartSeq } : {}),
       ...(retainedRuntimeContext
         ? { runtimeContext: retainedRuntimeContext }
         : {}),
-      previousVersion: existingRecord?.version,
+      previousVersion: storedRecord?.version ?? existingRecord?.version,
       cumulativeDurationMs:
         args.cumulativeDurationMs ?? existingRecord?.cumulativeDurationMs ?? 0,
       ...(args.cumulativeUsage

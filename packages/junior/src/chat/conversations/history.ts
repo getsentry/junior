@@ -503,20 +503,26 @@ export const newConversationEventSchema = z
 /** An event to append; the store assigns `seq` and current history version. */
 export type NewConversationEvent = z.output<typeof newConversationEventSchema>;
 
+/** Identity assigned to one newly inserted conversation event. */
+export interface ConversationEventIdentity {
+  /** Sequence assigned to the inserted event. */
+  seq: number;
+}
+
 /**
  * Result of an append: inserted event identities plus the active cursor.
  *
- * Callers can advance after a write without reloading current history. The
- * inserted identities stay aligned with accepted input order; idempotent
- * no-ops return an empty list and the live cursor.
+ * Callers can advance after a write without reloading current history.
+ * Identities stay aligned with accepted input order. Idempotent no-ops return
+ * an empty list and the live cursor.
  */
 export interface ConversationEventAppendResult {
   /** Active model-history version after the append. */
   historyVersion: number;
-  /** Identities assigned to newly inserted events. */
-  inserted: Array<{ historyVersion: number; seq: number }>;
-  /** Next free `seq` after the append. */
-  nextSeq: number;
+  /** Identities assigned to newly inserted events, in input order. */
+  inserted: ConversationEventIdentity[];
+  /** `seq` of the latest event after the append, or -1 when none exist. */
+  committedSeq: number;
 }
 
 /** Bounded observational page over the durable conversation event log. */

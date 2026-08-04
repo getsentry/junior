@@ -175,13 +175,11 @@ class SqlConversationEventStore implements ConversationEventStore {
           insertFromEvent(conversationId, seq++, historyVersion, event),
         );
         await this.executor.db().insert(juniorConversationEvents).values(rows);
+        const inserted = rows.map((row) => ({ seq: row.seq }));
         return {
           historyVersion,
-          inserted: rows.map((row) => ({
-            historyVersion: row.historyVersion,
-            seq: row.seq,
-          })),
-          nextSeq: seq,
+          inserted,
+          committedSeq: inserted.at(-1)?.seq ?? seq - 1,
         };
       },
     );
@@ -473,7 +471,7 @@ class SqlConversationEventStore implements ConversationEventStore {
     return {
       historyVersion: cursor.maxHistoryVersion ?? 0,
       inserted: [],
-      nextSeq: cursor.nextSeq,
+      committedSeq: cursor.nextSeq - 1,
     };
   }
 

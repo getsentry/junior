@@ -61,6 +61,10 @@ older source-thread context; it does not replace Pi history.
 - Append stable native agent-history events in sequence order.
 - `append` returns inserted event identities and the active history cursor so
   commit paths can advance without reloading the full current history.
+- Prefer cursor-fenced commits: callers that already hold a committed base pass
+  it to `commitMessages`, which verifies the live cursor and appends only the
+  delta. Message events and host-only turn context are appended separately so
+  message sequence assignment does not depend on mixed-event order.
 - Reject attempts to mutate an already committed agent-history prefix.
 - Replace agent history only through explicit compaction or handoff.
 - Restore transcripts and agent history directly from conversation events.
