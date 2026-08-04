@@ -1,7 +1,11 @@
 import type { SlackDestination, User } from "@sentry/junior-plugin-api";
 import { and, eq, or } from "drizzle-orm";
 import type { TaskList, TaskSummary } from "@/api/schema/task";
-import { readTaskExecutionDays } from "@/chat/tasks/execution-stats";
+import {
+  readTaskExecutionDays,
+  readTaskExecutionSummaries,
+  type TaskExecutionSummary,
+} from "@/chat/tasks/execution-stats";
 import { readRegisteredTasks } from "@/chat/tasks/registered";
 import { getDb } from "@/chat/db";
 import {
@@ -166,10 +170,21 @@ async function destinationDetails(
   );
 }
 
+function executionSummaryFields(stats: TaskExecutionSummary | undefined) {
+  return {
+    ...(stats?.lastExecutedAtMs
+      ? { lastRunAt: new Date(stats.lastExecutedAtMs).toISOString() }
+      : {}),
+    runsLast7Days: stats?.runsLast7Days ?? 0,
+    totalRuns: stats?.totalRuns ?? 0,
+  };
+}
+
 function scheduledTaskSummary(
   task: ScheduledTask,
   ownedByViewer: boolean,
   destination: DestinationDetails,
+  stats: TaskExecutionSummary | undefined,
 ): TaskSummary {
   if (task.status === "deleted") {
     throw new Error("Deleted scheduled tasks cannot enter the Tasks view");
@@ -187,6 +202,7 @@ function scheduledTaskSummary(
     id: task.id,
     instruction: displayText(task.task.text, "Untitled scheduled task"),
     kind: "scheduled",
+    ...executionSummaryFields(stats),
     ...(nextRunAtMs !== undefined
       ? { nextRunAt: new Date(nextRunAtMs).toISOString() }
       : {}),
@@ -266,6 +282,13 @@ export async function readViewerTasks(user: User): Promise<TaskList> {
       destinations.get(destinationKey(candidate.task.destination))
         ?.visibility === "public",
   );
+  const [registeredTasks, executionDays, scheduledStats, eventStats] =
+    await Promise.all([
+      readRegisteredTasks(),
+      readTaskExecutionDays(),
+      readTaskExecutionSummaries("scheduled", "junior"),
+      readTaskExecutionSummaries("event", "junior"),
+    ]);
   const tasks = visible.map((candidate): TaskSummary => {
     const destination = destinations.get(
       destinationKey(candidate.task.destination),
@@ -284,6 +307,7 @@ export async function readViewerTasks(user: User): Promise<TaskList> {
         candidate.task,
         candidate.ownedByViewer,
         destination,
+        scheduledStats.get(candidate.task.id),
       );
       return {
         ...summary,
@@ -305,16 +329,13 @@ export async function readViewerTasks(user: User): Promise<TaskList> {
       id: task.id,
       instruction: task.task.text,
       kind: "event",
+      ...executionSummaryFields(eventStats.get(task.id)),
       ownedByViewer: candidate.ownedByViewer,
       resource: `${task.trigger.label} · ${task.trigger.identifier}`,
       source: task.trigger.namespace,
       triggerAvailable: eventTaskTriggerAvailable(task, eventCatalog),
     };
   });
-  const [registeredTasks, executionDays] = await Promise.all([
-    readRegisteredTasks(),
-    readTaskExecutionDays(),
-  ]);
   return {
     executionDays,
     registeredTasks,

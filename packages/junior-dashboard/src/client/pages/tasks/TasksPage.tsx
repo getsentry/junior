@@ -579,6 +579,29 @@ function TaskTag(props: {
   );
 }
 
+function TaskExecutionSummary(props: {
+  task: Pick<
+    TaskSummary | RegisteredTaskSummary,
+    "lastRunAt" | "runsLast7Days" | "totalRuns"
+  >;
+}) {
+  const { task } = props;
+  return (
+    <div className="mt-3 text-sm text-dashboard-text-muted">
+      <span className="text-dashboard-text">
+        {task.runsLast7Days} runs / 7d
+      </span>
+      <span className="mx-2 opacity-45">·</span>
+      <span>
+        {task.totalRuns} total
+        {task.lastRunAt
+          ? ` · Last execution ${formatRunDate(task.lastRunAt)}`
+          : " · Never run"}
+      </span>
+    </div>
+  );
+}
+
 function RegisteredTaskRow(props: { task: RegisteredTaskSummary }) {
   const { task } = props;
   return (
@@ -602,18 +625,7 @@ function RegisteredTaskRow(props: { task: RegisteredTaskSummary }) {
         <h3 className="mt-2 mb-0 font-display text-base font-medium text-dashboard-text sm:text-lg">
           {task.name}
         </h3>
-        <div className="mt-3 text-sm text-dashboard-text-muted">
-          <span className="text-dashboard-text">
-            {task.runsLast7Days} runs / 7d
-          </span>
-          <span className="mx-2 opacity-45">·</span>
-          <span>
-            {task.totalRuns} total
-            {task.lastRunAt
-              ? ` · Last execution ${formatRunDate(task.lastRunAt)}`
-              : " · Never run"}
-          </span>
-        </div>
+        <TaskExecutionSummary task={task} />
       </div>
     </article>
   );

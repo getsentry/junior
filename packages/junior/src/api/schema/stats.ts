@@ -4,7 +4,6 @@ export const statSchema = z
   .object({
     count: z.number().int().nonnegative(),
     date: z.string(),
-    lastOccurredAtMs: z.number().int().nonnegative().nullable().optional(),
     metric: z.string().min(1),
     name: z.string().min(1),
     namespace: z.string().min(1),

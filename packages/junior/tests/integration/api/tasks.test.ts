@@ -9,6 +9,7 @@ import { createEventTask, getEventTask } from "@/chat/event-tasks/store";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { createSchedulerSqlStore } from "@/chat/scheduled-tasks/store";
 import type { ScheduledTask } from "@/chat/scheduled-tasks/types";
+import { recordTaskExecution } from "@/chat/tasks/execution-stats";
 import { createConfiguredJuniorSqlFixture } from "../../fixtures/sql";
 
 function authenticatedApi(email: string) {
@@ -198,6 +199,16 @@ describe("Tasks API", () => {
         },
       });
 
+      await recordTaskExecution("scheduled", "sched_tasks_api", {
+        nowMs: Date.parse("2026-08-04T12:00:00.000Z"),
+      });
+      await recordTaskExecution("scheduled", "sched_tasks_api", {
+        nowMs: Date.parse("2026-08-04T13:00:00.000Z"),
+      });
+      await recordTaskExecution("event", "event_tasks_api", {
+        nowMs: Date.parse("2026-08-03T12:00:00.000Z"),
+      });
+
       const response = await authenticatedApi("VIEWER@example.com").request(
         "http://localhost/api/tasks",
       );
@@ -234,8 +245,11 @@ describe("Tasks API", () => {
             createdByEmail: "viewer@example.com",
             id: "event_tasks_api",
             kind: "event",
+            lastRunAt: "2026-08-03T12:00:00.000Z",
             ownedByViewer: true,
+            runsLast7Days: 1,
             source: "linear",
+            totalRuns: 1,
             triggerAvailable: false,
           }),
           expect.objectContaining({
@@ -246,9 +260,12 @@ describe("Tasks API", () => {
             id: "sched_tasks_api",
             instruction: "Untitled scheduled task",
             kind: "scheduled",
+            lastRunAt: "2026-08-04T13:00:00.000Z",
             ownedByViewer: true,
+            runsLast7Days: 2,
             schedule: "Schedule unavailable",
             status: "active",
+            totalRuns: 2,
           }),
         ],
         truncated: false,

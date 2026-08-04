@@ -48,7 +48,6 @@ describe("stats API", () => {
           {
             count: 1,
             date: "2026-07-27",
-            lastOccurredAtMs: Date.parse("2026-07-27T23:00:00.000Z"),
             metric: "skill_load",
             name: "review-pr",
             namespace: "github",
@@ -56,7 +55,6 @@ describe("stats API", () => {
           {
             count: 2,
             date: "2026-07-28",
-            lastOccurredAtMs: Date.parse("2026-07-28T12:00:00.000Z"),
             metric: "skill_load",
             name: "junior-qa",
             namespace: "junior",

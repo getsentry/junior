@@ -1,7 +1,7 @@
 import type { RegisteredTaskSummary } from "@/api/schema/task";
-import { readNamedStats } from "@/stats";
+import { readTaskExecutionSummaries } from "@/chat/tasks/execution-stats";
 
-/** Load registered plugin background tasks with run frequency and recency. */
+/** Load registered plugin background tasks with execution analytics. */
 export async function readRegisteredTasks(): Promise<RegisteredTaskSummary[]> {
   const [{ getPlugins }, { pluginCatalogRuntime }] = await Promise.all([
     import("@/chat/plugins/agent-hooks"),
@@ -11,18 +11,15 @@ export async function readRegisteredTasks(): Promise<RegisteredTaskSummary[]> {
     getPlugins().map((plugin) => [plugin.manifest.name, plugin]),
   );
   const providers = pluginCatalogRuntime.getProviders();
-  const sevenDaysAgo = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000)
-    .toISOString()
-    .slice(0, 10);
   const pluginTaskStats = new Map(
     await Promise.all(
       providers.map(
         async (plugin) =>
           [
             plugin.manifest.name,
-            await readNamedStats(
+            await readTaskExecutionSummaries(
+              "registered",
               plugin.manifest.name,
-              "task.execution.registered",
             ),
           ] as const,
       ),
@@ -35,23 +32,18 @@ export async function readRegisteredTasks(): Promise<RegisteredTaskSummary[]> {
         runtimePlugins.get(plugin.manifest.name)?.tasks ?? {},
       ).sort((left, right) => left.localeCompare(right));
       return taskNames.map((name) => {
-        const stats = (pluginTaskStats.get(plugin.manifest.name) ?? []).filter(
-          (stat) => stat.name === name,
-        );
-        const lastRunAtMs = Math.max(
-          ...stats.map((stat) => stat.lastOccurredAtMs ?? 0),
-        );
+        const stats = pluginTaskStats.get(plugin.manifest.name)?.get(name);
         return {
           id: `${plugin.manifest.name}:${name}`,
           name,
           pluginDisplayName: plugin.manifest.displayName,
           pluginName: plugin.manifest.name,
-          runsLast7Days: stats
-            .filter((stat) => stat.date >= sevenDaysAgo)
-            .reduce((total, stat) => total + stat.count, 0),
-          totalRuns: stats.reduce((total, stat) => total + stat.count, 0),
-          ...(lastRunAtMs > 0
-            ? { lastRunAt: new Date(lastRunAtMs).toISOString() }
+          runsLast7Days: stats?.runsLast7Days ?? 0,
+          totalRuns: stats?.totalRuns ?? 0,
+          ...(stats?.lastExecutedAtMs
+            ? {
+                lastRunAt: new Date(stats.lastExecutedAtMs).toISOString(),
+              }
             : {}),
         } satisfies RegisteredTaskSummary;
       });

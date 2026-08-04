@@ -1,11 +1,4 @@
-import {
-  bigint,
-  date,
-  integer,
-  pgTable,
-  primaryKey,
-  text,
-} from "drizzle-orm/pg-core";
+import { date, integer, pgTable, primaryKey, text } from "drizzle-orm/pg-core";
 
 /** Daily named counters used by Junior and loaded plugins. */
 export const juniorStats = pgTable(
@@ -16,7 +9,6 @@ export const juniorStats = pgTable(
     metric: text("metric").notNull(),
     name: text("name").notNull(),
     count: integer("count").notNull().default(0),
-    lastOccurredAtMs: bigint("last_occurred_at_ms", { mode: "number" }),
   },
   (table) => [
     primaryKey({
