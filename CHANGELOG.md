@@ -1,4 +1,15 @@
 # Changelog
+## 0.128.1
+
+### New Features ✨
+
+- (dashboard) Group conversations by activity by @dcramer in [#1213](https://github.com/getsentry/junior/pull/1213)
+- (sandbox) Configure vCPUs from app options by @sentry-junior in [#1215](https://github.com/getsentry/junior/pull/1215)
+
+### Documentation 📚
+
+- (homepage) Showcase integrations by @dcramer in [#1211](https://github.com/getsentry/junior/pull/1211)
+
 ## 0.128.0
 
 ### Breaking Changes 🛠
