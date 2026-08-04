@@ -26,7 +26,7 @@ import { createSqlConversationEventStore } from "@/chat/conversations/sql/histor
 import {
   bindProviderConversation,
   type ProviderConversationBinding,
-} from "@/chat/conversations/sql/store";
+} from "@/chat/conversations/sql/bindings";
 import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
 import {
   historyItemFromPiMessage,
@@ -517,9 +517,7 @@ async function recordAuthenticationAccountChange(
     actorId: args.actorId,
     provider: args.provider,
     ...(args.accountLabel ? { accountLabel: args.accountLabel } : {}),
-    ...(args.authorizationId
-      ? { authorizationId: args.authorizationId }
-      : {}),
+    ...(args.authorizationId ? { authorizationId: args.authorizationId } : {}),
     ...(args.providerLabel ? { providerLabel: args.providerLabel } : {}),
   });
   await getConversationEventStore().append(args.conversationId, [
