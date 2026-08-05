@@ -1,7 +1,6 @@
 import { type ReactNode, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { TaskSummary } from "@sentry/junior/api/schema";
-import { Link } from "react-router";
 import {
   CalendarClock,
   ChevronRight,
@@ -16,7 +15,7 @@ import { SearchInput } from "../../components/SearchInput";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { deleteDashboardResource } from "../../http";
-import { conversationPath, formatTime } from "../../format";
+import { formatTime } from "../../format";
 import { cn, dashboardContainerClass } from "../../styles";
 import { TaskDetailsDrawer } from "./TaskDetailsDrawer";
 import { TaskExecutionChart } from "./TaskExecutionChart";
@@ -476,42 +475,5 @@ function TaskTag(props: {
     >
       {props.children}
     </span>
-  );
-}
-
-function TaskExecutionSummary(props: {
-  compact?: boolean;
-  task: Pick<
-    TaskSummary,
-    "lastConversationId" | "lastRunAt" | "runsLast7Days" | "totalRuns"
-  >;
-}) {
-  const { task } = props;
-  return (
-    <div
-      className={cn(
-        "text-sm text-dashboard-text-muted",
-        !props.compact && "mt-3",
-      )}
-    >
-      <span className="text-dashboard-text">
-        {task.runsLast7Days} runs / 7d
-      </span>
-      <span className="mx-2 opacity-45">·</span>
-      <span>
-        {task.totalRuns} total
-        {task.lastRunAt ? " · Last execution " : " · Never run"}
-        {task.lastRunAt && task.lastConversationId ? (
-          <Link
-            className="text-dashboard-text underline decoration-white/20 underline-offset-2 hover:decoration-white/60"
-            to={conversationPath(task.lastConversationId)}
-          >
-            {formatRunDate(task.lastRunAt)}
-          </Link>
-        ) : task.lastRunAt ? (
-          formatRunDate(task.lastRunAt)
-        ) : null}
-      </span>
-    </div>
   );
 }
