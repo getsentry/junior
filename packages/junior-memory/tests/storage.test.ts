@@ -932,7 +932,7 @@ describe("memory plugin storage", () => {
     }
   }, 15_000);
 
-  it("pre-searches extraction from this turn's instructions only", async () => {
+  it("pre-searches extraction with this turn's instructions and thread context", async () => {
     const fixture = await createMemoryFixture();
 
     try {
@@ -996,13 +996,15 @@ describe("memory plugin storage", () => {
         }),
       );
 
-      // Hybrid pre-search embeds this turn's instruction only.
-      expect(embedder.calls.some((batch) => batch.includes(instruction))).toBe(
-        true,
-      );
+      // Hybrid pre-search embeds instruction + ambient thread context together.
       expect(
-        embedder.calls.some((batch) => batch.includes(priorThreadContext)),
-      ).toBe(false);
+        embedder.calls.some((batch) =>
+          batch.some(
+            (text) =>
+              text.includes(instruction) && text.includes(priorThreadContext),
+          ),
+        ),
+      ).toBe(true);
       expect(embedder.calls.some((batch) => batch.includes(toolDump))).toBe(
         false,
       );

@@ -66,10 +66,10 @@ exported types, tools, and tests are authoritative.
   with reciprocal rank fusion; provider-specific raw scores are never added
   together. Each leg stays a bounded top-k probe; lexical ranking never scores
   the full match set.
-- Passive extraction pre-searches with a short query from this turn's run-actor
-  instructions only, not prior-thread context or tool dumps, then still uses the
-  same hybrid RRF path. The extraction model still receives the full run
-  transcript, including ambient context.
+- Passive extraction pre-searches with a short hybrid query from this turn's
+  run-actor instructions plus ambient thread context, not tool dumps, then still
+  uses the same hybrid RRF path. The extraction model still receives the full run
+  transcript.
 - Automatic recall retrieves a broad candidate window, then uses the
   memory-owned relevance model to admit at most five directly useful memories.
   An empty result contributes no filler prompt text.
