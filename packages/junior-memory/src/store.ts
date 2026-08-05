@@ -1066,40 +1066,17 @@ async function searchVisibleLexicalMemories(args: {
 /** Search active visible records with pgvector cosine distance. */
 async function searchVisibleVectorMemories(args: {
   db: MemoryDb;
-  embedder: MemoryEmbeddingProvider | undefined;
-  /** Optional precomputed query embedding so multi-scope probes share one call. */
-  embedding?: MemoryEmbedding;
+  embedding: MemoryEmbedding;
   limit: number;
   maxDistance?: number;
   nowMs: number;
-  query: string;
   scopes: ResolvedMemoryScope[];
 }): Promise<MemoryMatch[]> {
-  if (!args.embedder && !args.embedding) {
-    return [];
-  }
   const predicate = activeVisiblePredicate(args);
   if (!predicate) {
     return [];
   }
-  const query = normalizeRetrievalQuery(args.query);
-  if (!query) {
-    return [];
-  }
-  let embedding: MemoryEmbedding;
-  if (args.embedding) {
-    embedding = args.embedding;
-  } else {
-    const embedder = args.embedder;
-    if (!embedder) {
-      return [];
-    }
-    try {
-      embedding = await embedOne(embedder, query);
-    } catch {
-      return [];
-    }
-  }
+  const embedding = args.embedding;
   const distance = cosineDistance(
     juniorMemoryEmbeddings.embedding,
     embedding.vector,
@@ -1458,14 +1435,6 @@ export function createMemoryStore(
       }
     }
     const emptyMatches = Promise.resolve([] as MemoryMatch[]);
-    const vectorArgs = {
-      db,
-      embedder,
-      ...(queryEmbedding ? { embedding: queryEmbedding } : {}),
-      limit: candidateLimit,
-      nowMs,
-      query: input.query,
-    };
     const lexicalArgs = {
       db,
       limit: candidateLimit,
@@ -1474,22 +1443,31 @@ export function createMemoryStore(
     };
     // Always run both legs in parallel. Conditional lexical skip is unsafe:
     // one in-threshold vector distractor can hide a stronger lexical hit.
+    // Embed once up front; vector probes only run when that embedding exists.
     const matches = await Promise.all([
-      searchVisibleVectorMemories({
-        ...vectorArgs,
-        ...(vectorMaxDistance !== undefined
-          ? { maxDistance: vectorMaxDistance }
-          : {}),
-        scopes,
-      }),
+      queryEmbedding
+        ? searchVisibleVectorMemories({
+            db,
+            embedding: queryEmbedding,
+            limit: candidateLimit,
+            ...(vectorMaxDistance !== undefined
+              ? { maxDistance: vectorMaxDistance }
+              : {}),
+            nowMs,
+            scopes,
+          })
+        : emptyMatches,
       searchVisibleLexicalMemories({
         ...lexicalArgs,
         scopes,
       }),
-      probePersonal
+      queryEmbedding && probePersonal
         ? searchVisibleVectorMemories({
-            ...vectorArgs,
+            db,
+            embedding: queryEmbedding,
+            limit: candidateLimit,
             maxDistance: vectorMaxDistance,
+            nowMs,
             scopes: personalScopes,
           })
         : emptyMatches,
