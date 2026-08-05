@@ -2516,6 +2516,20 @@ Conversation: \`local:test:old-conversation\`
     expect(before.env).toEqual({});
   });
 
+  it.each([
+    "git checkout clone",
+    "git log --grep clone",
+    "git --no-pager log clone",
+    "git status # after clone",
+    "gh issue list --search clone",
+  ])("allows non-clone shell command: %s", (command) => {
+    const before = beforeToolContext({}, undefined, command);
+
+    githubPlugin().hooks?.beforeToolExecute?.(before.ctx as never);
+
+    expect(before.denial).toBeUndefined();
+  });
+
   it("injects Junior author and committer identity", () => {
     process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
     process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";

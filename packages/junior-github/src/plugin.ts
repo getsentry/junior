@@ -502,13 +502,16 @@ function assertGitHubWriteAllowed(input: {
   }
 }
 
+const GIT_GLOBAL_OPTION = String.raw`(?:-C\s+\S+|-c\s+\S+|--(?:git-dir|work-tree|namespace|super-prefix|config-env)(?:=\S+|\s+\S+)|--(?:exec-path|html-path|man-path|info-path|no-pager|paginate|no-replace-objects|bare|literal-pathspecs|glob-pathspecs|noglob-pathspecs|icase-pathspecs))`;
+const GH_GLOBAL_OPTION = String.raw`(?:--(?:hostname|repo)(?:=\S+|\s+\S+)|--(?:help|version))`;
+
 function shellCommandUsesUnboundedClone(input: unknown): boolean {
   if (!isRecord(input) || typeof input.command !== "string") {
     return false;
   }
-  return /\bgit\b[^;&|\n]*\bclone\b|\bgh\b[^;&|\n]*\brepo\s+clone\b/.test(
-    input.command,
-  );
+  return new RegExp(
+    String.raw`\bgit(?:\s+${GIT_GLOBAL_OPTION})*\s+clone\b|\bgh(?:\s+${GH_GLOBAL_OPTION})*\s+repo\s+clone\b`,
+  ).test(input.command);
 }
 
 function grantForAccess(
