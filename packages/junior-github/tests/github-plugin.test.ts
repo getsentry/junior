@@ -2503,7 +2503,10 @@ Conversation: \`local:test:old-conversation\`
 
   it.each([
     "git clone https://github.com/getsentry/junior.git",
+    "git -C /vercel/sandbox clone https://github.com/getsentry/junior.git",
+    "git -c protocol.version=2 clone https://github.com/getsentry/junior.git",
     "gh repo clone getsentry/junior",
+    "gh --hostname github.com repo clone getsentry/junior",
   ])("blocks unbounded shell clone command: %s", (command) => {
     const before = beforeToolContext({}, undefined, command);
 

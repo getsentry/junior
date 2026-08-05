@@ -506,7 +506,9 @@ function shellCommandUsesUnboundedClone(input: unknown): boolean {
   if (!isRecord(input) || typeof input.command !== "string") {
     return false;
   }
-  return /\bgit\s+clone\b|\bgh\s+repo\s+clone\b/.test(input.command);
+  return /\bgit\b[^;&|\n]*\bclone\b|\bgh\b[^;&|\n]*\brepo\s+clone\b/.test(
+    input.command,
+  );
 }
 
 function grantForAccess(
