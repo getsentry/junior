@@ -18,10 +18,16 @@ export function TaskDetailsDrawer(props: {
   task: TaskSummary | undefined;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(props.onClose);
+  const previousFocusRef = useRef<HTMLElement | undefined>(undefined);
+  const openTaskKey = props.task
+    ? `${props.task.kind}:${props.task.id}`
+    : undefined;
+  onCloseRef.current = props.onClose;
 
   useEffect(() => {
-    if (!props.task) return undefined;
-    const previousFocus =
+    if (!openTaskKey) return undefined;
+    previousFocusRef.current =
       document.activeElement instanceof HTMLElement
         ? document.activeElement
         : undefined;
@@ -33,7 +39,7 @@ export function TaskDetailsDrawer(props: {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        props.onClose();
+        onCloseRef.current();
         return;
       }
       if (event.key !== "Tab") return;
@@ -67,9 +73,11 @@ export function TaskDetailsDrawer(props: {
     return () => {
       cancelAnimationFrame(focusFrame);
       window.removeEventListener("keydown", onKeyDown);
+      const previousFocus = previousFocusRef.current;
+      previousFocusRef.current = undefined;
       if (previousFocus?.isConnected) previousFocus.focus();
     };
-  }, [props.onClose, props.task]);
+  }, [openTaskKey]);
 
   if (!props.task) return null;
 
