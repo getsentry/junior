@@ -216,6 +216,133 @@ describe("GitHub webhook resource events", () => {
     ]);
   });
 
+  it("normalizes non-draft opens as opened and ready for review", () => {
+    vi.setSystemTime(new Date("2026-07-20T12:00:00.000Z"));
+    const untrustedText =
+      "Title: feat(github): expose pull_request.opened\n\nAdds pull_request.opened resource events.";
+    const events = normalizeGitHubResourceEvents({
+      body: {
+        action: "opened",
+        repository: { full_name: "getsentry/junior" },
+        pull_request: {
+          body: "Adds pull_request.opened resource events.\n",
+          created_at: "2026-07-10T12:00:00.000Z",
+          draft: false,
+          number: 946,
+          title: "feat(github): expose pull_request.opened",
+        },
+      },
+      deliveryId: "delivery-opened",
+      eventName: "pull_request",
+    });
+
+    expect(events).toEqual([
+      {
+        eventKey: "github:delivery-opened:pull_request.opened",
+        eventType: "pull_request.opened",
+        occurredAtMs: Date.parse("2026-07-10T12:00:00.000Z"),
+        identifier: "getsentry/junior#946",
+        trustedSummary: "GitHub PR getsentry/junior#946 was opened.",
+        untrustedText,
+      },
+      {
+        eventKey: "github:delivery-opened:pull_request.opened",
+        eventType: "pull_request.opened",
+        occurredAtMs: Date.parse("2026-07-10T12:00:00.000Z"),
+        identifier: "getsentry/junior",
+        trustedSummary: "GitHub PR getsentry/junior#946 was opened.",
+        untrustedText,
+      },
+      {
+        eventKey: "github:delivery-opened:pull_request.ready_for_review",
+        eventType: "pull_request.ready_for_review",
+        occurredAtMs: Date.parse("2026-07-10T12:00:00.000Z"),
+        identifier: "getsentry/junior#946",
+        trustedSummary: "GitHub PR getsentry/junior#946 is ready for review.",
+        untrustedText,
+      },
+      {
+        eventKey: "github:delivery-opened:pull_request.ready_for_review",
+        eventType: "pull_request.ready_for_review",
+        occurredAtMs: Date.parse("2026-07-10T12:00:00.000Z"),
+        identifier: "getsentry/junior",
+        trustedSummary: "GitHub PR getsentry/junior#946 is ready for review.",
+        untrustedText,
+      },
+    ]);
+  });
+
+  it("keeps draft opens as opened only until ready_for_review", () => {
+    vi.setSystemTime(new Date("2026-07-20T12:00:00.000Z"));
+    expect(
+      normalizeGitHubResourceEvents({
+        body: {
+          action: "opened",
+          repository: { full_name: "getsentry/junior" },
+          pull_request: {
+            created_at: "2026-07-10T12:00:00.000Z",
+            draft: true,
+            number: 946,
+            title: "wip",
+          },
+        },
+        deliveryId: "delivery-draft-opened",
+        eventName: "pull_request",
+      }),
+    ).toEqual([
+      {
+        eventKey: "github:delivery-draft-opened:pull_request.opened",
+        eventType: "pull_request.opened",
+        occurredAtMs: Date.parse("2026-07-10T12:00:00.000Z"),
+        identifier: "getsentry/junior#946",
+        trustedSummary: "GitHub PR getsentry/junior#946 was opened.",
+        untrustedText: "Title: wip",
+      },
+      {
+        eventKey: "github:delivery-draft-opened:pull_request.opened",
+        eventType: "pull_request.opened",
+        occurredAtMs: Date.parse("2026-07-10T12:00:00.000Z"),
+        identifier: "getsentry/junior",
+        trustedSummary: "GitHub PR getsentry/junior#946 was opened.",
+        untrustedText: "Title: wip",
+      },
+    ]);
+
+    expect(
+      normalizeGitHubResourceEvents({
+        body: {
+          action: "ready_for_review",
+          repository: { full_name: "getsentry/junior" },
+          pull_request: {
+            draft: false,
+            number: 946,
+            title: "ready",
+            updated_at: "2026-07-11T12:00:00.000Z",
+          },
+        },
+        deliveryId: "delivery-ready",
+        eventName: "pull_request",
+      }),
+    ).toEqual([
+      {
+        eventKey: "github:delivery-ready:pull_request.ready_for_review",
+        eventType: "pull_request.ready_for_review",
+        occurredAtMs: Date.parse("2026-07-11T12:00:00.000Z"),
+        identifier: "getsentry/junior#946",
+        trustedSummary: "GitHub PR getsentry/junior#946 is ready for review.",
+        untrustedText: "Title: ready",
+      },
+      {
+        eventKey: "github:delivery-ready:pull_request.ready_for_review",
+        eventType: "pull_request.ready_for_review",
+        occurredAtMs: Date.parse("2026-07-11T12:00:00.000Z"),
+        identifier: "getsentry/junior",
+        trustedSummary: "GitHub PR getsentry/junior#946 is ready for review.",
+        untrustedText: "Title: ready",
+      },
+    ]);
+  });
+
   it("normalizes review, comment, and check events into exact subscription contracts", () => {
     vi.setSystemTime(1_000);
     const cases = [
@@ -929,6 +1056,40 @@ describe("GitHub-owned pull request outcomes", () => {
       });
       expect(rows[0]?.updatedAt.toISOString()).toBe("2026-07-03T12:00:00.000Z");
       expect(published).toEqual([
+        expect.objectContaining({
+          eventType: "pull_request.opened",
+          identifier: "getsentry/junior#946",
+        }),
+        expect.objectContaining({
+          eventType: "pull_request.opened",
+          identifier: "getsentry/junior",
+        }),
+        expect.objectContaining({
+          eventType: "pull_request.ready_for_review",
+          identifier: "getsentry/junior#946",
+        }),
+        expect.objectContaining({
+          eventType: "pull_request.ready_for_review",
+          identifier: "getsentry/junior",
+        }),
+        // Duplicate open delivery still publishes resource events; outcome
+        // storage remains idempotent.
+        expect.objectContaining({
+          eventType: "pull_request.opened",
+          identifier: "getsentry/junior#946",
+        }),
+        expect.objectContaining({
+          eventType: "pull_request.opened",
+          identifier: "getsentry/junior",
+        }),
+        expect.objectContaining({
+          eventType: "pull_request.ready_for_review",
+          identifier: "getsentry/junior#946",
+        }),
+        expect.objectContaining({
+          eventType: "pull_request.ready_for_review",
+          identifier: "getsentry/junior",
+        }),
         expect.objectContaining({
           eventType: "pull_request.merged",
           identifier: "getsentry/junior#946",

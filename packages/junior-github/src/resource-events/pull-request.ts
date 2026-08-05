@@ -4,6 +4,8 @@ export const GITHUB_PULL_REQUEST_EVENTS = [
   "pull_request.checks.failed",
   "pull_request.checks.recovered",
   "pull_request.comment.created",
+  "pull_request.opened",
+  "pull_request.ready_for_review",
   "pull_request.review.approved",
   "pull_request.review.changes_requested",
   "pull_request.review.commented",
@@ -14,6 +16,7 @@ export const GITHUB_PULL_REQUEST_EVENTS = [
 export const GITHUB_PULL_REQUEST_SUGGESTED_EVENTS = [
   "pull_request.checks.failed",
   "pull_request.comment.created",
+  "pull_request.ready_for_review",
   "pull_request.review.changes_requested",
   "pull_request.review.commented",
   "pull_request.review_comment.created",

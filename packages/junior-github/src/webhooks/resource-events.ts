@@ -486,10 +486,15 @@ function normalizePullRequestReviewEvent(
 const pullRequestWebhookSchema = z.object({
   action: z.string(),
   pull_request: z.object({
+    body: z.string().optional().nullable(),
     closed_at: z.string().optional().nullable(),
+    created_at: z.string().optional(),
+    draft: z.boolean().optional(),
     merged: z.boolean().optional(),
     merged_at: z.string().optional().nullable(),
     number: z.number(),
+    title: z.string().optional(),
+    updated_at: z.string().optional(),
   }),
   repository: repositorySchema,
 });
@@ -501,40 +506,121 @@ function providerTime(value: string | null | undefined): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-/** Normalize a terminal pull request lifecycle event. */
+function pullRequestEventText(pullRequest: {
+  body?: string | null;
+  title?: string;
+}): string | undefined {
+  const parts = [
+    pullRequest.title ? `Title: ${pullRequest.title}` : undefined,
+    pullRequest.body?.trim() || undefined,
+  ].filter((part): part is string => part !== undefined);
+  return parts.length > 0 ? parts.join("\n\n") : undefined;
+}
+
+/** Build the PR and repository targets for one pull request lifecycle event. */
+function pullRequestLifecycleEvents(input: {
+  deliveryId: string;
+  eventType: string;
+  occurredAtMs: number;
+  repo: string;
+  resource: ReturnType<typeof gitHubPullRequestResource>;
+  terminal?: true;
+  trustedSummary: string;
+  untrustedText?: string;
+}): ResourceEventInput[] {
+  return pullRequestTargets(
+    {
+      eventKey: gitHubEventKey(input.deliveryId, input.eventType),
+      eventType: input.eventType,
+      occurredAtMs: input.occurredAtMs,
+      identifier: input.resource.identifier,
+      ...(input.terminal ? { terminal: true } : {}),
+      trustedSummary: input.trustedSummary,
+      ...(input.untrustedText ? { untrustedText: input.untrustedText } : {}),
+    },
+    input.repo,
+  );
+}
+
+/** Normalize pull request opened, ready-for-review, and terminal lifecycle events. */
 function normalizePullRequestEvent(
   deliveryId: string,
   body: unknown,
 ): ResourceEventInput[] {
   const parsed = pullRequestWebhookSchema.safeParse(body);
-  if (!parsed.success || parsed.data.action !== "closed") return [];
-  const eventType = parsed.data.pull_request.merged
-    ? "pull_request.merged"
-    : "pull_request.closed_unmerged";
+  if (!parsed.success) return [];
+
   const repo = parsed.data.repository.full_name;
   const resource = gitHubPullRequestResource({
     number: parsed.data.pull_request.number,
     repo,
   });
-  return pullRequestTargets(
-    {
-      eventKey: gitHubEventKey(deliveryId, eventType),
-      eventType,
+  const untrustedText = pullRequestEventText(parsed.data.pull_request);
+
+  if (parsed.data.action === "opened") {
+    const openedAtMs =
+      providerTime(parsed.data.pull_request.created_at) ?? Date.now();
+    const events = pullRequestLifecycleEvents({
+      deliveryId,
+      eventType: "pull_request.opened",
+      occurredAtMs: openedAtMs,
+      repo,
+      resource,
+      trustedSummary: `${resource.label} was opened.`,
+      untrustedText,
+    });
+    // Non-draft opens are immediately reviewable; emit the same signal used
+    // when a draft later leaves draft state.
+    if (parsed.data.pull_request.draft !== true) {
+      events.push(
+        ...pullRequestLifecycleEvents({
+          deliveryId,
+          eventType: "pull_request.ready_for_review",
+          occurredAtMs: openedAtMs,
+          repo,
+          resource,
+          trustedSummary: `${resource.label} is ready for review.`,
+          untrustedText,
+        }),
+      );
+    }
+    return events;
+  }
+
+  if (parsed.data.action === "ready_for_review") {
+    return pullRequestLifecycleEvents({
+      deliveryId,
+      eventType: "pull_request.ready_for_review",
       occurredAtMs:
-        providerTime(
-          parsed.data.pull_request.merged
-            ? parsed.data.pull_request.merged_at
-            : parsed.data.pull_request.closed_at,
-        ) ?? Date.now(),
-      identifier: resource.identifier,
-      terminal: true,
-      trustedSummary:
-        eventType === "pull_request.merged"
-          ? `${resource.label} was merged.`
-          : `${resource.label} was closed without being merged.`,
-    },
+        providerTime(parsed.data.pull_request.updated_at) ?? Date.now(),
+      repo,
+      resource,
+      trustedSummary: `${resource.label} is ready for review.`,
+      untrustedText,
+    });
+  }
+
+  if (parsed.data.action !== "closed") return [];
+  const eventType = parsed.data.pull_request.merged
+    ? "pull_request.merged"
+    : "pull_request.closed_unmerged";
+  return pullRequestLifecycleEvents({
+    deliveryId,
+    eventType,
+    occurredAtMs:
+      providerTime(
+        parsed.data.pull_request.merged
+          ? parsed.data.pull_request.merged_at
+          : parsed.data.pull_request.closed_at,
+      ) ?? Date.now(),
     repo,
-  );
+    resource,
+    terminal: true,
+    trustedSummary:
+      eventType === "pull_request.merged"
+        ? `${resource.label} was merged.`
+        : `${resource.label} was closed without being merged.`,
+  });
 }
 
 const releaseWebhookSchema = z

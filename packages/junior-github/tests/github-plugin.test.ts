@@ -505,10 +505,14 @@ describe("github plugin", () => {
     expect(repository).toMatchObject({
       supportedEvents: expect.arrayContaining([
         "issue.opened",
+        "pull_request.opened",
+        "pull_request.ready_for_review",
         "pull_request.merged",
       ]),
       suggestedEvents: expect.arrayContaining([
         "issue.opened",
+        "pull_request.opened",
+        "pull_request.ready_for_review",
         "pull_request.merged",
       ]),
     });
@@ -1117,6 +1121,7 @@ Conversation: \`local:test:old-conversation\`
         suggestedEvents: [
           "pull_request.checks.failed",
           "pull_request.comment.created",
+          "pull_request.ready_for_review",
           "pull_request.review.changes_requested",
           "pull_request.review.commented",
           "pull_request.review_comment.created",
@@ -1127,6 +1132,8 @@ Conversation: \`local:test:old-conversation\`
           "pull_request.checks.failed",
           "pull_request.checks.recovered",
           "pull_request.comment.created",
+          "pull_request.opened",
+          "pull_request.ready_for_review",
           "pull_request.review.approved",
           "pull_request.review.changes_requested",
           "pull_request.review.commented",

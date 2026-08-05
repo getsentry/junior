@@ -675,6 +675,7 @@ export function githubPlugin(
           ],
           suggestedEvents: [
             "issue.opened",
+            "pull_request.opened",
             ...GITHUB_ISSUE_SUGGESTED_EVENTS,
             ...GITHUB_PULL_REQUEST_SUGGESTED_EVENTS,
           ],
