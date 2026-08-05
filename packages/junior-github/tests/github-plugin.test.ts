@@ -62,11 +62,7 @@ type TestActor = {
   userName?: string;
 };
 
-function beforeToolContext(
-  actor: TestActor,
-  actors?: TestActor[],
-  command = "git commit -m test",
-) {
+function beforeToolContext(actor: TestActor, actors?: TestActor[]) {
   const env: Record<string, string> = {};
   let denial: string | undefined;
 
@@ -96,7 +92,7 @@ function beforeToolContext(
       actor,
       ...(actors ? { actors } : {}),
       tool: {
-        input: { command },
+        input: { command: "git commit -m test" },
         name: "bash",
       },
     },
