@@ -111,6 +111,10 @@ export function createGitHubCloneRepositoryTool(
       if (exists.exitCode === 0) {
         throw new PluginToolInputError(`destination already exists: ${path}`);
       }
+      // Git smart HTTP uses git-upload-pack for clone, fetch, pull, deepen, and
+      // ls-remote, so egress policy cannot distinguish clone without also
+      // blocking normal repository workflows. This tool is the bounded,
+      // preferred clone path rather than an enforceable network boundary.
       let clone;
       try {
         clone = await ctx.sandbox.run({
