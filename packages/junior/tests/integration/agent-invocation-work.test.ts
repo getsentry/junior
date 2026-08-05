@@ -6,6 +6,7 @@ import {
   createAgentInvocation,
   getAgentInvocation,
   getAgentInvocationTurnId,
+  markAgentInvocationRunning,
 } from "@/chat/agent-invocations/store";
 import {
   buildAgentInvocationInboundMessage,
@@ -444,6 +445,115 @@ describe("agent invocation conversation work", () => {
       await expect(
         getAgentInvocation(created.invocationId),
       ).resolves.toMatchObject({ mailboxStatus: "appended" });
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("terminally fails a stranded running child with no resumable boundary", async () => {
+    const { fixture } = await prepareParentConversation();
+    const state = getStateAdapter();
+    await state.connect();
+    try {
+      const created = await createAgentInvocation(
+        {
+          ...invocationInput,
+          agentName: "researcher",
+          idempotencyKey: "running-no-boundary-1",
+        },
+        2_000,
+      );
+      const turnId = getAgentInvocationTurnId(created.invocationId);
+      await markAgentInvocationRunning(created.invocationId);
+      await upsertAgentTurnSessionRecord({
+        actor: invocationInput.actor,
+        conversationId: created.childConversationId,
+        destination,
+        modelId: "test-model",
+        // Only uncommitted trailing assistant output survived the crash: there
+        // is no continuable user/toolResult boundary to resume from.
+        piMessages: [
+          {
+            role: "assistant",
+            content: [{ type: "text", text: "partial output" }],
+            api: "responses",
+            provider: "openai",
+            model: "gpt-5.3",
+            usage: {
+              input: 1,
+              output: 1,
+              cacheRead: 0,
+              cacheWrite: 0,
+              totalTokens: 2,
+              cost: {
+                input: 0,
+                output: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+                total: 0,
+              },
+            },
+            stopReason: "stop",
+            timestamp: 2,
+          },
+        ] as unknown as PiMessage[],
+        sessionId: turnId,
+        sliceId: 1,
+        source: invocationInput.source,
+        state: "running",
+        surface: "internal",
+      });
+      const run = vi.fn(async () => {
+        throw new Error("unrecoverable stranded sessions must not rerun");
+      });
+      const worker = createAgentInvocationWorker({
+        agentRunner: { run },
+      });
+      // Empty resume wakes set isFinalAttempt false, so unrecoverable stranded
+      // recovery must terminalize without relying on final-attempt handling.
+      const emptyResumeContext = {
+        attempt: {
+          ack: vi.fn(),
+          conversationId: created.childConversationId,
+          drain: vi.fn(),
+          isFinalAttempt: false,
+          messages: [],
+        },
+        checkIn: vi.fn(),
+        conversationId: created.childConversationId,
+        shouldYield: () => false,
+      } satisfies ConversationWorkerContext;
+
+      await expect(
+        worker(emptyResumeContext, created.invocationId),
+      ).resolves.toEqual({ status: "completed" });
+
+      expect(run).not.toHaveBeenCalled();
+      expect(emptyResumeContext.attempt.ack).not.toHaveBeenCalled();
+      await expect(
+        getAgentTurnSessionRecord(created.childConversationId, turnId),
+      ).resolves.toMatchObject({
+        errorMessage: expect.stringContaining("no resumable boundary"),
+        state: "failed",
+      });
+      await expect(
+        getAgentInvocation(created.invocationId),
+      ).resolves.toMatchObject({
+        errorMessage: expect.stringContaining("no resumable boundary"),
+        status: "failed",
+      });
+      // Named agents must free after unrecoverable stranded recovery so a later
+      // spawn can reuse the binding instead of staying permanently busy.
+      await expect(
+        createAgentInvocation({
+          ...invocationInput,
+          agentName: "researcher",
+          idempotencyKey: "running-no-boundary-2",
+        }),
+      ).resolves.toMatchObject({
+        childConversationId: created.childConversationId,
+        status: "pending",
+      });
     } finally {
       await fixture.close();
     }

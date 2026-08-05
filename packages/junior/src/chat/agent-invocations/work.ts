@@ -12,7 +12,10 @@ import {
 } from "@/chat/runtime/thread-state";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
-import { getAgentTurnSessionRecord } from "@/chat/state/turn-session";
+import {
+  failAgentTurnSessionRecord,
+  getAgentTurnSessionRecord,
+} from "@/chat/state/turn-session";
 import {
   getConversationTurnBoundaryError,
   isTurnInputCommitLostError,
@@ -232,7 +235,13 @@ async function projectTerminalSession(
   });
 }
 
-/** Re-park a stranded running session at its latest durable safe boundary. */
+/**
+ * Re-park a stranded running session at its latest durable safe boundary.
+ *
+ * Unrecoverable stranded sessions are failed immediately, matching agent
+ * continue recovery. Empty resume wakes never become final delivery attempts,
+ * so throwing here would requeue forever and leave named agents busy.
+ */
 async function recoverRunningSession(
   invocation: AgentInvocation,
 ): Promise<void> {
@@ -244,9 +253,13 @@ async function recoverRunningSession(
     return;
   }
   if (!session.modelId) {
-    throw new Error(
-      `Running agent invocation session is missing its model for ${invocation.invocationId}`,
-    );
+    await failAgentTurnSessionRecord({
+      conversationId: invocation.childConversationId,
+      expectedVersion: session.version,
+      sessionId: session.sessionId,
+      errorMessage: `Running agent invocation session is missing its model for ${invocation.invocationId}`,
+    });
+    return;
   }
   const parked = await persistYieldSessionRecord({
     conversationId: invocation.childConversationId,
@@ -262,9 +275,13 @@ async function recoverRunningSession(
     surface: session.surface,
   });
   if (!parked) {
-    throw new Error(
-      `Running agent invocation had no resumable boundary for ${invocation.invocationId}`,
-    );
+    await failAgentTurnSessionRecord({
+      conversationId: invocation.childConversationId,
+      expectedVersion: session.version,
+      sessionId: session.sessionId,
+      errorMessage: `Running agent invocation had no resumable boundary for ${invocation.invocationId}`,
+    });
+    return;
   }
   await markAgentInvocationAwaitingResume(invocation.invocationId);
 }
@@ -336,13 +353,16 @@ export function createAgentInvocationWorker(options: {
         await acknowledge();
         return { status: "completed" };
       }
+      // Recover stranded running sessions before terminal projection so an
+      // unrecoverable child can fail its session and complete through the
+      // same immutable result path as a normal completed/failed session.
+      await recoverRunningSession(invocation);
       const projected = await projectTerminalSession(invocation);
       if (projected && isTerminalAgentInvocation(projected)) {
         await persistTerminalLifecycle(projected);
         await acknowledge();
         return { status: "completed" };
       }
-      await recoverRunningSession(invocation);
       invocation =
         (await markAgentInvocationRunning(invocation.invocationId)) ??
         invocation;

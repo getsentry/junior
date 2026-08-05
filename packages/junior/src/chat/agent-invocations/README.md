@@ -33,9 +33,13 @@ conversation tree.
    through the shared `AgentRunner`.
 4. A cooperative yield keeps the same turn and invocation active for another
    execution slice.
-5. Completion writes the session record first, then projects the immutable
+5. A stranded `running` child is re-parked at its latest durable safe boundary.
+   If no model or resumable boundary remains, the session fails immediately and
+   projects onto the invocation. Empty resume wakes never become final delivery
+   attempts, so unrecoverable stranded work must not throw and requeue forever.
+6. Completion writes the session record first, then projects the immutable
    result or error onto the invocation.
-6. The heartbeat repairs invocations left in `mailboxStatus: "pending"`.
+7. The heartbeat repairs invocations left in `mailboxStatus: "pending"`.
 
 The child conversation has no provider destination. Each invocation carries
 the actor, credential context, source, and destination that bound its tool
