@@ -1462,10 +1462,7 @@ export function createMemoryStore(
     },
 
     async recallMemories(input) {
-      return await retrieveVisibleMemories(
-        input,
-        maxVectorDistance ?? Number.POSITIVE_INFINITY,
-      );
+      return await retrieveVisibleMemories(input, maxVectorDistance);
     },
 
     async searchMemories(input) {
