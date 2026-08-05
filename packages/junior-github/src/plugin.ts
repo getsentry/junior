@@ -391,7 +391,9 @@ function githubApiWriteGrantName(
     ) &&
     !HTTP_READ_METHODS.has(method)
   ) {
-    return "user-write";
+    // Bot-authored reviews use the App installation identity so headless and
+    // interactive review feedback both post as Junior, not the requesting user.
+    return "installation-write";
   }
   return undefined;
 }

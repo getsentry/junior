@@ -1702,7 +1702,7 @@ Conversation: \`local:test:old-conversation\`
     );
   });
 
-  it("separates pull request lifecycle writes from human review identity", async () => {
+  it("treats pull request review writes as bot-owned installation identity", async () => {
     await expect(
       grantForEgress({
         method: "PATCH",
@@ -1720,14 +1720,41 @@ Conversation: \`local:test:old-conversation\`
         url: "https://api.github.com/repos/getsentry/junior/pulls/780/reviews",
       }),
     ).resolves.toMatchObject({
-      name: "user-write",
+      name: "installation-write",
       access: "write",
       leaseScope: "repository:getsentry/junior",
-      reason: "github.user-write",
-      requirements: [
-        "requesting GitHub user permission to perform this operation",
-      ],
+      reason: "github.installation-write",
     });
+    await expect(
+      grantForEgress({
+        method: "POST",
+        url: "https://api.github.com/repos/getsentry/junior/pulls/780/reviews/99/events",
+      }),
+    ).resolves.toMatchObject({
+      name: "installation-write",
+      access: "write",
+      leaseScope: "repository:getsentry/junior",
+      reason: "github.installation-write",
+    });
+    await expect(
+      grantForEgress({
+        method: "PUT",
+        url: "https://api.github.com/repos/getsentry/junior/pulls/780/reviews/99/dismissals",
+      }),
+    ).resolves.toMatchObject({
+      name: "installation-write",
+      access: "write",
+      leaseScope: "repository:getsentry/junior",
+      reason: "github.installation-write",
+    });
+    await expect(
+      grantForEgress({
+        method: "PUT",
+        url: "https://api.github.com/repos/getsentry/junior/pulls/780/merge",
+      }),
+    ).rejects.toThrow(
+      "GitHub write request is not an explicitly allowed Junior operation.",
+    );
   });
 
   it("preserves installed App permissions on repository-scoped write credentials", async () => {
