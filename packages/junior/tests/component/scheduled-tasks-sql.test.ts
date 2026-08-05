@@ -175,7 +175,7 @@ describe("scheduled-task SQL storage", () => {
 
       await expect(migrateSchema(fixture.sql)).resolves.toMatchObject({
         existing: 16,
-        migrated: 4,
+        migrated: 5,
       });
       const [migrated] = await fixture.sql.query<{
         creatorIdentityId: string | null;
