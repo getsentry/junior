@@ -23,22 +23,24 @@ pnpm add @sentry/junior @sentry/junior-sentry
 
 ## Runtime setup
 
-Add the package name to the plugin set exported from `plugins.ts`:
+Add the plugin factory to the plugin set exported from `plugins.ts`:
 
 ```ts title="plugins.ts"
 import { defineJuniorPlugins } from "@sentry/junior";
+import { sentryPlugin } from "@sentry/junior-sentry";
 
-export const plugins = defineJuniorPlugins(["@sentry/junior-sentry"]);
+export const plugins = defineJuniorPlugins([sentryPlugin()]);
 ```
 
 ## Configure environment variables
 
 Set these values in the host environment:
 
-| Variable               | Required | Purpose              |
-| ---------------------- | -------- | -------------------- |
-| `SENTRY_CLIENT_ID`     | Yes      | OAuth client ID.     |
-| `SENTRY_CLIENT_SECRET` | Yes      | OAuth client secret. |
+| Variable                | Required | Purpose                                                           |
+| ----------------------- | -------- | ----------------------------------------------------------------- |
+| `SENTRY_CLIENT_ID`      | Yes      | OAuth client ID.                                                  |
+| `SENTRY_CLIENT_SECRET`  | Yes      | OAuth client secret.                                              |
+| `SENTRY_WEBHOOK_SECRET` | No       | Internal integration client secret used to verify issue webhooks. |
 
 ## Create the Sentry OAuth application
 
@@ -56,6 +58,18 @@ Junior requests these Sentry OAuth scopes:
 - `org:read`
 - `project:read`
 - `team:read`
+
+## Optional issue webhooks
+
+Create a Sentry internal integration, subscribe it to the `issue` webhook resource, and set its webhook URL to:
+
+```text
+https://<junior-host>/api/webhooks/sentry
+```
+
+Save that integration's client secret as `SENTRY_WEBHOOK_SECRET` and redeploy Junior. Signed `issue.created` deliveries become Sentry issue- and project-scoped resource events that can drive watches and event tasks.
+
+Create the watch or event task before the issue arrives. Valid unmatched deliveries are not replayed later.
 
 ## Verify
 
