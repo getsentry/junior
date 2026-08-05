@@ -16,6 +16,7 @@ import {
   createViewerMemories,
   InvalidMemoryCursorError,
   PersonalMemoryNotFoundError,
+  PersonalMemoryPublishError,
   type PersonalMemoryRecord,
 } from "./personal";
 
@@ -27,6 +28,13 @@ export const memoryApiSchema = z
     id: z.string().min(1),
     kind: z.enum(["preference", "procedure", "knowledge"]),
     observedAt: z.iso.datetime(),
+    subject: z
+      .object({
+        label: z.string().min(1).optional(),
+        type: z.literal("user"),
+      })
+      .strict()
+      .optional(),
     visibility: z.enum(["private", "public"]),
   })
   .strict();
@@ -118,6 +126,14 @@ function apiMemory(
     id: memory.id,
     kind: memory.kind,
     observedAt: new Date(memory.observedAtMs).toISOString(),
+    ...(memory.subjectType === "user"
+      ? {
+          subject: {
+            ...(memory.subjectLabel ? { label: memory.subjectLabel } : {}),
+            type: "user" as const,
+          },
+        }
+      : {}),
     visibility: memory.visibility,
   };
 }
@@ -141,13 +157,18 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
 
       const url = new URL(request.url);
       const memoryPath = /^\/memories\/([^/]+)$/.exec(url.pathname);
+      const publishPath = /^\/memories\/([^/]+)\/publish$/.exec(url.pathname);
       const isCollection = url.pathname === "/memories";
       const isDashboard = url.pathname === "/dashboard";
-      if (!isCollection && !isDashboard && !memoryPath) {
+      if (!isCollection && !isDashboard && !memoryPath && !publishPath) {
         return json({ error: "Not found." }, 404);
       }
       const isRead = request.method === "GET" || request.method === "HEAD";
-      if (!isRead && !(memoryPath && request.method === "DELETE")) {
+      if (
+        !isRead &&
+        !(memoryPath && request.method === "DELETE") &&
+        !(publishPath && request.method === "POST")
+      ) {
         return json({ error: "Method not allowed." }, 405);
       }
 
@@ -226,6 +247,14 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
             status: 204,
           });
         }
+
+        if (publishPath && request.method === "POST") {
+          await memories.publish(decodeURIComponent(publishPath[1]!));
+          return new Response(null, {
+            headers: { "cache-control": "no-store" },
+            status: 204,
+          });
+        }
       } catch (error) {
         if (
           error instanceof z.ZodError ||
@@ -235,6 +264,9 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
         }
         if (error instanceof PersonalMemoryNotFoundError) {
           return json({ error: error.message }, 404);
+        }
+        if (error instanceof PersonalMemoryPublishError) {
+          return json({ error: error.message }, 400);
         }
         throw error;
       }

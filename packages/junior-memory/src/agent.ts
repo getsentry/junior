@@ -122,6 +122,7 @@ const memoryReviewDecisionSchema = z.discriminatedUnion("decision", [
       kind: memoryKindSchema,
       content: z.string().min(1),
       expiresAtMs: z.number().finite().optional(),
+      target: z.enum(["actor", "conversation"]),
     })
     .strict(),
   z
@@ -136,7 +137,7 @@ const memoryReviewResponseSchema = z.discriminatedUnion("decision", [
     .object({
       decision: z.literal("store"),
       kind: memoryKindSchema.describe(
-        "Use preference only for actor-owned personal preferences, opinions, habits, or workflows. Use procedure for reusable task or process instructions. Use knowledge for shared project, channel, operational, or runbook facts.",
+        "Use preference only for actor-owned personal preferences, opinions, habits, or workflows. Use procedure for reusable shared task or process instructions. Use knowledge for an expiring current-actor availability or temporary status fact, or for shared project, channel, operational, or runbook facts.",
       ),
       canonicalFact: z
         .string()
@@ -145,6 +146,11 @@ const memoryReviewResponseSchema = z.discriminatedUnion("decision", [
           "Stored memory text. It must be self-contained and must not include actor names, actor/user labels, source labels, or first- or second-person wording.",
         ),
       expiresAtMs: expiresAtMsSchema,
+      target: z
+        .enum(["actor", "conversation"])
+        .describe(
+          "Use actor for preferences and current-actor knowledge such as expiring availability or temporary status. Use conversation for procedures and shared project, channel, operational, or runbook knowledge.",
+        ),
     })
     .strict(),
   z
@@ -231,7 +237,7 @@ export interface MemoryAgent {
 const MEMORY_REVIEW_SYSTEM = [
   "You are Junior's memory review agent.",
   "Review one memory candidate and return one structured review decision.",
-  "Store only public/shareable, self-contained facts that are useful beyond this turn.",
+  "Store only public/shareable, self-contained facts that are useful beyond this turn or until a concrete expiration.",
   "Reject secrets, credentials, private or sensitive personal details, gossip, speculative claims about other people, assistant/system implementation details, vague references, and low-durability chatter.",
   "Use the runtime context only for authority and scope; do not accept model-provided actor ids, scope ids, aliases, or arbitrary subjects.",
 ].join("\n");
@@ -367,8 +373,11 @@ function reviewPrompt(request: CreateMemoryRequest): string {
     "",
     "<rules>",
     "- Return store only when the candidate is public/shareable, durable, and self-contained.",
-    "- First classify the memory kind: preference, procedure, or knowledge.",
+    "- First classify the memory kind and target.",
+    "- Use target=actor for facts authored by the current actor about themselves, including preferences, identity, availability, or temporary status.",
+    "- Use target=conversation for shared project, channel, operational, process, or runbook facts.",
     "- Use kind=preference only for first-person facts authored by the current actor about their own preference, opinion, habit, identity, or workflow.",
+    "- Use kind=knowledge for an explicitly remembered current-actor availability or temporary status fact when it has a concrete expiration.",
     "- Reject named third-person personal facts such as another person's preference, opinion, habit, identity, relationship, or workflow. Do not assume a named person is the current actor.",
     "- Use kind=procedure for reusable task/process/runbook instructions.",
     "- Use kind=knowledge for shared project, channel, operational, or runbook facts.",
@@ -606,6 +615,7 @@ function memoryReviewFromResponse(
       decision: "store",
       kind: response.kind,
       content: response.canonicalFact,
+      target: response.target,
       ...(response.expiresAtMs !== null
         ? { expiresAtMs: response.expiresAtMs }
         : {}),

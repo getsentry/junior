@@ -76,6 +76,19 @@ export async function deleteDashboardResource(path: string): Promise<void> {
   if (!response.ok) throw new DashboardApiError(path, response.status);
 }
 
+/** Run one authenticated dashboard resource action without a request body. */
+export async function mutateDashboardResource(
+  path: string,
+  method: "DELETE" | "POST",
+): Promise<void> {
+  const response = await fetch(path, {
+    credentials: "same-origin",
+    method,
+  });
+  if (response.status === 401) restartDashboardSignIn();
+  if (!response.ok) throw new DashboardApiError(path, response.status);
+}
+
 /** Fetch one authenticated dashboard JSON resource and validate its response. */
 export async function fetchDashboardJson<T>(
   schema: ZodType<T>,

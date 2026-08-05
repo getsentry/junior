@@ -349,3 +349,73 @@ test("searches, paginates, and forgets plugin page records", async ({
   await expect(page.getByText("No memories yet.")).toBeVisible();
   expect(browserErrors).toEqual([]);
 });
+
+test("publishes a private memory from the memory details", async ({ page }) => {
+  let published = false;
+  let publishRequests = 0;
+  await page.route("**/api/user-pages/memory/memories*", async (route) => {
+    await route.fulfill({
+      json: {
+        type: "list",
+        emptyText: "No memories yet.",
+        records: [
+          {
+            actions: published
+              ? [
+                  {
+                    confirmation: "Forget this memory?",
+                    href: "/api/plugins/memory/memories/memory-ooo",
+                    label: "Forget",
+                    method: "DELETE",
+                    tone: "danger",
+                  },
+                ]
+              : [
+                  {
+                    confirmation:
+                      "Make this memory public to the workspace where it was created?",
+                    href: "/api/plugins/memory/memories/memory-ooo/publish",
+                    label: "Make Public",
+                    method: "POST",
+                    tone: "neutral",
+                  },
+                ],
+            id: "memory-ooo",
+            metadata: [
+              { label: "Type", value: "Knowledge" },
+              { label: "Visibility", value: published ? "Public" : "Private" },
+              { label: "Remembered", value: "Aug 4, 2026, 10:00 AM" },
+            ],
+            title: published
+              ? "David Cramer — Out of office August 10–14, 2026."
+              : "Out of office August 10–14, 2026.",
+          },
+        ],
+        searchPlaceholder: "Search memories",
+      },
+    });
+  });
+  await page.route(
+    "**/api/plugins/memory/memories/memory-ooo/publish",
+    async (route) => {
+      publishRequests += 1;
+      expect(route.request().method()).toBe("POST");
+      published = true;
+      await route.fulfill({ status: 204 });
+    },
+  );
+
+  await page.goto(`${server.baseURL}/plugins/memory/memories/library`);
+  await page
+    .getByRole("button", { name: /^Out of office August 10–14, 2026/ })
+    .click();
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Make public" }).click();
+
+  await expect(
+    page.getByRole("button", {
+      name: /^David Cramer — Out of office August 10–14, 2026/,
+    }),
+  ).toBeVisible();
+  expect(publishRequests).toBe(1);
+});

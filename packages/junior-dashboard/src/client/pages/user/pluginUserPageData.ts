@@ -11,7 +11,7 @@ import {
   type PluginUserPageLink,
 } from "@sentry/junior-plugin-api";
 
-import { deleteDashboardResource, fetchDashboardJson } from "../../http";
+import { fetchDashboardJson, mutateDashboardResource } from "../../http";
 
 export type PluginUserPageRecord = PluginUserPageContent["records"][number];
 export type PluginUserPageRecordAction = NonNullable<
@@ -83,7 +83,7 @@ export function usePluginUserPageData(page: PluginUserPageLink) {
   );
   const action = useMutation({
     mutationFn: (recordAction: PluginUserPageRecordAction) =>
-      deleteDashboardResource(recordAction.href),
+      mutateDashboardResource(recordAction.href, recordAction.method),
     onMutate: () => ({ pluginName: page.pluginName }),
     onSuccess: async (_result, _recordAction, context) => {
       await queryClient.resetQueries({

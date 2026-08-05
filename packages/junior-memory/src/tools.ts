@@ -22,12 +22,14 @@ import {
   parseCreateMemoryRequest,
   parseMemoryReview,
   type MemoryAgent,
+  type MemoryReview,
 } from "./agent";
 import {
   memoryRuntimeContextSchema,
   type MemoryKind,
   type MemoryRuntimeContext,
 } from "./types";
+import { presentedMemoryContent } from "./subjects";
 
 export type MemoryReviewer = Pick<MemoryAgent, "reviewCreateRequest">;
 
@@ -359,11 +361,13 @@ function createInput(
   } satisfies CreateMemoryInput;
 }
 
-function targetForKind(kind: MemoryKind): "actor" | "conversation" {
-  if (kind === "preference") {
-    return "actor";
-  }
-  return "conversation";
+/** Enforce kind ownership even when model review returns a conflicting target. */
+function storageTarget(
+  review: Pick<Extract<MemoryReview, { decision: "store" }>, "kind" | "target">,
+): "actor" | "conversation" {
+  if (review.kind === "preference") return "actor";
+  if (review.kind === "procedure") return "conversation";
+  return review.target;
 }
 
 /** Return the model-visible projection without hidden ownership/source fields. */
@@ -377,6 +381,13 @@ function compactMemory(memory: MemoryRecord): MemoryToolProjection {
       ? { expiresAtMs: memory.expiresAtMs }
       : {}),
   });
+}
+
+function compactPresentedMemory(
+  memory: MemoryRecord,
+  content: string,
+): MemoryToolProjection {
+  return compactMemory({ ...memory, content });
 }
 
 function memoryToolResult<TData extends Record<string, unknown>>(
@@ -400,7 +411,7 @@ export function createMemoryCreateTool(context: MemoryCreateToolContext) {
       readOnlyHint: false,
     },
     description:
-      "Explicit memory-write tool. Use only when the latest user message directly asks Junior to remember, store, save, or forget-and-replace a public/shareable fact. Do not use for ordinary statements like 'I prefer X', 'I use Y', or 'X goes before Y' unless the user also asks you to remember/store/save it; passive memory learning handles those after the visible reply. Pass one self-contained natural-language candidate preserving the user's explicit memory intent. Do not ask the user to rephrase ordinary first-person facts, and do not rewrite them into display-name or third-person wording. Do not include secrets, private personal details, medical/legal/financial/sensitive facts, or another person's personal preference, opinion, habit, identity, relationship, workflow, or private life. Runtime context derives actor, scope, source, and subject ids; the memory agent decides canonical stored content and memory kind, then the plugin derives storage target from kind.",
+      "Explicit memory-write tool. Use only when the latest user message directly asks Junior to remember, store, save, or forget-and-replace a public/shareable fact. Do not use for ordinary statements like 'I prefer X', 'I use Y', or 'X goes before Y' unless the user also asks you to remember/store/save it; passive memory learning handles those after the visible reply. Pass one self-contained natural-language candidate preserving the user's explicit memory intent. Do not ask the user to rephrase ordinary first-person facts, and do not rewrite them into display-name or third-person wording. Do not include secrets, private personal details, medical/legal/financial/sensitive facts, or another person's personal preference, opinion, habit, identity, relationship, workflow, or private life. Runtime context derives actor, scope, source, and subject ids; the memory agent decides canonical stored content, memory kind, and whether the fact belongs to the actor or conversation.",
     executionMode: "sequential",
     inputSchema: createMemoryInputSchema,
     outputSchema: memoryCreateOutputSchema,
@@ -466,7 +477,7 @@ export function createMemoryCreateTool(context: MemoryCreateToolContext) {
       );
       const result = await (async () => {
         try {
-          if (targetForKind(review.kind) === "conversation") {
+          if (storageTarget(review) === "conversation") {
             return await store.createConversationMemory(memoryInput);
           }
           return await store.createMemory(memoryInput);
@@ -534,7 +545,10 @@ export function createMemoryListTool(context: MemoryToolContext) {
         limit: boundedLimit(parsedInput.limit, DEFAULT_RESULT_LIMIT),
       });
       return memoryToolResult("listMemories", {
-        memories: memories.map(compactMemory),
+        memories: memories.flatMap((memory) => {
+          const content = presentedMemoryContent(memory);
+          return content ? [compactPresentedMemory(memory, content)] : [];
+        }),
       });
     },
   });
@@ -563,7 +577,10 @@ export function createMemorySearchTool(context: MemoryToolContext) {
         limit: boundedLimit(parsedInput.limit, DEFAULT_SEARCH_LIMIT),
       });
       return memoryToolResult("searchMemories", {
-        memories: memories.map(compactMemory),
+        memories: memories.flatMap((memory) => {
+          const content = presentedMemoryContent(memory);
+          return content ? [compactPresentedMemory(memory, content)] : [];
+        }),
       });
     },
   });

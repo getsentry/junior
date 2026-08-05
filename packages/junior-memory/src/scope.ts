@@ -17,6 +17,18 @@ export interface ResolvedMemorySubject {
   subjectType: MemorySubjectType;
 }
 
+/** Viewer-authorized personal, workspace, and publish-target scopes. */
+export interface ViewerMemoryScopes {
+  privateScopes: ResolvedMemoryScope[];
+  publicScopes: ResolvedMemoryScope[];
+  workspaceScopesByPrivateKey: ReadonlyMap<string, ResolvedMemoryScope>;
+}
+
+type MemoryIdentity = Pick<
+  Identity,
+  "provider" | "providerSubjectId" | "providerTenantId"
+>;
+
 function uniqueScopes(scopes: ResolvedMemoryScope[]): ResolvedMemoryScope[] {
   return [
     ...new Map(
@@ -25,43 +37,44 @@ function uniqueScopes(scopes: ResolvedMemoryScope[]): ResolvedMemoryScope[] {
   ];
 }
 
+/** Build the personal scope key for one provider identity. */
+export function identityScopeKey(identity: MemoryIdentity): string {
+  return identity.providerTenantId
+    ? `${identity.provider}:${identity.providerTenantId}:${identity.providerSubjectId}`
+    : `${identity.provider}:${identity.providerSubjectId}`;
+}
+
+function workspaceScope(identity: MemoryIdentity) {
+  if (!identity.providerTenantId) return undefined;
+  return {
+    scope: "conversation" as const,
+    scopeKey: `${identity.provider}:${identity.providerTenantId}`,
+  };
+}
+
 /** Derive viewer-visible memory scopes from canonical provider identities. */
-export function deriveViewerMemoryScopes(identities: Identity[]): {
-  privateScopes: ResolvedMemoryScope[];
-  publicScopes: ResolvedMemoryScope[];
-} {
-  const privateScopes = identities.flatMap((identity) => {
-    if (identity.provider === "local") {
-      return [
-        {
-          scope: "personal" as const,
-          scopeKey: `local:${identity.providerSubjectId}`,
-        },
-      ];
-    }
-    if (identity.provider === "slack" && identity.providerTenantId) {
-      return [
-        {
-          scope: "personal" as const,
-          scopeKey: `slack:${identity.providerTenantId}:${identity.providerSubjectId}`,
-        },
-      ];
-    }
-    return [];
+export function deriveViewerMemoryScopes(
+  identities: Identity[],
+): ViewerMemoryScopes {
+  const privateScopes = identities.map((identity) => ({
+    scope: "personal" as const,
+    scopeKey: identityScopeKey(identity),
+  }));
+  const publicScopes = identities.flatMap((identity) => {
+    const scope = workspaceScope(identity);
+    return scope ? [scope] : [];
   });
-  const publicScopes = identities.flatMap((identity) =>
-    identity.provider === "slack" && identity.providerTenantId
-      ? [
-          {
-            scope: "conversation" as const,
-            scopeKey: `slack:${identity.providerTenantId}`,
-          },
-        ]
-      : [],
-  );
+  const workspaceScopesByPrivateKey = new Map<string, ResolvedMemoryScope>();
+  for (const identity of identities) {
+    const scope = workspaceScope(identity);
+    if (scope) {
+      workspaceScopesByPrivateKey.set(identityScopeKey(identity), scope);
+    }
+  }
   return {
     privateScopes: uniqueScopes(privateScopes),
     publicScopes: uniqueScopes(publicScopes),
+    workspaceScopesByPrivateKey,
   };
 }
 
@@ -85,9 +98,16 @@ function actorScopeKey(ctx: MemoryRuntimeContext): string | undefined {
     return undefined;
   }
   if (actor.platform === "slack") {
-    return `slack:${actor.teamId}:${actor.userId}`;
+    return identityScopeKey({
+      provider: actor.platform,
+      providerTenantId: actor.teamId,
+      providerSubjectId: actor.userId,
+    });
   }
-  return `local:${actor.userId}`;
+  return identityScopeKey({
+    provider: actor.platform,
+    providerSubjectId: actor.userId,
+  });
 }
 
 /** Derive the authority-bearing key for a requested memory scope. */

@@ -38,7 +38,7 @@ const pluginUserPageActionSchema = z
       .max(500)
       .regex(/^\/api\/plugins\/[a-z][a-z0-9-]*(?:\/|$)/),
     label: nonBlankStringSchema.max(80),
-    method: z.literal("DELETE"),
+    method: z.enum(["DELETE", "POST"]),
     tone: z.enum(["danger", "neutral"]).optional(),
   })
   .strict();

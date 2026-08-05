@@ -11,7 +11,7 @@ import {
   type MemoryVisibility,
   type PersonalMemoryRecord,
 } from "./personal-store";
-import { deriveViewerMemoryScopes } from "./scope";
+import { deriveViewerMemoryScopes, identityScopeKey } from "./scope";
 import type { MemoryDb, MemoryRecord } from "./store";
 import type { MemoryKind } from "./types";
 
@@ -49,6 +49,7 @@ export class InvalidMemoryCursorError extends Error {
 }
 
 export { PersonalMemoryNotFoundError } from "./personal-store";
+export { PersonalMemoryPublishError } from "./personal-store";
 export type { MemoryVisibility, PersonalMemoryRecord } from "./personal-store";
 
 function decodeCursor(
@@ -99,9 +100,15 @@ function encodeCursor(
 
 /** Build viewer memory operations authorized by a user's linked identities. */
 export function createViewerMemories(db: MemoryDb, user: User) {
+  const viewerLabels = new Map<string, string>();
+  for (const identity of user.identities) {
+    const label = identity.displayName ?? identity.handle ?? user.displayName;
+    if (label) viewerLabels.set(identityScopeKey(identity), label);
+  }
   const collection = createPersonalMemoryCollection(
     db,
     deriveViewerMemoryScopes(user.identities),
+    { ownerLabels: viewerLabels },
   );
   return {
     async archive(id: string): Promise<MemoryRecord> {
@@ -129,6 +136,9 @@ export function createViewerMemories(db: MemoryDb, user: User) {
           ? { nextCursor: encodeCursor(page.nextCursor, filters) }
           : {}),
       };
+    },
+    async publish(id: string): Promise<PersonalMemoryRecord> {
+      return await collection.publish(id);
     },
     async stats() {
       return await collection.stats();
