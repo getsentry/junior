@@ -553,7 +553,30 @@ importers:
         specifier: ^6.0.3
         version: 6.0.3
 
-  packages/junior-sentry: {}
+  packages/junior-sentry:
+    dependencies:
+      '@sentry/junior-plugin-api':
+        specifier: workspace:*
+        version: link:../junior-plugin-api
+      zod:
+        specifier: 'catalog:'
+        version: 4.4.3
+    devDependencies:
+      '@types/node':
+        specifier: ^25.9.1
+        version: 25.9.1
+      oxlint:
+        specifier: ^1.66.0
+        version: 1.66.0
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(tsx@4.22.3)(typescript@6.0.3)
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^4.1.7
+        version: 4.1.7(@types/node@25.9.1)(tsx@4.22.3)
 
   packages/junior-testing:
     dependencies:
