@@ -35,7 +35,6 @@ const MEMORY_TASK_STATE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
  * evidence that longer thread context improves skip/supersede quality.
  */
 const EXTRACTION_SEARCH_QUERY_MAX_CHARS = 1_500;
-const EXTRACTION_SEARCH_LIMIT = 10;
 const extractedMemorySchema = z
   .object({
     content: z.string().min(1),
@@ -65,56 +64,20 @@ const extractedMemoryCacheSchema = z.union([
 type MemoryRouteTarget = "drop" | "personal" | "conversation";
 
 /**
- * Append newest-first text slices into a bounded hybrid-search query.
- * Returns chars consumed, including separators, so callers can fill remaining
- * budget from lower-priority sources without re-scanning earlier parts.
- */
-function appendSearchQueryParts(
-  parts: string[],
-  texts: string[],
-  used: number,
-  maxChars: number,
-): number {
-  // Newest first: later instructions/context are usually what extraction cares about.
-  for (const text of [...texts].reverse()) {
-    if (used >= maxChars) {
-      break;
-    }
-    const remaining = maxChars - used;
-    const slice =
-      text.length <= remaining
-        ? text
-        : `${text.slice(0, Math.max(0, remaining - 3)).trimEnd()}...`;
-    if (!slice) {
-      continue;
-    }
-    // Charge the join separator only when appending onto an existing part.
-    used += slice.length + (parts.length > 0 ? 1 : 0);
-    parts.push(slice);
-  }
-  return used;
-}
-
-/**
- * Build the hybrid pre-search query used only to find existing memories for
- * skip/supersede context before passive extraction.
+ * Build the query used to find existing memories before passive extraction.
  *
- * Intent / future augmentation guide:
- * - Include this turn's run-actor instructions: primary extraction targets.
- * - Include ambient thread context (`authority: "context"`): prior public-thread
- *   user messages the runtime prepends so related conversation memories surface.
- * - Exclude tool dumps and assistant text: high noise, low durable-fact signal
- *   for retrieval. They still reach the extraction model via the full transcript.
- * - Prefer newest text first within each source class, then spend leftover budget
- *   on context after instructions.
- * - If adding sources later (e.g. selected tool summaries), keep them behind the
- *   same char budget and document why they beat noise risk.
+ * The run actor's current instruction is strongest, followed by other user
+ * evidence: prior public-thread context and instructions from other current-turn
+ * participants. Tool results and assistant text remain available to extraction
+ * but stay out of search until a small rewrite can turn them into concise facts.
+ * Any future source must share this budget so retrieval does not drift back to
+ * embedding the full transcript.
  */
 function buildExtractionSearchQuery(
   transcript: PluginRunTranscriptEntry[],
 ): string {
-  const instructionTexts: string[] = [];
-  const threadContextTexts: string[] = [];
+  const instructions: string[] = [];
+  const conversationContext: string[] = [];
   for (const entry of transcript) {
     if (entry.type !== "message" || entry.role !== "user") {
       continue;
@@ -124,31 +87,26 @@ function buildExtractionSearchQuery(
       continue;
     }
     if (entry.provenance?.authority === "instruction" && entry.isRunActor) {
-      instructionTexts.push(text);
-      continue;
-    }
-    // Runtime-owned prior-thread projection uses context authority, not instruction.
-    if (entry.provenance?.authority === "context") {
-      threadContextTexts.push(text);
+      instructions.push(text);
+    } else if (
+      entry.provenance?.authority === "context" ||
+      (entry.provenance?.authority === "instruction" &&
+        entry.isRunActor === false &&
+        Boolean(entry.provenance.actor))
+    ) {
+      conversationContext.push(text);
     }
   }
-  if (instructionTexts.length === 0 && threadContextTexts.length === 0) {
-    return "";
+  const query = [
+    ...instructions.reverse(),
+    ...conversationContext.reverse(),
+  ].join("\n");
+  if (query.length <= EXTRACTION_SEARCH_QUERY_MAX_CHARS) {
+    return query;
   }
-  const parts: string[] = [];
-  let used = appendSearchQueryParts(
-    parts,
-    instructionTexts,
-    0,
-    EXTRACTION_SEARCH_QUERY_MAX_CHARS,
-  );
-  appendSearchQueryParts(
-    parts,
-    threadContextTexts,
-    used,
-    EXTRACTION_SEARCH_QUERY_MAX_CHARS,
-  );
-  return parts.join("\n").trim();
+  return `${query
+    .slice(0, EXTRACTION_SEARCH_QUERY_MAX_CHARS - 3)
+    .trimEnd()}...`;
 }
 
 function recordCapturedMemory(
@@ -355,11 +313,11 @@ export async function processMemorySession(
   await store.archiveExpiredMemories();
   const extraction = await getTaskExtraction(context, async () => {
     // Hybrid search still fuses vector + lexical ranks. The query is intentionally
-    // turn instructions + ambient thread context, never tool dumps.
+    // user conversation evidence, never raw tool results or assistant text.
     const existingMemories =
       extractionSearchQuery.length > 0
         ? await store.searchMemories({
-            limit: EXTRACTION_SEARCH_LIMIT,
+            limit: 10,
             query: extractionSearchQuery,
           })
         : [];
