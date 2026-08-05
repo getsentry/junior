@@ -1446,10 +1446,8 @@ export function createMemoryStore(
     const personalScopes = scopes.filter((scope) => scope.scope === "personal");
     // Automatic recall only: keep a personal-scope probe so workspace noise
     // cannot monopolize the shared lexical recency window.
-    const personalRecallDistance =
-      vectorMaxDistance !== undefined && personalScopes.length > 0
-        ? vectorMaxDistance
-        : undefined;
+    const probePersonal =
+      vectorMaxDistance !== undefined && personalScopes.length > 0;
     const query = normalizeRetrievalQuery(input.query);
     let queryEmbedding: MemoryEmbedding | undefined;
     if (embedder && query) {
@@ -1459,68 +1457,58 @@ export function createMemoryStore(
         queryEmbedding = undefined;
       }
     }
+    const emptyMatches = Promise.resolve([] as MemoryMatch[]);
+    const vectorArgs = {
+      db,
+      embedder,
+      ...(queryEmbedding ? { embedding: queryEmbedding } : {}),
+      limit: candidateLimit,
+      nowMs,
+      query: input.query,
+    };
+    const lexicalArgs = {
+      db,
+      limit: candidateLimit,
+      nowMs,
+      query: input.query,
+    };
     // Always run both legs in parallel. Conditional lexical skip is unsafe:
     // one in-threshold vector distractor can hide a stronger lexical hit.
-    const [vectorMatches, lexicalMatches, personalVectorMatches, personalLexicalMatches] =
-      await Promise.all([
-        searchVisibleVectorMemories({
-          db,
-          embedder,
-          ...(queryEmbedding ? { embedding: queryEmbedding } : {}),
-          limit: candidateLimit,
-          ...(vectorMaxDistance !== undefined
-            ? { maxDistance: vectorMaxDistance }
-            : {}),
-          nowMs,
-          query: input.query,
-          scopes,
-        }),
-        searchVisibleLexicalMemories({
-          db,
-          limit: candidateLimit,
-          nowMs,
-          query: input.query,
-          scopes,
-        }),
-        personalRecallDistance === undefined
-          ? Promise.resolve([] as MemoryMatch[])
-          : searchVisibleVectorMemories({
-              db,
-              embedder,
-              ...(queryEmbedding ? { embedding: queryEmbedding } : {}),
-              limit: candidateLimit,
-              maxDistance: personalRecallDistance,
-              nowMs,
-              query: input.query,
-              scopes: personalScopes,
-            }),
-        personalRecallDistance === undefined
-          ? Promise.resolve([] as MemoryMatch[])
-          : searchVisibleLexicalMemories({
-              db,
-              limit: candidateLimit,
-              nowMs,
-              query: input.query,
-              scopes: personalScopes,
-            }),
-      ]);
+    const matches = await Promise.all([
+      searchVisibleVectorMemories({
+        ...vectorArgs,
+        ...(vectorMaxDistance !== undefined
+          ? { maxDistance: vectorMaxDistance }
+          : {}),
+        scopes,
+      }),
+      searchVisibleLexicalMemories({
+        ...lexicalArgs,
+        scopes,
+      }),
+      probePersonal
+        ? searchVisibleVectorMemories({
+            ...vectorArgs,
+            maxDistance: vectorMaxDistance,
+            scopes: personalScopes,
+          })
+        : emptyMatches,
+      probePersonal
+        ? searchVisibleLexicalMemories({
+            ...lexicalArgs,
+            scopes: personalScopes,
+          })
+        : emptyMatches,
+    ]);
     const channelPrefix = sourceChannelPrefix(runtimeContext);
-    return rankMemoryMatches(
-      [
-        ...vectorMatches,
-        ...lexicalMatches,
-        ...personalVectorMatches,
-        ...personalLexicalMatches,
-      ],
-      {
-        nowMs,
-        // Slight lexical preference protects exact ids/names/timezones on ties.
-        ...(vectorMaxDistance === undefined
-          ? {}
-          : { lexicalWeight: 1, vectorWeight: 0.85 }),
-        ...(channelPrefix ? { channelPrefix } : {}),
-      },
-    )
+    return rankMemoryMatches(matches.flat(), {
+      nowMs,
+      // Slight lexical preference protects exact ids/names/timezones on ties.
+      ...(vectorMaxDistance === undefined
+        ? {}
+        : { lexicalWeight: 1, vectorWeight: 0.85 }),
+      ...(channelPrefix ? { channelPrefix } : {}),
+    })
       .slice(0, limit)
       .map(({ memory }) => memory);
   }

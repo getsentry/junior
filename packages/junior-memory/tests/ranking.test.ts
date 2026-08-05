@@ -114,6 +114,46 @@ describe("memory retrieval ranking", () => {
     ]);
   });
 
+  it("keeps stronger conversation relevance ahead of personal scope", () => {
+    const ranked = rankMemoryMatches(
+      [
+        {
+          lexical: { rank: 1 },
+          memory: {
+            content: "Release notes live in Notion.",
+            createdAtMs: NOW_MS,
+            id: "conversation-hit",
+            kind: "knowledge",
+            observedAtMs: NOW_MS,
+            scope: "conversation",
+            subjectType: "conversation",
+          },
+          sourceKey: "slack:T123:C456",
+          vector: { rank: 1 },
+        },
+        {
+          lexical: { rank: 5 },
+          memory: {
+            content: "Prefers terse PR summaries.",
+            createdAtMs: NOW_MS,
+            id: "personal-weak",
+            kind: "preference",
+            observedAtMs: NOW_MS,
+            scope: "personal",
+            subjectType: "user",
+          },
+          sourceKey: "slack:T123:C999",
+        },
+      ],
+      { nowMs: NOW_MS },
+    );
+
+    expect(ranked.map(({ memory }) => memory.id)).toEqual([
+      "conversation-hit",
+      "personal-weak",
+    ]);
+  });
+
   it("applies optional modality weights without comparing raw scores", () => {
     const ranked = rankMemoryMatches(
       [
