@@ -126,7 +126,6 @@ export function TaskExecutionChart(props: { days: TaskExecutionDay[] }) {
                 content={
                   <ActivityTooltipRows
                     rows={[
-                      ["registered", day.registered],
                       ["scheduled", day.scheduled],
                       ["event", day.event],
                       ["total", total],
@@ -137,7 +136,7 @@ export function TaskExecutionChart(props: { days: TaskExecutionDay[] }) {
                 label={formatDate(day.date)}
               >
                 <g
-                  aria-label={`${formatDate(day.date)}: ${day.registered} registered, ${day.scheduled} scheduled, ${day.event} event, ${total} total executions`}
+                  aria-label={`${formatDate(day.date)}: ${day.scheduled} scheduled, ${day.event} event, ${total} total executions`}
                   tabIndex={0}
                 >
                   {series.map((item) => {
