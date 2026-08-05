@@ -31,6 +31,8 @@ export function TaskDetailsDrawer(props: {
       document.activeElement instanceof HTMLElement
         ? document.activeElement
         : undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     const focusFrame = requestAnimationFrame(() => {
       dialogRef.current
         ?.querySelector<HTMLElement>("[data-task-drawer-close]")
@@ -73,6 +75,7 @@ export function TaskDetailsDrawer(props: {
     return () => {
       cancelAnimationFrame(focusFrame);
       window.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = previousOverflow;
       const previousFocus = previousFocusRef.current;
       previousFocusRef.current = undefined;
       if (previousFocus?.isConnected) previousFocus.focus();
@@ -114,8 +117,11 @@ export function TaskDetailsDrawer(props: {
         ? "ready"
         : "unavailable";
 
+  const titleId = "task-details-drawer-title";
+
   return (
     <div
+      aria-labelledby={titleId}
       aria-modal="true"
       className="fixed inset-0 z-50"
       ref={dialogRef}
@@ -134,7 +140,10 @@ export function TaskDetailsDrawer(props: {
             <div className="font-mono text-[0.58rem] uppercase tracking-[0.14em] text-cyan-200/65">
               Task details
             </div>
-            <h2 className="mt-1 mb-0 font-display text-lg font-medium tracking-normal text-dashboard-text capitalize">
+            <h2
+              className="mt-1 mb-0 font-display text-lg font-medium tracking-normal text-dashboard-text capitalize"
+              id={titleId}
+            >
               {task.kind} task
             </h2>
             <div className="mt-1 break-words font-mono text-[0.78rem] leading-snug text-dashboard-text-muted">

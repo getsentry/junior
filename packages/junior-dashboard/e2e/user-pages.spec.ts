@@ -119,8 +119,11 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
     name: "View task details: Send the weekly project summary",
   });
   await taskDetailsTrigger.click();
-  const details = page.getByRole("dialog");
+  const details = page.getByRole("dialog", { name: "scheduled task" });
   await expect(details).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => document.body.style.overflow))
+    .toBe("hidden");
   const closeTaskDetails = details.getByRole("button", {
     name: "Close task details",
   });
@@ -140,6 +143,9 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
   );
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect
+    .poll(() => page.evaluate(() => document.body.style.overflow))
+    .toBe("");
   await expect(taskDetailsTrigger).toBeFocused();
   await expect(
     page.getByText("Notify responders when the incident changes"),
