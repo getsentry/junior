@@ -58,8 +58,11 @@ const SEARCH_RETRIEVAL_OVERFETCH = 4;
  * relevance gate, so each hybrid leg only needs a small top-k probe.
  */
 const RECALL_RETRIEVAL_OVERFETCH = 2;
-/** Hard cap per retrieval leg so hybrid fusion never ranks unbounded rows. */
-const MAX_RETRIEVAL_LEG_CANDIDATES = 40;
+/**
+ * Absolute ceiling per retrieval leg. Matches the store limit ceiling so a
+ * single healthy leg can still fill the caller's requested result window.
+ */
+const MAX_RETRIEVAL_LEG_CANDIDATES = 200;
 /** Cap ts_rank_cd work after GIN filtering; ranking is not indexable. */
 const MAX_LEXICAL_RANK_CANDIDATES = 200;
 /** Expand the GIN match window before ts_rank_cd, still under the hard cap. */
@@ -970,7 +973,14 @@ function normalizeRetrievalQuery(query: string): string {
 }
 
 function retrievalLegLimit(limit: number, overfetch: number): number {
-  return Math.min(MAX_RETRIEVAL_LEG_CANDIDATES, Math.max(1, limit) * overfetch);
+  const requested = Math.max(1, limit);
+  const withOverfetch = requested * Math.max(1, overfetch);
+  // Never return fewer candidates than the caller asked for. A hard overfetch
+  // cap below `limit` under-fills when one modality is empty or both overlap.
+  return Math.min(
+    MAX_RETRIEVAL_LEG_CANDIDATES,
+    Math.max(requested, withOverfetch),
+  );
 }
 
 /** Search a bounded active candidate set with PostgreSQL full-text ranking. */

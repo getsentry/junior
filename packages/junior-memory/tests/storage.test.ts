@@ -4877,6 +4877,37 @@ INSERT INTO junior_memory_memories (
     }
   }, 15_000);
 
+  it("fills the requested search limit from one healthy retrieval leg", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      let nowMs = TEST_NOW_MS;
+      // No embedder: vector leg stays empty so lexical alone must fill limit.
+      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+        now: () => nowMs,
+      });
+      const ids: string[] = [];
+      for (let index = 0; index < 55; index += 1) {
+        nowMs = TEST_NOW_MS + index;
+        const created = await store.createConversationMemory({
+          content: `Deploy freeze checklist item ${index}`,
+          kind: "knowledge",
+          idempotencyKey: `memory-test:search-leg-fill-${index}`,
+        });
+        ids.push(created.memory.id);
+      }
+
+      const results = await store.searchMemories({
+        limit: 50,
+        query: "deploy freeze checklist",
+      });
+      expect(results).toHaveLength(50);
+      expect(results.every((memory) => ids.includes(memory.id))).toBe(true);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
   it("rejects hidden authority fields at the storage boundary", async () => {
     const fixture = await createMemoryFixture();
 
