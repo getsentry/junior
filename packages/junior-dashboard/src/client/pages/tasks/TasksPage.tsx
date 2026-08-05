@@ -1,12 +1,8 @@
 import { type ReactNode, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type {
-  RegisteredTaskSummary,
-  TaskSummary,
-} from "@sentry/junior/api/schema";
+import type { TaskSummary } from "@sentry/junior/api/schema";
 import { Link } from "react-router";
 import {
-  Activity,
   CalendarClock,
   ChevronRight,
   Globe2,
@@ -25,7 +21,7 @@ import { conversationPath, formatTime, peoplePath } from "../../format";
 import { cn, dashboardContainerClass } from "../../styles";
 import { TaskExecutionChart } from "./TaskExecutionChart";
 
-type TaskFilter = "all" | "registered" | TaskSummary["kind"];
+type TaskFilter = "all" | TaskSummary["kind"];
 type TaskScope = "mine" | "public";
 
 function formatDate(value: string): string {
@@ -44,16 +40,6 @@ function formatRunDate(value: string): string {
     timeZoneName: "short",
     year: "numeric",
   });
-}
-
-function registeredTaskMatches(
-  task: RegisteredTaskSummary,
-  search: string,
-): boolean {
-  return [task.name, task.pluginDisplayName, task.pluginName]
-    .join(" ")
-    .toLowerCase()
-    .includes(search);
 }
 
 function taskMatches(task: TaskSummary, search: string): boolean {
@@ -83,7 +69,6 @@ export function TasksPage(props: { enabled: boolean }) {
   const [selectedTaskKey, setSelectedTaskKey] = useState<string>();
   const search = searchText.trim().toLowerCase();
   const tasks = query.data?.tasks ?? [];
-  const registeredTasks = query.data?.registeredTasks ?? [];
   const mineCount = tasks.filter((task) => task.ownedByViewer).length;
   const publicCount = tasks.filter(
     (task) => task.destination.visibility === "public",
@@ -97,27 +82,16 @@ export function TasksPage(props: { enabled: boolean }) {
       ),
     [scope, tasks],
   );
-  const visibleRegisteredTasks = useMemo(
-    () =>
-      filter === "scheduled" || filter === "event"
-        ? []
-        : registeredTasks.filter(
-            (task) => !search || registeredTaskMatches(task, search),
-          ),
-    [filter, registeredTasks, search],
-  );
   const visibleTasks = useMemo(
     () =>
-      filter === "registered"
-        ? []
-        : scopedTasks.filter(
-            (task) =>
-              (filter === "all" || task.kind === filter) &&
-              (!search || taskMatches(task, search)),
-          ),
+      scopedTasks.filter(
+        (task) =>
+          (filter === "all" || task.kind === filter) &&
+          (!search || taskMatches(task, search)),
+      ),
     [filter, scopedTasks, search],
   );
-  const visibleTaskCount = visibleRegisteredTasks.length + visibleTasks.length;
+  const visibleTaskCount = visibleTasks.length;
   const deletion = useMutation({
     mutationFn: async (task: TaskSummary) => {
       await deleteDashboardResource(
@@ -137,7 +111,7 @@ export function TasksPage(props: { enabled: boolean }) {
     <div className={`${dashboardContainerClass} px-4 py-8 md:px-8`}>
       <section className="mx-auto grid w-full max-w-6xl gap-5">
         <PageHeader
-          description="Scheduled, event-driven, and registered plugin work."
+          description="Scheduled and event-driven work created by users."
           eyebrow="Automation"
           title="Tasks"
         />
@@ -166,18 +140,16 @@ export function TasksPage(props: { enabled: boolean }) {
             </ToggleButton>
           </TaskFilterGroup>
           <TaskFilterGroup label="Type">
-            {(["all", "scheduled", "event", "registered"] as const).map(
-              (kind) => (
-                <ToggleButton
-                  key={kind}
-                  onClick={() => setFilter(kind)}
-                  pressed={filter === kind}
-                  variant="pill"
-                >
-                  {kind}
-                </ToggleButton>
-              ),
-            )}
+            {(["all", "scheduled", "event"] as const).map((kind) => (
+              <ToggleButton
+                key={kind}
+                onClick={() => setFilter(kind)}
+                pressed={filter === kind}
+                variant="pill"
+              >
+                {kind}
+              </ToggleButton>
+            ))}
           </TaskFilterGroup>
           <label className="relative min-w-0">
             <span className="mb-2 block font-mono text-[0.62rem] uppercase tracking-[0.12em] text-dashboard-text-muted">
@@ -223,9 +195,6 @@ export function TasksPage(props: { enabled: boolean }) {
           <Card>
             <TaskListHeader />
             <div className="divide-y divide-white/[0.07]" role="list">
-              {visibleRegisteredTasks.map((task) => (
-                <RegisteredTaskRow key={task.id} task={task} />
-              ))}
               {visibleTasks.map((task) => {
                 const key = `${task.kind}:${task.id}`;
                 return (
@@ -585,7 +554,7 @@ function TaskTag(props: {
 function TaskExecutionSummary(props: {
   compact?: boolean;
   task: Pick<
-    TaskSummary | RegisteredTaskSummary,
+    TaskSummary,
     "lastConversationId" | "lastRunAt" | "runsLast7Days" | "totalRuns"
   >;
 }) {
@@ -616,34 +585,5 @@ function TaskExecutionSummary(props: {
         ) : null}
       </span>
     </div>
-  );
-}
-
-function RegisteredTaskRow(props: { task: RegisteredTaskSummary }) {
-  const { task } = props;
-  return (
-    <article
-      className="grid grid-cols-[auto_minmax(0,1fr)] gap-4 p-4 sm:p-5"
-      role="listitem"
-    >
-      <div
-        aria-label="Registered plugin task"
-        className="grid size-10 shrink-0 place-items-center rounded border border-white/[0.08] bg-white/[0.03] text-cyan-300/75"
-        role="img"
-        title="Registered plugin task"
-      >
-        <Activity aria-hidden="true" size={17} />
-      </div>
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2">
-          <TaskTag>registered</TaskTag>
-          <TaskTag>{task.pluginDisplayName}</TaskTag>
-        </div>
-        <h3 className="mt-2 mb-0 font-display text-base font-medium text-dashboard-text sm:text-lg">
-          {task.name}
-        </h3>
-        <TaskExecutionSummary task={task} />
-      </div>
-    </article>
   );
 }

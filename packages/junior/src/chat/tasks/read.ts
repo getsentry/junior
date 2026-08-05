@@ -6,7 +6,6 @@ import {
   readTaskExecutionSummaries,
   type TaskExecutionSummary,
 } from "@/chat/tasks/execution-stats";
-import { readRegisteredTasks } from "@/chat/tasks/registered";
 import { getDb } from "@/chat/db";
 import {
   deleteEventTask,
@@ -285,13 +284,11 @@ export async function readViewerTasks(user: User): Promise<TaskList> {
       destinations.get(destinationKey(candidate.task.destination))
         ?.visibility === "public",
   );
-  const [registeredTasks, executionDays, scheduledStats, eventStats] =
-    await Promise.all([
-      readRegisteredTasks(),
-      readTaskExecutionDays(),
-      readTaskExecutionSummaries("scheduled", "junior"),
-      readTaskExecutionSummaries("event", "junior"),
-    ]);
+  const [executionDays, scheduledStats, eventStats] = await Promise.all([
+    readTaskExecutionDays(),
+    readTaskExecutionSummaries("scheduled", "junior"),
+    readTaskExecutionSummaries("event", "junior"),
+  ]);
   const tasks = visible.map((candidate): TaskSummary => {
     const destination = destinations.get(
       destinationKey(candidate.task.destination),
@@ -341,7 +338,6 @@ export async function readViewerTasks(user: User): Promise<TaskList> {
   });
   return {
     executionDays,
-    registeredTasks,
     tasks,
     truncated:
       ownedCandidates.length > TASK_LIST_LIMIT ||

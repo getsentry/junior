@@ -53,7 +53,6 @@ import {
 } from "./task-message";
 import { sendVercelPluginTask } from "./task-queue";
 import { getStateAdapter } from "@/chat/state/adapter";
-import { recordTaskExecution } from "@/chat/tasks/execution-stats";
 import type { Lock } from "chat";
 
 const PLUGIN_TASK_LOCK_TTL_MS = 5 * 60 * 1000;
@@ -459,10 +458,5 @@ export async function processPluginTask(
     await resolved.task.run(
       taskPluginContext(resolved.plugin, message, options),
     );
-    await recordTaskExecution("registered", message.name, {
-      conversationId: message.params.conversationId,
-      executionId: pluginTaskId(message),
-      namespace: message.plugin,
-    });
   });
 }

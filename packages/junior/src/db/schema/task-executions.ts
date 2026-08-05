@@ -1,5 +1,7 @@
+import { sql } from "drizzle-orm";
 import {
   bigint,
+  check,
   foreignKey,
   index,
   pgTable,
@@ -20,6 +22,10 @@ export const juniorTaskExecutions = pgTable(
     executedAtMs: bigint("executed_at_ms", { mode: "number" }).notNull(),
   },
   (table) => [
+    check(
+      "junior_task_executions_kind_check",
+      sql`${table.kind} in ('scheduled', 'event')`,
+    ),
     primaryKey({
       name: "junior_task_executions_kind_namespace_execution_id_pk",
       columns: [table.kind, table.namespace, table.executionId],

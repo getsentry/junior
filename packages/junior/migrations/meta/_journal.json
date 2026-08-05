@@ -141,6 +141,13 @@
       "when": 1785951633228,
       "tag": "0019_lowly_valkyrie",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1785960181727,
+      "tag": "0020_restrict_task_execution_kinds",
+      "breakpoints": true
     }
   ]
 }

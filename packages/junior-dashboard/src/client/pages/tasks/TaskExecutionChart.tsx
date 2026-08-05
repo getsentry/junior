@@ -6,7 +6,6 @@ import { cn } from "../../styles";
 type ChartRange = 7 | 30 | 90;
 
 const series = [
-  { color: "#67e8f9", key: "registered", label: "Registered" },
   { color: "#6ee7b7", key: "scheduled", label: "Scheduled" },
   { color: "#c4b5fd", key: "event", label: "Event" },
 ] as const;
@@ -25,7 +24,7 @@ export function TaskExecutionChart(props: { days: TaskExecutionDay[] }) {
   const plotWidth = width - left - right;
   const step = days.length > 0 ? plotWidth / days.length : plotWidth;
   const barWidth = Math.max(2, Math.min(13, step * 0.68));
-  const totals = days.map((day) => day.registered + day.scheduled + day.event);
+  const totals = days.map((day) => day.scheduled + day.event);
   const maximum = Math.max(1, ...totals);
   const hasExecutions = totals.some((total) => total > 0);
 
@@ -40,7 +39,7 @@ export function TaskExecutionChart(props: { days: TaskExecutionDay[] }) {
             Activity over time
           </h2>
           <p className="mt-1 mb-0 font-mono text-[0.64rem] leading-relaxed text-dashboard-text-muted">
-            Successful registered, scheduled, and event task runs each day.
+            Successful scheduled and event task runs each day.
           </p>
         </div>
         <div

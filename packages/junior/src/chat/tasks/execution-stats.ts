@@ -3,18 +3,13 @@ import { getDb } from "@/chat/db";
 import { logWarn } from "@/chat/logging";
 import { juniorTaskExecutions } from "@/db/schema";
 
-export const TASK_EXECUTION_TYPES = [
-  "registered",
-  "scheduled",
-  "event",
-] as const;
+export const TASK_EXECUTION_TYPES = ["scheduled", "event"] as const;
 
 export type TaskExecutionType = (typeof TASK_EXECUTION_TYPES)[number];
 
 export type TaskExecutionDay = {
   date: string;
   event: number;
-  registered: number;
   scheduled: number;
 };
 
@@ -30,7 +25,7 @@ function utcDate(nowMs: number): string {
 }
 
 function emptyDay(date: string): TaskExecutionDay {
-  return { date, event: 0, registered: 0, scheduled: 0 };
+  return { date, event: 0, scheduled: 0 };
 }
 
 /** Record one successful task execution and its durable conversation. */
@@ -169,8 +164,7 @@ export async function readTaskExecutionDays(
   for (const row of rows) {
     const day = byDate.get(row.date);
     if (!day) continue;
-    if (row.kind === "registered") day.registered = row.count;
-    else if (row.kind === "scheduled") day.scheduled = row.count;
+    if (row.kind === "scheduled") day.scheduled = row.count;
     else if (row.kind === "event") day.event = row.count;
   }
   return [...byDate.values()];
