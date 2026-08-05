@@ -94,55 +94,58 @@ describeEval("Personal Memory", slackEvals, (it) => {
     run,
   }) => {
     await clearMemories();
-    const userText =
-      "Please remember that I live in San Francisco and my timezone is America/Los_Angeles.";
+    // Seed the durable fact so this case isolates automatic recall + local-time
+    // answering, not the earlier store turn.
+    await seedMemory({
+      content:
+        "Lives in San Francisco and uses the America/Los_Angeles timezone.",
+      idempotencyKey: "eval-memory-timezone-recall",
+      thread: timezoneRecallThread,
+    });
+
     const result = await run({
       overrides: memoryPluginOverrides,
       initialEvents: [
-        mention(userText, {
-          thread: timezoneRecallThread,
-        }),
-      ],
-      events: [
         mention("What time is it for me right now?", {
           thread: timezoneRecallThread,
         }),
       ],
       criteria: rubric({
         pass: [
-          "The assistant remembers that the user is in San Francisco and uses the America/Los_Angeles timezone.",
-          "The final answer reports the user's current local time in Pacific Time without asking for their location or timezone again.",
-          "The assistant checks the current time before answering.",
+          "The assistant uses the remembered San Francisco / America/Los_Angeles timezone from memory.",
+          "The final answer reports the user's current local time in Pacific Time without asking for their location or timezone.",
+          "The assistant checks the current time with systemTime before answering.",
         ],
         fail: [
           "Do not answer only with UTC or the server's timezone.",
           "Do not ask the user to restate their location or timezone.",
           "Do not claim that no relevant memory exists.",
+          "Do not shell out to bash or other tools just to convert the current time into the remembered timezone.",
         ],
       }),
     });
 
-    const rows = await readMemories(timezoneRecallThread);
-    expect(rows).toEqual([
+    await expect(readActiveMemories(timezoneRecallThread)).resolves.toEqual([
       expect.objectContaining({
-        archivedAtMs: null,
+        content:
+          "Lives in San Francisco and uses the America/Los_Angeles timezone.",
         scope: "personal",
-        subjectType: "user",
       }),
     ]);
     expect(toolCalls(result.session)).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ name: "memory_createMemory" }),
-        expect.objectContaining({ name: "systemTime", status: "ok" }),
+        expect.objectContaining({
+          name: "systemTime",
+          status: "ok",
+          arguments: expect.objectContaining({
+            timezone: "America/Los_Angeles",
+          }),
+        }),
       ]),
     );
-    await expectActorMemorySemantics({
-      assistantText: visibleAssistantText(result),
-      expectedMeaning:
-        "The actor lives in San Francisco and uses the America/Los_Angeles timezone.",
-      storedMemories: rows,
-      userText,
-    });
+    expect(toolCalls(result.session).map((call) => call.name)).not.toContain(
+      "bash",
+    );
     await expectAssistantMemoryAnswer({
       assistantText: visibleAssistantText(result),
       expectedBehavior:
