@@ -147,7 +147,7 @@ verified Slack workspace binding.
 Both forms run headlessly as Junior, not as the webhook sender. Resource watches
 use the plugin's scoped installation credentials. Event tasks make their
 creator's connected credentials available by default when the stored work needs
-user-bound access, but the execution actor remains Junior. Pull request reviews
+user-bound access, but the execution actor remains Junior. Pull request reviews and inline review comments
 are bot-owned and use installation credentials so feedback posts as Junior;
 merge remains outside the write allowlist.
 
@@ -284,14 +284,14 @@ expected follow-up in the original conversation.
 
 - Junior mints GitHub App installation and user-to-server tokens on the host, not in the sandbox.
 - When the GitHub skill runs authenticated `gh` or `git` commands, sandbox traffic to `api.github.com` and `github.com` is forwarded through Junior for host-side auth.
-- App-readable requests use installation tokens downscoped to read. Allowlisted workflow dispatch, issue, pull request, review, and branch writes use repository-scoped installation tokens carrying the complete installed App permission envelope. GitHub account identity checks and other personal operations such as user-attachment uploads use user-to-server tokens.
+- App-readable requests use installation tokens downscoped to read. Allowlisted workflow dispatch, issue, pull request, review, inline review comment, and branch writes use repository-scoped installation tokens carrying the complete installed App permission envelope. GitHub account identity checks and other personal operations such as user-attachment uploads use user-to-server tokens.
 - GitHub App user-to-server tokens do not use OAuth scopes as their permission model. Their effective access comes from the App permissions, installation scope, and requesting user's access.
 - The GitHub App installation determines which repositories are reachable, and repository write grants narrow issued tokens to the parsed target repository.
 - The host-side lease is bounded by the sandbox session and token expiry. It is not exposed as reusable long-lived auth inside the sandbox.
 - GitHub webhooks are accepted only when the `X-Hub-Signature-256` header matches `GITHUB_WEBHOOK_SECRET` and the payload installation matches `GITHUB_INSTALLATION_ID`.
 - Resource event subscriptions are conversation-scoped. Core owns subscription records, dedupe, TTL, and mailbox delivery; the GitHub plugin owns signature verification, provider normalization, and its pull request and issue outcome projections.
 - Event tasks are Slack-destination scoped. The creator's connected credentials are available by default when needed, but the task still executes as Junior. Another channel member can manage the task from that destination but cannot enable the creator's credentials.
-- Resource-watch turns do not inherit a subscriber's user credential. Bot-owned issue, pull request, review, and smart-HTTP push operations use scoped installation credentials; human-owned operations still enter the normal authorization flow.
+- Resource-watch turns do not inherit a subscriber's user credential. Bot-owned issue, pull request, review, inline review comment, and smart-HTTP push operations use scoped installation credentials; human-owned operations still enter the normal authorization flow.
 - The write boundary is the App installation scope, the single-repository token scope, and Junior's endpoint allowlist. `appPermissions` declarations do not narrow write tokens.
 
 ## Failure modes
