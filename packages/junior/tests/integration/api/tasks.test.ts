@@ -199,6 +199,29 @@ describe("Tasks API", () => {
         },
       });
 
+      for (const conversationId of [
+        "agent-dispatch:sched-run-1",
+        "agent-dispatch:sched-run-2",
+        "agent-dispatch:event-run-1",
+      ]) {
+        await conversationStore.recordActivity({
+          conversationId,
+          actor: {
+            email: "viewer@example.com",
+            platform: "slack",
+            slackUserId: "U123",
+            teamId: "T123",
+          },
+          destination: {
+            channelId: "C123",
+            platform: "slack",
+            teamId: "T123",
+          },
+          title: "Task execution fixture",
+          visibility: "public",
+        });
+      }
+
       await recordTaskExecution("scheduled", "sched_tasks_api", {
         conversationId: "agent-dispatch:sched-run-1",
         executionId: "sched-run-1",

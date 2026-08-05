@@ -18,7 +18,6 @@ import {
   pluginRunContextSchema,
 } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
-import { logWarn } from "@/chat/logging";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginConversationEvents } from "@/chat/plugins/conversation-events";
 import { createPluginEmbedder, createPluginModel } from "@/chat/plugins/model";
