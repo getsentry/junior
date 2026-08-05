@@ -115,13 +115,20 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
   await expect(page.getByText("#project-updates").last()).toBeVisible();
   await expect(page.getByText("Assigned to")).toHaveCount(0);
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await page
-    .getByRole("button", {
-      name: "View task details: Send the weekly project summary",
-    })
-    .click();
+  const taskDetailsTrigger = page.getByRole("button", {
+    name: "View task details: Send the weekly project summary",
+  });
+  await taskDetailsTrigger.click();
   const details = page.getByRole("dialog");
   await expect(details).toBeVisible();
+  const closeTaskDetails = details.getByRole("button", {
+    name: "Close task details",
+  });
+  await expect(closeTaskDetails).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(closeTaskDetails).not.toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(closeTaskDetails).toBeFocused();
   await expect(details.getByText("Task details")).toBeVisible();
   await expect(details.getByText("Instruction")).toBeVisible();
   await expect(
@@ -133,6 +140,7 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
   );
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(taskDetailsTrigger).toBeFocused();
   await expect(
     page.getByText("Notify responders when the incident changes"),
   ).not.toBeVisible();
