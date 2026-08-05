@@ -211,7 +211,7 @@ describe("Tasks API", () => {
       });
       await recordTaskExecution("event", "event_tasks_api", {
         conversationId: "agent-dispatch:event-run-1",
-        executionId: "event-run-1",
+        executionId: "sched-run-1",
         nowMs: Date.parse("2026-08-03T12:00:00.000Z"),
       });
       await recordTaskExecution("scheduled", "sched_tasks_api", {

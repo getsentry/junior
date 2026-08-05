@@ -3,6 +3,7 @@ import {
   foreignKey,
   index,
   pgTable,
+  primaryKey,
   text,
 } from "drizzle-orm/pg-core";
 import { juniorConversations } from "./conversations";
@@ -11,7 +12,7 @@ import { juniorConversations } from "./conversations";
 export const juniorTaskExecutions = pgTable(
   "junior_task_executions",
   {
-    id: text("id").primaryKey(),
+    executionId: text("execution_id").notNull(),
     kind: text("kind").notNull(),
     namespace: text("namespace").notNull(),
     taskId: text("task_id").notNull(),
@@ -19,6 +20,10 @@ export const juniorTaskExecutions = pgTable(
     executedAtMs: bigint("executed_at_ms", { mode: "number" }).notNull(),
   },
   (table) => [
+    primaryKey({
+      name: "junior_task_executions_kind_namespace_execution_id_pk",
+      columns: [table.kind, table.namespace, table.executionId],
+    }),
     foreignKey({
       name: "junior_task_executions_conversation_id_junior_conversations_conversation_id_fk",
       columns: [table.conversationId],

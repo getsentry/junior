@@ -486,6 +486,9 @@ function TaskDetails(props: { task: TaskSummary }) {
         <TaskDetail label="Created">
           {createdBy} · {formatDate(task.createdAt)}
         </TaskDetail>
+        <TaskDetail label="Executions">
+          <TaskExecutionSummary task={task} compact />
+        </TaskDetail>
       </dl>
     </div>
   );
@@ -580,6 +583,7 @@ function TaskTag(props: {
 }
 
 function TaskExecutionSummary(props: {
+  compact?: boolean;
   task: Pick<
     TaskSummary | RegisteredTaskSummary,
     "lastConversationId" | "lastRunAt" | "runsLast7Days" | "totalRuns"
@@ -587,7 +591,12 @@ function TaskExecutionSummary(props: {
 }) {
   const { task } = props;
   return (
-    <div className="mt-3 text-sm text-dashboard-text-muted">
+    <div
+      className={cn(
+        "text-sm text-dashboard-text-muted",
+        !props.compact && "mt-3",
+      )}
+    >
       <span className="text-dashboard-text">
         {task.runsLast7Days} runs / 7d
       </span>

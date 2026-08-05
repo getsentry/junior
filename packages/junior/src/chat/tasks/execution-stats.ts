@@ -1,4 +1,4 @@
-import { and, asc, count, eq, gte, lte, max, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, lte, max, sql } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import { logWarn } from "@/chat/logging";
 import { juniorTaskExecutions } from "@/db/schema";
@@ -52,12 +52,18 @@ export async function recordTaskExecution(
       .values({
         conversationId: options.conversationId,
         executedAtMs: nowMs,
-        id: options.executionId,
+        executionId: options.executionId,
         kind: type,
         namespace,
         taskId,
       })
-      .onConflictDoNothing({ target: juniorTaskExecutions.id });
+      .onConflictDoNothing({
+        target: [
+          juniorTaskExecutions.kind,
+          juniorTaskExecutions.namespace,
+          juniorTaskExecutions.executionId,
+        ],
+      });
   } catch (error) {
     logWarn("task.execution.stat_failed", {
       error,
@@ -77,13 +83,11 @@ export async function readTaskExecutionSummaries(
 ): Promise<Map<string, TaskExecutionSummary>> {
   const sevenDaysAgoMs =
     (options.nowMs ?? Date.now()) - 7 * 24 * 60 * 60 * 1000;
-  const rows = await getDb()
-    .select({
-      lastConversationId: sql<string>`(array_agg(${juniorTaskExecutions.conversationId} order by ${juniorTaskExecutions.executedAtMs} desc))[1]`,
-      lastExecutedAtMs: max(juniorTaskExecutions.executedAtMs),
-      runsLast7Days: sql<number>`count(*) filter (where ${juniorTaskExecutions.executedAtMs} >= ${sevenDaysAgoMs})::int`,
+  const db = getDb();
+  const latest = db
+    .selectDistinctOn([juniorTaskExecutions.taskId], {
+      conversationId: juniorTaskExecutions.conversationId,
       taskId: juniorTaskExecutions.taskId,
-      totalRuns: sql<number>`count(*)::int`,
     })
     .from(juniorTaskExecutions)
     .where(
@@ -92,7 +96,29 @@ export async function readTaskExecutionSummaries(
         eq(juniorTaskExecutions.namespace, namespace),
       ),
     )
-    .groupBy(juniorTaskExecutions.taskId);
+    .orderBy(
+      juniorTaskExecutions.taskId,
+      desc(juniorTaskExecutions.executedAtMs),
+      desc(juniorTaskExecutions.executionId),
+    )
+    .as("latest_task_execution");
+  const rows = await db
+    .select({
+      lastConversationId: latest.conversationId,
+      lastExecutedAtMs: max(juniorTaskExecutions.executedAtMs),
+      runsLast7Days: sql<number>`count(*) filter (where ${juniorTaskExecutions.executedAtMs} >= ${sevenDaysAgoMs})::int`,
+      taskId: juniorTaskExecutions.taskId,
+      totalRuns: sql<number>`count(*)::int`,
+    })
+    .from(juniorTaskExecutions)
+    .innerJoin(latest, eq(latest.taskId, juniorTaskExecutions.taskId))
+    .where(
+      and(
+        eq(juniorTaskExecutions.kind, type),
+        eq(juniorTaskExecutions.namespace, namespace),
+      ),
+    )
+    .groupBy(juniorTaskExecutions.taskId, latest.conversationId);
   return new Map(
     rows.map((row) => [
       row.taskId,

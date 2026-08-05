@@ -134,6 +134,13 @@
       "when": 1785884173643,
       "tag": "0018_curvy_excalibur",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1785951633228,
+      "tag": "0019_lowly_valkyrie",
+      "breakpoints": true
     }
   ]
 }
