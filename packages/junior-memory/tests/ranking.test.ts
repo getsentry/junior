@@ -196,7 +196,12 @@ describe("memory retrieval ranking", () => {
       { nowMs: NOW_MS },
     );
 
-    // First-rank merge keeps the shared lexical rank 8, so conversation still wins.
+    const timezone = ranked.find(
+      ({ memory }) => memory.id === "personal-timezone",
+    );
+    // This assertion fails under the old last-write merge, which overwrites 8
+    // with the personal probe's inflated rank 1.
+    expect(timezone?.lexical?.rank).toBe(8);
     expect(ranked.map(({ memory }) => memory.id)).toEqual([
       "conversation-strong",
       "personal-timezone",
