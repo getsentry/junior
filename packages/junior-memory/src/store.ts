@@ -71,6 +71,11 @@ const LEXICAL_RANK_WINDOW_MULTIPLIER = 4;
 const MAX_RETRIEVAL_QUERY_CHARS = 1_500;
 const MAX_MEMORY_CONTENT_CHARS = 4_000;
 const EMBEDDING_METRIC = "cosine";
+/**
+ * Cosine distance cutoff for automatic recall only (not explicit search).
+ * Tuned for text-embedding-3-small; retune if the embedding model changes.
+ */
+const RECALL_MAX_VECTOR_DISTANCE = 0.45;
 
 export type MemoryDb = PgDatabase<PgQueryResultHKT, typeof memorySqlSchema>;
 
@@ -316,8 +321,6 @@ export interface MemorySupersessionDecider {
 
 export interface MemoryStoreOptions {
   embedder?: MemoryEmbeddingProvider;
-  /** Maximum cosine distance for vector recall candidates. Model-dependent; tune when changing AI_EMBEDDING_MODEL. */
-  maxVectorDistance?: number;
   now?: () => number;
   supersessionDecider?: MemorySupersessionDecider;
 }
@@ -1154,7 +1157,6 @@ export function createMemoryStore(
   const runtimeContext = memoryRuntimeContextSchema.parse(context);
   const parsedOptions = memoryStoreOptionsSchema.parse({ now: options.now });
   const embedder = options.embedder;
-  const maxVectorDistance = options.maxVectorDistance;
   const supersessionDecider = options.supersessionDecider;
   const getNowMs = parsedOptions.now ?? Date.now;
 
@@ -1509,7 +1511,7 @@ export function createMemoryStore(
     },
 
     async recallMemories(input) {
-      return await retrieveVisibleMemories(input, maxVectorDistance);
+      return await retrieveVisibleMemories(input, RECALL_MAX_VECTOR_DISTANCE);
     },
 
     async searchMemories(input) {

@@ -2780,7 +2780,6 @@ WHERE id = '${superseded.memory.id}'
       });
       const store = createMemoryStore(memoryDb(fixture), slackContext(), {
         embedder,
-        maxVectorDistance: 0.45,
         now: () => TEST_NOW_MS,
       });
       const close = await store.createMemory({
@@ -2821,7 +2820,6 @@ WHERE id = '${superseded.memory.id}'
       });
       const store = createMemoryStore(memoryDb(fixture), slackContext(), {
         embedder,
-        maxVectorDistance: 0.45,
         now: () => TEST_NOW_MS,
       });
       const distractor = await store.createMemory({

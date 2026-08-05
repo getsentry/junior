@@ -70,9 +70,8 @@ export const plugins = defineJuniorPlugins([
 | `JUNIOR_SQL_STATEMENT_TIMEOUT_MS`   | No       | Runtime PostgreSQL statement timeout in milliseconds. Defaults to `30000`; set `0` to disable.                                                                                                               |
 | `AI_EMBEDDING_MODEL`                | No       | Embedding model for vector search. Defaults to `openai/text-embedding-3-small` (1536 dims).                                                                                                                  |
 | `AI_MEMORY_MODEL`                   | No       | Model for memory classification, consolidation, and automatic recall relevance. Defaults to the app's structured model.                                                                                      |
-| `MEMORY_RECALL_MAX_VECTOR_DISTANCE` | No       | Maximum cosine distance for vector recall candidates. Values 0–1; lower = stricter. Values above 1 are clamped to 1. Default `0.45` suits `text-embedding-3-small`. Tune when changing `AI_EMBEDDING_MODEL`. |
 
-`AI_EMBEDDING_MODEL` must produce 1536-dimensional vectors. Changing this value after memories exist requires flushing the `junior_memory_embeddings` table and re-running to regenerate vectors with the new model.
+`AI_EMBEDDING_MODEL` must produce 1536-dimensional vectors. Changing this value after memories exist requires flushing the `junior_memory_embeddings` table and re-running to regenerate vectors with the new model. Automatic recall keeps a fixed cosine distance cutoff of `0.45` for `text-embedding-3-small`; retune that constant in the memory store if the embedding model changes.
 
 For non-Neon managed Postgres (Railway, Supabase, AWS RDS, or self-hosted), set `JUNIOR_DATABASE_DRIVER=postgres`. Local URLs (`localhost`, `127.0.0.1`) automatically use the `postgres` driver.
 

@@ -90,8 +90,8 @@ exported types, tools, and tests are authoritative.
 - `memoryPlugin({ disableExtraction: true })` disables passive session
   extraction. The two flags are independent and do not disable explicit memory
   tools.
-- `MEMORY_RECALL_MAX_VECTOR_DISTANCE` or
-  `recallMaxVectorDistance` configures the vector candidate threshold.
+- Automatic recall uses a fixed cosine distance cutoff of `0.45` (for
+  `text-embedding-3-small`). Explicit search does not apply that cutoff.
 - Generate schema changes with `pnpm --filter @sentry/junior-memory db:generate`.
 
 Follow `../../policies/data-redaction.md`, `../../policies/security.md`, and the
