@@ -19,8 +19,6 @@ describe("spawnAgent", () => {
         { toolCallId: "call-1" },
       ),
     ).resolves.toEqual({
-      ok: true,
-      status: "success",
       invocation_id: "agent-invocation:one",
     });
     expect(spawnAgent).toHaveBeenCalledWith(

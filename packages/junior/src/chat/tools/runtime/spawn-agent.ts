@@ -2,12 +2,16 @@ import { z } from "zod";
 import { AgentInvocationBusyError } from "@/chat/agent-invocations/errors";
 import { agentNameSchema } from "@/chat/agent-invocations/types";
 import { TURN_REASONING_LEVELS } from "@/chat/reasoning-level";
-import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
+import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
 export const SPAWN_AGENT_TOOL_NAME = "spawnAgent";
+
+const spawnAgentOutputSchema = juniorToolOutputSchema.extend({
+  invocation_id: z.string().min(1),
+});
 
 /** Create the asynchronous child-agent tool for one parent run. */
 export function createSpawnAgentTool(
@@ -16,6 +20,12 @@ export function createSpawnAgentTool(
   return zodTool({
     description:
       "Start an asynchronous child agent on a delegated task. Give it a name to reuse the same child agent and its history on later calls; omit the name for a one-off agent. This call confirms durable scheduling, not task completion.",
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+      readOnlyHint: false,
+    },
     inputSchema: z
       .object({
         task: z.string().trim().min(1).describe("Task for the child agent"),
@@ -32,9 +42,7 @@ export function createSpawnAgentTool(
           ),
       })
       .strict(),
-    outputSchema: juniorToolResultSchema.extend({
-      invocation_id: z.string().min(1),
-    }),
+    outputSchema: spawnAgentOutputSchema,
     execute: async (input, options) => {
       if (!options.toolCallId) {
         throw new ToolInputError("spawnAgent requires an active tool call ID");
@@ -64,8 +72,6 @@ export function createSpawnAgentTool(
         throw error;
       }
       return {
-        ok: true,
-        status: "success" as const,
         invocation_id: result.invocationId,
       };
     },
