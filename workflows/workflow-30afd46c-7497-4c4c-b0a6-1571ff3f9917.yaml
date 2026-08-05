@@ -1,0 +1,171 @@
+id: 30afd46c-7497-4c4c-b0a6-1571ff3f9917
+name: garfield-slice
+description: >
+  MVP Garfield loop for Junior development. Builds a typed review bundle,
+  classifies lanes, writes no-edit prompts, waits for reviewer findings,
+  merges them, runs deterministic validation, and emits a pass/blocked report.
+tags:
+  purpose: garfield
+  scope: junior-dev
+inputs:
+  type: object
+  properties:
+    goal:
+      type: string
+      description: Slice goal / user or PR intent
+    nonGoals:
+      type: string
+      description: Optional comma-separated non-goals
+      default: ""
+    base:
+      type: string
+      description: Optional git base ref (default merge-base with origin/main)
+      default: ""
+    runId:
+      type: string
+      description: Optional stable run id
+      default: ""
+  required:
+    - goal
+jobs:
+  - name: prepare
+    description: Materialize bundle, lane plan, and reviewer prompts
+    steps:
+      - name: build-bundle
+        description: Snapshot the slice into .swamp/garfield/<run>/bundle.json
+        task:
+          type: model_method
+          modelType: command/shell
+          modelName: garfield-build-bundle
+          methodName: execute
+          inputs:
+            run: node scripts/garfield/build-bundle.mjs --goal "$GARFIELD_GOAL" --non-goals "$GARFIELD_NON_GOALS" --base "$GARFIELD_BASE" --run-id "$GARFIELD_RUN_ID" | tee /tmp/garfield-build-bundle.json
+            env:
+              GARFIELD_GOAL: ${{ inputs.goal }}
+              GARFIELD_NON_GOALS: ${{ inputs.nonGoals }}
+              GARFIELD_BASE: ${{ inputs.base }}
+              GARFIELD_RUN_ID: ${{ inputs.runId }}
+        dependsOn: []
+        weight: 0
+        allowFailure: false
+      - name: capture-run-dir
+        description: Persist runDir pointer for later steps
+        task:
+          type: model_method
+          modelType: command/shell
+          modelName: garfield-capture-run-dir
+          methodName: execute
+          inputs:
+            run: node scripts/garfield/capture-run-dir.mjs --from /tmp/garfield-build-bundle.json
+        dependsOn:
+          - step: build-bundle
+            condition:
+              type: succeeded
+        weight: 0
+        allowFailure: false
+      - name: classify-lanes
+        description: Deterministically classify native + policy lanes
+        task:
+          type: model_method
+          modelType: command/shell
+          modelName: garfield-classify-lanes
+          methodName: execute
+          inputs:
+            run: node scripts/garfield/with-run-dir.mjs classify-lanes.mjs
+        dependsOn:
+          - step: capture-run-dir
+            condition:
+              type: succeeded
+        weight: 0
+        allowFailure: false
+      - name: write-lane-prompts
+        description: Write no-edit prompts and empty finding stubs
+        task:
+          type: model_method
+          modelType: command/shell
+          modelName: garfield-write-lane-prompts
+          methodName: execute
+          inputs:
+            run: node scripts/garfield/with-run-dir.mjs write-lane-prompts.mjs
+        dependsOn:
+          - step: classify-lanes
+            condition:
+              type: succeeded
+        weight: 0
+        allowFailure: false
+    dependsOn: []
+    weight: 0
+
+  - name: review
+    description: Human/agent fills finding files, then merge
+    dependsOn:
+      - job: prepare
+        condition:
+          type: succeeded
+    steps:
+      - name: await-findings
+        description: Pause until reviewer outputs are written into findings/*.txt
+        task:
+          type: manual_approval
+          prompt: >
+            Fill each findings file under .swamp/garfield/<run>/findings/ with
+            either `none` or Garfield finding lines. Use cheap models for
+            modelHint=cheap lanes and a strong model for modelHint=strong.
+            Then approve this step and resume the workflow.
+          timeout: 86400
+        dependsOn: []
+        weight: 0
+        allowFailure: false
+      - name: merge-findings
+        description: Parse and cluster reviewer outputs
+        task:
+          type: model_method
+          modelType: command/shell
+          modelName: garfield-merge-findings
+          methodName: execute
+          inputs:
+            run: node scripts/garfield/with-run-dir.mjs merge-findings.mjs
+        dependsOn:
+          - step: await-findings
+            condition:
+              type: succeeded
+        weight: 0
+        allowFailure: false
+    weight: 0
+
+  - name: verify
+    description: Deterministic validation + final report
+    dependsOn:
+      - job: review
+        condition:
+          type: succeeded
+    steps:
+      - name: validate
+        description: Run required deterministic checks for the slice
+        task:
+          type: model_method
+          modelType: command/shell
+          modelName: garfield-validate
+          methodName: execute
+          inputs:
+            run: node scripts/garfield/with-run-dir.mjs validate.mjs --only-required
+        dependsOn: []
+        weight: 0
+        allowFailure: false
+      - name: report
+        description: Emit garfield pass/blocked report
+        task:
+          type: model_method
+          modelType: command/shell
+          modelName: garfield-report
+          methodName: execute
+          inputs:
+            run: node scripts/garfield/with-run-dir.mjs report.mjs
+        dependsOn:
+          - step: validate
+            condition:
+              type: completed
+        weight: 0
+        allowFailure: false
+    weight: 0
+version: 1
