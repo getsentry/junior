@@ -154,6 +154,55 @@ describe("memory retrieval ranking", () => {
     ]);
   });
 
+  it("keeps the stronger shared-leg rank when a personal probe re-ranks the same memory", () => {
+    const personalMemory = {
+      content: "Located in San Francisco and uses Pacific Time (PT).",
+      createdAtMs: NOW_MS,
+      id: "personal-timezone",
+      kind: "preference" as const,
+      observedAtMs: NOW_MS,
+      scope: "personal" as const,
+      subjectType: "user" as const,
+    };
+    const ranked = rankMemoryMatches(
+      [
+        {
+          // Shared leg: weak among a large mixed set.
+          lexical: { rank: 8 },
+          memory: personalMemory,
+          sourceKey: "slack:T123:C999",
+        },
+        {
+          lexical: { rank: 1 },
+          memory: {
+            content: "Release notes live in Notion.",
+            createdAtMs: NOW_MS,
+            id: "conversation-strong",
+            kind: "knowledge",
+            observedAtMs: NOW_MS,
+            scope: "conversation",
+            subjectType: "conversation",
+          },
+          sourceKey: "slack:T123:C456",
+          vector: { rank: 1 },
+        },
+        {
+          // Personal probe: same memory, inflated top rank in a smaller set.
+          lexical: { rank: 1 },
+          memory: personalMemory,
+          sourceKey: "slack:T123:C999",
+        },
+      ],
+      { nowMs: NOW_MS },
+    );
+
+    // First-rank merge keeps the shared lexical rank 8, so conversation still wins.
+    expect(ranked.map(({ memory }) => memory.id)).toEqual([
+      "conversation-strong",
+      "personal-timezone",
+    ]);
+  });
+
   it("applies optional modality weights without comparing raw scores", () => {
     const ranked = rankMemoryMatches(
       [

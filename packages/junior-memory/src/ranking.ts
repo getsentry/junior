@@ -83,10 +83,15 @@ export function rankMemoryMatches(
       byId.set(match.memory.id, match);
       continue;
     }
+    // Keep the first rank per modality. Shared legs are fused before personal
+    // probes, so a smaller personal top-k cannot overwrite a shared dense rank
+    // with an inflated top rank for the same memory.
     byId.set(match.memory.id, {
       ...existing,
-      ...(match.lexical ? { lexical: match.lexical } : {}),
-      ...(match.vector ? { vector: match.vector } : {}),
+      ...(!existing.lexical && match.lexical
+        ? { lexical: match.lexical }
+        : {}),
+      ...(!existing.vector && match.vector ? { vector: match.vector } : {}),
     });
   }
   return [...byId.values()].sort((left, right) => {
