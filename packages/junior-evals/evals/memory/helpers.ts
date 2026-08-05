@@ -2,6 +2,7 @@ import { expect } from "vitest";
 import { assistantMessages } from "vitest-evals";
 import { getDb } from "@/chat/db";
 import { completeText, resolveGatewayModel } from "@/chat/pi/client";
+import { createPluginEmbedder } from "@/chat/plugins/model";
 import { createMemoryStore, type MemoryDb } from "@sentry/junior-memory";
 import { createSlackSource, type PluginModel } from "@sentry/junior-plugin-api";
 import {
@@ -16,6 +17,9 @@ export const memoryPluginOverrides = {
 const memoryTeamId = "TEVAL";
 const actorUserId = TEST_USER_ID;
 const memoryJudgeModelId = resolveGatewayModel("openai/gpt-5.4").id;
+// Same host embedder path production memory create/recall use, so seeded rows
+// participate in hybrid automatic recall instead of lexical-only persistence.
+const evalMemoryEmbedder = createPluginEmbedder("junior-evals-memory");
 
 export interface MemoryThread {
   channel_type?: "channel" | "group" | "im" | "mpim";
@@ -31,21 +35,25 @@ export async function seedMemory(args: {
   scope?: "conversation" | "personal";
   thread: MemoryThread;
 }) {
-  const store = createMemoryStore(memoryDb(), {
-    conversationId: `slack:${args.thread.channel_id}:${args.thread.thread_ts}`,
-    actor: {
-      platform: "slack",
-      teamId: memoryTeamId,
-      userId: actorUserId,
+  const store = createMemoryStore(
+    memoryDb(),
+    {
+      conversationId: `slack:${args.thread.channel_id}:${args.thread.thread_ts}`,
+      actor: {
+        platform: "slack",
+        teamId: memoryTeamId,
+        userId: actorUserId,
+      },
+      source: createSlackSource({
+        channelId: args.thread.channel_id,
+        messageTs: args.thread.thread_ts,
+        teamId: memoryTeamId,
+        threadTs: args.thread.thread_ts,
+        visibility: args.thread.channel_type === "channel" ? "public" : "private",
+      }),
     },
-    source: createSlackSource({
-      channelId: args.thread.channel_id,
-      messageTs: args.thread.thread_ts,
-      teamId: memoryTeamId,
-      threadTs: args.thread.thread_ts,
-      visibility: args.thread.channel_type === "channel" ? "public" : "private",
-    }),
-  });
+    { embedder: evalMemoryEmbedder },
+  );
   const input = {
     content: args.content,
     idempotencyKey: args.idempotencyKey,
@@ -123,6 +131,19 @@ export async function readMemories(thread: MemoryThread) {
     .from(juniorMemoryMemories)
     .orderBy(juniorMemoryMemories.createdAtMs, juniorMemoryMemories.id);
   return rows.filter((memory) => memory.sourceKey === memorySourceKey(thread));
+}
+
+/** Count vector rows for memories seeded in one eval thread. */
+export async function countMemoryEmbeddings(thread: MemoryThread) {
+  const memories = await readMemories(thread);
+  if (memories.length === 0) {
+    return 0;
+  }
+  const memoryIds = new Set(memories.map((memory) => memory.id));
+  const rows = await memoryDb()
+    .select({ memoryId: juniorMemoryEmbeddings.memoryId })
+    .from(juniorMemoryEmbeddings);
+  return rows.filter((row) => memoryIds.has(row.memoryId)).length;
 }
 
 /** Read the durable memories currently eligible for recall in one eval thread. */

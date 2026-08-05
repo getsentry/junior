@@ -3,6 +3,7 @@ import { describeEval, toolCalls } from "vitest-evals";
 import { mention, rubric, slackEvals } from "../../src/helpers";
 import {
   clearMemories,
+  countMemoryEmbeddings,
   evalMemoryModel,
   expectActorMemorySemantics,
   expectAssistantMemoryAnswer,
@@ -94,14 +95,16 @@ describeEval("Personal Memory", slackEvals, (it) => {
     run,
   }) => {
     await clearMemories();
-    // Seed the durable fact so this case isolates automatic recall + local-time
-    // answering, not the earlier store turn.
+    // Seed a hybrid-retrievable fact: host embedder writes the vector row, and
+    // content keeps FTS overlap with "current time" asks plus the exact IANA token.
+    const timezoneMemoryContent =
+      "Prefers current local time answers in America/Los_Angeles (San Francisco timezone).";
     await seedMemory({
-      content:
-        "Lives in San Francisco and uses the America/Los_Angeles timezone.",
+      content: timezoneMemoryContent,
       idempotencyKey: "eval-memory-timezone-recall",
       thread: timezoneRecallThread,
     });
+    await expect(countMemoryEmbeddings(timezoneRecallThread)).resolves.toBe(1);
 
     const result = await run({
       overrides: memoryPluginOverrides,
@@ -127,8 +130,7 @@ describeEval("Personal Memory", slackEvals, (it) => {
 
     await expect(readActiveMemories(timezoneRecallThread)).resolves.toEqual([
       expect.objectContaining({
-        content:
-          "Lives in San Francisco and uses the America/Los_Angeles timezone.",
+        content: timezoneMemoryContent,
         scope: "personal",
       }),
     ]);
