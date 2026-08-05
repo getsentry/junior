@@ -94,6 +94,15 @@ export function rankMemoryMatches(
     if (scoreDelta !== 0) {
       return scoreDelta;
     }
+    // Prefer actor preferences over workspace knowledge when RRF ties. Shared
+    // lexical legs often assign the same top rank to recent conversation noise
+    // and a personal-scope probe hit for the same common token.
+    const personalDelta =
+      Number(right.memory.scope === "personal") -
+      Number(left.memory.scope === "personal");
+    if (personalDelta !== 0) {
+      return personalDelta;
+    }
     const channelDelta =
       Number(currentChannel(right, options.channelPrefix)) -
       Number(currentChannel(left, options.channelPrefix));

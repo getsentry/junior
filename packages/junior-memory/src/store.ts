@@ -1067,13 +1067,15 @@ async function searchVisibleLexicalMemories(args: {
 async function searchVisibleVectorMemories(args: {
   db: MemoryDb;
   embedder: MemoryEmbeddingProvider | undefined;
+  /** Optional precomputed query embedding so multi-scope probes share one call. */
+  embedding?: MemoryEmbedding;
   limit: number;
   maxDistance?: number;
   nowMs: number;
   query: string;
   scopes: ResolvedMemoryScope[];
 }): Promise<MemoryMatch[]> {
-  if (!args.embedder) {
+  if (!args.embedder && !args.embedding) {
     return [];
   }
   const predicate = activeVisiblePredicate(args);
@@ -1084,11 +1086,19 @@ async function searchVisibleVectorMemories(args: {
   if (!query) {
     return [];
   }
-  let embedding: Awaited<ReturnType<typeof embedOne>>;
-  try {
-    embedding = await embedOne(args.embedder, query);
-  } catch {
-    return [];
+  let embedding: MemoryEmbedding;
+  if (args.embedding) {
+    embedding = args.embedding;
+  } else {
+    const embedder = args.embedder;
+    if (!embedder) {
+      return [];
+    }
+    try {
+      embedding = await embedOne(embedder, query);
+    } catch {
+      return [];
+    }
   }
   const distance = cosineDistance(
     juniorMemoryEmbeddings.embedding,
@@ -1409,6 +1419,11 @@ export function createMemoryStore(
    * vectors already hit: that drops exact/token memories and serializes the
    * miss path. Each leg is a hard-capped top-k probe so Postgres work stays
    * bounded even on broad queries.
+   *
+   * Automatic recall also runs personal-scope-only probes. Workspace
+   * conversation memories sharing common tokens (for example "time") can fill
+   * the shared lexical recency window before ranking, which buries older actor
+   * preferences that explicit search still finds.
    */
   async function retrieveVisibleMemories(
     rawInput: SearchMemoriesInput,
@@ -1428,37 +1443,84 @@ export function createMemoryStore(
         ? SEARCH_RETRIEVAL_OVERFETCH
         : RECALL_RETRIEVAL_OVERFETCH;
     const candidateLimit = retrievalLegLimit(limit, overfetch);
+    const personalScopes = scopes.filter((scope) => scope.scope === "personal");
+    // Automatic recall only: keep a personal-scope probe so workspace noise
+    // cannot monopolize the shared lexical recency window.
+    const personalRecallDistance =
+      vectorMaxDistance !== undefined && personalScopes.length > 0
+        ? vectorMaxDistance
+        : undefined;
+    const query = normalizeRetrievalQuery(input.query);
+    let queryEmbedding: MemoryEmbedding | undefined;
+    if (embedder && query) {
+      try {
+        queryEmbedding = await embedOne(embedder, query);
+      } catch {
+        queryEmbedding = undefined;
+      }
+    }
     // Always run both legs in parallel. Conditional lexical skip is unsafe:
     // one in-threshold vector distractor can hide a stronger lexical hit.
-    const [vectorMatches, lexicalMatches] = await Promise.all([
-      searchVisibleVectorMemories({
-        db,
-        embedder,
-        limit: candidateLimit,
-        ...(vectorMaxDistance !== undefined
-          ? { maxDistance: vectorMaxDistance }
-          : {}),
-        nowMs,
-        query: input.query,
-        scopes,
-      }),
-      searchVisibleLexicalMemories({
-        db,
-        limit: candidateLimit,
-        nowMs,
-        query: input.query,
-        scopes,
-      }),
-    ]);
+    const [vectorMatches, lexicalMatches, personalVectorMatches, personalLexicalMatches] =
+      await Promise.all([
+        searchVisibleVectorMemories({
+          db,
+          embedder,
+          ...(queryEmbedding ? { embedding: queryEmbedding } : {}),
+          limit: candidateLimit,
+          ...(vectorMaxDistance !== undefined
+            ? { maxDistance: vectorMaxDistance }
+            : {}),
+          nowMs,
+          query: input.query,
+          scopes,
+        }),
+        searchVisibleLexicalMemories({
+          db,
+          limit: candidateLimit,
+          nowMs,
+          query: input.query,
+          scopes,
+        }),
+        personalRecallDistance === undefined
+          ? Promise.resolve([] as MemoryMatch[])
+          : searchVisibleVectorMemories({
+              db,
+              embedder,
+              ...(queryEmbedding ? { embedding: queryEmbedding } : {}),
+              limit: candidateLimit,
+              maxDistance: personalRecallDistance,
+              nowMs,
+              query: input.query,
+              scopes: personalScopes,
+            }),
+        personalRecallDistance === undefined
+          ? Promise.resolve([] as MemoryMatch[])
+          : searchVisibleLexicalMemories({
+              db,
+              limit: candidateLimit,
+              nowMs,
+              query: input.query,
+              scopes: personalScopes,
+            }),
+      ]);
     const channelPrefix = sourceChannelPrefix(runtimeContext);
-    return rankMemoryMatches([...vectorMatches, ...lexicalMatches], {
-      nowMs,
-      // Slight lexical preference protects exact ids/names/timezones on ties.
-      ...(vectorMaxDistance === undefined
-        ? {}
-        : { lexicalWeight: 1, vectorWeight: 0.85 }),
-      ...(channelPrefix ? { channelPrefix } : {}),
-    })
+    return rankMemoryMatches(
+      [
+        ...vectorMatches,
+        ...lexicalMatches,
+        ...personalVectorMatches,
+        ...personalLexicalMatches,
+      ],
+      {
+        nowMs,
+        // Slight lexical preference protects exact ids/names/timezones on ties.
+        ...(vectorMaxDistance === undefined
+          ? {}
+          : { lexicalWeight: 1, vectorWeight: 0.85 }),
+        ...(channelPrefix ? { channelPrefix } : {}),
+      },
+    )
       .slice(0, limit)
       .map(({ memory }) => memory);
   }

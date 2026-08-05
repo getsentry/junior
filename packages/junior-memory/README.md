@@ -71,6 +71,10 @@ exported types, tools, and tests are authoritative.
   and slightly prefers lexical ranks so exact tokens survive soft semantic
   neighbors. Vector recall also applies the cosine distance cutoff in SQL, and
   embeddings use an HNSW cosine index (`vector_cosine_ops`).
+- Automatic recall also runs personal-scope-only vector and lexical probes so
+  older actor preferences are not buried when newer workspace conversation
+  memories fill the shared lexical recency window with common tokens. On RRF
+  score ties, personal-scope matches rank ahead of conversation matches.
 - Automatic recall retrieves a bounded candidate window, then uses the
   memory-owned relevance model to admit at most five directly useful memories.
   An empty result contributes no filler prompt text.

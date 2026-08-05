@@ -75,6 +75,45 @@ describe("memory retrieval ranking", () => {
     ]);
   });
 
+  it("prefers personal scope over newer conversation noise on score ties", () => {
+    const ranked = rankMemoryMatches(
+      [
+        {
+          lexical: { rank: 1 },
+          memory: {
+            content: "Recent workspace time note",
+            createdAtMs: NOW_MS,
+            id: "conversation-noise",
+            kind: "knowledge",
+            observedAtMs: NOW_MS,
+            scope: "conversation",
+            subjectType: "conversation",
+          },
+          sourceKey: "slack:T123:C456",
+        },
+        {
+          lexical: { rank: 1 },
+          memory: {
+            content: "Located in San Francisco and uses Pacific Time (PT).",
+            createdAtMs: NOW_MS - 120 * 24 * 60 * 60 * 1000,
+            id: "personal-timezone",
+            kind: "preference",
+            observedAtMs: NOW_MS - 120 * 24 * 60 * 60 * 1000,
+            scope: "personal",
+            subjectType: "user",
+          },
+          sourceKey: "slack:T123:C999",
+        },
+      ],
+      { channelPrefix: "slack:T123:C456", nowMs: NOW_MS },
+    );
+
+    expect(ranked.map(({ memory }) => memory.id)).toEqual([
+      "personal-timezone",
+      "conversation-noise",
+    ]);
+  });
+
   it("applies optional modality weights without comparing raw scores", () => {
     const ranked = rankMemoryMatches(
       [
