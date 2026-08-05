@@ -267,7 +267,7 @@ describe("retention purge job", () => {
         source: {
           conversationId: "root",
           platform: "local",
-          type: "priv",
+          visibility: "private",
         },
         status: "completed",
         terminalAt: new Date(BASE_MS),

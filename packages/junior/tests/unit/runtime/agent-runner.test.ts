@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { createLocalSource } from "@sentry/junior-plugin-api";
 import type { AgentRunRequest } from "@/chat/agent/request";
 import { createAgentRunner } from "@/chat/runtime/agent-runner";
 
@@ -11,11 +12,7 @@ const request = {
       conversationId: "local:test:parent",
       platform: "local",
     },
-    source: {
-      conversationId: "local:test:parent",
-      platform: "local",
-      type: "priv",
-    },
+    source: createLocalSource("local:test:parent"),
   },
 } satisfies AgentRunRequest;
 
