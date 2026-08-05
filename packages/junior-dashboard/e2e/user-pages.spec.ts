@@ -79,7 +79,9 @@ test("opens a registered plugin page from primary navigation", async ({
     `${server.baseURL}/plugins/memory/memories/library`,
   );
   await expect(
-    page.getByRole("button", { name: /^I prefer concise summaries/ }),
+    page.getByRole("button", {
+      name: /^View memory details: I prefer concise summaries/,
+    }),
   ).toBeVisible();
   await expect(page.getByText("Private").last()).toBeVisible();
   const privateTab = page.getByRole("tab", { name: "Private 24" });
@@ -180,54 +182,58 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
   expect(browserErrors).toEqual([]);
 });
 
-test("expands memory details inline on desktop", async ({ page }) => {
+test("opens memory details in a slide-out drawer", async ({ page }) => {
   await page.setViewportSize({ height: 900, width: 1440 });
   const browserErrors = collectBrowserErrors(page);
   await page.goto(`${server.baseURL}/plugins/memory/memories/library`);
 
   const memory = page.getByRole("button", {
-    name: /^I prefer concise summaries/,
+    name: /^View memory details: I prefer concise summaries/,
   });
   await memory.click();
-  await expect(
-    page.getByText("Why Junior remembers this").first(),
-  ).toBeVisible();
-  await expect(page.getByRole("dialog")).not.toBeVisible();
-  await expect
-    .poll(() => page.evaluate(() => document.body.style.overflow))
-    .toBe("");
-
-  await memory.click();
-  await expect(
-    page.getByText("Why Junior remembers this").first(),
-  ).not.toBeVisible();
-  expect(browserErrors).toEqual([]);
-});
-
-test("opens memory details in a mobile sheet", async ({ page }) => {
-  await page.setViewportSize({ height: 844, width: 390 });
-  const browserErrors = collectBrowserErrors(page);
-  await page.goto(`${server.baseURL}/plugins/memory/memories/library`);
-
-  await page
-    .getByRole("button", { name: /^I prefer concise summaries/ })
-    .click();
-  const dialog = page.getByRole("dialog");
-  await expect(dialog).toBeVisible();
+  const details = page.getByRole("dialog", { name: "What Junior remembers" });
+  await expect(details).toBeVisible();
   await expect
     .poll(() => page.evaluate(() => document.body.style.overflow))
     .toBe("hidden");
-  await expect(dialog.getByText("Why Junior remembers this")).toBeVisible();
-  await expect(dialog.getByText("Private")).toBeVisible();
+  const closeMemoryDetails = details.getByRole("button", {
+    name: "Close memory details",
+  });
+  await expect(closeMemoryDetails).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(closeMemoryDetails).not.toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(closeMemoryDetails).toBeFocused();
+  await expect(details.getByText("Memory details")).toBeVisible();
+  await expect(details.getByText("Why Junior remembers this")).toBeVisible();
   await expect(
-    dialog.getByText(/Junior learned this from a Slack conversation/),
+    details.getByText(/Preference · Private ·/),
+  ).toBeVisible();
+  await expect(
+    details.getByText(/Junior learned this from a Slack conversation/),
   ).toBeVisible();
 
   await page.keyboard.press("Escape");
-  await expect(dialog).not.toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect
     .poll(() => page.evaluate(() => document.body.style.overflow))
     .toBe("");
+  await expect(memory).toBeFocused();
+
+  await page.setViewportSize({ height: 844, width: 390 });
+  await memory.click();
+  const mobileDetails = page.getByRole("dialog", {
+    name: "What Junior remembers",
+  });
+  await expect(mobileDetails).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => document.body.style.overflow))
+    .toBe("hidden");
+  await expect(
+    mobileDetails.getByText("Why Junior remembers this"),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   expect(browserErrors).toEqual([]);
 });
 
@@ -325,7 +331,9 @@ test("searches, paginates, and forgets plugin page records", async ({
 
   await page.goto(`${server.baseURL}/plugins/memory/memories/library`);
   await expect(
-    page.getByRole("button", { name: /^First page memory/ }),
+    page.getByRole("button", {
+      name: /^View memory details: First page memory/,
+    }),
   ).toBeVisible();
   const searchbox = page.getByRole("searchbox", { name: "Search memories" });
   await searchbox.fill("runbook");
@@ -337,7 +345,9 @@ test("searches, paginates, and forgets plugin page records", async ({
     page.getByRole("button", { name: "Load more" }),
   ).not.toBeVisible();
   await expect(
-    page.getByRole("button", { name: /^Deploy runbooks live in Notion/ }),
+    page.getByRole("button", {
+      name: /^View memory details: Deploy runbooks live in Notion/,
+    }),
   ).toBeVisible();
 
   await searchbox.fill("");
@@ -345,25 +355,34 @@ test("searches, paginates, and forgets plugin page records", async ({
   await page.getByRole("tab", { name: /^All/ }).click();
   await expect(page).not.toHaveURL(/filter=/);
   await expect(
-    page.getByRole("button", { name: /^First page memory/ }),
+    page.getByRole("button", {
+      name: /^View memory details: First page memory/,
+    }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Load more" }).click();
   await expect(
-    page.getByRole("button", { name: /^Second page memory/ }),
+    page.getByRole("button", {
+      name: /^View memory details: Second page memory/,
+    }),
   ).toBeVisible();
 
   await searchbox.fill("runbook");
   await expect(page).toHaveURL(/q=runbook/);
   await expect(searchbox).toBeFocused();
   await expect(
-    page.getByRole("button", { name: /^Deploy runbooks live in Notion/ }),
+    page.getByRole("button", {
+      name: /^View memory details: Deploy runbooks live in Notion/,
+    }),
   ).toBeVisible();
 
   page.once("dialog", (dialog) => dialog.accept());
   await page
-    .getByRole("button", { name: /^Deploy runbooks live in Notion/ })
+    .getByRole("button", {
+      name: /^View memory details: Deploy runbooks live in Notion/,
+    })
     .click();
   await page
+    .getByRole("dialog", { name: "What Junior remembers" })
     .getByRole("button", { name: "Forget this memory" })
     .evaluate((button) => {
       button.click();
