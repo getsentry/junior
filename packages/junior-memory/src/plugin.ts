@@ -28,6 +28,10 @@ const MEMORY_RECALL_MAX_VECTOR_DISTANCE_ENV =
 const DEFAULT_RECALL_MAX_VECTOR_DISTANCE = 0.45;
 
 export interface MemoryPluginOptions {
+  /** Disable automatic prompt recall while keeping explicit memory tools available. */
+  disableRecall?: boolean;
+  /** Disable passive memory extraction from completed sessions. */
+  disableExtraction?: boolean;
   modelId?: string;
   /** Maximum cosine distance for vector recall candidates. Defaults to MEMORY_RECALL_MAX_VECTOR_DISTANCE env or 0.45. */
   recallMaxVectorDistance?: number;
@@ -113,13 +117,15 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
     cli: {
       commands: [createMemoryCliCommand()],
     },
-    tasks: {
-      processSession: {
-        async run(ctx) {
-          await processMemorySession(ctx);
+    tasks: options.disableExtraction
+      ? {}
+      : {
+          processSession: {
+            async run(ctx) {
+              await processMemorySession(ctx);
+            },
+          },
         },
-      },
-    },
     userPages: [createMemoryUserPage()],
     hooks: {
       async operationalReport(ctx) {
@@ -163,20 +169,26 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
           searchMemories: createMemorySearchTool(context),
         };
       },
-      async userPrompt(ctx) {
-        return await createMemoryPromptContributions({
-          agent: createMemoryAgent(ctx.model),
-          ...(ctx.conversationId ? { conversationId: ctx.conversationId } : {}),
-          ...(ctx.actor ? { actor: ctx.actor } : {}),
-          db: ctx.db as MemoryDb,
-          embedder: ctx.embedder,
-          events: ctx.events,
-          log: ctx.log,
-          maxVectorDistance: recallMaxVectorDistance(options),
-          source: ctx.source,
-          text: ctx.text,
-        });
-      },
+      ...(!options.disableRecall
+        ? {
+            async userPrompt(ctx) {
+              return await createMemoryPromptContributions({
+                agent: createMemoryAgent(ctx.model),
+                ...(ctx.conversationId
+                  ? { conversationId: ctx.conversationId }
+                  : {}),
+                ...(ctx.actor ? { actor: ctx.actor } : {}),
+                db: ctx.db as MemoryDb,
+                embedder: ctx.embedder,
+                events: ctx.events,
+                log: ctx.log,
+                maxVectorDistance: recallMaxVectorDistance(options),
+                source: ctx.source,
+                text: ctx.text,
+              });
+            },
+          }
+        : {}),
     },
   });
 }

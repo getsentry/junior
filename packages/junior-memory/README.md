@@ -80,6 +80,10 @@ exported types, tools, and tests are authoritative.
 
 - `AI_MEMORY_MODEL` or `memoryPlugin({ modelId })` selects the structured
   review model.
+- `memoryPlugin({ disableRecall: true })` disables automatic prompt recall.
+- `memoryPlugin({ disableExtraction: true })` disables passive session
+  extraction. The two flags are independent and do not disable explicit memory
+  tools.
 - `MEMORY_RECALL_MAX_VECTOR_DISTANCE` or
   `recallMaxVectorDistance` configures the vector candidate threshold.
 - Generate schema changes with `pnpm --filter @sentry/junior-memory db:generate`.

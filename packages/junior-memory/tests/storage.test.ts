@@ -619,6 +619,27 @@ describe("memory plugin storage", () => {
     }
   });
 
+  it("configures automatic recall and passive extraction independently", () => {
+    const defaults = memoryPlugin();
+    expect(defaults.hooks?.userPrompt).toBeTypeOf("function");
+    expect(defaults.tasks?.processSession).toBeDefined();
+
+    const withoutRecall = memoryPlugin({ disableRecall: true });
+    expect(withoutRecall.hooks?.userPrompt).toBeUndefined();
+    expect(withoutRecall.tasks?.processSession).toBeDefined();
+
+    const withoutExtraction = memoryPlugin({ disableExtraction: true });
+    expect(withoutExtraction.hooks?.userPrompt).toBeTypeOf("function");
+    expect(withoutExtraction.tasks?.processSession).toBeUndefined();
+
+    const withoutEither = memoryPlugin({
+      disableExtraction: true,
+      disableRecall: true,
+    });
+    expect(withoutEither.hooks?.userPrompt).toBeUndefined();
+    expect(withoutEither.tasks?.processSession).toBeUndefined();
+  });
+
   it("parses canonical actor extraction into stored memory text", async () => {
     const model: PluginModel = {
       async completeObject() {

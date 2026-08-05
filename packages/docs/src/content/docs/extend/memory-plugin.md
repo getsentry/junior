@@ -50,6 +50,17 @@ export const plugins = defineJuniorPlugins([
 ]);
 ```
 
+Automatic prompt recall and passive session extraction can be disabled independently. Explicit memory tools remain available in either case:
+
+```ts title="plugins.ts"
+export const plugins = defineJuniorPlugins([
+  memoryPlugin({
+    disableRecall: true,
+    disableExtraction: true,
+  }),
+]);
+```
+
 ## Configure environment variables
 
 | Variable                            | Required | Purpose                                                                                                                                                                                                      |
