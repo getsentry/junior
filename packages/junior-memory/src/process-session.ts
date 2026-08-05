@@ -62,35 +62,33 @@ type MemoryRouteTarget = "drop" | "personal" | "conversation";
 
 /**
  * Build a short hybrid-search query for passive extraction pre-search.
- * Prefer durable run-actor instructions, then other user evidence. Never
- * include tool dumps that dilute lexical and embedding retrieval.
+ *
+ * The run projection may prepend prior public-thread messages as ambient
+ * context authority. Pre-search only uses this turn's run-actor instructions so
+ * earlier thread text does not dilute embeddings or FTS. Tool dumps and prior
+ * context remain available to the extraction model via the full transcript.
  */
 function buildExtractionSearchQuery(
   transcript: PluginRunTranscriptEntry[],
 ): string {
   const instructionTexts: string[] = [];
-  const otherUserTexts: string[] = [];
   for (const entry of transcript) {
     if (entry.type !== "message" || entry.role !== "user") {
       continue;
     }
+    if (entry.provenance?.authority !== "instruction" || !entry.isRunActor) {
+      continue;
+    }
     const text = entry.text?.trim();
-    if (!text) {
-      continue;
-    }
-    if (entry.provenance?.authority === "instruction" && entry.isRunActor) {
+    if (text) {
       instructionTexts.push(text);
-      continue;
     }
-    otherUserTexts.push(text);
   }
-  const preferred =
-    instructionTexts.length > 0 ? instructionTexts : otherUserTexts;
-  if (preferred.length === 0) {
+  if (instructionTexts.length === 0) {
     return "";
   }
-  // Prefer the newest durable utterances; they are the usual extraction targets.
-  const ordered = [...preferred].reverse();
+  // Prefer the newest current-turn instructions; they are the usual targets.
+  const ordered = [...instructionTexts].reverse();
   const parts: string[] = [];
   let used = 0;
   for (const text of ordered) {

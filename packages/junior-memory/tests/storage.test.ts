@@ -932,7 +932,7 @@ describe("memory plugin storage", () => {
     }
   }, 15_000);
 
-  it("pre-searches extraction with focused user evidence instead of tool dumps", async () => {
+  it("pre-searches extraction from this turn's instructions only", async () => {
     const fixture = await createMemoryFixture();
 
     try {
@@ -940,11 +940,14 @@ describe("memory plugin storage", () => {
         "Prefers concise release notes that mention rollback owners.";
       const instruction =
         "I prefer concise release notes that mention rollback owners.";
+      const priorThreadContext =
+        "Earlier in the thread someone mentioned mango chips for QA snacks.";
       const toolDump =
         'webhook payload dump status=ok body={"noise":true,"rows":999}';
       const embedder = createTestEmbedder({
         [instruction]: unitEmbedding(1),
         [preference]: unitEmbedding(1),
+        [priorThreadContext]: unitEmbedding(8),
         [toolDump]: unitEmbedding(9),
       });
       const store = createMemoryStore(memoryDb(fixture), localContext(), {
@@ -972,6 +975,8 @@ describe("memory plugin storage", () => {
             async load() {
               return completedRun({
                 transcript: [
+                  // Runtime prepends prior public-thread messages as context.
+                  contextMessage(priorThreadContext),
                   instructionMessage(instruction),
                   {
                     type: "toolResult",
@@ -991,10 +996,13 @@ describe("memory plugin storage", () => {
         }),
       );
 
-      // Hybrid pre-search embeds the focused instruction query, not tool dumps.
+      // Hybrid pre-search embeds this turn's instruction only.
       expect(embedder.calls.some((batch) => batch.includes(instruction))).toBe(
         true,
       );
+      expect(
+        embedder.calls.some((batch) => batch.includes(priorThreadContext)),
+      ).toBe(false);
       expect(embedder.calls.some((batch) => batch.includes(toolDump))).toBe(
         false,
       );
@@ -1004,6 +1012,8 @@ describe("memory plugin storage", () => {
       expect(prompt).toMatch(
         /<existing-memories>[\s\S]*Prefers concise release notes that mention rollback owners\.[\s\S]*<\/existing-memories>/,
       );
+      // Full transcript still reaches the extraction model, including prior context.
+      expect(prompt).toContain(priorThreadContext);
     } finally {
       await fixture.close();
     }
