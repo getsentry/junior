@@ -29,6 +29,9 @@ const MEMORY_TOOL_NAMES = new Set([
   "searchMemories",
 ]);
 const MEMORY_TASK_STATE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+/** Keep extraction pre-search short enough for focused hybrid retrieval. */
+const EXTRACTION_SEARCH_QUERY_MAX_CHARS = 1_500;
+const EXTRACTION_SEARCH_LIMIT = 10;
 const extractedMemorySchema = z
   .object({
     content: z.string().min(1),
@@ -56,6 +59,57 @@ const extractedMemoryCacheSchema = z.union([
 
 /** Where a passively extracted memory may be stored, or dropped when unproven. */
 type MemoryRouteTarget = "drop" | "personal" | "conversation";
+
+/**
+ * Build a short hybrid-search query for passive extraction pre-search.
+ * Prefer durable run-actor instructions, then other user evidence. Never
+ * include tool dumps that dilute lexical and embedding retrieval.
+ */
+function buildExtractionSearchQuery(
+  transcript: PluginRunTranscriptEntry[],
+): string {
+  const instructionTexts: string[] = [];
+  const otherUserTexts: string[] = [];
+  for (const entry of transcript) {
+    if (entry.type !== "message" || entry.role !== "user") {
+      continue;
+    }
+    const text = entry.text?.trim();
+    if (!text) {
+      continue;
+    }
+    if (entry.provenance?.authority === "instruction" && entry.isRunActor) {
+      instructionTexts.push(text);
+      continue;
+    }
+    otherUserTexts.push(text);
+  }
+  const preferred =
+    instructionTexts.length > 0 ? instructionTexts : otherUserTexts;
+  if (preferred.length === 0) {
+    return "";
+  }
+  // Prefer the newest durable utterances; they are the usual extraction targets.
+  const ordered = [...preferred].reverse();
+  const parts: string[] = [];
+  let used = 0;
+  for (const text of ordered) {
+    if (used >= EXTRACTION_SEARCH_QUERY_MAX_CHARS) {
+      break;
+    }
+    const remaining = EXTRACTION_SEARCH_QUERY_MAX_CHARS - used;
+    const slice =
+      text.length <= remaining
+        ? text
+        : `${text.slice(0, Math.max(0, remaining - 3)).trimEnd()}...`;
+    if (!slice) {
+      continue;
+    }
+    parts.push(slice);
+    used += slice.length + (parts.length > 1 ? 1 : 0);
+  }
+  return parts.join("\n").trim();
+}
 
 function recordCapturedMemory(
   captured: ReturnType<typeof capturedMemory>[],
@@ -240,14 +294,13 @@ export async function processMemorySession(
   const transcript = run.transcript
     .filter((entry) => entry.text?.trim())
     .map((entry) => ({ ...entry, text: entry.text!.trim() }));
-  const evidenceText = transcript
-    .filter((entry) => entry.type === "toolResult" || entry.role === "user")
-    .map((entry) => entry.text)
-    .join("\n\n")
-    .trim();
-  if (!evidenceText) {
+  const hasExtractionEvidence = transcript.some(
+    (entry) => entry.type === "toolResult" || entry.role === "user",
+  );
+  if (!hasExtractionEvidence) {
     return;
   }
+  const extractionSearchQuery = buildExtractionSearchQuery(transcript);
 
   const runtimeContext = memoryRuntimeContextSchema.parse({
     conversationId: run.conversationId,
@@ -261,10 +314,15 @@ export async function processMemorySession(
   });
   await store.archiveExpiredMemories();
   const extraction = await getTaskExtraction(context, async () => {
-    const existingMemories = await store.searchMemories({
-      limit: 10,
-      query: evidenceText,
-    });
+    // Hybrid search still fuses vector + lexical ranks. Extraction only needs a
+    // short query so embeddings and FTS stay focused on durable user evidence.
+    const existingMemories =
+      extractionSearchQuery.length > 0
+        ? await store.searchMemories({
+            limit: EXTRACTION_SEARCH_LIMIT,
+            query: extractionSearchQuery,
+          })
+        : [];
     return await agent.extractSessionMemories({
       existingMemories: existingMemories.map((memory) => ({
         content: memory.content,

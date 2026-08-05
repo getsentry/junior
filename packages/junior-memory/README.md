@@ -64,7 +64,10 @@ exported types, tools, and tests are authoritative.
 - Candidate review resolves duplicates and supersession before activation.
 - Search combines independently ranked vector and PostgreSQL full-text matches
   with reciprocal rank fusion; provider-specific raw scores are never added
-  together.
+  together. Each leg stays a bounded top-k probe; lexical ranking never scores
+  the full match set.
+- Passive extraction pre-searches with a short user-evidence query, not the full
+  transcript or tool dumps, then still uses the same hybrid RRF path.
 - Automatic recall retrieves a broad candidate window, then uses the
   memory-owned relevance model to admit at most five directly useful memories.
   An empty result contributes no filler prompt text.

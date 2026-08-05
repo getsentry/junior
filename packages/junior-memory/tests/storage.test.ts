@@ -932,6 +932,83 @@ describe("memory plugin storage", () => {
     }
   }, 15_000);
 
+  it("pre-searches extraction with focused user evidence instead of tool dumps", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      const preference =
+        "Prefers concise release notes that mention rollback owners.";
+      const instruction =
+        "I prefer concise release notes that mention rollback owners.";
+      const toolDump =
+        'webhook payload dump status=ok body={"noise":true,"rows":999}';
+      const embedder = createTestEmbedder({
+        [instruction]: unitEmbedding(1),
+        [preference]: unitEmbedding(1),
+        [toolDump]: unitEmbedding(9),
+      });
+      const store = createMemoryStore(memoryDb(fixture), localContext(), {
+        embedder,
+        now: () => TEST_NOW_MS,
+      });
+      await store.createMemory({
+        content: preference,
+        kind: "preference",
+        idempotencyKey: "memory-test:extraction-focused-query",
+      });
+      const { calls, model } = extractionModel([
+        {
+          kind: "preference",
+          content: preference,
+        },
+      ]);
+
+      await processMemorySession(
+        processSessionContext({
+          db: memoryDb(fixture),
+          embedder,
+          model,
+          run: {
+            async load() {
+              return completedRun({
+                transcript: [
+                  instructionMessage(instruction),
+                  {
+                    type: "toolResult",
+                    toolName: "bash",
+                    text: toolDump,
+                    isError: false,
+                  },
+                  {
+                    type: "message",
+                    role: "assistant",
+                    text: "Noted.",
+                  },
+                ],
+              });
+            },
+          },
+        }),
+      );
+
+      // Hybrid pre-search embeds the focused instruction query, not tool dumps.
+      expect(embedder.calls.some((batch) => batch.includes(instruction))).toBe(
+        true,
+      );
+      expect(embedder.calls.some((batch) => batch.includes(toolDump))).toBe(
+        false,
+      );
+      expect(calls).toHaveLength(1);
+      const prompt = calls[0]?.prompt ?? "";
+      // Existing-memory context came from the focused hybrid hit.
+      expect(prompt).toMatch(
+        /<existing-memories>[\s\S]*Prefers concise release notes that mention rollback owners\.[\s\S]*<\/existing-memories>/,
+      );
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
   it("records empty extraction cost without capturing memories", async () => {
     const fixture = await createMemoryFixture();
 
