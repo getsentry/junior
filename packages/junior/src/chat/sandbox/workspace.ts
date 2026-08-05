@@ -16,6 +16,7 @@ export interface SandboxCommandInput {
   cmd: string;
   cwd?: string;
   env?: Record<string, string>;
+  operation?: string;
   signal?: AbortSignal;
   sudo?: boolean;
   timeoutMs?: number;

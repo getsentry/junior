@@ -1497,10 +1497,17 @@ Conversation: \`local:test:old-conversation\`
     });
   });
 
-  it("only treats Git smart HTTP service parameters as grant evidence on Git paths", async () => {
+  it("only allows Git smart HTTP reads from the bounded clone operation", async () => {
+    await expect(
+      grantForEgress({
+        method: "GET",
+        url: "https://github.com/getsentry/junior.git/info/refs?service=git-upload-pack",
+      }),
+    ).rejects.toThrow("must use the github_cloneRepository tool");
     expect(
       await grantForEgress({
         method: "GET",
+        operation: "github.repository.clone",
         url: "https://github.com/getsentry/junior.git/info/refs?service=git-upload-pack",
       }),
     ).toMatchObject({
@@ -2499,35 +2506,6 @@ Conversation: \`local:test:old-conversation\`
       "credential.helper",
       "http.emptyAuth",
     ]);
-  });
-
-  it.each([
-    "git clone https://github.com/getsentry/junior.git",
-    "git -C /vercel/sandbox clone https://github.com/getsentry/junior.git",
-    "git -c protocol.version=2 clone https://github.com/getsentry/junior.git",
-    "gh repo clone getsentry/junior",
-    "gh --hostname github.com repo clone getsentry/junior",
-  ])("blocks unbounded shell clone command: %s", (command) => {
-    const before = beforeToolContext({}, undefined, command);
-
-    githubPlugin().hooks?.beforeToolExecute?.(before.ctx as never);
-
-    expect(before.denial).toContain("github_cloneRepository");
-    expect(before.env).toEqual({});
-  });
-
-  it.each([
-    "git checkout clone",
-    "git log --grep clone",
-    "git --no-pager log clone",
-    "git status # after clone",
-    "gh issue list --search clone",
-  ])("allows non-clone shell command: %s", (command) => {
-    const before = beforeToolContext({}, undefined, command);
-
-    githubPlugin().hooks?.beforeToolExecute?.(before.ctx as never);
-
-    expect(before.denial).toBeUndefined();
   });
 
   it("injects Junior author and committer identity", () => {

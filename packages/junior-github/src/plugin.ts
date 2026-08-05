@@ -502,18 +502,6 @@ function assertGitHubWriteAllowed(input: {
   }
 }
 
-const GIT_GLOBAL_OPTION = String.raw`(?:-C\s+\S+|-c\s+\S+|--(?:git-dir|work-tree|namespace|super-prefix|config-env)(?:=\S+|\s+\S+)|--(?:exec-path|html-path|man-path|info-path|no-pager|paginate|no-replace-objects|bare|literal-pathspecs|glob-pathspecs|noglob-pathspecs|icase-pathspecs))`;
-const GH_GLOBAL_OPTION = String.raw`(?:--(?:hostname|repo)(?:=\S+|\s+\S+)|--(?:help|version))`;
-
-function shellCommandUsesUnboundedClone(input: unknown): boolean {
-  if (!isRecord(input) || typeof input.command !== "string") {
-    return false;
-  }
-  return new RegExp(
-    String.raw`\bgit(?:\s+${GIT_GLOBAL_OPTION})*\s+clone\b|\bgh(?:\s+${GH_GLOBAL_OPTION})*\s+repo\s+clone\b`,
-  ).test(input.command);
-}
-
 function grantForAccess(
   access: PluginGrantAccess,
   reason: GitHubGrantReason,
@@ -558,6 +546,14 @@ async function githubGrantForEgress(
 
   const smartHttpAccess = githubSmartHttpAccess(upstreamUrl);
   if (smartHttpAccess) {
+    if (
+      smartHttpAccess === "read" &&
+      ctx.request.operation !== "github.repository.clone"
+    ) {
+      throw new EgressPolicyDenied(
+        "GitHub repository cloning must use the github_cloneRepository tool so Junior can bound clone depth and clean up partial destinations.",
+      );
+    }
     if (smartHttpAccess === "write") {
       return grantForAccess(
         "write",
@@ -787,12 +783,6 @@ export function githubPlugin(
       },
       beforeToolExecute(ctx) {
         if (ctx.tool.name !== "bash") {
-          return;
-        }
-        if (shellCommandUsesUnboundedClone(ctx.tool.input)) {
-          ctx.decision.deny(
-            "GitHub repository cloning must use the github_cloneRepository tool so Junior can bound clone depth, authenticate safely, and clean up partial destinations.",
-          );
           return;
         }
         const botName = readEnv(botNameEnv);

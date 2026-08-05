@@ -85,6 +85,7 @@ interface SandboxToolExecutors {
     command: string;
     cwd?: string;
     env?: Record<string, string>;
+    operation?: string;
     signal?: AbortSignal;
     timeoutMs?: number;
   }) => Promise<{
@@ -123,6 +124,7 @@ interface SandboxRuntimeOptions {
   createNetworkPolicy?: (
     egressId: string,
     traceHeaders?: TracePropagationHeaders,
+    operation?: string,
   ) => NetworkPolicy | undefined;
   onSandboxPrepare?: (sandbox: SandboxSession) => void | Promise<void>;
   onSandboxRefChanged?: (sandboxRef: SandboxRef) => void | Promise<void>;
@@ -795,6 +797,15 @@ export function createSandboxRuntime(
           if (input.signal?.aborted) {
             return getCommandAbortedResult();
           }
+          if (input.operation) {
+            await sandboxInstance.update({
+              networkPolicy: options.createNetworkPolicy?.(
+                sandboxInstance.sessionId,
+                undefined,
+                input.operation,
+              ),
+            });
+          }
           const script = buildNonInteractiveShellScript(input.command, {
             env: { ...sandboxCommandEnv, ...(input.env ?? {}) },
             pathPrefix: `${SANDBOX_RUNTIME_BIN_DIR}:$PATH`,
@@ -851,6 +862,13 @@ export function createSandboxRuntime(
           }
           if (input.signal && onAbort) {
             input.signal.removeEventListener("abort", onAbort);
+          }
+          if (input.operation) {
+            await sandboxInstance.update({
+              networkPolicy: options.createNetworkPolicy?.(
+                sandboxInstance.sessionId,
+              ),
+            });
           }
         }
       },

@@ -40,6 +40,7 @@ describe("cloneRepository", () => {
         "junior",
       ],
       cwd: "/vercel/sandbox",
+      operation: "github.repository.clone",
       signal: expect.any(AbortSignal),
     });
     expect(result).toMatchObject({

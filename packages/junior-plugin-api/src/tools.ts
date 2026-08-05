@@ -41,6 +41,8 @@ export interface PluginSandbox {
     cmd: string;
     cwd?: string;
     env?: Record<string, string>;
+    /** Host-trusted provider operation attached to this command's egress. */
+    operation?: string;
     signal?: AbortSignal;
     sudo?: boolean;
   }): Promise<{

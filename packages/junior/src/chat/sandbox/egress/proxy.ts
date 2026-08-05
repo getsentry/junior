@@ -366,6 +366,9 @@ export async function proxySandboxEgressRequest(
         activeEgressId,
         credentialContext,
         deps,
+        ...(credentialContext.operation
+          ? { operation: credentialContext.operation }
+          : {}),
         provider,
         request,
         upstreamUrl,

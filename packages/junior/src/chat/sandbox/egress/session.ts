@@ -148,6 +148,7 @@ function getSandboxEgressSecret(): string {
 export function createSandboxEgressCredentialToken(input: {
   credentials: CredentialContext;
   egressId: string;
+  operation?: string;
   ttlMs?: number;
 }): string {
   const ttlMs = Math.max(1, input.ttlMs ?? DEFAULT_SESSION_TTL_MS);
@@ -157,6 +158,7 @@ export function createSandboxEgressCredentialToken(input: {
     egressId: input.egressId,
     expiresAtMs: now + ttlMs,
     contextId: randomUUID(),
+    ...(input.operation ? { operation: input.operation } : {}),
   };
   const payload = `${SANDBOX_EGRESS_TOKEN_VERSION}.${base64Url(
     JSON.stringify(context),
