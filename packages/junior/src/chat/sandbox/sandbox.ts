@@ -156,12 +156,8 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     string,
     { expiresAtMs: number; token: string }
   >();
-  const sandboxEgressCredentialTokenFor = (
-    egressId: string,
-    operation?: string,
-  ): string => {
-    const cacheKey = operation ? `${egressId}:${operation}` : egressId;
-    const cached = sandboxEgressCredentialTokens.get(cacheKey);
+  const sandboxEgressCredentialTokenFor = (egressId: string): string => {
+    const cached = sandboxEgressCredentialTokens.get(egressId);
     if (cached && cached.expiresAtMs > Date.now()) {
       return cached.token;
     }
@@ -172,10 +168,9 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     const token = createSandboxEgressCredentialToken({
       credentials: credentialEgress,
       egressId,
-      ...(operation ? { operation } : {}),
       ttlMs: sandboxEgressTokenTtlMs,
     });
-    sandboxEgressCredentialTokens.set(cacheKey, {
+    sandboxEgressCredentialTokens.set(egressId, {
       expiresAtMs: now + sandboxEgressTokenTtlMs,
       token,
     });
@@ -214,14 +209,11 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     commandEnv: credentialEgress ? resolveSandboxCommandEnvironment : undefined,
     createNetworkPolicy:
       credentialEgress || hasTracePropagationDomains
-        ? (sessionId, traceHeaders, operation) =>
+        ? (sessionId, traceHeaders) =>
             buildSandboxEgressNetworkPolicy({
               ...(credentialEgress
                 ? {
-                    credentialToken: sandboxEgressCredentialTokenFor(
-                      sessionId,
-                      operation,
-                    ),
+                    credentialToken: sandboxEgressCredentialTokenFor(sessionId),
                   }
                 : {}),
               traceConfig: tracePropagation,
@@ -356,9 +348,6 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
             command,
             cwd,
             ...(env ? { env } : {}),
-            ...(typeof rawInput.operation === "string"
-              ? { operation: rawInput.operation }
-              : {}),
             ...(timeoutMs ? { timeoutMs } : {}),
             ...(context.signal ? { signal: context.signal } : {}),
           });

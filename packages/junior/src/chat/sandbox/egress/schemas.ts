@@ -20,7 +20,6 @@ export const sandboxEgressCredentialContextSchema = z
     egressId: z.string().min(1),
     expiresAtMs: finiteNumberSchema,
     contextId: z.string().min(1),
-    operation: z.string().min(1).optional(),
   })
   .strict();
 

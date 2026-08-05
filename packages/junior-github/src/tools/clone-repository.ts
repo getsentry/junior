@@ -124,7 +124,6 @@ export function createGitHubCloneRepositoryTool(
             directory,
           ],
           cwd: ctx.sandbox.root,
-          operation: "github.repository.clone",
           signal: commandSignal(options.signal, 2 * 60_000),
         });
       } catch (error) {

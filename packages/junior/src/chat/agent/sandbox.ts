@@ -95,7 +95,6 @@ export function createPluginToolSandbox(
           command: `${input.sudo ? "sudo -- " : ""}${buildCommandScript(input)}`,
           ...(input.cwd ? { cwd: input.cwd } : {}),
           ...(input.env ? { env: input.env } : {}),
-          ...(input.operation ? { operation: input.operation } : {}),
         },
         ...(input.signal ? { signal: input.signal } : {}),
       });

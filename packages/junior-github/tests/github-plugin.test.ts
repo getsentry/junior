@@ -1493,17 +1493,10 @@ Conversation: \`local:test:old-conversation\`
     });
   });
 
-  it("only allows Git smart HTTP reads from the bounded clone operation", async () => {
-    await expect(
-      grantForEgress({
-        method: "GET",
-        url: "https://github.com/getsentry/junior.git/info/refs?service=git-upload-pack",
-      }),
-    ).rejects.toThrow("must use the github_cloneRepository tool");
+  it("only treats Git smart HTTP service parameters as grant evidence on Git paths", async () => {
     expect(
       await grantForEgress({
         method: "GET",
-        operation: "github.repository.clone",
         url: "https://github.com/getsentry/junior.git/info/refs?service=git-upload-pack",
       }),
     ).toMatchObject({

@@ -546,14 +546,6 @@ async function githubGrantForEgress(
 
   const smartHttpAccess = githubSmartHttpAccess(upstreamUrl);
   if (smartHttpAccess) {
-    if (
-      smartHttpAccess === "read" &&
-      ctx.request.operation !== "github.repository.clone"
-    ) {
-      throw new EgressPolicyDenied(
-        "GitHub repository cloning must use the github_cloneRepository tool so Junior can bound clone depth and clean up partial destinations.",
-      );
-    }
     if (smartHttpAccess === "write") {
       return grantForAccess(
         "write",
