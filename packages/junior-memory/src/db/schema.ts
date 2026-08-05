@@ -128,6 +128,11 @@ export const juniorMemoryEmbeddings = pgTable(
       table.dimensions,
       table.metric,
     ),
+    // Cosine ANN for vector recall/search. Ops must match cosineDistance (<=>).
+    // Keep this unfiltered so planners can use HNSW before scope/status joins.
+    index("junior_memory_embeddings_embedding_hnsw_idx")
+      .using("hnsw", table.embedding.op("vector_cosine_ops"))
+      .with({ m: 16, ef_construction: 64 }),
     check(
       "junior_memory_embeddings_metric_check",
       sql`${table.metric} IN ('cosine')`,

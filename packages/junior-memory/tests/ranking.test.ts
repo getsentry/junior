@@ -74,4 +74,23 @@ describe("memory retrieval ranking", () => {
       "other-channel-new",
     ]);
   });
+
+  it("applies optional modality weights without comparing raw scores", () => {
+    const ranked = rankMemoryMatches(
+      [
+        match("vector-top", { vector: { rank: 1 } }),
+        match("lexical-top", { lexical: { rank: 1 } }),
+      ],
+      {
+        lexicalWeight: 1,
+        nowMs: NOW_MS,
+        vectorWeight: 0.85,
+      },
+    );
+
+    expect(ranked.map(({ memory }) => memory.id)).toEqual([
+      "lexical-top",
+      "vector-top",
+    ]);
+  });
 });

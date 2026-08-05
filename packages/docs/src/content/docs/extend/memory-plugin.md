@@ -16,7 +16,7 @@ New apps created with `junior init` include `memoryPlugin()` in `plugins.ts` by 
 
 ## Prerequisites
 
-Provision a Postgres database with pgvector support before running migrations. The memory plugin migrations create the `vector` and `btree_gin` extensions, store 1536-dimensional embeddings, and maintain a scope-aware full-text search index. Most managed Postgres providers — Neon, Supabase, Railway, and AWS RDS/Aurora PostgreSQL with pgvector enabled — support this out of the box.
+Provision a Postgres database with pgvector support before running migrations. The memory plugin migrations create the `vector` and `btree_gin` extensions, store 1536-dimensional embeddings, maintain a scope-aware full-text search index, and create an HNSW cosine index on embeddings for hybrid recall. Most managed Postgres providers — Neon, Supabase, Railway, and AWS RDS/Aurora PostgreSQL with pgvector enabled — support this out of the box.
 
 ## Install
 
@@ -107,7 +107,7 @@ After setting `DATABASE_URL`, run the upgrade command to apply the memory plugin
 pnpm junior upgrade
 ```
 
-On a fresh database, this creates the `vector` and `btree_gin` extensions, the `junior_memory_memories` table, and the `junior_memory_embeddings` table with a `vector(1536)` column.
+On a fresh database, this creates the `vector` and `btree_gin` extensions, the `junior_memory_memories` table, and the `junior_memory_embeddings` table with a `vector(1536)` column plus its HNSW cosine index.
 
 ## Verify
 

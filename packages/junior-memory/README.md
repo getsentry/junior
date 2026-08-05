@@ -65,7 +65,12 @@ exported types, tools, and tests are authoritative.
 - Search combines independently ranked vector and PostgreSQL full-text matches
   with reciprocal rank fusion; provider-specific raw scores are never added
   together.
-- Automatic recall retrieves a broad candidate window, then uses the
+- Both retrieval legs always run in parallel as hard-capped top-k probes. Recall
+  keeps a smaller overfetch window than explicit search and slightly prefers
+  lexical ranks so exact tokens survive soft semantic neighbors. Vector recall
+  also applies the cosine distance cutoff in SQL, and embeddings use an HNSW
+  cosine index (`vector_cosine_ops`).
+- Automatic recall retrieves a bounded candidate window, then uses the
   memory-owned relevance model to admit at most five directly useful memories.
   An empty result contributes no filler prompt text.
 - Every completed automatic recall attempt emits an invisible, namespaced
