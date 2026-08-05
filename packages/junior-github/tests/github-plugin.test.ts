@@ -62,7 +62,11 @@ type TestActor = {
   userName?: string;
 };
 
-function beforeToolContext(actor: TestActor, actors?: TestActor[]) {
+function beforeToolContext(
+  actor: TestActor,
+  actors?: TestActor[],
+  command = "git commit -m test",
+) {
   const env: Record<string, string> = {};
   let denial: string | undefined;
 
@@ -92,7 +96,7 @@ function beforeToolContext(actor: TestActor, actors?: TestActor[]) {
       actor,
       ...(actors ? { actors } : {}),
       tool: {
-        input: { command: "git commit -m test" },
+        input: { command },
         name: "bash",
       },
     },
@@ -2495,6 +2499,18 @@ Conversation: \`local:test:old-conversation\`
       "credential.helper",
       "http.emptyAuth",
     ]);
+  });
+
+  it.each([
+    "git clone https://github.com/getsentry/junior.git",
+    "gh repo clone getsentry/junior",
+  ])("blocks unbounded shell clone command: %s", (command) => {
+    const before = beforeToolContext({}, undefined, command);
+
+    githubPlugin().hooks?.beforeToolExecute?.(before.ctx as never);
+
+    expect(before.denial).toContain("github_cloneRepository");
+    expect(before.env).toEqual({});
   });
 
   it("injects Junior author and committer identity", () => {

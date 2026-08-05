@@ -502,6 +502,13 @@ function assertGitHubWriteAllowed(input: {
   }
 }
 
+function shellCommandUsesUnboundedClone(input: unknown): boolean {
+  if (!isRecord(input) || typeof input.command !== "string") {
+    return false;
+  }
+  return /\bgit\s+clone\b|\bgh\s+repo\s+clone\b/.test(input.command);
+}
+
 function grantForAccess(
   access: PluginGrantAccess,
   reason: GitHubGrantReason,
@@ -775,6 +782,12 @@ export function githubPlugin(
       },
       beforeToolExecute(ctx) {
         if (ctx.tool.name !== "bash") {
+          return;
+        }
+        if (shellCommandUsesUnboundedClone(ctx.tool.input)) {
+          ctx.decision.deny(
+            "GitHub repository cloning must use the github_cloneRepository tool so Junior can bound clone depth, authenticate safely, and clean up partial destinations.",
+          );
           return;
         }
         const botName = readEnv(botNameEnv);
