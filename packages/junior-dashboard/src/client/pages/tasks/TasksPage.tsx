@@ -7,13 +7,13 @@ import {
   ChevronRight,
   Globe2,
   MapPin,
-  Search,
   Trash2,
   UserRound,
 } from "lucide-react";
 import { useTasksData } from "../../api";
 import { Button, ToggleButton } from "../../components/Button";
 import { LoadingView } from "../../components/LoadingView";
+import { SearchInput } from "../../components/SearchInput";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { deleteDashboardResource } from "../../http";
@@ -151,23 +151,15 @@ export function TasksPage(props: { enabled: boolean }) {
               </ToggleButton>
             ))}
           </TaskFilterGroup>
-          <label className="relative min-w-0">
-            <span className="mb-2 block font-mono text-[0.62rem] uppercase tracking-[0.12em] text-dashboard-text-muted">
-              Search
-            </span>
-            <Search
-              aria-hidden="true"
-              className="pointer-events-none absolute bottom-[0.68rem] left-3 text-dashboard-text-muted"
-              size={15}
-            />
-            <input
-              className="h-9 w-full rounded border border-white/15 bg-black pr-3 pl-9 text-sm text-dashboard-text placeholder:text-dashboard-text-muted focus:border-cyan-300/50 focus:outline-none"
-              onChange={(event) => setSearchText(event.target.value)}
+          <TaskFilterGroup label="Search">
+            <SearchInput
+              className="w-full lg:max-w-sm"
+              label="Search tasks"
+              onChange={setSearchText}
               placeholder="Instruction, location, or creator"
-              type="search"
               value={searchText}
             />
-          </label>
+          </TaskFilterGroup>
         </Card>
         <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1 border-b border-white/[0.07] pb-3">
           <p className="m-0 font-display text-lg text-dashboard-text">

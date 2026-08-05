@@ -1,6 +1,8 @@
 import { useState } from "react";
 import type { TaskExecutionDay } from "@sentry/junior/api/schema";
+import { ActivityTooltipRows } from "../../components/charts/ActivityChart";
 import { Card } from "../../components/layout/Card";
+import { Tooltip } from "../../components/Tooltip";
 import { cn } from "../../styles";
 
 type ChartRange = 7 | 30 | 90;
@@ -120,26 +122,50 @@ export function TaskExecutionChart(props: { days: TaskExecutionDay[] }) {
             const x = left + dayIndex * step + (step - barWidth) / 2;
             const total = totals[dayIndex] ?? 0;
             return (
-              <g key={day.date}>
-                <title>{`${formatDate(day.date)}: ${total} executions`}</title>
-                {series.map((item) => {
-                  const value = day[item.key];
-                  const segmentHeight = (value / maximum) * plotHeight;
-                  stackedHeight += segmentHeight;
-                  return (
-                    <rect
-                      fill={item.color}
-                      height={segmentHeight}
-                      key={item.key}
-                      opacity={0.82}
-                      rx="1"
-                      width={barWidth}
-                      x={x}
-                      y={top + plotHeight - stackedHeight}
-                    />
-                  );
-                })}
-              </g>
+              <Tooltip
+                content={
+                  <ActivityTooltipRows
+                    rows={[
+                      ["registered", day.registered],
+                      ["scheduled", day.scheduled],
+                      ["event", day.event],
+                      ["total", total],
+                    ]}
+                  />
+                }
+                key={day.date}
+                label={formatDate(day.date)}
+              >
+                <g
+                  aria-label={`${formatDate(day.date)}: ${day.registered} registered, ${day.scheduled} scheduled, ${day.event} event, ${total} total executions`}
+                  tabIndex={0}
+                >
+                  {series.map((item) => {
+                    const value = day[item.key];
+                    const segmentHeight = (value / maximum) * plotHeight;
+                    stackedHeight += segmentHeight;
+                    return (
+                      <rect
+                        fill={item.color}
+                        height={segmentHeight}
+                        key={item.key}
+                        opacity={0.82}
+                        rx="1"
+                        width={barWidth}
+                        x={x}
+                        y={top + plotHeight - stackedHeight}
+                      />
+                    );
+                  })}
+                  <rect
+                    fill="transparent"
+                    height={plotHeight}
+                    width={Math.max(barWidth, 8)}
+                    x={x - (Math.max(barWidth, 8) - barWidth) / 2}
+                    y={top}
+                  />
+                </g>
+              </Tooltip>
             );
           })}
           {[0, Math.floor((days.length - 1) / 2), days.length - 1].map(
