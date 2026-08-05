@@ -4,12 +4,14 @@ import {
   destinationSchema,
   destinationVisibilitySchema,
   isSlackDestination,
+  replyAttributionSchema,
   sourceSchema,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { credentialSubjectSchema } from "@/chat/credentials/context";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
+import { recordTaskExecution } from "@/chat/tasks/execution-stats";
 import type {
   BoundDispatchOptions,
   DispatchCreateResult,
@@ -59,6 +61,7 @@ const dispatchRecordSchema = z
     input: z.string().min(1),
     metadata: z.record(z.string(), z.string()).optional(),
     plugin: nonEmptyExactStringSchema,
+    replyAttribution: replyAttributionSchema.optional(),
     resultMessageTs: z.string().optional(),
     source: sourceSchema,
     status: dispatchStatusSchema,
@@ -102,7 +105,7 @@ const dispatchRecordSchema = z
       return;
     }
     if (
-      subject.binding.type !== "scheduled-task" ||
+      subject.binding.type !== subject.allowedWhen ||
       subject.binding.plugin !== record.plugin ||
       subject.binding.taskId !== subject.taskId
     ) {
@@ -339,7 +342,7 @@ export async function getDispatchRecord(
   return parseDispatchRecord(await state.get(getDispatchStorageKey(id)));
 }
 
-/** Create a plugin dispatch idempotently from the plugin's idempotency key. */
+/** Create a dispatch idempotently within its owner namespace. */
 export async function createOrGetDispatch(args: {
   nowMs: number;
   options: BoundDispatchOptions;
@@ -368,6 +371,9 @@ export async function createOrGetDispatch(args: {
       input: args.options.input,
       ...(metadata ? { metadata } : {}),
       plugin: args.plugin,
+      ...(args.options.replyAttribution
+        ? { replyAttribution: args.options.replyAttribution }
+        : {}),
       status: "pending",
       source: args.options.source,
       updatedAtMs: args.nowMs,
@@ -454,7 +460,8 @@ export async function markDispatchCompleted(
   id: string,
   resultMessageTs?: string,
 ): Promise<DispatchRecord | undefined> {
-  return await transitionDispatch(id, (record) =>
+  const previous = await getDispatchRecord(id);
+  const next = await transitionDispatch(id, (record) =>
     isTerminalDispatchStatus(record.status)
       ? record
       : {
@@ -464,6 +471,21 @@ export async function markDispatchCompleted(
           status: "completed",
         },
   );
+  if (
+    next?.status === "completed" &&
+    previous?.status !== "completed" &&
+    next.plugin === "junior"
+  ) {
+    const eventTaskId = next.metadata?.eventTaskId;
+    if (eventTaskId) {
+      await recordTaskExecution("event", eventTaskId, {
+        conversationId: getDispatchConversationId(next),
+        executionId: next.id,
+        nowMs: next.updatedAtMs,
+      });
+    }
+  }
+  return next;
 }
 
 /** Project a terminal conversation turn failure to the plugin API. */

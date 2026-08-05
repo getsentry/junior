@@ -17,6 +17,7 @@ const { agentMode, compactionState, counters, sessionLogState } = vi.hoisted(
         | "preflightCompaction"
         | "pendingProviderCall"
         | "cooperativeYield"
+        | "silentResume"
         | "terminalDelivery"
         | "steering"
         | "steeringDelivery"
@@ -418,6 +419,29 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
 
     async continue() {
       counters.continueCalls += 1;
+      if (agentMode.value === "silentResume") {
+        if (counters.continueCalls === 1) {
+          return {};
+        }
+        const confirmation = {
+          role: "assistant",
+          content: [
+            {
+              type: "text",
+              text: "Deleting preview-42 and all of its contents is permanent. Shall I proceed?",
+            },
+          ],
+          stopReason: "stop",
+          usage: { input: 2, output: 2 },
+        };
+        this.state.messages.push(confirmation);
+        await Promise.all(
+          this.subscribers.map((subscriber) =>
+            subscriber({ type: "message_end", message: confirmation }),
+          ),
+        );
+        return {};
+      }
       if (agentMode.value === "preflightCompaction") {
         compactionState.preflightContextText = this.state.messages
           .flatMap((message) => {
@@ -535,6 +559,7 @@ vi.mock("@/chat/runtime/dev-agent-trace", () => ({
 
 vi.mock("@/chat/sandbox/sandbox", () => ({
   createSandbox: () => ({
+    captureRepositoryInstructions: async () => undefined,
     workspace: {
       readFileToBuffer: async () => Buffer.from("", "utf8"),
       runCommand: async () => ({
@@ -592,8 +617,22 @@ const TEST_SOURCE = createSlackSource({
   teamId: TEST_DESTINATION.teamId,
   channelId: TEST_DESTINATION.channelId,
   threadTs: "1712345.0001",
-  type: "priv",
+  visibility: "private",
 });
+const TEST_USAGE = {
+  input: 1,
+  output: 1,
+  cacheRead: 0,
+  cacheWrite: 0,
+  totalTokens: 2,
+  cost: {
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    total: 0,
+  },
+};
 
 describe("agent run continuation", () => {
   beforeEach(async () => {
@@ -627,6 +666,7 @@ describe("agent run continuation", () => {
           messageText: "Make a large generated-file edit.",
         },
         routing: {
+          destinationVisibility: "private",
           source: TEST_SOURCE,
           destination: TEST_DESTINATION,
           actor: { platform: "slack", teamId: "T123", userId: "U123" },
@@ -678,6 +718,7 @@ describe("agent run continuation", () => {
           piMessages: priorMessages,
         },
         routing: {
+          destinationVisibility: "private",
           source: TEST_SOURCE,
           destination: TEST_DESTINATION,
           actor: { platform: "slack", teamId: "T123", userId: "U123" },
@@ -701,6 +742,7 @@ describe("agent run continuation", () => {
       turnId: "turn-1",
       input: { messageText: "help me" },
       routing: {
+        destinationVisibility: "private",
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
@@ -732,6 +774,7 @@ describe("agent run continuation", () => {
 
     expect(reply.piMessages?.map((message) => message.role)).toEqual([
       "user",
+      "user",
       "assistant",
       "toolResult",
       "assistant",
@@ -745,6 +788,7 @@ describe("agent run continuation", () => {
     );
     expect(sessionRecord?.state).toBe("running");
     expect(sessionRecord?.piMessages.map((message) => message.role)).toEqual([
+      "user",
       "user",
       "assistant",
       "toolResult",
@@ -779,6 +823,7 @@ describe("agent run continuation", () => {
       turnId: "turn-cancelled-backoff",
       input: { messageText: "help me" },
       routing: {
+        destinationVisibility: "private",
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
@@ -815,6 +860,7 @@ describe("agent run continuation", () => {
       turnId: "turn-cancelled-provider",
       input: { messageText: "help me" },
       routing: {
+        destinationVisibility: "private",
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
@@ -846,20 +892,7 @@ describe("agent run continuation", () => {
         api: "responses",
         provider: "openai",
         model: "gpt-5.3",
-        usage: {
-          input: 1,
-          output: 1,
-          cacheRead: 0,
-          cacheWrite: 0,
-          totalTokens: 2,
-          cost: {
-            input: 0,
-            output: 0,
-            cacheRead: 0,
-            cacheWrite: 0,
-            total: 0,
-          },
-        },
+        usage: TEST_USAGE,
         stopReason: "stop",
         timestamp: 2,
       },
@@ -879,6 +912,7 @@ describe("agent run continuation", () => {
         turnId: "turn-steering",
         input: { messageText: "help me", piMessages: priorMessages },
         routing: {
+          destinationVisibility: "private",
           destination: TEST_DESTINATION,
           source: TEST_SOURCE,
           actor: { platform: "slack", teamId: "T123", userId: "U123" },
@@ -941,6 +975,7 @@ describe("agent run continuation", () => {
       turnId: "turn-steering-delivery",
       input: { messageText: "help me" },
       routing: {
+        destinationVisibility: "private",
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
@@ -979,6 +1014,7 @@ describe("agent run continuation", () => {
       turnId: "turn-terminal-delivery-yield",
       input: { messageText: "help me" },
       routing: {
+        destinationVisibility: "private",
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
@@ -1002,6 +1038,7 @@ describe("agent run continuation", () => {
       turnId: "turn-delivery-steering-yield",
       input: { messageText: "help me" },
       routing: {
+        destinationVisibility: "private",
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
@@ -1033,6 +1070,7 @@ describe("agent run continuation", () => {
     );
     expect(sessionRecord?.piMessages.map((message) => message.role)).toEqual([
       "user",
+      "user",
       "assistant",
       "user",
     ]);
@@ -1046,6 +1084,7 @@ describe("agent run continuation", () => {
       turnId: "turn-yield",
       input: { messageText: "help me" },
       routing: {
+        destinationVisibility: "private",
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
@@ -1071,6 +1110,7 @@ describe("agent run continuation", () => {
     });
     expect(sessionRecord?.piMessages.map((message) => message.role)).toEqual([
       "user",
+      "user",
     ]);
     await expect(
       getAwaitingAgentContinueRequest({
@@ -1085,6 +1125,100 @@ describe("agent run continuation", () => {
     });
   });
 
+  it("delivers confirmation after resuming from an ask rejection boundary", async () => {
+    agentMode.value = "silentResume";
+    const conversationId = "conversation-ask-resume";
+    const turnId = "turn-ask-resume";
+    const messages = [
+      {
+        role: "user",
+        content: [{ type: "text", text: "Delete preview-42 after I confirm." }],
+        timestamp: 1,
+      },
+      {
+        role: "assistant",
+        api: "test",
+        provider: "test",
+        model: "test/model",
+        content: [
+          {
+            type: "toolCall",
+            id: "delete-preview-42",
+            name: "deleteWorkspace",
+            arguments: { workspace: "preview-42" },
+          },
+        ],
+        usage: TEST_USAGE,
+        stopReason: "toolUse",
+        timestamp: 2,
+      },
+      {
+        role: "toolResult",
+        toolCallId: "delete-preview-42",
+        toolName: "deleteWorkspace",
+        content: [{ type: "text", text: "confirmation required" }],
+        isError: true,
+        timestamp: 3,
+        details: {
+          guardianActionRejection: {
+            decision: "ask",
+            priorRejection: {
+              decision: "ask",
+              input: { workspace: "preview-42" },
+              reason:
+                "User has not confirmed permanently deleting preview-42 and all of its contents.",
+              tool: {
+                description:
+                  "Permanently delete preview-42 and all of its contents.",
+                name: "deleteWorkspace",
+              },
+            },
+            reason:
+              "User has not confirmed permanently deleting preview-42 and all of its contents.",
+            version: 1,
+          },
+        },
+      },
+    ] as PiMessage[];
+    await turnSessionState.upsertAgentTurnSessionRecord({
+      modelId: "test/model",
+      conversationId,
+      sessionId: turnId,
+      sliceId: 1,
+      state: "awaiting_resume",
+      destination: TEST_DESTINATION,
+      source: TEST_SOURCE,
+      piMessages: messages,
+      turnStartMessageIndex: 0,
+      resumeReason: "yield",
+      errorMessage: "Agent turn yielded at a safe boundary",
+    });
+    const delivered: Array<{ text: string }> = [];
+
+    const result = finalReply(
+      await executeAgentRun({
+        conversationId,
+        turnId,
+        input: { messageText: "Delete preview-42 after I confirm." },
+        routing: {
+          destinationVisibility: "private",
+          destination: TEST_DESTINATION,
+          source: TEST_SOURCE,
+          actor: { platform: "slack", teamId: "T123", userId: "U123" },
+        },
+        delivery: (message) => {
+          delivered.push({ text: extractAssistantText(message) });
+        },
+      }),
+    );
+
+    const confirmation =
+      "Deleting preview-42 and all of its contents is permanent. Shall I proceed?";
+    expect(result.text).toBe(confirmation);
+    expect(delivered).toEqual([{ text: confirmation }]);
+    expect(counters.continueCalls).toBe(2);
+  });
+
   it("keeps steered messages when yielding after steering drain", async () => {
     agentMode.value = "cooperativeYield";
 
@@ -1093,6 +1227,7 @@ describe("agent run continuation", () => {
       turnId: "turn-yield-steering",
       input: { messageText: "help me" },
       routing: {
+        destinationVisibility: "private",
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
@@ -1132,6 +1267,7 @@ describe("agent run continuation", () => {
     expect(sessionRecord?.piMessages.map((message) => message.role)).toEqual([
       "user",
       "user",
+      "user",
     ]);
     const serializedMessages = JSON.stringify(sessionRecord?.piMessages);
     expect(serializedMessages).toContain("help me");
@@ -1149,6 +1285,7 @@ describe("agent run continuation", () => {
       turnId: "turn-yield-persist-failure",
       input: { messageText: "help me" },
       routing: {
+        destinationVisibility: "private",
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
@@ -1182,6 +1319,7 @@ describe("agent run continuation", () => {
         turnId: "turn-tool-activity",
         input: { messageText: "run the tool" },
         routing: {
+          destinationVisibility: "private",
           destination: TEST_DESTINATION,
           source: TEST_SOURCE,
           actor: { platform: "slack", teamId: "T123", userId: "U123" },
@@ -1221,6 +1359,7 @@ describe("agent run continuation", () => {
         turnId: sessionId,
         input: { messageText: "help me", piMessages: [checkpointedPrompt] },
         routing: {
+          destinationVisibility: "private",
           destination: TEST_DESTINATION,
           source: TEST_SOURCE,
           actor: { platform: "slack", teamId: "T123", userId: "U123" },
@@ -1252,6 +1391,7 @@ describe("agent run continuation", () => {
       turnId: "turn-steering-failure",
       input: { messageText: "help me" },
       routing: {
+        destinationVisibility: "private",
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
         actor: { platform: "slack", teamId: "T123", userId: "U123" },

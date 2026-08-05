@@ -1,11 +1,14 @@
 .jr-real-work {
-  margin-inline: calc(50% - 50vw);
+  box-sizing: border-box;
+  margin-block: clamp(2rem, 4vw, 4rem) clamp(3rem, 6vw, 6rem);
+  margin-inline: calc(50% - 50vw + clamp(1rem, 4vw, 4rem));
   padding: clamp(5rem, 9vw, 9rem) max(1.25rem, calc((100vw - 86rem) / 2));
   position: relative;
+  width: calc(100vw - clamp(2rem, 8vw, 8rem));
 }
 
 .jr-real-work::before {
-  background: var(--jr-cream);
+  background: var(--jr-acid);
   border-block: 5px solid var(--jr-black);
   content: "";
   inset: 0;
@@ -258,6 +261,7 @@
   background: var(--jr-cream);
   border: 4px solid var(--jr-black);
   box-shadow: 7px 7px 0 var(--jr-black);
+  color: var(--jr-black);
   margin: 1.5rem 0 1.25rem;
   padding: 1rem;
   transform: rotate(1deg);

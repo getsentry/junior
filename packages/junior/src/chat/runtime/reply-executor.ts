@@ -130,6 +130,7 @@ import {
   recordAgentTurnSessionSummary,
 } from "@/chat/state/turn-session";
 import { completeDeliveredTurn } from "@/chat/services/turn-session-record";
+import { resolveDestinationVisibility } from "@/chat/conversations/destination-visibility";
 import { getConversationStore } from "@/chat/db";
 import {
   contextProvenance,
@@ -444,6 +445,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
     message: Message,
     options: {
       beforeFirstResponsePost?: () => Promise<void>;
+      conversationId?: string;
       destination: Destination;
       explicitMention?: boolean;
       ack?: () => Promise<void>;
@@ -473,24 +475,25 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
       !options.execution && channelId
         ? await resolveChannelName(thread)
         : undefined;
+    const destination = requireSlackDestination(
+      options.destination,
+      "Slack reply execution",
+    );
     const slackChannelType = resolveSlackChannelTypeFromMessage(message);
     const slackConversation = resolveSlackConversationContext({
       channelId,
       channelName,
       channelType: slackChannelType,
     });
-    // Source-confirmed visibility for destination persistence; undefined when
-    // the event carries no channel_type so existing visibility is not changed.
-    const destinationVisibility =
-      options.execution?.destinationVisibility ??
-      conversationVisibilityFromSlackChannelType(slackChannelType);
-    const threadTs = getThreadTs(threadId);
+    const destinationVisibility = await resolveDestinationVisibility({
+      destination,
+      visibility:
+        options.execution?.destinationVisibility ??
+        conversationVisibilityFromSlackChannelType(slackChannelType),
+    });
     const assistantThreadContext = getAssistantThreadContext(message);
+    const threadTs = getThreadTs(threadId) ?? assistantThreadContext?.threadTs;
     const messageTs = getMessageTs(message);
-    const destination = requireSlackDestination(
-      options.destination,
-      "Slack reply execution",
-    );
     const teamId = destination.teamId;
     const source =
       options.execution?.source ??
@@ -499,11 +502,11 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         messageTs,
         teamId,
         threadTs,
-        type: destinationVisibility === "public" ? "pub" : "priv",
+        visibility: destinationVisibility ?? "private",
       });
     const slackActionToken = readSlackActionToken(message);
     const runId = options.execution?.dispatch?.id ?? getRunId(thread, message);
-    const conversationId = threadId ?? runId;
+    const conversationId = options.conversationId ?? threadId ?? runId;
     if (!conversationId) {
       throw new Error("Slack reply execution requires a conversation id");
     }
@@ -615,6 +618,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               await sendSlackReply({
                 channelId,
                 conversationId,
+                replyAttribution: options.execution?.dispatch?.replyAttribution,
                 text,
                 threadTs,
               });
@@ -1062,21 +1066,27 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             return;
           }
           boundaryFailureCode = "delivery_failed";
-          let slackTs: string | undefined;
+          let slackMessageTs: string[] = [];
           // Prep runs outside the post try/catch so non-Slack failures are not
           // classified as retryable delivery errors.
           await beforeFirstResponsePost();
           try {
             if (channelId && thread.adapter.name === "slack") {
-              slackTs = await sendSlackReply({
+              slackMessageTs = await sendSlackReply({
                 channelId,
                 conversationId,
+                replyAttribution: options.execution?.dispatch?.replyAttribution,
                 text,
                 ...(threadTs ? { threadTs } : {}),
               });
             } else {
               for (const part of splitSlackReplyText(text)) {
-                slackTs = (await thread.post(buildSlackOutputMessage(part))).id;
+                const postedMessageTs = (
+                  await thread.post(buildSlackOutputMessage(part))
+                ).id;
+                if (postedMessageTs) {
+                  slackMessageTs.push(postedMessageTs);
+                }
               }
             }
           } catch (error) {
@@ -1094,6 +1104,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               failureCode: "delivery_failed",
             });
           }
+          const slackTs = slackMessageTs.at(-1);
           assistantMessageDelivered = true;
           acceptedDeliveryId = slackTs;
           options.onTurnDeliveryAccepted?.(slackTs);
@@ -1111,19 +1122,31 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             );
           }
           try {
+            const providerConversationIds = threadTs
+              ? [threadTs]
+              : slackMessageTs;
             await persistWithRetry(() =>
-              agentMessage && conversationId
-                ? commitAcceptedReply({
-                    agentMessage,
-                    conversation: preparedState.conversation,
-                    conversationMessageId: recordedMessageId,
-                    conversationId,
-                  })
-                : persistConversationMessages({
-                    conversation: preparedState.conversation,
-                    conversationId,
-                  }),
+              commitAcceptedReply({
+                ...(agentMessage ? { agentMessage } : {}),
+                conversation: preparedState.conversation,
+                conversationMessageId: recordedMessageId,
+                conversationId,
+                ...(options.execution?.dispatch &&
+                providerConversationIds.length > 0
+                  ? {
+                      providerConversationBindings: providerConversationIds.map(
+                        (providerConversationId) => ({
+                          provider: "slack",
+                          providerDestinationId: destination.channelId,
+                          providerTenantId: destination.teamId,
+                          providerConversationId,
+                        }),
+                      ),
+                    }
+                  : {}),
+              }),
             );
+            await options.onTurnStatePersisted?.();
           } catch (error) {
             logException(
               new Error("Accepted assistant message persistence failed"),
@@ -1357,7 +1380,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               slackConversation,
               source,
               destination,
-              destinationVisibility,
+              ...(destinationVisibility ? { destinationVisibility } : {}),
               surface: options.execution?.surface ?? "slack",
               dispatch: options.execution?.dispatch,
               toolChannelId,

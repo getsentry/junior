@@ -7,10 +7,7 @@ import type {
 } from "@sentry/junior/api/schema";
 
 import { Button, ToggleButton } from "../../components/Button";
-import { LocationDirectoryActivityChart } from "../../components/charts/LocationDirectoryActivityChart";
-import { PeopleActivityChart } from "../../components/charts/PeopleActivityChart";
 import { SystemMetricCharts } from "../../components/charts/SystemMetricCharts";
-import { ContributionGrid } from "../../components/ContributionGrid";
 import {
   TimeRangeSelector,
   type TimeRangeDays,
@@ -21,11 +18,14 @@ import { CardHeader } from "../../components/layout/CardHeader";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { MetricList, MetricValue } from "../../components/Metric";
 import { StatCard } from "../../components/metrics/StatCard";
-import { TranscriptMarkdown } from "../../components/TranscriptMarkdown";
-import { TranscriptText } from "../../components/TranscriptText";
-import { TranscriptToolView } from "../../components/TranscriptToolView";
+import { TranscriptMarkdown } from "../../conversations/TranscriptMarkdown";
+import { TranscriptText } from "../../conversations/TranscriptText";
+import { TranscriptToolView } from "../../conversations/TranscriptToolView";
 import { cn, dashboardContainerClass } from "../../styles";
 import type { TranscriptViewToolCallPart } from "../../types";
+import { LocationDirectoryActivityChart } from "../locations/LocationDirectoryActivityChart";
+import { ContributionGrid } from "../people/ContributionGrid";
+import { PeopleActivityChart } from "../people/PeopleActivityChart";
 
 const EVENT_NOTIFICATION = `[event notification]
 
@@ -161,7 +161,7 @@ const TOOL_CALL_FIXTURES = [
       id: "gallery-load-skill",
       input: { skill_name: "junior-qa" },
       name: "loadSkill",
-      output: { ok: true },
+      output: { skill_name: "junior-qa" },
       resultTimestamp: TOOL_CALL_TIMESTAMP + 8_105,
       status: "completed",
       type: "tool_call",
@@ -177,7 +177,7 @@ const TOOL_CALL_FIXTURES = [
         arguments: { query: "is:pr is:open", limit: 25 },
       },
       name: "executeTool",
-      output: { matches: 3, ok: true },
+      output: { matches: 3 },
       resultTimestamp: TOOL_CALL_TIMESTAMP + 10_723,
       status: "completed",
       type: "tool_call",
@@ -197,7 +197,7 @@ const TOOL_CALL_FIXTURES = [
         ignoredAfterFourEntries: "not shown in the collapsed preview",
       },
       name: "investigateDeploy",
-      output: { ok: true },
+      output: { channel_id: "C123" },
       resultTimestamp: TOOL_CALL_TIMESTAMP + 13_250,
       status: "completed",
       type: "tool_call",
@@ -346,20 +346,10 @@ export function ComponentsPage() {
           <TranscriptMarkdown text={GFM_SAMPLE} />
         </Fixture>
         <Fixture title="TranscriptText assistant">
-          <TranscriptText
-            firstChildIndex={0}
-            lastChildIndex={0}
-            role="assistant"
-            text={MIXED_ASSISTANT}
-          />
+          <TranscriptText role="assistant" text={MIXED_ASSISTANT} />
         </Fixture>
         <Fixture title="TranscriptText user">
-          <TranscriptText
-            firstChildIndex={0}
-            lastChildIndex={0}
-            role="user"
-            text={EVENT_NOTIFICATION}
-          />
+          <TranscriptText role="user" text={EVENT_NOTIFICATION} />
         </Fixture>
         <Fixture title="Tool calls">
           <ToolCallGallery />

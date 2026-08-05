@@ -4,11 +4,30 @@ import {
   definePromptContext,
   definePluginTool,
   defineJuniorPlugin,
-  pluginToolResultSchema,
+  pluginToolOutputSchema,
+  RESOURCE_EVENT_SUMMARY_MAX_LENGTH,
+  RESOURCE_EVENT_TEXT_MAX_LENGTH,
+  type ResourceEvent,
   type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const { logWarnMock, resolveViewerUserMock } = vi.hoisted(() => ({
+  logWarnMock: vi.fn(),
+  resolveViewerUserMock: vi.fn(),
+}));
+
+vi.mock("@/chat/logging", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/chat/logging")>();
+  return {
+    ...actual,
+    logWarn: logWarnMock,
+  };
+});
+vi.mock("@/chat/plugins/viewer", () => ({
+  resolveViewerUser: resolveViewerUserMock,
+}));
 import {
   createPluginHookRunner,
   getPluginApiRoutes,
@@ -24,9 +43,8 @@ import { createTools } from "@/chat/tools";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import type { SandboxSession } from "@/chat/sandbox/workspace";
 
-const demoToolResultSchema = pluginToolResultSchema.extend({
-  ok: z.literal(true),
-  status: z.literal("success"),
+const demoToolResultSchema = pluginToolOutputSchema.extend({
+  message: z.string(),
 });
 
 function demoPluginTool(
@@ -35,15 +53,17 @@ function demoPluginTool(
 ) {
   return definePluginTool({
     approvalMode,
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+      readOnlyHint: true,
+    },
     describeProposal: () => `${description} proposal`,
     description,
     inputSchema: z.object({}),
     outputSchema: demoToolResultSchema,
-    execute: () =>
-      ({
-        ok: true,
-        status: "success",
-      }) as const,
+    execute: () => ({ message: "done" }),
   });
 }
 
@@ -72,19 +92,22 @@ const SLACK_DESTINATION = {
 const SLACK_SOURCE = createSlackSource({
   teamId: SLACK_DESTINATION.teamId,
   channelId: SLACK_DESTINATION.channelId,
-  type: "priv",
+  visibility: "private",
 });
 
 class PrototypeTool {
+  annotations = {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+    readOnlyHint: true,
+  };
   description = "Prototype tool";
   inputSchema = z.toJSONSchema(z.object({}));
   outputSchema = z.toJSONSchema(demoToolResultSchema);
 
   execute() {
-    return {
-      ok: true,
-      status: "success",
-    } as const;
+    return { message: "done" };
   }
 }
 
@@ -93,7 +116,7 @@ function slackSource(channelId: string) {
     teamId: "T123",
     channelId,
 
-    type: "priv",
+    visibility: "private",
   });
 }
 
@@ -144,15 +167,20 @@ function fakeSandbox(
 }
 
 describe("agent plugin hooks", () => {
+  beforeEach(() => {
+    logWarnMock.mockReset();
+    resolveViewerUserMock.mockReset();
+  });
+
   it("accepts Slack source visibility from the runtime boundary", () => {
     expect(
       createSlackSource({
         teamId: "T123",
         channelId: "C123",
-        type: "pub",
+        visibility: "public",
         threadTs: "1718800000.000000",
-      }).type,
-    ).toBe("pub");
+      }).visibility,
+    ).toBe("public");
     // Without a signal, C-prefixed channels fail closed to private.
     expect(
       createSlackSource({
@@ -160,27 +188,27 @@ describe("agent plugin hooks", () => {
         channelId: "C123",
         threadTs: "1718800000.000000",
 
-        type: "priv",
-      }).type,
-    ).toBe("priv");
+        visibility: "private",
+      }).visibility,
+    ).toBe("private");
     expect(
       createSlackSource({
         teamId: "T123",
         channelId: "D123",
         threadTs: "1718800000.000000",
 
-        type: "priv",
-      }).type,
-    ).toBe("priv");
+        visibility: "private",
+      }).visibility,
+    ).toBe("private");
     expect(
       createSlackSource({
         teamId: "T123",
         channelId: "G123",
         threadTs: "1718800000.000000",
 
-        type: "priv",
-      }).type,
-    ).toBe("priv");
+        visibility: "private",
+      }).visibility,
+    ).toBe("private");
   });
 
   it("collects system prompt contributions from configured plugins", async () => {
@@ -465,7 +493,21 @@ describe("agent plugin hooks", () => {
     }
   });
 
-  it("collects turn-scoped tools from configured plugins", () => {
+  it("collects turn-scoped tools from configured plugins", async () => {
+    const identity = {
+      id: "identity-1",
+      provider: "slack",
+      providerSubjectId: TEST_ACTOR.userId,
+      providerTenantId: TEST_ACTOR.teamId,
+    };
+    const user = {
+      email: "person@example.com",
+      id: "user-1",
+      identities: [identity],
+    };
+    let resolveActor:
+      | ToolRegistrationHookContext["users"]["resolveActor"]
+      | undefined;
     const previous = setPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -476,6 +518,8 @@ describe("agent plugin hooks", () => {
         hooks: {
           tools(ctx) {
             expect(ctx.actor).toEqual(TEST_ACTOR);
+            expect(ctx.resourceEvents.canSubscribe).toBe(true);
+            resolveActor = ctx.users.resolveActor;
             return {
               demoTool: demoPluginTool("Demo tool", "review"),
             };
@@ -488,10 +532,12 @@ describe("agent plugin hooks", () => {
         destination: SLACK_DESTINATION,
         actor: TEST_ACTOR,
         egress: TEST_EGRESS,
+        resolveActorIdentity: async () => ({ identity, user }),
         source: SLACK_SOURCE,
         workspace: {} as any,
       });
 
+      await expect(resolveActor?.()).resolves.toEqual({ identity, user });
       expect(tools).toHaveProperty("agentDemo_demoTool");
       expect(tools.demoTool).toBeUndefined();
       expect(tools.agentDemo_demoTool?.identity).toEqual({
@@ -512,6 +558,51 @@ describe("agent plugin hooks", () => {
     }
   });
 
+  it("warns when a plugin tool omits behavioral annotations", () => {
+    const previous = setPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "agent-demo",
+          displayName: "Agent Demo",
+          description: "Agent demo",
+        },
+        hooks: {
+          tools() {
+            return {
+              demoTool: definePluginTool({
+                description: "Demo tool",
+                inputSchema: z.object({}),
+                outputSchema: demoToolResultSchema,
+                execute: () => ({ message: "done" }),
+              }),
+            };
+          },
+        },
+      }),
+    ]);
+    try {
+      getPluginTools({
+        destination: SLACK_DESTINATION,
+        actor: TEST_ACTOR,
+        egress: TEST_EGRESS,
+        source: SLACK_SOURCE,
+        workspace: {} as any,
+      });
+
+      expect(logWarnMock).toHaveBeenCalledWith(
+        "plugin.tool_annotations.missing",
+        {
+          "app.plugin.name": "agent-demo",
+          "gen_ai.tool.name": "demoTool",
+          "app.tool.missing_annotations":
+            "destructiveHint,idempotentHint,openWorldHint,readOnlyHint",
+        },
+      );
+    } finally {
+      setPlugins(previous);
+    }
+  });
+
   it("preserves plugin tool instances while adding internal identity", () => {
     const prototypeTool = new PrototypeTool();
     const previous = setPlugins([
@@ -522,7 +613,8 @@ describe("agent plugin hooks", () => {
           description: "Agent demo",
         },
         hooks: {
-          tools() {
+          tools(ctx) {
+            expect(ctx.resourceEvents.canSubscribe).toBe(false);
             return {
               prototypeTool,
             };
@@ -540,6 +632,7 @@ describe("agent plugin hooks", () => {
 
       expect(tools.agentDemo_prototypeTool).toBe(prototypeTool);
       expect(tools.prototypeTool).toBeUndefined();
+      expect(tools.agentDemo_prototypeTool?.approvalMode).toBe("auto");
       expect(tools.agentDemo_prototypeTool?.identity).toEqual({
         id: "agent-demo.prototypeTool",
         name: "prototypeTool",
@@ -554,8 +647,7 @@ describe("agent plugin hooks", () => {
         {},
       ) as ReturnType<PrototypeTool["execute"]> | undefined;
       expect(prototypeResult).toEqual({
-        ok: true,
-        status: "success",
+        message: "done",
       });
     } finally {
       setPlugins(previous);
@@ -796,6 +888,10 @@ describe("agent plugin hooks", () => {
   it("collects route handlers from configured plugins", async () => {
     const previous = setPlugins([
       defineJuniorPlugin({
+        resourceEvents: {
+          resourceTypes: [{ type: "demo", supportedEvents: ["demo.created"] }],
+          normalizeIdentifier: (identifier) => identifier.toLowerCase(),
+        },
         manifest: {
           name: "agent-demo",
           displayName: "Agent Demo",
@@ -811,9 +907,13 @@ describe("agent plugin hooks", () => {
                     eventKey: "demo:event",
                     eventType: "demo.created",
                     occurredAtMs: 1,
-                    provider: "agent-demo",
-                    resourceRef: "demo:resource:1",
-                    trustedSummary: "Demo created",
+                    identifier: "Resource:1",
+                    trustedSummary: "s".repeat(
+                      RESOURCE_EVENT_SUMMARY_MAX_LENGTH + 1,
+                    ),
+                    untrustedText: "u".repeat(
+                      RESOURCE_EVENT_TEXT_MAX_LENGTH + 1,
+                    ),
                   });
                   return new Response("demo");
                 },
@@ -824,7 +924,7 @@ describe("agent plugin hooks", () => {
       }),
     ]);
     try {
-      const publish = vi.fn(async () => {});
+      const publish = vi.fn(async (_event: ResourceEvent) => {});
       const routes = getPluginRoutes({ resourceEvents: { publish } });
 
       expect(routes).toHaveLength(1);
@@ -835,14 +935,25 @@ describe("agent plugin hooks", () => {
       );
       await expect(response.text()).resolves.toBe("demo");
       expect(publish).toHaveBeenCalledWith(
-        expect.objectContaining({ eventKey: "demo:event" }),
+        expect.objectContaining({
+          eventKey: "demo:event",
+          identifier: "resource:1",
+          namespace: "agent-demo",
+        }),
+      );
+      const published = publish.mock.calls[0]?.[0];
+      expect(published?.trustedSummary).toHaveLength(
+        RESOURCE_EVENT_SUMMARY_MAX_LENGTH,
+      );
+      expect(published?.untrustedText).toHaveLength(
+        RESOURCE_EVENT_TEXT_MAX_LENGTH,
       );
     } finally {
       setPlugins(previous);
     }
   });
 
-  it("rejects resource events claimed for another plugin", async () => {
+  it("rejects plugin-supplied resource event namespaces", async () => {
     const previous = setPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -860,10 +971,10 @@ describe("agent plugin hooks", () => {
                     eventKey: "other:event",
                     eventType: "demo.created",
                     occurredAtMs: 1,
-                    provider: "other",
-                    resourceRef: "other:resource:1",
+                    identifier: "resource:1",
+                    namespace: "other",
                     trustedSummary: "Demo created",
-                  });
+                  } as any);
                   return new Response("demo");
                 },
               },
@@ -878,14 +989,79 @@ describe("agent plugin hooks", () => {
 
       await expect(
         route!.handler(new Request("http://localhost/demo")),
-      ).rejects.toThrow(
-        'Plugin "agent-demo" cannot publish resource events for provider "other"',
-      );
+      ).rejects.toThrow(/Unrecognized key.*namespace/s);
       expect(publish).not.toHaveBeenCalled();
     } finally {
       setPlugins(previous);
     }
   });
+
+  it.each([
+    {
+      label: "without a registration",
+      resourceEvents: undefined,
+      error: "without an active registration",
+    },
+    {
+      label: "while its registration is disabled",
+      resourceEvents: {
+        resourceTypes: [{ type: "demo", supportedEvents: ["demo.created"] }],
+        isEnabled: () => false,
+      },
+      error: "without an active registration",
+    },
+    {
+      label: "when the event type is undeclared",
+      resourceEvents: {
+        resourceTypes: [{ type: "demo", supportedEvents: ["demo.created"] }],
+      },
+      error: 'did not register resource event "demo.deleted"',
+    },
+  ])(
+    "rejects resource event publication $label",
+    async ({ resourceEvents, error }) => {
+      const previous = setPlugins([
+        defineJuniorPlugin({
+          ...(resourceEvents ? { resourceEvents } : {}),
+          manifest: {
+            name: "agent-demo",
+            displayName: "Agent Demo",
+            description: "Agent demo",
+          },
+          hooks: {
+            routes(ctx) {
+              return [
+                {
+                  path: "/demo",
+                  async handler() {
+                    await ctx.resourceEvents.publish({
+                      eventKey: "demo:event",
+                      eventType: "demo.deleted",
+                      occurredAtMs: 1,
+                      identifier: "resource:1",
+                      trustedSummary: "Demo deleted",
+                    });
+                    return new Response("demo");
+                  },
+                },
+              ];
+            },
+          },
+        }),
+      ]);
+      try {
+        const publish = vi.fn(async () => {});
+        const [route] = getPluginRoutes({ resourceEvents: { publish } });
+
+        await expect(
+          route!.handler(new Request("http://localhost/demo")),
+        ).rejects.toThrow(error);
+        expect(publish).not.toHaveBeenCalled();
+      } finally {
+        setPlugins(previous);
+      }
+    },
+  );
 
   it("rejects invalid route methods from configured plugins", () => {
     const previous = setPlugins([
@@ -995,7 +1171,14 @@ describe("agent plugin hooks", () => {
   });
 
   it("collects API route apps from configured plugins", async () => {
-    let hasViewerActorResolver = false;
+    let resolveUser: ((email: string) => Promise<unknown>) | undefined;
+    let receivedContext: unknown;
+    const viewer = {
+      email: "person@example.com",
+      id: "user-1",
+      identities: [],
+    };
+    resolveViewerUserMock.mockResolvedValue(viewer);
     const previous = setPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -1005,9 +1188,12 @@ describe("agent plugin hooks", () => {
         },
         hooks: {
           apiRoutes(ctx) {
-            hasViewerActorResolver = typeof ctx.viewer.actors === "function";
+            resolveUser = ctx.users.resolve;
             return {
-              fetch: () => new Response("api demo"),
+              fetch: (_request, context) => {
+                receivedContext = context;
+                return new Response("api demo");
+              },
             };
           },
         },
@@ -1018,11 +1204,24 @@ describe("agent plugin hooks", () => {
 
       expect(routes).toHaveLength(1);
       expect(routes[0]?.pluginName).toBe("agent-demo");
-      expect(hasViewerActorResolver).toBe(true);
+      await expect(resolveUser?.("person@example.com")).resolves.toEqual(
+        viewer,
+      );
+      expect(resolveViewerUserMock).toHaveBeenCalledWith("person@example.com");
       const response = await routes[0]!.app.fetch(
         new Request("http://localhost/demo"),
+        {
+          auth: {
+            user: {
+              email: "person@example.com",
+              emailVerified: true,
+            },
+          },
+          pluginName: "agent-demo",
+        },
       );
       await expect(response.text()).resolves.toBe("api demo");
+      expect(receivedContext).not.toHaveProperty("viewer");
     } finally {
       setPlugins(previous);
     }
@@ -1308,11 +1507,14 @@ describe("agent plugin hooks", () => {
 
       const before = await runner.beforeToolExecute({
         name: "bash",
-        input: { command: "replace me" },
+        input: {
+          command: "replace me",
+          env: { PUBLIC_MODE: "preview" },
+        },
       });
       expect(before.input).toEqual({
         command: "replaced",
-        env: { AGENT_PLUGIN: "U123" },
+        env: { PUBLIC_MODE: "preview" },
       });
       expect(before.env).toEqual({ AGENT_PLUGIN: "U123" });
     } finally {

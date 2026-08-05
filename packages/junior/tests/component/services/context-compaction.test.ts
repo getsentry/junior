@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
+import {
+  AGENTS_REPLACEMENT_NOTICE,
+  buildAgentsInstructionsMessage,
+} from "@/chat/repository-instructions";
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -361,6 +365,88 @@ describe("context compaction projection reset", () => {
     await expect(loadProjection({ conversationId })).resolves.toEqual(original);
   });
 
+  it("retains split host context during active compaction", async () => {
+    const { compactActiveContextIfNeeded } =
+      await import("@/chat/services/context-compaction");
+    const conversationId = "conversation-active-split-context";
+    const timestamp = 3;
+    const contextMessage = {
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: "<runtime-turn-context>\nRuntime facts\n</runtime-turn-context>",
+        },
+        {
+          type: "text",
+          text: "<skill>\nUse the repository formatter.\n</skill>",
+        },
+        {
+          type: "text",
+          text: "<thread-background>\nKeep the API stable.\n</thread-background>",
+        },
+        {
+          type: "text",
+          text: "# AGENTS.md instructions for /vercel/sandbox/repo\n\n<INSTRUCTIONS>\nUse the old formatter.\n</INSTRUCTIONS>",
+        },
+      ],
+      timestamp,
+    } as PiMessage;
+    const instruction = user(
+      "<current-instruction>\nImplement the change.\n</current-instruction>",
+      timestamp,
+    );
+    const agents = buildAgentsInstructionsMessage({
+      directory: "/vercel/sandbox/repo",
+      text: `${AGENTS_REPLACEMENT_NOTICE}\n\nUse the new formatter.`,
+      timestamp: 4,
+    });
+
+    const result = await compactActiveContextIfNeeded(
+      {
+        conversationId,
+        modelId: "openai/gpt-5.4",
+        modelProfile: "standard",
+        pendingMessages: [
+          { message: instruction, provenance: { authority: "instruction" } },
+        ],
+        piMessages: [
+          {
+            role: "toolResult",
+            toolCallId: "tool-1",
+            toolName: "oversized",
+            content: [{ type: "text", text: "x".repeat(1_600_000) }],
+            isError: false,
+            timestamp: 2,
+          } as PiMessage,
+          contextMessage,
+        ],
+        runtimeContextMessages: [contextMessage, instruction, agents],
+      },
+      {
+        completeText: async () => ({ text: "Short summary." }) as never,
+      },
+    );
+
+    expect(result.compacted).toBe(true);
+    expect(result.piMessages?.map(textOf)).toEqual([
+      expect.stringContaining("<runtime-turn-context>"),
+      expect.stringContaining("<current-instruction>"),
+      expect.stringContaining("Short summary."),
+    ]);
+    expect(textOf(result.piMessages![0]!)).toContain(
+      "Use the repository formatter.",
+    );
+    expect(textOf(result.piMessages![0]!)).toContain("Keep the API stable.");
+    expect(textOf(result.piMessages![0]!)).toContain("Use the new formatter.");
+    expect(textOf(result.piMessages![0]!)).not.toContain(
+      "Use the old formatter.",
+    );
+    expect(textOf(result.piMessages![0]!)).not.toContain(
+      AGENTS_REPLACEMENT_NOTICE,
+    );
+  });
+
   it("blocks the next provider request when hard-limit compaction fails", async () => {
     const { compactActiveContextIfNeeded, ContextInputLimitExceededError } =
       await import("@/chat/services/context-compaction");
@@ -440,17 +526,18 @@ describe("context compaction projection reset", () => {
       },
     );
 
-    expect(handoffMessages).toHaveLength(1);
+    expect(handoffMessages).toHaveLength(2);
     expect(textOf(handoffMessages[0]!)).toContain(
       "<runtime-turn-context>\nFresh runtime context\n</runtime-turn-context>",
     );
-    expect(textOf(handoffMessages[0]!)).toContain(
+    expect(textOf(handoffMessages[0]!)).not.toContain("<current-instruction>");
+    expect(textOf(handoffMessages[1]!)).toContain(
       "<current-instruction>\nModel handoff checkpoint.",
     );
-    expect(textOf(handoffMessages[0]!)).toContain(
+    expect(textOf(handoffMessages[1]!)).toContain(
       "Continue the outstanding request now",
     );
-    expect(textOf(handoffMessages[0]!)).toContain(
+    expect(textOf(handoffMessages[1]!)).toContain(
       "Continue the multi-file implementation.",
     );
     const durableHandoffMessages = [
@@ -590,7 +677,7 @@ describe("context compaction projection reset", () => {
     ).toBe("standard");
   });
 
-  it("uses the latest runtime context and rejects a missing bootstrap", async () => {
+  it("uses the latest runtime context and supports AGENTS-only context", async () => {
     const { compactContextForHandoff } =
       await import("@/chat/services/context-compaction");
     const completeText = async () => ({ text: "Continue safely." }) as never;
@@ -599,6 +686,11 @@ describe("context compaction projection reset", () => {
       modelProfile: "handoff" as const,
     };
 
+    const agents = buildAgentsInstructionsMessage({
+      directory: "/vercel/sandbox/repo",
+      text: "Use pnpm.",
+      timestamp: 3,
+    });
     const messages = await compactContextForHandoff(
       {
         conversationId: "conversation-latest-runtime-context",
@@ -610,6 +702,7 @@ describe("context compaction projection reset", () => {
           user(
             "<runtime-turn-context>\nCurrent runtime context\n</runtime-turn-context>",
           ),
+          agents,
         ],
         triggeringToolCallId: "latest-context-handoff-call",
         target,
@@ -617,8 +710,26 @@ describe("context compaction projection reset", () => {
       { completeText },
     );
 
+    expect(messages).toHaveLength(2);
     expect(textOf(messages[0]!)).toContain("Current runtime context");
+    expect(textOf(messages[0]!)).toContain("Use pnpm.");
     expect(textOf(messages[0]!)).not.toContain("Stale runtime context");
+    expect(textOf(messages[1]!)).toContain("<current-instruction>");
+
+    const agentsOnlyMessages = await compactContextForHandoff(
+      {
+        conversationId: "conversation-agents-only-runtime-context",
+        piMessages: [user("Implement the change.")],
+        runtimeContext: [agents],
+        triggeringToolCallId: "agents-only-context-handoff-call",
+        target,
+      },
+      { completeText },
+    );
+    expect(agentsOnlyMessages).toHaveLength(2);
+    expect(textOf(agentsOnlyMessages[0]!)).toContain("Use pnpm.");
+    expect(textOf(agentsOnlyMessages[1]!)).toContain("<current-instruction>");
+
     await expect(
       compactContextForHandoff(
         {

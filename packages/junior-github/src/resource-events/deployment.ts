@@ -10,7 +10,7 @@ export const GITHUB_DEPLOYMENT_EVENTS = [
   "deployment.error",
 ] as const;
 
-const SUGGESTED_EVENTS = [
+export const GITHUB_DEPLOYMENT_SUGGESTED_EVENTS = [
   "deployment.succeeded",
   "deployment.failed",
   "deployment.error",
@@ -21,16 +21,16 @@ export function gitHubDeploymentSourceResource(input: {
   commitSha: string;
   environment?: string;
   repo: string;
-}): Pick<SubscribableResource, "label" | "provider" | "resourceRef"> {
+}): Pick<SubscribableResource, "label" | "namespace" | "identifier"> {
   const commitSha = input.commitSha.toLowerCase();
   const environment = input.environment?.trim();
   const repo = input.repo.toLowerCase();
   return {
     label: `GitHub deployment for ${repo} at ${commitSha.slice(0, 12)}`,
-    provider: "github",
-    resourceRef: environment
-      ? `github:deployment-source:${repo}:${encodeURIComponent(environment.toLowerCase())}:${commitSha}`
-      : `github:deployment-source:${repo}:${commitSha}`,
+    namespace: "github",
+    identifier: environment
+      ? `deployment-source:${repo}:${encodeURIComponent(environment.toLowerCase())}:${commitSha}`
+      : `deployment-source:${repo}:${commitSha}`,
   };
 }
 
@@ -43,7 +43,7 @@ export function gitHubDeploymentSourceSubscribable(input: {
   if (!process.env.GITHUB_WEBHOOK_SECRET?.trim()) return undefined;
   return {
     ...gitHubDeploymentSourceResource(input),
-    suggestedEvents: SUGGESTED_EVENTS,
+    suggestedEvents: GITHUB_DEPLOYMENT_SUGGESTED_EVENTS,
     supportedEvents: [...GITHUB_DEPLOYMENT_EVENTS],
     type: "deployment_source",
   };

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createLocalSource,
   defineJuniorPlugin,
-  pluginToolResultSchema,
+  pluginToolOutputSchema,
   zodTool,
 } from "@sentry/junior-plugin-api";
 import { Type } from "@sinclair/typebox";
@@ -13,14 +13,8 @@ import { createTools } from "@/chat/tools";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
 import { tool, type AnyToolDefinition } from "@/chat/tools/definition";
 
-const customerResultSchema = pluginToolResultSchema.extend({
-  ok: z.literal(true),
-  status: z.literal("success"),
+const customerResultSchema = pluginToolOutputSchema.extend({
   customer_id: z.string(),
-  data: z.object({
-    customer_id: z.string(),
-    status: z.string(),
-  }),
   status_text: z.string(),
 });
 
@@ -55,6 +49,15 @@ function agentTool(tools: ReturnType<typeof createPiAgentTools>, name: string) {
 describe("Pi tool adapter integration", () => {
   it("discovers and executes plugin tools through catalog tool primitives", async () => {
     const onToolCall = vi.fn();
+    const actionReview = {
+      projectToolResult: <T>(_: string, result: T) => result,
+      review: vi.fn(async () => ({
+        decision: "allow" as const,
+        reason: "Read-only lookup requested by the user.",
+        riskLevel: "low" as const,
+        userAuthorization: "high" as const,
+      })),
+    };
     const previousPlugins = setPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -66,12 +69,22 @@ describe("Pi tool adapter integration", () => {
           tools() {
             return {
               lookupCustomer: zodTool({
+                annotations: {
+                  destructiveHint: false,
+                  idempotentHint: true,
+                  openWorldHint: true,
+                  readOnlyHint: true,
+                },
                 description: "Lookup customer health for account review.",
                 inputSchema: z.object({
                   customerId: z
                     .string()
                     .min(1)
                     .describe("Customer identifier to inspect."),
+                  note: z
+                    .string()
+                    .optional()
+                    .describe("Optional account note."),
                 }),
                 outputSchema: customerResultSchema,
                 prepareArguments: (args) => {
@@ -82,13 +95,7 @@ describe("Pi tool adapter integration", () => {
                 },
                 execute: async ({ customerId }) =>
                   ({
-                    ok: true,
-                    status: "success",
                     customer_id: customerId,
-                    data: {
-                      customer_id: customerId,
-                      status: "healthy",
-                    },
                     status_text: "healthy",
                   }) as const,
               }),
@@ -110,6 +117,8 @@ describe("Pi tool adapter integration", () => {
         onToolCall,
         undefined,
         "private",
+        undefined,
+        actionReview,
       );
 
       expect(registry.agentDemo_lookupCustomer?.exposure).toBe("deferred");
@@ -136,7 +145,21 @@ describe("Pi tool adapter integration", () => {
           {
             tool_name: "agentDemo_lookupCustomer",
             source: "agent-demo",
-            input_schema_summary: "customerId (required)",
+            input_schema: {
+              properties: {
+                customerId: {
+                  description: "Customer identifier to inspect.",
+                  minLength: 1,
+                  type: "string",
+                },
+                note: {
+                  description: "Optional account note.",
+                  type: "string",
+                },
+              },
+              required: ["customerId"],
+              type: "object",
+            },
           },
         ],
       });
@@ -150,13 +173,7 @@ describe("Pi tool adapter integration", () => {
       );
 
       expect(executeResult.details).toMatchObject({
-        ok: true,
-        data: {
-          customer_id: "C123",
-          status: "healthy",
-        },
         customer_id: "C123",
-        status: "success",
         status_text: "healthy",
       });
       expect(onToolCall).toHaveBeenCalledWith(
@@ -165,6 +182,13 @@ describe("Pi tool adapter integration", () => {
         {
           customerId: "C123",
         },
+      );
+      expect(actionReview.review).toHaveBeenCalledWith(
+        "tool-execute",
+        "agentDemo_lookupCustomer",
+        registry.agentDemo_lookupCustomer,
+        { customerId: "C123" },
+        undefined,
       );
     } finally {
       setPlugins(previousPlugins);
@@ -176,19 +200,19 @@ describe("Pi tool adapter integration", () => {
       directDemo: tool({
         description: "Direct demo",
         inputSchema: Type.Object({}),
-        execute: async () => ({ ok: true }),
+        execute: async () => ({ tool: "directDemo" }),
       }),
       hiddenDemo: tool({
         description: "Hidden demo",
         exposure: "hidden",
         inputSchema: Type.Object({}),
-        execute: async () => ({ ok: true }),
+        execute: async () => ({ tool: "hiddenDemo" }),
       }),
       catalogOnlyDemo: tool({
         description: "Catalog-only demo",
         exposure: "deferred",
         inputSchema: Type.Object({}),
-        execute: async () => ({ ok: true }),
+        execute: async () => ({ tool: "catalogOnlyDemo" }),
       }),
     };
     const tools = createPiAgentTools(definitions, new SkillSandbox([], []), {});
@@ -202,13 +226,13 @@ describe("Pi tool adapter integration", () => {
         tool_name: "directDemo",
         arguments: {},
       }),
-    ).resolves.toMatchObject({ details: { ok: true } });
+    ).resolves.toMatchObject({ details: { tool: "directDemo" } });
     await expect(
       executeTool.execute("tool-catalog-only", {
         tool_name: "catalogOnlyDemo",
         arguments: {},
       }),
-    ).resolves.toMatchObject({ details: { ok: true } });
+    ).resolves.toMatchObject({ details: { tool: "catalogOnlyDemo" } });
     await expect(
       executeTool.execute("tool-hidden", {
         tool_name: "hiddenDemo",

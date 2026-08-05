@@ -75,7 +75,7 @@ function catalog() {
 }
 
 describe("searchTools", () => {
-  it("discovers catalog tools from metadata and returns call details", async () => {
+  it("discovers catalog tools from metadata and returns their schemas", async () => {
     const searchTools = createSearchToolsTool(catalog());
 
     expect(searchTools.description).toContain(
@@ -105,26 +105,12 @@ describe("searchTools", () => {
       total_matches: 1,
       returned_tools: 1,
       execution_tool: "executeTool",
-      execution_example: {
-        tool_name: "<returned tool_name>",
-        arguments: {
-          "<argument>": "<value from input_schema>",
-        },
-      },
       tools: [
         {
           tool_name: "agentDemo_lookupCustomer",
           description: "Lookup customer health for account review.",
           exposure: "deferred",
           source: "agent-demo",
-          signature: "agentDemo_lookupCustomer({ customerId: string })",
-          call: {
-            tool_name: "agentDemo_lookupCustomer",
-            arguments: {
-              customerId: "<customerId>",
-            },
-          },
-          input_schema_summary: "customerId (required)",
           input_schema: {
             properties: {
               customerId: {
@@ -140,6 +126,7 @@ describe("searchTools", () => {
         },
       ],
     });
+    expect(result).not.toHaveProperty("data");
 
     const privateTraceResult = searchTools.privateTraceResult?.(result);
     expect(privateTraceResult).toEqual({
@@ -160,14 +147,16 @@ describe("searchTools", () => {
         {
           tool_name: "bash",
           exposure: "direct",
-          signature: "bash({ command: string })",
-          call: {
-            tool_name: "bash",
-            arguments: {
-              command: "<command>",
+          input_schema: {
+            required: ["command"],
+            properties: {
+              command: {
+                description: "Command to execute.",
+                minLength: 1,
+                type: "string",
+              },
             },
           },
-          input_schema_summary: "command (required)",
         },
       ],
     });

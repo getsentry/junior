@@ -1,14 +1,14 @@
 import { useState } from "react";
 import { Duration, formatDuration } from "../../components/Duration";
-import { Clock3, Coins, MessageSquare } from "lucide-react";
-import { useParams } from "react-router";
+import { ArrowLeft, Clock3, Coins, MessageSquare } from "lucide-react";
+import { Link, useParams } from "react-router";
 import type {
   ActorProfileReport,
   ConversationStatsItem,
 } from "@sentry/junior/api/schema";
 
 import { useActorProfileData } from "../../api";
-import { ContributionGrid } from "../../components/ContributionGrid";
+import { ContributionGrid } from "./ContributionGrid";
 import { SystemMetricCharts } from "../../components/charts/SystemMetricCharts";
 import {
   TimeRangeSelector,
@@ -16,14 +16,14 @@ import {
 } from "../../components/controls/TimeRangeSelector";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { LoadingView } from "../../components/LoadingView";
-import { Section } from "../../components/Section";
-import { SectionHeader } from "../../components/SectionHeader";
-import { SectionTitle } from "../../components/SectionTitle";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
+import { PageLayout } from "../../components/layout/PageLayout";
+import { SectionHeader } from "../../components/layout/SectionHeader";
+import { SectionIntro } from "../../components/layout/SectionIntro";
+import { SectionTitle } from "../../components/layout/SectionTitle";
 import { StatCard } from "../../components/metrics/StatCard";
 import { formatCompactNumber } from "../../format";
-import { cn, dashboardContainerClass } from "../../styles";
 
 function runtimeLabel(durationMs: number, conversations: number): string {
   if (durationMs <= 0 && conversations > 0) return "unknown";
@@ -39,7 +39,7 @@ export function PersonProfilePage() {
     return <LoadingView label="Loading profile" />;
   }
   return (
-    <div className={cn(dashboardContainerClass, "px-4 py-4 sm:px-8 sm:py-8")}>
+    <PageLayout>
       {query.data ? (
         <Profile profile={query.data} />
       ) : (
@@ -47,7 +47,7 @@ export function PersonProfilePage() {
           <EmptyTelemetry>Profile failed to load.</EmptyTelemetry>
         </Card>
       )}
-    </div>
+    </PageLayout>
   );
 }
 
@@ -62,6 +62,13 @@ export function Profile(props: { profile: ActorProfileReport }) {
 
   return (
     <div className="grid min-w-0 gap-5">
+      <Link
+        className="flex w-fit items-center gap-2 font-display text-sm font-medium text-dashboard-text-muted no-underline transition-colors hover:text-dashboard-text"
+        to="/system/people"
+      >
+        <ArrowLeft aria-hidden="true" size={15} strokeWidth={1.8} />
+        Back to people
+      </Link>
       <PageHeader
         actions={<TimeRangeSelector onChange={setRange} value={range} />}
         description={
@@ -72,22 +79,16 @@ export function Profile(props: { profile: ActorProfileReport }) {
               : ""}
           </>
         }
-        eyebrow="People / profile"
+        eyebrow="Person"
         title={displayName}
       />
 
       <section className="grid gap-4" aria-labelledby="profile-metrics-title">
-        <div>
-          <div className="font-mono text-[0.62rem] uppercase tracking-[0.16em] text-cyan-200/65">
-            Runtime telemetry
-          </div>
-          <h2
-            className="mt-1 mb-0 font-display text-xl font-medium tracking-[-0.02em] text-dashboard-text"
-            id="profile-metrics-title"
-          >
-            Usage over time
-          </h2>
-        </div>
+        <SectionIntro
+          eyebrow="Runtime telemetry"
+          id="profile-metrics-title"
+          title="Usage over time"
+        />
         <SystemMetricCharts days={profile.activityDays.slice(-range)} />
       </section>
 
@@ -116,7 +117,7 @@ export function Profile(props: { profile: ActorProfileReport }) {
         </aside>
 
         <div className="grid min-w-0 gap-5 lg:order-1">
-          <Section className="mb-0">
+          <Card as="section" className="mb-0" variant="section">
             <SectionHeader
               actions={
                 <div className="font-mono text-[0.66rem] uppercase tracking-[0.12em] text-dashboard-text-muted">
@@ -127,7 +128,7 @@ export function Profile(props: { profile: ActorProfileReport }) {
               <SectionTitle>Activity</SectionTitle>
             </SectionHeader>
             <ContributionGrid days={profile.activityDays} />
-          </Section>
+          </Card>
           <div className="grid min-w-0 gap-5 md:grid-cols-2">
             <LeaderboardSection items={profile.locations} title="Places" />
             <LeaderboardSection items={profile.surfaces} title="Surfaces" />
@@ -144,7 +145,7 @@ function LeaderboardSection(props: {
 }) {
   if (props.items.length <= 1) return null;
   return (
-    <Section className="mb-0">
+    <Card as="section" className="mb-0" variant="section">
       <SectionHeader>
         <SectionTitle>{props.title}</SectionTitle>
       </SectionHeader>
@@ -177,6 +178,6 @@ function LeaderboardSection(props: {
           </li>
         ))}
       </ol>
-    </Section>
+    </Card>
   );
 }

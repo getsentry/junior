@@ -11,7 +11,7 @@ import {
 } from "@/chat/conversations/history";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
-import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
+import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
@@ -58,7 +58,7 @@ const projectedEventSchema = z
   })
   .strict();
 
-const queryConversationEventsOutputSchema = juniorToolResultSchema.extend({
+const queryConversationEventsOutputSchema = juniorToolOutputSchema.extend({
   conversation_id: z.string().min(1),
   events: z.array(projectedEventSchema),
   has_older: z
@@ -95,7 +95,12 @@ export function createQueryConversationEventsTool(context: ToolRuntimeContext) {
       "Inspect Junior's stored turns, tool calls, handoffs, and compaction events when debugging its behavior. Returns events from the current conversation tree or another retained public conversation in the same Slack workspace, newest first by default.",
     exposure: "deferred",
     source: CONVERSATION_EVENTS_TOOL_SOURCE,
-    annotations: { readOnlyHint: true, destructiveHint: false },
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+      readOnlyHint: true,
+    },
     inputSchema: z
       .object({
         conversation_id: z
@@ -213,8 +218,6 @@ export function createQueryConversationEventsTool(context: ToolRuntimeContext) {
       const projected = projectEventsForTool(page, { newestFirst });
 
       return {
-        ok: true,
-        status: "success" as const,
         conversation_id: conversationId,
         events: projected.events,
         has_older:
@@ -330,13 +333,9 @@ function assertCanQueryConversationEvents(args: {
     return;
   }
 
-  const publicPayloadAllowed = canExposeConversationPayload({
-    conversationId: targetRootConversationId ?? targetConversationId,
-    ...(targetVisibility ? { visibility: targetVisibility } : {}),
-    ...(targetDestination?.platform === "slack"
-      ? { channelId: targetDestination.channelId }
-      : {}),
-  });
+  const publicPayloadAllowed = canExposeConversationPayload(
+    targetVisibility ? { visibility: targetVisibility } : {},
+  );
   if (!publicPayloadAllowed) {
     throw new ToolInputError(
       `Conversation events are not accessible: ${targetConversationId}`,

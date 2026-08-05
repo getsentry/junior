@@ -5,10 +5,12 @@ import type {
   SkillReport,
 } from "@sentry/junior/api/schema";
 import type {
+  ActorIdentity,
   ConversationStatsReport,
   ConversationSummaryReport,
 } from "@sentry/junior/api/schema";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
+import type { ConversationEventPresentation } from "@sentry/junior-plugin-api";
 import type { DashboardConfig, DashboardIdentity } from "../api/schema";
 
 export type TranscriptViewTextPart =
@@ -68,8 +70,17 @@ export type TranscriptViewContextEventPart = {
   type: "context_event";
 };
 
+export type TranscriptViewStructuredEventPart = {
+  name: string;
+  namespace: string;
+  presentation: ConversationEventPresentation;
+  type: "structured_event";
+  version: number;
+};
+
 export type TranscriptViewPart =
   | TranscriptViewContextEventPart
+  | TranscriptViewStructuredEventPart
   | TranscriptViewReasoningPart
   | TranscriptViewSubagentPart
   | TranscriptViewTextPart
@@ -84,6 +95,7 @@ export type TranscriptViewTurnContext = {
 };
 
 export type TranscriptViewMessage = {
+  actorIdentity?: ActorIdentity;
   contexts?: TranscriptViewTurnContext[];
   eventType?: string;
   route?: {
@@ -104,6 +116,7 @@ export type ConversationTranscript = ConversationDetailReport;
 
 export type Conversation = {
   archivedAt?: string;
+  auxiliaryCosts?: ConversationSummaryReport["auxiliaryCosts"];
   channel?: string;
   channelName?: string;
   channelNameRedacted?: boolean;
@@ -116,6 +129,7 @@ export type Conversation = {
   locationId?: string;
   actorIdentity?: ConversationSummaryReport["actorIdentity"];
   sentryTraceUrl?: string;
+  sourceUrl?: string;
   startedAt: string;
   status: ConversationSummaryReport["status"];
   surface: ConversationSummaryReport["surface"];
@@ -148,12 +162,3 @@ export type CodeBlock = {
   fenced?: boolean;
   language: BundledLanguage;
 };
-
-export type MarkupNode =
-  | {
-      type: "element";
-      attributes: Array<[string, string]>;
-      children: MarkupNode[];
-      tagName: string;
-    }
-  | { type: "text"; text: string };

@@ -19,6 +19,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
 import { createPluginLogger } from "@/chat/plugins/logging";
+import { createPluginConversationEvents } from "@/chat/plugins/conversation-events";
 import { createPluginEmbedder, createPluginModel } from "@/chat/plugins/model";
 import { createPluginState } from "@/chat/plugins/state";
 import type { PiMessage } from "@/chat/pi/messages";
@@ -35,7 +36,10 @@ import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import type { ConversationMessage } from "@/chat/state/conversation";
 import { parseSlackMessageTs } from "@/chat/slack/timestamp";
-import type { ConversationMessageProvenance } from "@/chat/conversations/provenance";
+import {
+  sameActorIdentity,
+  type ConversationMessageProvenance,
+} from "@/chat/conversations/provenance";
 import {
   getAgentTurnSessionRecord,
   type AgentTurnSessionRecord,
@@ -49,6 +53,7 @@ import {
 } from "./task-message";
 import { sendVercelPluginTask } from "./task-queue";
 import { getStateAdapter } from "@/chat/state/adapter";
+import { recordTaskExecution } from "@/chat/tasks/execution-stats";
 import type { Lock } from "chat";
 
 const PLUGIN_TASK_LOCK_TTL_MS = 5 * 60 * 1000;
@@ -114,27 +119,6 @@ function sanitizeText(text: string): string {
     )
     .replaceAll("\u0000", " ")
     .trim();
-}
-
-/** Compare two actors by runtime identity only, never by display name. */
-function sameActorIdentity(
-  left: Actor | undefined,
-  right: Actor | undefined,
-): boolean {
-  if (!left || !right || left.platform !== right.platform) {
-    return false;
-  }
-  if (left.platform === "system" || right.platform === "system") {
-    return (
-      left.platform === "system" &&
-      right.platform === "system" &&
-      left.name === right.name
-    );
-  }
-  if (left.platform === "slack" && right.platform === "slack") {
-    return left.teamId === right.teamId && left.userId === right.userId;
-  }
-  return left.userId === right.userId;
 }
 
 /** Build the transcript provenance for a user message from its Pi provenance. */
@@ -395,6 +379,12 @@ function taskPluginContext(
     embedder: createPluginEmbedder(pluginName, {
       signal: options.signal,
     }),
+    events: createPluginConversationEvents({
+      conversationId: sessionParams.conversationId,
+      operationId: pluginTaskId(message),
+      plugin,
+      turnId: sessionParams.sessionId,
+    }),
     id: pluginTaskId(message),
     log: createPluginLogger(pluginName),
     model: createPluginModel(pluginName, plugin.model, {
@@ -469,5 +459,10 @@ export async function processPluginTask(
     await resolved.task.run(
       taskPluginContext(resolved.plugin, message, options),
     );
+    await recordTaskExecution("registered", message.name, {
+      conversationId: message.params.conversationId,
+      executionId: pluginTaskId(message),
+      namespace: message.plugin,
+    });
   });
 }

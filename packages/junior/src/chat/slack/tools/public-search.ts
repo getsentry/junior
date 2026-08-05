@@ -5,8 +5,9 @@ import {
   SlackActionError,
   withSlackRetries,
 } from "@/chat/slack/client";
-import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
+import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 const DEFAULT_LIMIT = 10;
 
@@ -32,7 +33,7 @@ const searchMessageSchema = z.object({
   permalink: z.string().url(),
 });
 
-const publicSearchOutputSchema = juniorToolResultSchema.extend({
+const publicSearchOutputSchema = juniorToolOutputSchema.extend({
   query: z.string(),
   count: z.number().int().nonnegative(),
   messages: z.array(searchMessageSchema),
@@ -71,7 +72,12 @@ export function createSlackPublicSearchTool(actionToken: SlackActionToken) {
   return zodTool({
     description:
       "Search public Slack channel messages across the current workspace. Use when the user asks about company activity, announcements, public mentions, or context outside the active channel. Search only when requested or clearly needed, prefer focused keywords and time bounds, and cite returned permalinks. This never searches private channels or DMs.",
-    annotations: { readOnlyHint: true, destructiveHint: false },
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+      readOnlyHint: true,
+    },
     inputSchema: z.object({
       query: z
         .string()
@@ -149,8 +155,6 @@ export function createSlackPublicSearchTool(actionToken: SlackActionToken) {
         const nextCursor = response.results?.next_cursor;
 
         return {
-          ok: true,
-          status: "success" as const,
           query,
           count: messages.length,
           messages,
@@ -162,14 +166,7 @@ export function createSlackPublicSearchTool(actionToken: SlackActionToken) {
         if (error instanceof SlackActionError) {
           const message = explicitSearchError(error);
           if (message) {
-            return {
-              ok: false,
-              status: "error" as const,
-              error: message,
-              query,
-              count: 0,
-              messages: [],
-            };
+            throw new ToolInputError(message, { cause: error });
           }
         }
         throw error;

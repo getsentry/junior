@@ -9,6 +9,7 @@ import type {
   Source,
 } from "./context";
 import type { PluginState } from "./state";
+import type { PluginConversationEvents } from "./conversation-events";
 
 const promptContextKindSchema = z
   .string()
@@ -80,6 +81,8 @@ export type UserPromptContext = Pick<PluginContext, "db" | "log" | "plugin"> & {
   conversationId?: string;
   destination: Destination;
   embedder: PluginEmbedder;
+  /** Conversation-bound event writer when the prompt belongs to a durable turn. */
+  events?: PluginConversationEvents;
   model: PluginModel;
   actor?: Actor;
   source: Source;

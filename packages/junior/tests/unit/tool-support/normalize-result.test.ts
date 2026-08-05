@@ -16,7 +16,7 @@ describe("normalizeToolResult", () => {
     expect(result).toBe(structured);
   });
 
-  it("normalizes native content results with generic success details", () => {
+  it("normalizes native content results with empty transcript details", () => {
     const result = normalizeToolResult({
       content: [
         { type: "text" as const, text: "image generated" },
@@ -37,7 +37,7 @@ describe("normalizeToolResult", () => {
           mimeType: "image/png",
         },
       ],
-      details: { ok: true, status: "success" },
+      details: {},
     });
   });
 
@@ -54,27 +54,15 @@ describe("normalizeToolResult", () => {
     );
   });
 
-  it("validates structured envelope details when required by the tool schema", () => {
+  it("preserves structured envelope details after schema validation", () => {
     const structured = {
       content: [{ type: "text" as const, text: "ok" }],
-      details: { ok: true, status: "success" },
+      details: { value: "ok" },
     };
     const result = normalizeToolResult(structured, {
       requireStructuredResult: true,
     });
-    expect(result.details).toEqual({ ok: true, status: "success" });
-  });
-
-  it("rejects malformed structured envelope details when required by the tool schema", () => {
-    const structured = {
-      content: [{ type: "text" as const, text: "ok" }],
-      details: { ok: true },
-    };
-    expect(() =>
-      normalizeToolResult(structured, {
-        requireStructuredResult: true,
-      }),
-    ).toThrow("Invalid option");
+    expect(result.details).toEqual({ value: "ok" });
   });
 
   it("serializes object to JSON text", () => {
@@ -88,8 +76,6 @@ describe("normalizeToolResult", () => {
   it("injects the exposed tool name into continuation metadata", () => {
     const result = normalizeToolResult(
       {
-        ok: true,
-        status: "success",
         continuation: {
           arguments: {
             offset: 2,
@@ -120,7 +106,6 @@ describe("normalizeToolResult", () => {
 
   it("formats upstream permission denials as deterministic tool text", () => {
     const details = {
-      ok: false,
       command: "git push",
       exit_code: 1,
       stdout: "",
@@ -179,8 +164,6 @@ describe("normalizeToolResult", () => {
 
   it("formats upstream permission denials from required structured envelopes", () => {
     const details = {
-      ok: false,
-      status: "error" as const,
       command: "git push",
       exit_code: 1,
       stdout: "",

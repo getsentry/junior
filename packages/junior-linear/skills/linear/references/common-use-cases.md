@@ -13,7 +13,7 @@ Use these patterns to shape concrete Linear requests.
 ## 2. Create a follow-up task from a debugging thread
 
 - Convert the thread into a scoped task when the work is cleanup, hardening, docs, or instrumentation rather than a production bug.
-- Keep the body focused on scope and concrete next step. Include desired outcome only if stated in the thread.
+- Keep the body focused on evidence, background, and scope. Do not generate a next step or desired outcome.
 - Set project, cycle, or assignee only when the destination is already clear from the thread.
 
 ## 3. Search for an existing issue before opening a new one
@@ -43,7 +43,7 @@ Use these patterns to shape concrete Linear requests.
 ## 7. Tighten an existing issue description
 
 - Fetch the current issue before editing.
-- Preserve existing accepted context, then add missing impact, reproduction, or expected outcome details from the thread.
+- Preserve existing accepted context, then add missing impact or reproduction details from the thread. Preserve a stated expected outcome only when the user explicitly asks for it.
 - Avoid overwriting structured content unless the user explicitly asks for a rewrite.
 
 ## 8. Create a ticket with Slack provenance but not Slack noise

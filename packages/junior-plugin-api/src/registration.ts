@@ -1,8 +1,13 @@
 import type { PluginCliDefinition } from "./cli";
+import type { PluginConversationEventDefinition } from "./conversation-events";
 import type { PluginHooks } from "./hooks";
 import type { PluginManifest } from "./manifest";
 import type { PluginTasks } from "./tasks";
 import type { PluginUserPageDefinition } from "./user-pages";
+import {
+  pluginResourceEventsSchema,
+  type PluginResourceEvents,
+} from "./resource-events";
 
 export interface PluginModelConfig {
   /** Host model family used when no explicit structured model id is configured. */
@@ -13,10 +18,12 @@ export interface PluginModelConfig {
 
 export type PluginRegistrationInput = {
   cli?: PluginCliDefinition;
+  conversationEvents?: PluginConversationEventDefinition[];
   hooks?: PluginHooks;
   manifest: PluginManifest;
   model?: PluginModelConfig;
   packageName?: string;
+  resourceEvents?: PluginResourceEvents;
   tasks?: PluginTasks;
   userPages?: PluginUserPageDefinition[];
 };
@@ -53,6 +60,11 @@ export function defineJuniorPlugin(
       `Junior plugin registration name "${name}" must be a lowercase plugin identifier.`,
     );
   }
+  if (name === "junior") {
+    throw new Error(
+      'Junior plugin registration name "junior" is reserved for native host events.',
+    );
+  }
   if (
     typeof manifest.displayName !== "string" ||
     !manifest.displayName.trim()
@@ -71,6 +83,42 @@ export function defineJuniorPlugin(
   }
   if (plugin.userPages !== undefined && !Array.isArray(plugin.userPages)) {
     throw new Error(`Junior plugin "${name}" userPages must be an array.`);
+  }
+  if (
+    plugin.conversationEvents !== undefined &&
+    !Array.isArray(plugin.conversationEvents)
+  ) {
+    throw new Error(
+      `Junior plugin "${name}" conversationEvents must be an array.`,
+    );
+  }
+  if (plugin.resourceEvents !== undefined) {
+    const parsed = pluginResourceEventsSchema.safeParse(plugin.resourceEvents);
+    if (!parsed.success) {
+      throw new Error(`Junior plugin "${name}" resourceEvents is invalid.`, {
+        cause: parsed.error,
+      });
+    }
+  }
+  const conversationEventIds = new Set<string>();
+  for (const event of plugin.conversationEvents ?? []) {
+    if (
+      !event ||
+      (typeof event !== "object" && typeof event !== "function") ||
+      typeof event.parse !== "function" ||
+      typeof event.renderEvent !== "function"
+    ) {
+      throw new Error(
+        `Junior plugin "${name}" conversation event definitions must be created with defineConversationEvent().`,
+      );
+    }
+    const id = `${event.eventName}@${event.version}`;
+    if (conversationEventIds.has(id)) {
+      throw new Error(
+        `Junior plugin "${name}" has duplicate conversation event "${id}".`,
+      );
+    }
+    conversationEventIds.add(id);
   }
   const userPageIds = new Set<string>();
   for (const page of plugin.userPages ?? []) {
@@ -101,6 +149,15 @@ export function defineJuniorPlugin(
     ) {
       throw new Error(
         `Junior plugin "${name}" user page "${page.id}" requires label and description.`,
+      );
+    }
+    if (
+      page.navigation !== undefined &&
+      page.navigation !== "primary" &&
+      page.navigation !== "profile"
+    ) {
+      throw new Error(
+        `Junior plugin "${name}" user page "${page.id}" navigation must be "primary" or "profile".`,
       );
     }
     if (typeof page.read !== "function") {

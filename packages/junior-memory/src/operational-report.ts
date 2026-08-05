@@ -1,4 +1,7 @@
-import type { PluginOperationalReportContent } from "@sentry/junior-plugin-api";
+import type {
+  PluginConversationEventCostDay,
+  PluginOperationalReportContent,
+} from "@sentry/junior-plugin-api";
 import { and, eq, gt, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { juniorMemoryEmbeddings, juniorMemoryMemories } from "./db/schema";
@@ -87,9 +90,20 @@ function formatPercent(value: number): string {
   }).format(value);
 }
 
+function formatUsd(value: number): string {
+  const maximumFractionDigits = value > 0 && value < 0.01 ? 4 : 2;
+  return new Intl.NumberFormat("en-US", {
+    currency: "USD",
+    maximumFractionDigits,
+    minimumFractionDigits: 2,
+    style: "currency",
+  }).format(value);
+}
+
 /** Build aggregate memory storage and indexing diagnostics for the System page. */
 export async function buildMemoryOperationalReport(args: {
   db: MemoryDb;
+  extractionDays: PluginConversationEventCostDay[];
   nowMs: number;
 }): Promise<PluginOperationalReportContent> {
   const active = and(
@@ -133,6 +147,11 @@ export async function buildMemoryOperationalReport(args: {
   const activeCount = counts?.active ?? 0;
   const embeddedCount = counts?.embedded ?? 0;
   const embeddingCoverage = activeCount === 0 ? 0 : embeddedCount / activeCount;
+  const extractionThirtyDays = args.extractionDays.slice(-30);
+  const extractionCostThirtyDays = extractionThirtyDays.reduce(
+    (total, day) => total + day.costUsd,
+    0,
+  );
 
   return {
     generatedAt: new Date(args.nowMs).toISOString(),
@@ -142,6 +161,10 @@ export async function buildMemoryOperationalReport(args: {
         label: "active memories",
         tone: activeCount > 0 ? "good" : "neutral",
         value: formatCount(activeCount),
+      },
+      {
+        label: "extraction cost · 30d",
+        value: formatUsd(extractionCostThirtyDays),
       },
       {
         label: "created · 30d",
@@ -167,6 +190,19 @@ export async function buildMemoryOperationalReport(args: {
       },
     ],
     widgets: [
+      {
+        categories: args.extractionDays.map((day) => ({
+          id: day.date,
+          label: day.date,
+          values: { costUsd: day.costUsd },
+        })),
+        description: "Estimated model cost of passive memory extraction",
+        id: "extraction-cost",
+        series: [{ format: "usd", key: "costUsd", label: "Cost" }],
+        timeRangeDays: [...WINDOWS],
+        title: "Extraction cost",
+        type: "bar_chart",
+      },
       {
         categories: memoryDays.map((day) => ({
           id: day.date,

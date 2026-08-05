@@ -54,8 +54,10 @@ import {
 } from "@/chat/state/turn-session";
 import {
   loadProjection,
+  recordAuthenticationLinked,
   recordAuthorizationCompleted,
 } from "@/chat/conversations/projection";
+import { formatProviderLabel } from "@/chat/oauth-flow";
 import { markTurnFailed } from "@/chat/runtime/turn";
 import { scheduleAgentContinue } from "@/chat/services/agent-continue";
 import { htmlCallbackResponse } from "@/handlers/oauth-html";
@@ -594,6 +596,29 @@ export async function GET(
           mutation,
         ),
     );
+    let providerLabel: string | undefined;
+    try {
+      providerLabel = formatProviderLabel(provider);
+    } catch {
+      providerLabel = undefined;
+    }
+    try {
+      await recordAuthenticationLinked({
+        conversationId: authSession.conversationId,
+        provider,
+        actorId: authSession.userId,
+        authorizationId: mcpAuthorizationId({
+          provider,
+          sessionId: authSession.sessionId,
+        }),
+        turnId: authSession.sessionId,
+        ...(providerLabel ? { providerLabel } : {}),
+      });
+    } catch (error) {
+      logException(error, "mcp.oauth_callback.authentication_event.failed", {
+        "app.credential.provider": provider,
+      });
+    }
     try {
       await deleteMcpAuthSession(authSession.authSessionId);
     } catch (cleanupError) {

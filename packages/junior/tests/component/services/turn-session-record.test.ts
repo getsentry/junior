@@ -7,6 +7,7 @@ import {
 import type { ConversationStore } from "@/chat/conversations/store";
 import type { PiMessage } from "@/chat/pi/messages";
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
+import { buildAgentsInstructionsMessage } from "@/chat/repository-instructions";
 
 const ORIGINAL_ENV = { ...process.env };
 const SLACK_DESTINATION = {
@@ -18,7 +19,7 @@ const SLACK_SOURCE = createSlackSource({
   teamId: "T123",
   channelId: "C123",
   threadTs: "1700000000.001",
-  type: "priv",
+  visibility: "private",
 }) satisfies Source;
 
 function userMessage(text: string): PiMessage {
@@ -59,6 +60,8 @@ function failingConversationStore(): ConversationStore {
   return {
     createChild: vi.fn(),
     get: vi.fn(),
+    getConversationIdByProviderConversation: vi.fn(async () => undefined),
+    bindProviderConversation: vi.fn(),
     getDestinationVisibility: vi.fn(async () => undefined),
     recordActivity: vi.fn(async () => {
       throw new Error("conversation metadata unavailable");
@@ -160,15 +163,25 @@ describe("persistAuthPauseSessionRecord", () => {
     });
   });
 
-  it("records Slack turn activity in SQL conversation metadata", async () => {
+  it("records Slack turn activity without replacing confirmed visibility", async () => {
     vi.useFakeTimers({ now: 10_000 });
     const { upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
     const { getConversationStore } = await import("@/chat/db");
+    const { resolveDestinationVisibility } =
+      await import("@/chat/conversations/destination-visibility");
     const { appendInboundMessage } =
       await import("@/chat/task-execution/store");
+    const conversationStore = getConversationStore();
 
     try {
+      await conversationStore.recordActivity({
+        conversationId: "slack:C123:turn-activity",
+        destination: SLACK_DESTINATION,
+        nowMs: 8_000,
+        source: "slack",
+        visibility: "public",
+      });
       await appendInboundMessage({
         message: {
           conversationId: "slack:C123:turn-activity",
@@ -193,12 +206,13 @@ describe("persistAuthPauseSessionRecord", () => {
         piMessages: [userMessage("ship it")],
         sessionId: "turn-activity",
         sliceId: 1,
+        source: SLACK_SOURCE,
         state: "completed",
         surface: "slack",
       });
 
       await expect(
-        getConversationStore().get({
+        conversationStore.get({
           conversationId: "slack:C123:turn-activity",
         }),
       ).resolves.toMatchObject({
@@ -206,8 +220,13 @@ describe("persistAuthPauseSessionRecord", () => {
         conversationId: "slack:C123:turn-activity",
         destination: SLACK_DESTINATION,
         lastActivityAtMs: 10_000,
+        sessionSource: SLACK_SOURCE,
         source: "slack",
+        visibility: "public",
       });
+      await expect(
+        resolveDestinationVisibility({ destination: SLACK_DESTINATION }),
+      ).resolves.toBe("public");
     } finally {
       vi.useRealTimers();
     }
@@ -1458,6 +1477,45 @@ describe("persistAuthPauseSessionRecord", () => {
       runtimeContext,
       instruction,
       summary,
+    ]);
+  });
+
+  it("restores mid-run AGENTS context at its causal position", async () => {
+    const { loadTurnSessionRecord } =
+      await import("@/chat/services/turn-session-record");
+    const { upsertAgentTurnSessionRecord } =
+      await import("@/chat/state/turn-session");
+    const instruction: PiMessage = {
+      role: "user",
+      content: [{ type: "text", text: "start the request" }],
+      timestamp: 1,
+    };
+    const agents = buildAgentsInstructionsMessage({
+      directory: "/vercel/sandbox/repo",
+      text: "Use the repository formatter.",
+      timestamp: 3,
+    });
+    const assistant = assistantMessage("continued after instructions", 4);
+
+    await upsertAgentTurnSessionRecord({
+      modelId: "test/model",
+      conversationId: "conversation-agents-order-resume",
+      sessionId: "turn-agents-order-resume",
+      sliceId: 1,
+      state: "awaiting_resume",
+      resumeReason: "yield",
+      piMessages: [instruction, agents, assistant],
+    });
+
+    const resumed = await loadTurnSessionRecord({
+      conversationId: "conversation-agents-order-resume",
+      sessionId: "turn-agents-order-resume",
+    });
+
+    expect(resumed.existingSessionRecord?.piMessages).toEqual([
+      instruction,
+      agents,
+      assistant,
     ]);
   });
 });

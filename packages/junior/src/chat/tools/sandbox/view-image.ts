@@ -58,6 +58,12 @@ export function createViewImageTool(
   deps: ViewImageToolDeps = {},
 ) {
   return zodTool({
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+      readOnlyHint: true,
+    },
     description:
       "View an image file from the sandbox workspace when visual inspection is needed. Supports PNG, JPEG, GIF, and WebP images up to 5 MB.",
     exposure: "direct",

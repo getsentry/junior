@@ -1,15 +1,19 @@
 import { formatDuration } from "../../components/Duration";
-import { Link } from "react-router";
 import { UserRound } from "lucide-react";
 import type { ActorSummaryReport } from "@sentry/junior/api/schema";
 
 import { SearchInput } from "../../components/SearchInput";
-import { DirectoryRowsSkeleton } from "../../components/DirectoryRowsSkeleton";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { DirectorySortSelect } from "../../components/controls/DirectorySortSelect";
+import {
+  DirectoryIdentity,
+  DirectoryRow,
+  DirectoryTable,
+  DirectoryToolbar,
+} from "../../components/directory/DirectoryTable";
+import { DirectoryMetric } from "../../components/directory/DirectoryMetric";
 import { Card } from "../../components/layout/Card";
 import { CardHeader } from "../../components/layout/CardHeader";
-import { DirectoryMetric } from "../../components/metrics/DirectoryMetric";
 import { formatCompactNumber, peoplePath } from "../../format";
 
 export type PeopleSort = "activeDays" | "conversations" | "recent" | "runtime";
@@ -82,7 +86,7 @@ export function PeopleDirectory(props: {
         description={`${props.people.length} of ${props.totalPeople} verified actors`}
         title="People directory"
       />
-      <div className="grid gap-2 border-b border-white/[0.06] bg-black/15 px-3 py-3 md:grid-cols-[minmax(14rem,1fr)_minmax(10rem,14rem)]">
+      <DirectoryToolbar columnsClassName="md:grid-cols-[minmax(14rem,1fr)_minmax(10rem,14rem)]">
         <SearchInput
           label="Search people"
           placeholder="Search name, email, Slack handle..."
@@ -100,70 +104,54 @@ export function PeopleDirectory(props: {
           ]}
           value={props.sort}
         />
-      </div>
-      {props.loading ? (
-        <DirectoryRowsSkeleton wideRuntime />
-      ) : props.people.length === 0 ? (
-        <div className="p-4">
-          <EmptyTelemetry>No people match this search.</EmptyTelemetry>
-        </div>
-      ) : (
-        <div className="min-w-0" role="table">
-          <div
-            className="grid grid-cols-[minmax(14rem,1fr)_repeat(2,minmax(5rem,auto))_minmax(8rem,auto)] items-center gap-4 border-b border-white/[0.06] bg-black/20 px-4 py-2.5 font-mono text-[0.62rem] uppercase tracking-[0.1em] text-dashboard-text-muted max-md:hidden"
-            role="row"
+      </DirectoryToolbar>
+      <DirectoryTable
+        ariaLabel="People directory results"
+        empty={
+          props.people.length === 0 ? (
+            <EmptyTelemetry>No people match this search.</EmptyTelemetry>
+          ) : undefined
+        }
+        headers={["Person", "Conversations", "Active days", "Runtime"]}
+        loading={props.loading}
+      >
+        {props.people.map((person) => (
+          <DirectoryRow
+            key={person.actor.email}
+            to={peoplePath(person.actor.email)}
           >
-            <div>Person</div>
-            <div className="justify-self-end">Conversations</div>
-            <div className="justify-self-end">Active days</div>
-            <div className="justify-self-end">Runtime</div>
-          </div>
-          {props.people.map((person) => (
-            <Link
-              className="group grid min-w-0 grid-cols-[minmax(14rem,1fr)_repeat(2,minmax(5rem,auto))_minmax(8rem,auto)] items-center gap-4 border-b border-white/[0.055] px-4 py-3.5 text-inherit no-underline transition-colors last:border-b-0 hover:bg-white/[0.035] max-md:grid-cols-3 max-md:gap-x-3 max-md:gap-y-4"
-              key={person.actor.email}
-              to={peoplePath(person.actor.email)}
-            >
-              <div className="flex min-w-0 items-center gap-3 max-md:col-span-3">
-                <span className="grid size-9 shrink-0 place-items-center rounded border border-white/10 bg-amber-500/[0.07] text-amber-300 transition-colors group-hover:border-amber-500/25">
-                  <UserRound aria-hidden="true" size={16} strokeWidth={1.8} />
-                </span>
-                <div className="min-w-0">
-                  <div className="truncate font-display text-[1rem] font-medium leading-tight text-dashboard-text">
-                    {actorName(person)}
-                  </div>
-                  {personMeta(person) ? (
-                    <div className="mt-1 truncate font-mono text-[0.68rem] leading-tight text-dashboard-text-muted">
-                      {personMeta(person)}
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-              <DirectoryMetric
-                label="Conversations"
-                value={formatCompactNumber(person.conversations)}
-              />
-              <DirectoryMetric
-                label="Active days"
-                value={formatCompactNumber(person.activeDays)}
-              />
-              <DirectoryMetric
-                label="Runtime"
-                value={
-                  <>
-                    <span className="whitespace-nowrap md:hidden">
-                      {runtimeLabel(person.durationMs, person.conversations, 2)}
-                    </span>
-                    <span className="hidden whitespace-nowrap md:inline">
-                      {runtimeLabel(person.durationMs, person.conversations)}
-                    </span>
-                  </>
-                }
-              />
-            </Link>
-          ))}
-        </div>
-      )}
+            <DirectoryIdentity
+              description={personMeta(person)}
+              icon={
+                <UserRound aria-hidden="true" size={16} strokeWidth={1.8} />
+              }
+              iconClassName="bg-amber-500/[0.07] text-amber-300 group-hover:border-amber-500/25"
+              title={actorName(person)}
+            />
+            <DirectoryMetric
+              label="Conversations"
+              value={formatCompactNumber(person.conversations)}
+            />
+            <DirectoryMetric
+              label="Active days"
+              value={formatCompactNumber(person.activeDays)}
+            />
+            <DirectoryMetric
+              label="Runtime"
+              value={
+                <>
+                  <span className="whitespace-nowrap md:hidden">
+                    {runtimeLabel(person.durationMs, person.conversations, 2)}
+                  </span>
+                  <span className="hidden whitespace-nowrap md:inline">
+                    {runtimeLabel(person.durationMs, person.conversations)}
+                  </span>
+                </>
+              }
+            />
+          </DirectoryRow>
+        ))}
+      </DirectoryTable>
     </Card>
   );
 }

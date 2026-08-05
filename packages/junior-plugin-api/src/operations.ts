@@ -1,10 +1,11 @@
 import { z } from "zod";
-import type { LocalActor, PluginContext, SlackActor } from "./context";
+import type { PluginContext, User } from "./context";
 import type { Dispatch, DispatchOptions, DispatchResult } from "./dispatch";
 import { nonBlankStringSchema } from "./schemas";
 import type { PluginReadState, PluginState } from "./state";
 import type { ResourceEventPublisher } from "./resource-events";
 import type { PluginConversationAnnotations } from "./annotations";
+import type { PluginConversationEventStats } from "./conversation-events";
 
 export interface HeartbeatHookContext extends PluginContext {
   agent: {
@@ -46,6 +47,7 @@ export interface PluginOperationalRecordSet {
 }
 
 export interface PluginOperationalChartSeries {
+  format?: "usd";
   key: string;
   label: string;
   tone?: PluginOperationalTone;
@@ -81,6 +83,7 @@ export interface PluginOperationalReport extends PluginOperationalReportContent 
 }
 
 export interface OperationalReportHookContext extends PluginContext {
+  eventStats: PluginConversationEventStats;
   nowMs: number;
   state: PluginReadState;
 }
@@ -120,9 +123,10 @@ export interface RouteRegistrationHookContext extends PluginContext {
 }
 
 export interface ApiRouteRegistrationHookContext extends PluginContext {
-  viewer: {
-    /** Resolve every runtime actor linked to one authenticated viewer email. */
-    actors(email: string): Promise<Array<LocalActor | SlackActor>>;
+  eventStats: PluginConversationEventStats;
+  users: {
+    /** Resolve or create the canonical user for one verified email. */
+    resolve(email: string): Promise<User | undefined>;
   };
 }
 

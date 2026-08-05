@@ -10,8 +10,14 @@
   --font-mono:
     "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
     "Liberation Mono", monospace;
+  --text-xs: 0.8125rem;
+  --text-xs--line-height: 1rem;
   --color-dashboard-text: #f4f4f5;
   --color-dashboard-text-muted: #a1a1aa;
+  --color-dashboard-surface-panel: #09090b;
+  --color-dashboard-surface-raised: #0b0b0b;
+  --color-dashboard-surface-hover: #151515;
+  --color-dashboard-control: #111114;
 }
 
 @layer base {
@@ -60,5 +66,20 @@
 
   100% {
     background-position: -200% 50%;
+  }
+}
+
+@keyframes junior-active-indicator {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 0 rgba(110, 231, 183, 0),
+      0 0 8px rgba(110, 231, 183, 0.35);
+  }
+
+  50% {
+    box-shadow:
+      0 0 0 4px rgba(110, 231, 183, 0.18),
+      0 0 14px rgba(110, 231, 183, 0.65);
   }
 }

@@ -242,6 +242,7 @@ vi.mock("@/chat/runtime/dev-agent-trace", () => ({
 
 vi.mock("@/chat/sandbox/sandbox", () => ({
   createSandbox: () => ({
+    captureRepositoryInstructions: async () => undefined,
     workspace: {
       readFileToBuffer: async () => Buffer.from("", "utf8"),
       runCommand: async () => ({
@@ -293,7 +294,7 @@ const TEST_SOURCE = createSlackSource({
   teamId: TEST_DESTINATION.teamId,
   channelId: TEST_DESTINATION.channelId,
   threadTs: "1712345.0001",
-  type: "priv",
+  visibility: "private",
 });
 
 const TEST_ACTOR = {
@@ -326,6 +327,7 @@ describe("agent continuation composition", () => {
       turnId: "turn-1",
       input: { messageText: "help me" },
       routing: {
+        destinationVisibility: "private",
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
         actor: TEST_ACTOR,
@@ -356,6 +358,9 @@ describe("agent continuation composition", () => {
       expect.objectContaining({
         role: "user",
       }),
+      expect.objectContaining({
+        role: "user",
+      }),
     ]);
   });
 
@@ -383,6 +388,7 @@ describe("agent continuation composition", () => {
       turnId: "turn-timeout-cap",
       input: { messageText: "help me" },
       routing: {
+        destinationVisibility: "private",
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
         actor: TEST_ACTOR,
@@ -417,6 +423,7 @@ describe("agent continuation composition", () => {
       turnId: "turn-short-deadline",
       input: { messageText: "help me" },
       routing: {
+        destinationVisibility: "private",
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
         actor: TEST_ACTOR,
@@ -448,6 +455,7 @@ describe("agent continuation composition", () => {
         omittedImageAttachmentCount: 1,
       },
       routing: {
+        destinationVisibility: "private",
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
         actor: TEST_ACTOR,
@@ -461,7 +469,9 @@ describe("agent continuation composition", () => {
       "conversation-2",
       "turn-2",
     );
-    const userMessage = sessionRecord?.piMessages[0] as
+    const userMessage = sessionRecord?.piMessages.find((message) =>
+      JSON.stringify(message).includes("<omitted-image-attachments>"),
+    ) as
       | {
           role?: string;
           content?: Array<{ type?: string; text?: string }>;
@@ -486,6 +496,7 @@ describe("agent continuation composition", () => {
       turnId: "turn-hung",
       input: { messageText: "help me" },
       routing: {
+        destinationVisibility: "private",
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
         actor: TEST_ACTOR,
@@ -517,6 +528,9 @@ describe("agent continuation composition", () => {
       expect.objectContaining({
         role: "user",
       }),
+      expect.objectContaining({
+        role: "user",
+      }),
     ]);
   });
 
@@ -527,6 +541,7 @@ describe("agent continuation composition", () => {
       turnId: "turn-retry",
       input: { messageText: "help me" },
       routing: {
+        destinationVisibility: "private",
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
         actor: TEST_ACTOR,
@@ -568,6 +583,9 @@ describe("agent continuation composition", () => {
       sliceId: 2,
     });
     expect(sessionRecord?.piMessages).toEqual([
+      expect.objectContaining({
+        role: "user",
+      }),
       expect.objectContaining({
         role: "user",
       }),

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
+import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
@@ -8,6 +8,12 @@ export const EXECUTE_TOOL_NAME = "executeTool";
 /** Create the model-visible dispatcher schema for catalog tools. */
 export function createExecuteToolTool() {
   return zodTool({
+    annotations: {
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: true,
+      readOnlyHint: false,
+    },
     description:
       "Execute any catalog tool by exact tool_name from searchTools or a tool-result execution hint. Put tool-specific parameters inside arguments.",
     executionMode: "sequential",
@@ -27,7 +33,7 @@ export function createExecuteToolTool() {
           .optional(),
       })
       .strict(),
-    outputSchema: juniorToolResultSchema,
+    outputSchema: juniorToolOutputSchema,
     execute: async () => {
       throw new ToolInputError(
         "executeTool can only run through the agent tool dispatcher.",

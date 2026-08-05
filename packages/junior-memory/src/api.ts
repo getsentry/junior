@@ -1,21 +1,22 @@
 /**
- * Authenticated REST resources for personal memories.
+ * Authenticated REST resources for viewer-visible memories.
  *
- * HTTP identity is one verified viewer. Linked platform actors are resolved
- * behind the route boundary and used only to authorize personal scopes.
+ * HTTP identity is one verified user whose linked identities authorize
+ * personal and public workspace scopes.
  */
 import { z } from "zod";
 import {
   pluginApiRouteRequestContextSchema,
-  type PluginApiRouteRequestContext,
+  type PluginConversationEventStats,
   type PluginRouteApp,
-  type PluginUserPageActor,
+  type User,
 } from "@sentry/junior-plugin-api";
-import type { MemoryDb, MemoryRecord } from "./store";
+import type { MemoryDb } from "./store";
 import {
   createViewerMemories,
   InvalidMemoryCursorError,
   PersonalMemoryNotFoundError,
+  type PersonalMemoryRecord,
 } from "./personal";
 
 export const memoryApiSchema = z
@@ -26,6 +27,7 @@ export const memoryApiSchema = z
     id: z.string().min(1),
     kind: z.enum(["preference", "procedure", "knowledge"]),
     observedAt: z.iso.datetime(),
+    visibility: z.enum(["private", "public"]),
   })
   .strict();
 
@@ -36,7 +38,49 @@ export const memoryListResponseSchema = z
   })
   .strict();
 
+const memoryDashboardDaySchema = z
+  .object({
+    date: z.iso.date(),
+    personal: z.number().int().min(0),
+    public: z.number().int().min(0),
+  })
+  .strict();
+
+const memoryCostDaySchema = z
+  .object({
+    costUsd: z.number().finite().nonnegative(),
+    date: z.iso.date(),
+    events: z.number().int().min(0),
+  })
+  .strict();
+
+export const memoryDashboardResponseSchema = z
+  .object({
+    days: z.array(memoryDashboardDaySchema).length(90),
+    extractionDays: z.array(memoryCostDaySchema).length(90),
+    generatedAt: z.iso.datetime(),
+    recallDays: z.array(memoryCostDaySchema).length(90),
+    stats: z
+      .object({
+        active: z.number().int().min(0),
+        automatic: z.number().int().min(0),
+        createdThirtyDays: z.number().int().min(0),
+        embedded: z.number().int().min(0),
+        explicit: z.number().int().min(0),
+        knowledge: z.number().int().min(0),
+        personal: z.number().int().min(0),
+        preference: z.number().int().min(0),
+        procedure: z.number().int().min(0),
+        public: z.number().int().min(0),
+      })
+      .strict(),
+  })
+  .strict();
+
 export type MemoryApi = z.output<typeof memoryApiSchema>;
+export type MemoryDashboardResponse = z.output<
+  typeof memoryDashboardResponseSchema
+>;
 export type MemoryListResponse = z.output<typeof memoryListResponseSchema>;
 
 const memoryListQuerySchema = z
@@ -48,8 +92,11 @@ const memoryListQuerySchema = z
   .strict();
 
 interface MemoryApiOptions {
-  actors(email: string): Promise<PluginUserPageActor[]>;
   db: MemoryDb;
+  eventStats: PluginConversationEventStats;
+  users: {
+    resolve(email: string): Promise<User | undefined>;
+  };
 }
 
 function json(body: unknown, status = 200): Response {
@@ -59,7 +106,9 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-function apiMemory(memory: MemoryRecord): z.output<typeof memoryApiSchema> {
+function apiMemory(
+  memory: PersonalMemoryRecord,
+): z.output<typeof memoryApiSchema> {
   return {
     content: memory.content,
     createdAt: new Date(memory.createdAtMs).toISOString(),
@@ -69,12 +118,11 @@ function apiMemory(memory: MemoryRecord): z.output<typeof memoryApiSchema> {
     id: memory.id,
     kind: memory.kind,
     observedAt: new Date(memory.observedAtMs).toISOString(),
+    visibility: memory.visibility,
   };
 }
 
-function viewerEmail(
-  context: PluginApiRouteRequestContext | undefined,
-): string | undefined {
+function viewerEmail(context: unknown): string | undefined {
   const parsed = pluginApiRouteRequestContextSchema.safeParse(context);
   if (!parsed.success || parsed.data.auth.user.emailVerified !== true) {
     return undefined;
@@ -82,7 +130,7 @@ function viewerEmail(
   return parsed.data.auth.user.email?.trim().toLowerCase() || undefined;
 }
 
-/** Create the authenticated personal-memory REST app. */
+/** Create the authenticated viewer-memory REST app. */
 export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
   return {
     async fetch(request, context) {
@@ -94,17 +142,49 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
       const url = new URL(request.url);
       const memoryPath = /^\/memories\/([^/]+)$/.exec(url.pathname);
       const isCollection = url.pathname === "/memories";
-      if (!isCollection && !memoryPath) {
+      const isDashboard = url.pathname === "/dashboard";
+      if (!isCollection && !isDashboard && !memoryPath) {
         return json({ error: "Not found." }, 404);
       }
+      const isRead = request.method === "GET" || request.method === "HEAD";
+      if (!isRead && !(memoryPath && request.method === "DELETE")) {
+        return json({ error: "Method not allowed." }, 405);
+      }
 
-      const actors = await options.actors(email);
-      const memories = createViewerMemories(options.db, actors);
+      const user = await options.users.resolve(email);
+      if (!user) return json({ error: "Authentication required." }, 401);
+
+      const memories = createViewerMemories(options.db, user);
       try {
-        if (
-          isCollection &&
-          (request.method === "GET" || request.method === "HEAD")
-        ) {
+        if (isDashboard && isRead) {
+          const [stats, days, extractionDays, recallDays] = await Promise.all([
+            memories.stats(),
+            memories.timeline({ days: 90 }),
+            options.eventStats.costsByDay({
+              days: 90,
+              eventName: "memories_captured",
+            }),
+            options.eventStats.costsByDay({
+              days: 90,
+              eventName: "memories_recalled",
+            }),
+          ]);
+          const body = memoryDashboardResponseSchema.parse({
+            days,
+            extractionDays,
+            generatedAt: new Date().toISOString(),
+            recallDays,
+            stats,
+          });
+          return request.method === "HEAD"
+            ? new Response(null, {
+                headers: { "cache-control": "no-store" },
+                status: 200,
+              })
+            : json(body);
+        }
+
+        if (isCollection && isRead) {
           const query = memoryListQuerySchema.parse({
             cursor: url.searchParams.get("cursor") ?? undefined,
             limit: url.searchParams.get("limit") ?? undefined,
@@ -127,10 +207,7 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
             : json(body);
         }
 
-        if (
-          memoryPath &&
-          (request.method === "GET" || request.method === "HEAD")
-        ) {
+        if (memoryPath && isRead) {
           const memory = memoryApiSchema.parse(
             apiMemory(await memories.get(decodeURIComponent(memoryPath[1]!))),
           );

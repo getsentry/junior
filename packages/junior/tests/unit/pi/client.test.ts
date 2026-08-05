@@ -2,6 +2,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
 const mocks = vi.hoisted(() => ({
+  calculateCost: vi.fn(() => ({
+    input: 0.001,
+    output: 0.002,
+    cacheRead: 0,
+    cacheWrite: 0,
+    total: 0.003,
+  })),
   completeSimple: vi.fn(),
   createGatewayProvider: vi.fn(() => ({
     chat: vi.fn((modelId: string) => ({ modelId })),
@@ -32,6 +39,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/chat/pi/sdk", () => ({
+  calculateCost: mocks.calculateCost,
   completeSimple: mocks.completeSimple,
   getEnvApiKey: mocks.getEnvApiKey,
   getModels: mocks.getModels,
@@ -226,7 +234,17 @@ describe("completeText", () => {
     mocks.generateObject.mockResolvedValue({
       object: { ok: true },
       finishReason: "stop",
-      usage: { inputTokens: 10, outputTokens: 3, totalTokens: 13 },
+      usage: {
+        inputTokens: 10,
+        inputTokenDetails: {
+          noCacheTokens: 8,
+          cacheReadTokens: 2,
+          cacheWriteTokens: 0,
+        },
+        outputTokens: 3,
+        outputTokenDetails: { textTokens: 3, reasoningTokens: 1 },
+        totalTokens: 13,
+      },
     });
 
     const { completeObject } = await import("@/chat/pi/client");
@@ -236,15 +254,24 @@ describe("completeText", () => {
       modelId: "openai/gpt-4o-mini",
       schema,
       prompt: "return json",
+      recordTelemetryPayloads: false,
       system: "structured only",
     });
 
-    expect(result).toEqual({ object: { ok: true } });
+    expect(result).toEqual({
+      costUsd: 0.003,
+      object: { ok: true },
+    });
     expect(mocks.generateObject).toHaveBeenCalledWith(
       expect.objectContaining({
         model: { modelId: "openai/gpt-4o-mini" },
         schema,
         prompt: "return json",
+        experimental_telemetry: {
+          isEnabled: true,
+          recordInputs: false,
+          recordOutputs: false,
+        },
         system: "structured only",
       }),
     );
@@ -253,6 +280,36 @@ describe("completeText", () => {
         "gen_ai.response.finish_reasons": ["stop"],
       }),
     );
+  });
+
+  it("keeps a successful object when cost estimation fails", async () => {
+    mocks.generateObject.mockResolvedValue({
+      object: { ok: true },
+      finishReason: "stop",
+      usage: {
+        inputTokens: 10,
+        inputTokenDetails: {
+          noCacheTokens: 10,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+        },
+        outputTokens: 3,
+        outputTokenDetails: { textTokens: 3, reasoningTokens: 0 },
+        totalTokens: 13,
+      },
+    });
+    mocks.calculateCost.mockImplementationOnce(() => {
+      throw new Error("pricing unavailable");
+    });
+
+    const { completeObject } = await import("@/chat/pi/client");
+    const result = await completeObject({
+      modelId: "openai/gpt-4o-mini",
+      schema: z.object({ ok: z.boolean() }),
+      prompt: "return json",
+    });
+
+    expect(result).toEqual({ object: { ok: true } });
   });
 
   it("rethrows retryable object provider failures without capturing", async () => {
@@ -302,7 +359,7 @@ describe("completeText", () => {
         [0.1, 0.2, 0.3],
         [0.4, 0.5, 0.6],
       ],
-      usage: { inputTokens: 8 },
+      usage: { tokens: 8 },
     });
 
     const { embedTexts } = await import("@/chat/pi/client");
@@ -312,12 +369,34 @@ describe("completeText", () => {
     });
 
     expect(result.dimensions).toBe(3);
+    expect(result.costUsd).toBe(0.00000016);
     const startAttributes = mocks.withSpan.mock.calls[0]?.[4] as Record<
       string,
       unknown
     >;
     expect(startAttributes["gen_ai.operation.name"]).toBe("embeddings");
     expect(startAttributes["gen_ai.output.type"]).toBeUndefined();
+    expect(mocks.setSpanAttributes).toHaveBeenCalledWith({
+      "app.cost.input_usd": 0.00000016,
+      "app.cost.total_usd": 0.00000016,
+      "gen_ai.embeddings.dimension.count": 3,
+      "gen_ai.usage.input_tokens": 8,
+    });
+  });
+
+  it("leaves embedding cost unknown for models without a verified rate", async () => {
+    mocks.embedMany.mockResolvedValue({
+      embeddings: [[0.1, 0.2, 0.3]],
+      usage: { tokens: 8 },
+    });
+
+    const { embedTexts } = await import("@/chat/pi/client");
+    const result = await embedTexts({
+      modelId: "example/unpriced-embedding-model",
+      texts: ["one"],
+    });
+
+    expect(result).not.toHaveProperty("costUsd");
     expect(mocks.setSpanAttributes).toHaveBeenCalledWith({
       "gen_ai.embeddings.dimension.count": 3,
       "gen_ai.usage.input_tokens": 8,
@@ -327,7 +406,7 @@ describe("completeText", () => {
   it("validates embedding output before the embedding span ends", async () => {
     mocks.embedMany.mockResolvedValue({
       embeddings: [[0.1], [0.2, 0.3]],
-      usage: { inputTokens: 8 },
+      usage: { tokens: 8 },
     });
 
     const { embedTexts } = await import("@/chat/pi/client");

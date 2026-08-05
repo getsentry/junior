@@ -19,6 +19,7 @@ interface DispatchReplyToThread {
     message: Message,
     options: {
       ack?: () => Promise<void>;
+      conversationId?: string;
       destination: DispatchRecord["destination"];
       execution: DispatchTurnContext;
       onTurnDeliveryAccepted?: (messageId?: string) => void;
@@ -29,7 +30,7 @@ interface DispatchReplyToThread {
   ): Promise<void>;
 }
 
-/** Build the Slack provider adapter for plugin-dispatched conversation turns. */
+/** Build the Slack provider adapter for agent-dispatched conversation turns. */
 export function createSlackDispatchTurnRunner(options: {
   getChannelConfiguration: (
     channelId: string,
@@ -98,6 +99,7 @@ export function createSlackDispatchTurnRunner(options: {
     const routing = buildDispatchRoutingContext(dispatch);
     await options.replyToThread(thread, message, {
       ack: hooks.ack,
+      conversationId,
       destination: dispatch.destination,
       execution: {
         authorizationFlowMode: "disabled",

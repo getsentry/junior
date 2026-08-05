@@ -8,7 +8,7 @@ import {
   parseSlackTimestampParam,
 } from "@/chat/slack/timestamp-param";
 import { z } from "zod";
-import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
+import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { SlackToolContext } from "@/chat/slack/tools/context";
@@ -64,7 +64,12 @@ export function createSlackChannelListMessagesTool(context: SlackToolContext) {
   return zodTool({
     description:
       "List channel messages from Slack history in the active channel context. Use when the user asks for recent or historical channel context outside this thread. Do not use for live monitoring or when current thread context already answers the question.",
-    annotations: { readOnlyHint: true, destructiveHint: false },
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+      readOnlyHint: true,
+    },
     inputSchema: z.object({
       limit: z.coerce
         .number()
@@ -95,7 +100,7 @@ export function createSlackChannelListMessagesTool(context: SlackToolContext) {
         .describe("Maximum number of API pages to traverse in a single call.")
         .optional(),
     }),
-    outputSchema: juniorToolResultSchema,
+    outputSchema: juniorToolOutputSchema,
     execute: async ({
       limit,
       cursor,
@@ -115,11 +120,7 @@ export function createSlackChannelListMessagesTool(context: SlackToolContext) {
         targetChannelId,
       );
       if (!normalizedOldest.ok) {
-        return {
-          ok: false,
-          status: "error" as const,
-          error: normalizedOldest.error,
-        };
+        throw new ToolInputError(normalizedOldest.error);
       }
       const normalizedLatest = normalizeRangeTimestamp(
         "latest",
@@ -127,11 +128,7 @@ export function createSlackChannelListMessagesTool(context: SlackToolContext) {
         targetChannelId,
       );
       if (!normalizedLatest.ok) {
-        return {
-          ok: false,
-          status: "error" as const,
-          error: normalizedLatest.error,
-        };
+        throw new ToolInputError(normalizedLatest.error);
       }
 
       let result;
@@ -150,19 +147,15 @@ export function createSlackChannelListMessagesTool(context: SlackToolContext) {
           error instanceof SlackActionError &&
           error.apiError === "invalid_cursor"
         ) {
-          return {
-            ok: false,
-            status: "error" as const,
-            error:
-              "The supplied Slack history cursor is no longer valid. Retry the lookup without `cursor` to start from the newest page again.",
-          };
+          throw new ToolInputError(
+            "The supplied Slack history cursor is no longer valid. Retry the lookup without `cursor` to start from the newest page again.",
+            { cause: error },
+          );
         }
         throw error;
       }
 
       const summary = {
-        ok: true,
-        status: "success" as const,
         channel_id: targetChannelId,
         count: result.messages.length,
         messages: result.messages,

@@ -1,10 +1,10 @@
 /**
  * Owns Vercel's deployment webhook wire-format boundary.
  *
- * It validates provider payloads, ignores unsupported or incomplete deliveries,
+ * It validates webhook payloads, ignores unsupported or incomplete deliveries,
  * and emits only canonical terminal resource events.
  */
-import type { ResourceEvent } from "@sentry/junior-plugin-api";
+import type { ResourceEventInput } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import {
   VERCEL_DEPLOYMENT_EVENTS,
@@ -94,7 +94,7 @@ function isDeploymentEvent(
 /** Normalize one verified Vercel delivery into a terminal deployment event. */
 export function normalizeVercelResourceEvents(args: {
   body: unknown;
-}): ResourceEvent[] {
+}): ResourceEventInput[] {
   const envelope = webhookEnvelopeSchema.safeParse(args.body);
   if (!envelope.success || !isDeploymentEvent(envelope.data.type)) return [];
   const payload = deploymentPayloadSchema.safeParse(envelope.data.payload);
@@ -121,8 +121,7 @@ export function normalizeVercelResourceEvents(args: {
       eventKey: `vercel:${envelope.data.id}:${eventType}`,
       eventType,
       occurredAtMs: envelope.data.createdAt,
-      provider: "vercel",
-      resourceRef: resource.resourceRef,
+      identifier: resource.identifier,
       terminal: true,
       trustedSummary: `${resource.label} (${deploymentId}) ${outcome}.`,
     },

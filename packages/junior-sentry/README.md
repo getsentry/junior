@@ -18,7 +18,7 @@ export const plugins = defineJuniorPlugins(["@sentry/junior-sentry"]);
 
 ## Sentry CLI Surface
 
-The plugin installs the npm `sentry` package as a runtime dependency and injects the current user's OAuth token as `SENTRY_AUTH_TOKEN` for Sentry skill commands. The OAuth grant includes `alerts:write`; existing connections must reconnect after upgrading to grant it.
+The plugin installs the npm `sentry` package as a runtime dependency and injects the current user's OAuth token as `SENTRY_AUTH_TOKEN` for Sentry skill commands. The OAuth grant supports alert, issue, project, team, member lookup, and release workflows. Existing connections must reconnect after upgrading to grant newly added scopes.
 
 As of 2026-07-13, `sentry@latest` is `0.38.0`. The verified command groups used by the bundled skill are:
 

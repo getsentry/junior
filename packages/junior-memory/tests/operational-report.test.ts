@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   createLocalPgliteFixture,
+  pgliteBtreeGinExtension,
   pgliteVectorExtension,
   type LocalPgliteFixture,
 } from "@sentry/junior-testing/pglite";
@@ -16,11 +17,25 @@ import { createMemoryStore, type MemoryDb } from "../src/store";
 const TEST_NOW_MS = Date.parse("2026-07-28T12:00:00.000Z");
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+function emptyExtractionDays() {
+  const start = Date.parse("2026-04-30T00:00:00.000Z");
+  return Array.from({ length: 90 }, (_, index) => ({
+    costUsd: 0,
+    date: new Date(start + index * 24 * 60 * 60 * 1_000)
+      .toISOString()
+      .slice(0, 10),
+    events: 0,
+  }));
+}
+
 type MemoryFixture = LocalPgliteFixture<MemoryDb>;
 
 async function createMemoryFixture(): Promise<MemoryFixture> {
   const fixture = await createLocalPgliteFixture<MemoryDb>(memorySqlSchema, {
-    extensions: { vector: pgliteVectorExtension },
+    extensions: {
+      btree_gin: pgliteBtreeGinExtension,
+      vector: pgliteVectorExtension,
+    },
   });
   const migrations = (await readdir(resolve(__dirname, "../migrations")))
     .filter((filename) => filename.endsWith(".sql"))
@@ -81,11 +96,12 @@ describe("memory operational report", () => {
 
       const report = await buildMemoryOperationalReport({
         db: fixture.db(),
+        extractionDays: emptyExtractionDays(),
         nowMs: TEST_NOW_MS,
       });
 
-      expect(report.widgets?.[0]?.categories).toHaveLength(90);
-      expect(report.widgets?.[0]?.categories.at(-1)).toEqual({
+      expect(report.widgets?.[1]?.categories).toHaveLength(90);
+      expect(report.widgets?.[1]?.categories.at(-1)).toEqual({
         id: "2026-07-28",
         label: "2026-07-28",
         values: {
@@ -103,6 +119,7 @@ describe("memory operational report", () => {
     try {
       const report = await buildMemoryOperationalReport({
         db: fixture.db(),
+        extractionDays: emptyExtractionDays(),
         nowMs: TEST_NOW_MS,
       });
       expect(report).toMatchObject({
@@ -114,6 +131,7 @@ describe("memory operational report", () => {
             tone: "neutral",
             value: "0",
           },
+          { label: "extraction cost · 30d", value: "$0.00" },
           { label: "created · 30d", value: "0" },
           { label: "personal", value: "0" },
           { label: "conversation", value: "0" },
@@ -125,6 +143,13 @@ describe("memory operational report", () => {
         ],
       });
       expect(report.widgets).toEqual([
+        expect.objectContaining({
+          id: "extraction-cost",
+          series: [{ format: "usd", key: "costUsd", label: "Cost" }],
+          timeRangeDays: [7, 30, 90],
+          title: "Extraction cost",
+          type: "bar_chart",
+        }),
         expect.objectContaining({
           id: "memories-created",
           series: [
@@ -138,7 +163,7 @@ describe("memory operational report", () => {
       ]);
       expect(report.widgets?.[0]?.categories).toHaveLength(90);
       expect(
-        report.widgets?.[0]?.categories.every((day) => {
+        report.widgets?.[1]?.categories.every((day) => {
           return day.values.personal === 0 && day.values.conversation === 0;
         }),
       ).toBe(true);
@@ -179,26 +204,39 @@ describe("memory operational report", () => {
         subjectKey: "report-user",
         subjectType: "user",
       });
+      const extractionDays = emptyExtractionDays();
+      extractionDays[89] = {
+        costUsd: 0.0042,
+        date: "2026-07-28",
+        events: 4,
+      };
 
       const report = await buildMemoryOperationalReport({
         db,
+        extractionDays,
         nowMs: TEST_NOW_MS,
       });
 
       expect(report.metrics).toEqual([
         { label: "active memories", tone: "good", value: "2" },
+        { label: "extraction cost · 30d", value: "$0.0042" },
         { label: "created · 30d", value: "3" },
         { label: "personal", value: "1" },
         { label: "conversation", value: "1" },
         { label: "embedding coverage", tone: "good", value: "100%" },
       ]);
-      expect(report.widgets?.[0]?.categories.at(-1)).toEqual({
+      expect(report.widgets?.[1]?.categories.at(-1)).toEqual({
         id: "2026-07-28",
         label: "2026-07-28",
         values: {
           conversation: 1,
           personal: 2,
         },
+      });
+      expect(report.widgets?.[0]?.categories.at(-1)).toEqual({
+        id: "2026-07-28",
+        label: "2026-07-28",
+        values: { costUsd: 0.0042 },
       });
       expect(JSON.stringify(report)).not.toContain("checkout");
       expect(JSON.stringify(report)).not.toContain("report-user");

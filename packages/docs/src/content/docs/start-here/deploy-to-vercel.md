@@ -108,6 +108,7 @@ Set the core runtime variables in Vercel:
 | `REDIS_URL`                                 | Yes         | Queue and runtime state storage.                                               |
 | `DATABASE_URL`                              | Yes         | Standard Neon/Vercel Postgres URL for Junior SQL records and reporting.        |
 | `JUNIOR_DATABASE_DRIVER`                    | No          | SQL client driver: `neon` or `postgres`. Defaults to `neon`.                   |
+| `JUNIOR_SQL_STATEMENT_TIMEOUT_MS`           | No          | Runtime PostgreSQL statement timeout. Defaults to `30000`; set `0` to disable. |
 | `JUNIOR_SECRET`                             | Yes         | Signs internal callbacks and sandbox actor context.                            |
 | `CRON_SECRET`                               | Yes         | Authenticates Vercel Cron requests to the internal heartbeat route.            |
 | `JUNIOR_BASE_URL`                           | Conditional | Canonical URL for OAuth and callback URLs when Vercel URL envs are not enough. |
@@ -121,7 +122,7 @@ Set `VERCEL_SANDBOX_KEEPALIVE_MS=900000` in the Vercel project's **Production** 
 
 Without this variable, keepalive is disabled. Long agent runs that cross model or queue-continuation gaps can then outlive their sandbox session, and Junior may have to create a new sandbox without the previous workspace files.
 
-Configure this through Vercel Project Settings or `vercel env`, not the legacy top-level `env` property in `vercel.json`:
+Configure this through Vercel Project Settings or `vercel env`, not a top-level `env` property in `vercel.json`:
 
 ```bash
 pnpm dlx vercel@latest env add VERCEL_SANDBOX_KEEPALIVE_MS production

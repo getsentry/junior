@@ -9,7 +9,6 @@ const workspaceRoot = path.resolve(__dirname, "../..");
 const evalsPackageRoot = __dirname;
 const pluginApiPackageRoot = path.resolve(__dirname, "../junior-plugin-api");
 const memoryPackageRoot = path.resolve(__dirname, "../junior-memory");
-const schedulerPackageRoot = path.resolve(__dirname, "../junior-scheduler");
 // Leave room for harness cleanup and rubric judging after a reply reaches its
 // separate 60-second behavior budget.
 const EVAL_TEST_TIMEOUT_MS = 120_000;
@@ -37,6 +36,7 @@ if (evalRedisHostname !== "localhost" && evalRedisHostname !== "127.0.0.1") {
 }
 process.env.AI_MODEL = "xai/grok-4.5";
 process.env.AI_FAST_MODEL = "anthropic/claude-haiku-4.5";
+process.env.AI_GUARDIAN_MODEL = "openai/gpt-5.6-luna";
 process.env.AI_HANDOFF_MODEL = "openai/gpt-5.6-sol";
 process.env.AI_MODEL_PROFILES = JSON.stringify({
   coding: "openai/gpt-5.6-sol",
@@ -50,10 +50,6 @@ export default defineConfig({
       "@sentry/junior-memory": path.resolve(memoryPackageRoot, "src/index.ts"),
       "@sentry/junior-plugin-api": path.resolve(
         pluginApiPackageRoot,
-        "src/index.ts",
-      ),
-      "@sentry/junior-scheduler": path.resolve(
-        schedulerPackageRoot,
         "src/index.ts",
       ),
     },

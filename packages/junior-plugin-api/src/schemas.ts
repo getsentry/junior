@@ -23,7 +23,7 @@ const exactNonBlankStringSchema = nonBlankStringSchema.refine(
 export const platformSchema = z.enum(["slack", "local"]);
 
 /** Runtime source visibility visible to plugins. */
-export const sourceTypeSchema = z.enum(["pub", "priv"]);
+export const sourceVisibilitySchema = z.enum(["public", "private"]);
 
 /** Provider-neutral visibility of a routed destination. */
 export const destinationVisibilitySchema = z.enum(["public", "private"]);
@@ -56,7 +56,7 @@ export const destinationSchema = z.discriminatedUnion("platform", [
 /** Runtime-owned Slack coordinates for the inbound invocation. */
 export const slackSourceSchema = slackAddressSchema
   .extend({
-    type: sourceTypeSchema,
+    visibility: sourceVisibilitySchema,
     messageTs: nonBlankStringSchema.optional(),
     threadTs: nonBlankStringSchema.optional(),
   })
@@ -66,7 +66,7 @@ export const slackSourceSchema = slackAddressSchema
 export const localSourceSchema = z
   .object({
     platform: z.literal("local"),
-    type: z.literal("priv"),
+    visibility: z.literal("private"),
     conversationId: localConversationIdSchema,
   })
   .strict();
@@ -136,6 +136,28 @@ export const actorSchema = z.discriminatedUnion("platform", [
   systemActorSchema,
 ]);
 
+/** Core-owned provider account linked to a user when verified. */
+export const identitySchema = z
+  .object({
+    displayName: nonBlankStringSchema.optional(),
+    handle: nonBlankStringSchema.optional(),
+    id: exactNonBlankStringSchema,
+    provider: exactNonBlankStringSchema,
+    providerSubjectId: exactNonBlankStringSchema,
+    providerTenantId: exactNonBlankStringSchema.optional(),
+  })
+  .strict();
+
+/** Core-owned person with every linked provider identity. */
+export const userSchema = z
+  .object({
+    displayName: nonBlankStringSchema.optional(),
+    email: nonBlankStringSchema.max(320),
+    id: exactNonBlankStringSchema,
+    identities: z.array(identitySchema).max(100),
+  })
+  .strict();
+
 const dispatchMetadataSchema = z
   .record(z.string(), z.string())
   .superRefine((metadata, ctx) => {
@@ -187,6 +209,19 @@ const dispatchMetadataSchema = z
     }
   });
 
+/** Compact destination-visible context explaining what produced a reply. */
+export const replyAttributionSchema = z
+  .object({
+    label: exactNonBlankStringSchema
+      .pipe(z.string().max(48))
+      .refine((value) => !/[\r\n]/.test(value)),
+    detail: exactNonBlankStringSchema
+      .pipe(z.string().max(128))
+      .refine((value) => !/[\r\n]/.test(value))
+      .optional(),
+  })
+  .strict();
+
 /** Plugin dispatch request accepted by Junior core. */
 export const dispatchOptionsSchema = z
   .object({
@@ -196,6 +231,7 @@ export const dispatchOptionsSchema = z
     destinationVisibility: destinationVisibilitySchema,
     input: nonBlankStringSchema.pipe(z.string().max(32_000)),
     metadata: dispatchMetadataSchema.optional(),
+    replyAttribution: replyAttributionSchema.optional(),
     source: sourceSchema,
   })
   .strict();

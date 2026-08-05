@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it } from "vitest";
 
-import { TranscriptContextEventView } from "../src/client/components/TranscriptContextEventView";
+import { TranscriptContextEventView } from "../src/client/conversations/TranscriptContextEventView";
 
 function withQueryClient(children: ReactNode) {
   return (

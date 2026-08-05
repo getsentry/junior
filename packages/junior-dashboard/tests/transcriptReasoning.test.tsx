@@ -1,8 +1,8 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { TranscriptReasoningView } from "../src/client/components/TranscriptReasoningView";
-import { TranscriptSearchProvider } from "../src/client/components/transcriptSearch";
+import { TranscriptReasoningView } from "../src/client/conversations/TranscriptReasoningView";
+import { TranscriptSearchProvider } from "../src/client/conversations/transcriptSearch";
 
 describe("transcript reasoning", () => {
   it("renders a collapsed reasoning row with preview text", () => {
@@ -20,6 +20,8 @@ describe("transcript reasoning", () => {
 
     expect(html).toContain("<details");
     expect(html).toContain('aria-label="Reasoning"');
+    expect(html).toContain("lucide-lightbulb");
+    expect(html).not.toContain("lucide-brain");
     expect(html).toContain("Inspect the inputs before searching.");
     expect(html).toContain("group-open/reasoning:hidden");
     expect(html).toContain("group-open/reasoning:inline");

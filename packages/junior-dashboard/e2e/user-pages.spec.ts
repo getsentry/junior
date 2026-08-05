@@ -20,29 +20,198 @@ test.beforeEach(async ({ page }) => {
   await mockDashboardApis(page);
 });
 
-test("opens a registered plugin page from the user menu", async ({ page }) => {
+test("opens a registered plugin page from primary navigation", async ({
+  page,
+}) => {
   await page.setViewportSize({ height: 900, width: 1600 });
   const browserErrors = collectBrowserErrors(page);
   await page.goto(server.baseURL);
 
-  await page
-    .getByRole("button", { name: "Open profile menu for Dashboard User" })
-    .click();
   const memoriesLink = page.getByRole("link", { name: "Memories" });
   await expect(memoriesLink).toHaveAttribute(
     "href",
-    "/settings/plugins/memory/memories",
+    "/plugins/memory/memories",
   );
   await memoriesLink.click();
 
+  await expect(page).toHaveURL(`${server.baseURL}/plugins/memory/memories`);
+  await expect(
+    page.getByRole("heading", { name: "Memories", exact: true }).first(),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByRole("region", { name: "Memory summary" })
+      .getByText("Total active", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Activity over time" }),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: /^\$/ })).toBeVisible();
+  await expect(page.getByText(/^Extraction \$/)).toBeVisible();
+  await expect(page.getByText(/^Recall \$/)).toBeVisible();
+  await expect(
+    page.getByRole("img", {
+      name: "Memory extraction and recall cost during the last 30 days",
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "What Junior remembers" }),
+  ).toBeVisible();
+  const activityRange = page.getByLabel("Memory timeline range");
+  const sevenDays = activityRange.getByRole("button", { name: "7d" });
+  const thirtyDays = activityRange.getByRole("button", { name: "30d" });
+  const ninetyDays = activityRange.getByRole("button", { name: "90d" });
+  await expect(thirtyDays).toHaveAttribute("aria-pressed", "true");
+  await sevenDays.click();
+  await expect(sevenDays).toHaveAttribute("aria-pressed", "true");
+  await ninetyDays.click();
+  await expect(ninetyDays).toHaveAttribute("aria-pressed", "true");
+  const costRange = page.getByLabel("Memory cost range");
+  await expect(costRange.getByRole("button", { name: "30d" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await page
+    .getByRole("navigation", { name: "Memory navigation" })
+    .getByRole("link", { name: "Memories" })
+    .click();
   await expect(page).toHaveURL(
-    `${server.baseURL}/settings/plugins/memory/memories`,
+    `${server.baseURL}/plugins/memory/memories/library`,
   );
   await expect(
-    page.getByRole("heading", { name: "Memories", exact: true }),
+    page.getByRole("button", { name: /^I prefer concise summaries/ }),
   ).toBeVisible();
-  await expect(page.getByText("I prefer concise summaries.")).toBeVisible();
-  await expect(page.getByText("Preference", { exact: true })).toBeVisible();
+  await expect(page.getByText("Private").last()).toBeVisible();
+  const privateTab = page.getByRole("tab", { name: "Private 24" });
+  await privateTab.click();
+  await expect(privateTab).toHaveAttribute("aria-selected", "true");
+  await expect(page).toHaveURL(/filter=private/);
+  const navLinks = await page.locator("header nav a").allTextContents();
+  expect(navLinks.at(-1)?.trim()).toBe("System");
+  expect(browserErrors).toEqual([]);
+});
+
+test("opens scheduled and event tasks in the native Tasks view", async ({
+  page,
+}) => {
+  const browserErrors = collectBrowserErrors(page);
+  await page.goto(server.baseURL);
+
+  await page.getByRole("link", { name: "Tasks" }).click();
+
+  await expect(page).toHaveURL(`${server.baseURL}/tasks`);
+  await expect(page.getByRole("heading", { name: "Tasks" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Activity over time" }),
+  ).toBeVisible();
+  await expect(
+    page.getByLabel("Task executions during the last 30 days"),
+  ).toBeVisible();
+  await expect(page.getByText("3 tasks")).toBeVisible();
+  await expect(page.getByText("processSession")).toBeVisible();
+  await expect(page.getByText("128 runs / 7d")).toBeVisible();
+  await expect(page.getByText(/Last execution/)).toBeVisible();
+  await expect(page.getByText("Send the weekly project summary")).toBeVisible();
+  await expect(page.getByText("Summarize the closed issue")).toBeVisible();
+  await expect(page.getByLabel("Scheduled task")).toBeVisible();
+  await expect(page.getByLabel("GitHub event task")).toBeVisible();
+  await expect(page.getByText("#project-updates").last()).toBeVisible();
+  await expect(page.getByText("Assigned to")).toHaveCount(0);
+  await expect(page.getByText("Task details")).not.toBeVisible();
+  await page
+    .getByRole("button", {
+      name: "View task details: Send the weekly project summary",
+    })
+    .click();
+  await expect(page.getByText("Task details")).toBeVisible();
+  await expect(page.getByRole("link", { name: "you" }).first()).toHaveAttribute(
+    "href",
+    "/people/morgan%40sentry.io",
+  );
+  await expect(
+    page.getByText("Notify responders when the incident changes"),
+  ).not.toBeVisible();
+  await page.getByRole("button", { name: "registered", exact: true }).click();
+  await expect(page.getByText("processSession")).toBeVisible();
+  await expect(
+    page.getByText("Send the weekly project summary"),
+  ).not.toBeVisible();
+  await page.getByRole("button", { name: "event", exact: true }).click();
+  await expect(
+    page.getByText("Send the weekly project summary"),
+  ).not.toBeVisible();
+  await expect(page.getByText("Summarize the closed issue")).toBeVisible();
+  await page.getByRole("button", { name: /^Public/ }).click();
+  await expect(
+    page.getByText("Notify responders when the incident changes"),
+  ).toBeVisible();
+  await expect(page.getByText("#incident-response").last()).toBeVisible();
+  await page
+    .getByRole("button", {
+      name: "View task details: Notify responders when the incident changes",
+    })
+    .click();
+  const creatorLink = page.getByRole("link", { name: "Avery Chen" });
+  await expect(creatorLink).toHaveAttribute(
+    "href",
+    "/people/avery%40sentry.io",
+  );
+  await expect(page.getByLabel("PagerDuty event task")).toBeVisible();
+  await expect(page.getByText("Memory system")).not.toBeVisible();
+  await creatorLink.click();
+  await expect(page).toHaveURL(`${server.baseURL}/people/avery%40sentry.io`);
+  await expect(page.getByRole("heading", { name: "Avery Chen" })).toBeVisible();
+  expect(browserErrors).toEqual([]);
+});
+
+test("expands memory details inline on desktop", async ({ page }) => {
+  await page.setViewportSize({ height: 900, width: 1440 });
+  const browserErrors = collectBrowserErrors(page);
+  await page.goto(`${server.baseURL}/plugins/memory/memories/library`);
+
+  const memory = page.getByRole("button", {
+    name: /^I prefer concise summaries/,
+  });
+  await memory.click();
+  await expect(
+    page.getByText("Why Junior remembers this").first(),
+  ).toBeVisible();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => document.body.style.overflow))
+    .toBe("");
+
+  await memory.click();
+  await expect(
+    page.getByText("Why Junior remembers this").first(),
+  ).not.toBeVisible();
+  expect(browserErrors).toEqual([]);
+});
+
+test("opens memory details in a mobile sheet", async ({ page }) => {
+  await page.setViewportSize({ height: 844, width: 390 });
+  const browserErrors = collectBrowserErrors(page);
+  await page.goto(`${server.baseURL}/plugins/memory/memories/library`);
+
+  await page
+    .getByRole("button", { name: /^I prefer concise summaries/ })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => document.body.style.overflow))
+    .toBe("hidden");
+  await expect(dialog.getByText("Why Junior remembers this")).toBeVisible();
+  await expect(dialog.getByText("Private")).toBeVisible();
+  await expect(
+    dialog.getByText(/Junior learned this from a Slack conversation/),
+  ).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await expect(dialog).not.toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => document.body.style.overflow))
+    .toBe("");
   expect(browserErrors).toEqual([]);
 });
 
@@ -51,23 +220,42 @@ test("renders an empty registered plugin page", async ({ page }) => {
     await route.fulfill({
       json: {
         type: "list",
-        emptyText: "No personal memories yet.",
+        emptyText: "No memories yet.",
         records: [],
       },
     });
   });
   const browserErrors = collectBrowserErrors(page);
 
-  await page.goto(`${server.baseURL}/settings/plugins/memory/memories`);
+  await page.goto(`${server.baseURL}/plugins/memory/memories/library`);
 
-  await expect(page.getByText("No personal memories yet.")).toBeVisible();
+  await expect(page.getByText("No memories yet.")).toBeVisible();
   expect(browserErrors).toEqual([]);
+});
+
+test("shows the memory overview error state", async ({ page }) => {
+  await page.route("**/api/plugins/memory/dashboard", async (route) => {
+    await route.fulfill({ json: { error: "Unavailable" }, status: 500 });
+  });
+
+  await page.goto(`${server.baseURL}/plugins/memory/memories`);
+
+  await expect(
+    page.getByText("Memory history is temporarily unavailable."),
+  ).toBeVisible();
+  await expect(page.getByText("Loading memory summary")).not.toBeVisible();
 });
 
 test("searches, paginates, and forgets plugin page records", async ({
   page,
 }) => {
   let forgotMemory = false;
+  let forgetRequests = 0;
+  let dashboardRequestCount = 0;
+  await page.route("**/api/plugins/memory/dashboard", async (route) => {
+    dashboardRequestCount += 1;
+    await route.fallback();
+  });
   await page.route("**/api/user-pages/memory/memories*", async (route) => {
     const url = new URL(route.request().url());
     const query = url.searchParams.get("q");
@@ -101,7 +289,7 @@ test("searches, paginates, and forgets plugin page records", async ({
         type: "list",
         emptyText: query
           ? "No memories matched your search."
-          : "No personal memories yet.",
+          : "No memories yet.",
         ...(!query && !cursor ? { nextCursor: "page-2" } : {}),
         records,
         searchPlaceholder: "Search memories",
@@ -111,6 +299,7 @@ test("searches, paginates, and forgets plugin page records", async ({
   await page.route(
     "**/api/plugins/memory/memories/memory-search",
     async (route) => {
+      forgetRequests += 1;
       expect(route.request().method()).toBe("DELETE");
       forgotMemory = true;
       await route.fulfill({ status: 204 });
@@ -118,36 +307,60 @@ test("searches, paginates, and forgets plugin page records", async ({
   );
   const browserErrors = collectBrowserErrors(page);
 
-  await page.goto(`${server.baseURL}/settings/plugins/memory/memories`);
-  await expect(page.getByText("First page memory.")).toBeVisible();
+  await page.goto(`${server.baseURL}/plugins/memory/memories/library`);
+  await expect(
+    page.getByRole("button", { name: /^First page memory/ }),
+  ).toBeVisible();
   const searchbox = page.getByRole("searchbox", { name: "Search memories" });
   await searchbox.fill("runbook");
+  const privateTab = page.getByRole("tab", { name: /^Private/ });
+  await privateTab.click();
+  await expect(page).toHaveURL(/filter=private/);
   await expect(page).toHaveURL(/q=runbook/);
   await expect(
     page.getByRole("button", { name: "Load more" }),
   ).not.toBeVisible();
-  await expect(searchbox).toBeFocused();
-  await expect(page.getByText("Deploy runbooks live in Notion.")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /^Deploy runbooks live in Notion/ }),
+  ).toBeVisible();
 
   await searchbox.fill("");
   await expect(page).not.toHaveURL(/q=/);
-  await expect(page.getByText("First page memory.")).toBeVisible();
+  await page.getByRole("tab", { name: /^All/ }).click();
+  await expect(page).not.toHaveURL(/filter=/);
+  await expect(
+    page.getByRole("button", { name: /^First page memory/ }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Load more" }).click();
-  await expect(page.getByText("Second page memory.")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /^Second page memory/ }),
+  ).toBeVisible();
 
   await searchbox.fill("runbook");
   await expect(page).toHaveURL(/q=runbook/);
   await expect(searchbox).toBeFocused();
-  await expect(page.getByText("Deploy runbooks live in Notion.")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /^Deploy runbooks live in Notion/ }),
+  ).toBeVisible();
 
   page.once("dialog", (dialog) => dialog.accept());
   await page
-    .getByRole("button", {
-      name: "Forget: Deploy runbooks live in Notion.",
-    })
+    .getByRole("button", { name: /^Deploy runbooks live in Notion/ })
     .click();
+  await page
+    .getByRole("button", { name: "Forget this memory" })
+    .evaluate((button) => {
+      button.click();
+      button.click();
+    });
   await expect(
     page.getByText("No memories matched your search."),
   ).toBeVisible();
+  expect(forgetRequests).toBe(1);
+  await expect.poll(() => dashboardRequestCount).toBeGreaterThan(1);
+
+  await searchbox.fill("");
+  await expect(page).not.toHaveURL(/q=/);
+  await expect(page.getByText("No memories yet.")).toBeVisible();
   expect(browserErrors).toEqual([]);
 });

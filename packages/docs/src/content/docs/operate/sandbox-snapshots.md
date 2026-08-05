@@ -29,15 +29,15 @@ The common deploy path runs snapshot warmup during build:
 
 ## Snapshot profile
 
-Junior computes the snapshot profile from loaded plugin declarations:
+Junior computes the snapshot profile from its global baseline and loaded plugin declarations. The baseline provides Docker, Docker Compose, and other core command-line tools.
 
-| Input                | Source                                                     |
-| -------------------- | ---------------------------------------------------------- |
-| Runtime              | Junior sandbox runtime, currently `node22`.                |
-| npm dependencies     | Plugin `runtime-dependencies` entries with `type: npm`.    |
-| system dependencies  | Plugin `runtime-dependencies` entries with `type: system`. |
-| postinstall commands | Plugin `runtime-postinstall` entries.                      |
-| manual rebuild epoch | `SANDBOX_SNAPSHOT_REBUILD_EPOCH`, when set.                |
+| Input                | Source                                                                |
+| -------------------- | --------------------------------------------------------------------- |
+| Runtime              | Junior sandbox runtime, currently `node22`.                           |
+| npm dependencies     | Global and plugin `runtime-dependencies` entries with `type: npm`.    |
+| system dependencies  | Global and plugin `runtime-dependencies` entries with `type: system`. |
+| postinstall commands | Global and plugin `runtime-postinstall` entries.                      |
+| manual rebuild epoch | `SANDBOX_SNAPSHOT_REBUILD_EPOCH`, when set.                           |
 
 Any change to those inputs produces a new profile hash and a new snapshot.
 
@@ -56,7 +56,7 @@ The default floating dependency max age is seven days. Set `SANDBOX_SNAPSHOT_FLO
 
 ## Build resources
 
-Snapshot builds use the same `SANDBOX_VCPUS` setting as runtime sandboxes. Set it when dependency installation or agent work needs more CPU or memory than the Vercel Sandbox default. Each vCPU provides 2 GB of memory, so `SANDBOX_VCPUS=4` creates 8 GB sandboxes.
+Snapshot builds use `SANDBOX_VCPUS` because `junior snapshot create` runs before app initialization. Set it when dependency installation needs more CPU or memory than the Vercel Sandbox default. Runtime sandboxes should normally use `createApp({ sandbox: { vcpus } })`. Each vCPU provides 2 GB of memory, so a value of `4` creates an 8 GB sandbox.
 
 Leave the variable unset to use the Vercel default. Requested vCPU counts must be supported by the deployment's Vercel plan; unsupported values cause sandbox creation to fail.
 

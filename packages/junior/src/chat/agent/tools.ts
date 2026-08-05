@@ -10,7 +10,10 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { FileUpload } from "chat";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
-import { createAgentSandbox } from "@/chat/agent/sandbox";
+import {
+  createAgentSandbox,
+  createPluginToolSandbox,
+} from "@/chat/agent/sandbox";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import type { Skill, SkillMetadata } from "@/chat/skills";
 import {
@@ -34,6 +37,7 @@ import {
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
 import { planToolExposure } from "@/chat/tool-exposure";
 import type { SandboxRef } from "@/chat/sandbox/ref";
+import type { RepositoryInstructions } from "@/chat/repository-instructions";
 import { createMcpAuthOrchestration } from "@/chat/services/mcp-auth-orchestration";
 import { createPluginAuthOrchestration } from "@/chat/services/plugin-auth-orchestration";
 import { createPluginEgress } from "@/chat/egress/plugin";
@@ -59,6 +63,14 @@ import { upsertActiveSkill } from "@/chat/agent/skills";
 import type { ResumeState } from "@/chat/agent/resume";
 import { credentialUserSubjectId } from "@/chat/credentials/context";
 import { incrementStat } from "@/stats";
+import { botConfig } from "@/chat/config";
+import { completeObject } from "@/chat/pi/client";
+import { createGuardianActionReviewer } from "@/chat/services/guardian-action-review";
+import { createToolActionReview } from "@/chat/tool-support/action-review";
+import { buildToolActionEvidence } from "@/chat/tool-support/action-review-evidence";
+import { restoreToolActionRejections } from "@/chat/tool-support/action-review-history";
+import { recordGuardianActionReviewed } from "@/chat/conversations/projection";
+import { readActorIdentity } from "@/chat/plugins/viewer";
 
 interface ToolWiringArgs {
   abortAgent: () => void;
@@ -66,6 +78,12 @@ interface ToolWiringArgs {
   currentActor?: Actor;
   /** Live projection of the run's committed instruction-authority actors so far. */
   currentActors?: () => Actor[];
+  /** Live Pi transcript used to give Guardian bounded action context. */
+  currentAgentMessages: () => PiMessage[];
+  /** Durable transcript for this turn only, used to restore rejection state. */
+  currentTurnMessages: readonly PiMessage[];
+  /** Live same-actor instructions that authorize the pending action. */
+  currentUserIntent: () => string;
   artifactStatePatch: Partial<ThreadArtifactsState>;
   availableSkills: SkillMetadata[];
   configurationValues: Record<string, unknown>;
@@ -76,6 +94,7 @@ interface ToolWiringArgs {
   generatedFiles: FileUpload[];
   invokedSkill: SkillMetadata | null;
   observers: AgentRunObservers;
+  onFatalToolError(error: Error): void;
   onSandboxRefChanged: (sandboxRef: SandboxRef) => void;
   policy: AgentRunPolicy;
   preAgentPromptMessages: () => PiMessage[];
@@ -121,7 +140,18 @@ export interface ToolWiring {
   getPendingAuthPause: () => AuthorizationPauseError | undefined;
   mcpToolManager: McpToolManager;
   pluginHooks: PluginHookRunner;
+  /** Project core-owned review state into one durable Pi tool result. */
+  projectActionReviewResult<
+    TResult extends { details?: unknown; isError?: boolean },
+  >(
+    toolCallId: string,
+    result: TResult,
+  ): TResult;
   getSandboxRef: () => SandboxRef | undefined;
+  /** Resolve the AGENTS.md bundle selected by the sandbox workspace. */
+  captureRepositoryInstructions: () => Promise<
+    RepositoryInstructions | undefined
+  >;
   close(): Promise<void>;
   toolGuidance: Array<{
     name: string;
@@ -265,6 +295,12 @@ export async function wireAgentTools(
     workspace: agentSandbox.workspace,
     supportsImageInput: args.supportsImageInput,
     surface: args.surface,
+    ...(args.currentActor
+      ? {
+          resolveActorIdentity: async () =>
+            await readActorIdentity(args.currentActor!),
+        }
+      : {}),
     ...(args.durability.spawnAgent
       ? { spawnAgent: args.durability.spawnAgent }
       : {}),
@@ -296,6 +332,34 @@ export async function wireAgentTools(
       source: runSource,
     };
   }
+  const actionReview = createToolActionReview({
+    context: {
+      actor: args.currentActor,
+      conversationId: args.conversationId,
+      credentialContext: args.routing.credentialContext,
+      destination: toolDestination,
+      source: runSource,
+      userIntent: args.currentUserIntent,
+      evidence: () => buildToolActionEvidence(args.currentAgentMessages()),
+    },
+    onDecision: ({ toolCallId, toolName, decision }) =>
+      recordGuardianActionReviewed({
+        conversationId: args.conversationId,
+        turnId: args.turnId,
+        toolCallId,
+        toolName,
+        costUsd: decision.costUsd,
+        decision: decision.decision,
+        riskLevel: decision.riskLevel,
+        userAuthorization: decision.userAuthorization,
+      }),
+    onFatal: args.onFatalToolError,
+    priorRejections: restoreToolActionRejections(args.currentTurnMessages),
+    reviewer: createGuardianActionReviewer({
+      completeObject,
+      modelId: botConfig.guardianModelId,
+    }),
+  });
   const tools = createTools(
     loadableSkills,
     {
@@ -350,7 +414,12 @@ export async function wireAgentTools(
       },
     },
     toolRuntimeContext,
-    { includeLoadSkill: !explicitSkillLoaded },
+    {
+      includeLoadSkill: !explicitSkillLoaded,
+      pluginSandbox: createPluginToolSandbox(agentSandbox, {
+        handleAuthSignal: pluginAuth.maybeHandleAuthSignal,
+      }),
+    },
   );
 
   const plannedToolExposure = planToolExposure(
@@ -440,6 +509,7 @@ export async function wireAgentTools(
     pluginHooks,
     args.conversationPrivacy,
     args.observers.onToolResult,
+    actionReview,
   );
   // Keep Pi's native tool schema static for the whole turn. Ideally this
   // would use provider-native tool loading/search APIs, but Pi's generic
@@ -454,7 +524,11 @@ export async function wireAgentTools(
     getPendingAuthPause,
     mcpToolManager,
     pluginHooks,
+    projectActionReviewResult(toolCallId, result) {
+      return actionReview.projectToolResult(toolCallId, result);
+    },
     getSandboxRef: agentSandbox.sandboxRef,
+    captureRepositoryInstructions: agentSandbox.captureRepositoryInstructions,
     async close() {
       agentSandbox.close();
       try {

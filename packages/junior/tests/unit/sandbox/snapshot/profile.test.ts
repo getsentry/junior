@@ -1,9 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { dependenciesMock, postinstallMock } = vi.hoisted(() => ({
-  dependenciesMock: vi.fn(),
-  postinstallMock: vi.fn(),
-}));
+const { dependenciesMock, globalPostinstall, postinstallMock } = vi.hoisted(
+  () => ({
+    dependenciesMock: vi.fn(),
+    globalPostinstall: [] as Array<{ cmd: string; args?: string[] }>,
+    postinstallMock: vi.fn(),
+  }),
+);
 
 vi.mock("@/chat/plugins/catalog-runtime", () => ({
   pluginCatalogRuntime: {
@@ -14,6 +17,7 @@ vi.mock("@/chat/plugins/catalog-runtime", () => ({
 
 vi.mock("@/chat/sandbox/runtime-dependencies", () => ({
   GLOBAL_RUNTIME_DEPENDENCIES: [],
+  GLOBAL_RUNTIME_POSTINSTALL: globalPostinstall,
 }));
 
 import { create, isStale } from "@/chat/sandbox/snapshot/profile";
@@ -24,6 +28,7 @@ describe("snapshot dependency profile", () => {
     postinstallMock.mockReset();
     dependenciesMock.mockReturnValue([]);
     postinstallMock.mockReturnValue([]);
+    globalPostinstall.length = 0;
     delete process.env.SANDBOX_SNAPSHOT_REBUILD_EPOCH;
     delete process.env.SANDBOX_SNAPSHOT_FLOATING_MAX_AGE_MS;
     vi.useFakeTimers();
@@ -54,7 +59,17 @@ describe("snapshot dependency profile", () => {
     ).toBe(false);
   });
 
-  it("treats postinstall profiles as floating", () => {
+  it("includes pinned global postinstall without making the profile floating", () => {
+    globalPostinstall.push({ cmd: "install", args: ["docker-compose"] });
+
+    const profile = create("node22");
+    expect(profile?.postinstall).toEqual([
+      { cmd: "install", args: ["docker-compose"] },
+    ]);
+    expect(profile?.floating).toBe(false);
+  });
+
+  it("treats plugin postinstall profiles as floating", () => {
     postinstallMock.mockReturnValue([
       { cmd: "agent-browser", args: ["install"] },
     ]);

@@ -44,7 +44,9 @@ Treat explicit repo flags as command-targeting safety rails, not as a credential
 | Request reviewers                  | `gh api repos/owner/repo/pulls/NUMBER/requested_reviewers --method POST --input reviewers.json`                          |
 | Remove requested reviewers         | `gh api repos/owner/repo/pulls/NUMBER/requested_reviewers --method DELETE --input reviewers.json`                        |
 | Close pull request                 | `gh api repos/owner/repo/pulls/NUMBER --method PATCH -f state=closed`                                                    |
-| Submit human review                | `gh api repos/owner/repo/pulls/NUMBER/reviews --method POST --input review.json`                                         |
+| Submit pull request review         | `gh api repos/owner/repo/pulls/NUMBER/reviews --method POST --input review.json`                                         |
+| Post inline review comment         | `gh api repos/owner/repo/pulls/NUMBER/comments --method POST --input comment.json`                                       |
+| Reply to inline review comment     | `gh api repos/owner/repo/pulls/NUMBER/comments/COMMENT_ID/replies --method POST --input reply.json`                      |
 | View pull request                  | `gh pr view NUMBER --repo owner/repo [--json ...]`                                                                       |
 | List pull requests                 | `gh pr list --repo owner/repo [--state open \| closed \| merged]`                                                        |
 | Diff pull request                  | `gh pr diff NUMBER --repo owner/repo`                                                                                    |
@@ -71,6 +73,7 @@ jr-rpc config set github.repo owner/repo
 - Before rebasing, merge-base analysis, blame/history inspection, or a base comparison, check whether the repository is shallow. Fetch a bounded depth of the base into `refs/remotes/origin/BASE`, deepen incrementally until the needed ancestry is present, and compare against `origin/BASE`; use `--unshallow` only when bounded deepening is insufficient. Never force-push to work around missing ancestry.
 - Before `github_createPullRequest`, push the head branch explicitly and resolve the target repo's default branch for `base`. That push requires GitHub write access to the remote.
 - Merge, fork creation, workflow reruns or cancellations, REST contents/Git database writes, and repository administration are outside the current write allowlist.
+- Pull request reviews and inline review comments use the same repository-scoped `installation-write` credential as other bot-owned PR writes, so they post as Junior even on headless turns. Merge remains denied.
 - If the explicit `git push` fails with 401/403 or another access/permission error, verify the repo context and retry once. If it still fails, load troubleshooting guidance and report the exact command failure.
 - PR comments, labels, and assignees use GitHub's issue endpoints; use the `github-issues` REST guidance for those operations. All allowlisted bot writes share the same repository-scoped `installation-write` credential.
 - Return actionable errors for access, permission, not-found, and validation failures.

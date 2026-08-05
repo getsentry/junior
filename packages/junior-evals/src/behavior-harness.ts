@@ -67,13 +67,13 @@ import { ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX } from "@/chat/services/context-c
 import { TURN_CONTEXT_TAG } from "@/chat/turn-context-tag";
 import {
   createSchedulerSqlStore,
-  schedulerPlugin,
   type ScheduledTask,
   type SchedulerDb,
-} from "@sentry/junior-scheduler";
+} from "@/chat/scheduled-tasks";
 import { githubPlugin } from "@sentry/junior-github";
 import { memoryPlugin } from "@sentry/junior-memory";
 import { runPluginHeartbeats } from "@/chat/agent-dispatch/heartbeat";
+import { runScheduledTaskHeartbeat } from "@/chat/scheduled-tasks/heartbeat";
 import {
   buildDispatchRoutingContext,
   createAgentDispatchConversationWorker,
@@ -89,10 +89,13 @@ import {
 } from "@/chat/agent-dispatch/store";
 import { ingestResourceEvent } from "@/chat/resource-events/ingest";
 import { createResourceEventSubscription } from "@/chat/resource-events/store";
+import { ingestEventTasks } from "@/chat/event-tasks/ingest";
+import { createEventTask } from "@/chat/event-tasks/store";
+import type { EventTask } from "@/chat/event-tasks/types";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
 import { resetSkillDiscoveryCache } from "@/chat/skills";
-import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
+import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { annotateTurnDeadlineToolResult } from "@/chat/tool-support/turn-deadline-result";
 import { DEFAULT_MAX_CHARS, MAX_FETCH_CHARS } from "@/chat/tools/web/constants";
 import { truncateWebFetchContent } from "@/chat/tools/web/fetch-content";
@@ -261,12 +264,26 @@ interface AssistantContextChangedEvent extends EvalBaseEvent {
 
 interface ScheduledTaskDueEvent extends EvalBaseEvent {
   type: "scheduled_task_due";
+  credential_mode?: "creator" | "system";
   now_ms?: number;
   recurrence?: "daily" | "weekly" | "monthly" | "yearly";
   schedule?: string;
   schedule_kind?: "one_off" | "recurring";
   task_text: string;
   timezone?: string;
+}
+
+interface EventTaskMatchedEvent extends EvalBaseEvent {
+  type: "event_task_matched";
+  event_key: string;
+  event_type: string;
+  label: string;
+  namespace: string;
+  identifier: string;
+  resource_type: string;
+  task_text: string;
+  trusted_summary: string;
+  untrusted_text?: string;
 }
 
 interface GitHubWebhookEvent extends EvalBaseEvent {
@@ -277,7 +294,7 @@ interface GitHubWebhookEvent extends EvalBaseEvent {
     events: string[];
     intent: string;
     label: string;
-    resource_ref: string;
+    identifier: string;
     resource_type: string;
   };
   type: "github_webhook";
@@ -289,6 +306,7 @@ export type EvalEvent =
   | AssistantThreadStartedEvent
   | AssistantContextChangedEvent
   | ScheduledTaskDueEvent
+  | EventTaskMatchedEvent
   | GitHubWebhookEvent;
 
 type SlackMessageEvent = MentionEvent | SubscribedMessageEvent;
@@ -503,8 +521,8 @@ function createReplayWebFetchDeps(
           }),
         },
       });
-      const parsed = juniorToolResultSchema.parse(result);
-      if (parsed.ok !== true || typeof parsed.content !== "string") {
+      const parsed = juniorToolOutputSchema.parse(result);
+      if (typeof parsed.content !== "string") {
         return parsed;
       }
       const limited = truncateWebFetchContent(
@@ -563,7 +581,7 @@ function createReplayWebSearchDeps(
           }),
         },
       });
-      return juniorToolResultSchema.parse(result);
+      return juniorToolOutputSchema.parse(result);
     },
   };
 }
@@ -649,12 +667,14 @@ function buildRuntimeThreadId(fixture: EvalEventThreadFixture): string {
   return fixture.id;
 }
 
-function createEvalDestination(thread: TestThread): Destination {
+function createEvalDestination(
+  thread: TestThread,
+): Extract<Destination, { platform: "slack" }> {
   const destination = createSlackDestination({
     teamId: EVAL_SLACK_TEAM_ID,
     channelId: thread.channelId,
   });
-  if (!destination) {
+  if (!destination || destination.platform !== "slack") {
     throw new Error("Eval Slack destination requires a Slack channel id");
   }
   return destination;
@@ -680,7 +700,7 @@ const HARNESS_ENV_KEYS = [
 ] as const;
 const DEFAULT_EVAL_BASE_URL = "https://junior.example.com";
 const SENTRY_EVAL_SCOPE =
-  "alerts:write event:read org:read project:read team:read";
+  "alerts:write event:write member:read org:read project:releases project:write team:write";
 const DUMMY_GITHUB_APP_PRIVATE_KEY = generateKeyPairSync("rsa", {
   modulusLength: 2048,
 })
@@ -1826,17 +1846,9 @@ function buildRuntimeServices(
             const nowMs = Date.now();
             const toolCallId = "eval-timeout-resume-tool-call";
             const unknownOutcome = {
-              ok: false,
-              status: "error",
               target: timeoutResume.tool_name,
-              data: {
-                aborted: true,
-              },
-              error: {
-                kind: "outcome_unknown",
-                message: "Command outcome was not confirmed.",
-                retryable: false,
-              },
+              aborted: true,
+              message: "Command outcome was not confirmed.",
             };
             const deadlineResult = annotateTurnDeadlineToolResult({
               content: [{ type: "text", text: JSON.stringify(unknownOutcome) }],
@@ -2306,9 +2318,11 @@ async function processEvents(args: {
     const taskId = `eval_schedule_${thread.channelId}_${nowMs}`;
     const task: ScheduledTask = {
       id: taskId,
+      conversationAccess: { audience: "channel", visibility: "public" },
       createdAtMs: nowMs - 60_000,
       createdBy: { slackUserId: TEST_USER_ID, userName: "testuser" },
-      credentialMode: "system",
+      creatorIdentityId: `eval:slack:${TEST_USER_ID}`,
+      credentialMode: event.credential_mode ?? "system",
       destination: createEvalDestination(
         thread,
       ) as ScheduledTask["destination"],
@@ -2339,7 +2353,7 @@ async function processEvents(args: {
     );
     await schedulerStore.saveTask(task);
 
-    await runPluginHeartbeats({
+    await runScheduledTaskHeartbeat({
       conversationWorkQueue,
       nowMs,
     });
@@ -2361,6 +2375,27 @@ async function processEvents(args: {
       if (!dispatch) {
         throw new Error("Scheduled eval dispatch record was not found.");
       }
+      if (event.credential_mode === "creator") {
+        const subject = dispatch.credentialSubject;
+        if (
+          !subject ||
+          subject.type !== "user" ||
+          subject.userId !== TEST_USER_ID ||
+          subject.allowedWhen !== "scheduled-task" ||
+          subject.taskId !== taskId ||
+          subject.binding.type !== "scheduled-task" ||
+          subject.binding.plugin !== "scheduler" ||
+          subject.binding.taskId !== taskId
+        ) {
+          throw new Error(
+            "Creator-bound scheduled eval dispatch did not use the task creator.",
+          );
+        }
+      } else if (dispatch.credentialSubject) {
+        throw new Error(
+          "System scheduled eval dispatch unexpectedly used a user credential subject.",
+        );
+      }
     }
     await drainQueuedConversationWork();
   };
@@ -2376,8 +2411,8 @@ async function processEvents(args: {
         expiresAtMs: nowMs + 14 * 24 * 60 * 60 * 1000,
         intent: event.subscription.intent,
         label: event.subscription.label,
-        provider: "github",
-        resourceRef: event.subscription.resource_ref,
+        namespace: "github",
+        identifier: event.subscription.identifier,
         resourceType: event.subscription.resource_type,
       },
       { nowMs, state: env.stateAdapter },
@@ -2388,11 +2423,64 @@ async function processEvents(args: {
       eventName: event.event_name,
     });
     for (const normalizedEvent of normalizedEvents) {
-      await ingestResourceEvent(normalizedEvent, {
+      await ingestResourceEvent(
+        { ...normalizedEvent, namespace: "github" },
+        {
+          nowMs,
+          queue: conversationWorkQueue,
+          state: env.stateAdapter,
+          teamId: EVAL_SLACK_TEAM_ID,
+        },
+      );
+    }
+    await drainQueuedConversationWork();
+  };
+
+  const runEventTaskMatched = async (
+    event: EventTaskMatchedEvent,
+  ): Promise<void> => {
+    const { thread } = getThreadRecord(event.thread);
+    const nowMs = Date.now();
+    const taskId = `eval_event_task_${thread.channelId}_${nowMs}`;
+    const task: EventTask = {
+      id: taskId,
+      createdAtMs: nowMs - 60_000,
+      createdBy: { slackUserId: TEST_USER_ID, userName: "testuser" },
+      credentialMode: "system",
+      destination: createEvalDestination(thread),
+      destinationVisibility: "public",
+      task: { text: event.task_text },
+      trigger: {
+        events: [event.event_type],
+        label: event.label,
+        namespace: event.namespace,
+        identifier: event.identifier,
+        resourceType: event.resource_type,
+      },
+    };
+    await createEventTask(getDb(), task);
+    const result = await ingestEventTasks(
+      {
+        eventKey: event.event_key,
+        eventType: event.event_type,
+        occurredAtMs: nowMs,
+        namespace: event.namespace,
+        identifier: event.identifier,
+        trustedSummary: event.trusted_summary,
+        ...(event.untrusted_text
+          ? { untrustedText: event.untrusted_text }
+          : {}),
+      },
+      {
         nowMs,
         queue: conversationWorkQueue,
-        state: env.stateAdapter,
-      });
+        teamId: task.destination.teamId,
+      },
+    );
+    if (result.dispatched !== 1) {
+      throw new Error(
+        `Event task eval expected one dispatch, got ${result.dispatched}`,
+      );
     }
     await drainQueuedConversationWork();
   };
@@ -2402,6 +2490,8 @@ async function processEvents(args: {
       enqueueEvent(event);
     } else if (event.type === "scheduled_task_due") {
       await runScheduledTaskDue(event);
+    } else if (event.type === "event_task_matched") {
+      await runEventTaskMatched(event);
     } else if (event.type === "github_webhook") {
       await runGitHubWebhook(event);
     } else {
@@ -2579,12 +2669,9 @@ export async function runEvalScenario(
     );
     const currentPlugins = getPlugins();
     previousPlugins = setPlugins([
-      schedulerPlugin(),
       ...runtimePlugins,
       ...currentPlugins.filter(
-        (plugin) =>
-          plugin.manifest.name !== "scheduler" &&
-          !runtimePluginNames.has(plugin.manifest.name),
+        (plugin) => !runtimePluginNames.has(plugin.manifest.name),
       ),
     ]);
     const slackAdapter = new FakeSlackAdapter({ botUserId: TEST_BOT_USER_ID });

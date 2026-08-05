@@ -1,6 +1,8 @@
-import type { Destination } from "@sentry/junior-plugin-api";
+import type { Destination, Source } from "@sentry/junior-plugin-api";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { StoredSlackActor } from "@/chat/actor";
+import type { Location } from "@/chat/conversations/location";
+import type { SessionSource } from "@/chat/source";
 import type { AgentTurnUsage } from "@/chat/usage";
 
 export type ConversationSource =
@@ -41,9 +43,15 @@ export interface Conversation {
   execution: ConversationExecution;
   lastActivityAtMs: number;
   lineage?: ConversationLineage;
+  location?: Location;
   actor?: StoredSlackActor;
   schemaVersion: 1;
   source?: ConversationSource;
+  /**
+   * Structured inbound Source locator for this conversation session.
+   * Session-stable (Slack thread anchor, not per-message ts). Set-once.
+   */
+  sessionSource?: SessionSource;
   title?: string;
   updatedAtMs: number;
   /**
@@ -66,7 +74,22 @@ export interface ConversationStore {
     source?: ConversationSource;
   }): Promise<void>;
   get(args: { conversationId: string }): Promise<Conversation | undefined>;
-  /** Read persisted visibility for one destination. Missing rows fail closed. */
+  /** Resolve the durable conversation bound to one provider conversation. */
+  getConversationIdByProviderConversation(args: {
+    provider: string;
+    providerDestinationId: string;
+    providerTenantId: string;
+    providerConversationId: string;
+  }): Promise<string | undefined>;
+  /** Bind one provider conversation to its pre-existing durable conversation. */
+  bindProviderConversation(args: {
+    conversationId: string;
+    provider: string;
+    providerDestinationId: string;
+    providerTenantId: string;
+    providerConversationId: string;
+  }): Promise<void>;
+  /** Read confirmed public/private visibility for one destination. */
   getDestinationVisibility(args: {
     provider: string;
     providerDestinationId: string;
@@ -80,8 +103,10 @@ export interface ConversationStore {
     nowMs?: number;
     actor?: StoredSlackActor;
     source?: ConversationSource;
+    /** Source normalized to a stable session locator; set-once when absent. */
+    sessionSource?: Source;
     title?: string;
-    /** Source-confirmed visibility from the current event's signal only. */
+    /** Confirmed destination visibility; omit when unavailable. */
     visibility?: ConversationPrivacy;
   }): Promise<void>;
   /**
@@ -103,7 +128,7 @@ export interface ConversationStore {
     source?: ConversationSource;
     title?: string;
     updatedAtMs: number;
-    /** Source-confirmed visibility from the current event's signal only. */
+    /** Confirmed destination visibility; omit when unavailable. */
     visibility?: ConversationPrivacy;
   }): Promise<void>;
   listByActivity(args?: {

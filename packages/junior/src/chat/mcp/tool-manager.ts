@@ -8,9 +8,10 @@
  */
 import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
 import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
-import type {
-  PluginMcpToolResult,
-  ToolAnnotations,
+import {
+  missingToolAnnotationKeys,
+  type PluginMcpToolResult,
+  type ToolAnnotations,
 } from "@sentry/junior-plugin-api";
 import {
   logWarn,
@@ -280,9 +281,7 @@ export interface McpToolManagerOptions {
    * Optional post-success processor for model-facing MCP tool calls.
    * Failures are logged by the host caller and must not fail the tool result.
    */
-  onToolSuccess?: (
-    input: McpToolSuccessHookInput,
-  ) => Promise<void> | void;
+  onToolSuccess?: (input: McpToolSuccessHookInput) => Promise<void> | void;
 }
 
 export interface ManagedMcpToolResult {
@@ -526,6 +525,14 @@ export class McpToolManager {
   ): ManagedMcpTool {
     const outputSchema = toOptionalRecord(tool.outputSchema);
     const annotations = tool.annotations;
+    const missingAnnotationKeys = missingToolAnnotationKeys(annotations);
+    if (missingAnnotationKeys.length > 0) {
+      logWarn("mcp.tool_annotations.missing", {
+        "app.plugin.name": plugin.manifest.name,
+        "gen_ai.tool.name": tool.name,
+        "app.tool.missing_annotations": missingAnnotationKeys.join(","),
+      });
+    }
     return {
       name: normalizeMcpToolName(plugin.manifest.name, tool.name),
       description: describeMcpTool(plugin.manifest.name, tool),

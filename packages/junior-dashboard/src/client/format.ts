@@ -1,6 +1,7 @@
 import { bundledLanguages, type BundledLanguage } from "shiki/bundle/web";
 import type {
   ActorIdentity,
+  ConversationAuxiliaryCosts,
   ConversationSummaryReport,
   ConversationUsage,
 } from "@sentry/junior/api/schema";
@@ -8,7 +9,6 @@ import type {
   CodeBlock,
   Conversation,
   ConversationTranscript,
-  MarkupNode,
   TranscriptViewMessage,
   TranscriptViewPart,
   VisualStatus,
@@ -53,11 +53,15 @@ function parseTime(value: string | undefined): number | null {
   return Number.isFinite(time) ? time : null;
 }
 
-/** Format absolute dashboard timestamps with a stable empty fallback. */
-export function formatTime(value: string | undefined): string {
+/** Format absolute dashboard timestamps in the configured display timezone. */
+export function formatTime(
+  value: string | undefined,
+  options?: Intl.DateTimeFormatOptions,
+): string {
   const time = parseTime(value);
   if (time == null) return "none";
   return new Date(time).toLocaleString(undefined, {
+    ...options,
     timeZone: displayTimeZone(),
   });
 }
@@ -287,14 +291,19 @@ export type MessageSummary = {
   total: number;
 };
 
-function transcriptMessageAuthor(
+/** Return the best available actor label for one transcript message. */
+export function transcriptMessageActorLabel(
   conversation: ConversationTranscript,
   message: TranscriptViewMessage,
 ): string {
   const kind = transcriptRoleKind(message.role);
   if (kind === "assistant") return getDashboardAgentName();
   if (kind === "user") {
-    return actorLabel(conversation.actorIdentity) ?? "User";
+    return (
+      actorLabel(message.actorIdentity) ??
+      actorLabel(conversation.actorIdentity) ??
+      "User"
+    );
   }
   if (kind === "system") return "System";
   if (kind === "tool") return "Tool";
@@ -316,7 +325,7 @@ export function summarizeMessages(
   for (const message of transcriptSource(conversation)) {
     if (!isConversationMessage(message)) continue;
     items.push({
-      author: transcriptMessageAuthor(conversation, message),
+      author: transcriptMessageActorLabel(conversation, message),
       bytes: message.parts.reduce(
         (sum, part) => sum + transcriptPartBytes(part),
         0,
@@ -340,7 +349,7 @@ export function summarizeTurns(
   if (userMessages.length > 0) {
     return {
       items: userMessages.map((message) => ({
-        author: transcriptMessageAuthor(conversation, message),
+        author: transcriptMessageActorLabel(conversation, message),
         bytes: message.parts.reduce(
           (sum, part) => sum + transcriptPartBytes(part),
           0,
@@ -457,17 +466,54 @@ export function formatCostSummary(
   summary: CostUsageSummary | undefined,
 ): string {
   if (!summary) return "";
+  const maximumFractionDigits =
+    summary.total > 0 && summary.total < 0.01 ? 4 : 2;
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
     minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+    maximumFractionDigits,
+  }).format(summary.total);
+}
+
+/** Format tooltip cost detail without hiding sub-cent contributions. */
+export function formatCostBreakdown(
+  summary: CostUsageSummary | undefined,
+): string {
+  if (!summary) return "";
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
   }).format(summary.total);
 }
 
 /** Format persisted cumulative estimated model cost for a conversation. */
 export function formatCostTotal(usage: ConversationUsage | undefined): string {
   return formatCostSummary(summarizeCost(usage));
+}
+
+/** Combine agent model cost with additive auxiliary operation cost. */
+export function totalConversationCost(
+  summary: CostUsageSummary | undefined,
+  auxiliaryCosts: ConversationAuxiliaryCosts | undefined,
+): CostUsageSummary | undefined {
+  if (!summary && !auxiliaryCosts) return undefined;
+  return {
+    ...summary,
+    total: addCost(summary?.total ?? 0, auxiliaryCosts?.costUsd ?? 0),
+  };
+}
+
+/** Format the inclusive cost of agent and auxiliary conversation work. */
+export function formatConversationCostTotal(
+  usage: ConversationUsage | undefined,
+  auxiliaryCosts: ConversationAuxiliaryCosts | undefined,
+): string {
+  return formatCostSummary(
+    totalConversationCost(summarizeCost(usage), auxiliaryCosts),
+  );
 }
 
 /** Format the execution time accumulated across a conversation's runs. */
@@ -620,7 +666,7 @@ export function peoplePath(email: string): string {
 
 /** Build the canonical detail route for a persisted public location. */
 export function locationPath(locationId: string): string {
-  return `/locations/${encodeURIComponent(locationId)}`;
+  return `/system/locations/${encodeURIComponent(locationId)}`;
 }
 
 function normalizeLanguage(language: string | undefined): BundledLanguage {
@@ -735,30 +781,8 @@ export function detectOutputLanguage(text: string): BundledLanguage {
   return "markdown";
 }
 
-/**
- * Decide whether a block can use the interactive markup renderer.
- * Only xml/html language blocks qualify; fenced is tracked as metadata but
- * does not gate eligibility — caller controls whether XML detection runs.
- */
-export function canRenderStructuredMarkup(block: CodeBlock): boolean {
-  return block.language === "xml" || block.language === "html";
-}
-
-/**
- * Parse markdown into renderable code blocks while preserving plain text blocks.
- *
- * `outputOnly` (default `false`): when `true`, prose sections use
- * `detectOutputLanguage` (json or markdown only — no xml/html heuristics).
- * Use `outputOnly: true` for LLM-generated text (assistant messages) to
- * prevent Slack autolinks and HTML snippets from triggering the XML tree
- * renderer. Leave `false` (default) for user/system messages that may
- * contain genuine XML runtime context.
- */
-export function parseMarkdownBlocks(
-  text: string,
-  opts: { outputOnly?: boolean } = {},
-): CodeBlock[] {
-  const detectProse = opts.outputOnly ? detectOutputLanguage : detectLanguage;
+/** Parse transcript prose as Markdown or JSON while preserving fenced code. */
+export function parseMarkdownBlocks(text: string): CodeBlock[] {
   const blocks: CodeBlock[] = [];
   const fence = /```([A-Za-z0-9_-]+)?\n([\s\S]*?)```/g;
   let cursor = 0;
@@ -766,7 +790,7 @@ export function parseMarkdownBlocks(
   while ((match = fence.exec(text))) {
     const prose = text.slice(cursor, match.index).trim();
     if (prose) {
-      const language = detectProse(prose);
+      const language = detectOutputLanguage(prose);
       blocks.push({
         code: formatCodeBlock(prose, language),
         fenced: false,
@@ -783,7 +807,7 @@ export function parseMarkdownBlocks(
   }
   const rest = text.slice(cursor).trim();
   if (rest) {
-    const language = detectProse(rest);
+    const language = detectOutputLanguage(rest);
     blocks.push({
       code: formatCodeBlock(rest, language),
       fenced: false,
@@ -791,55 +815,8 @@ export function parseMarkdownBlocks(
     });
   }
   if (blocks.length > 0) return blocks;
-  const language = detectProse(text);
+  const language = detectOutputLanguage(text);
   return [{ code: formatCodeBlock(text, language), fenced: false, language }];
-}
-
-/** Parse XML/HTML-ish fragments for the collapsible transcript renderer. */
-export function parseMarkupNodes(
-  code: string,
-  language: BundledLanguage,
-): MarkupNode[] {
-  const parser = new DOMParser();
-  if (language === "xml") {
-    const document = parser.parseFromString(
-      `<junior-root>${code}</junior-root>`,
-      "text/xml",
-    );
-    if (!document.querySelector("parsererror")) {
-      return Array.from(document.documentElement.childNodes)
-        .map(markupNodeFromDom)
-        .filter(
-          (node) => node.type === "element" || node.text.trim().length > 0,
-        );
-    }
-  }
-
-  const document = parser.parseFromString(code, "text/html");
-  return Array.from(document.body.childNodes)
-    .map(markupNodeFromDom)
-    .filter((node) => node.type === "element" || node.text.trim().length > 0);
-}
-
-function markupNodeFromDom(node: ChildNode): MarkupNode {
-  if (node.nodeType === Node.ELEMENT_NODE) {
-    const element = node as Element;
-    return {
-      type: "element",
-      tagName: element.tagName.toLowerCase(),
-      attributes: Array.from(element.attributes).map((attribute) => [
-        attribute.name,
-        attribute.value,
-      ]),
-      children: Array.from(element.childNodes)
-        .map(markupNodeFromDom)
-        .filter(
-          (child) => child.type === "element" || child.text.trim().length > 0,
-        ),
-    };
-  }
-
-  return { type: "text", text: node.textContent ?? "" };
 }
 
 /** Convert SQL conversation summaries into dashboard rows. */
@@ -849,6 +826,7 @@ export function buildConversations(
   return summaries
     .map((summary) => ({
       archivedAt: summary.archivedAt,
+      auxiliaryCosts: summary.auxiliaryCosts,
       channel: summary.channel,
       channelName: summary.channelName,
       channelNameRedacted: summary.channelNameRedacted,
@@ -861,6 +839,7 @@ export function buildConversations(
       locationId: summary.locationId,
       actorIdentity: summary.actorIdentity,
       sentryTraceUrl: summary.sentryTraceUrl,
+      sourceUrl: summary.sourceUrl,
       startedAt: summary.startedAt,
       status: summary.status,
       surface: summary.surface,

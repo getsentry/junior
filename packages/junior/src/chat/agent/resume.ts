@@ -41,6 +41,7 @@ import {
 } from "@/chat/agent/request";
 import { TurnSliceLimitExceededError } from "@/chat/services/turn-limit";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
+import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 
 type LoadedSessionRecordState = Awaited<
   ReturnType<typeof loadTurnSessionRecord>
@@ -48,6 +49,7 @@ type LoadedSessionRecordState = Awaited<
 interface ResumeStateArgs {
   channelName?: string;
   destination: Destination;
+  destinationVisibility?: ConversationPrivacy;
   dispatchId?: string;
   durability: AgentRunDurability;
   getLoadedSkillNames: () => string[];
@@ -92,6 +94,9 @@ export function createResumeState(args: ResumeStateArgs) {
     channelName: args.channelName,
     conversationId: args.conversationId,
     destination: args.destination,
+    ...(args.destinationVisibility
+      ? { destinationVisibility: args.destinationVisibility }
+      : {}),
     ...(args.dispatchId ? { dispatchId: args.dispatchId } : {}),
     source: args.runSource,
     sessionId: args.turnId,

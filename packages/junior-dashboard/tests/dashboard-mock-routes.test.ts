@@ -225,6 +225,13 @@ describe("dashboard canonical-event mock routes", () => {
     ).toContain("webSearch");
 
     const dashboardQa = await readDetail(DASHBOARD_QA_CONVERSATION_ID);
+    expect(dashboardQa.events[0]?.data).toMatchObject({
+      type: "message",
+      actorIdentity: {
+        fullName: "Taylor Chen",
+        slackUserName: "taylor",
+      },
+    });
     expect(
       dashboardQa.events.some(
         (event) =>

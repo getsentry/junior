@@ -1261,10 +1261,19 @@ export const log = {
     ) {
       sentryWithScope((scope) => {
         setSentryScopeContext(scope, getBoundLogContext());
-        for (const [key, value] of Object.entries(
-          mergeAttributes(getBoundLogAttributes(), attrs),
-        )) {
+        const mergedAttributes = mergeAttributes(
+          getBoundLogAttributes(),
+          attrs,
+        );
+        for (const [key, value] of Object.entries(mergedAttributes)) {
           scope.setExtra(key, value);
+          if (
+            SENTRY_TAG_ATTRIBUTE_KEYS.has(key) &&
+            typeof value === "string" &&
+            value.length > 0
+          ) {
+            scope.setTag(key, value);
+          }
         }
         eventId = sentryCaptureException(normalizedError);
       });

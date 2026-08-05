@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { type ScheduledTask } from "@sentry/junior-scheduler";
-import { getNextRunAtMs } from "../../../../junior-scheduler/src/cadence";
-import { compileScheduleIntent } from "../../../../junior-scheduler/src/schedule-intent";
+import { type ScheduledTask } from "@/chat/scheduled-tasks";
+import { getNextRunAtMs } from "@/chat/scheduled-tasks/cadence";
+import { compileScheduleIntent } from "@/chat/scheduled-tasks/schedule-intent";
 
 const DEFAULT_TIMEZONE = "America/Los_Angeles";
 
@@ -11,8 +11,10 @@ function scheduledTask(
 ): ScheduledTask {
   return {
     id: "sched_test",
+    conversationAccess: { audience: "channel", visibility: "public" },
     createdAtMs: nowMs,
     createdBy: { slackUserId: "U123" },
+    creatorIdentityId: "identity-schedule-test",
     credentialMode: "system",
     destination: {
       platform: "slack",
@@ -165,8 +167,10 @@ describe("schedule intent compiler", () => {
     });
     const task: ScheduledTask = {
       id: "sched_dst",
+      conversationAccess: { audience: "channel", visibility: "public" },
       createdAtMs: Date.parse("2026-03-07T08:00:00.000Z"),
       createdBy: { slackUserId: "U123" },
+      creatorIdentityId: "identity-schedule-dst",
       credentialMode: "system",
       destination: {
         platform: "slack",

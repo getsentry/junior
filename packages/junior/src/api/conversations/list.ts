@@ -1,6 +1,8 @@
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import type { Conversation } from "@/chat/conversations/store";
+import { locationFromRow } from "@/chat/conversations/sql/location";
+import { parseSessionSource } from "@/chat/source";
 import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversations,
@@ -13,6 +15,7 @@ import { readConversationAccessFromSql } from "./access";
 import { conversationFeedSchema } from "../schema/conversation";
 import type { ConversationFeed } from "../schema/conversation";
 import { readRootConversationMetricsFromSql } from "./usage";
+import { readConversationAuxiliaryCostsFromSql } from "./auxiliary-costs";
 import { defineApiRoute } from "../route";
 import { parseQuery } from "../http";
 import { conversationFeedQuerySchema } from "../schema/conversation";
@@ -27,8 +30,7 @@ async function conversationRows(
   return db
     .select({
       conversation: juniorConversations,
-      destinationId: juniorDestinations.id,
-      destinationVisibility: juniorDestinations.visibility,
+      destination: juniorDestinations,
       identityDisplayName: juniorIdentities.displayName,
       identityEmail: juniorIdentities.email,
       identityHandle: juniorIdentities.handle,
@@ -71,6 +73,13 @@ type ConversationRow = Awaited<ReturnType<typeof conversationRows>>[number];
 /** Decode a conversation row with the linked user name and identity-scoped provider fields. */
 function conversationFromRow(row: ConversationRow): Conversation {
   const value = row.conversation;
+  const sessionSource =
+    value.sessionSource === null
+      ? undefined
+      : parseSessionSource(value.sessionSource);
+  if (value.sessionSource !== null && !sessionSource) {
+    throw new Error("Conversation record session source is invalid");
+  }
   const actorFullName = row.userDisplayName?.trim()
     ? row.userDisplayName
     : row.identityDisplayName;
@@ -87,6 +96,7 @@ function conversationFromRow(row: ConversationRow): Conversation {
           ...(row.identityTenantId ? { teamId: row.identityTenantId } : {}),
         }
       : undefined;
+  const location = locationFromRow(row.destination);
   return {
     schemaVersion: 1,
     conversationId: value.conversationId,
@@ -101,9 +111,11 @@ function conversationFromRow(row: ConversationRow): Conversation {
         : {}),
     },
     ...(actor ? { actor } : {}),
+    ...(location ? { location } : {}),
     ...(value.archivedAt ? { archivedAtMs: value.archivedAt.getTime() } : {}),
     ...(value.channelName ? { channelName: value.channelName } : {}),
     ...(value.source ? { source: value.source } : {}),
+    ...(sessionSource ? { sessionSource } : {}),
     ...(value.title ? { title: value.title } : {}),
     ...(value.transcriptPurgedAt
       ? { transcriptPurgedAtMs: value.transcriptPurgedAt.getTime() }
@@ -128,8 +140,7 @@ export async function readConversationRecordFromSql(
   const rows = await db
     .select({
       conversation: juniorConversations,
-      destinationId: juniorDestinations.id,
-      destinationVisibility: juniorDestinations.visibility,
+      destination: juniorDestinations,
       identityDisplayName: juniorIdentities.displayName,
       identityEmail: juniorIdentities.email,
       identityHandle: juniorIdentities.handle,
@@ -155,8 +166,8 @@ export async function readConversationRecordFromSql(
     ? {
         conversation: conversationFromRow(row),
         durationMs: row.conversation.durationMs,
-        ...(row.destinationVisibility === "public" && row.destinationId
-          ? { locationId: row.destinationId }
+        ...(row.destination?.visibility === "public"
+          ? { locationId: row.destination.id }
           : {}),
         usage: row.conversation.usage,
         rootConversationId: row.conversation.rootConversationId,
@@ -183,23 +194,30 @@ export async function readConversationFeedFromSql(
     options.actorEmail,
   );
   const conversationIds = rows.map((row) => row.conversation.conversationId);
-  const [accessByConversation, metricsByRoot] = await Promise.all([
-    readConversationAccessFromSql(
-      db,
-      conversationIds,
-      options.verifiedViewerEmail,
-    ),
-    readRootConversationMetricsFromSql(db, conversationIds),
-  ]);
+  const [accessByConversation, auxiliaryCostsByRoot, metricsByRoot] =
+    await Promise.all([
+      readConversationAccessFromSql(
+        db,
+        conversationIds,
+        options.verifiedViewerEmail,
+      ),
+      readConversationAuxiliaryCostsFromSql(db, conversationIds, {
+        includeDescendants: true,
+      }),
+      readRootConversationMetricsFromSql(db, conversationIds),
+    ]);
   return {
     conversations: rows.map((row) => {
       const metrics = metricsByRoot.get(row.conversation.conversationId);
       return conversationSummaryFromStoredConversation({
         conversation: conversationFromRow(row),
         access: accessByConversation.get(row.conversation.conversationId),
+        auxiliaryCosts: auxiliaryCostsByRoot.get(
+          row.conversation.conversationId,
+        ),
         durationMs: metrics?.durationMs ?? row.conversation.durationMs,
-        ...(row.destinationVisibility === "public" && row.destinationId
-          ? { locationId: row.destinationId }
+        ...(row.destination?.visibility === "public"
+          ? { locationId: row.destination.id }
           : {}),
         usage: metrics?.usage ?? row.conversation.usage ?? undefined,
       });

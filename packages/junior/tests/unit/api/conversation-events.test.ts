@@ -1,4 +1,9 @@
 import { describe, expect, it } from "vitest";
+import {
+  defineConversationEvent,
+  defineJuniorPlugin,
+} from "@sentry/junior-plugin-api";
+import { z } from "zod";
 import { projectConversationReportEventPage } from "@/api/conversations/events";
 import {
   conversationDetailReportSchema,
@@ -43,6 +48,112 @@ function assistantMessage(
 }
 
 describe("conversation report event projection", () => {
+  it("renders registered plugin events and skips them after removal", async () => {
+    const captured = defineConversationEvent({
+      name: "memories_captured",
+      version: 1,
+      schema: z.object({ count: z.number().int().positive() }).strict(),
+      renderEvent(value) {
+        return {
+          icon: "brain",
+          title: `${value.count} memories captured`,
+        };
+      },
+    });
+    const { setPlugins } = await import("@/chat/plugins/agent-hooks");
+    const previous = setPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "memory",
+          displayName: "Memory",
+          description: "Memory test plugin",
+        },
+        conversationEvents: [captured],
+      }),
+    ]);
+    const pluginEvent = event(1, {
+      type: "structured_event",
+      namespace: "memory",
+      name: "memories_captured",
+      version: 1,
+      turnId: "turn-1",
+      content: { count: 2 },
+    });
+    try {
+      expect(
+        projectConversationReportEventPage({
+          canExposePayload: true,
+          events: [pluginEvent],
+        }),
+      ).toEqual([
+        {
+          seq: 1,
+          createdAt: new Date(1_000).toISOString(),
+          data: {
+            type: "structured_event",
+            namespace: "memory",
+            name: "memories_captured",
+            version: 1,
+            turnId: "turn-1",
+            presentation: {
+              icon: "brain",
+              title: "2 memories captured",
+            },
+          },
+        },
+      ]);
+      setPlugins([]);
+      expect(
+        projectConversationReportEventPage({
+          canExposePayload: true,
+          events: [pluginEvent],
+        }),
+      ).toEqual([]);
+    } finally {
+      setPlugins(previous);
+    }
+  });
+
+  it("omits registered plugin events without a presentation", async () => {
+    const background = defineConversationEvent({
+      name: "background_completed",
+      version: 1,
+      schema: z.object({ count: z.number().int().nonnegative() }).strict(),
+      renderEvent(value) {
+        return value.count === 0 ? undefined : { title: "Background work" };
+      },
+    });
+    const { setPlugins } = await import("@/chat/plugins/agent-hooks");
+    const previous = setPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "background",
+          displayName: "Background",
+          description: "Background event test plugin",
+        },
+        conversationEvents: [background],
+      }),
+    ]);
+    try {
+      expect(
+        projectConversationReportEventPage({
+          canExposePayload: true,
+          events: [
+            event(1, {
+              type: "structured_event",
+              namespace: "background",
+              name: "background_completed",
+              version: 1,
+              content: { count: 0 },
+            }),
+          ],
+        }),
+      ).toEqual([]);
+    } finally {
+      setPlugins(previous);
+    }
+  });
+
   it("ignores unsupported stored events", () => {
     const unsupported = decodeStoredConversationEvent({
       schemaVersion: 3,
@@ -59,6 +170,64 @@ describe("conversation report event projection", () => {
         events: [unsupported],
       }),
     ).toEqual([]);
+  });
+
+  it("projects the stored actor identity for each visible user message", () => {
+    const message = event(1, {
+      type: "message",
+      messageId: "message-1",
+      role: "user",
+      text: "good catch",
+      meta: {
+        author: {
+          fullName: "Taylor Chen",
+          isBot: false,
+          userId: "U0TAYLOR",
+          userName: "taylor",
+        },
+      },
+    });
+
+    expect(
+      projectConversationReportEventPage({
+        canExposePayload: true,
+        events: [message],
+      }),
+    ).toEqual([
+      {
+        seq: 1,
+        createdAt: "1970-01-01T00:00:01.000Z",
+        data: {
+          type: "message",
+          messageId: "message-1",
+          role: "user",
+          text: "good catch",
+          actorIdentity: {
+            fullName: "Taylor Chen",
+            slackUserId: "U0TAYLOR",
+            slackUserName: "taylor",
+          },
+        },
+      },
+    ]);
+
+    expect(
+      projectConversationReportEventPage({
+        canExposePayload: false,
+        events: [message],
+      }),
+    ).toEqual([
+      {
+        seq: 1,
+        createdAt: "1970-01-01T00:00:01.000Z",
+        data: {
+          type: "message",
+          messageId: "message-1",
+          role: "user",
+          redacted: true,
+        },
+      },
+    ]);
   });
 
   it("projects turn context only across the authorized payload boundary", () => {
@@ -353,12 +522,10 @@ describe("conversation report event projection", () => {
           toolName: "search",
           content: [{ type: "text", text: "model-visible error summary" }],
           details: {
-            ok: false,
-            status: "error",
-            error: { kind: "not_found", message: "No matches" },
+            query: "first",
             providerSecret: "must stay host-only",
           },
-          isError: false,
+          isError: true,
           timestamp: 2_000,
         }),
         event(3, {
@@ -369,7 +536,7 @@ describe("conversation report event projection", () => {
             { type: "text", text: "native result" },
             { type: "image", mimeType: "image/png", data: "AAAA" },
           ],
-          details: { ok: true, status: "success" },
+          details: { url: "https://example.com" },
           isError: false,
           timestamp: 3_000,
         }),

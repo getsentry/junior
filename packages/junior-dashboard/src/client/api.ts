@@ -10,6 +10,8 @@ import {
   actorProfileReportSchema,
   locationDetailReportSchema,
   locationDirectoryReportSchema,
+  personalSpendReportSchema,
+  taskListSchema,
 } from "@sentry/junior/api/schema";
 import {
   pluginOperationalReportFeedSchema,
@@ -22,14 +24,33 @@ import { dashboardConfigSchema, dashboardIdentitySchema } from "../api/schema";
 import { fetchDashboardJson } from "./http";
 import type { DashboardCoreData, SystemData } from "./types";
 
+const dashboardMetadataStaleTimeMs = 5 * 60_000;
+const PERSONAL_SPEND_REFRESH_MS = 5 * 60_000;
+const MIN_PERSONAL_SPEND_REFRESH_MS = 1_000;
+
+/** Schedule the next spend refresh from the age of the server-cached report. */
+export function personalSpendRefreshDelay(
+  generatedAt: string | undefined,
+  nowMs = Date.now(),
+): number {
+  if (!generatedAt) return PERSONAL_SPEND_REFRESH_MS;
+  const generatedAtMs = Date.parse(generatedAt);
+  if (!Number.isFinite(generatedAtMs)) return PERSONAL_SPEND_REFRESH_MS;
+  const ageMs = Math.max(0, nowMs - generatedAtMs);
+  return Math.max(
+    MIN_PERSONAL_SPEND_REFRESH_MS,
+    PERSONAL_SPEND_REFRESH_MS - ageMs,
+  );
+}
+
 /** Fetch dashboard shell data shared across browser routes. */
 export function useDashboardCoreData() {
   return useQuery({
     queryKey: ["dashboard", "core"],
-    queryFn: async (): Promise<DashboardCoreData> => {
+    queryFn: async ({ signal }): Promise<DashboardCoreData> => {
       const [me, config] = await Promise.all([
-        fetchDashboardJson(dashboardIdentitySchema, "/api/me"),
-        fetchDashboardJson(dashboardConfigSchema, "/api/config"),
+        fetchDashboardJson(dashboardIdentitySchema, "/api/me", signal),
+        fetchDashboardJson(dashboardConfigSchema, "/api/config", signal),
       ]);
       return {
         config,
@@ -37,6 +58,7 @@ export function useDashboardCoreData() {
       };
     },
     retry: false,
+    staleTime: dashboardMetadataStaleTimeMs,
   });
 }
 
@@ -44,33 +66,49 @@ export function useDashboardCoreData() {
 export function usePluginsData() {
   return useQuery({
     queryKey: ["dashboard", "plugins"],
-    queryFn: () => fetchDashboardJson(pluginsSchema, "/api/plugins"),
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(pluginsSchema, "/api/plugins", signal),
     retry: false,
+    staleTime: dashboardMetadataStaleTimeMs,
   });
 }
 
-/** Fetch plugin-owned pages shown in the signed-in user menu. */
+/** Fetch plugin-owned pages shown in dashboard navigation. */
 export function usePluginUserPagesData() {
   return useQuery({
     queryKey: ["dashboard", "plugin-user-pages"],
-    queryFn: () =>
-      fetchDashboardJson(pluginUserPageLinksSchema, "/api/user-pages"),
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(pluginUserPageLinksSchema, "/api/user-pages", signal),
     retry: false,
+    staleTime: dashboardMetadataStaleTimeMs,
   });
 }
 
 /** Fetch the conversation summary feed used by list-oriented dashboard routes. */
 export function useConversationsData(actorEmail?: string) {
-  const query = new URLSearchParams();
-  if (actorEmail) query.set("actorEmail", actorEmail);
-  const search = query.toString();
   return useQuery({
     queryKey: ["dashboard", "conversations", actorEmail ?? "all"],
-    queryFn: () =>
-      fetchDashboardJson(
+    queryFn: ({ signal }) => {
+      const query = new URLSearchParams();
+      if (actorEmail) query.set("actorEmail", actorEmail);
+      const search = query.toString();
+      return fetchDashboardJson(
         conversationFeedSchema,
         `/api/conversations${search ? `?${search}` : ""}`,
-      ),
+        signal,
+      );
+    },
+    retry: false,
+  });
+}
+
+/** Fetch the signed-in viewer's scheduled and event tasks. */
+export function useTasksData(enabled: boolean) {
+  return useQuery({
+    enabled,
+    queryKey: ["dashboard", "tasks"],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(taskListSchema, "/api/tasks", signal),
     retry: false,
   });
 }
@@ -79,8 +117,8 @@ export function useConversationsData(actorEmail?: string) {
 export function useActorDirectoryData() {
   return useQuery({
     queryKey: ["dashboard", "people"],
-    queryFn: () =>
-      fetchDashboardJson(actorDirectoryReportSchema, "/api/people"),
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(actorDirectoryReportSchema, "/api/people", signal),
     retry: false,
   });
 }
@@ -90,12 +128,31 @@ export function useActorProfileData(email: string | undefined) {
   return useQuery({
     enabled: Boolean(email),
     queryKey: ["dashboard", "people", email],
-    queryFn: async (): Promise<ActorProfileReport> =>
+    queryFn: async ({ signal }): Promise<ActorProfileReport> =>
       fetchDashboardJson(
         actorProfileReportSchema,
         `/api/people/${encodeURIComponent(email!)}`,
+        signal,
       ),
     retry: false,
+  });
+}
+
+/** Fetch and refresh the authenticated viewer's rolling model spend. */
+export function usePersonalSpendData(enabled: boolean) {
+  return useQuery({
+    enabled,
+    queryKey: ["dashboard", "personal-spend"],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        personalSpendReportSchema,
+        "/api/people/me/spend",
+        signal,
+      ),
+    refetchInterval: (query) =>
+      personalSpendRefreshDelay(query.state.data?.generatedAt),
+    retry: false,
+    staleTime: 0,
   });
 }
 
@@ -103,8 +160,12 @@ export function useActorProfileData(email: string | undefined) {
 export function useLocationDirectoryData() {
   return useQuery({
     queryKey: ["dashboard", "locations"],
-    queryFn: () =>
-      fetchDashboardJson(locationDirectoryReportSchema, "/api/locations"),
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        locationDirectoryReportSchema,
+        "/api/locations",
+        signal,
+      ),
     retry: false,
   });
 }
@@ -114,48 +175,61 @@ export function useLocationDetailData(locationId: string | undefined) {
   return useQuery({
     enabled: Boolean(locationId),
     queryKey: ["dashboard", "locations", locationId],
-    queryFn: async (): Promise<LocationDetailReport> =>
+    queryFn: async ({ signal }): Promise<LocationDetailReport> =>
       fetchDashboardJson(
         locationDetailReportSchema,
         `/api/locations/${encodeURIComponent(locationId!)}`,
+        signal,
       ),
     retry: false,
   });
 }
 
-/** Fetch aggregate system metrics, plugin inventory, and operational reports. */
-export function useSystemData() {
-  const coreQuery = useDashboardCoreData();
-  const pluginsQuery = usePluginsData();
-  const conversationStatsQuery = useQuery({
-    queryKey: ["dashboard", "conversation-stats"],
-    queryFn: () =>
-      fetchDashboardJson(
-        conversationStatsReportSchema,
-        "/api/conversations/stats",
-      ),
-    retry: false,
-  });
-  const skillsQuery = useQuery({
+/** Fetch discovered skills used by System navigation and capability views. */
+export function useSkillsData() {
+  return useQuery({
     queryKey: ["dashboard", "skills"],
-    queryFn: () => fetchDashboardJson(skillReportsSchema, "/api/skills"),
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(skillReportsSchema, "/api/skills", signal),
     retry: false,
+    staleTime: dashboardMetadataStaleTimeMs,
   });
-  const pluginReportsQuery = useQuery({
+}
+
+/** Fetch operational plugin reports used by System navigation and pages. */
+export function usePluginReportsData() {
+  return useQuery({
     queryKey: ["dashboard", "plugin-reports"],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       fetchDashboardJson(
         pluginOperationalReportFeedSchema,
         "/api/plugin-reports",
+        signal,
       ),
     retry: false,
   });
-  const dataReady = coreQuery.data && pluginsQuery.data && skillsQuery.data;
+}
+
+/** Fetch system metrics, plugin inventory, and operational reports. */
+export function useSystemData(coreData: DashboardCoreData) {
+  const pluginsQuery = usePluginsData();
+  const conversationStatsQuery = useQuery({
+    queryKey: ["dashboard", "conversation-stats"],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        conversationStatsReportSchema,
+        "/api/conversations/stats",
+        signal,
+      ),
+    retry: false,
+  });
+  const skillsQuery = useSkillsData();
+  const pluginReportsQuery = usePluginReportsData();
+  const dataReady = pluginsQuery.data && skillsQuery.data;
   return {
-    ...coreQuery,
     data: dataReady
       ? ({
-          ...coreQuery.data,
+          ...coreData,
           conversationStatsError: Boolean(conversationStatsQuery.error),
           ...(conversationStatsQuery.data
             ? { conversationStats: conversationStatsQuery.data }
@@ -170,8 +244,7 @@ export function useSystemData() {
           skills: skillsQuery.data,
         } satisfies SystemData)
       : undefined,
-    error: coreQuery.error ?? pluginsQuery.error ?? skillsQuery.error,
-    isPending:
-      coreQuery.isPending || pluginsQuery.isPending || skillsQuery.isPending,
+    error: pluginsQuery.error ?? skillsQuery.error,
+    isPending: pluginsQuery.isPending || skillsQuery.isPending,
   };
 }

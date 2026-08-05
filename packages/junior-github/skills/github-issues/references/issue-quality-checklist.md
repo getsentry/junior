@@ -15,7 +15,8 @@ Soft-signal review beyond the hard gates in `SKILL.md` § Verify draft. Use when
 ## Anti-patterns to avoid
 
 - Overlong, sprawling bodies with no clear sections.
-- Confident solution claims that are weakly evidenced.
+- Invented fixes, implementation steps, approaches, or options, regardless of diagnostic confidence.
+- User-provided proposals presented without attribution or mixed into verified diagnosis.
 - Speculative detail mixed into verified sections.
 
 ## External guidance

@@ -449,7 +449,8 @@ describe("dashboard routes", () => {
       "/system",
       "/system/plugins/github",
       "/settings/api-tokens",
-      "/settings/plugins/memory/memories",
+      "/plugins/memory/memories",
+      "/plugins/memory/memories/library",
     ]) {
       const response = await app.fetch(new Request(`http://localhost${path}`));
 
@@ -468,7 +469,7 @@ describe("dashboard routes", () => {
       },
     });
 
-    for (const path of ["/chat/legacy-id", "/plugins"]) {
+    for (const path of ["/chat/legacy-id"]) {
       const response = await app.fetch(new Request(`http://localhost${path}`));
       expect(response.status).toBe(404);
     }

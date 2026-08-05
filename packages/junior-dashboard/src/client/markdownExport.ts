@@ -1,19 +1,19 @@
 import {
   conversationDisplayTitle,
-  formatCostTotal,
+  formatConversationCostTotal,
   formatElapsedDuration,
   formatMs,
   formatUsageTotal,
   actorLabel,
   slackLocationLabel,
   stringifyPartValue,
-  transcriptRoleKind,
+  transcriptMessageActorLabel,
   unavailableTranscriptLabel,
 } from "./format";
 import {
   groupTranscriptMessages,
   messageRawText,
-} from "./components/transcriptRenderModel";
+} from "./conversations/transcriptRenderModel";
 import { getDashboardAgentName } from "./agentName";
 import { conversationTranscriptMessages } from "./conversations/eventTranscript";
 import type {
@@ -47,7 +47,10 @@ export function buildConversationMarkdown(
     "Usage",
     [
       formatUsageTotal(detail.cumulativeUsage),
-      formatCostTotal(detail.cumulativeUsage),
+      formatConversationCostTotal(
+        detail.cumulativeUsage,
+        detail.auxiliaryCosts,
+      ),
     ]
       .filter(Boolean)
       .join(" · "),
@@ -149,6 +152,22 @@ function appendTranscriptMessages(
         entry.part,
         entry.timestamp,
       );
+      continue;
+    }
+
+    if (entry.kind === "structured_event") {
+      lines.push("", `### ${entry.part.presentation.title}`);
+      addEventMeta(lines, conversationTranscript, entry.timestamp);
+      if (entry.part.presentation.preview) {
+        lines.push("", entry.part.presentation.preview);
+      }
+      for (const detail of entry.part.presentation.details ?? []) {
+        lines.push("", `- ${detail.title}`);
+        if (detail.description) lines.push(`  ${detail.description}`);
+        if (detail.metadata?.length) {
+          lines.push(`  ${detail.metadata.join(" · ")}`);
+        }
+      }
       continue;
     }
 
@@ -412,13 +431,9 @@ function messageRoleLabel(
   message: TranscriptViewMessage,
   conversationTranscript: ConversationTranscript,
 ): string {
-  const kind = transcriptRoleKind(message.role);
-  if (kind === "assistant") return getDashboardAgentName();
-  if (kind === "user")
-    return actorLabel(conversationTranscript.actorIdentity) ?? "User";
-  if (kind === "system") return "System";
-  if (kind === "tool") return "Tool";
-  return headingText(message.role || "Unknown");
+  return headingText(
+    transcriptMessageActorLabel(conversationTranscript, message),
+  );
 }
 
 function eventTimestamp(timestamp: number | undefined): string {

@@ -30,6 +30,7 @@ export function createUserPageRoutes(): Hono<JuniorApiEnv> {
     }
     const pageInput = pluginUserPageInputSchema.safeParse({
       cursor: context.req.query("cursor") || undefined,
+      filter: context.req.query("filter") || undefined,
       limit: context.req.query("limit")
         ? Number(context.req.query("limit"))
         : 20,

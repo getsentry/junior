@@ -1,3 +1,4 @@
+import type { ReplyAttribution } from "@sentry/junior-plugin-api";
 import { buildSentryConversationUrl } from "@/chat/sentry-links";
 import { getPluginSlackConversationLink } from "@/chat/plugins/agent-hooks";
 import { getDashboardConversationLink } from "@/chat/slack/dashboard-link";
@@ -6,6 +7,11 @@ import { escapeSlackMrkdwnText, formatSlackLink } from "@/chat/slack/mrkdwn";
 interface SlackMrkdwnTextObject {
   text: string;
   type: "mrkdwn";
+}
+
+interface SlackPlainTextObject {
+  text: string;
+  type: "plain_text";
 }
 
 /** Slack-flavored Markdown block — accepts a standard Markdown subset and Slack renders it natively. */
@@ -20,7 +26,7 @@ interface SlackSectionBlock {
 }
 
 interface SlackContextBlock {
-  elements: SlackMrkdwnTextObject[];
+  elements: Array<SlackMrkdwnTextObject | SlackPlainTextObject>;
   type: "context";
 }
 
@@ -36,7 +42,15 @@ interface SlackReplyFooterItem {
 }
 
 export interface SlackReplyFooter {
+  attribution?: ReplyAttribution;
   items: SlackReplyFooterItem[];
+}
+
+/** Render compact reply attribution for the Slack footer. */
+export function formatReplyAttribution(attribution: ReplyAttribution): string {
+  return attribution.detail
+    ? `${attribution.label} · ${attribution.detail}`
+    : attribution.label;
 }
 
 /**
@@ -46,6 +60,7 @@ export interface SlackReplyFooter {
  */
 export function buildSlackReplyFooter(args: {
   conversationId?: string;
+  replyAttribution?: ReplyAttribution;
 }): SlackReplyFooter | undefined {
   const items: SlackReplyFooterItem[] = [];
 
@@ -65,7 +80,14 @@ export function buildSlackReplyFooter(args: {
     items.push(idItem);
   }
 
-  return items.length > 0 ? { items } : undefined;
+  return items.length > 0 || args.replyAttribution
+    ? {
+        ...(args.replyAttribution
+          ? { attribution: args.replyAttribution }
+          : {}),
+        items,
+      }
+    : undefined;
 }
 
 /** Build Slack blocks for a reply chunk using the Slack-flavored markdown block for the body. */
@@ -84,15 +106,26 @@ export function buildSlackReplyBlocks(
     },
   ];
 
-  if (footer?.items.length) {
+  if (footer && (footer.attribution || footer.items.length > 0)) {
+    const attributionElements: SlackPlainTextObject[] = footer.attribution
+      ? [
+          {
+            type: "plain_text",
+            text: formatReplyAttribution(footer.attribution),
+          },
+        ]
+      : [];
     blocks.push({
       type: "context",
-      elements: footer.items.map((item) => ({
-        type: "mrkdwn",
-        text: item.url
-          ? `*${escapeSlackMrkdwnText(item.label)}:* ${formatSlackLink(item.url, item.value)}`
-          : `*${escapeSlackMrkdwnText(item.label)}:* ${escapeSlackMrkdwnText(item.value)}`,
-      })),
+      elements: [
+        ...attributionElements,
+        ...footer.items.map((item) => ({
+          type: "mrkdwn" as const,
+          text: item.url
+            ? `*${escapeSlackMrkdwnText(item.label)}:* ${formatSlackLink(item.url, item.value)}`
+            : `*${escapeSlackMrkdwnText(item.label)}:* ${escapeSlackMrkdwnText(item.value)}`,
+        })),
+      ],
     });
   }
 

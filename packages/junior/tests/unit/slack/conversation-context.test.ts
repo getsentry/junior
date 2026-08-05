@@ -5,6 +5,7 @@ import {
   formatSlackConversationTypeLabel,
   resolveSlackChannelTypeFromMessage,
   resolveSlackConversationContext,
+  resolveSlackConversationContextFromThreadId,
 } from "@/chat/slack/conversation-context";
 
 describe("Slack conversation prompt context", () => {
@@ -67,7 +68,6 @@ describe("Slack conversation prompt context", () => {
     ).toEqual({
       type: "private_channel_or_group_dm",
       name: "#maybe-private",
-      visibility: "private",
     });
   });
 
@@ -149,5 +149,20 @@ describe("Slack conversation prompt context", () => {
         name: "#engineering",
       }),
     ).toBe("Public Channel");
+  });
+
+  it("uses confirmed persisted visibility when resolving stored threads", () => {
+    expect(
+      resolveSlackConversationContextFromThreadId({
+        threadId: "slack:C123:1700000000.000100",
+        visibility: "private",
+      }),
+    ).toMatchObject({ type: "private_channel", visibility: "private" });
+    expect(
+      resolveSlackConversationContextFromThreadId({
+        threadId: "slack:D123:1700000000.000100",
+        visibility: "private",
+      }),
+    ).toMatchObject({ type: "direct_message", visibility: "private" });
   });
 });

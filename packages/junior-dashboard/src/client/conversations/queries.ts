@@ -3,12 +3,15 @@ import {
   queryOptions,
   useInfiniteQuery,
   useMutation,
+  useMutationState,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
 import type {
   ConversationDetailReport,
   ConversationEventPage,
+  ConversationFeed,
+  ConversationSummaryReport,
 } from "@sentry/junior/api/schema";
 import {
   archiveConversationResponseSchema,
@@ -32,6 +35,64 @@ export function conversationDetailQueryKey(conversationId: string | undefined) {
   return ["conversation", conversationId, "detail"] as const;
 }
 
+function archivedConversationQueryKey(conversationId: string) {
+  return ["dashboard", "archived-conversation", conversationId] as const;
+}
+
+type ArchivedConversationSnapshot = {
+  conversation: ConversationSummaryReport;
+  feedQueryHashes: string[];
+};
+
+const archiveConversationMutationKey = [
+  "dashboard",
+  "archive-conversation",
+] as const;
+
+type ArchiveConversationVariables = {
+  archived: boolean;
+  lastSeenAt: string;
+};
+
+type ArchiveConversationMutationContext = {
+  archivedQueryKey: ReturnType<typeof archivedConversationQueryKey>;
+  archivedSnapshot?: ArchivedConversationSnapshot;
+  detailQueryKey: ReturnType<typeof conversationDetailQueryKey>;
+  previousArchivedSnapshot?: ArchivedConversationSnapshot;
+  previousDetail?: ConversationDetailReport;
+  previousFeeds: Array<[readonly unknown[], ConversationFeed | undefined]>;
+};
+
+export type PendingArchiveConversationUpdate = {
+  archived: boolean;
+  conversation?: ConversationSummaryReport;
+  conversationId: string;
+};
+
+/** Read pending archive state so refetches cannot visually replace optimistic UI. */
+export function usePendingArchiveConversationUpdates() {
+  return useMutationState({
+    filters: {
+      mutationKey: archiveConversationMutationKey,
+      status: "pending",
+    },
+    select: (mutation) => {
+      const variables = mutation.state
+        .variables as ArchiveConversationVariables;
+      const context = mutation.state.context as
+        | ArchiveConversationMutationContext
+        | undefined;
+      const conversationId = mutation.options.mutationKey?.[2];
+      return {
+        archived: variables.archived,
+        conversation: context?.archivedSnapshot?.conversation,
+        conversationId:
+          typeof conversationId === "string" ? conversationId : "",
+      } satisfies PendingArchiveConversationUpdate;
+    },
+  });
+}
+
 /** Define the bounded, polling conversation-detail resource. */
 export function conversationDetailQueryOptions(
   conversationId: string | undefined,
@@ -46,16 +107,121 @@ export function conversationDetailQueryOptions(
   });
 }
 
-/** Archive or restore one conversation and refresh its related resources. */
-export function useArchiveConversation(conversationId: string) {
+/** Archive or restore one conversation with an immediate reversible cache update. */
+export function useArchiveConversation(
+  conversationId: string,
+  options?: {
+    onError?(): void;
+    onSuccess?(archived: boolean): void;
+  },
+) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (args: { archived: boolean; lastSeenAt: string }) =>
+    mutationKey: [...archiveConversationMutationKey, conversationId],
+    mutationFn: (args: ArchiveConversationVariables) =>
       patch(
         archiveConversationResponseSchema,
         `/api/conversations/${encodeURIComponent(conversationId)}/archive`,
         args,
       ),
+    onMutate: async (args) => {
+      const conversationQueries = { queryKey: ["dashboard", "conversations"] };
+      const detailQueryKey = conversationDetailQueryKey(conversationId);
+      const archivedQueryKey = archivedConversationQueryKey(conversationId);
+      await Promise.all([
+        queryClient.cancelQueries(conversationQueries),
+        queryClient.cancelQueries({ queryKey: detailQueryKey }),
+      ]);
+      const previousFeeds =
+        queryClient.getQueriesData<ConversationFeed>(conversationQueries);
+      const previousDetail =
+        queryClient.getQueryData<ConversationDetailReport>(detailQueryKey);
+      const previousArchivedSnapshot =
+        queryClient.getQueryData<ArchivedConversationSnapshot>(
+          archivedQueryKey,
+        );
+      const archivedAt = args.archived ? new Date().toISOString() : undefined;
+      const archivedSnapshot = args.archived
+        ? (buildArchivedConversationSnapshot(previousFeeds, conversationId) ??
+          previousArchivedSnapshot)
+        : previousArchivedSnapshot;
+
+      previousFeeds.forEach(([queryKey, feed]) => {
+        if (!feed) return;
+        const conversationExists = feed.conversations.some(
+          (conversation) => conversation.conversationId === conversationId,
+        );
+        const shouldRestore =
+          !args.archived &&
+          !conversationExists &&
+          Boolean(
+            archivedSnapshot?.feedQueryHashes.includes(
+              JSON.stringify(queryKey),
+            ),
+          );
+        const conversations = shouldRestore
+          ? [
+              ...feed.conversations,
+              { ...archivedSnapshot!.conversation, archivedAt: undefined },
+            ].sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt))
+          : feed.conversations.map((conversation) =>
+              conversation.conversationId === conversationId
+                ? { ...conversation, archivedAt }
+                : conversation,
+            );
+        queryClient.setQueryData<ConversationFeed>(queryKey, {
+          ...feed,
+          conversations,
+        });
+      });
+      queryClient.setQueryData<ConversationDetailReport>(
+        detailQueryKey,
+        (detail) => (detail ? { ...detail, archivedAt } : detail),
+      );
+      if (archivedSnapshot) {
+        queryClient.setQueryData(archivedQueryKey, archivedSnapshot);
+      }
+      return {
+        archivedQueryKey,
+        archivedSnapshot,
+        detailQueryKey,
+        previousArchivedSnapshot,
+        previousDetail,
+        previousFeeds,
+      } satisfies ArchiveConversationMutationContext;
+    },
+    onError: (_error, _args, context) => {
+      context?.previousFeeds.forEach(([queryKey, feed]) => {
+        queryClient.setQueryData(queryKey, feed);
+      });
+      if (context) {
+        queryClient.setQueryData(
+          context.detailQueryKey,
+          context.previousDetail,
+        );
+        if (context.previousArchivedSnapshot) {
+          queryClient.setQueryData(
+            context.archivedQueryKey,
+            context.previousArchivedSnapshot,
+          );
+        } else {
+          queryClient.removeQueries({
+            exact: true,
+            queryKey: context.archivedQueryKey,
+          });
+        }
+      }
+      options?.onError?.();
+    },
+    onSuccess: (_result, args) => {
+      if (!args.archived) {
+        queryClient.removeQueries({
+          exact: true,
+          queryKey: archivedConversationQueryKey(conversationId),
+        });
+      }
+      options?.onSuccess?.(args.archived);
+    },
     onSettled: async () => {
       await Promise.all([
         queryClient.invalidateQueries({
@@ -72,6 +238,23 @@ export function useArchiveConversation(conversationId: string) {
       ]);
     },
   });
+}
+
+function buildArchivedConversationSnapshot(
+  feeds: Array<[readonly unknown[], ConversationFeed | undefined]>,
+  conversationId: string,
+): ArchivedConversationSnapshot | undefined {
+  let conversation: ConversationSummaryReport | undefined;
+  const feedQueryHashes: string[] = [];
+  for (const [queryKey, feed] of feeds) {
+    const feedConversation = feed?.conversations.find(
+      (item) => item.conversationId === conversationId,
+    );
+    if (!feedConversation) continue;
+    conversation ??= feedConversation;
+    feedQueryHashes.push(JSON.stringify(queryKey));
+  }
+  return conversation ? { conversation, feedQueryHashes } : undefined;
 }
 
 /** Fetch a bounded conversation snapshot and older pages on demand. */
@@ -146,13 +329,14 @@ export function useConversationData(conversationId: string | undefined) {
   }, [history.fetchNextPage, historyNeedsReconciliation]);
 
   return {
-    ...detail,
     data,
+    error: detail.error,
     historyError,
     historyVersion: conversationHistoryVersion(historyPages ?? []),
     hasPreviousPage: history.data
       ? history.hasNextPage
       : Boolean(detail.data?.previousCursor),
+    isPending: detail.isPending,
     isLoadingPreviousPage,
     loadCompleteTranscript: () => {
       if (!conversationId || !detail.data) {

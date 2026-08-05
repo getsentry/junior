@@ -38,6 +38,7 @@ vi.mock("@/chat/sandbox/sandbox", async () => {
   return {
     ...actual,
     createSandbox: () => ({
+      captureRepositoryInstructions: async () => undefined,
       workspace: {
         readFileToBuffer: async () => {
           throw new Error(
@@ -59,8 +60,6 @@ vi.mock("@/chat/sandbox/sandbox", async () => {
         supports: (toolName: string) => toolName === "bash",
         execute: async () => {
           return {
-            ok: false,
-            status: "error",
             auth_required: {
               authorization: {
                 provider: "eval-oauth",

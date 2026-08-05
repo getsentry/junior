@@ -15,9 +15,18 @@ import type {
   AuthorizationKind,
   ConversationEvent,
 } from "@/chat/conversations/history";
+import {
+  authenticationLinkedEvent,
+  authenticationUnlinkedEvent,
+  JUNIOR_NATIVE_EVENT_NAMESPACE,
+} from "@/chat/conversations/structured-events";
 import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
+import {
+  bindProviderConversation,
+  type ProviderConversationBinding,
+} from "@/chat/conversations/sql/bindings";
 import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
 import {
   historyItemFromPiMessage,
@@ -264,26 +273,31 @@ export async function commitMessages(args: {
  * produced it.
  */
 export async function commitAcceptedReply(args: {
-  agentMessage: AssistantMessage;
+  agentMessage?: AssistantMessage;
   conversation: ThreadConversationState;
   conversationMessageId: string;
   conversationId: string;
+  providerConversationBindings?: Array<
+    Omit<ProviderConversationBinding, "conversationId">
+  >;
   repliedAtMs?: number;
 }): Promise<void> {
   const executor = getSqlExecutor();
   await withConversationEventLock(executor, args.conversationId, async () =>
     executor.transaction(async () => {
-      const agentMessage = normalizeDurableMessage(args.agentMessage);
-      await createSqlConversationEventStore(executor).append(
-        args.conversationId,
-        [
-          {
-            idempotencyKey: `message:${args.conversationMessageId}:agent`,
-            data: historyItemFromPiMessage(agentMessage, contextProvenance),
-            createdAtMs: messageTimestamp(agentMessage),
-          },
-        ],
-      );
+      if (args.agentMessage) {
+        const agentMessage = normalizeDurableMessage(args.agentMessage);
+        await createSqlConversationEventStore(executor).append(
+          args.conversationId,
+          [
+            {
+              idempotencyKey: `message:${args.conversationMessageId}:agent`,
+              data: historyItemFromPiMessage(agentMessage, contextProvenance),
+              createdAtMs: messageTimestamp(agentMessage),
+            },
+          ],
+        );
+      }
       await appendConversationMessages(
         createSqlConversationEventStore(executor),
         {
@@ -294,6 +308,12 @@ export async function commitAcceptedReply(args: {
             : { repliedAtMs: args.repliedAtMs }),
         },
       );
+      for (const binding of args.providerConversationBindings ?? []) {
+        await bindProviderConversation(executor, {
+          conversationId: args.conversationId,
+          ...binding,
+        });
+      }
     }),
   );
 }
@@ -461,6 +481,81 @@ export async function recordAuthorizationCompleted(args: {
   ]);
 }
 
+type AuthenticationAccountChangeArgs = {
+  accountLabel?: string;
+  actorId: string;
+  authorizationId?: string;
+  conversationId: string;
+  provider: string;
+  providerLabel?: string;
+  turnId?: string;
+};
+
+function authenticationEventIdempotencyKey(args: {
+  action: "linked" | "unlinked";
+  actorId: string;
+  authorizationId?: string;
+  provider: string;
+}): string {
+  if (args.authorizationId) {
+    return `native:${JUNIOR_NATIVE_EVENT_NAMESPACE}:authentication_${args.action}:authorization:${args.authorizationId}`;
+  }
+  return (
+    `native:${JUNIOR_NATIVE_EVENT_NAMESPACE}:authentication_${args.action}:` +
+    `${args.provider}:actor:${args.actorId}`
+  );
+}
+
+async function recordAuthenticationAccountChange(
+  action: "linked" | "unlinked",
+  args: AuthenticationAccountChangeArgs,
+): Promise<void> {
+  const definition =
+    action === "linked"
+      ? authenticationLinkedEvent
+      : authenticationUnlinkedEvent;
+  const content = definition.parse({
+    actorId: args.actorId,
+    provider: args.provider,
+    ...(args.accountLabel ? { accountLabel: args.accountLabel } : {}),
+    ...(args.authorizationId ? { authorizationId: args.authorizationId } : {}),
+    ...(args.providerLabel ? { providerLabel: args.providerLabel } : {}),
+  });
+  await getConversationEventStore().append(args.conversationId, [
+    {
+      createdAtMs: Date.now(),
+      idempotencyKey: authenticationEventIdempotencyKey({
+        action,
+        actorId: args.actorId,
+        authorizationId: args.authorizationId,
+        provider: args.provider,
+      }),
+      data: {
+        type: "structured_event",
+        namespace: JUNIOR_NATIVE_EVENT_NAMESPACE,
+        name: definition.eventName,
+        version: definition.version,
+        ...(args.turnId ? { turnId: args.turnId } : {}),
+        content,
+      },
+    },
+  ]);
+}
+
+/** Record a successful conversation-bound account link as host transcript metadata. */
+export async function recordAuthenticationLinked(
+  args: AuthenticationAccountChangeArgs,
+): Promise<void> {
+  await recordAuthenticationAccountChange("linked", args);
+}
+
+/** Record a successful conversation-bound account unlink as host transcript metadata. */
+export async function recordAuthenticationUnlinked(
+  args: AuthenticationAccountChangeArgs,
+): Promise<void> {
+  await recordAuthenticationAccountChange("unlinked", args);
+}
+
 /** Load a previously selected execution profile for a resumed turn. */
 export async function loadTurnRoute(args: {
   conversationId: string;
@@ -525,6 +620,34 @@ export async function recordToolExecutionStarted(args: {
         toolName: args.toolName,
       },
       createdAtMs: args.createdAtMs ?? Date.now(),
+    },
+  ]);
+}
+
+/** Record one privacy-safe Guardian decision before the reviewed action continues. */
+export async function recordGuardianActionReviewed(args: {
+  conversationId: string;
+  turnId: string;
+  toolCallId: string;
+  toolName: string;
+  costUsd?: number;
+  decision: "allow" | "ask" | "deny";
+  riskLevel: "low" | "medium" | "high" | "critical";
+  userAuthorization: "high" | "medium" | "low" | "unknown";
+}): Promise<void> {
+  await getConversationEventStore().append(args.conversationId, [
+    {
+      data: {
+        type: "guardian_action_reviewed",
+        turnId: args.turnId,
+        toolCallId: args.toolCallId,
+        toolName: args.toolName,
+        ...(args.costUsd !== undefined ? { costUsd: args.costUsd } : {}),
+        decision: args.decision,
+        riskLevel: args.riskLevel,
+        userAuthorization: args.userAuthorization,
+      },
+      createdAtMs: Date.now(),
     },
   ]);
 }

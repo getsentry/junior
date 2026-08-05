@@ -67,7 +67,7 @@ function slackSource(threadTs: string) {
     channelId: SLACK_DESTINATION.channelId,
     threadTs,
 
-    type: "priv",
+    visibility: "private",
   });
 }
 
@@ -312,7 +312,7 @@ describe("oauth callback integration", () => {
       messageTs: "1700000000.session-source",
       threadTs: "1700000000.009",
 
-      type: "priv",
+      visibility: "private",
     });
 
     await turnSessionStoreModule.upsertAgentTurnSessionRecord({
@@ -322,6 +322,7 @@ describe("oauth callback integration", () => {
       sliceId: 2,
       state: "awaiting_resume",
       destination: SLACK_DESTINATION,
+      destinationVisibility: "public",
       source: storedSource,
       piMessages: [
         {

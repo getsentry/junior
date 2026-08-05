@@ -48,7 +48,6 @@ describe("load_skill tool", () => {
     } as any);
 
     expect(result).toMatchObject({
-      ok: true,
       skill_name: firstSkill.name,
     });
     expect((result as any).location).toBe(sandboxSkillFile(firstSkill.name));
@@ -76,21 +75,18 @@ describe("load_skill tool", () => {
     });
   });
 
-  it("returns unknown-skill when the name does not exist", async () => {
+  it("rejects an unknown skill name", async () => {
     const availableSkills = await discoverSkills();
     const tool = createLoadSkillTool(availableSkills);
     if (typeof tool.execute !== "function") {
       throw new Error("load_skill execute function missing");
     }
 
-    const result = await tool.execute({ skill_name: "does-not-exist" }, {
-      toolCallId: "tool-call-2",
-      messages: [],
-    } as any);
-
-    expect(result).toMatchObject({
-      ok: false,
-      error: "Unknown skill: does-not-exist",
-    });
+    await expect(
+      tool.execute({ skill_name: "does-not-exist" }, {
+        toolCallId: "tool-call-2",
+        messages: [],
+      } as any),
+    ).rejects.toThrow("Unknown skill: does-not-exist");
   });
 });

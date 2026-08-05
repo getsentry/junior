@@ -45,7 +45,8 @@ Classify the work as `bug`, `feature`, or `task`. Shape the title and body per [
 - Prefer flat bullet lists over headed sections for simple issues.
 - Generalize session framing — strip channel references, slash commands, Slack thread IDs, user @mentions, and transcript fragments; replace with the underlying engineering problem.
 - Compress source material. Research notes, hypotheses, or transcripts become a short summary + scoped bullets — never paste raw investigation into the body.
-- Do not add desired outcome, expected behavior, or acceptance criteria unless the thread explicitly requests them.
+- Do not add desired outcome, expected behavior, acceptance criteria, fixes, implementation steps, approaches, or options unless the user explicitly asks to preserve a specific proposal.
+- Never infer a solution from research. If a user-provided proposal must be preserved, attribute it as a proposal and keep it separate from verified diagnosis.
 - When the request originated from a Slack thread or any on-behalf-of context, append a final line `Action taken on behalf of <name>.` using the action actor's real name. The action actor is the current `<actor>` or the person who explicitly asked you to create/update the issue, not necessarily the original reporter.
 
 Attribute the reporter by name when clear from the thread (e.g. "Raised by Alice during incident triage"). If the reporter differs from the action actor, keep them separate with durable body text such as `Reported by Alice.` — do not reference Slack channels, threads, or conversation internals. Attach screenshots from the thread as image links when present. Preserve relevant URLs (Sentry, GitHub, docs, repro links) inline — do not dump a link list.
@@ -62,6 +63,7 @@ Attribute the reporter by name when clear from the thread (e.g. "Raised by Alice
 - Delegated-action footer is the last line when applicable, using the action actor's real name, not the reporter's name unless they are the same person.
 - No session framing remains (channel refs, slash commands, @mentions, Slack thread IDs).
 - Body structure matches complexity — no empty sections, no restated title, no raw research dump.
+- No invented or unattributed solution, implementation step, approach, or option appears in the title or body.
 
 If any gate fails, revise and re-check before calling the Linear create/update tool.
 
@@ -81,4 +83,5 @@ If any gate fails, revise and re-check before calling the Linear create/update t
 - Reuse or update an existing Linear issue when it is clearly the same work instead of creating a duplicate.
 - Label uncertain details as assumptions in the Linear content when the thread leaves them unresolved.
 - Prefer concise, durable ticket text over verbatim Slack quotes or long transcript dumps.
+- Keep ticket handoffs diagnosis-first. Root-cause evidence can establish what is wrong; it does not justify inventing what should be built or changed.
 - Do not invent team-specific workflow names, labels, or estimate values without first confirming they exist.

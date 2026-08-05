@@ -1,17 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { makeStructuredToolResult } from "@/chat/tool-support/structured-result";
+import { makeStructuredToolOutput } from "@/chat/tool-support/structured-result";
 
-describe("makeStructuredToolResult", () => {
+describe("makeStructuredToolOutput", () => {
   it("derives model-visible content from the same structured details object", () => {
-    const result = makeStructuredToolResult({
-      ok: true,
-      status: "success",
+    const result = makeStructuredToolOutput({
       target: "notes.txt",
       truncated: true,
-      data: {
-        content: "hello",
-        path: "notes.txt",
-      },
+      content: "hello",
+      path: "notes.txt",
       continuation: {
         arguments: {
           path: "notes.txt",
@@ -22,13 +18,5 @@ describe("makeStructuredToolResult", () => {
     });
 
     expect(JSON.parse(result.content[0]!.text)).toEqual(result.details);
-  });
-
-  it("rejects malformed structured results as runtime contract failures", () => {
-    expect(() =>
-      makeStructuredToolResult({
-        ok: true,
-      } as never),
-    ).toThrow("Invalid option");
   });
 });

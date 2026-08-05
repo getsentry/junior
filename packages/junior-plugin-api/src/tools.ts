@@ -2,15 +2,17 @@ import type {
   PluginContext,
   LocalInvocationContext,
   PluginEmbedder,
+  Identity,
   PluginModel,
   Actor,
   SlackInvocationContext,
+  User,
 } from "./context";
 import type { PluginCredentialSubject } from "./credentials";
 import type { PluginAnnotations } from "./annotations";
 import type { SlackConversationLink } from "./operations";
 import type { PluginState } from "./state";
-import { z, type ZodType, type ZodTypeAny } from "zod";
+import { z, type ZodTypeAny } from "zod";
 
 export interface PluginEnv {
   get(key: string): string | undefined;
@@ -39,6 +41,7 @@ export interface PluginSandbox {
     cmd: string;
     cwd?: string;
     env?: Record<string, string>;
+    signal?: AbortSignal;
     sudo?: boolean;
   }): Promise<{
     exitCode: number;
@@ -81,8 +84,8 @@ export const pluginToolContentSchema = z.discriminatedUnion("type", [
 /** Model-visible content returned by a plugin tool. */
 export type PluginToolContent = z.output<typeof pluginToolContentSchema>;
 
-/** Standard tool result envelope with separate model content and runtime details. */
-export interface PluginToolResultEnvelope<TDetails = PluginToolResult> {
+/** Pi-native projection with model-facing content and canonical runtime details. */
+export interface PluginToolOutputEnvelope<TDetails = unknown> {
   content: PluginToolContent[];
   details: TDetails;
 }
@@ -183,6 +186,8 @@ export interface PluginToolExecuteOptions {
    * Plugin tools should use typed input fields and runtime hook context instead.
    */
   experimental_context?: unknown;
+  /** Abort when the owning agent tool call is cancelled or times out. */
+  signal?: AbortSignal;
   /** Stable runtime tool-call id; durable create tools should derive idempotency keys from it. */
   toolCallId?: string;
 }
@@ -194,27 +199,16 @@ export const pluginToolContinuationSchema = z
   })
   .strict();
 
-export const pluginToolErrorSchema = z
+/** Shared optional fields for canonical plugin tool outputs. */
+export const pluginToolOutputSchema = z
   .object({
-    kind: z.string().min(1),
-    message: z.string().min(1),
-    retryable: z.boolean().optional(),
-  })
-  .strict();
-
-export const pluginToolResultSchema = z
-  .object({
-    ok: z.boolean(),
-    status: z.enum(["success", "error"]),
     target: z.string().min(1).optional(),
-    data: z.unknown().optional(),
     truncated: z.boolean().optional(),
     continuation: pluginToolContinuationSchema.optional(),
-    error: z.union([pluginToolErrorSchema, z.string()]).optional(),
   })
   .passthrough();
 
-export type PluginToolResult = z.output<typeof pluginToolResultSchema>;
+export type PluginToolOutput = z.output<typeof pluginToolOutputSchema>;
 
 export type PluginToolExecute<TInput = unknown, TOutput = unknown> = {
   bivarianceHack(
@@ -226,12 +220,11 @@ export type PluginToolExecute<TInput = unknown, TOutput = unknown> = {
 /**
  * Tool-declared approval mode.
  *
- * `auto` delegates to core policy, `review` enters approval review, and
- * `approve` permits execution without review. Omission delegates to core
- * defaults. These values do not select the reviewer.
+ * `auto` delegates to core policy, `review` enters Guardian review, and
+ * `approve` permits execution without review. Plugin tool helpers normalize
+ * omission to `auto`.
  *
- * This is declaration metadata only; current tool execution is unchanged.
- * TODO(#1053): Enforce effective approval modes before tool execution.
+ * Core resolves the effective mode immediately before execution.
  */
 export const toolApprovalModeSchema = z.enum(["auto", "review", "approve"]);
 
@@ -240,7 +233,7 @@ export type ToolApprovalMode = z.output<typeof toolApprovalModeSchema>;
 /**
  * Reviewer signals describing a tool's side-effect behavior.
  *
- * These hints follow the MCP tool annotation contract. Approval review may use
+ * These hints follow the MCP tool annotation contract. Guardian may use
  * them as signals, but they never grant authority or override deterministic
  * authorization.
  */
@@ -253,18 +246,34 @@ export interface ToolAnnotations {
   title?: string;
 }
 
+export const REQUIRED_TOOL_ANNOTATION_KEYS = [
+  "destructiveHint",
+  "idempotentHint",
+  "openWorldHint",
+  "readOnlyHint",
+] as const;
+
+export type RequiredToolAnnotationKey =
+  (typeof REQUIRED_TOOL_ANNOTATION_KEYS)[number];
+
+/** Return behavioral annotation keys that a tool did not declare. */
+export function missingToolAnnotationKeys(
+  annotations: ToolAnnotations | undefined,
+): RequiredToolAnnotationKey[] {
+  return REQUIRED_TOOL_ANNOTATION_KEYS.filter(
+    (key) => typeof annotations?.[key] !== "boolean",
+  );
+}
+
 /**
  * Canonical approval metadata declared by core and plugin tools.
- *
- * This metadata is declaration-only until #1053 adds approval enforcement.
- * Current tool execution is unchanged.
  */
 export interface ToolApprovalMetadata<TInput = unknown> {
-  /** Optional declared approval mode; omission delegates to core defaults. */
+  /** Optional declared approval mode; the owning tool boundary selects defaults. */
   approvalMode?: ToolApprovalMode;
   annotations?: ToolAnnotations;
   /**
-   * Describe the exact validated invocation for future approval presentation.
+   * Describe the reviewed semantic action for the review request.
    *
    * Core owns authoritative tool, actor, source, destination, conversation,
    * credential, and input data. This description adds domain-specific context
@@ -305,10 +314,10 @@ export interface PluginToolDefinition<
 
 type ZodPluginToolDefinition<
   TInputSchema extends ZodTypeAny,
-  TOutputSchema extends ZodType<PluginToolResult>,
+  TOutputSchema extends ZodTypeAny,
   TExecuteResult extends
     | z.input<TOutputSchema>
-    | PluginToolResultEnvelope<z.input<TOutputSchema>>,
+    | PluginToolOutputEnvelope<z.input<TOutputSchema>>,
 > = Omit<
   PluginToolDefinition<z.output<TInputSchema>, z.output<TOutputSchema>>,
   "inputSchema" | "outputSchema" | "prepareArguments" | "execute"
@@ -323,13 +332,13 @@ type ZodPluginToolDefinition<
 };
 
 type ParsedPluginToolExecuteResult<TOutputSchema extends ZodTypeAny, TResult> =
-  TResult extends PluginToolResultEnvelope<unknown>
-    ? PluginToolResultEnvelope<z.output<TOutputSchema>>
+  TResult extends PluginToolOutputEnvelope<unknown>
+    ? PluginToolOutputEnvelope<z.output<TOutputSchema>>
     : z.output<TOutputSchema>;
 
-function isPluginToolResultEnvelope(
+function isPluginToolOutputEnvelope(
   value: unknown,
-): value is PluginToolResultEnvelope<unknown> {
+): value is PluginToolOutputEnvelope<unknown> {
   return (
     value !== null &&
     typeof value === "object" &&
@@ -365,10 +374,10 @@ function parsePluginToolInput<TInputSchema extends ZodTypeAny>(
 
 function createZodTool<
   TInputSchema extends ZodTypeAny,
-  TOutputSchema extends ZodType<PluginToolResult>,
+  TOutputSchema extends ZodTypeAny,
   TExecuteResult extends
     | z.input<TOutputSchema>
-    | PluginToolResultEnvelope<z.input<TOutputSchema>>,
+    | PluginToolOutputEnvelope<z.input<TOutputSchema>>,
 >(
   definition: ZodPluginToolDefinition<
     TInputSchema,
@@ -403,6 +412,7 @@ function createZodTool<
   }
   return {
     ...tool,
+    approvalMode: tool.approvalMode ?? "auto",
     inputSchema: modelInputSchema,
     outputSchema: modelOutputSchema,
     prepareArguments(args) {
@@ -418,15 +428,13 @@ function createZodTool<
               input as z.output<TInputSchema>,
               options,
             );
-            if (isPluginToolResultEnvelope(result)) {
+            if (isPluginToolOutputEnvelope(result)) {
               return {
                 content: z.array(pluginToolContentSchema).parse(result.content),
-                details: outputSchema.parse(
-                  pluginToolResultSchema.parse(result.details),
-                ),
+                details: outputSchema.parse(result.details),
               };
             }
-            return outputSchema.parse(pluginToolResultSchema.parse(result));
+            return outputSchema.parse(result);
           },
         }
       : {}),
@@ -440,10 +448,10 @@ function createZodTool<
 /** Define a plugin tool with Zod input parsing and validated structured results. */
 export function zodTool<
   TInputSchema extends ZodTypeAny,
-  TOutputSchema extends ZodType<PluginToolResult>,
+  TOutputSchema extends ZodTypeAny,
   TExecuteResult extends
     | z.input<TOutputSchema>
-    | PluginToolResultEnvelope<z.input<TOutputSchema>>,
+    | PluginToolOutputEnvelope<z.input<TOutputSchema>>,
 >(
   definition: ZodPluginToolDefinition<
     TInputSchema,
@@ -461,10 +469,10 @@ export function zodTool<
 /** Define a plugin tool with Zod input parsing and the structured result contract. */
 export function definePluginTool<
   TInputSchema extends ZodTypeAny,
-  TOutputSchema extends ZodType<PluginToolResult>,
+  TOutputSchema extends ZodTypeAny,
   TExecuteResult extends
     | z.input<TOutputSchema>
-    | PluginToolResultEnvelope<z.input<TOutputSchema>>,
+    | PluginToolOutputEnvelope<z.input<TOutputSchema>>,
 >(
   definition: ZodPluginToolDefinition<
     TInputSchema,
@@ -497,6 +505,11 @@ export interface SlackToolRegistrationHookContext {
   >;
 }
 
+export interface PluginResourceEventToolContext {
+  /** Whether this invocation can create a working resource-event subscription. */
+  canSubscribe: boolean;
+}
+
 interface BaseToolRegistrationHookContext extends PluginContext {
   /**
    * Opaque Junior conversation/session identity for this turn.
@@ -510,7 +523,14 @@ interface BaseToolRegistrationHookContext extends PluginContext {
   egress: PluginEgress;
   mcp?: PluginMcp;
   model: PluginModel;
+  resourceEvents: PluginResourceEventToolContext;
+  /** Sandbox filesystem and command capability for plugin-owned workspace tools. */
+  sandbox: PluginSandbox;
   state: PluginState;
+  users: {
+    /** Resolve the current actor's stored identity and linked user. */
+    resolveActor(): Promise<{ identity: Identity; user?: User } | undefined>;
+  };
   userText?: string;
 }
 

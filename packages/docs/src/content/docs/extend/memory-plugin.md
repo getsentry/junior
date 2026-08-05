@@ -16,7 +16,7 @@ New apps created with `junior init` include `memoryPlugin()` in `plugins.ts` by 
 
 ## Prerequisites
 
-Provision a Postgres database with pgvector support before running migrations. The memory plugin migration creates the `vector` extension and stores 1536-dimensional embeddings. Most managed Postgres providers — Neon, Supabase, Railway, and AWS RDS/Aurora PostgreSQL with pgvector enabled — support this out of the box.
+Provision a Postgres database with pgvector support before running migrations. The memory plugin migrations create the `vector` and `btree_gin` extensions, store 1536-dimensional embeddings, maintain a scope-aware full-text search index, and create an HNSW cosine index on embeddings for hybrid recall. Most managed Postgres providers — Neon, Supabase, Railway, and AWS RDS/Aurora PostgreSQL with pgvector enabled — support this out of the box.
 
 ## Install
 
@@ -50,30 +50,47 @@ export const plugins = defineJuniorPlugins([
 ]);
 ```
 
+Automatic prompt recall and passive session extraction can be disabled independently. Explicit memory tools remain available in either case:
+
+```ts title="plugins.ts"
+export const plugins = defineJuniorPlugins([
+  memoryPlugin({
+    disableRecall: true,
+    disableExtraction: true,
+  }),
+]);
+```
+
 ## Configure environment variables
 
 | Variable                            | Required | Purpose                                                                                                                                                                                                      |
 | ----------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `DATABASE_URL`                      | Yes      | Postgres connection string for memory storage.                                                                                                                                                               |
 | `JUNIOR_DATABASE_DRIVER`            | No       | SQL client driver: `neon` (default) or `postgres`. Set `postgres` for non-Neon deployments.                                                                                                                  |
+| `JUNIOR_SQL_STATEMENT_TIMEOUT_MS`   | No       | Runtime PostgreSQL statement timeout in milliseconds. Defaults to `30000`; set `0` to disable.                                                                                                               |
 | `AI_EMBEDDING_MODEL`                | No       | Embedding model for vector search. Defaults to `openai/text-embedding-3-small` (1536 dims).                                                                                                                  |
 | `AI_MEMORY_MODEL`                   | No       | Model for memory classification, consolidation, and automatic recall relevance. Defaults to the app's structured model.                                                                                      |
-| `MEMORY_RECALL_MAX_VECTOR_DISTANCE` | No       | Maximum cosine distance for vector recall candidates. Values 0–1; lower = stricter. Values above 1 are clamped to 1. Default `0.45` suits `text-embedding-3-small`. Tune when changing `AI_EMBEDDING_MODEL`. |
 
-`AI_EMBEDDING_MODEL` must produce 1536-dimensional vectors. Changing this value after memories exist requires flushing the `junior_memory_embeddings` table and re-running to regenerate vectors with the new model.
+`AI_EMBEDDING_MODEL` must produce 1536-dimensional vectors. Changing this value after memories exist requires flushing the `junior_memory_embeddings` table and re-running to regenerate vectors with the new model. Automatic recall keeps a fixed cosine distance cutoff of `0.45` for `text-embedding-3-small`; retune that constant in the memory store if the embedding model changes.
 
 For non-Neon managed Postgres (Railway, Supabase, AWS RDS, or self-hosted), set `JUNIOR_DATABASE_DRIVER=postgres`. Local URLs (`localhost`, `127.0.0.1`) automatically use the `postgres` driver.
 
 ## Manage personal memories
 
 Signed-in users can search, page through, and forget their personal memories
-from **Profile → Memories** in the dashboard. Forgetting archives the memory so
-Junior no longer recalls it.
+from the top-level **Memories** dashboard page. The page shows viewer-scoped
+memory totals, embedding coverage, and history on **Overview**. The separate
+**Memories** view provides search and collections for preferences,
+automatically learned memories, and explicitly saved memories. Each record
+explains whether Junior learned it automatically or saved it because the user
+asked. Overview groups the viewer's active memories by type and how they were
+added. Forgetting archives the memory so Junior no longer recalls it.
 
 The plugin also exposes authenticated REST resources:
 
 | Method   | Path                               | Purpose                                       |
 | -------- | ---------------------------------- | --------------------------------------------- |
+| `GET`    | `/api/plugins/memory/dashboard`    | Read viewer-scoped memory totals and timeline |
 | `GET`    | `/api/plugins/memory/memories`     | List memories with `q`, `cursor`, and `limit` |
 | `GET`    | `/api/plugins/memory/memories/:id` | Read one personal memory                      |
 | `DELETE` | `/api/plugins/memory/memories/:id` | Forget one personal memory                    |
@@ -89,7 +106,7 @@ After setting `DATABASE_URL`, run the upgrade command to apply the memory plugin
 pnpm junior upgrade
 ```
 
-On a fresh database, this creates the `vector` extension, the `junior_memory_memories` table, and the `junior_memory_embeddings` table with a `vector(1536)` column.
+On a fresh database, this creates the `vector` and `btree_gin` extensions, the `junior_memory_memories` table, and the `junior_memory_embeddings` table with a `vector(1536)` column plus its HNSW cosine index.
 
 ## Verify
 
@@ -119,6 +136,7 @@ Public Slack channel memories are workspace-visible. A durable fact remembered i
 
 - **Plugin not active after registration**: `@sentry/junior-memory` was registered as a bare string instead of `memoryPlugin()`. Switch to the factory call and redeploy.
 - **Migration error — extension "vector" does not exist**: the Postgres database does not have pgvector available. Use a provider that supports pgvector or install it manually with `CREATE EXTENSION vector`.
+- **Migration error — extension "btree_gin" does not exist**: the Postgres database does not include the standard `btree_gin` extension. Enable it with your provider or install it manually with `CREATE EXTENSION btree_gin`.
 - **`DATABASE_URL` is required**: no database URL is configured. Set it in the deployment environment.
 - **Connection errors on non-Neon Postgres**: set `JUNIOR_DATABASE_DRIVER=postgres` for Railway, Supabase, AWS RDS, or self-hosted Postgres.
 - **Embedding dimension mismatch**: `AI_EMBEDDING_MODEL` was changed after memories were stored with a different model. Flush the `junior_memory_embeddings` table and re-run migrations to regenerate vectors with the new model.

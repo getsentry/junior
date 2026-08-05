@@ -67,12 +67,10 @@ describe("slack list create/update tools", () => {
     const second = await executeTool(tool, { name: "Incident checklist" });
 
     expect(first).toMatchObject({
-      ok: true,
       list_id: "LIST_ABC",
       permalink: "https://example.invalid/files/LIST_ABC",
     });
     expect(second).toMatchObject({
-      ok: true,
       list_id: "LIST_ABC",
       deduplicated: true,
     });
@@ -109,8 +107,6 @@ describe("slack list create/update tools", () => {
     });
 
     expect(result).toEqual({
-      ok: true,
-      status: "success",
       list_id: "LIST_ABC",
       item_id: "ROW_77",
       completed: true,

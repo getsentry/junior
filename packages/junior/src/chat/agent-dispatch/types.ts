@@ -1,6 +1,7 @@
 import type {
   DispatchOptions,
   DestinationVisibility,
+  ReplyAttribution,
   Source,
   SlackDestination,
 } from "@sentry/junior-plugin-api";
@@ -44,6 +45,7 @@ export interface DispatchRecord {
   input: string;
   metadata?: Record<string, string>;
   plugin: string;
+  replyAttribution?: ReplyAttribution;
   resultMessageTs?: string;
   source: Source;
   status: DispatchStatus;

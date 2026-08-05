@@ -1,4 +1,4 @@
-import { isPrivateSource } from "@sentry/junior-plugin-api";
+import { isPrivateSource, type Identity } from "@sentry/junior-plugin-api";
 import type {
   MemoryRuntimeContext,
   MemoryScope,
@@ -15,6 +15,54 @@ export interface ResolvedMemoryScope {
 export interface ResolvedMemorySubject {
   subjectKey?: string;
   subjectType: MemorySubjectType;
+}
+
+function uniqueScopes(scopes: ResolvedMemoryScope[]): ResolvedMemoryScope[] {
+  return [
+    ...new Map(
+      scopes.map((scope) => [`${scope.scope}:${scope.scopeKey}`, scope]),
+    ).values(),
+  ];
+}
+
+/** Derive viewer-visible memory scopes from canonical provider identities. */
+export function deriveViewerMemoryScopes(identities: Identity[]): {
+  privateScopes: ResolvedMemoryScope[];
+  publicScopes: ResolvedMemoryScope[];
+} {
+  const privateScopes = identities.flatMap((identity) => {
+    if (identity.provider === "local") {
+      return [
+        {
+          scope: "personal" as const,
+          scopeKey: `local:${identity.providerSubjectId}`,
+        },
+      ];
+    }
+    if (identity.provider === "slack" && identity.providerTenantId) {
+      return [
+        {
+          scope: "personal" as const,
+          scopeKey: `slack:${identity.providerTenantId}:${identity.providerSubjectId}`,
+        },
+      ];
+    }
+    return [];
+  });
+  const publicScopes = identities.flatMap((identity) =>
+    identity.provider === "slack" && identity.providerTenantId
+      ? [
+          {
+            scope: "conversation" as const,
+            scopeKey: `slack:${identity.providerTenantId}`,
+          },
+        ]
+      : [],
+  );
+  return {
+    privateScopes: uniqueScopes(privateScopes),
+    publicScopes: uniqueScopes(publicScopes),
+  };
 }
 
 function sourceConversationKey(ctx: MemoryRuntimeContext): string | undefined {

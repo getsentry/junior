@@ -13,6 +13,7 @@ let current:
       databaseUrl: string;
       db: JuniorSqlExecutor;
       driver: SqlDriver;
+      statementTimeoutMs: number | false;
       store: ConversationStore;
       eventStore: ConversationEventStore;
       searchStore: ConversationSearchStore;
@@ -22,10 +23,12 @@ let current:
 function createDb(args: {
   databaseUrl: string;
   driver: SqlDriver;
+  statementTimeoutMs: number | false;
 }): JuniorSqlExecutor {
   return createJuniorSqlExecutor({
     connectionString: args.databaseUrl,
     driver: args.driver,
+    statementTimeoutMs: args.statementTimeoutMs,
   });
 }
 
@@ -34,7 +37,8 @@ export function getSqlExecutor(): JuniorSqlExecutor {
   const { sql } = getChatConfig();
   if (
     current?.databaseUrl !== sql.databaseUrl ||
-    current.driver !== sql.driver
+    current.driver !== sql.driver ||
+    current.statementTimeoutMs !== sql.statementTimeoutMs
   ) {
     if (current) {
       const previous = current;
@@ -44,10 +48,12 @@ export function getSqlExecutor(): JuniorSqlExecutor {
     const db = createDb({
       databaseUrl: sql.databaseUrl,
       driver: sql.driver,
+      statementTimeoutMs: sql.statementTimeoutMs,
     });
     current = {
       databaseUrl: sql.databaseUrl,
       driver: sql.driver,
+      statementTimeoutMs: sql.statementTimeoutMs,
       db,
       store: createSqlStore(db),
       eventStore: createSqlConversationEventStore(db),

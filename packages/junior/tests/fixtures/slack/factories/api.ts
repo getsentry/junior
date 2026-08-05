@@ -34,10 +34,22 @@ export function slackError(
 }
 
 export function authTestOk(
-  input: { botId?: string; userId?: string; userName?: string } = {},
-): { ok: true; bot_id: string; user: string; user_id: string } {
+  input: {
+    botId?: string;
+    teamId?: string;
+    userId?: string;
+    userName?: string;
+  } = {},
+): {
+  ok: true;
+  bot_id: string;
+  team_id: string;
+  user: string;
+  user_id: string;
+} {
   return slackOk({
     bot_id: input.botId ?? "B_TEST_BOT",
+    team_id: input.teamId ?? "T123",
     user: input.userName ?? "junior",
     user_id: input.userId ?? TEST_USER_ID,
   });

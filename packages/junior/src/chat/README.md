@@ -33,16 +33,25 @@ mailbox-backed provider.
 - `ingress/`: source parsing, classification, and routing.
 - `task-execution/`: mailbox, queue, lease, worker, and recovery.
 - `runtime/`: turn orchestration and provider-neutral delivery callbacks.
-- `agent-dispatch/`: plugin dispatch authority, mailbox adaptation, and
-  plugin-facing outcome projection.
+- `agent-dispatch/`: durable task and plugin dispatch authority, mailbox
+  adaptation, and plugin-facing outcome projection.
 - `agent-invocations/`: durable parent/child bindings, delegated work, and
   internal terminal results.
+- `event-tasks/`: durable instructions matched to normalized resource events.
+- `scheduled-tasks/`: durable scheduled instructions, authoring tools, and
+  heartbeat dispatch.
+- `tasks/`: signed-in user projection across scheduled and event tasks.
 - `agent/` and `pi/`: model execution and Pi state conversion.
 - `services/`: consumer-owned domain decisions.
 - `state/` and `conversations/`: persistence by concern.
 - `slack/` and `local/`: platform adapters.
 - `plugins/`, `credentials/`, `sandbox/`, and `mcp/`: external capability
   boundaries.
+- `tool-support/action-review.ts`: effective approval modes, authoritative
+  action proposals, deterministic context checks, and the execution gate.
+- `services/guardian-action-policy.ts` and `guardian-action-review.ts`: the
+  Codex-derived policy and structured model reviewer for actions that enter
+  review.
 
 Provider modules must not import runtime orchestration. Runtime and service
 modules depend on small injected ports rather than provider implementations or
@@ -75,11 +84,16 @@ delegation without becoming the execution actor or a general task owner.
 - Retry continuations retain an exact transcript prefix. Usage from discarded
   assistant tails is carried forward separately so retained messages are
   counted once.
+- Repo-owned tools declare `readOnlyHint`, `destructiveHint`, `openWorldHint`,
+  and `idempotentHint`. External plugin and MCP tools with missing hints are
+  logged and enter action review conservatively.
 - Tool-bearing assistant text stays in agent history but is not destination
   output; explicit progress uses the runtime status surface.
 - Tool failures remain internal agent-loop data unless the final result exposes
   an appropriate diagnostic.
 - Durable state is committed before acknowledging queue work or yielding.
+- Conversation events emitted by plugin operations preserve conversation
+  activity, archive, and transcript-retention state.
 - Model input stays below the configured bot context cap and the active model's
   advertised window. The agent checks before its first provider request and
   after each tool batch; an in-turn compaction commits its history replacement
@@ -97,6 +111,22 @@ delegation without becoming the execution actor or a general task owner.
   explicit across asynchronous boundaries. A destinationless child
   conversation receives its bounded execution destination from its durable
   agent invocation.
+- Host-owned runtime context and the actor's current instruction are separate
+  user messages. The context message immediately precedes the instruction,
+  remains context-authority on resume, and may be replaced before a later model
+  sample without replaying the actor's instruction.
+- Action review sees the validated, hook-adjusted semantic input immediately
+  before execution; hook-injected environment values stay execution-only.
+  Plugin tools with omitted approval modes use auto policy; core tools must opt
+  in explicitly. Every execution attempt that enters review reaches Guardian;
+  prior rejections are context rather than binding decisions. Each Guardian
+  decision is committed to the conversation event log before the reviewed
+  action can continue. `ask` and `deny` become expected tool failures, and three
+  consecutive rejections interrupt the execution slice.
+- Guardian receives a projection of credential authority, never signed
+  credential bindings, plus bounded user, assistant, tool-call, and tool-result
+  evidence selected with the Codex Guardian transcript rules. It cannot override
+  deterministic context checks, and unavailable review fails closed.
 
 Follow `../../../../policies/context-bound-systems.md`,
 `../../../../policies/provider-boundaries.md`, and the feature READMEs in

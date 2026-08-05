@@ -34,7 +34,6 @@ function exposedToolSummary(provider: string, tool: AgentTool) {
     provider,
     description: tool.description,
     input_schema: tool.parameters,
-    input_schema_summary: "value (required)",
   };
 }
 

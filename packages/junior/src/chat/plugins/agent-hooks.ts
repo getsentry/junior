@@ -1,7 +1,10 @@
 import {
+  missingToolAnnotationKeys,
+  normalizeResourceEventIdentifier,
   promptContextSchema,
   promptMessageSchema,
-  resourceEventSchema,
+  pluginResourceEventsSchema,
+  resourceEventInputSchema,
 } from "@sentry/junior-plugin-api";
 import type {
   PluginMcp,
@@ -13,7 +16,7 @@ import type {
   PluginOperationalReportContent,
   PluginOperationalTone,
   PluginRouteApp,
-  ResourceEventPublisher,
+  ResourceEvent,
   SlackConversationLink,
   PluginRegistration,
   SlackToolRegistrationHookContext,
@@ -22,6 +25,8 @@ import type {
 } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
+import { createPluginConversationEvents } from "@/chat/plugins/conversation-events";
+import { createPluginConversationEventStats } from "@/chat/plugins/conversation-event-stats";
 import { logInfo, logWarn } from "@/chat/logging";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginEmbedder, createPluginModel } from "@/chat/plugins/model";
@@ -30,8 +35,9 @@ import { createPluginState } from "@/chat/plugins/state";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { getDashboardConversationLink } from "@/chat/slack/dashboard-link";
+import { canRouteResourceEvents } from "@/chat/resource-events/workspace";
 import { getSlackToolContext } from "@/chat/slack/tools/context";
-import { readViewerActors } from "@/chat/plugins/viewer-actors";
+import { resolveViewerUser } from "@/chat/plugins/viewer";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import type {
   SandboxCommandInput,
@@ -56,7 +62,9 @@ export interface ToolHookInput {
 }
 
 export interface ToolHookResult {
+  /** Hook-injected environment values applied only during execution. */
   env: Record<string, string>;
+  /** Hook-adjusted semantic tool input, including any schema-defined `env`. */
   input: Record<string, unknown>;
 }
 
@@ -144,12 +152,23 @@ function invocationPluginContext(
     ToolRuntimeContext,
     "conversationId" | "destination" | "actor" | "source" | "userText"
   >,
+  turnId?: string,
 ): UserPromptContext {
   const base = basePluginContext(plugin);
   const common = {
     ...base,
     conversationId: context.conversationId,
     embedder: createPluginEmbedder(plugin.manifest.name),
+    ...(context.conversationId && turnId
+      ? {
+          events: createPluginConversationEvents({
+            conversationId: context.conversationId,
+            operationId: `user-prompt:${turnId}`,
+            plugin,
+            turnId,
+          }),
+        }
+      : {}),
     model: createPluginModel(plugin.manifest.name, plugin.model),
     source: context.source,
     text: context.userText ?? "",
@@ -308,6 +327,12 @@ export function validatePlugins(plugins: PluginRegistration[]): void {
     if (seen.has(name)) {
       throw new Error(`Duplicate plugin name "${name}"`);
     }
+    if (
+      plugin.resourceEvents !== undefined &&
+      !pluginResourceEventsSchema.safeParse(plugin.resourceEvents).success
+    ) {
+      throw new Error(`Plugin "${name}" resourceEvents is invalid`);
+    }
     for (const [taskName, task] of Object.entries(plugin.tasks ?? {})) {
       if (!PLUGIN_TOOL_NAME_RE.test(taskName)) {
         throw new Error(
@@ -406,6 +431,7 @@ export async function getPluginUserPromptContributions(args: {
     ToolRuntimeContext,
     "conversationId" | "destination" | "actor" | "source" | "userText"
   >;
+  turnId?: string;
 }): Promise<PluginPromptContributionContext[]> {
   const contributions: PluginPromptContributionContext[] = [];
   let totalChars = 0;
@@ -418,7 +444,7 @@ export async function getPluginUserPromptContributions(args: {
     }
     try {
       const rawResult = await hook({
-        ...invocationPluginContext(plugin, args.context),
+        ...invocationPluginContext(plugin, args.context, args.turnId),
       });
       if (rawResult === undefined) {
         continue;
@@ -487,6 +513,7 @@ export async function getPluginUserPromptContributions(args: {
 /** Collect turn-scoped tools exposed by plugins. */
 export function getPluginTools(
   context: ToolRuntimeContext,
+  sandbox: PluginSandbox = createSandboxCapability(context.workspace),
 ): Record<string, AnyToolDefinition> {
   const tools: Record<string, AnyToolDefinition> = {};
   for (const plugin of getPlugins()) {
@@ -526,6 +553,12 @@ export function getPluginTools(
         })
       : undefined;
     const mcp = pluginMcpContext(plugin, context);
+    const resourceEvents = {
+      canSubscribe:
+        context.source.platform === "slack" && canRouteResourceEvents(),
+    };
+    const resolveActor =
+      context.resolveActorIdentity ?? (async () => undefined);
     let pluginContext: ToolRegistrationHookContext;
     if (context.source.platform === "slack") {
       if (context.destination.platform !== "slack") {
@@ -546,7 +579,10 @@ export function getPluginTools(
         egress: context.egress,
         ...(mcp ? { mcp } : {}),
         model: createPluginModel(pluginName, plugin.model),
+        resourceEvents,
+        sandbox,
         state: createPluginState(pluginName),
+        users: { resolveActor },
       };
     } else {
       if (context.destination.platform !== "local") {
@@ -566,7 +602,10 @@ export function getPluginTools(
         egress: context.egress,
         ...(mcp ? { mcp } : {}),
         model: createPluginModel(pluginName, plugin.model),
+        resourceEvents,
+        sandbox,
         state: createPluginState(pluginName),
+        users: { resolveActor },
       };
     }
     const pluginTools = hook(pluginContext);
@@ -584,6 +623,17 @@ export function getPluginTools(
         );
       }
       const definition = tool as unknown as AnyToolDefinition;
+      const missingAnnotationKeys = missingToolAnnotationKeys(
+        definition.annotations,
+      );
+      if (missingAnnotationKeys.length > 0) {
+        logWarn("plugin.tool_annotations.missing", {
+          "app.plugin.name": pluginName,
+          "gen_ai.tool.name": localName,
+          "app.tool.missing_annotations": missingAnnotationKeys.join(","),
+        });
+      }
+      definition.approvalMode ??= "auto";
       definition.identity = {
         id: `${pluginName}.${localName}`,
         name: localName,
@@ -629,9 +679,30 @@ function routeMethods(
   return methods;
 }
 
+function requirePublishedResourceEvent(
+  plugin: PluginRegistration,
+  eventType: string,
+): void {
+  const registration = plugin.resourceEvents;
+  if (!registration || registration.isEnabled?.() === false) {
+    throw new Error(
+      `Plugin "${plugin.manifest.name}" cannot publish resource events without an active registration`,
+    );
+  }
+  if (
+    !registration.resourceTypes.some((resourceType) =>
+      resourceType.supportedEvents.includes(eventType),
+    )
+  ) {
+    throw new Error(
+      `Plugin "${plugin.manifest.name}" did not register resource event "${eventType}"`,
+    );
+  }
+}
+
 /** Collect route handlers exposed by plugins for app-level mounting. */
 export function getPluginRoutes(options: {
-  resourceEvents: ResourceEventPublisher;
+  resourceEvents: { publish(event: ResourceEvent): Promise<void> };
 }): PluginRouteRegistration[] {
   const routes: PluginRouteRegistration[] = [];
   const seen = new Set<string>();
@@ -655,13 +726,16 @@ export function getPluginRoutes(options: {
       },
       resourceEvents: {
         async publish(event) {
-          const parsed = resourceEventSchema.parse(event);
-          if (parsed.provider !== pluginName) {
-            throw new Error(
-              `Plugin "${pluginName}" cannot publish resource events for provider "${parsed.provider}"`,
-            );
-          }
-          await options.resourceEvents.publish(parsed);
+          const parsed = resourceEventInputSchema.parse(event);
+          requirePublishedResourceEvent(plugin, parsed.eventType);
+          await options.resourceEvents.publish({
+            ...parsed,
+            identifier: normalizeResourceEventIdentifier(
+              plugin.resourceEvents,
+              parsed.identifier,
+            ),
+            namespace: pluginName,
+          });
         },
       },
     });
@@ -727,9 +801,8 @@ export function getPluginApiRoutes(): PluginApiRouteRegistration[] {
     }
     const app = hook({
       ...basePluginContext(plugin),
-      viewer: {
-        actors: readViewerActors,
-      },
+      eventStats: createPluginConversationEventStats(plugin),
+      users: { resolve: resolveViewerUser },
     });
     if (app === undefined) {
       continue;
@@ -962,6 +1035,9 @@ function sanitizeOperationalReport(args: {
           const sanitizedSeries: NonNullable<
             PluginOperationalReport["widgets"]
           >[number]["series"][number] = { key, label };
+          if (item.format === "usd") {
+            sanitizedSeries.format = "usd";
+          }
           const tone = operationalReportTone(item.tone);
           if (tone) {
             sanitizedSeries.tone = tone;
@@ -1090,6 +1166,7 @@ export async function getPluginOperationalReports(
       const state = createPluginState(pluginName);
       const report = await hook({
         ...basePluginContext(plugin),
+        eventStats: createPluginConversationEventStats(plugin, () => nowMs),
         nowMs,
         state: pluginReadState(state),
       });
@@ -1225,8 +1302,8 @@ export function createPluginHookRunner(
       }
     },
     async beforeToolExecute(tool) {
+      const env: Record<string, string> = {};
       let nextInput = { ...tool.input };
-      const env = normalizeEnv(nextInput.env);
       // Materialize once per tool call so every plugin sees the same
       // committed-so-far set, even though it can still grow before the next call.
       const actors = input.actors?.() ?? (input.actor ? [input.actor] : []);
@@ -1249,7 +1326,7 @@ export function createPluginHookRunner(
           },
           env: {
             get(key) {
-              return env[key];
+              return env[key] ?? normalizeEnv(nextInput.env)[key];
             },
             set(key, value) {
               env[key] = value;
@@ -1275,15 +1352,11 @@ export function createPluginHookRunner(
             );
           }
           nextInput = { ...replacement };
-          Object.assign(env, normalizeEnv(nextInput.env));
         }
       }
 
       return {
-        input: {
-          ...nextInput,
-          ...(Object.keys(env).length > 0 ? { env } : {}),
-        },
+        input: nextInput,
         env,
       };
     },

@@ -26,6 +26,7 @@ vi.mock("@/chat/sandbox/snapshot/resolve", () => ({
 
 vi.mock("@/chat/sandbox/runtime-dependencies", () => ({
   GLOBAL_RUNTIME_DEPENDENCIES: [],
+  GLOBAL_RUNTIME_POSTINSTALL: [],
 }));
 
 import { runSnapshotCreate } from "@/cli/snapshot-create";

@@ -1,6 +1,6 @@
 import type { ManagedMcpToolDescriptor } from "@/chat/mcp/tool-manager";
 import { z } from "zod";
-import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
+import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { toExposedToolSummary } from "@/chat/tool-support/skill/mcp-tool-summary";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 
@@ -15,13 +15,6 @@ const providerSummarySchema = z
   })
   .strict();
 
-const mcpCallExampleSchema = z
-  .object({
-    tool_name: z.string(),
-    arguments: z.record(z.string(), z.string()),
-  })
-  .strict();
-
 const exposedToolSummarySchema = z
   .object({
     tool_name: z.string(),
@@ -29,23 +22,19 @@ const exposedToolSummarySchema = z
     provider: z.string(),
     title: z.string().optional(),
     description: z.string(),
-    signature: z.string(),
-    call: mcpCallExampleSchema,
     input_schema: z.record(z.string(), z.unknown()),
-    input_schema_summary: z.string(),
     output_schema: z.record(z.string(), z.unknown()).optional(),
     annotations: z.record(z.string(), z.unknown()).optional(),
   })
   .strict();
 
-const searchMcpToolsOutputSchema = juniorToolResultSchema
+const searchMcpToolsOutputSchema = juniorToolOutputSchema
   .extend({
     query: z.string().nullable(),
     provider: z.string().nullable(),
     total_active_tools: z.number().int().nonnegative(),
     returned_tools: z.number().int().nonnegative(),
     execution_tool: z.literal("callMcpTool"),
-    execution_example: mcpCallExampleSchema,
     available_providers: z.array(providerSummarySchema),
     tools: z.array(exposedToolSummarySchema),
   })
@@ -231,6 +220,12 @@ function searchProviderCatalog(
 /** Create the progressive MCP catalog search tool used before callMcpTool. */
 export function createSearchMcpToolsTool(mcpToolManager: SearchMcpToolManager) {
   return zodTool({
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+      readOnlyHint: true,
+    },
     description:
       "List or search MCP providers and active MCP tools. When provider is supplied and not yet active, Junior connects to it on demand and returns tool descriptors including schemas. Without provider, returns active tools plus matching configured providers without connecting. Use when choosing a provider tool or when callMcpTool arguments are unclear.",
     inputSchema: z
@@ -260,12 +255,9 @@ export function createSearchMcpToolsTool(mcpToolManager: SearchMcpToolManager) {
       .strict(),
     outputSchema: searchMcpToolsOutputSchema,
     privateTraceResult: (result) => ({
-      ok: result.ok,
-      status: result.status,
       total_active_tools: result.total_active_tools,
       returned_tools: result.returned_tools,
       execution_tool: result.execution_tool,
-      execution_example: result.execution_example,
       available_providers: result.available_providers,
       tools: result.tools,
     }),
@@ -287,26 +279,14 @@ export function createSearchMcpToolsTool(mcpToolManager: SearchMcpToolManager) {
             mcpToolManager.getAvailableProviderCatalog(),
             query ?? "",
           ).slice(0, maxResults);
-      const data = {
+      return {
         query: query ?? null,
         provider: provider ?? null,
         total_active_tools: catalog.length,
         returned_tools: matches.length,
         execution_tool: "callMcpTool" as const,
-        execution_example: {
-          tool_name: "<returned tool_name>",
-          arguments: {
-            "<argument>": "<value from input_schema>",
-          },
-        },
         available_providers: providers,
         tools: matches.map(toExposedToolSummary),
-      };
-      return {
-        ok: true,
-        status: "success" as const,
-        data,
-        ...data,
       };
     },
   });

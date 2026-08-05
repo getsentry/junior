@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior-linear",
-  "version": "0.122.1",
+  "version": "0.134.0",
   "private": false,
   "publishConfig": {
     "access": "public"

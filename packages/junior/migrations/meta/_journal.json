@@ -89,8 +89,64 @@
     {
       "idx": 12,
       "version": "7",
-      "when": 1785433307522,
-      "tag": "0012_sour_vargas",
+      "when": 1785454412461,
+      "tag": "0012_structured_conversation_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1785516038862,
+      "tag": "0013_conversation_session_source",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1785625416358,
+      "tag": "0014_source_visibility",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1785638251349,
+      "tag": "0015_magical_ezekiel_stane",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1785808723471,
+      "tag": "0016_neat_the_anarchist",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1785862792967,
+      "tag": "0017_drop_paused_scheduled_tasks",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1785884173643,
+      "tag": "0018_curvy_excalibur",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1785951633228,
+      "tag": "0019_lowly_valkyrie",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1785959448439,
+      "tag": "0020_sour_vargas",
       "breakpoints": true
     }
   ]

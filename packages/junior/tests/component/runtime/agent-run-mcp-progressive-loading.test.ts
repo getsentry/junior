@@ -1,11 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
+import { getConversationEventStore } from "@/chat/db";
+import { McpProviderError } from "@/chat/mcp/errors";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 
 const {
   DEMO_SKILL,
+  agentAfterToolResults,
   agentInitialSystemPrompts,
   agentInitialToolNames,
   callToolMock,
@@ -14,6 +17,9 @@ const {
   continueCallCount,
   continueStopsOnAbort,
   deliverPrivateMessageMock,
+  directMcpProviderFailure,
+  guardianDecision,
+  guardianProposals,
   listToolsMock,
   loadSkillExecutionErrorCount,
   loadSkillsByNameMock,
@@ -33,6 +39,7 @@ const {
     skillPath: "/tmp/skills/demo-skill",
     pluginProvider: "demo",
   } as const,
+  agentAfterToolResults: [] as unknown[],
   agentInitialSystemPrompts: [] as string[],
   agentInitialToolNames: [] as string[][],
   callToolMock: vi.fn(),
@@ -41,6 +48,11 @@ const {
   continueCallCount: { value: 0 },
   continueStopsOnAbort: { value: false },
   deliverPrivateMessageMock: vi.fn(),
+  directMcpProviderFailure: { value: false },
+  guardianDecision: {
+    value: "allow" as "allow" | "deny" | "unavailable",
+  },
+  guardianProposals: [] as unknown[],
   listToolsMock: vi.fn(),
   loadSkillExecutionErrorCount: { value: 0 },
   loadSkillsByNameMock: vi.fn(),
@@ -134,8 +146,24 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
       }>;
     };
     private aborted = false;
+    private readonly afterToolCall?: (
+      event: {
+        isError: boolean;
+        result: { content: unknown[]; details: Record<string, unknown> };
+        toolCall: { arguments: unknown; id: string; name: string };
+      },
+      signal?: AbortSignal,
+    ) => Promise<
+      | {
+          content?: unknown[];
+          details?: Record<string, unknown>;
+          isError?: boolean;
+        }
+      | undefined
+    >;
 
     constructor(input: {
+      afterToolCall?: MockAgent["afterToolCall"];
       initialState: {
         model: unknown;
         systemPrompt: string;
@@ -151,6 +179,7 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
         systemPrompt: input.initialState.systemPrompt,
         tools: input.initialState.tools,
       };
+      this.afterToolCall = input.afterToolCall;
       agentInitialSystemPrompts.push(input.initialState.systemPrompt);
       agentInitialToolNames.push(
         input.initialState.tools.map((tool) => tool.name),
@@ -165,12 +194,68 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
       this.aborted = true;
     }
 
+    private async executeTool(
+      tool: {
+        name: string;
+        execute: (toolCallId: unknown, params: unknown) => Promise<unknown>;
+      },
+      toolCallId: string,
+      params: Record<string, unknown>,
+    ) {
+      try {
+        return await tool.execute(toolCallId, params);
+      } catch (error) {
+        const result = {
+          content: [
+            {
+              type: "text",
+              text: error instanceof Error ? error.message : String(error),
+            },
+          ],
+          details: {},
+        };
+        const adjusted = await this.afterToolCall?.({
+          isError: true,
+          result,
+          toolCall: {
+            arguments: params,
+            id: toolCallId,
+            name: tool.name,
+          },
+        });
+        agentAfterToolResults.push(adjusted ?? result);
+        throw error;
+      }
+    }
+
     async prompt(message: unknown) {
       promptCallCount.value += 1;
       this.aborted = false;
       promptMessages.push(message);
       promptSeedMessages.push([...this.state.messages]);
       this.state.messages.push(message);
+
+      if (directMcpProviderFailure.value) {
+        const callMcpTool = this.state.tools.find(
+          (tool) => tool.name === "callMcpTool",
+        );
+        if (!callMcpTool) {
+          throw new Error("callMcpTool missing");
+        }
+        try {
+          await this.executeTool(callMcpTool, "tool-call-provider-failure", {
+            tool_name: "mcp__demo__ping",
+            arguments: { query: "hello" },
+          });
+        } catch {
+          if (!this.aborted) {
+            this.state.messages.push(
+              assistantMessage("I couldn't connect to the demo provider."),
+            );
+          }
+          return {};
+        }
+      }
 
       const loadSkillTool = this.state.tools.find(
         (tool) => tool.name === "loadSkill",
@@ -240,7 +325,7 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
         throw new Error("callMcpTool missing");
       }
 
-      await callMcpTool.execute("tool-call-2", {
+      await this.executeTool(callMcpTool, "tool-call-2", {
         tool_name: "mcp__demo__ping",
         arguments: { query: "hello" },
       });
@@ -280,7 +365,7 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
       if (!callMcpTool) {
         throw new Error("callMcpTool missing on continue");
       }
-      await callMcpTool.execute("tool-call-continue", {
+      await this.executeTool(callMcpTool, "tool-call-continue", {
         tool_name: "mcp__demo__ping",
         arguments: { query: "hello" },
       });
@@ -384,6 +469,30 @@ vi.mock("@/chat/pi/client", () => ({
   resolveGatewayModel: (modelId: string) => modelId,
 }));
 
+vi.mock("@/chat/services/guardian-action-review", () => ({
+  createGuardianActionReviewer: () => ({
+    review: async (proposal: unknown) => {
+      guardianProposals.push(proposal);
+      if (guardianDecision.value === "unavailable") {
+        throw new Error("guardian provider unavailable");
+      }
+      return guardianDecision.value === "deny"
+        ? {
+            decision: "deny" as const,
+            reason: "The test policy denied this action.",
+            riskLevel: "high" as const,
+            userAuthorization: "low" as const,
+          }
+        : {
+            decision: "allow" as const,
+            reason: "This test exercises MCP runtime behavior.",
+            riskLevel: "low" as const,
+            userAuthorization: "high" as const,
+          };
+    },
+  }),
+}));
+
 vi.mock("@/chat/prompt", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/chat/prompt")>();
   return {
@@ -443,6 +552,7 @@ vi.mock("@/chat/capabilities/jr-rpc-command", () => ({
 
 vi.mock("@/chat/sandbox/sandbox", () => ({
   createSandbox: () => ({
+    captureRepositoryInstructions: async () => undefined,
     workspace: {
       readFileToBuffer: async () =>
         Buffer.from(
@@ -596,6 +706,7 @@ function makeAgentRunRequest(
       ...(overrides.input ?? {}),
     },
     routing: {
+      destinationVisibility: "private",
       credentialContext: {
         actor: { type: "user" as const, userId: "U123" },
       },
@@ -605,7 +716,7 @@ function makeAgentRunRequest(
         channelId: destination.channelId,
         threadTs: args.threadTs,
 
-        type: "priv",
+        visibility: "private",
       }),
       actor: TEST_ACTOR,
       ...(overrides.routing ?? {}),
@@ -630,12 +741,16 @@ describe("executeAgentRun progressive MCP loading", () => {
   beforeEach(async () => {
     agentInitialToolNames.length = 0;
     agentInitialSystemPrompts.length = 0;
+    agentAfterToolResults.length = 0;
     callToolMock.mockReset();
     clientOptions.length = 0;
     completeEmptyAssistantOnAbort.value = false;
     continueCallCount.value = 0;
     continueStopsOnAbort.value = false;
     deliverPrivateMessageMock.mockReset();
+    directMcpProviderFailure.value = false;
+    guardianDecision.value = "allow";
+    guardianProposals.length = 0;
     listToolsMock.mockReset();
     searchMcpToolNames.length = 0;
     loadSkillExecutionErrorCount.value = 0;
@@ -826,6 +941,146 @@ describe("executeAgentRun progressive MCP loading", () => {
     expect(sessionRecord).toMatchObject({
       state: "running",
     });
+    const events =
+      await getConversationEventStore().loadCurrentHistory("conversation-2");
+    expect(events.map((event) => event.data)).toContainEqual({
+      type: "guardian_action_reviewed",
+      turnId: "turn-2",
+      toolCallId: expect.any(String),
+      toolName: "mcp__demo__ping",
+      decision: "allow",
+      riskLevel: "low",
+      userAuthorization: "high",
+    });
+  });
+
+  it("keeps MCP activation failures outside the fatal action-review boundary", async () => {
+    directMcpProviderFailure.value = true;
+    listToolsMock.mockReset();
+    listToolsMock.mockImplementation(async () => {
+      expect(guardianProposals).toHaveLength(1);
+      throw new McpProviderError({
+        phase: "connect",
+        provider: "demo",
+      });
+    });
+
+    const reply = finalReply(
+      await executeAgentRun(
+        makeAgentRunRequest("check the demo provider", {
+          conversationId: "conversation-provider-failure",
+          threadTs: "1712345.0098",
+          turnId: "turn-provider-failure",
+        }),
+      ),
+    );
+
+    expect(reply.text).toBe("I couldn't connect to the demo provider.");
+    expect(guardianProposals).toEqual([
+      expect.objectContaining({
+        input: {
+          arguments: { query: "hello" },
+          tool_name: "mcp__demo__ping",
+        },
+        tool: expect.objectContaining({
+          name: "callMcpTool",
+        }),
+      }),
+    ]);
+    expect(listToolsMock).toHaveBeenCalledOnce();
+    expect(callToolMock).not.toHaveBeenCalled();
+    expect(agentAfterToolResults).toHaveLength(1);
+    const events = await getConversationEventStore().loadCurrentHistory(
+      "conversation-provider-failure",
+    );
+    expect(events.map((event) => event.data)).toContainEqual({
+      type: "guardian_action_reviewed",
+      turnId: "turn-provider-failure",
+      toolCallId: "tool-call-provider-failure",
+      toolName: "callMcpTool",
+      decision: "allow",
+      riskLevel: "low",
+      userAuthorization: "high",
+    });
+  });
+
+  it("wires Guardian denial through the runtime before MCP execution", async () => {
+    listToolsMock.mockReset();
+    listToolsMock.mockResolvedValue(makeDemoMcpTools());
+    guardianDecision.value = "deny";
+
+    await executeAgentRun(
+      makeAgentRunRequest("help me", {
+        conversationId: "conversation-guardian-deny",
+        threadTs: "1712345.0099",
+        turnId: "turn-guardian-deny",
+      }),
+    );
+
+    expect(guardianProposals).toEqual([
+      expect.objectContaining({
+        input: {
+          arguments: { query: "hello" },
+          tool_name: "mcp__demo__ping",
+        },
+        tool: expect.objectContaining({
+          name: "mcp__demo__ping",
+        }),
+      }),
+    ]);
+    expect(callToolMock).not.toHaveBeenCalled();
+    expect(agentAfterToolResults).toEqual([
+      expect.objectContaining({
+        details: expect.objectContaining({
+          guardianActionRejection: expect.objectContaining({
+            decision: "deny",
+            priorRejection: expect.objectContaining({
+              input: {
+                arguments: { query: "hello" },
+                tool_name: "mcp__demo__ping",
+              },
+            }),
+          }),
+        }),
+      }),
+    ]);
+    const events = await getConversationEventStore().loadCurrentHistory(
+      "conversation-guardian-deny",
+    );
+    expect(events.map((event) => event.data)).toContainEqual({
+      type: "guardian_action_reviewed",
+      turnId: "turn-guardian-deny",
+      toolCallId: expect.any(String),
+      toolName: "mcp__demo__ping",
+      decision: "deny",
+      riskLevel: "high",
+      userAuthorization: "low",
+    });
+  });
+
+  it("escalates unavailable Guardian review to the agent-run boundary", async () => {
+    listToolsMock.mockReset();
+    listToolsMock.mockResolvedValue(makeDemoMcpTools());
+    guardianDecision.value = "unavailable";
+
+    const outcome = await executeAgentRun(
+      makeAgentRunRequest("help me", {
+        conversationId: "conversation-guardian-unavailable",
+        threadTs: "1712345.0100",
+        turnId: "turn-guardian-unavailable",
+      }),
+    );
+
+    expect(outcome).toMatchObject({
+      status: "completed",
+      result: {
+        diagnostics: {
+          outcome: "provider_error",
+        },
+        text: "",
+      },
+    });
+    expect(callToolMock).not.toHaveBeenCalled();
   });
 
   it("restores MCP providers inferred from prior Pi history before building a follow-up turn prompt", async () => {
@@ -1001,14 +1256,13 @@ describe("executeAgentRun progressive MCP loading", () => {
 
     expect(reply.text).toBe("resumed reply");
     expect(resumeMessages).toHaveLength(0);
-    expect(promptSeedMessages.at(-1)).toEqual(priorMessages);
+    expect(promptSeedMessages.at(-1)?.slice(0, -1)).toEqual(priorMessages);
+    expect(JSON.stringify(promptSeedMessages.at(-1)?.at(-1))).toContain(
+      "Turn context",
+    );
     expect(promptMessages.at(-1)).toMatchObject({
       role: "user",
       content: [
-        {
-          type: "text",
-          text: "<runtime-turn-context>\nTurn context\n</runtime-turn-context>",
-        },
         {
           type: "text",
           text: "<current-instruction>\ncurrent follow-up\n</current-instruction>",
@@ -1053,14 +1307,17 @@ describe("executeAgentRun progressive MCP loading", () => {
       ),
     );
 
-    expect(promptSeedMessages[0]).toEqual(priorMessages);
+    expect(promptSeedMessages[0]?.slice(0, -1)).toEqual(priorMessages);
+    expect(JSON.stringify(promptSeedMessages[0]?.at(-1))).toContain(
+      "Turn context",
+    );
     expect(JSON.stringify(promptMessages[0])).not.toContain(
       "duplicated prior transcript",
     );
     expect(JSON.stringify(promptMessages[0])).not.toContain(
       "<thread-background>",
     );
-    expect(JSON.stringify(promptMessages[0])).toContain("Turn context");
+    expect(JSON.stringify(promptMessages[0])).not.toContain("Turn context");
     expect(turnContextInputs.at(-1)?.availableSkills).toEqual([
       expect.objectContaining({ name: "demo-skill" }),
     ]);
@@ -1071,7 +1328,7 @@ describe("executeAgentRun progressive MCP loading", () => {
     listToolsMock.mockReset();
     listToolsMock.mockResolvedValue(makeDemoMcpTools());
     const messageText = `continue & <auth> &lt;literal&gt; "now"`;
-    const currentPrompt = {
+    const currentContext = {
       role: "user",
       content: [
         {
@@ -1080,9 +1337,14 @@ describe("executeAgentRun progressive MCP loading", () => {
         },
         {
           type: "text",
-          text: renderCurrentInstruction(messageText),
+          text: "<thread-background>trusted context</thread-background>",
         },
       ],
+      timestamp: 2,
+    } as PiMessage;
+    const currentPrompt = {
+      role: "user",
+      content: [{ type: "text", text: renderCurrentInstruction(messageText) }],
       timestamp: 2,
     } as PiMessage;
     const storedMessages = [
@@ -1091,6 +1353,7 @@ describe("executeAgentRun progressive MCP loading", () => {
         content: [{ type: "text", text: "prior question" }],
         timestamp: 1,
       },
+      currentContext,
       currentPrompt,
     ] as PiMessage[];
     await upsertAgentTurnSessionRecord({
@@ -1112,7 +1375,12 @@ describe("executeAgentRun progressive MCP loading", () => {
       }),
     );
 
-    expect(promptSeedMessages.at(-1)).toEqual([storedMessages[0]]);
+    expect(promptSeedMessages.at(-1)?.slice(0, -1)).toEqual([
+      storedMessages[0],
+    ]);
+    expect(JSON.stringify(promptSeedMessages.at(-1)?.at(-1))).toContain(
+      "Turn context",
+    );
     expect(JSON.stringify(promptMessages.at(-1))).toContain(
       "continue &amp; &lt;auth&gt; &amp;lt;literal&amp;gt; &quot;now&quot;",
     );
@@ -1164,9 +1432,12 @@ describe("executeAgentRun progressive MCP loading", () => {
       ),
     );
 
-    expect(promptSeedMessages[0]).toEqual(strippedHistory);
+    expect(promptSeedMessages[0]?.slice(0, -1)).toEqual(strippedHistory);
+    expect(JSON.stringify(promptSeedMessages[0]?.at(-1))).toContain(
+      "Turn context",
+    );
     expect(turnContextInputs.at(-1)?.includeSessionContext).toBe(true);
-    expect(JSON.stringify(promptMessages[0])).toContain("Turn context");
+    expect(JSON.stringify(promptMessages[0])).not.toContain("Turn context");
     expect(JSON.stringify(promptMessages[0])).not.toContain("stale bootstrap");
   });
 
@@ -1289,7 +1560,6 @@ describe("executeAgentRun progressive MCP loading", () => {
         toolName: "loadSkill",
         isError: false,
         details: {
-          ok: true,
           skill_name: DEMO_SKILL.name,
           mcp_provider: "demo",
         },

@@ -1,0 +1,95 @@
+import { z } from "zod";
+
+const taskDestinationSchema = z
+  .object({
+    channelId: z.string().min(1),
+    label: z.string().min(1),
+    teamId: z.string().min(1),
+    visibility: z.enum(["private", "public"]),
+  })
+  .strict();
+
+const taskSummaryBaseSchema = z.object({
+  createdAt: z.string().datetime(),
+  createdBy: z.string().min(1),
+  createdByEmail: z.string().trim().email().optional(),
+  destination: taskDestinationSchema,
+  id: z.string().min(1),
+  instruction: z.string().min(1),
+  lastConversationId: z.string().min(1).optional(),
+  lastRunAt: z.string().datetime().optional(),
+  ownedByViewer: z.boolean(),
+  runsLast7Days: z.number().int().nonnegative(),
+  totalRuns: z.number().int().nonnegative(),
+});
+
+export const scheduledTaskSummarySchema = taskSummaryBaseSchema
+  .extend({
+    kind: z.literal("scheduled"),
+    nextRunAt: z.string().datetime().optional(),
+    schedule: z.string().min(1),
+    status: z.enum(["active", "blocked"]),
+  })
+  .strict();
+
+export const eventTaskSummarySchema = taskSummaryBaseSchema
+  .extend({
+    events: z.array(z.string().min(1)).min(1),
+    kind: z.literal("event"),
+    resource: z.string().min(1),
+    source: z.string().min(1),
+    triggerAvailable: z.boolean(),
+  })
+  .strict();
+
+export const taskSummarySchema = z.discriminatedUnion("kind", [
+  scheduledTaskSummarySchema,
+  eventTaskSummarySchema,
+]);
+
+/** One registered plugin background task with run frequency and recency. */
+export const registeredTaskSummarySchema = z
+  .object({
+    id: z.string().min(1),
+    lastConversationId: z.string().min(1).optional(),
+    lastRunAt: z.string().datetime().optional(),
+    name: z.string().min(1),
+    pluginDisplayName: z.string().min(1),
+    pluginName: z.string().min(1),
+    runsLast7Days: z.number().int().nonnegative(),
+    totalRuns: z.number().int().nonnegative(),
+  })
+  .strict();
+
+/** One UTC day of successful task executions stacked by task type. */
+export const taskExecutionDaySchema = z
+  .object({
+    date: z.string().min(1),
+    event: z.number().int().nonnegative(),
+    registered: z.number().int().nonnegative(),
+    scheduled: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export const taskListSchema = z
+  .object({
+    executionDays: z.array(taskExecutionDaySchema),
+    registeredTasks: z.array(registeredTaskSummarySchema),
+    tasks: z.array(taskSummarySchema),
+    truncated: z.boolean(),
+  })
+  .strict();
+
+export const taskParamsSchema = z
+  .object({
+    id: z.string().min(1),
+    kind: z.enum(["scheduled", "event"]),
+  })
+  .strict();
+
+export type RegisteredTaskSummary = z.output<
+  typeof registeredTaskSummarySchema
+>;
+export type TaskExecutionDay = z.output<typeof taskExecutionDaySchema>;
+export type TaskSummary = z.output<typeof taskSummarySchema>;
+export type TaskList = z.output<typeof taskListSchema>;

@@ -1,15 +1,19 @@
 import { Duration } from "../../components/Duration";
 import { Hash } from "lucide-react";
-import { Link } from "react-router";
 import type { LocationSummaryReport } from "@sentry/junior/api/schema";
 
 import { SearchInput } from "../../components/SearchInput";
-import { DirectoryRowsSkeleton } from "../../components/DirectoryRowsSkeleton";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { DirectorySortSelect } from "../../components/controls/DirectorySortSelect";
+import {
+  DirectoryIdentity,
+  DirectoryRow,
+  DirectoryTable,
+  DirectoryToolbar,
+} from "../../components/directory/DirectoryTable";
+import { DirectoryMetric } from "../../components/directory/DirectoryMetric";
 import { Card } from "../../components/layout/Card";
 import { CardHeader } from "../../components/layout/CardHeader";
-import { DirectoryMetric } from "../../components/metrics/DirectoryMetric";
 import {
   formatCompactNumber,
   formatRelativeTime,
@@ -34,7 +38,7 @@ export function LocationDirectory(props: {
         description={`${props.locations.length} of ${props.totalLocations} public locations`}
         title="Public directory"
       />
-      <div className="grid min-w-0 gap-2 border-b border-white/[0.06] bg-black/15 p-3 md:grid-cols-[minmax(14rem,1fr)_minmax(11rem,15rem)]">
+      <DirectoryToolbar columnsClassName="md:grid-cols-[minmax(14rem,1fr)_minmax(11rem,15rem)]">
         <SearchInput
           label="Search locations"
           placeholder="Search channel name..."
@@ -52,58 +56,44 @@ export function LocationDirectory(props: {
           ]}
           value={props.sort}
         />
-      </div>
-      {props.loading ? (
-        <DirectoryRowsSkeleton wideRuntime />
-      ) : props.locations.length ? (
-        <div className="min-w-0" role="table">
-          <div className="grid grid-cols-[minmax(14rem,1fr)_repeat(2,minmax(5rem,auto))_minmax(8rem,auto)] items-center gap-4 border-b border-white/[0.06] bg-black/20 px-4 py-2.5 font-mono text-[0.62rem] uppercase tracking-[0.1em] text-dashboard-text-muted max-md:hidden">
-            <div>Location</div>
-            <div className="justify-self-end">Conversations</div>
-            <div className="justify-self-end">Tokens</div>
-            <div className="justify-self-end">Runtime</div>
-          </div>
-          {props.locations.map((location) => (
-            <Link
-              className="group grid min-w-0 grid-cols-[minmax(14rem,1fr)_repeat(2,minmax(5rem,auto))_minmax(8rem,auto)] items-center gap-4 border-b border-white/[0.055] px-4 py-3.5 text-inherit no-underline transition-colors last:border-b-0 hover:bg-white/[0.035] max-md:grid-cols-3 max-md:gap-x-3 max-md:gap-y-4"
-              key={location.id}
-              to={locationPath(location.id)}
-            >
-              <div className="flex min-w-0 items-center gap-3 max-md:col-span-3">
-                <span className="grid size-9 shrink-0 place-items-center rounded border border-white/10 bg-cyan-400/[0.06] text-cyan-300 transition-colors group-hover:border-cyan-400/25">
-                  <Hash aria-hidden="true" size={16} strokeWidth={1.8} />
-                </span>
-                <div className="min-w-0">
-                  <div className="truncate font-display text-[1rem] font-medium leading-tight text-dashboard-text">
-                    {location.label}
-                  </div>
-                  <div className="mt-1 truncate font-mono text-[0.68rem] leading-tight text-dashboard-text-muted">
-                    Last active {formatRelativeTime(location.lastSeenAt)}
-                  </div>
-                </div>
-              </div>
-              <DirectoryMetric
-                label="Conversations"
-                value={formatCompactNumber(location.conversations)}
-              />
-              <DirectoryMetric
-                label="Tokens"
-                value={formatCompactNumber(location.tokens ?? 0)}
-              />
-              <DirectoryMetric
-                label="Runtime"
-                value={<Duration value={location.durationMs} />}
-              />
-            </Link>
-          ))}
-        </div>
-      ) : (
-        <div className="p-4">
-          <EmptyTelemetry>
-            No public locations match this search.
-          </EmptyTelemetry>
-        </div>
-      )}
+      </DirectoryToolbar>
+      <DirectoryTable
+        ariaLabel="Public location directory results"
+        empty={
+          props.locations.length === 0 ? (
+            <EmptyTelemetry>
+              No public locations match this search.
+            </EmptyTelemetry>
+          ) : undefined
+        }
+        headers={["Location", "Conversations", "Tokens", "Runtime"]}
+        loading={props.loading}
+      >
+        {props.locations.map((location) => (
+          <DirectoryRow key={location.id} to={locationPath(location.id)}>
+            <DirectoryIdentity
+              description={
+                <>Last active {formatRelativeTime(location.lastSeenAt)}</>
+              }
+              icon={<Hash aria-hidden="true" size={16} strokeWidth={1.8} />}
+              iconClassName="bg-cyan-400/[0.06] text-cyan-300 group-hover:border-cyan-400/25"
+              title={location.label}
+            />
+            <DirectoryMetric
+              label="Conversations"
+              value={formatCompactNumber(location.conversations)}
+            />
+            <DirectoryMetric
+              label="Tokens"
+              value={formatCompactNumber(location.tokens ?? 0)}
+            />
+            <DirectoryMetric
+              label="Runtime"
+              value={<Duration value={location.durationMs} />}
+            />
+          </DirectoryRow>
+        ))}
+      </DirectoryTable>
     </Card>
   );
 }

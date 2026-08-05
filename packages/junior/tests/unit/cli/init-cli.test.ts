@@ -176,8 +176,10 @@ minimumReleaseAgeExclude:
     expect(envExample).toContain("CRON_SECRET=");
     expect(envExample).toContain("JUNIOR_SLASH_COMMAND=");
     expect(envExample).toContain("JUNIOR_CROSS_ACTOR_MID_RUN_MODE=");
+    expect(envExample).toContain("AI_GUARDIAN_MODEL=");
     expect(envExample).toContain("DATABASE_URL=");
     expect(envExample).toContain("JUNIOR_DATABASE_DRIVER=");
+    expect(envExample).toContain("JUNIOR_SQL_STATEMENT_TIMEOUT_MS=");
 
     const checkLines: string[] = [];
     await runCheck(target, {

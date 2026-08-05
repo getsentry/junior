@@ -5,6 +5,7 @@
  * Status notices are best effort. Completed assistant replies and auth-pause
  * notices use `sendSlackReply` so footer attachment stays consistent.
  */
+import type { ReplyAttribution } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
 import { standardModelId } from "@/chat/model-profile";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
@@ -58,10 +59,7 @@ import {
   buildTurnLimitResponse,
 } from "@/chat/services/turn-limit";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
-import {
-  hydrateConversationMessages,
-  persistConversationMessages,
-} from "@/chat/conversations/messages";
+import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import { commitAcceptedReply } from "@/chat/conversations/projection";
 import {
   getPersistedThreadState,
@@ -95,12 +93,14 @@ async function postSlackMessageBestEffort(
   threadTs: string | undefined,
   text: string,
   conversationId?: string,
+  replyAttribution?: ReplyAttribution,
 ): Promise<void> {
   try {
     if (conversationId) {
       await sendSlackReply({
         channelId,
         conversationId,
+        replyAttribution,
         text,
         threadTs,
       });
@@ -557,11 +557,13 @@ async function resumeSlackTurnInContext(
       }
       failureCode = "delivery_failed";
       const deliveryState = await getDeliveryConversation();
-      let messageTs: string | undefined;
+      let slackMessageTs: string[];
       try {
-        messageTs = await sendSlackReply({
+        slackMessageTs = await sendSlackReply({
           channelId: runArgs.channelId,
           conversationId: runArgs.conversationId,
+          replyAttribution:
+            runArgs.replyContext?.routing.dispatch?.replyAttribution,
           text,
           threadTs: runArgs.threadTs,
         });
@@ -571,6 +573,7 @@ async function resumeSlackTurnInContext(
         }
         throw error;
       }
+      const messageTs = slackMessageTs.at(-1);
       assistantMessageDelivered = true;
       acceptedDeliveryId = messageTs;
       const recordedMessageId = recordDeliveredAssistantMessage({
@@ -585,18 +588,32 @@ async function resumeSlackTurnInContext(
         });
       }
       try {
+        const routing = runArgs.replyContext?.routing;
+        const destination = routing?.destination;
+        const providerConversationIds = runArgs.threadTs
+          ? [runArgs.threadTs]
+          : slackMessageTs;
         await persistWithRetry(() =>
-          message
-            ? commitAcceptedReply({
-                agentMessage: message,
-                conversation: deliveryState.conversation,
-                conversationMessageId: recordedMessageId,
-                conversationId,
-              })
-            : persistConversationMessages({
-                conversation: deliveryState.conversation,
-                conversationId,
-              }),
+          commitAcceptedReply({
+            ...(message ? { agentMessage: message } : {}),
+            conversation: deliveryState.conversation,
+            conversationMessageId: recordedMessageId,
+            conversationId,
+            ...(routing?.dispatch &&
+            destination?.platform === "slack" &&
+            providerConversationIds.length > 0
+              ? {
+                  providerConversationBindings: providerConversationIds.map(
+                    (providerConversationId) => ({
+                      provider: "slack",
+                      providerDestinationId: destination.channelId,
+                      providerTenantId: destination.teamId,
+                      providerConversationId,
+                    }),
+                  ),
+                }
+              : {}),
+          }),
         );
       } catch (error) {
         logException(
@@ -867,6 +884,7 @@ async function resumeSlackTurnInContext(
             deferredAuthInfo.requestText,
           ),
           runArgs.conversationId,
+          runArgs.replyContext?.routing.dispatch?.replyAttribution,
         );
       }
       return true;

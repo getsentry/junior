@@ -13,23 +13,24 @@ import type {
 } from "@sentry/junior/api/schema";
 
 import { conversationDetailQueryKey } from "../src/client/conversations/queries";
-import { ConversationTranscriptView } from "../src/client/components/ConversationTranscript";
-import { ContributionGrid } from "../src/client/components/ContributionGrid";
-import { PluginReports } from "../src/client/components/PluginReports";
+import { ConversationTranscriptView } from "../src/client/conversations/ConversationTranscript";
 import {
   SubagentTranscriptDrawer,
   type SubagentTranscriptTarget,
-} from "../src/client/components/SubagentTranscriptDrawer";
-import { Transcript } from "../src/client/components/Transcript";
-import { TranscriptHeader } from "../src/client/components/TranscriptHeader";
-import { TranscriptMarkdown } from "../src/client/components/TranscriptMarkdown";
-import { TranscriptToolView } from "../src/client/components/TranscriptToolView";
-import { TranscriptSearchProvider } from "../src/client/components/transcriptSearch";
-import { ConversationPage } from "../src/client/pages/ConversationPage";
+} from "../src/client/conversations/SubagentTranscriptDrawer";
+import { Transcript } from "../src/client/conversations/TranscriptView";
+import { TranscriptHeader } from "../src/client/conversations/TranscriptHeader";
+import { TranscriptMarkdown } from "../src/client/conversations/TranscriptMarkdown";
+import { TranscriptText } from "../src/client/conversations/TranscriptText";
+import { TranscriptToolView } from "../src/client/conversations/TranscriptToolView";
+import { TranscriptSearchProvider } from "../src/client/conversations/transcriptSearch";
+import { ConversationPage } from "../src/client/conversations/ConversationPage";
 import { ToolCallGallery } from "../src/client/pages/dev/ComponentsPage";
 import { LocationDetailPageContent } from "../src/client/pages/locations/LocationDetailPage";
 import { LocationsPageContent } from "../src/client/pages/locations/LocationsPage";
 import { Profile } from "../src/client/pages/people/PersonProfilePage";
+import { ContributionGrid } from "../src/client/pages/people/ContributionGrid";
+import { PluginReports } from "../src/client/pages/system/PluginReports";
 import { SkillInventory } from "../src/client/pages/system/SkillInventory";
 import { SystemPage } from "../src/client/pages/system/SystemPage";
 import type { ConversationTranscript, SystemData } from "../src/client/types";
@@ -98,6 +99,23 @@ function systemData(): SystemData {
       durationMs: 2_000,
       failed: 0,
       generatedAt: "2026-01-01T00:00:00.000Z",
+      guardian: {
+        allow: 3,
+        ask: 1,
+        costUsd: 0.08,
+        deny: 1,
+        metricDays: [
+          {
+            allow: 3,
+            ask: 1,
+            costUsd: 0.08,
+            date: "2026-01-01",
+            deny: 1,
+            requests: 5,
+          },
+        ],
+        requests: 5,
+      },
       metricDays: [
         {
           costUsd: 4.56,
@@ -178,6 +196,33 @@ describe("dashboard canonical-event components", () => {
     expect(html).not.toContain("some<em");
     expect(html).toContain("<em");
     expect(html).toContain("italic text");
+  });
+
+  it("renders code-like user prose as markdown", () => {
+    const html = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <TranscriptText
+          role="user"
+          text="The function reads a const value and returns it."
+        />
+      </QueryClientProvider>,
+    );
+
+    expect(html).toContain("<p");
+    expect(html).not.toContain("<pre");
+    expect(html).toContain("function reads a const value");
+  });
+
+  it("renders fenced XML as highlighted code", () => {
+    const html = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <TranscriptText role="user" text={"```xml\n<root />\n```"} />
+      </QueryClientProvider>,
+    );
+
+    expect(html).toContain("<pre");
+    expect(html).not.toContain("<details");
+    expect(html).toContain("&lt;root /&gt;");
   });
 
   it("renders labeled event sections followed by semantic lists", () => {
@@ -315,6 +360,29 @@ describe("dashboard canonical-event components", () => {
     expect(partialHtml).not.toContain("1 tool call");
     expect(completeHtml).toContain("1 turn");
     expect(completeHtml).toContain("1 tool call");
+  });
+
+  it("renders each user message with its own actor", () => {
+    const html = renderTranscript(
+      conversation(
+        [
+          event(0, {
+            type: "message",
+            messageId: "user-1",
+            role: "user",
+            text: "Good catch.",
+            actorIdentity: {
+              fullName: "Taylor Chen",
+              slackUserName: "taylor",
+            },
+          }),
+        ],
+        { actorIdentity: { fullName: "Morgan Lee" } },
+      ),
+    );
+
+    expect(html).toContain("Taylor Chen");
+    expect(html).not.toContain("Morgan Lee");
   });
 
   it("omits status badges from conversation detail while retaining progress", () => {
@@ -471,6 +539,28 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain("Context compacted");
     expect(html).toContain("Model handoff");
     expect(html).toContain("Agent response failed");
+  });
+
+  it("anchors structured events to the transcript rail", () => {
+    const html = renderTranscript(
+      conversation([
+        event(0, {
+          type: "structured_event",
+          namespace: "memory",
+          name: "memories_captured",
+          version: 1,
+          turnId: "turn-1",
+          presentation: {
+            icon: "brain",
+            title: "2 memories captured",
+          },
+        }),
+      ]),
+    );
+
+    expect(html).toContain('data-transcript-rail-event="structured_event"');
+    expect(html).toContain("lucide-brain");
+    expect(html).toContain("2 memories captured");
   });
 
   it("keeps recalled memory context collapsed on its user message", () => {
@@ -1022,6 +1112,9 @@ describe("dashboard canonical-event components", () => {
         .match(/class="size-3 border border-black\/40 bg-\[#101010\]"/g),
     ).toHaveLength(4);
     expect(html).not.toContain('href="/people/avery%40example.com"');
+    expect(html).toContain('href="/system/people"');
+    expect(html).toContain("Back to people");
+    expect(html).not.toContain("System / people");
     expect(html).not.toContain('aria-label="Search recent conversations"');
     expect(html).toContain(">Places<");
     expect(html).toContain(">Surfaces<");
@@ -1079,9 +1172,10 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain("#proj-alpha");
     expect(html).toContain("Private activity");
     expect(html).toContain("Public and private conversations per day");
+    expect(html).toContain("Conversations: ");
   });
 
-  it("renders Location detail actors and recent conversations through stale data", () => {
+  it("renders Location detail actors without recent conversations through stale data", () => {
     const detail: LocationDetailReport = {
       active: 0,
       activityDays: [],
@@ -1133,8 +1227,9 @@ describe("dashboard canonical-event components", () => {
       </MemoryRouter>,
     );
     expect(html).toContain("Location telemetry refresh failed");
-    expect(html).toContain("Investigate checkout");
     expect(html).toContain("avery@example.com");
+    expect(html).not.toContain("Investigate checkout");
+    expect(html).not.toContain("Recent conversations");
   });
 
   it("keeps plugin loading, failure, and stale data states distinct", () => {
@@ -1148,7 +1243,8 @@ describe("dashboard canonical-event components", () => {
     );
     expect(loadingHtml).not.toContain("Loading plugin stats.");
     expect(loadingHtml).toContain(">GitHub<");
-    expect(loadingHtml).toContain('href="/system/plugins/github"');
+    expect(loadingHtml).toContain('href="/system/plugins"');
+    expect(loadingHtml).not.toContain('href="/system/plugins/github"');
     expect(loadingHtml).not.toContain(
       "This plugin does not expose operational activity yet.",
     );
@@ -1180,10 +1276,15 @@ describe("dashboard canonical-event components", () => {
         <SystemPage data={stale} />
       </MemoryRouter>,
     );
-    expect(overviewHtml).toContain(
-      "Plugin details and capabilities are still available.",
+    expect(overviewHtml).not.toContain("Plugin stats failed to load.");
+
+    const inventoryHtml = renderToStaticMarkup(
+      <MemoryRouter initialEntries={["/system/plugins"]}>
+        <SystemPage data={stale} />
+      </MemoryRouter>,
     );
-    expect(overviewHtml).not.toContain(
+    expect(inventoryHtml).toContain("Plugin stats failed to load.");
+    expect(inventoryHtml).toContain(
       "Showing the last operational reports Junior received.",
     );
   });
@@ -1202,18 +1303,39 @@ describe("dashboard canonical-event components", () => {
     expect(systemHtml).toContain("Token usage");
     expect(systemHtml).toContain("Model spend");
     expect(systemHtml).toContain("Runtime");
+    expect(systemHtml).toContain("Guardian reviews");
+    expect(systemHtml).toContain("Daily Guardian review results");
+    expect(systemHtml).toContain("Estimated cost");
     expect(
       systemHtml.match(/aria-label="Reporting period"/g) ?? [],
     ).toHaveLength(1);
-    expect(systemHtml).toContain(">Plugins<");
-    expect(systemHtml).toContain(">Skills<");
-    expect(systemHtml).toContain(">GitHub<");
+    expect(systemHtml).toContain('aria-label="System navigation"');
+    expect(systemHtml).toContain('href="/system/people"');
+    expect(systemHtml).toContain('href="/system/locations"');
+    expect(systemHtml).toContain('href="/system/plugins"');
+    expect(systemHtml).toContain(">Plugins</a>");
+    expect(systemHtml).not.toContain(">Capabilities<");
+    expect(systemHtml).not.toContain(">All Plugins<");
+    expect(systemHtml).not.toContain(">Skills<");
+    expect(systemHtml).not.toContain(">GitHub<");
     expect(systemHtml).not.toContain(">loaded<");
     expect(systemHtml).not.toContain(">quiet<");
     expect(systemHtml).not.toContain(">metrics<");
     expect(systemHtml).not.toContain(">datasets<");
     expect(systemHtml).not.toContain(">1 loaded<");
-    expect(systemHtml).toContain(">triage<");
+    expect(systemHtml).not.toContain(">triage<");
+
+    const pluginsHtml = renderToStaticMarkup(
+      <MemoryRouter initialEntries={["/system/plugins"]}>
+        <SystemPage data={data} />
+      </MemoryRouter>,
+    );
+    expect(pluginsHtml).toContain(">Plugins<");
+    expect(pluginsHtml).toContain(">Skills<");
+    expect(pluginsHtml).toContain(">GitHub<");
+    expect(pluginsHtml).toContain(">triage<");
+    expect(pluginsHtml).not.toContain("Usage over time");
+    expect(pluginsHtml).not.toContain('aria-label="Reporting period"');
 
     const skillsHtml = renderToStaticMarkup(
       <SkillInventory skills={data.skills} />,
@@ -1247,7 +1369,8 @@ describe("dashboard canonical-event components", () => {
 
     expect(html).toContain('aria-label="System navigation"');
     expect(html).not.toContain('href="/system/plugins/github"');
-    expect(html).toContain('href="/system/plugins/scheduler"');
+    expect(html).toContain('href="/system/plugins"');
+    expect(html).not.toContain('href="/system/plugins/scheduler"');
     expect(html).toContain(">Scheduler<");
     expect(html).toContain(">active tasks<");
     expect(html).toContain(">scheduled-tasks<");
@@ -1331,6 +1454,42 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain(">0.1</text>");
     expect(html).not.toContain("0.10000000000000002");
     expect(html).not.toContain('aria-label="Chart legend"');
+  });
+
+  it("formats plugin cost charts as USD", () => {
+    const html = renderToStaticMarkup(
+      <PluginReports
+        reports={[
+          {
+            pluginName: "memory",
+            widgets: [
+              {
+                categories: [
+                  {
+                    id: "2026-07-31",
+                    label: "2026-07-31",
+                    values: { costUsd: 0.0042 },
+                  },
+                ],
+                id: "extraction-cost",
+                series: [
+                  {
+                    format: "usd",
+                    key: "costUsd",
+                    label: "Cost",
+                  },
+                ],
+                title: "Extraction cost",
+                type: "bar_chart",
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+    expect(html).toContain('aria-label="2026-07-31, Cost: $0.0042"');
+    expect(html).toContain(">$0.0042</text>");
+    expect(html).toContain('x1="56"');
   });
 
   it("renders daily chart ranges from the shared page selection", () => {

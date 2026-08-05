@@ -9,6 +9,20 @@ Canonical words used across Junior's code and documentation.
 - **Source**: where an inbound event came from, such as Slack, local CLI,
   scheduler, or plugin dispatch.
 - **Destination**: where Junior sends output or side effects.
+- **Location**: the optional provider container associated with a conversation,
+  identified by Junior and provider ids. Conversation visibility is separate.
+- **User**: one person-level record. A user may have several linked identities.
+- **Identity**: one provider account, such as a Slack account in one workspace,
+  optionally linked to a user.
+- **Actor**: the runtime participant for one source invocation. Actor ids are
+  provider-scoped and are not canonical user ids.
+- **Resource event**: one normalized change published by a plugin, delivered
+  within a verified workspace and identified by namespace, identifier, event
+  type, and an idempotency key.
+- **Resource subscription**: a temporary conversation association that delivers
+  matching resource events back into that conversation.
+- **Event task**: a durable instruction that dispatches when a matching
+  resource event occurs.
 - **Inbound message**: one normalized source event made available to the agent.
 - **Agent input**: the inbound content, context, and runtime metadata selected
   for a turn.
@@ -57,6 +71,11 @@ Canonical words used across Junior's code and documentation.
 
 ## Naming Guidance
 
+- Use `provider` on provider-owned references such as Identity and Location; it
+  names the namespace that owns their provider ids.
+- For new Source unions, use one discriminant for what produced the work. Keep
+  provider-native identifiers inside that provider's Source branch rather than
+  adding a second generic provider or thread field.
 - Use `turn`, `run`, and `slice` only with the meanings above.
 - Use `agent invocation` for delegated child work; do not shorten it to
   `invocation` where it could be confused with a model or serverless

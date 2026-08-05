@@ -87,6 +87,7 @@ export function buildDispatchRoutingContext(
       id: dispatch.id,
       metadata: dispatch.metadata,
       plugin: dispatch.plugin,
+      replyAttribution: dispatch.replyAttribution,
     },
     surface: "api",
   };
@@ -114,7 +115,7 @@ export interface AgentDispatchConversationWorkerOptions {
   ) => Promise<DispatchTurnResult>;
 }
 
-/** Build the stable mailbox work item for one plugin dispatch. */
+/** Build the stable mailbox work item for one agent dispatch. */
 export function buildAgentDispatchInboundMessage(
   dispatch: DispatchRecord,
   nowMs = Date.now(),

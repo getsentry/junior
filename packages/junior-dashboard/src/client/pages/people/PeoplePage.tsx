@@ -15,8 +15,8 @@ import { PageHeader } from "../../components/layout/PageHeader";
 import { getDashboardAgentName } from "../../agentName";
 import { StatCard } from "../../components/metrics/StatCard";
 import { formatCompactNumber } from "../../format";
-import { cn, dashboardContainerClass } from "../../styles";
-import { PeopleActivityChart } from "../../components/charts/PeopleActivityChart";
+import { SystemPageLayout } from "../system/SystemPageLayout";
+import { PeopleActivityChart } from "./PeopleActivityChart";
 import {
   filterPeople,
   PeopleDirectory,
@@ -61,12 +61,7 @@ export function PeoplePageContent(props: {
   const peak = Math.max(0, ...visibleActivity.map((day) => day.activePeople));
 
   return (
-    <div
-      className={cn(
-        dashboardContainerClass,
-        "grid min-w-0 gap-4 px-4 py-4 sm:gap-6 sm:px-8 sm:py-8",
-      )}
-    >
+    <SystemPageLayout>
       <PageHeader
         actions={<TimeRangeSelector onChange={setRange} value={range} />}
         description={
@@ -74,7 +69,7 @@ export function PeoplePageContent(props: {
             ? "People failed to load."
             : `See who's been working with ${getDashboardAgentName()}, how often, and for how long.`
         }
-        eyebrow="Who's been around"
+        eyebrow="System / activity"
         title="People"
       />
       {props.error ? (
@@ -129,6 +124,6 @@ export function PeoplePageContent(props: {
           </EmptyTelemetry>
         </Card>
       )}
-    </div>
+    </SystemPageLayout>
   );
 }

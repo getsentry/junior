@@ -214,6 +214,32 @@ WHERE table_name = 'junior_memory_memories'
 `,
         ),
       ).resolves.toEqual([{ table_name: "junior_memory_memories" }]);
+
+      await expect(
+        fixture.sql.query<{ extname: string }>(
+          "SELECT extname FROM pg_extension WHERE extname = 'btree_gin'",
+        ),
+      ).resolves.toEqual([{ extname: "btree_gin" }]);
+
+      await expect(
+        fixture.sql.query<{ is_generated: string }>(
+          `
+SELECT is_generated
+FROM information_schema.columns
+WHERE table_name = 'junior_memory_memories'
+  AND column_name = 'search_vector'
+`,
+        ),
+      ).resolves.toEqual([{ is_generated: "ALWAYS" }]);
+
+      const [searchIndex] = await fixture.sql.query<{ indexdef: string }>(`
+SELECT indexdef
+FROM pg_indexes
+WHERE indexname = 'junior_memory_memories_search_idx'
+`);
+      expect(searchIndex?.indexdef).toContain(
+        "USING gin (scope, scope_key, search_vector)",
+      );
     } finally {
       NEON.sql = undefined;
       await fixture.close();
@@ -285,7 +311,7 @@ WHERE table_name = 'junior_memory_memories'
         messageTs: "1718800000.000000",
         threadTs: "1718800000.000000",
 
-        type: "priv",
+        visibility: "private",
       });
       const store = createMemoryStore(fixture.sql.db() as unknown as MemoryDb, {
         conversationId,
@@ -325,7 +351,6 @@ WHERE table_name = 'junior_memory_memories'
       await expect(
         tools.memory_listMemories.execute!({}, {}),
       ).resolves.toMatchObject({
-        ok: true,
         memories: [
           expect.objectContaining({
             content: "This thread tracks host-wired memory context.",
@@ -338,7 +363,6 @@ WHERE table_name = 'junior_memory_memories'
       await expect(
         tools.memory_searchMemories.execute!({ query: "personal recall" }, {}),
       ).resolves.toMatchObject({
-        ok: true,
         memories: [
           expect.objectContaining({
             content: "I prefer host-wired personal recall.",

@@ -102,6 +102,7 @@ export async function persistRunningSessionRecord(args: {
   channelName?: string;
   conversationId: string;
   destination?: Destination;
+  destinationVisibility?: ConversationPrivacy;
   dispatchId?: string;
   source?: Source;
   sessionId: string;
@@ -136,6 +137,7 @@ export async function persistRunningSessionRecord(args: {
       ...((args.destination ?? latestSessionRecord?.destination)
         ? { destination: args.destination ?? latestSessionRecord?.destination }
         : {}),
+      destinationVisibility: args.destinationVisibility,
       ...((args.dispatchId ?? latestSessionRecord?.dispatchId)
         ? { dispatchId: args.dispatchId ?? latestSessionRecord?.dispatchId }
         : {}),
@@ -205,7 +207,7 @@ export async function persistCompletedSessionRecord(args: {
   dispatchId?: string;
   dispatchOutcome?: AgentDispatchOutcome;
   errorMessage?: string;
-  /** Source-confirmed destination visibility from the current event's signal. */
+  /** Confirmed visibility; omit when unavailable to preserve canonical metadata. */
   destinationVisibility?: ConversationPrivacy;
   /** Provider-owned identifier returned after visible delivery is accepted. */
   resultMessageId?: string;
@@ -371,6 +373,7 @@ export async function persistAuthPauseSessionRecord(args: {
   currentDurationMs?: number;
   currentUsage?: AgentTurnUsage;
   destination?: Destination;
+  destinationVisibility?: ConversationPrivacy;
   dispatchId?: string;
   source?: Source;
   messages: PiMessage[];
@@ -410,6 +413,7 @@ export async function persistAuthPauseSessionRecord(args: {
       ...((args.destination ?? latestSessionRecord?.destination)
         ? { destination: args.destination ?? latestSessionRecord?.destination }
         : {}),
+      destinationVisibility: args.destinationVisibility,
       ...((args.dispatchId ?? latestSessionRecord?.dispatchId)
         ? { dispatchId: args.dispatchId ?? latestSessionRecord?.dispatchId }
         : {}),
@@ -465,6 +469,7 @@ interface ContinuationRecordInput {
   currentDurationMs?: number;
   currentUsage?: AgentTurnUsage;
   destination?: Destination;
+  destinationVisibility?: ConversationPrivacy;
   dispatchId?: string;
   source?: Source;
   messages: PiMessage[];
@@ -519,6 +524,7 @@ export async function persistContinuationSessionRecord(
               destination: args.destination ?? latestSessionRecord?.destination,
             }
           : {}),
+        destinationVisibility: args.destinationVisibility,
         ...((args.dispatchId ?? latestSessionRecord?.dispatchId)
           ? { dispatchId: args.dispatchId ?? latestSessionRecord?.dispatchId }
           : {}),
@@ -565,6 +571,7 @@ export async function persistContinuationSessionRecord(
       ...((args.destination ?? latestSessionRecord?.destination)
         ? { destination: args.destination ?? latestSessionRecord?.destination }
         : {}),
+      destinationVisibility: args.destinationVisibility,
       ...((args.dispatchId ?? latestSessionRecord?.dispatchId)
         ? { dispatchId: args.dispatchId ?? latestSessionRecord?.dispatchId }
         : {}),

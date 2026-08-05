@@ -203,3 +203,80 @@ export function verifyScheduledTaskCredentialSubject(input: {
   );
   return timingSafeMatch(expected, binding.signature);
 }
+
+/** Bind a delegated user subject to one event task dispatch. */
+export function bindEventTaskCredentialSubject(input: {
+  plugin: string;
+  subject: {
+    allowedWhen: "event-task";
+    taskId: string;
+    type: "user";
+    userId: string;
+  };
+}): CredentialSubject | undefined {
+  const secret = getCredentialSubjectSecret();
+  const plugin = input.plugin.trim();
+  const userId = parseActorUserId(input.subject.userId);
+  if (
+    !secret ||
+    plugin !== "junior" ||
+    !userId ||
+    input.subject.allowedWhen !== "event-task"
+  ) {
+    return undefined;
+  }
+  const taskId = input.subject.taskId;
+  if (!taskId || taskId !== taskId.trim()) {
+    return undefined;
+  }
+
+  return {
+    type: "user",
+    userId,
+    allowedWhen: "event-task",
+    taskId,
+    binding: {
+      type: "event-task",
+      plugin,
+      taskId,
+      signature: signPayload(
+        secret,
+        buildPayload(["event-task", plugin, taskId, userId]),
+      ),
+    },
+  };
+}
+
+/** Verify that a delegated subject was signed for one event task. */
+export function verifyEventTaskCredentialSubject(input: {
+  plugin: string;
+  subject: CredentialSubject;
+}): boolean {
+  const secret = getCredentialSubjectSecret();
+  const { subject } = input;
+  const binding = subject.binding;
+  if (
+    !secret ||
+    input.plugin !== "junior" ||
+    subject.type !== "user" ||
+    !isActorUserId(subject.userId) ||
+    subject.allowedWhen !== "event-task" ||
+    !subject.taskId ||
+    binding.type !== "event-task" ||
+    binding.plugin !== input.plugin ||
+    binding.taskId !== subject.taskId
+  ) {
+    return false;
+  }
+
+  const expected = signPayload(
+    secret,
+    buildPayload([
+      "event-task",
+      binding.plugin,
+      binding.taskId,
+      subject.userId,
+    ]),
+  );
+  return timingSafeMatch(expected, binding.signature);
+}

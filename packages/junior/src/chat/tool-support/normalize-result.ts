@@ -1,8 +1,5 @@
 import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
-import {
-  injectContinuationToolName,
-  juniorToolResultSchema,
-} from "@/chat/tool-support/structured-result";
+import { injectContinuationToolName } from "@/chat/tool-support/structured-result";
 
 function isToolContent(
   value: unknown,
@@ -181,21 +178,16 @@ function upstreamPermissionDeniedText(value: unknown): string | undefined {
 
 function normalizeDetails(
   details: unknown,
-  options: { requireStructuredResult?: boolean; toolName?: string },
+  options: { toolName?: string },
 ): { details: unknown; replaceEnvelopeText: boolean } {
   const continuationToolName =
     options.toolName && hasContinuation(details) ? options.toolName : undefined;
-  if (!options.requireStructuredResult && !continuationToolName) {
+  if (!continuationToolName) {
     return { details, replaceEnvelopeText: false };
   }
 
-  const parsed = juniorToolResultSchema.parse(details);
-  if (!continuationToolName) {
-    return { details: parsed, replaceEnvelopeText: false };
-  }
-
   return {
-    details: injectContinuationToolName(parsed, continuationToolName),
+    details: injectContinuationToolName(details, continuationToolName),
     replaceEnvelopeText: true,
   };
 }
@@ -234,7 +226,7 @@ export function normalizeToolResult(
     }
     return {
       content: unwrapped.content,
-      details: { ok: true, status: "success" },
+      details: {},
     };
   }
 

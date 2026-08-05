@@ -8,7 +8,6 @@ import type {
 import {
   actorLabel,
   buildConversations,
-  canRenderStructuredMarkup,
   conversationActorLabel,
   conversationDisplayTitle,
   conversationFromDetail,
@@ -21,10 +20,13 @@ import {
   formatElapsedDuration,
   formatPayloadSize,
   formatRuntime,
+  formatTime,
   formatTranscriptDuration,
   formatUsageTotal,
   parseMarkdownBlocks,
+  peoplePath,
   slackLocationLabel,
+  setDashboardTimeZone,
   summarizeMessages,
   summarizeToolCalls,
   summarizeTurns,
@@ -32,7 +34,10 @@ import {
 import { formatDuration } from "../src/client/components/Duration";
 import type { ConversationTranscript } from "../src/client/types";
 
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  vi.useRealTimers();
+  setDashboardTimeZone("America/Los_Angeles");
+});
 
 function event(
   seq: number,
@@ -68,6 +73,10 @@ function transcript(
 }
 
 describe("dashboard conversation formatting", () => {
+  it("builds direct person profile routes", () => {
+    expect(peoplePath("avery@example.com")).toBe("/people/avery%40example.com");
+  });
+
   it("scales large values through billions and trillions", () => {
     expect(formatCompactNumber(1_912_000_000)).toBe("1.9b");
     expect(formatCompactNumber(2_100_000_000_000)).toBe("2.1t");
@@ -84,6 +93,7 @@ describe("dashboard conversation formatting", () => {
       }),
     ).toBe("80 tokens");
     expect(formatCostTotal({ cost: { total: 1.999 } })).toBe("$2.00");
+    expect(formatCostTotal({ cost: { total: 0.0042 } })).toBe("$0.0042");
   });
 
   it("formats human-readable durations at increasing scales", () => {
@@ -114,6 +124,18 @@ describe("dashboard conversation formatting", () => {
     expect(formatElapsedDuration(1_000, 4_500)).toBe("3.5s");
     expect(formatElapsedDuration(undefined, 4_500)).toBeUndefined();
     expect(formatElapsedDuration(4_500, 1_000)).toBeUndefined();
+  });
+
+  it("formats absolute timestamps in the configured dashboard timezone", () => {
+    const value = "2026-08-10T16:00:00.000Z";
+    const options: Intl.DateTimeFormatOptions = {
+      dateStyle: "medium",
+      timeStyle: "short",
+    };
+    setDashboardTimeZone("UTC");
+    expect(formatTime(value, options)).toContain("4:00 PM");
+    setDashboardTimeZone("America/Los_Angeles");
+    expect(formatTime(value, options)).toContain("9:00 AM");
   });
 
   it("formats conversation duration from cumulative execution time", () => {
@@ -160,6 +182,10 @@ describe("dashboard conversation formatting", () => {
           messageId: "user",
           role: "user",
           text: "run search",
+          actorIdentity: {
+            fullName: "Taylor Chen",
+            slackUserName: "taylor",
+          },
         }),
         event(1, {
           type: "tool_calls",
@@ -197,13 +223,13 @@ describe("dashboard conversation formatting", () => {
     });
     expect(summarizeMessages(conversation)).toEqual({
       items: [
-        { author: "Alice", bytes: 10 },
+        { author: "Taylor Chen", bytes: 10 },
         { author: "Junior", bytes: 4 },
       ],
       total: 2,
     });
     expect(summarizeTurns(conversation)).toEqual({
-      items: [{ author: "Alice", bytes: 10 }],
+      items: [{ author: "Taylor Chen", bytes: 10 }],
       total: 1,
     });
   });
@@ -319,16 +345,21 @@ describe("dashboard conversation formatting", () => {
   });
 });
 
-describe("structured transcript markup", () => {
-  it("detects fenced and inline structured blocks", () => {
+describe("transcript blocks", () => {
+  it("keeps prose as markdown and preserves fenced languages", () => {
+    expect(
+      parseMarkdownBlocks("The function returns a const value.")[0],
+    ).toMatchObject({
+      fenced: false,
+      language: "markdown",
+    });
     expect(parseMarkdownBlocks('```json\n{"ok":true}\n```')[0]).toMatchObject({
+      fenced: true,
       language: "json",
     });
-    expect(
-      canRenderStructuredMarkup({ code: "<root />", language: "xml" }),
-    ).toBe(true);
-    expect(
-      canRenderStructuredMarkup({ code: "plain", language: "markdown" }),
-    ).toBe(false);
+    expect(parseMarkdownBlocks("```xml\n<root />\n```")[0]).toMatchObject({
+      fenced: true,
+      language: "xml",
+    });
   });
 });

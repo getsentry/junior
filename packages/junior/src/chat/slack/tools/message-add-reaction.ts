@@ -1,7 +1,7 @@
 import { normalizeSlackEmojiName } from "@/chat/slack/emoji";
 import { addReactionToMessage } from "@/chat/slack/outbound";
 import { z } from "zod";
-import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
+import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { createOperationKey } from "@/chat/tools/idempotency";
@@ -14,6 +14,12 @@ export function createSlackMessageAddReactionTool(
   state: ToolState,
 ) {
   return zodTool({
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+      readOnlyHint: false,
+    },
     description:
       "Add an emoji reaction to the current inbound Slack message. Use when the user asks for a reaction on the current message without another target. Provide a Slack emoji alias name (for example `thumbsup`, `white_check_mark`, or `thumbsup::skin-tone-6`), not a unicode emoji glyph. The target message is injected by runtime context; do not use this for arbitrary historical messages.",
     inputSchema: z.object({
@@ -25,7 +31,7 @@ export function createSlackMessageAddReactionTool(
           "Slack emoji alias name to react with (for example `thumbsup`, `white_check_mark`, or `thumbsup::skin-tone-6`). Optional surrounding colons are allowed.",
         ),
     }),
-    outputSchema: juniorToolResultSchema,
+    outputSchema: juniorToolOutputSchema,
     execute: async ({ emoji }) => {
       const targetChannelId = context.sourceChannelId;
       const targetMessageTs = context.messageTs;
@@ -47,8 +53,6 @@ export function createSlackMessageAddReactionTool(
         emoji: normalizedEmoji,
       });
       const cached = state.getOperationResult<{
-        ok: true;
-        status: "success";
         channel_id: string;
         message_ts: string;
         emoji: string;
@@ -66,8 +70,6 @@ export function createSlackMessageAddReactionTool(
         emoji: normalizedEmoji,
       });
       const response = {
-        ok: true,
-        status: "success" as const,
         channel_id: targetChannelId,
         message_ts: targetMessageTs,
         emoji: normalizedEmoji,

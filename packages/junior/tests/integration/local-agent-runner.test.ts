@@ -891,7 +891,7 @@ describe("local agent runner", () => {
         ],
         source: {
           platform: "local",
-          type: "priv",
+          visibility: "private",
           conversationId,
         },
       }),

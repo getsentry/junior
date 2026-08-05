@@ -7,13 +7,14 @@ import {
   findMatchingResourceEventSubscriptions,
 } from "@/chat/resource-events/store";
 
-/** Match a normalized provider event and enqueue notifications into conversations. */
+/** Match a normalized resource event and enqueue notifications into conversations. */
 export async function ingestResourceEvent(
   input: unknown,
   options: {
     nowMs?: number;
     queue: ConversationWorkQueue;
     state?: StateAdapter;
+    teamId: string;
   },
 ): Promise<{ enqueued: number }> {
   const event = resourceEventSchema.parse(input);
@@ -21,9 +22,10 @@ export async function ingestResourceEvent(
   const subscriptions = await findMatchingResourceEventSubscriptions({
     eventType: event.eventType,
     nowMs,
-    provider: event.provider,
-    resourceRef: event.resourceRef,
+    namespace: event.namespace,
+    identifier: event.identifier,
     state: options.state,
+    teamId: options.teamId,
   });
   let enqueued = 0;
   const errors: unknown[] = [];
@@ -32,8 +34,9 @@ export async function ingestResourceEvent(
     try {
       const delivered = await deliverResourceEventSubscription({
         eventType: event.eventType,
-        provider: event.provider,
-        resourceRef: event.resourceRef,
+        namespace: event.namespace,
+        identifier: event.identifier,
+        teamId: options.teamId,
         terminal: event.terminal,
         nowMs,
         state: options.state,

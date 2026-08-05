@@ -3,8 +3,10 @@ import { describeEval, toolCalls } from "vitest-evals";
 import { mention, rubric, slackEvals } from "../../src/helpers";
 import {
   clearMemories,
+  countMemoryEmbeddings,
   evalMemoryModel,
   expectActorMemorySemantics,
+  expectAssistantMemoryAnswer,
   memoryPluginOverrides,
   readActiveMemories,
   readMemories,
@@ -82,6 +84,76 @@ describeEval("Personal Memory", slackEvals, (it) => {
       userText: "Please remember that I prefer terse PR summaries.",
     });
   });
+
+  const timezoneRecallThread = {
+    id: "thread-memory-timezone-recall",
+    channel_id: "CMEMORYTIMEZONE",
+    thread_ts: "17000000.000012",
+  };
+
+  it("uses a remembered timezone when answering the current time", async ({
+    run,
+  }) => {
+    await clearMemories();
+    // Seed a hybrid-retrievable fact: host embedder writes the vector row, and
+    // content keeps FTS overlap with "current time" asks plus the exact IANA token.
+    const timezoneMemoryContent =
+      "Prefers current local time answers in America/Los_Angeles (San Francisco timezone).";
+    await seedMemory({
+      content: timezoneMemoryContent,
+      idempotencyKey: "eval-memory-timezone-recall",
+      thread: timezoneRecallThread,
+    });
+    await expect(countMemoryEmbeddings(timezoneRecallThread)).resolves.toBe(1);
+
+    const result = await run({
+      overrides: memoryPluginOverrides,
+      initialEvents: [
+        mention("What time is it for me right now?", {
+          thread: timezoneRecallThread,
+        }),
+      ],
+      criteria: rubric({
+        pass: [
+          "The assistant uses the remembered San Francisco / America/Los_Angeles timezone from memory.",
+          "The final answer reports the user's current local time in Pacific Time without asking for their location or timezone.",
+          "The assistant checks the current time with systemTime before answering.",
+        ],
+        fail: [
+          "Do not answer only with UTC or the server's timezone.",
+          "Do not ask the user to restate their location or timezone.",
+          "Do not claim that no relevant memory exists.",
+          "Do not shell out to bash or other tools just to convert the current time into the remembered timezone.",
+        ],
+      }),
+    });
+
+    await expect(readActiveMemories(timezoneRecallThread)).resolves.toEqual([
+      expect.objectContaining({
+        content: timezoneMemoryContent,
+        scope: "personal",
+      }),
+    ]);
+    expect(toolCalls(result.session)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "systemTime",
+          status: "ok",
+          arguments: expect.objectContaining({
+            timezone: "America/Los_Angeles",
+          }),
+        }),
+      ]),
+    );
+    expect(toolCalls(result.session).map((call) => call.name)).not.toContain(
+      "bash",
+    );
+    await expectAssistantMemoryAnswer({
+      assistantText: visibleAssistantText(result),
+      expectedBehavior:
+        "The assistant uses the remembered San Francisco or America/Los_Angeles timezone and reports the user's current local time in Pacific Time.",
+    });
+  }, 120_000);
 
   const firstPersonRewrittenThread = {
     id: "thread-memory-first-person-rewritten",
@@ -196,7 +268,7 @@ describeEval("Personal Memory", slackEvals, (it) => {
         teamId: memoryTeamId,
         threadTs: "17000000.000003",
 
-        type: "priv",
+        visibility: "private",
       }),
     };
 

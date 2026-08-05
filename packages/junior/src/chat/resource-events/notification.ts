@@ -7,8 +7,8 @@ export interface ResourceEventNotification {
   eventKey: string;
   eventType: string;
   occurredAtMs: number;
-  provider: string;
-  resourceRef: string;
+  namespace: string;
+  identifier: string;
   terminal?: boolean;
   trustedSummary: string;
   untrustedText?: string;

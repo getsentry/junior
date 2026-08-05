@@ -30,6 +30,7 @@ function toolContext(response?: Response) {
     },
     conversationId: "slack:C123:123.456",
     egress: { fetch },
+    resourceEvents: { canSubscribe: true },
     slack: {
       conversationLink: { url: "https://example.com/session" },
     },
@@ -69,7 +70,7 @@ describe("updatePullRequest", () => {
       target: "updatePullRequest",
       title: "Updated title",
       subscribable: {
-        resourceRef: "github:pull_request:getsentry/junior#691",
+        identifier: "getsentry/junior#691",
       },
       url: "https://github.com/getsentry/junior/pull/691",
     });
@@ -90,7 +91,7 @@ describe("updatePullRequest", () => {
       body: expect.stringContaining("Updated body"),
     });
     const body = (await call?.request.clone().json()) as { body: string };
-    expect(body.body).toContain("Requested by **David Cramer** via Junior.");
+    expect(body.body).toContain("Requested by **David Cramer**.");
     expect(body.body).toContain(
       "[View Junior Session](https://example.com/session)",
     );

@@ -34,7 +34,10 @@ export function createPluginModel(
           pluginModelRole: "structured",
         },
       });
-      return { object: result.object };
+      return {
+        object: result.object,
+        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : {}),
+      };
     },
   };
 }

@@ -43,6 +43,16 @@ describe("conversation detail API", () => {
           type: "message",
         },
       },
+      {
+        createdAtMs: 3,
+        data: {
+          content: { costUsd: 0.0004, memories: [] },
+          name: "memories_recalled",
+          namespace: "memory",
+          type: "structured_event",
+          version: 1,
+        },
+      },
     ]);
     const refreshedResponse = await app.request(
       `http://localhost/api/conversations/${conversationId}`,
@@ -51,6 +61,17 @@ describe("conversation detail API", () => {
       await refreshedResponse.json(),
     );
     expect(refreshed.events.map((event) => event.seq)).toEqual([0]);
+    expect(refreshed.auxiliaryCosts).toEqual({
+      costUsd: 0.0004,
+      operations: [
+        {
+          costUsd: 0.0004,
+          events: 1,
+          name: "memories_recalled",
+          namespace: "memory",
+        },
+      ],
+    });
   });
 
   it("only returns annotations to viewers with private-content access", async () => {
@@ -60,13 +81,13 @@ describe("conversation detail API", () => {
         email: "Participant@Example.com",
         platform: "slack",
         slackUserId: "U-participant",
-        teamId: "T-private",
+        teamId: "TPRIVATE",
       },
       conversationId,
       destination: {
-        channelId: "C-private",
+        channelId: "CPRIVATE",
         platform: "slack",
-        teamId: "T-private",
+        teamId: "TPRIVATE",
       },
       nowMs: 1,
       source: "slack",

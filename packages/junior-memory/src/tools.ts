@@ -4,10 +4,10 @@ import {
   definePluginTool,
   getSourceKey,
   PluginToolInputError,
-  type PluginToolResult,
+  type PluginToolOutput,
   type Source,
   type Actor,
-  pluginToolResultSchema,
+  pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import {
@@ -297,12 +297,9 @@ const memoryToolProjectionSchema = Type.Object(
 type MemoryToolProjection = Static<typeof memoryToolProjectionSchema>;
 
 type MemoryStructuredToolResult<TData extends Record<string, unknown>> =
-  PluginToolResult &
+  PluginToolOutput &
     TData & {
-      ok: true;
-      status: "success";
       target: string;
-      data: TData;
     };
 
 const memoryProjectionOutputSchema = z.object({
@@ -313,41 +310,19 @@ const memoryProjectionOutputSchema = z.object({
   expiresAtMs: z.number().optional(),
 });
 
-const memoryCreateDataOutputSchema = z.object({
+const memoryCreateOutputSchema = pluginToolOutputSchema.extend({
+  target: z.string(),
   created: z.boolean(),
   memory: memoryProjectionOutputSchema,
 });
 
-const memorySingleDataOutputSchema = z.object({
+const memorySingleOutputSchema = pluginToolOutputSchema.extend({
+  target: z.string(),
   memory: memoryProjectionOutputSchema,
 });
 
-const memoryManyDataOutputSchema = z.object({
-  memories: z.array(memoryProjectionOutputSchema),
-});
-
-const memoryCreateOutputSchema = pluginToolResultSchema.extend({
-  ok: z.literal(true),
-  status: z.literal("success"),
+const memoryManyOutputSchema = pluginToolOutputSchema.extend({
   target: z.string(),
-  data: memoryCreateDataOutputSchema,
-  created: z.boolean(),
-  memory: memoryProjectionOutputSchema,
-});
-
-const memorySingleOutputSchema = pluginToolResultSchema.extend({
-  ok: z.literal(true),
-  status: z.literal("success"),
-  target: z.string(),
-  data: memorySingleDataOutputSchema,
-  memory: memoryProjectionOutputSchema,
-});
-
-const memoryManyOutputSchema = pluginToolResultSchema.extend({
-  ok: z.literal(true),
-  status: z.literal("success"),
-  target: z.string(),
-  data: memoryManyDataOutputSchema,
   memories: z.array(memoryProjectionOutputSchema),
 });
 
@@ -409,10 +384,7 @@ function memoryToolResult<TData extends Record<string, unknown>>(
   data: TData,
 ): MemoryStructuredToolResult<TData> {
   return {
-    ok: true,
-    status: "success",
     target,
-    data,
     ...data,
   };
 }
@@ -420,6 +392,13 @@ function memoryToolResult<TData extends Record<string, unknown>>(
 /** Create a tool that submits an explicit memory candidate for storage. */
 export function createMemoryCreateTool(context: MemoryCreateToolContext) {
   return definePluginTool({
+    approvalMode: "approve",
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+      readOnlyHint: false,
+    },
     description:
       "Explicit memory-write tool. Use only when the latest user message directly asks Junior to remember, store, save, or forget-and-replace a public/shareable fact. Do not use for ordinary statements like 'I prefer X', 'I use Y', or 'X goes before Y' unless the user also asks you to remember/store/save it; passive memory learning handles those after the visible reply. Pass one self-contained natural-language candidate preserving the user's explicit memory intent. Do not ask the user to rephrase ordinary first-person facts, and do not rewrite them into display-name or third-person wording. Do not include secrets, private personal details, medical/legal/financial/sensitive facts, or another person's personal preference, opinion, habit, identity, relationship, workflow, or private life. Runtime context derives actor, scope, source, and subject ids; the memory agent decides canonical stored content and memory kind, then the plugin derives storage target from kind.",
     executionMode: "sequential",
@@ -506,6 +485,12 @@ export function createMemoryCreateTool(context: MemoryCreateToolContext) {
 /** Create a tool that archives a visible memory in the active context. */
 export function createMemoryRemoveTool(context: MemoryToolContext) {
   return definePluginTool({
+    annotations: {
+      destructiveHint: true,
+      idempotentHint: true,
+      openWorldHint: false,
+      readOnlyHint: false,
+    },
     description:
       "Forget one memory visible in the active context. Use only ids or short id prefixes returned by listMemories or searchMemories. Never remove memories by hidden actor, Slack, scope, or subject identifiers.",
     executionMode: "sequential",
@@ -535,7 +520,12 @@ export function createMemoryListTool(context: MemoryToolContext) {
   return definePluginTool({
     description:
       "List active memories visible in the current context. Use when the user asks what Junior remembers or when memory ids are needed before removing a memory.",
-    annotations: { readOnlyHint: true, destructiveHint: false },
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+      readOnlyHint: true,
+    },
     inputSchema: listMemoriesInputSchema,
     outputSchema: memoryManyOutputSchema,
     execute: async (input) => {
@@ -555,7 +545,12 @@ export function createMemorySearchTool(context: MemoryToolContext) {
   return definePluginTool({
     description:
       "Search active memories visible in the current context. Use when the model needs targeted memory recall. The tool searches only the current actor and active conversation scopes.",
-    annotations: { readOnlyHint: true, destructiveHint: false },
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+      readOnlyHint: true,
+    },
     inputSchema: searchMemoriesInputSchema,
     outputSchema: memoryManyOutputSchema,
     execute: async (input) => {

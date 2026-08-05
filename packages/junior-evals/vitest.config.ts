@@ -6,7 +6,6 @@ const juniorPackageRoot = path.resolve(__dirname, "../junior");
 const workspaceRoot = path.resolve(__dirname, "../..");
 const pluginApiPackageRoot = path.resolve(__dirname, "../junior-plugin-api");
 const memoryPackageRoot = path.resolve(__dirname, "../junior-memory");
-const schedulerPackageRoot = path.resolve(__dirname, "../junior-scheduler");
 
 loadJuniorTestEnvFiles({
   workspaceRoot,
@@ -20,10 +19,6 @@ export default defineConfig({
       "@sentry/junior-memory": path.resolve(memoryPackageRoot, "src/index.ts"),
       "@sentry/junior-plugin-api": path.resolve(
         pluginApiPackageRoot,
-        "src/index.ts",
-      ),
-      "@sentry/junior-scheduler": path.resolve(
-        schedulerPackageRoot,
         "src/index.ts",
       ),
     },

@@ -614,7 +614,7 @@ describe("Slack behavior: subscribed messages", () => {
     );
   });
 
-  it("unsubscribes on explicit stop-thread instructions and only re-engages on a later direct mention", async () => {
+  it("forces unsubscribe on !stop and only re-engages on a later direct mention", async () => {
     let classifierCalled = false;
     const replyCalls: string[] = [];
 
@@ -674,23 +674,23 @@ describe("Slack behavior: subscribed messages", () => {
     await createResourceEventSubscription({
       conversationId: thread.id,
       destination: subscriptionDestination,
-      events: ["checks.failed"],
+      events: ["pull_request.checks.failed"],
       expiresAtMs,
       intent: "Watch CI for this thread.",
       label: "Pull request checks",
-      provider: "github",
-      resourceRef: "github:pull_request:getsentry/junior#100",
+      namespace: "github",
+      identifier: "getsentry/junior#100",
       resourceType: "pull_request",
     });
     await createResourceEventSubscription({
       conversationId: thread.id,
       destination: subscriptionDestination,
-      events: ["issue.updated"],
+      events: ["issue.closed"],
       expiresAtMs,
       intent: "Watch the issue for this thread.",
       label: "Tracking issue",
-      provider: "github",
-      resourceRef: "github:issue:getsentry/junior#101",
+      namespace: "github",
+      identifier: "getsentry/junior#101",
       resourceType: "issue",
     });
 
@@ -698,8 +698,8 @@ describe("Slack behavior: subscribed messages", () => {
       thread,
       createTestMessage({
         id: "m-stop-thread-opt-out",
-        text: "<@U0APP> stop watching or participating in this thread",
-        isMention: true,
+        text: "!stop",
+        isMention: false,
         threadId: thread.id,
         author: { userId: "U0TESTER" },
       }),

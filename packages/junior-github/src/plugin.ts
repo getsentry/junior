@@ -18,6 +18,22 @@ import {
 } from "./permissions.js";
 import { createGitHubTools } from "./tools.js";
 import { createGitHubWebhookRoute } from "./webhooks/handler.js";
+import {
+  GITHUB_DEPLOYMENT_EVENTS,
+  GITHUB_DEPLOYMENT_SUGGESTED_EVENTS,
+} from "./resource-events/deployment.js";
+import {
+  GITHUB_ISSUE_EVENTS,
+  GITHUB_ISSUE_SUGGESTED_EVENTS,
+} from "./resource-events/issue.js";
+import {
+  GITHUB_PULL_REQUEST_EVENTS,
+  GITHUB_PULL_REQUEST_SUGGESTED_EVENTS,
+} from "./resource-events/pull-request.js";
+import {
+  GITHUB_RELEASE_EVENTS,
+  GITHUB_RELEASE_SUGGESTED_EVENTS,
+} from "./resource-events/release.js";
 import type { GitHubDb } from "./db/database.js";
 import { buildGitHubOutcomeReport } from "./outcomes/report.js";
 import { classifyGitHubPullRequestCommitComposition } from "./pull-request-outcomes/commit-composition.js";
@@ -370,12 +386,30 @@ function githubApiWriteGrantName(
     return "installation-write";
   }
   if (
+    method === "POST" &&
+    /^\/repos\/[^/]+\/[^/]+\/pulls\/[^/]+\/comments(?:\/[^/]+\/replies)?$/.test(
+      pathname,
+    )
+  ) {
+    // Inline review comments and thread replies post as the App bot.
+    return "installation-write";
+  }
+  if (
+    (method === "PATCH" || method === "DELETE") &&
+    /^\/repos\/[^/]+\/[^/]+\/pulls\/comments\/[^/]+$/.test(pathname)
+  ) {
+    // Update/delete of inline review comments also stay bot-owned.
+    return "installation-write";
+  }
+  if (
     /^\/repos\/[^/]+\/[^/]+\/pulls\/[^/]+\/reviews(?:\/[^/]+(?:\/(events|dismissals))?)?$/.test(
       pathname,
     ) &&
     !HTTP_READ_METHODS.has(method)
   ) {
-    return "user-write";
+    // Bot-authored reviews use the App installation identity so headless and
+    // interactive review feedback both post as Junior, not the requesting user.
+    return "installation-write";
   }
   return undefined;
 }
@@ -611,11 +645,49 @@ export function githubPlugin(
 
   return defineJuniorPlugin({
     packageName: "@sentry/junior-github",
+    resourceEvents: {
+      resourceTypes: [
+        {
+          type: "deployment_source",
+          supportedEvents: [...GITHUB_DEPLOYMENT_EVENTS],
+          suggestedEvents: [...GITHUB_DEPLOYMENT_SUGGESTED_EVENTS],
+        },
+        {
+          type: "issue",
+          supportedEvents: [...GITHUB_ISSUE_EVENTS],
+          suggestedEvents: [...GITHUB_ISSUE_SUGGESTED_EVENTS],
+        },
+        {
+          type: "pull_request",
+          supportedEvents: [...GITHUB_PULL_REQUEST_EVENTS],
+          suggestedEvents: [...GITHUB_PULL_REQUEST_SUGGESTED_EVENTS],
+        },
+        {
+          type: "release_source",
+          supportedEvents: [...GITHUB_RELEASE_EVENTS],
+          suggestedEvents: [...GITHUB_RELEASE_SUGGESTED_EVENTS],
+        },
+        {
+          type: "repository",
+          supportedEvents: [
+            ...GITHUB_ISSUE_EVENTS,
+            ...GITHUB_PULL_REQUEST_EVENTS,
+          ],
+          suggestedEvents: [
+            "issue.opened",
+            ...GITHUB_ISSUE_SUGGESTED_EVENTS,
+            ...GITHUB_PULL_REQUEST_SUGGESTED_EVENTS,
+          ],
+        },
+      ],
+      isEnabled: () => Boolean(readEnv("GITHUB_WEBHOOK_SECRET")),
+      normalizeIdentifier: (identifier) => identifier.toLowerCase(),
+    },
     manifest: {
       name: "github",
       displayName: "GitHub",
       description:
-        "GitHub deployment, issue, pull request, and repository workflows via GitHub App",
+        "GitHub deployment, issue, pull request, release, and repository workflows via GitHub App",
       configKeys: ["org", "repo"],
       domains: ["api.github.com", "github.com", "uploads.github.com"],
       envVars: {
@@ -691,6 +763,7 @@ export function githubPlugin(
               });
             },
             db: ctx.db as GitHubDb,
+            installationId: () => readEnv(installationIdEnv),
             log: ctx.log,
             resourceEvents: ctx.resourceEvents,
             webhookSecret: () => readEnv("GITHUB_WEBHOOK_SECRET"),

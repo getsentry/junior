@@ -16,11 +16,11 @@ import {
 } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
-import { agentNamePossessive, getDashboardAgentName } from "../../agentName";
+import { getDashboardAgentName } from "../../agentName";
 import { StatCard } from "../../components/metrics/StatCard";
 import { formatCompactNumber } from "../../format";
-import { cn, dashboardContainerClass } from "../../styles";
-import { LocationDirectoryActivityChart } from "../../components/charts/LocationDirectoryActivityChart";
+import { SystemPageLayout } from "../system/SystemPageLayout";
+import { LocationDirectoryActivityChart } from "./LocationDirectoryActivityChart";
 import { LocationDirectory, type LocationSort } from "./LocationDirectory";
 import { PrivateActivityCard } from "./PrivateActivityCard";
 
@@ -69,12 +69,7 @@ export function LocationsPageContent(props: {
   }
 
   return (
-    <div
-      className={cn(
-        dashboardContainerClass,
-        "grid min-w-0 gap-4 px-4 py-4 sm:gap-6 sm:px-8 sm:py-8",
-      )}
-    >
+    <SystemPageLayout>
       <PageHeader
         actions={<TimeRangeSelector onChange={setRange} value={range} />}
         description={
@@ -82,7 +77,7 @@ export function LocationsPageContent(props: {
             ? "Locations failed to load."
             : `See the public channels where ${getDashboardAgentName()} has been working and how busy they've been.`
         }
-        eyebrow={`Where ${agentNamePossessive()} working`}
+        eyebrow="System / activity"
         title="Locations"
       />
       {props.error ? (
@@ -139,7 +134,7 @@ export function LocationsPageContent(props: {
           ) : null}
         </>
       ) : null}
-    </div>
+    </SystemPageLayout>
   );
 }
 

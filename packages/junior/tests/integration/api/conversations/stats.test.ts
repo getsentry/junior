@@ -4,6 +4,7 @@ import { createJuniorApi } from "@/api";
 import { readConversationStatsFromSql } from "@/api/conversations/stats.query";
 import { conversationStatsReportSchema } from "@/api/schema";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
+import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { juniorConversations } from "@/db/schema";
 import {
@@ -165,6 +166,50 @@ describe("conversation stats API", () => {
           updatedAt: childAt,
           executionStatus: "idle",
         });
+      const eventStore = createSqlConversationEventStore(fixture.sql);
+      await eventStore.append("slack:C1:recent", [
+        {
+          createdAtMs: Date.parse("2026-06-15T11:52:00.000Z"),
+          data: {
+            type: "guardian_action_reviewed",
+            turnId: "turn-recent",
+            toolCallId: "tool-allow",
+            toolName: "publishReport",
+            costUsd: 0.001,
+            decision: "allow",
+            riskLevel: "low",
+            userAuthorization: "high",
+          },
+        },
+        {
+          createdAtMs: Date.parse("2026-06-15T11:53:00.000Z"),
+          data: {
+            type: "guardian_action_reviewed",
+            turnId: "turn-recent",
+            toolCallId: "tool-ask",
+            toolName: "publishReport",
+            costUsd: 0.002,
+            decision: "ask",
+            riskLevel: "medium",
+            userAuthorization: "low",
+          },
+        },
+      ]);
+      await eventStore.append("advisor:child", [
+        {
+          createdAtMs: Date.parse("2026-06-15T11:56:00.000Z"),
+          data: {
+            type: "guardian_action_reviewed",
+            turnId: "turn-child",
+            toolCallId: "tool-deny",
+            toolName: "deleteReport",
+            costUsd: 0.003,
+            decision: "deny",
+            riskLevel: "high",
+            userAuthorization: "unknown",
+          },
+        },
+      ]);
 
       const report = await readConversationStatsFromSql();
 
@@ -174,6 +219,13 @@ describe("conversation stats API", () => {
         costUsd: 0.0045,
         durationMs: 2_004,
         failed: 1,
+        guardian: {
+          allow: 1,
+          ask: 1,
+          costUsd: 0.006,
+          deny: 1,
+          requests: 3,
+        },
         tokens: 157,
         source: "conversation_index",
       });
@@ -207,6 +259,14 @@ describe("conversation stats API", () => {
           expect.objectContaining({ label: "Scheduler" }),
         ]),
       );
+      expect(report.guardian.metricDays.at(-1)).toEqual({
+        allow: 1,
+        ask: 1,
+        costUsd: 0.006,
+        date: "2026-06-15",
+        deny: 1,
+        requests: 3,
+      });
     } finally {
       vi.useRealTimers();
       await fixture.close();

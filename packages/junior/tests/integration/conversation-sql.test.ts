@@ -7,7 +7,6 @@ import type { JuniorSqlMigrationExecutor } from "@/db/db";
 import { createPostgresJuniorSqlExecutor } from "@/db/postgres";
 import {
   juniorConversationEvents,
-  juniorConversations,
   juniorSqlSchema as schema,
 } from "@/db/schema";
 import { createSqlStore } from "@/chat/conversations/sql/store";
@@ -40,6 +39,113 @@ SELECT EXISTS (
 }
 
 describe("conversation SQL local mode", () => {
+  it("backfills session sources from matching conversation destinations", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+    const sourceMigrationIndex = coreMigrations.findIndex((migration) =>
+      migration.sql.some((statement) =>
+        statement.includes('ADD COLUMN "source_json" jsonb'),
+      ),
+    );
+    const sourceMigration = coreMigrations[sourceMigrationIndex];
+    if (!sourceMigration) {
+      throw new Error("Conversation session source migration not found");
+    }
+    const visibilityMigration = coreMigrations[sourceMigrationIndex + 1];
+    if (
+      !visibilityMigration?.sql.some((statement) =>
+        statement.includes("jsonb_build_object(\n  'visibility'"),
+      )
+    ) {
+      throw new Error("Conversation source visibility migration not found");
+    }
+
+    try {
+      for (const migration of coreMigrations.slice(0, sourceMigrationIndex)) {
+        for (const statement of migration.sql) {
+          await fixture.sql.execute(statement);
+        }
+      }
+      await fixture.sql.execute(`
+INSERT INTO junior_destinations (
+  id,
+  provider,
+  provider_tenant_id,
+  provider_destination_id,
+  kind,
+  visibility,
+  created_at,
+  updated_at
+) VALUES
+  ('slack-public', 'slack', 'T123', 'C123', 'channel', 'public', to_timestamp(1), to_timestamp(1)),
+  ('slack-unknown', 'slack', 'T123', 'C456', 'channel', 'unknown', to_timestamp(1), to_timestamp(1)),
+  ('slack-private', 'slack', 'T123', 'G123', 'group', 'unknown', to_timestamp(1), to_timestamp(1)),
+  ('local', 'local', '', 'local:test:session', 'local_conversation', 'private', to_timestamp(1), to_timestamp(1))
+`);
+      await fixture.sql.execute(`
+INSERT INTO junior_conversations (
+  conversation_id,
+  destination_id,
+  created_at,
+  last_activity_at,
+  updated_at,
+  execution_status
+) VALUES
+  ('slack:C123:1700000000.001', 'slack-public', to_timestamp(1), to_timestamp(1), to_timestamp(1), 'idle'),
+  ('slack:C456:1700000000.002', 'slack-unknown', to_timestamp(1), to_timestamp(1), to_timestamp(1), 'idle'),
+  ('slack:G123:1700000000.003', 'slack-private', to_timestamp(1), to_timestamp(1), to_timestamp(1), 'idle'),
+  ('slack:C999:1700000000.004', 'slack-public', to_timestamp(1), to_timestamp(1), to_timestamp(1), 'idle'),
+  ('local:test:session', 'local', to_timestamp(1), to_timestamp(1), to_timestamp(1), 'idle')
+`);
+
+      for (const statement of sourceMigration.sql) {
+        await fixture.sql.execute(statement);
+      }
+      for (const statement of visibilityMigration.sql) {
+        await fixture.sql.execute(statement);
+      }
+
+      const rows = await fixture.sql.query<{
+        conversationId: string;
+        sessionSource: unknown;
+      }>(`
+SELECT
+  conversation_id AS "conversationId",
+  source_json AS "sessionSource"
+FROM junior_conversations
+ORDER BY conversation_id
+`);
+      expect(
+        Object.fromEntries(
+          rows.map((row) => [row.conversationId, row.sessionSource]),
+        ),
+      ).toEqual({
+        "local:test:session": {
+          platform: "local",
+          visibility: "private",
+          conversationId: "local:test:session",
+        },
+        "slack:C123:1700000000.001": {
+          platform: "slack",
+          visibility: "public",
+          teamId: "T123",
+          channelId: "C123",
+          threadTs: "1700000000.001",
+        },
+        "slack:C456:1700000000.002": null,
+        "slack:C999:1700000000.004": null,
+        "slack:G123:1700000000.003": {
+          platform: "slack",
+          visibility: "private",
+          teamId: "T123",
+          channelId: "G123",
+          threadTs: "1700000000.003",
+        },
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("migrates legacy agent history to native event types", async () => {
     const fixture = await createLocalJuniorSqlFixture();
     const nativeHistoryMigrationIndex = coreMigrations.findIndex((migration) =>
@@ -65,10 +171,39 @@ describe("conversation SQL local mode", () => {
       }
 
       const conversationId = "internal:native-history-migration";
-      await fixture.sql
-        .db()
-        .insert(juniorConversations)
-        .values(buildJuniorSqlConversation({ conversationId }));
+      // Insert with the pre-source_json column set so this fixture stays valid
+      // against the partial migration history applied above.
+      const conversation = buildJuniorSqlConversation({ conversationId });
+      await fixture.sql.execute(
+        `INSERT INTO junior_conversations (
+           conversation_id,
+           source,
+           destination_json,
+           actor_json,
+           channel_name,
+           title,
+           created_at,
+           last_activity_at,
+           updated_at,
+           execution_status,
+           root_conversation_id
+         ) VALUES (
+           $1, $2, $3::jsonb, $4::jsonb, $5, $6, $7, $8, $9, $10, $11
+         )`,
+        [
+          conversation.conversationId,
+          conversation.source ?? null,
+          JSON.stringify(conversation.destination ?? null),
+          JSON.stringify(conversation.actor ?? null),
+          conversation.channelName ?? null,
+          conversation.title ?? null,
+          conversation.createdAt,
+          conversation.lastActivityAt,
+          conversation.updatedAt,
+          conversation.executionStatus,
+          conversation.rootConversationId ?? conversation.conversationId,
+        ],
+      );
       await fixture.sql
         .db()
         .insert(juniorConversationEvents)
@@ -499,6 +634,26 @@ VALUES ('host-migration', 9999999999999)
       await fixture.close();
     }
   });
+
+  it.skipIf(!hasJuniorPostgresTestDatabase())(
+    "cancels runtime queries after the configured statement timeout",
+    async () => {
+      const fixture = await createEmptyJuniorSqlFixture();
+      const executor = createPostgresJuniorSqlExecutor({
+        connectionString: fixture.connectionString,
+        statementTimeoutMs: 10,
+      });
+
+      try {
+        await expect(
+          executor.query("SELECT pg_sleep(0.05)"),
+        ).rejects.toMatchObject({ code: "57014" });
+      } finally {
+        await executor.close();
+        await fixture.close();
+      }
+    },
+  );
 
   it.skipIf(!hasJuniorPostgresTestDatabase())(
     "serializes concurrent core migrations",

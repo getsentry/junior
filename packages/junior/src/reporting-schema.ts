@@ -115,6 +115,7 @@ const pluginOperationalBarChartWidgetSchema = z
       .array(
         z
           .object({
+            format: z.literal("usd").optional(),
             key: z.string().min(1),
             label: z.string().min(1),
             tone: pluginOperationalToneSchema.optional(),

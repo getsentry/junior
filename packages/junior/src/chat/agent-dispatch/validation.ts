@@ -4,6 +4,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import type { BoundDispatchOptions, SlackDispatchOptions } from "./types";
 import {
+  verifyEventTaskCredentialSubject,
   verifyScheduledTaskCredentialSubject,
   verifySlackDirectCredentialSubject,
 } from "@/chat/credentials/subject";
@@ -128,6 +129,9 @@ function dispatchOptionsErrorMessage(
   if (hasIssueUnderPath(issues, ["metadata"])) {
     return "Dispatch metadata values must be strings";
   }
+  if (hasIssueUnderPath(issues, ["replyAttribution"])) {
+    return "Dispatch reply attribution is invalid";
+  }
   return "Dispatch options are invalid";
 }
 
@@ -171,11 +175,16 @@ export async function verifyDispatchCredentialSubjectAccess(
           plugin,
           subject: options.credentialSubject,
         })
-      : verifySlackDirectCredentialSubject({
-          channelId: options.destination.channelId,
-          teamId: options.destination.teamId,
-          subject: options.credentialSubject,
-        });
+      : options.credentialSubject.allowedWhen === "event-task"
+        ? verifyEventTaskCredentialSubject({
+            plugin,
+            subject: options.credentialSubject,
+          })
+        : verifySlackDirectCredentialSubject({
+            channelId: options.destination.channelId,
+            teamId: options.destination.teamId,
+            subject: options.credentialSubject,
+          });
   if (!verified) {
     throw new Error("Dispatch credentialSubject is not valid for this action");
   }

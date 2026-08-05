@@ -1,4 +1,276 @@
 # Changelog
+## 0.134.0
+
+### New Features ✨
+
+- (chat) Load repository AGENTS.md context by @dcramer in [#1229](https://github.com/getsentry/junior/pull/1229)
+- (dashboard) Show per-task execution analytics by @sentry-junior in [#1220](https://github.com/getsentry/junior/pull/1220)
+- (memory) Add recall and extraction flags by @sentry-junior in [#1245](https://github.com/getsentry/junior/pull/1245)
+
+### Bug Fixes 🐛
+
+- (github) Post PR reviews and inline comments as the App bot by @sentry-junior in [#1252](https://github.com/getsentry/junior/pull/1252)
+- (slack) Make user lookup reliable across models by @Elih96 in [#1251](https://github.com/getsentry/junior/pull/1251)
+
+### Internal Changes 🔧
+
+- (memory) Harden hybrid automatic recall by @sentry-junior in [#1250](https://github.com/getsentry/junior/pull/1250)
+
+## 0.133.0
+
+### New Features ✨
+
+- (dashboard) Make result lists easier to scan by @dcramer in [#1240](https://github.com/getsentry/junior/pull/1240)
+- (sql) Configure statement timeout by @dcramer in [#1236](https://github.com/getsentry/junior/pull/1236)
+
+### Bug Fixes 🐛
+
+#### Slack
+
+- Bind dispatched conversations to threads by @sentry-junior in [#1232](https://github.com/getsentry/junior/pull/1232)
+- Recognize interrupts after mentions by @sentry-junior in [#1239](https://github.com/getsentry/junior/pull/1239)
+
+### Internal Changes 🔧
+
+- (memory) Bound lexical ranking candidates by @dcramer in [#1242](https://github.com/getsentry/junior/pull/1242)
+- (sql) Cap runtime statements at 30 seconds by @dcramer in [#1235](https://github.com/getsentry/junior/pull/1235)
+
+## 0.132.0
+
+### New Features ✨
+
+- (dashboard) Simplify system navigation by @dcramer in [#1231](https://github.com/getsentry/junior/pull/1231)
+- (sentry) Expand OAuth scopes by @sentry-junior in [#1230](https://github.com/getsentry/junior/pull/1230)
+
+### Bug Fixes 🐛
+
+- (scheduler) Drop paused scheduled-task status by @sentry-junior in [#1226](https://github.com/getsentry/junior/pull/1226)
+
+### Internal Changes 🔧
+
+- (conversations) Introduce provider location read model by @dcramer in [#1205](https://github.com/getsentry/junior/pull/1205)
+- (memory) Optimize lexical search by @dcramer in [#1233](https://github.com/getsentry/junior/pull/1233)
+
+## 0.131.0
+
+### New Features ✨
+
+- (sandbox) Add Docker Compose to baseline by @sentry-junior in [#1225](https://github.com/getsentry/junior/pull/1225)
+
+### Bug Fixes 🐛
+
+- (event-tasks) Add reply attribution footer for event dispatches by @sentry-junior in [#1223](https://github.com/getsentry/junior/pull/1223)
+- (slack) Disable message unfurls by @sentry-junior in [#1222](https://github.com/getsentry/junior/pull/1222)
+
+### Internal Changes 🔧
+
+- (memory) Remove structured identifier matching by @dcramer in [#1227](https://github.com/getsentry/junior/pull/1227)
+
+## 0.130.0
+
+### New Features ✨
+
+- (github) Add release resource watches by @sentry-junior in [#1219](https://github.com/getsentry/junior/pull/1219)
+
+### Bug Fixes 🐛
+
+- (github) Deliver repository-scoped PR events by @sentry-junior in [#1216](https://github.com/getsentry/junior/pull/1216)
+
+## 0.129.0
+
+### Breaking Changes 🛠
+
+- (core) Move Scheduler into core by @dcramer in [#1212](https://github.com/getsentry/junior/pull/1212)
+
+### New Features ✨
+
+- (dashboard) Group conversations by activity by @dcramer in [#1213](https://github.com/getsentry/junior/pull/1213)
+- (sandbox) Configure vCPUs from app options by @sentry-junior in [#1215](https://github.com/getsentry/junior/pull/1215)
+
+### Documentation 📚
+
+- (homepage) Showcase integrations by @dcramer in [#1211](https://github.com/getsentry/junior/pull/1211)
+
+## 0.128.0
+
+### Breaking Changes 🛠
+
+- (plugins) Use canonical users for personal ownership by @dcramer in [#1196](https://github.com/getsentry/junior/pull/1196)
+- (tools) Use canonical tool outputs by @dcramer in [#1207](https://github.com/getsentry/junior/pull/1207)
+
+### New Features ✨
+
+- (core) Run tasks from resource events by @dcramer in [#1176](https://github.com/getsentry/junior/pull/1176)
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Preserve expanded transcript events by @dcramer in [#1204](https://github.com/getsentry/junior/pull/1204)
+- Distinguish memory events from reasoning by @dcramer in [#1202](https://github.com/getsentry/junior/pull/1202)
+
+#### Other
+
+- (agent) Keep MCP provider failures out of action review by @dcramer in [#1209](https://github.com/getsentry/junior/pull/1209)
+- (core) Scope resource events to Slack workspace by @dcramer in [#1201](https://github.com/getsentry/junior/pull/1201)
+
+### Documentation 📚
+
+- Drop stale ABOUT.md and plugin migration notes by @sentry-junior in [#1198](https://github.com/getsentry/junior/pull/1198)
+
+### Internal Changes 🔧
+
+#### Dashboard
+
+- Animate active indicators by @dcramer in [#1203](https://github.com/getsentry/junior/pull/1203)
+- Increase small text size by @dcramer in [#1199](https://github.com/getsentry/junior/pull/1199)
+
+#### Other
+
+- (docs) Soften homepage color scheme by @dcramer in [#1208](https://github.com/getsentry/junior/pull/1208)
+
+## 0.127.0
+
+### New Features ✨
+
+- (core) Catalog plugin resource events by @dcramer in [#1191](https://github.com/getsentry/junior/pull/1191)
+- (dashboard) Add personal spend to profile menu by @dcramer in [#1195](https://github.com/getsentry/junior/pull/1195)
+
+### Bug Fixes 🐛
+
+- (dashboard) Support selectable tooltips across inputs by @dcramer in [#1189](https://github.com/getsentry/junior/pull/1189)
+- (github) Bracket the secondary Sentry link by @sentry-junior in [#1193](https://github.com/getsentry/junior/pull/1193)
+- (scheduler) Backfill legacy conversation access by @dcramer in [#1192](https://github.com/getsentry/junior/pull/1192)
+
+### Internal Changes 🔧
+
+- (dashboard) Group stats under System by @dcramer in [#1194](https://github.com/getsentry/junior/pull/1194)
+
+## 0.126.1
+
+### Bug Fixes 🐛
+
+- (dashboard) Correct metric tooltip layout by @dcramer in [#1190](https://github.com/getsentry/junior/pull/1190)
+
+## 0.126.0
+
+### Breaking Changes 🛠
+
+- (plugin-api) Standardize source visibility by @dcramer in [#1183](https://github.com/getsentry/junior/pull/1183)
+
+### New Features ✨
+
+- (dashboard) Improve cost breakdowns by @dcramer in [#1181](https://github.com/getsentry/junior/pull/1181)
+- (scheduler) Label scheduled task replies by @dcramer in [#1187](https://github.com/getsentry/junior/pull/1187)
+
+### Bug Fixes 🐛
+
+- (dashboard) Reuse cached API reads by @dcramer in [#1180](https://github.com/getsentry/junior/pull/1180)
+- (prompt) Keep skill routing in skill policy by @sentry-junior in [#1179](https://github.com/getsentry/junior/pull/1179)
+- (scheduler) Preserve public dispatch visibility by @dcramer in [#1182](https://github.com/getsentry/junior/pull/1182)
+
+## 0.125.0
+
+### New Features ✨
+
+#### Conversations
+
+- Show auxiliary cost breakdown by @dcramer in [#1178](https://github.com/getsentry/junior/pull/1178)
+- Persist structured session source by @sentry-junior in [#1172](https://github.com/getsentry/junior/pull/1172)
+
+#### Memory
+
+- Track automatic recall cost by @dcramer in [#1177](https://github.com/getsentry/junior/pull/1177)
+- Chart passive extraction cost by @dcramer in [#1175](https://github.com/getsentry/junior/pull/1175)
+- Track passive extraction cost by @dcramer in [#1173](https://github.com/getsentry/junior/pull/1173)
+
+#### Other
+
+- (dashboard) Add all plugins system view by @dcramer in [#1171](https://github.com/getsentry/junior/pull/1171)
+- (scheduler) Default to creator credentials by @dcramer in [#1169](https://github.com/getsentry/junior/pull/1169)
+
+## 0.124.2
+
+### New Features ✨
+
+- (memory) Surface public memories in dashboard by @sentry-junior in [#1168](https://github.com/getsentry/junior/pull/1168)
+
+## 0.124.1
+
+### New Features ✨
+
+- (github) Show dashboard and Sentry session links by @sentry-junior in [#1165](https://github.com/getsentry/junior/pull/1165)
+- Improve memory management across user pages and dashboard by @dcramer in [#1159](https://github.com/getsentry/junior/pull/1159)
+
+### Bug Fixes 🐛
+
+- (dashboard) Slim mobile conversation chrome by @sentry-junior in [#1166](https://github.com/getsentry/junior/pull/1166)
+
+## 0.124.0
+
+### New Features ✨
+
+- (conversations) Add authentication structured events by @sentry-junior in [#1161](https://github.com/getsentry/junior/pull/1161)
+
+### Bug Fixes 🐛
+
+- (agent) Harden Guardian structured review by @dcramer in [#1164](https://github.com/getsentry/junior/pull/1164)
+
+### Documentation 📚
+
+- (skills) Keep ticket handoffs diagnosis-first by @sentry-junior in [#1152](https://github.com/getsentry/junior/pull/1152)
+
+### Internal Changes 🔧
+
+- (dashboard) Organize component ownership by @dcramer in [#1160](https://github.com/getsentry/junior/pull/1160)
+
+## 0.123.0
+
+### New Features ✨
+
+#### Dashboard
+
+- Add Guardian stats to System by @dcramer in [#1155](https://github.com/getsentry/junior/pull/1155)
+- Animate archived conversations by @dcramer in [#1145](https://github.com/getsentry/junior/pull/1145)
+
+#### Other
+
+- (agent) Enforce Guardian action review by @dcramer in [#1082](https://github.com/getsentry/junior/pull/1082)
+- (plugins) Add structured conversation events by @dcramer in [#1154](https://github.com/getsentry/junior/pull/1154)
+- (slack) Force unsubscribe with !stop by @sentry-junior in [#1144](https://github.com/getsentry/junior/pull/1144)
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Add conversations navigation link by @dcramer in [#1158](https://github.com/getsentry/junior/pull/1158)
+- Remove conversation list from location details by @dcramer in [#1157](https://github.com/getsentry/junior/pull/1157)
+- Attribute transcript messages to Slack actors by @dcramer in [#1151](https://github.com/getsentry/junior/pull/1151)
+- Render user prose as markdown by @dcramer in [#1153](https://github.com/getsentry/junior/pull/1153)
+- Show ellipsis for long conversation titles by @dcramer in [#1150](https://github.com/getsentry/junior/pull/1150)
+
+#### Other
+
+- (agent) Require tool behavior annotations by @dcramer in [#1156](https://github.com/getsentry/junior/pull/1156)
+- (github) Drop redundant "via Junior" from requester attribution by @sentry-junior in [#1147](https://github.com/getsentry/junior/pull/1147)
+
+### Internal Changes 🔧
+
+#### Deps
+
+- Bump astro from 6.3.7 to 7.1.1 by @dependabot in [#1063](https://github.com/getsentry/junior/pull/1063)
+- Bump hono from 4.12.22 to 4.12.27 by @dependabot in [#1061](https://github.com/getsentry/junior/pull/1061)
+- Bump better-auth from 1.6.11 to 1.6.22 by @dependabot in [#1048](https://github.com/getsentry/junior/pull/1048)
+
+#### Other
+
+- (deps-dev) Bump undici from 7.28.0 to 7.29.0 in /packages/junior-evals by @dependabot in [#1047](https://github.com/getsentry/junior/pull/1047)
+- (tools) Make deferred tool schemas authoritative by @sentry-junior in [#1140](https://github.com/getsentry/junior/pull/1140)
+
+### Other
+
+- Remove broken GitHub asset skill by @dcramer in [#1143](https://github.com/getsentry/junior/pull/1143)
+
 ## 0.122.1
 
 ### Bug Fixes 🐛

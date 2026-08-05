@@ -142,11 +142,13 @@ class NeonExecutor implements NeonJuniorSqlExecutor {
 /** Create the shared Neon-backed Junior SQL executor. */
 export function createNeonJuniorSqlExecutor(args: {
   connectionString: string;
+  statementTimeoutMs?: number | false;
 }): NeonJuniorSqlExecutor {
   return new NeonExecutor(
     new Pool({
       connectionString: args.connectionString,
       max: 3,
+      statement_timeout: args.statementTimeoutMs,
     }),
   );
 }

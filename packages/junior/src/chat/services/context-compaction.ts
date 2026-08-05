@@ -45,6 +45,11 @@ import {
   isCompactionSummaryText,
   MODEL_HANDOFF_SUMMARY_PREFIX,
 } from "@/chat/services/context-compaction-marker";
+import { TURN_CONTEXT_TAG } from "@/chat/turn-context-tag";
+import {
+  findVisibleAgentsInstructions,
+  renderAgentsInstructions,
+} from "@/chat/repository-instructions";
 
 const RETAINED_USER_MESSAGE_TOKENS = 20_000;
 const MAX_SUMMARY_INPUT_CHARS = 80_000;
@@ -110,6 +115,7 @@ interface ActiveContextCompactionArgs {
     provenance: ConversationMessageProvenance;
   }>;
   piMessages: PiMessage[];
+  runtimeContextMessages?: PiMessage[];
   signal?: AbortSignal;
 }
 
@@ -193,6 +199,76 @@ function userMessage(text: string): PiMessage {
     role: "user",
     content: [{ type: "text", text }],
     timestamp: Date.now(),
+  } as PiMessage;
+}
+
+function userMessageContent(message: PiMessage): unknown[] {
+  const content = (message as { content?: unknown }).content;
+  return Array.isArray(content) ? content : [];
+}
+
+function hasTurnBootstrap(message: PiMessage): boolean {
+  return userMessageContent(message).some(
+    (part) => textPart(part)?.startsWith(`<${TURN_CONTEXT_TAG}>`) === true,
+  );
+}
+
+function effectiveRuntimeContext(messages: PiMessage[]): {
+  content: unknown[];
+  timestamp: number;
+} {
+  let latestBootstrapIndex = -1;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (hasTurnBootstrap(messages[index]!)) {
+      latestBootstrapIndex = index;
+      break;
+    }
+  }
+  const effectiveMessages =
+    latestBootstrapIndex < 0 ? messages : messages.slice(latestBootstrapIndex);
+  const allContent = effectiveMessages.flatMap(userMessageContent);
+  const firstAgentsIndex = allContent.findIndex(
+    (part) => textPart(part)?.startsWith("# AGENTS.md instructions") === true,
+  );
+  const content = allContent.filter(
+    (part) => textPart(part)?.startsWith("# AGENTS.md instructions") !== true,
+  );
+  const visibleAgents = findVisibleAgentsInstructions(effectiveMessages);
+  if (visibleAgents?.active === true) {
+    const insertionIndex =
+      firstAgentsIndex < 0
+        ? content.length
+        : Math.min(firstAgentsIndex, content.length);
+    content.splice(insertionIndex, 0, {
+      type: "text",
+      text: renderAgentsInstructions({
+        directory: visibleAgents.directory,
+        text: visibleAgents.text,
+      }),
+    });
+  }
+  const latestTimestamp = (
+    effectiveMessages.at(-1) as { timestamp?: unknown } | undefined
+  )?.timestamp;
+  return {
+    content,
+    timestamp:
+      typeof latestTimestamp === "number" ? latestTimestamp : Date.now(),
+  };
+}
+
+function runtimeContextMessage(
+  messages: PiMessage[],
+  timestamp?: number,
+): PiMessage | undefined {
+  const runtimeContext = effectiveRuntimeContext(messages);
+  if (runtimeContext.content.length === 0) {
+    return undefined;
+  }
+  return {
+    role: "user",
+    content: runtimeContext.content,
+    timestamp: timestamp ?? runtimeContext.timestamp,
   } as PiMessage;
 }
 
@@ -587,22 +663,18 @@ export async function compactContextForHandoff(
   args: HandoffContextArgs,
   deps: Pick<ContextCompactorDeps, "completeText">,
 ): Promise<PiMessage[]> {
-  const runtimeMessage = args.runtimeContext.at(-1) as
-    | { content: unknown[] }
-    | undefined;
-  if (!runtimeMessage) {
+  const contextMessage = runtimeContextMessage(args.runtimeContext);
+  if (!contextMessage) {
     throw new Error("Handoff requires the current runtime turn context");
   }
   const generatedSummary = await summarizeContext(args, deps);
   const summary = `${MODEL_HANDOFF_SUMMARY_PREFIX}\n${generatedSummary}`;
-  const message = {
-    ...runtimeMessage,
-    content: [
-      ...runtimeMessage.content,
-      { type: "text", text: renderCurrentInstruction(summary) },
-    ],
+  const instructionMessage = {
+    role: "user",
+    content: [{ type: "text", text: renderCurrentInstruction(summary) }],
+    timestamp: (contextMessage as { timestamp?: number }).timestamp,
   } as PiMessage;
-  const messages = [message];
+  const messages = [contextMessage, instructionMessage];
   const replacementMessages = stripRuntimeTurnContext(messages);
   args.signal?.throwIfAborted();
   await getConversationEventStore().replaceHistory(args.conversationId, {
@@ -679,7 +751,6 @@ export async function compactActiveContextIfNeeded(
   const summaryMessage = userMessage(
     `${ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX}\n${summary}`,
   );
-  const runtimeMessages = retainRuntimeTurnContext(args.piMessages);
   const retainedInstruction =
     pendingMessages.length === 0
       ? await loadLastInstruction(args.conversationId)
@@ -690,6 +761,17 @@ export async function compactActiveContextIfNeeded(
   const instructionProvenance = retainedInstruction
     ? [retainedInstruction.provenance]
     : pendingMessages.map((entry) => entry.provenance);
+  const instructionTimestamp = (
+    instructionMessages[0] as { timestamp?: unknown } | undefined
+  )?.timestamp;
+  const retainedRuntimeContext = retainRuntimeTurnContext(
+    args.runtimeContextMessages ?? args.piMessages,
+  );
+  const contextMessage = runtimeContextMessage(
+    retainedRuntimeContext,
+    typeof instructionTimestamp === "number" ? instructionTimestamp : undefined,
+  );
+  const runtimeMessages = contextMessage ? [contextMessage] : [];
   const messages = [...runtimeMessages, ...instructionMessages, summaryMessage];
   const replacementInputTokens = estimateHistoryTokens(messages);
   if (replacementInputTokens >= inputLimitTokens) {

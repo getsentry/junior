@@ -51,9 +51,31 @@ const DEFAULT_SEARCH_LIMIT = 10;
 const DEFAULT_EXPIRED_ARCHIVE_LIMIT = 100;
 const PREFERENCE_ADJUDICATION_CANDIDATE_LIMIT = 10;
 const PREFERENCE_ADJUDICATION_VECTOR_LIMIT = 5;
-const VECTOR_SEARCH_OVERFETCH = 4;
+/** Explicit search overfetch: keep a wider fusion window for tool/CLI search. */
+const SEARCH_RETRIEVAL_OVERFETCH = 4;
+/**
+ * Automatic recall overfetch. Recall already asks for ~20 candidates before the
+ * relevance gate, so each hybrid leg only needs a small top-k probe.
+ */
+const RECALL_RETRIEVAL_OVERFETCH = 2;
+/**
+ * Absolute ceiling per retrieval leg. Matches the store limit ceiling so a
+ * single healthy leg can still fill the caller's requested result window.
+ */
+const MAX_RETRIEVAL_LEG_CANDIDATES = 200;
+/** Cap ts_rank_cd work after GIN filtering; ranking is not indexable. */
+const MAX_LEXICAL_RANK_CANDIDATES = 200;
+/** Expand the GIN match window before ts_rank_cd, still under the hard cap. */
+const LEXICAL_RANK_WINDOW_MULTIPLIER = 4;
+/** Bound query text before embedding / FTS construction. */
+const MAX_RETRIEVAL_QUERY_CHARS = 1_500;
 const MAX_MEMORY_CONTENT_CHARS = 4_000;
 const EMBEDDING_METRIC = "cosine";
+/**
+ * Cosine distance cutoff for automatic recall only (not explicit search).
+ * Tuned for text-embedding-3-small; retune if the embedding model changes.
+ */
+const RECALL_MAX_VECTOR_DISTANCE = 0.45;
 
 export type MemoryDb = PgDatabase<PgQueryResultHKT, typeof memorySqlSchema>;
 
@@ -128,6 +150,7 @@ const memoryRowSchema = z
     id: z.string().min(1),
     idempotencyKey: optionalStringSchema,
     observedAtMs: z.coerce.number(),
+    searchVector: z.string().optional(),
     scope: z.enum(MEMORY_SCOPES),
     scopeKey: z.string().min(1),
     sourceKey: z.string().min(1),
@@ -180,6 +203,7 @@ const embeddingVectorSchema = z
   .length(MEMORY_EMBEDDING_DIMENSIONS);
 const embeddingResultSchema = z
   .object({
+    costUsd: z.number().finite().nonnegative().optional(),
     dimensions: z.literal(MEMORY_EMBEDDING_DIMENSIONS),
     model: nonEmptyStringSchema,
     provider: nonEmptyStringSchema,
@@ -248,7 +272,11 @@ export type CreateMemoryInput = z.output<typeof createMemoryInputSchema>;
 /** Result of a memory write after idempotency checks. */
 export interface CreateMemoryResult {
   created: boolean;
+  /** True when this call found the memory previously written for the same input identity. */
+  idempotent?: true;
   memory: MemoryRecord;
+  /** Memory ids made inactive by this write. */
+  supersededIds?: string[];
 }
 
 export type ListMemoriesInput = z.output<typeof listMemoriesInputSchema>;
@@ -268,6 +296,7 @@ export interface ArchiveExpiredMemoriesResult {
 export interface MemoryEmbeddingProvider {
   /** Embed normalized memory text for derived vector retrieval. */
   embedTexts(input: { texts: string[] }): Promise<{
+    costUsd?: number;
     dimensions: number;
     model: string;
     provider: string;
@@ -292,8 +321,6 @@ export interface MemorySupersessionDecider {
 
 export interface MemoryStoreOptions {
   embedder?: MemoryEmbeddingProvider;
-  /** Maximum cosine distance for vector recall candidates. Model-dependent; tune when changing AI_EMBEDDING_MODEL. */
-  maxVectorDistance?: number;
   now?: () => number;
   supersessionDecider?: MemorySupersessionDecider;
 }
@@ -441,12 +468,17 @@ export function activeVisiblePredicate(args: {
 }
 
 /** Resolve retry attempts for the same scoped write idempotency key. */
+interface IdempotencyMatch {
+  memory: MemoryRecord;
+  outcome: "created" | "duplicate";
+}
+
 async function findByIdempotencyKey(args: {
   db: MemoryDb;
   idempotencyKey: string;
   nowMs: number;
   scope: ResolvedMemoryScope;
-}): Promise<MemoryRecord | undefined> {
+}): Promise<IdempotencyMatch | undefined> {
   const activeRows = await args.db
     .select()
     .from(juniorMemoryMemories)
@@ -466,7 +498,7 @@ async function findByIdempotencyKey(args: {
     )
     .limit(1);
   if (activeRows[0]) {
-    return parseMemoryRow(activeRows[0]);
+    return { memory: parseMemoryRow(activeRows[0]), outcome: "created" };
   }
 
   const aliasRows = await args.db
@@ -513,7 +545,7 @@ async function findByIdempotencyKey(args: {
       )
       .limit(1);
     if (rows[0]) {
-      return parseMemoryRow(rows[0]);
+      return { memory: parseMemoryRow(rows[0]), outcome: "duplicate" };
     }
   }
   return undefined;
@@ -578,22 +610,6 @@ export async function archiveExpiredMemoryBatch(args: {
     return idsToClean;
   });
   return { archivedCount: archivedIds.length };
-}
-
-/**
- * Find path-like, dotted, underscored, and multi-part hyphenated identifiers.
- * Two-part hyphenated prose such as "long-running" remains ordinary text.
- */
-function structuredQueryIdentifiers(query: string): string[] {
-  const matches =
-    query
-      .toLowerCase()
-      .match(
-        /(?:[a-z0-9][a-z0-9._-]*\/)+[a-z0-9][a-z0-9._-]*|[a-z0-9]+(?:[._][a-z0-9]+)+|[a-z0-9]+(?:-[a-z0-9]+){2,}/g,
-      ) ?? [];
-  return [
-    ...new Set(matches.map((identifier) => identifier.replace(/\.+$/, ""))),
-  ];
 }
 
 function denseRanks<T>(
@@ -951,7 +967,26 @@ async function listVisibleMemories(args: {
   return rows.map(parseMemoryRow);
 }
 
-/** Search active visible records with PostgreSQL full-text ranking. */
+function normalizeRetrievalQuery(query: string): string {
+  const normalized = query.replace(/\s+/g, " ").trim();
+  if (normalized.length <= MAX_RETRIEVAL_QUERY_CHARS) {
+    return normalized;
+  }
+  return normalized.slice(0, MAX_RETRIEVAL_QUERY_CHARS).trimEnd();
+}
+
+function retrievalLegLimit(limit: number, overfetch: number): number {
+  const requested = Math.max(1, limit);
+  const withOverfetch = requested * Math.max(1, overfetch);
+  // Never return fewer candidates than the caller asked for. A hard overfetch
+  // cap below `limit` under-fills when one modality is empty or both overlap.
+  return Math.min(
+    MAX_RETRIEVAL_LEG_CANDIDATES,
+    Math.max(requested, withOverfetch),
+  );
+}
+
+/** Search a bounded active candidate set with PostgreSQL full-text ranking. */
 async function searchVisibleLexicalMemories(args: {
   db: MemoryDb;
   limit: number;
@@ -963,7 +998,11 @@ async function searchVisibleLexicalMemories(args: {
   if (!predicate) {
     return [];
   }
-  const queryVector = sql`to_tsvector('english', ${args.query})`;
+  const query = normalizeRetrievalQuery(args.query);
+  if (!query) {
+    return [];
+  }
+  const queryVector = sql`to_tsvector('english', ${query})`;
   const tsquery = sql`(
     SELECT COALESCE(
       string_agg(quote_literal(term), ' | ')::tsquery,
@@ -971,57 +1010,60 @@ async function searchVisibleLexicalMemories(args: {
     )
     FROM unnest(tsvector_to_array(${queryVector})) AS query_terms(term)
   )`;
-  const textsearch = sql`to_tsvector('english', ${juniorMemoryMemories.content})`;
-  const textRank = sql<number>`ts_rank_cd(${textsearch}, ${tsquery})`;
-  const identifiers = structuredQueryIdentifiers(args.query);
-  const contentTokens = sql`regexp_split_to_array(lower(${juniorMemoryMemories.content}), '[^a-z0-9._/-]+')`;
-  const identifierArray =
-    identifiers.length > 0
-      ? sql`ARRAY[${sql.join(
-          identifiers.map((identifier) => sql`${identifier}`),
-          sql`, `,
-        )}]::text[]`
-      : undefined;
-  const exactIdentifierMatch =
-    identifierArray !== undefined
-      ? sql<boolean>`EXISTS (
-          SELECT 1
-          FROM unnest(${contentTokens}) AS content_token(value)
-          CROSS JOIN unnest(${identifierArray}) AS query_identifier(value)
-          WHERE strpos(
-            '/' || regexp_replace(content_token.value, '\\.+$', '') || '/',
-            '/' || query_identifier.value || '/'
-          ) > 0
-        )`
-      : sql<boolean>`false`;
-  const rows = await args.db
-    .select({
-      exactIdentifierMatch,
-      memory: juniorMemoryMemories,
-      textRank,
-    })
+  // GIN filter first, then rank only a bounded recent match window.
+  const candidateLimit = Math.min(
+    MAX_LEXICAL_RANK_CANDIDATES,
+    args.limit * LEXICAL_RANK_WINDOW_MULTIPLIER,
+  );
+  const candidates = args.db
+    .select()
     .from(juniorMemoryMemories)
-    .where(and(predicate, sql`${textsearch} @@ ${tsquery}`))
+    .where(
+      and(predicate, sql`${juniorMemoryMemories.searchVector} @@ ${tsquery}`),
+    )
     .orderBy(
-      ...(identifiers.length > 0 ? [desc(exactIdentifierMatch)] : []),
-      desc(textRank),
       desc(juniorMemoryMemories.observedAtMs),
       asc(juniorMemoryMemories.id),
     )
+    .limit(candidateLimit)
+    .as("lexical_candidates");
+  const textRank = sql<number>`ts_rank_cd(${candidates.searchVector}, ${tsquery})`;
+  const rows = await args.db
+    .select({
+      memory: {
+        archiveReason: candidates.archiveReason,
+        archivedAtMs: candidates.archivedAtMs,
+        content: candidates.content,
+        createdAtMs: candidates.createdAtMs,
+        expiresAtMs: candidates.expiresAtMs,
+        id: candidates.id,
+        idempotencyKey: candidates.idempotencyKey,
+        kind: candidates.kind,
+        observedAtMs: candidates.observedAtMs,
+        scope: candidates.scope,
+        scopeKey: candidates.scopeKey,
+        searchVector: candidates.searchVector,
+        sourceKey: candidates.sourceKey,
+        sourcePlatform: candidates.sourcePlatform,
+        subjectKey: candidates.subjectKey,
+        subjectType: candidates.subjectType,
+        supersededAtMs: candidates.supersededAtMs,
+        supersededById: candidates.supersededById,
+      },
+      textRank,
+    })
+    .from(candidates)
+    .orderBy(desc(textRank), desc(candidates.observedAtMs), asc(candidates.id))
     .limit(args.limit);
-  const ranks = denseRanks(
-    rows,
-    (row) => `${row.exactIdentifierMatch}:${Number(row.textRank)}`,
-  );
+  const ranks = denseRanks(rows, (row) => Number(row.textRank));
   return rows.map((row, index) => ({
-    exactIdentifier: row.exactIdentifierMatch,
     lexical: { rank: ranks[index] },
     memory: parseMemoryRow(row.memory),
     sourceKey: row.memory.sourceKey,
   }));
 }
 
-/** Search active visible records with exact pgvector cosine distance. */
+/** Search active visible records with pgvector cosine distance. */
 async function searchVisibleVectorMemories(args: {
   db: MemoryDb;
   embedder: MemoryEmbeddingProvider | undefined;
@@ -1038,9 +1080,13 @@ async function searchVisibleVectorMemories(args: {
   if (!predicate) {
     return [];
   }
+  const query = normalizeRetrievalQuery(args.query);
+  if (!query) {
+    return [];
+  }
   let embedding: Awaited<ReturnType<typeof embedOne>>;
   try {
-    embedding = await embedOne(args.embedder, args.query);
+    embedding = await embedOne(args.embedder, query);
   } catch {
     return [];
   }
@@ -1048,6 +1094,11 @@ async function searchVisibleVectorMemories(args: {
     juniorMemoryEmbeddings.embedding,
     embedding.vector,
   );
+  // Push distance cutoff into SQL so recall does not overfetch weak neighbors.
+  const distancePredicate =
+    args.maxDistance === undefined
+      ? undefined
+      : sql`${distance} <= ${args.maxDistance}`;
   const rows = await args.db
     .select({
       contentHash: juniorMemoryEmbeddings.contentHash,
@@ -1066,6 +1117,7 @@ async function searchVisibleVectorMemories(args: {
         eq(juniorMemoryEmbeddings.model, embedding.model),
         eq(juniorMemoryEmbeddings.dimensions, MEMORY_EMBEDDING_DIMENSIONS),
         eq(juniorMemoryEmbeddings.metric, EMBEDDING_METRIC),
+        ...(distancePredicate ? [distancePredicate] : []),
       ),
     )
     .orderBy(
@@ -1084,12 +1136,8 @@ async function searchVisibleVectorMemories(args: {
     ) {
       return [];
     }
-    if (args.maxDistance !== undefined && distanceValue > args.maxDistance) {
-      return [];
-    }
     return [
       {
-        exactIdentifier: false,
         memory: parseMemoryRow(row.memory),
         sourceKey: row.memory.sourceKey,
         vector: {
@@ -1109,7 +1157,6 @@ export function createMemoryStore(
   const runtimeContext = memoryRuntimeContextSchema.parse(context);
   const parsedOptions = memoryStoreOptionsSchema.parse({ now: options.now });
   const embedder = options.embedder;
-  const maxVectorDistance = options.maxVectorDistance;
   const supersessionDecider = options.supersessionDecider;
   const getNowMs = parsedOptions.now ?? Date.now;
 
@@ -1183,13 +1230,15 @@ export function createMemoryStore(
       });
       if (idempotent) {
         await storeEmbedding({
-          content: idempotent.content,
+          content: idempotent.memory.content,
           db,
           embedder,
-          memoryId: idempotent.id,
+          memoryId: idempotent.memory.id,
           nowMs,
         });
-        return { created: false, memory: idempotent };
+        return idempotent.outcome === "created"
+          ? { created: false, idempotent: true, memory: idempotent.memory }
+          : { created: false, memory: idempotent.memory };
       }
     }
 
@@ -1256,7 +1305,7 @@ export function createMemoryStore(
     }
 
     const id = randomUUID();
-    const rows = await db.transaction(async (tx) => {
+    const write = await db.transaction(async (tx) => {
       const inserted = await tx
         .insert(juniorMemoryMemories)
         .values({
@@ -1285,7 +1334,7 @@ export function createMemoryStore(
         .returning();
       const insertedMemory = inserted[0];
       if (!insertedMemory || supersededIds.length === 0) {
-        return inserted;
+        return { inserted, supersededIds: [] };
       }
       const superseded = await tx
         .update(juniorMemoryMemories)
@@ -1311,10 +1360,10 @@ export function createMemoryStore(
           .delete(juniorMemoryEmbeddings)
           .where(inArray(juniorMemoryEmbeddings.memoryId, idsToClean));
       }
-      return inserted;
+      return { inserted, supersededIds: idsToClean };
     });
-    if (rows[0]) {
-      const memory = parseMemoryRow(rows[0]);
+    if (write.inserted[0]) {
+      const memory = parseMemoryRow(write.inserted[0]);
       await storeEmbedding({
         content: memory.content,
         db,
@@ -1323,7 +1372,13 @@ export function createMemoryStore(
         memoryId: memory.id,
         nowMs,
       });
-      return { created: true, memory };
+      return {
+        created: true,
+        memory,
+        ...(write.supersededIds.length > 0
+          ? { supersededIds: write.supersededIds }
+          : {}),
+      };
     }
 
     const idempotent = await findByIdempotencyKey({
@@ -1336,15 +1391,25 @@ export function createMemoryStore(
       throw new Error("Memory idempotency conflict did not resolve.");
     }
     await storeEmbedding({
-      content: idempotent.content,
+      content: idempotent.memory.content,
       db,
       embedder,
-      memoryId: idempotent.id,
+      memoryId: idempotent.memory.id,
       nowMs,
     });
-    return { created: false, memory: idempotent };
+    return idempotent.outcome === "created"
+      ? { created: false, idempotent: true, memory: idempotent.memory }
+      : { created: false, memory: idempotent.memory };
   }
 
+  /**
+   * Hybrid retrieval for both automatic recall and explicit search.
+   *
+   * Keep both legs parallel and fuse ranks with RRF. Never skip lexical when
+   * vectors already hit: that drops exact/token memories and serializes the
+   * miss path. Each leg is a hard-capped top-k probe so Postgres work stays
+   * bounded even on broad queries.
+   */
   async function retrieveVisibleMemories(
     rawInput: SearchMemoriesInput,
     vectorMaxDistance: number | undefined,
@@ -1358,7 +1423,13 @@ export function createMemoryStore(
       scopes,
     });
     const limit = boundedLimit(input.limit, DEFAULT_SEARCH_LIMIT);
-    const candidateLimit = limit * VECTOR_SEARCH_OVERFETCH;
+    const overfetch =
+      vectorMaxDistance === undefined
+        ? SEARCH_RETRIEVAL_OVERFETCH
+        : RECALL_RETRIEVAL_OVERFETCH;
+    const candidateLimit = retrievalLegLimit(limit, overfetch);
+    // Always run both legs in parallel. Conditional lexical skip is unsafe:
+    // one in-threshold vector distractor can hide a stronger lexical hit.
     const [vectorMatches, lexicalMatches] = await Promise.all([
       searchVisibleVectorMemories({
         db,
@@ -1382,6 +1453,10 @@ export function createMemoryStore(
     const channelPrefix = sourceChannelPrefix(runtimeContext);
     return rankMemoryMatches([...vectorMatches, ...lexicalMatches], {
       nowMs,
+      // Slight lexical preference protects exact ids/names/timezones on ties.
+      ...(vectorMaxDistance === undefined
+        ? {}
+        : { lexicalWeight: 1, vectorWeight: 0.85 }),
       ...(channelPrefix ? { channelPrefix } : {}),
     })
       .slice(0, limit)
@@ -1436,7 +1511,7 @@ export function createMemoryStore(
     },
 
     async recallMemories(input) {
-      return await retrieveVisibleMemories(input, maxVectorDistance);
+      return await retrieveVisibleMemories(input, RECALL_MAX_VECTOR_DISTANCE);
     },
 
     async searchMemories(input) {

@@ -31,6 +31,101 @@ import {
 } from "../fixtures/sql";
 
 describe("conversation SQL store", () => {
+  it("binds one provider conversation to an existing durable conversation", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      const store = createSqlStore(fixture.sql);
+      await migrateSchema(fixture.sql);
+      await store.recordActivity({
+        conversationId: "agent-dispatch:dispatch-1",
+        destination: inboundMessage("binding").destination,
+        nowMs: 1_000,
+      });
+
+      await store.bindProviderConversation({
+        conversationId: "agent-dispatch:dispatch-1",
+        provider: "slack",
+        providerDestinationId: "C123",
+        providerTenantId: "T123",
+        providerConversationId: "1700000000.100000",
+      });
+
+      await expect(
+        store.getConversationIdByProviderConversation({
+          provider: "slack",
+          providerDestinationId: "C123",
+          providerTenantId: "T123",
+          providerConversationId: "1700000000.100000",
+        }),
+      ).resolves.toBe("agent-dispatch:dispatch-1");
+      await expect(
+        store.bindProviderConversation({
+          conversationId: "agent-dispatch:dispatch-1",
+          provider: "slack",
+          providerDestinationId: "C123",
+          providerTenantId: "T123",
+          providerConversationId: "1700000000.100000",
+        }),
+      ).resolves.toBeUndefined();
+      await store.bindProviderConversation({
+        conversationId: "agent-dispatch:dispatch-1",
+        provider: "slack",
+        providerDestinationId: "C123",
+        providerTenantId: "T123",
+        providerConversationId: "1700000000.200000",
+      });
+      await expect(
+        store.getConversationIdByProviderConversation({
+          provider: "slack",
+          providerDestinationId: "C123",
+          providerTenantId: "T123",
+          providerConversationId: "1700000000.200000",
+        }),
+      ).resolves.toBe("agent-dispatch:dispatch-1");
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("rejects provider conversation rebinding to another conversation", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      const store = createSqlStore(fixture.sql);
+      await migrateSchema(fixture.sql);
+      for (const conversationId of [
+        "agent-dispatch:dispatch-1",
+        "agent-dispatch:dispatch-2",
+      ]) {
+        await store.recordActivity({
+          conversationId,
+          destination: inboundMessage(conversationId).destination,
+          nowMs: 1_000,
+        });
+      }
+      await store.bindProviderConversation({
+        conversationId: "agent-dispatch:dispatch-1",
+        provider: "slack",
+        providerDestinationId: "C123",
+        providerTenantId: "T123",
+        providerConversationId: "1700000000.100000",
+      });
+
+      await expect(
+        store.bindProviderConversation({
+          conversationId: "agent-dispatch:dispatch-2",
+          provider: "slack",
+          providerDestinationId: "C123",
+          providerTenantId: "T123",
+          providerConversationId: "1700000000.100000",
+        }),
+      ).rejects.toThrow("already bound to another conversation");
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("rejects updates to a child whose parent has no persisted root", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 
@@ -92,8 +187,16 @@ describe("conversation SQL store", () => {
           teamId: "T123",
         },
         source: "slack",
+        sessionSource: {
+          platform: "slack",
+          visibility: "public",
+          teamId: "T123",
+          channelId: "C123",
+          threadTs: "1700000000.000100",
+        },
         title: "SQL conversation store",
         nowMs: 3_000,
+        visibility: "public",
       });
 
       const conversations = await store.listByActivity({
@@ -107,6 +210,12 @@ describe("conversation SQL store", () => {
             platform: "slack",
             teamId: "T123",
             channelId: "C123",
+          },
+          location: {
+            id: expect.any(String),
+            provider: "slack",
+            tenantId: "T123",
+            providerId: "C123",
           },
           actor: {
             platform: "slack",
@@ -194,12 +303,40 @@ describe("conversation SQL store", () => {
           teamId: "T123",
           channelId: "C123",
         },
+        location: {
+          id: expect.any(String),
+          provider: "slack",
+          tenantId: "T123",
+          providerId: "C123",
+        },
         actor: {
           platform: "slack",
           teamId: "T123",
           slackUserId: "U123",
         },
       });
+
+      const localConversationId = "local:test:location";
+      await store.recordActivity({
+        conversationId: localConversationId,
+        destination: {
+          platform: "local",
+          conversationId: localConversationId,
+        },
+        nowMs: 4_000,
+        sessionSource: {
+          platform: "local",
+          visibility: "private",
+          conversationId: localConversationId,
+        },
+        source: "local",
+        visibility: "private",
+      });
+      const localConversation = await store.get({
+        conversationId: localConversationId,
+      });
+      expect(localConversation).toBeDefined();
+      expect(localConversation).not.toHaveProperty("location");
     } finally {
       await fixture.close();
     }
@@ -470,6 +607,69 @@ describe("conversation SQL store", () => {
     }
   });
 
+  it("persists session source set-once and ignores later turn anchors", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      const store = createSqlStore(fixture.sql);
+      await migrateSchema(fixture.sql);
+      const destination = inboundMessage("session-source").destination;
+
+      await store.recordActivity({
+        conversationId: CONVERSATION_ID,
+        destination,
+        source: "slack",
+        sessionSource: {
+          platform: "slack",
+          visibility: "public",
+          teamId: "T123",
+          channelId: "C123",
+          threadTs: "1700000000.000100",
+          messageTs: "1700000000.000200",
+        },
+        nowMs: 1_000,
+      });
+      await expect(
+        store.get({ conversationId: CONVERSATION_ID }),
+      ).resolves.toMatchObject({
+        sessionSource: {
+          platform: "slack",
+          visibility: "public",
+          teamId: "T123",
+          channelId: "C123",
+          threadTs: "1700000000.000100",
+        },
+      });
+
+      // Later turns must not overwrite the session-stable locator.
+      await store.recordActivity({
+        conversationId: CONVERSATION_ID,
+        destination,
+        sessionSource: {
+          platform: "slack",
+          visibility: "private",
+          teamId: "T123",
+          channelId: "C123",
+          threadTs: "1700000000.999999",
+        },
+        nowMs: 2_000,
+      });
+      await expect(
+        store.get({ conversationId: CONVERSATION_ID }),
+      ).resolves.toMatchObject({
+        sessionSource: {
+          platform: "slack",
+          visibility: "public",
+          teamId: "T123",
+          channelId: "C123",
+          threadTs: "1700000000.000100",
+        },
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("persists visibility from source signals and converges on newer signals", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 
@@ -537,15 +737,15 @@ describe("conversation SQL store", () => {
     }
   });
 
-  it("defaults unsigned Slack destinations to private", async () => {
+  it("fails closed for unsigned Slack destinations without confirming visibility", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
       await migrateSchema(fixture.sql);
 
-      // A write without a live source signal fails closed to private even
-      // though the channel id is C-prefixed.
+      // A write without a live source signal remains unknown even though the
+      // channel id is C-prefixed. Conversation reads still fail closed.
       await store.recordActivity({
         conversationId: CONVERSATION_ID,
         destination: inboundMessage("unsigned").destination,
@@ -561,7 +761,7 @@ describe("conversation SQL store", () => {
           providerTenantId: "T123",
           providerDestinationId: "C123",
         }),
-      ).resolves.toBe("private");
+      ).resolves.toBeUndefined();
     } finally {
       await fixture.close();
     }

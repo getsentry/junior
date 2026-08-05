@@ -1,31 +1,21 @@
 import { Duration } from "../../components/Duration";
 import { Clock3, Coins, MapPin, MessageSquare, Users } from "lucide-react";
-import { useState } from "react";
 import { Link, useParams } from "react-router";
 import type { LocationDetailReport } from "@sentry/junior/api/schema";
 
 import { useLocationDetailData } from "../../api";
-import { Button } from "../../components/Button";
-import { ConversationList } from "../../components/ConversationList";
-import { SearchInput } from "../../components/SearchInput";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { LoadingView } from "../../components/LoadingView";
-import { Section } from "../../components/Section";
-import { SectionHeader } from "../../components/SectionHeader";
-import { SectionTitle } from "../../components/SectionTitle";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { StatCard } from "../../components/metrics/StatCard";
 import {
-  buildConversations,
-  filterConversationList,
   formatCompactNumber,
   formatRelativeTime,
-  formatTime,
   peoplePath,
 } from "../../format";
-import { cn, dashboardContainerClass } from "../../styles";
-import { LocationActivityChart } from "../../components/charts/LocationActivityChart";
+import { SystemPageLayout } from "../system/SystemPageLayout";
+import { LocationActivityChart } from "./LocationActivityChart";
 
 /** Render operational activity for one persisted public location. */
 export function LocationDetailPage() {
@@ -43,12 +33,7 @@ export function LocationDetailPageContent(props: {
     return <LoadingView label="Loading location" />;
   }
   return (
-    <div
-      className={cn(
-        dashboardContainerClass,
-        "grid min-w-0 gap-4 px-4 py-4 sm:gap-6 sm:px-8 sm:py-8",
-      )}
-    >
+    <SystemPageLayout>
       {props.error ? (
         <Card padding="sm">
           <EmptyTelemetry>
@@ -59,20 +44,17 @@ export function LocationDetailPageContent(props: {
         </Card>
       ) : null}
       {props.data ? <LocationDetail detail={props.data} /> : null}
-    </div>
+    </SystemPageLayout>
   );
 }
 
 function LocationDetail(props: { detail: LocationDetailReport }) {
   const detail = props.detail;
-  const [search, setSearch] = useState("");
-  const conversations = buildConversations(detail.recentConversations);
-  const visible = filterConversationList(conversations, { query: search });
   return (
     <>
       <PageHeader
         description={`${detail.provider} public ${detail.kind} / ${detail.providerDestinationId} / last active ${formatRelativeTime(detail.lastSeenAt)}`}
-        eyebrow="Locations / public channel"
+        eyebrow="System / locations"
         title={detail.label}
       />
 
@@ -165,38 +147,6 @@ function LocationDetail(props: { detail: LocationDetailReport }) {
           </div>
         )}
       </Card>
-
-      <Section className="mb-0">
-        <SectionHeader>
-          <div>
-            <SectionTitle>Recent conversations</SectionTitle>
-            <div className="mt-1 font-mono text-[0.67rem] text-dashboard-text-muted">
-              {visible.length} of {conversations.length} / generated{" "}
-              {formatTime(detail.generatedAt)}
-            </div>
-          </div>
-        </SectionHeader>
-        <div className="grid gap-2 border-b border-white/[0.06] bg-black/15 p-3 md:grid-cols-[minmax(12rem,36rem)_auto]">
-          <SearchInput
-            label="Search location conversations"
-            placeholder="Search title, person, or ID..."
-            value={search}
-            onChange={setSearch}
-          />
-          {search ? (
-            <Button
-              className="h-9 justify-center"
-              onClick={() => setSearch("")}
-            >
-              Clear
-            </Button>
-          ) : null}
-        </div>
-        <ConversationList
-          conversations={visible}
-          emptyLabel="No conversations match this search."
-        />
-      </Section>
     </>
   );
 }

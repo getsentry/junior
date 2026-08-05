@@ -19,6 +19,7 @@ import type {
   LocationDirectoryReport,
   LocationSummaryReport,
   PeopleActivityDayReport,
+  PersonalSpendReport,
 } from "@sentry/junior/api/schema";
 
 const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
@@ -46,6 +47,10 @@ function iso(nowMs: number, offsetMs = 0): string {
 
 function sentryConversationUrl(conversationId: string): string {
   return `https://sentry.example.com/organizations/acme/explore/conversations/${encodeURIComponent(conversationId)}/`;
+}
+
+function slackSourceUrl(channelId: string, teamId: string): string {
+  return `https://slack.com/app_redirect?channel=${channelId}&team=${teamId}`;
 }
 
 function reportEvent(
@@ -116,9 +121,33 @@ function activeConversation(nowMs: number): ConversationDetailReport {
     channel: "CQA123",
     channelName: "proj-checkout",
     actorIdentity: actor("morgan@sentry.io", "Morgan Lee", "morgan"),
+    auxiliaryCosts: {
+      costUsd: 0.0018,
+      operations: [
+        {
+          costUsd: 0.0012,
+          events: 3,
+          name: "guardian_action_reviewed",
+          namespace: "junior",
+        },
+        {
+          costUsd: 0.0002,
+          events: 2,
+          name: "memories_captured",
+          namespace: "memory",
+        },
+        {
+          costUsd: 0.0004,
+          events: 6,
+          name: "memories_recalled",
+          namespace: "memory",
+        },
+      ],
+    },
     cumulativeDurationMs: 31_000,
     cumulativeUsage: usage(0.041),
     sentryConversationUrl: sentryConversationUrl(ACTIVE_CONVERSATION_ID),
+    sourceUrl: slackSourceUrl("CQA123", "TQA123"),
     events: [
       reportEvent(0, startedAt, {
         type: "message",
@@ -201,6 +230,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         messageId: "qa-user",
         role: "user",
         text: "Review the dashboard plan before editing.",
+        actorIdentity: actor(undefined, "Taylor Chen", "taylor"),
       }),
       reportEvent(1, iso(Date.parse(startedAt), 2_000), {
         type: "tool_calls",
@@ -252,7 +282,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
             status: "completed",
             startedSeq: 1,
             startedAt: iso(Date.parse(startedAt), 2_000),
-            output: { ok: true, status: "success" },
+            output: { child_conversation_id: DASHBOARD_QA_PLAN_ID },
           },
         ],
       }),
@@ -320,7 +350,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
             startedSeq: 8,
             startedAt: iso(Date.parse(startedAt), 50_000),
             input: { skill_name: "junior-qa" },
-            output: { ok: true },
+            output: { skill_name: "junior-qa" },
           },
           {
             toolCallId: "qa-execute-tool",
@@ -332,7 +362,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
               tool_name: "github_search",
               arguments: { query: "is:pr is:open", limit: 25 },
             },
-            output: { ok: true, matches: 3 },
+            output: { matches: 3 },
           },
         ],
       }),
@@ -371,6 +401,27 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         messageId: "qa-assistant",
         role: "assistant",
         text: "The canonical event rendering looks sound.",
+      }),
+      reportEvent(13, iso(Date.parse(startedAt), 60_000), {
+        type: "structured_event",
+        namespace: "memory",
+        name: "memories_captured",
+        version: 1,
+        turnId: "qa-turn",
+        presentation: {
+          icon: "brain",
+          title: "2 memories captured",
+          details: [
+            {
+              title: "Use pnpm for repository commands.",
+              metadata: ["preference", "personal"],
+            },
+            {
+              title: "Dashboard transcript events should remain expandable.",
+              metadata: ["knowledge", "conversation"],
+            },
+          ],
+        },
       }),
     ],
   });
@@ -562,9 +613,8 @@ function incidentConversation(nowMs: number): ConversationDetailReport {
             startedSeq: 1,
             startedAt: iso(Date.parse(startedAt), 12_000),
             output: {
-              ok: true,
-              status: "success",
-              data: { culprit: "payments-v42", eventCount: 418 },
+              culprit: "payments-v42",
+              eventCount: 418,
             },
           },
         ],
@@ -872,6 +922,38 @@ function conversationMetricDays(
   return [...days.values()];
 }
 
+function mockGuardianStats(nowMs: number): ConversationStatsReport["guardian"] {
+  const metricDays = Array.from({ length: 90 }, (_, index) => {
+    const date = new Date(nowMs);
+    date.setUTCHours(0, 0, 0, 0);
+    date.setUTCDate(date.getUTCDate() - (89 - index));
+    const recentIndex = index - 59;
+    const requests = recentIndex > 0 ? (recentIndex % 5) + 1 : 0;
+    const deny = requests > 2 && recentIndex % 8 === 0 ? 1 : 0;
+    const ask = requests > 1 && recentIndex % 4 === 0 ? 1 : 0;
+    const allow = requests - ask - deny;
+    return {
+      allow,
+      ask,
+      ...(requests ? { costUsd: requests * 0.0009 } : {}),
+      date: date.toISOString().slice(0, 10),
+      deny,
+      requests,
+    };
+  });
+  return metricDays.reduce<ConversationStatsReport["guardian"]>(
+    (result, day) => ({
+      allow: result.allow + day.allow,
+      ask: result.ask + day.ask,
+      costUsd: (result.costUsd ?? 0) + (day.costUsd ?? 0),
+      deny: result.deny + day.deny,
+      metricDays,
+      requests: result.requests + day.requests,
+    }),
+    { allow: 0, ask: 0, costUsd: 0, deny: 0, metricDays, requests: 0 },
+  );
+}
+
 /** Return the explicit canonical-event visual-QA feed, optionally scoped by actor. */
 export function readMockConversationFeed(
   actorEmail?: string,
@@ -1002,6 +1084,7 @@ export function readMockConversationStats(): ConversationStatsReport {
     durationMs: total.durationMs,
     failed: total.failed,
     generatedAt: iso(nowMs),
+    guardian: mockGuardianStats(nowMs),
     locations: [...locationItems.values()],
     metricDays: conversationMetricDays(nowMs, summaries),
     source: "conversation_index",
@@ -1200,6 +1283,28 @@ export function readMockPeopleProfile(
     totals,
     windowEnd: `${activityDays.at(-1)!.date}T00:00:00.000Z`,
     windowStart: `${activityDays[0]!.date}T00:00:00.000Z`,
+  };
+}
+
+/** Build mock rolling spend from the same personal activity used by People. */
+export function readMockPersonalSpend(
+  email: string,
+): PersonalSpendReport | undefined {
+  const profile = readMockPeopleProfile(email);
+  if (!profile) return undefined;
+  const spend = (days: number) =>
+    Math.round(
+      profile.activityDays
+        .slice(-days)
+        .reduce((sum, day) => sum + (day.costUsd ?? 0), 0) * 1e12,
+    ) / 1e12;
+  return {
+    generatedAt: profile.generatedAt,
+    sevenDaysUsd: spend(7),
+    source: "conversation_index",
+    thirtyDaysUsd: spend(30),
+    windowEnd: profile.generatedAt,
+    windowStart: profile.activityDays.at(-30)!.date + "T00:00:00.000Z",
   };
 }
 

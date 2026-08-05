@@ -72,6 +72,32 @@ describe("finalizeFailedTurnReply", () => {
     expect(attributes).not.toHaveProperty("exception.message");
   });
 
+  it("records a provider failure preserved inside a domain error", () => {
+    const logException = vi.fn().mockReturnValue("evt_guardian");
+    const providerError = createProviderError("No object generated", {
+      kind: "invalid_response",
+      modelId: "openai/gpt-5.6-luna",
+    });
+    const reviewError = new Error("Action review unavailable", {
+      cause: providerError,
+    });
+
+    finalizeFailedTurnReply({
+      reply: providerErrorReply({
+        assistantMessageCount: 0,
+        providerError: reviewError,
+        text: "",
+      }),
+      logException,
+    });
+
+    expect(logException.mock.calls[0]?.[2]).toMatchObject({
+      "app.ai.provider_error.kind": "invalid_response",
+      "app.ai.provider_error.retryable": false,
+      "gen_ai.request.model": "openai/gpt-5.6-luna",
+    });
+  });
+
   it.each([
     {
       error: createProviderError("Blocked by the content policy"),

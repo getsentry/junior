@@ -79,8 +79,8 @@ describe("reporting support", () => {
       channelName: "reporting-support-incidents",
       destination: {
         platform: "slack",
-        teamId: "T-reporting-support",
-        channelId: "C-reporting-support",
+        teamId: "TREPORTSUPPORT",
+        channelId: "CREPORTSUPPORT",
       },
       nowMs: Date.now(),
       source: "slack",
@@ -133,7 +133,7 @@ describe("reporting support", () => {
     {
       name: "a source-confirmed private C-prefixed conversation",
       conversationId: "slack:C-reporting-support:confirmed-private",
-      channelId: "C-reporting-support-private",
+      channelId: "CREPORTSUPPORTPRIV",
       channelName: "reporting-support-stealth-project",
       title: "Reporting support stealth planning",
       visibility: "private" as const,
@@ -141,7 +141,7 @@ describe("reporting support", () => {
     {
       name: "a C-prefixed conversation without confirmed public visibility",
       conversationId: "slack:C-reporting-support:unknown",
-      channelId: "C-reporting-support-unknown",
+      channelId: "CREPORTSUPPORTUNK",
       channelName: "reporting-support-maybe-private-room",
       title: "Reporting support private by default",
       visibility: undefined,
@@ -157,7 +157,7 @@ describe("reporting support", () => {
         ? {
             destination: {
               platform: "slack" as const,
-              teamId: "T-reporting-support",
+              teamId: "TREPORTSUPPORT",
               channelId: testCase.channelId,
             },
           }

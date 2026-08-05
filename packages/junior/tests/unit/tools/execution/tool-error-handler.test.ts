@@ -20,6 +20,10 @@ vi.mock("@/chat/pi/client", () => ({
 
 import { handleToolExecutionError } from "@/chat/tools/execution/tool-error-handler";
 import { McpToolError } from "@/chat/mcp/errors";
+import {
+  ToolActionRejectedError,
+  ToolActionReviewUnavailableError,
+} from "@/chat/tool-support/action-review";
 
 describe("handleToolExecutionError", () => {
   beforeEach(() => {
@@ -61,5 +65,22 @@ describe("handleToolExecutionError", () => {
     expect(setSpanAttributesMock).toHaveBeenCalledWith(
       expect.objectContaining({ "error.type": "tool_error" }),
     );
+  });
+
+  it("leaves Guardian errors to their owning boundary", () => {
+    for (const error of [
+      new ToolActionRejectedError(
+        "deny",
+        "The action does not match the request.",
+      ),
+      new ToolActionReviewUnavailableError(),
+    ]) {
+      expect(() =>
+        handleToolExecutionError(error, "deleteRecord", "call_1", true),
+      ).toThrow(error);
+      expect(logExceptionMock).not.toHaveBeenCalled();
+      expect(logWarnMock).not.toHaveBeenCalled();
+      expect(setSpanAttributesMock).not.toHaveBeenCalled();
+    }
   });
 });

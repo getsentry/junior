@@ -180,10 +180,7 @@ function formatAvailableSkillsForPrompt(
 
   if (autoSelectable.length > 0) {
     // Available skills: model may load these when they match the request.
-    const available = [
-      "<available-skills>",
-      "Scan before answering. Load the most specific matching skill; do not answer from memory when a skill fits. A request that names a skill, plugin, provider, or account matching a skill name is a skill match. If none fits, do not load a skill.",
-    ];
+    const available = ["<available-skills>"];
     for (const skill of autoSelectable) {
       available.push(...formatSkillEntry(skill));
     }
@@ -325,7 +322,12 @@ const TOOL_POLICY_RULES = [
   "- After changing files, name the changed paths and summarize the completed result in the final answer.",
   "- If a sandbox-backed tool reports that sandbox execution is unavailable, treat that as a blocker for local file/shell inspection; do not pretend host files were inspected.",
   "- For user-provided URLs, use `webFetch`; for discovery, use `webSearch` then fetch/read promising sources; for current time/date context, use `systemTime`.",
-  "- When a tool result includes a subscribable resource, use resource-event subscriptions for high-signal provider changes that serve the user's current intent; do not create scheduled polling tasks for events the subscription can deliver. Use the suggested events when they fit and write a concise intent summary.",
+  "- When searchResourceEventTypes is exposed, use it only when the user asks what resource events are supported or the required resource type or event name is unclear. It discovers options but does not watch a resource or create a task. When explaining how results can be used, distinguish temporary current-thread watches from durable event tasks.",
+  "- When a tool result includes a subscribable resource, use watchResourceEvents for high-signal provider changes that serve the user's current intent; do not create scheduled polling tasks for events the watch can deliver. Use the suggested events when they fit, write a concise intent summary, and tell the user when the temporary watch expires. Stop only the requested watch by id unless the user explicitly asks to stop every watch in the thread.",
+  "- Use createEventTask only when the user explicitly asks for an event task or durable whenever-this-happens-do-X automation. Ordinary watch, notify, and tell-me-when requests use watchResourceEvents. When an event task's resource and events are known, create it without redundant confirmation.",
+  "- Event tasks make the task creator's connected credentials available by default when the requested work needs user-bound authorization. Do not ask for separate confirmation merely to use credentials needed for the requested work. On creation, omit credentialMode for the creator default and set system only when the creator explicitly requires it. For later changes, creator always means the task's original createdBy actor, never the current requester. If the requester is not that creator, do not attempt to enable creator credential use or suggest that confirmation could authorize it.",
+  "- Event tasks are managed for the current Slack channel or DM, not one thread. When listing them, use createdBy to explain creator-only credential changes and warn when triggerAvailable is false; an unavailable task remains stored but cannot receive events until its plugin event is enabled again.",
+  "- Scheduled tasks make the task creator's connected credentials available by default when the requested work needs user-bound authorization. Do not ask for separate confirmation merely to use credentials needed for the requested work. On creation, omit credential_mode for the creator default and set system only when the creator explicitly requires it. For later changes, creator always means the task's original created_by actor, never the current requester. If the requester is not that creator, do not attempt to enable creator credential use or suggest that confirmation could authorize it.",
   "- For code changes, debugging or root-cause analysis, broad refactors, and software architecture decisions, use `handoff` before substantive analysis only when it offers a profile that better matches the task. Do not switch merely because the task involves code.",
   "- Run `jr-rpc config get|set|unset|list` for provider defaults and `jr-rpc plugins list` for installed plugin introspection as standalone bash commands; do not chain them with `cd`, `&&`, pipes, or provider commands.",
   "- If the first result is empty, stale, ambiguous, or incomplete, try a focused alternate query, path, command, or source before concluding the answer cannot be verified.",
@@ -340,7 +342,7 @@ const TOOL_CALL_STYLE_RULES = [
 
 const SKILL_POLICY_RULES = [
   "- A `<skill>` block in the current user turn is already loaded. Follow its instructions directly and do not call `loadSkill` for that skill.",
-  "- Otherwise, only load skills listed in `<available-skills>`. Never guess or invent a skill name.",
+  "- Otherwise, scan `<available-skills>` before acting. Load the most specific skill whose description matches the request; do not answer from memory when one fits. Only call `loadSkill` with an exact listed `<name>`; if none fits, do not load a skill.",
   "- Load one skill at a time. After `loadSkill`, follow the instructions returned by that tool result.",
 ];
 
@@ -357,6 +359,7 @@ const EXECUTION_CONTRACT_RULES = [
 const CONVERSATION_RULES = [
   "- In thread follow-ups, answer from prior thread context; do not repeat resolved clarifying questions.",
   "- Preserve attribution roles from thread context: the actor is the person asking now, which may differ from the original reporter or subject.",
+  "- Direct system/developer/user instructions (as part of a prompt) take precedence over AGENTS.md instructions.",
   "- Runtime owns continuation and authorization notices; on resumed turns, answer with the final requested content only.",
 ];
 
@@ -773,7 +776,6 @@ export function buildTurnContextPrompt(
   const sections = [
     `<${TURN_CONTEXT_TAG}>`,
     TURN_CONTEXT_HEADER,
-    "The current user instruction appears after this block in `<current-instruction>` in the same message.",
     ...runtimeSections,
     `</${TURN_CONTEXT_TAG}>`,
   ].filter((section): section is string => Boolean(section));

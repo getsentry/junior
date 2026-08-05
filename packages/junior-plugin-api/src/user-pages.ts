@@ -5,7 +5,7 @@
  * routing, response validation, and browser rendering.
  */
 import { z } from "zod";
-import type { LocalActor, PluginContext, SlackActor } from "./context";
+import type { PluginContext, User } from "./context";
 import { nonBlankStringSchema } from "./schemas";
 
 const userPageIdSchema = nonBlankStringSchema
@@ -13,6 +13,16 @@ const userPageIdSchema = nonBlankStringSchema
   .regex(/^[a-z][a-z0-9-]*$/);
 const userPageLabelSchema = nonBlankStringSchema.max(80);
 const userPageDescriptionSchema = nonBlankStringSchema.max(500);
+const userPageNavigationSchema = z.enum(["primary", "profile"]);
+
+const pluginUserPageMetricSchema = z
+  .object({
+    detail: nonBlankStringSchema.max(500).optional(),
+    label: nonBlankStringSchema.max(80),
+    tone: z.enum(["good", "neutral", "warning"]).optional(),
+    value: nonBlankStringSchema.max(120),
+  })
+  .strict();
 
 const pluginUserPageMetadataSchema = z
   .object({
@@ -47,6 +57,7 @@ const pluginUserPageRecordSchema = z
 export const pluginUserPageContentSchema = z
   .object({
     emptyText: nonBlankStringSchema.max(500).optional(),
+    metrics: z.array(pluginUserPageMetricSchema).max(6).optional(),
     nextCursor: nonBlankStringSchema.max(1_000).optional(),
     records: z.array(pluginUserPageRecordSchema).max(100),
     searchPlaceholder: nonBlankStringSchema.max(120).optional(),
@@ -64,6 +75,7 @@ export const pluginUserPageLinkSchema = z
     description: userPageDescriptionSchema,
     id: userPageIdSchema,
     label: userPageLabelSchema,
+    navigation: userPageNavigationSchema,
     pluginDisplayName: nonBlankStringSchema.max(200),
     pluginName: nonBlankStringSchema.max(100),
   })
@@ -78,6 +90,7 @@ export type PluginUserPageLink = z.output<typeof pluginUserPageLinkSchema>;
 export const pluginUserPageInputSchema = z
   .object({
     cursor: nonBlankStringSchema.max(1_000).optional(),
+    filter: nonBlankStringSchema.max(64).optional(),
     limit: z.number().int().min(1).max(50),
     query: z.string().trim().max(200).optional(),
   })
@@ -85,15 +98,9 @@ export const pluginUserPageInputSchema = z
 
 export type PluginUserPageInput = z.output<typeof pluginUserPageInputSchema>;
 
-/** Runtime-owned actor shapes that may belong to an authenticated viewer. */
-export type PluginUserPageActor = SlackActor | LocalActor;
-
 /** Trusted host context supplied while reading one plugin user page. */
 export interface PluginUserPageContext extends PluginContext {
-  viewer: {
-    actors: PluginUserPageActor[];
-    email: string;
-  };
+  viewer: User;
 }
 
 /** Navigation metadata and reader for one core-rendered plugin user page. */
@@ -101,6 +108,8 @@ export interface PluginUserPageDefinition {
   description: string;
   id: string;
   label: string;
+  /** Dashboard navigation surface where this page is linked. */
+  navigation?: "primary" | "profile";
   read(
     ctx: PluginUserPageContext,
     input: PluginUserPageInput,

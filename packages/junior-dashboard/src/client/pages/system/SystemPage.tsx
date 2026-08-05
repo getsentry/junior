@@ -7,26 +7,26 @@ import {
   TimeRangeSelector,
   type TimeRangeDays,
 } from "../../components/controls/TimeRangeSelector";
-import { PluginReports } from "../../components/PluginReports";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
-import { cn, dashboardContainerClass } from "../../styles";
 import type { SystemData } from "../../types";
-import { PluginDetails, PluginHeader } from "./PluginDetails";
+import { PluginDetails } from "./PluginDetails";
 import { PluginPanels } from "./PluginPanels";
+import { PluginReports } from "./PluginReports";
 import { SkillInventory } from "./SkillInventory";
 import { SystemActivity } from "./SystemActivity";
-import { SystemNavigation } from "./SystemNavigation";
+import { SystemPageLayout } from "./SystemPageLayout";
 import {
   buildSystemPlugins,
   normalizeSystemPath,
   systemPluginPath,
+  systemPluginsPath,
   type SystemPlugin,
 } from "./SystemPlugins";
 
 /**
- * Own `/system/*` route selection between the aggregate overview and loaded
- * plugin pages, redirecting paths that do not identify a loaded plugin.
+ * Own System overview, plugin inventory, and plugin detail route selection,
+ * redirecting paths that do not identify a loaded page.
  */
 export function SystemPage(props: { data: SystemData }) {
   const [range, setRange] = useState<TimeRangeDays>(30);
@@ -37,83 +37,120 @@ export function SystemPage(props: { data: SystemData }) {
     reports,
     skills: props.data.skills,
   });
-  const reportingPlugins = props.data.pluginReportsLoading
-    ? plugins
-    : plugins.filter((plugin) => plugin.reports.length);
   const pathname = normalizeSystemPath(location.pathname);
+  const pluginsPath = pathname === systemPluginsPath;
   const plugin = plugins.find(
     (candidate) => systemPluginPath(candidate.name) === pathname,
   );
-  const pluginPath = pathname !== "/system";
-  const rangeRelevant =
-    !plugin ||
-    plugin.reports.some((report) =>
-      report.widgets?.some((widget) => widget.timeRangeDays?.length),
-    );
+  const pluginPath = pathname.startsWith(`${systemPluginsPath}/`);
 
   if (pluginPath && !plugin) {
+    return <Navigate replace to={systemPluginsPath} />;
+  }
+  if (pathname !== "/system" && !pluginsPath && !plugin) {
     return <Navigate replace to="/system" />;
   }
 
   return (
-    <div
-      className={cn(
-        dashboardContainerClass,
-        "grid min-w-0 content-start gap-4 px-4 py-4 sm:gap-6 sm:px-8 sm:py-8",
+    <SystemPageLayout>
+      {plugin ? (
+        <PluginSystemPage
+          data={props.data}
+          onRangeChange={setRange}
+          plugin={plugin}
+          range={range}
+        />
+      ) : pluginsPath ? (
+        <PluginsSystemPage data={props.data} plugins={plugins} />
+      ) : (
+        <OverviewSystemPage
+          data={props.data}
+          range={range}
+          onRangeChange={setRange}
+        />
       )}
-    >
+    </SystemPageLayout>
+  );
+}
+
+function OverviewSystemPage(props: {
+  data: SystemData;
+  onRangeChange(value: TimeRangeDays): void;
+  range: TimeRangeDays;
+}) {
+  return (
+    <>
       <PageHeader
         actions={
-          rangeRelevant ? (
-            <TimeRangeSelector onChange={setRange} value={range} />
-          ) : undefined
+          <TimeRangeSelector
+            onChange={props.onRangeChange}
+            value={props.range}
+          />
         }
-        description={`A live read on ${agentNamePossessive()} runtime, model usage, loaded capabilities, and the systems keeping work moving.`}
+        description={`A live read on ${agentNamePossessive()} runtime and model usage.`}
         eyebrow={`${agentNamePossessive()} engine room`}
         title="System"
       />
+      <SystemActivity
+        error={props.data.conversationStatsError}
+        range={props.range}
+        loading={props.data.conversationStatsLoading}
+        stats={props.data.conversationStats}
+      />
+    </>
+  );
+}
 
-      <div className="grid min-w-0 items-start gap-4 sm:gap-6 lg:grid-cols-[13rem_minmax(0,1fr)]">
-        <SystemNavigation
-          plugins={plugins}
-          reportingPlugins={reportingPlugins}
+function PluginsSystemPage(props: {
+  data: SystemData;
+  plugins: SystemPlugin[];
+}) {
+  return (
+    <>
+      <PageHeader
+        description={`Loaded capabilities and operational reports for ${getDashboardAgentName()}.`}
+        eyebrow="System / capabilities"
+        title="Plugins"
+      />
+      {props.data.pluginReportsError ? (
+        <PluginReportError
+          showingReports={props.plugins.some((plugin) => plugin.reports.length)}
         />
-        <div className="grid min-w-0 gap-4 sm:gap-6">
-          {plugin ? (
-            <PluginSystemPage data={props.data} plugin={plugin} range={range} />
-          ) : (
-            <>
-              <SystemActivity
-                error={props.data.conversationStatsError}
-                range={range}
-                loading={props.data.conversationStatsLoading}
-                stats={props.data.conversationStats}
-              />
-              {props.data.pluginReportsError ? (
-                <PluginReportError showingReports={false} />
-              ) : null}
-              <PluginPanels plugins={plugins} />
-              {props.data.skills.length ? (
-                <SkillInventory skills={props.data.skills} />
-              ) : null}
-            </>
-          )}
-        </div>
-      </div>
-    </div>
+      ) : null}
+      <PluginPanels plugins={props.plugins} />
+      {props.data.skills.length ? (
+        <SkillInventory skills={props.data.skills} />
+      ) : null}
+    </>
   );
 }
 
 function PluginSystemPage(props: {
   data: SystemData;
+  onRangeChange(value: TimeRangeDays): void;
   plugin: SystemPlugin;
   range: TimeRangeDays;
 }) {
   const reports = props.plugin.reports;
+  const rangeRelevant = reports.some((report) =>
+    report.widgets?.some((widget) => widget.timeRangeDays?.length),
+  );
 
   return (
     <>
-      <PluginHeader plugin={props.plugin} />
+      <PageHeader
+        actions={
+          rangeRelevant ? (
+            <TimeRangeSelector
+              onChange={props.onRangeChange}
+              value={props.range}
+            />
+          ) : undefined
+        }
+        description={props.plugin.description}
+        eyebrow="System / plugins"
+        title={props.plugin.displayName}
+      />
       {props.data.pluginReportsError ? (
         <PluginReportError showingReports={Boolean(reports.length)} />
       ) : null}

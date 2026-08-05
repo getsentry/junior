@@ -68,6 +68,8 @@ function failingMetadataStore(): ConversationStore {
   return {
     createChild: vi.fn(),
     get: vi.fn(async () => undefined),
+    getConversationIdByProviderConversation: vi.fn(async () => undefined),
+    bindProviderConversation: vi.fn(),
     getDestinationVisibility: vi.fn(async () => undefined),
     recordActivity: vi.fn(),
     recordExecution: vi.fn(async () => {
@@ -81,6 +83,8 @@ function metadataEventsStore(events: string[]): ConversationStore {
   return {
     createChild: vi.fn(),
     get: vi.fn(async () => undefined),
+    getConversationIdByProviderConversation: vi.fn(async () => undefined),
+    bindProviderConversation: vi.fn(),
     getDestinationVisibility: vi.fn(async () => undefined),
     recordActivity: vi.fn(),
     recordExecution: vi.fn(async () => {

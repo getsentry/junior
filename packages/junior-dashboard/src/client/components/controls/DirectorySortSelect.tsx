@@ -17,13 +17,13 @@ export function DirectorySortSelect(props: {
       </span>
       <select
         aria-label={props.ariaLabel}
-        className="h-full min-w-0 bg-[#111114] px-2 font-mono text-[0.72rem] text-dashboard-text-muted outline-none [color-scheme:dark]"
+        className="h-full min-w-0 bg-dashboard-control px-2 font-mono text-[0.72rem] text-dashboard-text-muted outline-none [color-scheme:dark]"
         value={props.value}
         onChange={(event) => props.onChange(event.currentTarget.value)}
       >
         {props.options.map((option) => (
           <option
-            className="bg-[#111114] text-dashboard-text"
+            className="bg-dashboard-control text-dashboard-text"
             key={option.value}
             value={option.value}
           >

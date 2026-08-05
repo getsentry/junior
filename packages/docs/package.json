@@ -11,9 +11,9 @@
   },
   "dependencies": {
     "@astrojs/check": "^0.9.9",
-    "@astrojs/starlight": "^0.39.2",
+    "@astrojs/starlight": "^0.41.5",
     "@sentry/starlight-theme": "catalog:",
-    "astro": "^6.3.7",
+    "astro": "^7.1.1",
     "typescript": "^6.0.3"
   }
 }

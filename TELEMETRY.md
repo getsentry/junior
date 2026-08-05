@@ -146,7 +146,8 @@ Events: `agent.message.received`, `agent.message.generated`,
 `agent.turn.timed_out`,
 `agent.turn.provider_error`, `agent.turn.execution.failed`,
 `agent.turn.empty_output.retrying`,
-`agent.turn.empty_output.exhausted`, `assistant.reply.generation.failed`
+`agent.turn.empty_output.exhausted`, `assistant.reply.generation.failed`,
+`guardian.action_review.retrying`
 
 Spans: `ai.generate_assistant_reply`, `ai.chat_completion`,
 `chat.route_thinking`, `gen_ai.invoke_agent`, `gen_ai.chat`
@@ -156,7 +157,8 @@ Attributes: `gen_ai.operation.name`, `gen_ai.request.model`,
 `app.ai.reasoning_effort`, `app.ai.model_profile`, `gen_ai.usage.input_tokens`,
 `gen_ai.usage.output_tokens`, `gen_ai.usage.input_tokens.cached`,
 `gen_ai.usage.input_tokens.cache_write`, `app.ai.reasoning_tokens`,
-`app.ai.empty_output.attempt`,
+`app.ai.empty_output.attempt`, `app.ai.provider_error.kind`,
+`app.guardian.review_attempt`,
 `app.ai.cost.input_usd`, `app.ai.cost.output_usd`,
 `app.ai.cost.cache_read_usd`, `app.ai.cost.cache_write_usd`,
 `app.ai.cost.total_usd`
@@ -166,6 +168,7 @@ Attributes: `gen_ai.operation.name`, `gen_ai.request.model`,
 A tool failed, an MCP call failed, a command exited non-zero, or sandbox startup was slow.
 
 Events: `agent.tool_call.failed`, `mcp.tool_call.failed`,
+`mcp.tool_annotations.missing`, `plugin.tool_annotations.missing`,
 `mcp.tool_manager.close.failed`, `sandbox.boot.requested`,
 `sandbox.network_policy_restore.failed`
 
@@ -179,7 +182,7 @@ Attributes: `gen_ai.tool.name`, `gen_ai.tool.call.id`,
 `app.sandbox.search.parsed_records`,
 `app.sandbox.search.result_count`, `app.sandbox.search.emitted_lines`,
 `app.sandbox.search.result_bytes`, `app.sandbox.search.limit`,
-`app.sandbox.search.limit_reached`
+`app.sandbox.search.limit_reached`, `app.tool.missing_annotations`
 
 ### Auth And Resume
 

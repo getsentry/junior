@@ -14,6 +14,7 @@ import {
   type ConversationAccess,
 } from "./access";
 import { readRootConversationMetricsFromSql } from "./usage";
+import { readConversationAuxiliaryCostsFromSql } from "./auxiliary-costs";
 import {
   conversationDetailQuerySchema,
   conversationDetailReportSchema,
@@ -27,6 +28,7 @@ import { listConversationAnnotations } from "@/chat/plugins/annotations";
 /** Project stored metadata and a bounded event page into a signed history cursor. */
 function projectConversationDetail(args: {
   access?: ConversationAccess;
+  auxiliaryCosts?: ConversationDetailReport["auxiliaryCosts"];
   conversation: Conversation;
   durationMs: number;
   annotations: NonNullable<ConversationDetailReport["annotations"]>;
@@ -46,6 +48,7 @@ function projectConversationDetail(args: {
   return {
     ...conversationSummaryFromStoredConversation({
       access: args.access,
+      auxiliaryCosts: args.auxiliaryCosts,
       conversation,
       durationMs: args.durationMs,
       ...(args.locationId ? { locationId: args.locationId } : {}),
@@ -83,25 +86,33 @@ async function readConversationDetailFromSql(
 
   const executor = getSqlExecutor();
   const includeDescendantMetrics = record.rootConversationId === conversationId;
-  const [accessByConversation, annotations, modelUsage, metricsByRoot] =
-    await Promise.all([
-      readConversationAccessFromSql(
-        getDb(),
-        [conversationId],
-        options.verifiedViewerEmail,
-      ),
-      listConversationAnnotations(getDb(), conversationId),
-      record.conversation.transcriptPurgedAtMs === undefined
-        ? readConversationModelUsageFromSql(executor, {
-            conversationId,
-            includeDescendants: includeDescendantMetrics,
-          })
-        : Promise.resolve([]),
-      readRootConversationMetricsFromSql(
-        getDb(),
-        includeDescendantMetrics ? [conversationId] : [],
-      ),
-    ]);
+  const [
+    accessByConversation,
+    annotations,
+    auxiliaryCostsByConversation,
+    modelUsage,
+    metricsByRoot,
+  ] = await Promise.all([
+    readConversationAccessFromSql(
+      getDb(),
+      [conversationId],
+      options.verifiedViewerEmail,
+    ),
+    listConversationAnnotations(getDb(), conversationId),
+    readConversationAuxiliaryCostsFromSql(getDb(), [conversationId], {
+      includeDescendants: includeDescendantMetrics,
+    }),
+    record.conversation.transcriptPurgedAtMs === undefined
+      ? readConversationModelUsageFromSql(executor, {
+          conversationId,
+          includeDescendants: includeDescendantMetrics,
+        })
+      : Promise.resolve([]),
+    readRootConversationMetricsFromSql(
+      getDb(),
+      includeDescendantMetrics ? [conversationId] : [],
+    ),
+  ]);
   const access = accessByConversation.get(conversationId);
   const page =
     record.conversation.transcriptPurgedAtMs === undefined
@@ -116,6 +127,7 @@ async function readConversationDetailFromSql(
     ...record,
     access,
     annotations,
+    auxiliaryCosts: auxiliaryCostsByConversation.get(conversationId),
     durationMs: metrics?.durationMs ?? record.durationMs,
     events: page.events,
     modelUsage,

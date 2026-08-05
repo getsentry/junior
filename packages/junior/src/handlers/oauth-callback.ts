@@ -52,6 +52,7 @@ import {
 } from "@/chat/state/turn-session";
 import {
   loadProjection,
+  recordAuthenticationLinked,
   recordAuthorizationCompleted,
 } from "@/chat/conversations/projection";
 import {
@@ -682,6 +683,31 @@ export async function GET(
     ...parsedTokenResponse,
     ...(account ? { account } : {}),
   });
+
+  if (stored.resumeConversationId) {
+    try {
+      await recordAuthenticationLinked({
+        conversationId: stored.resumeConversationId,
+        provider,
+        actorId: stored.userId,
+        providerLabel,
+        ...(account?.label ? { accountLabel: account.label } : {}),
+        ...(stored.resumeSessionId
+          ? {
+              authorizationId: pluginAuthorizationId({
+                provider,
+                sessionId: stored.resumeSessionId,
+              }),
+              turnId: stored.resumeSessionId,
+            }
+          : {}),
+      });
+    } catch (error) {
+      logException(error, "oauth.callback.authentication_event.failed", {
+        "app.credential.provider": provider,
+      });
+    }
+  }
 
   if (stored.destination?.platform !== "local") {
     waitUntil(async () => {

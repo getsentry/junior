@@ -141,6 +141,44 @@ describe("conversation event list API", () => {
     ]);
   });
 
+  it("reports privacy-safe Guardian decisions", async () => {
+    const conversationId = "internal:guardian-events";
+    await recordConversation(conversationId);
+    await getConversationEventStore().append(conversationId, [
+      {
+        data: {
+          type: "guardian_action_reviewed",
+          turnId: "turn-guardian",
+          toolCallId: "tool-guardian",
+          toolName: "createIssue",
+          decision: "allow",
+          riskLevel: "medium",
+          userAuthorization: "high",
+        },
+        createdAtMs: 2,
+      },
+    ]);
+
+    const response = await createJuniorApi().request(
+      `http://localhost/api/conversations/${conversationId}`,
+    );
+    expect(response.status).toBe(200);
+    const detail = conversationDetailReportSchema.parse(await response.json());
+    expect(detail.events).toEqual([
+      expect.objectContaining({
+        data: {
+          type: "guardian_action_reviewed",
+          turnId: "turn-guardian",
+          toolCallId: "tool-guardian",
+          toolName: "createIssue",
+          decision: "allow",
+          riskLevel: "medium",
+          userAuthorization: "high",
+        },
+      }),
+    ]);
+  });
+
   it("keeps a history page self-contained when a subagent start is older", async () => {
     const conversationId = "internal:paged-subagent";
     await recordConversation(conversationId);
@@ -310,13 +348,13 @@ describe("conversation event list API", () => {
         email: "Participant@Example.com",
         platform: "slack",
         slackUserId: "U-participant",
-        teamId: "T-private",
+        teamId: "TPRIVATE",
       },
       conversationId,
       destination: {
-        channelId: "C-private",
+        channelId: "CPRIVATE",
         platform: "slack",
-        teamId: "T-private",
+        teamId: "TPRIVATE",
       },
       nowMs: 1,
       source: "slack",

@@ -1,10 +1,16 @@
 import { z } from "zod";
-import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
+import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 
 /** Create the sandbox shell tool definition exposed to the agent. */
 export function createBashTool() {
   return zodTool({
+    annotations: {
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: false,
+      readOnlyHint: false,
+    },
     description:
       "Run a bash command inside the isolated sandbox workspace. Use this for repository inspection/execution tasks that need shell access. Do not use for network-sensitive or destructive actions unless explicitly required.",
     inputSchema: z.object({
@@ -12,6 +18,11 @@ export function createBashTool() {
         .string()
         .min(1)
         .describe("Bash command to run inside the sandbox."),
+      cwd: z
+        .string()
+        .min(1)
+        .describe("Optional working directory for this command only.")
+        .optional(),
       timeoutMs: z.coerce
         .number()
         .int()
@@ -21,7 +32,7 @@ export function createBashTool() {
         )
         .optional(),
     }),
-    outputSchema: juniorToolResultSchema,
+    outputSchema: juniorToolOutputSchema,
     // Bash is sequential so sandbox egress auth signals stay command-scoped.
     executionMode: "sequential",
     execute: async () => {

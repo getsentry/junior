@@ -120,6 +120,7 @@ export function conversationTranscriptMessages(
             ? { type: "text", redacted: true }
             : { type: "text", text: data.text! },
         ]),
+        ...(data.actorIdentity ? { actorIdentity: data.actorIdentity } : {}),
         ...(data.eventType ? { eventType: data.eventType } : {}),
       };
       messages.push(message);
@@ -235,6 +236,21 @@ export function conversationTranscriptMessages(
         sourceSeq: data.startedSeq,
         timestamp: Date.parse(data.startedAt),
       });
+      continue;
+    }
+
+    if (data.type === "structured_event") {
+      messages.push(
+        eventMessage(event, "system", [
+          {
+            type: "structured_event",
+            namespace: data.namespace,
+            name: data.name,
+            version: data.version,
+            presentation: data.presentation,
+          },
+        ]),
+      );
       continue;
     }
 

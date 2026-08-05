@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { usageCostSchema, usageSchema } from "@/usage-schema";
-import { conversationAnnotationInputSchema } from "@sentry/junior-plugin-api";
+import {
+  conversationAnnotationInputSchema,
+  conversationEventPresentationSchema,
+} from "@sentry/junior-plugin-api";
 
 export const conversationReportStatusSchema = z.enum([
   "active",
@@ -64,11 +67,30 @@ export const actorIdentitySchema = z
   })
   .strict();
 
+export const conversationAuxiliaryCostsSchema = z
+  .object({
+    costUsd: z.number().finite().nonnegative(),
+    operations: z
+      .array(
+        z
+          .object({
+            costUsd: z.number().finite().nonnegative(),
+            events: z.number().int().positive(),
+            name: z.string().min(1),
+            namespace: z.string().min(1),
+          })
+          .strict(),
+      )
+      .min(1),
+  })
+  .strict();
+
 export const conversationSummaryReportSchema = z
   .object({
     displayTitle: z.string(),
     cumulativeDurationMs: z.number(),
     cumulativeUsage: conversationUsageSchema.optional(),
+    auxiliaryCosts: conversationAuxiliaryCostsSchema.optional(),
     conversationId: z.string(),
     isParticipant: z.boolean(),
     status: conversationReportStatusSchema,
@@ -83,6 +105,7 @@ export const conversationSummaryReportSchema = z
     channelNameRedacted: z.boolean().optional(),
     locationId: z.string().optional(),
     sentryTraceUrl: z.string().optional(),
+    sourceUrl: z.string().url().optional(),
     traceId: z.string().optional(),
   })
   .strict();
@@ -92,6 +115,7 @@ const conversationReportMessageEventDataSchema = z
     type: z.literal("message"),
     messageId: z.string().min(1),
     role: z.enum(["assistant", "system", "user"]),
+    actorIdentity: actorIdentitySchema.optional(),
     eventType: z.string().min(1).optional(),
     text: z.string().optional(),
     redacted: z.literal(true).optional(),
@@ -102,6 +126,12 @@ const conversationReportMessageEventDataSchema = z
       context.addIssue({
         code: "custom",
         message: "message content must be text or explicitly redacted",
+      });
+    }
+    if (data.redacted && data.actorIdentity) {
+      context.addIssue({
+        code: "custom",
+        message: "redacted messages must not expose actor identity",
       });
     }
   });
@@ -247,6 +277,18 @@ const conversationReportTurnRoutedEventDataSchema = z
   })
   .strict();
 
+const conversationReportGuardianActionReviewedEventDataSchema = z
+  .object({
+    type: z.literal("guardian_action_reviewed"),
+    turnId: z.string().min(1),
+    toolCallId: z.string().min(1),
+    toolName: z.string().min(1),
+    decision: z.enum(["allow", "ask", "deny"]),
+    riskLevel: z.enum(["low", "medium", "high", "critical"]),
+    userAuthorization: z.enum(["high", "medium", "low", "unknown"]),
+  })
+  .strict();
+
 const conversationReportTurnContextEventDataSchema = z
   .object({
     type: z.literal("turn_context"),
@@ -255,6 +297,17 @@ const conversationReportTurnContextEventDataSchema = z
     kind: z.string().min(1),
     version: z.number().int().positive(),
     content: z.record(z.string(), z.unknown()),
+  })
+  .strict();
+
+const conversationReportStructuredEventDataSchema = z
+  .object({
+    type: z.literal("structured_event"),
+    namespace: z.string().min(1),
+    name: z.string().min(1),
+    version: z.number().int().positive(),
+    turnId: z.string().min(1).optional(),
+    presentation: conversationEventPresentationSchema,
   })
   .strict();
 
@@ -311,7 +364,9 @@ export const conversationReportEventDataSchema = z.discriminatedUnion("type", [
   conversationReportToolCallsEventDataSchema,
   conversationReportTurnLifecycleEventDataSchema,
   conversationReportTurnContextEventDataSchema,
+  conversationReportStructuredEventDataSchema,
   conversationReportTurnRoutedEventDataSchema,
+  conversationReportGuardianActionReviewedEventDataSchema,
   conversationReportCompactionEventDataSchema,
   conversationReportHandoffEventDataSchema,
   conversationReportSubagentEventDataSchema,
@@ -514,6 +569,28 @@ export const conversationMetricDaySchema = z
   })
   .strict();
 
+export const guardianMetricDaySchema = z
+  .object({
+    allow: z.number(),
+    ask: z.number(),
+    costUsd: z.number().optional(),
+    date: z.string(),
+    deny: z.number(),
+    requests: z.number(),
+  })
+  .strict();
+
+export const guardianStatsSchema = z
+  .object({
+    allow: z.number(),
+    ask: z.number(),
+    costUsd: z.number().optional(),
+    deny: z.number(),
+    metricDays: z.array(guardianMetricDaySchema),
+    requests: z.number(),
+  })
+  .strict();
+
 export const conversationStatsReportSchema = z
   .object({
     active: z.number(),
@@ -521,6 +598,7 @@ export const conversationStatsReportSchema = z
     durationMs: z.number(),
     failed: z.number(),
     generatedAt: z.string(),
+    guardian: guardianStatsSchema,
     metricDays: z.array(conversationMetricDaySchema),
     locations: z.array(conversationStatsItemSchema),
     actors: z.array(conversationStatsItemSchema),
@@ -538,6 +616,9 @@ export type ConversationReportStatus = z.infer<
 export type ConversationSurface = z.infer<typeof conversationSurfaceSchema>;
 export type ConversationCost = z.infer<typeof conversationCostSchema>;
 export type ConversationUsage = z.infer<typeof conversationUsageSchema>;
+export type ConversationAuxiliaryCosts = z.infer<
+  typeof conversationAuxiliaryCostsSchema
+>;
 export type ActorIdentity = z.infer<typeof actorIdentitySchema>;
 export type ConversationSummaryReport = z.infer<
   typeof conversationSummaryReportSchema
@@ -561,6 +642,8 @@ export type ConversationEventPage = z.infer<typeof conversationEventPageSchema>;
 export type ConversationFeed = z.infer<typeof conversationFeedSchema>;
 export type ConversationStatsItem = z.infer<typeof conversationStatsItemSchema>;
 export type ConversationMetricDay = z.infer<typeof conversationMetricDaySchema>;
+export type GuardianMetricDay = z.infer<typeof guardianMetricDaySchema>;
+export type GuardianStats = z.infer<typeof guardianStatsSchema>;
 export type ConversationStatsReport = z.infer<
   typeof conversationStatsReportSchema
 >;

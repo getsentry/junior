@@ -4,11 +4,11 @@ Load when issue type is `feature`. Cross-type rules (title length, delegated foo
 
 ## Primary goal
 
-Propose an intentional improvement with clear current-state analysis and practical options.
+Describe an intentional improvement through verified current-state analysis, the gap, and its impact without prescribing implementation.
 
 ## Shape
 
-A flat bullet list is fine for simple features. Use headed sections only when tradeoffs need detailed framing.
+A flat bullet list is fine for simple features. Use headed sections only when the current-state evidence and impact need detailed framing.
 
 **Summary** — up to 3 sentences describing the improvement. Short imperative title (e.g. "Support SAML SSO for enterprise orgs").
 
@@ -16,15 +16,14 @@ A flat bullet list is fine for simple features. Use headed sections only when tr
 
 - **Current behavior** — how the system works today
 - **Gap** — why current behavior is insufficient, with concrete impact
-- **Options** — viable approaches with tradeoffs (include only when the thread discusses alternatives)
 
-For simple features, skip sections and use flat bullets describing the gap and desired capability.
+For simple features, skip sections and use flat bullets describing the current behavior, gap, and impact.
 
 ## Research guidance
 
 1. Analyze current behavior and why it's insufficient.
 2. Gather prior art when available — include links and what each proves. If none found, omit rather than stating "none found."
-3. Frame options with tradeoffs when the thread discusses alternatives.
+3. Do not generate approaches or options. Preserve a specific proposal only when the user explicitly asks, attribute it, and keep it separate from the gap analysis.
 
 ## Context generalization
 

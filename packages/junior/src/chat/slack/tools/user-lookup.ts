@@ -1,150 +1,101 @@
-import { SlackActionError } from "@/chat/slack/client";
 import {
   lookupSlackUserProfile,
   lookupSlackUserByEmail,
   searchSlackUsers,
 } from "@/chat/slack/users";
-import {
-  parseRequiredSlackUserIdParam,
-  slackUserIdParam,
-} from "@/chat/slack/id-param";
+import { SlackActionError } from "@/chat/slack/client";
+import { parseRequiredSlackUserIdParam } from "@/chat/slack/id-param";
 import { z } from "zod";
-import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
+import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
-const booleanInput = (description: string) =>
-  z
-    .preprocess(
-      (value) => (value === "true" ? true : value === "false" ? false : value),
-      z.boolean(),
-    )
-    .describe(description);
+function explicitUserLookupError(error: SlackActionError): string | undefined {
+  if (error.apiError === "user_not_found") {
+    return "No Slack user found for the supplied user ID.";
+  }
+  if (error.code === "missing_scope") {
+    return error.needed
+      ? `Slack user lookup is unavailable because this installation is missing the \`${error.needed}\` scope.`
+      : "Slack user lookup is unavailable because this installation is missing a required Slack scope.";
+  }
+  if (error.code === "not_found") {
+    return "No Slack user found for the supplied user ID.";
+  }
+  if (error.code === "invalid_arguments") {
+    return `Slack rejected the user lookup arguments (${error.apiError ?? error.code}).`;
+  }
+  if (error.code === "feature_unavailable") {
+    return "Slack user lookup is not available for this workspace or app installation.";
+  }
+  return undefined;
+}
 
 /** Create the tool that resolves Slack users by ID, handle, or email. */
 export function createSlackUserLookupTool() {
   return zodTool({
     description:
-      "Look up Slack user profiles by user ID, email, or name search. Use when you need to identify a user, resolve cross-platform identity, or look up profile details like title or status. Returns profile fields including custom fields. For user ID lookup, pass a Slack user ID (e.g. U039RR91S). For search, pass a name query.",
-    annotations: { readOnlyHint: true, destructiveHint: false },
-    inputSchema: z.object({
-      user_id: slackUserIdParam(
-        "Slack user ID to look up (e.g. U039RR91S). Mutually exclusive with email and query.",
-      ).optional(),
-      email: z
-        .string()
-        .min(3)
-        .describe(
-          "Email address to look up. Mutually exclusive with user_id and query.",
-        )
-        .optional(),
-      query: z
-        .string()
-        .min(2)
-        .describe(
-          "Name to search for (matches against username, display name, real name). Mutually exclusive with user_id and email.",
-        )
-        .optional(),
-      limit: z.coerce
-        .number()
-        .int()
-        .min(1)
-        .max(20)
-        .describe(
-          "Maximum number of results to return for name search. Defaults to 10.",
-        )
-        .optional(),
-      max_pages: z.coerce
-        .number()
-        .int()
-        .min(1)
-        .max(5)
-        .describe(
-          "Maximum number of Slack API pages to scan for name search. Defaults to 3.",
-        )
-        .optional(),
-      include_bots: booleanInput(
-        "Include bot accounts in name search results. Defaults to false.",
-      ).optional(),
-    }),
-    outputSchema: juniorToolResultSchema,
-    execute: async ({
-      user_id,
-      email,
-      query,
-      limit,
-      max_pages,
-      include_bots,
-    }) => {
-      const modes = [user_id, email, query].filter(Boolean);
-      if (modes.length === 0) {
-        return {
-          ok: false,
-          status: "error" as const,
-          error:
-            "Provide exactly one of user_id, email, or query to look up a Slack user.",
-        };
-      }
-      if (modes.length > 1) {
-        return {
-          ok: false,
-          status: "error" as const,
-          error: "Only one of user_id, email, or query can be provided.",
-        };
-      }
-
+      "Look up Slack user profiles by user ID, email, or name search. Set mode to match the identifier in value. Returns profile fields including title, status, and custom fields.",
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+      readOnlyHint: true,
+    },
+    inputSchema: z
+      .object({
+        mode: z
+          .enum(["user_id", "email", "query"])
+          .describe(
+            "Lookup method: user_id for Slack IDs, email for email addresses, or query for name searches.",
+          ),
+        value: z
+          .string()
+          .trim()
+          .min(2)
+          .describe(
+            "The Slack user ID, email address, or name to look up, interpreted according to mode.",
+          ),
+      })
+      .strict(),
+    outputSchema: juniorToolOutputSchema,
+    execute: async ({ mode, value }) => {
       try {
-        if (user_id) {
-          const parsedUserId = parseRequiredSlackUserIdParam(
-            "user_id",
-            user_id,
-          );
+        if (mode === "user_id") {
+          const parsedUserId = parseRequiredSlackUserIdParam("value", value);
           if (!parsedUserId.ok) {
-            return {
-              ok: false,
-              status: "error" as const,
-              error: parsedUserId.error,
-            };
+            throw new ToolInputError(parsedUserId.error);
           }
 
           return {
-            ok: true,
-            status: "success" as const,
             mode: "user_id",
             user: await lookupSlackUserProfile(parsedUserId.value),
           };
         }
 
-        if (email) {
-          const profile = await lookupSlackUserByEmail(email);
+        if (mode === "email") {
+          const profile = await lookupSlackUserByEmail(value);
           if (!profile) {
-            return {
-              ok: false,
-              status: "error" as const,
-              mode: "email",
-              email,
-              error: "No Slack user found with that email address.",
-            };
+            throw new ToolInputError(
+              `No Slack user found with email address ${value}.`,
+            );
           }
           return {
-            ok: true,
-            status: "success" as const,
             mode: "email",
             user: profile,
           };
         }
 
         const result = await searchSlackUsers({
-          query: query!,
-          limit: limit ?? 10,
-          maxPages: max_pages ?? 3,
-          includeBots: include_bots ?? false,
+          query: value,
+          limit: 10,
+          maxPages: 3,
+          includeBots: false,
         });
 
         return {
-          ok: true,
-          status: "success" as const,
           mode: "query",
-          query,
+          query: value,
           count: result.users.length,
           searched_pages: result.searched_pages,
           searched_user_count: result.searched_user_count,
@@ -153,14 +104,10 @@ export function createSlackUserLookupTool() {
         };
       } catch (error) {
         if (error instanceof SlackActionError) {
-          return {
-            ok: false,
-            status: "error" as const,
-            error: error.message,
-            slack_error: error.apiError,
-            code: error.code,
-            ...(error.needed ? { needed_scope: error.needed } : {}),
-          };
+          const message = explicitUserLookupError(error);
+          if (message) {
+            throw new ToolInputError(message, { cause: error });
+          }
         }
         throw error;
       }

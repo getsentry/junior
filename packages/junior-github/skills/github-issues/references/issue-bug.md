@@ -30,7 +30,7 @@ Research informs what goes in the issue, not how structured it looks.
 3. Separate verified facts from unknowns — label each explicitly.
 4. Form root-cause hypotheses linked to evidence, with confidence (`high`, `medium`, `low`).
 
-Include fix suggestions only when the thread discusses fixes. Do not present a fix as certain without explicit evidence.
+Do not add fix suggestions. If the user explicitly asks to preserve a specific proposal from the source context, attribute it as proposed and keep it separate from verified facts and root-cause hypotheses.
 
 ## Context generalization
 

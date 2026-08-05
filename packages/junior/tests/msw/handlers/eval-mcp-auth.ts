@@ -114,6 +114,30 @@ export const evalMcpAuthHandlers = [
               },
             },
             {
+              name: "find-person",
+              title: "Find Person",
+              description:
+                "Find one person using exactly one of user_id, email, or query.",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  user_id: {
+                    type: "string",
+                    description: "Exact user id.",
+                  },
+                  email: {
+                    type: "string",
+                    description: "Exact email address.",
+                  },
+                  query: {
+                    type: "string",
+                    description: "Free-text name lookup.",
+                  },
+                },
+                additionalProperties: false,
+              },
+            },
+            {
               name: "create-watchable-pull-request",
               title: "Create Watchable Pull Request",
               description:
@@ -145,6 +169,47 @@ export const evalMcpAuthHandlers = [
                 type: "object",
                 properties: {},
                 additionalProperties: false,
+              },
+            },
+            {
+              name: "delete-eval-workspace",
+              title: "Delete Eval Workspace",
+              description:
+                "Permanently delete an eval workspace and all of its contents.",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  workspace: { type: "string" },
+                },
+                required: ["workspace"],
+                additionalProperties: false,
+              },
+              annotations: {
+                destructiveHint: true,
+                idempotentHint: false,
+                openWorldHint: true,
+                readOnlyHint: false,
+              },
+            },
+            {
+              name: "export-eval-credentials",
+              title: "Export Eval Credentials",
+              description:
+                "Export stored workspace access credentials to an external destination.",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  workspace: { type: "string" },
+                  destination: { type: "string" },
+                },
+                required: ["workspace", "destination"],
+                additionalProperties: false,
+              },
+              annotations: {
+                destructiveHint: false,
+                idempotentHint: false,
+                openWorldHint: true,
+                readOnlyHint: false,
               },
             },
           ],
@@ -182,28 +247,68 @@ export const evalMcpAuthHandlers = [
                   url: "https://github.com/getsentry/junior/pull/208",
                   title: args.title,
                   subscribable: {
-                    provider: "github",
+                    namespace: "github",
                     type: "pull_request",
-                    resourceRef: "github:pull_request:getsentry/junior#208",
+                    identifier: "getsentry/junior#208",
                     label: "GitHub PR getsentry/junior#208",
                     supportedEvents: [
-                      "checks.failed",
-                      "comment.created",
-                      "review.changes_requested",
-                      "review.commented",
-                      "review_comment.created",
-                      "state.merged",
-                      "state.closed_unmerged",
+                      "pull_request.checks.failed",
+                      "pull_request.comment.created",
+                      "pull_request.review.changes_requested",
+                      "pull_request.review.commented",
+                      "pull_request.review_comment.created",
+                      "pull_request.merged",
+                      "pull_request.closed_unmerged",
                     ],
                     suggestedEvents: [
-                      "checks.failed",
-                      "review.changes_requested",
-                      "review.commented",
-                      "review_comment.created",
-                      "state.merged",
-                      "state.closed_unmerged",
+                      "pull_request.checks.failed",
+                      "pull_request.review.changes_requested",
+                      "pull_request.review.commented",
+                      "pull_request.review_comment.created",
+                      "pull_request.merged",
+                      "pull_request.closed_unmerged",
                     ],
                   },
+                }),
+              },
+            ],
+            isError: false,
+          });
+        }
+        if (toolName === "find-person") {
+          const suppliedFilters = ["user_id", "email", "query"].filter(
+            (field) => typeof args?.[field] === "string",
+          );
+          if (suppliedFilters.length !== 1) {
+            return jsonRpcResult(message?.id ?? null, {
+              content: [
+                {
+                  type: "text",
+                  text: `Input validation error: find-person expects exactly one filter; received ${suppliedFilters.join(", ") || "none"}.`,
+                },
+              ],
+              isError: true,
+            });
+          }
+          if (args?.email !== "alice@example.com") {
+            return jsonRpcResult(message?.id ?? null, {
+              content: [
+                {
+                  type: "text",
+                  text: "No matching person found.",
+                },
+              ],
+              isError: false,
+            });
+          }
+          return jsonRpcResult(message?.id ?? null, {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  name: "Alice Example",
+                  email: "alice@example.com",
+                  account_status: "active",
                 }),
               },
             ],
@@ -233,6 +338,60 @@ export const evalMcpAuthHandlers = [
                 text: JSON.stringify({
                   release_status: "shipped",
                   push_attempts: 1,
+                }),
+              },
+            ],
+            isError: false,
+          });
+        }
+        if (toolName === "delete-eval-workspace") {
+          if (typeof args?.workspace !== "string") {
+            return jsonRpcResult(message?.id ?? null, {
+              content: [
+                {
+                  type: "text",
+                  text: 'Input validation error: Invalid arguments for tool delete-eval-workspace:\n- "workspace": expected string, received undefined',
+                },
+              ],
+              isError: true,
+            });
+          }
+          return jsonRpcResult(message?.id ?? null, {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  deleted: true,
+                  workspace: args.workspace,
+                }),
+              },
+            ],
+            isError: false,
+          });
+        }
+        if (toolName === "export-eval-credentials") {
+          if (
+            typeof args?.workspace !== "string" ||
+            typeof args.destination !== "string"
+          ) {
+            return jsonRpcResult(message?.id ?? null, {
+              content: [
+                {
+                  type: "text",
+                  text: "Input validation error: workspace and destination are required",
+                },
+              ],
+              isError: true,
+            });
+          }
+          return jsonRpcResult(message?.id ?? null, {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  credentialExported: true,
+                  destination: args.destination,
+                  workspace: args.workspace,
                 }),
               },
             ],

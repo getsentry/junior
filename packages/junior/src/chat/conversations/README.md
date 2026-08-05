@@ -2,6 +2,17 @@
 
 This module owns Junior's durable conversation record, search, and retention.
 
+## Location Read Model
+
+`Conversation.location` is the provider-location read model for new code. A
+location keeps Junior's id plus the provider's tenant and location identifiers.
+Conversation privacy remains in `Conversation.visibility`. Provider-specific
+event attribution, such as Slack `threadTs` and `messageTs`, remains in
+`sessionSource`.
+
+During the destination cutover, the linked destination row remains the durable
+location authority. Local conversations have no provider location.
+
 ## Storage Model
 
 `junior_conversation_events` is the only transcript/history table. Every row
@@ -70,12 +81,16 @@ payloads. Reporting keeps destination-visible `message` events separate from
 assistant reasoning. Mixed reasoning and tool history extends the existing
 `tool_calls` event with ordering metadata; reasoning-only history uses
 `assistant_message`. Tool payloads and lifecycle remain owned by `tool_calls`.
-The deferred `queryConversationEvents` tool is the agent-facing
-observational reader for that same log: it returns bounded events for the
-current conversation tree, or for another retained public conversation in the
-same Slack workspace. Oversized event data is represented by identifying
-fields and its original JSON byte size. The complete event array also has a
-fixed byte budget and reports omitted events through its pagination contract.
+Host-owned `native_event` rows under the reserved `junior` namespace carry
+transcript metadata such as account link and unlink changes. They are visible
+in reporting but never enter model history. Plugin-owned `plugin_event` rows
+use the same presentation contract under a plugin namespace. The deferred
+`queryConversationEvents` tool is the agent-facing observational reader for
+that same log: it returns bounded events for the current conversation tree, or
+for another retained public conversation in the same Slack workspace. Oversized
+event data is represented by identifying fields and its original JSON byte
+size. The complete event array also has a fixed byte budget and reports omitted
+events through its pagination contract.
 
 ## Stored Event Compatibility
 

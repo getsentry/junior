@@ -9,33 +9,38 @@ import { juniorConversations } from "@/db/schema";
  *
  * First contact creates the row; every later content write advances the
  * activity clock so retention mirrors append-refresh semantics (each content
- * append refreshes the retention window). The timestamp is content-intrinsic
- * (the first item's `createdAtMs`), and `greatest(...)` guarantees a backfilled
- * or imported historical write — which carries an old timestamp — can never
+ * append refreshes the retention window). Background observations may opt out
+ * and leave an existing row unchanged. The timestamp is content-intrinsic (the
+ * first item's `createdAtMs`), and `greatest(...)` guarantees a backfilled or
+ * imported historical write — which carries an old timestamp — can never
  * regress `last_activity_at`.
  */
 export async function ensureConversationRow(
   executor: JuniorSqlDatabase,
   conversationId: string,
   atMs: number,
+  options: { activity?: "preserve" } = {},
 ): Promise<void> {
   const at = new Date(atMs);
-  await executor
-    .db()
-    .insert(juniorConversations)
-    .values({
-      conversationId,
-      createdAt: at,
-      lastActivityAt: at,
-      updatedAt: at,
-      executionStatus: "idle",
-    })
-    .onConflictDoUpdate({
+  const insert = executor.db().insert(juniorConversations).values({
+    conversationId,
+    createdAt: at,
+    lastActivityAt: at,
+    updatedAt: at,
+    executionStatus: "idle",
+  });
+  if (options.activity === "preserve") {
+    await insert.onConflictDoNothing({
       target: juniorConversations.conversationId,
-      set: {
-        lastActivityAt: sql`greatest(${juniorConversations.lastActivityAt}, excluded.last_activity_at)`,
-        updatedAt: sql`greatest(${juniorConversations.updatedAt}, excluded.updated_at)`,
-        transcriptPurgedAt: null,
-      },
     });
+    return;
+  }
+  await insert.onConflictDoUpdate({
+    target: juniorConversations.conversationId,
+    set: {
+      lastActivityAt: sql`greatest(${juniorConversations.lastActivityAt}, excluded.last_activity_at)`,
+      updatedAt: sql`greatest(${juniorConversations.updatedAt}, excluded.updated_at)`,
+      transcriptPurgedAt: null,
+    },
+  });
 }

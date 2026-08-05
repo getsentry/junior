@@ -9,6 +9,7 @@ function toolContext(responses: Array<{ body?: unknown; status?: number }>) {
   const adapter = createGitHubApiTestAdapter(responses);
   const ctx = {
     egress: adapter.egress,
+    resourceEvents: { canSubscribe: true },
   } as unknown as ToolRegistrationHookContext;
   return { adapter, tool: createGitHubGetDeploymentTool(ctx) };
 }
@@ -71,7 +72,7 @@ describe("getDeployment", () => {
         },
       },
       subscribable: {
-        resourceRef: `github:deployment-source:getsentry/junior-prod:production:${COMMIT_SHA}`,
+        identifier: `deployment-source:getsentry/junior-prod:production:${COMMIT_SHA}`,
         suggestedEvents: [
           "deployment.succeeded",
           "deployment.failed",
@@ -111,7 +112,7 @@ describe("getDeployment", () => {
     ).resolves.toMatchObject({
       deployment: null,
       subscribable: {
-        resourceRef: `github:deployment-source:getsentry/junior-prod:preview:${COMMIT_SHA}`,
+        identifier: `deployment-source:getsentry/junior-prod:preview:${COMMIT_SHA}`,
       },
     });
     expect(adapter.requests()).toHaveLength(1);
@@ -133,7 +134,7 @@ describe("getDeployment", () => {
       deployment: null,
       environment: null,
       subscribable: {
-        resourceRef: `github:deployment-source:getsentry/junior-prod:${COMMIT_SHA}`,
+        identifier: `deployment-source:getsentry/junior-prod:${COMMIT_SHA}`,
       },
     });
     const [request] = adapter.requests();

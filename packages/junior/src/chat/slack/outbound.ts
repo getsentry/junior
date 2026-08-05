@@ -109,6 +109,8 @@ export async function postSlackMessage(input: {
       getSlackClient().chat.postMessage({
         channel: channelId,
         text,
+        unfurl_links: false,
+        unfurl_media: false,
         ...(input.blocks?.length
           ? {
               blocks: input.blocks as unknown as Array<Record<string, unknown>>,

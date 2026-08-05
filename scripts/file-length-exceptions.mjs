@@ -20,8 +20,8 @@ export const fileLengthExceptions = {
     "Existing memory store; split by storage concern.",
   "packages/junior-memory/tests/storage.test.ts":
     "Existing broad memory storage suite; split by storage concern.",
-  "packages/junior-scheduler/src/store.ts":
-    "Existing scheduler store; split by storage concern.",
+  "packages/junior/src/chat/scheduled-tasks/store.ts":
+    "Existing scheduled-task store; split by storage concern.",
   "packages/junior/src/chat/agent/index.ts":
     "Existing agent run lifecycle; split only at a clear lifecycle boundary.",
   "packages/junior/src/chat/logging.ts":
@@ -58,8 +58,6 @@ export const fileLengthExceptions = {
     "Existing broad Slack conversation work suite; split by behavior.",
   "packages/junior/tests/integration/agent-continue-slack.test.ts":
     "Existing broad Slack continuation suite; split by behavior.",
-  "packages/junior/tests/integration/heartbeat.test.ts":
-    "Existing broad heartbeat suite; split by behavior.",
   "packages/junior/tests/integration/local-agent-runner.test.ts":
     "Existing broad local runner suite; split by behavior.",
   "packages/junior/tests/component/auth/mcp-auth-runtime-slack.test.ts":

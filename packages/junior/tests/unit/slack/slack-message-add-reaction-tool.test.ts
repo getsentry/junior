@@ -36,7 +36,7 @@ const TEST_SLACK_CONTEXT: SlackToolContext = {
     channelId: TEST_CHANNEL_ID,
     messageTs: TEST_MESSAGE_TS,
 
-    type: "priv",
+    visibility: "private",
   }),
   destinationChannelId: TEST_CHANNEL_ID,
   messageTs: TEST_MESSAGE_TS,
@@ -86,7 +86,6 @@ describe("addReaction tool", () => {
     const result = await tool.execute({ emoji: ":Thumbs_Up:" }, {} as any);
     expect(result).toEqual(
       expect.objectContaining({
-        ok: true,
         emoji: "thumbs_up",
       }),
     );
@@ -114,7 +113,6 @@ describe("addReaction tool", () => {
     );
     expect(result).toEqual(
       expect.objectContaining({
-        ok: true,
         emoji: "thumbsup::skin-tone-6",
       }),
     );

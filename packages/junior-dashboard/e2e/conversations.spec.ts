@@ -1,5 +1,8 @@
 import { expect, test } from "@playwright/test";
-import type { ConversationDetailReport } from "@sentry/junior/api/schema";
+import type {
+  ConversationDetailReport,
+  ConversationEventPage,
+} from "@sentry/junior/api/schema";
 import {
   collectBrowserErrors,
   type DashboardE2eServer,
@@ -21,6 +24,29 @@ test.beforeEach(async ({ page }) => {
   await mockDashboardApis(page);
 });
 
+test("reuses the fresh conversation feed after window focus", async ({
+  page,
+}) => {
+  let requests = 0;
+  await page.route("**/api/conversations?*", async (route) => {
+    requests += 1;
+    await route.fallback();
+  });
+
+  await page.goto(server.baseURL);
+  await expect(
+    page.getByRole("heading", { name: "Conversations" }),
+  ).toBeVisible();
+  expect(requests).toBe(1);
+
+  await page.evaluate(() => {
+    window.dispatchEvent(new Event("visibilitychange"));
+  });
+  await page.waitForTimeout(100);
+
+  expect(requests).toBe(1);
+});
+
 test("opens a conversation in the built dashboard", async ({ page }) => {
   await page.setViewportSize({ height: 900, width: 1600 });
   const browserErrors = collectBrowserErrors(page);
@@ -38,6 +64,55 @@ test("opens a conversation in the built dashboard", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Checkout latency triage" }),
   ).toBeVisible();
+
+  const costMetric = page
+    .getByRole("main")
+    .getByText("$0.03", { exact: true })
+    .first();
+  await costMetric.hover();
+  const costTooltip = page.getByRole("tooltip");
+  await expect(costTooltip).toBeVisible();
+  const tooltipBounds = await costTooltip.boundingBox();
+  expect(tooltipBounds).not.toBeNull();
+  if (!tooltipBounds) throw new Error("Expected cost tooltip bounds");
+  expect(tooltipBounds.x).toBeGreaterThanOrEqual(0);
+  expect(tooltipBounds.y).toBeGreaterThanOrEqual(0);
+  expect(tooltipBounds.x + tooltipBounds.width).toBeLessThanOrEqual(1600);
+  expect(tooltipBounds.y + tooltipBounds.height).toBeLessThanOrEqual(900);
+
+  const costValue = costTooltip.getByText("$0.0332", { exact: true });
+  const valueBounds = await costValue.boundingBox();
+  expect(valueBounds).not.toBeNull();
+  if (!valueBounds) throw new Error("Expected cost value bounds");
+  await page.mouse.move(
+    valueBounds.x + 2,
+    valueBounds.y + valueBounds.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    tooltipBounds.x + tooltipBounds.width + 40,
+    valueBounds.y + valueBounds.height / 2,
+    { steps: 8 },
+  );
+  await page.waitForTimeout(200);
+  await expect(costTooltip).toBeVisible();
+  await page.mouse.up();
+  await page.waitForTimeout(200);
+  await expect(costTooltip).toBeVisible();
+  expect(
+    await page.evaluate(() => window.getSelection()?.toString()),
+  ).toContain("$0.0332");
+  await page.keyboard.press("Escape");
+  await expect(costTooltip).toBeHidden();
+
+  await costMetric.focus();
+  await expect(costTooltip).toBeVisible();
+  const tooltipId = await costTooltip.getAttribute("id");
+  expect(tooltipId).toBeTruthy();
+  await expect(costMetric).toHaveAttribute("aria-describedby", tooltipId!);
+  await page.keyboard.press("Escape");
+  await expect(costTooltip).toBeHidden();
+
   const containerBounds = () =>
     page.locator("main > div").evaluate((element) => {
       const bounds = element.getBoundingClientRect();
@@ -52,12 +127,78 @@ test("opens a conversation in the built dashboard", async ({ page }) => {
   expect(headerBounds).toEqual({ left: 160, width: 1280 });
   expect(await containerBounds()).toEqual(headerBounds);
 
-  await expect(page.getByRole("link", { name: "Conversations" })).toHaveCount(
-    0,
-  );
+  await expect(
+    page.getByRole("link", { name: "Conversations" }),
+  ).toHaveAttribute("aria-current", "page");
   await expect(page.getByRole("link", { name: "Plugins" })).toHaveCount(0);
   expect(await containerBounds()).toEqual(headerBounds);
   expect(browserErrors).toEqual([]);
+});
+
+test("positions a long cost tooltip clear of its metric", async ({ page }) => {
+  const conversationId = "slack:CQA123:1770003600.000200";
+  await page.setViewportSize({ height: 900, width: 1600 });
+  await page.route(
+    `**/api/conversations/${encodeURIComponent(conversationId)}`,
+    async (route) => {
+      const response = await route.fetch();
+      const detail = (await response.json()) as ConversationDetailReport;
+      await route.fulfill({
+        response,
+        json: {
+          ...detail,
+          modelUsage: [
+            {
+              modelId: "openai/gpt-5.6-sol",
+              usage: {
+                cost: {
+                  cacheRead: 0.004,
+                  cacheWrite: 0.005,
+                  input: 0.01,
+                  output: 0.021,
+                  total: 0.04,
+                },
+              },
+            },
+            {
+              modelId: "xai/grok-4.5",
+              usage: { cost: { input: 0.0004, output: 0.0006, total: 0.001 } },
+            },
+          ],
+        },
+      });
+    },
+  );
+  await page.goto(
+    `${server.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
+  );
+
+  const cost = page.getByText("$0.04", { exact: true }).first();
+  await cost.hover();
+  const tooltip = page.getByRole("tooltip");
+  await expect(tooltip).toBeVisible();
+
+  const costBounds = await cost.boundingBox();
+  const tooltipBounds = await tooltip.boundingBox();
+  expect(costBounds).not.toBeNull();
+  expect(tooltipBounds).not.toBeNull();
+  const tooltipIsAbove =
+    tooltipBounds!.y + tooltipBounds!.height < costBounds!.y;
+  const tooltipIsBelow = tooltipBounds!.y > costBounds!.y + costBounds!.height;
+  expect(tooltipIsAbove || tooltipIsBelow).toBe(true);
+
+  const columns = tooltip.locator(":scope > span > span");
+  await expect(columns).toHaveCount(2);
+  const auxiliary = columns.nth(1);
+  const headingBounds = await auxiliary
+    .getByText("Auxiliary", { exact: true })
+    .boundingBox();
+  const totalBounds = await auxiliary
+    .getByText("total", { exact: true })
+    .boundingBox();
+  expect(headingBounds).not.toBeNull();
+  expect(totalBounds).not.toBeNull();
+  expect(totalBounds!.y - headingBounds!.y).toBeLessThan(40);
 });
 
 test("opens and closes a conversation in the mobile workspace", async ({
@@ -85,6 +226,43 @@ test("opens and closes a conversation in the mobile workspace", async ({
   ).toBeVisible();
 });
 
+test("opens metric tooltips on touch", async ({ browser }) => {
+  const context = await browser.newContext({
+    hasTouch: true,
+    isMobile: true,
+    viewport: { height: 844, width: 390 },
+  });
+  const page = await context.newPage();
+  await mockDashboardApis(page);
+
+  try {
+    await page.goto(
+      `${server.baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770000000.000100")}`,
+    );
+    await expect(
+      page.getByRole("heading", { name: "Checkout latency triage" }),
+    ).toBeVisible();
+
+    const costMetric = page
+      .locator('span[tabindex="0"]')
+      .filter({ hasText: "$0.03", visible: true });
+    await expect(costMetric).toHaveCount(1);
+
+    await costMetric.tap();
+    await expect(page.getByRole("tooltip")).toBeVisible();
+
+    await costMetric.tap();
+    await expect(page.getByRole("tooltip")).toBeHidden();
+
+    await costMetric.tap();
+    await expect(page.getByRole("tooltip")).toBeVisible();
+    await page.getByRole("heading", { name: "Checkout latency triage" }).tap();
+    await expect(page.getByRole("tooltip")).toBeHidden();
+  } finally {
+    await context.close();
+  }
+});
+
 test("loads earlier transcript events without dropping the current page", async ({
   page,
 }) => {
@@ -92,6 +270,58 @@ test("loads earlier transcript events without dropping the current page", async 
   const detailPath = `/api/conversations/${encodeURIComponent(conversationId)}`;
   let detailReads = 0;
   let historyReads = 0;
+  const earlierEvents: ConversationEventPage["events"] = [
+    {
+      seq: 0,
+      createdAt: "2026-06-12T00:00:00.000Z",
+      data: {
+        type: "message",
+        messageId: "release-earlier-user",
+        role: "user",
+        text: "Prepare the release and include the complete earlier context.",
+      },
+    },
+    {
+      seq: 1,
+      createdAt: "2026-06-12T00:00:01.000Z",
+      data: {
+        type: "tool_calls",
+        calls: [
+          {
+            toolCallId: "release-bash-earlier",
+            name: "bash",
+            status: "running",
+          },
+        ],
+      },
+    },
+  ];
+  const liveReasoningEvent: ConversationDetailReport["events"][number] = {
+    seq: 17,
+    createdAt: "2026-06-12T00:00:17.000Z",
+    data: {
+      type: "tool_calls",
+      calls: [
+        {
+          toolCallId: "release-live-check",
+          name: "bash",
+          status: "running",
+        },
+      ],
+      assistant: {
+        parts: [
+          {
+            type: "reasoning",
+            text: "Wait for the live release check to finish.",
+          },
+          {
+            type: "tool_call",
+            toolCallId: "release-live-check",
+          },
+        ],
+      },
+    },
+  };
   await page.route(`**${detailPath}`, async (route) => {
     const response = await route.fetch();
     const detail = (await response.json()) as ConversationDetailReport;
@@ -100,19 +330,36 @@ test("loads earlier transcript events without dropping the current page", async 
       response,
       json:
         detailReads === 1
-          ? { ...detail, status: "active" }
+          ? {
+              ...detail,
+              events: [...detail.events.slice(1), liveReasoningEvent],
+              status: "active",
+            }
           : {
               ...detail,
               events: [
                 ...detail.events.slice(1),
+                liveReasoningEvent,
                 {
-                  seq: 17,
-                  createdAt: "2026-06-12T00:00:17.000Z",
+                  seq: 18,
+                  createdAt: "2026-06-12T00:00:18.000Z",
                   data: {
-                    type: "message",
-                    messageId: "release-live-update",
-                    role: "assistant",
-                    text: "The release verification is still running.",
+                    type: "tool_calls",
+                    calls: [
+                      {
+                        toolCallId: "release-live-status",
+                        name: "bash",
+                        status: "running",
+                      },
+                    ],
+                    assistant: {
+                      parts: [
+                        {
+                          type: "tool_call",
+                          toolCallId: "release-live-status",
+                        },
+                      ],
+                    },
                   },
                 },
               ],
@@ -126,7 +373,16 @@ test("loads earlier transcript events without dropping the current page", async 
     if (historyReads === 1) {
       await new Promise((resolve) => setTimeout(resolve, 2_500));
     }
-    await route.continue();
+    const response = await route.fetch();
+    const page = (await response.json()) as ConversationEventPage;
+    await route.fulfill({
+      response,
+      json: {
+        ...page,
+        events: earlierEvents,
+        previousCursor: undefined,
+      },
+    });
   });
   await page.goto(
     `${server.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
@@ -143,9 +399,14 @@ test("loads earlier transcript events without dropping the current page", async 
   await expect(currentEvent).toBeVisible();
   await expect(currentEvent.locator("br")).toHaveCount(2);
 
-  const toolRun = page.locator("details").filter({ hasText: /12 tool calls/ });
+  const toolRun = page.locator("details").filter({ hasText: /tool calls/ });
   await toolRun.locator("summary").click();
   await expect(toolRun).toHaveAttribute("open", "");
+  const liveReasoning = page
+    .locator("details")
+    .filter({ hasText: "Wait for the live release check to finish." });
+  await liveReasoning.locator("summary").click();
+  await expect(liveReasoning).toHaveAttribute("open", "");
 
   const transcript = page.locator('[aria-label="Conversation transcript"]');
   const loadEarlier = page.getByRole("button", {
@@ -170,6 +431,7 @@ test("loads earlier transcript events without dropping the current page", async 
     page.getByRole("button", { name: "Load earlier events" }),
   ).toHaveCount(0);
   await expect(toolRun).toHaveAttribute("open", "");
+  await expect(liveReasoning).toHaveAttribute("open", "");
 
   const after = await transcript.evaluate((element) => ({
     scrollHeight: element.scrollHeight,
@@ -287,8 +549,10 @@ test("groups the signed-in profile and session actions in the header", async ({
     name: "Open profile menu for Dashboard User",
   });
   await expect(trigger).toBeVisible();
+  await expect(trigger).toContainText("7d$0.07");
+  await expect(trigger).toContainText("30d$0.07");
   await expect(trigger).toHaveAttribute("aria-expanded", "false");
-  await trigger.click();
+  await trigger.hover();
 
   const popover = page.locator("#profile-popover");
   await expect(popover.getByText("morgan@sentry.io")).toBeVisible();
@@ -296,11 +560,15 @@ test("groups the signed-in profile and session actions in the header", async ({
     popover.getByRole("link", { name: "My profile" }),
   ).toHaveAttribute("href", "/people/morgan%40sentry.io");
   await expect(popover.getByRole("button", { name: "Log out" })).toBeVisible();
+  await popover.getByRole("link", { name: "My profile" }).hover();
+  await page.waitForTimeout(200);
+  await expect(popover).toBeVisible();
 
   await page.keyboard.press("Escape");
   await expect(popover).toHaveCount(0);
   await expect(trigger).toBeFocused();
 
+  await page.mouse.move(0, 0);
   await trigger.click();
   const signOutRequest = page.waitForRequest(
     (request) =>
@@ -362,9 +630,29 @@ test("inspects and copies an advisor transcript", async ({ context, page }) => {
 test("archives and restores a conversation from the sidebar", async ({
   page,
 }) => {
+  const initialTime = Date.now();
   await page.setViewportSize({ height: 900, width: 1600 });
+  let archived = false;
+  await page.route(/\/api\/conversations(?:\?.*)?$/, async (route) => {
+    const response = await route.fetch();
+    const feed = await response.json();
+    await route.fulfill({
+      response,
+      json: {
+        ...feed,
+        conversations: feed.conversations.filter(
+          (conversation: { displayTitle: string }) =>
+            !archived ||
+            conversation.displayTitle !== "Dashboard QA edge cases",
+        ),
+      },
+    });
+  });
   await page.route("**/api/conversations/*/archive", async (route) => {
-    await route.fulfill({ json: { archived: true } });
+    const request = route.request().postDataJSON();
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    archived = request.archived;
+    await route.fulfill({ json: { archived } });
   });
   await page.goto(server.baseURL);
   await expect(
@@ -377,6 +665,9 @@ test("archives and restores a conversation from the sidebar", async ({
   const archiveButton = page.getByRole("button", {
     name: "Archive Dashboard QA edge cases",
   });
+  await page
+    .getByRole("searchbox", { name: "Search your conversations" })
+    .fill("Dashboard QA edge cases");
   await conversationLink.hover();
 
   const currentUrl = page.url();
@@ -385,6 +676,22 @@ test("archives and restores a conversation from the sidebar", async ({
       request.method() === "PATCH" && request.url().endsWith("/archive"),
   );
   await archiveButton.click();
+  const emptyView = page.getByText("No conversations match this view.");
+  await expect(emptyView).toHaveCount(0);
+  const archiveFocusRefetch = page.waitForResponse(
+    (response) =>
+      response.request().method() === "GET" &&
+      /\/api\/conversations(?:\?.*)?$/.test(response.url()),
+  );
+  await page.clock.setFixedTime(new Date(initialTime + 31_000));
+  await page.evaluate(() => {
+    window.dispatchEvent(new Event("focus"));
+    window.dispatchEvent(new Event("visibilitychange"));
+  });
+  await archiveFocusRefetch;
+  await expect(conversationLink).toHaveCount(0);
+  await page.waitForTimeout(220);
+  await expect(emptyView).toBeVisible();
   const archiveRequest = await archiveRequestPromise;
 
   expect(archiveRequest.postDataJSON()).toMatchObject({ archived: true });
@@ -404,6 +711,24 @@ test("archives and restores a conversation from the sidebar", async ({
       name: "Undo archive for Dashboard QA edge cases",
     })
     .click();
+  await expect(conversationLink).toBeVisible();
+  const restoreFocusRefetch = page.waitForResponse(
+    (response) =>
+      response.request().method() === "GET" &&
+      /\/api\/conversations(?:\?.*)?$/.test(response.url()),
+  );
+  await page.clock.setFixedTime(new Date(initialTime + 62_000));
+  await page.evaluate(() => {
+    window.dispatchEvent(new Event("focus"));
+    window.dispatchEvent(new Event("visibilitychange"));
+  });
+  await restoreFocusRefetch;
+  await expect(conversationLink).toBeVisible();
+  await expect(
+    page.getByRole("button", {
+      name: "Undo archive for Dashboard QA edge cases",
+    }),
+  ).toHaveText("Restoring…");
   const restoreRequest = await restoreRequestPromise;
 
   expect(restoreRequest.postDataJSON()).toMatchObject({ archived: false });
@@ -413,4 +738,76 @@ test("archives and restores a conversation from the sidebar", async ({
     }),
   ).toHaveCount(0);
   expect(page.url()).toBe(currentUrl);
+});
+
+test("shows archive failures after the row returns", async ({ page }) => {
+  await page.setViewportSize({ height: 900, width: 1600 });
+  await page.route("**/api/conversations/*/archive", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    await route.fulfill({
+      json: { error: "Archive failed" },
+      status: 500,
+    });
+  });
+  await page.goto(server.baseURL);
+
+  const conversationLink = page.getByRole("link", {
+    name: /Dashboard QA edge cases/,
+  });
+  await conversationLink.hover();
+  await page
+    .getByRole("button", { name: "Archive Dashboard QA edge cases" })
+    .click();
+
+  await expect(conversationLink).toBeVisible();
+  await expect(
+    page.getByRole("alert").filter({
+      hasText: "Could not archive Dashboard QA edge cases.",
+    }),
+  ).toBeVisible();
+});
+
+test("keeps undo available when another archive fails", async ({ page }) => {
+  await page.setViewportSize({ height: 900, width: 1600 });
+  let archiveRequests = 0;
+  await page.route("**/api/conversations/*/archive", async (route) => {
+    archiveRequests += 1;
+    if (archiveRequests === 1) {
+      await route.fulfill({ json: { archived: true } });
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    await route.fulfill({
+      json: { error: "Archive failed" },
+      status: 500,
+    });
+  });
+  await page.goto(server.baseURL);
+
+  const firstConversation = page.getByRole("link", {
+    name: /Dashboard QA edge cases/,
+  });
+  await firstConversation.hover();
+  await page
+    .getByRole("button", { name: "Archive Dashboard QA edge cases" })
+    .click();
+  const undo = page.getByRole("button", {
+    name: "Undo archive for Dashboard QA edge cases",
+  });
+  await expect(undo).toBeVisible();
+
+  const secondConversation = page.getByRole("link", {
+    name: /Checkout latency triage/,
+  });
+  await secondConversation.hover();
+  await page
+    .getByRole("button", { name: "Archive Checkout latency triage" })
+    .click();
+
+  await expect(
+    page.getByRole("alert").filter({
+      hasText: "Could not archive Checkout latency triage.",
+    }),
+  ).toBeVisible();
+  await expect(undo).toBeVisible();
 });

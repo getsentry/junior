@@ -2,11 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createLocalSource,
   createSlackSource,
+  defineJuniorPlugin,
 } from "@sentry/junior-plugin-api";
 import { createTools } from "@/chat/tools";
 import { readSlackActionToken } from "@/chat/slack/action-token";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
-import { schedulerPlugin } from "@sentry/junior-scheduler";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 const noopSandbox = {} as any;
 const actionToken = readSlackActionToken({
@@ -21,14 +21,28 @@ const noopEgress = {
   },
 };
 
+function resourceEventPlugin(enabled = true) {
+  return defineJuniorPlugin({
+    manifest: {
+      name: "resource-events-test",
+      displayName: "Resource events test",
+      description: "Publishes test resource events",
+    },
+    resourceEvents: {
+      resourceTypes: [{ type: "issue", supportedEvents: ["issue.closed"] }],
+      isEnabled: () => enabled,
+    },
+  });
+}
+
 function ctx(): Extract<ToolRuntimeContext, { source: { platform: "local" } }>;
 function ctx(
   channelId: string,
-  sourceType?: "priv" | "pub",
+  sourceVisibility?: "private" | "public",
 ): Extract<ToolRuntimeContext, { source: { platform: "slack" } }>;
 function ctx(
   channelId?: string,
-  sourceType?: "priv" | "pub",
+  sourceVisibility?: "private" | "public",
 ): ToolRuntimeContext {
   if (!channelId) {
     return {
@@ -53,7 +67,8 @@ function ctx(
     source: createSlackSource({
       teamId: "T123",
       channelId,
-      type: sourceType ?? (channelId.startsWith("C") ? "pub" : "priv"),
+      visibility:
+        sourceVisibility ?? (channelId.startsWith("C") ? "public" : "private"),
     }),
     egress: noopEgress,
     workspace: noopSandbox,
@@ -62,7 +77,7 @@ function ctx(
 
 describe("Slack tool registration", () => {
   beforeEach(() => {
-    setPlugins([schedulerPlugin()]);
+    setPlugins([]);
   });
 
   afterEach(() => {
@@ -136,7 +151,7 @@ describe("Slack tool registration", () => {
   });
 
   it("does not register conversation search for a source-confirmed private C channel", () => {
-    const tools = createTools([], {}, ctx("C12345", "priv"));
+    const tools = createTools([], {}, ctx("C12345", "private"));
 
     expect(tools).not.toHaveProperty("searchConversationHistory");
   });
@@ -186,6 +201,7 @@ describe("Slack tool registration", () => {
   });
 
   it("registers schedule tools only with complete Slack turn context", () => {
+    setPlugins([resourceEventPlugin()]);
     const incomplete = createTools([], {}, ctx("C12345"));
     const complete = createTools(
       [],
@@ -202,15 +218,55 @@ describe("Slack tool registration", () => {
           teamId: "T123",
           userId: "U123",
         },
+        resolveActorIdentity: async () => ({
+          identity: {
+            id: "identity:T123:U123",
+            provider: "slack",
+            providerSubjectId: "U123",
+            providerTenantId: "T123",
+          },
+        }),
       },
     );
 
-    expect(incomplete).not.toHaveProperty("scheduler_slackScheduleCreateTask");
-    expect(complete).toHaveProperty("scheduler_slackScheduleCreateTask");
-    expect(complete).toHaveProperty("scheduler_slackScheduleListTasks");
-    expect(complete).toHaveProperty("scheduler_slackScheduleUpdateTask");
-    expect(complete).toHaveProperty("scheduler_slackScheduleDeleteTask");
-    expect(complete).toHaveProperty("scheduler_slackScheduleRunTaskNow");
+    expect(incomplete).not.toHaveProperty("slackScheduleCreateTask");
+    expect(incomplete).not.toHaveProperty("createEventTask");
+    expect(incomplete).toHaveProperty("searchResourceEventTypes");
+    expect(incomplete).toHaveProperty("watchResourceEvents");
+    expect(complete).toHaveProperty("slackScheduleCreateTask");
+    expect(complete).toHaveProperty("slackScheduleListTasks");
+    expect(complete).toHaveProperty("slackScheduleUpdateTask");
+    expect(complete).toHaveProperty("slackScheduleDeleteTask");
+    expect(complete).toHaveProperty("slackScheduleRunTaskNow");
+    expect(complete).toHaveProperty("createEventTask");
+    expect(complete).toHaveProperty("searchResourceEventTypes");
+    expect(complete).toHaveProperty("watchResourceEvents");
+    expect(complete).toHaveProperty("listEventTasks");
+    expect(complete).toHaveProperty("updateEventTask");
+    expect(complete).toHaveProperty("deleteEventTask");
+  });
+
+  it("keeps event task management but not creation without an active event plugin", () => {
+    setPlugins([resourceEventPlugin(false)]);
+    const tools = createTools(
+      [],
+      {},
+      {
+        ...ctx("C12345"),
+        actor: {
+          platform: "slack",
+          teamId: "T123",
+          userId: "U123",
+        },
+      },
+    );
+
+    expect(tools).not.toHaveProperty("createEventTask");
+    expect(tools).not.toHaveProperty("searchResourceEventTypes");
+    expect(tools).not.toHaveProperty("watchResourceEvents");
+    expect(tools).toHaveProperty("listEventTasks");
+    expect(tools).toHaveProperty("updateEventTask");
+    expect(tools).toHaveProperty("deleteEventTask");
   });
 
   it("does not register schedule tools without a actor", () => {
@@ -222,11 +278,12 @@ describe("Slack tool registration", () => {
       },
     );
 
-    expect(tools).not.toHaveProperty("scheduler_slackScheduleCreateTask");
-    expect(tools).not.toHaveProperty("scheduler_slackScheduleListTasks");
-    expect(tools).not.toHaveProperty("scheduler_slackScheduleUpdateTask");
-    expect(tools).not.toHaveProperty("scheduler_slackScheduleDeleteTask");
-    expect(tools).not.toHaveProperty("scheduler_slackScheduleRunTaskNow");
+    expect(tools).not.toHaveProperty("slackScheduleCreateTask");
+    expect(tools).not.toHaveProperty("slackScheduleListTasks");
+    expect(tools).not.toHaveProperty("slackScheduleUpdateTask");
+    expect(tools).not.toHaveProperty("slackScheduleDeleteTask");
+    expect(tools).not.toHaveProperty("slackScheduleRunTaskNow");
+    expect(tools).not.toHaveProperty("createEventTask");
   });
 
   it("does not register canvas create when channel context is unavailable", () => {

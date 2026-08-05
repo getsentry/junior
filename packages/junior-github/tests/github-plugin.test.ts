@@ -293,6 +293,7 @@ function githubToolsContext(input?: {
     annotation: ConversationAnnotationInput,
   ) => Promise<void> | void;
   conversationId?: string;
+  conversationLink?: string;
   egressFetch?: (request: {
     operation: string;
     provider: string;
@@ -323,10 +324,13 @@ function githubToolsContext(input?: {
     destination: { platform: "local" as const, conversationId },
     source: {
       platform: "local" as const,
-      type: "priv" as const,
+      visibility: "private" as const,
       conversationId,
     },
     embedder: {},
+    ...(input?.conversationLink
+      ? { slack: { conversationLink: { url: input.conversationLink } } }
+      : {}),
     egress: {
       async fetch(request: {
         operation: string;
@@ -347,6 +351,7 @@ function githubToolsContext(input?: {
       },
     },
     model: {},
+    resourceEvents: { canSubscribe: true },
     state: {
       async delete(key: string) {
         state.delete(key);
@@ -492,6 +497,34 @@ describe("github plugin", () => {
     expect(plugin.manifest.oauth?.scope).toBe("read:org repo workflow");
   });
 
+  it("suggests issue and pull request events for repository watches", () => {
+    const repository = githubPlugin().resourceEvents?.resourceTypes.find(
+      (resourceType) => resourceType.type === "repository",
+    );
+
+    expect(repository).toMatchObject({
+      supportedEvents: expect.arrayContaining([
+        "issue.opened",
+        "pull_request.merged",
+      ]),
+      suggestedEvents: expect.arrayContaining([
+        "issue.opened",
+        "pull_request.merged",
+      ]),
+    });
+  });
+
+  it("registers release source watches", () => {
+    const releaseSource = githubPlugin().resourceEvents?.resourceTypes.find(
+      (resourceType) => resourceType.type === "release_source",
+    );
+
+    expect(releaseSource).toMatchObject({
+      supportedEvents: ["release.published"],
+      suggestedEvents: ["release.published"],
+    });
+  });
+
   it("rejects unknown explicit GitHub App permission levels", () => {
     expect(() =>
       githubPlugin({
@@ -626,6 +659,7 @@ describe("github plugin", () => {
   });
 
   it("creates issues with deterministic requester attribution", async () => {
+    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
     const ctx = githubToolsContext({
       actor: {
         fullName: "David Cramer",
@@ -638,27 +672,32 @@ describe("github plugin", () => {
     const plugin = githubPlugin();
     const tool = plugin.hooks?.tools?.(ctx as any)?.createIssue;
 
-    await expect(
-      tool?.execute?.(
-        {
-          repo: "getsentry/junior",
-          title: "Typed issue",
-          body: "Issue body",
-          labels: ["bug", "high-priority"],
-        },
-        { toolCallId: "call-create-issue" },
-      ),
-    ).resolves.toMatchObject({
-      ok: true,
-      status: "success",
-      target: "createIssue",
-      data: {
-        number: 660,
-        url: "https://github.com/getsentry/junior/issues/660",
+    const result = await tool?.execute?.(
+      {
+        repo: "getsentry/junior",
+        title: "Typed issue",
+        body: "Issue body",
+        labels: ["bug", "high-priority"],
       },
+      { toolCallId: "call-create-issue" },
+    );
+    expect(result).toMatchObject({
+      target: "createIssue",
       number: 660,
+      subscribable: {
+        namespace: "github",
+        identifier: "getsentry/junior#660",
+        type: "issue",
+        supportedEvents: [
+          "issue.comment.created",
+          "issue.opened",
+          "issue.closed",
+          "issue.reopened",
+        ],
+      },
       url: "https://github.com/getsentry/junior/issues/660",
     });
+    expect(result).not.toHaveProperty("data");
 
     expect(ctx.egressRequests()).toHaveLength(1);
     const request = ctx.egressRequests()[0];
@@ -681,7 +720,7 @@ describe("github plugin", () => {
     );
     await expect(request?.request.json()).resolves.toEqual({
       title: "Typed issue",
-      body: "Issue body\n\n<!-- junior-request-attribution:start -->\nRequested by **David Cramer** via Junior.\n<!-- junior-request-attribution:end -->",
+      body: "Issue body\n\n<!-- junior-request-attribution:start -->\nRequested by **David Cramer**.\n<!-- junior-request-attribution:end -->",
       labels: ["bug", "high-priority"],
     });
     expect(ctx.annotationInputs()).toEqual([
@@ -712,11 +751,12 @@ describe("github plugin", () => {
     expect(ctx.annotationInputs()[0]?.label).toBe("getsentry/junior#660");
   });
 
-  it("adds a Sentry session link to issue footers when configured", async () => {
+  it("adds dashboard and Sentry session links to issue footers when configured", async () => {
     process.env.SENTRY_DSN = "https://public@o450000.ingest.sentry.io/12345";
     process.env.SENTRY_ORG_SLUG = "acme";
     const ctx = githubToolsContext({
       conversationId: "slack:C123:1712345.0001",
+      conversationLink: "https://junior.example.com/conversations/session",
     });
     const plugin = githubPlugin();
     const tool = plugin.hooks?.tools?.(ctx as any)?.createIssue;
@@ -736,7 +776,7 @@ describe("github plugin", () => {
 
 --
 
-[View Junior Session in Sentry](https://acme.sentry.io/explore/conversations/slack%3AC123%3A1712345.0001/?project=12345)
+[View Junior Session](https://junior.example.com/conversations/session) [[Sentry]](https://acme.sentry.io/explore/conversations/slack%3AC123%3A1712345.0001/?project=12345)
 
 <!-- junior-session-footer:end -->`,
     });
@@ -784,8 +824,6 @@ Conversation: \`local:test:old-conversation\`
     await expect(
       tool?.execute?.(input, { toolCallId: "call-idempotent-create" }),
     ).resolves.toMatchObject({
-      ok: true,
-      status: "success",
       target: "createIssue",
       number: 660,
       url: "https://github.com/getsentry/junior/issues/660",
@@ -800,8 +838,6 @@ Conversation: \`local:test:old-conversation\`
         { toolCallId: "call-idempotent-create" },
       ),
     ).resolves.toMatchObject({
-      ok: true,
-      status: "success",
       target: "createIssue",
       number: 660,
       url: "https://github.com/getsentry/junior/issues/660",
@@ -901,8 +937,6 @@ Conversation: \`local:test:old-conversation\`
     await expect(
       tool?.execute?.(input, { toolCallId: "call-definitive-rejection" }),
     ).resolves.toMatchObject({
-      ok: true,
-      status: "success",
       target: "createIssue",
       number: 660,
       url: "https://github.com/getsentry/junior/issues/660",
@@ -947,8 +981,6 @@ Conversation: \`local:test:old-conversation\`
     await expect(
       tool?.execute?.(input, { toolCallId: "call-auth-required" }),
     ).resolves.toMatchObject({
-      ok: true,
-      status: "success",
       target: "createIssue",
       number: 660,
       url: "https://github.com/getsentry/junior/issues/660",
@@ -1080,27 +1112,27 @@ Conversation: \`local:test:old-conversation\`
       number: 691,
       subscribable: {
         label: "GitHub PR getsentry/junior#691",
-        provider: "github",
-        resourceRef: "github:pull_request:getsentry/junior#691",
+        namespace: "github",
+        identifier: "getsentry/junior#691",
         suggestedEvents: [
-          "checks.failed",
-          "comment.created",
-          "review.changes_requested",
-          "review.commented",
-          "review_comment.created",
-          "state.merged",
-          "state.closed_unmerged",
+          "pull_request.checks.failed",
+          "pull_request.comment.created",
+          "pull_request.review.changes_requested",
+          "pull_request.review.commented",
+          "pull_request.review_comment.created",
+          "pull_request.merged",
+          "pull_request.closed_unmerged",
         ],
         supportedEvents: [
-          "checks.failed",
-          "checks.recovered",
-          "comment.created",
-          "review.approved",
-          "review.changes_requested",
-          "review.commented",
-          "review_comment.created",
-          "state.merged",
-          "state.closed_unmerged",
+          "pull_request.checks.failed",
+          "pull_request.checks.recovered",
+          "pull_request.comment.created",
+          "pull_request.review.approved",
+          "pull_request.review.changes_requested",
+          "pull_request.review.commented",
+          "pull_request.review_comment.created",
+          "pull_request.merged",
+          "pull_request.closed_unmerged",
         ],
         type: "pull_request",
       },
@@ -1130,7 +1162,7 @@ Conversation: \`local:test:old-conversation\`
       title: "Typed PR",
       head: "dcramer/gh-660-pr-create",
       base: "main",
-      body: "PR body\n\n<!-- junior-request-attribution:start -->\nRequested by **David Cramer** via Junior.\n<!-- junior-request-attribution:end -->",
+      body: "PR body\n\n<!-- junior-request-attribution:start -->\nRequested by **David Cramer**.\n<!-- junior-request-attribution:end -->",
       draft: true,
     });
     expect(ctx.annotationInputs()).toEqual([
@@ -1197,8 +1229,6 @@ Conversation: \`local:test:old-conversation\`
         { toolCallId: "call-create-pull-request-without-webhooks" },
       ),
     ).resolves.toMatchObject({
-      ok: true,
-      status: "success",
       target: "createPullRequest",
       number: 691,
       url: "https://github.com/getsentry/junior/pull/691",
@@ -1274,7 +1304,7 @@ Conversation: \`local:test:old-conversation\`
     ).resolves.toMatchObject({
       number: 691,
       subscribable: {
-        resourceRef: "github:pull_request:getsentry/junior#691",
+        identifier: "getsentry/junior#691",
       },
       url: "https://github.com/getsentry/junior/pull/691",
     });
@@ -1289,7 +1319,7 @@ Conversation: \`local:test:old-conversation\`
     ).resolves.toMatchObject({
       number: 691,
       subscribable: {
-        resourceRef: "github:pull_request:getsentry/junior#691",
+        identifier: "getsentry/junior#691",
       },
       url: "https://github.com/getsentry/junior/pull/691",
     });
@@ -1325,7 +1355,7 @@ Conversation: \`local:test:old-conversation\`
     ).resolves.toMatchObject({
       number: 691,
       subscribable: {
-        resourceRef: "github:pull_request:getsentry/junior#691",
+        identifier: "getsentry/junior#691",
       },
       url: "https://github.com/getsentry/junior/pull/691",
     });
@@ -1672,7 +1702,7 @@ Conversation: \`local:test:old-conversation\`
     );
   });
 
-  it("separates pull request lifecycle writes from human review identity", async () => {
+  it("treats pull request review writes as bot-owned installation identity", async () => {
     await expect(
       grantForEgress({
         method: "PATCH",
@@ -1690,14 +1720,85 @@ Conversation: \`local:test:old-conversation\`
         url: "https://api.github.com/repos/getsentry/junior/pulls/780/reviews",
       }),
     ).resolves.toMatchObject({
-      name: "user-write",
+      name: "installation-write",
       access: "write",
       leaseScope: "repository:getsentry/junior",
-      reason: "github.user-write",
-      requirements: [
-        "requesting GitHub user permission to perform this operation",
-      ],
+      reason: "github.installation-write",
     });
+    await expect(
+      grantForEgress({
+        method: "POST",
+        url: "https://api.github.com/repos/getsentry/junior/pulls/780/reviews/99/events",
+      }),
+    ).resolves.toMatchObject({
+      name: "installation-write",
+      access: "write",
+      leaseScope: "repository:getsentry/junior",
+      reason: "github.installation-write",
+    });
+    await expect(
+      grantForEgress({
+        method: "PUT",
+        url: "https://api.github.com/repos/getsentry/junior/pulls/780/reviews/99/dismissals",
+      }),
+    ).resolves.toMatchObject({
+      name: "installation-write",
+      access: "write",
+      leaseScope: "repository:getsentry/junior",
+      reason: "github.installation-write",
+    });
+    await expect(
+      grantForEgress({
+        method: "POST",
+        url: "https://api.github.com/repos/getsentry/junior/pulls/780/comments",
+      }),
+    ).resolves.toMatchObject({
+      name: "installation-write",
+      access: "write",
+      leaseScope: "repository:getsentry/junior",
+      reason: "github.installation-write",
+    });
+    await expect(
+      grantForEgress({
+        method: "POST",
+        url: "https://api.github.com/repos/getsentry/junior/pulls/780/comments/42/replies",
+      }),
+    ).resolves.toMatchObject({
+      name: "installation-write",
+      access: "write",
+      leaseScope: "repository:getsentry/junior",
+      reason: "github.installation-write",
+    });
+    await expect(
+      grantForEgress({
+        method: "PATCH",
+        url: "https://api.github.com/repos/getsentry/junior/pulls/comments/42",
+      }),
+    ).resolves.toMatchObject({
+      name: "installation-write",
+      access: "write",
+      leaseScope: "repository:getsentry/junior",
+      reason: "github.installation-write",
+    });
+    await expect(
+      grantForEgress({
+        method: "DELETE",
+        url: "https://api.github.com/repos/getsentry/junior/pulls/comments/42",
+      }),
+    ).resolves.toMatchObject({
+      name: "installation-write",
+      access: "write",
+      leaseScope: "repository:getsentry/junior",
+      reason: "github.installation-write",
+    });
+    await expect(
+      grantForEgress({
+        method: "PUT",
+        url: "https://api.github.com/repos/getsentry/junior/pulls/780/merge",
+      }),
+    ).rejects.toThrow(
+      "GitHub write request is not an explicitly allowed Junior operation.",
+    );
   });
 
   it("preserves installed App permissions on repository-scoped write credentials", async () => {

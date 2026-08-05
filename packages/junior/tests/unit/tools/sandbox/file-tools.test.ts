@@ -87,17 +87,13 @@ describe("sandbox file tools", () => {
     });
 
     expect(result.details).toMatchObject({
-      ok: true,
-      status: "success",
       target: "notes.txt",
       truncated: true,
-      data: {
-        content: "two",
-        end_line: 2,
-        path: "notes.txt",
-        start_line: 2,
-        total_lines: 3,
-      },
+      content: "two",
+      end_line: 2,
+      path: "notes.txt",
+      start_line: 2,
+      total_lines: 3,
       continuation: {
         arguments: {
           path: "notes.txt",
@@ -119,11 +115,9 @@ describe("sandbox file tools", () => {
     expect(result.details).toMatchObject({
       truncated: true,
       character_limit_reached: 60_000,
-      data: {
-        content: line,
-        end_line: 1,
-        truncation_reasons: ["60000 character output limit reached."],
-      },
+      content: line,
+      end_line: 1,
+      truncation_reasons: ["60000 character output limit reached."],
       continuation: {
         arguments: {
           path: "generated.txt",
@@ -147,15 +141,13 @@ describe("sandbox file tools", () => {
       truncated: true,
       character_limit_reached: 60_000,
       line_truncated: true,
-      data: {
-        end_line: 1,
-        truncation_reasons: [
-          "60000 character output limit reached.",
-          "Line 1 was truncated.",
-        ],
-      },
+      end_line: 1,
+      truncation_reasons: [
+        "60000 character output limit reached.",
+        "Line 1 was truncated.",
+      ],
     });
-    expect(result.details.data.content).toHaveLength(60_000);
+    expect(result.details.content).toHaveLength(60_000);
     expect(result.details).not.toHaveProperty("continuation");
     expect(result.content[0].text.length).toBeLessThan(61_000);
   });
@@ -173,15 +165,10 @@ describe("sandbox file tools", () => {
 
     expect(memory.read("src/app.ts")).toBe("one\r\nTWO\r\nTHREE\r\n");
     expect(result.details).toMatchObject({
-      ok: true,
       path: "src/app.ts",
       replacements: 1,
     });
-    if (!result.details.ok) {
-      throw new Error("editFile should have succeeded");
-    }
     expect(result.details.diff).toContain("+2 TWO");
-    expect(result.details.data).not.toHaveProperty("diff");
     expect(JSON.parse(result.content[0].text)).toEqual(result.details);
   });
 
@@ -201,13 +188,9 @@ describe("sandbox file tools", () => {
       ],
     });
 
-    if (!result.details.ok) {
-      throw new Error("editFile should have succeeded");
-    }
     expect(result.details.truncated).toBe(true);
     expect(result.details.diff.length).toBeLessThan(10_000);
     expect(result.details.diff).toContain("[line truncated]");
-    expect(result.details.data).not.toHaveProperty("diff");
     expect(result.content[0].text.length).toBeLessThan(20_000);
   });
 
@@ -235,30 +218,22 @@ describe("sandbox file tools", () => {
       listDir({ fs: memory.fs, path: "src" }),
     ).resolves.toMatchObject({
       details: {
-        ok: true,
         path: "src",
-        status: "success",
         target: "src",
         truncated: false,
-        data: {
-          entries: ["app.ts", "nested/"],
-          entry_count: 2,
-        },
+        entries: ["app.ts", "nested/"],
+        entry_count: 2,
       },
     });
     await expect(
       findFiles({ fs: memory.fs, path: "src", pattern: "*.ts" }),
     ).resolves.toMatchObject({
       details: {
-        ok: true,
         path: "src",
-        status: "success",
         target: "src",
         truncated: false,
-        data: {
-          files: ["app.ts", "nested/test.ts"],
-          file_count: 2,
-        },
+        files: ["app.ts", "nested/test.ts"],
+        file_count: 2,
       },
     });
     await expect(
@@ -270,18 +245,14 @@ describe("sandbox file tools", () => {
       }),
     ).resolves.toMatchObject({
       details: {
-        ok: true,
         path: "src",
-        status: "success",
         target: "src",
         truncated: false,
-        data: {
-          lines: [
-            "app.ts:1: const needle = true;",
-            "nested/test.ts:1: needle again",
-          ],
-          match_count: 2,
-        },
+        lines: [
+          "app.ts:1: const needle = true;",
+          "nested/test.ts:1: needle again",
+        ],
+        match_count: 2,
       },
     });
   });
@@ -332,11 +303,8 @@ describe("sandbox file tools", () => {
       timeoutMs: 30_000,
     });
     expect(result.details).toMatchObject({
-      ok: true,
-      data: {
-        files: ["nested/test.ts"],
-        file_count: 1,
-      },
+      files: ["nested/test.ts"],
+      file_count: 1,
     });
   });
 
@@ -397,15 +365,12 @@ describe("sandbox file tools", () => {
       args.indexOf("!**/node_modules/**"),
     );
     expect(result.details).toMatchObject({
-      ok: true,
-      data: {
-        lines: [
-          "nested/app.ts-1- before",
-          "nested/app.ts:2: needle",
-          "nested/app.ts-3- after",
-        ],
-        match_count: 1,
-      },
+      lines: [
+        "nested/app.ts-1- before",
+        "nested/app.ts:2: needle",
+        "nested/app.ts-3- after",
+      ],
+      match_count: 1,
     });
   });
 
@@ -485,7 +450,7 @@ describe("sandbox file tools", () => {
     await expect(
       findFiles({ fs: memory.fs, pattern: "src/**/*.ts" }),
     ).resolves.toMatchObject({
-      details: { ok: true, path: ".", truncated: false },
+      details: { path: ".", truncated: false },
     });
   });
 
@@ -496,19 +461,7 @@ describe("sandbox file tools", () => {
 
     await expect(
       findFiles({ fs: memory.fs, path: "missing", pattern: "*.ts" }),
-    ).resolves.toMatchObject({
-      details: {
-        ok: false,
-        status: "error",
-        target: "missing",
-        error: {
-          kind: "not_found",
-          message: "Path not found: missing",
-        },
-        path: "missing",
-        truncated: false,
-      },
-    });
+    ).rejects.toThrow("Path not found: missing");
     await expect(
       grepFiles({
         fs: memory.fs,
@@ -516,34 +469,10 @@ describe("sandbox file tools", () => {
         pattern: "needle",
         literal: true,
       }),
-    ).resolves.toMatchObject({
-      details: {
-        ok: false,
-        status: "error",
-        target: "missing",
-        error: {
-          kind: "not_found",
-          message: "Path not found: missing",
-        },
-        path: "missing",
-        truncated: false,
-      },
-    });
-    await expect(
-      listDir({ fs: memory.fs, path: "missing" }),
-    ).resolves.toMatchObject({
-      details: {
-        ok: false,
-        status: "error",
-        target: "missing",
-        error: {
-          kind: "not_found",
-          message: "Path not found: missing",
-        },
-        path: "missing",
-        truncated: false,
-      },
-    });
+    ).rejects.toThrow("Path not found: missing");
+    await expect(listDir({ fs: memory.fs, path: "missing" })).rejects.toThrow(
+      "Path not found: missing",
+    );
   });
 
   it("reports files that disappear during traversal", async () => {
@@ -564,20 +493,7 @@ describe("sandbox file tools", () => {
 
     await expect(
       findFiles({ fs: memory.fs, path: "src", pattern: "*.ts" }),
-    ).resolves.toMatchObject({
-      details: {
-        ok: false,
-        status: "error",
-        target: "src",
-        error: {
-          kind: "not_found",
-          message: `Path not found: ${SANDBOX_WORKSPACE_ROOT}/src/gone.ts`,
-        },
-        path: "src",
-        missing_path: `${SANDBOX_WORKSPACE_ROOT}/src/gone.ts`,
-        truncated: false,
-      },
-    });
+    ).rejects.toThrow(`Path not found: ${SANDBOX_WORKSPACE_ROOT}/src/gone.ts`);
   });
 
   it("deduplicates overlapping grep context lines", async () => {
@@ -595,19 +511,15 @@ describe("sandbox file tools", () => {
       }),
     ).resolves.toMatchObject({
       details: {
-        ok: true,
         path: "src",
-        status: "success",
         target: "src",
         truncated: false,
-        data: {
-          lines: [
-            "app.ts-1- before",
-            "app.ts:2: needle one",
-            "app.ts:3: needle two",
-            "app.ts-4- after",
-          ],
-        },
+        lines: [
+          "app.ts-1- before",
+          "app.ts:2: needle one",
+          "app.ts:3: needle two",
+          "app.ts-4- after",
+        ],
       },
     });
   });
@@ -623,16 +535,7 @@ describe("sandbox file tools", () => {
         path: "src/app.ts",
         edits: [{ oldText: "same", newText: "changed" }],
       }),
-    ).resolves.toMatchObject({
-      details: {
-        ok: false,
-        status: "error",
-        target: "src/app.ts",
-        error: {
-          kind: "old_text_not_unique",
-        },
-      },
-    });
+    ).rejects.toThrow("Found 2 occurrences");
   });
 
   it("returns structured failure for old text not found", async () => {
@@ -646,16 +549,7 @@ describe("sandbox file tools", () => {
         path: "src/app.ts",
         edits: [{ oldText: "missing text", newText: "new" }],
       }),
-    ).resolves.toMatchObject({
-      details: {
-        ok: false,
-        status: "error",
-        target: "src/app.ts",
-        error: {
-          kind: "old_text_not_found",
-        },
-      },
-    });
+    ).rejects.toThrow("Could not find edits[0]");
   });
 
   it("throws ToolInputError for workspace path traversal", async () => {

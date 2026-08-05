@@ -9,6 +9,7 @@ import {
 
 import {
   useDashboardCoreData,
+  usePersonalSpendData,
   usePluginUserPagesData,
   useSystemData,
 } from "./api";
@@ -17,7 +18,7 @@ import { LoadingView } from "./components/LoadingView";
 import { JuniorLogo } from "./components/JuniorLogo";
 import { ProfileMenu } from "./components/ProfileMenu";
 import { setDashboardTimeZone } from "./format";
-import { ConversationWorkspace } from "./pages/ConversationWorkspace";
+import { ConversationWorkspace } from "./conversations/ConversationWorkspace";
 import { ComponentsPage } from "./pages/dev/ComponentsPage";
 import { LocationDetailPage } from "./pages/locations/LocationDetailPage";
 import { LocationsPage } from "./pages/locations/LocationsPage";
@@ -25,12 +26,17 @@ import { PeoplePage } from "./pages/people/PeoplePage";
 import { PersonalTokensPage } from "./pages/PersonalTokensPage";
 import { PersonProfilePage } from "./pages/people/PersonProfilePage";
 import { SystemPage } from "./pages/system/SystemPage";
-import { PluginUserPage } from "./pages/user/PluginUserPage";
+import { TasksPage } from "./pages/tasks/TasksPage";
+import {
+  PluginUserPageRoute,
+  pluginUserPagePath,
+} from "./pages/user/PluginUserPage";
 import {
   cn,
   dashboardContainerClass,
   dashboardInteractiveTextClass,
 } from "./styles";
+import type { DashboardCoreData } from "./types";
 
 const dashboardBackground = {
   backgroundColor: "#050507",
@@ -56,10 +62,17 @@ export function DashboardShell() {
   }
   const loading = !data && !query.error;
   const loggedIn = Boolean(data?.config.authRequired && data.me.user.email);
+  const personalSpendQuery = usePersonalSpendData(loggedIn);
+  const primaryUserPages = loggedIn
+    ? userPages.filter((page) => page.navigation === "primary")
+    : [];
   const workspace =
     location.pathname === "/" ||
     location.pathname === "/conversations" ||
     location.pathname.startsWith("/conversations/");
+  const conversationDetail =
+    location.pathname.startsWith("/conversations/") &&
+    location.pathname !== "/conversations/";
 
   async function signOut() {
     await fetch(`${data?.config.authPath ?? "/api/auth"}/sign-out`, {
@@ -71,13 +84,10 @@ export function DashboardShell() {
 
   const navLinkClass = ({ isActive }: { isActive: boolean }) =>
     cn(
-      "relative whitespace-nowrap px-1 py-2 font-mono text-[0.68rem] font-medium uppercase tracking-[0.12em] no-underline transition-colors after:absolute after:inset-x-0 after:-bottom-[1.05rem] after:h-px after:transition-colors",
+      "shrink-0 whitespace-nowrap rounded-md px-2.5 py-2 font-mono text-[0.62rem] font-medium uppercase tracking-[0.08em] no-underline transition-colors sm:text-[0.68rem] sm:tracking-[0.12em]",
       isActive
-        ? "text-dashboard-text after:bg-cyan-400"
-        : cn(
-            "after:bg-transparent hover:after:bg-white/20",
-            dashboardInteractiveTextClass,
-          ),
+        ? "bg-cyan-300/[0.1] text-cyan-50"
+        : cn("hover:bg-white/[0.035]", dashboardInteractiveTextClass),
     );
 
   return (
@@ -85,16 +95,29 @@ export function DashboardShell() {
       className={cn(
         "relative grid font-mono text-dashboard-text",
         workspace
-          ? "h-dvh min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden"
+          ? cn(
+              "h-dvh min-h-0 overflow-hidden",
+              // Hidden header is removed from the grid, so mobile conversation
+              // detail must use a single full-height row or the workspace lands
+              // in `auto` and the transcript height chain breaks.
+              conversationDetail
+                ? "grid-rows-[minmax(0,1fr)] md:grid-rows-[auto_minmax(0,1fr)]"
+                : "grid-rows-[auto_minmax(0,1fr)]",
+            )
           : "min-h-screen grid-rows-[auto_1fr]",
       )}
       style={dashboardBackground}
     >
-      <header className="sticky top-0 z-10 border-b border-white/[0.05] bg-[#050507]/95">
+      <header
+        className={cn(
+          "sticky top-0 z-10 border-b border-white/[0.05] bg-[#050507]/95",
+          conversationDetail && "max-md:hidden",
+        )}
+      >
         <div
           className={cn(
             dashboardContainerClass,
-            "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-5 gap-y-3 px-4 py-4",
+            "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 px-4 py-3 md:gap-x-5 md:gap-y-3 md:py-4",
             loggedIn
               ? "md:grid-cols-[auto_minmax(0,1fr)_auto]"
               : "md:grid-cols-[auto_minmax(0,1fr)]",
@@ -108,13 +131,28 @@ export function DashboardShell() {
           >
             <JuniorLogo />
           </Link>
-          <nav className="col-span-2 row-start-2 flex min-w-0 items-center gap-6 overflow-x-auto md:col-span-1 md:col-start-2 md:row-start-1 md:justify-self-start md:overflow-visible">
-            <NavLink className={navLinkClass} to="/locations">
-              Locations
-            </NavLink>
-            <NavLink className={navLinkClass} to="/people">
-              People
-            </NavLink>
+          <nav className="col-span-2 row-start-2 flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none] md:col-span-1 md:col-start-2 md:row-start-1 md:justify-self-start md:overflow-visible [&::-webkit-scrollbar]:hidden">
+            <Link
+              aria-current={workspace ? "page" : undefined}
+              className={navLinkClass({ isActive: workspace })}
+              to="/"
+            >
+              Conversations
+            </Link>
+            {loggedIn ? (
+              <NavLink className={navLinkClass} to="/tasks">
+                Tasks
+              </NavLink>
+            ) : null}
+            {primaryUserPages.map((page) => (
+              <NavLink
+                className={navLinkClass}
+                key={`${page.pluginName}:${page.id}`}
+                to={pluginUserPagePath(page.pluginName, page.id)}
+              >
+                {page.label}
+              </NavLink>
+            ))}
             <NavLink className={navLinkClass} to="/system">
               System
             </NavLink>
@@ -124,6 +162,7 @@ export function DashboardShell() {
               <ProfileMenu
                 identity={data!.me}
                 onSignOut={signOut}
+                spend={personalSpendQuery.data}
                 userPages={userPages}
               />
             </div>
@@ -135,12 +174,32 @@ export function DashboardShell() {
         <Route
           element={
             loading ? (
+              <LoadingView label="Loading tasks" />
+            ) : loggedIn ? (
+              <TasksPage enabled={loggedIn} />
+            ) : (
+              <Navigate replace to="/" />
+            )
+          }
+          path="/tasks"
+        />
+        <Route
+          element={<LegacySystemRedirect section="locations" />}
+          path="/locations"
+        />
+        <Route
+          element={<LegacySystemRedirect section="locations" />}
+          path="/locations/:locationId"
+        />
+        <Route
+          element={
+            loading ? (
               <LoadingView label="Loading locations" />
             ) : (
               <LocationsPage />
             )
           }
-          path="/locations"
+          path="/system/locations"
         />
         <Route
           element={
@@ -150,7 +209,7 @@ export function DashboardShell() {
               <LocationDetailPage />
             )
           }
-          path="/locations/:locationId"
+          path="/system/locations/:locationId"
         />
         <Route
           element={
@@ -198,15 +257,7 @@ export function DashboardShell() {
           path="/dev/*"
         />
         <Route
-          element={
-            loading ? <LoadingView label="Loading system" /> : <SystemRoute />
-          }
-          path="/system/*"
-        />
-        <Route
-          element={
-            loading ? <LoadingView label="Loading people" /> : <PeoplePage />
-          }
+          element={<LegacySystemRedirect section="people" />}
           path="/people"
         />
         <Route
@@ -218,6 +269,26 @@ export function DashboardShell() {
             )
           }
           path="/people/:email"
+        />
+        <Route
+          element={
+            loading ? <LoadingView label="Loading people" /> : <PeoplePage />
+          }
+          path="/system/people"
+        />
+        <Route
+          element={
+            loading ? (
+              <LoadingView label="Loading system" />
+            ) : data ? (
+              <SystemRoute coreData={data} />
+            ) : (
+              <LoadingView
+                label={query.error?.message ?? "Dashboard unavailable"}
+              />
+            )
+          }
+          path="/system/*"
         />
         <Route
           element={
@@ -236,12 +307,12 @@ export function DashboardShell() {
             loading || userPagesQuery.isPending ? (
               <LoadingView label="Loading page" />
             ) : loggedIn && userPagesQuery.data ? (
-              <PluginUserPage pages={userPagesQuery.data} />
+              <PluginUserPageRoute pages={userPagesQuery.data} />
             ) : (
               <Navigate replace to="/" />
             )
           }
-          path="/settings/plugins/:pluginName/:pageId"
+          path="/plugins/:pluginName/:pageId/*"
         />
         <Route element={<Navigate replace to="/" />} path="*" />
       </Routes>
@@ -254,8 +325,20 @@ export function DashboardShell() {
   );
 }
 
-function SystemRoute() {
-  const query = useSystemData();
+function LegacySystemRedirect(props: { section: "locations" | "people" }) {
+  const location = useLocation();
+  const legacyPrefix = `/${props.section}`;
+  const suffix = location.pathname.slice(legacyPrefix.length);
+  return (
+    <Navigate
+      replace
+      to={`/system/${props.section}${suffix}${location.search}${location.hash}`}
+    />
+  );
+}
+
+function SystemRoute(props: { coreData: DashboardCoreData }) {
+  const query = useSystemData(props.coreData);
   if (!query.data && !query.error) {
     return <LoadingView label="Loading system" />;
   }

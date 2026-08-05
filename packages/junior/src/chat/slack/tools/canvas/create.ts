@@ -4,7 +4,7 @@ import { createCanvas } from "@/chat/slack/tools/canvas/api";
 import { mergeRecentCanvases } from "@/chat/slack/tools/canvas/context";
 import type { SlackToolContext } from "@/chat/slack/tools/context";
 import { z } from "zod";
-import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
+import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import type { ToolState } from "@/chat/tools/types";
@@ -15,13 +15,19 @@ export function createSlackCanvasCreateTool(
   state: ToolState,
 ) {
   return zodTool({
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+      readOnlyHint: false,
+    },
     description:
       "Create a Slack canvas for long-form output in the active assistant context channel. Use when the answer is better as a reusable document than a thread reply: long-form research, timelines, bios/profiles, structured notes, plans, comparisons, or anything likely to exceed one compact Slack reply. After creating it, reply with one or two short sentences plus the canvas link; do not recap the canvas contents. Do not use for short answers that fit cleanly in one normal thread reply.",
     inputSchema: z.object({
       title: z.string().min(1).max(160).describe("Canvas title."),
       markdown: z.string().min(1).describe("Canvas markdown body content."),
     }),
-    outputSchema: juniorToolResultSchema,
+    outputSchema: juniorToolOutputSchema,
     execute: async ({ title, markdown }) => {
       const targetChannelId = context.destinationChannelId;
       if (!isConversationScopedChannel(targetChannelId)) {
@@ -40,8 +46,6 @@ export function createSlackCanvasCreateTool(
         channel_id: targetChannelId ?? null,
       });
       const cached = state.getOperationResult<{
-        ok: true;
-        status: "success";
         canvas_id: string;
         permalink: string;
         summary: string;
@@ -72,8 +76,6 @@ export function createSlackCanvasCreateTool(
       });
 
       const response = {
-        ok: true,
-        status: "success" as const,
         canvas_id: created.canvasId,
         permalink: created.permalink,
         summary: `Created canvas ${created.canvasId}`,

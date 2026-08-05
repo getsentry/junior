@@ -2,9 +2,9 @@ import type { MemoryRecord } from "./store";
 
 const RECIPROCAL_RANK_FUSION_K = 60;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+const DEFAULT_RRF_WEIGHT = 1;
 
 export interface MemoryMatch {
-  exactIdentifier: boolean;
   lexical?: {
     rank: number;
   };
@@ -15,14 +15,21 @@ export interface MemoryMatch {
   };
 }
 
-function reciprocalRank(rank: number): number {
-  return 1 / (RECIPROCAL_RANK_FUSION_K + rank);
+function reciprocalRank(rank: number, weight: number): number {
+  return weight / (RECIPROCAL_RANK_FUSION_K + rank);
 }
 
-function matchScore(match: MemoryMatch): number {
+function matchScore(
+  match: MemoryMatch,
+  weights: { lexicalWeight: number; vectorWeight: number },
+): number {
   return (
-    (match.vector ? reciprocalRank(match.vector.rank) : 0) +
-    (match.lexical ? reciprocalRank(match.lexical.rank) : 0)
+    (match.vector
+      ? reciprocalRank(match.vector.rank, weights.vectorWeight)
+      : 0) +
+    (match.lexical
+      ? reciprocalRank(match.lexical.rank, weights.lexicalWeight)
+      : 0)
   );
 }
 
@@ -47,17 +54,28 @@ function observedAgeRank(memory: MemoryRecord, nowMs: number): number {
   return 0;
 }
 
-/**
- * Keep exact structured-identifier matches in the strongest relevance tier,
- * then fuse lexical and vector ranks without comparing provider raw scores.
- */
+function positiveWeight(value: number | undefined, fallback: number): number {
+  return value !== undefined && Number.isFinite(value) && value > 0
+    ? value
+    : fallback;
+}
+
+/** Fuse lexical and vector ranks without comparing provider raw scores. */
 export function rankMemoryMatches(
   matches: MemoryMatch[],
   options: {
     channelPrefix?: string;
+    /** Optional RRF weight for the lexical leg. Defaults to 1. */
+    lexicalWeight?: number;
     nowMs: number;
+    /** Optional RRF weight for the vector leg. Defaults to 1. */
+    vectorWeight?: number;
   },
 ): MemoryMatch[] {
+  const weights = {
+    lexicalWeight: positiveWeight(options.lexicalWeight, DEFAULT_RRF_WEIGHT),
+    vectorWeight: positiveWeight(options.vectorWeight, DEFAULT_RRF_WEIGHT),
+  };
   const byId = new Map<string, MemoryMatch>();
   for (const match of matches) {
     const existing = byId.get(match.memory.id);
@@ -67,18 +85,12 @@ export function rankMemoryMatches(
     }
     byId.set(match.memory.id, {
       ...existing,
-      exactIdentifier: existing.exactIdentifier || match.exactIdentifier,
       ...(match.lexical ? { lexical: match.lexical } : {}),
       ...(match.vector ? { vector: match.vector } : {}),
     });
   }
   return [...byId.values()].sort((left, right) => {
-    const identifierDelta =
-      Number(right.exactIdentifier) - Number(left.exactIdentifier);
-    if (identifierDelta !== 0) {
-      return identifierDelta;
-    }
-    const scoreDelta = matchScore(right) - matchScore(left);
+    const scoreDelta = matchScore(right, weights) - matchScore(left, weights);
     if (scoreDelta !== 0) {
       return scoreDelta;
     }

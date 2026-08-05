@@ -16,6 +16,9 @@ import { createViewImageTool } from "@/chat/tools/sandbox/view-image";
 import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
 import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
 import { createResourceEventTools } from "@/chat/tools/resource-events";
+import { getResourceEventCatalog } from "@/chat/resource-events/runtime-catalog";
+import { createEventTaskTools } from "@/chat/tools/event-tasks";
+import { createScheduledTaskTools } from "@/chat/tools/scheduled-tasks";
 import { createSlackChannelListMessagesTool } from "@/chat/slack/tools/channel-list-messages";
 import { createSlackConversationSearchTool } from "@/chat/slack/tools/conversation-search";
 import { createSlackPublicSearchTool } from "@/chat/slack/tools/public-search";
@@ -41,6 +44,7 @@ import type {
   ToolRuntimeContext,
   ToolState,
 } from "@/chat/tools/types";
+import type { PluginSandbox } from "@sentry/junior-plugin-api";
 import { getPluginTools } from "@/chat/plugins/agent-hooks";
 import { createWebFetchTool } from "@/chat/tools/web/fetch-tool";
 import { createWebSearchTool } from "@/chat/tools/web/search";
@@ -86,6 +90,7 @@ export type { ToolHooks, ToolRuntimeContext };
 
 export interface CreateToolsOptions {
   includeLoadSkill?: boolean;
+  pluginSandbox?: PluginSandbox;
 }
 
 /** Build the model-facing tool registry from runtime-owned context and capabilities. */
@@ -103,6 +108,7 @@ export function createTools(
   const canSendFilesToActiveConversation = Boolean(
     slackContext && slackSourceCapabilities?.canSendFiles,
   );
+  const resourceEventCatalog = getResourceEventCatalog();
   const tools: ToolRegistry = {
     ...(options.includeLoadSkill === false
       ? {}
@@ -127,7 +133,9 @@ export function createTools(
     webFetch: createWebFetchTool(hooks, {
       canSendFilesToActiveConversation,
     }),
-    ...createResourceEventTools(context),
+    ...createResourceEventTools(context, resourceEventCatalog),
+    ...createEventTaskTools(context, resourceEventCatalog),
+    ...createScheduledTaskTools(context),
   };
   if (context.conversationId) {
     tools.queryConversationEvents = createQueryConversationEventsTool(context);
@@ -170,7 +178,7 @@ export function createTools(
     tools.slackCanvasEdit = createSlackCanvasEditTool(state);
     tools.slackCanvasWrite = createSlackCanvasWriteTool(state);
     tools.slackThreadRead = createSlackThreadReadTool(slackContext);
-    if (context.conversationId && slackContext.source.type === "pub") {
+    if (context.conversationId && slackContext.source.visibility === "public") {
       tools.searchConversationHistory = createSlackConversationSearchTool(
         {
           kind: "public_provider_tenant",
@@ -224,7 +232,9 @@ export function createTools(
     }
   }
 
-  for (const [name, pluginTool] of Object.entries(getPluginTools(context))) {
+  for (const [name, pluginTool] of Object.entries(
+    getPluginTools(context, options.pluginSandbox),
+  )) {
     if (tools[name]) {
       throw new Error(`Plugin tool "${name}" conflicts with a core tool`);
     }

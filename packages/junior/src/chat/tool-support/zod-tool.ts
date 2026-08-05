@@ -1,8 +1,4 @@
-import { z, type ZodType, type ZodTypeAny } from "zod";
-import {
-  juniorToolResultSchema,
-  type JuniorToolResult,
-} from "@/chat/tool-support/structured-result";
+import { z, type ZodTypeAny } from "zod";
 import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
 import type {
   AnyToolDefinition,
@@ -26,11 +22,12 @@ type ZodToolDefinitionBase<TInputSchema extends ZodTypeAny> = Pick<
   describeProposal?(input: z.output<TInputSchema>): string;
   inputSchema: TInputSchema;
   prepareArguments?: (args: unknown) => z.input<TInputSchema>;
+  resolveApprovalMetadata?(
+    input: z.output<TInputSchema>,
+  ): ReturnType<NonNullable<AnyToolDefinition["resolveApprovalMetadata"]>>;
 };
 
-type StructuredToolExecuteResult<
-  TOutputSchema extends ZodType<JuniorToolResult>,
-> =
+type StructuredToolExecuteResult<TOutputSchema extends ZodTypeAny> =
   | z.input<TOutputSchema>
   | StructuredToolResultEnvelope<z.input<TOutputSchema>>;
 
@@ -46,7 +43,7 @@ export interface ContentOnlyToolResult {
 
 type StructuredZodToolDefinition<
   TInputSchema extends ZodTypeAny,
-  TOutputSchema extends ZodType<JuniorToolResult>,
+  TOutputSchema extends ZodTypeAny,
   TExecuteResult extends StructuredToolExecuteResult<TOutputSchema>,
 > = ZodToolDefinitionBase<TInputSchema> & {
   outputSchema: TOutputSchema;
@@ -68,14 +65,14 @@ type ContentZodToolDefinition<TInputSchema extends ZodTypeAny> =
 
 type ZodToolDefinition<
   TInputSchema extends ZodTypeAny,
-  TOutputSchema extends ZodType<JuniorToolResult>,
+  TOutputSchema extends ZodTypeAny,
   TExecuteResult extends StructuredToolExecuteResult<TOutputSchema>,
 > =
   | StructuredZodToolDefinition<TInputSchema, TOutputSchema, TExecuteResult>
   | ContentZodToolDefinition<TInputSchema>;
 
 type ParsedStructuredToolExecuteResult<
-  TOutputSchema extends ZodType<JuniorToolResult>,
+  TOutputSchema extends ZodTypeAny,
   TExecuteResult,
 > =
   TExecuteResult extends StructuredToolResultEnvelope<unknown>
@@ -84,7 +81,7 @@ type ParsedStructuredToolExecuteResult<
 
 type StructuredZodTool<
   TInputSchema extends ZodTypeAny,
-  TOutputSchema extends ZodType<JuniorToolResult>,
+  TOutputSchema extends ZodTypeAny,
   TExecuteResult,
 > = Omit<
   AnyToolDefinition,
@@ -187,7 +184,7 @@ function parseToolInput<TInputSchema extends ZodTypeAny>(
  */
 export function zodTool<
   TInputSchema extends ZodTypeAny,
-  TOutputSchema extends ZodType<JuniorToolResult>,
+  TOutputSchema extends ZodTypeAny,
   TExecuteResult extends StructuredToolExecuteResult<TOutputSchema>,
 >(
   definition: StructuredZodToolDefinition<
@@ -201,7 +198,7 @@ export function zodTool<TInputSchema extends ZodTypeAny>(
 ): ContentZodTool<TInputSchema>;
 export function zodTool<
   TInputSchema extends ZodTypeAny,
-  TOutputSchema extends ZodType<JuniorToolResult>,
+  TOutputSchema extends ZodTypeAny,
   TExecuteResult extends StructuredToolExecuteResult<TOutputSchema>,
 >(
   definition: ZodToolDefinition<TInputSchema, TOutputSchema, TExecuteResult>,
@@ -256,12 +253,10 @@ export function zodTool<
             if (isStructuredToolResultEnvelope(result)) {
               return {
                 content: parseToolContent(result.content),
-                details: outputSchema.parse(
-                  juniorToolResultSchema.parse(result.details),
-                ),
+                details: outputSchema.parse(result.details),
               };
             }
-            return outputSchema.parse(juniorToolResultSchema.parse(result));
+            return outputSchema.parse(result);
           },
         }
       : {}),

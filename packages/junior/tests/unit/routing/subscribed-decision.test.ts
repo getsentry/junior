@@ -38,6 +38,29 @@ function classify(
 }
 
 describe("subscribed reply decision", () => {
+  it.each(["!stop", "!STOP", "!stop don't continue with this task"])(
+    "forces unsubscribe for %s without calling the classifier",
+    async (text) => {
+      const completeObject = vi.fn();
+
+      await expect(
+        decideSubscribedThreadReply({
+          botUserName: "junior",
+          modelId: "router-model",
+          input: makeInput({ rawText: text, text }),
+          completeObject,
+          logClassifierFailure: vi.fn(),
+        }),
+      ).resolves.toEqual({
+        shouldReply: false,
+        shouldUnsubscribe: true,
+        reason: SubscribedReplyReason.ThreadOptOut,
+        reasonDetail: "forced !stop command",
+      });
+      expect(completeObject).not.toHaveBeenCalled();
+    },
+  );
+
   it.each([
     {
       name: "a leading named mention",

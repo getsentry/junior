@@ -35,12 +35,10 @@ Good structure — problem-specific sections:
 > 2. First message acquires the lock
 > 3. Second message sets its dedup key, fails lock acquisition
 >
-> ## Expected behavior
+> ## Unknowns
 >
-> Either:
->
-> - **Option A**: Acquire lock before setting dedup key
-> - **Option B**: Clear dedup key on lock failure
+> - Whether lock contention is the only path that consumes the dedup slot without processing
+> - Whether the behavior reproduces across all message entry points
 >
 > ## Workaround
 >
@@ -71,7 +69,7 @@ Bad framing:
 
 > It would be nice to have better config reloading.
 
-Good framing — current state, gap, options:
+Good framing — current state, gap, and impact:
 
 > ## Current behavior
 >
@@ -81,12 +79,9 @@ Good framing — current state, gap, options:
 >
 > Config changes during incidents require redeploying, adding 2-3 minutes to mitigation.
 >
-> ## Options
+> ## Impact
 >
-> | Approach                    | Tradeoff                           |
-> | --------------------------- | ---------------------------------- |
-> | File watch + hot reload     | Simple, but no atomicity guarantee |
-> | Config service with polling | Consistent, but adds a dependency  |
+> During incidents, each config change adds 2-3 minutes of mitigation delay and requires an operator to coordinate the restart.
 
 ## Principles
 
@@ -94,7 +89,6 @@ Good framing — current state, gap, options:
 - Include code snippets when they clarify the pattern
 - Quantify scope precisely ("8 of 9", not "many")
 - Cross-reference related issues and PRs
-- Show concrete options with tradeoffs, not vague "should be fixed"
 - Use tables for structured comparisons
 
 ## Anti-patterns
@@ -102,7 +96,8 @@ Good framing — current state, gap, options:
 - Over-structured issues: using ## Summary, ## Impact, ## Root Cause headings for a 3-line bug
 - Adding "Expected behavior" or "Desired outcome" when the thread didn't state one
 - Restating the title as the first sentence of the body
-- Confident fix claims without root-cause evidence
+- Invented fixes, implementation steps, approaches, or options, even when the root cause is verified
+- Unattributed proposals mixed into verified diagnosis
 - Speculative detail mixed into verified facts
 - Dumping a list of URLs without inline context
 - Session-specific content (slash commands, channel references, raw transcript framing, or unrelated user chatter)

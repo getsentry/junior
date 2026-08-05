@@ -156,7 +156,7 @@ export async function runInit(
       "@sentry/junior": "latest",
       "@sentry/junior-memory": "latest",
       "@sentry/junior-maintenance": "latest",
-      hono: "^4.12.22",
+      hono: "^4.12.27",
     },
     devDependencies: {
       "@types/node": "^25.9.1",
@@ -213,15 +213,16 @@ JUNIOR_SLASH_COMMAND=
 JUNIOR_CROSS_ACTOR_MID_RUN_MODE=
 AI_MODEL=
 AI_FAST_MODEL=
+AI_GUARDIAN_MODEL=
 AI_HANDOFF_MODEL=
 AI_MODEL_PROFILES=
 AI_MEMORY_MODEL=
 AI_EMBEDDING_MODEL=
-MEMORY_RECALL_MAX_VECTOR_DISTANCE=
 AI_VISION_MODEL=
 AI_WEB_SEARCH_MODEL=
 DATABASE_URL=
 JUNIOR_DATABASE_DRIVER=
+JUNIOR_SQL_STATEMENT_TIMEOUT_MS=
 REDIS_URL=
 CRON_SECRET=
 SENTRY_DSN=

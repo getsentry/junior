@@ -7,8 +7,8 @@ import type {
 import {
   groupTranscriptMessages,
   messageRawText,
-} from "../src/client/components/transcriptRenderModel";
-import { entryMatchesSearch } from "../src/client/components/transcriptSearch";
+} from "../src/client/conversations/transcriptRenderModel";
+import { entryMatchesSearch } from "../src/client/conversations/transcriptSearch";
 import { conversationTranscriptMessages } from "../src/client/conversations/eventTranscript";
 import type {
   ConversationTranscript,
@@ -560,7 +560,7 @@ describe("canonical event transcript reduction", () => {
                 toolCallId: "advisor-correlated",
                 name: "advisor",
                 status: "completed",
-                output: { ok: true },
+                output: { skill_name: "junior-qa" },
               },
             ],
           }),
@@ -571,7 +571,7 @@ describe("canonical event transcript reduction", () => {
                 toolCallId: "handoff-correlated",
                 name: "handoff",
                 status: "completed",
-                output: { ok: true },
+                output: { matches: 3 },
               },
             ],
           }),

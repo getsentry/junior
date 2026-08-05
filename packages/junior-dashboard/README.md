@@ -11,10 +11,11 @@ state.
 - Better Auth owns authentication; dashboard routes fail closed when identity
   or required configuration is missing.
 - API schemas under `src/api/` define the client/server boundary.
-- Plugin user pages use the core `/api/user-pages` contract and appear under
-  the signed-in user menu at `/settings/plugins/:plugin/:page`. Core-rendered
-  lists own search query state, cursor pagination, destructive confirmation,
-  and authenticated plugin REST actions.
+- Plugin user pages use the core `/api/user-pages` contract and render under
+  `/plugins/:plugin/:page/*`. Plugins choose primary dashboard navigation or the
+  signed-in user menu. Core-rendered lists own metrics, search query state,
+  cursor pagination, record inspection, destructive confirmation, and
+  authenticated plugin REST actions.
 - Conversation detail is a bounded TanStack Query resource that polls while
   active. Earlier event pages use a separate infinite query loaded on demand.
   The client derives one ordered transcript from those immutable responses;

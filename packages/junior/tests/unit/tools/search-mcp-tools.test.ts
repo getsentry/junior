@@ -65,17 +65,11 @@ describe("searchMcpTools", () => {
       { query: "issue title", max_results: 1 },
       {},
     )) as {
-      ok: boolean;
-      status: "success" | "error";
       query: string | null;
       provider: string | null;
       total_active_tools: number;
       returned_tools: number;
       execution_tool: string;
-      execution_example: {
-        tool_name: string;
-        arguments: Record<string, string>;
-      };
       available_providers: Array<{
         provider: string;
         description: string;
@@ -83,56 +77,39 @@ describe("searchMcpTools", () => {
       }>;
       tools: Array<{
         tool_name: string;
-        signature: string;
-        call: {
-          tool_name: string;
-          arguments: Record<string, string>;
-        };
         input_schema: Record<string, unknown>;
-        input_schema_summary: string;
         output_schema?: Record<string, unknown>;
         annotations?: Record<string, unknown>;
       }>;
     };
 
-    expect(result).toMatchObject({
-      execution_tool: "callMcpTool",
-      execution_example: {
-        tool_name: "<returned tool_name>",
-        arguments: {
-          "<argument>": "<value from input_schema>",
-        },
-      },
-    });
+    expect(result).toMatchObject({ execution_tool: "callMcpTool" });
+    expect(result).not.toHaveProperty("data");
     const privateTraceResult = searchMcpTools.privateTraceResult?.(result);
     expect(privateTraceResult).toEqual({
-      ok: result.ok,
-      status: result.status,
       total_active_tools: result.total_active_tools,
       returned_tools: result.returned_tools,
       execution_tool: result.execution_tool,
-      execution_example: result.execution_example,
       available_providers: result.available_providers,
       tools: result.tools,
     });
     expect(result.tools).toHaveLength(1);
     expect(result.tools[0]).toMatchObject({
       tool_name: "mcp__demo__create_issue",
-      signature:
-        "mcp__demo__create_issue({ title: string, labels?: string[], metadata?: object })",
-      call: {
-        tool_name: "mcp__demo__create_issue",
-        arguments: {
-          title: "<title>",
-          labels: "<array>",
-          metadata: "<object>",
-        },
-      },
-      input_schema_summary: "title (required), labels, metadata",
       input_schema: {
         properties: {
           title: { type: "string", description: "Issue title" },
+          labels: {
+            type: "array",
+            items: { type: "string" },
+            description: "Issue labels",
+          },
+          metadata: {
+            type: "object",
+            description: "Issue metadata",
+          },
         },
+        required: ["title"],
       },
       output_schema: {
         properties: { id: { type: "string" } },
@@ -160,15 +137,14 @@ describe("searchMcpTools", () => {
       tools: [
         {
           tool_name: "mcp__demo__create_issue",
-          signature:
-            "mcp__demo__create_issue({ title: string, labels?: string[], metadata?: object })",
+          input_schema: {
+            required: ["title"],
+          },
         },
         {
           tool_name: "mcp__demo__list_projects",
-          signature: "mcp__demo__list_projects()",
-          call: {
-            tool_name: "mcp__demo__list_projects",
-            arguments: {},
+          input_schema: {
+            properties: {},
           },
         },
       ],

@@ -1,18 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   definePluginTool,
+  missingToolAnnotationKeys,
   PluginToolInputError,
-  pluginToolResultSchema,
+  pluginToolOutputSchema,
   toolApprovalModeSchema,
   zodTool,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 
-const countResultSchema = pluginToolResultSchema.extend({
-  ok: z.literal(true),
-  status: z.literal("success"),
+const countResultSchema = pluginToolOutputSchema.extend({
   count: z.number(),
-  data: z.object({ count: z.number() }),
 });
 
 describe("definePluginTool", () => {
@@ -21,6 +19,7 @@ describe("definePluginTool", () => {
       approvalMode: "review",
       annotations: {
         destructiveHint: false,
+        idempotentHint: true,
         openWorldHint: true,
         readOnlyHint: true,
       },
@@ -28,18 +27,13 @@ describe("definePluginTool", () => {
       description: "Schedule a meeting.",
       inputSchema: z.object({ query: z.string() }),
       outputSchema: countResultSchema,
-      execute: async () =>
-        ({
-          ok: true,
-          status: "success",
-          data: { count: 1 },
-          count: 1,
-        }) as const,
+      execute: async () => ({ count: 1 }),
     });
 
     expect(tool.approvalMode).toBe("review");
     expect(tool.annotations).toEqual({
       destructiveHint: false,
+      idempotentHint: true,
       openWorldHint: true,
       readOnlyHint: true,
     });
@@ -48,16 +42,19 @@ describe("definePluginTool", () => {
     expect(toolApprovalModeSchema.safeParse("unexpected").success).toBe(false);
   });
 
+  it("reports missing behavioral annotations", () => {
+    expect(
+      missingToolAnnotationKeys({
+        destructiveHint: false,
+        readOnlyHint: true,
+      }),
+    ).toEqual(["idempotentHint", "openWorldHint"]);
+  });
+
   it("projects Zod input schemas to JSON Schema and parses tool arguments", async () => {
-    const execute = vi.fn(
-      async (input: { count: number }) =>
-        ({
-          ok: true,
-          status: "success",
-          data: { count: input.count },
-          count: input.count,
-        }) as const,
-    );
+    const execute = vi.fn(async (input: { count: number }) => ({
+      count: input.count,
+    }));
     const tool = definePluginTool({
       description: "Count things.",
       inputSchema: z.object({
@@ -67,6 +64,7 @@ describe("definePluginTool", () => {
       execute,
     });
 
+    expect(tool.approvalMode).toBe("auto");
     expect(tool.inputSchema).toMatchObject({
       properties: {
         count: { type: "integer" },
@@ -94,13 +92,7 @@ describe("definePluginTool", () => {
           name: (args as { rawName: string }).rawName.trim(),
         };
       },
-      execute: async () =>
-        ({
-          ok: true,
-          status: "success",
-          data: { count: 1 },
-          count: 1,
-        }) as const,
+      execute: async () => ({ count: 1 }),
     });
 
     expect(tool.prepareArguments?.({ rawName: " Ada " })).toEqual({
@@ -121,10 +113,7 @@ describe("definePluginTool", () => {
       outputSchema: countResultSchema,
       privateTraceResult: (result) => ({ count: result.count }),
       execute: async () => ({
-        ok: true as const,
-        status: "success" as const,
         count: 3,
-        data: { count: 3 },
       }),
     });
 
@@ -149,10 +138,7 @@ describe("definePluginTool", () => {
           },
         ],
         details: {
-          ok: true as const,
-          status: "success" as const,
           count: 1,
-          data: { count: 1 },
         },
       }),
     });
@@ -170,10 +156,7 @@ describe("definePluginTool", () => {
         },
       ],
       details: {
-        ok: true,
-        status: "success",
         count: 1,
-        data: { count: 1 },
       },
     });
   });
@@ -187,10 +170,7 @@ describe("definePluginTool", () => {
         ({
           content: [{ type: "text", text: "Created LIN-123" }],
           details: {
-            ok: true,
-            status: "success",
             count: "one",
-            data: { count: 1 },
           },
         }) as never,
     });
@@ -211,13 +191,7 @@ describe("definePluginTool", () => {
           value: z.string().transform((value) => value.trim()),
         }),
         outputSchema: countResultSchema,
-        execute: async () =>
-          ({
-            ok: true,
-            status: "success",
-            data: { count: 1 },
-            count: 1,
-          }) as const,
+        execute: async () => ({ count: 1 }),
       }),
     ).toThrow(
       "definePluginTool() inputSchema must be representable as JSON Schema.",

@@ -165,6 +165,19 @@ const toolExecutionStartedEventDataSchema = z
   })
   .strict();
 
+const guardianActionReviewedEventDataSchema = z
+  .object({
+    type: z.literal("guardian_action_reviewed"),
+    turnId: z.string().min(1),
+    toolCallId: z.string().min(1),
+    toolName: z.string().min(1),
+    costUsd: z.number().finite().nonnegative().optional(),
+    decision: z.enum(["allow", "ask", "deny"]),
+    riskLevel: z.enum(["low", "medium", "high", "critical"]),
+    userAuthorization: z.enum(["high", "medium", "low", "unknown"]),
+  })
+  .strict();
+
 const conversationMessageRoleSchema = z.union([
   z.literal("user"),
   z.literal("assistant"),
@@ -268,6 +281,17 @@ const turnContextEventDataSchema = z
   })
   .strict();
 
+const structuredConversationEventDataSchema = z
+  .object({
+    type: z.literal("structured_event"),
+    namespace: z.string().regex(/^[a-z][a-z0-9-]*$/),
+    name: z.string().regex(/^[a-z][a-z0-9_]*$/),
+    version: z.number().int().positive(),
+    turnId: z.string().min(1).optional(),
+    content: z.record(z.string(), z.unknown()),
+  })
+  .strict();
+
 const turnCompletedEventDataSchema = z
   .object({
     type: z.literal("turn_completed"),
@@ -324,10 +348,12 @@ const appendableConversationEventDataSchema = z.union([
   authorizationRequestedEventDataSchema,
   authorizationCompletedEventDataSchema,
   toolExecutionStartedEventDataSchema,
+  guardianActionReviewedEventDataSchema,
   messageHandledEventDataSchema,
   messagesSummarizedEventDataSchema,
   turnStartedEventDataSchema,
   turnContextEventDataSchema,
+  structuredConversationEventDataSchema,
   turnRoutedEventDataSchema,
   turnCompletedEventDataSchema,
   turnFailedEventDataSchema,
@@ -359,10 +385,12 @@ export const KNOWN_CONVERSATION_EVENT_TYPES = [
   "authorization_requested",
   "authorization_completed",
   "tool_execution_started",
+  "guardian_action_reviewed",
   "message_handled",
   "messages_summarized",
   "turn_started",
   "turn_context",
+  "structured_event",
   "turn_routed",
   "turn_completed",
   "turn_failed",
@@ -498,8 +526,12 @@ export interface ConversationEventPage {
 
 /** Persist and read the canonical per-conversation event log. */
 export interface ConversationEventStore {
-  /** Append events atomically, assigning `seq = max+1` under the lease. */
-  append(conversationId: string, events: NewConversationEvent[]): Promise<void>;
+  /** Append events atomically, optionally preserving conversation activity. */
+  append(
+    conversationId: string,
+    events: NewConversationEvent[],
+    options?: { activity?: "preserve" },
+  ): Promise<void>;
   /** Replace active model history with a compaction or handoff event. */
   replaceHistory(
     conversationId: string,

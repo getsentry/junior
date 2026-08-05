@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { eq } from "drizzle-orm";
 import { createJuniorApi } from "@/api";
+import { readConversationAccessFromSql } from "@/api/conversations/access";
 import {
   readConversationFeedFromSql,
   readConversationRecordFromSql,
@@ -9,7 +10,9 @@ import { apiErrorSchema, conversationFeedSchema } from "@/api/schema";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import {
+  juniorConversationEvents,
   juniorConversations,
+  juniorDestinations,
   juniorIdentities,
   juniorUsers,
 } from "@/db/schema";
@@ -37,6 +40,112 @@ describe("conversation list API", () => {
       await fixture.close();
     }
   });
+
+  test("returns a Slack source link for a viewable conversation", async () => {
+    const fixture = createConfiguredJuniorSqlFixture();
+    const store = createSqlStore(fixture.sql);
+    try {
+      await migrateSchema(fixture.sql);
+      await store.recordActivity({
+        conversationId: "slack:C123:source-link",
+        destination: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: "C123",
+        },
+        nowMs: 1_000,
+        sessionSource: {
+          platform: "slack",
+          visibility: "public",
+          teamId: "T123",
+          channelId: "C123",
+          threadTs: "1700000000.000100",
+        },
+        source: "slack",
+        visibility: "public",
+      });
+
+      await expect(readConversationFeedFromSql()).resolves.toMatchObject({
+        conversations: [
+          expect.objectContaining({
+            conversationId: "slack:C123:source-link",
+            sourceUrl: "https://slack.com/app_redirect?channel=C123&team=T123",
+          }),
+        ],
+      });
+
+      await store.recordActivity({
+        conversationId: "slack:D123:1700000000.000200",
+        destination: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: "D123",
+        },
+        nowMs: 2_000,
+        sessionSource: {
+          platform: "slack",
+          visibility: "private",
+          teamId: "T123",
+          channelId: "D123",
+          threadTs: "1700000000.000200",
+        },
+        source: "slack",
+        visibility: "private",
+      });
+      const privateSummary = (
+        await readConversationFeedFromSql()
+      ).conversations.find(
+        (conversation) =>
+          conversation.conversationId === "slack:D123:1700000000.000200",
+      );
+      expect(privateSummary).toBeDefined();
+      expect(privateSummary).not.toHaveProperty("sourceUrl");
+      expect(privateSummary).toMatchObject({
+        channelName: "Direct Message",
+        displayTitle: "Direct Message",
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  test.each(["direct", "unknown"] as const)(
+    "treats persisted %s visibility as private",
+    async (visibility) => {
+      const fixture = createConfiguredJuniorSqlFixture();
+      const store = createSqlStore(fixture.sql);
+      const conversationId = `slack:C123:${visibility}-visibility`;
+      const channelId = `C-${visibility}`;
+      try {
+        await migrateSchema(fixture.sql);
+        await store.recordActivity({
+          conversationId,
+          destination: {
+            platform: "slack",
+            teamId: "T123",
+            channelId,
+          },
+          nowMs: 1_000,
+          source: "slack",
+          visibility: "private",
+        });
+        const db = fixture.sql.db();
+        await db
+          .update(juniorDestinations)
+          .set({ visibility })
+          .where(eq(juniorDestinations.providerDestinationId, channelId));
+        const access = await readConversationAccessFromSql(db, [
+          conversationId,
+        ]);
+        expect(access.get(conversationId)).toMatchObject({
+          canViewPrivateContent: false,
+          visibility,
+        });
+      } finally {
+        await fixture.close();
+      }
+    },
+  );
 
   test("uses canonical and fallback actor names with provider identity fields", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
@@ -242,6 +351,32 @@ describe("conversation list API", () => {
           executionStatus: "idle",
           usage: { outputTokens: 5 },
         });
+      await fixture.sql
+        .db()
+        .insert(juniorConversationEvents)
+        .values([
+          {
+            conversationId: "slack:C1:root",
+            createdAt: new Date(3_000),
+            historyVersion: 1,
+            payload: {
+              content: { costUsd: 0.0002, memories: [] },
+              name: "memories_recalled",
+              namespace: "memory",
+              version: 1,
+            },
+            seq: 0,
+            type: "structured_event",
+          },
+          {
+            conversationId: "advisor:child",
+            createdAt: new Date(4_000),
+            historyVersion: 1,
+            payload: { costUsd: 0.0003 },
+            seq: 0,
+            type: "guardian_action_reviewed",
+          },
+        ]);
 
       const feed = await readConversationFeedFromSql();
 
@@ -251,6 +386,23 @@ describe("conversation list API", () => {
       expect(feed.conversations[0]?.cumulativeUsage).toEqual({
         inputTokens: 10,
         outputTokens: 5,
+      });
+      expect(feed.conversations[0]?.auxiliaryCosts).toEqual({
+        costUsd: 0.0005,
+        operations: [
+          {
+            costUsd: 0.0003,
+            events: 1,
+            name: "guardian_action_reviewed",
+            namespace: "junior",
+          },
+          {
+            costUsd: 0.0002,
+            events: 1,
+            name: "memories_recalled",
+            namespace: "memory",
+          },
+        ],
       });
     } finally {
       await fixture.close();
@@ -291,6 +443,32 @@ describe("conversation list API", () => {
           durationMs: 500,
           usage: { outputTokens: 50 },
         });
+      await fixture.sql
+        .db()
+        .insert(juniorConversationEvents)
+        .values([
+          {
+            conversationId: "slack:C1:invalid-root",
+            createdAt: new Date(3_000),
+            historyVersion: 1,
+            payload: {
+              content: { costUsd: 0.0002, memories: [] },
+              name: "memories_recalled",
+              namespace: "memory",
+              version: 1,
+            },
+            seq: 0,
+            type: "structured_event",
+          },
+          {
+            conversationId: "advisor:invalid-root-child",
+            createdAt: new Date(4_000),
+            historyVersion: 1,
+            payload: { costUsd: 0.0003 },
+            seq: 0,
+            type: "guardian_action_reviewed",
+          },
+        ]);
 
       const feed = await readConversationFeedFromSql();
 
@@ -299,6 +477,17 @@ describe("conversation list API", () => {
           conversationId: "slack:C1:invalid-root",
           cumulativeDurationMs: 100,
           cumulativeUsage: { inputTokens: 10 },
+          auxiliaryCosts: {
+            costUsd: 0.0002,
+            operations: [
+              {
+                costUsd: 0.0002,
+                events: 1,
+                name: "memories_recalled",
+                namespace: "memory",
+              },
+            ],
+          },
         }),
       );
     } finally {

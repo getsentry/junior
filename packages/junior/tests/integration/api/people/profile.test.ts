@@ -59,7 +59,7 @@ describe("people profile API", () => {
           teamId: "T1",
         },
         destination: {
-          channelId: "G-private",
+          channelId: "GPRIVATE",
           platform: "slack",
           teamId: "T1",
         },
@@ -75,7 +75,7 @@ describe("people profile API", () => {
           teamId: "T1",
         },
         destination: {
-          channelId: "C-public",
+          channelId: "CPUBLIC",
           platform: "slack",
           teamId: "T1",
         },
@@ -91,7 +91,7 @@ describe("people profile API", () => {
           teamId: "T1",
         },
         destination: {
-          channelId: "C-public",
+          channelId: "CPUBLIC",
           platform: "slack",
           teamId: "T1",
         },
@@ -219,7 +219,7 @@ describe("people profile API", () => {
           teamId: "T1",
         },
         destination: {
-          channelId: "C-public",
+          channelId: "CPUBLIC",
           platform: "slack",
           teamId: "T1",
         },

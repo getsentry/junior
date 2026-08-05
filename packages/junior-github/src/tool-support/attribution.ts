@@ -31,7 +31,7 @@ export function appendGitHubRequesterAttribution(
 ): string {
   const label = actorLabel(actor);
   const attribution = label
-    ? `${GITHUB_REQUEST_ATTRIBUTION_START}\nRequested by ${label} via Junior.\n${GITHUB_REQUEST_ATTRIBUTION_END}`
+    ? `${GITHUB_REQUEST_ATTRIBUTION_START}\nRequested by ${label}.\n${GITHUB_REQUEST_ATTRIBUTION_END}`
     : undefined;
   const normalizedBody = body.trimEnd();
   const existing = new RegExp(

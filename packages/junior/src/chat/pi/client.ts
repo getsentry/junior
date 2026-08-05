@@ -1,4 +1,5 @@
 import {
+  calculateCost,
   completeSimple,
   getEnvApiKey,
   getModels,
@@ -10,7 +11,13 @@ import {
   type ThinkingLevel,
 } from "@/chat/pi/sdk";
 import { createGatewayProvider } from "@ai-sdk/gateway";
-import { embedMany, generateObject, NoObjectGeneratedError } from "ai";
+import {
+  embedMany,
+  generateObject,
+  NoObjectGeneratedError,
+  type GenerateObjectResult,
+  type LanguageModelUsage,
+} from "ai";
 
 // Directly register the anthropic provider at import time. pi-ai's built-in
 // registration relies on opaque dynamic import() calls that break under
@@ -36,7 +43,6 @@ import {
 import { toOptionalTrimmed } from "@/chat/optional-string";
 import {
   getCurrentConversationPrivacy,
-  resolveConversationPrivacy,
   toCanonicalInputMessage,
   toCanonicalOutputMessage,
   toGenAiMessagesTraceAttributes,
@@ -53,8 +59,34 @@ export const GEN_AI_SERVER_ADDRESS = "ai-gateway.vercel.sh";
 export const GEN_AI_SERVER_PORT = 443;
 const GEN_AI_OPERATION_CHAT = "chat" as const;
 const GEN_AI_OPERATION_EMBEDDINGS = "embeddings" as const;
+// AI Gateway input rates in USD per million tokens. Keep estimates
+// model-specific so unlisted configured models remain explicitly unknown.
+const EMBEDDING_INPUT_COST_USD_PER_MILLION_TOKENS: Readonly<
+  Record<string, number>
+> = {
+  "cohere/embed-v4.0": 0.12,
+  "google/gemini-embedding-001": 0.15,
+  "google/text-embedding-005": 0.025,
+  "mistral/mistral-embed": 0.1,
+  "openai/text-embedding-3-large": 0.13,
+  "openai/text-embedding-3-small": 0.02,
+  "openai/text-embedding-ada-002": 0.1,
+  "voyage/voyage-3.5": 0.06,
+  "voyage/voyage-3.5-lite": 0.02,
+};
 export const MISSING_GATEWAY_CREDENTIALS_ERROR =
   "Missing AI gateway credentials (AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN)";
+
+function embeddingCostUsd(
+  modelId: string,
+  inputTokens: number,
+): number | undefined {
+  const costPerMillionTokens =
+    EMBEDDING_INPUT_COST_USD_PER_MILLION_TOKENS[modelId];
+  return costPerMillionTokens === undefined
+    ? undefined
+    : (inputTokens * costPerMillionTokens) / 1_000_000;
+}
 
 /**
  * Resolve the documented AI Gateway env credentials for the paths that need
@@ -116,22 +148,7 @@ export async function completeText(params: {
     : toOptionalTrimmed(process.env.VERCEL_OIDC_TOKEN)
       ? "oidc"
       : "api_key";
-  // Identifier metadata can only narrow toward private; the turn-scoped
-  // privacy context carries the source-confirmed classification.
-  const privacy =
-    resolveConversationPrivacy({
-      channelId:
-        typeof params.metadata?.channelId === "string"
-          ? params.metadata.channelId
-          : undefined,
-      conversationId:
-        typeof params.metadata?.conversationId === "string"
-          ? params.metadata.conversationId
-          : typeof params.metadata?.threadId === "string"
-            ? params.metadata.threadId
-            : undefined,
-    }) ?? getCurrentConversationPrivacy();
-  const effectivePrivacy = privacy ?? "private";
+  const effectivePrivacy = getCurrentConversationPrivacy() ?? "private";
   const messageAttributeMode =
     params.messageAttributeMode ??
     (effectivePrivacy === "public" ? "content" : "metadata");
@@ -277,6 +294,61 @@ function logContextFromMetadata(
   };
 }
 
+function objectCompletionCost(
+  modelId: string,
+  usage: LanguageModelUsage,
+): number | undefined {
+  const cacheRead = usage.inputTokenDetails.cacheReadTokens;
+  const cacheWrite = usage.inputTokenDetails.cacheWriteTokens;
+  const input =
+    usage.inputTokenDetails.noCacheTokens ??
+    (usage.inputTokens === undefined
+      ? undefined
+      : Math.max(0, usage.inputTokens - (cacheRead ?? 0) - (cacheWrite ?? 0)));
+  if (
+    input === undefined &&
+    usage.outputTokens === undefined &&
+    cacheRead === undefined &&
+    cacheWrite === undefined
+  ) {
+    return undefined;
+  }
+
+  return calculateCost(resolveGatewayModel(modelId), {
+    input: input ?? 0,
+    output: usage.outputTokens ?? 0,
+    cacheRead: cacheRead ?? 0,
+    cacheWrite: cacheWrite ?? 0,
+    ...(usage.outputTokenDetails.reasoningTokens !== undefined
+      ? { reasoning: usage.outputTokenDetails.reasoningTokens }
+      : {}),
+    totalTokens:
+      usage.totalTokens ??
+      (input ?? 0) +
+        (usage.outputTokens ?? 0) +
+        (cacheRead ?? 0) +
+        (cacheWrite ?? 0),
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+  }).total;
+}
+
+/** Estimate cost without changing the outcome of a successful completion. */
+function bestEffortObjectCompletionCost(
+  modelId: string,
+  usage: LanguageModelUsage,
+): number | undefined {
+  try {
+    return objectCompletionCost(modelId, usage);
+  } catch (error) {
+    logWarn("ai.completion.cost_estimate.failed", {
+      "exception.message":
+        error instanceof Error ? error.message : String(error),
+      "gen_ai.request.model": modelId,
+    });
+    return undefined;
+  }
+}
+
 /** Execute a schema-constrained completion using the AI SDK structured output path. */
 export async function completeObject<TSchema extends ZodTypeAny>(params: {
   modelId: string;
@@ -286,13 +358,19 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
   thinkingLevel?: ThinkingLevel;
   temperature?: number;
   maxTokens?: number;
+  /**
+   * `false` retains telemetry spans and metrics while omitting model inputs and
+   * outputs. Omission preserves the existing payload-recording behavior.
+   */
+  recordTelemetryPayloads?: boolean;
   signal?: AbortSignal;
   metadata?: Record<string, unknown>;
-}): Promise<{ object: z.infer<TSchema> }> {
+}): Promise<{ costUsd?: number; object: z.infer<TSchema> }> {
   const apiKey = getGatewayApiKey();
   const provider = createGatewayProvider(apiKey ? { apiKey } : {});
+  let result: GenerateObjectResult<unknown>;
   try {
-    const result = await withSpan(
+    result = await withSpan(
       `${GEN_AI_OPERATION_CHAT} ${params.modelId}`,
       "gen_ai.chat",
       logContextFromMetadata(params.modelId, params.metadata),
@@ -307,6 +385,15 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
             : {}),
           ...(params.maxTokens !== undefined
             ? { maxOutputTokens: params.maxTokens }
+            : {}),
+          ...(params.recordTelemetryPayloads === false
+            ? {
+                experimental_telemetry: {
+                  isEnabled: true,
+                  recordInputs: false,
+                  recordOutputs: false,
+                },
+              }
             : {}),
           ...(params.signal !== undefined
             ? { abortSignal: params.signal }
@@ -336,7 +423,6 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
           : {}),
       },
     );
-    return { object: result.object as z.infer<TSchema> };
   } catch (error) {
     const providerError = createProviderError(error, {
       ...(NoObjectGeneratedError.isInstance(error)
@@ -346,6 +432,11 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
     });
     throw providerError;
   }
+  const costUsd = bestEffortObjectCompletionCost(params.modelId, result.usage);
+  return {
+    object: result.object as z.infer<TSchema>,
+    ...(costUsd !== undefined ? { costUsd } : {}),
+  };
 }
 
 /** Generate text embeddings through the host-owned AI Gateway provider. */
@@ -355,6 +446,7 @@ export async function embedTexts(params: {
   signal?: AbortSignal;
   metadata?: Record<string, unknown>;
 }): Promise<{
+  costUsd?: number;
   dimensions: number;
   model: string;
   provider: string;
@@ -395,11 +487,17 @@ export async function embedTexts(params: {
             },
           );
         }
+        const costUsd = embeddingCostUsd(params.modelId, result.usage.tokens);
         setSpanAttributes({
           "gen_ai.embeddings.dimension.count": dimensions,
-          ...extractGenAiUsageAttributes(result.usage),
+          ...extractGenAiUsageAttributes({
+            inputTokens: result.usage.tokens,
+            ...(costUsd !== undefined
+              ? { cost: { input: costUsd, total: costUsd } }
+              : {}),
+          }),
         });
-        return { dimensions, result };
+        return { costUsd, dimensions, result };
       },
       {
         "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
@@ -410,6 +508,7 @@ export async function embedTexts(params: {
       },
     );
     return {
+      ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : {}),
       dimensions: result.dimensions,
       model: params.modelId,
       provider: GEN_AI_PROVIDER_NAME,

@@ -12,9 +12,10 @@
     "worktree:setup": "node scripts/worktree.mjs setup",
     "cloudflare:token": "node scripts/refresh-cloudflare-tunnel-token.mjs",
     "prepare": "simple-git-hooks",
-    "lint": "pnpm file-length:check && pnpm test-architecture:check && pnpm dashboard-style:check && pnpm --filter @sentry/junior lint && pnpm --filter @sentry/junior-memory lint && pnpm --filter @sentry/junior-github lint && pnpm --filter @sentry/junior-linear lint && pnpm --filter @sentry/junior-vercel lint && pnpm ast-grep:lint && pnpm package:lint",
+    "lint": "pnpm file-length:check && pnpm migration-metadata:check && pnpm test-architecture:check && pnpm dashboard-style:check && pnpm --filter @sentry/junior tool-annotations:check && pnpm --filter @sentry/junior lint && pnpm --filter @sentry/junior-memory lint && pnpm --filter @sentry/junior-github lint && pnpm --filter @sentry/junior-linear lint && pnpm --filter @sentry/junior-vercel lint && pnpm --filter @sentry/junior-dashboard lint && pnpm ast-grep:lint && pnpm package:lint",
     "lint:fix": "pnpm --filter @sentry/junior lint:fix",
     "file-length:check": "node --test scripts/check-file-length.test.mjs && node scripts/check-file-length.mjs",
+    "migration-metadata:check": "node --test scripts/check-drizzle-migrations.test.mjs && node scripts/check-drizzle-migrations.mjs",
     "test-architecture:check": "node --test scripts/check-test-architecture.test.mjs && node scripts/check-test-architecture.mjs",
     "dashboard-style:check": "node --test scripts/check-dashboard-styles.test.mjs && node scripts/check-dashboard-styles.mjs",
     "ast-grep:lint": "ast-grep scan",
@@ -24,7 +25,7 @@
     "docs:dev": "pnpm --filter @sentry/junior-docs dev",
     "docs:build": "pnpm --filter @sentry/junior-docs build",
     "docs:check": "pnpm --filter @sentry/junior-docs check",
-    "package:lint": "for pkg in packages/junior packages/junior-plugin-api packages/junior-scheduler packages/junior-memory packages/junior-dashboard packages/junior-github packages/junior-agent-browser packages/junior-amplitude packages/junior-cloudflare packages/junior-datadog packages/junior-hex packages/junior-linear packages/junior-maintenance packages/junior-notion packages/junior-sentry packages/junior-vercel; do pnpm exec publint \"$pkg\" || exit $?; done",
+    "package:lint": "for pkg in packages/junior packages/junior-plugin-api packages/junior-memory packages/junior-dashboard packages/junior-github packages/junior-agent-browser packages/junior-amplitude packages/junior-cloudflare packages/junior-datadog packages/junior-hex packages/junior-linear packages/junior-maintenance packages/junior-notion packages/junior-sentry packages/junior-vercel; do pnpm exec publint \"$pkg\" || exit $?; done",
     "release:check": "node scripts/check-release-config.mjs",
     "start": "pnpm --filter @sentry/junior-example dev",
     "test": "pnpm --filter @sentry/junior build && pnpm --filter @sentry/junior-memory build && pnpm --filter @sentry/junior-github build && pnpm --filter @sentry/junior-linear build && pnpm --filter @sentry/junior-vercel build && pnpm --filter @sentry/junior-dashboard build && pnpm --filter @sentry/junior test && pnpm --filter @sentry/junior-memory test && pnpm --filter @sentry/junior-github test && pnpm --filter @sentry/junior-vercel test && pnpm --filter @sentry/junior-dashboard test",
@@ -37,9 +38,11 @@
     "test:ci": "pnpm --filter @sentry/junior build && pnpm --filter @sentry/junior-memory build && pnpm --filter @sentry/junior-github build && pnpm --filter @sentry/junior-linear build && pnpm --filter @sentry/junior-vercel build && pnpm --filter @sentry/junior-dashboard build && pnpm --filter @sentry/junior test:coverage && pnpm --filter @sentry/junior-memory test && pnpm --filter @sentry/junior-github test && pnpm --filter @sentry/junior-vercel test && pnpm --filter @sentry/junior-dashboard test:coverage"
   },
   "simple-git-hooks": {
-    "pre-commit": "pnpm lint-staged"
+    "pre-commit": "pnpm lint-staged",
+    "pre-push": "pnpm lint"
   },
   "lint-staged": {
+    "packages/junior-dashboard/src/**/*.{ts,tsx}": "pnpm --filter @sentry/junior-dashboard lint",
     "packages/junior/**/*.{js,jsx,ts,tsx,mjs,cjs}": "pnpm --filter @sentry/junior exec oxlint --config .oxlintrc.json --deny-warnings --fix",
     "*.{js,jsx,ts,tsx,mjs,cjs,json,md,mdx,yml,yaml}": [
       "pnpm file-length:check",

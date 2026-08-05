@@ -476,8 +476,7 @@ function dashboardPagePaths(
     },
     {
       nested: true,
-      path:
-        basePath === "/" ? "/settings/plugins" : `${basePath}/settings/plugins`,
+      path: basePath === "/" ? "/plugins" : `${basePath}/plugins`,
     },
   ];
   if (options.componentGallery) {

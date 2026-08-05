@@ -28,8 +28,8 @@ function plugin() {
           return {
             type: "list" as const,
             emptyText: "No personal memories yet.",
-            records: ctx.viewer.actors.map((actor) => ({
-              id: `${actor.platform}:${actor.userId}`,
+            records: ctx.viewer.identities.map((identity) => ({
+              id: `${identity.provider}:${identity.providerSubjectId}`,
               title: ctx.viewer.email,
             })),
           };
@@ -65,6 +65,7 @@ describe("plugin user page API", () => {
         description: "Personal facts Junior remembers about you.",
         id: "memories",
         label: "Memories",
+        navigation: "profile",
         pluginDisplayName: "Memory",
         pluginName: "memory",
       },
@@ -108,12 +109,13 @@ describe("plugin user page API", () => {
     ]);
 
     const response = await authenticatedApi("viewer@example.com").request(
-      "http://localhost/api/user-pages/memory/memories?q=runbooks&cursor=next-page&limit=12",
+      "http://localhost/api/user-pages/memory/memories?q=runbooks&filter=preferences&cursor=next-page&limit=12",
     );
 
     expect(response.status).toBe(200);
     expect(receivedInput).toEqual({
       cursor: "next-page",
+      filter: "preferences",
       limit: 12,
       query: "runbooks",
     });
@@ -124,7 +126,7 @@ describe("plugin user page API", () => {
     expect(invalid.status).toBe(400);
   });
 
-  test("passes only actors linked to the authenticated viewer", async () => {
+  test("passes only identities linked to the authenticated viewer", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
     const store = createSqlStore(fixture.sql);
     try {
@@ -174,7 +176,7 @@ describe("plugin user page API", () => {
         records: [
           {
             id: "slack:U123",
-            title: "VIEWER@example.com",
+            title: "viewer@example.com",
           },
         ],
       });

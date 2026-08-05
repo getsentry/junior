@@ -990,8 +990,8 @@ interface ResourceEventNotificationOptions {
   eventType: string;
   intent: string;
   label: string;
-  provider?: string;
-  resourceRef: string;
+  namespace?: string;
+  identifier: string;
   subscriptionId?: string;
   thread?: ThreadOverrides;
   trustedSummary: string;
@@ -1006,7 +1006,7 @@ interface GitHubWebhookOptions {
     events: string[];
     intent: string;
     label: string;
-    resourceRef: string;
+    identifier: string;
     resourceType: string;
   };
   thread?: ThreadOverrides;
@@ -1030,7 +1030,7 @@ export function githubWebhook(opts: GitHubWebhookOptions) {
       events: opts.subscription.events,
       intent: opts.subscription.intent,
       label: opts.subscription.label,
-      resource_ref: opts.subscription.resourceRef,
+      identifier: opts.subscription.identifier,
       resource_type: opts.subscription.resourceType,
     },
   };
@@ -1077,8 +1077,8 @@ export function resourceEventNotification(
       },
       raw: {
         event_type: "resource_event",
-        provider: opts.provider ?? "github",
-        resource_ref: opts.resourceRef,
+        namespace: opts.namespace ?? "github",
+        identifier: opts.identifier,
         subscription_id: subscriptionId,
         type: "message",
         user: "UJRNEVENT",
@@ -1091,6 +1091,7 @@ export function resourceEventNotification(
 export function scheduledTaskDue(
   taskText: string,
   opts?: {
+    credential_mode?: "creator" | "system";
     now_ms?: number;
     recurrence?: "daily" | "weekly" | "monthly" | "yearly";
     schedule?: string;
@@ -1109,11 +1110,48 @@ export function scheduledTaskDue(
       ...opts?.thread,
     },
     task_text: taskText,
+    ...(opts?.credential_mode ? { credential_mode: opts.credential_mode } : {}),
     ...(opts?.now_ms ? { now_ms: opts.now_ms } : {}),
     ...(opts?.recurrence ? { recurrence: opts.recurrence } : {}),
     ...(opts?.schedule ? { schedule: opts.schedule } : {}),
     ...(opts?.schedule_kind ? { schedule_kind: opts.schedule_kind } : {}),
     ...(opts?.timezone ? { timezone: opts.timezone } : {}),
+  };
+}
+
+/** Builds an event for a persisted event task matching a resource event. */
+export function eventTaskMatched(
+  taskText: string,
+  opts: {
+    eventKey?: string;
+    eventType: string;
+    label: string;
+    namespace?: string;
+    identifier: string;
+    resourceType: string;
+    thread?: ThreadOverrides;
+    trustedSummary: string;
+    untrustedText?: string;
+  },
+) {
+  const seq = nextId();
+  return {
+    type: "event_task_matched" as const,
+    thread: {
+      id: `thread-${seq}`,
+      channel_id: `C${seq}`,
+      thread_ts: `17000000.${seq}`,
+      ...opts.thread,
+    },
+    event_key: opts.eventKey ?? `eval-event-task-${seq}`,
+    event_type: opts.eventType,
+    label: opts.label,
+    namespace: opts.namespace ?? "github",
+    identifier: opts.identifier,
+    resource_type: opts.resourceType,
+    task_text: taskText,
+    trusted_summary: opts.trustedSummary,
+    ...(opts.untrustedText ? { untrusted_text: opts.untrustedText } : {}),
   };
 }
 

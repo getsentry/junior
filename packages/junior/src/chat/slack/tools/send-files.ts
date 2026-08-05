@@ -12,26 +12,20 @@ import {
   type SandboxFileUpload,
 } from "@/chat/tools/sandbox/file-uploads";
 import type { ToolState } from "@/chat/tools/types";
-import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
+import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 
 /** Convert a model-supplied sandbox file path into bytes safe for Slack upload. */
 export type MaterializeFile = (
   input: SandboxFileMaterializationInput,
 ) => Promise<SandboxFileUpload>;
 
-const sendFilesDataSchema = z.object({
+const sendFilesResultSchema = juniorToolOutputSchema.extend({
+  target: z.string().min(1),
   channel_id: z.string().min(1),
   deduplicated: z.boolean().optional(),
   file_count: z.number().int().nonnegative(),
   file_ids: z.array(z.string().min(1)).optional(),
   thread_ts: z.string().min(1),
-});
-
-const sendFilesResultSchema = juniorToolResultSchema.extend({
-  ok: z.literal(true),
-  status: z.literal("success"),
-  target: z.string().min(1),
-  data: sendFilesDataSchema,
 });
 
 type SendFilesResult = z.output<typeof sendFilesResultSchema>;
@@ -68,6 +62,12 @@ export function createSendFilesTool(
   materializeFile: MaterializeFile,
 ) {
   return zodTool({
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+      readOnlyHint: false,
+    },
     description:
       "Send one or more sandbox files into the active Slack conversation. Use when the user asks to attach, send, or share files here, in this conversation, or in this thread. Do not use for ordinary assistant text, top-level channel posts, other named channels, inline @mentions, or pinging mentioned users.",
     inputSchema: z.object({
@@ -103,10 +103,7 @@ export function createSendFilesTool(
       if (cached) {
         return sendFilesResultSchema.parse({
           ...cached,
-          data: {
-            ...cached.data,
-            deduplicated: true,
-          },
+          deduplicated: true,
         });
       }
 
@@ -123,15 +120,11 @@ export function createSendFilesTool(
         ?.map((file) => file.id)
         .filter((id): id is string => Boolean(id));
       const response: SendFilesResult = {
-        ok: true,
-        status: "success" as const,
         target: `${activeChannelId}:${threadTs}`,
-        data: {
-          channel_id: activeChannelId,
-          thread_ts: threadTs,
-          file_count: uploads.length,
-          ...(fileIds ? { file_ids: fileIds } : {}),
-        },
+        channel_id: activeChannelId,
+        thread_ts: threadTs,
+        file_count: uploads.length,
+        ...(fileIds ? { file_ids: fileIds } : {}),
       };
       state.setOperationResult(operationKey, response);
       return response;

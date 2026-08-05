@@ -19,6 +19,7 @@ related:
 | `REDIS_URL`                                 | Yes         | Runtime state, locks, and durable background task records. Vercel Queues only deliver wakeups.                                                                                                   |
 | `DATABASE_URL`                              | Yes         | Standard Neon/Vercel Postgres URL for Junior SQL records and reporting.                                                                                                                          |
 | `JUNIOR_DATABASE_DRIVER`                    | No          | SQL client driver for Junior records: `neon` or `postgres`. Defaults to `neon`; set `postgres` for local Postgres or node-postgres deployments.                                                  |
+| `JUNIOR_SQL_STATEMENT_TIMEOUT_MS`           | No          | PostgreSQL runtime statement timeout in milliseconds. Defaults to `30000` (30 seconds); set `0` to disable. This does not limit `junior upgrade` migrations.                                     |
 | `JUNIOR_SECRET`                             | Yes         | Signs internal queue/callback payloads and sandbox egress actor context.                                                                                                                         |
 | `JUNIOR_BOT_NAME`                           | No          | Bot display/config naming.                                                                                                                                                                       |
 | `JUNIOR_SLASH_COMMAND`                      | No          | Slack slash command for account-management flows. Defaults to `/jr`; the Slack app command must match this value.                                                                                |
@@ -26,18 +27,21 @@ related:
 | `AI_MODEL`                                  | No          | Standard model for main agent runs. Defaults to `xai/grok-4.5`.                                                                                                                                  |
 | `AI_REASONING_LEVEL`                        | No          | Fixed main-agent reasoning level: `none`, `low`, `medium`, `high`, or `xhigh`. Unset by default; only the unset state enables per-turn reasoning routing.                                        |
 | `AI_FAST_MODEL`                             | No          | Faster model for lightweight tasks and routing/classification passes before the main turn begins. Defaults to `anthropic/claude-haiku-4.5`.                                                      |
+| `AI_GUARDIAN_MODEL`                         | No          | Model for Guardian action review. Defaults to `openai/gpt-5.6-luna`.                                                                                                                             |
 | `AI_HANDOFF_MODEL`                          | No          | Model for the built-in `handoff` profile. Defaults to `openai/gpt-5.6-sol`.                                                                                                                      |
 | `AI_MODEL_PROFILES`                         | No          | JSON object mapping additional named handoff profiles to model IDs, for example `{"coding":"openai/gpt-5.6-sol"}`. Names must match `^[a-z][a-z0-9_-]*$`; `standard` and `handoff` are reserved. |
 | `AI_EMBEDDING_MODEL`                        | No          | Embedding model for plugin-owned vector retrieval. Defaults to `openai/text-embedding-3-small`; memory v1 stores fixed 1536-dimensional vectors.                                                 |
 | `AI_VISION_MODEL`                           | No          | Dedicated image-understanding model; unset disables vision features.                                                                                                                             |
 | `AI_WEB_SEARCH_MODEL`                       | No          | Override for the `webSearch` tool model. Defaults to `openai/gpt-5.4`; does not fall through to `AI_MODEL`.                                                                                      |
-| `SANDBOX_VCPUS`                             | No          | vCPUs for newly created Vercel Sandboxes; each vCPU provides 2 GB of memory. Defaults to the Vercel Sandbox resource setting.                                                                    |
+| `SANDBOX_VCPUS`                             | No          | Legacy fallback for sandbox vCPUs and the build-time snapshot command. Prefer `createApp({ sandbox: { vcpus } })` for runtime sandboxes. Each vCPU provides 2 GB of memory.                      |
 | `VERCEL_SANDBOX_KEEPALIVE_MS`               | No          | Extends an active sandbox by this duration on each tool acquire. Disabled when unset or `0`; `900000` (15 minutes) is recommended for production Vercel deployments.                             |
 | `JUNIOR_BASE_URL`                           | No          | Canonical base URL for callback/auth URL generation.                                                                                                                                             |
 | `JUNIOR_STATE_KEY_PREFIX`                   | No          | Optional namespace prepended to all state-adapter keys, locks, and queues. Use separate prefixes when sharing one Redis database across environments.                                            |
 | `CRON_SECRET` or `JUNIOR_SCHEDULER_SECRET`  | Conditional | Bearer token for the internal heartbeat route; use `CRON_SECRET` with Vercel Cron, or `JUNIOR_SCHEDULER_SECRET` for a non-Vercel heartbeat caller.                                               |
 | `JUNIOR_TIMEZONE`                           | No          | Default IANA timezone for scheduler authoring when the scheduler plugin is enabled. Defaults to `America/Los_Angeles`.                                                                           |
 | `AI_GATEWAY_API_KEY`                        | No          | AI gateway auth if used in your setup.                                                                                                                                                           |
+
+Junior applies `JUNIOR_SQL_STATEMENT_TIMEOUT_MS` through PostgreSQL `statement_timeout` for both the Neon and node-postgres drivers. `junior upgrade` does not apply this runtime limit because schema migrations can legitimately take longer.
 
 `JUNIOR_CROSS_ACTOR_MID_RUN_MODE=follow_up` keeps another actor's mid-run ask
 for its own turn. Set it to `steer` to preserve collaborative steering across
@@ -49,6 +53,14 @@ the stored name through current configuration; the exact model ID recorded when
 an epoch opens is audit evidence, not a runtime pin. Changing a mapping retargets
 existing conversations, while removing or renaming a referenced profile makes
 those conversations fail until that name is configured again.
+
+Guardian action review sends the configured Guardian model a bounded review request with
+hook-adjusted semantic input (starting from validated tool arguments and
+excluding hook-injected environment values), current actor and destination
+context, and bounded user, assistant, tool-call, and tool-result evidence using
+the Codex Guardian transcript selection rules. Guardian defaults to
+`openai/gpt-5.6-luna`; set `AI_GUARDIAN_MODEL` to override it. Input and output
+payloads from this review are excluded from telemetry.
 
 When `@sentry/junior-memory` is enabled, the configured Postgres database must
 support pgvector because the plugin migration creates the `vector` extension
@@ -142,9 +154,23 @@ const app = await createApp({
 
 Keys must be registered plugin config keys. Channel-scoped overrides (`jr-rpc config set`) take precedence.
 
-## Sandbox egress trace propagation
+## Sandbox configuration
 
-Pass `sandbox.egressTracePropagationDomains` to `createApp()` when sandboxed commands should keep Sentry trace context across sandbox network egress:
+Pass sandbox sizing to `createApp()`. Each vCPU provides 2 GB of memory, so this creates 8 GB runtime sandboxes:
+
+```ts
+import { createApp } from "@sentry/junior";
+
+const app = await createApp({
+  sandbox: {
+    vcpus: 4,
+  },
+});
+```
+
+The app setting takes precedence over `SANDBOX_VCPUS`. Snapshot warmup runs before `createApp()`, so `junior snapshot create` still reads `SANDBOX_VCPUS` when its build sandbox also needs explicit sizing.
+
+Pass `sandbox.egressTracePropagationDomains` when sandboxed commands should keep Sentry trace context across sandbox network egress:
 
 ```ts
 import { createApp } from "@sentry/junior";

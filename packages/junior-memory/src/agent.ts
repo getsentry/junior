@@ -199,18 +199,30 @@ export type ExtractSessionRequest = z.output<
 >;
 export type ExtractedMemory = z.output<typeof extractedMemoryResultSchema>;
 
+/** Memories proposed by passive extraction and the model cost of that pass. */
+export type MemoryExtractionResult = {
+  costUsd?: number;
+  memories: ExtractedMemory[];
+};
+
+/** Memories admitted by automatic recall and the model cost of that decision. */
+export type MemoryRecallResult = {
+  costUsd?: number;
+  relevantIds: string[];
+};
+
 export interface MemoryAgent {
   /** Select candidate memories that directly help with the current request. */
   selectRelevantMemories(
     request: MemoryRecallInput,
-  ): Promise<string[]> | string[];
+  ): Promise<MemoryRecallResult> | MemoryRecallResult;
   /** Classify a new preference against related active preferences. */
   adjudicateSupersession(
     request: MemorySupersessionInput,
   ): Promise<MemorySupersessionDecision> | MemorySupersessionDecision;
   extractSessionMemories(
     request: ExtractSessionRequest,
-  ): Promise<ExtractedMemory[]> | ExtractedMemory[];
+  ): Promise<MemoryExtractionResult> | MemoryExtractionResult;
   reviewCreateRequest(
     request: CreateMemoryRequest,
   ): Promise<MemoryReview> | MemoryReview;
@@ -540,9 +552,12 @@ export function createMemoryAgent(model: PluginModel): MemoryAgent {
       });
       const decision = memoryRecallDecisionSchema.parse(result.object);
       const candidateIds = new Set(request.candidates.map(({ id }) => id));
-      return [...new Set(decision.relevantIds)].filter((id) =>
-        candidateIds.has(id),
-      );
+      return {
+        relevantIds: [...new Set(decision.relevantIds)].filter((id) =>
+          candidateIds.has(id),
+        ),
+        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : {}),
+      };
     },
     async adjudicateSupersession(rawRequest) {
       const request = memorySupersessionInputSchema.parse(rawRequest);
@@ -562,9 +577,12 @@ export function createMemoryAgent(model: PluginModel): MemoryAgent {
         prompt: sessionExtractionPrompt(request),
         maxTokens: 1_000,
       });
-      return extractedMemoriesFromResponse(
-        extractMemoriesResponseSchema.parse(result.object),
-      );
+      return {
+        memories: extractedMemoriesFromResponse(
+          extractMemoriesResponseSchema.parse(result.object),
+        ),
+        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : {}),
+      };
     },
     async reviewCreateRequest(rawRequest) {
       const request = parseCreateMemoryRequest(rawRequest);

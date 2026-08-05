@@ -82,10 +82,7 @@ export async function readConversationAccessFromSql(
         isParticipant ||
         (validRootConversationId !== undefined &&
           canExposeConversationPayload({
-            conversationId: validRootConversationId,
-            ...(visibility === "public" || visibility === "private"
-              ? { visibility }
-              : {}),
+            visibility: visibility ?? undefined,
           }));
       return [
         row.conversationId,

@@ -71,7 +71,7 @@ Do not manually edit versions in `package.json`. Do not use local `../junior` li
 
 ### 7. Sync local config
 
-If a new standalone `@sentry/junior-*` plugin package was added, list it in `juniorNitro({ plugins.packages })`. Exclude the base/runtime utility packages: `@sentry/junior`, `@sentry/junior-plugin-api`, `@sentry/junior-testing`.
+If a new standalone `@sentry/junior-*` plugin package was added, add it to the app `plugins.ts` set passed to `defineJuniorPlugins(...)` and keep `juniorNitro({ plugins: "./plugins" })` pointed at that module. Exclude the base/runtime utility packages: `@sentry/junior`, `@sentry/junior-plugin-api`, `@sentry/junior-testing`.
 
 ```bash
 node scripts/check-plugin-packages.mjs
@@ -124,6 +124,12 @@ Mention `minimumReleaseAgeExclude` sync if `pnpm-workspace.yaml` changed.
 ### 10. Push and open/update draft PR
 
 Open a draft PR. Include version change, release summary with links to the GitHub releases, config comparison findings, optional workspace/plugin/vercel changes, check results, and unexpected diffs. Add **Manual review required** when breaking changes, unresolved config drift, approximate Vercel review, or failed checks exist.
+
+When PR creation returns a subscribable resource hint, watch the PR for suggested review and CI events. After merge, if deployment follow-up is needed, use `github_getDeployment` for the merged commit and watch the suggested deployment events.
+
+## Automatic updates from GitHub releases
+
+When asked to keep an app current whenever Junior publishes a release, resolve `getsentry/junior` with `github_getRelease` (no tag) and create a durable event task on `release.published`. The task instruction should load this skill and run the update against the published tag from the event's untrusted text / release payload. Prefer an event task for ongoing automation; use a temporary watch only when following one manually initiated update.
 
 ## Stop conditions
 

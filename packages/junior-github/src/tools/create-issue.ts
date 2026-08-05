@@ -2,15 +2,18 @@ import {
   definePluginTool,
   EgressAuthRequired,
   PluginToolInputError,
+  subscribableResourceSchema,
+  type SubscribableResource,
   type PluginToolExecuteOptions,
-  type PluginToolResult,
+  type PluginToolOutput,
   type ToolRegistrationHookContext,
-  pluginToolResultSchema,
+  pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
 import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { z } from "zod";
 import { appendGitHubFooter } from "./footer.js";
+import { gitHubIssueSubscribable } from "../resource-events/issue.js";
 import { appendGitHubRequesterAttribution } from "../tool-support/attribution.js";
 const GITHUB_ISSUE_CREATE_IDEMPOTENCY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const GITHUB_ISSUE_CREATE_LOCK_TTL_MS = 60_000;
@@ -95,36 +98,41 @@ interface GitHubIssueResult {
   url: string;
 }
 
-interface GitHubIssueToolResult extends PluginToolResult, GitHubIssueResult {
-  ok: true;
-  status: "success";
+interface GitHubIssueData extends GitHubIssueResult {
+  subscribable?: SubscribableResource;
+}
+
+interface GitHubIssueToolResult extends PluginToolOutput, GitHubIssueData {
   target: "createIssue";
-  data: GitHubIssueResult;
 }
 
 const gitHubIssueDataSchema = z.object({
   number: z.number(),
+  subscribable: subscribableResourceSchema.optional(),
   url: z.string(),
 });
 
-const gitHubIssueOutputSchema = pluginToolResultSchema.extend({
-  ok: z.literal(true),
-  status: z.literal("success"),
+const gitHubIssueOutputSchema = pluginToolOutputSchema.extend({
   target: z.literal("createIssue"),
-  data: gitHubIssueDataSchema,
-  number: z.number(),
-  url: z.string(),
+  ...gitHubIssueDataSchema.shape,
 });
 
 function gitHubIssueToolResult(
+  input: CreateGitHubIssueInput,
   result: GitHubIssueResult,
+  canSubscribe: boolean,
 ): GitHubIssueToolResult {
+  const repo = parseRepo(input.repo);
+  const subscribable = canSubscribe
+    ? gitHubIssueSubscribable({
+        number: result.number,
+        repo: `${repo.owner}/${repo.name}`,
+      })
+    : undefined;
+  const data = { ...result, ...(subscribable ? { subscribable } : {}) };
   return {
-    ok: true,
-    status: "success",
     target: "createIssue",
-    data: result,
-    ...result,
+    ...data,
   };
 }
 
@@ -215,6 +223,7 @@ function createGitHubIssueRequest(
   conversationId: string,
   input: CreateGitHubIssueInput,
   actor: ToolRegistrationHookContext["actor"],
+  dashboardUrl?: string,
 ): Request {
   const repo = parseRepo(input.repo);
   const labels = input.labels?.map((label) =>
@@ -225,6 +234,7 @@ function createGitHubIssueRequest(
     body: appendGitHubFooter(
       appendGitHubRequesterAttribution(input.body ?? "", actor),
       conversationId,
+      dashboardUrl,
     ),
     ...(labels?.length ? { labels } : {}),
   };
@@ -293,6 +303,12 @@ async function annotateIssue(
 /** Own issue creation so provider writes use host egress and the footer stays deterministic. */
 export function createGitHubIssueTool(ctx: ToolRegistrationHookContext) {
   return definePluginTool({
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+      readOnlyHint: false,
+    },
     description:
       "Create a GitHub issue with a runtime-owned Junior conversation footer. Use this instead of shelling out to gh issue create when creating issues.",
     inputSchema: createIssueToolInputSchema,
@@ -320,7 +336,11 @@ export function createGitHubIssueTool(ctx: ToolRegistrationHookContext) {
               url: state.url,
             };
             await annotateIssue(ctx, completedInput, completedResult);
-            return gitHubIssueToolResult(completedResult);
+            return gitHubIssueToolResult(
+              completedInput,
+              completedResult,
+              ctx.resourceEvents.canSubscribe,
+            );
           }
           if (state?.status === "pending") {
             throw new Error(
@@ -331,6 +351,7 @@ export function createGitHubIssueTool(ctx: ToolRegistrationHookContext) {
             conversationId,
             parsedInput,
             ctx.actor,
+            ctx.slack?.conversationLink?.url,
           );
           const pendingState: CreateIssueState = {
             status: "pending",
@@ -358,7 +379,11 @@ export function createGitHubIssueTool(ctx: ToolRegistrationHookContext) {
               );
             }
             await annotateIssue(ctx, parsedInput, result);
-            return gitHubIssueToolResult(result);
+            return gitHubIssueToolResult(
+              parsedInput,
+              result,
+              ctx.resourceEvents.canSubscribe,
+            );
           } catch (error) {
             if (
               isEgressAuthRequired(error) ||

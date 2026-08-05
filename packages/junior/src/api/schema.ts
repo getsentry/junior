@@ -3,6 +3,7 @@ export type { DailyConversationActivity } from "./activity";
 export {
   archiveConversationBodySchema,
   archiveConversationResponseSchema,
+  conversationAuxiliaryCostsSchema,
   conversationDetailQuerySchema,
   conversationDetailReportSchema,
   conversationEventPageSchema,
@@ -20,6 +21,7 @@ export type {
   ArchiveConversationBody,
   ArchiveConversationResponse,
   ActorIdentity,
+  ConversationAuxiliaryCosts,
   ConversationCost,
   ConversationDetailReport,
   ConversationEventPage,
@@ -36,10 +38,13 @@ export type {
   ConversationSummaryReport,
   ConversationSurface,
   ConversationUsage,
+  GuardianMetricDay,
+  GuardianStats,
 } from "./schema/conversation";
 export {
   actorDirectoryReportSchema,
   actorProfileReportSchema,
+  personalSpendReportSchema,
   personParamsSchema,
 } from "./schema/person";
 export {
@@ -63,6 +68,7 @@ export type {
   ActorSummaryReport,
   ActorTotalsReport,
   PeopleActivityDayReport,
+  PersonalSpendReport,
   PersonParams,
 } from "./schema/person";
 export { apiErrorSchema } from "./schema/common";
@@ -76,6 +82,20 @@ export {
   revokePersonalTokenResponseSchema,
 } from "./schema/personal-token";
 export type { PersonalTokenMetadata } from "./schema/personal-token";
+export {
+  eventTaskSummarySchema,
+  registeredTaskSummarySchema,
+  scheduledTaskSummarySchema,
+  taskListSchema,
+  taskParamsSchema,
+  taskSummarySchema,
+} from "./schema/task";
+export type {
+  RegisteredTaskSummary,
+  TaskExecutionDay,
+  TaskList,
+  TaskSummary,
+} from "./schema/task";
 export { statSchema, statsReportSchema } from "./schema/stats";
 export type { StatReport, StatsReport } from "./schema/stats";
 export {

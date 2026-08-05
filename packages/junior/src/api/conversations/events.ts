@@ -1,4 +1,6 @@
 import type { ConversationEvent } from "@/chat/conversations/history";
+import { renderJuniorNativeConversationEvent } from "@/chat/conversations/structured-events";
+import { renderPluginConversationEvent } from "@/chat/plugins/conversation-events";
 import { z } from "zod";
 import {
   conversationReportEventSchema,
@@ -13,8 +15,10 @@ export const conversationReportSourceEventTypes = [
   "assistant_message",
   "tool_result",
   "tool_execution_started",
+  "guardian_action_reviewed",
   "turn_started",
   "turn_context",
+  "structured_event",
   "turn_routed",
   "turn_completed",
   "turn_failed",
@@ -78,6 +82,14 @@ const reportingMediaPartSchema = z
   })
   .passthrough();
 
+const reportingMessageAuthorSchema = z
+  .object({
+    fullName: z.string().min(1).optional(),
+    userId: z.string().min(1).optional(),
+    userName: z.string().min(1).optional(),
+  })
+  .passthrough();
+
 type ReportingModelContentPart =
   | { type: "text"; text: string }
   | { type: "image" | "audio"; mimeType?: string };
@@ -113,6 +125,20 @@ function modelVisibleToolOutput(content: unknown[]): unknown {
 
   const only = sanitized[0]!;
   return only.type === "text" ? only.text : only;
+}
+
+function reportMessageActorIdentity(
+  data: Extract<ConversationEvent["data"], { type: "message" }>,
+): Extract<ConversationReportEventData, { type: "message" }>["actorIdentity"] {
+  if (data.role !== "user") return undefined;
+  const author = reportingMessageAuthorSchema.safeParse(data.meta?.author);
+  if (!author.success) return undefined;
+  const actorIdentity = {
+    ...(author.data.fullName ? { fullName: author.data.fullName } : {}),
+    ...(author.data.userId ? { slackUserId: author.data.userId } : {}),
+    ...(author.data.userName ? { slackUserName: author.data.userName } : {}),
+  };
+  return Object.keys(actorIdentity).length > 0 ? actorIdentity : undefined;
 }
 
 /** Project native assistant tool calls through the existing reporting shape. */
@@ -266,12 +292,32 @@ function reportEventData(args: {
   data: ConversationEvent["data"];
 }): ConversationReportEventData | undefined {
   const { data } = args;
+  if (data.type === "structured_event") {
+    if (!args.canExposePayload) return undefined;
+    const presentation =
+      data.namespace === "junior"
+        ? renderJuniorNativeConversationEvent(data)
+        : renderPluginConversationEvent(data);
+    if (!presentation) return undefined;
+    return {
+      type: "structured_event",
+      namespace: data.namespace,
+      name: data.name,
+      version: data.version,
+      ...(data.turnId ? { turnId: data.turnId } : {}),
+      presentation,
+    };
+  }
   switch (data.type) {
-    case "message":
+    case "message": {
+      const actorIdentity = args.canExposePayload
+        ? reportMessageActorIdentity(data)
+        : undefined;
       return {
         type: "message",
         messageId: data.messageId,
         role: data.role,
+        ...(actorIdentity ? { actorIdentity } : {}),
         ...(typeof data.meta?.eventType === "string"
           ? { eventType: data.meta.eventType }
           : {}),
@@ -279,6 +325,7 @@ function reportEventData(args: {
           ? { text: data.text }
           : { redacted: true as const }),
       };
+    }
     case "message_handled":
       return {
         type: "message_handled",
@@ -313,6 +360,16 @@ function reportEventData(args: {
           ? { confidence: data.confidence }
           : {}),
         source: data.source,
+      };
+    case "guardian_action_reviewed":
+      return {
+        type: "guardian_action_reviewed",
+        turnId: data.turnId,
+        toolCallId: data.toolCallId,
+        toolName: data.toolName,
+        decision: data.decision,
+        riskLevel: data.riskLevel,
+        userAuthorization: data.userAuthorization,
       };
     case "turn_completed":
       return {

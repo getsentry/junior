@@ -1,14 +1,14 @@
 # Agent Dispatch
 
-This feature turns an idempotent plugin dispatch into normal conversation work.
-It owns dispatch authority and the plugin-facing status projection. The
+This feature turns an idempotent task or plugin dispatch into normal
+conversation work. It owns dispatch authority and the plugin-facing status projection. The
 conversation worker owns leases, retries, execution slices, and recovery; the
 shared turn runtime owns agent execution and durable turn outcomes; the Slack
 adapter owns destination delivery.
 
 ## Durable Facts
 
-- The dispatch record is the plugin-owned request and status projection.
+- The dispatch record is the durable request and status projection.
 - The conversation mailbox contains a deferred inbound message that identifies
   the dispatch. Queue payloads only wake the conversation.
 - The session record is authoritative for the active turn, resume state,
@@ -22,7 +22,7 @@ record.
 
 ## Lifecycle
 
-1. Plugin heartbeat code creates the dispatch idempotently.
+1. Core task or plugin heartbeat code creates the dispatch idempotently.
 2. The dispatch is indexed before its mailbox append so heartbeat recovery can
    repair a crash between those writes.
 3. The conversation worker validates dispatch identity and destination before
@@ -41,7 +41,7 @@ holding that lock.
 
 ## Boundaries
 
-- `context.ts` exposes plugin-scoped create/get capabilities.
+- `context.ts` exposes the authorized core and plugin dispatch entry points.
 - `store.ts` owns dispatch records, projections, and mailbox-append recovery
   receipts.
 - `work.ts` adapts dispatches to conversation work and projects durable turn

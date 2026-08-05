@@ -30,7 +30,7 @@ describe("Slack contract: outbound normalization", () => {
     resetSlackApiMockState();
   });
 
-  it("normalizes adapter-scoped ids before chat.postMessage", async () => {
+  it("normalizes adapter-scoped ids and disables unfurls before chat.postMessage", async () => {
     await postSlackMessage({
       channelId: "slack:C123",
       text: "hello",
@@ -41,6 +41,8 @@ describe("Slack contract: outbound normalization", () => {
         params: expect.objectContaining({
           channel: "C123",
           text: "hello",
+          unfurl_links: "false",
+          unfurl_media: "false",
         }),
       }),
     ]);

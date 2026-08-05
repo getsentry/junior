@@ -7,7 +7,7 @@ import {
   shouldAutoPinTranscriptBottom,
   transcriptFollowIntent,
   transcriptBottomVersion,
-} from "../src/client/components/transcriptBottomPinning";
+} from "../src/client/conversations/transcriptBottomPinning";
 import type { ConversationTranscript } from "../src/client/types";
 
 function activeTurn(

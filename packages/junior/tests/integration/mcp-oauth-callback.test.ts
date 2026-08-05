@@ -63,7 +63,7 @@ function slackSource(threadTs: string) {
     channelId: SLACK_DESTINATION.channelId,
     threadTs,
 
-    type: "priv",
+    visibility: "private",
   });
 }
 
@@ -178,6 +178,7 @@ async function createAwaitingMcpTurnRecord(args: {
     sliceId: 2,
     state: "awaiting_resume",
     destination: SLACK_DESTINATION,
+    destinationVisibility: "public",
     ...(args.includeSource === false
       ? {}
       : { source: args.source ?? slackSource(args.threadTs) }),
@@ -321,7 +322,7 @@ describe("mcp oauth callback integration", () => {
       messageTs: "1700000000.mcp-source",
       threadTs: "1700000000.001",
 
-      type: "priv",
+      visibility: "private",
     });
 
     await stateAdapterModule.getStateAdapter().set(`thread-state:${threadId}`, {

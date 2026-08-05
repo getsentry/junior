@@ -4,6 +4,7 @@
  * of Pi's internal subpath layout, which changes across SDK versions.
  */
 export {
+  calculateCost,
   completeSimple,
   getEnvApiKey,
   getModel,

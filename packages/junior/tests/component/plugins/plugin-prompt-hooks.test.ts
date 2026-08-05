@@ -14,6 +14,7 @@ process.env.JUNIOR_STATE_ADAPTER = "memory";
 
 const { captured } = vi.hoisted(() => ({
   captured: {
+    promptContextMessages: [] as unknown[],
     promptMessages: [] as unknown[],
     steeredMessages: [] as unknown[],
     systemPrompt: "",
@@ -71,6 +72,7 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
     }
 
     async prompt(message: unknown) {
+      captured.promptContextMessages.push([...this.state.messages]);
       captured.promptMessages.push(message);
       this.state.messages.push(message);
       await this.prepareNextTurn?.({
@@ -131,6 +133,7 @@ describe("plugin prompt hook composition", () => {
   let previousPlugins: ReturnType<typeof setPlugins>;
 
   beforeEach(() => {
+    captured.promptContextMessages = [];
     captured.promptMessages = [];
     captured.steeredMessages = [];
     captured.systemPrompt = "";
@@ -184,7 +187,13 @@ describe("plugin prompt hook composition", () => {
     });
 
     expect(captured.systemPrompt).toContain("System memory guidance.");
+    expect(JSON.stringify(captured.promptContextMessages[0])).toContain(
+      "User memory guidance for hello.",
+    );
     expect(JSON.stringify(captured.promptMessages[0])).toContain(
+      "<current-instruction>\\nhello\\n</current-instruction>",
+    );
+    expect(JSON.stringify(captured.promptMessages[0])).not.toContain(
       "User memory guidance for hello.",
     );
   });
@@ -228,7 +237,9 @@ describe("plugin prompt hook composition", () => {
       },
     });
 
-    expect(JSON.stringify(captured.promptMessages[0])).toContain("Use pnpm.");
+    expect(JSON.stringify(captured.promptContextMessages[0])).toContain(
+      "Use pnpm.",
+    );
     const stored = await getConversationEventStore().loadByIdempotencyKey(
       LOCAL_DESTINATION.conversationId,
       `turn:${turnId}:context:memory:0`,
@@ -316,10 +327,10 @@ describe("plugin prompt hook composition", () => {
     await executeAgentRun(request);
 
     expect(recallCount).toBe(1);
-    expect(JSON.stringify(captured.promptMessages[0])).toContain(
+    expect(JSON.stringify(captured.promptContextMessages[0])).toContain(
       "Use pnpm snapshot 1.",
     );
-    expect(JSON.stringify(captured.promptMessages[0])).not.toContain(
+    expect(JSON.stringify(captured.promptContextMessages[0])).not.toContain(
       "Use pnpm snapshot 2.",
     );
     const stored = await getConversationEventStore().loadByIdempotencyKey(
@@ -345,6 +356,7 @@ describe("plugin prompt hook composition", () => {
       },
     });
     const firstPromptMessage = captured.promptMessages[0];
+    captured.promptContextMessages = [];
     captured.promptMessages = [];
 
     await executeAgentRun({
@@ -368,7 +380,7 @@ describe("plugin prompt hook composition", () => {
     });
 
     expect(captured.userPromptTexts).toEqual(["hello", "again"]);
-    expect(JSON.stringify(captured.promptMessages[0])).toContain(
+    expect(JSON.stringify(captured.promptContextMessages[0])).toContain(
       "User memory guidance for again.",
     );
   });
@@ -424,7 +436,7 @@ describe("plugin prompt hook composition", () => {
     });
 
     expect(captured.userPromptTexts).toEqual(["resume me"]);
-    expect(JSON.stringify(captured.promptMessages[0])).toContain(
+    expect(JSON.stringify(captured.promptContextMessages[0])).toContain(
       "User memory guidance for resume me.",
     );
   });
@@ -459,6 +471,7 @@ describe("plugin prompt hook composition", () => {
     });
 
     expect(captured.userPromptTexts).toEqual([]);
+    expect(captured.promptContextMessages).toEqual([]);
     expect(captured.promptMessages).toEqual([]);
   });
 });

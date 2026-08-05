@@ -1,6 +1,7 @@
 import type { StateAdapter } from "chat";
 import { afterEach, describe, expect, it } from "vitest";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
+import { closeDb, getConversationStore } from "@/chat/db";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import { authTestOk } from "../../fixtures/slack/factories/api";
 import {
@@ -35,6 +36,7 @@ function failIsSubscribed(state: StateAdapter): StateAdapter {
 describe("Slack webhook persistence contract", () => {
   afterEach(async () => {
     await disconnectStateAdapter();
+    await closeDb();
   });
 
   it.each([
@@ -118,6 +120,57 @@ describe("Slack webhook persistence contract", () => {
 
     expect(response.status).toBe(200);
     expect(queue.queuedMessages()).toEqual([]);
+  });
+
+  it("routes a provider conversation into its bound durable conversation", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const state = getStateAdapter();
+    await state.connect();
+    const slackAdapter = createSlackAdapterFixture();
+    const conversationStore = getConversationStore();
+    const conversationId = "agent-dispatch:bound-provider-conversation";
+    const threadTs = "1712345.000900";
+    await conversationStore.recordActivity({
+      conversationId,
+      destination: {
+        platform: "slack",
+        teamId: "T123",
+        channelId: "C123",
+      },
+      nowMs: 1_000,
+    });
+    await conversationStore.bindProviderConversation({
+      conversationId,
+      provider: "slack",
+      providerDestinationId: "C123",
+      providerTenantId: "T123",
+      providerConversationId: threadTs,
+    });
+
+    const canonicalThreadId = `slack:C123:${threadTs}`;
+    await state.subscribe(canonicalThreadId);
+
+    const response = await handleSlackWebhookAndFlush({
+      request: slackWebhookRequest(
+        slackEnvelope({
+          eventType: "message",
+          text: "follow up without another mention",
+          threadTs,
+          ts: "1712345.001000",
+        }),
+      ),
+      services: {
+        getSlackAdapter: () => slackAdapter,
+        queue,
+        runtime: createNoopSlackWebhookRuntime(),
+        state,
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(queue.sentRecords()).toEqual([
+      expect.objectContaining({ conversationId }),
+    ]);
   });
 
   it("returns retryable response for unresolved bot identity and recovers on redelivery", async () => {

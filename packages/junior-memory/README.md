@@ -15,7 +15,9 @@ exported types, tools, and tests are authoritative.
   inspection.
 - The dashboard exposes a searchable, paginated **Memories** user page for
   personal memories owned by actors linked to the signed-in viewer. Its
-  **Forget** action archives the selected memory.
+  **Forget** action archives the selected memory. The overview charts global
+  passive-extraction cost from the durable `memory/memories_captured` events;
+  the System plugin report uses the same event-cost feed.
 - Authenticated REST clients can list and search personal memories through
   `GET /api/plugins/memory/memories`, read one through
   `GET /api/plugins/memory/memories/:id`, and archive one through
@@ -26,9 +28,9 @@ exported types, tools, and tests are authoritative.
 
 - Memory scope is derived from the active actor and source, never from
   model-supplied ownership fields.
-- Dashboard and REST requests authorize one verified viewer, then resolve every
-  linked platform actor internally so one arbitrary actor is never treated as
-  the viewer's canonical identity.
+- Dashboard and REST requests authorize one verified viewer, then derive access
+  from every linked provider identity so no arbitrary identity is treated as
+  the canonical user.
 - Private conversations and local sources remain private by default.
 - Recall filters candidates by actor, source, visibility, status, and relevance
   before content reaches the model.
@@ -55,13 +57,27 @@ exported types, tools, and tests are authoritative.
   learning.
 - Passive extraction creates only durable, reusable facts—not transient tasks,
   conversation summaries, secrets, or speculative interpretation.
+- Every completed passive extraction emits the namespaced
+  `memory/memories_captured` conversation event with its best-effort model cost.
+  Empty extraction outcomes remain durable for reporting but do not produce a
+  transcript row.
 - Candidate review resolves duplicates and supersession before activation.
 - Search combines independently ranked vector and PostgreSQL full-text matches
   with reciprocal rank fusion; provider-specific raw scores are never added
   together.
-- Automatic recall retrieves a broad candidate window, then uses the
+- Both retrieval legs always run in parallel as bounded top-k probes. Each leg
+  fetches at least the caller's requested limit (and never more than the store
+  limit ceiling). Recall keeps a smaller overfetch window than explicit search
+  and slightly prefers lexical ranks so exact tokens survive soft semantic
+  neighbors. Vector recall also applies the cosine distance cutoff in SQL, and
+  embeddings use an HNSW cosine index (`vector_cosine_ops`).
+- Automatic recall retrieves a bounded candidate window, then uses the
   memory-owned relevance model to admit at most five directly useful memories.
   An empty result contributes no filler prompt text.
+- Every completed automatic recall attempt emits an invisible, namespaced
+  `memory/memories_recalled` conversation event with the admitted memory IDs
+  and best-effort embedding and relevance-model cost, including retrievals that
+  find no candidates and decisions that admit no memories.
 - Automatic recall degrades to no prompt contribution when relevance selection
   fails. Review, extraction, and write failures still fail their owning
   hook/task without corrupting existing memory state.
@@ -70,8 +86,12 @@ exported types, tools, and tests are authoritative.
 
 - `AI_MEMORY_MODEL` or `memoryPlugin({ modelId })` selects the structured
   review model.
-- `MEMORY_RECALL_MAX_VECTOR_DISTANCE` or
-  `recallMaxVectorDistance` configures the vector candidate threshold.
+- `memoryPlugin({ disableRecall: true })` disables automatic prompt recall.
+- `memoryPlugin({ disableExtraction: true })` disables passive session
+  extraction. The two flags are independent and do not disable explicit memory
+  tools.
+- Automatic recall uses a fixed cosine distance cutoff of `0.45` (for
+  `text-embedding-3-small`). Explicit search does not apply that cutoff.
 - Generate schema changes with `pnpm --filter @sentry/junior-memory db:generate`.
 
 Follow `../../policies/data-redaction.md`, `../../policies/security.md`, and the

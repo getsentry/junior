@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { jsonResponse } from "@sentry/junior/api";
+import { jsonResponse, type JuniorApiVariables } from "@sentry/junior/api";
 import {
   apiErrorSchema,
   actorDirectoryReportSchema,
@@ -15,6 +15,7 @@ import {
   locationDetailReportSchema,
   locationDirectoryReportSchema,
   locationParamsSchema,
+  personalSpendReportSchema,
   personParamsSchema,
 } from "@sentry/junior/api/schema";
 import {
@@ -26,6 +27,7 @@ import {
   readMockLocationDirectory,
   readMockPeopleDirectory,
   readMockPeopleProfile,
+  readMockPersonalSpend,
 } from "./fixtures";
 
 function errorResponse(error: string, status: 400 | 404): Response {
@@ -33,12 +35,21 @@ function errorResponse(error: string, status: 400 | 404): Response {
 }
 
 /** Create the reporting API used exclusively by local dashboard mocks. */
-export function createMockReportingApi(): Hono {
-  const app = new Hono();
+export function createMockReportingApi(): Hono<{
+  Variables: JuniorApiVariables;
+}> {
+  const app = new Hono<{ Variables: JuniorApiVariables }>();
 
   app.get("/people", () =>
     jsonResponse(actorDirectoryReportSchema, readMockPeopleDirectory()),
   );
+  app.get("/people/me/spend", (context) => {
+    const email = context.get("verifiedViewerEmail");
+    const report = email ? readMockPersonalSpend(email) : undefined;
+    return report
+      ? jsonResponse(personalSpendReportSchema, report)
+      : errorResponse("Person not found.", 404);
+  });
   app.get("/people/:email", (c) => {
     const params = personParamsSchema.safeParse(c.req.param());
     if (!params.success) {

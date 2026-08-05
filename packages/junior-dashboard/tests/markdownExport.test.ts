@@ -59,6 +59,10 @@ describe("dashboard canonical-event Markdown export", () => {
           messageId: "user-1",
           role: "user",
           text: "please investigate",
+          actorIdentity: {
+            fullName: "Taylor Chen",
+            slackUserName: "taylor",
+          },
         }),
         event(2, {
           type: "message",
@@ -70,7 +74,8 @@ describe("dashboard canonical-event Markdown export", () => {
     );
 
     expect(markdown).toContain("# Canonical conversation");
-    expect(markdown).toContain("### alice@example.com");
+    expect(markdown).toContain("### Taylor Chen");
+    expect(markdown).not.toContain("### alice@example.com");
     expect(markdown).toContain("please investigate");
     expect(markdown).toContain("### Junior");
     expect(markdown.match(/investigation complete/g)).toHaveLength(1);
