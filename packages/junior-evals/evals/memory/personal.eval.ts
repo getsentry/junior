@@ -169,7 +169,7 @@ describeEval("Personal Memory", slackEvals, (it) => {
       expectedBehavior:
         "The assistant uses the remembered San Francisco / Pacific Time preference and reports the user's current local time in Pacific Time.",
     });
-  }, 180_000);
+  });
 
   const firstPersonRewrittenThread = {
     id: "thread-memory-first-person-rewritten",
