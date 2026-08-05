@@ -57,14 +57,6 @@ const MAX_LEXICAL_RANK_CANDIDATES = 1_000;
 const MAX_MEMORY_CONTENT_CHARS = 4_000;
 const EMBEDDING_METRIC = "cosine";
 
-type VisibleLexicalSearchArgs = {
-  db: MemoryDb;
-  limit: number;
-  nowMs: number;
-  query: string;
-  scopes: ResolvedMemoryScope[];
-};
-
 export type MemoryDb = PgDatabase<PgQueryResultHKT, typeof memorySqlSchema>;
 
 interface MemoryEmbedding {
@@ -957,39 +949,26 @@ async function listVisibleMemories(args: {
   return rows.map(parseMemoryRow);
 }
 
-async function searchVisibleStrictLexicalMemories(
-  args: VisibleLexicalSearchArgs,
-): Promise<MemoryMatch[]> {
-  return await rankVisibleLexicalMemories(
-    args,
-    sql`plainto_tsquery('english', ${args.query})`,
-  );
-}
-
-async function searchVisibleBroadLexicalMemories(
-  args: VisibleLexicalSearchArgs,
-): Promise<MemoryMatch[]> {
+/** Search a bounded active candidate set with PostgreSQL full-text ranking. */
+async function searchVisibleLexicalMemories(args: {
+  db: MemoryDb;
+  limit: number;
+  nowMs: number;
+  query: string;
+  scopes: ResolvedMemoryScope[];
+}): Promise<MemoryMatch[]> {
+  const predicate = activeVisiblePredicate(args);
+  if (!predicate) {
+    return [];
+  }
+  const queryVector = sql`to_tsvector('english', ${args.query})`;
   const tsquery = sql`(
     SELECT COALESCE(
       string_agg(quote_literal(term), ' | ')::tsquery,
       ''::tsquery
     )
-    FROM unnest(
-      tsvector_to_array(to_tsvector('english', ${args.query}))
-    ) AS query_terms(term)
+    FROM unnest(tsvector_to_array(${queryVector})) AS query_terms(term)
   )`;
-  return await rankVisibleLexicalMemories(args, tsquery);
-}
-
-/** Search a bounded active candidate set with PostgreSQL full-text ranking. */
-async function rankVisibleLexicalMemories(
-  args: VisibleLexicalSearchArgs,
-  tsquery: SQL,
-): Promise<MemoryMatch[]> {
-  const predicate = activeVisiblePredicate(args);
-  if (!predicate) {
-    return [];
-  }
   const candidateLimit = Math.min(
     MAX_LEXICAL_RANK_CANDIDATES,
     args.limit * LEXICAL_RANK_OVERFETCH,
@@ -1375,7 +1354,10 @@ export function createMemoryStore(
       : { created: false, memory: idempotent.memory };
   }
 
-  async function prepareVisibleMemorySearch(rawInput: SearchMemoriesInput) {
+  async function retrieveVisibleMemories(
+    rawInput: SearchMemoriesInput,
+    vectorMaxDistance: number | undefined,
+  ): Promise<MemoryRecord[]> {
     const input = searchMemoriesInputSchema.parse(rawInput);
     const nowMs = getNowMs();
     const scopes = deriveVisibleMemoryScopes(runtimeContext);
@@ -1385,96 +1367,51 @@ export function createMemoryStore(
       scopes,
     });
     const limit = boundedLimit(input.limit, DEFAULT_SEARCH_LIMIT);
-    return {
-      candidateLimit: limit * VECTOR_SEARCH_OVERFETCH,
-      limit,
+    const candidateLimit = limit * VECTOR_SEARCH_OVERFETCH;
+    const vectorSearch = searchVisibleVectorMemories({
+      db,
+      embedder,
+      limit: candidateLimit,
+      ...(vectorMaxDistance !== undefined
+        ? { maxDistance: vectorMaxDistance }
+        : {}),
       nowMs,
       query: input.query,
       scopes,
-    };
-  }
-
-  function finishVisibleMemorySearch(
-    matches: MemoryMatch[],
-    limit: number,
-    nowMs: number,
-  ): MemoryRecord[] {
+    });
+    let vectorMatches: MemoryMatch[];
+    let lexicalMatches: MemoryMatch[];
+    if (vectorMaxDistance === undefined) {
+      [vectorMatches, lexicalMatches] = await Promise.all([
+        vectorSearch,
+        searchVisibleLexicalMemories({
+          db,
+          limit: candidateLimit,
+          nowMs,
+          query: input.query,
+          scopes,
+        }),
+      ]);
+    } else {
+      vectorMatches = await vectorSearch;
+      lexicalMatches =
+        vectorMatches.length === 0
+          ? await searchVisibleLexicalMemories({
+              db,
+              limit: candidateLimit,
+              nowMs,
+              query: input.query,
+              scopes,
+            })
+          : [];
+    }
     const channelPrefix = sourceChannelPrefix(runtimeContext);
-    return rankMemoryMatches(matches, {
+    return rankMemoryMatches([...vectorMatches, ...lexicalMatches], {
       nowMs,
       ...(channelPrefix ? { channelPrefix } : {}),
     })
       .slice(0, limit)
       .map(({ memory }) => memory);
-  }
-
-  async function recallVisibleMemories(
-    rawInput: SearchMemoriesInput,
-  ): Promise<MemoryRecord[]> {
-    const search = await prepareVisibleMemorySearch(rawInput);
-    const [vectorMatches, strictLexicalMatches] = await Promise.all([
-      searchVisibleVectorMemories({
-        db,
-        embedder,
-        limit: search.candidateLimit,
-        ...(maxVectorDistance !== undefined
-          ? { maxDistance: maxVectorDistance }
-          : {}),
-        nowMs: search.nowMs,
-        query: search.query,
-        scopes: search.scopes,
-      }),
-      searchVisibleStrictLexicalMemories({
-        db,
-        limit: search.candidateLimit,
-        nowMs: search.nowMs,
-        query: search.query,
-        scopes: search.scopes,
-      }),
-    ]);
-    const lexicalMatches =
-      vectorMatches.length === 0 && strictLexicalMatches.length === 0
-        ? await searchVisibleBroadLexicalMemories({
-            db,
-            limit: search.candidateLimit,
-            nowMs: search.nowMs,
-            query: search.query,
-            scopes: search.scopes,
-          })
-        : strictLexicalMatches;
-    return finishVisibleMemorySearch(
-      [...vectorMatches, ...lexicalMatches],
-      search.limit,
-      search.nowMs,
-    );
-  }
-
-  async function searchVisibleMemories(
-    rawInput: SearchMemoriesInput,
-  ): Promise<MemoryRecord[]> {
-    const search = await prepareVisibleMemorySearch(rawInput);
-    const [vectorMatches, lexicalMatches] = await Promise.all([
-      searchVisibleVectorMemories({
-        db,
-        embedder,
-        limit: search.candidateLimit,
-        nowMs: search.nowMs,
-        query: search.query,
-        scopes: search.scopes,
-      }),
-      searchVisibleBroadLexicalMemories({
-        db,
-        limit: search.candidateLimit,
-        nowMs: search.nowMs,
-        query: search.query,
-        scopes: search.scopes,
-      }),
-    ]);
-    return finishVisibleMemorySearch(
-      [...vectorMatches, ...lexicalMatches],
-      search.limit,
-      search.nowMs,
-    );
   }
 
   return {
@@ -1525,11 +1462,14 @@ export function createMemoryStore(
     },
 
     async recallMemories(input) {
-      return await recallVisibleMemories(input);
+      return await retrieveVisibleMemories(
+        input,
+        maxVectorDistance ?? Number.POSITIVE_INFINITY,
+      );
     },
 
     async searchMemories(input) {
-      return await searchVisibleMemories(input);
+      return await retrieveVisibleMemories(input, undefined);
     },
 
     async archiveMemory(input) {

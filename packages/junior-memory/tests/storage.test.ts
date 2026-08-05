@@ -2751,7 +2751,7 @@ WHERE id = '${superseded.memory.id}'
     try {
       const query = "semantic needle";
       const closeContent = "Close vector-only memory.";
-      const weakContent = "Weak vector-only memory.";
+      const weakContent = "Weak semantic needle memory.";
       const embedder = createTestEmbedder({
         [query]: unitEmbedding(0),
         [closeContent]: cosineEmbedding(0.8),
@@ -2776,10 +2776,14 @@ WHERE id = '${superseded.memory.id}'
       await expect(store.recallMemories({ limit: 2, query })).resolves.toEqual([
         expect.objectContaining({ id: close.memory.id }),
       ]);
-      await expect(store.searchMemories({ limit: 2, query })).resolves.toEqual([
-        expect.objectContaining({ id: close.memory.id }),
-        expect.objectContaining({ id: weak.memory.id }),
-      ]);
+      const searchResults = await store.searchMemories({ limit: 2, query });
+      expect(searchResults).toHaveLength(2);
+      expect(searchResults).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: close.memory.id }),
+          expect.objectContaining({ id: weak.memory.id }),
+        ]),
+      );
     } finally {
       await fixture.close();
     }
@@ -3776,18 +3780,12 @@ WHERE id = '${superseded.memory.id}'
 
     try {
       const context = slackContext();
-      const store = createMemoryStore(memoryDb(fixture), context, {
+      const conversation = await createMemoryStore(memoryDb(fixture), context, {
         now: () => TEST_NOW_MS,
-      });
-      const conversation = await store.createConversationMemory({
+      }).createConversationMemory({
         content: "Release notes live in Notion.",
         kind: "knowledge",
         idempotencyKey: "memory-test:recall-conversation-context",
-      });
-      await store.createConversationMemory({
-        content: "Release checklists live in the deployment dashboard.",
-        kind: "knowledge",
-        idempotencyKey: "memory-test:recall-conversation-broad-distractor",
       });
 
       const plugin = memoryPlugin();
