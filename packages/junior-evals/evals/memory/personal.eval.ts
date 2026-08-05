@@ -5,6 +5,7 @@ import {
   clearMemories,
   evalMemoryModel,
   expectActorMemorySemantics,
+  expectAssistantMemoryAnswer,
   memoryPluginOverrides,
   readActiveMemories,
   readMemories,
@@ -82,6 +83,72 @@ describeEval("Personal Memory", slackEvals, (it) => {
       userText: "Please remember that I prefer terse PR summaries.",
     });
   });
+
+  const timezoneRecallThread = {
+    id: "thread-memory-timezone-recall",
+    channel_id: "CMEMORYTIMEZONE",
+    thread_ts: "17000000.000012",
+  };
+
+  it("uses a remembered timezone when answering the current time", async ({
+    run,
+  }) => {
+    await clearMemories();
+    const userText =
+      "Please remember that I live in San Francisco and my timezone is America/Los_Angeles.";
+    const result = await run({
+      overrides: memoryPluginOverrides,
+      initialEvents: [
+        mention(userText, {
+          thread: timezoneRecallThread,
+        }),
+      ],
+      events: [
+        mention("What time is it for me right now?", {
+          thread: timezoneRecallThread,
+        }),
+      ],
+      criteria: rubric({
+        pass: [
+          "The assistant remembers that the user is in San Francisco and uses the America/Los_Angeles timezone.",
+          "The final answer reports the user's current local time in Pacific Time without asking for their location or timezone again.",
+          "The assistant checks the current time before answering.",
+        ],
+        fail: [
+          "Do not answer only with UTC or the server's timezone.",
+          "Do not ask the user to restate their location or timezone.",
+          "Do not claim that no relevant memory exists.",
+        ],
+      }),
+    });
+
+    const rows = await readMemories(timezoneRecallThread);
+    expect(rows).toEqual([
+      expect.objectContaining({
+        archivedAtMs: null,
+        scope: "personal",
+        subjectType: "user",
+      }),
+    ]);
+    expect(toolCalls(result.session)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "memory_createMemory" }),
+        expect.objectContaining({ name: "systemTime", status: "ok" }),
+      ]),
+    );
+    await expectActorMemorySemantics({
+      assistantText: visibleAssistantText(result),
+      expectedMeaning:
+        "The actor lives in San Francisco and uses the America/Los_Angeles timezone.",
+      storedMemories: rows,
+      userText,
+    });
+    await expectAssistantMemoryAnswer({
+      assistantText: visibleAssistantText(result),
+      expectedBehavior:
+        "The assistant uses the remembered San Francisco or America/Los_Angeles timezone and reports the user's current local time in Pacific Time.",
+    });
+  }, 120_000);
 
   const firstPersonRewrittenThread = {
     id: "thread-memory-first-person-rewritten",
