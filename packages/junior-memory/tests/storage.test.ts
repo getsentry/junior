@@ -932,6 +932,114 @@ describe("memory plugin storage", () => {
     }
   }, 15_000);
 
+  it("pre-searches extraction with user conversation context", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      const preference =
+        "Prefers concise release notes that mention rollback owners.";
+      const instruction =
+        "I prefer concise release notes that mention rollback owners.";
+      const priorThreadContext =
+        "Earlier in the thread someone mentioned mango chips for QA snacks.";
+      const participantInstruction =
+        "For releases, the rollback owner is listed in the deploy checklist.";
+      const participantActor: Actor = {
+        platform: "local",
+        userId: "local-participant",
+      };
+      const toolDump =
+        'webhook payload dump status=ok body={"noise":true,"rows":999}';
+      const assistantReply = "Noted.";
+      const unattributedUserText =
+        "Unattributed ambient text should not search.";
+      const embedder = createTestEmbedder({
+        [preference]: unitEmbedding(1),
+      });
+      const store = createMemoryStore(memoryDb(fixture), localContext(), {
+        embedder,
+        now: () => TEST_NOW_MS,
+      });
+      await store.createMemory({
+        content: preference,
+        kind: "preference",
+        idempotencyKey: "memory-test:extraction-focused-query",
+      });
+      const { calls, model } = extractionModel([]);
+
+      await processMemorySession(
+        processSessionContext({
+          db: memoryDb(fixture),
+          embedder,
+          model,
+          run: {
+            async load() {
+              return completedRun({
+                actors: [localInstructionActor, participantActor],
+                transcript: [
+                  // Runtime prepends prior public-thread messages as context.
+                  contextMessage(priorThreadContext),
+                  {
+                    type: "message",
+                    role: "user",
+                    text: unattributedUserText,
+                  },
+                  nonRunActorInstructionMessage(
+                    participantInstruction,
+                    participantActor,
+                  ),
+                  instructionMessage(instruction),
+                  {
+                    type: "toolResult",
+                    toolName: "bash",
+                    text: toolDump,
+                    isError: false,
+                  },
+                  {
+                    type: "message",
+                    role: "assistant",
+                    text: assistantReply,
+                  },
+                ],
+              });
+            },
+          },
+        }),
+      );
+
+      // Hybrid pre-search embeds all user conversation evidence together.
+      expect(
+        embedder.calls.some((batch) =>
+          batch.some(
+            (text) =>
+              text.includes(instruction) &&
+              text.includes(priorThreadContext) &&
+              text.includes(participantInstruction),
+          ),
+        ),
+      ).toBe(true);
+      expect(
+        embedder.calls.some((batch) =>
+          batch.some(
+            (text) =>
+              text.includes(toolDump) ||
+              text.includes(assistantReply) ||
+              text.includes(unattributedUserText),
+          ),
+        ),
+      ).toBe(false);
+      const prompt = calls[0]?.prompt ?? "";
+      // Existing-memory context came from the focused hybrid hit.
+      expect(prompt).toMatch(
+        /<existing-memories>[\s\S]*Prefers concise release notes that mention rollback owners\.[\s\S]*<\/existing-memories>/,
+      );
+      // Full transcript still reaches the extraction model, including prior context.
+      expect(prompt).toContain(priorThreadContext);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
   it("records empty extraction cost without capturing memories", async () => {
     const fixture = await createMemoryFixture();
 

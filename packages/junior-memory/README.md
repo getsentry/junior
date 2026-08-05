@@ -65,6 +65,10 @@ exported types, tools, and tests are authoritative.
 - Search combines independently ranked vector and PostgreSQL full-text matches
   with reciprocal rank fusion; provider-specific raw scores are never added
   together.
+- Passive extraction pre-searches with a short hybrid query from the run actor's
+  current instruction plus other user conversation context, not tool dumps, then
+  uses the same hybrid RRF path. The extraction model still receives the full run
+  transcript.
 - Automatic recall retrieves a broad candidate window, then uses the
   memory-owned relevance model to admit at most five directly useful memories.
   An empty result contributes no filler prompt text.

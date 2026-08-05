@@ -29,6 +29,12 @@ const MEMORY_TOOL_NAMES = new Set([
   "searchMemories",
 ]);
 const MEMORY_TASK_STATE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+/**
+ * Soft cap for the hybrid pre-search query string.
+ * Keep this small enough that embeddings/FTS stay focused; raise only with
+ * evidence that longer thread context improves skip/supersede quality.
+ */
+const EXTRACTION_SEARCH_QUERY_MAX_CHARS = 1_500;
 const extractedMemorySchema = z
   .object({
     content: z.string().min(1),
@@ -56,6 +62,52 @@ const extractedMemoryCacheSchema = z.union([
 
 /** Where a passively extracted memory may be stored, or dropped when unproven. */
 type MemoryRouteTarget = "drop" | "personal" | "conversation";
+
+/**
+ * Build the query used to find existing memories before passive extraction.
+ *
+ * The run actor's current instruction is strongest, followed by other user
+ * evidence: prior public-thread context and instructions from other current-turn
+ * participants. Tool results and assistant text remain available to extraction
+ * but stay out of search until a small rewrite can turn them into concise facts.
+ * Any future source must share this budget so retrieval does not drift back to
+ * embedding the full transcript.
+ */
+function buildExtractionSearchQuery(
+  transcript: PluginRunTranscriptEntry[],
+): string {
+  const instructions: string[] = [];
+  const conversationContext: string[] = [];
+  for (const entry of transcript) {
+    if (entry.type !== "message" || entry.role !== "user") {
+      continue;
+    }
+    const text = entry.text?.trim();
+    if (!text) {
+      continue;
+    }
+    if (entry.provenance?.authority === "instruction" && entry.isRunActor) {
+      instructions.push(text);
+    } else if (
+      entry.provenance?.authority === "context" ||
+      (entry.provenance?.authority === "instruction" &&
+        entry.isRunActor === false &&
+        Boolean(entry.provenance.actor))
+    ) {
+      conversationContext.push(text);
+    }
+  }
+  const query = [
+    ...instructions.reverse(),
+    ...conversationContext.reverse(),
+  ].join("\n");
+  if (query.length <= EXTRACTION_SEARCH_QUERY_MAX_CHARS) {
+    return query;
+  }
+  return `${query
+    .slice(0, EXTRACTION_SEARCH_QUERY_MAX_CHARS - 3)
+    .trimEnd()}...`;
+}
 
 function recordCapturedMemory(
   captured: ReturnType<typeof capturedMemory>[],
@@ -240,14 +292,13 @@ export async function processMemorySession(
   const transcript = run.transcript
     .filter((entry) => entry.text?.trim())
     .map((entry) => ({ ...entry, text: entry.text!.trim() }));
-  const evidenceText = transcript
-    .filter((entry) => entry.type === "toolResult" || entry.role === "user")
-    .map((entry) => entry.text)
-    .join("\n\n")
-    .trim();
-  if (!evidenceText) {
+  const hasExtractionEvidence = transcript.some(
+    (entry) => entry.type === "toolResult" || entry.role === "user",
+  );
+  if (!hasExtractionEvidence) {
     return;
   }
+  const extractionSearchQuery = buildExtractionSearchQuery(transcript);
 
   const runtimeContext = memoryRuntimeContextSchema.parse({
     conversationId: run.conversationId,
@@ -261,10 +312,15 @@ export async function processMemorySession(
   });
   await store.archiveExpiredMemories();
   const extraction = await getTaskExtraction(context, async () => {
-    const existingMemories = await store.searchMemories({
-      limit: 10,
-      query: evidenceText,
-    });
+    // Hybrid search still fuses vector + lexical ranks. The query is intentionally
+    // user conversation evidence, never raw tool results or assistant text.
+    const existingMemories =
+      extractionSearchQuery.length > 0
+        ? await store.searchMemories({
+            limit: 10,
+            query: extractionSearchQuery,
+          })
+        : [];
     return await agent.extractSessionMemories({
       existingMemories: existingMemories.map((memory) => ({
         content: memory.content,
