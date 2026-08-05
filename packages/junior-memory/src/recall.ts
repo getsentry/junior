@@ -157,7 +157,7 @@ export async function createMemoryPromptContributions(
       }
     : undefined;
   const candidates = await createMemoryStore(context.db, runtimeContext, {
-    ...(embedder ? { embedder } : {}),
+    embedder,
   }).recallMemories({
     query: context.text,
     limit: RECALL_CANDIDATE_LIMIT,
