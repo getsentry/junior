@@ -16,7 +16,7 @@ concurrency:
 jobs:
   risk:
     name: Score PR risk
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     if: github.event.pull_request.draft == false
 
     steps:
