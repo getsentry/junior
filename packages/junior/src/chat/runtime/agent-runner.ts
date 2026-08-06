@@ -3,6 +3,7 @@ import {
   type AgentRunRequest,
   type SpawnAgent,
 } from "@/chat/agent/request";
+import { botConfig } from "@/chat/config";
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
 
@@ -16,18 +17,24 @@ export function createAgentRunner(
   run: AgentRunner["run"],
   options?: {
     bindSpawnAgent?: (request: AgentRunRequest) => SpawnAgent | undefined;
+    /** Override botConfig.subagentsEnabled for this runner (tests / local wiring). */
+    subagentsEnabled?: boolean;
     tracePropagation?: SandboxEgressTracePropagationConfig;
   },
 ): AgentRunner {
   const tracePropagation = options?.tracePropagation;
   const bindSpawnAgent = options?.bindSpawnAgent;
-  if (!tracePropagation && !bindSpawnAgent) {
+  const subagentsEnabled =
+    options?.subagentsEnabled ?? botConfig.subagentsEnabled;
+  const canBindSpawn = Boolean(bindSpawnAgent) && subagentsEnabled;
+  if (!tracePropagation && !canBindSpawn) {
     return { run };
   }
   return {
     run: async (request) => {
       const spawnAgent =
         bindSpawnAgent &&
+        canBindSpawn &&
         !isAgentRunFeatureDisabled(request.policy, "subagents")
           ? bindSpawnAgent(request)
           : undefined;

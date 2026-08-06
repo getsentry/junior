@@ -50,10 +50,13 @@ by the parent-facing runtime.
 
 ## Current Boundary
 
-`spawnAgent` exposes durable creation to a parent agent. The tool receives only
-the delegated task, optional child name, and optional per-task reasoning level.
-The runtime derives actor, credentials, destination, visibility, source, parent
-conversation, and idempotency from the active tool call. Child runs set
+`spawnAgent` exposes durable creation to a parent agent when
+`botConfig.subagentsEnabled` is true (`JUNIOR_SUBAGENTS_ENABLED=true`). It is
+off by default so deployments can ship the runtime without advertising the
+model-facing tool. The tool receives only the delegated task, optional child
+name, and optional per-task reasoning level. The runtime derives actor,
+credentials, destination, visibility, source, parent conversation, and
+idempotency from the active tool call. Child runs set
 `disabledFeatures: ["handoff", "interactive-auth", "subagents"]` so they cannot
 hand off models, start interactive OAuth pauses, or spawn further children.
 TODO(#881, #883): children may still need a way to force interactive auth when a

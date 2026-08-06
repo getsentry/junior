@@ -17,14 +17,17 @@ const request = {
 } satisfies AgentRunRequest;
 
 describe("agent runner controls", () => {
-  it("binds spawnAgent into the active run durability context", async () => {
+  it("binds spawnAgent into the active run durability context when enabled", async () => {
     const spawnAgent = vi.fn();
     const bindSpawnAgent = vi.fn(() => spawnAgent);
     const run = vi.fn(async () => ({
       status: "suspended" as const,
       resumeVersion: 1,
     }));
-    const runner = createAgentRunner(run, { bindSpawnAgent });
+    const runner = createAgentRunner(run, {
+      bindSpawnAgent,
+      subagentsEnabled: true,
+    });
 
     await runner.run(request);
 
@@ -36,13 +39,37 @@ describe("agent runner controls", () => {
     );
   });
 
+  it("keeps spawnAgent unavailable when bot config leaves subagents disabled", async () => {
+    const bindSpawnAgent = vi.fn(() => vi.fn());
+    const run = vi.fn(async () => ({
+      status: "suspended" as const,
+      resumeVersion: 1,
+    }));
+    const runner = createAgentRunner(run, {
+      bindSpawnAgent,
+      subagentsEnabled: false,
+    });
+
+    await runner.run(request);
+
+    expect(bindSpawnAgent).not.toHaveBeenCalled();
+    expect(run).toHaveBeenCalledWith(
+      expect.not.objectContaining({
+        durability: expect.objectContaining({ spawnAgent: expect.anything() }),
+      }),
+    );
+  });
+
   it("does not advertise recursive spawning to delegated runs", async () => {
     const bindSpawnAgent = vi.fn();
     const run = vi.fn(async () => ({
       status: "suspended" as const,
       resumeVersion: 1,
     }));
-    const runner = createAgentRunner(run, { bindSpawnAgent });
+    const runner = createAgentRunner(run, {
+      bindSpawnAgent,
+      subagentsEnabled: true,
+    });
 
     await runner.run({
       ...request,
@@ -63,7 +90,10 @@ describe("agent runner controls", () => {
       status: "suspended" as const,
       resumeVersion: 1,
     }));
-    const runner = createAgentRunner(run, { bindSpawnAgent });
+    const runner = createAgentRunner(run, {
+      bindSpawnAgent,
+      subagentsEnabled: true,
+    });
 
     await runner.run({
       ...request,
