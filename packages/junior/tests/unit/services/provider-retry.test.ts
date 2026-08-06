@@ -276,7 +276,7 @@ describe("provider retry helpers", () => {
     });
 
     for (const message of [
-      "Missing AI gateway credentials (AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN)",
+      "Missing AI gateway credentials (enable Vercel OIDC or set AI_GATEWAY_API_KEY)",
       '401 {"error":{"message":"The provided credentials are invalid","type":"authentication_error","statusCode":401}}',
       "Permission denied",
     ]) {

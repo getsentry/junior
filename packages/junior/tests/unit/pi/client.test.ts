@@ -16,12 +16,12 @@ const mocks = vi.hoisted(() => ({
   })),
   embedMany: vi.fn(),
   generateObject: vi.fn(),
-  getEnvApiKey: vi.fn(),
   getModels: vi.fn(() => [{ id: "openai/gpt-4o-mini" }]),
   logException: vi.fn(),
   logWarn: vi.fn(),
   noObjectGeneratedErrorIsInstance: vi.fn(),
   registerApiProvider: vi.fn(),
+  resolveGatewayCredential: vi.fn(),
   setSpanAttributes: vi.fn(),
   streamAnthropic: vi.fn(),
   streamSimpleAnthropic: vi.fn(),
@@ -41,11 +41,24 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/chat/pi/sdk", () => ({
   calculateCost: mocks.calculateCost,
   completeSimple: mocks.completeSimple,
-  getEnvApiKey: mocks.getEnvApiKey,
   getModels: mocks.getModels,
   registerApiProvider: mocks.registerApiProvider,
   streamAnthropic: mocks.streamAnthropic,
   streamSimpleAnthropic: mocks.streamSimpleAnthropic,
+}));
+
+vi.mock("@/chat/pi/gateway-auth", () => ({
+  getGatewayApiKey: vi.fn(async () => {
+    const credential = await mocks.resolveGatewayCredential();
+    return credential?.token;
+  }),
+  getPiGatewayApiKey: vi.fn(async () => {
+    const credential = await mocks.resolveGatewayCredential();
+    return credential?.token;
+  }),
+  MISSING_GATEWAY_CREDENTIALS_ERROR:
+    "Missing AI gateway credentials (enable Vercel OIDC or set AI_GATEWAY_API_KEY)",
+  resolveGatewayCredential: mocks.resolveGatewayCredential,
 }));
 
 vi.mock("@ai-sdk/gateway", () => ({
@@ -75,6 +88,10 @@ describe("completeText", () => {
   });
 
   it("creates a gen_ai.chat span for provider completions", async () => {
+    mocks.resolveGatewayCredential.mockResolvedValue({
+      mode: "oidc",
+      token: "oidc-token",
+    });
     mocks.completeSimple.mockResolvedValue({
       content: [{ type: "text", text: "hello world" }],
       stopReason: "stop",
@@ -98,6 +115,11 @@ describe("completeText", () => {
 
     expect(result.text).toBe("hello world");
     expect(mocks.withSpan).toHaveBeenCalledTimes(1);
+    expect(mocks.completeSimple).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ apiKey: "oidc-token" }),
+    );
 
     const [name, op, context, _callback, attributes] = mocks.withSpan.mock
       .calls[0] as [
@@ -120,6 +142,7 @@ describe("completeText", () => {
         "server.address": "ai-gateway.vercel.sh",
         "server.port": 443,
         "gen_ai.request.reasoning.level": "low",
+        "gen_ai.provider.auth_mode": "oidc",
       }),
     );
     expect(attributes["gen_ai.system_instructions"]).toBeDefined();

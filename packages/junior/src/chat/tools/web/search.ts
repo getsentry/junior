@@ -3,6 +3,7 @@ import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { generateText } from "ai";
 import { createGatewayProvider } from "@ai-sdk/gateway";
+import { resolveGatewayCredential } from "@/chat/pi/gateway-auth";
 import { withTimeout } from "@/chat/tools/web/network";
 import type { WebSearchToolDeps } from "@/chat/tools/types";
 
@@ -93,9 +94,13 @@ export function createWebSearchTool(
       // inheriting the main turn model.
       const controller = new AbortController();
 
-      // AI SDK Gateway reads AI_GATEWAY_API_KEY or ambient Vercel OIDC
-      // itself; no explicit auth needed here.
-      const provider = createGatewayProvider();
+      // Use Junior's shared resolver so OIDC wins over a leftover team API key.
+      // createGatewayProvider() alone prefers AI_GATEWAY_API_KEY and would keep
+      // project attribution as unknown while the key remains set.
+      const credential = await resolveGatewayCredential();
+      const provider = createGatewayProvider(
+        credential ? { apiKey: credential.token } : {},
+      );
       const response = await withTimeout(
         generateText({
           model: provider.chat(modelId),

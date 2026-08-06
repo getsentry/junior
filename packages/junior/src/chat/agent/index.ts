@@ -1039,12 +1039,14 @@ async function executeAgentRunInPrivacyContext(
       return acceptedMessages;
     };
 
-    const apiKeyOverride = getPiGatewayApiKey();
+    // Resolve credentials on every provider call so runtime OIDC tokens stay
+    // fresh across long agent turns. Pi accepts async getApiKey hooks.
+    const getApiKey = async () => getPiGatewayApiKey();
     // Pi converts prepareNextTurn exceptions into error turns instead of
     // rejecting. Preserve Junior's yield so runAgentStep can restore it after
     // the Pi run settles without leaking Pi mechanics into the resume API.
     agent = new Agent({
-      ...(apiKeyOverride ? { getApiKey: () => apiKeyOverride } : {}),
+      getApiKey,
       streamFn: createTracedStreamFn({
         conversationPrivacy,
         ...(streamFn ? { base: streamFn } : {}),

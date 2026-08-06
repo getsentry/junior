@@ -39,6 +39,7 @@ export default defineConfig({
     "@sinclair/typebox",
     "@slack/web-api",
     "@vercel/functions",
+    "@vercel/oidc",
     "@vercel/queue",
     "@vercel/sandbox",
     "ai",

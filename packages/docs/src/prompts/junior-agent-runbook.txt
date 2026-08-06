@@ -71,10 +71,11 @@ Stop and ask the human to open the linked Vercel project and complete:
 1. Storage: create or connect a Postgres database with pgvector support, such as
    Neon, and expose DATABASE_URL to Production, Preview, and Development.
 2. Storage: create or connect Redis and expose REDIS_URL to those environments.
-3. Project Settings: enable Vercel OIDC so VERCEL_OIDC_TOKEN is available to
-   builds and runtime.
-4. Confirm the project has access to an AI model. Add AI_GATEWAY_API_KEY only if
-   that Vercel setup requires it.
+3. Project Settings: enable Vercel OIDC (Team issuer is fine) so builds get
+   VERCEL_OIDC_TOKEN and runtime functions get x-vercel-oidc-token. Junior
+   prefers OIDC for AI Gateway auth and project attribution.
+4. Confirm the project has access to an AI model. Do not set AI_GATEWAY_API_KEY
+   in production when OIDC is enabled; keep it only for local/CI fallback.
 5. Reply only with confirmation. Do not send connection strings or credentials.
 
 After confirmation, verify names only:
