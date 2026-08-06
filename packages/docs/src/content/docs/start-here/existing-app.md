@@ -42,8 +42,9 @@ and declared plugin packages are copied into the deployment bundle:
 
 ```ts title="plugins.ts"
 import { defineJuniorPlugins } from "@sentry/junior";
+import { sentryPlugin } from "@sentry/junior-sentry";
 
-export const plugins = defineJuniorPlugins(["@sentry/junior-sentry"]);
+export const plugins = defineJuniorPlugins([sentryPlugin()]);
 ```
 
 ```ts title="nitro.config.ts"

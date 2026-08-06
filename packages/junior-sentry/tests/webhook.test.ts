@@ -124,6 +124,23 @@ describe("Sentry webhook resource events", () => {
     ]);
   });
 
+  it("parses Sentry-Hook-Timestamp unix seconds when firstSeen is absent", () => {
+    const body = issueBody();
+    delete body.data.issue.firstSeen;
+
+    expect(
+      normalizeSentryResourceEvents({
+        body,
+        hookResource: "issue",
+        hookTimestamp: "1785976800",
+        requestId: REQUEST_ID,
+      }),
+    ).toEqual([
+      expect.objectContaining({ occurredAtMs: 1_785_976_800_000 }),
+      expect.objectContaining({ occurredAtMs: 1_785_976_800_000 }),
+    ]);
+  });
+
   it("publishes both events from a valid signed delivery", async () => {
     const fixture = routeFixture();
 
