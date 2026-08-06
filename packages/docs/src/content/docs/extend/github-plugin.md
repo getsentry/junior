@@ -137,41 +137,217 @@ Set `GITHUB_WEBHOOK_SECRET` to enable these resource types. See
 [Resource Subscriptions](/concepts/resource-subscriptions/) for the difference
 between temporary resource subscriptions and durable event tasks.
 
-**`deployment_source`**
+### `deployment_source`
 
-- Scope: one commit, optionally limited to an environment
-- Identifier: `deployment-source:owner/repo[:environment]:<full-commit-sha>`
-- Events: `deployment.created`, `deployment.queued`, `deployment.pending`,
-  `deployment.in_progress`, `deployment.succeeded`, `deployment.failed`,
-  `deployment.error`
+<details>
+<summary>Subscription details</summary>
 
-**`issue`**
+Scope: one commit, optionally limited to an environment.
 
-- Scope: one issue, `owner/repo#number`
-- Events: `issue.comment.created`, `issue.opened`, `issue.closed`,
-  `issue.reopened`
+Identifier: `deployment-source:owner/repo[:environment]:<full-commit-sha>`
 
-**`pull_request`**
+</details>
 
-- Scope: one pull request, `owner/repo#number`
-- Checks: `pull_request.checks.failed`, `pull_request.checks.recovered`
-- Activity: `pull_request.comment.created`, `pull_request.opened`,
-  `pull_request.ready_for_review`, `pull_request.merged`,
-  `pull_request.closed_unmerged`
-- Reviews: `pull_request.review.approved`,
-  `pull_request.review.changes_requested`, `pull_request.review.commented`,
-  `pull_request.review_comment.created`
+<details>
+<summary><code>deployment.created</code></summary>
 
-**`release_source`**
+A deployment was created.
 
-- Scope: one repository, optionally limited to a tag
-- Identifier: `release-source:owner/repo[:tag]`
-- Event: `release.published`
+</details>
 
-**`repository`**
+<details>
+<summary><code>deployment.queued</code></summary>
 
-- Scope: all issues and pull requests in `owner/repo`
-- Events: all `issue` and `pull_request` events listed above
+The deployment entered the queue.
+
+</details>
+
+<details>
+<summary><code>deployment.pending</code></summary>
+
+The deployment is waiting to start.
+
+</details>
+
+<details>
+<summary><code>deployment.in_progress</code></summary>
+
+The deployment started.
+
+</details>
+
+<details>
+<summary><code>deployment.succeeded</code></summary>
+
+The deployment completed successfully.
+
+</details>
+
+<details>
+<summary><code>deployment.failed</code></summary>
+
+The deployment failed.
+
+</details>
+
+<details>
+<summary><code>deployment.error</code></summary>
+
+The deployment reported an error.
+
+</details>
+
+### `issue`
+
+<details>
+<summary>Subscription details</summary>
+
+Scope: one issue, identified by `owner/repo#number`.
+
+</details>
+
+<details>
+<summary><code>issue.comment.created</code></summary>
+
+A comment was added.
+
+</details>
+
+<details>
+<summary><code>issue.opened</code></summary>
+
+The issue was opened.
+
+</details>
+
+<details>
+<summary><code>issue.closed</code></summary>
+
+The issue was closed.
+
+</details>
+
+<details>
+<summary><code>issue.reopened</code></summary>
+
+The issue was reopened.
+
+</details>
+
+### `pull_request`
+
+<details>
+<summary>Subscription details</summary>
+
+Scope: one pull request, identified by `owner/repo#number`.
+
+</details>
+
+<details>
+<summary><code>pull_request.checks.failed</code></summary>
+
+One or more checks failed.
+
+</details>
+
+<details>
+<summary><code>pull_request.checks.recovered</code></summary>
+
+Previously failing checks recovered.
+
+</details>
+
+<details>
+<summary><code>pull_request.comment.created</code></summary>
+
+A conversation comment was added.
+
+</details>
+
+<details>
+<summary><code>pull_request.opened</code></summary>
+
+The pull request was opened.
+
+</details>
+
+<details>
+<summary><code>pull_request.ready_for_review</code></summary>
+
+The pull request became ready for review.
+
+</details>
+
+<details>
+<summary><code>pull_request.review.approved</code></summary>
+
+A reviewer approved the pull request.
+
+</details>
+
+<details>
+<summary><code>pull_request.review.changes_requested</code></summary>
+
+A reviewer requested changes.
+
+</details>
+
+<details>
+<summary><code>pull_request.review.commented</code></summary>
+
+A reviewer submitted a comment-only review.
+
+</details>
+
+<details>
+<summary><code>pull_request.review_comment.created</code></summary>
+
+An inline review comment was added.
+
+</details>
+
+<details>
+<summary><code>pull_request.merged</code></summary>
+
+The pull request was merged.
+
+</details>
+
+<details>
+<summary><code>pull_request.closed_unmerged</code></summary>
+
+The pull request closed without merging.
+
+</details>
+
+### `release_source`
+
+<details>
+<summary>Subscription details</summary>
+
+Scope: one repository, optionally limited to a tag.
+
+Identifier: `release-source:owner/repo[:tag]`
+
+</details>
+
+<details>
+<summary><code>release.published</code></summary>
+
+A release was published.
+
+</details>
+
+### `repository`
+
+<details>
+<summary>Subscription details</summary>
+
+Scope: all issues and pull requests in `owner/repo`.
+
+</details>
+
+Supports every `issue` and `pull_request` event listed above.
 
 Resource subscriptions and event tasks require a single-workspace Slack deployment
 with `SLACK_BOT_TOKEN`; multi-workspace Slack mode cannot route provider webhook
@@ -181,21 +357,6 @@ Both run as Junior. Resource subscriptions use scoped installation credentials;
 event tasks can also use their creator's connected credentials when needed.
 Bot-owned reviews and inline review comments post as Junior. Merge remains
 outside the write allowlist.
-
-Supported GitHub webhook deliveries become these Junior resource events:
-
-| GitHub delivery                       | Junior event types                                                                                       |
-| ------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `check_suite` completed               | `pull_request.checks.failed`, `pull_request.checks.recovered`                                            |
-| `issue_comment` created on a PR       | `pull_request.comment.created`                                                                           |
-| `pull_request_review` submitted       | `pull_request.review.approved`, `pull_request.review.changes_requested`, `pull_request.review.commented` |
-| `pull_request_review_comment` created | `pull_request.review_comment.created`                                                                    |
-| `pull_request` opened                 | `pull_request.opened`; also `pull_request.ready_for_review` when the PR is not a draft                   |
-| `pull_request` ready_for_review       | `pull_request.ready_for_review`                                                                          |
-| `pull_request` closed                 | `pull_request.merged`, `pull_request.closed_unmerged`                                                    |
-| `issues` opened, closed, or reopened  | `issue.opened`, `issue.closed`, `issue.reopened`                                                         |
-| `issue_comment` created on an issue   | `issue.comment.created`                                                                                  |
-| `release` published                   | `release.published`                                                                                      |
 
 `pull_request.merged` and `pull_request.closed_unmerged` complete a temporary
 pull request watch after Junior accepts the event. Other watch events remain
