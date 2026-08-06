@@ -354,9 +354,9 @@ async function runLocalAgentTurnInContext(
         },
         authorization,
         policy: {
-          authorizationFlowMode: deps.authorization
-            ? "interactive"
-            : "disabled",
+          ...(deps.authorization
+            ? {}
+            : { disabledFeatures: ["interactive-auth"] as const }),
           sandboxEgressSignals: deps.sandboxEgressSignals,
         },
         state: {

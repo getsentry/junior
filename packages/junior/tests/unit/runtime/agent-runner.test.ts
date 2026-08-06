@@ -68,7 +68,7 @@ describe("agent runner controls", () => {
     await runner.run({
       ...request,
       policy: {
-        disabledFeatures: ["handoff", "subagents"],
+        disabledFeatures: ["handoff", "interactive-auth", "subagents"],
         reasoningLevel: "high",
       },
     });
@@ -77,7 +77,7 @@ describe("agent runner controls", () => {
     expect(run).toHaveBeenCalledWith(
       expect.objectContaining({
         policy: expect.objectContaining({
-          disabledFeatures: ["handoff", "subagents"],
+          disabledFeatures: ["handoff", "interactive-auth", "subagents"],
           reasoningLevel: "high",
         }),
       }),

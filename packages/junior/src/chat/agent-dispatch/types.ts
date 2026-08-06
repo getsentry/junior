@@ -79,7 +79,7 @@ export interface DispatchTurnResult {
 
 /** Dispatch-owned authority supplied to the shared turn runtime. */
 export interface DispatchTurnContext {
-  authorizationFlowMode: "disabled";
+  disabledFeatures: readonly ["interactive-auth"];
   channelConfiguration: ChannelConfigurationService;
   credentialContext: CredentialContext;
   destinationVisibility: DestinationVisibility;

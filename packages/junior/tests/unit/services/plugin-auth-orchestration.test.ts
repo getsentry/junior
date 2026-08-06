@@ -163,7 +163,7 @@ describe("createPluginAuthOrchestration", () => {
       abortAgent,
       actorId: "U123",
       userTokenStore: tokenStore(),
-      authorizationFlowMode: "disabled",
+      interactiveAuthEnabled: false,
     });
 
     await expect(
@@ -177,7 +177,7 @@ describe("createPluginAuthOrchestration", () => {
   it("returns AuthorizationFlowDisabledError when no actor and flow is disabled", async () => {
     const orchestration = createPluginAuthOrchestration({
       abortAgent: vi.fn(),
-      authorizationFlowMode: "disabled",
+      interactiveAuthEnabled: false,
     });
 
     await expect(
@@ -433,7 +433,7 @@ describe("createPluginAuthOrchestration", () => {
   it("preserves no-oauth auth signal messages when authorization flow is disabled", async () => {
     const orchestration = createPluginAuthOrchestration({
       abortAgent: vi.fn(),
-      authorizationFlowMode: "disabled",
+      interactiveAuthEnabled: false,
     });
 
     await expectPluginCredentialFailure(

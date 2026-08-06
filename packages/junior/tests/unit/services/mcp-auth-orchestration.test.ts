@@ -93,7 +93,7 @@ describe("createMcpAuthOrchestration", () => {
       getConfiguration: () => ({}),
       getArtifactState: () => undefined,
       getMergedArtifactState: () => ({}),
-      authorizationFlowMode: "disabled",
+      interactiveAuthEnabled: false,
     });
 
     await orchestration.authProviderFactory(plugin("github"));

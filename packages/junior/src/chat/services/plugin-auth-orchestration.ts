@@ -20,7 +20,6 @@ import {
 import {
   AuthorizationFlowDisabledError,
   AuthorizationPauseError,
-  type AuthorizationFlowMode,
 } from "@/chat/services/auth-pause";
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 import { recordAuthorizationRequested } from "@/chat/conversations/projection";
@@ -66,7 +65,8 @@ export interface PluginAuthOrchestrationInput {
   recordPendingAuth?: (
     pendingAuth: ConversationPendingAuthState,
   ) => void | Promise<void>;
-  authorizationFlowMode?: AuthorizationFlowMode;
+  /** When false, required auth hard-fails instead of pausing for an OAuth link. */
+  interactiveAuthEnabled?: boolean;
   userTokenStore?: UserTokenStore;
   authorization?: OAuthAuthorization;
 }
@@ -139,7 +139,7 @@ export function createPluginAuthOrchestration(
     if (!input.actorId || !pluginCatalogRuntime.getOAuthConfig(provider)) {
       throw new Error(`Cannot start plugin authorization for ${provider}`);
     }
-    if (input.authorizationFlowMode === "disabled") {
+    if (input.interactiveAuthEnabled === false) {
       throw new AuthorizationFlowDisabledError("plugin", provider);
     }
     const recordPendingAuth = input.sessionId
@@ -256,7 +256,7 @@ export function createPluginAuthOrchestration(
       }
 
       if (!input.actorId || !input.userTokenStore) {
-        if (input.authorizationFlowMode === "disabled") {
+        if (input.interactiveAuthEnabled === false) {
           throw new AuthorizationFlowDisabledError("plugin", provider);
         }
         throw new PluginCredentialFailureError(

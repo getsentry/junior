@@ -421,8 +421,10 @@ export function createAgentInvocationWorker(options: {
           surface: "internal",
         },
         policy: {
-          authorizationFlowMode: "disabled",
-          disabledFeatures: ["handoff", "subagents"],
+          // TODO: Child runs may still need a path to force interactive auth
+          // when a delegated tool requires credentials the parent already has
+          // authority to request. Today background children hard-fail instead.
+          disabledFeatures: ["handoff", "interactive-auth", "subagents"],
           reasoningLevel: invocation.reasoningLevel,
         },
         state: {

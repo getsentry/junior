@@ -29,7 +29,6 @@ import {
 import {
   AuthorizationFlowDisabledError,
   AuthorizationPauseError,
-  type AuthorizationFlowMode,
 } from "@/chat/services/auth-pause";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
@@ -65,7 +64,8 @@ export interface McpAuthOrchestrationInput {
   recordPendingAuth?: (
     pendingAuth: ConversationPendingAuthState | undefined,
   ) => void | Promise<void>;
-  authorizationFlowMode?: AuthorizationFlowMode;
+  /** When false, required auth hard-fails instead of pausing for an OAuth link. */
+  interactiveAuthEnabled?: boolean;
   authorization?: OAuthAuthorization;
 }
 
@@ -92,7 +92,7 @@ export function createMcpAuthOrchestration(
     }
     if (
       !input.recordPendingAuth &&
-      input.authorizationFlowMode !== "disabled"
+      input.interactiveAuthEnabled !== false
     ) {
       throw new Error(
         `Missing pending auth recorder for MCP authorization pause "${plugin.manifest.name}"`,
@@ -134,7 +134,7 @@ export function createMcpAuthOrchestration(
         `Missing MCP auth session context for plugin "${provider}"`,
       );
     }
-    if (input.authorizationFlowMode === "disabled") {
+    if (input.interactiveAuthEnabled === false) {
       await deleteMcpAuthSession(authSessionId);
       throw new AuthorizationFlowDisabledError("mcp", provider);
     }

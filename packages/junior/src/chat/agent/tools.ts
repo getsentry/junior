@@ -52,6 +52,7 @@ import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { AuthorizationPauseError } from "@/chat/services/auth-pause";
 import type { AgentTurnSurface } from "@/chat/state/turn-session";
 import {
+  isAgentRunFeatureDisabled,
   toolInvocationDestination,
   type AgentRunDurability,
   type AgentRunObservers,
@@ -219,7 +220,10 @@ export async function wireAgentTools(
         args.artifactStatePatch,
       ),
     recordPendingAuth: args.durability.recordPendingAuth,
-    authorizationFlowMode: args.policy.authorizationFlowMode,
+    interactiveAuthEnabled: !isAgentRunFeatureDisabled(
+      args.policy,
+      "interactive-auth",
+    ),
     authorization: args.authorization,
   });
   const pluginAuth = createPluginAuthOrchestration({
@@ -237,7 +241,10 @@ export async function wireAgentTools(
     userMessage: args.userInput,
     pendingAuth: args.state.pendingAuth,
     recordPendingAuth: args.durability.recordPendingAuth,
-    authorizationFlowMode: args.policy.authorizationFlowMode,
+    interactiveAuthEnabled: !isAgentRunFeatureDisabled(
+      args.policy,
+      "interactive-auth",
+    ),
     userTokenStore,
     authorization: args.authorization,
   });

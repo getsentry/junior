@@ -121,7 +121,6 @@ export const plugins = {
           }),
           input: expect.objectContaining({ messageText: "hello" }),
           policy: expect.objectContaining({
-            authorizationFlowMode: "interactive",
             sandboxEgressSignals: expect.objectContaining({
               clear: expect.any(Function),
               consume: expect.any(Function),
@@ -190,7 +189,9 @@ export const plugins = {
     expect(executeAgentRunMock).toHaveBeenCalledTimes(2);
     expect(requests[0]?.durability?.spawnAgent).toBeDefined();
     expect(requests[1]).toMatchObject({
-      policy: { disabledFeatures: ["handoff", "subagents"] },
+      policy: {
+        disabledFeatures: ["handoff", "interactive-auth", "subagents"],
+      },
     });
     expect(requests[1]?.durability?.spawnAgent).toBeUndefined();
     expect(output).toEqual(["child scheduled\n"]);

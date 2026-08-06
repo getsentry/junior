@@ -238,7 +238,7 @@ describe("local agent runner", () => {
       expect.objectContaining({
         input: expect.objectContaining({ messageText: "hello" }),
         policy: expect.objectContaining({
-          authorizationFlowMode: "disabled",
+          disabledFeatures: ["interactive-auth"],
         }),
         routing: expect.objectContaining({
           credentialContext: {
@@ -386,9 +386,7 @@ describe("local agent runner", () => {
     expect(completeDeliveredTurn).toHaveBeenCalledWith(
       expect.objectContaining({ sliceId: 2 }),
     );
-    expect(requests[0]?.policy).toMatchObject({
-      authorizationFlowMode: "interactive",
-    });
+    expect(requests[0]?.policy?.disabledFeatures).toBeUndefined();
     expect(requests[0]?.authorization).toBeDefined();
     expect(requests[1]?.state?.pendingAuth).toMatchObject({
       kind: "plugin",

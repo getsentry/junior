@@ -235,11 +235,13 @@ describe("agent invocation identity and concurrency", () => {
       expect(requests[0]?.policy?.reasoningLevel).toBe("high");
       expect(requests[0]?.policy?.disabledFeatures).toEqual([
         "handoff",
+        "interactive-auth",
         "subagents",
       ]);
       expect(requests[1]?.policy?.reasoningLevel).toBe("medium");
       expect(requests[1]?.policy?.disabledFeatures).toEqual([
         "handoff",
+        "interactive-auth",
         "subagents",
       ]);
       expect(requests[1]?.input.piMessages).toEqual(

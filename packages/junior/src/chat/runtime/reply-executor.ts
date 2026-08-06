@@ -1389,9 +1389,11 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             policy: {
               configuration: preparedState.configuration,
               channelConfiguration: preparedState.channelConfiguration,
-              authorizationFlowMode:
-                options.execution?.authorizationFlowMode ??
-                (message.author.isBot === true ? "disabled" : undefined),
+              disabledFeatures:
+                options.execution?.disabledFeatures ??
+                (message.author.isBot === true
+                  ? (["interactive-auth"] as const)
+                  : undefined),
               turnDeadlineAtMs: getTurnRequestDeadline()?.deadlineAtMs,
             },
             state: {

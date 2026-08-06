@@ -54,8 +54,10 @@ by the parent-facing runtime.
 the delegated task, optional child name, and optional per-task reasoning level.
 The runtime derives actor, credentials, destination, visibility, source, parent
 conversation, and idempotency from the active tool call. Child runs set
-`disabledFeatures: ["handoff", "subagents"]` so they cannot hand off models or
-spawn further children.
+`disabledFeatures: ["handoff", "interactive-auth", "subagents"]` so they cannot
+hand off models, start interactive OAuth pauses, or spawn further children.
+TODO: children may still need a way to force interactive auth when a delegated
+tool requires credentials.
 
 This slice does not yet expose result recovery, inject child results into a
 parent turn, support recursive children, or implement cancellation. Those

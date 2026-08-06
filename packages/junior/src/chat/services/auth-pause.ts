@@ -1,6 +1,5 @@
 export type AuthorizationPauseKind = "mcp" | "plugin";
 export type AuthorizationPauseDisposition = "link_already_sent" | "link_sent";
-export type AuthorizationFlowMode = "interactive" | "disabled";
 
 /**
  * Runtime-owned signal that the current turn must park until the user

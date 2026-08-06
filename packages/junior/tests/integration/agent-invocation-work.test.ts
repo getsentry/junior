@@ -267,7 +267,7 @@ describe("agent invocation conversation work", () => {
           conversationId: created.childConversationId,
           input: { messageText: invocationInput.input },
           policy: {
-            authorizationFlowMode: "disabled",
+            disabledFeatures: ["handoff", "interactive-auth", "subagents"],
             reasoningLevel: "medium",
           },
           routing: {

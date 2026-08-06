@@ -21,7 +21,6 @@ import type { Actor } from "@/chat/actor";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
 import type { SandboxEgressSignalTransport } from "@/chat/sandbox/egress/signals";
-import type { AuthorizationFlowMode } from "@/chat/services/auth-pause";
 import type { OAuthAuthorization } from "@/chat/oauth-authorization";
 import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";
 import type { SlackConversationContext } from "@/chat/slack/conversation-context";
@@ -120,7 +119,11 @@ export interface AgentRunRouting {
 }
 
 /** Optional agent capabilities that a run slice can turn off. */
-export const AGENT_RUN_FEATURES = ["handoff", "subagents"] as const;
+export const AGENT_RUN_FEATURES = [
+  "handoff",
+  "interactive-auth",
+  "subagents",
+] as const;
 
 /** One optional agent capability controlled by run policy. */
 export type AgentRunFeature = (typeof AGENT_RUN_FEATURES)[number];
@@ -135,13 +138,16 @@ export function isAgentRunFeatureDisabled(
 
 /** Carries execution limits and dependency overrides for one run slice. */
 export interface AgentRunPolicy {
-  /** Optional agent capabilities disabled for this run slice. */
+  /**
+   * Optional agent capabilities disabled for this run slice.
+   * `interactive-auth` blocks pausing to send an OAuth link; missing credentials
+   * hard-fail instead. Default is enabled when omitted.
+   */
   disabledFeatures?: readonly AgentRunFeature[];
   /** Absolute wall-clock deadline for this host request, in milliseconds. */
   turnDeadlineAtMs?: number;
   /** Cancels provider work when the owning host request is abandoned. */
   signal?: AbortSignal;
-  authorizationFlowMode?: AuthorizationFlowMode;
   /** Explicit per-agent reasoning level. When set, adaptive routing is disabled. */
   reasoningLevel?: TurnReasoningLevel;
   configuration?: Record<string, unknown>;

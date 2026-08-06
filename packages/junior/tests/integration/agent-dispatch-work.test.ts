@@ -173,7 +173,7 @@ describe("agent dispatch conversation work", () => {
           },
           surface: "api",
         },
-        policy: { authorizationFlowMode: "disabled" },
+        policy: { disabledFeatures: ["interactive-auth"] },
       });
       await request.durability.onInputCommitted?.();
       const piMessages = await deliverAssistantMessagesForTest(request, [
