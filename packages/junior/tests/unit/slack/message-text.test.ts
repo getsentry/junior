@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { parseMarkdown } from "chat";
 import { getSlackMessageText } from "@/chat/slack/message";
 
 const FULL_URL =
@@ -6,30 +7,23 @@ const FULL_URL =
 const TRUNCATED_LABEL = "evals.sentry.dev/run/…";
 
 describe("getSlackMessageText", () => {
-  it("appends structured link targets missing from plain text", () => {
+  it("prefers canonical formatted text", () => {
     expect(
       getSlackMessageText({
         text: `inspect ${TRUNCATED_LABEL}`,
-        links: [{ url: FULL_URL }],
+        formatted: parseMarkdown(
+          `inspect [${TRUNCATED_LABEL}](${FULL_URL})`,
+        ),
       }),
-    ).toBe(`inspect ${TRUNCATED_LABEL}\n\nLinks:\n${FULL_URL}`);
+    ).toBe(`inspect [${TRUNCATED_LABEL}](${FULL_URL})`);
   });
 
-  it("does not duplicate targets already present in plain text", () => {
+  it("falls back to plain text when formatted content is empty", () => {
     expect(
       getSlackMessageText({
-        text: `inspect ${FULL_URL}`,
-        links: [{ url: FULL_URL }],
+        text: "synthetic message",
+        formatted: { type: "root", children: [] },
       }),
-    ).toBe(`inspect ${FULL_URL}`);
-  });
-
-  it("deduplicates missing structured targets", () => {
-    expect(
-      getSlackMessageText({
-        text: "inspect these",
-        links: [{ url: FULL_URL }, { url: FULL_URL }],
-      }),
-    ).toBe(`inspect these\n\nLinks:\n${FULL_URL}`);
+    ).toBe("synthetic message");
   });
 });

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { parseMarkdown } from "chat";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
   getPersistedThreadState,
@@ -135,7 +136,9 @@ describe("Slack behavior: message content", () => {
     const message = createTestMessage({
       id: "m-content-link-target",
       text: "<@U0APP> inspect evals.sentry.dev/run/…",
-      links: [{ url: fullUrl }],
+      formatted: parseMarkdown(
+        `<@U0APP> inspect [evals.sentry.dev/run/…](${fullUrl})`,
+      ),
       isMention: true,
       threadId: thread.id,
       author: { userId: "U0TESTER" },
@@ -146,12 +149,12 @@ describe("Slack behavior: message content", () => {
     });
 
     expect(calls[0]?.prompt).toBe(
-      `inspect evals.sentry.dev/run/…\n\nLinks:\n${fullUrl}`,
+      `inspect [evals.sentry.dev/run/…](${fullUrl})`,
     );
     const conversation = coerceThreadConversationState(thread.getState());
     expect(
       conversation.messages.find((entry) => entry.id === message.id)?.text,
-    ).toBe(`inspect evals.sentry.dev/run/…\n\nLinks:\n${fullUrl}`);
+    ).toBe(`inspect [evals.sentry.dev/run/…](${fullUrl})`);
   });
 
   it("preserves non-leading mention tokens in user content", async () => {

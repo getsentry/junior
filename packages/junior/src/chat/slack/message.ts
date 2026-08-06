@@ -1,4 +1,4 @@
-import type { Message } from "chat";
+import { stringifyMarkdown, type Message } from "chat";
 import {
   parseSlackMessageTs,
   type SlackMessageTs,
@@ -25,29 +25,14 @@ export function getSlackMessageTs(
   return undefined;
 }
 
-/**
- * Return plain message text with every structured link target available.
- *
- * Slack may shorten a link's visible label, while the Chat SDK preserves its
- * target in `message.links`. Keep the existing plain-text contract and append
- * only targets that are not already visible.
- */
+/** Return canonical formatted text, falling back for synthetic messages. */
 export function getSlackMessageText(
-  message: Pick<Message, "links" | "text">,
+  message: Pick<Message, "formatted" | "text">,
 ): string {
-  const text = message.text.trim();
-  const visibleLinks = new Set<string>();
-  for (const link of message.links) {
-    if (!text.includes(link.url)) {
-      visibleLinks.add(link.url);
-    }
+  if (message.formatted.children.length > 0) {
+    return stringifyMarkdown(message.formatted).trim();
   }
-  if (visibleLinks.size === 0) {
-    return text;
-  }
-
-  const links = [...visibleLinks].join("\n");
-  return text ? `${text}\n\nLinks:\n${links}` : links;
+  return message.text.trim();
 }
 
 interface SlackMessageInputOptions {
@@ -60,7 +45,7 @@ interface SlackMessageInputOptions {
 
 /** Build the source and user text for one inbound Slack message. */
 export function getSlackMessageInput(
-  message: Pick<Message, "links" | "raw" | "text">,
+  message: Pick<Message, "formatted" | "raw" | "text">,
   options: SlackMessageInputOptions,
 ): { sourceText: string; userText: string } {
   const sourceText = getSlackMessageText(message);
