@@ -55,9 +55,9 @@ export default defineConfig({
 });
 ```
 
-## Configure environment variables
+## Config
 
-No environment variables are required by the maintenance plugin.
+No plugin config is required.
 
 The `self-update` skill uses the app's existing package manager and repository tooling. If you want the skill to open or update pull requests automatically, the sandbox environment also needs a working GitHub CLI or GitHub plugin credentials.
 

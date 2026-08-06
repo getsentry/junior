@@ -34,15 +34,21 @@ export const plugins = defineJuniorPlugins(["@sentry/junior-amplitude"]);
 
 No Amplitude API key or secret key is required. Each user authorizes through Amplitude's hosted MCP OAuth flow, and Junior resumes the original conversation after authorization completes.
 
-## Regional endpoint
+## Config
 
-The package defaults to Amplitude's US MCP endpoint:
+<details class="plugin-config">
+<summary><code>AMPLITUDE_MCP_URL</code></summary>
 
-```text
-https://mcp.amplitude.com/mcp
-```
+MCP endpoint for the Amplitude data region this Junior deployment uses.
 
-For another Amplitude data region, set `AMPLITUDE_MCP_URL` to the regional MCP endpoint documented by Amplitude before starting Junior. The endpoint must use HTTPS.
+- **Define:** Set `AMPLITUDE_MCP_URL` in the deployment environment, then redeploy
+- **Default:** `https://mcp.amplitude.com/mcp` (US)
+- **Required:** No
+- **Environment override:** `AMPLITUDE_MCP_URL`
+
+Use the regional HTTPS endpoint documented by Amplitude when your data is not in the US region.
+
+</details>
 
 ## Read-only boundary
 

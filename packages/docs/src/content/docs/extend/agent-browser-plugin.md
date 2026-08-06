@@ -31,9 +31,9 @@ import { defineJuniorPlugins } from "@sentry/junior";
 export const plugins = defineJuniorPlugins(["@sentry/junior-agent-browser"]);
 ```
 
-## Configure environment variables
+## Config
 
-No environment variables are required for this plugin.
+No plugin config is required.
 
 ## Plugin-specific setup
 

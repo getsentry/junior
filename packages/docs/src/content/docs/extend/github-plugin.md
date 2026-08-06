@@ -81,37 +81,154 @@ branches in GitHub. Across many repositories, users should include `owner/repo`
 when the target is not obvious, and those repositories must share the same
 installation ID.
 
-### 4. Configure environment variables
+## Config
 
-| Variable                   | Required | Purpose                                                           |
-| -------------------------- | -------- | ----------------------------------------------------------------- |
-| `GITHUB_APP_ID`            | Yes      | GitHub App identity.                                              |
-| `GITHUB_APP_CLIENT_ID`     | Yes      | OAuth client id for user-token auth.                              |
-| `GITHUB_APP_CLIENT_SECRET` | Yes      | OAuth client secret for user-token auth.                          |
-| `GITHUB_APP_PRIVATE_KEY`   | Yes      | GitHub App signing key.                                           |
-| `GITHUB_INSTALLATION_ID`   | Yes      | Installation target.                                              |
-| `GITHUB_APP_BOT_NAME`      | Yes      | Git author and committer display name.                            |
-| `GITHUB_APP_BOT_EMAIL`     | Yes      | App bot noreply email for Git attribution and work ownership.     |
-| `GITHUB_WEBHOOK_SECRET`    | No       | Webhook signing secret for resource events and outcome reporting. |
+Set conversation config with `jr-rpc config set`, or define the same keys for every conversation with `createApp({ configDefaults })`. Pass factory options to `githubPlugin({ ... })` in `plugins.ts`. Set the named deployment variables, then redeploy. Explicit repositories in requests always win over defaults.
 
-`GITHUB_APP_BOT_EMAIL` uses
-`<bot-user-id>+<app-slug>[bot]@users.noreply.github.com`. Get the bot user id
-from `https://api.github.com/users/<app-slug>%5Bbot%5D`.
+<details class="plugin-config">
+<summary><code>github.org</code></summary>
 
-Vercel example:
+Default GitHub organization or owner when a request does not name one.
 
-```bash
-vercel env add GITHUB_APP_ID production
-vercel env add GITHUB_APP_CLIENT_ID production
-vercel env add GITHUB_APP_CLIENT_SECRET production
-vercel env add GITHUB_INSTALLATION_ID production
-vercel env add GITHUB_APP_BOT_NAME production
-vercel env add GITHUB_APP_BOT_EMAIL production
-vercel env add GITHUB_APP_PRIVATE_KEY production --sensitive < ./github-app-private-key.pem
-vercel env add GITHUB_WEBHOOK_SECRET production
-```
+- **Define:** `jr-rpc config set github.org <owner>`
+- **Install-wide default:** `configDefaults["github.org"]`
+- **Required:** No
+- **Environment override:** None
 
-### 5. Run migrations
+</details>
+
+<details class="plugin-config">
+<summary><code>github.repo</code></summary>
+
+Default repository in `owner/repo` form when a request does not name one.
+
+- **Define:** `jr-rpc config set github.repo <owner/repo>`
+- **Install-wide default:** `configDefaults["github.repo"]`
+- **Required:** No
+- **Environment override:** None
+
+</details>
+
+<details class="plugin-config">
+<summary><code>appPermissions</code></summary>
+
+GitHub App permissions Junior may downscope to read for installation read tokens. Write tokens retain the App installation's full permission envelope.
+
+- **Define:** `githubPlugin({ appPermissions: { contents: "write", issues: "write" } })` in `plugins.ts`
+- **Required:** No
+- **Environment override:** None
+
+</details>
+
+<details class="plugin-config">
+<summary><code>additionalUserScopes</code></summary>
+
+Extra OAuth scopes requested for operations that must run as the user.
+
+- **Define:** `githubPlugin({ additionalUserScopes: ["scope"] })` in `plugins.ts`
+- **Required:** No
+- **Environment override:** None
+
+</details>
+
+<details class="plugin-config">
+<summary><code>appIdEnv</code></summary>
+
+Names the deployment variable containing the GitHub App ID.
+
+- **Define:** `githubPlugin({ appIdEnv: "GITHUB_APP_ID" })` in `plugins.ts`
+- **Default:** `GITHUB_APP_ID`
+- **Required:** Yes
+- **Environment variable:** The variable named by this option
+
+</details>
+
+<details class="plugin-config">
+<summary><code>clientIdEnv</code></summary>
+
+Names the deployment variable containing the GitHub App OAuth client ID.
+
+- **Define:** `githubPlugin({ clientIdEnv: "GITHUB_APP_CLIENT_ID" })` in `plugins.ts`
+- **Default:** `GITHUB_APP_CLIENT_ID`
+- **Required:** Yes
+- **Environment variable:** The variable named by this option
+
+</details>
+
+<details class="plugin-config">
+<summary><code>clientSecretEnv</code></summary>
+
+Names the deployment variable containing the GitHub App OAuth client secret.
+
+- **Define:** `githubPlugin({ clientSecretEnv: "GITHUB_APP_CLIENT_SECRET" })` in `plugins.ts`
+- **Default:** `GITHUB_APP_CLIENT_SECRET`
+- **Required:** Yes
+- **Environment variable:** The variable named by this option
+
+</details>
+
+<details class="plugin-config">
+<summary><code>privateKeyEnv</code></summary>
+
+Names the deployment variable containing the GitHub App private key.
+
+- **Define:** `githubPlugin({ privateKeyEnv: "GITHUB_APP_PRIVATE_KEY" })` in `plugins.ts`
+- **Default:** `GITHUB_APP_PRIVATE_KEY`
+- **Required:** Yes
+- **Environment variable:** The variable named by this option
+
+</details>
+
+<details class="plugin-config">
+<summary><code>installationIdEnv</code></summary>
+
+Names the deployment variable containing the GitHub App installation ID.
+
+- **Define:** `githubPlugin({ installationIdEnv: "GITHUB_INSTALLATION_ID" })` in `plugins.ts`
+- **Default:** `GITHUB_INSTALLATION_ID`
+- **Required:** Yes
+- **Environment variable:** The variable named by this option
+
+</details>
+
+<details class="plugin-config">
+<summary><code>botNameEnv</code></summary>
+
+Names the deployment variable containing Junior's Git author and committer name.
+
+- **Define:** `githubPlugin({ botNameEnv: "GITHUB_APP_BOT_NAME" })` in `plugins.ts`
+- **Default:** `GITHUB_APP_BOT_NAME`
+- **Required:** Yes
+- **Environment variable:** The variable named by this option
+
+</details>
+
+<details class="plugin-config">
+<summary><code>botEmailEnv</code></summary>
+
+Names the deployment variable containing Junior's Git author and committer email.
+
+- **Define:** `githubPlugin({ botEmailEnv: "GITHUB_APP_BOT_EMAIL" })` in `plugins.ts`
+- **Default:** `GITHUB_APP_BOT_EMAIL`
+- **Required:** Yes
+- **Environment variable:** The variable named by this option
+
+Use `<bot-user-id>+<app-slug>[bot]@users.noreply.github.com`. Get the bot user ID from `https://api.github.com/users/<app-slug>%5Bbot%5D`.
+
+</details>
+
+<details class="plugin-config">
+<summary><code>GITHUB_WEBHOOK_SECRET</code></summary>
+
+Webhook signing secret for resource events and PR or issue outcome reporting.
+
+- **Define:** Set `GITHUB_WEBHOOK_SECRET` in the deployment environment
+- **Required:** Yes for resource events and outcome reporting; otherwise no
+- **Environment override:** `GITHUB_WEBHOOK_SECRET`
+
+</details>
+
+## Run migrations
 
 ```bash
 pnpm exec junior upgrade
