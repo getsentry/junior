@@ -306,12 +306,11 @@ describe("oauth callback integration", () => {
   it("resumes a session-recorded OAuth turn with persisted thread state", async () => {
     const conversationId = "slack:C123:1700000000.009";
     const sessionId = "turn_msg_9";
+    // Resume loads SQL sessionSource, which drops per-message timestamps.
     const storedSource = createSlackSource({
       teamId: "T123",
       channelId: "C123",
-      messageTs: "1700000000.session-source",
       threadTs: "1700000000.009",
-
       visibility: "private",
     });
 
@@ -493,10 +492,9 @@ describe("oauth callback integration", () => {
       input?: { conversationContext?: string };
       routing?: { source?: unknown };
     };
-    expect(resumeContext.routing?.source).toEqual({
-      ...slackSource("1700000000.009"),
-      messageTs: "1700000000.session-source",
-    });
+    expect(resumeContext.routing?.source).toEqual(
+      slackSource("1700000000.009"),
+    );
     expect(resumeContext.input?.conversationContext).not.toContain(
       "list my sentry issues",
     );

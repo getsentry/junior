@@ -180,6 +180,8 @@ describe("agent continuation runner callbacks", () => {
   it("fails before continuing when sql conversation source is missing", async () => {
     const conversationId = "slack:C123:1712345.0007";
     const sessionId = "turn_msg_7";
+    // Destination-only upsert leaves sessionSource unset so resume hard-fails
+    // at the SQL routing boundary instead of rebuilding from redis/source.
     const sessionRecord = await upsertAgentTurnSessionRecord({
       modelId: "test/model",
       conversationId,
@@ -187,7 +189,6 @@ describe("agent continuation runner callbacks", () => {
       sliceId: 2,
       state: "awaiting_resume",
       destination: SLACK_DESTINATION,
-      source: SLACK_SOURCE,
       resumeReason: "timeout",
       actor: {
         platform: "slack",

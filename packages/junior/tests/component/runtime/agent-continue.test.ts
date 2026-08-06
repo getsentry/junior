@@ -8,11 +8,21 @@ import {
   upsertAgentTurnSessionRecord,
 } from "@/chat/state/turn-session";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
+import { createSlackSource } from "@sentry/junior-plugin-api";
 import {
   SLACK_DESTINATION,
   createConversationWorkQueueTestAdapter,
 } from "../../fixtures/conversation-work";
 import { neverRunAgentRunner } from "../../fixtures/agent-runner";
+
+function slackSessionSource(threadTs: string) {
+  return createSlackSource({
+    teamId: SLACK_DESTINATION.teamId,
+    channelId: SLACK_DESTINATION.channelId,
+    threadTs,
+    visibility: "private",
+  });
+}
 
 const ORIGINAL_ENV = vi.hoisted(() => {
   const original = {
@@ -200,6 +210,7 @@ describe("agent continuation scheduling", () => {
       sliceId: 2,
       state: "awaiting_resume",
       destination: SLACK_DESTINATION,
+      source: slackSessionSource("1712345.0005"),
       resumeReason: "retry",
       piMessages: [],
     });
@@ -229,6 +240,7 @@ describe("agent continuation scheduling", () => {
       sliceId: 2,
       state: "awaiting_resume",
       destination: SLACK_DESTINATION,
+      source: slackSessionSource("1712345.0004"),
       resumeReason: "timeout",
       piMessages: [
         {

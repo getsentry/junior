@@ -199,12 +199,12 @@ describe("agent continuation Slack integration", () => {
   it("posts the resumed reply through the Slack MSW harness and persists completion", async () => {
     const conversationId = "slack:C123:1712345.0001";
     const sessionId = "turn_msg_1";
+    // SQL sessionSource is the resume authority and intentionally drops
+    // per-message timestamps; resume routing must match that locator shape.
     const storedSource = createSlackSource({
       teamId: "T123",
       channelId: "C123",
-      messageTs: "1712345.continue-source",
       threadTs: "1712345.0001",
-
       visibility: "private",
     });
     const sessionRecord =
@@ -828,7 +828,7 @@ describe("agent continuation Slack integration", () => {
       ),
     ).resolves.toMatchObject({
       state: "failed",
-      errorMessage: "Paused agent run failed while continuing",
+      errorMessage: `Unable to locate the persisted user message for agent continuation session "${sessionId}"`,
     });
     const { getConversationEventStore } = await import("@/chat/db");
     const lifecycle =
