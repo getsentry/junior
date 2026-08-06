@@ -68,14 +68,23 @@ subscribe to. Link to [Resource Subscriptions](/concepts/resource-subscriptions/
 for the core distinction between temporary resource subscriptions and durable
 event tasks; do not redefine those behaviors on every plugin page.
 
-| Resource type | Identifier or scope       | Supported events                       |
-| ------------- | ------------------------- | -------------------------------------- |
-| `issue`       | One issue: `ORG-123`      | `issue.closed`, `issue.reopened`       |
-| `project`     | One project: `project-id` | `project.created`, `project.completed` |
+Use one compact block per resource type so long identifiers and event lists stay
+readable on narrow screens:
+
+**`issue`**
+
+- Scope: one issue, `ORG-123`
+- Events: `issue.closed`, `issue.reopened`
+
+**`project`**
+
+- Scope: one project, `project-id`
+- Events: `project.created`, `project.completed`
 
 Use the exact `resourceTypes[].type` and `supportedEvents` values registered by
-the plugin. Explain any provider setup required to publish those events, such as
-a webhook URL and secret, after the table.
+the plugin. Group a long event list by purpose, but do not omit events. Explain
+any provider setup required to publish those events, such as a webhook URL and
+secret, after the resource blocks.
 
 If the plugin does not publish resource events, use this sentence instead:
 

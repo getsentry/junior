@@ -133,44 +133,54 @@ That only helps when those repositories are covered by the same GitHub App insta
 
 ## Resource subscriptions
 
-When `GITHUB_WEBHOOK_SECRET` is configured, the GitHub plugin publishes five
-resource types. The agent can use each one through a temporary resource
-subscription or a durable event task; see
-[Resource Subscriptions](/concepts/resource-subscriptions/) for how those two
-core tool paths differ.
+Set `GITHUB_WEBHOOK_SECRET` to enable these resource types. See
+[Resource Subscriptions](/concepts/resource-subscriptions/) for the difference
+between temporary resource subscriptions and durable event tasks.
 
-- **`deployment_source`** — one commit in a repository, optionally limited to an
-  environment. Identifiers use
-  `deployment-source:owner/repo[:environment]:<full-commit-sha>`. Supported
-  events: `deployment.created`, `deployment.queued`, `deployment.pending`,
-  `deployment.in_progress`, `deployment.succeeded`, `deployment.failed`, and
-  `deployment.error`.
-- **`issue`** — one issue, identified by `owner/repo#number`. Supported events:
-  `issue.comment.created`, `issue.opened`, `issue.closed`, and `issue.reopened`.
-- **`pull_request`** — one pull request, identified by `owner/repo#number`.
-  Supported events: `pull_request.checks.failed`,
-  `pull_request.checks.recovered`, `pull_request.comment.created`,
-  `pull_request.opened`, `pull_request.ready_for_review`,
-  `pull_request.review.approved`, `pull_request.review.changes_requested`,
-  `pull_request.review.commented`, `pull_request.review_comment.created`,
-  `pull_request.merged`, and `pull_request.closed_unmerged`.
-- **`release_source`** — releases in one repository, optionally limited to one
-  tag. Identifiers use `release-source:owner/repo[:tag]`. Supported event:
-  `release.published`.
-- **`repository`** — every issue and pull request in one repository, identified
-  by `owner/repo`. It supports all events listed for `issue` and `pull_request`.
+**`deployment_source`**
+
+- Scope: one commit, optionally limited to an environment
+- Identifier: `deployment-source:owner/repo[:environment]:<full-commit-sha>`
+- Events: `deployment.created`, `deployment.queued`, `deployment.pending`,
+  `deployment.in_progress`, `deployment.succeeded`, `deployment.failed`,
+  `deployment.error`
+
+**`issue`**
+
+- Scope: one issue, `owner/repo#number`
+- Events: `issue.comment.created`, `issue.opened`, `issue.closed`,
+  `issue.reopened`
+
+**`pull_request`**
+
+- Scope: one pull request, `owner/repo#number`
+- Checks: `pull_request.checks.failed`, `pull_request.checks.recovered`
+- Activity: `pull_request.comment.created`, `pull_request.opened`,
+  `pull_request.ready_for_review`, `pull_request.merged`,
+  `pull_request.closed_unmerged`
+- Reviews: `pull_request.review.approved`,
+  `pull_request.review.changes_requested`, `pull_request.review.commented`,
+  `pull_request.review_comment.created`
+
+**`release_source`**
+
+- Scope: one repository, optionally limited to a tag
+- Identifier: `release-source:owner/repo[:tag]`
+- Event: `release.published`
+
+**`repository`**
+
+- Scope: all issues and pull requests in `owner/repo`
+- Events: all `issue` and `pull_request` events listed above
 
 Resource subscriptions and event tasks require a single-workspace Slack deployment
-configured with `SLACK_BOT_TOKEN`. Junior does not offer or deliver resource
-events in multi-workspace Slack mode because a provider webhook does not carry a
-verified Slack workspace binding.
+with `SLACK_BOT_TOKEN`; multi-workspace Slack mode cannot route provider webhook
+events to a verified workspace.
 
-Both forms run headlessly as Junior, not as the webhook sender. Resource watches
-use the plugin's scoped installation credentials. Event tasks make their
-creator's connected credentials available by default when the stored work needs
-user-bound access, but the execution actor remains Junior. Pull request reviews and inline review comments
-are bot-owned and use installation credentials so feedback posts as Junior;
-merge remains outside the write allowlist.
+Both run as Junior. Resource subscriptions use scoped installation credentials;
+event tasks can also use their creator's connected credentials when needed.
+Bot-owned reviews and inline review comments post as Junior. Merge remains
+outside the write allowlist.
 
 Supported GitHub webhook deliveries become these Junior resource events:
 
