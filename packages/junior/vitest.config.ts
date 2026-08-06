@@ -10,9 +10,9 @@ loadJuniorTestEnvFiles({ workspaceRoot, packageRoots: [packageRoot] });
 process.env.JUNIOR_SECRET = "junior-test-secret";
 process.env.JUNIOR_STATE_ADAPTER = "memory";
 process.env.JUNIOR_STATE_KEY_PREFIX ??= `junior:test:${process.pid}`;
-// Production defaults the model-facing spawn tool off; the suite opts in so
+// Production leaves experimental features off; the suite opts in so
 // agent-invocation coverage exercises the real wiring path.
-process.env.JUNIOR_SUBAGENTS_ENABLED = "true";
+process.env.JUNIOR_EXPERIMENTAL = "subagents";
 
 export default defineConfig({
   resolve: {

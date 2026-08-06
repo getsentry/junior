@@ -12,8 +12,8 @@ loadJuniorTestEnvFiles({
   packageRoots: [juniorPackageRoot, __dirname],
 });
 
-// Match packages/junior: production leaves spawn off; tests opt in by default.
-process.env.JUNIOR_SUBAGENTS_ENABLED = "true";
+// Match packages/junior: production leaves experimental features off; tests opt in.
+process.env.JUNIOR_EXPERIMENTAL = "subagents";
 
 export default defineConfig({
   resolve: {

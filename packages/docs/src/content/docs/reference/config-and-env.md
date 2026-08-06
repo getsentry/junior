@@ -24,7 +24,7 @@ related:
 | `JUNIOR_BOT_NAME`                           | No          | Bot display/config naming.                                                                                                                                                                       |
 | `JUNIOR_SLASH_COMMAND`                      | No          | Slack slash command for account-management flows. Defaults to `/jr`; the Slack app command must match this value.                                                                                |
 | `JUNIOR_CROSS_ACTOR_MID_RUN_MODE`           | No          | Cross-actor Slack steering policy. Defaults to `follow_up`; see below.                                                                                                                           |
-| `JUNIOR_SUBAGENTS_ENABLED`                  | No          | When `true`, expose the model-facing `spawnAgent` tool for durable child agent work. Defaults to `false` so the incomplete subagent surface stays off until intentionally rolled out.           |
+| `JUNIOR_EXPERIMENTAL`                       | No          | Comma-separated experimental feature names to enable when `createApp({ experimental })` is unset. Currently `subagents`. Unknown names fail startup.                                           |
 | `AI_MODEL`                                  | No          | Standard model for main agent runs. Defaults to `xai/grok-4.5`.                                                                                                                                  |
 | `AI_REASONING_LEVEL`                        | No          | Fixed main-agent reasoning level: `none`, `low`, `medium`, `high`, or `xhigh`. Unset by default; only the unset state enables per-turn reasoning routing.                                        |
 | `AI_FAST_MODEL`                             | No          | Faster model for lightweight tasks and routing/classification passes before the main turn begins. Defaults to `anthropic/claude-haiku-4.5`.                                                      |
@@ -136,6 +136,29 @@ The egress proxy verifies Vercel-signed Sandbox OIDC tokens per request to authe
 | ---------------------- | -------- | -------------------- |
 | `SENTRY_CLIENT_ID`     | Yes      | OAuth client ID.     |
 | `SENTRY_CLIENT_SECRET` | Yes      | OAuth client secret. |
+
+## Experimental features
+
+Unstable product surfaces opt in through `createApp({ experimental })`, the same
+pattern used by frameworks such as Next.js. Features default off, may change
+without a stable migration path, and should stay unset in production unless you
+are deliberately dogfooding them.
+
+```ts
+import { createApp } from "@sentry/junior";
+
+const app = await createApp({
+  experimental: {
+    // Model-facing spawnAgent for durable child agent work. Incomplete; keep off
+    // unless you are testing the #879 runtime.
+    subagents: true,
+  },
+});
+```
+
+For CLI and other entrypoints that do not call `createApp()`, set
+`JUNIOR_EXPERIMENTAL=subagents` (comma-separated for multiple features).
+`createApp({ experimental })` wins over the env var when both are present.
 
 ## Install-wide config defaults
 

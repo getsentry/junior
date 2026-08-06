@@ -54,8 +54,6 @@ export interface BotConfig {
   loadingMessages: string[];
   profiles: Readonly<Record<string, ExecutionProfileConfig>>;
   reasoningLevel?: TurnReasoningLevel;
-  /** When false, the model-facing spawnAgent tool stays unavailable. */
-  subagentsEnabled: boolean;
   visionModelId?: string;
   maxSlicesPerTurn: number;
   turnTimeoutMs: number;
@@ -189,24 +187,6 @@ function parseCrossActorMidRunMode(
   throw new Error("JUNIOR_CROSS_ACTOR_MID_RUN_MODE must be follow_up or steer");
 }
 
-function parseBooleanEnv(
-  envName: string,
-  rawValue: string | undefined,
-  defaultValue: boolean,
-): boolean {
-  const value = toOptionalTrimmed(rawValue)?.toLowerCase();
-  if (value === undefined) {
-    return defaultValue;
-  }
-  if (value === "true") {
-    return true;
-  }
-  if (value === "false") {
-    return false;
-  }
-  throw new Error(`${envName} must be true or false`);
-}
-
 // Compile-time assertion: `getModel`'s second generic is constrained to
 // `keyof (typeof MODELS)[TProvider]`, so a stale default becomes a tsc error.
 const DEFAULT_MODEL_ID = getModel("vercel-ai-gateway", "xai/grok-4.5").id;
@@ -338,11 +318,6 @@ function readBotConfig(
       reasoningLevel === undefined
         ? undefined
         : parseTurnReasoningLevel(reasoningLevel),
-    subagentsEnabled: parseBooleanEnv(
-      "JUNIOR_SUBAGENTS_ENABLED",
-      env.JUNIOR_SUBAGENTS_ENABLED,
-      false,
-    ),
     fastModelId,
     guardianModelId,
     imageGenerationModelId:

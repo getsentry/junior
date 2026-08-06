@@ -13,8 +13,6 @@ describe("chat config", () => {
     process.env.DATABASE_URL = TEST_DATABASE_URL;
     delete process.env.JUNIOR_DATABASE_DRIVER;
     delete process.env.JUNIOR_SQL_STATEMENT_TIMEOUT_MS;
-    // Suite vitest config opts subagents on; config tests control the env themselves.
-    delete process.env.JUNIOR_SUBAGENTS_ENABLED;
   });
 
   afterEach(() => {
@@ -80,28 +78,6 @@ describe("chat config", () => {
 
     const { botConfig } = await loadConfig();
     expect(botConfig.reasoningLevel).toBeUndefined();
-  });
-
-  it("keeps subagents disabled by default", async () => {
-    delete process.env.JUNIOR_SUBAGENTS_ENABLED;
-
-    const { botConfig } = await loadConfig();
-    expect(botConfig.subagentsEnabled).toBe(false);
-  });
-
-  it("enables subagents when JUNIOR_SUBAGENTS_ENABLED is true", async () => {
-    process.env.JUNIOR_SUBAGENTS_ENABLED = "true";
-
-    const { botConfig } = await loadConfig();
-    expect(botConfig.subagentsEnabled).toBe(true);
-  });
-
-  it("rejects an invalid JUNIOR_SUBAGENTS_ENABLED value", async () => {
-    process.env.JUNIOR_SUBAGENTS_ENABLED = "yes";
-
-    await expect(loadConfig()).rejects.toThrow(
-      "JUNIOR_SUBAGENTS_ENABLED must be true or false",
-    );
   });
 
   it("uses an explicitly configured reasoning level", async () => {
