@@ -8,11 +8,11 @@ import type { Destination, Source } from "@sentry/junior-plugin-api";
 import type { ConversationStore } from "@/chat/conversations/store";
 
 export interface TurnSessionRouting {
-  destination?: Destination;
-  source?: Source;
+  destination: Destination;
+  source: Source;
 }
 
-/** Return conversation destination and session source from SQL. */
+/** Require conversation destination and session source from SQL. */
 export async function resolveTurnSessionRouting(args: {
   conversationId: string;
   conversationStore?: ConversationStore;
@@ -23,9 +23,14 @@ export async function resolveTurnSessionRouting(args: {
   const conversation = await conversationStore.get({
     conversationId: args.conversationId,
   });
+  if (!conversation?.destination || !conversation.sessionSource) {
+    throw new Error(
+      `Conversation ${args.conversationId} is missing durable routing metadata`,
+    );
+  }
 
   return {
-    destination: conversation?.destination,
-    source: conversation?.sessionSource,
+    destination: conversation.destination,
+    source: conversation.sessionSource,
   };
 }

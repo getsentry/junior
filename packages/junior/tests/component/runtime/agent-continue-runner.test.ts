@@ -248,20 +248,19 @@ describe("agent continuation runner callbacks", () => {
         {
           agentRunner: agentRunnerShouldNotRun,
           resumeTurn: async (args) => {
-            const prepared = await args.beforeStart?.();
-            if (prepared !== false) {
-              throw new Error("Expected continuation preparation to fail");
-            }
-            return true;
+            await args.beforeStart?.();
+            throw new Error("Expected continuation preparation to fail");
           },
         },
       ),
-    ).resolves.toBe(true);
+    ).rejects.toThrow(
+      `Conversation ${conversationId} is missing durable routing metadata`,
+    );
     await expect(
       getAgentTurnSessionRecord(conversationId, sessionId),
     ).resolves.toMatchObject({
       state: "failed",
-      errorMessage: "Conversation routing metadata missing for continuation",
+      errorMessage: `Conversation ${conversationId} is missing durable routing metadata`,
     });
   });
 

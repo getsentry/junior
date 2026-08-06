@@ -77,7 +77,7 @@ describe("resolveTurnSessionRouting", () => {
     });
   });
 
-  it("returns empty routing when the conversation has no durable metadata", async () => {
+  it("rejects a conversation without durable routing metadata", async () => {
     const store = conversationStore({
       get: vi.fn(async () => conversation({})),
     });
@@ -87,13 +87,12 @@ describe("resolveTurnSessionRouting", () => {
         conversationId: "slack:C123:1712345.0001",
         conversationStore: store,
       }),
-    ).resolves.toEqual({
-      destination: undefined,
-      source: undefined,
-    });
+    ).rejects.toThrow(
+      "Conversation slack:C123:1712345.0001 is missing durable routing metadata",
+    );
   });
 
-  it("returns destination without inventing a missing session source", async () => {
+  it("rejects destination-only legacy routing", async () => {
     const store = conversationStore({
       get: vi.fn(async () =>
         conversation({
@@ -107,9 +106,8 @@ describe("resolveTurnSessionRouting", () => {
         conversationId: "agent-dispatch:dispatch-1",
         conversationStore: store,
       }),
-    ).resolves.toEqual({
-      destination: DESTINATION,
-      source: undefined,
-    });
+    ).rejects.toThrow(
+      "Conversation agent-dispatch:dispatch-1 is missing durable routing metadata",
+    );
   });
 });

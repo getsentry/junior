@@ -53,9 +53,6 @@ export async function getAwaitingAgentContinueRequest(args: {
     conversationId: args.conversationId,
     conversationStore: args.conversationStore,
   });
-  if (!routing.destination) {
-    return undefined;
-  }
 
   return {
     conversationId: args.conversationId,

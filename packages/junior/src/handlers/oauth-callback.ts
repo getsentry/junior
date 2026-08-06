@@ -383,15 +383,6 @@ async function resumeOAuthSessionRecordTurn(
       const routing = await resolveTurnSessionRouting({
         conversationId: stored.resumeConversationId!,
       });
-      if (!routing.source) {
-        await failAgentTurnSessionRecord({
-          conversationId: stored.resumeConversationId!,
-          expectedVersion: lockedSessionRecord.version,
-          sessionId: lockedSessionId,
-          errorMessage: "Conversation session source missing for OAuth resume",
-        });
-        return false;
-      }
 
       await recordAuthorizationCompleted({
         conversationId: stored.resumeConversationId!,

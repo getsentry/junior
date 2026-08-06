@@ -335,11 +335,6 @@ async function loadPluginRun(
   const routing = await resolveTurnSessionRouting({
     conversationId: params.conversationId,
   });
-  if (!routing.source || !routing.destination) {
-    throw new Error(
-      "Completed plugin task conversation routing is unavailable",
-    );
-  }
   const runEntries = turnMessagesWithProvenance(record)
     .map(({ message, provenance }) =>
       runTranscriptEntry(message, provenance, record.actor),

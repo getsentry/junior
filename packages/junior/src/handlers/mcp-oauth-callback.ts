@@ -366,16 +366,6 @@ async function resumeAuthorizedMcpTurn(args: {
       const routing = await resolveTurnSessionRouting({
         conversationId: authSession.conversationId,
       });
-      if (!routing.source) {
-        await failAgentTurnSessionRecord({
-          conversationId: authSession.conversationId,
-          expectedVersion: lockedSessionRecord.version,
-          sessionId: lockedSessionId,
-          errorMessage:
-            "Conversation session source missing for MCP OAuth resume",
-        });
-        return false;
-      }
 
       await recordAuthorizationCompleted({
         conversationId: authSession.conversationId,

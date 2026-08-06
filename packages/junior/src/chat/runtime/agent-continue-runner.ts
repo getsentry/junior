@@ -199,10 +199,11 @@ async function persistFailedReplyState(
 
 /** Convert startup failures into durable failed state before rethrowing. */
 async function failContinuationStartup(args: {
+  errorMessage: string;
   sessionRecord: AgentTurnSessionRecord;
 }): Promise<void> {
   try {
-    await persistFailedReplyState(args.sessionRecord);
+    await persistFailedReplyState(args.sessionRecord, args.errorMessage);
   } catch (persistError) {
     await failSessionRecordBestEffort({
       sessionRecord: args.sessionRecord,
@@ -441,16 +442,6 @@ async function continueSlackAgentRunInContext(
         const routing = await resolveTurnSessionRouting({
           conversationId: payload.conversationId,
         });
-        if (!routing.destination || !routing.source) {
-          await failAgentTurnSessionRecord({
-            conversationId: payload.conversationId,
-            expectedVersion: activeSessionRecord.version,
-            sessionId: payload.sessionId,
-            errorMessage:
-              "Conversation routing metadata missing for continuation",
-          });
-          return false;
-        }
         const source = routing.source;
         const routingDestination = routing.destination;
 
@@ -577,6 +568,8 @@ async function continueSlackAgentRunInContext(
       } catch (error) {
         if (sessionRecord) {
           await failContinuationStartup({
+            errorMessage:
+              error instanceof Error ? error.message : String(error),
             sessionRecord,
           });
         }
