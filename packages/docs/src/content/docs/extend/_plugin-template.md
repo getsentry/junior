@@ -45,21 +45,57 @@ alias or a prebuilt plugin registration.
 
 Do not register a factory-based plugin as a bare package-name string. A bare string does not run runtime hooks, so the plugin will not activate its runtime behavior. Check the plugin package's README or setup page to confirm which registration style it requires.
 
-## Configure environment variables
+## Config
 
-Use a table even when the answer is "none required":
+Use this section for every configurable plugin. Put all conversation config,
+plugin factory options, and deployment environment variables here instead of
+splitting them across setup sections.
 
-| Variable        | Required | Purpose                 |
-| --------------- | -------- | ----------------------- |
-| `EXAMPLE_TOKEN` | Yes      | Example API credential. |
+Start with the ways readers can define values:
 
-If no variables are required, replace the table with a single sentence:
+- Conversation config: `jr-rpc config set <plugin>.<key> <value>`
+- Install-wide conversation defaults: `createApp({ configDefaults: { "<plugin>.<key>": "<value>" } })`
+- Plugin options: pass values to `<plugin>Plugin({ ... })` in `plugins.ts`
+- Environment variables: set them in the deployment environment, then redeploy
 
-`No environment variables are required for this plugin.`
+Only list definition methods the plugin supports. Use one collapsed disclosure
+per option so the section stays easy to scan on desktop and mobile:
+
+<details class="plugin-config">
+<summary><code>example.project</code></summary>
+
+Default project when a request does not name one.
+
+- **Define:** `jr-rpc config set example.project <project>`
+- **Install-wide default:** `configDefaults["example.project"]`
+- **Required:** No
+- **Environment override:** None
+
+</details>
+
+<details class="plugin-config">
+<summary><code>apiTokenEnv</code></summary>
+
+Names the deployment environment variable that contains the provider API token.
+
+- **Define:** `examplePlugin({ apiTokenEnv: "EXAMPLE_API_TOKEN" })` in `plugins.ts`
+- **Default:** `EXAMPLE_API_TOKEN`
+- **Required:** Yes
+- **Environment variable:** The variable named by this option
+
+</details>
+
+Use exact registered config keys, public plugin option names, and manifest
+environment variable names. Describe what each option controls, how to define
+it, whether it is required, its default when one exists, and the environment
+override or variable when applicable. Say `None` when there is no environment
+override. If the plugin has no configuration, keep the heading and say:
+
+`No plugin config is required.`
 
 ## Plugin-specific setup
 
-Explain the provider-specific setup after install and environment configuration. Keep this section concrete and action-oriented.
+Explain provider-specific setup after install and config. Keep this section concrete and action-oriented.
 
 ## Resource subscriptions
 

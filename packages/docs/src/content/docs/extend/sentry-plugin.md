@@ -29,14 +29,77 @@ export const plugins = defineJuniorPlugins([sentryPlugin()]);
 
 Register `sentryPlugin()` so Junior loads the webhook route.
 
-## Configure environment variables
+## Config
 
-| Variable                | Required | Purpose                                                |
-| ----------------------- | -------- | ------------------------------------------------------ |
-| `SENTRY_CLIENT_ID`      | Yes      | User OAuth client ID.                                  |
-| `SENTRY_CLIENT_SECRET`  | Yes      | User OAuth client secret.                              |
-| `SENTRY_WEBHOOK_ORG`    | No       | Sentry organization slug allowed to send webhooks.     |
-| `SENTRY_WEBHOOK_SECRET` | No       | Internal integration client secret for issue webhooks. |
+Set conversation config with `jr-rpc config set`, or define the same keys for every conversation with `createApp({ configDefaults })`. Set deployment variables in the Junior environment, then redeploy. Explicit values in a request always win over conversation defaults.
+
+<details class="plugin-config">
+<summary><code>sentry.org</code></summary>
+
+Default Sentry organization slug when a request does not name one.
+
+- **Define:** `jr-rpc config set sentry.org <organization>`
+- **Install-wide default:** `configDefaults["sentry.org"]`
+- **Required:** No
+- **Environment override:** None
+
+</details>
+
+<details class="plugin-config">
+<summary><code>sentry.project</code></summary>
+
+Default Sentry project slug when a request does not name one.
+
+- **Define:** `jr-rpc config set sentry.project <project>`
+- **Install-wide default:** `configDefaults["sentry.project"]`
+- **Required:** No
+- **Environment override:** None
+
+</details>
+
+<details class="plugin-config">
+<summary><code>SENTRY_CLIENT_ID</code></summary>
+
+OAuth client ID used when a user connects their Sentry account.
+
+- **Define:** Set `SENTRY_CLIENT_ID` in the deployment environment
+- **Required:** Yes for user OAuth
+- **Environment override:** `SENTRY_CLIENT_ID`
+
+</details>
+
+<details class="plugin-config">
+<summary><code>SENTRY_CLIENT_SECRET</code></summary>
+
+OAuth client secret used when a user connects their Sentry account.
+
+- **Define:** Set `SENTRY_CLIENT_SECRET` in the deployment environment
+- **Required:** Yes for user OAuth
+- **Environment override:** `SENTRY_CLIENT_SECRET`
+
+</details>
+
+<details class="plugin-config">
+<summary><code>SENTRY_WEBHOOK_ORG</code></summary>
+
+Organization slug allowed to send issue webhooks.
+
+- **Define:** Set `SENTRY_WEBHOOK_ORG` in the deployment environment
+- **Required:** Yes for resource events; otherwise no
+- **Environment override:** `SENTRY_WEBHOOK_ORG`
+
+</details>
+
+<details class="plugin-config">
+<summary><code>SENTRY_WEBHOOK_SECRET</code></summary>
+
+Internal integration client secret used to verify issue webhooks.
+
+- **Define:** Set `SENTRY_WEBHOOK_SECRET` in the deployment environment
+- **Required:** Yes for resource events; otherwise no
+- **Environment override:** `SENTRY_WEBHOOK_SECRET`
+
+</details>
 
 ## Set up user OAuth
 

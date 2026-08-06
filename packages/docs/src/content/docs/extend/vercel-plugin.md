@@ -35,15 +35,57 @@ export const plugins = defineJuniorPlugins([vercelPlugin()]);
 
 Register `vercelPlugin()` so Junior loads the webhook route.
 
-## Configure environment variables
+## Config
 
-| Variable                | Required | Purpose                                                         |
-| ----------------------- | -------- | --------------------------------------------------------------- |
-| `JUNIOR_VERCEL_TOKEN`   | Yes      | Host-managed Vercel API token for deployment and log inspection. |
-| `VERCEL_WEBHOOK_SECRET` | No       | Account webhook secret for deployment resource events.          |
+Set conversation config with `jr-rpc config set`, or define the same keys for every conversation with `createApp({ configDefaults })`. Set deployment variables in the Junior environment, then redeploy. Explicit values in a request always win over conversation defaults.
 
-Create a [Vercel access token](https://vercel.com/account/tokens) scoped to the
-projects and teams users need to inspect.
+<details class="plugin-config">
+<summary><code>vercel.project</code></summary>
+
+Default Vercel project for investigations and deployment watches when a request does not name one.
+
+- **Define:** `jr-rpc config set vercel.project <project>`
+- **Install-wide default:** `configDefaults["vercel.project"]`
+- **Required:** No
+- **Environment override:** None
+
+</details>
+
+<details class="plugin-config">
+<summary><code>vercel.team</code></summary>
+
+Default Vercel team slug or ID used to resolve projects.
+
+- **Define:** `jr-rpc config set vercel.team <team>`
+- **Install-wide default:** `configDefaults["vercel.team"]`
+- **Required:** No
+- **Environment override:** None
+
+</details>
+
+<details class="plugin-config">
+<summary><code>JUNIOR_VERCEL_TOKEN</code></summary>
+
+Host-managed access token for deployment and log inspection.
+
+- **Define:** Set `JUNIOR_VERCEL_TOKEN` in the deployment environment
+- **Required:** Yes
+- **Environment override:** `JUNIOR_VERCEL_TOKEN`
+
+Create a [Vercel access token](https://vercel.com/account/tokens) scoped to the projects and teams users need to inspect.
+
+</details>
+
+<details class="plugin-config">
+<summary><code>VERCEL_WEBHOOK_SECRET</code></summary>
+
+Account webhook secret used to verify deployment resource events.
+
+- **Define:** Set `VERCEL_WEBHOOK_SECRET` in the deployment environment
+- **Required:** Yes for resource events; otherwise no
+- **Environment override:** `VERCEL_WEBHOOK_SECRET`
+
+</details>
 
 ## Set up deployment webhooks
 
@@ -113,20 +155,6 @@ Create the subscription or event task before the deployment finishes. Junior
 does not replay earlier webhooks. Project- and target-scoped watches keep
 receiving later deployments; commit-scoped watches complete on the terminal
 event.
-
-## Optional channel defaults
-
-If a Slack channel usually investigates the same Vercel project or team, store
-that as a conversation-scoped default:
-
-```bash
-jr-rpc config set vercel.project junior-prod
-jr-rpc config set vercel.team sentry
-```
-
-These defaults are optional fallbacks for both investigations and deployment
-watches. If a user names a different project, team, deployment, or URL in a
-request, Junior follows the explicit request instead.
 
 ## Auth model
 

@@ -33,6 +33,10 @@ import { defineJuniorPlugins } from "@sentry/junior";
 export const plugins = defineJuniorPlugins(["@sentry/junior-notion"]);
 ```
 
+## Config
+
+No plugin config is required.
+
 ## Auth model
 
 - No `NOTION_TOKEN` or shared integration secret is required.
