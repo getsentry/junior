@@ -115,6 +115,7 @@ import {
   RetryableDeliveryError,
   assertRunRoutingConsistency,
   actorFromRouting,
+  isAgentRunFeatureDisabled,
   surfaceFromRouting,
   type AgentRunRequest,
 } from "@/chat/agent/request";
@@ -494,10 +495,11 @@ async function executeAgentRunInPrivacyContext(
     const preAgentPromptMessages = (): PiMessage[] =>
       existingSessionRecord?.piMessages ?? [...(input.piMessages ?? [])];
 
+    const handoffEnabled = !isAgentRunFeatureDisabled(policy, "handoff");
     const storedTurnRoute = await loadTurnRoute({ conversationId, turnId });
     if (storedTurnRoute) {
       const resumedAfterHandoff =
-        policy.modelHandoff !== "disabled" &&
+        handoffEnabled &&
         activeModelProfile !== STANDARD_MODEL_PROFILE &&
         activeModelProfile !== storedTurnRoute.modelProfile;
       if (resumedAfterHandoff) {
@@ -527,10 +529,7 @@ async function executeAgentRunInPrivacyContext(
           source: storedTurnRoute.source,
         };
       }
-    } else if (
-      activeModelProfile === STANDARD_MODEL_PROFILE &&
-      policy.modelHandoff !== "disabled"
-    ) {
+    } else if (activeModelProfile === STANDARD_MODEL_PROFILE && handoffEnabled) {
       turnRoute = await selectTurnRoute({
         completeObject,
         conversationContext: input.conversationContext,
@@ -556,7 +555,7 @@ async function executeAgentRunInPrivacyContext(
           reason: `configured:${policy.reasoningLevel ? "agent_config" : "default"}:${turnRoute.reason}`,
         };
       }
-    } else if (policy.modelHandoff === "disabled") {
+    } else if (!handoffEnabled) {
       const activeProfileConfig = profileConfig(botConfig, activeModelProfile);
       const reasoningSource = policy.reasoningLevel
         ? "agent_config"
@@ -737,10 +736,9 @@ async function executeAgentRunInPrivacyContext(
           }
         : undefined;
     };
-    const requestHandoff =
-      policy.modelHandoff === "disabled"
-        ? undefined
-        : handoffControlFor(activeModelProfile);
+    const requestHandoff = handoffEnabled
+      ? handoffControlFor(activeModelProfile)
+      : undefined;
 
     setTags({
       ...runLogContext,
@@ -805,10 +803,9 @@ async function executeAgentRunInPrivacyContext(
       (tool) => tool.name === HANDOFF_TOOL_NAME,
     );
     const toolsForActiveProfile = () => {
-      const handoff =
-        policy.modelHandoff === "disabled"
-          ? undefined
-          : handoffControlFor(activeModelProfile);
+      const handoff = handoffEnabled
+        ? handoffControlFor(activeModelProfile)
+        : undefined;
       if (!handoff) {
         return toolsWithoutHandoff;
       }

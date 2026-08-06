@@ -46,7 +46,7 @@ describe("agent runner controls", () => {
 
     await runner.run({
       ...request,
-      policy: { agentSpawning: "disabled" },
+      policy: { disabledFeatures: ["subagents"] },
     });
 
     expect(bindSpawnAgent).not.toHaveBeenCalled();
@@ -68,8 +68,7 @@ describe("agent runner controls", () => {
     await runner.run({
       ...request,
       policy: {
-        agentSpawning: "disabled",
-        modelHandoff: "disabled",
+        disabledFeatures: ["handoff", "subagents"],
         reasoningLevel: "high",
       },
     });
@@ -78,8 +77,7 @@ describe("agent runner controls", () => {
     expect(run).toHaveBeenCalledWith(
       expect.objectContaining({
         policy: expect.objectContaining({
-          agentSpawning: "disabled",
-          modelHandoff: "disabled",
+          disabledFeatures: ["handoff", "subagents"],
           reasoningLevel: "high",
         }),
       }),

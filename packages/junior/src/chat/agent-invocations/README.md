@@ -53,8 +53,9 @@ by the parent-facing runtime.
 `spawnAgent` exposes durable creation to a parent agent. The tool receives only
 the delegated task, optional child name, and optional per-task reasoning level.
 The runtime derives actor, credentials, destination, visibility, source, parent
-conversation, and idempotency from the active tool call. Child runs keep fixed
-execution policy: no recursive spawn and no model handoff.
+conversation, and idempotency from the active tool call. Child runs set
+`disabledFeatures: ["handoff", "subagents"]` so they cannot hand off models or
+spawn further children.
 
 This slice does not yet expose result recovery, inject child results into a
 parent turn, support recursive children, or implement cancellation. Those

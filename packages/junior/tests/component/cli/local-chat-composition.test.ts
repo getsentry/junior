@@ -147,7 +147,7 @@ export const plugins = {
     const requests: AgentRunRequest[] = [];
     executeAgentRunMock.mockImplementation(async (request) => {
       requests.push(request);
-      if (request.policy?.agentSpawning === "disabled") {
+      if (request.policy?.disabledFeatures?.includes("subagents")) {
         await request.durability.onInputCommitted?.();
         return completedAgentRun(successReply("child finished"));
       }
@@ -190,7 +190,7 @@ export const plugins = {
     expect(executeAgentRunMock).toHaveBeenCalledTimes(2);
     expect(requests[0]?.durability?.spawnAgent).toBeDefined();
     expect(requests[1]).toMatchObject({
-      policy: { agentSpawning: "disabled" },
+      policy: { disabledFeatures: ["handoff", "subagents"] },
     });
     expect(requests[1]?.durability?.spawnAgent).toBeUndefined();
     expect(output).toEqual(["child scheduled\n"]);
@@ -203,7 +203,7 @@ export const plugins = {
     const { getAgentInvocation } =
       await import("@/chat/agent-invocations/store");
     executeAgentRunMock.mockImplementation(async (request) => {
-      if (request.policy?.agentSpawning === "disabled") {
+      if (request.policy?.disabledFeatures?.includes("subagents")) {
         childTasks.push(request.input.messageText);
         await request.durability.onInputCommitted?.();
         return completedAgentRun(
@@ -289,7 +289,7 @@ export const plugins = {
       releaseBoth = resolve;
     });
     executeAgentRunMock.mockImplementation(async (request) => {
-      if (request.policy?.agentSpawning === "disabled") {
+      if (request.policy?.disabledFeatures?.includes("subagents")) {
         activeChildren += 1;
         maxActiveChildren = Math.max(maxActiveChildren, activeChildren);
         if (activeChildren === 2) {

@@ -1,4 +1,8 @@
-import type { AgentRunRequest, SpawnAgent } from "@/chat/agent/request";
+import {
+  isAgentRunFeatureDisabled,
+  type AgentRunRequest,
+  type SpawnAgent,
+} from "@/chat/agent/request";
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
 
@@ -23,7 +27,8 @@ export function createAgentRunner(
   return {
     run: async (request) => {
       const spawnAgent =
-        bindSpawnAgent && request.policy?.agentSpawning !== "disabled"
+        bindSpawnAgent &&
+        !isAgentRunFeatureDisabled(request.policy, "subagents")
           ? bindSpawnAgent(request)
           : undefined;
       return await run({

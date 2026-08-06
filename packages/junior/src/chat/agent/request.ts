@@ -119,12 +119,24 @@ export interface AgentRunRouting {
   toolChannelId?: string;
 }
 
+/** Optional agent capabilities that a run slice can turn off. */
+export const AGENT_RUN_FEATURES = ["handoff", "subagents"] as const;
+
+/** One optional agent capability controlled by run policy. */
+export type AgentRunFeature = (typeof AGENT_RUN_FEATURES)[number];
+
+/** Return whether one optional agent capability is disabled for this run. */
+export function isAgentRunFeatureDisabled(
+  policy: Pick<AgentRunPolicy, "disabledFeatures"> | undefined,
+  feature: AgentRunFeature,
+): boolean {
+  return policy?.disabledFeatures?.includes(feature) ?? false;
+}
+
 /** Carries execution limits and dependency overrides for one run slice. */
 export interface AgentRunPolicy {
-  /** Disable child-agent spawning for runs that are already delegated work. */
-  agentSpawning?: "disabled";
-  /** Disable model-profile handoff for runs that must keep fixed execution policy. */
-  modelHandoff?: "disabled";
+  /** Optional agent capabilities disabled for this run slice. */
+  disabledFeatures?: readonly AgentRunFeature[];
   /** Absolute wall-clock deadline for this host request, in milliseconds. */
   turnDeadlineAtMs?: number;
   /** Cancels provider work when the owning host request is abandoned. */

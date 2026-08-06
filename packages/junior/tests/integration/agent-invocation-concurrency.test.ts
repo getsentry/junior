@@ -233,9 +233,15 @@ describe("agent invocation identity and concurrency", () => {
       expect(requests).toHaveLength(2);
       expect(requests[0]?.input.piMessages).toEqual([]);
       expect(requests[0]?.policy?.reasoningLevel).toBe("high");
-      expect(requests[0]?.policy?.modelHandoff).toBe("disabled");
+      expect(requests[0]?.policy?.disabledFeatures).toEqual([
+        "handoff",
+        "subagents",
+      ]);
       expect(requests[1]?.policy?.reasoningLevel).toBe("medium");
-      expect(requests[1]?.policy?.modelHandoff).toBe("disabled");
+      expect(requests[1]?.policy?.disabledFeatures).toEqual([
+        "handoff",
+        "subagents",
+      ]);
       expect(requests[1]?.input.piMessages).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ role: "user" }),

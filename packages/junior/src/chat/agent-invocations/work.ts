@@ -421,9 +421,8 @@ export function createAgentInvocationWorker(options: {
           surface: "internal",
         },
         policy: {
-          agentSpawning: "disabled",
           authorizationFlowMode: "disabled",
-          modelHandoff: "disabled",
+          disabledFeatures: ["handoff", "subagents"],
           reasoningLevel: invocation.reasoningLevel,
         },
         state: {
