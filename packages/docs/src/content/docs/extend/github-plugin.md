@@ -7,6 +7,7 @@ prerequisites:
   - /extend/
 related:
   - /concepts/credentials-and-oauth/
+  - /concepts/resource-subscriptions/
   - /reference/config-and-env/
   - /reference/runtime-commands/
 ---
@@ -46,15 +47,15 @@ You can optionally declare `appPermissions` when registering the plugin. Junior 
 
 Set these values in the host environment:
 
-| Variable                   | Required | Purpose                                                                |
-| -------------------------- | -------- | ---------------------------------------------------------------------- |
-| `GITHUB_APP_ID`            | Yes      | GitHub App identity.                                                   |
-| `GITHUB_APP_CLIENT_ID`     | Yes      | GitHub App OAuth client id for user-token auth.                        |
-| `GITHUB_APP_CLIENT_SECRET` | Yes      | GitHub App OAuth client secret for user-token auth.                    |
-| `GITHUB_APP_PRIVATE_KEY`   | Yes      | GitHub App signing key.                                                |
-| `GITHUB_INSTALLATION_ID`   | Yes      | Repository or organization installation target.                        |
-| `GITHUB_APP_BOT_NAME`      | Yes      | Git author and committer display name.                                 |
-| `GITHUB_APP_BOT_EMAIL`     | Yes      | App bot noreply email used for Git attribution and work ownership.     |
+| Variable                   | Required | Purpose                                                                         |
+| -------------------------- | -------- | ------------------------------------------------------------------------------- |
+| `GITHUB_APP_ID`            | Yes      | GitHub App identity.                                                            |
+| `GITHUB_APP_CLIENT_ID`     | Yes      | GitHub App OAuth client id for user-token auth.                                 |
+| `GITHUB_APP_CLIENT_SECRET` | Yes      | GitHub App OAuth client secret for user-token auth.                             |
+| `GITHUB_APP_PRIVATE_KEY`   | Yes      | GitHub App signing key.                                                         |
+| `GITHUB_INSTALLATION_ID`   | Yes      | Repository or organization installation target.                                 |
+| `GITHUB_APP_BOT_NAME`      | Yes      | Git author and committer display name.                                          |
+| `GITHUB_APP_BOT_EMAIL`     | Yes      | App bot noreply email used for Git attribution and work ownership.              |
 | `GITHUB_WEBHOOK_SECRET`    | No       | Webhook signing secret for deployment, pull request, release, and issue events. |
 
 `GITHUB_INSTALLATION_ID` selects the GitHub App installation for the deployment.
@@ -130,16 +131,36 @@ Git smart-HTTP push classification is repository-scoped, not branch-scoped. It d
 If your team works across multiple repositories, have users include `owner/repo` in their GitHub request whenever the target is not obvious from the conversation.
 That only helps when those repositories are covered by the same GitHub App installation ID.
 
-## React to pull request and issue events
+## Resource subscriptions
 
-When `GITHUB_WEBHOOK_SECRET` is configured, GitHub tools can return subscribable
-pull request, issue, and release resources. Junior can use those resources in two ways. A
-temporary resource watch sends matching updates back to the current Slack
-thread. A durable event task runs a stored instruction whenever its selected
-events occur and remains configured for the Slack channel until someone deletes
-it.
+When `GITHUB_WEBHOOK_SECRET` is configured, the GitHub plugin publishes five
+resource types. The agent can use each one through a temporary resource
+subscription or a durable event task; see
+[Resource Subscriptions](/concepts/resource-subscriptions/) for how those two
+core tool paths differ.
 
-Resource watches and event tasks require a single-workspace Slack deployment
+- **`deployment_source`** — one commit in a repository, optionally limited to an
+  environment. Identifiers use
+  `deployment-source:owner/repo[:environment]:<full-commit-sha>`. Supported
+  events: `deployment.created`, `deployment.queued`, `deployment.pending`,
+  `deployment.in_progress`, `deployment.succeeded`, `deployment.failed`, and
+  `deployment.error`.
+- **`issue`** — one issue, identified by `owner/repo#number`. Supported events:
+  `issue.comment.created`, `issue.opened`, `issue.closed`, and `issue.reopened`.
+- **`pull_request`** — one pull request, identified by `owner/repo#number`.
+  Supported events: `pull_request.checks.failed`,
+  `pull_request.checks.recovered`, `pull_request.comment.created`,
+  `pull_request.opened`, `pull_request.ready_for_review`,
+  `pull_request.review.approved`, `pull_request.review.changes_requested`,
+  `pull_request.review.commented`, `pull_request.review_comment.created`,
+  `pull_request.merged`, and `pull_request.closed_unmerged`.
+- **`release_source`** — releases in one repository, optionally limited to one
+  tag. Identifiers use `release-source:owner/repo[:tag]`. Supported event:
+  `release.published`.
+- **`repository`** — every issue and pull request in one repository, identified
+  by `owner/repo`. It supports all events listed for `issue` and `pull_request`.
+
+Resource subscriptions and event tasks require a single-workspace Slack deployment
 configured with `SLACK_BOT_TOKEN`. Junior does not offer or deliver resource
 events in multi-workspace Slack mode because a provider webhook does not carry a
 verified Slack workspace binding.
@@ -159,7 +180,7 @@ Supported GitHub webhook deliveries become these Junior resource events:
 | `issue_comment` created on a PR       | `pull_request.comment.created`                                                                           |
 | `pull_request_review` submitted       | `pull_request.review.approved`, `pull_request.review.changes_requested`, `pull_request.review.commented` |
 | `pull_request_review_comment` created | `pull_request.review_comment.created`                                                                    |
-| `pull_request` opened                 | `pull_request.opened`; also `pull_request.ready_for_review` when the PR is not a draft                    |
+| `pull_request` opened                 | `pull_request.opened`; also `pull_request.ready_for_review` when the PR is not a draft                   |
 | `pull_request` ready_for_review       | `pull_request.ready_for_review`                                                                          |
 | `pull_request` closed                 | `pull_request.merged`, `pull_request.closed_unmerged`                                                    |
 | `issues` opened, closed, or reopened  | `issue.opened`, `issue.closed`, `issue.reopened`                                                         |
