@@ -139,58 +139,49 @@ between temporary resource subscriptions and durable event tasks.
 
 ### `deployment_source`
 
-<details>
-<summary>Subscription details</summary>
-
-Scope: one commit, optionally limited to an environment.
-
-Identifier: `deployment-source:owner/repo[:environment]:<full-commit-sha>`
-
-</details>
-
-<details>
+<details class="resource-event">
 <summary><code>deployment.created</code></summary>
 
 A deployment was created.
 
 </details>
 
-<details>
+<details class="resource-event">
 <summary><code>deployment.queued</code></summary>
 
 The deployment entered the queue.
 
 </details>
 
-<details>
+<details class="resource-event">
 <summary><code>deployment.pending</code></summary>
 
 The deployment is waiting to start.
 
 </details>
 
-<details>
+<details class="resource-event">
 <summary><code>deployment.in_progress</code></summary>
 
 The deployment started.
 
 </details>
 
-<details>
+<details class="resource-event">
 <summary><code>deployment.succeeded</code></summary>
 
 The deployment completed successfully.
 
 </details>
 
-<details>
+<details class="resource-event">
 <summary><code>deployment.failed</code></summary>
 
 The deployment failed.
 
 </details>
 
-<details>
+<details class="resource-event">
 <summary><code>deployment.error</code></summary>
 
 The deployment reported an error.
@@ -199,35 +190,28 @@ The deployment reported an error.
 
 ### `issue`
 
-<details>
-<summary>Subscription details</summary>
-
-Scope: one issue, identified by `owner/repo#number`.
-
-</details>
-
-<details>
+<details class="resource-event">
 <summary><code>issue.comment.created</code></summary>
 
 A comment was added.
 
 </details>
 
-<details>
+<details class="resource-event">
 <summary><code>issue.opened</code></summary>
 
 The issue was opened.
 
 </details>
 
-<details>
+<details class="resource-event">
 <summary><code>issue.closed</code></summary>
 
 The issue was closed.
 
 </details>
 
-<details>
+<details class="resource-event">
 <summary><code>issue.reopened</code></summary>
 
 The issue was reopened.
@@ -236,84 +220,77 @@ The issue was reopened.
 
 ### `pull_request`
 
-<details>
-<summary>Subscription details</summary>
-
-Scope: one pull request, identified by `owner/repo#number`.
-
-</details>
-
-<details>
+<details class="resource-event">
 <summary><code>pull_request.checks.failed</code></summary>
 
 One or more checks failed.
 
 </details>
 
-<details>
+<details class="resource-event">
 <summary><code>pull_request.checks.recovered</code></summary>
 
 Previously failing checks recovered.
 
 </details>
 
-<details>
+<details class="resource-event">
 <summary><code>pull_request.comment.created</code></summary>
 
 A conversation comment was added.
 
 </details>
 
-<details>
+<details class="resource-event">
 <summary><code>pull_request.opened</code></summary>
 
 The pull request was opened.
 
 </details>
 
-<details>
+<details class="resource-event">
 <summary><code>pull_request.ready_for_review</code></summary>
 
 The pull request became ready for review.
 
 </details>
 
-<details>
+<details class="resource-event">
 <summary><code>pull_request.review.approved</code></summary>
 
 A reviewer approved the pull request.
 
 </details>
 
-<details>
+<details class="resource-event">
 <summary><code>pull_request.review.changes_requested</code></summary>
 
 A reviewer requested changes.
 
 </details>
 
-<details>
+<details class="resource-event">
 <summary><code>pull_request.review.commented</code></summary>
 
 A reviewer submitted a comment-only review.
 
 </details>
 
-<details>
+<details class="resource-event">
 <summary><code>pull_request.review_comment.created</code></summary>
 
 An inline review comment was added.
 
 </details>
 
-<details>
+<details class="resource-event">
 <summary><code>pull_request.merged</code></summary>
 
 The pull request was merged.
 
 </details>
 
-<details>
+<details class="resource-event">
 <summary><code>pull_request.closed_unmerged</code></summary>
 
 The pull request closed without merging.
@@ -322,16 +299,7 @@ The pull request closed without merging.
 
 ### `release_source`
 
-<details>
-<summary>Subscription details</summary>
-
-Scope: one repository, optionally limited to a tag.
-
-Identifier: `release-source:owner/repo[:tag]`
-
-</details>
-
-<details>
+<details class="resource-event">
 <summary><code>release.published</code></summary>
 
 A release was published.
@@ -340,14 +308,110 @@ A release was published.
 
 ### `repository`
 
-<details>
-<summary>Subscription details</summary>
+<details class="resource-event">
+<summary><code>issue.comment.created</code></summary>
 
-Scope: all issues and pull requests in `owner/repo`.
+A comment was added to an issue.
 
 </details>
 
-Supports every `issue` and `pull_request` event listed above.
+<details class="resource-event">
+<summary><code>issue.opened</code></summary>
+
+An issue was opened.
+
+</details>
+
+<details class="resource-event">
+<summary><code>issue.closed</code></summary>
+
+An issue was closed.
+
+</details>
+
+<details class="resource-event">
+<summary><code>issue.reopened</code></summary>
+
+An issue was reopened.
+
+</details>
+
+<details class="resource-event">
+<summary><code>pull_request.checks.failed</code></summary>
+
+One or more pull request checks failed.
+
+</details>
+
+<details class="resource-event">
+<summary><code>pull_request.checks.recovered</code></summary>
+
+Previously failing pull request checks recovered.
+
+</details>
+
+<details class="resource-event">
+<summary><code>pull_request.comment.created</code></summary>
+
+A pull request conversation comment was added.
+
+</details>
+
+<details class="resource-event">
+<summary><code>pull_request.opened</code></summary>
+
+A pull request was opened.
+
+</details>
+
+<details class="resource-event">
+<summary><code>pull_request.ready_for_review</code></summary>
+
+A pull request became ready for review.
+
+</details>
+
+<details class="resource-event">
+<summary><code>pull_request.review.approved</code></summary>
+
+A reviewer approved a pull request.
+
+</details>
+
+<details class="resource-event">
+<summary><code>pull_request.review.changes_requested</code></summary>
+
+A reviewer requested changes on a pull request.
+
+</details>
+
+<details class="resource-event">
+<summary><code>pull_request.review.commented</code></summary>
+
+A reviewer submitted a comment-only review.
+
+</details>
+
+<details class="resource-event">
+<summary><code>pull_request.review_comment.created</code></summary>
+
+An inline review comment was added.
+
+</details>
+
+<details class="resource-event">
+<summary><code>pull_request.merged</code></summary>
+
+A pull request was merged.
+
+</details>
+
+<details class="resource-event">
+<summary><code>pull_request.closed_unmerged</code></summary>
+
+A pull request closed without merging.
+
+</details>
 
 Resource subscriptions and event tasks require a single-workspace Slack deployment
 with `SLACK_BOT_TOKEN`; multi-workspace Slack mode cannot route provider webhook

@@ -68,27 +68,20 @@ subscribe to. Link to [Resource Subscriptions](/concepts/resource-subscriptions/
 for the core distinction between temporary resource subscriptions and durable
 event tasks; do not redefine those behaviors on every plugin page.
 
-Use one subsection per resource type. Put scope and identifier details in a
-collapsed disclosure, then use one collapsed disclosure per event. Show the
-exact event name in the summary and its plain-language description inside:
+Use one subsection per resource type, then one collapsed disclosure per event.
+Show the exact event name in the summary and its plain-language description
+inside. Do not add a separate subscription-details row.
 
 ### `issue`
 
-<details>
-<summary>Subscription details</summary>
-
-Scope: one issue, identified by `ORG-123`.
-
-</details>
-
-<details>
+<details class="resource-event">
 <summary><code>issue.closed</code></summary>
 
 The issue was closed.
 
 </details>
 
-<details>
+<details class="resource-event">
 <summary><code>issue.reopened</code></summary>
 
 The issue was reopened.
@@ -96,9 +89,9 @@ The issue was reopened.
 </details>
 
 Use the exact `resourceTypes[].type` and `supportedEvents` values registered by
-the plugin. Do not omit registered events. Keep descriptions to one sentence
-and explain any provider setup required to publish events after the resource
-subsections.
+the plugin. Do not omit registered events. Keep descriptions to one sentence.
+Explain provider setup and identifier formats in normal prose after the resource
+subsections only when users need that information.
 
 If the plugin does not publish resource events, use this sentence instead:
 
