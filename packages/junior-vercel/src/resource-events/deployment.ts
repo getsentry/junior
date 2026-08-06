@@ -14,15 +14,15 @@ export const VERCEL_DEPLOYMENT_SUGGESTED_EVENTS = [
 
 export type VercelDeploymentTarget = "preview" | "production" | "staging";
 
-/** Build the stable deployment-source identity shared by tools and webhooks. */
-export function vercelDeploymentSourceResource(input: {
+/** Build the stable deployment identity shared by tools and webhooks. */
+export function vercelDeploymentResource(input: {
   commitSha?: string;
   projectId: string;
   target?: VercelDeploymentTarget;
 }): Pick<SubscribableResource, "label" | "namespace" | "identifier"> {
   const commitSha = input.commitSha?.toLowerCase();
   const target = input.target;
-  const parts = ["deployment-source", input.projectId];
+  const parts = [input.projectId];
   if (target) parts.push(target);
   if (commitSha) parts.push(commitSha);
 
@@ -42,8 +42,8 @@ export function vercelDeploymentSourceResource(input: {
   };
 }
 
-/** Describe a deployment source when signed Vercel webhooks are enabled. */
-export function vercelDeploymentSourceSubscribable(input: {
+/** Describe a deployment resource when signed Vercel webhooks are enabled. */
+export function vercelDeploymentSubscribable(input: {
   commitSha?: string;
   projectId: string;
   target?: VercelDeploymentTarget;
@@ -53,9 +53,9 @@ export function vercelDeploymentSourceSubscribable(input: {
   // Commit-scoped watches require a target so the identity stays unambiguous.
   if (input.commitSha && !input.target) return undefined;
   return {
-    ...vercelDeploymentSourceResource(input),
+    ...vercelDeploymentResource(input),
     suggestedEvents: VERCEL_DEPLOYMENT_SUGGESTED_EVENTS,
     supportedEvents: [...VERCEL_DEPLOYMENT_EVENTS],
-    type: "deployment_source",
+    type: "deployment",
   };
 }

@@ -8,9 +8,9 @@ import type { ResourceEventInput } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import {
   VERCEL_DEPLOYMENT_EVENTS,
-  vercelDeploymentSourceResource,
+  vercelDeploymentResource,
   type VercelDeploymentTarget,
-} from "../resource-events/deployment-source.js";
+} from "../resource-events/deployment.js";
 
 const projectIdSchema = z.string().regex(/^prj_[A-Za-z0-9]+$/);
 const deploymentIdSchema = z.string().regex(/^dpl_[A-Za-z0-9]+$/);
@@ -92,7 +92,7 @@ function isDeploymentEvent(
 }
 
 /** Address one deployment through project, target, and optional commit watches. */
-function deploymentSourceTargets(input: {
+function deploymentTargets(input: {
   commitSha?: string;
   projectId: string;
   target: VercelDeploymentTarget;
@@ -100,13 +100,13 @@ function deploymentSourceTargets(input: {
   const targets = [
     {
       completeOnTerminalEvent: false,
-      resource: vercelDeploymentSourceResource({
+      resource: vercelDeploymentResource({
         projectId: input.projectId,
       }),
     },
     {
       completeOnTerminalEvent: false,
-      resource: vercelDeploymentSourceResource({
+      resource: vercelDeploymentResource({
         projectId: input.projectId,
         target: input.target,
       }),
@@ -115,7 +115,7 @@ function deploymentSourceTargets(input: {
   if (input.commitSha) {
     targets.push({
       completeOnTerminalEvent: true,
-      resource: vercelDeploymentSourceResource({
+      resource: vercelDeploymentResource({
         commitSha: input.commitSha,
         projectId: input.projectId,
         target: input.target,
@@ -151,7 +151,7 @@ export function normalizeVercelResourceEvents(args: {
   ].filter((part): part is string => part !== undefined);
   const untrustedText = untrustedParts.join("\n");
 
-  return deploymentSourceTargets({
+  return deploymentTargets({
     commitSha: payload.data.commitSha,
     projectId: payload.data.projectId,
     target,

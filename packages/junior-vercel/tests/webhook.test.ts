@@ -67,43 +67,46 @@ describe("Vercel webhook resource events", () => {
     ["deployment.succeeded", "succeeded"],
     ["deployment.error", "failed"],
     ["deployment.canceled", "was canceled"],
-  ] as const)("normalizes %s across project, target, and commit watches", (eventType, outcome) => {
-    expect(
-      normalizeVercelResourceEvents({ body: webhookBody(eventType) }),
-    ).toEqual([
-      {
-        eventKey: `vercel:evt_delivery_123:${eventType}`,
-        eventType,
-        occurredAtMs: 1_784_043_000_000,
-        identifier: "deployment-source:prj_junior",
-        trustedSummary: `Vercel deployments for prj_junior (dpl_123abc) ${outcome}.`,
-        untrustedText: `Target: production
+  ] as const)(
+    "normalizes %s across project, target, and commit watches",
+    (eventType, outcome) => {
+      expect(
+        normalizeVercelResourceEvents({ body: webhookBody(eventType) }),
+      ).toEqual([
+        {
+          eventKey: `vercel:evt_delivery_123:${eventType}`,
+          eventType,
+          occurredAtMs: 1_784_043_000_000,
+          identifier: "prj_junior",
+          trustedSummary: `Vercel deployments for prj_junior (dpl_123abc) ${outcome}.`,
+          untrustedText: `Target: production
 Commit: ${COMMIT_SHA}
 Deployment: dpl_123abc`,
-      },
-      {
-        eventKey: `vercel:evt_delivery_123:${eventType}`,
-        eventType,
-        occurredAtMs: 1_784_043_000_000,
-        identifier: "deployment-source:prj_junior:production",
-        trustedSummary: `Vercel production deployments for prj_junior (dpl_123abc) ${outcome}.`,
-        untrustedText: `Target: production
+        },
+        {
+          eventKey: `vercel:evt_delivery_123:${eventType}`,
+          eventType,
+          occurredAtMs: 1_784_043_000_000,
+          identifier: "prj_junior:production",
+          trustedSummary: `Vercel production deployments for prj_junior (dpl_123abc) ${outcome}.`,
+          untrustedText: `Target: production
 Commit: ${COMMIT_SHA}
 Deployment: dpl_123abc`,
-      },
-      {
-        eventKey: `vercel:evt_delivery_123:${eventType}`,
-        eventType,
-        occurredAtMs: 1_784_043_000_000,
-        identifier: `deployment-source:prj_junior:production:${COMMIT_SHA}`,
-        terminal: true,
-        trustedSummary: `Vercel production deployment for prj_junior at abcdef012345 (dpl_123abc) ${outcome}.`,
-        untrustedText: `Target: production
+        },
+        {
+          eventKey: `vercel:evt_delivery_123:${eventType}`,
+          eventType,
+          occurredAtMs: 1_784_043_000_000,
+          identifier: `prj_junior:production:${COMMIT_SHA}`,
+          terminal: true,
+          trustedSummary: `Vercel production deployment for prj_junior at abcdef012345 (dpl_123abc) ${outcome}.`,
+          untrustedText: `Target: production
 Commit: ${COMMIT_SHA}
 Deployment: dpl_123abc`,
-      },
-    ]);
-  });
+        },
+      ]);
+    },
+  );
 
   it("maps a null Vercel target and alternate Git provider metadata to preview", () => {
     const body = webhookBody("deployment.succeeded", null);
@@ -113,13 +116,13 @@ Deployment: dpl_123abc`,
 
     expect(normalizeVercelResourceEvents({ body })).toEqual([
       expect.objectContaining({
-        identifier: "deployment-source:prj_junior",
+        identifier: "prj_junior",
       }),
       expect.objectContaining({
-        identifier: "deployment-source:prj_junior:preview",
+        identifier: "prj_junior:preview",
       }),
       expect.objectContaining({
-        identifier: `deployment-source:prj_junior:preview:${COMMIT_SHA}`,
+        identifier: `prj_junior:preview:${COMMIT_SHA}`,
         terminal: true,
       }),
     ]);
@@ -134,7 +137,7 @@ Deployment: dpl_123abc`,
         eventKey: "vercel:evt_delivery_123:deployment.succeeded",
         eventType: "deployment.succeeded",
         occurredAtMs: 1_784_043_000_000,
-        identifier: "deployment-source:prj_junior",
+        identifier: "prj_junior",
         trustedSummary:
           "Vercel deployments for prj_junior (dpl_123abc) succeeded.",
         untrustedText: "Target: production\nDeployment: dpl_123abc",
@@ -143,7 +146,7 @@ Deployment: dpl_123abc`,
         eventKey: "vercel:evt_delivery_123:deployment.succeeded",
         eventType: "deployment.succeeded",
         occurredAtMs: 1_784_043_000_000,
-        identifier: "deployment-source:prj_junior:production",
+        identifier: "prj_junior:production",
         trustedSummary:
           "Vercel production deployments for prj_junior (dpl_123abc) succeeded.",
         untrustedText: "Target: production\nDeployment: dpl_123abc",
@@ -195,15 +198,15 @@ Deployment: dpl_123abc`,
     expect(fixture.events).toEqual([
       expect.objectContaining({
         eventType: "deployment.succeeded",
-        identifier: "deployment-source:prj_junior",
+        identifier: "prj_junior",
       }),
       expect.objectContaining({
         eventType: "deployment.succeeded",
-        identifier: "deployment-source:prj_junior:production",
+        identifier: "prj_junior:production",
       }),
       expect.objectContaining({
         eventType: "deployment.succeeded",
-        identifier: `deployment-source:prj_junior:production:${COMMIT_SHA}`,
+        identifier: `prj_junior:production:${COMMIT_SHA}`,
         terminal: true,
       }),
     ]);
@@ -245,10 +248,10 @@ Deployment: dpl_123abc`,
     await expect(response.text()).resolves.toBe("Accepted");
     expect(fixture.events).toEqual([
       expect.objectContaining({
-        identifier: "deployment-source:prj_junior",
+        identifier: "prj_junior",
       }),
       expect.objectContaining({
-        identifier: "deployment-source:prj_junior:production",
+        identifier: "prj_junior:production",
       }),
     ]);
   });

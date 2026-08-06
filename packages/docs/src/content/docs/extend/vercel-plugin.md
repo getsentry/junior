@@ -78,16 +78,15 @@ a project or supply its ID; Junior resolves the canonical ID through Vercel's
 authenticated project API. Include the team slug or ID when projects with the
 same name may exist in more than one account.
 
-### `deployment_source`
+### `deployment`
 
 One Vercel project, optionally limited to a target or one commit. Identifier:
 
-`deployment-source:prj_...[:preview|production|staging][:full-commit-sha]`
+`prj_...[:preview|production|staging][:full-commit-sha]`
 
-- `deployment-source:prj_...` watches every deployment for the project.
-- `deployment-source:prj_...:production` watches every production deployment.
-- `deployment-source:prj_...:production:<sha>` watches one production deployment
-  for that commit.
+- `prj_...` watches every deployment for the project.
+- `prj_...:production` watches every production deployment.
+- `prj_...:production:<sha>` watches one production deployment for that commit.
 
 <details class="resource-event">
 <summary><code>deployment.succeeded</code></summary>
