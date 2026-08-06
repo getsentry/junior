@@ -12,9 +12,6 @@ loadJuniorTestEnvFiles({
   packageRoots: [juniorPackageRoot, __dirname],
 });
 
-// Match packages/junior: production leaves experimental features off; tests opt in.
-process.env.JUNIOR_EXPERIMENTAL = "subagents";
-
 export default defineConfig({
   resolve: {
     alias: {
@@ -37,6 +34,7 @@ export default defineConfig({
     setupFiles: [
       path.resolve(juniorPackageRoot, "tests/msw/setup.ts"),
       path.resolve(juniorPackageRoot, "tests/fixtures/postgres/setup.ts"),
+      path.resolve(juniorPackageRoot, "tests/fixtures/experimental-setup.ts"),
     ],
   },
 });

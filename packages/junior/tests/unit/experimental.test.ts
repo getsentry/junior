@@ -1,35 +1,27 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
   isExperimentalFeatureEnabled,
-  parseExperimentalFeaturesEnv,
   setExperimentalFeatures,
 } from "@/chat/experimental";
 
 afterEach(() => {
   setExperimentalFeatures(undefined);
-  delete process.env.JUNIOR_EXPERIMENTAL;
 });
 
 describe("experimental features", () => {
   it("defaults experimental features off", () => {
+    setExperimentalFeatures(undefined);
     expect(isExperimentalFeatureEnabled("subagents")).toBe(false);
   });
 
-  it("enables features from JUNIOR_EXPERIMENTAL", () => {
-    process.env.JUNIOR_EXPERIMENTAL = "subagents";
+  it("enables features from createApp-style config", () => {
+    setExperimentalFeatures({ subagents: true });
     expect(isExperimentalFeatureEnabled("subagents")).toBe(true);
   });
 
-  it("lets createApp-style config override the env list", () => {
-    process.env.JUNIOR_EXPERIMENTAL = "subagents";
+  it("treats explicit false as disabled", () => {
     setExperimentalFeatures({ subagents: false });
     expect(isExperimentalFeatureEnabled("subagents")).toBe(false);
-  });
-
-  it("rejects unknown experimental feature names from env", () => {
-    expect(() => parseExperimentalFeaturesEnv("subagents,not-a-thing")).toThrow(
-      'JUNIOR_EXPERIMENTAL contains unknown feature "not-a-thing"',
-    );
   });
 
   it("rejects unknown experimental feature keys from app config", () => {

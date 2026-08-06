@@ -26,8 +26,6 @@ process.env.JUNIOR_SECRET = "junior-test-secret";
 process.env.JUNIOR_BASE_URL ??= "https://junior.example.com";
 process.env.JUNIOR_STATE_ADAPTER = "redis";
 process.env.JUNIOR_STATE_KEY_PREFIX ??= `junior:eval:${randomUUID()}`;
-// Production leaves experimental features off; evals opt in by default.
-process.env.JUNIOR_EXPERIMENTAL = "subagents";
 process.env.REDIS_URL =
   process.env.JUNIOR_EVAL_REDIS_URL?.trim() || "redis://127.0.0.1:6382";
 const evalRedisHostname = new URL(process.env.REDIS_URL).hostname;
@@ -70,6 +68,7 @@ export default defineConfig({
       path.resolve(__dirname, "src/setup.ts"),
       path.resolve(juniorPackageRoot, "tests/msw/setup.ts"),
       path.resolve(juniorPackageRoot, "tests/fixtures/postgres/setup.ts"),
+      path.resolve(juniorPackageRoot, "tests/fixtures/experimental-setup.ts"),
     ],
     outputFile: { json: evalReportPath },
     reporters: [new DefaultEvalReporter(), "json"],

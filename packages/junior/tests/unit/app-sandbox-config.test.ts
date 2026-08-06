@@ -12,7 +12,6 @@ import {
 afterEach(() => {
   setSandboxResourceConfig(undefined);
   setExperimentalFeatures(undefined);
-  delete process.env.JUNIOR_EXPERIMENTAL;
 });
 
 describe("createApp sandbox config", () => {

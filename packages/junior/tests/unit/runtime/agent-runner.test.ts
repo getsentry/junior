@@ -19,7 +19,6 @@ const request = {
 
 afterEach(() => {
   setExperimentalFeatures(undefined);
-  delete process.env.JUNIOR_EXPERIMENTAL;
 });
 
 describe("agent runner controls", () => {
