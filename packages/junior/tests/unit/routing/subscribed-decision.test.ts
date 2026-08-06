@@ -10,7 +10,7 @@ function makeInput(
   overrides: Partial<SubscribedDecisionInput> = {},
 ): SubscribedDecisionInput {
   return {
-    sourceText: "hello",
+    rawText: "hello",
     text: "hello",
     hasAttachments: false,
     isExplicitMention: false,
@@ -47,7 +47,7 @@ describe("subscribed reply decision", () => {
         decideSubscribedThreadReply({
           botUserName: "junior",
           modelId: "router-model",
-          input: makeInput({ sourceText: text, text }),
+          input: makeInput({ rawText: text, text }),
           completeObject,
           logClassifierFailure: vi.fn(),
         }),
@@ -64,13 +64,13 @@ describe("subscribed reply decision", () => {
   it.each([
     {
       name: "a leading named mention",
-      sourceText: "@Cursor can you take this one?",
+      rawText: "@Cursor can you take this one?",
       text: "@Cursor can you take this one?",
       expected: "named_mention:Cursor",
     },
     {
       name: "a leading Slack mention",
-      sourceText: "<@UCURSOR> can you take this one?",
+      rawText: "<@UCURSOR> can you take this one?",
       text: "<@UCURSOR> can you take this one?",
       expected: "slack_mention",
     },
@@ -78,7 +78,7 @@ describe("subscribed reply decision", () => {
     expect(
       getSubscribedReplyPreflightDecision({
         botUserName: "junior",
-        sourceText: fixture.sourceText,
+        rawText: fixture.rawText,
         text: fixture.text,
         isExplicitMention: false,
       }),
@@ -96,7 +96,7 @@ describe("subscribed reply decision", () => {
     expect(
       getSubscribedReplyPreflightDecision({
         botUserName: "junior",
-        sourceText: text,
+        rawText: text,
         text,
         isExplicitMention: false,
       }),

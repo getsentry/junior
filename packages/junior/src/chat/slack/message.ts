@@ -3,8 +3,6 @@ import {
   parseSlackMessageTs,
   type SlackMessageTs,
 } from "@/chat/slack/timestamp";
-import { appendSlackLegacyAttachmentText } from "@/chat/slack/legacy-attachments";
-import { stripLeadingSteeringOverride } from "@/chat/slack/message-control";
 
 /**
  * Preserve the native Slack message timestamp when a synthetic message ID is
@@ -36,30 +34,4 @@ export function getSlackMessageText(
     return stringifyMarkdown(message.formatted).trim();
   }
   return message.text.trim();
-}
-
-interface SlackMessageInputOptions {
-  stripLeadingBotMention: (
-    text: string,
-    options: { stripLeadingSlackMentionToken?: boolean },
-  ) => string;
-  stripLeadingSlackMentionToken: boolean;
-}
-
-/** Build the source and user text for one inbound Slack message. */
-export function getSlackMessageInput(
-  message: Pick<Message, "formatted" | "raw" | "text">,
-  options: SlackMessageInputOptions,
-): { sourceText: string; userText: string } {
-  const sourceText = getSlackMessageText(message);
-  const userText = options.stripLeadingBotMention(
-    stripLeadingSteeringOverride(sourceText),
-    {
-      stripLeadingSlackMentionToken: options.stripLeadingSlackMentionToken,
-    },
-  );
-  return {
-    sourceText: appendSlackLegacyAttachmentText(sourceText, message.raw),
-    userText: appendSlackLegacyAttachmentText(userText, message.raw),
-  };
 }

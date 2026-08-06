@@ -15,7 +15,7 @@ export enum SubscribedReplyReason {
 }
 
 export interface SubscribedDecisionInput {
-  sourceText: string;
+  rawText: string;
   text: string;
   conversationContext?: string;
   hasAttachments?: boolean;
@@ -116,18 +116,18 @@ function containsAssistantInvocation(
 }
 
 function detectLeadingOtherPartyAddress(
-  sourceText: string,
+  rawText: string,
   text: string,
   botUserName: string,
 ): string | undefined {
   if (
-    containsAssistantInvocation(sourceText, botUserName) ||
+    containsAssistantInvocation(rawText, botUserName) ||
     containsAssistantInvocation(text, botUserName)
   ) {
     return undefined;
   }
 
-  const leadingSlackMention = sourceText.match(LEADING_SLACK_MENTION_RE);
+  const leadingSlackMention = rawText.match(LEADING_SLACK_MENTION_RE);
   if (leadingSlackMention) {
     const label = leadingSlackMention[2]?.trim();
     return label ? `slack_mention:${label}` : "slack_mention";
@@ -149,16 +149,16 @@ function detectLeadingOtherPartyAddress(
   return `named_mention:${directedName}`;
 }
 
-function isForcedThreadOptOutCommand(sourceText: string, text: string): boolean {
+function isForcedThreadOptOutCommand(rawText: string, text: string): boolean {
   return (
-    FORCED_THREAD_OPTOUT_RE.test(sourceText.trim()) ||
+    FORCED_THREAD_OPTOUT_RE.test(rawText.trim()) ||
     FORCED_THREAD_OPTOUT_RE.test(text.trim())
   );
 }
 
-function isThreadOptOutInstruction(sourceText: string, text: string): boolean {
+function isThreadOptOutInstruction(rawText: string, text: string): boolean {
   return THREAD_OPTOUT_PATTERNS.some(
-    (pattern) => pattern.test(sourceText) || pattern.test(text),
+    (pattern) => pattern.test(rawText) || pattern.test(text),
   );
 }
 
@@ -259,7 +259,7 @@ function buildRouterSignals(input: SubscribedDecisionInput): RouterSignals {
   };
 }
 
-function buildRouterPrompt(sourceText: string, signals: RouterSignals): string {
+function buildRouterPrompt(rawText: string, signals: RouterSignals): string {
   const recentThread =
     signals.recentMessages.length > 0
       ? signals.recentMessages
@@ -270,7 +270,7 @@ function buildRouterPrompt(sourceText: string, signals: RouterSignals): string {
       : "[none]";
 
   return [
-    `<latest-message>${escapeXml(sourceText.trim() || "[attachment-only message]")}</latest-message>`,
+    `<latest-message>${escapeXml(rawText.trim() || "[attachment-only message]")}</latest-message>`,
     "<routing-signals>",
     `assistant_was_last_speaker=${signals.assistantWasLastSpeaker ? "true" : "false"}`,
     `human_messages_since_last_assistant=${
@@ -325,19 +325,19 @@ function getReplyConfidenceThreshold(signals: RouterSignals): number {
 /** Fast heuristic check before the LLM classifier — skips messages directed at another party. */
 export function getSubscribedReplyPreflightDecision(args: {
   botUserName: string;
-  sourceText: string;
+  rawText: string;
   text: string;
   isExplicitMention?: boolean;
 }): SubscribedDecisionResult | undefined {
   const text = args.text.trim();
-  const sourceText = args.sourceText.trim();
+  const rawText = args.rawText.trim();
 
   if (args.isExplicitMention) {
     return undefined;
   }
 
   const leadingOtherPartyAddress = detectLeadingOtherPartyAddress(
-    sourceText,
+    rawText,
     text,
     args.botUserName,
   );
@@ -397,8 +397,8 @@ export async function decideSubscribedThreadReply(args: {
   ) => void;
 }): Promise<SubscribedDecisionResult> {
   const text = args.input.text.trim();
-  const sourceText = args.input.sourceText.trim();
-  if (isForcedThreadOptOutCommand(sourceText, text)) {
+  const rawText = args.input.rawText.trim();
+  if (isForcedThreadOptOutCommand(rawText, text)) {
     return {
       shouldReply: false,
       shouldUnsubscribe: true,
@@ -408,7 +408,7 @@ export async function decideSubscribedThreadReply(args: {
   }
   const preflightDecision = getSubscribedReplyPreflightDecision({
     botUserName: args.botUserName,
-    sourceText,
+    rawText,
     text,
     isExplicitMention: args.input.isExplicitMention,
   });
@@ -432,7 +432,7 @@ export async function decideSubscribedThreadReply(args: {
   }
 
   if (args.input.isExplicitMention) {
-    if (isThreadOptOutInstruction(sourceText, text)) {
+    if (isThreadOptOutInstruction(rawText, text)) {
       return {
         shouldReply: false,
         shouldUnsubscribe: true,
@@ -484,7 +484,7 @@ export async function decideSubscribedThreadReply(args: {
       maxTokens: ROUTER_CLASSIFIER_MAX_TOKENS,
       temperature: 0,
       system: buildRouterSystemPrompt(args.botUserName),
-      prompt: buildRouterPrompt(sourceText, signals),
+      prompt: buildRouterPrompt(rawText, signals),
       metadata: {
         modelId: args.modelId,
         threadId: args.input.context.threadId ?? "",

@@ -11,9 +11,7 @@ describe("getSlackMessageText", () => {
     expect(
       getSlackMessageText({
         text: `inspect ${TRUNCATED_LABEL}`,
-        formatted: parseMarkdown(
-          `inspect [${TRUNCATED_LABEL}](${FULL_URL})`,
-        ),
+        formatted: parseMarkdown(`inspect [${TRUNCATED_LABEL}](${FULL_URL})`),
       }),
     ).toBe(`inspect [${TRUNCATED_LABEL}](${FULL_URL})`);
   });
