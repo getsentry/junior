@@ -1,4 +1,3 @@
-import type { UseMutationResult } from "@tanstack/react-query";
 import {
   Bookmark,
   BrainCircuit,
@@ -9,11 +8,9 @@ import {
   LockKeyhole,
   Search,
   Sparkles,
-  Trash2,
   UserRound,
-  X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Navigate, NavLink, useLocation } from "react-router";
 import type { PluginUserPageLink } from "@sentry/junior-plugin-api";
 
@@ -23,26 +20,16 @@ import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import {
   type PluginUserPageRecord,
-  type PluginUserPageRecordAction,
   usePluginUserPageData,
 } from "../user/pluginUserPageData";
-import {
-  cn,
-  dashboardContainerClass,
-  dashboardInteractiveTextClass,
-} from "../../styles";
+import { cn, dashboardContainerClass } from "../../styles";
 import {
   type MemoryDashboardData,
   useMemoryDashboardData,
 } from "./memoryDashboard";
+import { MemoryDetailsDrawer } from "./MemoryDetailsDrawer";
 import { MemoryTimeline } from "./MemoryTimeline";
 import { MemoryCostChart } from "./MemoryCostChart";
-
-type MemoryActionMutation = UseMutationResult<
-  void,
-  Error,
-  PluginUserPageRecordAction
->;
 
 /** Render the temporary first-class dashboard experience for memory. */
 export function MemoryPage(props: { page: PluginUserPageLink }) {
@@ -216,10 +203,8 @@ function MemoryLibrary(props: { page: PluginUserPageLink }) {
               <MemoryListHeader />
               {records.map((record, index) => (
                 <MemoryRow
-                  action={action}
                   first={index === 0}
                   key={record.id}
-                  onAction={runAction}
                   onSelect={() =>
                     setSelectedRecordId((current) =>
                       current === record.id ? undefined : record.id,
@@ -245,10 +230,10 @@ function MemoryLibrary(props: { page: PluginUserPageLink }) {
               </p>
             ) : null}
           </div>
-          <MemoryMobileInspector
+          <MemoryDetailsDrawer
             action={action}
-            onClose={() => setSelectedRecordId(undefined)}
             onAction={runAction}
+            onClose={() => setSelectedRecordId(undefined)}
             record={selectedRecord}
           />
         </div>
@@ -487,9 +472,7 @@ function OverviewBreakdownRow(props: {
 }
 
 function MemoryRow(props: {
-  action: MemoryActionMutation;
   first: boolean;
-  onAction(action: PluginUserPageRecordAction): void;
   onSelect(): void;
   record: PluginUserPageRecord;
   selected: boolean;
@@ -500,316 +483,87 @@ function MemoryRow(props: {
   const visibility = metadataValue(props.record, "Visibility");
   const isPublic = visibility === "Public";
   return (
-    <>
-      <div
-        className={cn(
-          "group flex items-stretch transition-colors",
-          !props.first && "border-t border-white/[0.055]",
-          props.selected ? "bg-cyan-300/[0.045]" : "hover:bg-white/[0.025]",
-        )}
-      >
-        <button
-          aria-pressed={props.selected}
-          className="grid min-w-0 flex-1 cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-0 bg-transparent px-4 py-3 text-left sm:grid-cols-[minmax(0,1fr)_7rem_7rem_9rem_auto]"
-          onClick={props.onSelect}
-          type="button"
-        >
-          <div className="flex min-w-0 items-center gap-3">
-            <div
-              className={cn(
-                "grid size-8 shrink-0 place-items-center rounded border",
-                props.selected
-                  ? "border-cyan-300/20 bg-cyan-300/10 text-cyan-100"
-                  : "border-white/10 bg-white/[0.025] text-dashboard-text-muted",
-              )}
-            >
-              <BrainCircuit aria-hidden="true" size={15} />
-            </div>
-            <div className="min-w-0 flex-1">
-              <h3 className="m-0 truncate font-display text-base font-medium leading-snug text-dashboard-text">
-                {props.record.title}
-              </h3>
-              <div className="mt-1.5 flex min-w-0 items-center gap-x-2 font-mono text-[0.6rem] text-dashboard-text-muted">
-                <span className="truncate">Source: {source}</span>
-                <span
-                  aria-hidden="true"
-                  className="text-dashboard-text-muted opacity-30 sm:hidden"
-                >
-                  ·
-                </span>
-                <span className="truncate sm:hidden">
-                  {kind} · {visibility} · {shortDate(remembered)}
-                </span>
-              </div>
-            </div>
-          </div>
-          <span
-            className={cn(
-              "hidden items-center gap-1.5 rounded border px-2 py-1 font-mono text-[0.56rem] uppercase tracking-[0.08em] sm:inline-flex",
-              isPublic
-                ? "border-emerald-300/20 bg-emerald-300/[0.07] text-emerald-100"
-                : "border-white/[0.08] bg-white/[0.025] text-dashboard-text-muted",
-            )}
-          >
-            {isPublic ? (
-              <Globe2 aria-hidden="true" size={11} />
-            ) : (
-              <LockKeyhole aria-hidden="true" size={11} />
-            )}
-            {visibility}
-          </span>
-          <span
-            className={cn(
-              "hidden w-fit rounded border px-2 py-1 font-mono text-[0.56rem] uppercase tracking-[0.08em] sm:block",
-              memoryKindClass(kind),
-            )}
-          >
-            {kind}
-          </span>
-          <span className="hidden truncate font-mono text-[0.64rem] text-dashboard-text sm:block">
-            {shortDate(remembered)}
-          </span>
-          <ChevronRight
-            aria-hidden="true"
-            className={cn(
-              "shrink-0 transition-transform",
-              props.selected
-                ? "rotate-90 text-cyan-200"
-                : "text-dashboard-text-muted group-hover:text-dashboard-text",
-            )}
-            size={16}
-          />
-        </button>
-      </div>
-      {props.selected ? (
-        <div className="hidden border-t border-cyan-300/10 bg-black/20 p-5 lg:block">
-          <MemoryDetails
-            action={props.action}
-            inline
-            onAction={props.onAction}
-            record={props.record}
-          />
-        </div>
-      ) : null}
-    </>
-  );
-}
-
-function MemoryMobileInspector(props: {
-  action: MemoryActionMutation;
-  onClose(): void;
-  onAction(action: PluginUserPageRecordAction): void;
-  record: PluginUserPageRecord | undefined;
-}) {
-  useEffect(() => {
-    if (!props.record) return;
-    const mobileSheet = window.matchMedia("(max-width: 1023px)");
-    const previousOverflow = document.body.style.overflow;
-    let scrollLocked = false;
-    function updateScrollLock() {
-      if (mobileSheet.matches && !scrollLocked) {
-        document.body.style.overflow = "hidden";
-        scrollLocked = true;
-      } else if (!mobileSheet.matches && scrollLocked) {
-        document.body.style.overflow = previousOverflow;
-        scrollLocked = false;
-      }
-    }
-    function closeOnEscape(event: KeyboardEvent) {
-      if (event.key === "Escape" && mobileSheet.matches) props.onClose();
-    }
-    updateScrollLock();
-    mobileSheet.addEventListener("change", updateScrollLock);
-    window.addEventListener("keydown", closeOnEscape);
-    return () => {
-      if (scrollLocked) document.body.style.overflow = previousOverflow;
-      mobileSheet.removeEventListener("change", updateScrollLock);
-      window.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [props.onClose, props.record]);
-
-  if (!props.record) return null;
-  return (
     <div
-      className="fixed inset-0 z-40 lg:hidden"
-      role="dialog"
-      aria-modal="true"
+      className={cn(
+        "group flex items-stretch transition-colors",
+        !props.first && "border-t border-white/[0.055]",
+        props.selected ? "bg-cyan-300/[0.045]" : "hover:bg-white/[0.025]",
+      )}
     >
       <button
-        aria-label="Close memory details"
-        className="absolute inset-0 cursor-default border-0 bg-black/75 backdrop-blur-[2px]"
-        onClick={props.onClose}
+        aria-expanded={props.selected}
+        aria-label={`View memory details: ${props.record.title}`}
+        className="grid min-w-0 flex-1 cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-0 bg-transparent px-4 py-3 text-left sm:grid-cols-[minmax(0,1fr)_7rem_7rem_9rem_auto]"
+        onClick={props.onSelect}
         type="button"
-      />
-      <div className="absolute inset-x-0 bottom-0 max-h-[88dvh] overflow-y-auto rounded-t-xl border border-white/10 bg-[#09090b] p-5 shadow-2xl shadow-black sm:inset-x-4 sm:bottom-4 sm:rounded-xl">
-        <MemoryDetails
-          action={props.action}
-          onClose={props.onClose}
-          onAction={props.onAction}
-          record={props.record}
-        />
-      </div>
-    </div>
-  );
-}
-
-function MemoryDetails(props: {
-  action: MemoryActionMutation;
-  inline?: boolean;
-  onClose?: () => void;
-  onAction(action: PluginUserPageRecordAction): void;
-  record: PluginUserPageRecord;
-}) {
-  const kind = metadataValue(props.record, "Type");
-  const learned = metadataValue(props.record, "Learned");
-  const remembered = metadataValue(props.record, "Remembered");
-  const source = metadataValue(props.record, "Source");
-  const visibility = metadataValue(props.record, "Visibility");
-  const isPublic = visibility === "Public";
-  const story =
-    learned === "Automatic"
-      ? `Junior learned this from a ${source} conversation on ${shortDate(remembered)}.`
-      : learned === "Explicit"
-        ? isPublic
-          ? `Someone asked Junior to remember this on ${shortDate(remembered)}.`
-          : `You asked Junior to remember this on ${shortDate(remembered)}.`
-        : `Junior recorded this on ${shortDate(remembered)}.`;
-  const scopeCopy = isPublic
-    ? `It is stored as workspace ${kind.toLowerCase()} for future channels.`
-    : `It is stored as a ${kind.toLowerCase()} for future conversations.`;
-  const hiddenMetadata = props.inline
-    ? ["Type", "Learned", "Source", "Memory ID"]
-    : ["Learned", "Source", "Memory ID"];
-  const visibleMetadata = (props.record.metadata ?? []).filter(
-    (item) => !hiddenMetadata.includes(item.label),
-  );
-  const forgetAction = props.record.actions?.find(
-    (recordAction) => recordAction.tone === "danger",
-  );
-
-  return (
-    <>
-      {!props.inline ? (
-        <div className="flex items-center justify-between gap-4 border-b border-white/[0.06] pb-4">
-          <div>
-            <div className="font-mono text-[0.58rem] uppercase tracking-[0.14em] text-cyan-200/65">
-              Memory details
-            </div>
-            <h3 className="mt-1 mb-0 font-display text-lg font-medium text-dashboard-text">
-              What Junior remembers
-            </h3>
-          </div>
-          <div className="ml-auto grid size-9 place-items-center rounded border border-cyan-300/15 bg-cyan-300/[0.075] text-cyan-100">
-            <BrainCircuit aria-hidden="true" size={17} />
-          </div>
-          {props.onClose ? (
-            <button
-              aria-label="Close memory details"
-              className={cn(
-                "grid size-9 cursor-pointer place-items-center border-0 bg-transparent",
-                dashboardInteractiveTextClass,
-              )}
-              onClick={props.onClose}
-              type="button"
-            >
-              <X aria-hidden="true" size={18} />
-            </button>
-          ) : null}
-        </div>
-      ) : null}
-      <div
-        className={cn(
-          props.inline
-            ? "grid gap-6 pt-5 lg:grid-cols-[minmax(0,1fr)_minmax(24rem,0.85fr)]"
-            : "",
-        )}
       >
-        <div>
-          <p
-            className={cn(
-              "mb-0 font-display leading-relaxed text-dashboard-text",
-              props.inline ? "mt-0 text-lg" : "mt-5 text-xl",
-            )}
-          >
-            {props.record.title}
-          </p>
-          {props.record.description ? (
-            <p className="mt-3 mb-0 text-sm leading-relaxed text-dashboard-text-muted">
-              {props.record.description}
-            </p>
-          ) : null}
+        <div className="flex min-w-0 items-center gap-3">
           <div
             className={cn(
-              "flex items-start gap-3",
-              props.inline
-                ? "pt-1"
-                : "mt-5 rounded border border-cyan-300/12 bg-cyan-300/[0.035] p-3",
+              "grid size-8 shrink-0 place-items-center rounded border",
+              props.selected
+                ? "border-cyan-300/20 bg-cyan-300/10 text-cyan-100"
+                : "border-white/10 bg-white/[0.025] text-dashboard-text-muted",
             )}
           >
-            <BrainCircuit
-              aria-hidden="true"
-              className="mt-0.5 shrink-0 text-cyan-200/70"
-              size={15}
-            />
-            <div>
-              <div className="font-mono text-[0.55rem] uppercase tracking-[0.12em] text-cyan-200/65">
-                Why Junior remembers this
-              </div>
-              <div
-                className={cn(
-                  "mt-1 leading-relaxed text-dashboard-text",
-                  props.inline
-                    ? "font-display text-lg"
-                    : "font-mono text-[0.66rem]",
-                )}
+            <BrainCircuit aria-hidden="true" size={15} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="m-0 truncate font-display text-base font-medium leading-snug text-dashboard-text">
+              {props.record.title}
+            </h3>
+            <div className="mt-1.5 flex min-w-0 items-center gap-x-2 font-mono text-[0.6rem] text-dashboard-text-muted">
+              <span className="truncate">Source: {source}</span>
+              <span
+                aria-hidden="true"
+                className="text-dashboard-text-muted opacity-30 sm:hidden"
               >
-                {story} {scopeCopy}
-              </div>
+                ·
+              </span>
+              <span className="truncate sm:hidden">
+                {kind} · {visibility} · {shortDate(remembered)}
+              </span>
             </div>
           </div>
         </div>
-        <div>
-          {visibleMetadata?.length ? (
-            <dl
-              className={cn(
-                "grid gap-px overflow-hidden rounded border border-white/[0.06] bg-white/[0.055] sm:grid-cols-2",
-                props.inline ? "mt-0" : "mt-6",
-              )}
-            >
-              {visibleMetadata.map((item) => (
-                <div
-                  className="min-w-0 bg-[#09090b] px-3 py-3"
-                  key={item.label}
-                >
-                  <dt className="font-mono text-[0.54rem] uppercase tracking-[0.12em] text-dashboard-text-muted">
-                    {item.label}
-                  </dt>
-                  <dd className="mt-1.5 ml-0 break-words font-mono text-[0.66rem] leading-relaxed text-dashboard-text">
-                    {item.value}
-                  </dd>
-                </div>
-              ))}
-            </dl>
-          ) : null}
-          {forgetAction ? (
-            <button
-              className="mt-4 inline-flex cursor-pointer items-center gap-2 rounded border border-rose-300/15 bg-rose-300/[0.035] px-3 py-2 font-mono text-[0.62rem] uppercase tracking-[0.08em] text-rose-200/75 transition-colors hover:border-rose-300/30 hover:bg-rose-300/[0.07] hover:text-rose-100"
-              disabled={props.action.isPending}
-              onClick={() => props.onAction(forgetAction)}
-              type="button"
-            >
-              <Trash2 aria-hidden="true" size={13} />
-              Forget this memory
-            </button>
-          ) : isPublic ? (
-            <div className="mt-4 inline-flex items-center gap-2 rounded border border-white/[0.08] px-3 py-2 font-mono text-[0.62rem] uppercase tracking-[0.08em] text-dashboard-text-muted">
-              <Globe2 aria-hidden="true" size={13} />
-              View only · public memories can&apos;t be deleted
-            </div>
-          ) : null}
-        </div>
-      </div>
-    </>
+        <span
+          className={cn(
+            "hidden items-center gap-1.5 rounded border px-2 py-1 font-mono text-[0.56rem] uppercase tracking-[0.08em] sm:inline-flex",
+            isPublic
+              ? "border-emerald-300/20 bg-emerald-300/[0.07] text-emerald-100"
+              : "border-white/[0.08] bg-white/[0.025] text-dashboard-text-muted",
+          )}
+        >
+          {isPublic ? (
+            <Globe2 aria-hidden="true" size={11} />
+          ) : (
+            <LockKeyhole aria-hidden="true" size={11} />
+          )}
+          {visibility}
+        </span>
+        <span
+          className={cn(
+            "hidden w-fit rounded border px-2 py-1 font-mono text-[0.56rem] uppercase tracking-[0.08em] sm:block",
+            memoryKindClass(kind),
+          )}
+        >
+          {kind}
+        </span>
+        <span className="hidden truncate font-mono text-[0.64rem] text-dashboard-text sm:block">
+          {shortDate(remembered)}
+        </span>
+        <ChevronRight
+          aria-hidden="true"
+          className={cn(
+            "shrink-0 transition-transform",
+            props.selected
+              ? "translate-x-0.5 text-cyan-200"
+              : "text-dashboard-text-muted group-hover:text-dashboard-text",
+          )}
+          size={16}
+        />
+      </button>
+    </div>
   );
 }
 

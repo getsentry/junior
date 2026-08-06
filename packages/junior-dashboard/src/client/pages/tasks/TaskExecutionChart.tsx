@@ -1,12 +1,13 @@
 import { useState } from "react";
 import type { TaskExecutionDay } from "@sentry/junior/api/schema";
+import { ActivityTooltipRows } from "../../components/charts/ActivityChart";
 import { Card } from "../../components/layout/Card";
+import { Tooltip } from "../../components/Tooltip";
 import { cn } from "../../styles";
 
 type ChartRange = 7 | 30 | 90;
 
 const series = [
-  { color: "#67e8f9", key: "registered", label: "Registered" },
   { color: "#6ee7b7", key: "scheduled", label: "Scheduled" },
   { color: "#c4b5fd", key: "event", label: "Event" },
 ] as const;
@@ -25,7 +26,7 @@ export function TaskExecutionChart(props: { days: TaskExecutionDay[] }) {
   const plotWidth = width - left - right;
   const step = days.length > 0 ? plotWidth / days.length : plotWidth;
   const barWidth = Math.max(2, Math.min(13, step * 0.68));
-  const totals = days.map((day) => day.registered + day.scheduled + day.event);
+  const totals = days.map((day) => day.scheduled + day.event);
   const maximum = Math.max(1, ...totals);
   const hasExecutions = totals.some((total) => total > 0);
 
@@ -40,7 +41,7 @@ export function TaskExecutionChart(props: { days: TaskExecutionDay[] }) {
             Activity over time
           </h2>
           <p className="mt-1 mb-0 font-mono text-[0.64rem] leading-relaxed text-dashboard-text-muted">
-            Successful registered, scheduled, and event task runs each day.
+            Successful scheduled and event task runs each day.
           </p>
         </div>
         <div
@@ -121,26 +122,49 @@ export function TaskExecutionChart(props: { days: TaskExecutionDay[] }) {
             const x = left + dayIndex * step + (step - barWidth) / 2;
             const total = totals[dayIndex] ?? 0;
             return (
-              <g key={day.date}>
-                <title>{`${formatDate(day.date)}: ${total} executions`}</title>
-                {series.map((item) => {
-                  const value = day[item.key];
-                  const segmentHeight = (value / maximum) * plotHeight;
-                  stackedHeight += segmentHeight;
-                  return (
-                    <rect
-                      fill={item.color}
-                      height={segmentHeight}
-                      key={item.key}
-                      opacity={0.82}
-                      rx="1"
-                      width={barWidth}
-                      x={x}
-                      y={top + plotHeight - stackedHeight}
-                    />
-                  );
-                })}
-              </g>
+              <Tooltip
+                content={
+                  <ActivityTooltipRows
+                    rows={[
+                      ["scheduled", day.scheduled],
+                      ["event", day.event],
+                      ["total", total],
+                    ]}
+                  />
+                }
+                key={day.date}
+                label={formatDate(day.date)}
+              >
+                <g
+                  aria-label={`${formatDate(day.date)}: ${day.scheduled} scheduled, ${day.event} event, ${total} total executions`}
+                  tabIndex={0}
+                >
+                  {series.map((item) => {
+                    const value = day[item.key];
+                    const segmentHeight = (value / maximum) * plotHeight;
+                    stackedHeight += segmentHeight;
+                    return (
+                      <rect
+                        fill={item.color}
+                        height={segmentHeight}
+                        key={item.key}
+                        opacity={0.82}
+                        rx="1"
+                        width={barWidth}
+                        x={x}
+                        y={top + plotHeight - stackedHeight}
+                      />
+                    );
+                  })}
+                  <rect
+                    fill="transparent"
+                    height={plotHeight}
+                    width={Math.max(barWidth, 8)}
+                    x={x - (Math.max(barWidth, 8) - barWidth) / 2}
+                    y={top}
+                  />
+                </g>
+              </Tooltip>
             );
           })}
           {[0, Math.floor((days.length - 1) / 2), days.length - 1].map(

@@ -159,6 +159,8 @@ Supported GitHub webhook deliveries become these Junior resource events:
 | `issue_comment` created on a PR       | `pull_request.comment.created`                                                                           |
 | `pull_request_review` submitted       | `pull_request.review.approved`, `pull_request.review.changes_requested`, `pull_request.review.commented` |
 | `pull_request_review_comment` created | `pull_request.review_comment.created`                                                                    |
+| `pull_request` opened                 | `pull_request.opened`; also `pull_request.ready_for_review` when the PR is not a draft                    |
+| `pull_request` ready_for_review       | `pull_request.ready_for_review`                                                                          |
 | `pull_request` closed                 | `pull_request.merged`, `pull_request.closed_unmerged`                                                    |
 | `issues` opened, closed, or reopened  | `issue.opened`, `issue.closed`, `issue.reopened`                                                         |
 | `issue_comment` created on an issue   | `issue.comment.created`                                                                                  |

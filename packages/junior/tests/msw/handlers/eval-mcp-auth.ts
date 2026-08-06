@@ -254,6 +254,8 @@ export const evalMcpAuthHandlers = [
                     supportedEvents: [
                       "pull_request.checks.failed",
                       "pull_request.comment.created",
+                      "pull_request.opened",
+                      "pull_request.ready_for_review",
                       "pull_request.review.changes_requested",
                       "pull_request.review.commented",
                       "pull_request.review_comment.created",
@@ -262,6 +264,7 @@ export const evalMcpAuthHandlers = [
                     ],
                     suggestedEvents: [
                       "pull_request.checks.failed",
+                      "pull_request.ready_for_review",
                       "pull_request.review.changes_requested",
                       "pull_request.review.commented",
                       "pull_request.review_comment.created",

@@ -1,4 +1,18 @@
 # Changelog
+## 0.135.0
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Open memory details in a slide-out drawer by @sentry-junior in [#1256](https://github.com/getsentry/junior/pull/1256)
+- Polish tasks page and open details in a slide-out by @sentry-junior in [#1254](https://github.com/getsentry/junior/pull/1254)
+
+#### Other
+
+- (memory) Keep personal prefs in automatic recall by @sentry-junior in [#1255](https://github.com/getsentry/junior/pull/1255)
+- (tasks) Remove plugin background work from tasks by @sentry-junior in [#1253](https://github.com/getsentry/junior/pull/1253)
+
 ## 0.134.0
 
 ### New Features ✨

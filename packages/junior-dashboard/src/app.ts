@@ -469,6 +469,9 @@ function dashboardPagePaths(
       path: basePath === "/" ? "/system" : `${basePath}/system`,
     },
     {
+      path: basePath === "/" ? "/tasks" : `${basePath}/tasks`,
+    },
+    {
       path:
         basePath === "/"
           ? "/settings/api-tokens"

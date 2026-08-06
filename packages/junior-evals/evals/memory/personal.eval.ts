@@ -7,6 +7,7 @@ import {
   evalMemoryModel,
   expectActorMemorySemantics,
   expectAssistantMemoryAnswer,
+  type MemoryThread,
   memoryPluginOverrides,
   readActiveMemories,
   readMemories,
@@ -87,35 +88,48 @@ describeEval("Personal Memory", slackEvals, (it) => {
 
   const timezoneRecallThread = {
     id: "thread-memory-timezone-recall",
+    // Public channel so conversation noise is workspace-scoped like production.
+    channel_type: "channel",
     channel_id: "CMEMORYTIMEZONE",
     thread_ts: "17000000.000012",
-  };
+  } satisfies MemoryThread;
 
   it("uses a remembered timezone when answering the current time", async ({
     run,
   }) => {
     await clearMemories();
-    // Seed a hybrid-retrievable fact: host embedder writes the vector row, and
-    // content keeps FTS overlap with "current time" asks plus the exact IANA token.
+    // Production-shaped personal pref: terse SF/PT wording without an IANA token
+    // or "current time" phrasing. Host embedder still writes the vector row.
     const timezoneMemoryContent =
-      "Prefers current local time answers in America/Los_Angeles (San Francisco timezone).";
+      "Located in San Francisco and uses Pacific Time (PT).";
     await seedMemory({
       content: timezoneMemoryContent,
       idempotencyKey: "eval-memory-timezone-recall",
       thread: timezoneRecallThread,
     });
-    await expect(countMemoryEmbeddings(timezoneRecallThread)).resolves.toBe(1);
+    // Workspace conversation noise sharing the common token "time" fills the
+    // shared lexical recency window the way production burial did.
+    for (let index = 0; index < 50; index += 1) {
+      await seedMemory({
+        content: `Recent workspace time note ${index} about deploy time windows`,
+        idempotencyKey: `eval-memory-timezone-noise-${index}`,
+        kind: "knowledge",
+        scope: "conversation",
+        thread: timezoneRecallThread,
+      });
+    }
+    await expect(countMemoryEmbeddings(timezoneRecallThread)).resolves.toBe(51);
 
     const result = await run({
       overrides: memoryPluginOverrides,
       initialEvents: [
-        mention("What time is it for me right now?", {
+        mention("what time is it", {
           thread: timezoneRecallThread,
         }),
       ],
       criteria: rubric({
         pass: [
-          "The assistant uses the remembered San Francisco / America/Los_Angeles timezone from memory.",
+          "The assistant uses the remembered San Francisco / Pacific Time preference from memory.",
           "The final answer reports the user's current local time in Pacific Time without asking for their location or timezone.",
           "The assistant checks the current time with systemTime before answering.",
         ],
@@ -128,12 +142,14 @@ describeEval("Personal Memory", slackEvals, (it) => {
       }),
     });
 
-    await expect(readActiveMemories(timezoneRecallThread)).resolves.toEqual([
-      expect.objectContaining({
-        content: timezoneMemoryContent,
-        scope: "personal",
-      }),
-    ]);
+    await expect(readActiveMemories(timezoneRecallThread)).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          content: timezoneMemoryContent,
+          scope: "personal",
+        }),
+      ]),
+    );
     expect(toolCalls(result.session)).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -151,9 +167,9 @@ describeEval("Personal Memory", slackEvals, (it) => {
     await expectAssistantMemoryAnswer({
       assistantText: visibleAssistantText(result),
       expectedBehavior:
-        "The assistant uses the remembered San Francisco or America/Los_Angeles timezone and reports the user's current local time in Pacific Time.",
+        "The assistant uses the remembered San Francisco / Pacific Time preference and reports the user's current local time in Pacific Time.",
     });
-  }, 120_000);
+  });
 
   const firstPersonRewrittenThread = {
     id: "thread-memory-first-person-rewritten",

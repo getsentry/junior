@@ -1,0 +1,2 @@
+DELETE FROM "junior_task_executions" WHERE "kind" = 'registered';--> statement-breakpoint
+ALTER TABLE "junior_task_executions" ADD CONSTRAINT "junior_task_executions_kind_check" CHECK ("junior_task_executions"."kind" in ('scheduled', 'event'));

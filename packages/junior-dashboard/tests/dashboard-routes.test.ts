@@ -116,6 +116,7 @@ describe("dashboard routes", () => {
       "/locations/destination-1",
       "/system",
       "/system/plugins/github",
+      "/tasks",
     ]) {
       const response = await app.fetch(new Request(`http://localhost${path}`));
       expect(response.status).toBe(302);
@@ -448,6 +449,7 @@ describe("dashboard routes", () => {
       "/people/person%40sentry.io",
       "/system",
       "/system/plugins/github",
+      "/tasks",
       "/settings/api-tokens",
       "/plugins/memory/memories",
       "/plugins/memory/memories/library",

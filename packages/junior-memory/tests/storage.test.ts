@@ -2846,6 +2846,51 @@ WHERE id = '${superseded.memory.id}'
     }
   }, 15_000);
 
+  it("keeps an older personal preference when workspace lexical noise fills the shared window", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      // Mirrors production: "what time is it" only overlaps common tokens, so a
+      // shared lexical recency window can fill with newer workspace knowledge
+      // before ranking sees the older actor preference.
+      const query = "what time is it";
+      const preferenceContent = "Located in San Francisco and uses Pacific Time (PT).";
+      let nowMs = TEST_NOW_MS;
+      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+        // No embedder: force the pure lexical path that production noise hits.
+        now: () => nowMs,
+      });
+      const preference = await store.createMemory({
+        content: preferenceContent,
+        kind: "preference",
+        idempotencyKey: "memory-test:recall-personal-timezone",
+      });
+
+      for (let index = 0; index < 80; index += 1) {
+        nowMs = TEST_NOW_MS + index + 1;
+        await store.createConversationMemory({
+          content: `Recent workspace time note ${index} about deploy time windows`,
+          kind: "knowledge",
+          idempotencyKey: `memory-test:recall-time-noise-${index}`,
+        });
+      }
+
+      nowMs = TEST_NOW_MS + 200;
+      // Shared lexical recall alone would keep only the newest noise. The
+      // personal-scope probe must still surface the older actor preference.
+      await expect(store.recallMemories({ limit: 5, query })).resolves.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: preference.memory.id,
+            scope: "personal",
+          }),
+        ]),
+      );
+    } finally {
+      await fixture.close();
+    }
+  }, 30_000);
+
   it("fuses vector and lexical matches before applying the search limit", async () => {
     const fixture = await createMemoryFixture();
 
@@ -3792,18 +3837,18 @@ WHERE id = '${superseded.memory.id}'
         content: {
           memories: [
             {
-              id: conversation.memory.id,
-              content: conversation.memory.content,
-              kind: conversation.memory.kind,
-              observedAtMs: conversation.memory.observedAtMs,
-              scope: "conversation",
-            },
-            {
               id: personal.memory.id,
               content: personal.memory.content,
               kind: personal.memory.kind,
               observedAtMs: personal.memory.observedAtMs,
               scope: "personal",
+            },
+            {
+              id: conversation.memory.id,
+              content: conversation.memory.content,
+              kind: conversation.memory.kind,
+              observedAtMs: conversation.memory.observedAtMs,
+              scope: "conversation",
             },
           ],
         },
@@ -3819,7 +3864,7 @@ WHERE id = '${superseded.memory.id}'
         expect.objectContaining({
           data: {
             costUsd: 0.0045,
-            memories: [conversation.memory.id, personal.memory.id],
+            memories: [personal.memory.id, conversation.memory.id],
           },
           definition: expect.objectContaining({
             eventName: "memories_recalled",

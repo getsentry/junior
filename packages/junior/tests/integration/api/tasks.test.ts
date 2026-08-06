@@ -249,7 +249,6 @@ describe("Tasks API", () => {
       expect(response.status).toBe(200);
       expect(taskListSchema.parse(await response.json())).toEqual({
         executionDays: expect.any(Array),
-        registeredTasks: [],
         tasks: [
           expect.objectContaining({
             createdBy: "Aisha Patel",
