@@ -313,7 +313,19 @@ export function DashboardShell() {
               <Navigate replace to="/" />
             )
           }
-          path="/memories/:memoryId"
+          path="/memories/:memoryId?"
+        />
+        <Route
+          element={
+            loading || userPagesQuery.isPending ? (
+              <LoadingView label="Loading memories" />
+            ) : loggedIn && userPagesQuery.data ? (
+              <MemoryPermalinkRoute pages={userPagesQuery.data} />
+            ) : (
+              <Navigate replace to="/" />
+            )
+          }
+          path="/memories/library"
         />
         <Route
           element={

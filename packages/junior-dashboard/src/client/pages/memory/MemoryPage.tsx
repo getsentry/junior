@@ -41,7 +41,7 @@ import { useMemoryRecord } from "./memoryRecord";
 export function MemoryPage(props: { page: PluginUserPageLink }) {
   const location = useLocation();
   const { memoryId } = useParams();
-  const basePath = `/plugins/${encodeURIComponent(props.page.pluginName)}/${encodeURIComponent(props.page.id)}`;
+  const basePath = "/memories";
   const libraryPath = `${basePath}/library`;
   const overview = location.pathname === basePath;
   const library = location.pathname === libraryPath || Boolean(memoryId);
