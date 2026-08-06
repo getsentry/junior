@@ -1,6 +1,7 @@
 import type { Conversation } from "@/chat/conversations/store";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { buildSentryConversationUrl } from "@/chat/sentry-links";
+import { resolveSlackTeamDomains } from "@/chat/slack/team-domain";
 import { readConversationModelUsageFromSql } from "@/chat/pi/sql-model-usage";
 import { encodeConversationCursor } from "./cursor";
 import { readConversationEventPage } from "./event-page";
@@ -36,6 +37,7 @@ function projectConversationDetail(args: {
   locationId?: string;
   modelUsage: NonNullable<ConversationDetailReport["modelUsage"]>;
   previousSeq?: number;
+  teamDomainByTeamId?: ReadonlyMap<string, string>;
   usage: ConversationDetailReport["cumulativeUsage"];
 }): ConversationDetailReport {
   const { conversation } = args;
@@ -52,6 +54,9 @@ function projectConversationDetail(args: {
       conversation,
       durationMs: args.durationMs,
       ...(args.locationId ? { locationId: args.locationId } : {}),
+      ...(args.teamDomainByTeamId
+        ? { teamDomainByTeamId: args.teamDomainByTeamId }
+        : {}),
       usage: args.usage,
     }),
     annotations: canExposePayload ? args.annotations : [],
@@ -92,6 +97,7 @@ async function readConversationDetailFromSql(
     auxiliaryCostsByConversation,
     modelUsage,
     metricsByRoot,
+    teamDomainByTeamId,
   ] = await Promise.all([
     readConversationAccessFromSql(
       getDb(),
@@ -112,6 +118,11 @@ async function readConversationDetailFromSql(
       getDb(),
       includeDescendantMetrics ? [conversationId] : [],
     ),
+    resolveSlackTeamDomains(
+      record.conversation.sessionSource?.platform === "slack"
+        ? [record.conversation.sessionSource.teamId]
+        : [],
+    ),
   ]);
   const access = accessByConversation.get(conversationId);
   const page =
@@ -131,6 +142,7 @@ async function readConversationDetailFromSql(
     durationMs: metrics?.durationMs ?? record.durationMs,
     events: page.events,
     modelUsage,
+    teamDomainByTeamId,
     ...(page.previousSeq === undefined
       ? {}
       : { previousSeq: page.previousSeq }),

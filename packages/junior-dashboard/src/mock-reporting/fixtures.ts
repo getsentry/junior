@@ -49,8 +49,10 @@ function sentryConversationUrl(conversationId: string): string {
   return `https://sentry.example.com/organizations/acme/explore/conversations/${encodeURIComponent(conversationId)}/`;
 }
 
-function slackSourceUrl(channelId: string, teamId: string): string {
-  return `https://slack.com/app_redirect?channel=${channelId}&team=${teamId}`;
+function slackSourceUrl(channelId: string, threadTs: string): string {
+  const [seconds, fraction = ""] = threadTs.split(".");
+  const pathTs = `p${seconds}${(fraction ?? "").padEnd(6, "0").slice(0, 6)}`;
+  return `https://sentry.slack.com/archives/${channelId}/${pathTs}?thread_ts=${threadTs}&cid=${channelId}`;
 }
 
 function reportEvent(
@@ -147,7 +149,7 @@ function activeConversation(nowMs: number): ConversationDetailReport {
     cumulativeDurationMs: 31_000,
     cumulativeUsage: usage(0.041),
     sentryConversationUrl: sentryConversationUrl(ACTIVE_CONVERSATION_ID),
-    sourceUrl: slackSourceUrl("CQA123", "TQA123"),
+    sourceUrl: slackSourceUrl("CQA123", "1770003600.000200"),
     events: [
       reportEvent(0, startedAt, {
         type: "message",

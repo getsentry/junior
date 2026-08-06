@@ -2,6 +2,7 @@ import { http, HttpResponse } from "msw";
 import {
   slackOk,
   authTestOk,
+  teamInfoOk,
   canvasesAccessSetOk,
   canvasesCreateOk,
   canvasesEditOk,
@@ -34,6 +35,7 @@ export const SUPPORTED_SLACK_API_METHODS = [
   "assistant.search.context",
   "assistant.threads.setStatus",
   "auth.test",
+  "team.info",
   "assistant.threads.setSuggestedPrompts",
   "assistant.threads.setTitle",
   "chat.postMessage",
@@ -194,6 +196,8 @@ function defaultSlackApiResponse(
       return { body: slackOk() };
     case "auth.test":
       return { body: authTestOk() };
+    case "team.info":
+      return { body: teamInfoOk() };
     case "chat.postMessage":
       return { body: chatPostMessageOk() };
     case "chat.delete":

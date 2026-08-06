@@ -10,6 +10,7 @@ import {
   juniorIdentities,
   juniorUsers,
 } from "@/db/schema";
+import { resolveSlackTeamDomains } from "@/chat/slack/team-domain";
 import { conversationSummaryFromStoredConversation } from "./projection";
 import { readConversationAccessFromSql } from "./access";
 import { conversationFeedSchema } from "../schema/conversation";
@@ -193,9 +194,16 @@ export async function readConversationFeedFromSql(
     options.limit ?? CONVERSATION_FEED_LIMIT,
     options.actorEmail,
   );
-  const conversationIds = rows.map((row) => row.conversation.conversationId);
-  const [accessByConversation, auxiliaryCostsByRoot, metricsByRoot] =
-    await Promise.all([
+  const conversations = rows.map((row) => conversationFromRow(row));
+  const conversationIds = conversations.map(
+    (conversation) => conversation.conversationId,
+  );
+  const [
+    accessByConversation,
+    auxiliaryCostsByRoot,
+    metricsByRoot,
+    teamDomainByTeamId,
+  ] = await Promise.all([
       readConversationAccessFromSql(
         db,
         conversationIds,
@@ -205,17 +213,24 @@ export async function readConversationFeedFromSql(
         includeDescendants: true,
       }),
       readRootConversationMetricsFromSql(db, conversationIds),
+      resolveSlackTeamDomains(
+        conversations.flatMap((conversation) =>
+          conversation.sessionSource?.platform === "slack"
+            ? [conversation.sessionSource.teamId]
+            : [],
+        ),
+      ),
     ]);
   return {
-    conversations: rows.map((row) => {
-      const metrics = metricsByRoot.get(row.conversation.conversationId);
+    conversations: conversations.map((conversation, index) => {
+      const row = rows[index]!;
+      const metrics = metricsByRoot.get(conversation.conversationId);
       return conversationSummaryFromStoredConversation({
-        conversation: conversationFromRow(row),
-        access: accessByConversation.get(row.conversation.conversationId),
-        auxiliaryCosts: auxiliaryCostsByRoot.get(
-          row.conversation.conversationId,
-        ),
+        conversation,
+        access: accessByConversation.get(conversation.conversationId),
+        auxiliaryCosts: auxiliaryCostsByRoot.get(conversation.conversationId),
         durationMs: metrics?.durationMs ?? row.conversation.durationMs,
+        teamDomainByTeamId,
         ...(row.destination?.visibility === "public"
           ? { locationId: row.destination.id }
           : {}),
