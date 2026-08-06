@@ -29,6 +29,7 @@ function parseJson(body: string): unknown {
 /** Create the public, signed Sentry resource-event webhook route. */
 export function createSentryWebhookRoute(args: {
   resourceEvents: ResourceEventPublisher;
+  webhookOrg(): string | undefined;
   webhookSecret(): string | undefined;
 }): PluginRoute {
   return {
@@ -51,12 +52,18 @@ export function createSentryWebhookRoute(args: {
           status: 400,
         });
       }
+      const webhookOrg = args.webhookOrg();
+      if (!webhookOrg) {
+        return new Response("Sentry webhook organization is not configured", {
+          status: 503,
+        });
+      }
       const events = normalizeSentryResourceEvents({
         body,
         hookResource,
         hookTimestamp:
           request.headers.get("sentry-hook-timestamp")?.trim() || undefined,
-        requestId,
+        webhookOrg,
       });
       for (const event of events) {
         await args.resourceEvents.publish(event);

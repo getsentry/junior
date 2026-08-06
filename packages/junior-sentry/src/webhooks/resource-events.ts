@@ -84,15 +84,15 @@ export function normalizeSentryResourceEvents(input: {
   body: unknown;
   hookResource: string;
   hookTimestamp?: string;
-  requestId: string;
+  webhookOrg: string;
 }): ResourceEventInput[] {
   if (input.hookResource !== "issue") return [];
   const parsed = issueWebhookSchema.safeParse(input.body);
   if (!parsed.success || parsed.data.action !== "created") return [];
 
   const issue = parsed.data.data.issue;
-  const org = organizationSlug(issue.url);
-  if (!org) return [];
+  const org = organizationSlug(issue.url)?.toLowerCase();
+  if (!org || org !== input.webhookOrg.toLowerCase()) return [];
   const issueResource = sentryIssueResource({
     issueId: issue.id,
     org,
@@ -109,7 +109,9 @@ export function normalizeSentryResourceEvents(input: {
     Date.now();
   const untrustedText = issueText(issue);
   const event = {
-    eventKey: `sentry:${input.requestId}:${eventType}`,
+    // Sentry assigns a new Request-ID to retries, so use resource identity for
+    // idempotency across repeated deliveries of the same lifecycle event.
+    eventKey: `sentry:${issueResource.identifier}:${eventType}`,
     eventType,
     occurredAtMs,
     trustedSummary: `${issueResource.label} was created.`,

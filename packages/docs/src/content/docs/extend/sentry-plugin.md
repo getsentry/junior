@@ -37,6 +37,7 @@ Register the factory. Package-name-only registration is not enough for webhook r
 | ----------------------- | -------- | ------------------------------------------------------ |
 | `SENTRY_CLIENT_ID`      | Yes      | User OAuth client ID.                                  |
 | `SENTRY_CLIENT_SECRET`  | Yes      | User OAuth client secret.                              |
+| `SENTRY_WEBHOOK_ORG`    | No       | Org slug allowed to send issue webhooks.               |
 | `SENTRY_WEBHOOK_SECRET` | No       | Internal integration client secret for issue webhooks. |
 
 ## User OAuth
@@ -65,7 +66,7 @@ Use a **Sentry internal integration** in the org that should notify Junior. Do n
 https://<junior-host>/api/webhooks/sentry
 ```
 
-4. Copy the integration **client secret** into Junior as `SENTRY_WEBHOOK_SECRET` and redeploy.
+4. Set `SENTRY_WEBHOOK_ORG` to the org slug and copy the integration **client secret** into `SENTRY_WEBHOOK_SECRET`, then redeploy.
 
 Junior verifies `Sentry-Hook-Signature`, then publishes `issue.created` for both:
 
@@ -78,7 +79,7 @@ Create the watch or event task before the issue arrives. Unmatched deliveries ar
 
 **OAuth:** connect Sentry from Slack, then run a real issue/org query.
 
-**Webhooks:** with `SENTRY_WEBHOOK_SECRET` set, create a watch on a project or issue, then create a test issue in that project.
+**Webhooks:** with `SENTRY_WEBHOOK_ORG` and `SENTRY_WEBHOOK_SECRET` set, create a watch on a project or issue, then create a test issue in that project.
 
 ## Security
 
