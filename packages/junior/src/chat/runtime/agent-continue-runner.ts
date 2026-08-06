@@ -55,6 +55,7 @@ import {
   scheduleAgentContinue as defaultScheduleAgentContinue,
   type AgentContinueRequest,
 } from "@/chat/services/agent-continue";
+import { resolveTurnSessionRouting } from "@/chat/services/turn-session-routing";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import { postSlackMessage } from "@/chat/slack/outbound";
 import { getStateAdapter } from "@/chat/state/adapter";
@@ -434,7 +435,12 @@ async function continueSlackAgentRunInContext(
             },
           };
         }
-        if (!activeSessionRecord.source) {
+        const routing = await resolveTurnSessionRouting({
+          conversationId: payload.conversationId,
+          destination: payload.destination,
+          source: activeSessionRecord.source,
+        });
+        if (!routing.source) {
           await failAgentTurnSessionRecord({
             conversationId: payload.conversationId,
             expectedVersion: activeSessionRecord.version,
@@ -443,6 +449,7 @@ async function continueSlackAgentRunInContext(
           });
           return false;
         }
+        const source = routing.source;
 
         const turnMessages =
           activeSessionRecord.turnStartMessageIndex === undefined
@@ -466,7 +473,7 @@ async function continueSlackAgentRunInContext(
             dispatchOutcome,
             sessionId: payload.sessionId,
             sliceId: activeSessionRecord.sliceId,
-            source: activeSessionRecord.source,
+            source,
             state: "failed",
             surface: options.routingContext?.surface ?? "slack",
           });
@@ -499,7 +506,7 @@ async function continueSlackAgentRunInContext(
                 ? { actor: options.routingContext?.actor ?? actor }
                 : {}),
               destination: payload.destination,
-              source: activeSessionRecord.source,
+              source,
               toolChannelId:
                 artifacts.assistantContextChannelId ?? destination.channelId,
             },
@@ -582,6 +589,11 @@ async function failStrandedSessionWithFallback(args: {
   errorMessage: string;
   sessionRecord: AgentTurnSessionRecord;
 }): Promise<void> {
+  const routing = await resolveTurnSessionRouting({
+    conversationId: args.conversationId,
+    destination: args.sessionRecord.destination,
+    source: args.sessionRecord.source,
+  });
   await failAgentTurnSessionRecord({
     conversationId: args.conversationId,
     expectedVersion: args.sessionRecord.version,
@@ -592,12 +604,12 @@ async function failStrandedSessionWithFallback(args: {
     await recordAgentTurnSessionSummary({
       actor: args.sessionRecord.actor,
       conversationId: args.conversationId,
-      destination: args.sessionRecord.destination,
+      destination: routing.destination,
       dispatchId: args.sessionRecord.dispatchId,
       dispatchOutcome: "failed",
       sessionId: args.sessionRecord.sessionId,
       sliceId: args.sessionRecord.sliceId,
-      source: args.sessionRecord.source,
+      source: routing.source,
       state: "failed",
       surface: args.sessionRecord.surface,
     });
@@ -630,7 +642,7 @@ async function failStrandedSessionWithFallback(args: {
   const channelId =
     thread?.channelId ??
     requireSlackDestination(
-      args.sessionRecord.destination,
+      routing.destination,
       "Stranded agent continuation",
     ).channelId;
   await postSlackMessage({
@@ -680,13 +692,18 @@ async function recoverStrandedRunningSession(args: {
   const modelProfile = recoveryProjection.modelProfile;
   const modelId = modelIdForProfile(botConfig, modelProfile);
 
+  const routing = await resolveTurnSessionRouting({
+    conversationId: args.conversationId,
+    destination: sessionRecord.destination,
+    source: sessionRecord.source,
+  });
   const parked = await persistYieldSessionRecord({
     channelName: sessionRecord.channelName,
     conversationId: args.conversationId,
     sessionId: sessionRecord.sessionId,
     currentSliceId: sessionRecord.sliceId,
-    destination: sessionRecord.destination,
-    source: sessionRecord.source,
+    destination: routing.destination,
+    source: routing.source,
     messages: sessionRecord.piMessages,
     errorMessage: "Recovered running session after hard worker death",
     modelId,

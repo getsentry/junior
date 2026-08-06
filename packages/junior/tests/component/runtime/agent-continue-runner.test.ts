@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSlackSource } from "@sentry/junior-plugin-api";
+import { getConversationStore } from "@/chat/db";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import {
@@ -155,7 +156,7 @@ describe("agent continuation runner callbacks", () => {
     });
   });
 
-  it("fails before continuing when a continuation record is missing source", async () => {
+  it("fails before continuing when source is missing from redis and sql", async () => {
     const conversationId = "slack:C123:1712345.0007";
     const sessionId = "turn_msg_7";
     const sessionRecord = await upsertAgentTurnSessionRecord({
@@ -239,6 +240,104 @@ describe("agent continuation runner callbacks", () => {
     ).resolves.toMatchObject({
       state: "failed",
       errorMessage: "Stored Slack source missing for continuation",
+    });
+  });
+
+  it("rebuilds continuation source from sql when the redis record omits it", async () => {
+    const conversationId = "slack:C123:1712345.0008";
+    const sessionId = "turn_msg_8";
+    const sessionRecord = await upsertAgentTurnSessionRecord({
+      modelId: "test/model",
+      conversationId,
+      sessionId,
+      sliceId: 2,
+      state: "awaiting_resume",
+      destination: SLACK_DESTINATION,
+      resumeReason: "timeout",
+      actor: {
+        platform: "slack",
+        teamId: SLACK_DESTINATION.teamId,
+        userId: "U123",
+        userName: "stored-user",
+        fullName: "Stored User",
+        email: "stored@example.com",
+      },
+      piMessages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "hello" }],
+          timestamp: 1,
+        },
+      ],
+    });
+    await getConversationStore().recordActivity({
+      conversationId,
+      destination: SLACK_DESTINATION,
+      sessionSource: SLACK_SOURCE,
+      visibility: "private",
+    });
+    await persistThreadStateById(conversationId, {
+      conversation: {
+        schemaVersion: 1,
+        backfill: {},
+        compactions: [],
+        messages: [
+          {
+            id: "msg.8",
+            role: "user",
+            text: "resume this request",
+            createdAtMs: 1,
+            author: {
+              userId: "U123",
+            },
+          },
+        ],
+        processing: {
+          activeTurnId: sessionId,
+        },
+        stats: {
+          compactedMessageCount: 0,
+          estimatedContextTokens: 0,
+          totalMessageCount: 1,
+          updatedAtMs: 1,
+        },
+        vision: {
+          byFileId: {},
+        },
+      },
+    });
+
+    const { continueSlackAgentRun } =
+      await import("@/chat/runtime/agent-continue-runner");
+
+    await expect(
+      continueSlackAgentRun(
+        {
+          conversationId,
+          destination: SLACK_DESTINATION,
+          sessionId,
+          expectedVersion: sessionRecord.version,
+        },
+        {
+          agentRunner: agentRunnerShouldNotRun,
+          resumeTurn: async (args) => {
+            const prepared = await args.beforeStart?.();
+            if (!prepared) {
+              throw new Error("Expected the continuation to prepare");
+            }
+            if (!prepared.replyContext) {
+              throw new Error("Expected prepared continuation reply context");
+            }
+            expect(prepared.replyContext.routing.source).toEqual(SLACK_SOURCE);
+            return true;
+          },
+        },
+      ),
+    ).resolves.toBe(true);
+    await expect(
+      getAgentTurnSessionRecord(conversationId, sessionId),
+    ).resolves.toMatchObject({
+      state: "awaiting_resume",
     });
   });
 
