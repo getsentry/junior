@@ -22,6 +22,7 @@ import type { PluginUserPageLink } from "@sentry/junior-plugin-api";
 
 import { Button } from "../../components/Button";
 import { LoadingView } from "../../components/LoadingView";
+import { SelectableRow } from "../../components/SelectableRow";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import {
@@ -534,12 +535,13 @@ function MemoryRow(props: {
   const visibility = metadataValue(props.record, "Visibility");
   const isPublic = visibility === "Public";
   return (
-    <div
+    <SelectableRow
       className={cn(
-        "group flex items-stretch transition-colors",
+        "flex items-stretch",
         !props.first && "border-t border-white/[0.055]",
-        props.selected ? "bg-cyan-300/[0.045]" : "hover:bg-white/[0.025]",
       )}
+      onSelect={props.onSelect}
+      selected={props.selected}
     >
       <button
         aria-expanded={props.selected}
@@ -614,7 +616,7 @@ function MemoryRow(props: {
           size={16}
         />
       </button>
-    </div>
+    </SelectableRow>
   );
 }
 

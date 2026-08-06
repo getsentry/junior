@@ -13,6 +13,7 @@ import { useTasksData } from "../../api";
 import { Button, ToggleButton } from "../../components/Button";
 import { LoadingView } from "../../components/LoadingView";
 import { SearchInput } from "../../components/SearchInput";
+import { SelectableRow } from "../../components/SelectableRow";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { deleteDashboardResource } from "../../http";
@@ -318,11 +319,10 @@ function TaskRow(props: {
   const { task } = props;
   return (
     <article role="listitem">
-      <div
-        className={cn(
-          "grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 px-4 py-3 transition-colors md:grid-cols-[minmax(0,1.4fr)_minmax(9rem,0.7fr)_auto_auto] lg:grid-cols-[minmax(0,1.35fr)_minmax(9rem,0.65fr)_minmax(13rem,1fr)_auto_auto_auto]",
-          props.selected ? "bg-cyan-300/[0.045]" : "hover:bg-white/[0.025]",
-        )}
+      <SelectableRow
+        className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 px-4 py-3 md:grid-cols-[minmax(0,1.4fr)_minmax(9rem,0.7fr)_auto_auto] lg:grid-cols-[minmax(0,1.35fr)_minmax(9rem,0.65fr)_minmax(13rem,1fr)_auto_auto_auto]"
+        onSelect={props.onSelect}
+        selected={props.selected}
       >
         <button
           aria-expanded={props.selected}
@@ -419,7 +419,7 @@ function TaskRow(props: {
         ) : (
           <span aria-hidden="true" className="size-8" />
         )}
-      </div>
+      </SelectableRow>
     </article>
   );
 }
