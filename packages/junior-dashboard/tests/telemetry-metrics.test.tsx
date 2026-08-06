@@ -148,6 +148,29 @@ describe("CostMetric", () => {
     };
     expect(activeTurnModelId(onlyCompleted)).toBeUndefined();
     expect(hasOpenTurn(onlyCompleted)).toBe(false);
+
+    // Long active turns can page lifecycle events out of the latest window.
+    const truncatedActive = {
+      status: "active" as const,
+      events: [
+        {
+          seq: 10,
+          createdAt: "2026-01-01T00:10:00.000Z",
+          data: {
+            type: "tool_calls" as const,
+            calls: [
+              {
+                toolCallId: "tool-1",
+                name: "bash",
+                status: "running" as const,
+              },
+            ],
+          },
+        },
+      ],
+    };
+    expect(activeTurnModelId(truncatedActive)).toBeUndefined();
+    expect(hasOpenTurn(truncatedActive)).toBe(true);
   });
 
   it("shimmers changing metrics but not the timer", () => {

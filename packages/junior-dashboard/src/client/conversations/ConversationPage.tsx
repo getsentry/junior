@@ -448,6 +448,7 @@ function ConversationStats(props: {
                 props.detail?.auxiliaryCosts ??
                 props.conversation.auxiliaryCosts
               }
+              live={live}
               modelUsage={props.detail?.modelUsage}
               pendingModelId={pendingModelId}
               summary={costSummary}

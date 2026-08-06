@@ -795,6 +795,7 @@ function transcriptMeta(
           content: (
             <CostMetric
               auxiliaryCosts={conversation.auxiliaryCosts}
+              live={live}
               modelUsage={conversation.modelUsage}
               pendingModelId={pendingModelId}
               summary={costSummary}

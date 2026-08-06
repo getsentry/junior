@@ -81,28 +81,46 @@ const terminalTurnLifecycleStates = new Set([
 export function activeTurnModelId(
   conversation: Pick<ConversationDetailReport, "events" | "status"> | undefined,
 ): string | undefined {
-  return activeTurn(conversation)?.modelId;
+  return analyzeActiveTurns(conversation).modelId;
 }
 
-/** Whether the conversation currently has a started turn that has not finished. */
+/**
+ * Whether live metrics should treat the conversation as still changing.
+ * Prefers open-turn evidence when present; falls back to conversation status
+ * when the loaded event window no longer contains lifecycle facts.
+ */
 export function hasOpenTurn(
   conversation: Pick<ConversationDetailReport, "events" | "status"> | undefined,
 ): boolean {
-  return Boolean(activeTurn(conversation));
+  if (conversation?.status !== "active") return false;
+  const analysis = analyzeActiveTurns(conversation);
+  if (analysis.openTurnId) return true;
+  // Loaded page proved only closed turns; don't keep shimmering in the gap.
+  if (analysis.sawLifecycle) return false;
+  // Long active turns can page lifecycle events out of the latest window.
+  return true;
 }
 
-function activeTurn(
+function analyzeActiveTurns(
   conversation: Pick<ConversationDetailReport, "events" | "status"> | undefined,
-): { modelId?: string; turnId: string } | undefined {
-  if (conversation?.status !== "active") return undefined;
+): {
+  modelId?: string;
+  openTurnId?: string;
+  sawLifecycle: boolean;
+} {
+  if (conversation?.status !== "active") {
+    return { sawLifecycle: false };
+  }
   const closedTurnIds = new Set<string>();
   let openTurnId: string | undefined;
   let modelId: string | undefined;
   let modelTurnId: string | undefined;
+  let sawLifecycle = false;
   for (let index = conversation.events.length - 1; index >= 0; index -= 1) {
     const data = conversation.events[index]?.data;
     if (!data) continue;
     if (data.type === "turn_lifecycle") {
+      sawLifecycle = true;
       if (terminalTurnLifecycleStates.has(data.state)) {
         closedTurnIds.add(data.turnId);
         continue;
@@ -123,12 +141,15 @@ function activeTurn(
     }
   }
   if (!openTurnId) {
-    if (!modelTurnId || closedTurnIds.has(modelTurnId)) return undefined;
+    if (!modelTurnId || closedTurnIds.has(modelTurnId)) {
+      return { sawLifecycle };
+    }
     openTurnId = modelTurnId;
   }
   return {
-    turnId: openTurnId,
+    openTurnId,
     modelId: modelTurnId === openTurnId ? modelId : undefined,
+    sawLifecycle,
   };
 }
 
@@ -298,6 +319,7 @@ function auxiliaryOperationLabel(
 export function CostMetric(props: {
   align?: "left" | "right";
   auxiliaryCosts?: ConversationAuxiliaryCosts;
+  live?: boolean;
   modelUsage?: ConversationModelUsage[];
   pendingModelId?: string;
   summary: CostUsageSummary | undefined;
@@ -319,7 +341,7 @@ export function CostMetric(props: {
         props.pendingModelId,
       )}
     >
-      <ShimmerText active={pending}>{label}</ShimmerText>
+      <ShimmerText active={pending || props.live}>{label}</ShimmerText>
     </MetricValue>
   );
 }
