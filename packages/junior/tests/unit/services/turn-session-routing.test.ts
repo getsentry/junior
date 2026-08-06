@@ -92,4 +92,29 @@ describe("resolveTurnSessionRouting", () => {
       source: undefined,
     });
   });
+
+  it("rebuilds channel-level source from destination when sessionSource is absent", async () => {
+    const store = conversationStore({
+      get: vi.fn(async () =>
+        conversation({
+          destination: DESTINATION,
+        }),
+      ),
+    });
+
+    await expect(
+      resolveTurnSessionRouting({
+        conversationId: "agent-dispatch:dispatch-1",
+        conversationStore: store,
+      }),
+    ).resolves.toEqual({
+      destination: DESTINATION,
+      source: {
+        platform: "slack",
+        teamId: "T123",
+        channelId: "C123",
+        visibility: "private",
+      },
+    });
+  });
 });

@@ -39,7 +39,7 @@ describe("session source", () => {
     });
   });
 
-  it("rejects slack sources without a thread anchor", () => {
+  it("keeps channel-level slack sources without inventing a thread anchor", () => {
     expect(
       normalizeSessionSource({
         platform: "slack",
@@ -48,7 +48,12 @@ describe("session source", () => {
         channelId: "C123",
         messageTs: "1700000000.000200",
       }),
-    ).toBeUndefined();
+    ).toEqual({
+      platform: "slack",
+      visibility: "public",
+      teamId: "T123",
+      channelId: "C123",
+    });
     expect(
       parseSessionSource({
         platform: "slack",
@@ -57,7 +62,12 @@ describe("session source", () => {
         channelId: "C123",
         messageTs: "1700000000.000200",
       }),
-    ).toBeUndefined();
+    ).toEqual({
+      platform: "slack",
+      visibility: "public",
+      teamId: "T123",
+      channelId: "C123",
+    });
   });
 
   it("normalizes local sources", () => {

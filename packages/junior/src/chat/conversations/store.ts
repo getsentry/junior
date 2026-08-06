@@ -49,7 +49,8 @@ export interface Conversation {
   source?: ConversationSource;
   /**
    * Structured inbound Source locator for this conversation session.
-   * Session-stable (Slack thread anchor, not per-message ts). Set-once.
+   * Session-stable (threaded Slack keeps threadTs; channel-level turns omit
+   * it; never stores per-message ts). Set-once.
    */
   sessionSource?: SessionSource;
   title?: string;
