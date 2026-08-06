@@ -27,6 +27,7 @@ import {
   type PluginUserPageRecord,
   usePluginUserPageData,
 } from "../user/pluginUserPageData";
+import { pathWithSearch } from "../../searchParams";
 import { cn, dashboardContainerClass } from "../../styles";
 import {
   type MemoryDashboardData,
@@ -46,6 +47,7 @@ export function MemoryPage(props: { page: PluginUserPageLink }) {
   const overview = location.pathname === basePath;
   const library = location.pathname === libraryPath || Boolean(memoryId);
   if (!overview && !library) return <Navigate replace to={basePath} />;
+  const libraryHref = pathWithSearch(libraryPath, location.search);
 
   const navigationClass = ({ isActive }: { isActive: boolean }) =>
     cn(
@@ -74,7 +76,7 @@ export function MemoryPage(props: { page: PluginUserPageLink }) {
         <NavLink className={navigationClass} end to={basePath}>
           Overview
         </NavLink>
-        <NavLink className={navigationClass} to={libraryPath}>
+        <NavLink className={navigationClass} to={libraryHref}>
           Memories
         </NavLink>
       </nav>
@@ -145,10 +147,13 @@ function MemoryLibrary(props: {
   } = usePluginUserPageData(props.page);
   const dashboardQuery = useMemoryDashboardData();
   const navigate = useNavigate();
+  const location = useLocation();
   const { memoryId } = useParams();
   const memoryQuery = useMemoryRecord(memoryId);
   const selectedRecord =
     memoryQuery.data ?? records.find((record) => record.id === memoryId);
+  const memoryPath = (pathname: string) =>
+    pathWithSearch(pathname, location.search);
 
   if (!query.data && !query.error) {
     return <LoadingView label="Loading memories" />;
@@ -222,9 +227,11 @@ function MemoryLibrary(props: {
                   key={record.id}
                   onSelect={() =>
                     navigate(
-                      memoryId === record.id
-                        ? props.libraryPath
-                        : `/memories/${encodeURIComponent(record.id)}`,
+                      memoryPath(
+                        memoryId === record.id
+                          ? props.libraryPath
+                          : `/memories/${encodeURIComponent(record.id)}`,
+                      ),
                     )
                   }
                   record={record}
@@ -250,7 +257,7 @@ function MemoryLibrary(props: {
           <MemoryDetailsDrawer
             action={action}
             onAction={runAction}
-            onClose={() => navigate(props.libraryPath)}
+            onClose={() => navigate(memoryPath(props.libraryPath))}
             record={selectedRecord}
           />
         </div>
