@@ -1,9 +1,7 @@
 import {
-  localActorSchema,
-  localSourceSchema,
+  actorSchema,
   platformSchema,
-  slackActorSchema,
-  slackSourceSchema,
+  sourceSchema,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 
@@ -31,27 +29,12 @@ export type MemoryEmbeddingMetric = (typeof MEMORY_EMBEDDING_METRICS)[number];
 const nonEmptyStringSchema = z.string().min(1);
 
 /** Runtime-owned memory invocation fields used for scope and source authority. */
-export const slackMemoryRuntimeContextSchema = z
+export const memoryRuntimeContextSchema = z
   .object({
     conversationId: nonEmptyStringSchema.optional(),
-    actor: slackActorSchema.optional(),
-    source: slackSourceSchema,
+    actor: actorSchema.optional(),
+    source: sourceSchema,
   })
   .strict();
-
-/** Runtime-owned local memory invocation fields used for scope and source authority. */
-export const localMemoryRuntimeContextSchema = z
-  .object({
-    conversationId: nonEmptyStringSchema.optional(),
-    actor: localActorSchema.optional(),
-    source: localSourceSchema,
-  })
-  .strict();
-
-/** Runtime-owned memory invocation fields accepted by memory store operations. */
-export const memoryRuntimeContextSchema = z.union([
-  slackMemoryRuntimeContextSchema,
-  localMemoryRuntimeContextSchema,
-]);
 
 export type MemoryRuntimeContext = z.output<typeof memoryRuntimeContextSchema>;

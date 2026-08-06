@@ -81,7 +81,7 @@ function sourceConversationKey(ctx: MemoryRuntimeContext): string | undefined {
 
 function actorScopeKey(ctx: MemoryRuntimeContext): string | undefined {
   const actor = ctx.actor;
-  if (!actor?.userId) {
+  if (!actor || actor.platform === "system") {
     return undefined;
   }
   if (actor.platform === "slack") {
