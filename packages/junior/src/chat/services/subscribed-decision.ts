@@ -73,8 +73,8 @@ const replyDecisionSchema = z
   })
   .strict();
 
-const ROUTER_CONFIDENCE_THRESHOLD = 0.8;
-const ROUTER_CLASSIFIER_MAX_TOKENS = 240;
+const ROUTER_CONFIDENCE_THRESHOLD = 0.7;
+const ROUTER_CLASSIFIER_MAX_TOKENS = 400;
 const LEADING_SLACK_MENTION_RE = /^\s*<@([A-Z0-9]+)(?:\|([^>]+))?>[\s,:-]*/i;
 const LEADING_NAMED_MENTION_RE = /^\s*@([a-z0-9._-]+)\b[\s,:-]*/i;
 const TRANSCRIPT_MESSAGE_LINE_RE =
@@ -93,9 +93,8 @@ const DIRECTED_FOLLOW_UP_CUE_RE =
   /\b(?:you said|you just said|your last response|your last answer|what did you just say|what do you mean|what did you mean|explain(?: that| this| it| more)?|clarify(?: that| this| it)?|expand(?: on)?(?: that| this| it)?|elaborate(?: on)?(?: that| this| it)?|say more)\b/i;
 const TERSE_CLARIFICATION_RE =
   /^(?:which one|which ones|why|how so|what do you mean|what did you mean|say more|explain that|clarify that|expand on that|elaborate on that)\??$/i;
-const GENERIC_IMMEDIATE_SIDE_CONVERSATION_RE =
-  /^(?:is that (?:the )?right (?:approach|call|move)|(?:can|could|would) you check on this)\??$/i;
-const RECENT_THREAD_WINDOW = 6;
+const RECENT_THREAD_WINDOW = 40;
+const MAX_ROUTER_CONTEXT_CHARS = 40_000;
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -174,23 +173,6 @@ function isTerseClarification(text: string): boolean {
   return TERSE_CLARIFICATION_RE.test(text.trim());
 }
 
-function isGenericImmediateSideConversation(text: string): boolean {
-  const trimmed = text.trim();
-  if (GENERIC_IMMEDIATE_SIDE_CONVERSATION_RE.test(trimmed)) {
-    return true;
-  }
-
-  if (!trimmed.toLowerCase().startsWith("what about")) {
-    return false;
-  }
-
-  const wordCount = trimmed
-    .split(/\s+/)
-    .map((part) => part.trim())
-    .filter(Boolean).length;
-  return wordCount > 3;
-}
-
 function parseTranscriptMessages(
   conversationContext: string | undefined,
 ): TranscriptMessage[] {
@@ -222,9 +204,37 @@ function parseTranscriptMessages(
 
 function buildRouterSignals(input: SubscribedDecisionInput): RouterSignals {
   const transcriptMessages = parseTranscriptMessages(input.conversationContext);
-  const recentMessages = transcriptMessages
-    .filter((message) => message.role !== "system")
-    .slice(-RECENT_THREAD_WINDOW);
+  const recentMessages: TranscriptMessage[] = [];
+  let recentMessageChars = 0;
+  const visibleMessages = transcriptMessages.filter(
+    (entry) => entry.role === "assistant" || entry.role === "user",
+  );
+  for (const message of visibleMessages
+    .slice(-RECENT_THREAD_WINDOW)
+    .reverse()) {
+    const entryChars = message.author.length + message.text.length;
+    if (
+      recentMessages.length > 0 &&
+      recentMessageChars + entryChars > MAX_ROUTER_CONTEXT_CHARS
+    ) {
+      break;
+    }
+    recentMessages.unshift(message);
+    recentMessageChars += entryChars;
+  }
+  const firstUserMessage = visibleMessages.find(
+    (message) => message.role === "user",
+  );
+  if (
+    firstUserMessage &&
+    !recentMessages.includes(firstUserMessage) &&
+    recentMessageChars +
+      firstUserMessage.author.length +
+      firstUserMessage.text.length <=
+      MAX_ROUTER_CONTEXT_CHARS
+  ) {
+    recentMessages.unshift(firstUserMessage);
+  }
 
   const latestPriorMessage = [...transcriptMessages]
     .reverse()
@@ -296,32 +306,6 @@ function buildRouterPrompt(rawText: string, signals: RouterSignals): string {
   ].join("\n");
 }
 
-function getReplyConfidenceThreshold(signals: RouterSignals): number {
-  let threshold = ROUTER_CONFIDENCE_THRESHOLD;
-
-  if (
-    signals.assistantWasLastSpeaker &&
-    signals.humanMessagesSinceLastAssistant === 0
-  ) {
-    if (
-      signals.currentMessageHasDirectedFollowUpCue ||
-      signals.currentMessageIsTerseClarification
-    ) {
-      threshold = 0.65;
-    } else {
-      threshold = 0.9;
-    }
-  } else if (signals.humanMessagesSinceLastAssistant === 1) {
-    threshold = signals.currentMessageHasDirectedFollowUpCue ? 0.8 : 0.9;
-  } else if (signals.humanMessagesSinceLastAssistant === undefined) {
-    threshold = 0.85;
-  } else if (signals.humanMessagesSinceLastAssistant >= 2) {
-    threshold = 0.9;
-  }
-
-  return Math.max(0.6, Math.min(0.9, threshold));
-}
-
 /** Fast heuristic check before the LLM classifier — skips messages directed at another party. */
 export function getSubscribedReplyPreflightDecision(args: {
   botUserName: string;
@@ -357,18 +341,16 @@ function buildRouterSystemPrompt(botUserName: string): string {
   return [
     `You are a message router for a Slack assistant named ${assistantName} in a subscribed Slack thread.`,
     `Decide whether ${assistantName} should reply to the latest message.`,
-    "Subscribed threads are passive by default.",
-    `Reply true only when the latest message is aimed at ${assistantName}.`,
-    "Use who currently has the conversation floor, not just topic overlap.",
-    `If ${assistantName} was the last speaker, only a clear turn back to ${assistantName} should count as an implicit follow-up.`,
-    `Terse clarifications like 'which one?' or 'why?' right after ${assistantName} answers can be should_reply=true.`,
-    `Direct self-reference to ${assistantName}'s prior answer like 'what did you just say?' or 'explain that more' can be should_reply=true.`,
-    `If one or more humans spoke after ${assistantName}, require a clear turn back to ${assistantName}. Shared domain vocabulary alone is not enough.`,
-    `Questions like 'what about auth?' or 'can you check on this?' are usually human-to-human unless the thread clearly turns back to ${assistantName}.`,
-    `A vague question like 'is that the right approach?' is still should_reply=false unless it clearly turns back to ${assistantName}.`,
-    "Acknowledgments, reactions, status chatter, and team coordination should be should_reply=false.",
+    "Subscribed threads are passive, but the assistant should participate when the conversation naturally continues work it was doing.",
+    `Reply true when the latest message is explicitly aimed at ${assistantName} or is a natural follow-up to ${assistantName}'s prior question, answer, analysis, or action.`,
+    "Judge the whole user/assistant exchange and who currently has the conversation floor; do not require an explicit name or pronoun when continuity makes the addressee clear.",
+    `If ${assistantName} was the last speaker, questions, corrections, added constraints, requests to act, and topic-specific continuations can be implicit follow-ups even without words like 'you' or '${assistantName}'.`,
+    `Terse continuations like 'which one?', 'why?', 'what about auth?', or 'can you check on this?' can be should_reply=true when they naturally continue ${assistantName}'s immediately preceding contribution.`,
+    `If humans continued a side conversation after ${assistantName}, reply only when the latest message turns the floor back to ${assistantName} or clearly asks for work ${assistantName} was already handling.`,
+    "Shared topic vocabulary alone is not enough when the latest message is plainly human-to-human.",
+    "Acknowledgments, reactions, status chatter, and team coordination that do not ask the assistant to continue should be should_reply=false.",
     `If the latest message clearly tells ${assistantName} to stop watching, replying, or participating, set should_unsubscribe=true and should_reply=false.`,
-    "When uncertain, prefer should_reply=false with low confidence.",
+    "Use low confidence for genuinely ambiguous floor ownership; do not lower confidence merely because the assistant was addressed implicitly.",
     "",
     "Return JSON with should_reply, should_unsubscribe, confidence, and a reason under 160 characters.",
     "Do not return any extra keys.",
@@ -462,21 +444,6 @@ export async function decideSubscribedThreadReply(args: {
     };
   }
 
-  if (
-    signals.assistantWasLastSpeaker &&
-    signals.humanMessagesSinceLastAssistant === 0 &&
-    !signals.currentMessageHasAttachments &&
-    !signals.currentMessageHasDirectedFollowUpCue &&
-    !signals.currentMessageIsTerseClarification &&
-    isGenericImmediateSideConversation(text)
-  ) {
-    return {
-      shouldReply: false,
-      reason: SubscribedReplyReason.SideConversation,
-      reasonDetail: "generic immediate side conversation",
-    };
-  }
-
   try {
     const result = await args.completeObject({
       modelId: args.modelId,
@@ -496,7 +463,6 @@ export async function decideSubscribedThreadReply(args: {
 
     const parsed = replyDecisionSchema.parse(result.object);
     const reason = parsed.reason?.trim() || "classifier";
-    const replyConfidenceThreshold = getReplyConfidenceThreshold(signals);
     if (parsed.should_unsubscribe) {
       if (parsed.confidence < ROUTER_CONFIDENCE_THRESHOLD) {
         return {
@@ -522,7 +488,7 @@ export async function decideSubscribedThreadReply(args: {
       };
     }
 
-    if (parsed.confidence < replyConfidenceThreshold) {
+    if (parsed.confidence < ROUTER_CONFIDENCE_THRESHOLD) {
       return {
         shouldReply: false,
         reason: SubscribedReplyReason.LowConfidence,

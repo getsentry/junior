@@ -165,6 +165,96 @@ describe("subscribed reply decision", () => {
     await expect(classify(fixture.object)).resolves.toEqual(fixture.expected);
   });
 
+  it("projects bounded user and assistant context without tool evidence", async () => {
+    const completeObject = vi.fn(async (_request: { prompt: string }) => ({
+      object: {
+        should_reply: true,
+        should_unsubscribe: false,
+        confidence: 0.72,
+        reason: "natural continuation",
+      },
+    }));
+
+    await expect(
+      decideSubscribedThreadReply({
+        botUserName: "junior",
+        modelId: "router-model",
+        input: makeInput({
+          rawText: "can you check on this?",
+          text: "can you check on this?",
+          conversationContext: [
+            "<thread-transcript>",
+            '  <message role="user" author="David">',
+            "[user] David: investigate the passive router",
+            "  </message>",
+            '  <message role="assistant" author="junior">',
+            "[assistant] junior: the confidence gate looks too strict",
+            "  </message>",
+            "[tool] grep result: must-not-reach-router",
+            "</thread-transcript>",
+          ].join("\n"),
+        }),
+        completeObject,
+        logClassifierFailure: vi.fn(),
+      }),
+    ).resolves.toEqual({
+      shouldReply: true,
+      reason: SubscribedReplyReason.Classifier,
+      reasonDetail: "natural continuation",
+    });
+
+    expect(completeObject).toHaveBeenCalledWith(
+      expect.objectContaining({
+        maxTokens: 400,
+        prompt: expect.stringContaining(
+          "[assistant] junior: the confidence gate looks too strict",
+        ),
+        system: expect.stringContaining(
+          "naturally continues work it was doing",
+        ),
+      }),
+    );
+    const prompt = completeObject.mock.calls[0]?.[0].prompt;
+    expect(prompt).toBeDefined();
+    expect(prompt).toContain("[user] David: investigate the passive router");
+    expect(prompt).not.toContain("must-not-reach-router");
+  });
+
+  it("keeps the first user message with the recent user and assistant exchange", async () => {
+    const completeObject = vi.fn(async (_request: { prompt: string }) => ({
+      object: {
+        should_reply: false,
+        should_unsubscribe: false,
+        confidence: 0.9,
+        reason: "human side conversation",
+      },
+    }));
+    const middle = Array.from(
+      { length: 45 },
+      (_, index) => `[user] Person ${index}: message ${index}`,
+    );
+
+    await decideSubscribedThreadReply({
+      botUserName: "junior",
+      modelId: "router-model",
+      input: makeInput({
+        conversationContext: [
+          "[user] David: original request",
+          ...middle,
+          "[assistant] junior: latest answer",
+        ].join("\n"),
+      }),
+      completeObject,
+      logClassifierFailure: vi.fn(),
+    });
+
+    const prompt = completeObject.mock.calls[0]?.[0].prompt;
+    expect(prompt).toBeDefined();
+    expect(prompt).toContain("[user] David: original request");
+    expect(prompt).toContain("[assistant] junior: latest answer");
+    expect(prompt).not.toContain("[user] Person 0: message 0");
+  });
+
   it("fails closed when the classifier result is invalid", async () => {
     const logClassifierFailure = vi.fn();
     const input = makeInput();
