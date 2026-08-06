@@ -11,7 +11,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { SENTRY_ISSUE_EVENTS } from "./resource-events/issue.js";
 import { createSentryWebhookRoute } from "./webhooks/handler.js";
-import { sentryWebhookSecret } from "./webhooks/secret.js";
+import { sentryWebhookOrg, sentryWebhookSecret } from "./webhooks/secret.js";
 
 /** Register Sentry runtime metadata and signed resource-event ingress. */
 export function sentryPlugin(): PluginRegistration {
@@ -30,7 +30,8 @@ export function sentryPlugin(): PluginRegistration {
           suggestedEvents: [...SENTRY_ISSUE_EVENTS],
         },
       ],
-      isEnabled: () => Boolean(sentryWebhookSecret()),
+      isEnabled: () =>
+        Boolean(sentryWebhookSecret()) && Boolean(sentryWebhookOrg()),
       normalizeIdentifier: (identifier) => identifier.toLowerCase(),
     },
     manifest: {
@@ -50,6 +51,7 @@ export function sentryPlugin(): PluginRegistration {
       envVars: {
         SENTRY_CLIENT_ID: {},
         SENTRY_CLIENT_SECRET: {},
+        SENTRY_WEBHOOK_ORG: {},
         SENTRY_WEBHOOK_SECRET: {},
       },
       name: "sentry",
@@ -74,6 +76,7 @@ export function sentryPlugin(): PluginRegistration {
         return [
           createSentryWebhookRoute({
             resourceEvents: ctx.resourceEvents,
+            webhookOrg: sentryWebhookOrg,
             webhookSecret: sentryWebhookSecret,
           }),
         ];

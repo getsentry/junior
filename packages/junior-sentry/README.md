@@ -38,8 +38,8 @@ Use a **Sentry internal integration** (not a public app install flow):
 
 1. Subscribe to the **issue** webhook resource.
 2. Point it at `https://<junior-host>/api/webhooks/sentry`.
-3. Set the integration client secret as `SENTRY_WEBHOOK_SECRET` and redeploy.
+3. Set the org slug as `SENTRY_WEBHOOK_ORG` and the integration client secret as `SENTRY_WEBHOOK_SECRET`, then redeploy.
 
-Junior verifies `Sentry-Hook-Signature` and publishes `issue.created` for `org/project#issueId` and `org/project`. Create watches/event tasks before the issue arrives; unmatched deliveries are not replayed.
+Junior verifies `Sentry-Hook-Signature`, rejects payloads outside `SENTRY_WEBHOOK_ORG`, and publishes `issue.created` for `org/project#issueId` and `org/project`. Create watches/event tasks before the issue arrives; unmatched deliveries are not replayed.
 
 Full guide: https://junior.sentry.dev/extend/sentry-plugin/

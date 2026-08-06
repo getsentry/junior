@@ -76,6 +76,7 @@ function routeFixture() {
           events.push(event);
         },
       },
+      webhookOrg: () => "sentry",
       webhookSecret: () => SECRET,
     }),
   };
@@ -92,11 +93,11 @@ describe("Sentry webhook resource events", () => {
         body: issueBody(),
         hookResource: "issue",
         hookTimestamp: "2026-08-05T23:00:01.000Z",
-        requestId: REQUEST_ID,
+        webhookOrg: "sentry",
       }),
     ).toEqual([
       {
-        eventKey: `sentry:${REQUEST_ID}:issue.created`,
+        eventKey: "sentry:sentry/junior#7513266773:issue.created",
         eventType: "issue.created",
         identifier: "sentry/junior#7513266773",
         occurredAtMs: Date.parse("2026-08-05T23:00:00.000Z"),
@@ -114,7 +115,7 @@ describe("Sentry webhook resource events", () => {
         ].join("\n"),
       },
       {
-        eventKey: `sentry:${REQUEST_ID}:issue.created`,
+        eventKey: "sentry:sentry/junior#7513266773:issue.created",
         eventType: "issue.created",
         identifier: "sentry/junior",
         occurredAtMs: Date.parse("2026-08-05T23:00:00.000Z"),
@@ -133,7 +134,7 @@ describe("Sentry webhook resource events", () => {
         body,
         hookResource: "issue",
         hookTimestamp: "1785976800",
-        requestId: REQUEST_ID,
+        webhookOrg: "sentry",
       }),
     ).toEqual([
       expect.objectContaining({ occurredAtMs: 1_785_976_800_000 }),
@@ -154,7 +155,23 @@ describe("Sentry webhook resource events", () => {
     ]);
   });
 
+  it("uses a stable event key when Sentry retries with a new request id", async () => {
+    const fixture = routeFixture();
+
+    await fixture.route.handler(
+      signedRequest(issueBody(), { requestId: "delivery-attempt-1" }),
+    );
+    await fixture.route.handler(
+      signedRequest(issueBody(), { requestId: "delivery-attempt-2" }),
+    );
+
+    expect(new Set(fixture.events.map((event) => event.eventKey))).toEqual(
+      new Set(["sentry:sentry/junior#7513266773:issue.created"]),
+    );
+  });
+
   it("uses the trimmed environment secret for plugin ingress", async () => {
+    vi.stubEnv("SENTRY_WEBHOOK_ORG", " SENTRY ");
     vi.stubEnv("SENTRY_WEBHOOK_SECRET", ` ${SECRET} `);
     const publish = vi.fn(async () => {});
     const [route] =
@@ -166,6 +183,18 @@ describe("Sentry webhook resource events", () => {
 
     expect(response?.status).toBe(202);
     expect(publish).toHaveBeenCalledTimes(2);
+  });
+
+  it("ignores a signed delivery for a different organization", async () => {
+    const fixture = routeFixture();
+    const body = issueBody();
+    body.data.issue.url =
+      "https://sentry.io/api/0/organizations/other/issues/7513266773/";
+
+    const response = await fixture.route.handler(signedRequest(body));
+
+    expect(response.status).toBe(202);
+    expect(fixture.events).toEqual([]);
   });
 
   it("rejects a delivery whose signature does not match", async () => {
@@ -221,6 +250,7 @@ describe("Sentry webhook resource events", () => {
           throw new Error("queue unavailable");
         },
       },
+      webhookOrg: () => "sentry",
       webhookSecret: () => SECRET,
     });
 
