@@ -169,7 +169,7 @@ function metricDays(
       date,
       durationMs: row?.durationMs ?? 0,
       ...(row?.costUsd !== null && row?.costUsd !== undefined
-        ? { costUsd: row.costUsd }
+        ? { costUsd: addUsd(undefined, row.costUsd) }
         : {}),
       ...(row?.tokens !== null && row?.tokens !== undefined
         ? { tokens: row.tokens }
