@@ -50,7 +50,7 @@ Out of scope:
 Authoritative sources:
 
 - Current Sentry CLI docs and live `sentry --help` output.
-- The Sentry plugin manifest and Junior runtime contracts.
+- The Sentry plugin runtime registration (`packages/junior-sentry/src/index.ts`) and Junior runtime contracts.
 - GitHub issues or PRs that document observed skill failures.
 
 Useful improvement sources:

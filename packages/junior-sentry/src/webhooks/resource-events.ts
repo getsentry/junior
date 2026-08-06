@@ -45,6 +45,11 @@ function organizationSlug(issueApiUrl: string): string | undefined {
 
 function providerTime(value: string | undefined): number | undefined {
   if (!value) return undefined;
+  // Issue payloads use ISO timestamps; Sentry-Hook-Timestamp is unix seconds.
+  if (/^\d+$/.test(value)) {
+    const seconds = Number(value);
+    return Number.isSafeInteger(seconds) ? seconds * 1000 : undefined;
+  }
   const parsed = Date.parse(value);
   return Number.isFinite(parsed) ? parsed : undefined;
 }

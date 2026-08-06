@@ -1,8 +1,9 @@
 /**
  * Sentry plugin runtime boundary.
  *
- * This package owns Sentry OAuth, CLI setup, signed webhook normalization, and
- * Sentry resource identities. Junior core owns watches and event tasks.
+ * This package owns per-user Sentry OAuth, CLI setup, internal-integration
+ * issue webhook normalization, and Sentry resource identities. Junior core owns
+ * watches and event tasks.
  */
 import {
   defineJuniorPlugin,
@@ -44,7 +45,7 @@ export function sentryPlugin(): PluginRegistration {
         type: "oauth-bearer",
       },
       description:
-        "Investigate Sentry telemetry, manage alerting, and react to issue events",
+        "Investigate Sentry telemetry, manage alerting, and receive issue webhooks",
       displayName: "Sentry",
       envVars: {
         SENTRY_CLIENT_ID: {},
