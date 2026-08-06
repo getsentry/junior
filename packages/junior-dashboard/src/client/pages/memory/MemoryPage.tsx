@@ -10,8 +10,13 @@ import {
   Sparkles,
   UserRound,
 } from "lucide-react";
-import { useState } from "react";
-import { Navigate, NavLink, useLocation } from "react-router";
+import {
+  Navigate,
+  NavLink,
+  useLocation,
+  useNavigate,
+  useParams,
+} from "react-router";
 import type { PluginUserPageLink } from "@sentry/junior-plugin-api";
 
 import { Button } from "../../components/Button";
@@ -30,14 +35,16 @@ import {
 import { MemoryDetailsDrawer } from "./MemoryDetailsDrawer";
 import { MemoryTimeline } from "./MemoryTimeline";
 import { MemoryCostChart } from "./MemoryCostChart";
+import { useMemoryRecord } from "./memoryRecord";
 
 /** Render the temporary first-class dashboard experience for memory. */
 export function MemoryPage(props: { page: PluginUserPageLink }) {
   const location = useLocation();
+  const { memoryId } = useParams();
   const basePath = `/plugins/${encodeURIComponent(props.page.pluginName)}/${encodeURIComponent(props.page.id)}`;
   const libraryPath = `${basePath}/library`;
   const overview = location.pathname === basePath;
-  const library = location.pathname === libraryPath;
+  const library = location.pathname === libraryPath || Boolean(memoryId);
   if (!overview && !library) return <Navigate replace to={basePath} />;
 
   const navigationClass = ({ isActive }: { isActive: boolean }) =>
@@ -71,7 +78,11 @@ export function MemoryPage(props: { page: PluginUserPageLink }) {
           Memories
         </NavLink>
       </nav>
-      {overview ? <MemoryOverview /> : <MemoryLibrary page={props.page} />}
+      {overview ? (
+        <MemoryOverview />
+      ) : (
+        <MemoryLibrary libraryPath={libraryPath} page={props.page} />
+      )}
     </div>
   );
 }
@@ -116,7 +127,10 @@ function MemoryOverview() {
   );
 }
 
-function MemoryLibrary(props: { page: PluginUserPageLink }) {
+function MemoryLibrary(props: {
+  libraryPath: string;
+  page: PluginUserPageLink;
+}) {
   const {
     action,
     content,
@@ -130,10 +144,11 @@ function MemoryLibrary(props: { page: PluginUserPageLink }) {
     setSearchText,
   } = usePluginUserPageData(props.page);
   const dashboardQuery = useMemoryDashboardData();
-  const [selectedRecordId, setSelectedRecordId] = useState<string>();
-  const selectedRecord = records.find(
-    (record) => record.id === selectedRecordId,
-  );
+  const navigate = useNavigate();
+  const { memoryId } = useParams();
+  const memoryQuery = useMemoryRecord(memoryId);
+  const selectedRecord =
+    memoryQuery.data ?? records.find((record) => record.id === memoryId);
 
   if (!query.data && !query.error) {
     return <LoadingView label="Loading memories" />;
@@ -206,12 +221,14 @@ function MemoryLibrary(props: { page: PluginUserPageLink }) {
                   first={index === 0}
                   key={record.id}
                   onSelect={() =>
-                    setSelectedRecordId((current) =>
-                      current === record.id ? undefined : record.id,
+                    navigate(
+                      memoryId === record.id
+                        ? props.libraryPath
+                        : `/memories/${encodeURIComponent(record.id)}`,
                     )
                   }
                   record={record}
-                  selected={record.id === selectedRecordId}
+                  selected={record.id === memoryId}
                 />
               ))}
             </Card>
@@ -233,7 +250,7 @@ function MemoryLibrary(props: { page: PluginUserPageLink }) {
           <MemoryDetailsDrawer
             action={action}
             onAction={runAction}
-            onClose={() => setSelectedRecordId(undefined)}
+            onClose={() => navigate(props.libraryPath)}
             record={selectedRecord}
           />
         </div>

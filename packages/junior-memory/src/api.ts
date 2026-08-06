@@ -27,6 +27,8 @@ export const memoryApiSchema = z
     id: z.string().min(1),
     kind: z.enum(["preference", "procedure", "knowledge"]),
     observedAt: z.iso.datetime(),
+    origin: z.enum(["automatic", "explicit", "other"]),
+    sourcePlatform: z.enum(["local", "slack"]),
     visibility: z.enum(["private", "public"]),
   })
   .strict();
@@ -118,6 +120,8 @@ function apiMemory(
     id: memory.id,
     kind: memory.kind,
     observedAt: new Date(memory.observedAtMs).toISOString(),
+    origin: memory.origin,
+    sourcePlatform: memory.sourcePlatform,
     visibility: memory.visibility,
   };
 }

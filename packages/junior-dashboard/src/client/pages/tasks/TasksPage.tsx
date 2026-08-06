@@ -1,4 +1,5 @@
 import { type ReactNode, useMemo, useState } from "react";
+import { useNavigate, useParams } from "react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { TaskSummary } from "@sentry/junior/api/schema";
 import {
@@ -62,10 +63,11 @@ function taskMatches(task: TaskSummary, search: string): boolean {
 export function TasksPage(props: { enabled: boolean }) {
   const query = useTasksData(props.enabled);
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const { taskId } = useParams();
   const [filter, setFilter] = useState<TaskFilter>("all");
   const [scope, setScope] = useState<TaskScope>("mine");
   const [searchText, setSearchText] = useState("");
-  const [selectedTaskKey, setSelectedTaskKey] = useState<string>();
   const search = searchText.trim().toLowerCase();
   const tasks = query.data?.tasks ?? [];
   const mineCount = tasks.filter((task) => task.ownedByViewer).length;
@@ -92,8 +94,8 @@ export function TasksPage(props: { enabled: boolean }) {
   );
   const visibleTaskCount = visibleTasks.length;
   const selectedTask = useMemo(
-    () => tasks.find((task) => `${task.kind}:${task.id}` === selectedTaskKey),
-    [selectedTaskKey, tasks],
+    () => tasks.find((task) => task.id === taskId),
+    [taskId, tasks],
   );
   const deletion = useMutation({
     mutationFn: async (task: TaskSummary) => {
@@ -204,11 +206,13 @@ export function TasksPage(props: { enabled: boolean }) {
                       }
                     }}
                     onSelect={() =>
-                      setSelectedTaskKey((current) =>
-                        current === key ? undefined : key,
+                      navigate(
+                        taskId === task.id
+                          ? "/tasks"
+                          : `/tasks/${encodeURIComponent(task.id)}`,
                       )
                     }
-                    selected={selectedTaskKey === key}
+                    selected={taskId === task.id}
                     task={task}
                   />
                 );
@@ -228,7 +232,7 @@ export function TasksPage(props: { enabled: boolean }) {
         ) : null}
       </section>
       <TaskDetailsDrawer
-        onClose={() => setSelectedTaskKey(undefined)}
+        onClose={() => navigate("/tasks")}
         task={selectedTask}
       />
     </div>

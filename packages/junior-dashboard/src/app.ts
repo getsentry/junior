@@ -469,7 +469,12 @@ function dashboardPagePaths(
       path: basePath === "/" ? "/system" : `${basePath}/system`,
     },
     {
+      nested: true,
       path: basePath === "/" ? "/tasks" : `${basePath}/tasks`,
+    },
+    {
+      nested: true,
+      path: basePath === "/" ? "/memories" : `${basePath}/memories`,
     },
     {
       path:

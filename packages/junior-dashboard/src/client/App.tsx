@@ -28,6 +28,7 @@ import { PersonProfilePage } from "./pages/people/PersonProfilePage";
 import { SystemPage } from "./pages/system/SystemPage";
 import { TasksPage } from "./pages/tasks/TasksPage";
 import {
+  MemoryPermalinkRoute,
   PluginUserPageRoute,
   pluginUserPagePath,
 } from "./pages/user/PluginUserPage";
@@ -181,7 +182,7 @@ export function DashboardShell() {
               <Navigate replace to="/" />
             )
           }
-          path="/tasks"
+          path="/tasks/:taskId?"
         />
         <Route
           element={<LegacySystemRedirect section="locations" />}
@@ -301,6 +302,18 @@ export function DashboardShell() {
             )
           }
           path="/settings/api-tokens"
+        />
+        <Route
+          element={
+            loading || userPagesQuery.isPending ? (
+              <LoadingView label="Loading memory" />
+            ) : loggedIn && userPagesQuery.data ? (
+              <MemoryPermalinkRoute pages={userPagesQuery.data} />
+            ) : (
+              <Navigate replace to="/" />
+            )
+          }
+          path="/memories/:memoryId"
         />
         <Route
           element={

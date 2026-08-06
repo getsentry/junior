@@ -15,6 +15,14 @@ export function pluginUserPagePath(pluginName: string, pageId: string): string {
   return `/plugins/${encodeURIComponent(pluginName)}/${encodeURIComponent(pageId)}`;
 }
 
+/** Render the memory library for its first-class permalink route. */
+export function MemoryPermalinkRoute(props: { pages: PluginUserPageLink[] }) {
+  const page = props.pages.find(
+    (item) => item.pluginName === "memory" && item.id === "memories",
+  );
+  return page ? <MemoryPage page={page} /> : <Navigate replace to="/" />;
+}
+
 /** Select the core renderer for one registered plugin page. */
 export function PluginUserPageRoute(props: { pages: PluginUserPageLink[] }) {
   const { pageId, pluginName } = useParams();
