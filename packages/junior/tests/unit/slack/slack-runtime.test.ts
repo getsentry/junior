@@ -108,7 +108,7 @@ describe("createSlackTurnRuntime", () => {
             {
               explicitMention: true,
               message: skipped,
-              rawText: "<@U0APP> first queued bit",
+              sourceText: "<@U0APP> first queued bit",
               userText: "first queued bit",
             },
           ],
@@ -172,7 +172,7 @@ describe("createSlackTurnRuntime", () => {
       expect(deps.prepareTurnState).toHaveBeenCalledWith(
         expect.objectContaining({
           text: {
-            rawText: "<@U123> stripped text",
+            sourceText: "<@U123> stripped text",
             userText: "stripped text",
           },
         }),

@@ -17,8 +17,7 @@ import {
   type ModelProfile,
 } from "@/chat/model-profile";
 import {
-  getSlackMessageAgentText,
-  getSlackMessageSourceText,
+  getSlackMessageInput,
   getSlackMessageTs,
 } from "@/chat/slack/message";
 import { readSlackActionToken } from "@/chat/slack/action-token";
@@ -58,7 +57,6 @@ import {
   getRunId,
   stripLeadingBotMention,
 } from "@/chat/runtime/thread-context";
-import { stripLeadingSteeringOverride } from "@/chat/slack/message-control";
 import {
   persistThreadRuntimeState,
   persistThreadState,
@@ -97,7 +95,6 @@ import {
   resolveSlackChannelTypeFromMessage,
   resolveSlackConversationContext,
 } from "@/chat/slack/conversation-context";
-import { appendSlackLegacyAttachmentText } from "@/chat/slack/legacy-attachments";
 import { type ThreadArtifactsState } from "@/chat/state/artifacts";
 import { lookupSlackUser } from "@/chat/slack/user";
 import { createActor, parseActorUserId, type Actor } from "@/chat/actor";
@@ -528,23 +525,16 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         modelId: standardModelId(botConfig),
       },
       async () => {
-        const sourceText = getSlackMessageSourceText(message);
-        const agentText = getSlackMessageAgentText(message);
-        const strippedUserText = stripLeadingBotMention(
-          stripLeadingSteeringOverride(agentText),
-          {
-            botUserId: deps.getSlackAdapter().botUserId,
-            stripLeadingSlackMentionToken:
-              options.explicitMention || Boolean(message.isMention),
-          },
-        );
-        const currentText: TurnMessageText = {
-          rawText: appendSlackLegacyAttachmentText(sourceText, message.raw),
-          userText: appendSlackLegacyAttachmentText(
-            strippedUserText,
-            message.raw,
+        const currentText = getSlackMessageInput(message, {
+          stripLeadingBotMention: (text, stripOptions) =>
+            stripLeadingBotMention(text, {
+              ...stripOptions,
+              botUserId: deps.getSlackAdapter().botUserId,
+            }),
+          stripLeadingSlackMentionToken: Boolean(
+            options.explicitMention || message.isMention,
           ),
-        };
+        });
         await Promise.all(
           (options.queuedMessages ?? [])
             .filter((queued) => !isResourceEventMessage(queued.message))
@@ -757,7 +747,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 options.explicitMention || message.isMention,
               ),
               message,
-              rawText: currentText.rawText,
+              sourceText: currentText.sourceText,
               userText: currentText.userText,
             },
           ].filter(

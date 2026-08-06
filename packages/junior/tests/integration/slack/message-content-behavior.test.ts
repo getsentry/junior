@@ -113,6 +113,47 @@ describe("Slack behavior: message content", () => {
     expect(calls[0]?.prompt).toBe("please summarize the deploy status");
   });
 
+  it("includes full structured link targets in agent and conversation text", async () => {
+    const calls: CapturedCall[] = [];
+    const fullUrl =
+      "https://evals.sentry.dev/run/536be3d5-76e9-4d2c-b172-9756b5b4e6fc";
+
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        replyExecutor: {
+          agentRunner: {
+            run: async (request) => {
+              calls.push({ prompt: request.input.messageText });
+              return completedReply("Reviewed.");
+            },
+          },
+        },
+      },
+    });
+
+    const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700005000.500" });
+    const message = createTestMessage({
+      id: "m-content-link-target",
+      text: "<@U0APP> inspect evals.sentry.dev/run/…",
+      links: [{ url: fullUrl }],
+      isMention: true,
+      threadId: thread.id,
+      author: { userId: "U0TESTER" },
+    });
+
+    await slackRuntime.handleNewMention(thread, message, {
+      destination: createTestDestination(thread),
+    });
+
+    expect(calls[0]?.prompt).toBe(
+      `inspect evals.sentry.dev/run/…\n\nLinks:\n${fullUrl}`,
+    );
+    const conversation = coerceThreadConversationState(thread.getState());
+    expect(
+      conversation.messages.find((entry) => entry.id === message.id)?.text,
+    ).toBe(`inspect evals.sentry.dev/run/…\n\nLinks:\n${fullUrl}`);
+  });
+
   it("preserves non-leading mention tokens in user content", async () => {
     const calls: CapturedCall[] = [];
 

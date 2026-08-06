@@ -9,7 +9,7 @@ export interface TurnContext {
 }
 
 export interface TurnMessageText {
-  rawText: string;
+  sourceText: string;
   userText: string;
 }
 
@@ -47,9 +47,9 @@ export function combineTurnText(
   latestText: TurnMessageText,
 ): TurnMessageText {
   return {
-    rawText: combineTextParts(
-      queuedMessages.map((message) => message.rawText),
-      latestText.rawText,
+    sourceText: combineTextParts(
+      queuedMessages.map((message) => message.sourceText),
+      latestText.sourceText,
     ),
     userText: combineTextParts(
       queuedMessages.map((message) => message.userText),
