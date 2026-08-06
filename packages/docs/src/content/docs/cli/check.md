@@ -56,6 +56,8 @@ For each file it validates:
 
 For official `@sentry/junior-*` plugin packages, the command warns when the installed package version differs from `@sentry/junior`. This catches partial updates without requiring migration-specific checks.
 
+The command also compares literal `configDefaults` keys in app source files with discovered plugin content. Unknown keys emit a warning without failing validation. Runtime startup performs the authoritative check against the configured plugin set.
+
 When the target already contains Junior app markers such as `app/SOUL.md`, `app/WORLD.md`, `app/DESCRIPTION.md`, `app/skills/`, or `app/plugins/`, the command also checks the app-root Markdown files:
 
 - `app/SOUL.md` for assistant personality. Missing emits a warning.

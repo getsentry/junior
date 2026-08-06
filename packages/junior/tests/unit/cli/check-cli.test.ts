@@ -409,7 +409,7 @@ describe("check cli", () => {
     ).toBe(true);
   });
 
-  it("fails when app configDefaults references an unregistered plugin key", async () => {
+  it("warns when app configDefaults references an unregistered plugin key", async () => {
     const repoRoot = makeTempDir("junior-validate-config-defaults-");
     writeFile(
       path.join(repoRoot, "package.json"),
@@ -459,15 +459,11 @@ describe("check cli", () => {
     );
 
     const lines: string[] = [];
-    await expect(
-      runCheck(repoRoot, {
-        info: (line) => lines.push(line),
-        warn: (line) => lines.push(line),
-        error: (line) => lines.push(line),
-      }),
-    ).rejects.toThrow(
-      "Validation failed (1 error, 1 plugin manifest, 0 skill directories checked).",
-    );
+    await runCheck(repoRoot, {
+      info: (line) => lines.push(line),
+      warn: (line) => lines.push(line),
+      error: (line) => lines.push(line),
+    });
 
     expect(
       lines.some((line) =>
@@ -476,6 +472,9 @@ describe("check cli", () => {
         ),
       ),
     ).toBe(true);
+    expect(lines.at(-1)).toContain(
+      "Validation passed (1 plugin manifest, 0 skill directories checked).",
+    );
   });
 
   it("accepts configDefaults from JS-defined packaged plugin manifests", async () => {

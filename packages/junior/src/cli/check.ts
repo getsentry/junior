@@ -898,7 +898,7 @@ async function validateAppSourceFiles(
       for (const keyMatch of block.matchAll(/["']([^"']+)["']\s*:/g)) {
         const key = keyMatch[1];
         if (key && !registeredConfigKeys.has(key)) {
-          errors.push(
+          warnings.push(
             `${sourcePath}: configDefaults key "${key}" is not a registered plugin config key`,
           );
         }
