@@ -480,7 +480,7 @@ function ConversationStats(props: {
   );
 
   return (
-    <div className="col-span-full mt-1 hidden border-t border-white/[0.07] pt-3 md:block">
+    <div className="col-span-full mt-1 border-t border-white/[0.07] pt-3">
       <MetricList
         className="break-words text-xs leading-[1.5] text-dashboard-text-muted"
         items={stats}

@@ -67,8 +67,9 @@ test("opens a conversation in the built dashboard", async ({ page }) => {
 
   const costMetric = page
     .getByRole("main")
-    .getByText("$0.03", { exact: true })
-    .first();
+    .locator('span[tabindex="0"]')
+    .filter({ hasText: /^\$0\.03$/ });
+  await expect(costMetric).toHaveCount(1);
   await costMetric.hover();
   const costTooltip = page.getByRole("tooltip");
   await expect(costTooltip).toBeVisible();
@@ -173,7 +174,12 @@ test("positions a long cost tooltip clear of its metric", async ({ page }) => {
     `${server.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
   );
 
-  const cost = page.getByText("$0.04", { exact: true }).first();
+  // Active conversation cost is provisional (`$0.04+`) until the turn settles.
+  const cost = page
+    .locator('span[tabindex="0"]')
+    .filter({ hasText: /^\$0\.04\+?$/ })
+    .first();
+  await expect(cost).toBeVisible();
   await cost.hover();
   const tooltip = page.getByRole("tooltip");
   await expect(tooltip).toBeVisible();
@@ -245,18 +251,19 @@ test("opens metric tooltips on touch", async ({ browser }) => {
 
     const costMetric = page
       .locator('span[tabindex="0"]')
-      .filter({ hasText: "$0.03", visible: true });
+      .filter({ hasText: /^\$0\.03$/, visible: true });
     await expect(costMetric).toHaveCount(1);
 
     await costMetric.tap();
     await expect(page.getByRole("tooltip")).toBeVisible();
 
-    await costMetric.tap();
+    // Close outside the metric/tooltip. Heading can sit under an above-placed tip.
+    await page.getByRole("searchbox", { name: "Search transcript" }).tap();
     await expect(page.getByRole("tooltip")).toBeHidden();
 
     await costMetric.tap();
     await expect(page.getByRole("tooltip")).toBeVisible();
-    await page.getByRole("heading", { name: "Checkout latency triage" }).tap();
+    await page.getByRole("searchbox", { name: "Search transcript" }).tap();
     await expect(page.getByRole("tooltip")).toBeHidden();
   } finally {
     await context.close();

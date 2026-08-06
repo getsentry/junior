@@ -14,6 +14,11 @@ export function ShimmerText(props: {
   className?: string;
   "aria-label"?: string;
 }) {
+  // Keep inactive text unwrapped so metric triggers stay the text host for
+  // focus/hover tooling and e2e locators.
+  if (!props.active && !props.className && !props["aria-label"]) {
+    return props.children;
+  }
   const className = cn(props.active && shimmerTextClassName, props.className);
   if (props.as === "strong") {
     return (
