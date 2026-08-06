@@ -57,7 +57,8 @@ Pro and Enterprise teams.
    Cancelled**.
 3. Select only the projects Junior should monitor.
 4. Enter `https://<your-domain>/api/webhooks/vercel` as the endpoint URL. It
-   must be publicly reachable over HTTPS.
+   must be publicly reachable over HTTPS; do not place it behind interactive
+   login or deployment protection that blocks Vercel's request.
 5. Create the webhook and copy the displayed secret. Vercel shows this secret
    only once.
 6. Set `VERCEL_WEBHOOK_SECRET` in Junior's Production environment, then

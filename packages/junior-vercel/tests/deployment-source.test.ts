@@ -107,12 +107,23 @@ describe("Vercel deployment source", () => {
     });
   });
 
-  it("rejects a commit-scoped watch without a target", () => {
+  it("defaults a commit-scoped watch to production when target is omitted", async () => {
+    vi.stubEnv("VERCEL_WEBHOOK_SECRET", "webhook-secret");
     const { tool } = toolFixture();
 
-    expect(() =>
-      tool.prepareArguments?.({ commitSha: COMMIT_SHA, project: "junior" }),
-    ).toThrow(/target is required when commitSha is set/i);
+    await expect(
+      tool.execute?.(
+        { commitSha: COMMIT_SHA, project: "junior" },
+        { toolCallId: "deployment-source-default-target" },
+      ),
+    ).resolves.toMatchObject({
+      commitSha: COMMIT_SHA.toLowerCase(),
+      deploymentTarget: "production",
+      projectId: "prj_junior",
+      subscribable: {
+        identifier: `deployment-source:prj_junior:production:${COMMIT_SHA.toLowerCase()}`,
+      },
+    });
   });
 
   it("uses teamId when the remembered team is a Vercel team ID", async () => {

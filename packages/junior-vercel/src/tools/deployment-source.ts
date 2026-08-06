@@ -24,24 +24,14 @@ const inputSchema = z
     project: nonEmptyStringSchema.describe("Vercel project name or prj_ ID."),
     target: targetSchema
       .describe(
-        'Optional deployment target such as "production". Omit to watch every target for the project. Required with commitSha so the commit watch stays target-scoped.',
+        'Optional deployment target such as "production". Omit to watch every target for the project. Defaults to "production" when commitSha is set.',
       )
       .optional(),
     team: nonEmptyStringSchema
       .describe("Optional Vercel team slug or team_ ID that owns the project.")
       .optional(),
   })
-  .strict()
-  .superRefine((input, ctx) => {
-    if (input.commitSha && !input.target) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message:
-          'target is required when commitSha is set. Use "production", "preview", or "staging".',
-        path: ["target"],
-      });
-    }
-  });
+  .strict();
 
 const deploymentSourceSchema = z.object({
   commitSha: commitShaSchema.nullable(),
@@ -93,7 +83,7 @@ export function createVercelDeploymentSourceTool(
       readOnlyHint: true,
     },
     description:
-      "Resolve a Vercel project name or ID and describe a subscribable deployment source. Omit commitSha to watch every deployment for the project, optionally limited to one target (production, preview, or staging). Provide commitSha and target together to watch one deployment. Use the user's explicit project and team, otherwise the vercel.project and vercel.team conversation defaults.",
+      "Resolve a Vercel project name or ID and describe a subscribable deployment source. Omit commitSha to watch every deployment for the project, optionally limited to one target (production, preview, or staging). Provide commitSha to watch one deployment; target defaults to production when omitted with commitSha. Use the user's explicit project and team, otherwise the vercel.project and vercel.team conversation defaults.",
     inputSchema,
     outputSchema,
     async execute(input): Promise<Result> {
@@ -110,7 +100,10 @@ export function createVercelDeploymentSourceTool(
       }
       const projectId = z.object({ id: projectIdSchema }).parse(parsed).id;
       const commitSha = input.commitSha?.toLowerCase();
-      const deploymentTarget = input.target;
+      // Preserve the previous commit-watch default so one-shot SHA watches stay
+      // production-scoped unless the caller names another target.
+      const deploymentTarget =
+        input.target ?? (commitSha ? ("production" as const) : undefined);
       const subscribable = ctx.resourceEvents.canSubscribe
         ? vercelDeploymentSourceSubscribable({
             commitSha,

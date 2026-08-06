@@ -144,6 +144,12 @@ export function normalizeVercelResourceEvents(args: {
       : eventType === "deployment.error"
         ? "failed"
         : "was canceled";
+  const untrustedParts = [
+    `Target: ${target}`,
+    payload.data.commitSha ? `Commit: ${payload.data.commitSha}` : undefined,
+    `Deployment: ${deploymentId}`,
+  ].filter((part): part is string => part !== undefined);
+  const untrustedText = untrustedParts.join("\n");
 
   return deploymentSourceTargets({
     commitSha: payload.data.commitSha,
@@ -156,5 +162,6 @@ export function normalizeVercelResourceEvents(args: {
     identifier: resource.identifier,
     ...(completeOnTerminalEvent ? { terminal: true } : {}),
     trustedSummary: `${resource.label} (${deploymentId}) ${outcome}.`,
+    untrustedText,
   }));
 }

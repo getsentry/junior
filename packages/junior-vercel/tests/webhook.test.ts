@@ -77,6 +77,9 @@ describe("Vercel webhook resource events", () => {
         occurredAtMs: 1_784_043_000_000,
         identifier: "deployment-source:prj_junior",
         trustedSummary: `Vercel deployments for prj_junior (dpl_123abc) ${outcome}.`,
+        untrustedText: `Target: production
+Commit: ${COMMIT_SHA}
+Deployment: dpl_123abc`,
       },
       {
         eventKey: `vercel:evt_delivery_123:${eventType}`,
@@ -84,6 +87,9 @@ describe("Vercel webhook resource events", () => {
         occurredAtMs: 1_784_043_000_000,
         identifier: "deployment-source:prj_junior:production",
         trustedSummary: `Vercel production deployments for prj_junior (dpl_123abc) ${outcome}.`,
+        untrustedText: `Target: production
+Commit: ${COMMIT_SHA}
+Deployment: dpl_123abc`,
       },
       {
         eventKey: `vercel:evt_delivery_123:${eventType}`,
@@ -92,6 +98,9 @@ describe("Vercel webhook resource events", () => {
         identifier: `deployment-source:prj_junior:production:${COMMIT_SHA}`,
         terminal: true,
         trustedSummary: `Vercel production deployment for prj_junior at abcdef012345 (dpl_123abc) ${outcome}.`,
+        untrustedText: `Target: production
+Commit: ${COMMIT_SHA}
+Deployment: dpl_123abc`,
       },
     ]);
   });
@@ -128,6 +137,7 @@ describe("Vercel webhook resource events", () => {
         identifier: "deployment-source:prj_junior",
         trustedSummary:
           "Vercel deployments for prj_junior (dpl_123abc) succeeded.",
+        untrustedText: "Target: production\nDeployment: dpl_123abc",
       },
       {
         eventKey: "vercel:evt_delivery_123:deployment.succeeded",
@@ -136,6 +146,7 @@ describe("Vercel webhook resource events", () => {
         identifier: "deployment-source:prj_junior:production",
         trustedSummary:
           "Vercel production deployments for prj_junior (dpl_123abc) succeeded.",
+        untrustedText: "Target: production\nDeployment: dpl_123abc",
       },
     ]);
   });
