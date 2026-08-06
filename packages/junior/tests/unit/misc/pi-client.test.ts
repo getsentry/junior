@@ -15,7 +15,6 @@ vi.mock("@vercel/oidc", () => ({
 
 import {
   getGatewayApiKey,
-  getPiGatewayApiKey,
   MISSING_GATEWAY_CREDENTIALS_ERROR,
   resolveGatewayCredential,
 } from "@/chat/pi/gateway-auth";
@@ -85,21 +84,6 @@ describe("getGatewayApiKey", () => {
 
   it("returns undefined when no credential is available", async () => {
     await expect(getGatewayApiKey()).resolves.toBeUndefined();
-  });
-});
-
-describe("getPiGatewayApiKey", () => {
-  beforeEach(() => {
-    mocks.getEnvApiKey.mockReset();
-    mocks.getVercelOidcToken.mockReset();
-    mocks.getEnvApiKey.mockReturnValue(undefined);
-    mocks.getVercelOidcToken.mockRejectedValue(new Error("oidc unavailable"));
-  });
-
-  it("returns the same token shape used by Pi Agent getApiKey hooks", async () => {
-    mocks.getEnvApiKey.mockReturnValue("api-key");
-
-    await expect(getPiGatewayApiKey()).resolves.toBe("api-key");
   });
 });
 

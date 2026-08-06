@@ -10,17 +10,12 @@ import {
   type ThinkingLevel,
 } from "@/chat/pi/sdk";
 import { createGatewayProvider } from "@ai-sdk/gateway";
-import {
-  resolveGatewayCredential,
-  type GatewayCredential,
-} from "@/chat/pi/gateway-auth";
+import { resolveGatewayCredential } from "@/chat/pi/gateway-auth";
 
 export {
   getGatewayApiKey,
-  getPiGatewayApiKey,
   MISSING_GATEWAY_CREDENTIALS_ERROR,
   resolveGatewayCredential,
-  type GatewayAuthMode,
   type GatewayCredential,
 } from "@/chat/pi/gateway-auth";
 import {
@@ -94,13 +89,6 @@ function embeddingCostUsd(
   return costPerMillionTokens === undefined
     ? undefined
     : (inputTokens * costPerMillionTokens) / 1_000_000;
-}
-
-/** Build an AI SDK gateway provider from the resolved Junior credential. */
-function createResolvedGatewayProvider(credential: GatewayCredential | undefined) {
-  // Pass the token only when Junior resolved one. Leaving apiKey unset lets the
-  // AI SDK retry ambient OIDC/API-key discovery for paths that skip our helper.
-  return createGatewayProvider(credential ? { apiKey: credential.token } : {});
 }
 
 function extractText(message: {
@@ -363,7 +351,9 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
   metadata?: Record<string, unknown>;
 }): Promise<{ costUsd?: number; object: z.infer<TSchema> }> {
   const credential = await resolveGatewayCredential();
-  const provider = createResolvedGatewayProvider(credential);
+  const provider = createGatewayProvider(
+    credential ? { apiKey: credential.token } : {},
+  );
   let result: GenerateObjectResult<unknown>;
   try {
     result = await withSpan(
@@ -454,7 +444,9 @@ export async function embedTexts(params: {
     throw new Error("Embedding text is required.");
   }
   const credential = await resolveGatewayCredential();
-  const provider = createResolvedGatewayProvider(credential);
+  const provider = createGatewayProvider(
+    credential ? { apiKey: credential.token } : {},
+  );
   try {
     const result = await withSpan(
       `${GEN_AI_OPERATION_EMBEDDINGS} ${params.modelId}`,

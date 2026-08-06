@@ -541,7 +541,7 @@ vi.mock("@/chat/pi/client", () => ({
           : "The edit completed; verify the changed file.",
     };
   },
-  getPiGatewayApiKey: () => "test-gateway-key",
+  getGatewayApiKey: () => "test-gateway-key",
   resolveGatewayModel: (modelId: string) => modelId,
 }));
 

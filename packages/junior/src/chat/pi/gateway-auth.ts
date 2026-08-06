@@ -9,10 +9,8 @@ import { getVercelOidcToken } from "@vercel/oidc";
 import { getEnvApiKey } from "@/chat/pi/sdk";
 import { toOptionalTrimmed } from "@/chat/optional-string";
 
-export type GatewayAuthMode = "oidc" | "api_key";
-
 export type GatewayCredential = {
-  mode: GatewayAuthMode;
+  mode: "oidc" | "api_key";
   token: string;
 };
 
@@ -30,9 +28,14 @@ export const MISSING_GATEWAY_CREDENTIALS_ERROR =
 export async function resolveGatewayCredential(): Promise<
   GatewayCredential | undefined
 > {
-  const oidcToken = await readVercelOidcToken();
-  if (oidcToken) {
-    return { mode: "oidc", token: oidcToken };
+  try {
+    const oidcToken = toOptionalTrimmed(await getVercelOidcToken());
+    if (oidcToken) {
+      return { mode: "oidc", token: oidcToken };
+    }
+  } catch {
+    // OIDC is optional outside Vercel runtime/build contexts. Missing header,
+    // missing env, or local refresh failure should fall through to API key.
   }
 
   const apiKey = toOptionalTrimmed(getEnvApiKey("vercel-ai-gateway"));
@@ -43,30 +46,7 @@ export async function resolveGatewayCredential(): Promise<
   return undefined;
 }
 
-/**
- * Resolve the bearer token string for paths that need Authorization directly.
- * Prefer this over reading env vars at call sites.
- */
+/** Resolve the bearer token string for Authorization headers and Pi getApiKey. */
 export async function getGatewayApiKey(): Promise<string | undefined> {
-  const credential = await resolveGatewayCredential();
-  return credential?.token;
-}
-
-/**
- * Resolve the bearer token for Pi Agent getApiKey hooks.
- * Always returns a Promise so callers can pass it through unchanged.
- */
-export async function getPiGatewayApiKey(): Promise<string | undefined> {
-  return getGatewayApiKey();
-}
-
-/** Read a live Vercel OIDC token, or undefined when OIDC is unavailable. */
-async function readVercelOidcToken(): Promise<string | undefined> {
-  try {
-    return toOptionalTrimmed(await getVercelOidcToken());
-  } catch {
-    // OIDC is optional outside Vercel runtime/build contexts. Missing header,
-    // missing env, or local refresh failure should fall through to API key.
-    return undefined;
-  }
+  return (await resolveGatewayCredential())?.token;
 }
