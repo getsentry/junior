@@ -145,6 +145,11 @@ describe("agent invocation conversation work", () => {
           agentName: "researcher",
         }),
       ).rejects.toThrow("idempotency key was reused with different input");
+      await completeAgentInvocation({
+        invocationId: next.invocationId,
+        result: "Next finished.",
+        status: "completed",
+      });
       const nextWithDifferentReasoning = await createAgentInvocation({
         ...invocationInput,
         agentName: "researcher",
