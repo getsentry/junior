@@ -55,7 +55,10 @@ import {
   scheduleAgentContinue as defaultScheduleAgentContinue,
   type AgentContinueRequest,
 } from "@/chat/services/agent-continue";
-import { resolveTurnSessionRouting } from "@/chat/services/turn-session-routing";
+import {
+  resolveTurnSessionRouting,
+  type TurnSessionRouting,
+} from "@/chat/services/turn-session-routing";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import { postSlackMessage } from "@/chat/slack/outbound";
 import { getStateAdapter } from "@/chat/state/adapter";
@@ -290,21 +293,28 @@ async function failUnresumableContinuation(args: {
     errorMessage: args.errorMessage,
   });
   if (args.summary.dispatchId) {
-    const routing = await resolveTurnSessionRouting({
-      conversationId: args.conversationId,
-    });
-    await recordAgentTurnSessionSummary({
-      actor: args.summary.actor,
-      conversationId: args.conversationId,
-      destination: routing.destination,
-      dispatchId: args.summary.dispatchId,
-      dispatchOutcome: "failed",
-      sessionId: args.summary.sessionId,
-      sliceId: args.summary.sliceId,
-      source: routing.source,
-      state: "failed",
-      surface: args.summary.surface,
-    });
+    try {
+      const routing = await resolveTurnSessionRouting({
+        conversationId: args.conversationId,
+      });
+      await recordAgentTurnSessionSummary({
+        actor: args.summary.actor,
+        conversationId: args.conversationId,
+        destination: routing.destination,
+        dispatchId: args.summary.dispatchId,
+        dispatchOutcome: "failed",
+        sessionId: args.summary.sessionId,
+        sliceId: args.summary.sliceId,
+        source: routing.source,
+        state: "failed",
+        surface: args.summary.surface,
+      });
+    } catch (error) {
+      logException(error, "agent.continue.dispatch_failure_summary.failed", {
+        "app.ai.conversation_id": args.conversationId,
+        "app.ai.session_id": args.summary.sessionId,
+      });
+    }
   }
 }
 
@@ -585,29 +595,12 @@ async function failStrandedSessionWithFallback(args: {
   errorMessage: string;
   sessionRecord: AgentTurnSessionRecord;
 }): Promise<void> {
-  const routing = await resolveTurnSessionRouting({
-    conversationId: args.conversationId,
-  });
   await failAgentTurnSessionRecord({
     conversationId: args.conversationId,
     expectedVersion: args.sessionRecord.version,
     sessionId: args.sessionRecord.sessionId,
     errorMessage: args.errorMessage,
   });
-  if (args.sessionRecord.dispatchId) {
-    await recordAgentTurnSessionSummary({
-      actor: args.sessionRecord.actor,
-      conversationId: args.conversationId,
-      destination: routing.destination,
-      dispatchId: args.sessionRecord.dispatchId,
-      dispatchOutcome: "failed",
-      sessionId: args.sessionRecord.sessionId,
-      sliceId: args.sessionRecord.sliceId,
-      source: routing.source,
-      state: "failed",
-      surface: args.sessionRecord.surface,
-    });
-  }
   const currentState = await getPersistedThreadState(args.conversationId);
   const conversation = coerceThreadConversationState(currentState);
   await hydrateConversationMessages({
@@ -632,6 +625,32 @@ async function failStrandedSessionWithFallback(args: {
     "app.ai.conversation_id": args.conversationId,
     "app.ai.session_id": args.sessionRecord.sessionId,
   });
+  let routing: TurnSessionRouting;
+  try {
+    routing = await resolveTurnSessionRouting({
+      conversationId: args.conversationId,
+    });
+  } catch (error) {
+    logException(error, "agent.turn.stranded_session.routing_unavailable", {
+      "app.ai.conversation_id": args.conversationId,
+      "app.ai.session_id": args.sessionRecord.sessionId,
+    });
+    return;
+  }
+  if (args.sessionRecord.dispatchId) {
+    await recordAgentTurnSessionSummary({
+      actor: args.sessionRecord.actor,
+      conversationId: args.conversationId,
+      destination: routing.destination,
+      dispatchId: args.sessionRecord.dispatchId,
+      dispatchOutcome: "failed",
+      sessionId: args.sessionRecord.sessionId,
+      sliceId: args.sessionRecord.sliceId,
+      source: routing.source,
+      state: "failed",
+      surface: args.sessionRecord.surface,
+    });
+  }
   const thread = parseSlackThreadId(args.conversationId);
   const channelId =
     thread?.channelId ??
@@ -684,9 +703,19 @@ async function recoverStrandedRunningSession(args: {
   const modelProfile = recoveryProjection.modelProfile;
   const modelId = modelIdForProfile(botConfig, modelProfile);
 
-  const routing = await resolveTurnSessionRouting({
-    conversationId: args.conversationId,
-  });
+  let routing: TurnSessionRouting;
+  try {
+    routing = await resolveTurnSessionRouting({
+      conversationId: args.conversationId,
+    });
+  } catch (error) {
+    await failStrandedSessionWithFallback({
+      conversationId: args.conversationId,
+      errorMessage: error instanceof Error ? error.message : String(error),
+      sessionRecord,
+    });
+    return false;
+  }
   const parked = await persistYieldSessionRecord({
     channelName: sessionRecord.channelName,
     conversationId: args.conversationId,

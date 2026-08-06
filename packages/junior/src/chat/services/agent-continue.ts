@@ -7,8 +7,14 @@
 import type { StateAdapter } from "chat";
 import type { Destination } from "@sentry/junior-plugin-api";
 import type { ConversationStore } from "@/chat/conversations/store";
-import { resolveTurnSessionRouting } from "@/chat/services/turn-session-routing";
-import { getAgentTurnSessionRecord } from "@/chat/state/turn-session";
+import {
+  resolveTurnSessionRouting,
+  type TurnSessionRouting,
+} from "@/chat/services/turn-session-routing";
+import {
+  failAgentTurnSessionRecord,
+  getAgentTurnSessionRecord,
+} from "@/chat/state/turn-session";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   ensureConversationWake,
@@ -49,10 +55,21 @@ export async function getAwaitingAgentContinueRequest(args: {
   ) {
     return undefined;
   }
-  const routing = await resolveTurnSessionRouting({
-    conversationId: args.conversationId,
-    conversationStore: args.conversationStore,
-  });
+  let routing: TurnSessionRouting;
+  try {
+    routing = await resolveTurnSessionRouting({
+      conversationId: args.conversationId,
+      conversationStore: args.conversationStore,
+    });
+  } catch (error) {
+    await failAgentTurnSessionRecord({
+      conversationId: args.conversationId,
+      expectedVersion: sessionRecord.version,
+      sessionId: args.sessionId,
+      errorMessage: error instanceof Error ? error.message : String(error),
+    });
+    return undefined;
+  }
 
   return {
     conversationId: args.conversationId,

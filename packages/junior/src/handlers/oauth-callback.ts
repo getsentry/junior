@@ -63,7 +63,10 @@ import {
 import { escapeXml } from "@/chat/xml";
 import type { WaitUntilFn } from "@/handlers/types";
 import { scheduleAgentContinue } from "@/chat/services/agent-continue";
-import { resolveTurnSessionRouting } from "@/chat/services/turn-session-routing";
+import {
+  resolveTurnSessionRouting,
+  type TurnSessionRouting,
+} from "@/chat/services/turn-session-routing";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { requireSlackDestination } from "@/chat/destination";
@@ -380,9 +383,20 @@ async function resumeOAuthSessionRecordTurn(
         });
         return false;
       }
-      const routing = await resolveTurnSessionRouting({
-        conversationId: stored.resumeConversationId!,
-      });
+      let routing: TurnSessionRouting;
+      try {
+        routing = await resolveTurnSessionRouting({
+          conversationId: stored.resumeConversationId!,
+        });
+      } catch (error) {
+        await failAgentTurnSessionRecord({
+          conversationId: stored.resumeConversationId!,
+          expectedVersion: lockedSessionRecord.version,
+          sessionId: lockedSessionId,
+          errorMessage: error instanceof Error ? error.message : String(error),
+        });
+        return false;
+      }
 
       await recordAuthorizationCompleted({
         conversationId: stored.resumeConversationId!,

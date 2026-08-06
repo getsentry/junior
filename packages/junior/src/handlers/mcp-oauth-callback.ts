@@ -60,7 +60,10 @@ import {
 import { formatProviderLabel } from "@/chat/oauth-flow";
 import { markTurnFailed } from "@/chat/runtime/turn";
 import { scheduleAgentContinue } from "@/chat/services/agent-continue";
-import { resolveTurnSessionRouting } from "@/chat/services/turn-session-routing";
+import {
+  resolveTurnSessionRouting,
+  type TurnSessionRouting,
+} from "@/chat/services/turn-session-routing";
 import { htmlCallbackResponse } from "@/handlers/oauth-html";
 import type { WaitUntilFn } from "@/handlers/types";
 import { createSlackResumeActor, isUserActor, type Actor } from "@/chat/actor";
@@ -363,9 +366,20 @@ async function resumeAuthorizedMcpTurn(args: {
         });
         return false;
       }
-      const routing = await resolveTurnSessionRouting({
-        conversationId: authSession.conversationId,
-      });
+      let routing: TurnSessionRouting;
+      try {
+        routing = await resolveTurnSessionRouting({
+          conversationId: authSession.conversationId,
+        });
+      } catch (error) {
+        await failAgentTurnSessionRecord({
+          conversationId: authSession.conversationId,
+          expectedVersion: lockedSessionRecord.version,
+          sessionId: lockedSessionId,
+          errorMessage: error instanceof Error ? error.message : String(error),
+        });
+        return false;
+      }
 
       await recordAuthorizationCompleted({
         conversationId: authSession.conversationId,
