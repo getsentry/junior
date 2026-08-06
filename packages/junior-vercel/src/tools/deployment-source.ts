@@ -16,20 +16,36 @@ const nonEmptyStringSchema = z.string().trim().min(1);
 
 const inputSchema = z
   .object({
-    commitSha: commitShaSchema.describe("Full 40-character Git commit SHA."),
+    commitSha: commitShaSchema
+      .describe(
+        "Optional full 40-character Git commit SHA. Provide it to watch one deployment; omit it to watch every matching deployment for the project.",
+      )
+      .optional(),
     project: nonEmptyStringSchema.describe("Vercel project name or prj_ ID."),
     target: targetSchema
-      .describe("Deployment target to monitor.")
-      .default("production"),
+      .describe(
+        'Optional deployment target such as "production". Omit to watch every target for the project. Required with commitSha so the commit watch stays target-scoped.',
+      )
+      .optional(),
     team: nonEmptyStringSchema
       .describe("Optional Vercel team slug or team_ ID that owns the project.")
       .optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((input, ctx) => {
+    if (input.commitSha && !input.target) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          'target is required when commitSha is set. Use "production", "preview", or "staging".',
+        path: ["target"],
+      });
+    }
+  });
 
 const deploymentSourceSchema = z.object({
-  commitSha: commitShaSchema,
-  deploymentTarget: targetSchema,
+  commitSha: commitShaSchema.nullable(),
+  deploymentTarget: targetSchema.nullable(),
   projectId: projectIdSchema,
   subscribable: subscribableResourceSchema.optional(),
 });
@@ -77,7 +93,7 @@ export function createVercelDeploymentSourceTool(
       readOnlyHint: true,
     },
     description:
-      "Resolve a Vercel project name or ID and describe its deployment target and full Git commit SHA as a subscribable deployment source. Use the user's explicit project and team, otherwise the vercel.project and vercel.team conversation defaults. Use this after the final deployed commit is known and before waiting for a deployment outcome.",
+      "Resolve a Vercel project name or ID and describe a subscribable deployment source. Omit commitSha to watch every deployment for the project, optionally limited to one target (production, preview, or staging). Provide commitSha and target together to watch one deployment. Use the user's explicit project and team, otherwise the vercel.project and vercel.team conversation defaults.",
     inputSchema,
     outputSchema,
     async execute(input): Promise<Result> {
@@ -93,18 +109,19 @@ export function createVercelDeploymentSourceTool(
         );
       }
       const projectId = z.object({ id: projectIdSchema }).parse(parsed).id;
-      const commitSha = input.commitSha.toLowerCase();
+      const commitSha = input.commitSha?.toLowerCase();
+      const deploymentTarget = input.target;
       const subscribable = ctx.resourceEvents.canSubscribe
         ? vercelDeploymentSourceSubscribable({
             commitSha,
             projectId,
-            target: input.target,
+            target: deploymentTarget,
             webhookSecret: vercelWebhookSecret(),
           })
         : undefined;
       const data: DeploymentSource = {
-        commitSha,
-        deploymentTarget: input.target,
+        commitSha: commitSha ?? null,
+        deploymentTarget: deploymentTarget ?? null,
         projectId,
         ...(subscribable ? { subscribable } : {}),
       };

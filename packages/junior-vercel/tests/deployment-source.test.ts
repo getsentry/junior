@@ -27,7 +27,7 @@ describe("Vercel deployment source", () => {
     vi.unstubAllEnvs();
   });
 
-  it("resolves a channel project and returns a subscribable source", async () => {
+  it("resolves a channel project and returns a commit-scoped subscribable source", async () => {
     vi.stubEnv("VERCEL_WEBHOOK_SECRET", " webhook-secret ");
     const { fetch, tool } = toolFixture();
 
@@ -65,6 +65,56 @@ describe("Vercel deployment source", () => {
     });
   });
 
+  it("returns a project-wide subscribable source when commit and target are omitted", async () => {
+    vi.stubEnv("VERCEL_WEBHOOK_SECRET", "webhook-secret");
+    const { tool } = toolFixture();
+
+    await expect(
+      tool.execute?.(
+        { project: "junior" },
+        { toolCallId: "deployment-source-project" },
+      ),
+    ).resolves.toMatchObject({
+      commitSha: null,
+      deploymentTarget: null,
+      projectId: "prj_junior",
+      subscribable: {
+        identifier: "deployment-source:prj_junior",
+        label: "Vercel deployments for prj_junior",
+        type: "deployment_source",
+      },
+    });
+  });
+
+  it("returns a target-scoped subscribable source without a commit", async () => {
+    vi.stubEnv("VERCEL_WEBHOOK_SECRET", "webhook-secret");
+    const { tool } = toolFixture();
+
+    await expect(
+      tool.execute?.(
+        { project: "junior", target: "production" },
+        { toolCallId: "deployment-source-target" },
+      ),
+    ).resolves.toMatchObject({
+      commitSha: null,
+      deploymentTarget: "production",
+      projectId: "prj_junior",
+      subscribable: {
+        identifier: "deployment-source:prj_junior:production",
+        label: "Vercel production deployments for prj_junior",
+        type: "deployment_source",
+      },
+    });
+  });
+
+  it("rejects a commit-scoped watch without a target", () => {
+    const { tool } = toolFixture();
+
+    expect(() =>
+      tool.prepareArguments?.({ commitSha: COMMIT_SHA, project: "junior" }),
+    ).toThrow(/target is required when commitSha is set/i);
+  });
+
   it("uses teamId when the remembered team is a Vercel team ID", async () => {
     const { fetch, tool } = toolFixture();
 
@@ -91,7 +141,7 @@ describe("Vercel deployment source", () => {
     const { tool } = toolFixture();
 
     const result = await tool.execute?.(
-      { commitSha: COMMIT_SHA, project: "junior", target: "staging" },
+      { project: "junior", target: "staging" },
       { toolCallId: "deployment-source-without-webhooks" },
     );
 
@@ -104,7 +154,7 @@ describe("Vercel deployment source", () => {
     const { tool } = toolFixture(undefined, false);
 
     const result = await tool.execute?.(
-      { commitSha: COMMIT_SHA, project: "junior", target: "staging" },
+      { project: "junior", target: "staging" },
       { toolCallId: "deployment-source-without-subscriptions" },
     );
 
@@ -117,7 +167,7 @@ describe("Vercel deployment source", () => {
 
     await expect(
       tool.execute?.(
-        { commitSha: COMMIT_SHA, project: "missing", target: "production" },
+        { project: "missing", target: "production" },
         { toolCallId: "deployment-source-missing-project" },
       ),
     ).rejects.toThrow("Vercel project lookup failed with HTTP 404");

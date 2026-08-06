@@ -10,7 +10,10 @@ import {
   type PluginRegistration,
 } from "@sentry/junior-plugin-api";
 import { createVercelDeploymentSourceTool } from "./tools/deployment-source.js";
-import { VERCEL_DEPLOYMENT_EVENTS } from "./resource-events/deployment-source.js";
+import {
+  VERCEL_DEPLOYMENT_EVENTS,
+  VERCEL_DEPLOYMENT_SUGGESTED_EVENTS,
+} from "./resource-events/deployment-source.js";
 import { createVercelWebhookRoute } from "./webhooks/handler.js";
 import { vercelWebhookSecret } from "./webhooks/secret.js";
 
@@ -23,7 +26,7 @@ export function vercelPlugin(): PluginRegistration {
         {
           type: "deployment_source",
           supportedEvents: [...VERCEL_DEPLOYMENT_EVENTS],
-          suggestedEvents: [...VERCEL_DEPLOYMENT_EVENTS],
+          suggestedEvents: [...VERCEL_DEPLOYMENT_SUGGESTED_EVENTS],
         },
       ],
       isEnabled: () => Boolean(vercelWebhookSecret()),

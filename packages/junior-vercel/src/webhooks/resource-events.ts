@@ -2,7 +2,7 @@
  * Owns Vercel's deployment webhook wire-format boundary.
  *
  * It validates webhook payloads, ignores unsupported or incomplete deliveries,
- * and emits only canonical terminal resource events.
+ * and emits canonical resource events for project, target, and commit watches.
  */
 import type { ResourceEventInput } from "@sentry/junior-plugin-api";
 import { z } from "zod";
@@ -91,7 +91,41 @@ function isDeploymentEvent(
   );
 }
 
-/** Normalize one verified Vercel delivery into a terminal deployment event. */
+/** Address one deployment through project, target, and optional commit watches. */
+function deploymentSourceTargets(input: {
+  commitSha?: string;
+  projectId: string;
+  target: VercelDeploymentTarget;
+}) {
+  const targets = [
+    {
+      completeOnTerminalEvent: false,
+      resource: vercelDeploymentSourceResource({
+        projectId: input.projectId,
+      }),
+    },
+    {
+      completeOnTerminalEvent: false,
+      resource: vercelDeploymentSourceResource({
+        projectId: input.projectId,
+        target: input.target,
+      }),
+    },
+  ];
+  if (input.commitSha) {
+    targets.push({
+      completeOnTerminalEvent: true,
+      resource: vercelDeploymentSourceResource({
+        commitSha: input.commitSha,
+        projectId: input.projectId,
+        target: input.target,
+      }),
+    });
+  }
+  return targets;
+}
+
+/** Normalize one verified Vercel delivery into deployment resource events. */
 export function normalizeVercelResourceEvents(args: {
   body: unknown;
 }): ResourceEventInput[] {
@@ -100,14 +134,8 @@ export function normalizeVercelResourceEvents(args: {
   const payload = deploymentPayloadSchema.safeParse(envelope.data.payload);
   if (!payload.success) return [];
   const target = payload.data.target;
-  const sha = payload.data.commitSha;
-  if (!target || !sha) return [];
+  if (!target) return [];
 
-  const resource = vercelDeploymentSourceResource({
-    commitSha: sha,
-    projectId: payload.data.projectId,
-    target,
-  });
   const eventType = envelope.data.type;
   const deploymentId = payload.data.deploymentId;
   const outcome =
@@ -116,14 +144,17 @@ export function normalizeVercelResourceEvents(args: {
       : eventType === "deployment.error"
         ? "failed"
         : "was canceled";
-  return [
-    {
-      eventKey: `vercel:${envelope.data.id}:${eventType}`,
-      eventType,
-      occurredAtMs: envelope.data.createdAt,
-      identifier: resource.identifier,
-      terminal: true,
-      trustedSummary: `${resource.label} (${deploymentId}) ${outcome}.`,
-    },
-  ];
+
+  return deploymentSourceTargets({
+    commitSha: payload.data.commitSha,
+    projectId: payload.data.projectId,
+    target,
+  }).map(({ completeOnTerminalEvent, resource }) => ({
+    eventKey: `vercel:${envelope.data.id}:${eventType}`,
+    eventType,
+    occurredAtMs: envelope.data.createdAt,
+    identifier: resource.identifier,
+    ...(completeOnTerminalEvent ? { terminal: true } : {}),
+    trustedSummary: `${resource.label} (${deploymentId}) ${outcome}.`,
+  }));
 }
