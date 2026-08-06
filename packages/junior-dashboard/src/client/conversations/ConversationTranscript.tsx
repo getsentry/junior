@@ -766,17 +766,7 @@ function TranscriptMessageView(props: {
       }}
     >
       <TranscriptMessageHeader
-        meta={[
-          props.message.route
-            ? [
-                props.message.route.modelProfile,
-                props.message.route.reasoningLevel,
-              ]
-                .filter(isString)
-                .join(" · ")
-            : undefined,
-          formatMessageTimestamp(props.message.timestamp),
-        ]}
+        meta={[formatMessageTimestamp(props.message.timestamp)]}
         message={props.message}
         conversation={props.conversation}
       />
