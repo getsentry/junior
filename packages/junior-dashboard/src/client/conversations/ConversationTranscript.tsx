@@ -50,6 +50,7 @@ import {
 } from "./TranscriptHeadingRow";
 import { MetricList, type MetricListItem } from "../components/Metric";
 import {
+  activeTurnModelId,
   CostMetric,
   DurationMetric,
   TurnsMetric,
@@ -747,6 +748,7 @@ function transcriptMeta(
   const duration = formatTranscriptDuration(conversation);
   const tokenSummary = summarizeUsage(conversation.cumulativeUsage);
   const costSummary = summarizeCost(conversation.cumulativeUsage);
+  const pendingModelId = activeTurnModelId(conversation);
   const completeHistory = !conversation.previousCursor;
   const toolSummary = completeHistory
     ? summarizeToolCalls(conversation)
@@ -778,6 +780,7 @@ function transcriptMeta(
                     ).length
                   : undefined
               }
+              live={conversation.status === "active"}
               modelUsage={conversation.modelUsage}
               summary={tokenSummary}
             />
@@ -785,12 +788,13 @@ function transcriptMeta(
           key: "tokens",
         }
       : undefined,
-    costSummary || conversation.auxiliaryCosts
+    costSummary || conversation.auxiliaryCosts || pendingModelId
       ? {
           content: (
             <CostMetric
               auxiliaryCosts={conversation.auxiliaryCosts}
               modelUsage={conversation.modelUsage}
+              pendingModelId={pendingModelId}
               summary={costSummary}
             />
           ),
@@ -805,7 +809,12 @@ function transcriptMeta(
       : undefined,
     toolSummary && toolSummary.total > 0
       ? {
-          content: <ToolCallsMetric summary={toolSummary} />,
+          content: (
+            <ToolCallsMetric
+              live={conversation.status === "active"}
+              summary={toolSummary}
+            />
+          ),
           key: "tools",
         }
       : undefined,

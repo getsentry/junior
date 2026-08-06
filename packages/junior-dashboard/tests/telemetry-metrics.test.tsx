@@ -22,7 +22,12 @@ vi.mock("../src/client/components/Metric", () => ({
   ),
 }));
 
-import { CostMetric } from "../src/client/conversations/TelemetryMetrics";
+import {
+  CostMetric,
+  DurationMetric,
+  TokenMetric,
+  ToolCallsMetric,
+} from "../src/client/conversations/TelemetryMetrics";
 
 describe("CostMetric", () => {
   it.each([
@@ -51,6 +56,55 @@ describe("CostMetric", () => {
 
     expect(html).toContain("gpt-5");
     for (const line of expected) expect(html).toContain(line);
+  });
+
+  it("shows the active model and provisional cost while a turn is running", () => {
+    const emptyHtml = renderToStaticMarkup(
+      <CostMetric pendingModelId="openai/gpt-5.6-sol" summary={undefined} />,
+    );
+    expect(emptyHtml).toContain("$…");
+    expect(emptyHtml).toContain("gpt-5.6-sol");
+    expect(emptyHtml).toContain("in progress");
+    expect(emptyHtml).toContain("junior-tool-shimmer");
+
+    const partialHtml = renderToStaticMarkup(
+      <CostMetric
+        pendingModelId="openai/gpt-5.6-sol"
+        summary={{ total: 0.041 }}
+      />,
+    );
+    expect(partialHtml).toContain("$0.04+");
+    expect(partialHtml).toContain("junior-tool-shimmer");
+
+    const settledHtml = renderToStaticMarkup(
+      <CostMetric summary={{ total: 0.041 }} />,
+    );
+    expect(settledHtml).toContain("$0.04");
+    expect(settledHtml).not.toContain("junior-tool-shimmer");
+  });
+
+  it("shimmers changing metrics but not the timer", () => {
+    const tokenHtml = renderToStaticMarkup(
+      <TokenMetric
+        live
+        summary={{ inputTokens: 1_200, outputTokens: 420, totalTokens: 1_620 }}
+      />,
+    );
+    expect(tokenHtml).toContain("1.6k tokens");
+    expect(tokenHtml).toContain("junior-tool-shimmer");
+
+    const toolHtml = renderToStaticMarkup(
+      <ToolCallsMetric
+        live
+        summary={{ items: [{ count: 2, name: "bash" }], total: 2 }}
+      />,
+    );
+    expect(toolHtml).toContain("2 tool calls");
+    expect(toolHtml).toContain("junior-tool-shimmer");
+
+    const durationHtml = renderToStaticMarkup(<DurationMetric label="31s" />);
+    expect(durationHtml).toContain("31s");
+    expect(durationHtml).not.toContain("junior-tool-shimmer");
   });
 
   it("includes auxiliary operations in the total and tooltip", () => {

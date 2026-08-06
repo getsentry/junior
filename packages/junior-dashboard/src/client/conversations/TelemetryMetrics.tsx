@@ -1,5 +1,6 @@
 import type {
   ConversationAuxiliaryCosts,
+  ConversationDetailReport,
   ConversationModelUsage,
 } from "@sentry/junior/api/schema";
 import {
@@ -17,6 +18,7 @@ import {
   type ToolCallSummary,
 } from "../format";
 import { MetricValue, type MetricTooltipLine } from "../components/Metric";
+import { cn } from "../styles";
 
 function plural(label: string, count: number): string {
   return `${formatCompactNumber(count)} ${label}${count === 1 ? "" : "s"}`;
@@ -67,6 +69,18 @@ function usageTooltipLines(
 
 function modelLabel(modelId: string): string {
   return modelId.split("/").at(-1) ?? modelId;
+}
+
+/** Return the model routed for the active turn, when reporting has recorded it. */
+export function activeTurnModelId(
+  conversation: Pick<ConversationDetailReport, "events" | "status"> | undefined,
+): string | undefined {
+  if (conversation?.status !== "active") return undefined;
+  for (let index = conversation.events.length - 1; index >= 0; index -= 1) {
+    const event = conversation.events[index];
+    if (event?.data.type === "turn_routed") return event.data.modelId;
+  }
+  return undefined;
 }
 
 function tokenTooltip(
@@ -130,31 +144,45 @@ function costTooltip(
   summary: CostUsageSummary | undefined,
   modelUsage: ConversationModelUsage[] | undefined,
   auxiliaryCosts: ConversationAuxiliaryCosts | undefined,
+  pendingModelId: string | undefined,
 ): {
   tooltip?: MetricTooltipLine[];
   tooltipColumns?: MetricTooltipLine[][];
 } {
   const total = totalConversationCost(summary, auxiliaryCosts);
-  if (!total) return {};
   const modelSummaries = (modelUsage ?? []).flatMap((item) => {
     const modelSummary = summarizeCost(item.usage);
     return modelSummary
       ? [{ modelId: item.modelId, summary: modelSummary }]
       : [];
   });
+  const pendingLines: MetricTooltipLine[] = pendingModelId
+    ? [
+        { value: modelLabel(pendingModelId), valueStyle: "heading" },
+        { value: "in progress" },
+      ]
+    : [];
+  if (!total) return { tooltip: pendingLines };
   if (!auxiliaryCosts) {
-    if (!summary) return {};
     if (!modelSummaries.length) {
-      return { tooltip: costTooltipLines(summary) };
+      return {
+        tooltip: [
+          ...(summary ? costTooltipLines(summary) : []),
+          ...pendingLines,
+        ],
+      };
     }
     return {
-      tooltip: modelSummaries.flatMap((item) => [
-        { value: modelLabel(item.modelId), valueStyle: "heading" },
-        ...costTooltipLines(item.summary).map((line) => ({
-          ...line,
-          label: `• ${line.label}`,
-        })),
-      ]),
+      tooltip: [
+        ...modelSummaries.flatMap((item) => [
+          { value: modelLabel(item.modelId), valueStyle: "heading" as const },
+          ...costTooltipLines(item.summary).map((line) => ({
+            ...line,
+            label: `• ${line.label}`,
+          })),
+        ]),
+        ...pendingLines,
+      ],
     };
   }
 
@@ -185,6 +213,7 @@ function costTooltip(
       }
     }
   }
+  conversationLines.push(...pendingLines);
   const auxiliaryLines: MetricTooltipLine[] = [
     { value: "Auxiliary", valueStyle: "heading" },
     {
@@ -216,22 +245,43 @@ function auxiliaryOperationLabel(
   );
 }
 
+const liveMetricShimmerClassName =
+  "animate-[junior-tool-shimmer_1.6s_linear_infinite] bg-[linear-gradient(90deg,#777_0%,#d6d6d6_40%,#fff_50%,#d6d6d6_60%,#777_100%)] bg-[length:200%_100%] bg-clip-text text-transparent motion-reduce:animate-none";
+
+function LiveMetricText(props: { children: string; live?: boolean }) {
+  return (
+    <span className={cn(props.live && liveMetricShimmerClassName)}>
+      {props.children}
+    </span>
+  );
+}
+
 /** Render estimated model cost with a hoverable USD breakdown. */
 export function CostMetric(props: {
   align?: "left" | "right";
   auxiliaryCosts?: ConversationAuxiliaryCosts;
   modelUsage?: ConversationModelUsage[];
+  pendingModelId?: string;
   summary: CostUsageSummary | undefined;
 }) {
   const total = totalConversationCost(props.summary, props.auxiliaryCosts);
-  if (!total) return null;
+  if (!total && !props.pendingModelId) return null;
+  const pending = Boolean(props.pendingModelId);
+  const label = total
+    ? `${formatCostSummary(total)}${pending ? "+" : ""}`
+    : "$…";
   return (
     <MetricValue
       align={props.align}
       tooltipPlacement="above"
-      {...costTooltip(props.summary, props.modelUsage, props.auxiliaryCosts)}
+      {...costTooltip(
+        props.summary,
+        props.modelUsage,
+        props.auxiliaryCosts,
+        props.pendingModelId,
+      )}
     >
-      {formatCostSummary(total)}
+      <LiveMetricText live={pending}>{label}</LiveMetricText>
     </MetricValue>
   );
 }
@@ -240,6 +290,7 @@ export function CostMetric(props: {
 export function TokenMetric(props: {
   align?: "left" | "right";
   compactionCount?: number;
+  live?: boolean;
   modelUsage?: ConversationModelUsage[];
   summary: TokenUsageSummary | undefined;
 }) {
@@ -253,7 +304,9 @@ export function TokenMetric(props: {
         props.compactionCount,
       )}
     >
-      {formatTokenSummary(props.summary)}
+      <LiveMetricText live={props.live}>
+        {formatTokenSummary(props.summary)}
+      </LiveMetricText>
     </MetricValue>
   );
 }
@@ -285,6 +338,7 @@ export function DurationMetric(props: {
 /** Render a tool-call count with top tool names and counts. */
 export function ToolCallsMetric(props: {
   align?: "left" | "right";
+  live?: boolean;
   loading?: boolean;
   summary: ToolCallSummary | undefined;
 }) {
@@ -297,7 +351,9 @@ export function ToolCallsMetric(props: {
   }));
   return (
     <MetricValue align={props.align} tooltip={tooltip}>
-      {plural("tool call", props.summary.total)}
+      <LiveMetricText live={props.live}>
+        {plural("tool call", props.summary.total)}
+      </LiveMetricText>
     </MetricValue>
   );
 }
