@@ -16,19 +16,14 @@ resource types and events that plugin supports.
 
 Junior gives the agent two tool paths for those events:
 
-| Tool path             | Use it for                              | Scope and lifetime                                                                                             |
-| --------------------- | --------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| Resource subscription | Watch, notify, or tell-me-when requests | Temporarily delivers matching events to the current conversation until it expires, completes, or is cancelled. |
-| Event task            | Whenever-this-happens-do-X automation   | Stores an instruction for matching events and remains configured for its destination until deleted.            |
-
-A resource subscription is a temporary conversation association. It returns
-matching updates to the conversation that requested the watch; it does not run a
-stored durable instruction.
-
-An event task is a durable instruction. When a matching resource event occurs,
-Junior dispatches the stored instruction and delivers the result to its Slack
-channel or DM. Event tasks are managed for that destination, not only the thread
-where they were created.
+- **Resource subscription** — for watch, notify, or tell-me-when requests. A
+  temporary conversation association that delivers matching events back to the
+  current conversation until it expires, completes, or is cancelled. It does not
+  run a stored durable instruction.
+- **Event task** — for whenever-this-happens-do-X automation. A durable
+  instruction that Junior dispatches when a matching resource event occurs, then
+  delivers to its Slack channel or DM. Event tasks remain configured for that
+  destination until deleted, not only the thread where they were created.
 
 Both paths use the plugin's registered namespace, resource type, identifier, and
 supported events. Enabling a plugin or configuring its webhook does not create
