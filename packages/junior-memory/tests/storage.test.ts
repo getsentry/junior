@@ -1775,7 +1775,12 @@ describe("memory plugin storage", () => {
 
   it("stores Slack conversation memories for system runs", async () => {
     const fixture = await createMemoryFixture();
+    const actor = { platform: "system" as const, name: "scheduler" };
     const { model } = extractionModel([
+      {
+        kind: "preference",
+        content: "Prefers concise deployment notes.",
+      },
       {
         kind: "knowledge",
         content: "Production deploys require a release marker.",
@@ -1793,12 +1798,12 @@ describe("memory plugin storage", () => {
               return completedRun({
                 conversationId: runtime.conversationId,
                 destination: slackDestination(runtime),
-                actor: { platform: "system", name: "scheduler" },
-                actors: [],
+                actor,
+                actors: [actor],
                 transcript: [
-                  contextMessage(
-                    "Production deploys require a release marker.",
-                    runtime.actor,
+                  instructionMessage(
+                    "I prefer concise deployment notes. Production deploys require a release marker.",
+                    actor,
                   ),
                 ],
                 source: runtime.source,
