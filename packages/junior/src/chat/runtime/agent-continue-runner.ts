@@ -289,15 +289,18 @@ async function failUnresumableContinuation(args: {
     errorMessage: args.errorMessage,
   });
   if (args.summary.dispatchId) {
+    const routing = await resolveTurnSessionRouting({
+      conversationId: args.conversationId,
+    });
     await recordAgentTurnSessionSummary({
       actor: args.summary.actor,
       conversationId: args.conversationId,
-      destination: args.summary.destination,
+      destination: routing.destination,
       dispatchId: args.summary.dispatchId,
       dispatchOutcome: "failed",
       sessionId: args.summary.sessionId,
       sliceId: args.summary.sliceId,
-      source: args.summary.source,
+      source: routing.source,
       state: "failed",
       surface: args.summary.surface,
     });
@@ -639,10 +642,8 @@ async function failStrandedSessionWithFallback(args: {
   const thread = parseSlackThreadId(args.conversationId);
   const channelId =
     thread?.channelId ??
-    requireSlackDestination(
-      routing.destination,
-      "Stranded agent continuation",
-    ).channelId;
+    requireSlackDestination(routing.destination, "Stranded agent continuation")
+      .channelId;
   await postSlackMessage({
     channelId,
     ...(thread?.threadTs ? { threadTs: thread.threadTs } : {}),

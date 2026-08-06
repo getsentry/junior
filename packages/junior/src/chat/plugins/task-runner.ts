@@ -32,6 +32,7 @@ import {
   stripRuntimeTurnContext,
 } from "@/chat/pi/transcript";
 import { getPersistedThreadState } from "@/chat/runtime/thread-state";
+import { resolveTurnSessionRouting } from "@/chat/services/turn-session-routing";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import type { ConversationMessage } from "@/chat/state/conversation";
@@ -258,9 +259,9 @@ function messageExistedAtRunCompletion(
  */
 async function loadConversationContextTranscriptEntries(
   record: AgentTurnSessionRecord,
+  source: PluginRunContext["source"],
 ): Promise<PluginRunTranscriptEntry[]> {
-  const source = record.source;
-  if (source?.platform !== "slack" || isPrivateSource(source)) {
+  if (source.platform !== "slack" || isPrivateSource(source)) {
     return [];
   }
   const state = await getPersistedThreadState(record.conversationId);
@@ -331,9 +332,12 @@ async function loadPluginRun(
   if (record.state !== "completed") {
     throw new Error("Completed plugin task session record is not completed");
   }
-  if (!record.source || !record.destination) {
+  const routing = await resolveTurnSessionRouting({
+    conversationId: params.conversationId,
+  });
+  if (!routing.source || !routing.destination) {
     throw new Error(
-      "Completed plugin task session record is missing source or destination",
+      "Completed plugin task conversation routing is unavailable",
     );
   }
   const runEntries = turnMessagesWithProvenance(record)
@@ -347,20 +351,20 @@ async function loadPluginRun(
       .map((entry) => entry.text),
   );
   const contextEntries = (
-    await loadConversationContextTranscriptEntries(record)
+    await loadConversationContextTranscriptEntries(record, routing.source)
   ).filter(
     (entry) => entry.type !== "message" || !runMessageTexts.has(entry.text),
   );
   return pluginRunContextSchema.parse({
     completedAtMs: record.updatedAtMs,
     conversationId: record.conversationId,
-    destination: record.destination,
+    destination: routing.destination,
     // Derived from the full run provenance on the record, not the sliced or
     // stripped transcript, so it reflects every committed instruction actor.
     actors: record.actors,
     ...(record.actor ? { actor: record.actor } : {}),
     runId: record.sessionId,
-    source: record.source,
+    source: routing.source,
     transcript: [...contextEntries, ...runEntries],
   });
 }
