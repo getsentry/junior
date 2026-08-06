@@ -71,16 +71,65 @@ function modelLabel(modelId: string): string {
   return modelId.split("/").at(-1) ?? modelId;
 }
 
-/** Return the model routed for the active turn, when reporting has recorded it. */
+const terminalTurnLifecycleStates = new Set([
+  "succeeded",
+  "no_reply",
+  "failed",
+]);
+
+/** Return the open turn's routed model, when one is still in progress. */
 export function activeTurnModelId(
   conversation: Pick<ConversationDetailReport, "events" | "status"> | undefined,
 ): string | undefined {
+  return activeTurn(conversation)?.modelId;
+}
+
+/** Whether the conversation currently has a started turn that has not finished. */
+export function hasOpenTurn(
+  conversation: Pick<ConversationDetailReport, "events" | "status"> | undefined,
+): boolean {
+  return Boolean(activeTurn(conversation));
+}
+
+function activeTurn(
+  conversation: Pick<ConversationDetailReport, "events" | "status"> | undefined,
+): { modelId?: string; turnId: string } | undefined {
   if (conversation?.status !== "active") return undefined;
+  const closedTurnIds = new Set<string>();
+  let openTurnId: string | undefined;
+  let modelId: string | undefined;
+  let modelTurnId: string | undefined;
   for (let index = conversation.events.length - 1; index >= 0; index -= 1) {
-    const event = conversation.events[index];
-    if (event?.data.type === "turn_routed") return event.data.modelId;
+    const data = conversation.events[index]?.data;
+    if (!data) continue;
+    if (data.type === "turn_lifecycle") {
+      if (terminalTurnLifecycleStates.has(data.state)) {
+        closedTurnIds.add(data.turnId);
+        continue;
+      }
+      if (data.state === "started" && !closedTurnIds.has(data.turnId)) {
+        openTurnId = data.turnId;
+        break;
+      }
+      continue;
+    }
+    if (
+      data.type === "turn_routed" &&
+      !closedTurnIds.has(data.turnId) &&
+      modelId === undefined
+    ) {
+      modelId = data.modelId;
+      modelTurnId = data.turnId;
+    }
   }
-  return undefined;
+  if (!openTurnId) {
+    if (!modelTurnId || closedTurnIds.has(modelTurnId)) return undefined;
+    openTurnId = modelTurnId;
+  }
+  return {
+    turnId: openTurnId,
+    modelId: modelTurnId === openTurnId ? modelId : undefined,
+  };
 }
 
 function tokenTooltip(

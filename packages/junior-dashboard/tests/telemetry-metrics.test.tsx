@@ -23,8 +23,10 @@ vi.mock("../src/client/components/Metric", () => ({
 }));
 
 import {
+  activeTurnModelId,
   CostMetric,
   DurationMetric,
+  hasOpenTurn,
   TokenMetric,
   ToolCallsMetric,
 } from "../src/client/conversations/TelemetryMetrics";
@@ -81,6 +83,71 @@ describe("CostMetric", () => {
     );
     expect(settledHtml).toContain("$0.04");
     expect(settledHtml).not.toContain("junior-text-shimmer");
+  });
+
+  it("only treats open turns as provisional", () => {
+    const open = {
+      status: "active" as const,
+      events: [
+        {
+          seq: 1,
+          createdAt: "2026-01-01T00:00:01.000Z",
+          data: {
+            type: "turn_lifecycle" as const,
+            turnId: "turn-1",
+            state: "started" as const,
+          },
+        },
+        {
+          seq: 2,
+          createdAt: "2026-01-01T00:00:02.000Z",
+          data: {
+            type: "turn_routed" as const,
+            turnId: "turn-1",
+            modelProfile: "handoff",
+            modelId: "openai/gpt-5.6-sol",
+            reasoningLevel: "high",
+            source: "router" as const,
+          },
+        },
+      ],
+    };
+    expect(activeTurnModelId(open)).toBe("openai/gpt-5.6-sol");
+    expect(hasOpenTurn(open)).toBe(true);
+
+    const completedThenPending = {
+      status: "active" as const,
+      events: [
+        ...open.events,
+        {
+          seq: 3,
+          createdAt: "2026-01-01T00:00:03.000Z",
+          data: {
+            type: "turn_lifecycle" as const,
+            turnId: "turn-1",
+            state: "succeeded" as const,
+          },
+        },
+        {
+          seq: 4,
+          createdAt: "2026-01-01T00:00:04.000Z",
+          data: {
+            type: "turn_lifecycle" as const,
+            turnId: "turn-2",
+            state: "started" as const,
+          },
+        },
+      ],
+    };
+    expect(activeTurnModelId(completedThenPending)).toBeUndefined();
+    expect(hasOpenTurn(completedThenPending)).toBe(true);
+
+    const onlyCompleted = {
+      status: "active" as const,
+      events: completedThenPending.events.slice(0, 3),
+    };
+    expect(activeTurnModelId(onlyCompleted)).toBeUndefined();
+    expect(hasOpenTurn(onlyCompleted)).toBe(false);
   });
 
   it("shimmers changing metrics but not the timer", () => {

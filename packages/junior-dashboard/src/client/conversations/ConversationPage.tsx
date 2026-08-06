@@ -39,6 +39,7 @@ import {
   activeTurnModelId,
   CostMetric,
   DurationMetric,
+  hasOpenTurn,
   TurnsMetric,
   TokenMetric,
   ToolCallsMetric,
@@ -397,7 +398,7 @@ function ConversationStats(props: {
   const sourceUrl = props.detail?.sourceUrl ?? props.conversation.sourceUrl;
   const durationLabel = formatConversationDuration(props.conversation);
   const pendingModelId = activeTurnModelId(props.detail);
-  const live = props.detail?.status === "active";
+  const live = hasOpenTurn(props.detail);
   const rawStats: Array<MetricListItem | undefined> = [
     location
       ? {

@@ -53,6 +53,7 @@ import {
   activeTurnModelId,
   CostMetric,
   DurationMetric,
+  hasOpenTurn,
   TurnsMetric,
   TokenMetric,
   ToolCallsMetric,
@@ -749,6 +750,7 @@ function transcriptMeta(
   const tokenSummary = summarizeUsage(conversation.cumulativeUsage);
   const costSummary = summarizeCost(conversation.cumulativeUsage);
   const pendingModelId = activeTurnModelId(conversation);
+  const live = hasOpenTurn(conversation);
   const completeHistory = !conversation.previousCursor;
   const toolSummary = completeHistory
     ? summarizeToolCalls(conversation)
@@ -780,7 +782,7 @@ function transcriptMeta(
                     ).length
                   : undefined
               }
-              live={conversation.status === "active"}
+              live={live}
               modelUsage={conversation.modelUsage}
               summary={tokenSummary}
             />
@@ -809,12 +811,7 @@ function transcriptMeta(
       : undefined,
     toolSummary && toolSummary.total > 0
       ? {
-          content: (
-            <ToolCallsMetric
-              live={conversation.status === "active"}
-              summary={toolSummary}
-            />
-          ),
+          content: <ToolCallsMetric live={live} summary={toolSummary} />,
           key: "tools",
         }
       : undefined,
