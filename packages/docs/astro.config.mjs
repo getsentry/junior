@@ -92,6 +92,10 @@ export default defineConfig({
               label: "Credentials & OAuth",
               link: "/concepts/credentials-and-oauth/",
             },
+            {
+              label: "Resource Subscriptions",
+              link: "/concepts/resource-subscriptions/",
+            },
             { label: "Tasks", link: "/concepts/tasks/" },
           ],
         },

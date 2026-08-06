@@ -6,6 +6,7 @@ prerequisites:
   - /extend/
 related:
   - /extend/
+  - /concepts/resource-subscriptions/
   - /reference/config-and-env/
 ---
 
@@ -59,6 +60,26 @@ If no variables are required, replace the table with a single sentence:
 ## Plugin-specific setup
 
 Explain the provider-specific setup after install and environment configuration. Keep this section concrete and action-oriented.
+
+## Resource subscriptions
+
+If the plugin publishes resource events, list every resource type the agent can
+subscribe to. Link to [Resource Subscriptions](/concepts/resource-subscriptions/)
+for the core distinction between temporary resource subscriptions and durable
+event tasks; do not redefine those behaviors on every plugin page.
+
+| Resource type | Identifier or scope       | Supported events                       |
+| ------------- | ------------------------- | -------------------------------------- |
+| `issue`       | One issue: `ORG-123`      | `issue.closed`, `issue.reopened`       |
+| `project`     | One project: `project-id` | `project.created`, `project.completed` |
+
+Use the exact `resourceTypes[].type` and `supportedEvents` values registered by
+the plugin. Explain any provider setup required to publish those events, such as
+a webhook URL and secret, after the table.
+
+If the plugin does not publish resource events, use this sentence instead:
+
+`This plugin does not support resource subscriptions.`
 
 ## Verify
 
