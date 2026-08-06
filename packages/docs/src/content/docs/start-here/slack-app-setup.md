@@ -8,7 +8,7 @@ prerequisites:
 related:
   - /start-here/deploy-to-vercel/
   - /start-here/verify-and-troubleshoot/
-  - /concepts/thread-routing/
+  - /concepts/conversations/
 ---
 
 Junior receives Slack traffic at one webhook route:

@@ -7,6 +7,7 @@ prerequisites:
 related:
   - /extend/github-plugin/
   - /extend/sentry-plugin/
+  - /concepts/security-and-authority/
   - /operate/security-hardening/
 ---
 

@@ -39,6 +39,7 @@ export default defineConfig({
     "/operate/reliability": "/operate/reliability-runbooks",
     "/operate/snapshots": "/operate/sandbox-snapshots",
     "/integrate/existing-app": "/start-here/existing-app",
+    "/concepts/thread-routing": "/concepts/conversations",
   },
   integrations: [
     starlight({
@@ -83,10 +84,14 @@ export default defineConfig({
           label: "Concepts",
           items: [
             { label: "Execution Model", link: "/concepts/execution-model/" },
-            { label: "Thread Routing", link: "/concepts/thread-routing/" },
+            { label: "Conversations", link: "/concepts/conversations/" },
             {
               label: "Skills & Plugins",
               link: "/concepts/skills-and-plugins/",
+            },
+            {
+              label: "Security & Authority",
+              link: "/concepts/security-and-authority/",
             },
             {
               label: "Credentials & OAuth",
@@ -97,6 +102,10 @@ export default defineConfig({
               link: "/concepts/resource-subscriptions/",
             },
             { label: "Tasks", link: "/concepts/tasks/" },
+            {
+              label: "Data & Privacy",
+              link: "/concepts/data-and-privacy/",
+            },
           ],
         },
         {

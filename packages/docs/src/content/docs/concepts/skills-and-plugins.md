@@ -1,34 +1,64 @@
 ---
 title: Skills & Plugins
-description: How local skills and plugin-provided integrations are composed.
+description: How Junior gets instructions, tools, and external integrations.
 type: conceptual
+summary: Tell skills, plugins, tools, and sandbox commands apart.
 prerequisites:
-  - /start-here/quickstart/
+  - /start-here/overview/
 related:
   - /extend/
+  - /concepts/security-and-authority/
+  - /concepts/resource-subscriptions/
 ---
+
+Junior's capabilities come from a few different layers. They are easy to blur together, so keep them straight.
 
 ## Mental model
 
-Skills tell Junior how to behave. Plugins tell Junior what external integration
-surface and credential sources may exist.
+| Piece | Job |
+| ----- | --- |
+| Skills | Tell Junior how to do a kind of work |
+| Core tools | Host-owned actions Junior can take |
+| Plugins | Reviewed integrations you explicitly enable |
+| MCP / provider tools | External tool surfaces exposed by a plugin |
+| Sandbox commands | Isolated command execution for real work |
 
-- Skills define focused instruction bundles.
-- Plugins declare optional credentials, runtime dependencies, and skills.
-- Runtime selects and executes skills based on task context. Registered plugin provider declarations constrain credential access.
-- Plugins own runtime setup. If a skill needs a CLI, system package, MCP server, OAuth provider, or token delivery path, that requirement belongs in the plugin manifest instead of the skill prose.
+Skills are instructions. Plugins are code and manifests. Tools are the actions. The sandbox is where untrusted command execution happens.
 
-## Skill sources
+## Skills
 
-- Local skills: `app/skills/<skill-name>/SKILL.md`
-- Plugin skills: shipped in installed plugin packages
+Skills are focused playbooks loaded when they match the task.
 
-## Capability gating
+- Local skills live in `app/skills/<skill-name>/SKILL.md`
+- Plugins can ship their own skills
+- Skills should not own package installs, OAuth setup, or secret handling
 
-Credentials are not ambient. When sandbox traffic reaches a registered
-provider's declared domain, the runtime fetches a credential for the current
-actor and turn, then injects it automatically. If no registered provider
-owns the destination domain, the request is not given provider auth.
+If a skill needs a CLI, system package, MCP server, or credential flow, that belongs in a plugin manifest.
+
+## Plugins
+
+Plugins are trusted app code you opt into. Runtime does not scan `node_modules` for random plugins.
+
+A plugin may declare:
+
+- credentials and provider domains
+- tools and MCP servers
+- skills
+- runtime dependencies
+- routes and resource events
+
+The host still owns auth brokering, queueing, validation, and action review. A plugin can add capability. It does not get to invent authority.
+
+## Tools and review
+
+Not every tool is equal.
+
+- Core tools have explicit contracts and approval behavior.
+- Plugin and MCP tools are external capability surfaces. Missing safety metadata is treated carefully.
+- Destructive or open-world actions are more likely to need action review.
+- Tool results are data, not new instructions that automatically widen access.
+
+See [Security & Authority](/concepts/security-and-authority/) for how review fits in.
 
 ## Validation
 
@@ -36,8 +66,8 @@ owns the destination domain, the request is not given provider auth.
 pnpm exec junior check
 ```
 
-Move package installs, CLI bootstraps, MCP server setup, and API-key configuration to `plugin.yaml` so reviewed manifests, not arbitrary skill instructions, control the runtime authority surface.
+Keep install steps, CLIs, MCP servers, and API-key wiring in `plugin.yaml` or the plugin definition so the reviewed manifest owns the runtime surface.
 
 ## Next step
 
-- [Plugins](/extend/)
+Browse [Plugins](/extend/) for the integrations you can enable, then read [Resource Subscriptions](/concepts/resource-subscriptions/) if the plugin publishes events.

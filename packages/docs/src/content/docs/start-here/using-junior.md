@@ -6,7 +6,7 @@ summary: Write clearer Slack requests and keep Junior conversations easy for tea
 prerequisites: []
 related:
   - /start-here/overview/
-  - /concepts/thread-routing/
+  - /concepts/conversations/
   - /start-here/verify-and-troubleshoot/
 ---
 
@@ -86,4 +86,4 @@ You usually get a better second answer by adding the missing constraint directly
 
 ## Next step
 
-Read [Thread Routing](/concepts/thread-routing/) to understand how Junior decides whether to answer in Slack, or return to the [Overview](/start-here/overview/) for setup and operations docs.
+Read [Conversations](/concepts/conversations/) for thread and visibility rules, or return to the [Overview](/start-here/overview/) for setup and operations docs.

@@ -7,6 +7,7 @@ prerequisites: []
 related:
   - /start-here/quickstart/
   - /start-here/using-junior/
+  - /concepts/security-and-authority/
   - /start-here/slack-app-setup/
   - /extend/
 ---

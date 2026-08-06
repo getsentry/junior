@@ -1,50 +1,56 @@
 ---
 title: Security Hardening
-description: Runtime security model, credential boundaries, and incident checks.
+description: Operator checklist for Junior auth boundaries, credentials, and incident checks.
 type: conceptual
+summary: Verify production security boundaries after deploy or during an incident.
 prerequisites:
-  - /concepts/credentials-and-oauth/
+  - /concepts/security-and-authority/
 related:
+  - /concepts/credentials-and-oauth/
   - /reference/config-and-env/
   - /operate/reliability-runbooks/
 ---
 
+Use this page as an operator checklist. For the product model behind it, start with [Security & Authority](/concepts/security-and-authority/).
+
 ## Runtime boundaries
 
-Automatic auth does not make credentials ambient. Junior still keeps command
-execution, credential minting, and OAuth state handling in separate trust
-boundaries.
+Confirm these are still true in the deployed app:
 
-- User-influenced command execution runs in sandboxed environments.
-- Harness/runtime resolves target context and decides whether a command receives credentials.
-- Credential minting and sandbox command execution stay separate even when injection is automatic.
+- user-influenced commands run in the sandbox
+- long-lived secrets stay in host-managed storage
+- provider credentials are minted lazily at egress, not loaded into the whole chat session
+- OAuth links are private to the requesting user
+- internal callbacks and sandbox actor context are signed with a stable `JUNIOR_SECRET`
+- plugins come from explicit app configuration, not dependency scanning
 
-## Credential handling
+## Credential checks
 
-Operators should assume provider access is fetched just in time, not kept as
-session-wide sandbox state.
+- Registered plugin providers own which domains can receive credentials.
+- Sandbox traffic gets placeholders, not raw reusable tokens.
+- User-bound access belongs to the current actor or an explicit task-scoped subject.
+- Rotating `JUNIOR_SECRET` invalidates old signed callbacks and sandbox actor context.
 
-- Use short-lived scoped credentials.
-- Let registered plugin providers determine which credentials may be injected for matching domains.
-- Fetch credentials from the host when sandbox traffic hits a declared provider domain.
-- Keep sandbox egress authorization bound to the actor context, sandbox VM session, and forwarded provider domain.
-- Mint provider credentials lazily at the egress proxy, not when a plugin loads or a command starts.
-- Do not guess provider intent from command text for token scoping; use request-time provider/domain matching.
-- Inject scoped auth at the host proxy boundary instead of exposing raw tokens.
+## Action review checks
 
-## OAuth handling
+- consequential tool actions can still enter review
+- review failure blocks the action instead of failing open
+- Guardian or action-review telemetry does not log raw proposal bodies or secrets
 
-- Deliver auth links privately to requesting users.
-- Keep token exchange server-side.
-- Store tokens per user/provider scope and resume the blocked request after authorization.
+## Data checks
+
+- private transcripts are not exposed to non-participants in the dashboard
+- logs and traces do not contain tokens, prompts, raw message bodies, or credential material
+- retention and purge still match the intended policy
 
 ## Incident checklist
 
-1. Confirm no token values in logs/traces/output.
-2. Confirm OAuth links were not publicly posted and the callback state matched the requesting user.
-3. Confirm credential injection happened only for the expected command and target.
-4. Confirm sandbox session never received raw auth secrets or reusable long-lived tokens.
+1. Confirm no token values landed in logs, traces, or user-visible output.
+2. Confirm OAuth links were private and bound to the requesting user.
+3. Confirm credential injection happened only for the expected actor and provider.
+4. Confirm the sandbox session never received raw long-lived secrets.
+5. Rotate exposed credentials, remove leaked material, and document the fix.
 
 ## Next step
 
-Continue with [Config & Environment](/reference/config-and-env/) to validate deployment defaults, then use [Reliability Runbooks](/operate/reliability-runbooks/) for incident response.
+Validate deployment defaults in [Config & Environment](/reference/config-and-env/), then use [Reliability Runbooks](/operate/reliability-runbooks/) if the incident is still active.

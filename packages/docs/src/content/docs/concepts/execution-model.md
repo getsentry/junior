@@ -1,42 +1,71 @@
 ---
 title: Execution Model
-description: End-to-end runtime lifecycle from webhook ingress to threaded response.
+description: How Junior turns a request into durable work and a reply.
 type: conceptual
+summary: Understand how Junior accepts work, runs a turn, and survives pauses or retries.
 prerequisites:
-  - /start-here/quickstart/
+  - /start-here/using-junior/
 related:
-  - /concepts/thread-routing/
-  - /concepts/credentials-and-oauth/
-  - /operate/reliability-runbooks/
+  - /concepts/conversations/
+  - /concepts/security-and-authority/
+  - /concepts/tasks/
 ---
 
-## Runtime lifecycle
+Junior does not do important work only in the original webhook request. It accepts work, stores it, and runs it through a durable conversation path.
 
-1. Slack sends an event to `/api/webhooks/slack`.
-2. Junior validates and routes the event.
-3. Conversation work is enqueued to the durable conversation-work queue.
-4. `/api/internal/agent/continue` processes queued conversation work.
-5. The agent run continues with configured tools, loaded skills, and capability gates.
-6. If sandbox traffic reaches a declared provider domain, the sandbox egress proxy lazily fetches actor-bound credentials and injects them at the host boundary.
-7. If OAuth is required, Junior sends the link privately to the requesting user and resumes the blocked request after the callback.
-8. Reply is posted back to the original Slack thread.
-9. Successful completed sessions can schedule plugin background tasks through `/api/internal/plugin/tasks`.
+## Lifecycle
 
-## Why queue-backed processing exists
+1. A message, task, or plugin event arrives.
+2. Junior validates it and stores the work on the conversation.
+3. A worker claims that conversation and starts or resumes a turn.
+4. The turn uses tools, skills, and sandbox commands as needed.
+5. Connected-account traffic is authorized only when a real provider request needs it.
+6. Completed replies go back to the original destination.
+7. If the turn pauses for auth, timeout, or continuation, Junior resumes from the last safe checkpoint.
 
-- Avoids long-running webhook request paths.
-- Makes retries explicit and observable.
-- Preserves thread execution invariants in background turns.
+The queue is a wake-up signal. The stored conversation work is the source of truth.
 
-## Core invariants
+## Turns, not one-shot requests
 
-- Webhook ingress and queue callbacks are required for production.
-- Tool usage is agent-run scoped; sandbox credential leases are actor-bound and minted lazily only after forwarded provider traffic needs them.
-- Registered plugin providers determine which provider credentials can be injected for matching provider domains.
-- Failure states are logged and surfaced for operator recovery.
+A **turn** is one request through to a finished response. It may span more than one worker attempt.
 
-## Where to go next
+That matters when:
 
-- [Thread Routing](/concepts/thread-routing/)
-- [Credentials & OAuth](/concepts/credentials-and-oauth/)
-- [Reliability Runbooks](/operate/reliability-runbooks/)
+- OAuth is required mid-turn
+- a long tool loop needs another slice of compute
+- a worker dies and recovery picks the work back up
+
+Junior keeps the same conversation and turn identity across those resumes. Work already committed in agent history should not be invented again from scratch.
+
+## Ordering and interruption
+
+Each conversation runs one worker at a time.
+
+- New mentions can join at the next safe boundary.
+- Other inbound messages wait until the active turn finishes.
+- Progress updates are status, not the final answer.
+- Text attached to tool calls stays internal until there is a real reply.
+
+If Junior intentionally has nothing to say, that is a no-reply outcome. Missing text alone is not treated as success.
+
+## Delivery guarantees
+
+Expect these defaults:
+
+- accepted work survives process loss
+- retries are normal and bounded
+- duplicate provider deliveries should converge on the same work
+- an accepted reply is not intentionally sent twice
+- if delivery fails in an ambiguous way, a later retry may produce a duplicate reply
+
+Sandbox state can disappear. Durable product state lives in Junior's stores, not on the sandbox filesystem.
+
+## What this is not
+
+- It is not “the model keeps a live session open forever.”
+- It is not exactly-once delivery for every chat provider edge case.
+- It is not ambient access to every tool and credential in your company.
+
+## Next step
+
+Read [Conversations](/concepts/conversations/) for thread and visibility rules, or [Security & Authority](/concepts/security-and-authority/) for what is allowed during a turn.

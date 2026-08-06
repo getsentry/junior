@@ -11,6 +11,7 @@ related:
   - /operate/observability/
   - /operate/reliability-runbooks/
   - /concepts/execution-model/
+  - /concepts/security-and-authority/
 ---
 
 ## Verification sequence
