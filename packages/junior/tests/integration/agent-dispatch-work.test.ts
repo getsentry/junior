@@ -84,6 +84,7 @@ async function createDispatch(
   credentialSubject?: CredentialSubject,
   source?: Source,
   replyAttribution?: ReplyAttribution,
+  input = "Post the scheduled digest.",
 ) {
   return (
     await createOrGetDispatch({
@@ -93,7 +94,7 @@ async function createDispatch(
         destinationVisibility: "private",
         ...(credentialSubject ? { credentialSubject } : {}),
         idempotencyKey,
-        input: "Post the scheduled digest.",
+        input,
         ...(replyAttribution ? { replyAttribution } : {}),
         source:
           source ??
@@ -140,6 +141,44 @@ describe("agent dispatch conversation work", () => {
   afterEach(async () => {
     await disconnectStateAdapter();
     vi.restoreAllMocks();
+  });
+
+  it("preserves plain dispatch input without Markdown serialization", async () => {
+    const input = "Post snake_case as written.\n- Keep this bullet.";
+    const dispatch = await createDispatch(
+      "plain-input",
+      undefined,
+      undefined,
+      undefined,
+      input,
+    );
+    const run = vi.fn(async (request) => {
+      expect(request.input.messageText).toBe(input);
+      await request.durability.onInputCommitted?.();
+      const piMessages = await deliverAssistantMessagesForTest(request, [
+        { text: "Done" },
+      ]);
+      return completedAgentRun({
+        text: "Done",
+        piMessages,
+        diagnostics: {
+          assistantMessageCount: 1,
+          modelId: "test-model",
+          outcome: "success",
+          toolCalls: [],
+          toolErrorCount: 0,
+          toolResultCount: 0,
+          usedPrimaryText: true,
+        },
+      });
+    });
+    const runtime = createDispatchRuntime({ agentRunner: { run } });
+
+    await runtime.runDispatchTurn(dispatch, {
+      ack: vi.fn(async () => {}),
+    });
+
+    expect(run).toHaveBeenCalledOnce();
   });
 
   it("runs enqueued dispatch work through production routing with exact authority", async () => {
