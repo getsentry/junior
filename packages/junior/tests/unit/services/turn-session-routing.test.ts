@@ -22,13 +22,11 @@ const SOURCE = {
 } as const satisfies SessionSource;
 
 function conversation(args: {
-  conversationId?: string;
   destination?: Destination;
   sessionSource?: SessionSource;
-  visibility?: "public" | "private";
 }): Conversation {
   return {
-    conversationId: args.conversationId ?? "slack:C123:1712345.0001",
+    conversationId: "slack:C123:1712345.0001",
     createdAtMs: 1,
     lastActivityAtMs: 1,
     updatedAtMs: 1,
@@ -36,7 +34,6 @@ function conversation(args: {
     execution: { status: "awaiting_resume" },
     ...(args.destination ? { destination: args.destination } : {}),
     ...(args.sessionSource ? { sessionSource: args.sessionSource } : {}),
-    ...(args.visibility ? { visibility: args.visibility } : {}),
   };
 }
 
@@ -96,11 +93,10 @@ describe("resolveTurnSessionRouting", () => {
     });
   });
 
-  it("rebuilds channel-level source from destination when sessionSource is absent", async () => {
+  it("returns destination without inventing a missing session source", async () => {
     const store = conversationStore({
       get: vi.fn(async () =>
         conversation({
-          conversationId: "agent-dispatch:dispatch-1",
           destination: DESTINATION,
         }),
       ),
@@ -113,40 +109,7 @@ describe("resolveTurnSessionRouting", () => {
       }),
     ).resolves.toEqual({
       destination: DESTINATION,
-      source: {
-        platform: "slack",
-        teamId: "T123",
-        channelId: "C123",
-        visibility: "private",
-      },
-    });
-  });
-
-  it("rebuilds threaded source from conversationId when sessionSource is absent", async () => {
-    const store = conversationStore({
-      get: vi.fn(async () =>
-        conversation({
-          conversationId: "slack:C123:1712345.0001",
-          destination: DESTINATION,
-          visibility: "public",
-        }),
-      ),
-    });
-
-    await expect(
-      resolveTurnSessionRouting({
-        conversationId: "slack:C123:1712345.0001",
-        conversationStore: store,
-      }),
-    ).resolves.toEqual({
-      destination: DESTINATION,
-      source: {
-        platform: "slack",
-        teamId: "T123",
-        channelId: "C123",
-        threadTs: "1712345.0001",
-        visibility: "public",
-      },
+      source: undefined,
     });
   });
 });

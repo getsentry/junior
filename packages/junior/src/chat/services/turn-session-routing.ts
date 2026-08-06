@@ -1,47 +1,15 @@
 /**
  * Load turn-session routing from durable conversation metadata.
  *
- * SQL owns destination and session source. Resume paths query this instead of
- * reading nested routing contracts from the short-lived turn-session record.
+ * SQL owns destination and session source. Resume paths query those columns
+ * directly — no redis fallback and no derived rebuild of missing fields.
  */
-import {
-  createLocalSource,
-  createSlackSource,
-  type Destination,
-  type Source,
-} from "@sentry/junior-plugin-api";
-import type {
-  Conversation,
-  ConversationStore,
-} from "@/chat/conversations/store";
-import { parseSlackThreadId } from "@/chat/slack/context";
+import type { Destination, Source } from "@sentry/junior-plugin-api";
+import type { ConversationStore } from "@/chat/conversations/store";
 
 export interface TurnSessionRouting {
   destination?: Destination;
   source?: Source;
-}
-
-/** Rebuild a session source from durable destination metadata when needed. */
-function sourceFromConversation(
-  conversation: Conversation | undefined,
-): Source | undefined {
-  if (conversation?.sessionSource) {
-    return conversation.sessionSource;
-  }
-  const destination = conversation?.destination;
-  if (!destination) {
-    return undefined;
-  }
-  if (destination.platform === "local") {
-    return createLocalSource(destination.conversationId);
-  }
-  const thread = parseSlackThreadId(conversation.conversationId);
-  return createSlackSource({
-    teamId: destination.teamId,
-    channelId: destination.channelId,
-    visibility: conversation.visibility === "public" ? "public" : "private",
-    ...(thread?.threadTs ? { threadTs: thread.threadTs } : {}),
-  });
 }
 
 /** Return conversation destination and session source from SQL. */
@@ -58,6 +26,6 @@ export async function resolveTurnSessionRouting(args: {
 
   return {
     destination: conversation?.destination,
-    source: sourceFromConversation(conversation),
+    source: conversation?.sessionSource,
   };
 }
