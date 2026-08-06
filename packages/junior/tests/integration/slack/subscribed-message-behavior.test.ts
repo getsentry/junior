@@ -959,7 +959,7 @@ describe("Slack behavior: subscribed messages", () => {
     expect(thread.posts).toHaveLength(0);
   });
 
-  it("short-circuits generic immediate side-conversation questions without calling the classifier", async () => {
+  it("routes generic immediate follow-up questions through the classifier", async () => {
     let classifierCalled = false;
     let replyCalled = false;
 
@@ -968,9 +968,14 @@ describe("Slack behavior: subscribed messages", () => {
         subscribedReplyPolicy: {
           completeObject: async () => {
             classifierCalled = true;
-            throw new Error(
-              "classifier should be bypassed for generic immediate side conversation",
-            );
+            return {
+              object: {
+                should_reply: false,
+                confidence: 0.95,
+                reason: "human side conversation",
+              },
+              text: '{"should_reply":false,"confidence":0.95,"reason":"human side conversation"}',
+            } as never;
           },
         },
         replyExecutor: {
@@ -1013,7 +1018,7 @@ describe("Slack behavior: subscribed messages", () => {
       { destination: createTestDestination(thread) },
     );
 
-    expect(classifierCalled).toBe(false);
+    expect(classifierCalled).toBe(true);
     expect(replyCalled).toBe(false);
     expect(thread.posts).toHaveLength(1);
   });
