@@ -25,7 +25,10 @@ export function getSlackMessageTs(
   return undefined;
 }
 
-/** Return canonical formatted text, falling back for synthetic messages. */
+/**
+ * Return the Chat SDK's canonical formatted representation by default.
+ * Fall back to plain text only when the message has no formatted content.
+ */
 export function getSlackMessageText(
   message: Pick<Message, "formatted" | "text">,
 ): string {
