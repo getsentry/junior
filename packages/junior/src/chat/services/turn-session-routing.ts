@@ -1,6 +1,8 @@
 /**
- * Rebuild turn-session routing from durable conversation metadata when the
- * short-lived redis record no longer carries nested source/destination.
+ * Load turn-session routing from durable conversation metadata.
+ *
+ * SQL owns destination and session source. Resume paths query this instead of
+ * reading nested routing contracts from the short-lived turn-session record.
  */
 import type { Destination, Source } from "@sentry/junior-plugin-api";
 import type { ConversationStore } from "@/chat/conversations/store";
@@ -10,20 +12,11 @@ export interface TurnSessionRouting {
   source?: Source;
 }
 
-/** Prefer redis turn-session routing; fill gaps from SQL conversation metadata. */
+/** Return conversation destination and session source from SQL. */
 export async function resolveTurnSessionRouting(args: {
   conversationId: string;
-  destination?: Destination;
-  source?: Source;
   conversationStore?: ConversationStore;
 }): Promise<TurnSessionRouting> {
-  if (args.destination && args.source) {
-    return {
-      destination: args.destination,
-      source: args.source,
-    };
-  }
-
   const conversationStore =
     args.conversationStore ??
     (await import("@/chat/db")).getConversationStore();
@@ -32,7 +25,7 @@ export async function resolveTurnSessionRouting(args: {
   });
 
   return {
-    destination: args.destination ?? conversation?.destination,
-    source: args.source ?? conversation?.sessionSource,
+    destination: conversation?.destination,
+    source: conversation?.sessionSource,
   };
 }

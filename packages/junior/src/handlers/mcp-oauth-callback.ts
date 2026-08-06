@@ -365,15 +365,14 @@ async function resumeAuthorizedMcpTurn(args: {
       }
       const routing = await resolveTurnSessionRouting({
         conversationId: authSession.conversationId,
-        destination,
-        source: lockedSessionRecord.source,
       });
       if (!routing.source) {
         await failAgentTurnSessionRecord({
           conversationId: authSession.conversationId,
           expectedVersion: lockedSessionRecord.version,
           sessionId: lockedSessionId,
-          errorMessage: "Stored Slack source missing for MCP OAuth resume",
+          errorMessage:
+            "Conversation session source missing for MCP OAuth resume",
         });
         return false;
       }

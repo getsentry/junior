@@ -53,23 +53,7 @@ function conversationStore(
 }
 
 describe("resolveTurnSessionRouting", () => {
-  it("returns redis routing without reading sql when both fields are present", async () => {
-    const store = conversationStore();
-    await expect(
-      resolveTurnSessionRouting({
-        conversationId: "slack:C123:1712345.0001",
-        conversationStore: store,
-        destination: DESTINATION,
-        source: SOURCE,
-      }),
-    ).resolves.toEqual({
-      destination: DESTINATION,
-      source: SOURCE,
-    });
-    expect(store.get).not.toHaveBeenCalled();
-  });
-
-  it("fills missing redis routing from sql conversation metadata", async () => {
+  it("loads destination and session source from sql", async () => {
     const store = conversationStore({
       get: vi.fn(async () =>
         conversation({
@@ -93,29 +77,19 @@ describe("resolveTurnSessionRouting", () => {
     });
   });
 
-  it("keeps redis destination while rebuilding only source from sql", async () => {
+  it("returns empty routing when the conversation has no durable metadata", async () => {
     const store = conversationStore({
-      get: vi.fn(async () =>
-        conversation({
-          destination: {
-            platform: "slack",
-            teamId: "T999",
-            channelId: "C999",
-          },
-          sessionSource: SOURCE,
-        }),
-      ),
+      get: vi.fn(async () => conversation({})),
     });
 
     await expect(
       resolveTurnSessionRouting({
         conversationId: "slack:C123:1712345.0001",
         conversationStore: store,
-        destination: DESTINATION,
       }),
     ).resolves.toEqual({
-      destination: DESTINATION,
-      source: SOURCE,
+      destination: undefined,
+      source: undefined,
     });
   });
 });

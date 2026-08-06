@@ -437,19 +437,19 @@ async function continueSlackAgentRunInContext(
         }
         const routing = await resolveTurnSessionRouting({
           conversationId: payload.conversationId,
-          destination: payload.destination,
-          source: activeSessionRecord.source,
         });
-        if (!routing.source) {
+        if (!routing.destination || !routing.source) {
           await failAgentTurnSessionRecord({
             conversationId: payload.conversationId,
             expectedVersion: activeSessionRecord.version,
             sessionId: payload.sessionId,
-            errorMessage: "Stored Slack source missing for continuation",
+            errorMessage:
+              "Conversation routing metadata missing for continuation",
           });
           return false;
         }
         const source = routing.source;
+        const routingDestination = routing.destination;
 
         const turnMessages =
           activeSessionRecord.turnStartMessageIndex === undefined
@@ -466,7 +466,7 @@ async function continueSlackAgentRunInContext(
           }
           await recordAgentTurnSessionSummary({
             conversationId: payload.conversationId,
-            destination: payload.destination,
+            destination: routingDestination,
             destinationVisibility:
               options.routingContext?.destinationVisibility,
             dispatchId,
@@ -505,7 +505,7 @@ async function continueSlackAgentRunInContext(
               ...((options.routingContext?.actor ?? actor)
                 ? { actor: options.routingContext?.actor ?? actor }
                 : {}),
-              destination: payload.destination,
+              destination: routingDestination,
               source,
               toolChannelId:
                 artifacts.assistantContextChannelId ?? destination.channelId,
@@ -591,8 +591,6 @@ async function failStrandedSessionWithFallback(args: {
 }): Promise<void> {
   const routing = await resolveTurnSessionRouting({
     conversationId: args.conversationId,
-    destination: args.sessionRecord.destination,
-    source: args.sessionRecord.source,
   });
   await failAgentTurnSessionRecord({
     conversationId: args.conversationId,
@@ -694,8 +692,6 @@ async function recoverStrandedRunningSession(args: {
 
   const routing = await resolveTurnSessionRouting({
     conversationId: args.conversationId,
-    destination: sessionRecord.destination,
-    source: sessionRecord.source,
   });
   const parked = await persistYieldSessionRecord({
     channelName: sessionRecord.channelName,

@@ -35,6 +35,23 @@ function restoreEnv(name: string, value: string | undefined): void {
 
 const agentRunnerShouldNotRun = neverRunAgentRunner();
 
+async function seedConversationRouting(args: {
+  conversationId: string;
+  threadTs: string;
+}): Promise<void> {
+  await getConversationStore().recordActivity({
+    conversationId: args.conversationId,
+    destination: SLACK_DESTINATION,
+    sessionSource: createSlackSource({
+      teamId: SLACK_DESTINATION.teamId,
+      channelId: SLACK_DESTINATION.channelId,
+      threadTs: args.threadTs,
+      visibility: "private",
+    }),
+    visibility: "private",
+  });
+}
+
 describe("agent continuation runner callbacks", () => {
   beforeEach(async () => {
     process.env.JUNIOR_STATE_ADAPTER = "memory";
@@ -74,6 +91,10 @@ describe("agent continuation runner callbacks", () => {
           timestamp: 1,
         },
       ],
+    });
+    await seedConversationRouting({
+      conversationId,
+      threadTs: "1712345.0005",
     });
     await persistThreadStateById(conversationId, {
       artifacts: {
@@ -156,7 +177,7 @@ describe("agent continuation runner callbacks", () => {
     });
   });
 
-  it("fails before continuing when source is missing from redis and sql", async () => {
+  it("fails before continuing when sql conversation source is missing", async () => {
     const conversationId = "slack:C123:1712345.0007";
     const sessionId = "turn_msg_7";
     const sessionRecord = await upsertAgentTurnSessionRecord({
@@ -166,6 +187,7 @@ describe("agent continuation runner callbacks", () => {
       sliceId: 2,
       state: "awaiting_resume",
       destination: SLACK_DESTINATION,
+      source: SLACK_SOURCE,
       resumeReason: "timeout",
       actor: {
         platform: "slack",
@@ -239,20 +261,25 @@ describe("agent continuation runner callbacks", () => {
       getAgentTurnSessionRecord(conversationId, sessionId),
     ).resolves.toMatchObject({
       state: "failed",
-      errorMessage: "Stored Slack source missing for continuation",
+      errorMessage: "Conversation routing metadata missing for continuation",
     });
   });
 
-  it("rebuilds continuation source from sql when the redis record omits it", async () => {
+  it("loads continuation source from sql conversation metadata", async () => {
     const conversationId = "slack:C123:1712345.0008";
     const sessionId = "turn_msg_8";
+    const sessionSource = createSlackSource({
+      teamId: SLACK_DESTINATION.teamId,
+      channelId: SLACK_DESTINATION.channelId,
+      threadTs: "1712345.0008",
+      visibility: "private",
+    });
     const sessionRecord = await upsertAgentTurnSessionRecord({
       modelId: "test/model",
       conversationId,
       sessionId,
       sliceId: 2,
       state: "awaiting_resume",
-      destination: SLACK_DESTINATION,
       resumeReason: "timeout",
       actor: {
         platform: "slack",
@@ -273,7 +300,7 @@ describe("agent continuation runner callbacks", () => {
     await getConversationStore().recordActivity({
       conversationId,
       destination: SLACK_DESTINATION,
-      sessionSource: SLACK_SOURCE,
+      sessionSource,
       visibility: "private",
     });
     await persistThreadStateById(conversationId, {
@@ -328,7 +355,7 @@ describe("agent continuation runner callbacks", () => {
             if (!prepared.replyContext) {
               throw new Error("Expected prepared continuation reply context");
             }
-            expect(prepared.replyContext.routing.source).toEqual(SLACK_SOURCE);
+            expect(prepared.replyContext.routing.source).toEqual(sessionSource);
             return true;
           },
         },
@@ -365,6 +392,10 @@ describe("agent continuation runner callbacks", () => {
           timestamp: 1,
         },
       ],
+    });
+    await seedConversationRouting({
+      conversationId,
+      threadTs: "1712345.0006",
     });
     await persistThreadStateById(conversationId, {
       conversation: {

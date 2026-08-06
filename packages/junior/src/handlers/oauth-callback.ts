@@ -382,15 +382,13 @@ async function resumeOAuthSessionRecordTurn(
       }
       const routing = await resolveTurnSessionRouting({
         conversationId: stored.resumeConversationId!,
-        destination,
-        source: lockedSessionRecord.source,
       });
       if (!routing.source) {
         await failAgentTurnSessionRecord({
           conversationId: stored.resumeConversationId!,
           expectedVersion: lockedSessionRecord.version,
           sessionId: lockedSessionId,
-          errorMessage: "Stored Slack source missing for OAuth resume",
+          errorMessage: "Conversation session source missing for OAuth resume",
         });
         return false;
       }

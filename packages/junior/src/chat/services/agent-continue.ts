@@ -52,8 +52,6 @@ export async function getAwaitingAgentContinueRequest(args: {
   const routing = await resolveTurnSessionRouting({
     conversationId: args.conversationId,
     conversationStore: args.conversationStore,
-    destination: sessionRecord.destination,
-    source: sessionRecord.source,
   });
   if (!routing.destination) {
     return undefined;
