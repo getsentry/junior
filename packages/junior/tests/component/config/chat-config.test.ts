@@ -13,6 +13,8 @@ describe("chat config", () => {
     process.env.DATABASE_URL = TEST_DATABASE_URL;
     delete process.env.JUNIOR_DATABASE_DRIVER;
     delete process.env.JUNIOR_SQL_STATEMENT_TIMEOUT_MS;
+    // Suite vitest config opts subagents on; config tests control the env themselves.
+    delete process.env.JUNIOR_SUBAGENTS_ENABLED;
   });
 
   afterEach(() => {
