@@ -6,6 +6,7 @@ prerequisites:
   - /extend/
 related:
   - /concepts/credentials-and-oauth/
+  - /concepts/resource-subscriptions/
   - /operate/security-hardening/
 ---
 
@@ -31,7 +32,7 @@ export const plugins = defineJuniorPlugins([sentryPlugin()]);
 
 Register the factory. Package-name-only registration is not enough for webhook routes.
 
-## Environment
+## Configure environment variables
 
 | Variable                | Required | Purpose                                                |
 | ----------------------- | -------- | ------------------------------------------------------ |
@@ -40,7 +41,9 @@ Register the factory. Package-name-only registration is not enough for webhook r
 | `SENTRY_WEBHOOK_ORG`    | No       | Org slug allowed to send issue webhooks.               |
 | `SENTRY_WEBHOOK_SECRET` | No       | Internal integration client secret for issue webhooks. |
 
-## User OAuth
+## Plugin-specific setup
+
+### User OAuth
 
 Create a Sentry OAuth app with redirect URL:
 
@@ -54,7 +57,7 @@ Set `SENTRY_CLIENT_ID` / `SENTRY_CLIENT_SECRET` from that app. Junior requests:
 
 Reconnect after scope changes. Existing grants do not pick up new scopes automatically.
 
-## Issue webhooks (internal integration)
+### Issue webhooks (internal integration)
 
 Use a **Sentry internal integration** in the org that should notify Junior. Do not use a public/unpublished app install flow for this.
 
@@ -68,18 +71,41 @@ https://<junior-host>/api/webhooks/sentry
 
 4. Set `SENTRY_WEBHOOK_ORG` to the org slug and copy the integration **client secret** into `SENTRY_WEBHOOK_SECRET`, then redeploy.
 
-Junior verifies `Sentry-Hook-Signature`, then publishes `issue.created` for both:
+Junior verifies `Sentry-Hook-Signature` and rejects payloads outside the configured org. One internal integration per Junior deployment is enough for a single Slack workspace; no install-mapping table is required.
 
-- issue: `org/project#issueId`
-- project: `org/project`
+## Resource subscriptions
 
-Create the watch or event task before the issue arrives. Unmatched deliveries are not replayed. One internal integration per Junior deployment is enough for a single Slack workspace; no install-mapping table is required for that shape.
+Set both `SENTRY_WEBHOOK_ORG` and `SENTRY_WEBHOOK_SECRET` to enable resource events. See [Resource Subscriptions](/concepts/resource-subscriptions/) for temporary resource subscriptions versus durable event tasks.
+
+### `issue`
+
+One issue. Identifier: `org/project#issueId`.
+
+<details class="resource-event">
+<summary><code>issue.created</code></summary>
+
+The issue was created.
+
+</details>
+
+### `project`
+
+Every new issue in one project. Identifier: `org/project`.
+
+<details class="resource-event">
+<summary><code>issue.created</code></summary>
+
+An issue was created in the project.
+
+</details>
+
+Create the resource subscription or event task before the issue arrives. Unmatched deliveries are not replayed.
 
 ## Verify
 
 **OAuth:** connect Sentry from Slack, then run a real issue/org query.
 
-**Webhooks:** with `SENTRY_WEBHOOK_ORG` and `SENTRY_WEBHOOK_SECRET` set, create a watch on a project or issue, then create a test issue in that project.
+**Webhooks:** with `SENTRY_WEBHOOK_ORG` and `SENTRY_WEBHOOK_SECRET` set, subscribe to a project or issue, then create a test issue in that project.
 
 ## Security
 
@@ -98,4 +124,4 @@ Create the watch or event task before the issue arrives. Unmatched deliveries ar
 
 ## Next step
 
-Review [Credentials & OAuth](/concepts/credentials-and-oauth/) and [Security Hardening](/operate/security-hardening/).
+Review [Resource Subscriptions](/concepts/resource-subscriptions/) and [Security Hardening](/operate/security-hardening/).
