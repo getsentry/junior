@@ -135,6 +135,10 @@ vi.mock("@/chat/sandbox/snapshot/resolve", () => ({
   isMissingError: missingErrorMock,
 }));
 
+vi.mock("@/chat/sandbox/docker", () => ({
+  ensureDockerDaemon: vi.fn(async () => {}),
+}));
+
 import { createSandbox } from "@/chat/sandbox/sandbox";
 import {
   parseSandboxEgressCredentialToken,
