@@ -2,7 +2,7 @@
 title: Security & Authority
 description: How Junior decides who can act, what can run, and what stays blocked.
 type: conceptual
-summary: Understand the layers that keep Junior from acting with the wrong authority.
+summary: Understand how Junior limits actions, credentials, and data access.
 prerequisites:
   - /concepts/execution-model/
 related:
@@ -11,65 +11,42 @@ related:
   - /operate/security-hardening/
 ---
 
-Junior is useful because it can take action. That only works if authority is explicit.
+Junior can read data and take action through connected tools. Its security model limits which actions can run, whose account can be used, and where results go.
 
-Security here is not one switch. It is a few hard boundaries stacked together.
+## Security Boundaries
 
-## What Junior keeps separate
+| Boundary | How it works |
+| -------- | ------------ |
+| Identity | The current user drives the turn. Thread history, display names, and channel membership do not grant access. |
+| Destination | Replies and files stay bound to the active conversation. |
+| Credentials | Provider access is short-lived and belongs to the current user or an exact task delegation. |
+| Execution | User-influenced commands run in an isolated sandbox. Long-lived secrets stay on the host. |
+| Capabilities | Junior loads only the plugins configured by the app operator. Skills cannot add credentials or runtime access. |
 
-| Concern | Meaning |
-| ------- | ------- |
-| Actor | Who is driving this turn |
-| Destination | Where replies and side effects go |
-| Credential subject | Whose connected account may be used |
-| Conversation | The durable work and history container |
+Junior rejects work when required identity or destination context is missing.
 
-Being in a thread does not grant provider access. Creating a task does not make later runs act as you. Display names and channel membership are not identity.
+## Action Review
 
-If required context is missing, Junior fails closed.
+Some actions are reviewed immediately before they run. A separate reviewer called **Guardian** checks the exact action against the user's request and the active security context.
 
-## Hard gates first
+Guardian can:
 
-Before anything fancy happens, Junior enforces boring rules:
+- allow the action
+- ask the user to confirm its target and side effects
+- deny the action
 
-- tool input must match the schema
-- the active conversation, actor, and destination are fixed by the runtime
-- only registered plugin providers can receive credentials
-- secrets stay on the host, not in the model, sandbox env, files, logs, or traces
-- user-influenced commands run in an isolated sandbox
+Guardian receives relevant conversation context and a description of the available account access. It does not receive credential values. A rejected action cannot bypass review by switching tools, and the action stays blocked if review is unavailable.
 
-These checks do not try to understand intent. They either pass or they block.
+Action review checks risk and user authorization. It works alongside fixed controls such as provider permissions, tool validation, task ownership, and credential scope.
 
-## Action review
+## Limits
 
-Some actions also go through action review right before they run.
+- Provider permissions still apply. Junior cannot create access the connected account does not have.
+- Plugins run as trusted application code. Review plugin code and manifests before enabling them.
+- A sandbox limits command execution, but it is not durable storage.
+- Do not put secrets or private customer data in Slack messages.
+- Review consequential changes before merging or deploying them.
 
-Junior builds an exact proposal from the validated tool input, then a separate reviewer called **Guardian** judges that proposal. Guardian can:
+## Next Step
 
-- **allow** the action
-- **ask** the user to confirm the exact target and side effects
-- **deny** the action
-
-A few practical rules:
-
-- core tools opt into review; external plugin and MCP tools are treated more carefully by default
-- review sees the action about to run, not a vague plan
-- prior rejections stay in play; retrying the same side effect with another tool does not dodge them
-- if review is unavailable, the action does not run
-- three rejected attempts in a row stop that execution slice
-
-Guardian is a safety layer. It does not replace provider permissions, task ownership rules, or human judgment on consequential work.
-
-## What this means in practice
-
-- Ordinary reads and narrow requested work usually proceed.
-- Surprising scope, destructive changes, sensitive data movement, or unclear authorization get blocked or asked about.
-- Connected accounts are used only for the current actor, or for an explicit task-scoped delegation.
-- Public channels are still real destinations. Do not paste secrets into them.
-- Skills can explain how to do work. They cannot install packages, mint credentials, or widen access.
-
-## Related pieces
-
-- [Credentials & OAuth](/concepts/credentials-and-oauth/) covers connected accounts.
-- [Conversations](/concepts/conversations/) covers who can see what.
-- [Security Hardening](/operate/security-hardening/) is the operator checklist.
+Read [Credentials & OAuth](/concepts/credentials-and-oauth/) for connected accounts. Operators should also review [Security Hardening](/operate/security-hardening/).

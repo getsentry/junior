@@ -2,7 +2,7 @@
 title: Credentials & OAuth
 description: How Junior uses connected accounts without exposing secrets to the model or sandbox.
 type: conceptual
-summary: Understand actor-bound credentials, private OAuth, and task-scoped delegation.
+summary: Understand connected accounts, private OAuth, and task-scoped access.
 prerequisites:
   - /concepts/security-and-authority/
 related:
@@ -11,55 +11,42 @@ related:
   - /operate/security-hardening/
 ---
 
-Credentials are one part of Junior's security model: how connected accounts get used without becoming ambient session power.
+Junior uses connected accounts only when a provider request needs them. It does not preload provider access for an entire conversation.
 
-## Default rule
+## Credential Handling
 
-Junior does not preload provider access for a whole chat.
+When sandbox traffic reaches a domain registered by a plugin, Junior fetches a short-lived credential and adds it at the host proxy.
 
-When sandbox traffic hits a registered provider domain, the host fetches a short-lived credential for the current authority and injects it at the proxy boundary.
+- Long-lived tokens stay outside the model and sandbox.
+- Only registered provider domains can receive credentials.
+- Junior matches the request domain instead of guessing from command text.
+- Missing identity or credential context blocks the request.
 
-- The sandbox sees placeholders and proxied responses, not long-lived tokens.
-- Only registered plugin providers are eligible.
-- Junior matches provider domains at request time. It does not guess from command text.
-- Missing actor or subject context fails closed.
+## User and Task Access
 
-## Actor vs credential subject
+The current user is the default credential owner. Their account can be used only within the active turn and provider scope.
 
-| Role | Meaning |
-| ---- | ------- |
-| Actor | Who is driving the turn |
-| Credential subject | Whose connected account may be used |
-
-By default those are the same person: the author of the current message.
-
-Later work can differ. Scheduled and event tasks often run as a system actor while optionally using the creator's connected account for that exact task. That is explicit delegation, not “Junior became you.”
+Scheduled and event tasks run as Junior, not as the creator. A task may use the creator's connected account when access was delegated to that exact task. The delegation does not apply to other tasks or conversations.
 
 ## OAuth
 
-When a user-bound grant is missing:
+When a user needs to connect an account:
 
-1. Junior stores a short-lived authorization request.
-2. The auth link is delivered privately to the requesting user.
-3. Token exchange happens on the server.
-4. The blocked turn resumes after success.
+1. Junior sends that user a private, short-lived authorization link.
+2. The provider returns the user to Junior after approval.
+3. Junior stores the grant and resumes the blocked turn.
 
-Replayed, expired, or mismatched callbacks do nothing useful. Public channels should never receive reusable auth links.
+Authorization links are single-use and tied to the user, provider, and conversation. Expired, replayed, or mismatched callbacks are rejected.
 
-## What users should expect
+## Common Failures
 
-- Normal plugin work should not require pasting tokens into Slack.
-- If access is missing or stale, Junior asks the right user to reconnect.
-- Task runs can use creator credentials only when that was allowed for the task.
-- Provider permissions still apply. Junior cannot invent access your account does not have.
+- the user has not completed OAuth
+- the connected account cannot access the target
+- the plugin or OAuth client is misconfigured
+- no registered provider owns the request domain
 
-## Common failures
+Junior asks the user to reconnect when access is missing or stale. Users should never paste tokens into Slack.
 
-- OAuth is required and has not been completed
-- the connected account lacks permission for the target
-- the plugin is missing or misconfigured
-- the request went to a domain no registered provider owns
+## Next Step
 
-## Next step
-
-See [Security & Authority](/concepts/security-and-authority/) for the broader model, or a concrete plugin page such as [Sentry Plugin](/extend/sentry-plugin/).
+Read [Security & Authority](/concepts/security-and-authority/) for the full security model, or configure a provider such as the [Sentry Plugin](/extend/sentry-plugin/).

@@ -2,7 +2,7 @@
 title: Data & Privacy
 description: What Junior stores, who can see it, and what gets removed.
 type: conceptual
-summary: Know what Junior retains, what the model can see, and how privacy is enforced.
+summary: Understand what Junior retains and how conversation privacy is enforced.
 prerequisites:
   - /concepts/conversations/
 related:
@@ -11,57 +11,46 @@ related:
   - /operate/security-hardening/
 ---
 
-Junior keeps enough state to finish work, show a transcript, and operate the product. It should not keep more than that.
+Junior stores the data needed to continue work, deliver replies, and operate the product.
 
-## What gets stored
+## Stored Data
 
-| Kind | Why it exists |
-| ---- | ------------- |
-| Messages | Exact chat content for transcripts, delivery, and search |
-| Agent history | Model inputs, tool calls, and tool results needed to continue a turn |
-| Tasks and watches | Durable later work and temporary event follows |
-| Artifacts | Files Junior intentionally prepares to share |
-| Plugin records | Feature data owned by an installed plugin |
+| Data | Purpose |
+| ---- | ------- |
+| Messages | Transcript display, delivery, and search |
+| Agent history | Continue turns across tools, pauses, and retries |
+| Tasks and watches | Run later or follow resource events |
+| Artifacts | Deliver files created during work |
+| Plugin records | Support features from installed plugins |
 
-Sandbox files are temporary workspace state. They are not product storage. If something matters, Junior has to persist or deliver it on purpose.
+Sandbox files are temporary. Junior must persist or deliver a file before the sandbox disappears.
 
-## What the model can see
+## Model Access
 
-The model only gets content authorized for the active conversation and actor. That usually means:
+The model receives content selected for the active conversation, including the current thread, loaded skills, and tool results. Installed memory features may add content allowed for that actor and destination.
 
-- the current thread
-- selected skills and runtime instructions
-- tool results from the current work
-- any installed memory feature that is allowed to recall into this conversation
+Junior uses normalized resource events instead of storing complete webhook payloads. Secret values and unrelated private conversations do not belong in model context.
 
-It should not receive raw provider webhook payloads, other users' private transcripts, or secret values.
+## Visibility
 
-## Visibility and access
+The Slack destination controls conversation visibility. Private transcripts are available only to authorized participants. Child conversations, artifacts, and plugin records inherit the parent boundary.
 
-- Destination visibility is the privacy authority.
-- Private conversations stay private in the dashboard unless you are an authorized participant.
-- Public conversation metadata may be broader than private transcript access.
-- Child conversations and plugin records inherit the parent boundary.
+Read access does not grant permission to act with another user's connected account.
 
-Read access is not the same thing as the right to act. Dashboard viewers do not automatically get connected-account authority.
+## Redaction and Retention
 
-## Redaction, expiry, and purge
+- **Redaction** hides sensitive content while preserving the record.
+- **Expiry** removes content after its retention period.
+- **Purge** removes the complete conversation tree.
 
-These are different:
+Logs and traces use safe identifiers, counts, and error classes. They should not contain tokens, prompts, raw message bodies, or credential material.
 
-- **Redaction** keeps a record without exposing sensitive content.
-- **Expiry** removes retained content after the retention window.
-- **Purge** deletes a conversation tree when it is time to fully remove it.
-
-Logs and traces should carry ids, counts, and safe error classes. They should not carry prompts, tokens, raw message bodies, or credential material.
-
-## Practical rules
+## User Guidance
 
 - Do not paste secrets, credentials, or private customer data into Slack.
-- Prefer links to approved systems over copied sensitive content.
+- Link to approved systems instead of copying sensitive content.
 - Treat public channels as public.
-- Review anything consequential before you rely on it.
 
-## Next step
+## Next Step
 
-Use [Dashboard](/operate/dashboard/) for transcript and task access, then [Security Hardening](/operate/security-hardening/) for operator checks.
+Use [Dashboard](/operate/dashboard/) for transcript access and [Security Hardening](/operate/security-hardening/) for production checks.

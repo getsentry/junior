@@ -2,7 +2,7 @@
 title: Skills & Plugins
 description: How Junior gets instructions, tools, and external integrations.
 type: conceptual
-summary: Tell skills, plugins, tools, and sandbox commands apart.
+summary: Understand the difference between skills, tools, plugins, and sandbox commands.
 prerequisites:
   - /start-here/overview/
 related:
@@ -11,63 +11,53 @@ related:
   - /concepts/resource-subscriptions/
 ---
 
-Junior's capabilities come from a few different layers. They are easy to blur together, so keep them straight.
+Junior combines instructions with configured capabilities.
 
-## Mental model
+## Components
 
-| Piece | Job |
-| ----- | --- |
-| Skills | Tell Junior how to do a kind of work |
-| Core tools | Host-owned actions Junior can take |
-| Plugins | Reviewed integrations you explicitly enable |
-| MCP / provider tools | External tool surfaces exposed by a plugin |
-| Sandbox commands | Isolated command execution for real work |
-
-Skills are instructions. Plugins are code and manifests. Tools are the actions. The sandbox is where untrusted command execution happens.
+| Component | Purpose |
+| --------- | ------- |
+| Skill | Instructions for a type of work |
+| Tool | An action Junior can take |
+| Plugin | An integration enabled by the app operator |
+| Sandbox | Isolated command execution |
 
 ## Skills
 
-Skills are focused playbooks loaded when they match the task.
+Skills are focused playbooks loaded when they match the request.
 
-- Local skills live in `app/skills/<skill-name>/SKILL.md`
-- Plugins can ship their own skills
-- Skills should not own package installs, OAuth setup, or secret handling
+- Local skills live in `app/skills/<skill-name>/SKILL.md`.
+- Plugins can include their own skills.
+- Skills do not install packages, configure OAuth, or grant access.
 
-If a skill needs a CLI, system package, MCP server, or credential flow, that belongs in a plugin manifest.
+If a skill needs a CLI, system package, MCP server, or credential flow, declare it in the plugin instead.
 
 ## Plugins
 
-Plugins are trusted app code you opt into. Runtime does not scan `node_modules` for random plugins.
+Junior loads plugins only from explicit app configuration. A plugin can register:
 
-A plugin may declare:
-
-- credentials and provider domains
-- tools and MCP servers
-- skills
+- tools and skills
+- provider credentials and domains
+- MCP servers
 - runtime dependencies
 - routes and resource events
 
-The host still owns auth brokering, queueing, validation, and action review. A plugin can add capability. It does not get to invent authority.
+Plugins run as trusted application code. The host still owns credential handling, validation, action review, and durable execution.
 
-## Tools and review
+## Tools
 
-Not every tool is equal.
+Core tools are part of Junior. Plugins and MCP servers can add more tools. Every tool has an input contract, and actions may require review before they run.
 
-- Core tools have explicit contracts and approval behavior.
-- Plugin and MCP tools are external capability surfaces. Missing safety metadata is treated carefully.
-- Destructive or open-world actions are more likely to need action review.
-- Tool results are data, not new instructions that automatically widen access.
+Tool output is treated as data. It cannot change the active user, destination, or credential authority.
 
-See [Security & Authority](/concepts/security-and-authority/) for how review fits in.
-
-## Validation
+## Validate Configuration
 
 ```bash
 pnpm exec junior check
 ```
 
-Keep install steps, CLIs, MCP servers, and API-key wiring in `plugin.yaml` or the plugin definition so the reviewed manifest owns the runtime surface.
+Keep package installs, CLIs, MCP servers, and API-key configuration in `plugin.yaml` or the plugin definition.
 
-## Next step
+## Next Step
 
-Browse [Plugins](/extend/) for the integrations you can enable, then read [Resource Subscriptions](/concepts/resource-subscriptions/) if the plugin publishes events.
+Browse [Plugins](/extend/) for available integrations. Read [Security & Authority](/concepts/security-and-authority/) for capability and review boundaries.

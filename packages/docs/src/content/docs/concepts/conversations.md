@@ -11,52 +11,40 @@ related:
   - /concepts/data-and-privacy/
 ---
 
-A **conversation** is Junior's durable unit of work. In Slack, that usually maps to one thread. The thread is the place people talk. The conversation is what Junior stores, resumes, and authorizes against.
+A **conversation** is Junior's durable unit of work. In Slack, one conversation usually maps to one thread.
 
-## The pieces that matter
+## Conversations and Turns
 
-| Term | What it is |
-| ---- | ---------- |
-| Conversation | Durable history and execution state |
-| Turn | One request through to a finished response |
-| Actor | Who is driving the current work |
-| Destination | Where Junior is allowed to reply |
-| Message | Exact chat content people can see |
-| Agent history | What the model uses to continue the work |
+A conversation contains messages, execution state, and the history needed to continue work. A **turn** starts with a request and ends with a reply, an intentional no-reply, or a failure.
 
-Visible messages and model history are related, but they are not the same thing. Junior can summarize or replace model history without rewriting the Slack transcript.
+A turn may pause and resume without starting a new conversation. Junior can also shorten its working history to fit the available context without changing the Slack transcript.
 
-## Slack behavior
+## Slack Behavior
 
 - Mention Junior to start work in a channel thread.
-- After Junior has joined, follow-ups in that thread stay in the same conversation.
-- Replies go back to the same thread, not a new top-level message.
+- Follow-ups stay in the same conversation after Junior joins.
+- Replies return to the same thread.
 - Keep one task per thread. Start a new thread when the goal changes.
-- Use public channels for shareable work. Use DMs for private work.
+- Use public channels for shareable work and DMs for private work.
 
-Incoming work is ordered per conversation. A mention can interrupt at the next safe boundary. Other messages wait their turn.
+Messages are processed in order. A new mention can steer active work at the next safe point. Other messages wait for the current turn to finish.
 
 ## Visibility
 
-Conversation privacy follows the destination:
+Conversation privacy follows its Slack destination:
 
-- public channels are visible according to your workspace norms and dashboard access rules
+- public channels follow workspace and dashboard access rules
 - private channels and DMs stay private
-- unknown or missing visibility stays private
+- missing visibility is treated as private
 
-Child work created under a conversation inherits that boundary. Being able to read a transcript does not grant provider credentials or the right to delete someone else's tasks.
+Child work, generated files, and plugin records inherit the conversation's visibility. Transcript access does not grant connected-account access or task ownership.
 
-## What stays in context
+## Context
 
-Junior continues from:
+Junior uses the current thread, selected skills and files, and results from the active work. It does not pull private context from unrelated conversations.
 
-- the current thread
-- the active actor and destination
-- tools, skills, and files selected for the turn
-- any compacted summary needed to keep the work moving
+An installed Memory plugin may add scoped recall. It does not provide unrestricted access to every conversation.
 
-It does not silently pull in private context from unrelated conversations. If a Memory plugin is installed, that is a separate scoped feature, not ambient access to everything.
+## Next Step
 
-## Next step
-
-Read [Execution Model](/concepts/execution-model/) for how a turn survives pauses and retries, or [Data & Privacy](/concepts/data-and-privacy/) for what is stored and redacted.
+Read [Execution Model](/concepts/execution-model/) for pauses and retries, or [Data & Privacy](/concepts/data-and-privacy/) for storage and access rules.
