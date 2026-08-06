@@ -141,10 +141,6 @@ Set `GITHUB_WEBHOOK_SECRET` to enable resource events. See
 [Resource Subscriptions](/concepts/resource-subscriptions/) for temporary
 resource subscriptions versus durable event tasks.
 
-Resource events require a single-workspace Slack deployment with
-`SLACK_BOT_TOKEN`. Multi-workspace Slack mode cannot route provider webhook
-events to a verified workspace.
-
 Issue and pull request events can target one item with `owner/repo#number`, or
 every item of that kind in a repository with `owner/repo`.
 
@@ -367,8 +363,6 @@ A local `git commit` does not call GitHub. The write happens on push. Grant
   event mapping. Confirm `GITHUB_INSTALLATION_ID` and the event type.
 - Delivery succeeds but nothing appears in Slack: create a resource subscription
   or event task first. A webhook alone does not create either one.
-- Resource events unavailable in Slack OAuth mode: use a single-workspace
-  `SLACK_BOT_TOKEN` deployment.
 - Missing repository context: include `owner/repo`, or set a thread default
   repository.
 - A `403` that names `github_createIssue` or `github_createPullRequest` is a
