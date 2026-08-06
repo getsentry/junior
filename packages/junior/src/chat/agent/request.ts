@@ -142,6 +142,9 @@ export interface AgentRunPolicy {
    * Optional agent capabilities disabled for this run slice.
    * `interactive-auth` blocks pausing to send an OAuth link; missing credentials
    * hard-fail instead. Default is enabled when omitted.
+   * TODO(#881, #883): child invocations currently disable interactive-auth, but
+   * may later need a path to force the auth flow when a delegated tool requires
+   * credentials the parent can already request.
    */
   disabledFeatures?: readonly AgentRunFeature[];
   /** Absolute wall-clock deadline for this host request, in milliseconds. */
