@@ -155,6 +155,9 @@ const app = await createApp({
 });
 ```
 
+`junior chat` enables experimental `subagents` automatically because it is the
+local createApp-equivalent entrypoint and already wires the child-worker path.
+
 ## Install-wide config defaults
 
 Pass `configDefaults` to `createApp()` to set provider defaults across all conversations:

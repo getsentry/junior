@@ -236,6 +236,10 @@ async function prepareLocalChatRun(
 ) {
   defaultStateAdapterForLocalChat();
   await configureLocalChatPlugins(pluginSet);
+  // Local chat is the createApp-equivalent entrypoint. Opt into experimental
+  // subagents here so spawnAgent matches the wired child-worker path.
+  const { setExperimentalFeatures } = await import("@/chat/experimental");
+  setExperimentalFeatures({ subagents: true });
   const { runLocalAgentTurn } = await import("@/chat/local/runner");
   const { startLocalOAuthCallbackServer } =
     await import("@/chat/local/oauth-callback-server");

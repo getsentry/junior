@@ -52,8 +52,9 @@ by the parent-facing runtime.
 
 `spawnAgent` exposes durable creation to a parent agent when the experimental
 `subagents` feature is enabled via
-`createApp({ experimental: { subagents: true } })`. It is off by default so
-deployments can ship the runtime without advertising the model-facing tool. The
+`createApp({ experimental: { subagents: true } })` (or automatically in
+`junior chat`, the local createApp-equivalent entrypoint). It is off by default
+so deployments can ship the runtime without advertising the model-facing tool. The
 tool receives only the delegated task, optional child name, and optional
 per-task reasoning level. The runtime derives actor, credentials, destination,
 visibility, source, parent conversation, and idempotency from the active tool
