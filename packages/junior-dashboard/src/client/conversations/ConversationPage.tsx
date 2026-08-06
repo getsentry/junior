@@ -286,12 +286,6 @@ function ConversationIdentity(props: {
   const email = props.conversation?.actorIdentity?.email?.trim();
   const owner = conversationActorLabel(props.conversation);
   const id = props.conversationId ?? props.conversation?.id;
-  const location = props.conversation
-    ? slackLocationLabel(props.conversation, {
-        includeId: false,
-      })
-    : undefined;
-  const sourceUrl = props.detail?.sourceUrl ?? props.conversation?.sourceUrl;
   const ownerNode = owner ? (
     email ? (
       <Link
@@ -318,22 +312,14 @@ function ConversationIdentity(props: {
   return (
     <>
       <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 md:hidden">
-        {location ? (
-          <span className="min-w-0 max-w-full truncate">
-            <SourceLocation label={location} sourceUrl={sourceUrl} />
-          </span>
-        ) : null}
-        {location && ownerNode ? (
-          <span className="text-dashboard-text-muted">·</span>
-        ) : null}
         {ownerNode ? (
           <span className="min-w-0 max-w-full truncate">{ownerNode}</span>
         ) : null}
         {sentryLink ? (
           <>
-            {(location || ownerNode) && (
+            {ownerNode ? (
               <span className="text-dashboard-text-muted">·</span>
-            )}
+            ) : null}
             {sentryLink}
           </>
         ) : null}
