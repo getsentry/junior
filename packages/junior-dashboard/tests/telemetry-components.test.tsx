@@ -351,15 +351,34 @@ describe("dashboard canonical-event components", () => {
         ],
       }),
     ];
-    const partialHtml = renderTranscript(
+    const partialClient = conversationQueryClient();
+    partialClient.setQueryData(
+      conversationDetailQueryKey("conversation-1"),
       conversation(events, { previousCursor: "older-events" }),
     );
-    const completeHtml = renderTranscript(conversation(events));
+    const completeClient = conversationQueryClient();
+    completeClient.setQueryData(
+      conversationDetailQueryKey("conversation-1"),
+      conversation(events),
+    );
 
+    const partialHtml = renderConversationPageWithClient(partialClient);
+    const completeHtml = renderConversationPageWithClient(completeClient);
+    const partialTranscriptHtml = renderTranscript(
+      conversation(events, { previousCursor: "older-events" }),
+    );
+    const completeTranscriptHtml = renderTranscript(conversation(events));
+
+    // Conversation-level turn/tool totals only when the loaded history is complete.
     expect(partialHtml).not.toContain("1 turn");
     expect(partialHtml).not.toContain("1 tool call");
     expect(completeHtml).toContain("1 turn");
     expect(completeHtml).toContain("1 tool call");
+    // Transcript no longer mirrors those conversation totals in a segment row.
+    expect(partialTranscriptHtml).not.toContain("1 turn");
+    expect(partialTranscriptHtml).not.toContain("1 tool call");
+    expect(completeTranscriptHtml).not.toContain("1 turn");
+    expect(completeTranscriptHtml).not.toContain("1 tool call");
   });
 
   it("renders each user message with its own actor", () => {
