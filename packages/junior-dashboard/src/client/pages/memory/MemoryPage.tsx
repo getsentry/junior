@@ -10,6 +10,7 @@ import {
   Sparkles,
   UserRound,
 } from "lucide-react";
+import { useEffect } from "react";
 import {
   Navigate,
   NavLink,
@@ -155,6 +156,34 @@ function MemoryLibrary(props: {
   const memoryPath = (pathname: string) =>
     pathWithSearch(pathname, location.search);
 
+  useEffect(() => {
+    // Drop stale permalinks after a forget/archive or unknown id once the
+    // direct memory read has settled without a record.
+    if (
+      !memoryId ||
+      selectedRecord ||
+      memoryQuery.isFetching ||
+      memoryQuery.isPending
+    ) {
+      return;
+    }
+    if (memoryQuery.isError || memoryQuery.isFetched) {
+      navigate(pathWithSearch(props.libraryPath, location.search), {
+        replace: true,
+      });
+    }
+  }, [
+    location.search,
+    memoryId,
+    memoryQuery.isError,
+    memoryQuery.isFetched,
+    memoryQuery.isFetching,
+    memoryQuery.isPending,
+    navigate,
+    props.libraryPath,
+    selectedRecord,
+  ]);
+
   if (!query.data && !query.error) {
     return <LoadingView label="Loading memories" />;
   }
@@ -217,51 +246,49 @@ function MemoryLibrary(props: {
           </div>
         </Card>
       ) : (
-        <div className="grid items-start gap-4">
-          <div className="grid gap-3">
-            <Card padding="none">
-              <MemoryListHeader />
-              {records.map((record, index) => (
-                <MemoryRow
-                  first={index === 0}
-                  key={record.id}
-                  onSelect={() =>
-                    navigate(
-                      memoryPath(
-                        memoryId === record.id
-                          ? props.libraryPath
-                          : `/memories/${encodeURIComponent(record.id)}`,
-                      ),
-                    )
-                  }
-                  record={record}
-                  selected={record.id === memoryId}
-                />
-              ))}
-            </Card>
-            {!query.isPlaceholderData && query.hasNextPage ? (
-              <Button
-                className="mt-2 justify-self-center"
-                disabled={query.isFetchingNextPage}
-                onClick={() => void query.fetchNextPage()}
-              >
-                {query.isFetchingNextPage ? "Loading…" : "Load more"}
-              </Button>
-            ) : null}
-            {action.error ? (
-              <p className="m-0 text-center text-sm text-rose-300">
-                Could not complete this action. Try again.
-              </p>
-            ) : null}
-          </div>
-          <MemoryDetailsDrawer
-            action={action}
-            onAction={runAction}
-            onClose={() => navigate(memoryPath(props.libraryPath))}
-            record={selectedRecord}
-          />
+        <div className="grid gap-3">
+          <Card padding="none">
+            <MemoryListHeader />
+            {records.map((record, index) => (
+              <MemoryRow
+                first={index === 0}
+                key={record.id}
+                onSelect={() =>
+                  navigate(
+                    memoryPath(
+                      memoryId === record.id
+                        ? props.libraryPath
+                        : `/memories/${encodeURIComponent(record.id)}`,
+                    ),
+                  )
+                }
+                record={record}
+                selected={record.id === memoryId}
+              />
+            ))}
+          </Card>
+          {!query.isPlaceholderData && query.hasNextPage ? (
+            <Button
+              className="mt-2 justify-self-center"
+              disabled={query.isFetchingNextPage}
+              onClick={() => void query.fetchNextPage()}
+            >
+              {query.isFetchingNextPage ? "Loading…" : "Load more"}
+            </Button>
+          ) : null}
+          {action.error ? (
+            <p className="m-0 text-center text-sm text-rose-300">
+              Could not complete this action. Try again.
+            </p>
+          ) : null}
         </div>
       )}
+      <MemoryDetailsDrawer
+        action={action}
+        onAction={runAction}
+        onClose={() => navigate(memoryPath(props.libraryPath))}
+        record={selectedRecord}
+      />
     </section>
   );
 }

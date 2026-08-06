@@ -36,7 +36,11 @@ export function useDebouncedSearchParam(
   const committed = searchParams.get(key)?.trim() ?? "";
   const [value, setValue] = useState(committed);
 
-  useEffect(() => setValue(committed), [committed]);
+  useEffect(() => {
+    // Keep local draft text when it only differs by surrounding whitespace so a
+    // trailing space is not stripped mid-typing after the URL commits.
+    setValue((current) => (current.trim() === committed ? current : committed));
+  }, [committed]);
   useEffect(() => {
     const timeout = window.setTimeout(() => {
       const normalized = value.trim();

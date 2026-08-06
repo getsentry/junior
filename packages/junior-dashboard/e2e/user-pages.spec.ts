@@ -314,6 +314,28 @@ test("searches, paginates, and forgets plugin page records", async ({
   await page.route(
     "**/api/plugins/memory/memories/memory-search",
     async (route) => {
+      if (route.request().method() === "GET") {
+        if (forgotMemory) {
+          await route.fulfill({
+            json: { error: "Memory was not found." },
+            status: 404,
+          });
+          return;
+        }
+        await route.fulfill({
+          json: {
+            content: "Deploy runbooks live in Notion.",
+            createdAt: "2026-07-30T12:00:00.000Z",
+            id: "memory-search",
+            kind: "knowledge",
+            observedAt: "2026-07-30T12:00:00.000Z",
+            origin: "explicit",
+            sourcePlatform: "slack",
+            visibility: "private",
+          },
+        });
+        return;
+      }
       forgetRequests += 1;
       expect(route.request().method()).toBe("DELETE");
       forgotMemory = true;

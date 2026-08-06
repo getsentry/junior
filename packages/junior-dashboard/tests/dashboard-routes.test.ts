@@ -119,7 +119,6 @@ describe("dashboard routes", () => {
       "/tasks",
       "/tasks/task-1",
       "/memories",
-      "/memories/library",
       "/memories/memory-1",
     ]) {
       const response = await app.fetch(new Request(`http://localhost${path}`));
@@ -456,7 +455,6 @@ describe("dashboard routes", () => {
       "/tasks",
       "/tasks/task-1",
       "/memories",
-      "/memories/library",
       "/memories/memory-1",
       "/settings/api-tokens",
       "/plugins/memory/memories",

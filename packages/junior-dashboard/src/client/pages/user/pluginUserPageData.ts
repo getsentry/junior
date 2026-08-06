@@ -68,7 +68,17 @@ export function usePluginUserPageData(page: PluginUserPageLink) {
       deleteDashboardResource(recordAction.href),
     onMutate: () => ({ pluginName: page.pluginName }),
     onSuccess: async (_result, _recordAction, context) => {
-      await queryClient.resetQueries({
+      // Drop detail caches first so a forgotten permalink is not refetched
+      // while list/summary queries refresh under the same plugin prefix.
+      queryClient.removeQueries({
+        queryKey: [
+          "dashboard",
+          "plugin-user-page",
+          context.pluginName,
+          "record",
+        ],
+      });
+      await queryClient.invalidateQueries({
         queryKey: ["dashboard", "plugin-user-page", context.pluginName],
       });
     },

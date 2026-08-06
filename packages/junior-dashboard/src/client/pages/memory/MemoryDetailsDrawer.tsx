@@ -35,6 +35,21 @@ export function MemoryDetailsDrawer(props: {
   onCloseRef.current = props.onClose;
 
   useEffect(() => {
+    // A prior forget leaves mutation success sticky; clear it when a new
+    // record opens so the next drawer is not closed immediately.
+    if (openRecordId) props.action.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset only on open id change
+  }, [openRecordId]);
+
+  useEffect(() => {
+    // Forget/archive succeeds while the drawer is still open; leave the
+    // permalink before a stale detail cache can keep it mounted.
+    if (props.action.isSuccess && openRecordId) {
+      onCloseRef.current();
+    }
+  }, [openRecordId, props.action.isSuccess]);
+
+  useEffect(() => {
     if (!openRecordId) return undefined;
     previousFocusRef.current =
       document.activeElement instanceof HTMLElement
@@ -206,7 +221,21 @@ export function MemoryDetailsDrawer(props: {
               <button
                 className="inline-flex w-fit cursor-pointer items-center gap-2 rounded border border-rose-300/15 bg-rose-300/[0.035] px-3 py-2 font-mono text-[0.62rem] uppercase tracking-[0.08em] text-rose-200/75 transition-colors hover:border-rose-300/30 hover:bg-rose-300/[0.07] hover:text-rose-100"
                 disabled={props.action.isPending}
-                onClick={() => props.onAction(forgetAction)}
+                onClick={() => {
+                  if (
+                    forgetAction.confirmation &&
+                    !window.confirm(forgetAction.confirmation)
+                  ) {
+                    return;
+                  }
+                  // Leave the permalink before the mutation refreshes queries so
+                  // a deleted memory is not refetched while the drawer is open.
+                  props.onClose();
+                  props.onAction({
+                    ...forgetAction,
+                    confirmation: undefined,
+                  });
+                }}
                 type="button"
               >
                 <Trash2 aria-hidden="true" size={13} />

@@ -1,5 +1,5 @@
 import { Boxes, Search, Trash2 } from "lucide-react";
-import { Navigate, useParams } from "react-router";
+import { Navigate, useLocation, useParams } from "react-router";
 import type { PluginUserPageLink } from "@sentry/junior-plugin-api";
 
 import { Button } from "../../components/Button";
@@ -7,6 +7,7 @@ import { LoadingView } from "../../components/LoadingView";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { MemoryPage } from "../memory/MemoryPage";
+import { pathWithSearch } from "../../searchParams";
 import { dashboardContainerClass } from "../../styles";
 import { usePluginUserPageData } from "./pluginUserPageData";
 
@@ -26,7 +27,8 @@ export function MemoryPermalinkRoute(props: { pages: PluginUserPageLink[] }) {
 
 /** Select the core renderer for one registered plugin page. */
 export function PluginUserPageRoute(props: { pages: PluginUserPageLink[] }) {
-  const { pageId, pluginName } = useParams();
+  const location = useLocation();
+  const { "*": restPath, pageId, pluginName } = useParams();
   const page = props.pages.find(
     (item) => item.pluginName === pluginName && item.id === pageId,
   );
@@ -41,7 +43,13 @@ export function PluginUserPageRoute(props: { pages: PluginUserPageLink[] }) {
    * contract.
    */
   if (page.pluginName === "memory" && page.id === "memories") {
-    return <Navigate replace to="/memories" />;
+    const suffix = restPath ? `/${restPath}` : "";
+    return (
+      <Navigate
+        replace
+        to={pathWithSearch(`/memories${suffix}`, location.search)}
+      />
+    );
   }
 
   return <PluginUserPage page={page} />;
