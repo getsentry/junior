@@ -145,14 +145,16 @@ describe("agent invocation conversation work", () => {
           agentName: "researcher",
         }),
       ).rejects.toThrow("idempotency key was reused with different input");
-      await expect(
-        createAgentInvocation({
-          ...invocationInput,
-          agentName: "researcher",
-          idempotencyKey: "named-policy-change",
-          reasoningLevel: "high",
-        }),
-      ).rejects.toThrow("Named agent binding policy changed for researcher");
+      const nextWithDifferentReasoning = await createAgentInvocation({
+        ...invocationInput,
+        agentName: "researcher",
+        idempotencyKey: "named-reasoning-per-task",
+        reasoningLevel: "high",
+      });
+      expect(nextWithDifferentReasoning.childConversationId).toBe(
+        first.childConversationId,
+      );
+      expect(nextWithDifferentReasoning.reasoningLevel).toBe("high");
       await expect(
         createAgentInvocation({
           ...invocationInput,

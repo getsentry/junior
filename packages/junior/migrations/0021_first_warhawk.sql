@@ -2,7 +2,6 @@ CREATE TABLE "junior_agent_bindings" (
 	"parent_conversation_id" text NOT NULL,
 	"name" text NOT NULL,
 	"child_conversation_id" text NOT NULL,
-	"reasoning_level" text,
 	CONSTRAINT "junior_agent_bindings_parent_conversation_id_name_pk" PRIMARY KEY("parent_conversation_id","name")
 );
 --> statement-breakpoint

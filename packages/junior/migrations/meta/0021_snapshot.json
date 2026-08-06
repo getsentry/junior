@@ -1,5 +1,5 @@
 {
-  "id": "eaf270a4-9be4-4872-9025-33ac168098c2",
+  "id": "c4c6f36f-b111-43fc-ac7c-d7175332e4bd",
   "prevId": "0c1e6611-1101-44ef-9c06-e6e389a0a435",
   "version": "7",
   "dialect": "postgresql",
@@ -25,12 +25,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
-        },
-        "reasoning_level": {
-          "name": "reasoning_level",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {

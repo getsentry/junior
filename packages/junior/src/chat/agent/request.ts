@@ -123,6 +123,8 @@ export interface AgentRunRouting {
 export interface AgentRunPolicy {
   /** Disable child-agent spawning for runs that are already delegated work. */
   agentSpawning?: "disabled";
+  /** Disable model-profile handoff for runs that must keep fixed execution policy. */
+  modelHandoff?: "disabled";
   /** Absolute wall-clock deadline for this host request, in milliseconds. */
   turnDeadlineAtMs?: number;
   /** Cancels provider work when the owning host request is abandoned. */

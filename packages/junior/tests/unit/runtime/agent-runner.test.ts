@@ -56,4 +56,33 @@ describe("agent runner controls", () => {
       }),
     );
   });
+
+  it("preserves fixed child execution policy on delegated runs", async () => {
+    const bindSpawnAgent = vi.fn();
+    const run = vi.fn(async () => ({
+      status: "suspended" as const,
+      resumeVersion: 1,
+    }));
+    const runner = createAgentRunner(run, { bindSpawnAgent });
+
+    await runner.run({
+      ...request,
+      policy: {
+        agentSpawning: "disabled",
+        modelHandoff: "disabled",
+        reasoningLevel: "high",
+      },
+    });
+
+    expect(bindSpawnAgent).not.toHaveBeenCalled();
+    expect(run).toHaveBeenCalledWith(
+      expect.objectContaining({
+        policy: expect.objectContaining({
+          agentSpawning: "disabled",
+          modelHandoff: "disabled",
+          reasoningLevel: "high",
+        }),
+      }),
+    );
+  });
 });

@@ -423,6 +423,7 @@ export function createAgentInvocationWorker(options: {
         policy: {
           agentSpawning: "disabled",
           authorizationFlowMode: "disabled",
+          modelHandoff: "disabled",
           reasoningLevel: invocation.reasoningLevel,
         },
         state: {

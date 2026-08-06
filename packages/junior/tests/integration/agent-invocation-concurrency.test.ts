@@ -225,6 +225,7 @@ describe("agent invocation identity and concurrency", () => {
         agentName: "researcher",
         idempotencyKey: "named-2",
         input: "second named task",
+        reasoningLevel: "medium",
       });
       await harness.drainQueuedWork();
 
@@ -232,7 +233,9 @@ describe("agent invocation identity and concurrency", () => {
       expect(requests).toHaveLength(2);
       expect(requests[0]?.input.piMessages).toEqual([]);
       expect(requests[0]?.policy?.reasoningLevel).toBe("high");
-      expect(requests[1]?.policy?.reasoningLevel).toBe("high");
+      expect(requests[0]?.policy?.modelHandoff).toBe("disabled");
+      expect(requests[1]?.policy?.reasoningLevel).toBe("medium");
+      expect(requests[1]?.policy?.modelHandoff).toBe("disabled");
       expect(requests[1]?.input.piMessages).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ role: "user" }),
@@ -245,7 +248,7 @@ describe("agent invocation identity and concurrency", () => {
       await expect(
         getAgentInvocation(second.invocationId),
       ).resolves.toMatchObject({
-        reasoningLevel: "high",
+        reasoningLevel: "medium",
         result: "result:second named task",
         status: "completed",
       });

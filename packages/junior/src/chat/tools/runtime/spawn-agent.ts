@@ -38,7 +38,7 @@ export function createSpawnAgentTool(
           .nullable()
           .optional()
           .describe(
-            "Optional reasoning level; for a named agent this becomes its stable policy",
+            "Optional reasoning level for this delegated task only",
           ),
       })
       .strict(),

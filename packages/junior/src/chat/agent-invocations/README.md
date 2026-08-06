@@ -7,16 +7,18 @@ stores the terminal result for its parent to read later.
 ## Records
 
 - An **agent binding** maps one name within a parent agent conversation to one
-  destinationless child conversation and its reasoning policy. Reusing the
-  name reuses that child's history; an omitted reasoning level inherits the
-  binding, while an explicit mismatch is rejected.
+  destinationless child conversation. Named and unnamed children are the same
+  kind of work; a name only keeps the same child conversation id so later inputs
+  continue that child's history.
 - An **agent invocation** is one retry-safe task sent to a child. Its
   `invocationId` is derived from the parent conversation and caller-supplied
-  idempotency key.
+  idempotency key. Optional reasoning level is per-invocation policy, not
+  binding state.
 - An invocation without a name gets an invocation-scoped child conversation.
 - Child conversation lineage is immutable. Bindings and invocation content are
   purged with their root conversation tree. Recursive delegation is disabled
-  until depth, cancellation, and authority rules are defined.
+  until depth, cancellation, and authority rules are defined. Children cannot
+  spawn, hand off model profiles, or otherwise override their run policy.
 
 SQL owns bindings, invocation status, bounded execution authority, and terminal
 results. The conversation event log and session record continue to own agent
@@ -49,9 +51,10 @@ by the parent-facing runtime.
 ## Current Boundary
 
 `spawnAgent` exposes durable creation to a parent agent. The tool receives only
-the delegated task, optional child name, and optional reasoning level. The
-runtime derives actor, credentials, destination, visibility, source, parent
-conversation, and idempotency from the active tool call.
+the delegated task, optional child name, and optional per-task reasoning level.
+The runtime derives actor, credentials, destination, visibility, source, parent
+conversation, and idempotency from the active tool call. Child runs keep fixed
+execution policy: no recursive spawn and no model handoff.
 
 This slice does not yet expose result recovery, inject child results into a
 parent turn, support recursive children, or implement cancellation. Those

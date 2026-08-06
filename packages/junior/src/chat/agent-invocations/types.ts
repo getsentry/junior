@@ -27,7 +27,6 @@ export const agentBindingSchema = z
     childConversationId: exactStringSchema,
     name: agentNameSchema,
     parentConversationId: exactStringSchema,
-    reasoningLevel: z.enum(TURN_REASONING_LEVELS).optional(),
   })
   .strict();
 

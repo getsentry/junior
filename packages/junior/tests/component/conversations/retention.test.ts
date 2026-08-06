@@ -443,7 +443,6 @@ describe("retention purge job", () => {
       childConversationId: "binding-child",
       name: "retained-name",
       parentConversationId: "binding-root",
-      reasoningLevel: "high",
     });
 
     const result = await runRetentionPurge(fixture.sql, {

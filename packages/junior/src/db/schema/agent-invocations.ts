@@ -37,7 +37,6 @@ export const juniorAgentBindings = pgTable(
     childConversationId: text("child_conversation_id")
       .notNull()
       .references(() => juniorConversations.conversationId),
-    reasoningLevel: text("reasoning_level").$type<TurnReasoningLevel>(),
   },
   (table) => [
     primaryKey({
