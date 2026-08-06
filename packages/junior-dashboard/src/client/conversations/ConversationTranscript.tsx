@@ -28,11 +28,6 @@ import {
   detectLanguage,
   transcriptRoleKind,
   formatMessageTimestamp,
-  formatTranscriptDuration,
-  summarizeCost,
-  summarizeTurns,
-  summarizeToolCalls,
-  summarizeUsage,
   transcriptMessageActorLabel,
   unavailableTranscriptLabel,
   visualStatusForSummary,
@@ -48,16 +43,6 @@ import {
   TranscriptHeadingMeta,
   TranscriptHeadingRow,
 } from "./TranscriptHeadingRow";
-import { MetricList, type MetricListItem } from "../components/Metric";
-import {
-  activeTurnModelId,
-  CostMetric,
-  DurationMetric,
-  hasOpenTurn,
-  TurnsMetric,
-  TokenMetric,
-  ToolCallsMetric,
-} from "./TelemetryMetrics";
 import { TranscriptText } from "./TranscriptText";
 import { TranscriptSubagentView } from "./TranscriptSubagentView";
 import { TranscriptContextEventView } from "./TranscriptContextEventView";
@@ -75,10 +60,7 @@ import {
   type RenderedToolEntry,
   type TranscriptViewMode,
 } from "./transcriptRenderModel";
-import {
-  transcriptEmptyClass,
-  mutedTranscriptMetaClass,
-} from "./transcriptStyles";
+import { transcriptEmptyClass } from "./transcriptStyles";
 import {
   entryMatchesSearch,
   HighlightText,
@@ -123,7 +105,6 @@ export function ConversationTranscriptView(props: {
         <span className="mt-2 w-px flex-1 bg-cyan-300/15" />
       </div>
       <div className="min-w-0">
-        <SegmentHeader conversation={props.conversation} />
         <SegmentEvents
           onOpenSubagentTranscript={props.onOpenSubagentTranscript}
           conversation={props.conversation}
@@ -261,17 +242,6 @@ function TranscriptMessageHeader(props: {
         ) : undefined
       }
     />
-  );
-}
-
-function SegmentHeader(props: { conversation: ConversationTranscript }) {
-  return (
-    <div className="min-w-0">
-      <MetricList
-        className={mutedTranscriptMetaClass()}
-        items={transcriptMeta(props.conversation)}
-      />
-    </div>
   );
 }
 
@@ -741,99 +711,6 @@ function RedactedMarker() {
       {"<redacted>"}
     </code>
   );
-}
-
-function transcriptMeta(
-  conversation: ConversationTranscript,
-): MetricListItem[] {
-  const duration = formatTranscriptDuration(conversation);
-  const tokenSummary = summarizeUsage(conversation.cumulativeUsage);
-  const costSummary = summarizeCost(conversation.cumulativeUsage);
-  const pendingModelId = activeTurnModelId(conversation);
-  const live = hasOpenTurn(conversation);
-  const completeHistory = !conversation.previousCursor;
-  const toolSummary = completeHistory
-    ? summarizeToolCalls(conversation)
-    : undefined;
-  const turnSummary = completeHistory
-    ? summarizeTurns(conversation)
-    : undefined;
-  const items: Array<MetricListItem | undefined> = [
-    duration !== "none"
-      ? {
-          content: (
-            <DurationMetric
-              endedAt={conversation.lastSeenAt}
-              label={duration}
-              startedAt={conversation.startedAt}
-            />
-          ),
-          key: "duration",
-        }
-      : undefined,
-    tokenSummary
-      ? {
-          content: (
-            <TokenMetric
-              compactionCount={
-                completeHistory
-                  ? conversation.events.filter(
-                      (event) => event.data.type === "compaction",
-                    ).length
-                  : undefined
-              }
-              live={live}
-              modelUsage={conversation.modelUsage}
-              summary={tokenSummary}
-            />
-          ),
-          key: "tokens",
-        }
-      : undefined,
-    costSummary || conversation.auxiliaryCosts || pendingModelId
-      ? {
-          content: (
-            <CostMetric
-              auxiliaryCosts={conversation.auxiliaryCosts}
-              live={live}
-              modelUsage={conversation.modelUsage}
-              pendingModelId={pendingModelId}
-              summary={costSummary}
-            />
-          ),
-          key: "cost",
-        }
-      : undefined,
-    turnSummary
-      ? {
-          content: <TurnsMetric summary={turnSummary} />,
-          key: "turns",
-        }
-      : undefined,
-    toolSummary && toolSummary.total > 0
-      ? {
-          content: <ToolCallsMetric live={live} summary={toolSummary} />,
-          key: "tools",
-        }
-      : undefined,
-    conversation.sentryTraceUrl
-      ? {
-          content: (
-            <a
-              className="text-dashboard-text no-underline hover:underline"
-              href={conversation.sentryTraceUrl}
-              rel="noreferrer"
-              target="_blank"
-            >
-              View in Sentry
-            </a>
-          ),
-          key: "sentry",
-        }
-      : undefined,
-  ];
-
-  return items.filter((item): item is MetricListItem => Boolean(item));
 }
 
 function TranscriptResourceEventView(props: {

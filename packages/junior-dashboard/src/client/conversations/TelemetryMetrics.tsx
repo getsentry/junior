@@ -1,6 +1,5 @@
 import type {
   ConversationAuxiliaryCosts,
-  ConversationDetailReport,
   ConversationModelUsage,
 } from "@sentry/junior/api/schema";
 import {
@@ -71,88 +70,6 @@ function modelLabel(modelId: string): string {
   return modelId.split("/").at(-1) ?? modelId;
 }
 
-const terminalTurnLifecycleStates = new Set([
-  "succeeded",
-  "no_reply",
-  "failed",
-]);
-
-/** Return the open turn's routed model, when one is still in progress. */
-export function activeTurnModelId(
-  conversation: Pick<ConversationDetailReport, "events" | "status"> | undefined,
-): string | undefined {
-  return analyzeActiveTurns(conversation).modelId;
-}
-
-/**
- * Whether live metrics should treat the conversation as still changing.
- * Prefers open-turn evidence when present; falls back to conversation status
- * when the loaded event window no longer contains lifecycle facts.
- */
-export function hasOpenTurn(
-  conversation: Pick<ConversationDetailReport, "events" | "status"> | undefined,
-): boolean {
-  if (conversation?.status !== "active") return false;
-  const analysis = analyzeActiveTurns(conversation);
-  if (analysis.openTurnId) return true;
-  // Loaded page proved only closed turns; don't keep shimmering in the gap.
-  if (analysis.sawLifecycle) return false;
-  // Long active turns can page lifecycle events out of the latest window.
-  return true;
-}
-
-function analyzeActiveTurns(
-  conversation: Pick<ConversationDetailReport, "events" | "status"> | undefined,
-): {
-  modelId?: string;
-  openTurnId?: string;
-  sawLifecycle: boolean;
-} {
-  if (conversation?.status !== "active") {
-    return { sawLifecycle: false };
-  }
-  const closedTurnIds = new Set<string>();
-  let openTurnId: string | undefined;
-  let modelId: string | undefined;
-  let modelTurnId: string | undefined;
-  let sawLifecycle = false;
-  for (let index = conversation.events.length - 1; index >= 0; index -= 1) {
-    const data = conversation.events[index]?.data;
-    if (!data) continue;
-    if (data.type === "turn_lifecycle") {
-      sawLifecycle = true;
-      if (terminalTurnLifecycleStates.has(data.state)) {
-        closedTurnIds.add(data.turnId);
-        continue;
-      }
-      if (data.state === "started" && !closedTurnIds.has(data.turnId)) {
-        openTurnId = data.turnId;
-        break;
-      }
-      continue;
-    }
-    if (
-      data.type === "turn_routed" &&
-      !closedTurnIds.has(data.turnId) &&
-      modelId === undefined
-    ) {
-      modelId = data.modelId;
-      modelTurnId = data.turnId;
-    }
-  }
-  if (!openTurnId) {
-    if (!modelTurnId || closedTurnIds.has(modelTurnId)) {
-      return { sawLifecycle };
-    }
-    openTurnId = modelTurnId;
-  }
-  return {
-    openTurnId,
-    modelId: modelTurnId === openTurnId ? modelId : undefined,
-    sawLifecycle,
-  };
-}
-
 function tokenTooltip(
   summary: TokenUsageSummary,
   modelUsage: ConversationModelUsage[] | undefined,
@@ -214,7 +131,7 @@ function costTooltip(
   summary: CostUsageSummary | undefined,
   modelUsage: ConversationModelUsage[] | undefined,
   auxiliaryCosts: ConversationAuxiliaryCosts | undefined,
-  pendingModelId: string | undefined,
+  live: boolean | undefined,
 ): {
   tooltip?: MetricTooltipLine[];
   tooltipColumns?: MetricTooltipLine[][];
@@ -226,11 +143,8 @@ function costTooltip(
       ? [{ modelId: item.modelId, summary: modelSummary }]
       : [];
   });
-  const pendingLines: MetricTooltipLine[] = pendingModelId
-    ? [
-        { value: modelLabel(pendingModelId), valueStyle: "heading" },
-        { value: "in progress" },
-      ]
+  const pendingLines: MetricTooltipLine[] = live
+    ? [{ value: "in progress" }]
     : [];
   if (!total) return { tooltip: pendingLines };
   if (!auxiliaryCosts) {
@@ -321,12 +235,11 @@ export function CostMetric(props: {
   auxiliaryCosts?: ConversationAuxiliaryCosts;
   live?: boolean;
   modelUsage?: ConversationModelUsage[];
-  pendingModelId?: string;
   summary: CostUsageSummary | undefined;
 }) {
   const total = totalConversationCost(props.summary, props.auxiliaryCosts);
-  if (!total && !props.pendingModelId) return null;
-  const pending = Boolean(props.pendingModelId);
+  if (!total && !props.live) return null;
+  const pending = Boolean(props.live);
   const label = total
     ? `${formatCostSummary(total)}${pending ? "+" : ""}`
     : "$…";
@@ -338,10 +251,10 @@ export function CostMetric(props: {
         props.summary,
         props.modelUsage,
         props.auxiliaryCosts,
-        props.pendingModelId,
+        props.live,
       )}
     >
-      <ShimmerText active={pending || props.live}>{label}</ShimmerText>
+      <ShimmerText active={pending}>{label}</ShimmerText>
     </MetricValue>
   );
 }

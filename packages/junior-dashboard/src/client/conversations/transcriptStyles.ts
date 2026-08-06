@@ -1,10 +1,3 @@
-import { cn } from "../styles";
-
-/** Share muted transcript metadata styling between segment and message chrome. */
-export function mutedTranscriptMetaClass(size = "text-[0.82rem]"): string {
-  return cn("leading-relaxed text-dashboard-text-muted", size);
-}
-
 /** Share the transcript empty/unavailable frame across top-level and segment views. */
 export function transcriptEmptyClass(
   tone: "default" | "error" = "default",

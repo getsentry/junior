@@ -36,10 +36,8 @@ import { Button } from "../components/Button";
 import { Card } from "../components/layout/Card";
 import { MetricList, type MetricListItem } from "../components/Metric";
 import {
-  activeTurnModelId,
   CostMetric,
   DurationMetric,
-  hasOpenTurn,
   TurnsMetric,
   TokenMetric,
   ToolCallsMetric,
@@ -397,8 +395,8 @@ function ConversationStats(props: {
   });
   const sourceUrl = props.detail?.sourceUrl ?? props.conversation.sourceUrl;
   const durationLabel = formatConversationDuration(props.conversation);
-  const pendingModelId = activeTurnModelId(props.detail);
-  const live = hasOpenTurn(props.detail);
+  const live =
+    (props.detail?.status ?? props.conversation.status) === "active";
   const rawStats: Array<MetricListItem | undefined> = [
     location
       ? {
@@ -440,7 +438,7 @@ function ConversationStats(props: {
     costSummary ||
     props.detail?.auxiliaryCosts ||
     props.conversation.auxiliaryCosts ||
-    pendingModelId
+    live
       ? {
           content: (
             <CostMetric
@@ -450,7 +448,6 @@ function ConversationStats(props: {
               }
               live={live}
               modelUsage={props.detail?.modelUsage}
-              pendingModelId={pendingModelId}
               summary={costSummary}
             />
           ),

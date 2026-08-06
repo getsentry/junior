@@ -23,10 +23,8 @@ vi.mock("../src/client/components/Metric", () => ({
 }));
 
 import {
-  activeTurnModelId,
   CostMetric,
   DurationMetric,
-  hasOpenTurn,
   TokenMetric,
   ToolCallsMetric,
 } from "../src/client/conversations/TelemetryMetrics";
@@ -60,117 +58,28 @@ describe("CostMetric", () => {
     for (const line of expected) expect(html).toContain(line);
   });
 
-  it("shows the active model and provisional cost while a turn is running", () => {
+  it("shows provisional cost while conversation metrics are live", () => {
     const emptyHtml = renderToStaticMarkup(
-      <CostMetric pendingModelId="openai/gpt-5.6-sol" summary={undefined} />,
+      <CostMetric live summary={undefined} />,
     );
     expect(emptyHtml).toContain("$…");
-    expect(emptyHtml).toContain("gpt-5.6-sol");
     expect(emptyHtml).toContain("in progress");
     expect(emptyHtml).toContain("junior-text-shimmer");
 
     const partialHtml = renderToStaticMarkup(
-      <CostMetric
-        pendingModelId="openai/gpt-5.6-sol"
-        summary={{ total: 0.041 }}
-      />,
+      <CostMetric live summary={{ total: 0.041 }} />,
     );
     expect(partialHtml).toContain("$0.04+");
+    expect(partialHtml).toContain("in progress");
     expect(partialHtml).toContain("junior-text-shimmer");
 
     const settledHtml = renderToStaticMarkup(
       <CostMetric summary={{ total: 0.041 }} />,
     );
     expect(settledHtml).toContain("$0.04");
+    expect(settledHtml).not.toContain("+");
+    expect(settledHtml).not.toContain("in progress");
     expect(settledHtml).not.toContain("junior-text-shimmer");
-  });
-
-  it("only treats open turns as provisional", () => {
-    const open = {
-      status: "active" as const,
-      events: [
-        {
-          seq: 1,
-          createdAt: "2026-01-01T00:00:01.000Z",
-          data: {
-            type: "turn_lifecycle" as const,
-            turnId: "turn-1",
-            state: "started" as const,
-          },
-        },
-        {
-          seq: 2,
-          createdAt: "2026-01-01T00:00:02.000Z",
-          data: {
-            type: "turn_routed" as const,
-            turnId: "turn-1",
-            modelProfile: "handoff",
-            modelId: "openai/gpt-5.6-sol",
-            reasoningLevel: "high",
-            source: "router" as const,
-          },
-        },
-      ],
-    };
-    expect(activeTurnModelId(open)).toBe("openai/gpt-5.6-sol");
-    expect(hasOpenTurn(open)).toBe(true);
-
-    const completedThenPending = {
-      status: "active" as const,
-      events: [
-        ...open.events,
-        {
-          seq: 3,
-          createdAt: "2026-01-01T00:00:03.000Z",
-          data: {
-            type: "turn_lifecycle" as const,
-            turnId: "turn-1",
-            state: "succeeded" as const,
-          },
-        },
-        {
-          seq: 4,
-          createdAt: "2026-01-01T00:00:04.000Z",
-          data: {
-            type: "turn_lifecycle" as const,
-            turnId: "turn-2",
-            state: "started" as const,
-          },
-        },
-      ],
-    };
-    expect(activeTurnModelId(completedThenPending)).toBeUndefined();
-    expect(hasOpenTurn(completedThenPending)).toBe(true);
-
-    const onlyCompleted = {
-      status: "active" as const,
-      events: completedThenPending.events.slice(0, 3),
-    };
-    expect(activeTurnModelId(onlyCompleted)).toBeUndefined();
-    expect(hasOpenTurn(onlyCompleted)).toBe(false);
-
-    // Long active turns can page lifecycle events out of the latest window.
-    const truncatedActive = {
-      status: "active" as const,
-      events: [
-        {
-          seq: 10,
-          createdAt: "2026-01-01T00:10:00.000Z",
-          data: {
-            type: "tool_calls" as const,
-            calls: [
-              {
-                toolCallId: "tool-1",
-                name: "bash",
-                status: "running" as const,
-              },
-            ],
-          },
-        },
-      ],
-    };
-    expect(activeTurnModelId(truncatedActive)).toBeUndefined();
-    expect(hasOpenTurn(truncatedActive)).toBe(true);
   });
 
   it("shimmers changing metrics but not the timer", () => {
