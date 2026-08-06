@@ -71,11 +71,45 @@ export const localSourceSchema = z
   })
   .strict();
 
-/** Runtime-owned provider-neutral coordinates for the inbound invocation. */
-export const sourceSchema = z.discriminatedUnion("platform", [
+const canonicalSourceSchema = z.discriminatedUnion("platform", [
   slackSourceSchema,
   localSourceSchema,
 ]);
+
+/**
+ * Upgrade pre-#1183 persisted sources that still use `type: "pub" | "priv"`.
+ *
+ * SQL migrated conversation rows, but Redis turn-session and auth state still
+ * hold the old shape. Read-time coercion keeps those records usable without a
+ * state rewrite.
+ */
+function coerceLegacySourceVisibility(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return value;
+  }
+  const source = value as Record<string, unknown>;
+  if (!("type" in source)) {
+    return value;
+  }
+  const legacyType = source.type;
+  if (legacyType !== "pub" && legacyType !== "priv") {
+    return value;
+  }
+  const { type: _type, ...rest } = source;
+  if ("visibility" in rest) {
+    return rest;
+  }
+  return {
+    ...rest,
+    visibility: legacyType === "pub" ? "public" : "private",
+  };
+}
+
+/** Runtime-owned provider-neutral coordinates for the inbound invocation. */
+export const sourceSchema = z.preprocess(
+  coerceLegacySourceVisibility,
+  canonicalSourceSchema,
+);
 
 /** Stable user credential subject shape accepted from plugins. */
 export const pluginCredentialSubjectSchema = z.discriminatedUnion(

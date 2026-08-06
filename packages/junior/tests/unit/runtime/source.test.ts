@@ -20,6 +20,35 @@ describe("session source", () => {
     });
   });
 
+  it("parses pre-#1183 serialized sources that still use type", () => {
+    expect(
+      parseSessionSource({
+        platform: "slack",
+        type: "pub",
+        teamId: "T123",
+        channelId: "C123",
+        threadTs: "1700000000.000100",
+      }),
+    ).toEqual({
+      platform: "slack",
+      visibility: "public",
+      teamId: "T123",
+      channelId: "C123",
+      threadTs: "1700000000.000100",
+    });
+    expect(
+      parseSessionSource({
+        platform: "local",
+        type: "priv",
+        conversationId: "local:abc123:demo",
+      }),
+    ).toEqual({
+      platform: "local",
+      visibility: "private",
+      conversationId: "local:abc123:demo",
+    });
+  });
+
   it("normalizes slack sources to the session-stable thread anchor", () => {
     expect(
       normalizeSessionSource({
