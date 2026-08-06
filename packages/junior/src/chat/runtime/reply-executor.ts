@@ -16,7 +16,11 @@ import {
   standardModelId,
   type ModelProfile,
 } from "@/chat/model-profile";
-import { getSlackMessageTs } from "@/chat/slack/message";
+import {
+  getSlackMessageAgentText,
+  getSlackMessageSourceText,
+  getSlackMessageTs,
+} from "@/chat/slack/message";
 import { readSlackActionToken } from "@/chat/slack/action-token";
 import {
   logException,
@@ -524,8 +528,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         modelId: standardModelId(botConfig),
       },
       async () => {
+        const sourceText = getSlackMessageSourceText(message);
+        const agentText = getSlackMessageAgentText(message);
         const strippedUserText = stripLeadingBotMention(
-          stripLeadingSteeringOverride(message.text),
+          stripLeadingSteeringOverride(agentText),
           {
             botUserId: deps.getSlackAdapter().botUserId,
             stripLeadingSlackMentionToken:
@@ -533,7 +539,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           },
         );
         const currentText: TurnMessageText = {
-          rawText: appendSlackLegacyAttachmentText(message.text, message.raw),
+          rawText: appendSlackLegacyAttachmentText(sourceText, message.raw),
           userText: appendSlackLegacyAttachmentText(
             strippedUserText,
             message.raw,

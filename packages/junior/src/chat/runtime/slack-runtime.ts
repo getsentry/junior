@@ -35,6 +35,10 @@ import {
   type ProcessingReactionSession,
 } from "@/chat/runtime/processing-reaction";
 import { getMessageTs } from "@/chat/runtime/thread-context";
+import {
+  getSlackMessageAgentText,
+  getSlackMessageSourceText,
+} from "@/chat/slack/message";
 import { stripLeadingSteeringOverride } from "@/chat/slack/message-control";
 import {
   combineTurnText,
@@ -216,8 +220,10 @@ function getQueuedMessages(
   },
 ): QueuedTurnMessage[] {
   return (context?.skipped ?? []).map((message) => {
+    const sourceText = getSlackMessageSourceText(message);
+    const agentText = getSlackMessageAgentText(message);
     const stripped = options.stripLeadingBotMention(
-      stripLeadingSteeringOverride(message.text),
+      stripLeadingSteeringOverride(agentText),
       {
         stripLeadingSlackMentionToken:
           options.explicitMention || Boolean(message.isMention),
@@ -226,7 +232,7 @@ function getQueuedMessages(
     return {
       explicitMention: Boolean(message.isMention),
       message,
-      rawText: appendSlackLegacyAttachmentText(message.text, message.raw),
+      rawText: appendSlackLegacyAttachmentText(sourceText, message.raw),
       userText: appendSlackLegacyAttachmentText(stripped, message.raw),
     };
   });
@@ -514,14 +520,16 @@ export function createSlackTurnRuntime<
       runId: deps.getRunId(thread, message),
     };
     const legacyAttachmentText = renderSlackLegacyAttachmentText(message.raw);
+    const sourceText = getSlackMessageSourceText(message);
+    const agentText = getSlackMessageAgentText(message);
     const strippedUserText = deps.stripLeadingBotMention(
-      stripLeadingSteeringOverride(message.text),
+      stripLeadingSteeringOverride(agentText),
       {
         stripLeadingSlackMentionToken: Boolean(message.isMention),
       },
     );
     const text: TurnMessageText = {
-      rawText: appendSlackLegacyAttachmentText(message.text, message.raw),
+      rawText: appendSlackLegacyAttachmentText(sourceText, message.raw),
       userText: appendSlackLegacyAttachmentText(strippedUserText, message.raw),
     };
     const decision = await deps.decideSubscribedReply({
@@ -921,14 +929,16 @@ export function createSlackTurnRuntime<
           const legacyAttachmentText = renderSlackLegacyAttachmentText(
             message.raw,
           );
+          const sourceText = getSlackMessageSourceText(message);
+          const agentText = getSlackMessageAgentText(message);
           const strippedUserText = deps.stripLeadingBotMention(
-            stripLeadingSteeringOverride(message.text),
+            stripLeadingSteeringOverride(agentText),
             {
               stripLeadingSlackMentionToken: Boolean(message.isMention),
             },
           );
           const currentText: TurnMessageText = {
-            rawText: appendSlackLegacyAttachmentText(message.text, message.raw),
+            rawText: appendSlackLegacyAttachmentText(sourceText, message.raw),
             userText: appendSlackLegacyAttachmentText(
               strippedUserText,
               message.raw,
