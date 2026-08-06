@@ -13,7 +13,7 @@ Treat explicit repo flags as command-targeting safety rails, not as a credential
 | Permission capability        | Commands                                                                             |
 | ---------------------------- | ------------------------------------------------------------------------------------ |
 | `github.actions.read`        | `gh run list`, `gh run view`, `gh run watch`, `gh workflow list`, `gh workflow view` |
-| `github.actions.write`       | `gh workflow run` only                                                               |
+| `github.actions.write`       | `gh workflow run`, `gh run rerun`                                                    |
 | `github.contents.read`       | `gh repo clone`, `git fetch`                                                         |
 | `github.contents.write`      | Git smart-HTTP `git push` only                                                       |
 | `github.workflows.write`     | Workflow-file changes carried by Git smart-HTTP push                                 |
@@ -38,6 +38,8 @@ Treat explicit repo flags as command-targeting safety rails, not as a credential
 | Stage and commit                   | `git -C DIRECTORY add -A && git -C DIRECTORY commit -m "message"`                                                        |
 | Push branch before PR creation     | `git -C DIRECTORY push -u origin BRANCH`                                                                                 |
 | Dispatch workflow                  | `gh workflow run WORKFLOW --repo owner/repo --ref REF [-f key=value]`                                                    |
+| Rerun workflow run                 | `gh run rerun RUN_ID -R owner/repo [--failed]`                                                                          |
+| Rerun workflow job                 | `gh run rerun --job JOB_ID -R owner/repo`                                                                               |
 | Create pull request (draft)        | `github_createPullRequest({ repo: "owner/repo", head: "BRANCH", base: "BASE", title: "...", body: "...", draft: true })` |
 | Update pull request                | `gh api repos/owner/repo/pulls/NUMBER --method PATCH --input payload.json`                                               |
 | Mark ready for review              | `gh api repos/owner/repo/pulls/NUMBER/ready_for_review --method POST`                                                    |
@@ -72,7 +74,7 @@ jr-rpc config set github.repo owner/repo
 - If the commit changes workflow files under `.github/workflows`, the App installation needs Workflows write in addition to Contents write.
 - Before rebasing, merge-base analysis, blame/history inspection, or a base comparison, check whether the repository is shallow. Fetch a bounded depth of the base into `refs/remotes/origin/BASE`, deepen incrementally until the needed ancestry is present, and compare against `origin/BASE`; use `--unshallow` only when bounded deepening is insufficient. Never force-push to work around missing ancestry.
 - Before `github_createPullRequest`, push the head branch explicitly and resolve the target repo's default branch for `base`. That push requires GitHub write access to the remote.
-- Merge, fork creation, workflow reruns or cancellations, REST contents/Git database writes, and repository administration are outside the current write allowlist.
+- Merge, fork creation, workflow cancellations, REST contents/Git database writes, and repository administration are outside the current write allowlist.
 - Pull request reviews and inline review comments use the same repository-scoped `installation-write` credential as other bot-owned PR writes, so they post as Junior even on headless turns. Merge remains denied.
 - If the explicit `git push` fails with 401/403 or another access/permission error, verify the repo context and retry once. If it still fails, load troubleshooting guidance and report the exact command failure.
 - PR comments, labels, and assignees use GitHub's issue endpoints; use the `github-issues` REST guidance for those operations. All allowlisted bot writes share the same repository-scoped `installation-write` credential.

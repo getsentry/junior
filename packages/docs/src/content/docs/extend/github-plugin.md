@@ -13,8 +13,8 @@ related:
 ---
 
 Use the GitHub plugin when Junior should work in repositories through a GitHub
-App: issues, pull requests, reviews, branch pushes, workflow dispatches,
-deployment and release lookups, and resource subscriptions.
+App: issues, pull requests, reviews, branch pushes, workflow dispatches and
+reruns, deployment and release lookups, and resource subscriptions.
 
 Junior uses the App installation for bot-owned work. Human OAuth is only for
 operations that must run as the requesting user, such as user-attachment uploads.
@@ -127,7 +127,7 @@ Once configured, Junior can:
 - Create, update, and comment on issues and pull requests
 - Review pull requests and leave inline review comments as the App bot
 - Push branches and open draft pull requests
-- Dispatch workflows
+- Dispatch workflows and rerun workflow runs or jobs
 - Look up deployments and releases
 - Watch or automate matching resource events when webhooks are enabled
 
