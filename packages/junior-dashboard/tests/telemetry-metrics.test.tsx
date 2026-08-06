@@ -65,7 +65,7 @@ describe("CostMetric", () => {
     expect(emptyHtml).toContain("$…");
     expect(emptyHtml).toContain("gpt-5.6-sol");
     expect(emptyHtml).toContain("in progress");
-    expect(emptyHtml).toContain("junior-tool-shimmer");
+    expect(emptyHtml).toContain("junior-text-shimmer");
 
     const partialHtml = renderToStaticMarkup(
       <CostMetric
@@ -74,13 +74,13 @@ describe("CostMetric", () => {
       />,
     );
     expect(partialHtml).toContain("$0.04+");
-    expect(partialHtml).toContain("junior-tool-shimmer");
+    expect(partialHtml).toContain("junior-text-shimmer");
 
     const settledHtml = renderToStaticMarkup(
       <CostMetric summary={{ total: 0.041 }} />,
     );
     expect(settledHtml).toContain("$0.04");
-    expect(settledHtml).not.toContain("junior-tool-shimmer");
+    expect(settledHtml).not.toContain("junior-text-shimmer");
   });
 
   it("shimmers changing metrics but not the timer", () => {
@@ -91,7 +91,7 @@ describe("CostMetric", () => {
       />,
     );
     expect(tokenHtml).toContain("1.6k tokens");
-    expect(tokenHtml).toContain("junior-tool-shimmer");
+    expect(tokenHtml).toContain("junior-text-shimmer");
 
     const toolHtml = renderToStaticMarkup(
       <ToolCallsMetric
@@ -100,11 +100,11 @@ describe("CostMetric", () => {
       />,
     );
     expect(toolHtml).toContain("2 tool calls");
-    expect(toolHtml).toContain("junior-tool-shimmer");
+    expect(toolHtml).toContain("junior-text-shimmer");
 
     const durationHtml = renderToStaticMarkup(<DurationMetric label="31s" />);
     expect(durationHtml).toContain("31s");
-    expect(durationHtml).not.toContain("junior-tool-shimmer");
+    expect(durationHtml).not.toContain("junior-text-shimmer");
   });
 
   it("includes auxiliary operations in the total and tooltip", () => {

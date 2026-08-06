@@ -9,6 +9,7 @@ import {
   stringifyPartValue,
 } from "../format";
 import type { TranscriptViewToolCallPart } from "../types";
+import { ShimmerText } from "../components/ShimmerText";
 import { cn } from "../styles";
 import { ToolFrame } from "./ToolFrame";
 import { toolCallPreview } from "./toolCallPreview";
@@ -107,20 +108,21 @@ function ToolSignature(props: {
   running: boolean;
 }) {
   const { active: searchActive } = useTranscriptSearch();
+  const shimmering = props.running && !searchActive;
 
   return (
     <>
-      <strong
+      <ShimmerText
+        active={shimmering}
         aria-label={props.running ? `${props.name} (running)` : undefined}
+        as="strong"
         className={cn(
           "shrink-0 font-bold",
-          props.running && !searchActive
-            ? "animate-[junior-tool-shimmer_1.6s_linear_infinite] bg-[linear-gradient(90deg,#777_0%,#d6d6d6_40%,#fff_50%,#d6d6d6_60%,#777_100%)] bg-[length:200%_100%] bg-clip-text text-transparent motion-reduce:animate-none"
-            : "text-dashboard-text",
+          !shimmering && "text-dashboard-text",
         )}
       >
         <HighlightText text={props.name} />
-      </strong>
+      </ShimmerText>
       {props.preview && !searchActive ? (
         <code className="min-w-0 truncate font-[inherit] text-dashboard-text-muted group-open:hidden">
           (<HighlightText text={props.preview} />)

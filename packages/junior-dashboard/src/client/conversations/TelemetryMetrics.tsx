@@ -18,7 +18,7 @@ import {
   type ToolCallSummary,
 } from "../format";
 import { MetricValue, type MetricTooltipLine } from "../components/Metric";
-import { cn } from "../styles";
+import { ShimmerText } from "../components/ShimmerText";
 
 function plural(label: string, count: number): string {
   return `${formatCompactNumber(count)} ${label}${count === 1 ? "" : "s"}`;
@@ -245,17 +245,6 @@ function auxiliaryOperationLabel(
   );
 }
 
-const liveMetricShimmerClassName =
-  "animate-[junior-tool-shimmer_1.6s_linear_infinite] bg-[linear-gradient(90deg,#777_0%,#d6d6d6_40%,#fff_50%,#d6d6d6_60%,#777_100%)] bg-[length:200%_100%] bg-clip-text text-transparent motion-reduce:animate-none";
-
-function LiveMetricText(props: { children: string; live?: boolean }) {
-  return (
-    <span className={cn(props.live && liveMetricShimmerClassName)}>
-      {props.children}
-    </span>
-  );
-}
-
 /** Render estimated model cost with a hoverable USD breakdown. */
 export function CostMetric(props: {
   align?: "left" | "right";
@@ -281,7 +270,7 @@ export function CostMetric(props: {
         props.pendingModelId,
       )}
     >
-      <LiveMetricText live={pending}>{label}</LiveMetricText>
+      <ShimmerText active={pending}>{label}</ShimmerText>
     </MetricValue>
   );
 }
@@ -304,9 +293,9 @@ export function TokenMetric(props: {
         props.compactionCount,
       )}
     >
-      <LiveMetricText live={props.live}>
+      <ShimmerText active={props.live}>
         {formatTokenSummary(props.summary)}
-      </LiveMetricText>
+      </ShimmerText>
     </MetricValue>
   );
 }
@@ -351,9 +340,9 @@ export function ToolCallsMetric(props: {
   }));
   return (
     <MetricValue align={props.align} tooltip={tooltip}>
-      <LiveMetricText live={props.live}>
+      <ShimmerText active={props.live}>
         {plural("tool call", props.summary.total)}
-      </LiveMetricText>
+      </ShimmerText>
     </MetricValue>
   );
 }
