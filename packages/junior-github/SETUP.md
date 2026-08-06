@@ -1,6 +1,6 @@
 # GitHub plugin setup
 
-This plugin exposes two skills — `github-code` (clone, source-code investigation, pull requests) and `github-issues` (issue workflows). Junior uses GitHub App installation tokens for reads, workflow dispatches and reruns, allowlisted issue and pull request writes (including pull request reviews and inline review comments), and Git branch pushes. Human OAuth is reserved for explicitly personal operations such as user-attachment uploads.
+This plugin exposes two skills — `github-code` (clone, source-code investigation, pull requests) and `github-issues` (issue workflows). Junior uses GitHub App installation tokens for reads, workflow dispatches, reruns, and cancellations, allowlisted issue and pull request writes (including pull request reviews and inline review comments), and Git branch pushes. Human OAuth is reserved for explicitly personal operations such as user-attachment uploads.
 
 ## 1) Create/install GitHub App
 
@@ -182,7 +182,7 @@ new resources through the typed tools, for example
 Use `gh` for the allowlisted lifecycle operations described by the skill.
 
 `gh` supports either direct `GITHUB_TOKEN` (for local debugging) or sandbox-level header injection.
-The plugin uses installation credentials for read-only GitHub traffic, workflow dispatches and reruns, allowlisted issue and pull request mutations (including reviews and inline review comments), and Git smart-HTTP pushes. The installed GitHub App permissions still need to cover the operation: actions for workflow dispatches and reruns, issues for issue edits/comments/labels, contents for pushes, pull requests for PR mutations/reviews/inline comments, and workflows for workflow-file pushes.
+The plugin uses installation credentials for read-only GitHub traffic, workflow dispatches, reruns, and cancellations, allowlisted issue and pull request mutations (including reviews and inline review comments), and Git smart-HTTP pushes. The installed GitHub App permissions still need to cover the operation: actions for workflow dispatches, reruns, and cancellations, issues for issue edits/comments/labels, contents for pushes, pull requests for PR mutations/reviews/inline comments, and workflows for workflow-file pushes.
 
 Committing and pushing code uses more than one GitHub surface:
 
@@ -200,8 +200,8 @@ Be careful with mixed-surface PR commands. Use the allowlisted REST endpoints
 rather than GraphQL-backed `gh pr` mutation commands. PR-native title, body,
 base, state, ready-for-review, and requested-reviewer changes use pull request
 endpoints. Comments, labels, and assignees use GitHub's issue endpoints. All
-allowlisted bot writes share `installation-write`; merge, branch deletion, workflow
-cancellation, REST ref mutation, and administration remain unsupported API operations.
+allowlisted bot writes share `installation-write`; merge, branch deletion, REST ref
+mutation, and administration remain unsupported API operations.
 
 For PR creation in automation, push explicitly and pass that branch as `head`:
 

@@ -632,7 +632,7 @@ describe("github plugin", () => {
     );
   });
 
-  it("maintains the workflow dispatch and rerun permission boundary", async () => {
+  it("allows workflow dispatch, rerun, and cancellation", async () => {
     expect(
       await grantForEgress({
         method: "POST",
@@ -677,14 +677,17 @@ describe("github plugin", () => {
       leaseScope: "repository:getsentry/junior",
       reason: "github.installation-write",
     });
-    await expect(
-      grantForEgress({
+    expect(
+      await grantForEgress({
         method: "POST",
         url: "https://api.github.com/repos/getsentry/junior/actions/runs/123/cancel",
       }),
-    ).rejects.toThrow(
-      "GitHub write request is not an explicitly allowed Junior operation.",
-    );
+    ).toMatchObject({
+      name: "installation-write",
+      access: "write",
+      leaseScope: "repository:getsentry/junior",
+      reason: "github.installation-write",
+    });
   });
 
   it("creates issues with deterministic requester attribution", async () => {
