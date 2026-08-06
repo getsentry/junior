@@ -14,6 +14,7 @@ import type {
   Conversation,
   ConversationStore,
 } from "@/chat/conversations/store";
+import { parseSlackThreadId } from "@/chat/slack/context";
 
 export interface TurnSessionRouting {
   destination?: Destination;
@@ -34,10 +35,12 @@ function sourceFromConversation(
   if (destination.platform === "local") {
     return createLocalSource(destination.conversationId);
   }
+  const thread = parseSlackThreadId(conversation.conversationId);
   return createSlackSource({
     teamId: destination.teamId,
     channelId: destination.channelId,
     visibility: conversation.visibility === "public" ? "public" : "private",
+    ...(thread?.threadTs ? { threadTs: thread.threadTs } : {}),
   });
 }
 
