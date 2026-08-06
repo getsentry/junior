@@ -35,19 +35,11 @@ export function MemoryDetailsDrawer(props: {
   onCloseRef.current = props.onClose;
 
   useEffect(() => {
-    // A prior forget leaves mutation success sticky; clear it when a new
-    // record opens so the next drawer is not closed immediately.
+    // Forget leaves the shared mutation in success/error until the next open.
+    // Clear it here so the new drawer does not inherit stale action UI state.
     if (openRecordId) props.action.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reset only on open id change
   }, [openRecordId]);
-
-  useEffect(() => {
-    // Forget/archive succeeds while the drawer is still open; leave the
-    // permalink before a stale detail cache can keep it mounted.
-    if (props.action.isSuccess && openRecordId) {
-      onCloseRef.current();
-    }
-  }, [openRecordId, props.action.isSuccess]);
 
   useEffect(() => {
     if (!openRecordId) return undefined;
