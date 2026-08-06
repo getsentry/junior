@@ -562,6 +562,7 @@ export const conversationStatsItemSchema = z
 
 export const conversationMetricDaySchema = z
   .object({
+    conversations: z.number(),
     costUsd: z.number().optional(),
     date: z.string(),
     durationMs: z.number(),

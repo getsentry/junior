@@ -118,6 +118,7 @@ function systemData(): SystemData {
       },
       metricDays: [
         {
+          conversations: 2,
           costUsd: 4.56,
           date: "2026-01-01",
           durationMs: 12_000,
@@ -1299,13 +1300,18 @@ describe("dashboard canonical-event components", () => {
         <SystemPage data={data} />
       </MemoryRouter>,
     );
-    expect(systemHtml).toContain("Usage over time");
+    expect(systemHtml).not.toContain("Usage over time");
+    expect(systemHtml).toContain("Conversation activity");
+    expect(systemHtml).toContain('aria-label="Conversations per day"');
     expect(systemHtml).toContain("Token usage");
     expect(systemHtml).toContain("Model spend");
     expect(systemHtml).toContain("Runtime");
     expect(systemHtml).toContain("Guardian reviews");
     expect(systemHtml).toContain("Daily Guardian review results");
     expect(systemHtml).toContain("Estimated cost");
+    expect(systemHtml.indexOf("Conversation activity")).toBeLessThan(
+      systemHtml.indexOf("Token usage"),
+    );
     expect(
       systemHtml.match(/aria-label="Reporting period"/g) ?? [],
     ).toHaveLength(1);

@@ -26,6 +26,7 @@ import type { TranscriptViewToolCallPart } from "../../types";
 import { LocationDirectoryActivityChart } from "../locations/LocationDirectoryActivityChart";
 import { ContributionGrid } from "../people/ContributionGrid";
 import { PeopleActivityChart } from "../people/PeopleActivityChart";
+import { ConversationActivityChart } from "../system/ConversationActivityChart";
 
 const EVENT_NOTIFICATION = `[event notification]
 
@@ -70,6 +71,7 @@ See https://docs.sentry.io for product docs.`;
 
 const METRIC_DAYS: ConversationMetricDay[] = fixtureDates(14).map(
   (date, index) => ({
+    conversations: 4 + ((index * 5) % 17),
     costUsd: 0.7 + ((index * 7) % 11) * 0.18,
     date,
     durationMs: 90_000 + ((index * 41) % 13) * 24_000,
@@ -323,6 +325,7 @@ export function ComponentsPage() {
         description="Production chart components rendered with deterministic fixtures."
         title="Charts"
       >
+        <ConversationActivityChart days={METRIC_DAYS} />
         <SystemMetricCharts days={METRIC_DAYS} />
         <PeopleActivityChart days={PEOPLE_DAYS} />
         <LocationDirectoryActivityChart days={LOCATION_DAYS} />

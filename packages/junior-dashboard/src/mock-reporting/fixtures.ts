@@ -906,11 +906,12 @@ function conversationMetricDays(
     date.setUTCHours(0, 0, 0, 0);
     date.setUTCDate(date.getUTCDate() - offset);
     const key = date.toISOString().slice(0, 10);
-    days.set(key, { date: key, durationMs: 0 });
+    days.set(key, { conversations: 0, date: key, durationMs: 0 });
   }
   for (const summary of summaries) {
     const day = days.get(summary.lastSeenAt.slice(0, 10));
     if (!day) continue;
+    day.conversations += 1;
     day.durationMs += summary.cumulativeDurationMs;
     const tokens = summaryTokenTotal(summary);
     if (tokens) day.tokens = (day.tokens ?? 0) + tokens;
