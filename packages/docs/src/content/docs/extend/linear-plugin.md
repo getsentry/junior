@@ -46,6 +46,8 @@ Junior uses Linear's hosted MCP tools for reads and writes. When an issue is cre
 
 Set conversation config with `jr-rpc config set`, or define the same keys for every conversation with `createApp({ configDefaults })`. An explicit team or project in a request always wins.
 
+### Conversation defaults
+
 <details class="plugin-config">
 <summary><code>linear.team</code></summary>
 

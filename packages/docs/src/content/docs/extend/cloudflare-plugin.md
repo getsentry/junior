@@ -42,6 +42,8 @@ export const plugins = defineJuniorPlugins(["@sentry/junior-cloudflare"]);
 
 Set conversation config with `jr-rpc config set`, or define the same keys for every conversation with `createApp({ configDefaults })`. An explicit account, zone, or Worker in a request always wins.
 
+### Conversation defaults
+
 <details class="plugin-config">
 <summary><code>cloudflare.account.id</code></summary>
 

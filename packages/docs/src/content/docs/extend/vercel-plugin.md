@@ -39,6 +39,8 @@ Register `vercelPlugin()` so Junior loads the webhook route.
 
 Set conversation config with `jr-rpc config set`, or define the same keys for every conversation with `createApp({ configDefaults })`. Set deployment variables in the Junior environment, then redeploy. Explicit values in a request always win over conversation defaults.
 
+### Conversation defaults
+
 <details class="plugin-config">
 <summary><code>vercel.project</code></summary>
 
@@ -62,6 +64,8 @@ Default Vercel team slug or ID used to resolve projects.
 - **Environment override:** None
 
 </details>
+
+### Environment variables
 
 <details class="plugin-config">
 <summary><code>JUNIOR_VERCEL_TOKEN</code></summary>

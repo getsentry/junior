@@ -37,6 +37,8 @@ export const plugins = defineJuniorPlugins(["@sentry/junior-datadog"]);
 
 Set conversation config with `jr-rpc config set`, or define the same keys for every conversation with `createApp({ configDefaults })`. Set deployment variables in the Junior environment, then redeploy. Explicit values in a request always win over conversation defaults.
 
+### Conversation defaults
+
 <details class="plugin-config">
 <summary><code>datadog.env</code></summary>
 
@@ -60,6 +62,8 @@ Default Datadog service filter when a request does not name one.
 - **Environment override:** None
 
 </details>
+
+### Environment variables
 
 <details class="plugin-config">
 <summary><code>DATADOG_API_KEY</code></summary>

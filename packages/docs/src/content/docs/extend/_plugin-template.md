@@ -58,8 +58,17 @@ Start with the ways readers can define values:
 - Plugin options: pass values to `<plugin>Plugin({ ... })` in `plugins.ts`
 - Environment variables: set them in the deployment environment, then redeploy
 
-Only list definition methods the plugin supports. Use one collapsed disclosure
-per option so the section stays easy to scan on desktop and mobile:
+Only list definition methods the plugin supports. Organize options under these
+subheadings, omitting groups that do not apply:
+
+- **Conversation defaults** for registered `<plugin>.<key>` values
+- **Plugin options** passed to a plugin factory in `plugins.ts`
+- **Environment variables** read from the deployment environment
+
+Within each group, use one collapsed disclosure per option so the section stays
+easy to scan on desktop and mobile:
+
+### Conversation defaults
 
 <details class="plugin-config">
 <summary><code>example.project</code></summary>
@@ -72,6 +81,8 @@ Default project when a request does not name one.
 - **Environment override:** None
 
 </details>
+
+### Plugin options
 
 <details class="plugin-config">
 <summary><code>apiTokenEnv</code></summary>

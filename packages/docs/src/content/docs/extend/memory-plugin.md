@@ -43,6 +43,8 @@ Do not register `@sentry/junior-memory` as a bare package-name string. The memor
 
 Pass plugin options to `memoryPlugin({ ... })` in `plugins.ts`. Set deployment variables in the Junior environment, then redeploy.
 
+### Plugin options
+
 <details class="plugin-config">
 <summary><code>modelId</code></summary>
 
@@ -78,6 +80,8 @@ Disables passive memory extraction from completed sessions while keeping explici
 - **Environment override:** None
 
 </details>
+
+### Environment variables
 
 <details class="plugin-config">
 <summary><code>DATABASE_URL</code></summary>

@@ -33,6 +33,8 @@ Register `sentryPlugin()` so Junior loads the webhook route.
 
 Set conversation config with `jr-rpc config set`, or define the same keys for every conversation with `createApp({ configDefaults })`. Set deployment variables in the Junior environment, then redeploy. Explicit values in a request always win over conversation defaults.
 
+### Conversation defaults
+
 <details class="plugin-config">
 <summary><code>sentry.org</code></summary>
 
@@ -56,6 +58,8 @@ Default Sentry project slug when a request does not name one.
 - **Environment override:** None
 
 </details>
+
+### Environment variables
 
 <details class="plugin-config">
 <summary><code>SENTRY_CLIENT_ID</code></summary>

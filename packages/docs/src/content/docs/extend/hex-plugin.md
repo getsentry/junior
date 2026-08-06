@@ -41,6 +41,8 @@ export const plugins = defineJuniorPlugins(["@sentry/junior-hex"]);
 
 ## Config
 
+### Environment variables
+
 <details class="plugin-config">
 <summary><code>HEX_MCP_URL</code></summary>
 

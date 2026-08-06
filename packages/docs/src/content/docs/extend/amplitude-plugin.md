@@ -36,6 +36,8 @@ No Amplitude API key or secret key is required. Each user authorizes through Amp
 
 ## Config
 
+### Environment variables
+
 <details class="plugin-config">
 <summary><code>AMPLITUDE_MCP_URL</code></summary>
 

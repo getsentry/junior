@@ -85,6 +85,8 @@ installation ID.
 
 Set conversation config with `jr-rpc config set`, or define the same keys for every conversation with `createApp({ configDefaults })`. Pass factory options to `githubPlugin({ ... })` in `plugins.ts`. Set the named deployment variables, then redeploy. Explicit repositories in requests always win over defaults.
 
+### Conversation defaults
+
 <details class="plugin-config">
 <summary><code>github.org</code></summary>
 
@@ -108,6 +110,8 @@ Default repository in `owner/repo` form when a request does not name one.
 - **Environment override:** None
 
 </details>
+
+### Plugin options
 
 <details class="plugin-config">
 <summary><code>appPermissions</code></summary>
@@ -216,6 +220,8 @@ Names the deployment variable containing Junior's Git author and committer email
 Use `<bot-user-id>+<app-slug>[bot]@users.noreply.github.com`. Get the bot user ID from `https://api.github.com/users/<app-slug>%5Bbot%5D`.
 
 </details>
+
+### Environment variables
 
 <details class="plugin-config">
 <summary><code>GITHUB_WEBHOOK_SECRET</code></summary>
