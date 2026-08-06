@@ -6,27 +6,10 @@ import {
   ActivityTooltipRows,
   createActivityChartLayout,
   formatActivityDate,
-  type ActivityChartLayout,
 } from "../../components/charts/ActivityChart";
 import { Card } from "../../components/layout/Card";
 import { Tooltip } from "../../components/Tooltip";
 import { formatCompactNumber } from "../../format";
-
-function chartPoint(
-  day: ConversationMetricDay,
-  index: number,
-  count: number,
-  maximum: number,
-  layout: ActivityChartLayout,
-) {
-  return {
-    x: layout.left + (index / Math.max(1, count - 1)) * layout.plotWidth,
-    y:
-      layout.top +
-      layout.plotHeight -
-      (day.conversations / maximum) * layout.plotHeight,
-  };
-}
 
 /** Plot root conversations with recorded activity each day. */
 export function ConversationActivityChart(props: {
@@ -34,16 +17,8 @@ export function ConversationActivityChart(props: {
 }) {
   const layout = createActivityChartLayout(280);
   const maximum = Math.max(1, ...props.days.map((day) => day.conversations));
-  const points = props.days.map((day, index) =>
-    chartPoint(day, index, props.days.length, maximum, layout),
-  );
-  const baseline = layout.top + layout.plotHeight;
-  const line = points.map((point) => `${point.x},${point.y}`).join(" ");
-  const area = points.length
-    ? `M ${points[0]!.x} ${baseline} L ${points
-        .map((point) => `${point.x} ${point.y}`)
-        .join(" L ")} L ${points.at(-1)!.x} ${baseline} Z`
-    : "";
+  const step = layout.plotWidth / Math.max(1, props.days.length);
+  const barWidth = Math.max(2, Math.min(24, step * 0.68));
   const total = props.days.reduce((sum, day) => sum + day.conversations, 0);
 
   return (
@@ -75,31 +50,14 @@ export function ConversationActivityChart(props: {
           role="img"
           viewBox={`0 0 ${layout.width} ${layout.height}`}
         >
-          <defs>
-            <linearGradient id="conversation-area" x1="0" x2="0" y1="0" y2="1">
-              <stop offset="0%" stopColor="#22d3ee" stopOpacity="0.32" />
-              <stop offset="100%" stopColor="#22d3ee" stopOpacity="0" />
-            </linearGradient>
-            <linearGradient id="conversation-line" x1="0" x2="1" y1="0" y2="0">
-              <stop offset="0%" stopColor="#22d3ee" />
-              <stop offset="55%" stopColor="#67e8f9" />
-              <stop offset="100%" stopColor="#a78bfa" />
-            </linearGradient>
-          </defs>
           <ActivityChartGrid layout={layout} maximum={maximum} />
-          {area ? <path d={area} fill="url(#conversation-area)" /> : null}
-          {line ? (
-            <polyline
-              fill="none"
-              points={line}
-              stroke="url(#conversation-line)"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="2.5"
-            />
-          ) : null}
           {props.days.map((day, index) => {
-            const point = points[index]!;
+            const x = layout.left + index * step + step / 2;
+            const barHeight = (day.conversations / maximum) * layout.plotHeight;
+            const renderedHeight = Math.max(
+              day.conversations ? 2 : 0,
+              barHeight,
+            );
             return (
               <Tooltip
                 content={
@@ -110,22 +68,34 @@ export function ConversationActivityChart(props: {
                 key={day.date}
                 label={formatActivityDate(day.date)}
               >
-                <circle
+                <g
                   aria-label={`${formatActivityDate(day.date)}: ${day.conversations} conversations`}
-                  cx={point.x}
-                  cy={point.y}
-                  fill="#22d3ee"
-                  opacity={props.days.length > 30 ? 0.35 : 0.75}
-                  r={props.days.length > 30 ? 3 : 4}
                   tabIndex={0}
-                />
+                >
+                  <rect
+                    fill="#22d3ee"
+                    height={renderedHeight}
+                    opacity={day.conversations ? 0.78 : 0.08}
+                    rx="2"
+                    width={barWidth}
+                    x={x - barWidth / 2}
+                    y={layout.top + layout.plotHeight - renderedHeight}
+                  />
+                  <rect
+                    fill="transparent"
+                    height={layout.plotHeight}
+                    width={step}
+                    x={layout.left + index * step}
+                    y={layout.top}
+                  />
+                </g>
               </Tooltip>
             );
           })}
           <ActivityChartDateLabels
             dates={props.days.map((day) => day.date)}
             layout={layout}
-            xPosition={(index) => points[index]?.x ?? layout.left}
+            xPosition={(index) => layout.left + index * step + step / 2}
           />
         </svg>
       </div>
