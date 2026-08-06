@@ -79,9 +79,13 @@ const canonicalSourceSchema = z.discriminatedUnion("platform", [
 /**
  * Upgrade pre-#1183 persisted sources that still use `type: "pub" | "priv"`.
  *
- * SQL migrated conversation rows, but Redis turn-session and auth state still
- * hold the old shape. Read-time coercion keeps those records usable without a
- * state rewrite.
+ * SQL conversation `source_json` already migrated. Redis turn-session summaries,
+ * auth pause state, and other state-adapter records still hold the old field for
+ * up to the 7-day thread-state TTL. Keep this read-time path only until those
+ * records expire; do not extend it into a permanent dual-write contract.
+ *
+ * TODO(v0.140.0): Remove once pre-visibility Redis sources can no longer exist
+ * (deploy + thread-state TTL, or earlier if turn sessions move off Redis).
  */
 function coerceLegacySourceVisibility(value: unknown): unknown {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
