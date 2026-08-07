@@ -189,15 +189,15 @@ jobs:
       - name: Run Guardian evals
         id: run
         env:
-          VITEST_EVALS_OUTPUT_FILE: vitest-results-guardian.json
+          VITEST_EVALS_OUTPUT_FILE: guardian-results.json
           VITEST_EVALS_REPORT_LEVEL: info
         run: pnpm --filter @sentry/junior-evals evals:guardian
       - name: Upload Guardian eval results
         if: always() && !cancelled()
         uses: actions/upload-artifact@v4
         with:
-          name: vitest-evals-guardian
-          path: packages/junior-evals/vitest-results-guardian.json
+          name: guardian-evals
+          path: packages/junior-evals/guardian-results.json
           if-no-files-found: warn
           retention-days: 7
 

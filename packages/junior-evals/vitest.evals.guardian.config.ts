@@ -13,7 +13,7 @@ const memoryPackageRoot = path.resolve(__dirname, "../junior-memory");
 const GUARDIAN_EVAL_TEST_TIMEOUT_MS = 90_000;
 const evalReportPath = path.resolve(
   evalsPackageRoot,
-  process.env.VITEST_EVALS_OUTPUT_FILE ?? "vitest-results-guardian.json",
+  process.env.VITEST_EVALS_OUTPUT_FILE ?? "guardian-results.json",
 );
 
 loadJuniorTestEnvFiles({
