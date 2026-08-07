@@ -42,9 +42,9 @@ and open `/dev` to inspect the typed component fixtures.
 ## Type scale
 
 Font sizes come from the named scale in `src/tailwind.css` (`text-2xs` through
-`text-4xl`). Reserve `text-2xs` (12px) for compact metric labels and chart
-annotations; use `text-xs` (13px) or larger for body copy, controls, and
-standalone metadata. Prefer those steps over arbitrary `text-[Nrem]` values.
+`text-4xl`). Reserve `text-2xs` (12px) for compact badges and chart
+annotations; use `text-xs` (13px) or larger for body copy, controls, subtext,
+and standalone metadata. Prefer those steps over arbitrary `text-[Nrem]` values.
 
 User-facing setup lives in
 `packages/docs/src/content/docs/operate/dashboard.md`. Follow

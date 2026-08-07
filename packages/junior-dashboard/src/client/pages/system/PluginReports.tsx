@@ -110,7 +110,7 @@ function PluginReportView(props: {
               <div className="truncate font-display text-2xl font-light leading-none text-dashboard-text">
                 {metric.value}
               </div>
-              <div className="mt-2 font-mono text-2xs uppercase tracking-[0.1em] text-dashboard-text-muted">
+              <div className="mt-2 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted">
                 {metric.label}
               </div>
             </div>

@@ -14,10 +14,10 @@
   /*
    * Dashboard type scale.
    * Prefer these named steps over arbitrary text-[Nrem] values.
-   * text-2xs is reserved for compact labels and chart annotations.
-   * Use text-xs or larger for body copy, controls, and standalone metadata.
+   * text-2xs is reserved for compact badges and chart annotations.
+   * Use text-xs or larger for body copy, controls, subtext, and standalone metadata.
    */
-  --text-2xs: 0.75rem; /* 12px — compact metric labels and chart annotations */
+  --text-2xs: 0.75rem; /* 12px — compact badges and chart annotations */
   --text-2xs--line-height: 1.15;
   --text-xs: 0.8125rem; /* 13px — labels, badges, meta, table headers */
   --text-xs--line-height: 1.15;

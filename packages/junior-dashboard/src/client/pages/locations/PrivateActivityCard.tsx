@@ -25,7 +25,7 @@ export function PrivateActivityCard(props: { item: ConversationStatsItem }) {
           <div className="font-display text-2xl font-light text-dashboard-text">
             {formatCompactNumber(props.item.conversations)}
           </div>
-          <div className="font-mono text-2xs uppercase tracking-[0.1em] text-dashboard-text-muted">
+          <div className="font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted">
             conversations
           </div>
         </div>

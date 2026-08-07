@@ -35,7 +35,7 @@ function Stat(props: {
       <div className="font-display text-xl font-light text-dashboard-text">
         <span className={props.valueClassName}>{props.value}</span>
       </div>
-      <div className="mt-1 font-mono text-2xs uppercase tracking-[0.1em] text-dashboard-text-muted">
+      <div className="mt-1 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted">
         {props.label}
       </div>
     </div>
@@ -152,7 +152,7 @@ export function GuardianActivity(props: { days: GuardianMetricDay[] }) {
             );
           })}
         </div>
-        <div className="relative mt-2 h-4 font-mono text-2xs text-dashboard-text-muted">
+        <div className="relative mt-2 h-4 font-mono text-xs text-dashboard-text-muted">
           {labels.map((index) => {
             const day = props.days[index];
             if (!day) return null;

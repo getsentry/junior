@@ -571,7 +571,7 @@ function MemoryRow(props: {
         </div>
         <span
           className={cn(
-            "hidden items-center gap-1.5 rounded border px-2 py-1 font-mono text-xs uppercase tracking-[0.08em] sm:inline-flex",
+            "hidden items-center gap-1.5 rounded border px-2 py-1 font-mono text-2xs uppercase tracking-[0.08em] sm:inline-flex",
             isPublic
               ? "border-emerald-300/20 bg-emerald-300/[0.07] text-emerald-100"
               : "border-white/[0.08] bg-white/[0.025] text-dashboard-text-muted",
@@ -586,7 +586,7 @@ function MemoryRow(props: {
         </span>
         <span
           className={cn(
-            "hidden w-fit rounded border px-2 py-1 font-mono text-xs uppercase tracking-[0.08em] sm:block",
+            "hidden w-fit rounded border px-2 py-1 font-mono text-2xs uppercase tracking-[0.08em] sm:block",
             memoryKindClass(kind),
           )}
         >
