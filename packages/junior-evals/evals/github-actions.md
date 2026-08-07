@@ -67,13 +67,13 @@ Only needed for the token-based fallback above. Create an AI Gateway key in the 
 
 The `Evals` workflow can start three independent suites on pull requests:
 
-- qualitative Slack/agent evals when qualitative-related files changed or the PR has `trigger-evals-qualitative` / `trigger-evals`
+- behavioral Slack/agent evals when behavioral-related files changed or the PR has `trigger-evals-behavioral` / `trigger-evals`
 - integration system evals when integration-related files changed or the PR has `trigger-evals-integration` / `trigger-evals`
 - isolated Guardian snapshots when Guardian-related files changed or the PR has `trigger-evals-guardian` / `trigger-evals`
 
 Suite labels follow `trigger-evals-[domain]`. Adding a trigger label fires immediately. If the label is already on the PR, future `synchronize` events still run the matching suite(s).
 
-Guardian evals only need gateway credentials. Qualitative and integration evals still need gateway plus sandbox access.
+Guardian evals only need gateway credentials. Behavioral and integration evals still need gateway plus sandbox access.
 
 ## Verification
 
@@ -83,21 +83,21 @@ After adding secrets:
 2. Open the `Evals` workflow summary.
 3. Confirm the gate reports:
    - `gateway_ready: true`
-   - `sandbox_ready: true` for qualitative/integration runs
-   - `will_run_qualitative`, `will_run_integration`, and/or `will_run_guardian` as expected
-4. For qualitative runs, confirm the `evals / report` job published the combined suite summary and pass-rate gate.
+   - `sandbox_ready: true` for behavioral/integration runs
+   - `will_run_behavioral`, `will_run_integration`, and/or `will_run_guardian` as expected
+4. For behavioral runs, confirm the `evals / report` job published the combined suite summary and pass-rate gate.
 5. For integration runs, confirm the `evals / integration *` jobs completed. Any case miss fails those jobs hard.
 6. For Guardian runs, confirm the `evals / guardian` job completed. Exact decision mismatches fail that job hard.
 
 ## Score-Based CI Gate
 
-Only the qualitative suite uses the aggregate floor.
+Only the behavioral suite uses the aggregate floor.
 
-Qualitative shard jobs keep running after individual case failures so every shard can upload its Vitest JSON results. The final `evals / report` job:
+Behavioral shard jobs keep running after individual case failures so every shard can upload its Vitest JSON results. The final `evals / report` job:
 
-1. Downloads all qualitative shard result files
+1. Downloads all behavioral shard result files
 2. Publishes one combined `vitest-evals` job summary with pass counts and average score
-3. Posts an `eval score / qualitative` Check Run whose PR checks secondary line is the pass rate / floor text
+3. Posts an `eval score / behavioral` Check Run whose PR checks secondary line is the pass rate / floor text
 4. Leaves the workflow job green for quality misses so GitHub does not also show a canned "Failing after Xs" job row
 
 The Check Run fails when the aggregate pass rate is below `EVAL_MIN_PASS_RATE` (currently `0.8`). Setup crashes and missing result files still fail the report job hard. The upstream `vitest-evals` Check Run stays disabled because v0.15.0 still concludes it from any case failure.

@@ -15,8 +15,8 @@ Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`, `pnpm s
 | -------------------------- | ------------------------------------------------------------------------------ |
 | Unit/integration test file | `pnpm --filter @sentry/junior exec vitest run path/to/file.test.ts`            |
 | Eval harness test file     | `pnpm --filter @sentry/junior-evals test path/to/file.test.ts`                 |
-| Qualitative eval file      | `pnpm --filter @sentry/junior-evals evals:qualitative path/to/eval.eval.ts`    |
-| Qualitative eval case      | `pnpm --filter @sentry/junior-evals evals:qualitative path/to/eval.eval.ts -t "case name"` |
+| Behavioral eval file      | `pnpm --filter @sentry/junior-evals evals:behavioral path/to/eval.eval.ts`    |
+| Behavioral eval case      | `pnpm --filter @sentry/junior-evals evals:behavioral path/to/eval.eval.ts -t "case name"` |
 | Integration eval file        | `pnpm --filter @sentry/junior-evals evals:integration path/to/file.eval.ts`      |
 | Integration eval case        | `pnpm --filter @sentry/junior-evals evals:integration path/to/file.eval.ts -t "case name"` |
 | Guardian eval file         | `pnpm --filter @sentry/junior-evals evals:guardian path/to/file.eval.ts`       |

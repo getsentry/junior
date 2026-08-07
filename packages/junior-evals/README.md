@@ -7,7 +7,7 @@ Evals are end-to-end Slack conversation evaluations. They are the integration-st
 There are three independently runnable suites:
 
 1. **Integration** (`evals/integration/**`) — full agent/runtime runs for primary system functionality that should never regress. Failures are hard pass/fail.
-2. **Qualitative** (domain folders under `evals/` except `integration/` and `guardian/`) — full agent/runtime runs that measure behavioral quality and tolerate bounded variability. CI reports a suite score and only blocks below the configured floor.
+2. **Behavioral** (domain folders under `evals/` except `integration/` and `guardian/`) — full agent/runtime runs that measure agent behavior and tolerate bounded variability. CI reports a suite score and only blocks below the configured floor.
 3. **Guardian** (`evals/guardian/**`) — isolated decision snapshots scored only on `allow` / `ask` / `deny`. Failures are hard pass/fail.
 
 - We define conversation cases inline in TypeScript using `describeEval()` and the shared `slackEvals` harness options.
@@ -43,13 +43,13 @@ Not in scope:
 
 ## Sources Of Truth
 
-- Integration system behavior: `evals/integration/`
+- Integration system cases: `evals/integration/`
   - primary runtime/system correctness that must never regress (hard pass/fail)
-- Qualitative conversation behavior: `evals/conversation/`
+- Behavioral conversation cases: `evals/conversation/`
   - routing, actor attribution, continuity, delivery, storage, attachments, and output
-- Qualitative agent behavior: `evals/agent/`
+- Behavioral agent cases: `evals/agent/`
   - skills, providers, research, files, OAuth, subscriptions, and skill routing
-- Qualitative feature behavior:
+- Behavioral feature cases:
   - `evals/event-tasks/`
   - `evals/memory/`
   - `evals/scheduler/`
@@ -103,51 +103,51 @@ Tool replay:
 
 ## Running
 
-- `pnpm evals` / `pnpm evals:qualitative`: Run the qualitative suite
+- `pnpm evals` / `pnpm evals:behavioral`: Run the behavioral suite
 - `pnpm evals:integration`: Run the integration suite
 - `pnpm evals:guardian`: Run isolated Guardian decision snapshots
-- `pnpm --filter @sentry/junior-evals evals:qualitative`: Run qualitative from any directory
+- `pnpm --filter @sentry/junior-evals evals:behavioral`: Run behavioral from any directory
 - `pnpm --filter @sentry/junior-evals evals:integration`: Run integration from any directory
 - `pnpm --filter @sentry/junior-evals evals:guardian`: Run Guardian from any directory
-- `pnpm --filter @sentry/junior-evals evals:qualitative evals/sentry/skills.eval.ts`: Run one qualitative file
+- `pnpm --filter @sentry/junior-evals evals:behavioral evals/sentry/skills.eval.ts`: Run one behavioral file
 - `pnpm --filter @sentry/junior-evals evals:integration evals/integration/conversation/actions.eval.ts`: Run one integration file
 - `pnpm --filter @sentry/junior-evals evals:guardian evals/guardian/action-review.eval.ts -t "deny"`: Run one Guardian case
-- `pnpm --filter @sentry/junior-evals evals:qualitative --shard=1/4`: Run one of the four CI qualitative shards
+- `pnpm --filter @sentry/junior-evals evals:behavioral --shard=1/4`: Run one of the four CI behavioral shards
 
 Pass eval file paths, `-t` filters, and shard options directly after the suite script. Do not use `pnpm exec vitest` directly, and do not insert `--` before eval arguments.
 
 ## Optional CI Runs
 
 - On pull requests, the `Evals` workflow can start three independent suites:
-  - qualitative Slack/agent evals (`evals / qualitative *` + `evals / report`)
+  - behavioral Slack/agent evals (`evals / behavioral *` + `evals / report`)
   - integration system evals (`evals / integration *`)
   - isolated Guardian snapshots (`evals / guardian`)
 - Suite labels follow `trigger-evals-[domain]`:
   - `trigger-evals` starts all suites
-  - `trigger-evals-qualitative`, `trigger-evals-integration`, and `trigger-evals-guardian` start one suite
-- Qualitative and integration evals require both gateway and sandbox secrets. Guardian only needs gateway credentials.
+  - `trigger-evals-behavioral`, `trigger-evals-integration`, and `trigger-evals-guardian` start one suite
+- Behavioral and integration evals require both gateway and sandbox secrets. Guardian only needs gateway credentials.
 - Adding a trigger label fires immediately; unrelated labels do not.
-- Qualitative path triggers cover domain folders under `evals/{agent,conversation,event-tasks,github,memory,scheduler,sentry}/`, shared harness files, and `packages/junior/src/**`.
-- Integration path triggers cover `evals/integration/**`, the invariant config, shared harness files, and `packages/junior/src/**`.
+- Behavioral path triggers cover domain folders under `evals/{agent,conversation,event-tasks,github,memory,scheduler,sentry}/`, shared harness files, and `packages/junior/src/**`.
+- Integration path triggers cover `evals/integration/**`, the integration config, shared harness files, and `packages/junior/src/**`.
 - Guardian path triggers cover `evals/guardian/**`, the Guardian harness/config, and Guardian policy/reviewer inputs under `packages/junior/src/chat/services/guardian-action-*.ts` and `tool-support/action-review*`.
-- Qualitative shards still fail individual cases under the per-case judge threshold (`0.75`), but the workflow no longer fails the job on those case failures alone.
-- After all qualitative shards finish, `evals / report` combines results, publishes the suite summary, and posts an `eval score / qualitative` Check Run whose PR status line is the pass rate (for example `63.7% passed · required 80.0%`).
-- The qualitative floor is `EVAL_MIN_PASS_RATE=0.8` (`80%` of cases passed). Missing shard result files or setup/runtime crashes before results are written remain hard failures on the report job.
+- Behavioral shards still fail individual cases under the per-case judge threshold (`0.75`), but the workflow no longer fails the job on those case failures alone.
+- After all behavioral shards finish, `evals / report` combines results, publishes the suite summary, and posts an `eval score / behavioral` Check Run whose PR status line is the pass rate (for example `63.7% passed · required 80.0%`).
+- The behavioral floor is `EVAL_MIN_PASS_RATE=0.8` (`80%` of cases passed). Missing shard result files or setup/runtime crashes before results are written remain hard failures on the report job.
 - Integration cases fail the `evals / integration *` jobs hard on any miss. They do not use the aggregate pass-rate floor.
 - Guardian cases assert exact `allow` / `ask` / `deny` decisions and fail the `evals / guardian` job hard on mismatch. They do not use the aggregate pass-rate floor.
 - The `vitest-evals` Check Run stays off because v0.15.0 still concludes it from any single case failure.
 - The simplest Gateway and Sandbox setup is `VERCEL_OIDC_TOKEN` alone.
 - The fallback CI setup is `AI_GATEWAY_API_KEY` plus `VERCEL_TOKEN` + `VERCEL_TEAM_ID` + `VERCEL_PROJECT_ID`.
-- Qualitative and integration global setup starts one Cloudflare Quick Tunnel for the suite so Vercel Sandbox can reach the eval egress proxy. Transient tunnel allocation failures retry up to five times with backoff. Local runs require `cloudflared` on `PATH`; CI installs a pinned binary.
-- Qualitative and integration state always uses a loopback Redis. Local runs default to `redis://127.0.0.1:6382`; CI sets `JUNIOR_EVAL_REDIS_URL` for its Redis service.
+- Behavioral and integration global setup starts one Cloudflare Quick Tunnel for the suite so Vercel Sandbox can reach the eval egress proxy. Transient tunnel allocation failures retry up to five times with backoff. Local runs require `cloudflared` on `PATH`; CI installs a pinned binary.
+- Behavioral and integration state always uses a loopback Redis. Local runs default to `redis://127.0.0.1:6382`; CI sets `JUNIOR_EVAL_REDIS_URL` for its Redis service.
 - Setup details for GitHub Actions live in `evals/github-actions.md`.
 
-Qualitative and integration evals require real Vercel Sandbox access and public Quick Tunnel connectivity. If either bootstrap fails, the eval fails immediately with no local fallback path. Guardian evals only need AI Gateway access.
+Behavioral and integration evals require real Vercel Sandbox access and public Quick Tunnel connectivity. If either bootstrap fails, the eval fails immediately with no local fallback path. Guardian evals only need AI Gateway access.
 
 ## Authoring Rules
 
 - Put full-runtime integration cases that must never regress under `evals/integration/**` using `describeEval()` with `slackEvals`. Prefer deterministic assertions; keep criteria only when the case still needs light quality scoring.
-- Put qualitative behavioral cases under `evals/conversation/`, `evals/agent/`, or `evals/<feature>/` using `describeEval()` with `slackEvals`.
+- Put behavioral cases under `evals/conversation/`, `evals/agent/`, or `evals/<feature>/` using `describeEval()` with `slackEvals`.
 - Add isolated Guardian decision snapshots under `evals/guardian/` using `describeEval()` with `guardianEvals`. Feed exact `ToolActionProposal` objects and assert only the expected `allow` / `ask` / `deny` decision.
 - Put messages that should be pending before processing starts in `initialEvents`.
 - Put ordinary later events in `events`; each is delivered after preceding work settles.
@@ -204,7 +204,7 @@ Do not do these in eval files:
 Organize files by suite policy first, then by the user-visible area they exercise:
 
 - `evals/integration/`: strict full-runtime integration cases (hard pass/fail).
-- `evals/conversation/`, `evals/agent/`, `evals/<feature>/`: qualitative behavioral cases (score-gated in CI).
+- `evals/conversation/`, `evals/agent/`, `evals/<feature>/`: agent-behavior cases (score-gated in CI).
 - `evals/guardian/`: isolated Guardian decision snapshots (no main agent; hard pass/fail).
 - Use short behavior nouns for filenames: `routing.eval.ts`, `delivery.eval.ts`, `credentials.eval.ts`.
 - Keep one coherent behavior area per file. Split files when cases exercise independently understandable journeys.
