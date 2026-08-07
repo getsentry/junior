@@ -2,6 +2,7 @@ import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
 export const DEFAULT_MIN_PASS_RATE = 0.8;
+export const DEFAULT_CHECK_NAME = "eval score";
 
 /**
  * Decide whether a combined eval report meets the configured pass-rate floor.
@@ -83,13 +84,37 @@ export function formatPercent(value) {
   return `${(value * 100).toFixed(1)}%`;
 }
 
-/** Build the titled GitHub annotation shown on a failed score-gate check. */
+/**
+ * Short status text for the PR checks list via Check Run output.title.
+ *
+ * Workflow jobs cannot customize that secondary line; only a Checks API run can.
+ */
+export function evalPassRateCheckTitle(result, minPassRate) {
+  if (result.passRate === null) {
+    return result.ok ? "Eval score gate passed" : "Eval score gate failed";
+  }
+  if (result.ok) {
+    return `${formatPercent(result.passRate)} passed · floor ${formatPercent(minPassRate)}`;
+  }
+  return `${formatPercent(result.passRate)} passed · required ${formatPercent(minPassRate)}`;
+}
+
+/** Build the titled GitHub workflow annotation for a failed score gate. */
 export function evalPassRateAnnotation(result, minPassRate) {
-  const title =
-    result.passRate === null
-      ? "Eval score gate failed"
-      : `Eval pass rate ${formatPercent(result.passRate)} — required ${formatPercent(minPassRate)}`;
+  const title = evalPassRateCheckTitle(result, minPassRate);
   return `::error title=${escapeWorkflowCommandProperty(title)}::${escapeWorkflowCommandData(result.message)}`;
+}
+
+/** Markdown body for the Check Run detail page / job summary. */
+export function evalPassRateCheckSummary(result, minPassRate) {
+  return [
+    "## Eval Pass Rate",
+    "",
+    `- result: ${result.ok ? "passed" : "failed"}`,
+    `- ${result.message}`,
+    `- floor: ${formatPercent(minPassRate)}`,
+    "",
+  ].join("\n");
 }
 
 /** Escape GitHub workflow-command message data. */
@@ -140,6 +165,11 @@ export function parseEvalPassRateArgs(argv) {
     failed: parseCount(values.failed, "failed"),
     minPassRate: parseRatio(values["min-pass-rate"], "min-pass-rate"),
     scoreAverage: parseOptionalScore(values["score-average"]),
+    checkName: values["check-name"]?.trim() || DEFAULT_CHECK_NAME,
+    publishCheck: parseBooleanFlag(values["publish-check"], false),
+    // When a Check Run owns the PR status line, keep the workflow job green so
+    // GitHub does not also show a canned "Failing after Xs" job row.
+    softFail: parseBooleanFlag(values["soft-fail"], false),
   };
 }
 
@@ -180,29 +210,145 @@ function parseOptionalScore(value) {
   return parsed;
 }
 
-function main() {
+/**
+ * @param {string | undefined} value
+ * @param {boolean} defaultValue
+ */
+function parseBooleanFlag(value, defaultValue) {
+  if (value === undefined || value === "") {
+    return defaultValue;
+  }
+  const normalized = value.toLowerCase();
+  if (normalized === "true" || normalized === "1" || normalized === "yes") {
+    return true;
+  }
+  if (normalized === "false" || normalized === "0" || normalized === "no") {
+    return false;
+  }
+  throw new Error(`invalid boolean: ${value}`);
+}
+
+/**
+ * Publish a completed GitHub Check Run so the PR checks list can show a custom
+ * secondary title instead of the workflow job's canned "Failing after Xs".
+ *
+ * @param {{
+ *   token: string;
+ *   repository: string;
+ *   sha: string;
+ *   name: string;
+ *   title: string;
+ *   summary: string;
+ *   conclusion: "success" | "failure";
+ *   detailsUrl?: string;
+ *   apiUrl?: string;
+ *   fetchImpl?: typeof fetch;
+ * }} options
+ */
+export async function publishEvalScoreCheck(options) {
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const [owner, repo] = options.repository.split("/");
+  if (!owner || !repo) {
+    throw new Error(`invalid GitHub repository: ${options.repository}`);
+  }
+
+  const apiUrl = options.apiUrl ?? "https://api.github.com";
+  const response = await fetchImpl(
+    `${apiUrl}/repos/${owner}/${repo}/check-runs`,
+    {
+      method: "POST",
+      headers: {
+        accept: "application/vnd.github+json",
+        authorization: `Bearer ${options.token}`,
+        "content-type": "application/json",
+        "x-github-api-version": "2022-11-28",
+      },
+      body: JSON.stringify({
+        name: options.name,
+        head_sha: options.sha,
+        status: "completed",
+        conclusion: options.conclusion,
+        completed_at: new Date().toISOString(),
+        ...(options.detailsUrl ? { details_url: options.detailsUrl } : {}),
+        output: {
+          title: options.title.slice(0, 1024),
+          summary: options.summary.slice(0, 64_000),
+        },
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(
+      `GitHub Check Run request failed: ${response.status} ${response.statusText} ${text}`.trim(),
+    );
+  }
+
+  const data = /** @type {{ id?: number; html_url?: string }} */ (
+    await response.json()
+  );
+  return {
+    id: data.id,
+    htmlUrl: data.html_url,
+  };
+}
+
+function detailsUrlFromEnv(env = process.env) {
+  const server = env.GITHUB_SERVER_URL?.replace(/\/$/, "");
+  const repository = env.GITHUB_REPOSITORY;
+  const runId = env.GITHUB_RUN_ID;
+  if (!server || !repository || !runId) {
+    return undefined;
+  }
+  return `${server}/${repository}/actions/runs/${runId}`;
+}
+
+async function main() {
   try {
     const input = parseEvalPassRateArgs(process.argv.slice(2));
     const result = evaluateEvalPassRate(input);
+    const title = evalPassRateCheckTitle(result, input.minPassRate);
+    const summary = evalPassRateCheckSummary(result, input.minPassRate);
     console.log(result.message);
 
     const summaryPath = process.env.GITHUB_STEP_SUMMARY;
     if (summaryPath) {
-      fs.appendFileSync(
-        summaryPath,
-        [
-          "## Eval Pass Rate",
-          "",
-          `- result: ${result.ok ? "passed" : "failed"}`,
-          `- ${result.message}`,
-          "",
-        ].join("\n") + "\n",
-      );
+      fs.appendFileSync(summaryPath, `${summary}\n`);
+    }
+
+    if (input.publishCheck) {
+      const token = process.env.GITHUB_TOKEN?.trim();
+      const repository = process.env.GITHUB_REPOSITORY?.trim();
+      const sha = process.env.GITHUB_SHA?.trim();
+      if (!token || !repository || !sha) {
+        throw new Error(
+          "publish-check requires GITHUB_TOKEN, GITHUB_REPOSITORY, and GITHUB_SHA",
+        );
+      }
+      const published = await publishEvalScoreCheck({
+        token,
+        repository,
+        sha,
+        name: input.checkName,
+        title,
+        summary,
+        conclusion: result.ok ? "success" : "failure",
+        detailsUrl: detailsUrlFromEnv(),
+        apiUrl: process.env.GITHUB_API_URL,
+      });
+      if (published.htmlUrl) {
+        console.log(`published check run: ${published.htmlUrl}`);
+      } else if (published.id !== undefined) {
+        console.log(`published check run id: ${published.id}`);
+      }
     }
 
     if (!result.ok) {
       console.error(evalPassRateAnnotation(result, input.minPassRate));
-      process.exitCode = 1;
+      if (!input.softFail) {
+        process.exitCode = 1;
+      }
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -214,5 +360,5 @@ function main() {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  main();
+  await main();
 }
