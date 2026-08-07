@@ -93,10 +93,20 @@ export interface AgentRunInput {
   conversationContext?: string;
 }
 
-/** Carries identity and addressing needed to route tools, auth, and delivery. */
+/**
+ * Identity and addressing for one run.
+ *
+ * Set `actor` first (who runs). Derive `credentialContext` with
+ * `credentialContextForActor(actor, subject?)` unless a caller already bound
+ * credentials (dispatch with delegated subject). They name the same principal
+ * except when a system actor carries `credentialContext.subject` for delegated
+ * user tokens.
+ */
 export interface AgentRunRouting {
-  credentialContext?: CredentialContext;
+  /** Who this run executes as. Prefer always setting this. */
   actor?: Actor;
+  /** Credential authority projected from actor (plus optional subject). */
+  credentialContext?: CredentialContext;
   source: Source;
   slackConversation?: SlackConversationContext;
   /**

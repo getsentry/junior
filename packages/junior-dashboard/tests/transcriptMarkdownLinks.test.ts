@@ -29,6 +29,26 @@ describe("transcript markdown links", () => {
     ]);
   });
 
+  it("renders CommonMark autolinks without their angle-bracket syntax", () => {
+    const text =
+      "See <https://docs.example/path> and <mailto:team@example.com>, but keep `<https://literal.example>` literal.";
+
+    expect(findTranscriptMarkdownLinks(text)).toEqual([
+      {
+        end: 31,
+        href: "https://docs.example/path",
+        label: "https://docs.example/path",
+        start: 4,
+      },
+      {
+        end: 61,
+        href: "mailto:team@example.com",
+        label: "mailto:team@example.com",
+        start: 36,
+      },
+    ]);
+  });
+
   it("does not let malformed nested labels swallow later valid links", () => {
     const text = "See [broken [real](https://nested.example/ok).";
 

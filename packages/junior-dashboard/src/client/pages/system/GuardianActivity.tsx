@@ -35,7 +35,7 @@ function Stat(props: {
       <div className="font-display text-xl font-light text-dashboard-text">
         <span className={props.valueClassName}>{props.value}</span>
       </div>
-      <div className="mt-1 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted">
+      <div className="mt-1 font-mono text-xs leading-relaxed text-dashboard-text-muted">
         {props.label}
       </div>
     </div>

@@ -11,6 +11,7 @@ import {
   locationDetailReportSchema,
   locationDirectoryReportSchema,
   personalSpendReportSchema,
+  taskExecutionListSchema,
   taskListSchema,
 } from "@sentry/junior/api/schema";
 import {
@@ -109,6 +110,25 @@ export function useTasksData(enabled: boolean) {
     queryKey: ["dashboard", "tasks"],
     queryFn: ({ signal }) =>
       fetchDashboardJson(taskListSchema, "/api/tasks", signal),
+    retry: false,
+  });
+}
+
+/** Fetch terminal executions for one viewer-visible task. */
+export function useTaskExecutionsData(
+  enabled: boolean,
+  kind: "scheduled" | "event" | undefined,
+  taskId: string | undefined,
+) {
+  return useQuery({
+    enabled: enabled && Boolean(kind && taskId),
+    queryKey: ["dashboard", "tasks", kind, taskId, "executions"],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        taskExecutionListSchema,
+        `/api/tasks/${kind}/${encodeURIComponent(taskId!)}/executions`,
+        signal,
+      ),
     retry: false,
   });
 }

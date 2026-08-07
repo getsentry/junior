@@ -9,10 +9,10 @@ const ARBITRARY_TEXT_COLOR_PATTERN = /text-\[#([\da-f]{3}|[\da-f]{6})\]/gi;
 // allowed for markdown that scales with its parent.
 const ARBITRARY_TEXT_SIZE_PATTERN =
   /(?<![\w-])(?:[a-z]{2,3}:)*text-\[(\d+(?:\.\d+)?)(rem|px|pt|pc|in|cm|mm|q|vh|vw|vmin|vmax|svh|svw|lvh|lvw|dvh|dvw)\]/g;
-// SVG/chart tick labels and similar absolute px sizes must stay at the 13px floor.
+// SVG/chart tick labels and similar absolute px sizes must stay at the compact 12px floor.
 const HARDCODED_FONT_SIZE_PATTERN =
   /\bfontSize\s*=\s*["'`](\d+(?:\.\d+)?)["'`]/g;
-const MIN_PRODUCT_FONT_SIZE_PX = 13;
+const MIN_PRODUCT_FONT_SIZE_PX = 12;
 const UTILITY_ASSERTION_PATTERN =
   /\bexpect\(.+\)\.(?:not\.)?(?:toBe|toContain|toEqual|toMatch)\([^)]*["'`](?:[a-z-]+:)*(?:bg|col-span|flex|grid|overflow|row-span|text)-/;
 

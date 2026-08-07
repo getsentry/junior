@@ -65,33 +65,37 @@ Only needed for the token-based fallback above. Create an AI Gateway key in the 
 
 ## Triggering Evals On A PR
 
-The `Evals` workflow can start two independent suites on pull requests:
+The `Evals` workflow can start three independent suites on pull requests:
 
-- end-to-end Slack/agent evals when e2e-related files changed or the PR has `trigger-evals`
-- isolated Guardian snapshots when Guardian-related files changed, the PR has `trigger-evals-guardian`, or the PR has `trigger-evals`
+- behavioral Slack/agent evals when behavioral-related files changed or the PR has `trigger-evals-behavioral` / `trigger-evals`
+- integration system evals when integration-related files changed or the PR has `trigger-evals-integration` / `trigger-evals`
+- isolated Guardian snapshots when Guardian-related files changed or the PR has `trigger-evals-guardian` / `trigger-evals`
 
-Adding `trigger-evals` or `trigger-evals-guardian` fires immediately. If the label is already on the PR, future `synchronize` events still run the matching suite(s).
+Suite labels follow `trigger-evals-[domain]`. Adding a trigger label fires immediately. If the label is already on the PR, future `synchronize` events still run the matching suite(s).
 
-Guardian evals only need gateway credentials. End-to-end evals still need gateway plus sandbox access.
+Guardian evals only need gateway credentials. Behavioral and integration evals still need gateway plus sandbox access.
 
 ## Verification
 
 After adding secrets:
 
-1. Push a commit to the PR, or add the `trigger-evals` / `trigger-evals-guardian` label.
+1. Push a commit to the PR, or add the matching `trigger-evals*` label.
 2. Open the `Evals` workflow summary.
 3. Confirm the gate reports:
    - `gateway_ready: true`
-   - `sandbox_ready: true` for end-to-end runs
-   - `will_run: true` and/or `will_run_guardian: true`
-4. For end-to-end runs, confirm each `evals / suite *` job has a shard summary, `evals / report` has the combined summary, and `evals / score` shows the pass-rate gate in its job name.
-5. For Guardian runs, confirm the `evals / guardian` job summary published and the job completed. Exact decision mismatches fail that job hard.
+   - `sandbox_ready: true` for behavioral/integration runs
+   - `will_run_behavioral`, `will_run_integration`, and/or `will_run_guardian` as expected
+4. For behavioral runs, confirm each `evals / behavioral *` job has a shard summary, `evals / report` has the combined summary, and `evals / score` shows the pass-rate gate in its job name.
+5. For integration runs, confirm the `evals / integration *` jobs completed. Any case miss fails those jobs hard.
+6. For Guardian runs, confirm the `evals / guardian` job summary published and the job completed. Exact decision mismatches fail that job hard.
 
 ## Score-Based CI Gate
 
-End-to-end shard jobs keep running after individual case failures so every shard can upload its Vitest JSON results and publish its own job summary. Then:
+Only the behavioral suite uses the aggregate floor.
 
-1. `evals / report` downloads all shard result files and publishes one combined `vitest-evals` summary (metric table, score distribution, quality misses)
+Behavioral shard jobs keep running after individual case failures so every shard can upload its Vitest JSON results and publish its own job summary. Then:
+
+1. `evals / report` downloads all behavioral shard result files and publishes one combined `vitest-evals` summary (metric table, score distribution, quality misses)
 2. `evals / report` stays green even when the floor is missed (`continue-on-error`) and exports gate outputs
 3. `evals / score · <gate title>` is a real Evals workflow job that owns green/red for `EVAL_MIN_PASS_RATE` (currently `0.8`) and carries the score in the job name shown on the PR checks list
 
@@ -99,7 +103,7 @@ We intentionally do **not** publish a detached Checks API run for the score. Tho
 
 When the aggregate gate passes, individual case misses are warnings rather than failures. Setup crashes and missing result files still fail the report job hard.
 
-Guardian snapshots are not part of that aggregate floor. They assert exact `allow` / `ask` / `deny` decisions, publish their own job summary, and fail `evals / guardian` on mismatch.
+Integration shards fail hard on any case miss and do not use the aggregate floor. Guardian snapshots assert exact `allow` / `ask` / `deny` decisions, publish their own job summary, and fail `evals / guardian` on mismatch.
 
 If `sandbox_ready` is false, either `VERCEL_OIDC_TOKEN` is missing or the fallback token set is incomplete.
 

@@ -163,6 +163,7 @@ describe("persistAuthPauseSessionRecord", () => {
     // Nested routing stays off redis; SQL dual-write is the authority.
     expect(sessionRecord).not.toHaveProperty("source");
     expect(sessionRecord).not.toHaveProperty("destination");
+    expect(sessionRecord).not.toHaveProperty("actor");
   });
 
   it("records Slack turn activity without replacing confirmed visibility", async () => {
@@ -282,14 +283,16 @@ describe("persistAuthPauseSessionRecord", () => {
     );
     expect(stored).not.toHaveProperty("destination");
     expect(stored).not.toHaveProperty("source");
+    expect(stored).not.toHaveProperty("actor");
 
     const summaries =
       await listBoundedAgentTurnSessionSummariesForConversation(conversationId);
     expect(summaries).toHaveLength(1);
     expect(summaries[0]).not.toHaveProperty("destination");
     expect(summaries[0]).not.toHaveProperty("source");
+    expect(summaries[0]).not.toHaveProperty("actor");
 
-    // Materialized reads no longer surface nested routing from redis.
+    // Materialized reads no longer surface nested routing/identity from redis.
     const record = await getAgentTurnSessionRecord(conversationId, sessionId);
     expect(record).toMatchObject({
       conversationId,
@@ -298,6 +301,7 @@ describe("persistAuthPauseSessionRecord", () => {
     });
     expect(record).not.toHaveProperty("destination");
     expect(record).not.toHaveProperty("source");
+    expect(record).not.toHaveProperty("actor");
 
     expect(conversationStore.recordActivity).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -339,6 +343,11 @@ describe("persistAuthPauseSessionRecord", () => {
         cumulativeDurationMs: 0,
         destination: SLACK_DESTINATION,
         source: SLACK_SOURCE,
+        actor: {
+          platform: "slack",
+          teamId: "T123",
+          userId: "U123",
+        },
         deprecatedFlag: true,
         resumeReason: "timeout",
       },
@@ -349,6 +358,7 @@ describe("persistAuthPauseSessionRecord", () => {
     expect(record).toMatchObject({ state: "awaiting_resume" });
     expect(record).not.toHaveProperty("destination");
     expect(record).not.toHaveProperty("source");
+    expect(record).not.toHaveProperty("actor");
     expect(record).not.toHaveProperty("deprecatedFlag");
   });
 
@@ -519,58 +529,68 @@ describe("persistAuthPauseSessionRecord", () => {
     });
   });
 
-  it("persists actor identity when updating an unchanged projection", async () => {
+  it("dual-writes actor identity to SQL without storing it in redis", async () => {
     const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
+    const { getStateAdapter } = await import("@/chat/state/adapter");
+    const { agentTurnSessionKey } = await import("@/chat/state/turn-session-keys");
+    const { getConversationStore } = await import("@/chat/db");
 
+    const conversationId = "slack:C123:actor-empty-commit";
+    const sessionId = "turn-actor-empty-commit";
     const userMessage: PiMessage = {
       role: "user",
       content: [{ type: "text", text: "keep going" }],
       timestamp: 1,
     } as PiMessage;
+    const actor = {
+      platform: "slack" as const,
+      teamId: "T123",
+      userId: "U123",
+      userName: "alice",
+      fullName: "Alice Example",
+      email: "alice@sentry.io",
+    };
 
-    await upsertAgentTurnSessionRecord({
-      modelId: "test-model",
-      conversationId: "conversation-actor-empty-commit",
-      sessionId: "turn-actor-empty-commit",
-      sliceId: 1,
-      state: "awaiting_resume",
-      piMessages: [userMessage],
-      resumeReason: "timeout",
-    });
     await upsertAgentTurnSessionRecord({
       modelId: "test/model",
-      conversationId: "conversation-actor-empty-commit",
-      sessionId: "turn-actor-empty-commit",
-      sliceId: 2,
+      conversationId,
+      sessionId,
+      sliceId: 1,
       state: "awaiting_resume",
+      destination: SLACK_DESTINATION,
+      source: SLACK_SOURCE,
       piMessages: [userMessage],
-      actor: {
-        platform: "slack",
-        teamId: "T123",
-        userId: "U123",
-        userName: "alice",
-        fullName: "Alice Example",
-        email: "alice@sentry.io",
-      },
+      actor,
       resumeReason: "timeout",
+      surface: "slack",
     });
 
+    const record = await getAgentTurnSessionRecord(conversationId, sessionId);
+    expect(record).toMatchObject({
+      piMessages: [userMessage],
+      state: "awaiting_resume",
+    });
+    expect(record).not.toHaveProperty("actor");
+
+    const stateAdapter = getStateAdapter();
+    await stateAdapter.connect();
+    const stored = await stateAdapter.get(
+      agentTurnSessionKey(conversationId, sessionId),
+    );
+    expect(stored).not.toHaveProperty("actor");
+
     await expect(
-      getAgentTurnSessionRecord(
-        "conversation-actor-empty-commit",
-        "turn-actor-empty-commit",
-      ),
+      getConversationStore().get({ conversationId }),
     ).resolves.toMatchObject({
       actor: {
         platform: "slack",
         teamId: "T123",
-        userId: "U123",
-        userName: "alice",
+        slackUserId: "U123",
+        slackUserName: "alice",
         fullName: "Alice Example",
         email: "alice@sentry.io",
       },
-      piMessages: [userMessage],
     });
   });
 
@@ -618,18 +638,15 @@ describe("persistAuthPauseSessionRecord", () => {
       piMessages: [previousQuestion, currentQuestion],
     });
 
-    await expect(
-      getAgentTurnSessionRecord("conversation-turn-scope", "turn-scope"),
-    ).resolves.toMatchObject({
-      actor: {
-        platform: "slack",
-        teamId: "T123",
-        userId: "U123",
-        userName: "alice",
-      },
+    const scoped = await getAgentTurnSessionRecord(
+      "conversation-turn-scope",
+      "turn-scope",
+    );
+    expect(scoped).toMatchObject({
       turnStartMessageIndex: 1,
       piMessages: [previousQuestion, currentQuestion],
     });
+    expect(scoped).not.toHaveProperty("actor");
     const projection = await loadConversationProjection({
       conversationId: "conversation-turn-scope",
     });
@@ -758,7 +775,7 @@ describe("persistAuthPauseSessionRecord", () => {
       "conversation-multi-actor",
       "turn-multi-actor",
     );
-    expect(record?.actor).toEqual(alice);
+    expect(record).not.toHaveProperty("actor");
     expect(record?.piMessageProvenance).toEqual([
       { authority: "instruction", actor: alice },
       { authority: "instruction", actor: bob },

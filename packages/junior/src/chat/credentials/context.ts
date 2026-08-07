@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { parseActorUserId } from "@/chat/actor";
+import { parseActorUserId, type Actor } from "@/chat/actor";
 
 const exactActorIdSchema = z
   .string()
@@ -115,6 +115,31 @@ export type CredentialSystemActor = z.output<
 >;
 export type CredentialSubject = z.output<typeof credentialSubjectSchema>;
 export type CredentialContext = z.output<typeof credentialContextSchema>;
+
+/**
+ * Build credential authority from the run actor.
+ *
+ * `actor` is the rich execution principal. This projects the credential stub
+ * tools/auth need from it:
+ * - user actor → `{ actor: { type: "user", userId } }`
+ * - system actor → `{ actor: systemActor, subject? }`
+ *
+ * They only diverge when a system run carries an explicit delegated `subject`
+ * (scheduled/event-task creator credentials). Callers should set `actor` first,
+ * then derive this — do not hand-build parallel shapes.
+ */
+export function credentialContextForActor(
+  actor: Actor,
+  subject?: CredentialSubject,
+): CredentialContext {
+  if (actor.platform === "system") {
+    return subject ? { actor, subject } : { actor };
+  }
+  if (subject) {
+    throw new TypeError("Delegated credential subjects require a system actor");
+  }
+  return { actor: { type: "user", userId: actor.userId } };
+}
 
 /** Return the user whose OAuth token may satisfy this credential request. */
 export function credentialUserSubjectId(

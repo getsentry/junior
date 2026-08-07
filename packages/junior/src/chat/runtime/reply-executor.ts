@@ -43,7 +43,10 @@ import {
   type AgentRunSteeringMessage,
 } from "@/chat/agent/request";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
-import type { CredentialContext } from "@/chat/credentials/context";
+import {
+  credentialContextForActor,
+  type CredentialContext,
+} from "@/chat/credentials/context";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import {
   getAssistantThreadContext,
@@ -102,6 +105,10 @@ import {
   ensureSlackMessageActorIdentity,
   getMessageActorIdentity,
 } from "@/chat/services/message-actor-identity";
+import {
+  isResourceEventSlackMessage,
+  RESOURCE_EVENT_SYSTEM_ACTOR,
+} from "@/chat/resource-events/actor";
 import type { AgentContinueRequest } from "@/chat/services/agent-continue";
 import {
   ConversationTurnBoundaryError,
@@ -275,7 +282,7 @@ function queuedInstructionProvenance(
   queued: QueuedTurnMessage,
   teamId: string,
 ): ConversationMessageProvenance {
-  if (isResourceEventMessage(queued.message)) {
+  if (isResourceEventSlackMessage(queued.message)) {
     return contextProvenance;
   }
   const identity = getMessageActorIdentity(queued.message);
@@ -293,21 +300,7 @@ function queuedInstructionProvenance(
   return instructionProvenanceFor(author);
 }
 
-function isResourceEventMessage(message: Message): boolean {
-  const raw =
-    message.raw && typeof message.raw === "object"
-      ? (message.raw as Record<string, unknown>)
-      : undefined;
-  return raw?.event_type === "resource_event";
-}
 
-function resourceEventCredentialContext(
-  message: Message,
-): CredentialContext | undefined {
-  return isResourceEventMessage(message)
-    ? { actor: { platform: "system", name: "resource-event" } }
-    : undefined;
-}
 
 async function resolveChannelName(thread: Thread): Promise<string | undefined> {
   const existingName = thread.channel.name?.trim();
@@ -543,7 +536,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         };
         await Promise.all(
           (options.queuedMessages ?? [])
-            .filter((queued) => !isResourceEventMessage(queued.message))
+            .filter((queued) => !isResourceEventSlackMessage(queued.message))
             .map((queued) =>
               ensureSlackMessageActorIdentity(
                 queued.message,
@@ -553,22 +546,32 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             ),
         );
         const effectiveUserText = currentText.userText;
-        const credentialContext =
-          options.execution?.credentialContext ??
-          resourceEventCredentialContext(message) ??
-          ({
-            actor: { type: "user", userId: message.author.userId },
-          } satisfies CredentialContext);
+        // Actor first, then credential projection. Dispatch already binds both
+        // (and any delegated subject); other turns derive credentials from actor.
+        let executionActor: Actor | undefined;
+        let credentialContext: CredentialContext | undefined;
+        if (options.execution) {
+          // Dispatch always owns actor + credentials (including subject).
+          executionActor = options.execution.dispatch.actor;
+          credentialContext = options.execution.credentialContext;
+        } else if (isResourceEventSlackMessage(message)) {
+          executionActor = RESOURCE_EVENT_SYSTEM_ACTOR;
+          credentialContext = credentialContextForActor(executionActor);
+        } else {
+          executionActor = await ensureSlackMessageActorIdentity(
+            message,
+            teamId,
+            deps.services.lookupSlackUser,
+          );
+          if (executionActor) {
+            credentialContext = credentialContextForActor(executionActor);
+          }
+        }
+        if (!executionActor || !credentialContext) {
+          throw new Error("Slack reply execution requires an actor");
+        }
         const actor =
-          "type" in credentialContext.actor
-            ? await ensureSlackMessageActorIdentity(
-                message,
-                teamId,
-                deps.services.lookupSlackUser,
-              )
-            : undefined;
-        const executionActor: Actor | undefined =
-          "type" in credentialContext.actor ? actor : credentialContext.actor;
+          "userId" in executionActor ? executionActor : undefined;
         const slackActorId = actor?.userId;
 
         const preparedState =
@@ -655,7 +658,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   attachments,
                   {
                     threadId,
-                    actorId: isResourceEventMessage(queued.message)
+                    actorId: isResourceEventSlackMessage(queued.message)
                       ? undefined
                       : queued.message.author.userId,
                     channelId,
@@ -1378,7 +1381,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             },
             routing: {
               credentialContext,
-              actor: options.execution ? executionActor : actor,
+              // Always set the execution actor when known. Resource-event turns
+              // carry the system principal; interactive turns carry the Slack user.
+              actor: executionActor,
               slackConversation,
               source,
               destination,

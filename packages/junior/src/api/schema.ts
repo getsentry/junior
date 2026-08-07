@@ -85,11 +85,22 @@ export type { PersonalTokenMetadata } from "./schema/personal-token";
 export {
   eventTaskSummarySchema,
   scheduledTaskSummarySchema,
+  taskExecutionListSchema,
+  taskExecutionSchema,
+  taskExecutionStatusDaySchema,
+  taskExecutionStatusSchema,
   taskListSchema,
   taskParamsSchema,
   taskSummarySchema,
 } from "./schema/task";
-export type { TaskExecutionDay, TaskList, TaskSummary } from "./schema/task";
+export type {
+  TaskExecution,
+  TaskExecutionDay,
+  TaskExecutionList,
+  TaskExecutionStatusDay,
+  TaskList,
+  TaskSummary,
+} from "./schema/task";
 export { statSchema, statsReportSchema } from "./schema/stats";
 export type { StatReport, StatsReport } from "./schema/stats";
 export {

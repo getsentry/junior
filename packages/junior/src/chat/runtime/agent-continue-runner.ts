@@ -72,13 +72,20 @@ import {
   type SlackActor,
 } from "@/chat/actor";
 import { getConversationWorkState } from "@/chat/task-execution/store";
+import {
+  isResourceEventConversationMessage,
+  RESOURCE_EVENT_SYSTEM_ACTOR,
+} from "@/chat/resource-events/actor";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import type { AgentRunRouting } from "@/chat/agent/request";
 import { persistAuthPauseTurnState } from "@/chat/runtime/auth-pause-state";
 import { clearPendingAuth } from "@/chat/services/pending-auth";
 import { requireSlackDestination } from "@/chat/destination";
-import type { CredentialContext } from "@/chat/credentials/context";
+import {
+  credentialContextForActor,
+  type CredentialContext,
+} from "@/chat/credentials/context";
 import { sleep } from "@/chat/sleep";
 import { modelIdForProfile } from "@/chat/model-profile";
 import { latestReportedProgress } from "@/chat/runtime/report-progress";
@@ -224,51 +231,103 @@ async function failContinuationStartup(args: {
 }
 
 /**
- * Resolve the resume actor without ever throwing for missing identity.
+ * Best-effort Slack user actor for resume.
  *
- * A throw escaping `beforeStart` NACKs the continue queue delivery and
- * permanently wedges the conversation (issue #727), so identity gaps must
- * resolve to `undefined` and let the caller fail the session visibly. When
- * the session record lacks a usable actor, recovery consults the durable
- * conversation work record — but only an identity that matches the resume
- * actor (team + user) is ever rebuilt; we never fabricate one.
+ * Never throws (issue #727). Prefer matching work-state profile data; always
+ * fall back to bare author id + destination team when enrichment is missing
+ * or unusable.
  */
-async function resolveContinuationActor(args: {
+async function resolveSlackResumeUserActor(args: {
   conversationId: string;
-  sessionRecordActor: Actor | undefined;
   teamId: string;
   userId: string;
 }): Promise<SlackActor | undefined> {
-  const stored = args.sessionRecordActor;
-  if (
-    stored?.platform === "slack" &&
-    stored.teamId === args.teamId &&
-    stored.userId === args.userId
-  ) {
+  try {
+    const work = await getConversationWorkState({
+      conversationId: args.conversationId,
+    });
+    const workActor = work?.actor;
+    if (
+      workActor?.teamId === args.teamId &&
+      workActor.slackUserId === args.userId
+    ) {
+      try {
+        return createSlackActor(args.teamId, args.userId, {
+          email: workActor.email,
+          fullName: workActor.fullName,
+          userName: workActor.slackUserName,
+        });
+      } catch {
+        // Stored profile data is optional enrichment only.
+      }
+    }
+  } catch {
+    // Work-state is optional enrichment only.
+  }
+
+  try {
     return createSlackResumeActor({
-      actor: stored,
       teamId: args.teamId,
       userId: args.userId,
     });
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Resolve the run actor for a resumed turn, then derive credentialContext.
+ *
+ * Sources, in order:
+ * 1. Caller routingContext (dispatch / OAuth already set actor + credentials)
+ * 2. Resource-event markers → system actor
+ * 3. Slack author + destination team
+ *
+ * Never reads Redis turn-session actor. Prefer setting actor first; credentials
+ * come from the caller when already bound, else credentialContextForActor.
+ */
+async function resolveResumeExecutionIdentity(args: {
+  conversationId: string;
+  routingContext?: AgentContinueRunnerOptions["routingContext"];
+  teamId: string;
+  userMessage: {
+    author?: { userId?: string };
+    meta?: { eventType?: string };
+  };
+}): Promise<{ actor: Actor; credentialContext: CredentialContext } | undefined> {
+  const routing = args.routingContext;
+
+  // Dispatch / OAuth ports already own the full binding (including subject).
+  if (routing?.credentialContext) {
+    const actor =
+      routing.dispatch?.actor ??
+      routing.actor ??
+      (!("type" in routing.credentialContext.actor)
+        ? routing.credentialContext.actor
+        : undefined);
+    return actor
+      ? { actor, credentialContext: routing.credentialContext }
+      : undefined;
   }
 
-  const work = await getConversationWorkState({
-    conversationId: args.conversationId,
-  });
-  const workActor = work?.actor;
-  if (
-    workActor &&
-    workActor.teamId === args.teamId &&
-    workActor.slackUserId === args.userId
-  ) {
-    return createSlackActor(args.teamId, args.userId, {
-      email: workActor.email,
-      fullName: workActor.fullName,
-      userName: workActor.slackUserName,
+  let actor: Actor | undefined = routing?.actor;
+  if (!actor && isResourceEventConversationMessage(args.userMessage)) {
+    actor = RESOURCE_EVENT_SYSTEM_ACTOR;
+  }
+  if (!actor && args.userMessage.author?.userId) {
+    actor = await resolveSlackResumeUserActor({
+      conversationId: args.conversationId,
+      teamId: args.teamId,
+      userId: args.userMessage.author.userId,
     });
   }
-
-  return undefined;
+  if (!actor) {
+    return undefined;
+  }
+  return {
+    actor,
+    credentialContext: credentialContextForActor(actor),
+  };
 }
 
 function isContinuationResume(summary: AgentTurnSessionSummary): boolean {
@@ -298,7 +357,6 @@ async function failUnresumableContinuation(args: {
         conversationId: args.conversationId,
       });
       await recordAgentTurnSessionSummary({
-        actor: args.summary.actor,
         conversationId: args.conversationId,
         destination: routing.destination,
         dispatchId: args.summary.dispatchId,
@@ -398,19 +456,34 @@ async function continueSlackAgentRunInContext(
         const userMessage =
           getTurnUserMessage(conversation, payload.sessionId) ??
           dispatchUserMessage;
-        const systemActor =
-          activeSessionRecord.actor?.platform === "system"
-            ? activeSessionRecord.actor
-            : undefined;
-        const userActorId = userMessage?.author?.userId;
-        if (!userMessage || (!systemActor && !userActorId)) {
-          throw new Error(
-            `Unable to locate the persisted user message for agent continuation session "${payload.sessionId}"`,
-          );
+        if (!userMessage) {
+          // Never throw out of beforeStart (issue #727); fail the session visibly.
+          await failStrandedSessionWithFallback({
+            conversationId: payload.conversationId,
+            errorMessage: `Unable to locate the persisted user message for agent continuation session "${payload.sessionId}"`,
+            sessionRecord: activeSessionRecord,
+          });
+          return false;
         }
         if (conversation.processing.activeTurnId !== payload.sessionId) {
           return false;
         }
+
+        const identity = await resolveResumeExecutionIdentity({
+          conversationId: payload.conversationId,
+          routingContext: options.routingContext,
+          teamId: destination.teamId,
+          userMessage,
+        });
+        if (!identity) {
+          await failStrandedSessionWithFallback({
+            conversationId: payload.conversationId,
+            errorMessage: "Unable to rebuild Slack actor for continuation",
+            sessionRecord: activeSessionRecord,
+          });
+          return false;
+        }
+        const { actor, credentialContext } = identity;
 
         const channelConfiguration = getChannelConfigurationServiceById(
           destination.channelId,
@@ -421,34 +494,6 @@ async function continueSlackAgentRunInContext(
               excludeMessageId: userMessage.id,
             });
         const sandboxRef = getPersistedSandboxState(currentState);
-        let actor: SlackActor | undefined;
-        let credentialContext: CredentialContext;
-        if (options.routingContext?.credentialContext) {
-          credentialContext = options.routingContext.credentialContext;
-        } else if (systemActor) {
-          credentialContext = { actor: systemActor };
-        } else {
-          actor = await resolveContinuationActor({
-            conversationId: payload.conversationId,
-            sessionRecordActor: activeSessionRecord.actor,
-            teamId: destination.teamId,
-            userId: userActorId!,
-          });
-          if (!actor) {
-            await failStrandedSessionWithFallback({
-              conversationId: payload.conversationId,
-              errorMessage: "Stored Slack actor missing for continuation",
-              sessionRecord: activeSessionRecord,
-            });
-            return false;
-          }
-          credentialContext = {
-            actor: {
-              type: "user",
-              userId: actor.userId,
-            },
-          };
-        }
         const routing = await resolveTurnSessionRouting({
           conversationId: payload.conversationId,
         });
@@ -506,9 +551,7 @@ async function continueSlackAgentRunInContext(
             routing: {
               ...options.routingContext,
               credentialContext,
-              ...((options.routingContext?.actor ?? actor)
-                ? { actor: options.routingContext?.actor ?? actor }
-                : {}),
+              actor,
               destination: routingDestination,
               source,
               toolChannelId:
@@ -639,7 +682,6 @@ async function failStrandedSessionWithFallback(args: {
   }
   if (args.sessionRecord.dispatchId) {
     await recordAgentTurnSessionSummary({
-      actor: args.sessionRecord.actor,
       conversationId: args.conversationId,
       destination: routing.destination,
       dispatchId: args.sessionRecord.dispatchId,
@@ -726,7 +768,6 @@ async function recoverStrandedRunningSession(args: {
     messages: sessionRecord.piMessages,
     errorMessage: "Recovered running session after hard worker death",
     modelId,
-    actor: sessionRecord.actor,
     surface: sessionRecord.surface,
   });
   if (!parked) {

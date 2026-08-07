@@ -269,7 +269,8 @@ async function recoverRunningSession(
     errorMessage: "Recovered running agent invocation after worker loss",
     messages: session.piMessages,
     modelId: session.modelId,
-    actor: session.actor,
+    // Execution actor lives on the parent invocation record, not Redis.
+    actor: invocation.actor,
     reasoningLevel: session.reasoningLevel,
     sessionId: session.sessionId,
     surface: session.surface,

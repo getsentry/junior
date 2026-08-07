@@ -118,6 +118,7 @@ describe("dashboard routes", () => {
       "/system/plugins/github",
       "/tasks",
       "/tasks/task-1",
+      "/tasks/scheduled/task-1/executions",
       "/memories",
       "/memories/memory-1",
     ]) {
@@ -130,7 +131,6 @@ describe("dashboard routes", () => {
       expect(location.searchParams.get("next")).toBe(path);
     }
   });
-
   it("uses the requested dashboard path as the Google sign-in callback", async () => {
     let callbackURL: string | undefined;
     const app = createDashboardApp({
@@ -454,6 +454,7 @@ describe("dashboard routes", () => {
       "/system/plugins/github",
       "/tasks",
       "/tasks/task-1",
+      "/tasks/scheduled/task-1/executions",
       "/memories",
       "/memories/memory-1",
       "/settings/api-tokens",

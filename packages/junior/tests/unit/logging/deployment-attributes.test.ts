@@ -75,7 +75,7 @@ describe("deployment log attributes", () => {
     expect(records[0]?.attributes).toMatchObject({
       "app.junior.version": JUNIOR_VERSION,
       "deployment.id": "dpl_123",
-      "service.version": "git-sha",
+      "service.version": `${JUNIOR_VERSION}+git-sha`,
     });
   });
 });

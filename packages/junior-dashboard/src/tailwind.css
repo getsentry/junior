@@ -14,9 +14,11 @@
   /*
    * Dashboard type scale.
    * Prefer these named steps over arbitrary text-[Nrem] values.
-   * text-xs is the floor for chrome (labels, badges, meta, table headers).
-   * Do not go smaller than text-xs in product UI.
+   * text-2xs is reserved for compact badges and chart annotations.
+   * Use text-xs or larger for body copy, controls, subtext, and standalone metadata.
    */
+  --text-2xs: 0.75rem; /* 12px — compact badges and chart annotations */
+  --text-2xs--line-height: 1.15;
   --text-xs: 0.8125rem; /* 13px — labels, badges, meta, table headers */
   --text-xs--line-height: 1.15;
   --text-sm: 0.875rem; /* 14px — secondary body, descriptions, tool meta */

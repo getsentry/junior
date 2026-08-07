@@ -1,11 +1,16 @@
 import { Hono } from "hono";
 import { apiErrorSchema } from "@/api/schema/common";
-import { taskListSchema, taskParamsSchema } from "@/api/schema/task";
+import {
+  taskExecutionListSchema,
+  taskListSchema,
+  taskParamsSchema,
+} from "@/api/schema/task";
 import { jsonResponse } from "@/api/http";
 import type { JuniorApiEnv } from "@/api/route";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import {
   deleteViewerTask,
+  readViewerTaskExecutions,
   readViewerTasks,
   ViewerTaskNotFoundError,
 } from "@/chat/tasks/read";
@@ -29,6 +34,43 @@ export function createTaskRoutes(): Hono<JuniorApiEnv> {
           { error: "Authentication required." },
           { status: 401 },
         );
+  });
+  app.get("/:kind/:id/executions", async (context) => {
+    const user = await viewer(context);
+    if (!user) {
+      return jsonResponse(
+        apiErrorSchema,
+        { error: "Authentication required." },
+        { status: 401 },
+      );
+    }
+    const params = taskParamsSchema.safeParse(context.req.param());
+    if (!params.success) {
+      return jsonResponse(
+        apiErrorSchema,
+        { error: "Invalid task." },
+        { status: 400 },
+      );
+    }
+    try {
+      return jsonResponse(
+        taskExecutionListSchema,
+        await readViewerTaskExecutions(
+          user,
+          params.data.kind,
+          params.data.id,
+        ),
+      );
+    } catch (error) {
+      if (error instanceof ViewerTaskNotFoundError) {
+        return jsonResponse(
+          apiErrorSchema,
+          { error: error.message },
+          { status: 404 },
+        );
+      }
+      throw error;
+    }
   });
   app.delete("/:kind/:id", async (context) => {
     const user = await viewer(context);

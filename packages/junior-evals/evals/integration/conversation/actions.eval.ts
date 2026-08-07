@@ -7,7 +7,7 @@ import {
   slackEvals,
   visibleAssistantText,
   visibleThreadReplies,
-} from "../../src/helpers";
+} from "../../../src/helpers";
 
 describeEval("Conversation Actions", slackEvals, (it) => {
   it("when the request is reaction-only, add a reaction without reply clutter", async ({

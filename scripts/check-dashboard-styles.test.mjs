@@ -68,22 +68,22 @@ test("reports absolute arbitrary text sizes and allows relative em", () => {
   );
 });
 
-test("reports hardcoded font sizes below the 13px floor", () => {
+test("reports hardcoded font sizes below the 12px floor", () => {
   assert.deepEqual(
     findUndersizedHardcodedFontSizes([
       {
         path: "src/chart.tsx",
         contents: [
           '<text fontSize="9">axis</text>',
-          '<text fontSize="12">still small</text>',
-          '<text fontSize="13">floor</text>',
-          '<text fontSize="14">ok</text>',
+          '<text fontSize="11">still small</text>',
+          '<text fontSize="12">floor</text>',
+          '<text fontSize="13">ok</text>',
         ].join("\n"),
       },
     ]),
     [
       'src/chart.tsx:1: <text fontSize="9">axis</text>',
-      'src/chart.tsx:2: <text fontSize="12">still small</text>',
+      'src/chart.tsx:2: <text fontSize="11">still small</text>',
     ],
   );
 });

@@ -104,6 +104,22 @@ function shouldSkipRun(
   return undefined;
 }
 
+async function recordScheduledExecution(args: {
+  nowMs: number;
+  run: ScheduledRun;
+  status: "blocked" | "completed" | "failed";
+}): Promise<void> {
+  const dispatchId = args.run.dispatchId;
+  await recordTaskExecution("scheduled", args.run.taskId, {
+    ...(dispatchId
+      ? { conversationId: getDispatchConversationId({ id: dispatchId }) }
+      : {}),
+    executionId: args.run.id,
+    nowMs: args.nowMs,
+    status: args.status,
+  });
+}
+
 async function applyDispatchResult(args: {
   dispatch: Dispatch;
   nowMs: number;
@@ -123,14 +139,11 @@ async function applyDispatchResult(args: {
       run: args.run,
       status: "completed",
     });
-    const dispatchId = args.run.dispatchId;
-    if (dispatchId) {
-      await recordTaskExecution("scheduled", args.run.taskId, {
-        conversationId: getDispatchConversationId({ id: dispatchId }),
-        executionId: args.run.id,
-        nowMs: args.nowMs,
-      });
-    }
+    await recordScheduledExecution({
+      nowMs: args.nowMs,
+      run: args.run,
+      status: "completed",
+    });
     return true;
   }
   if (args.dispatch.status === "blocked") {
@@ -147,6 +160,11 @@ async function applyDispatchResult(args: {
       run: args.run,
       status: "blocked",
     });
+    await recordScheduledExecution({
+      nowMs: args.nowMs,
+      run: args.run,
+      status: "blocked",
+    });
     return true;
   }
   if (args.dispatch.status === "failed") {
@@ -159,6 +177,11 @@ async function applyDispatchResult(args: {
     if (!failed) return false;
     await args.store.updateTaskAfterRun({
       errorMessage: failed.errorMessage,
+      nowMs: args.nowMs,
+      run: args.run,
+      status: "failed",
+    });
+    await recordScheduledExecution({
       nowMs: args.nowMs,
       run: args.run,
       status: "failed",
@@ -191,6 +214,11 @@ async function finishClaimedRun(args: {
   if (!finished) return;
   await args.store.updateTaskAfterRun({
     errorMessage: args.errorMessage,
+    nowMs: args.nowMs,
+    run: args.run,
+    status: args.status,
+  });
+  await recordScheduledExecution({
     nowMs: args.nowMs,
     run: args.run,
     status: args.status,

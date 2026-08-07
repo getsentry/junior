@@ -226,14 +226,6 @@ describe("agent continuation Slack integration", () => {
         resumeReason: "timeout",
         resumedFromSliceId: 1,
         errorMessage: "Agent turn timed out",
-        actor: {
-          platform: "slack",
-          teamId: SLACK_DESTINATION.teamId,
-          userId: "U123",
-          userName: "testuser",
-          fullName: "Test User",
-          email: "testuser@example.com",
-        },
       });
 
     await threadStateModule.persistThreadStateById(conversationId, {
@@ -298,12 +290,11 @@ describe("agent continuation Slack integration", () => {
           omittedImageAttachmentCount: 1,
         }),
         routing: expect.objectContaining({
-          actor: expect.objectContaining({
-            email: "testuser@example.com",
-            fullName: "Test User",
+          actor: {
+            platform: "slack",
+            teamId: "T123",
             userId: "U123",
-            userName: "testuser",
-          }),
+          },
           destination: SLACK_DESTINATION,
           source: storedSource,
           toolChannelId: "C999",
@@ -819,7 +810,8 @@ describe("agent continuation Slack integration", () => {
       expectedVersion: sessionRecord.version,
     });
 
-    expect(continued).toBe(true);
+    // Missing author id is fail-closed without throwing out of beforeStart.
+    expect(continued).toBe(false);
     expect(executeAgentRunMock).not.toHaveBeenCalled();
     await expect(
       turnSessionStoreModule.getAgentTurnSessionRecord(
@@ -828,20 +820,22 @@ describe("agent continuation Slack integration", () => {
       ),
     ).resolves.toMatchObject({
       state: "failed",
-      errorMessage: `Unable to locate the persisted user message for agent continuation session "${sessionId}"`,
+      errorMessage: "Unable to rebuild Slack actor for continuation",
     });
-    const { getConversationEventStore } = await import("@/chat/db");
-    const lifecycle =
-      await getConversationEventStore().loadHistory(conversationId);
-    expect(lifecycle.at(-1)?.data).toMatchObject({
-      type: "turn_failed",
-      turnId: sessionId,
-      failureCode: "agent_run_failed",
-      eventId: expect.stringMatching(/^[a-f0-9]{32}$/i),
-    });
+    expect(slackApiOutbox.messages()).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          channel: "C123",
+          thread_ts: "1712345.0007",
+          text: expect.stringContaining(
+            "I ran into an internal error while processing that.",
+          ),
+        }),
+      }),
+    ]);
   });
 
-  it("resumes resource-event turns with the stored system actor", async () => {
+  it("resumes resource-event turns with the rebuilt system actor", async () => {
     const conversationId = "slack:C123:1712345.0012";
     const sessionId = "turn_resource-event-msg_12";
     const storedSource = slackSource("1712345.0012");
@@ -864,7 +858,6 @@ describe("agent continuation Slack integration", () => {
         resumeReason: "timeout",
         resumedFromSliceId: 1,
         errorMessage: "Agent turn timed out",
-        actor: { platform: "system", name: "resource-event" },
       });
 
     await threadStateModule.persistThreadStateById(conversationId, {
@@ -913,6 +906,7 @@ describe("agent continuation Slack integration", () => {
     expect(executeAgentRunMock).toHaveBeenCalledWith(
       expect.objectContaining({
         routing: expect.objectContaining({
+          actor: { platform: "system", name: "resource-event" },
           credentialContext: {
             actor: { platform: "system", name: "resource-event" },
           },
@@ -921,15 +915,12 @@ describe("agent continuation Slack integration", () => {
         }),
       }),
     );
-    expect(
-      executeAgentRunMock.mock.calls[0]?.[0].routing.actor,
-    ).toBeUndefined();
   });
 
-  it("terminally fails with a visible fallback when no stored actor can be recovered", async () => {
-    // Issue #727: a missing stored actor must never throw out of the
-    // continue callback (a throw NACKs the queue delivery and wedges the
-    // conversation forever).
+  it("rebuilds the resume actor from the message author when redis has no actor", async () => {
+    // Issue #727: missing redis actor must never throw out of the continue
+    // callback. With SQL-only routing, bare author id + destination team is
+    // enough to rebuild a Slack resume actor.
     const conversationId = "slack:C123:1712345.0010";
     const sessionId = "turn_msg_10";
     const sessionRecord =
@@ -993,29 +984,20 @@ describe("agent continuation Slack integration", () => {
       expectedVersion: sessionRecord.version,
     });
 
-    expect(continued).toBe(false);
-    expect(executeAgentRunMock).not.toHaveBeenCalled();
-    await expect(
-      turnSessionStoreModule.getAgentTurnSessionRecord(
-        conversationId,
-        sessionId,
-      ),
-    ).resolves.toMatchObject({
-      state: "failed",
-      errorMessage: "Stored Slack actor missing for continuation",
-    });
-    expect(slackApiOutbox.messages()).toEqual([
+    expect(continued).toBe(true);
+    expect(executeAgentRunMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        params: expect.objectContaining({
-          channel: "C123",
-          thread_ts: "1712345.0010",
-          text: expect.stringContaining(
-            "I ran into an internal error while processing that.",
-          ),
+        routing: expect.objectContaining({
+          actor: {
+            platform: "slack",
+            teamId: "T123",
+            userId: "U123",
+          },
         }),
       }),
-    ]);
+    );
   });
+
 
   it("recovers the resume actor from the durable conversation record", async () => {
     // Issue #727 recovery path: older session records were persisted without

@@ -70,7 +70,7 @@ describe("initSentry", () => {
 
     expect(init).toHaveBeenCalledTimes(1);
     const options = init.mock.calls[0]?.[0];
-    expect(options?.release).toBe("git-sha");
+    expect(options?.release).toBe(`${JUNIOR_VERSION}+git-sha`);
     expect(options).toMatchObject({
       sendDefaultPii: true,
       streamGenAiSpans: true,
@@ -117,7 +117,7 @@ describe("initSentry", () => {
       expect.objectContaining({
         "app.junior.version": JUNIOR_VERSION,
         "deployment.id": "dpl_123",
-        "service.version": "git-sha",
+        "service.version": `${JUNIOR_VERSION}+git-sha`,
       }),
     );
   });

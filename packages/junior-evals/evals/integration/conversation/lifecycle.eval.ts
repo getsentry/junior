@@ -8,7 +8,7 @@ import {
   threadMessage,
   threadStart,
   visibleThreadReplies,
-} from "../../src/helpers";
+} from "../../../src/helpers";
 
 describeEval("Lifecycle and Resilience", slackEvals, (it) => {
   it("when an assistant thread starts, set title and prompts without posting a reply", async ({

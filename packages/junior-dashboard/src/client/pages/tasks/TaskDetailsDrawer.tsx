@@ -190,6 +190,16 @@ export function TaskDetailsDrawer(props: {
                 <TaskExecutionSummary task={task} />
               </TaskDetail>
             </dl>
+            {task.totalRuns > 0 ? (
+              <div className="pt-1">
+                <Link
+                  className="inline-flex items-center justify-center rounded border border-white/12 bg-white/[0.03] px-3 py-2 font-mono text-xs font-medium text-dashboard-text no-underline transition-colors hover:border-white/25 hover:bg-white/[0.06]"
+                  to={`/tasks/${task.kind}/${encodeURIComponent(task.id)}/executions`}
+                >
+                  View all executions
+                </Link>
+              </div>
+            ) : null}
           </section>
         </div>
       </aside>
@@ -213,18 +223,42 @@ function TaskDetail(props: { children: ReactNode; label: string }) {
 function TaskExecutionSummary(props: {
   task: Pick<
     TaskSummary,
-    "lastConversationId" | "lastRunAt" | "runsLast7Days" | "totalRuns"
+    | "id"
+    | "kind"
+    | "lastConversationId"
+    | "lastRunAt"
+    | "runsLast7Days"
+    | "totalRuns"
   >;
 }) {
   const { task } = props;
+  const executionsPath = `/tasks/${task.kind}/${encodeURIComponent(task.id)}/executions`;
   return (
     <div className="text-sm text-dashboard-text-muted">
-      <span className="text-dashboard-text">
-        {task.runsLast7Days} runs / 7d
-      </span>
+      {task.totalRuns > 0 ? (
+        <Link
+          className="text-dashboard-text underline decoration-white/20 underline-offset-2 hover:decoration-white/60"
+          to={executionsPath}
+        >
+          {task.runsLast7Days} runs / 7d
+        </Link>
+      ) : (
+        <span className="text-dashboard-text">
+          {task.runsLast7Days} runs / 7d
+        </span>
+      )}
       <span className="mx-2 opacity-45">·</span>
       <span>
-        {task.totalRuns} total
+        {task.totalRuns > 0 ? (
+          <Link
+            className="text-dashboard-text underline decoration-white/20 underline-offset-2 hover:decoration-white/60"
+            to={executionsPath}
+          >
+            {task.totalRuns} total
+          </Link>
+        ) : (
+          <>{task.totalRuns} total</>
+        )}
         {task.lastRunAt ? " · Last execution " : " · Never run"}
         {task.lastRunAt && task.lastConversationId ? (
           <Link

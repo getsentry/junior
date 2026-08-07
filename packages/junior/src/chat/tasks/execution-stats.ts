@@ -1,9 +1,18 @@
-import { and, asc, count, desc, eq, gte, lte, max, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, lte, max, sql } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import { logWarn } from "@/chat/logging";
-import { juniorTaskExecutions } from "@/db/schema";
+import { juniorConversations } from "@/db/schema/conversations";
+import {
+  juniorTaskExecutions,
+  type TaskExecutionStatus,
+} from "@/db/schema/task-executions";
 
 export const TASK_EXECUTION_TYPES = ["scheduled", "event"] as const;
+export const TASK_EXECUTION_STATUSES = [
+  "blocked",
+  "completed",
+  "failed",
+] as const satisfies readonly TaskExecutionStatus[];
 
 export type TaskExecutionType = (typeof TASK_EXECUTION_TYPES)[number];
 
@@ -20,6 +29,21 @@ export type TaskExecutionSummary = {
   totalRuns: number;
 };
 
+export type TaskExecutionRecord = {
+  conversationId?: string;
+  executedAt: string;
+  executionId: string;
+  status: TaskExecutionStatus;
+  title?: string;
+};
+
+export type TaskExecutionStatusDay = {
+  blocked: number;
+  completed: number;
+  date: string;
+  failed: number;
+};
+
 function utcDate(nowMs: number): string {
   return new Date(nowMs).toISOString().slice(0, 10);
 }
@@ -28,28 +52,37 @@ function emptyDay(date: string): TaskExecutionDay {
   return { date, event: 0, scheduled: 0 };
 }
 
-/** Record one successful task execution and its durable conversation. */
+function emptyStatusDay(date: string): TaskExecutionStatusDay {
+  return { blocked: 0, completed: 0, date, failed: 0 };
+}
+
+/** Record one terminal task execution and its durable conversation when present. */
 export async function recordTaskExecution(
   type: TaskExecutionType,
   taskId: string,
   options: {
-    conversationId: string;
+    conversationId?: string;
     executionId: string;
     namespace?: string;
     nowMs?: number;
+    status?: TaskExecutionStatus;
   },
 ): Promise<void> {
   const namespace = options.namespace ?? "junior";
   const nowMs = options.nowMs ?? Date.now();
+  const status = options.status ?? "completed";
   try {
     await getDb()
       .insert(juniorTaskExecutions)
       .values({
-        conversationId: options.conversationId,
+        ...(options.conversationId
+          ? { conversationId: options.conversationId }
+          : {}),
         executedAtMs: nowMs,
         executionId: options.executionId,
         kind: type,
         namespace,
+        status,
         taskId,
       })
       .onConflictDoNothing({
@@ -64,6 +97,7 @@ export async function recordTaskExecution(
       error,
       "app.task.execution.id": options.executionId,
       "app.task.execution.namespace": namespace,
+      "app.task.execution.status": status,
       "app.task.execution.task_id": taskId,
       "app.task.execution.type": type,
     });
@@ -118,7 +152,9 @@ export async function readTaskExecutionSummaries(
     rows.map((row) => [
       row.taskId,
       {
-        lastConversationId: row.lastConversationId,
+        ...(row.lastConversationId
+          ? { lastConversationId: row.lastConversationId }
+          : {}),
         ...(row.lastExecutedAtMs !== null
           ? { lastExecutedAtMs: row.lastExecutedAtMs }
           : {}),
@@ -129,7 +165,7 @@ export async function readTaskExecutionSummaries(
   );
 }
 
-/** Load a fixed trailing window of successful executions stacked by task type. */
+/** Load a fixed trailing window of completed executions stacked by task type. */
 export async function readTaskExecutionDays(
   dayCount = 90,
   options: { nowMs?: number } = {},
@@ -151,6 +187,7 @@ export async function readTaskExecutionDays(
       and(
         gte(juniorTaskExecutions.executedAtMs, startMs),
         lte(juniorTaskExecutions.executedAtMs, endMs),
+        eq(juniorTaskExecutions.status, "completed"),
       ),
     )
     .groupBy(executionDate, juniorTaskExecutions.kind)
@@ -166,6 +203,105 @@ export async function readTaskExecutionDays(
     if (!day) continue;
     if (row.kind === "scheduled") day.scheduled = row.count;
     else if (row.kind === "event") day.event = row.count;
+  }
+  return [...byDate.values()];
+}
+
+/** Load newest-first executions for one task, with conversation titles when present. */
+export async function readTaskExecutions(args: {
+  kind: TaskExecutionType;
+  limit: number;
+  namespace?: string;
+  taskId: string;
+}): Promise<TaskExecutionRecord[]> {
+  const namespace = args.namespace ?? "junior";
+  const rows = await getDb()
+    .select({
+      conversationId: juniorTaskExecutions.conversationId,
+      executedAtMs: juniorTaskExecutions.executedAtMs,
+      executionId: juniorTaskExecutions.executionId,
+      status: juniorTaskExecutions.status,
+      title: juniorConversations.title,
+    })
+    .from(juniorTaskExecutions)
+    .leftJoin(
+      juniorConversations,
+      eq(
+        juniorConversations.conversationId,
+        juniorTaskExecutions.conversationId,
+      ),
+    )
+    .where(
+      and(
+        eq(juniorTaskExecutions.kind, args.kind),
+        eq(juniorTaskExecutions.namespace, namespace),
+        eq(juniorTaskExecutions.taskId, args.taskId),
+      ),
+    )
+    .orderBy(
+      desc(juniorTaskExecutions.executedAtMs),
+      desc(juniorTaskExecutions.executionId),
+    )
+    .limit(args.limit);
+  return rows.map((row) => {
+    const title = row.title?.trim();
+    return {
+      ...(row.conversationId ? { conversationId: row.conversationId } : {}),
+      executedAt: new Date(row.executedAtMs).toISOString(),
+      executionId: row.executionId,
+      status: row.status,
+      ...(title ? { title } : {}),
+    };
+  });
+}
+
+/** Load a fixed trailing window of terminal executions for one task by status. */
+export async function readTaskExecutionStatusDays(args: {
+  dayCount?: number;
+  kind: TaskExecutionType;
+  namespace?: string;
+  nowMs?: number;
+  taskId: string;
+}): Promise<TaskExecutionStatusDay[]> {
+  const dayCount = args.dayCount ?? 90;
+  const namespace = args.namespace ?? "junior";
+  const nowMs = args.nowMs ?? Date.now();
+  const end = utcDate(nowMs);
+  const endMs = Date.parse(`${end}T23:59:59.999Z`);
+  const startMs =
+    Date.parse(`${end}T00:00:00.000Z`) - (dayCount - 1) * 86_400_000;
+  const executionDate = sql<string>`to_char(to_timestamp(${juniorTaskExecutions.executedAtMs} / 1000.0) at time zone 'UTC', 'YYYY-MM-DD')`;
+  const rows = await getDb()
+    .select({
+      count: count(),
+      date: executionDate,
+      status: juniorTaskExecutions.status,
+    })
+    .from(juniorTaskExecutions)
+    .where(
+      and(
+        eq(juniorTaskExecutions.kind, args.kind),
+        eq(juniorTaskExecutions.namespace, namespace),
+        eq(juniorTaskExecutions.taskId, args.taskId),
+        gte(juniorTaskExecutions.executedAtMs, startMs),
+        lte(juniorTaskExecutions.executedAtMs, endMs),
+        inArray(juniorTaskExecutions.status, [...TASK_EXECUTION_STATUSES]),
+      ),
+    )
+    .groupBy(executionDate, juniorTaskExecutions.status)
+    .orderBy(asc(executionDate), asc(juniorTaskExecutions.status));
+
+  const byDate = new Map<string, TaskExecutionStatusDay>();
+  for (let offset = 0; offset < dayCount; offset += 1) {
+    const date = utcDate(startMs + offset * 86_400_000);
+    byDate.set(date, emptyStatusDay(date));
+  }
+  for (const row of rows) {
+    const day = byDate.get(row.date);
+    if (!day) continue;
+    if (row.status === "completed") day.completed = row.count;
+    else if (row.status === "failed") day.failed = row.count;
+    else if (row.status === "blocked") day.blocked = row.count;
   }
   return [...byDate.values()];
 }

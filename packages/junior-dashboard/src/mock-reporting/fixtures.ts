@@ -20,6 +20,9 @@ import type {
   LocationSummaryReport,
   PeopleActivityDayReport,
   PersonalSpendReport,
+  TaskExecutionList,
+  TaskList,
+  TaskSummary,
 } from "@sentry/junior/api/schema";
 
 const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
@@ -1480,5 +1483,158 @@ export function readMockLocationDetail(
     source: "conversation_index",
     windowEnd: `${activityDays.at(-1)!.date}T00:00:00.000Z`,
     windowStart: `${activityDays[0]!.date}T00:00:00.000Z`,
+  };
+}
+
+function mockTaskExecutionDays(nowMs: number): TaskList["executionDays"] {
+  return Array.from({ length: 90 }, (_, index) => {
+    const date = new Date(nowMs - (89 - index) * 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    return {
+      date,
+      event: index % 11 === 0 ? 1 : 0,
+      scheduled: index % 5 === 0 ? 2 : index % 3 === 0 ? 1 : 0,
+    };
+  });
+}
+
+function mockTasks(): TaskSummary[] {
+  return [
+    {
+      createdAt: "2026-07-28T16:00:00.000Z",
+      createdBy: "Morgan",
+      createdByEmail: "morgan@sentry.io",
+      destination: {
+        channelId: "C123",
+        label: "#project-updates",
+        teamId: "T123",
+        visibility: "public",
+      },
+      id: "scheduled-1",
+      instruction: "Send the weekly project summary",
+      kind: "scheduled",
+      lastConversationId: "scheduler:daily-ops-digest",
+      lastRunAt: "2026-08-06T16:00:00.000Z",
+      nextRunAt: "2026-08-10T16:00:00.000Z",
+      ownedByViewer: true,
+      runsLast7Days: 3,
+      schedule: "Every Monday at 9:00 AM",
+      status: "active",
+      totalRuns: 48,
+    },
+    {
+      createdAt: "2026-07-29T16:00:00.000Z",
+      createdBy: "Morgan",
+      createdByEmail: "morgan@sentry.io",
+      destination: {
+        channelId: "C123",
+        label: "#project-updates",
+        teamId: "T123",
+        visibility: "public",
+      },
+      events: ["issue.closed"],
+      id: "event-1",
+      instruction: "Summarize the closed issue",
+      kind: "event",
+      ownedByViewer: true,
+      resource: "Issue · ACME-42",
+      runsLast7Days: 1,
+      source: "github",
+      totalRuns: 7,
+      triggerAvailable: true,
+    },
+    {
+      createdAt: "2026-07-30T16:00:00.000Z",
+      createdBy: "Avery Chen",
+      createdByEmail: "avery@sentry.io",
+      destination: {
+        channelId: "C456",
+        label: "#incident-response",
+        teamId: "T123",
+        visibility: "public",
+      },
+      events: ["incident.updated"],
+      id: "event-2",
+      instruction: "Notify responders when the incident changes",
+      kind: "event",
+      ownedByViewer: false,
+      resource: "Incident · INC-17",
+      runsLast7Days: 0,
+      source: "pagerduty",
+      totalRuns: 0,
+      triggerAvailable: false,
+    },
+  ];
+}
+
+/** Build mock Tasks list for local dashboard development. */
+export function readMockTaskList(nowMs = Date.now()): TaskList {
+  return {
+    executionDays: mockTaskExecutionDays(nowMs),
+    tasks: mockTasks(),
+    truncated: false,
+  };
+}
+
+function mockStatusDays(nowMs: number): TaskExecutionList["executionDays"] {
+  return Array.from({ length: 90 }, (_, index) => {
+    const date = new Date(nowMs - (89 - index) * 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    const completed = index % 4 === 0 ? 2 : index % 2 === 0 ? 1 : 0;
+    const failed = index % 9 === 0 ? 1 : 0;
+    const blocked = index % 13 === 0 ? 1 : 0;
+    return { blocked, completed, date, failed };
+  });
+}
+
+/** Build mock terminal executions for one viewer-visible task. */
+export function readMockTaskExecutions(
+  kind: "scheduled" | "event",
+  id: string,
+  nowMs = Date.now(),
+): TaskExecutionList | undefined {
+  const task = mockTasks().find(
+    (candidate) => candidate.kind === kind && candidate.id === id,
+  );
+  if (!task) return undefined;
+  if (task.totalRuns === 0) {
+    return {
+      executionDays: mockStatusDays(nowMs),
+      executions: [],
+      task,
+      truncated: false,
+    };
+  }
+  const titles = [
+    "Weekly project summary",
+    "Ship notes for the release train",
+    "Ops digest for #project-updates",
+  ];
+  const statuses = ["completed", "failed", "blocked", "completed"] as const;
+  const executions = Array.from({ length: 8 }, (_, index) => {
+    const status = statuses[index % statuses.length]!;
+    const hasConversation = index !== 5;
+    return {
+      ...(hasConversation
+        ? {
+            conversationId:
+              index % 2 === 0
+                ? SCHEDULER_CONVERSATION_ID
+                : ACTIVE_CONVERSATION_ID,
+            title: titles[index % titles.length],
+          }
+        : {}),
+      executedAt: new Date(nowMs - index * 86_400_000 - 3_600_000).toISOString(),
+      executionId: `${id}-run-${index + 1}`,
+      status,
+    };
+  });
+  return {
+    executionDays: mockStatusDays(nowMs),
+    executions,
+    task,
+    truncated: task.totalRuns > executions.length,
   };
 }

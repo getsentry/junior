@@ -47,7 +47,7 @@ export const taskSummarySchema = z.discriminatedUnion("kind", [
   eventTaskSummarySchema,
 ]);
 
-/** One UTC day of successful task executions stacked by task type. */
+/** One UTC day of completed task executions stacked by task type. */
 export const taskExecutionDaySchema = z
   .object({
     date: z.string().min(1),
@@ -71,6 +71,46 @@ export const taskParamsSchema = z
   })
   .strict();
 
+export const taskExecutionStatusSchema = z.enum([
+  "blocked",
+  "completed",
+  "failed",
+]);
+
+export const taskExecutionSchema = z
+  .object({
+    conversationId: z.string().min(1).optional(),
+    executedAt: z.string().datetime(),
+    executionId: z.string().min(1),
+    status: taskExecutionStatusSchema,
+    title: z.string().min(1).optional(),
+  })
+  .strict();
+
+/** One UTC day of terminal executions for a single task, stacked by status. */
+export const taskExecutionStatusDaySchema = z
+  .object({
+    blocked: z.number().int().nonnegative(),
+    completed: z.number().int().nonnegative(),
+    date: z.string().min(1),
+    failed: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export const taskExecutionListSchema = z
+  .object({
+    executionDays: z.array(taskExecutionStatusDaySchema),
+    executions: z.array(taskExecutionSchema),
+    task: taskSummarySchema,
+    truncated: z.boolean(),
+  })
+  .strict();
+
 export type TaskExecutionDay = z.output<typeof taskExecutionDaySchema>;
+export type TaskExecutionStatusDay = z.output<
+  typeof taskExecutionStatusDaySchema
+>;
+export type TaskExecution = z.output<typeof taskExecutionSchema>;
+export type TaskExecutionList = z.output<typeof taskExecutionListSchema>;
 export type TaskSummary = z.output<typeof taskSummarySchema>;
 export type TaskList = z.output<typeof taskListSchema>;

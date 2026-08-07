@@ -12,7 +12,7 @@ const series = [
   { color: "#c4b5fd", key: "event", label: "Event" },
 ] as const;
 
-/** Render successful task executions stacked by type over a trailing window. */
+/** Render completed task executions stacked by type over a trailing window. */
 export function TaskExecutionChart(props: { days: TaskExecutionDay[] }) {
   const [range, setRange] = useState<ChartRange>(30);
   const days = props.days.slice(-range);
@@ -38,7 +38,7 @@ export function TaskExecutionChart(props: { days: TaskExecutionDay[] }) {
             Activity over time
           </h2>
           <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
-            Successful scheduled and event task runs each day.
+            Completed scheduled and event task runs each day.
           </p>
         </div>
         <div
@@ -104,7 +104,7 @@ export function TaskExecutionChart(props: { days: TaskExecutionDay[] }) {
                 <text
                   fill="rgba(255,255,255,0.34)"
                   fontFamily="ui-monospace, monospace"
-                  fontSize="13"
+                  fontSize="12"
                   textAnchor="end"
                   x={left - 7}
                   y={y + 3}
@@ -172,7 +172,7 @@ export function TaskExecutionChart(props: { days: TaskExecutionDay[] }) {
                 <text
                   fill="rgba(255,255,255,0.34)"
                   fontFamily="ui-monospace, monospace"
-                  fontSize="13"
+                  fontSize="12"
                   key={day.date}
                   textAnchor={
                     index === 0

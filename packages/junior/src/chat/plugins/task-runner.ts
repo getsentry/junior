@@ -33,6 +33,7 @@ import {
 } from "@/chat/pi/transcript";
 import { getPersistedThreadState } from "@/chat/runtime/thread-state";
 import { resolveTurnSessionRouting } from "@/chat/services/turn-session-routing";
+import { getDispatchRecord } from "@/chat/agent-dispatch/store";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import type { ConversationMessage } from "@/chat/state/conversation";
@@ -260,6 +261,7 @@ function messageExistedAtRunCompletion(
 async function loadConversationContextTranscriptEntries(
   record: AgentTurnSessionRecord,
   source: PluginRunContext["source"],
+  runActor: Actor | undefined,
 ): Promise<PluginRunTranscriptEntry[]> {
   if (source.platform !== "slack" || isPrivateSource(source)) {
     return [];
@@ -291,7 +293,7 @@ async function loadConversationContextTranscriptEntries(
         authority: "context",
         ...(author ? { actor: author } : {}),
       },
-      isRunActor: sameActorIdentity(author, record.actor),
+      isRunActor: sameActorIdentity(author, runActor),
     });
   }
   return entries;
@@ -335,9 +337,17 @@ async function loadPluginRun(
   const routing = await resolveTurnSessionRouting({
     conversationId: params.conversationId,
   });
+  // Singular run.actor comes from committed instruction provenance, or the
+  // dispatch record for system-only runs. Optional only for legacy actor-less
+  // records (plugins must fail closed on authority-sensitive work).
+  const runActor =
+    record.actors[0] ??
+    (record.dispatchId
+      ? (await getDispatchRecord(record.dispatchId))?.actor
+      : undefined);
   const runEntries = turnMessagesWithProvenance(record)
     .map(({ message, provenance }) =>
-      runTranscriptEntry(message, provenance, record.actor),
+      runTranscriptEntry(message, provenance, runActor),
     )
     .filter((entry): entry is PluginRunTranscriptEntry => Boolean(entry));
   const runMessageTexts = new Set(
@@ -346,7 +356,11 @@ async function loadPluginRun(
       .map((entry) => entry.text),
   );
   const contextEntries = (
-    await loadConversationContextTranscriptEntries(record, routing.source)
+    await loadConversationContextTranscriptEntries(
+      record,
+      routing.source,
+      runActor,
+    )
   ).filter(
     (entry) => entry.type !== "message" || !runMessageTexts.has(entry.text),
   );
@@ -357,7 +371,7 @@ async function loadPluginRun(
     // Derived from the full run provenance on the record, not the sliced or
     // stripped transcript, so it reflects every committed instruction actor.
     actors: record.actors,
-    ...(record.actor ? { actor: record.actor } : {}),
+    ...(runActor ? { actor: runActor } : {}),
     runId: record.sessionId,
     source: routing.source,
     transcript: [...contextEntries, ...runEntries],

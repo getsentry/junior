@@ -67,7 +67,7 @@ export function ActivityChartGrid(props: {
         <text
           fill="rgba(255,255,255,0.5)"
           fontFamily="ui-monospace, monospace"
-          fontSize="13"
+          fontSize="12"
           textAnchor="end"
           x={props.layout.left - 8}
           y={yPosition + 3}
@@ -92,7 +92,7 @@ export function ActivityChartDateLabels(props: {
       <text
         fill="rgba(255,255,255,0.5)"
         fontFamily="ui-monospace, monospace"
-        fontSize="13"
+        fontSize="12"
         key={date}
         textAnchor={
           index === 0

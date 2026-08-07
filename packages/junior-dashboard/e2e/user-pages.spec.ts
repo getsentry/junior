@@ -176,6 +176,26 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
   expect(browserErrors).toEqual([]);
 });
 
+test("opens one task's execution history", async ({ page }) => {
+  const browserErrors = collectBrowserErrors(page);
+  await page.goto(
+    `${server.baseURL}/tasks/scheduled/scheduled-1/executions`,
+  );
+
+  await expect(
+    page.getByRole("heading", { name: "Send the weekly project summary" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Executions over time" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: /Weekly project summary/ }),
+  ).toBeVisible();
+  await expect(page.getByText("completed", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("No conversation", { exact: true })).toBeVisible();
+  expect(browserErrors).toEqual([]);
+});
+
 test("opens memory details in a slide-out drawer", async ({ page }) => {
   await page.setViewportSize({ height: 900, width: 1440 });
   const browserErrors = collectBrowserErrors(page);

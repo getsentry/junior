@@ -352,12 +352,14 @@ export async function mockDashboardApis(page: Page) {
             id: "scheduled-1",
             instruction: "Send the weekly project summary",
             kind: "scheduled",
+            lastConversationId: "scheduler:daily-ops-digest",
+            lastRunAt: "2026-08-06T16:00:00.000Z",
             nextRunAt: "2026-08-10T16:00:00.000Z",
             ownedByViewer: true,
-            runsLast7Days: 0,
+            runsLast7Days: 3,
             schedule: "Every Monday at 9:00 AM",
             status: "active",
-            totalRuns: 0,
+            totalRuns: 48,
           },
           {
             createdAt: "2026-07-29T16:00:00.000Z",
@@ -375,9 +377,9 @@ export async function mockDashboardApis(page: Page) {
             kind: "event",
             ownedByViewer: true,
             resource: "Issue · ACME-42",
-            runsLast7Days: 0,
+            runsLast7Days: 1,
             source: "github",
-            totalRuns: 0,
+            totalRuns: 7,
             triggerAvailable: true,
           },
           {
@@ -402,6 +404,88 @@ export async function mockDashboardApis(page: Page) {
             triggerAvailable: false,
           },
         ],
+        truncated: false,
+      },
+    });
+  });
+  await page.route("**/api/tasks/*/*/executions", async (route) => {
+    const url = new URL(route.request().url());
+    const parts = url.pathname.split("/").filter(Boolean);
+    const kind = parts.at(-3);
+    const id = parts.at(-2);
+    if ((kind !== "scheduled" && kind !== "event") || !id) {
+      await route.fulfill({ status: 404, json: { error: "Task not found." } });
+      return;
+    }
+    const task = {
+      createdAt: "2026-07-28T16:00:00.000Z",
+      createdBy: "Morgan",
+      createdByEmail: "morgan@sentry.io",
+      destination: {
+        channelId: "C123",
+        label: "#project-updates",
+        teamId: "T123",
+        visibility: "public" as const,
+      },
+      id,
+      instruction:
+        kind === "scheduled"
+          ? "Send the weekly project summary"
+          : "Summarize the closed issue",
+      kind,
+      ownedByViewer: true,
+      runsLast7Days: kind === "scheduled" ? 3 : 1,
+      totalRuns: kind === "scheduled" ? 48 : 7,
+      ...(kind === "scheduled"
+        ? {
+            nextRunAt: "2026-08-10T16:00:00.000Z",
+            schedule: "Every Monday at 9:00 AM",
+            status: "active" as const,
+          }
+        : {
+            events: ["issue.closed"],
+            resource: "Issue · ACME-42",
+            source: "github",
+            triggerAvailable: true,
+          }),
+    };
+    const nowMs = Date.parse("2026-08-07T12:00:00.000Z");
+    const executionDays = Array.from({ length: 90 }, (_, index) => {
+      const date = new Date(nowMs - (89 - index) * 86_400_000)
+        .toISOString()
+        .slice(0, 10);
+      return {
+        blocked: index % 13 === 0 ? 1 : 0,
+        completed: index % 4 === 0 ? 2 : index % 2 === 0 ? 1 : 0,
+        date,
+        failed: index % 9 === 0 ? 1 : 0,
+      };
+    });
+    await route.fulfill({
+      json: {
+        executionDays,
+        executions: [
+          {
+            conversationId: "scheduler:daily-ops-digest",
+            executedAt: "2026-08-06T16:00:00.000Z",
+            executionId: `${id}-run-1`,
+            status: "completed",
+            title: "Weekly project summary",
+          },
+          {
+            conversationId: "slack:CQA123:1770003600.000200",
+            executedAt: "2026-08-05T16:00:00.000Z",
+            executionId: `${id}-run-2`,
+            status: "failed",
+            title: "Ship notes for the release train",
+          },
+          {
+            executedAt: "2026-08-04T16:00:00.000Z",
+            executionId: `${id}-run-3`,
+            status: "blocked",
+          },
+        ],
+        task,
         truncated: false,
       },
     });

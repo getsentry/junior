@@ -236,7 +236,7 @@ Attributes: `app.message.attachment_count`,
 | --------------------------- | ------------------------ | ----------------------------- |
 | `SENTRY_DSN`                | Sentry ingestion         | disabled                      |
 | `SENTRY_ENVIRONMENT`        | Sentry environment       | `VERCEL_ENV` or `NODE_ENV`    |
-| `SENTRY_RELEASE`            | Sentry release           | `VERCEL_GIT_COMMIT_SHA`       |
+| `SENTRY_RELEASE`            | Sentry release           | `<Junior version>+<VERCEL_GIT_COMMIT_SHA>` |
 | `SENTRY_ENABLE_LOGS`        | structured logs          | true when `SENTRY_DSN` is set |
 | `SENTRY_TRACES_SAMPLE_RATE` | traces                   | `1`                           |
 | `SENTRY_ORG_SLUG`           | Slack footer trace links | unset                         |

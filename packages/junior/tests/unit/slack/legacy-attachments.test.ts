@@ -32,13 +32,15 @@ describe("renderSlackLegacyAttachmentText", () => {
     ];
 
     const text = renderSlackLegacyAttachmentText(raw);
-    expect(text).toContain(
-      "Production deploy (https://example.com/deploy/123)",
+    expect(text).toBe(
+      [
+        "[attachment] Production deploy (https://example.com/deploy/123)",
+        "OOM on pod-42",
+        "Status: Failed",
+        "Owner: Platform",
+        "Datadog Monitor",
+      ].join("\n"),
     );
-    expect(text).toContain("OOM on pod-42");
-    expect(text).toContain("Status: Failed");
-    expect(text).toContain("Owner: Platform");
-    expect(text).toContain("Datadog Monitor");
     expect(text).not.toContain("should_be_dropped");
     expect(text).not.toContain("Ack");
     expect(text).not.toContain("chart.png");
@@ -72,12 +74,36 @@ describe("renderSlackLegacyAttachmentText", () => {
       },
     ];
     const text = renderSlackLegacyAttachmentText(raw);
-    expect(text).toContain("[attachment]");
+    expect(text).toBe(
+      [
+        "[attachment] Production deploy (https://example.com/deploy)",
+        "OOM on pod-42",
+        "Status: Failed",
+        "Datadog",
+      ].join("\n"),
+    );
     expect(text).not.toContain("Deploy failed on prod");
-    expect(text).toContain("Production deploy (https://example.com/deploy)");
-    expect(text).toContain("OOM on pod-42");
-    expect(text).toContain("Status: Failed");
-    expect(text).toContain("Datadog");
+  });
+
+  it("preserves multi-line attachment bodies and restores collapsed lists", () => {
+    const text = renderSlackLegacyAttachmentText([
+      {
+        author_name: "Junior",
+        text: "**vitest-evals 0.16.0** is out.  - **bump:** `0.15.0` → `0.16.0` (stable minor) - **prep:** <https://example.com/a> - **publish issue:** <https://example.com/b>",
+        footer: "Thread in Slack Conversation",
+      },
+    ]);
+
+    expect(text).toBe(
+      [
+        "[attachment] Junior",
+        "**vitest-evals 0.16.0** is out.",
+        "- **bump:** `0.15.0` → `0.16.0` (stable minor)",
+        "- **prep:** <https://example.com/a>",
+        "- **publish issue:** <https://example.com/b>",
+        "Thread in Slack Conversation",
+      ].join("\n"),
+    );
   });
 
   it("deduplicates bare title text when rendering linked titles", () => {
