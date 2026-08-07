@@ -2,7 +2,11 @@
 import type { SlackDestination, SystemActor } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 
-export type ScheduledTaskStatus = "active" | "blocked" | "deleted";
+export type ScheduledTaskStatus =
+  | "active"
+  | "blocked"
+  | "completed"
+  | "deleted";
 export const scheduledTaskCredentialModeSchema = z.enum(["system", "creator"]);
 export type ScheduledTaskCredentialMode = z.infer<
   typeof scheduledTaskCredentialModeSchema

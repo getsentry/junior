@@ -37,7 +37,7 @@ const DEFAULT_SCHEDULE_TIMEZONE = "America/Los_Angeles";
 const compactTaskResultSchema = z
   .object({
     id: z.string(),
-    status: z.enum(["active", "blocked", "deleted"]),
+    status: z.enum(["active", "blocked", "completed", "deleted"]),
     task: z.string(),
     schedule: z.string(),
     timezone: z.string(),

@@ -110,7 +110,7 @@ const taskRecordFields = {
   schedule: taskScheduleSchema,
   // TODO(v0.131.0): Remove paused decoding and SQL list filtering after
   // v0.129.x workers can no longer overlap upgrades.
-  status: z.enum(["active", "blocked", "deleted", "paused"]),
+  status: z.enum(["active", "blocked", "completed", "deleted", "paused"]),
   statusReason: z.string().optional(),
   task: taskSpecSchema,
   updatedAtMs: z.number(),
@@ -387,17 +387,26 @@ function isFinishedRun(run: ScheduledRun): boolean {
   );
 }
 
-/** Tasks with no future occurrence are tombstoned so listings and the UI hide them. */
+/**
+ * Resolve task status after a terminal run.
+ *
+ * Successful one-offs become `completed` so creators can still find them.
+ * Failed/skipped terminal work without a future occurrence stays `deleted`.
+ */
 function statusAfterTerminalOccurrence(args: {
   blocked?: boolean;
   nextRunAtMs: number | undefined;
+  outcome?: "blocked" | "completed" | "failed";
   previousStatus?: ScheduledTaskStatus;
 }): ScheduledTaskStatus {
-  if (args.blocked) {
+  if (args.blocked || args.outcome === "blocked") {
     return "blocked";
   }
   if (args.nextRunAtMs) {
     return args.previousStatus ?? "active";
+  }
+  if (args.outcome === "completed") {
+    return "completed";
   }
   return "deleted";
 }
@@ -1063,7 +1072,11 @@ class PluginStateSchedulerStore implements SchedulerStore {
     await withLock(this.state, taskLockKey(args.run.taskId), async () => {
       const current =
         (await getTaskFromState(this.state, args.run.taskId)) ?? undefined;
-      if (!current || current.status === "deleted") {
+      if (
+        !current ||
+        current.status === "deleted" ||
+        current.status === "completed"
+      ) {
         return;
       }
 
@@ -1088,8 +1101,8 @@ class PluginStateSchedulerStore implements SchedulerStore {
             nextRunAtMs,
             runNowAtMs: undefined,
             status: statusAfterTerminalOccurrence({
-              blocked: args.status === "blocked",
               nextRunAtMs,
+              outcome: args.status,
               previousStatus: current.status,
             }),
             statusReason:
@@ -1127,8 +1140,8 @@ class PluginStateSchedulerStore implements SchedulerStore {
           lastRunAtMs: args.run.scheduledForMs,
           nextRunAtMs,
           status: statusAfterTerminalOccurrence({
-            blocked: args.status === "blocked",
             nextRunAtMs,
+            outcome: args.status,
           }),
           statusReason:
             args.status === "blocked" ? args.errorMessage : undefined,
@@ -1419,7 +1432,11 @@ export async function listPublicScheduledTasksForTeams(
     .where(
       and(
         inArray(juniorSchedulerTasks.teamId, teamIds),
-        notInArray(juniorSchedulerTasks.status, ["deleted", "paused"]),
+        notInArray(juniorSchedulerTasks.status, [
+          "completed",
+          "deleted",
+          "paused",
+        ]),
         eq(juniorDestinations.visibility, "public"),
       ),
     )
@@ -1802,7 +1819,11 @@ class SqlSchedulerStore implements SchedulerStore, SchedulerOperationalStore {
   }): Promise<void> {
     await withSqlLock(this.db, taskLockKey(args.run.taskId), async (db) => {
       const current = await getTaskFromSql(db, args.run.taskId);
-      if (!current || current.status === "deleted") {
+      if (
+        !current ||
+        current.status === "deleted" ||
+        current.status === "completed"
+      ) {
         return;
       }
 
@@ -1828,8 +1849,8 @@ class SqlSchedulerStore implements SchedulerStore, SchedulerOperationalStore {
             nextRunAtMs,
             runNowAtMs: undefined,
             status: statusAfterTerminalOccurrence({
-              blocked: args.status === "blocked",
               nextRunAtMs,
+              outcome: args.status,
               previousStatus: current.status,
             }),
             statusReason:
@@ -1869,8 +1890,8 @@ class SqlSchedulerStore implements SchedulerStore, SchedulerOperationalStore {
           lastRunAtMs: args.run.scheduledForMs,
           nextRunAtMs,
           status: statusAfterTerminalOccurrence({
-            blocked: args.status === "blocked",
             nextRunAtMs,
+            outcome: args.status,
           }),
           statusReason:
             args.status === "blocked" ? args.errorMessage : undefined,

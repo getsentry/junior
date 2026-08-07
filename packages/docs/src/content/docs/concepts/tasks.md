@@ -57,7 +57,7 @@ If the plugin is disabled, the task remains visible but cannot receive events un
 - Event content is treated as data, not as a user instruction.
 - Action review still applies when required.
 
-Signed-in users can inspect and delete their tasks from the dashboard **Tasks** page.
+Signed-in users can inspect and delete their tasks from the dashboard **Tasks** page. Completed one-off reminders stay under **Mine** so creators can confirm they ran.
 
 ## Verify Tasks
 

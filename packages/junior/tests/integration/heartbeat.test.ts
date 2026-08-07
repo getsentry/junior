@@ -730,7 +730,7 @@ describe("plugin heartbeat", () => {
     });
     await expect(store.getTask("sched_plugin_1")).resolves.toMatchObject({
       lastRunAtMs: Date.parse("2026-05-26T12:00:00.000Z"),
-      status: "deleted",
+      status: "completed",
     });
   }, 30_000);
 

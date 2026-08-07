@@ -70,6 +70,11 @@ export function createSlackScheduleUpdateTaskTool(
         context,
         taskId: input.task_id,
       });
+      if (lookup.status === "completed") {
+        throwToolInputError(
+          "Completed scheduled tasks cannot be updated. Create a new task instead.",
+        );
+      }
       const actor = requireActor(context, lookup.destination);
       const isCreator = actor.slackUserId === lookup.createdBy.slackUserId;
       if (input.credential_mode === "creator" && !isCreator) {

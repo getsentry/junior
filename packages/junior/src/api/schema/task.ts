@@ -28,7 +28,7 @@ export const scheduledTaskSummarySchema = taskSummaryBaseSchema
     kind: z.literal("scheduled"),
     nextRunAt: z.string().datetime().optional(),
     schedule: z.string().min(1),
-    status: z.enum(["active", "blocked"]),
+    status: z.enum(["active", "blocked", "completed"]),
   })
   .strict();
 

@@ -267,7 +267,7 @@ function emptyText(input: {
     return "No tasks matched these filters.";
   }
   if (input.scope === "mine" && input.mineCount === 0) {
-    return "You have not created any tasks.";
+    return "You have no active or completed tasks.";
   }
   if (input.scope === "public" && input.publicCount === 0) {
     return "No tasks are assigned to public destinations in your linked workspaces.";
