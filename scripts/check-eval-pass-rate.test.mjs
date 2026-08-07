@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   DEFAULT_MIN_PASS_RATE,
+  evalPassRateAnnotation,
   evaluateEvalPassRate,
   formatPercent,
   parseEvalPassRateArgs,
@@ -46,14 +47,8 @@ test("fails when the suite is below the floor", () => {
 test("fails closed on empty or invalid reports", () => {
   assert.equal(evaluateEvalPassRate({ total: 0, failed: 0 }).ok, false);
   assert.equal(evaluateEvalPassRate({ total: 5, failed: 6 }).ok, false);
-  assert.equal(
-    evaluateEvalPassRate({ total: 5.5, failed: 1 }).ok,
-    false,
-  );
-  assert.equal(
-    evaluateEvalPassRate({ total: 5, failed: -1 }).ok,
-    false,
-  );
+  assert.equal(evaluateEvalPassRate({ total: 5.5, failed: 1 }).ok, false);
+  assert.equal(evaluateEvalPassRate({ total: 5, failed: -1 }).ok, false);
   assert.equal(
     evaluateEvalPassRate({ total: 5, failed: 1, minPassRate: 1.5 }).ok,
     false,
@@ -63,6 +58,20 @@ test("fails closed on empty or invalid reports", () => {
 test("formats percentages with one decimal place", () => {
   assert.equal(formatPercent(0.8), "80.0%");
   assert.equal(formatPercent(0.795), "79.5%");
+});
+
+test("builds a titled GitHub annotation for a failed floor", () => {
+  const result = evaluateEvalPassRate({
+    total: 102,
+    failed: 37,
+    minPassRate: 0.8,
+    scoreAverage: 0.72,
+  });
+
+  assert.equal(
+    evalPassRateAnnotation(result, 0.8),
+    "::error title=Eval pass rate 63.7%25 — required 80.0%25::eval pass rate below floor: 65/102 passed (63.7%25), avg score 0.72; required >= 80.0%25",
+  );
 });
 
 test("parses CLI args for the CI gate", () => {

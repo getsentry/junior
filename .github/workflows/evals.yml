@@ -194,7 +194,7 @@ jobs:
           retention-days: 7
 
   report:
-    name: evals / report
+    name: eval score / 80% floor
     needs: [gate, evals]
     if: ${{ always() && !cancelled() && needs.gate.outputs.should_run == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404

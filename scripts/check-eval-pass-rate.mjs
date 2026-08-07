@@ -83,6 +83,30 @@ export function formatPercent(value) {
   return `${(value * 100).toFixed(1)}%`;
 }
 
+/** Build the titled GitHub annotation shown on a failed score-gate check. */
+export function evalPassRateAnnotation(result, minPassRate) {
+  const title =
+    result.passRate === null
+      ? "Eval score gate failed"
+      : `Eval pass rate ${formatPercent(result.passRate)} — required ${formatPercent(minPassRate)}`;
+  return `::error title=${escapeWorkflowCommandProperty(title)}::${escapeWorkflowCommandData(result.message)}`;
+}
+
+/** Escape GitHub workflow-command message data. */
+export function escapeWorkflowCommandData(value) {
+  return value
+    .replaceAll("%", "%25")
+    .replaceAll("\r", "%0D")
+    .replaceAll("\n", "%0A");
+}
+
+/** Escape GitHub workflow-command property data. */
+export function escapeWorkflowCommandProperty(value) {
+  return escapeWorkflowCommandData(value)
+    .replaceAll(":", "%3A")
+    .replaceAll(",", "%2C");
+}
+
 /**
  * Parse CLI args for the CI gate.
  *
@@ -177,12 +201,14 @@ function main() {
     }
 
     if (!result.ok) {
-      console.error(`::error::${result.message}`);
+      console.error(evalPassRateAnnotation(result, input.minPassRate));
       process.exitCode = 1;
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error(`::error::${message}`);
+    console.error(
+      `::error title=Eval score gate failed::${escapeWorkflowCommandData(message)}`,
+    );
     process.exitCode = 1;
   }
 }
