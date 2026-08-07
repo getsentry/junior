@@ -6,7 +6,7 @@ import {
   scheduledTaskCreateCalls,
   scheduledTaskUpdateCalls,
   seedScheduledTask,
-} from "../../scheduler/helpers";
+} from "./helpers";
 
 describeEval("Scheduled Credentials", slackEvals, (it) => {
   it("when scheduled work may need user-bound authorization, use the creator default", async ({

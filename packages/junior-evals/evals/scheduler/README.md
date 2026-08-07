@@ -1,13 +1,13 @@
 # Scheduler Evals
 
-Hard-fail scheduler system contracts live under `evals/integration/scheduler/`:
+Hard-fail scheduler system contracts and their helpers live under `evals/integration/scheduler/`:
 
 - creating clear one-off and recurring schedules without confirmation
 - preserving executable future work in scheduled task text
 - creator vs system credential mode
 - rescheduling existing tasks
 
-This folder keeps behavioral due-occurrence delivery quality:
+This folder keeps behavioral due-occurrence delivery quality and its delivery-only helpers:
 
 - delivering due one-off and recurring scheduled task occurrences
 

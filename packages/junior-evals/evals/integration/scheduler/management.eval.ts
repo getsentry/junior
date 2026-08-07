@@ -5,7 +5,7 @@ import {
   scheduledTaskCreateCalls,
   scheduledTaskUpdateCalls,
   seedScheduledTask,
-} from "../../scheduler/helpers";
+} from "./helpers";
 
 describeEval("Schedule Management", slackEvals, (it) => {
   it("when asked to reschedule an existing task, replace its cadence", async ({
