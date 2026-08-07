@@ -245,6 +245,7 @@ describe("persistAuthPauseSessionRecord", () => {
     const conversationId = "slack:C123:no-nested-routing";
     const sessionId = "turn-no-nested-routing";
     const conversationStore: ConversationStore = {
+      createChild: vi.fn(),
       get: vi.fn(),
       getConversationIdByProviderConversation: vi.fn(async () => undefined),
       bindProviderConversation: vi.fn(),
