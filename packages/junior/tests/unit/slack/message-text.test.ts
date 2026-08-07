@@ -24,12 +24,4 @@ describe("getSlackMessageText", () => {
       }),
     ).toBe("synthetic message");
   });
-
-  it("falls back to plain text when formatted content is missing", () => {
-    expect(
-      getSlackMessageText({
-        text: "plain only message",
-      }),
-    ).toBe("plain only message");
-  });
 });

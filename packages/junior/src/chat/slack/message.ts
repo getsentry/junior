@@ -25,22 +25,13 @@ export function getSlackMessageTs(
 
 /**
  * Return the Chat SDK's canonical formatted representation by default.
- * Fall back to plain text when formatted content is missing or empty.
- *
- * Some ingress/test paths only materialize plain `text` (for example eval
- * ready-queue deliveries and partially hydrated messages), so `formatted`
- * cannot be assumed present even though the Chat SDK Message type marks it
- * required on fully constructed instances.
+ * Fall back to plain text only when the message has no formatted content.
  */
 export function getSlackMessageText(
-  message: {
-    formatted?: Message["formatted"] | null;
-    text: string;
-  },
+  message: Pick<Message, "formatted" | "text">,
 ): string {
-  const formatted = message.formatted;
-  if (formatted && formatted.children.length > 0) {
-    return stringifyMarkdown(formatted).trim();
+  if (message.formatted.children.length > 0) {
+    return stringifyMarkdown(message.formatted).trim();
   }
   return message.text.trim();
 }

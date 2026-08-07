@@ -1160,9 +1160,6 @@ function toIncomingMessage(event: MentionEvent | SubscribedMessageEvent) {
     text: event.message.text ?? "",
     isMention: event.message.is_mention,
     attachments: [],
-    // Match synthetic Slack ingress / mailbox restore: empty formatted AST so
-    // plain text remains the source of truth for fixture messages.
-    formatted: { type: "root" as const, children: [] },
     metadata: { dateSent: new Date(), edited: false },
     channelId: event.thread.channel_id,
     threadId: runtimeThreadId,
@@ -2285,7 +2282,9 @@ async function processEvents(args: {
   const enqueueEvent = (event: MentionEvent | SubscribedMessageEvent): void => {
     recordUserMessage(args.observations, event);
     const { thread, transcript } = getThreadRecord(event.thread);
-    const message = toIncomingMessage(event) as unknown as Message;
+    const message = ChatMessage.fromJSON(
+      toSerializedSlackMessage(event, thread.id, Date.now()),
+    );
     upsertThreadTranscriptMessage(transcript, message);
     const kind = determineThreadMessageKind({
       isDirectMessage: thread.id.startsWith("slack:D"),
