@@ -46,6 +46,7 @@ import {
   type TurnToolInvocation,
 } from "@/chat/runtime/turn-input";
 import { getMessageActorIdentity } from "@/chat/services/message-actor-identity";
+import { isResourceEventSlackMessage } from "@/chat/resource-events/actor";
 import type { FailConversationTurnInput } from "@/chat/conversations/turn-lifecycle";
 
 export interface AssistantLifecycleEvent {
@@ -354,14 +355,6 @@ function buildLogContext(
 
 function actorUserName(message: Message): string | undefined {
   return getMessageActorIdentity(message)?.userName;
-}
-
-function isResourceEventNotificationMessage(message: Message): boolean {
-  const raw =
-    message.raw && typeof message.raw === "object"
-      ? (message.raw as Record<string, unknown>)
-      : undefined;
-  return raw?.event_type === "resource_event";
 }
 
 /** Build the Slack event runtime that routes mentions and subscribed messages. */
@@ -907,7 +900,7 @@ export function createSlackTurnRuntime<
         const channelId = deps.getChannelId(thread, message);
         const runId = deps.getRunId(thread, message);
         const isResourceEventNotification =
-          isResourceEventNotificationMessage(message);
+          isResourceEventSlackMessage(message);
         const actorId = isResourceEventNotification
           ? undefined
           : message.author.userId;

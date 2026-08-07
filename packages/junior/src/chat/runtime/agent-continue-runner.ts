@@ -72,6 +72,10 @@ import {
   type SlackActor,
 } from "@/chat/actor";
 import { getConversationWorkState } from "@/chat/task-execution/store";
+import {
+  isResourceEventConversationMessage,
+  RESOURCE_EVENT_SYSTEM_ACTOR,
+} from "@/chat/resource-events/actor";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import type { AgentRunRouting } from "@/chat/agent/request";
@@ -223,21 +227,20 @@ async function failContinuationStartup(args: {
   }
 }
 
-const RESOURCE_EVENT_AUTHOR_ID = "UJRNEVENT";
-const RESOURCE_EVENT_SYSTEM_ACTOR = {
-  platform: "system",
-  name: "resource-event",
-} as const satisfies Actor;
-
-/** Resource-event turns leave a durable conversation-message marker. */
-function isResourceEventConversationMessage(message: {
-  author?: { userId?: string };
-  meta?: { eventType?: string };
-}): boolean {
-  return (
-    Boolean(message.meta?.eventType) ||
-    message.author?.userId === RESOURCE_EVENT_AUTHOR_ID
-  );
+/**
+ * Required execution identity for a resumed Slack turn.
+ *
+ * Always rebuilt from durable sources (never Redis turn-session):
+ * - `actor`: who the run executes as (attribution / routing / display)
+ * - `credentialContext`: which principal's credentials tools may use
+ *
+ * For interactive user turns both point at the same human. For system runs
+ * (resource-event, dispatch) both carry the system actor; delegated user
+ * credentials, when any, live on credentialContext.subject.
+ */
+interface ResumeExecutionIdentity {
+  actor: Actor;
+  credentialContext: CredentialContext;
 }
 
 /**
@@ -245,7 +248,7 @@ function isResourceEventConversationMessage(message: {
  *
  * Never throws (issue #727). Prefer matching work-state profile data; always
  * fall back to bare author id + destination team when enrichment is missing
- * or unusable. Redis turn-session no longer stores execution actor.
+ * or unusable.
  */
 async function resolveSlackResumeUserActor(args: {
   conversationId: string;
@@ -285,59 +288,58 @@ async function resolveSlackResumeUserActor(args: {
   }
 }
 
-interface ResumeExecutionIdentity {
-  /** Optional routing actor for replyContext (Slack user or system). */
-  actor?: Actor;
-  credentialContext: CredentialContext;
-}
-
 /**
- * Rebuild resume execution identity without Redis turn-session actor.
+ * Rebuild the required execution identity for a resumed turn.
  *
- * Priority:
- * 1. Caller-supplied routingContext.credentialContext (dispatch / explicit)
- * 2. System actor from routingContext or resource-event message markers
- * 3. Slack user rebuilt from the turn author + destination team
+ * Permanent sources, in priority order:
+ * 1. Caller routingContext (dispatch / OAuth / explicit resume ports)
+ * 2. Resource-event turn markers (system actor from resource-events/actor)
+ * 3. Slack user from turn author + destination team
  */
 async function resolveResumeExecutionIdentity(args: {
   conversationId: string;
   routingContext?: AgentContinueRunnerOptions["routingContext"];
   teamId: string;
-  userMessage:
-    | {
-        author?: { userId?: string };
-        meta?: { eventType?: string };
-      }
-    | undefined;
+  userMessage: {
+    author?: { userId?: string };
+    meta?: { eventType?: string };
+  };
 }): Promise<ResumeExecutionIdentity | undefined> {
   const routing = args.routingContext;
+
+  // Explicit resume ports already own identity (dispatch, OAuth callbacks).
   if (routing?.credentialContext) {
+    const actor =
+      routing.dispatch?.actor ??
+      routing.actor ??
+      (!("type" in routing.credentialContext.actor)
+        ? routing.credentialContext.actor
+        : undefined);
+    if (!actor) {
+      return undefined;
+    }
     return {
-      ...(routing.actor ? { actor: routing.actor } : {}),
+      actor,
       credentialContext: routing.credentialContext,
     };
   }
 
-  const routingSystemActor =
-    routing?.actor?.platform === "system" ? routing.actor : undefined;
-  if (routingSystemActor) {
+  if (routing?.actor?.platform === "system") {
     return {
-      actor: routingSystemActor,
-      credentialContext: { actor: routingSystemActor },
+      actor: routing.actor,
+      credentialContext: { actor: routing.actor },
     };
   }
 
-  if (
-    args.userMessage &&
-    isResourceEventConversationMessage(args.userMessage)
-  ) {
-    // Match live reply-executor: system credentials only, no routing.actor.
+  // Resource-event mailbox turns always execute as the shared system actor.
+  if (isResourceEventConversationMessage(args.userMessage)) {
     return {
+      actor: RESOURCE_EVENT_SYSTEM_ACTOR,
       credentialContext: { actor: RESOURCE_EVENT_SYSTEM_ACTOR },
     };
   }
 
-  const userId = args.userMessage?.author?.userId;
+  const userId = args.userMessage.author?.userId;
   if (!userId) {
     return undefined;
   }
@@ -579,7 +581,7 @@ async function continueSlackAgentRunInContext(
             routing: {
               ...options.routingContext,
               credentialContext,
-              ...(actor ? { actor } : {}),
+              actor,
               destination: routingDestination,
               source,
               toolChannelId:

@@ -320,25 +320,6 @@ async function withPluginTaskLock<T>(
   }
 }
 
-/**
- * Rebuild the singular execution actor after Redis stopped storing it.
- *
- * Prefer the first committed instruction actor (the usual credential-bound
- * run actor). Dispatch-only system runs have no instruction actors, so fall
- * back to the dispatch record when present.
- */
-async function resolvePluginRunActor(args: {
-  actors: Actor[];
-  dispatchId?: string;
-}): Promise<Actor | undefined> {
-  if (args.actors[0]) {
-    return args.actors[0];
-  }
-  return args.dispatchId
-    ? (await getDispatchRecord(args.dispatchId))?.actor
-    : undefined;
-}
-
 /** Load the bounded completed-run projection exposed to plugin tasks. */
 async function loadPluginRun(
   params: PluginTaskParams,
@@ -356,10 +337,14 @@ async function loadPluginRun(
   const routing = await resolveTurnSessionRouting({
     conversationId: params.conversationId,
   });
-  const runActor = await resolvePluginRunActor({
-    actors: record.actors,
-    dispatchId: record.dispatchId,
-  });
+  // Singular run.actor comes from committed instruction provenance, or the
+  // dispatch record for system-only runs. Optional only for legacy actor-less
+  // records (plugins must fail closed on authority-sensitive work).
+  const runActor =
+    record.actors[0] ??
+    (record.dispatchId
+      ? (await getDispatchRecord(record.dispatchId))?.actor
+      : undefined);
   const runEntries = turnMessagesWithProvenance(record)
     .map(({ message, provenance }) =>
       runTranscriptEntry(message, provenance, runActor),

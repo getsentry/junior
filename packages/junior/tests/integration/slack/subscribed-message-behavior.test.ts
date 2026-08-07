@@ -227,7 +227,7 @@ describe("Slack behavior: subscribed messages", () => {
         credentialContext: {
           actor: { platform: "system", name: "resource-event" },
         },
-        actor: undefined,
+        actor: { platform: "system", name: "resource-event" },
       }),
     ]);
     expect(thread.posts).toHaveLength(1);

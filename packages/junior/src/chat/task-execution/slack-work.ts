@@ -35,6 +35,10 @@ import { ensureSlackMessageActorIdentity } from "@/chat/services/message-actor-i
 import { lookupSlackUser } from "@/chat/slack/user";
 import { parseActorUserId, type SlackActorProfile } from "@/chat/actor";
 import {
+  isResourceEventSlackMessage,
+  RESOURCE_EVENT_SLACK_AUTHOR_ID,
+} from "@/chat/resource-events/actor";
+import {
   createSlackDestination,
   requireSlackDestination,
 } from "@/chat/destination";
@@ -515,7 +519,7 @@ function slackSerializedResourceEventMessage(input: {
     _type: "chat:Message",
     attachments: [],
     author: {
-      userId: "UJRNEVENT",
+      userId: RESOURCE_EVENT_SLACK_AUTHOR_ID,
       userName: "junior-event",
       fullName: "Junior event",
       isBot: true,
@@ -533,7 +537,7 @@ function slackSerializedResourceEventMessage(input: {
       resource_event_type: input.eventType,
       thread_ts: input.threadTs,
       type: "message",
-      user: "UJRNEVENT",
+      user: RESOURCE_EVENT_SLACK_AUTHOR_ID,
     },
     text: input.text,
     threadId: `slack:${input.channelId}:${input.threadTs}`,
@@ -581,7 +585,7 @@ export function createSlackResourceEventInboundMessage(
     receivedAtMs: Date.now(),
     input: {
       text: input.text,
-      authorId: "UJRNEVENT",
+      authorId: RESOURCE_EVENT_SLACK_AUTHOR_ID,
       metadata: {
         kind: "resource_event",
         installation: {
@@ -638,14 +642,6 @@ function routeForRecords(records: InboundMessage[]): SlackConversationRoute {
     : "subscribed";
 }
 
-function isResourceEventNotificationMessage(message: Message): boolean {
-  const raw =
-    message.raw && typeof message.raw === "object"
-      ? (message.raw as Record<string, unknown>)
-      : undefined;
-  return raw?.event_type === "resource_event";
-}
-
 /** Rehydrate the Slack message payload before handing it back to runtime code. */
 function restoreMessage(args: {
   adapter: SlackAdapter;
@@ -674,7 +670,7 @@ async function bindSlackActorIdentities(args: {
 }): Promise<void> {
   const byAuthorId = new Map<string, Message[]>();
   for (const message of args.messages) {
-    if (isResourceEventNotificationMessage(message)) {
+    if (isResourceEventSlackMessage(message)) {
       continue;
     }
     const authorId = requireSlackAuthorId(message);

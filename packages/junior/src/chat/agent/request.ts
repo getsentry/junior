@@ -93,7 +93,16 @@ export interface AgentRunInput {
   conversationContext?: string;
 }
 
-/** Carries identity and addressing needed to route tools, auth, and delivery. */
+/**
+ * Carries identity and addressing needed to route tools, auth, and delivery.
+ *
+ * `actor` is who the run executes as (attribution / routing / display).
+ * `credentialContext` is which principal's credentials tools may use.
+ * For interactive user turns both point at the same human. For system runs
+ * both carry the system actor; delegated user credentials, when any, live on
+ * credentialContext.subject. Prefer setting both on every run; actorFromRouting
+ * can still derive a system actor from credentialContext alone.
+ */
 export interface AgentRunRouting {
   credentialContext?: CredentialContext;
   actor?: Actor;

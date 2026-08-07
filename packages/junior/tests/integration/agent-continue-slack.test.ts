@@ -906,6 +906,7 @@ describe("agent continuation Slack integration", () => {
     expect(executeAgentRunMock).toHaveBeenCalledWith(
       expect.objectContaining({
         routing: expect.objectContaining({
+          actor: { platform: "system", name: "resource-event" },
           credentialContext: {
             actor: { platform: "system", name: "resource-event" },
           },
@@ -914,9 +915,6 @@ describe("agent continuation Slack integration", () => {
         }),
       }),
     );
-    expect(
-      executeAgentRunMock.mock.calls[0]?.[0].routing.actor,
-    ).toBeUndefined();
   });
 
   it("rebuilds the resume actor from the message author when redis has no actor", async () => {
