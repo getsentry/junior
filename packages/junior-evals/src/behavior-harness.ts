@@ -1148,19 +1148,19 @@ function toEvalAssistantPost(value: unknown): EvalAssistantPost {
 }
 
 /**
- * Build a real Chat SDK Message from an eval fixture.
+ * Build a Chat SDK Message for Slack ingress from a harness event.
  *
- * Synthetic Slack ingress keeps an empty formatted AST so plain fixture text
- * remains the source of truth, matching mailbox restore and edited-message
+ * Synthetic Slack ingress keeps an empty formatted AST so plain text remains
+ * the source of truth, matching mailbox restore and edited-message
  * construction elsewhere in Junior.
  */
-function toEvalSlackMessage(
+function toSlackMessage(
   event: MentionEvent | SubscribedMessageEvent,
   threadId: string,
   dateSentMs: number = Date.now(),
 ): Message {
   // In Slack payloads, `ts` identifies the specific message while `thread_ts`
-  // identifies the thread root. Eval fixtures provide unique `message.id` per
+  // identifies the thread root. Fixtures provide unique `message.id` per
   // event, so prefer it for `raw.ts` to avoid collapsing all replies to the
   // same timestamp in multi-turn thread scenarios.
   const messageTs = event.message.id ?? event.thread.thread_ts;
@@ -1170,7 +1170,7 @@ function toEvalSlackMessage(
     text: event.message.text ?? "",
     isMention: event.message.is_mention,
     attachments: [],
-    // Empty root keeps plain fixture text authoritative for synthetic ingress.
+    // Empty root keeps plain text authoritative for synthetic ingress.
     formatted: { type: "root", children: [] },
     metadata: { dateSent: new Date(dateSentMs), edited: false },
     raw: {
@@ -2237,7 +2237,7 @@ async function processEvents(args: {
         (event.message.is_mention ?? event.type === "new_mention")
           ? ("mention" as const)
           : ("subscribed" as const);
-      const message = toEvalSlackMessage(
+      const message = toSlackMessage(
         event,
         thread.id,
         Date.now() + index,
@@ -2271,7 +2271,7 @@ async function processEvents(args: {
   const enqueueEvent = (event: MentionEvent | SubscribedMessageEvent): void => {
     recordUserMessage(args.observations, event);
     const { thread, transcript } = getThreadRecord(event.thread);
-    const message = toEvalSlackMessage(event, thread.id);
+    const message = toSlackMessage(event, thread.id);
     upsertThreadTranscriptMessage(transcript, message);
     const kind = determineThreadMessageKind({
       isDirectMessage: thread.id.startsWith("slack:D"),
