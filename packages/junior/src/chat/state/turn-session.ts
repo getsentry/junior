@@ -299,11 +299,16 @@ async function recordConversationActivityMetadata(args: {
   // Nested destination/source stay off Redis turn-session payloads; callers pass
   // live routing here for SQL dual-write. Child conversations stay destinationless.
   const destination = isChild ? undefined : args.destination;
+  // Only derive ConversationSource when routing is known. Abandon/fail no longer
+  // carry nested destination, and SQL coalesce(excluded, existing) would otherwise
+  // overwrite a durable `local` source with surface `internal`.
   const activitySource = isChild
     ? "internal"
     : destination?.platform === "local"
       ? "local"
-      : args.summary.surface;
+      : destination
+        ? args.summary.surface
+        : undefined;
   await conversationStore.recordActivity({
     activityAtMs: args.summary.updatedAtMs,
     channelName: args.summary.channelName,
@@ -311,7 +316,7 @@ async function recordConversationActivityMetadata(args: {
     destination,
     nowMs: args.nowMs,
     actor: sessionLogActor(args.summary.actor),
-    source: activitySource,
+    ...definedProps({ source: activitySource }),
     ...(args.source ? { sessionSource: args.source } : {}),
     visibility: isChild ? undefined : args.destinationVisibility,
   });
@@ -329,7 +334,7 @@ async function recordConversationActivityMetadata(args: {
         : {}),
     },
     actor: sessionLogActor(args.summary.actor),
-    source: activitySource,
+    ...definedProps({ source: activitySource }),
     updatedAtMs: args.nowMs,
     visibility: isChild ? undefined : args.destinationVisibility,
   });
