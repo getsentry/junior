@@ -33,6 +33,9 @@ use the query recipes below to find the failing turn and next query.
 | `messaging.destination.name`        | Slack channel                 | logs, spans               | channel-scoped search |
 | `gen_ai.tool.name`                  | tool name                     | tool spans/logs           | tool failures         |
 | `app.credential.provider`           | auth provider                 | auth logs                 | auth/resume search    |
+| `app.task.id`                       | scheduled/event task id       | task lifecycle logs       | task timeline         |
+| `app.task.run.id`                   | scheduled-task run id         | scheduler run logs        | run outcome           |
+| `app.dispatch.id`                   | agent dispatch id             | task/dispatch logs        | fire conversation     |
 
 ## Query Recipes
 
@@ -97,6 +100,30 @@ Slack delivery failures after the agent turn ran.
 ```text
 dataset=logs query='event.name:slack.thread.post.failed app.slack.error_code:*'
 fields=timestamp,event.name,gen_ai.conversation.id,messaging.destination.name,app.slack.reply_stage,app.slack.error_code,app.slack.api_error,exception.message
+sort=-timestamp
+```
+
+Scheduled task lifecycle by task id.
+
+```text
+dataset=logs query='app.task.id:"<task_id>"'
+fields=timestamp,event.name,app.task.id,app.task.run.id,app.dispatch.id,app.task.schedule.kind,app.task.destination.visibility,app.task.result_message_ts,messaging.destination.name
+sort=timestamp
+```
+
+Scheduled task fire path by channel.
+
+```text
+dataset=logs query='event.name:scheduled_task.run.dispatched messaging.destination.name:"<channel_id>"'
+fields=timestamp,event.name,app.task.id,app.task.run.id,app.dispatch.id,app.task.schedule.kind,app.task.destination.visibility
+sort=-timestamp
+```
+
+Recent scheduled-task create/fire outcomes.
+
+```text
+dataset=logs query='event.name:scheduled_task.create.completed OR event.name:scheduled_task.run.claimed OR event.name:scheduled_task.run.dispatched OR event.name:scheduled_task.run.completed OR event.name:scheduled_task.run.failed OR event.name:scheduled_task.run.blocked OR event.name:scheduled_task.run.skipped'
+fields=timestamp,event.name,app.task.id,app.task.run.id,app.dispatch.id,app.task.schedule.kind,app.task.status,messaging.destination.name
 sort=-timestamp
 ```
 
@@ -183,6 +210,33 @@ Attributes: `gen_ai.tool.name`, `gen_ai.tool.call.id`,
 `app.sandbox.search.result_count`, `app.sandbox.search.emitted_lines`,
 `app.sandbox.search.result_bytes`, `app.sandbox.search.limit`,
 `app.sandbox.search.limit_reached`, `app.tool.missing_annotations`
+
+### Scheduled Tasks
+
+A reminder or recurring task was created, claimed, dispatched, completed, or
+failed without an obvious Slack error.
+
+Events: `scheduled_task.create.completed`, `scheduled_task.run.claimed`,
+`scheduled_task.run.dispatched`, `scheduled_task.run.completed`,
+`scheduled_task.run.failed`, `scheduled_task.run.blocked`,
+`scheduled_task.run.skipped`, `scheduled_tasks.heartbeat.dispatched`,
+`scheduled_tasks.heartbeat.failed`, `task.execution.stat_failed`
+
+Spans: create-turn `gen_ai.execute_tool` for `slackScheduleCreateTask`; fire
+path `POST /api/internal/agent/continue` for the dispatch conversation
+
+Attributes: `app.task.id`, `app.task.type`, `app.task.status`,
+`app.task.schedule.kind`, `app.task.schedule.timezone`,
+`app.task.credential_mode`, `app.task.destination.channel_id`,
+`app.task.destination.team_id`, `app.task.destination.visibility`,
+`app.task.destination.audience`, `app.task.next_run_at`, `app.task.run.id`,
+`app.task.run.status`, `app.task.run.scheduled_for`,
+`app.task.result_message_ts`, `app.dispatch.id`,
+`messaging.destination.name`
+
+Pivot from create confirmation or Tasks page with `app.task.id`. From a fire
+conversation, use `app.dispatch.id` or `agent-dispatch:<dispatch_id>` as
+`gen_ai.conversation.id`.
 
 ### Auth And Resume
 

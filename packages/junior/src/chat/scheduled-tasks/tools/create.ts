@@ -1,3 +1,4 @@
+import { logInfo } from "@/chat/logging";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { z } from "zod";
 import {
@@ -5,6 +6,7 @@ import {
   ScheduleIntentError,
   scheduleIntentSchema,
 } from "../schedule-intent";
+import { scheduledTaskAttributes } from "../telemetry";
 import { SCHEDULED_TASK_SYSTEM_ACTOR } from "../types";
 import type { ScheduledTask } from "../types";
 import {
@@ -149,6 +151,10 @@ export function createSlackScheduleCreateTaskTool(
       ) {
         throwToolInputError("Scheduled task operation identity is invalid.");
       }
+      logInfo(
+        "scheduled_task.create.completed",
+        scheduledTaskAttributes(committed),
+      );
       return scheduleTaskToolResult(
         "slackScheduleCreateTask",
         compactTask(committed),

@@ -10,10 +10,12 @@ import {
 } from "@/chat/agent-dispatch/context";
 import { getDispatchConversationId } from "@/chat/agent-dispatch/store";
 import { getDb } from "@/chat/db";
+import { logInfo } from "@/chat/logging";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { recordTaskExecution } from "@/chat/tasks/execution-stats";
 import { sanitizeScheduledTaskPrincipal } from "./identity";
 import { createSchedulerSqlStore, type SchedulerStore } from "./store";
+import { scheduledTaskRunAttributes } from "./telemetry";
 import type { ScheduledRun, ScheduledTask } from "./types";
 
 const SCHEDULED_TASK_HEARTBEAT_LIMIT = 10;
@@ -120,6 +122,43 @@ async function recordScheduledExecution(args: {
   });
 }
 
+async function logRunOutcome(args: {
+  eventName:
+    | "scheduled_task.run.completed"
+    | "scheduled_task.run.failed"
+    | "scheduled_task.run.blocked"
+    | "scheduled_task.run.skipped";
+  run: ScheduledRun;
+  store: SchedulerStore;
+  /** Prefer a fresh task load after terminal status transitions. */
+  task?: ScheduledTask;
+  extras?: Record<string, unknown>;
+}): Promise<void> {
+  const task =
+    args.task ?? (await args.store.getTask(args.run.taskId)) ?? undefined;
+  if (!task) {
+    logInfo(args.eventName, {
+      "app.task.id": args.run.taskId,
+      "app.task.type": "scheduled",
+      "app.task.run.id": args.run.id,
+      "app.task.run.status": args.run.status,
+      "app.task.run.scheduled_for": new Date(
+        args.run.scheduledForMs,
+      ).toISOString(),
+      ...(args.run.dispatchId ? { "app.dispatch.id": args.run.dispatchId } : {}),
+      ...(args.run.resultMessageTs
+        ? { "app.task.result_message_ts": args.run.resultMessageTs }
+        : {}),
+      ...args.extras,
+    });
+    return;
+  }
+  logInfo(
+    args.eventName,
+    scheduledTaskRunAttributes(task, args.run, args.extras),
+  );
+}
+
 async function applyDispatchResult(args: {
   dispatch: Dispatch;
   nowMs: number;
@@ -144,6 +183,11 @@ async function applyDispatchResult(args: {
       run: args.run,
       status: "completed",
     });
+    await logRunOutcome({
+      eventName: "scheduled_task.run.completed",
+      run: completed,
+      store: args.store,
+    });
     return true;
   }
   if (args.dispatch.status === "blocked") {
@@ -165,6 +209,14 @@ async function applyDispatchResult(args: {
       run: args.run,
       status: "blocked",
     });
+    await logRunOutcome({
+      eventName: "scheduled_task.run.blocked",
+      run: blocked,
+      store: args.store,
+      extras: blocked.errorMessage
+        ? { "app.task.run.error": blocked.errorMessage }
+        : undefined,
+    });
     return true;
   }
   if (args.dispatch.status === "failed") {
@@ -185,6 +237,14 @@ async function applyDispatchResult(args: {
       nowMs: args.nowMs,
       run: args.run,
       status: "failed",
+    });
+    await logRunOutcome({
+      eventName: "scheduled_task.run.failed",
+      run: failed,
+      store: args.store,
+      extras: failed.errorMessage
+        ? { "app.task.run.error": failed.errorMessage }
+        : undefined,
     });
     return true;
   }
@@ -223,6 +283,15 @@ async function finishClaimedRun(args: {
     run: args.run,
     status: args.status,
   });
+  await logRunOutcome({
+    eventName:
+      args.status === "blocked"
+        ? "scheduled_task.run.blocked"
+        : "scheduled_task.run.failed",
+    run: finished,
+    store: args.store,
+    extras: { "app.task.run.error": args.errorMessage },
+  });
 }
 
 /** Reconcile completed dispatches and enqueue a bounded batch of due tasks. */
@@ -247,7 +316,12 @@ export async function runScheduledTaskHeartbeat(args: {
       continue;
     }
     if (
-      await applyDispatchResult({ dispatch, nowMs: args.nowMs, run, store })
+      await applyDispatchResult({
+        dispatch,
+        nowMs: args.nowMs,
+        run,
+        store,
+      })
     ) {
       processedCount += 1;
     }
@@ -262,20 +336,43 @@ export async function runScheduledTaskHeartbeat(args: {
     if (!run) break;
     const task = await store.getTask(run.taskId);
     if (!task) {
-      await store.markRunFailed({
+      const failed = await store.markRunFailed({
         completedAtMs: args.nowMs,
         errorMessage: `Scheduled task ${run.taskId} was not found`,
         runId: run.id,
       });
+      if (failed) {
+        await logRunOutcome({
+          eventName: "scheduled_task.run.failed",
+          run: failed,
+          store,
+          extras: {
+            "app.task.run.error": `Scheduled task ${run.taskId} was not found`,
+          },
+        });
+      }
       continue;
     }
+    logInfo(
+      "scheduled_task.run.claimed",
+      scheduledTaskRunAttributes(task, run),
+    );
     const skippedReason = shouldSkipRun(task, run);
     if (skippedReason) {
-      await store.markRunSkipped({
+      const skipped = await store.markRunSkipped({
         completedAtMs: args.nowMs,
         errorMessage: skippedReason,
         runId: run.id,
       });
+      if (skipped) {
+        await logRunOutcome({
+          eventName: "scheduled_task.run.skipped",
+          run: skipped,
+          store,
+          task,
+          extras: { "app.task.run.error": skippedReason },
+        });
+      }
       continue;
     }
 
@@ -334,12 +431,22 @@ export async function runScheduledTaskHeartbeat(args: {
       });
       continue;
     }
-    await store.markRunDispatched({
+    const dispatched = await store.markRunDispatched({
       claimedAtMs: run.claimedAtMs,
       dispatchId: dispatch.id,
       nowMs: args.nowMs,
       runId: run.id,
     });
+    logInfo(
+      "scheduled_task.run.dispatched",
+      scheduledTaskRunAttributes(
+        task,
+        dispatched ?? { ...run, dispatchId: dispatch.id },
+        {
+          "app.dispatch.id": dispatch.id,
+        },
+      ),
+    );
     dispatchCount += 1;
   }
   return dispatchCount;
