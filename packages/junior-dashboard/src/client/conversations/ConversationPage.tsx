@@ -30,6 +30,7 @@ import {
   summarizeTurns,
   summarizeToolCalls,
   summarizeUsage,
+  taskPath,
   visualStatusForConversation,
 } from "../format";
 import { Button } from "../components/Button";
@@ -355,6 +356,34 @@ function SourceLocation(props: { label: string; sourceUrl?: string }) {
   );
 }
 
+function SourceTask(props: {
+  sourceTask: NonNullable<ConversationDetailReport["sourceTask"]>;
+}) {
+  const kindLabel =
+    props.sourceTask.kind === "scheduled" ? "scheduled task" : "event task";
+  const label = props.sourceTask.label?.trim();
+  const taskId = props.sourceTask.id?.trim();
+  return (
+    <span className="inline-flex min-w-0 max-w-full items-center gap-x-1.5">
+      <span className="shrink-0">Triggered by {kindLabel}</span>
+      {label && taskId ? (
+        <>
+          <span aria-hidden="true" className="shrink-0 text-dashboard-text-muted">
+            ·
+          </span>
+          <Link
+            className="min-w-0 max-w-[14rem] truncate text-dashboard-text underline decoration-white/20 underline-offset-2 transition-colors hover:decoration-white/60 sm:max-w-[20rem]"
+            title={label}
+            to={taskPath(taskId)}
+          >
+            {label}
+          </Link>
+        </>
+      ) : null}
+    </span>
+  );
+}
+
 /** Resolve the model still running an open turn, including mid-turn handoffs. */
 export function liveModelId(
   detail: ConversationDetailReport | undefined,
@@ -406,11 +435,18 @@ function ConversationStats(props: {
   const live =
     (props.detail?.status ?? props.conversation.status) === "active";
   const activeModelId = liveModelId(props.detail);
+  const sourceTask = props.detail?.sourceTask;
   const rawStats: Array<MetricListItem | undefined> = [
     location
       ? {
           content: <SourceLocation label={location} sourceUrl={sourceUrl} />,
           key: "location",
+        }
+      : undefined,
+    sourceTask
+      ? {
+          content: <SourceTask sourceTask={sourceTask} />,
+          key: "source-task",
         }
       : undefined,
     durationLabel !== "none"

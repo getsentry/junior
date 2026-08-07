@@ -669,6 +669,11 @@ export function locationPath(locationId: string): string {
   return `/system/locations/${encodeURIComponent(locationId)}`;
 }
 
+/** Build the canonical task detail route for a task id. */
+export function taskPath(taskId: string): string {
+  return `/tasks/${encodeURIComponent(taskId)}`;
+}
+
 function normalizeLanguage(language: string | undefined): BundledLanguage {
   const normalized = language?.trim().toLowerCase();
   if (!normalized) return "markdown";

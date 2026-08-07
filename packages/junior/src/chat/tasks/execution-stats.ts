@@ -207,6 +207,36 @@ export async function readTaskExecutionDays(
   return [...byDate.values()];
 }
 
+/** Load the newest terminal task execution linked to one conversation, if any. */
+export async function readTaskExecutionByConversationId(args: {
+  conversationId: string;
+  namespace?: string;
+}): Promise<{ kind: TaskExecutionType; taskId: string } | undefined> {
+  const namespace = args.namespace ?? "junior";
+  const rows = await getDb()
+    .select({
+      kind: juniorTaskExecutions.kind,
+      taskId: juniorTaskExecutions.taskId,
+    })
+    .from(juniorTaskExecutions)
+    .where(
+      and(
+        eq(juniorTaskExecutions.conversationId, args.conversationId),
+        eq(juniorTaskExecutions.namespace, namespace),
+        inArray(juniorTaskExecutions.kind, [...TASK_EXECUTION_TYPES]),
+      ),
+    )
+    .orderBy(
+      desc(juniorTaskExecutions.executedAtMs),
+      desc(juniorTaskExecutions.executionId),
+    )
+    .limit(1);
+  const row = rows[0];
+  if (!row) return undefined;
+  if (row.kind !== "scheduled" && row.kind !== "event") return undefined;
+  return { kind: row.kind, taskId: row.taskId };
+}
+
 /** Load newest-first executions for one task, with conversation titles when present. */
 export async function readTaskExecutions(args: {
   kind: TaskExecutionType;

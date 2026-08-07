@@ -1,11 +1,13 @@
 import type { SlackDestination, User } from "@sentry/junior-plugin-api";
 import { and, eq, or } from "drizzle-orm";
+import type { ConversationSourceTask } from "@/api/schema/conversation";
 import type {
   TaskExecutionList,
   TaskList,
   TaskSummary,
 } from "@/api/schema/task";
 import {
+  readTaskExecutionByConversationId,
   readTaskExecutionDays,
   readTaskExecutions,
   readTaskExecutionStatusDays,
@@ -13,6 +15,7 @@ import {
   type TaskExecutionSummary,
 } from "@/chat/tasks/execution-stats";
 import { getDb } from "@/chat/db";
+import { resolveViewerUser } from "@/chat/plugins/viewer";
 import {
   deleteEventTask,
   eventTaskBelongsToUser,
@@ -484,6 +487,39 @@ export async function readViewerTaskExecutions(
     executions: executions.slice(0, TASK_EXECUTION_LIST_LIMIT),
     task,
     truncated: executions.length > TASK_EXECUTION_LIST_LIMIT,
+  };
+}
+
+/** Resolve the source task for one conversation when a terminal execution links it. */
+export async function readConversationSourceTask(args: {
+  conversationId: string;
+  verifiedViewerEmail?: string;
+}): Promise<ConversationSourceTask | undefined> {
+  const execution = await readTaskExecutionByConversationId({
+    conversationId: args.conversationId,
+  });
+  if (!execution) return undefined;
+  const email = args.verifiedViewerEmail?.trim();
+  if (!email) return { kind: execution.kind };
+  const user = await resolveViewerUser(email);
+  if (!user) return { kind: execution.kind };
+  const candidate = await resolveViewerTaskCandidate(
+    user,
+    execution.kind,
+    execution.taskId,
+  );
+  if (!candidate) return { kind: execution.kind };
+  if (candidate.kind === "scheduled") {
+    return {
+      id: candidate.task.id,
+      kind: "scheduled",
+      label: displayText(candidate.task.task.text, "Untitled scheduled task"),
+    };
+  }
+  return {
+    id: candidate.task.id,
+    kind: "event",
+    label: displayText(candidate.task.task.text, "Untitled event task"),
   };
 }
 

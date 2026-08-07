@@ -33,6 +33,7 @@ export type {
   ConversationMetricDay,
   ConversationModelUsage,
   ConversationParams,
+  ConversationSourceTask,
   ConversationStatsItem,
   ConversationStatsReport,
   ConversationSummaryReport,
