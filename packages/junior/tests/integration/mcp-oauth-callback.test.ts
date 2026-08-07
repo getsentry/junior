@@ -533,14 +533,11 @@ describe("mcp oauth callback integration", () => {
           ),
         }),
         routing: expect.objectContaining({
-          actor: expect.objectContaining({
-            email: "stored@example.com",
-            fullName: "Stored User",
+          actor: {
             platform: "slack",
             teamId: "T123",
             userId: "U123",
-            userName: "stored-user",
-          }),
+          },
           destination: SLACK_DESTINATION,
           source: storedSource,
           toolChannelId: "C999",

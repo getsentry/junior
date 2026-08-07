@@ -62,8 +62,6 @@ export const fileLengthExceptions = {
     "Existing broad local runner suite; split by behavior.",
   "packages/junior/tests/component/auth/mcp-auth-runtime-slack.test.ts":
     "Existing broad MCP auth suite; split by behavior.",
-  "packages/junior/tests/integration/mcp-oauth-callback.test.ts":
-    "Existing broad MCP OAuth suite; split by behavior.",
   "packages/junior/tests/component/runtime/agent-run-provider-retry.test.ts":
     "Existing broad provider retry suite; split by behavior.",
   "packages/junior/tests/integration/sandbox-egress-proxy.test.ts":
