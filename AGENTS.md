@@ -17,6 +17,8 @@ Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`, `pnpm s
 | Eval harness test file     | `pnpm --filter @sentry/junior-evals test path/to/file.test.ts`                 |
 | Eval file                  | `pnpm --filter @sentry/junior-evals evals path/to/eval.eval.ts`                |
 | Eval case                  | `pnpm --filter @sentry/junior-evals evals path/to/eval.eval.ts -t "case name"` |
+| Guardian eval file         | `pnpm --filter @sentry/junior-evals evals:guardian path/to/file.eval.ts`       |
+| Guardian eval case         | `pnpm --filter @sentry/junior-evals evals:guardian path/to/file.eval.ts -t "case name"` |
 | Generate package schema    | `pnpm --filter <package> db:generate`                                          |
 | Release package alignment  | `pnpm release:check`                                                           |
 

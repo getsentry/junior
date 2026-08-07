@@ -1,4 +1,22 @@
 # Changelog
+## 0.138.0
+
+### New Features ✨
+
+- (agent) Add durable agent invocations and spawning by @dcramer in [#1065](https://github.com/getsentry/junior/pull/1065)
+
+### Bug Fixes 🐛
+
+- (chat) Bound conversation work retries by @sentry-junior in [#1287](https://github.com/getsentry/junior/pull/1287)
+- (dashboard) Simplify task table layout by @sentry-junior in [#1291](https://github.com/getsentry/junior/pull/1291)
+- (evals) Build real Chat SDK messages in the harness by @sentry-junior in [#1292](https://github.com/getsentry/junior/pull/1292)
+
+### Internal Changes 🔧
+
+- (chat) Project turn sessions through explicit schemas by @sentry-junior in [#1286](https://github.com/getsentry/junior/pull/1286)
+- (dashboard) Remove flavor headers by @sentry-junior in [#1290](https://github.com/getsentry/junior/pull/1290)
+- (evals) Gate the suite on aggregate pass rate by @sentry-junior in [#1289](https://github.com/getsentry/junior/pull/1289)
+
 ## 0.137.0
 
 ### New Features ✨

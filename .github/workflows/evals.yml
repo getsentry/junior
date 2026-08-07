@@ -30,8 +30,11 @@ jobs:
       eval_file_changed: ${{ steps.changes.outputs.eval_file_changed }}
       evals_requested: ${{ steps.request.outputs.evals_requested }}
       gateway_ready: ${{ steps.secrets.outputs.gateway_ready }}
+      guardian_file_changed: ${{ steps.changes.outputs.guardian_file_changed }}
+      guardian_requested: ${{ steps.request.outputs.guardian_requested }}
       sandbox_ready: ${{ steps.secrets.outputs.sandbox_ready }}
       should_run: ${{ steps.decision.outputs.should_run }}
+      should_run_guardian: ${{ steps.decision.outputs.should_run_guardian }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -43,23 +46,72 @@ jobs:
           set -euo pipefail
 
           action="$(jq -r '.action // ""' "$GITHUB_EVENT_PATH")"
+          label_name="$(jq -r '.label.name // ""' "$GITHUB_EVENT_PATH")"
           requested=false
+          guardian_requested=false
           if [[ "$action" == "labeled" ]]; then
-            if [[ "$(jq -r '.label.name // ""' "$GITHUB_EVENT_PATH")" == "trigger-evals" ]]; then
+            if [[ "$label_name" == "trigger-evals" ]]; then
               requested=true
             fi
-          elif jq -e '.pull_request.labels[]?.name | select(. == "trigger-evals")' "$GITHUB_EVENT_PATH" >/dev/null; then
-            requested=true
+            if [[ "$label_name" == "trigger-evals-guardian" || "$label_name" == "trigger-evals" ]]; then
+              guardian_requested=true
+            fi
+          else
+            if jq -e '.pull_request.labels[]?.name | select(. == "trigger-evals")' "$GITHUB_EVENT_PATH" >/dev/null; then
+              requested=true
+              guardian_requested=true
+            fi
+            if jq -e '.pull_request.labels[]?.name | select(. == "trigger-evals-guardian")' "$GITHUB_EVENT_PATH" >/dev/null; then
+              guardian_requested=true
+            fi
           fi
 
           echo "evals_requested=$requested" >> "$GITHUB_OUTPUT"
+          echo "guardian_requested=$guardian_requested" >> "$GITHUB_OUTPUT"
 
       - uses: getsentry/action-filter-paths@98a158469c63115591d1c2952d34450838ab3bc1 # v0.1.0
         id: changes
         with:
           filters: |
             eval_file_changed:
-              - '**/*.eval.ts'
+              - 'packages/junior-evals/evals/agent/**'
+              - 'packages/junior-evals/evals/conversation/**'
+              - 'packages/junior-evals/evals/event-tasks/**'
+              - 'packages/junior-evals/evals/github/**'
+              - 'packages/junior-evals/evals/memory/**'
+              - 'packages/junior-evals/evals/scheduler/**'
+              - 'packages/junior-evals/evals/sentry/**'
+              - 'packages/junior-evals/package.json'
+              - 'packages/junior-evals/global-setup.ts'
+              - 'packages/junior-evals/postgres-global-setup.ts'
+              - 'packages/junior-evals/src/behavior-harness.ts'
+              - 'packages/junior-evals/src/eval-ai-gateway-dispatcher.ts'
+              - 'packages/junior-evals/src/eval-context.ts'
+              - 'packages/junior-evals/src/eval-egress.ts'
+              - 'packages/junior-evals/src/eval-plugin-fixtures.ts'
+              - 'packages/junior-evals/src/helpers.ts'
+              - 'packages/junior-evals/src/setup.ts'
+              - 'packages/junior-evals/src/slack-link.ts'
+              - 'packages/junior-evals/src/snapshot-warmup.ts'
+              - 'packages/junior-evals/tests/**'
+              - 'packages/junior-evals/vitest.evals.config.ts'
+              - 'packages/junior/src/**'
+            guardian_file_changed:
+              - 'packages/junior-evals/evals/guardian/**'
+              - 'packages/junior-evals/src/guardian-harness.ts'
+              - 'packages/junior-evals/src/guardian-setup.ts'
+              - 'packages/junior-evals/src/eval-ai-gateway-dispatcher.ts'
+              - 'packages/junior-evals/guardian-global-setup.ts'
+              - 'packages/junior-evals/vitest.evals.guardian.config.ts'
+              - 'packages/junior-evals/package.json'
+              - 'packages/junior/src/chat/services/guardian-action-policy.ts'
+              - 'packages/junior/src/chat/services/guardian-action-review.ts'
+              - 'packages/junior/src/chat/tool-support/action-review.ts'
+              - 'packages/junior/src/chat/tool-support/action-review-evidence.ts'
+              - 'packages/junior/src/chat/tool-support/action-review-history.ts'
+              - 'packages/junior/src/chat/pi/client.ts'
+              - 'packages/junior/src/chat/pi/gateway-auth.ts'
+              - 'packages/junior/src/chat/config.ts'
 
       - id: secrets
         env:
@@ -88,6 +140,8 @@ jobs:
           EVAL_FILE_CHANGED: ${{ steps.changes.outputs.eval_file_changed }}
           EVALS_REQUESTED: ${{ steps.request.outputs.evals_requested }}
           GATEWAY_READY: ${{ steps.secrets.outputs.gateway_ready }}
+          GUARDIAN_FILE_CHANGED: ${{ steps.changes.outputs.guardian_file_changed }}
+          GUARDIAN_REQUESTED: ${{ steps.request.outputs.guardian_requested }}
           SANDBOX_READY: ${{ steps.secrets.outputs.sandbox_ready }}
         run: |
           set -euo pipefail
@@ -97,17 +151,55 @@ jobs:
             should_run=true
           fi
 
+          should_run_guardian=false
+          if [[ "$GATEWAY_READY" == "true" && ( "$GUARDIAN_FILE_CHANGED" == "true" || "$GUARDIAN_REQUESTED" == "true" || "$EVALS_REQUESTED" == "true" ) ]]; then
+            should_run_guardian=true
+          fi
+
           echo "should_run=$should_run" >> "$GITHUB_OUTPUT"
+          echo "should_run_guardian=$should_run_guardian" >> "$GITHUB_OUTPUT"
           {
             echo "## Eval Gate"
             echo
             echo "- eval_file_changed: $EVAL_FILE_CHANGED"
             echo "- evals_requested: $EVALS_REQUESTED"
+            echo "- guardian_file_changed: $GUARDIAN_FILE_CHANGED"
+            echo "- guardian_requested: $GUARDIAN_REQUESTED"
             echo "- gateway_ready: $GATEWAY_READY"
             echo "- sandbox_ready: $SANDBOX_READY"
             echo "- will_run: $should_run"
+            echo "- will_run_guardian: $should_run_guardian"
             echo "- min_pass_rate: $EVAL_MIN_PASS_RATE"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  guardian:
+    # Isolated Guardian snapshots only need the AI Gateway. Exact decision
+    # mismatches fail the job hard; no aggregate pass-rate floor.
+    name: evals / guardian
+    needs: gate
+    if: needs.gate.outputs.should_run_guardian == 'true'
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    env:
+      AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+      VERCEL_OIDC_TOKEN: ${{ secrets.VERCEL_OIDC_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: Run Guardian evals
+        id: run
+        env:
+          VITEST_EVALS_OUTPUT_FILE: guardian-results.json
+          VITEST_EVALS_REPORT_LEVEL: info
+        run: pnpm --filter @sentry/junior-evals evals:guardian
+      - name: Upload Guardian eval results
+        if: always() && !cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: guardian-evals
+          path: packages/junior-evals/guardian-results.json
+          if-no-files-found: warn
+          retention-days: 7
 
   evals:
     name: evals / suite ${{ matrix.shard }}/4
