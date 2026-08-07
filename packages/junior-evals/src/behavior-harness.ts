@@ -1160,6 +1160,9 @@ function toIncomingMessage(event: MentionEvent | SubscribedMessageEvent) {
     text: event.message.text ?? "",
     isMention: event.message.is_mention,
     attachments: [],
+    // Match synthetic Slack ingress / mailbox restore: empty formatted AST so
+    // plain text remains the source of truth for fixture messages.
+    formatted: { type: "root" as const, children: [] },
     metadata: { dateSent: new Date(), edited: false },
     channelId: event.thread.channel_id,
     threadId: runtimeThreadId,
