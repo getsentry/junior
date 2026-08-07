@@ -408,7 +408,7 @@ export async function mockDashboardApis(page: Page) {
       },
     });
   });
-  await page.route("**/api/tasks/*/executions", async (route) => {
+  await page.route("**/api/tasks/*/*/executions", async (route) => {
     const url = new URL(route.request().url());
     const parts = url.pathname.split("/").filter(Boolean);
     const kind = parts.at(-3);

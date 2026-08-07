@@ -85,9 +85,10 @@ function TaskExecutionsView(props: {
     () => countByStatus(data.executions),
     [data.executions],
   );
+  const statusCounts = `${counts.completed} completed · ${counts.failed} failed · ${counts.blocked} blocked`;
   const statusSummary = data.truncated
-    ? `${data.task.totalRuns} total · status counts cover the ${data.executions.length} loaded runs`
-    : `${data.task.totalRuns} total · ${counts.completed} completed · ${counts.failed} failed · ${counts.blocked} blocked`;
+    ? `${data.task.totalRuns} total · loaded runs: ${statusCounts}`
+    : `${data.task.totalRuns} total · ${statusCounts}`;
 
   return (
     <div className={`${dashboardContainerClass} px-4 py-8 md:px-8`}>
