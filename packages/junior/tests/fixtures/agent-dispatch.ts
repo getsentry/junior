@@ -1,4 +1,17 @@
 import { createHmac } from "node:crypto";
+import {
+  createSlackSource,
+  type ReplyAttribution,
+  type Source,
+} from "@sentry/junior-plugin-api";
+import { createOrGetDispatch } from "@/chat/agent-dispatch/store";
+import { buildAgentDispatchInboundMessage } from "@/chat/agent-dispatch/work";
+import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
+import { createSlackRuntime } from "@/chat/app/factory";
+import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
+import type { CredentialSubject } from "@/chat/credentials/context";
+import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
+import { vi } from "vitest";
 
 /** Build a rollout-compatible signed dispatch callback request. */
 export function createSignedDispatchCallbackRequest(
@@ -19,20 +32,6 @@ export function createSignedDispatchCallbackRequest(
     body,
   });
 }
-
-import {
-  createSlackSource,
-  type ReplyAttribution,
-  type Source,
-} from "@sentry/junior-plugin-api";
-import { createOrGetDispatch } from "@/chat/agent-dispatch/store";
-import { buildAgentDispatchInboundMessage } from "@/chat/agent-dispatch/work";
-import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
-import { createSlackRuntime } from "@/chat/app/factory";
-import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
-import type { CredentialSubject } from "@/chat/credentials/context";
-import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
-import { vi } from "vitest";
 
 export const agentDispatchTestDestination = {
   platform: "slack",
