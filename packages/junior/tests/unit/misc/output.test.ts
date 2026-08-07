@@ -51,6 +51,16 @@ describe("normalizeSlackReplyMarkdown", () => {
     );
   });
 
+  it("preserves mailto and bare-email angle tokens while wrapping nearby bare URLs", () => {
+    expect(
+      normalizeSlackReplyMarkdown(
+        "**vitest-evals@0.16.1** / <mailto:vitest-evals@0.16.1|vitest-evals@0.16.1> / <team@example.com> see https://example.com/a",
+      ),
+    ).toBe(
+      "**vitest-evals@0.16.1** / <mailto:vitest-evals@0.16.1|vitest-evals@0.16.1> / <team@example.com> see <https://example.com/a>",
+    );
+  });
+
   it("preserves URL inside inline code", () => {
     expect(normalizeSlackReplyMarkdown("`https://example.com/*`")).toBe(
       "`https://example.com/*`",

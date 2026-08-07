@@ -49,6 +49,28 @@ describe("transcript markdown links", () => {
     ]);
   });
 
+  it("renders bare-email CommonMark autolinks that stringifyMarkdown emits", () => {
+    // mdast emits mailto links whose label matches the address as <user@host>,
+    // not <mailto:user@host>. Package-ish emails still round-trip this way.
+    const text =
+      "Ping <team@example.com> or <vitest-evals@0.16.1> after the release.";
+
+    expect(findTranscriptMarkdownLinks(text)).toEqual([
+      {
+        end: 23,
+        href: "mailto:team@example.com",
+        label: "team@example.com",
+        start: 5,
+      },
+      {
+        end: 48,
+        href: "mailto:vitest-evals@0.16.1",
+        label: "vitest-evals@0.16.1",
+        start: 27,
+      },
+    ]);
+  });
+
   it("does not let malformed nested labels swallow later valid links", () => {
     const text = "See [broken [real](https://nested.example/ok).";
 

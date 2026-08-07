@@ -66,7 +66,13 @@ function readExistingSlackAngleToken(
   }
 
   const body = line.slice(start + 1, close);
-  if (/^(?:https?:\/\/|@|#|!)/.test(body)) {
+  // Slack angle tokens: URLs, mailto links (with optional |label), mentions,
+  // channels, and special commands. Also accept CommonMark bare-email
+  // autolinks (`<user@host>`) so outbound wrapping does not split them.
+  if (/^(?:https?:\/\/|mailto:|@|#|!)/i.test(body)) {
+    return { text: line.slice(start, close + 1), end: close + 1 };
+  }
+  if (/^[^<>|\s]+@[^<>|\s]+$/.test(body)) {
     return { text: line.slice(start, close + 1), end: close + 1 };
   }
 

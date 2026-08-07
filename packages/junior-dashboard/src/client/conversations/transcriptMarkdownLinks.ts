@@ -157,23 +157,49 @@ function findCommonMarkAutolinks(
   ignoredRanges: TextRange[],
 ): TranscriptMarkdownLink[] {
   const links: TranscriptMarkdownLink[] = [];
-  const pattern = /<(https?:\/\/[^<>\s]+|mailto:[^<>\s]+)>/gi;
+  // CommonMark autolinks are either URI (`<https://…>`, `<mailto:…>`) or bare
+  // email address form (`<user@host>`). mdast/stringifyMarkdown emits the bare
+  // email form for mailto links whose label matches the address.
+  const pattern =
+    /<(https?:\/\/[^<>\s]+|mailto:[^<>\s]+|[^<>\s@]+@[^<>\s@]+)>/gi;
   let match: RegExpExecArray | null;
 
   while ((match = pattern.exec(text))) {
     if (isInRange(match.index, ignoredRanges) || isEscaped(text, match.index)) {
       continue;
     }
-    const href = safeLinkHref(match[1] ?? "");
+    const raw = match[1] ?? "";
+    const href = safeAutolinkHref(raw);
     if (!href) continue;
     links.push({
       end: match.index + match[0].length,
       href,
-      label: href,
+      label: autolinkLabel(raw, href),
       start: match.index,
     });
   }
   return links;
+}
+
+function safeAutolinkHref(raw: string): string | undefined {
+  if (raw.startsWith("http://") || raw.startsWith("https://")) {
+    return safeLinkHref(raw);
+  }
+  if (raw.toLowerCase().startsWith("mailto:")) {
+    return safeLinkHref(raw);
+  }
+  // Bare email autolink: <user@host>
+  return safeLinkHref(`mailto:${raw}`);
+}
+
+function autolinkLabel(raw: string, href: string): string {
+  if (raw.toLowerCase().startsWith("mailto:")) {
+    return href;
+  }
+  if (href.toLowerCase().startsWith("mailto:") && !raw.includes(":")) {
+    return raw;
+  }
+  return href;
 }
 
 function findNextBareLink(
