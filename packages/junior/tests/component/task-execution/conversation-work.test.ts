@@ -1225,6 +1225,7 @@ describe("conversation work execution", () => {
     const state = await getConversationWorkState({
       conversationId: CONVERSATION_ID,
     });
+    expect(state?.execution.lastProgressAtMs).toBeUndefined();
     expect(state?.messages).toEqual([]);
     expect(state?.execution.inboundMessageIds).toEqual(["m1"]);
     expect(state?.execution.status).toBe("failed");

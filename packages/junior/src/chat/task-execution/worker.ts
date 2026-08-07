@@ -376,6 +376,7 @@ async function processConversationWorkInContext(
   let attemptMessageIds: string[] = [];
   let attemptSelectedMessageIds = new Set<string>();
   let attemptStartMessageIds = new Set<string>();
+  let failedWithoutProgress = false;
   let leaseLost = false;
   const markLeaseLost = (): void => {
     leaseLost = true;
@@ -657,6 +658,7 @@ async function processConversationWorkInContext(
           return { status: "lost_lease" };
         }
         if (failure.status === "recorded") {
+          failedWithoutProgress = true;
           break;
         }
       }
@@ -679,6 +681,7 @@ async function processConversationWorkInContext(
     const completion = await completeConversationWork({
       conversationId,
       leaseToken: lease.leaseToken,
+      madeProgress: !failedWithoutProgress,
       conversationStore: options.conversationStore,
       nowMs: now(options),
       state: options.state,

@@ -458,6 +458,7 @@ export async function releaseConversationWork(args: {
 export async function completeConversationWork(args: {
   conversationId: string;
   leaseToken: string;
+  madeProgress?: boolean;
   conversationStore?: ConversationStore;
   nowMs?: number;
   state?: StateAdapter;

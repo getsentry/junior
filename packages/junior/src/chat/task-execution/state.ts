@@ -1754,6 +1754,7 @@ export async function recordConversationRetry(args: {
 export async function completeConversationWork(args: {
   conversationId: string;
   leaseToken: string;
+  madeProgress?: boolean;
   nowMs?: number;
   state?: StateAdapter;
 }): Promise<"completed" | "lost_lease" | "pending"> {
@@ -1779,8 +1780,14 @@ export async function completeConversationWork(args: {
             : hasPending
               ? "pending"
               : "idle",
-          lastProgressAtMs: nowMs,
-          retryCount: runnable ? current.execution.retryCount : 0,
+          lastProgressAtMs:
+            args.madeProgress === false
+              ? current.execution.lastProgressAtMs
+              : nowMs,
+          retryCount:
+            runnable || args.madeProgress === false
+              ? current.execution.retryCount
+              : 0,
           runId: runnable ? current.execution.runId : undefined,
         },
         nowMs,
