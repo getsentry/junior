@@ -158,9 +158,11 @@ describe("persistAuthPauseSessionRecord", () => {
       resumedFromSliceId: 1,
       resumeReason: "auth",
       errorMessage: "plugin auth pause",
-      source: SLACK_SOURCE,
       piMessages: [priorMessages[0]],
     });
+    // Nested routing stays off redis; SQL dual-write is the authority.
+    expect(sessionRecord).not.toHaveProperty("source");
+    expect(sessionRecord).not.toHaveProperty("destination");
   });
 
   it("records Slack turn activity without replacing confirmed visibility", async () => {
