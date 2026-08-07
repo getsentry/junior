@@ -60,7 +60,7 @@ export const CONVERSATION_WORK_LEASE_TTL_MS = 90_000;
 export const CONVERSATION_WORK_CHECK_IN_INTERVAL_MS = 15_000;
 export const CONVERSATION_WORK_STALE_ENQUEUE_MS = 60_000;
 export const CONVERSATION_WORK_MAX_DELIVERY_ATTEMPTS = 5;
-export const CONVERSATION_WORK_MAX_NO_PROGRESS_ATTEMPTS = 5;
+export const CONVERSATION_WORK_MAX_RETRIES = 5;
 
 const inboundMessageSourceSchema = z.enum([
   "api",
@@ -132,7 +132,7 @@ export interface ConversationExecution {
   lastCheckpointAtMs?: number;
   lastEnqueuedAtMs?: number;
   lastProgressAtMs?: number;
-  noProgressAttemptCount?: number;
+  retryCount?: number;
   lease?: Lease;
   pendingCount: number;
   pendingMessages: InboundMessage[];
@@ -438,7 +438,7 @@ function normalizeExecution(
     lastCheckpointAtMs: toOptionalNumber(value.lastCheckpointAtMs),
     lastEnqueuedAtMs: toOptionalNumber(value.lastEnqueuedAtMs),
     lastProgressAtMs: toOptionalNumber(value.lastProgressAtMs),
-    noProgressAttemptCount: toOptionalNumber(value.noProgressAttemptCount),
+    retryCount: toOptionalNumber(value.retryCount),
     runId: toOptionalString(value.runId),
     updatedAtMs: toOptionalNumber(value.updatedAtMs),
   };
@@ -1145,7 +1145,7 @@ export async function appendInboundMessage(args: {
             ...current.execution,
             status,
             lastProgressAtMs: nowMs,
-            noProgressAttemptCount: 0,
+            retryCount: 0,
             inboundMessageIds: [
               ...current.execution.inboundMessageIds,
               args.message.inboundMessageId,
@@ -1601,7 +1601,7 @@ export async function ackMessages(args: {
         {
           ...current.execution,
           lastProgressAtMs: nowMs,
-          noProgressAttemptCount: 0,
+          retryCount: 0,
           pendingMessages,
         },
         nowMs,
@@ -1712,8 +1712,8 @@ export async function releaseConversationWork(args: {
   });
 }
 
-/** Record a recovery attempt that made no durable progress and stop exhausted work. */
-export async function recordConversationNoProgress(args: {
+/** Count one failed execution attempt and stop the conversation when retries are exhausted. */
+export async function recordConversationRetry(args: {
   conversationId: string;
   leaseToken: string;
   nowMs?: number;
@@ -1725,8 +1725,8 @@ export async function recordConversationNoProgress(args: {
     if (!current || current.execution.lease?.token !== args.leaseToken) {
       return "lost_lease";
     }
-    const count = (current.execution.noProgressAttemptCount ?? 0) + 1;
-    const stopped = count >= CONVERSATION_WORK_MAX_NO_PROGRESS_ATTEMPTS;
+    const count = (current.execution.retryCount ?? 0) + 1;
+    const stopped = count >= CONVERSATION_WORK_MAX_RETRIES;
     await writeConversation(
       state,
       lock,
@@ -1736,7 +1736,7 @@ export async function recordConversationNoProgress(args: {
           ...current.execution,
           lastEnqueuedAtMs: undefined,
           lease: stopped ? undefined : current.execution.lease,
-          noProgressAttemptCount: count,
+          retryCount: count,
           pendingMessages: stopped ? [] : current.execution.pendingMessages,
           runId: stopped ? undefined : current.execution.runId,
           status: stopped ? "failed" : "awaiting_resume",
@@ -1778,7 +1778,7 @@ export async function completeConversationWork(args: {
               ? "pending"
               : "idle",
           lastProgressAtMs: nowMs,
-          noProgressAttemptCount: 0,
+          retryCount: 0,
           runId: runnable ? current.execution.runId : undefined,
         },
         nowMs,
@@ -1788,19 +1788,20 @@ export async function completeConversationWork(args: {
   });
 }
 
-/** Failure outcome: `lost_lease` (another owner took over), `recorded` (attempt counted), or `skipped` (durable progress was made). */
+/** Failure outcome: `lost_lease` (another owner took over), `recorded` (retry counted), or `skipped` (durable progress was made). */
 export interface AttemptFailure {
   pendingCount: number;
   deadLetteredMessages: InboundMessage[];
+  retryCount: number;
   status: "lost_lease" | "recorded" | "skipped";
 }
 
 /**
- * Record one failed delivery attempt for the pending messages a run attempted,
- * dead-lettering messages that reach the retry limit so a deterministic
- * failure cannot requeue forever.
+ * Record one failed execution attempt for pending messages, dead-lettering
+ * the conversation when its retry budget or the legacy message delivery limit
+ * is exhausted.
  *
- * Attempts are counted only when the run made no durable progress: if any
+ * Retries are counted only when the run made no durable progress: if any
  * attempted message left the mailbox, the remaining pending entries may be
  * deliberate deferrals and are left untouched. Consumed message ids stay in
  * `inboundMessageIds` so source retries remain duplicates.
@@ -1820,6 +1821,7 @@ export async function recordAttemptFailure(args: {
         status: "lost_lease",
         pendingCount: 0,
         deadLetteredMessages: [],
+        retryCount: 0,
       };
     }
     const pendingIds = new Set(
@@ -1835,22 +1837,32 @@ export async function recordAttemptFailure(args: {
         status: "skipped",
         pendingCount: current.execution.pendingMessages.length,
         deadLetteredMessages: [],
+        retryCount: current.execution.retryCount ?? 0,
       };
     }
 
+    const retryCount = (current.execution.retryCount ?? 0) + 1;
+    const retriesExhausted = retryCount >= CONVERSATION_WORK_MAX_RETRIES;
     const attemptedIds = new Set(args.inboundMessageIds);
     const deadLetteredMessages: InboundMessage[] = [];
     const pendingMessages: InboundMessage[] = [];
     for (const message of current.execution.pendingMessages) {
       if (!attemptedIds.has(message.inboundMessageId)) {
-        pendingMessages.push(message);
+        if (retriesExhausted) {
+          deadLetteredMessages.push(message);
+        } else {
+          pendingMessages.push(message);
+        }
         continue;
       }
       const attempted = {
         ...message,
         attemptCount: (message.attemptCount ?? 0) + 1,
       };
-      if (attempted.attemptCount >= CONVERSATION_WORK_MAX_DELIVERY_ATTEMPTS) {
+      if (
+        retriesExhausted ||
+        attempted.attemptCount >= CONVERSATION_WORK_MAX_DELIVERY_ATTEMPTS
+      ) {
         deadLetteredMessages.push(attempted);
         continue;
       }
@@ -1863,6 +1875,7 @@ export async function recordAttemptFailure(args: {
         current,
         {
           ...current.execution,
+          retryCount,
           pendingMessages,
         },
         nowMs,
@@ -1872,6 +1885,7 @@ export async function recordAttemptFailure(args: {
       status: "recorded",
       pendingCount: pendingMessages.length,
       deadLetteredMessages,
+      retryCount,
     };
   });
 }

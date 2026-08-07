@@ -1303,7 +1303,7 @@ describe("conversation work execution", () => {
     ]);
   });
 
-  it("stops recovery after repeated lost-lease runs without progress", async () => {
+  it("stops conversation work after repeated lost-lease retries", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     let currentNowMs = 1_000;
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
@@ -1323,7 +1323,7 @@ describe("conversation work execution", () => {
       conversationId: CONVERSATION_ID,
     });
     expect(state?.execution.status).toBe("failed");
-    expect(state?.execution.noProgressAttemptCount).toBe(5);
+    expect(state?.execution.retryCount).toBe(5);
     expect(state?.lease).toBeUndefined();
     expect(state?.needsRun).toBe(false);
     expect(state ? countPendingConversationMessages(state) : 0).toBe(0);

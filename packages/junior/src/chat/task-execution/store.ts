@@ -9,7 +9,7 @@ export {
   CONVERSATION_WORK_CHECK_IN_INTERVAL_MS,
   CONVERSATION_WORK_LEASE_TTL_MS,
   CONVERSATION_WORK_MAX_DELIVERY_ATTEMPTS,
-  CONVERSATION_WORK_MAX_NO_PROGRESS_ATTEMPTS,
+  CONVERSATION_WORK_MAX_RETRIES,
   CONVERSATION_WORK_STALE_ENQUEUE_MS,
   isFinalAttempt,
   isInvalidConversationRecordError,
@@ -128,15 +128,15 @@ export async function getConversationWorkState(args: {
   return await workState.getConversationWorkState(args);
 }
 
-/** Persist one run with no durable progress for the conversation circuit breaker. */
-export async function recordConversationNoProgress(args: {
+/** Count one failed conversation execution and persist its terminal retry state. */
+export async function recordConversationRetry(args: {
   conversationId: string;
   conversationStore?: ConversationStore;
   leaseToken: string;
   nowMs?: number;
   state?: StateAdapter;
 }) {
-  const result = await workState.recordConversationNoProgress(args);
+  const result = await workState.recordConversationRetry(args);
   await recordExecutionMetadata(args);
   return result;
 }

@@ -24,7 +24,7 @@ import {
   isFinalAttempt,
   isInvalidConversationRecordError,
   recordAttemptFailure,
-  recordConversationNoProgress,
+  recordConversationRetry,
   releaseConversationWork,
   requestConversationContinuation,
   startConversationWork,
@@ -132,26 +132,26 @@ async function requestLostLeaseRecovery(args: {
     conversationId: args.conversationId,
     state: args.options.state,
   });
-  const noProgress = await recordConversationNoProgress({
+  const retry = await recordConversationRetry({
     conversationId: args.conversationId,
     leaseToken: args.leaseToken,
     conversationStore: args.options.conversationStore,
     nowMs: args.nowMs,
     state: args.options.state,
   });
-  if (noProgress === "lost_lease") {
+  if (retry === "lost_lease") {
     return;
   }
-  if (noProgress === "stopped") {
+  if (retry === "stopped") {
     logException(
-      new Error("Conversation work stopped after repeated runs without progress"),
-      "conversation.work.no_progress.exhausted",
+      new Error("Conversation work stopped after repeated failed attempts"),
+      "conversation.work.retry.exhausted",
       {
         "app.run.id": before?.execution.runId ?? "unknown",
         "app.worker.last_progress_at_ms":
           before?.execution.lastProgressAtMs ?? before?.createdAtMs ?? 0,
-        "app.worker.no_progress_attempt_count":
-          (before?.execution.noProgressAttemptCount ?? 0) + 1,
+        "app.worker.retry_count":
+          (before?.execution.retryCount ?? 0) + 1,
       },
     );
     return;
@@ -713,22 +713,22 @@ async function processConversationWorkInContext(
           state: options.state,
         });
       } else {
-        const noProgress = failure
-          ? "recorded"
-          : await recordConversationNoProgress({
+        const retry = failure
+          ? failure.status
+          : await recordConversationRetry({
               conversationId,
               leaseToken: lease.leaseToken,
               conversationStore: options.conversationStore,
               nowMs: errorNowMs,
               state: options.state,
             });
-        if (noProgress === "stopped") {
-          logException(error, "conversation.work.no_progress.exhausted", {
+        if (retry === "stopped") {
+          logException(error, "conversation.work.retry.exhausted", {
             "app.run.id": initial.execution.runId ?? "unknown",
             "app.worker.last_progress_at_ms":
               initial.execution.lastProgressAtMs ?? initial.createdAtMs,
-            "app.worker.no_progress_attempt_count":
-              (initial.execution.noProgressAttemptCount ?? 0) + 1,
+            "app.worker.retry_count":
+              failure?.retryCount ?? (initial.execution.retryCount ?? 0) + 1,
           });
           recoveryRecorded = true;
           return { status: "failed" };
