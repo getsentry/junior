@@ -315,7 +315,7 @@ describe("persistAuthPauseSessionRecord", () => {
     );
   });
 
-  it("still materializes nested destination/source from legacy redis records", async () => {
+  it("strips deprecated fields from legacy redis records", async () => {
     const { getStateAdapter } = await import("@/chat/state/adapter");
     const { getAgentTurnSessionRecord } = await import("@/chat/state/turn-session");
     const { agentTurnSessionKey } = await import("@/chat/state/turn-session-keys");
@@ -338,18 +338,17 @@ describe("persistAuthPauseSessionRecord", () => {
         cumulativeDurationMs: 0,
         destination: SLACK_DESTINATION,
         source: SLACK_SOURCE,
+        deprecatedFlag: true,
         resumeReason: "timeout",
       },
       60_000,
     );
 
-    await expect(
-      getAgentTurnSessionRecord(conversationId, sessionId),
-    ).resolves.toMatchObject({
-      destination: SLACK_DESTINATION,
-      source: SLACK_SOURCE,
-      state: "awaiting_resume",
-    });
+    const record = await getAgentTurnSessionRecord(conversationId, sessionId);
+    expect(record).toMatchObject({ state: "awaiting_resume" });
+    expect(record).not.toHaveProperty("destination");
+    expect(record).not.toHaveProperty("source");
+    expect(record).not.toHaveProperty("deprecatedFlag");
   });
 
   it("fails before storing a turn-session record when SQL metadata fails", async () => {
@@ -419,7 +418,7 @@ describe("persistAuthPauseSessionRecord", () => {
     );
   });
 
-  it("skips summaries that were not normalized by upgrade", async () => {
+  it("strips unknown fields from legacy summaries", async () => {
     const { getStateAdapter } = await import("@/chat/state/adapter");
     const { listBoundedAgentTurnSessionSummariesForConversation } =
       await import("@/chat/state/turn-session");
@@ -456,9 +455,15 @@ describe("persistAuthPauseSessionRecord", () => {
       { ttlMs: 60_000 },
     );
 
-    await expect(
-      listBoundedAgentTurnSessionSummariesForConversation(conversationId),
-    ).resolves.toEqual([]);
+    const summaries =
+      await listBoundedAgentTurnSessionSummariesForConversation(conversationId);
+    expect(summaries).toHaveLength(1);
+    expect(summaries[0]).toMatchObject({
+      conversationId,
+      sessionId: "turn-legacy-summary",
+      state: "awaiting_resume",
+    });
+    expect(summaries[0]).not.toHaveProperty("requester");
   });
 
   it("materializes auth completion events appended after the pause record", async () => {

@@ -10,8 +10,6 @@
 import { THREAD_STATE_TTL_MS, type StateAdapter } from "chat";
 import {
   actorSchema,
-  destinationSchema,
-  sourceSchema,
   type Destination,
   type Source,
 } from "@sentry/junior-plugin-api";
@@ -78,12 +76,10 @@ export interface AgentTurnSessionRecord {
   conversationId: string;
   cumulativeDurationMs: number;
   cumulativeUsage?: AgentTurnUsage;
-  destination?: Destination;
   dispatchId?: string;
   dispatchOutcome?: AgentDispatchOutcome;
   /** Provider-owned identifier returned after visible delivery is accepted. */
   resultMessageId?: string;
-  source?: Source;
   errorMessage?: string;
   lastProgressAtMs: number;
   loadedSkillNames?: string[];
@@ -167,26 +163,21 @@ const agentTurnResumeReasonSchema = z.enum([
 
 const nonNegativeNumberSchema = z.number().finite().nonnegative();
 const seqCursorSchema = z.number().int().min(-1);
-const agentTurnSessionSummarySchema = z
+const redisAgentTurnSessionSummarySchema = z
   .object({
     channelName: z.string().min(1).optional(),
     version: z.number().int().nonnegative(),
     conversationId: z.string().min(1),
     cumulativeDurationMs: nonNegativeNumberSchema,
     cumulativeUsage: agentTurnUsageSchema.optional(),
-    // TODO(#1267): Drop destination/source from the parse schema after old
-    // dual-written records are gone. Writers no longer store them in Redis;
-    // SQL owns routing via resolveTurnSessionRouting.
-    destination: destinationSchema.optional(),
     dispatchId: z.string().min(1).optional(),
     dispatchOutcome: z.enum(["blocked", "completed", "failed"]).optional(),
     resultMessageId: z.string().min(1).optional(),
-    source: sourceSchema.optional(),
     lastProgressAtMs: nonNegativeNumberSchema,
     loadedSkillNames: z.array(z.string()).optional(),
     modelId: z.string().min(1).optional(),
     reasoningLevel: z.string().min(1).optional(),
-    // TODO(#1267): Stop writing actor once resume rebuilds it without Redis.
+    // TODO(#1267): Remove actor from this projection once resume rebuilds it.
     actor: actorSchema.optional(),
     resumeReason: agentTurnResumeReasonSchema.optional(),
     resumedFromSliceId: z.number().int().nonnegative().optional(),
@@ -198,22 +189,10 @@ const agentTurnSessionSummarySchema = z
     traceId: z.string().optional(),
     updatedAtMs: nonNegativeNumberSchema,
   })
-  .strict() satisfies z.ZodType<AgentTurnSessionSummary>;
+  .strip() satisfies z.ZodType<AgentTurnSessionSummary>;
 
-/**
- * Nested destination/source stay off Redis turn-session payloads. Callers still
- * pass them so SQL conversation metadata dual-writes keep working; resume
- * reads routing from SQL via resolveTurnSessionRouting.
- */
-function omitNestedRoutingFields<
-  T extends { destination?: Destination; source?: Source },
->(value: T): Omit<T, "destination" | "source"> {
-  const { destination: _destination, source: _source, ...rest } = value;
-  return rest;
-}
-
-const storedAgentTurnSessionRecordSchema = agentTurnSessionSummarySchema
-  .extend({
+const redisAgentTurnSessionRecordSchema =
+  redisAgentTurnSessionSummarySchema.extend({
     actors: z.array(actorSchema).optional(),
     committedSeq: seqCursorSchema,
     historyVersion: z.number().int().nonnegative().optional(),
@@ -221,7 +200,7 @@ const storedAgentTurnSessionRecordSchema = agentTurnSessionSummarySchema
     turnStartSeq: seqCursorSchema.optional(),
     runtimeContext: z.array(piMessageSchema).optional(),
   })
-  .strict() satisfies z.ZodType<StoredAgentTurnSessionRecord>;
+  .strip() satisfies z.ZodType<StoredAgentTurnSessionRecord>;
 
 function conversationExecutionFromSummary(
   summary: AgentTurnSessionSummary,
@@ -246,26 +225,27 @@ function sessionLogActor(
 function parseAgentTurnSessionRecord(
   value: unknown,
 ): StoredAgentTurnSessionRecord {
-  return storedAgentTurnSessionRecordSchema.parse(value);
+  return redisAgentTurnSessionRecordSchema.parse(value);
 }
 
 function parseAgentTurnSessionSummary(value: unknown): AgentTurnSessionSummary {
-  return agentTurnSessionSummarySchema.parse(value);
+  return redisAgentTurnSessionSummarySchema.parse(value);
 }
 
 async function appendAgentTurnSessionSummary(
   summary: AgentTurnSessionSummary,
   ttlMs: number,
 ): Promise<void> {
+  const redisSummary = redisAgentTurnSessionSummarySchema.parse(summary);
   const stateAdapter = getStateAdapter();
   await Promise.all([
-    stateAdapter.appendToList(AGENT_TURN_SESSION_INDEX_KEY, summary, {
+    stateAdapter.appendToList(AGENT_TURN_SESSION_INDEX_KEY, redisSummary, {
       maxLength: AGENT_TURN_SESSION_INDEX_MAX_LENGTH,
       ttlMs,
     }),
     stateAdapter.appendToList(
-      agentTurnSessionConversationIndexKey(summary.conversationId),
-      summary,
+      agentTurnSessionConversationIndexKey(redisSummary.conversationId),
+      redisSummary,
       { ttlMs },
     ),
   ]);
@@ -350,7 +330,6 @@ function materializeAgentTurnSessionRecord(
     piMessageProvenance: restoredProjection.provenance,
     actors: stored.actors ?? instructionActors(piProjection.provenance),
     cumulativeDurationMs: stored.cumulativeDurationMs,
-    ...(stored.destination ? { destination: stored.destination } : {}),
     ...(stored.dispatchId ? { dispatchId: stored.dispatchId } : {}),
     ...(stored.dispatchOutcome
       ? { dispatchOutcome: stored.dispatchOutcome }
@@ -358,7 +337,6 @@ function materializeAgentTurnSessionRecord(
     ...(stored.resultMessageId
       ? { resultMessageId: stored.resultMessageId }
       : {}),
-    ...(stored.source ? { source: stored.source } : {}),
     ...(stored.cumulativeUsage
       ? { cumulativeUsage: stored.cumulativeUsage }
       : {}),
@@ -607,8 +585,7 @@ async function setStoredRecord(args: {
   const stateAdapter = getStateAdapter();
   await stateAdapter.connect();
 
-  // Never dual-write nested destination/source into Redis; SQL owns routing.
-  const redisRecord = omitNestedRoutingFields(args.record);
+  const redisRecord = redisAgentTurnSessionRecordSchema.parse(args.record);
   await recordConversationActivityMetadata({
     conversationStore: args.conversationStore,
     destination: args.destination,
@@ -663,10 +640,6 @@ async function updateAgentTurnSessionState(args: {
     piMessages: args.existing.piMessages,
     piMessageProvenance: args.existing.piMessageProvenance,
     ttlMs: AGENT_TURN_SESSION_TTL_MS,
-    ...(args.existing.destination
-      ? { destination: args.existing.destination }
-      : {}),
-    ...(args.existing.source ? { sessionSource: args.existing.source } : {}),
     ...(args.existing.turnStartMessageIndex !== undefined
       ? { turnStartMessageIndex: args.existing.turnStartMessageIndex }
       : {}),
@@ -830,13 +803,11 @@ export async function upsertAgentTurnSessionRecord(args: {
       ? undefined
       : commit.messageSeqs.filter((seq) => seq <= turnStartSeq).length);
 
-  const destination = args.destination ?? existingRecord?.destination;
-  const sessionSource = args.source ?? existingRecord?.source;
   return await setStoredRecord({
     conversationStore: args.conversationStore,
-    ...(destination ? { destination } : {}),
+    ...(args.destination ? { destination: args.destination } : {}),
     destinationVisibility: args.destinationVisibility,
-    ...(sessionSource ? { sessionSource } : {}),
+    ...(args.source ? { sessionSource: args.source } : {}),
     piMessages: commit.messages,
     piMessageProvenance: commit.provenance,
     ttlMs,
@@ -967,8 +938,6 @@ export async function recordAgentTurnSessionSummary(args: {
   }
   const nowMs = Date.now();
   const ttlMs = Math.max(1, args.ttlMs ?? AGENT_TURN_SESSION_TTL_MS);
-  const destination = args.destination ?? existing?.destination;
-  const sessionSource = args.source ?? existing?.source;
   const summary: AgentTurnSessionSummary = {
     version: existing?.version ?? 0,
     ...((args.channelName ?? existing?.channelName)
@@ -1019,10 +988,10 @@ export async function recordAgentTurnSessionSummary(args: {
   };
   await recordConversationActivityMetadata({
     conversationStore: args.conversationStore,
-    ...(destination ? { destination } : {}),
+    ...(args.destination ? { destination: args.destination } : {}),
     destinationVisibility: args.destinationVisibility,
     nowMs,
-    ...(sessionSource ? { sessionSource } : {}),
+    ...(args.source ? { sessionSource: args.source } : {}),
     summary,
   });
   await appendAgentTurnSessionSummary(summary, ttlMs);

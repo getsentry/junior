@@ -134,16 +134,12 @@ export async function persistRunningSessionRecord(args: {
       conversationId: args.conversationId,
       cumulativeDurationMs: latestSessionRecord?.cumulativeDurationMs,
       cumulativeUsage: latestSessionRecord?.cumulativeUsage,
-      ...((args.destination ?? latestSessionRecord?.destination)
-        ? { destination: args.destination ?? latestSessionRecord?.destination }
-        : {}),
+      ...(args.destination ? { destination: args.destination } : {}),
       destinationVisibility: args.destinationVisibility,
       ...((args.dispatchId ?? latestSessionRecord?.dispatchId)
         ? { dispatchId: args.dispatchId ?? latestSessionRecord?.dispatchId }
         : {}),
-      ...((args.source ?? latestSessionRecord?.source)
-        ? { source: args.source ?? latestSessionRecord?.source }
-        : {}),
+      ...(args.source ? { source: args.source } : {}),
       sessionId: args.sessionId,
       sliceId: args.sliceId,
       state: "running",
@@ -254,9 +250,7 @@ export async function persistCompletedSessionRecord(args: {
       latestSessionRecord?.cumulativeUsage,
       args.currentUsage,
     ),
-    ...((args.destination ?? latestSessionRecord?.destination)
-      ? { destination: args.destination ?? latestSessionRecord?.destination }
-      : {}),
+    ...(args.destination ? { destination: args.destination } : {}),
     ...((args.dispatchId ?? latestSessionRecord?.dispatchId)
       ? { dispatchId: args.dispatchId ?? latestSessionRecord?.dispatchId }
       : {}),
@@ -273,9 +267,7 @@ export async function persistCompletedSessionRecord(args: {
             args.resultMessageId ?? latestSessionRecord?.resultMessageId,
         }
       : {}),
-    ...((args.source ?? latestSessionRecord?.source)
-      ? { source: args.source ?? latestSessionRecord?.source }
-      : {}),
+    ...(args.source ? { source: args.source } : {}),
     ...(args.destinationVisibility
       ? { destinationVisibility: args.destinationVisibility }
       : {}),
@@ -410,16 +402,12 @@ export async function persistAuthPauseSessionRecord(args: {
         latestSessionRecord?.cumulativeUsage,
         args.currentUsage,
       ),
-      ...((args.destination ?? latestSessionRecord?.destination)
-        ? { destination: args.destination ?? latestSessionRecord?.destination }
-        : {}),
+      ...(args.destination ? { destination: args.destination } : {}),
       destinationVisibility: args.destinationVisibility,
       ...((args.dispatchId ?? latestSessionRecord?.dispatchId)
         ? { dispatchId: args.dispatchId ?? latestSessionRecord?.dispatchId }
         : {}),
-      ...((args.source ?? latestSessionRecord?.source)
-        ? { source: args.source ?? latestSessionRecord?.source }
-        : {}),
+      ...(args.source ? { source: args.source } : {}),
       sessionId: args.sessionId,
       sliceId: nextSliceId,
       state: "awaiting_resume",
@@ -519,18 +507,12 @@ export async function persistContinuationSessionRecord(
         conversationId: args.conversationId,
         cumulativeDurationMs,
         cumulativeUsage,
-        ...((args.destination ?? latestSessionRecord?.destination)
-          ? {
-              destination: args.destination ?? latestSessionRecord?.destination,
-            }
-          : {}),
+        ...(args.destination ? { destination: args.destination } : {}),
         destinationVisibility: args.destinationVisibility,
         ...((args.dispatchId ?? latestSessionRecord?.dispatchId)
           ? { dispatchId: args.dispatchId ?? latestSessionRecord?.dispatchId }
           : {}),
-        ...((args.source ?? latestSessionRecord?.source)
-          ? { source: args.source ?? latestSessionRecord?.source }
-          : {}),
+        ...(args.source ? { source: args.source } : {}),
         sessionId: args.sessionId,
         sliceId: args.currentSliceId,
         state: "failed",
@@ -568,16 +550,12 @@ export async function persistContinuationSessionRecord(
       conversationId: args.conversationId,
       cumulativeDurationMs,
       cumulativeUsage,
-      ...((args.destination ?? latestSessionRecord?.destination)
-        ? { destination: args.destination ?? latestSessionRecord?.destination }
-        : {}),
+      ...(args.destination ? { destination: args.destination } : {}),
       destinationVisibility: args.destinationVisibility,
       ...((args.dispatchId ?? latestSessionRecord?.dispatchId)
         ? { dispatchId: args.dispatchId ?? latestSessionRecord?.dispatchId }
         : {}),
-      ...((args.source ?? latestSessionRecord?.source)
-        ? { source: args.source ?? latestSessionRecord?.source }
-        : {}),
+      ...(args.source ? { source: args.source } : {}),
       sessionId: args.sessionId,
       sliceId: nextSliceId,
       state: "awaiting_resume",
@@ -664,15 +642,11 @@ export async function persistYieldSessionRecord(args: {
         latestSessionRecord?.cumulativeUsage,
         args.currentUsage,
       ),
-      ...((args.destination ?? latestSessionRecord?.destination)
-        ? { destination: args.destination ?? latestSessionRecord?.destination }
-        : {}),
+      ...(args.destination ? { destination: args.destination } : {}),
       ...((args.dispatchId ?? latestSessionRecord?.dispatchId)
         ? { dispatchId: args.dispatchId ?? latestSessionRecord?.dispatchId }
         : {}),
-      ...((args.source ?? latestSessionRecord?.source)
-        ? { source: args.source ?? latestSessionRecord?.source }
-        : {}),
+      ...(args.source ? { source: args.source } : {}),
       sessionId: args.sessionId,
       sliceId: args.currentSliceId,
       state: "awaiting_resume",
