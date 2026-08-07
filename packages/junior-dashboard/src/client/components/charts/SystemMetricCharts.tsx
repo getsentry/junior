@@ -89,7 +89,7 @@ function MetricChart(props: {
   const { chart, days } = props;
   const width = 400;
   const height = 250;
-  const left = 48;
+  const left = 64;
   const right = 14;
   const top = 22;
   const bottom = 34;

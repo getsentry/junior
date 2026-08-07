@@ -39,7 +39,7 @@ export function MemoryCostChart(props: {
   );
   const width = 720;
   const height = 200;
-  const left = 48;
+  const left = 64;
   const right = 12;
   const top = 14;
   const bottom = 34;

@@ -26,7 +26,7 @@ export function PluginBarChart(props: {
   const seriesFormat = commonSeriesFormat(widget);
   const width = 520;
   const height = 250;
-  const left = seriesFormat === "usd" ? 56 : 42;
+  const left = seriesFormat === "usd" ? 72 : 56;
   const top = 16;
   const bottom = 36;
   const plotHeight = height - top - bottom;

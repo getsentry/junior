@@ -18,7 +18,7 @@ export function TaskExecutionChart(props: { days: TaskExecutionDay[] }) {
   const days = props.days.slice(-range);
   const width = 720;
   const height = 200;
-  const left = 38;
+  const left = 56;
   const right = 12;
   const top = 14;
   const bottom = 34;
