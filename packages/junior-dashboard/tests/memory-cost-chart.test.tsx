@@ -23,7 +23,7 @@ describe("MemoryCostChart", () => {
       />,
     );
 
-    expect(html).toContain("Memory cost");
+    expect(html).toContain("$0.01");
     expect(html).toContain("Extraction $0.005");
     expect(html).toContain("Recall $0.005");
     expect(html).toMatch(

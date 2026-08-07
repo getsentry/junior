@@ -33,10 +33,7 @@ export function MemoryTimeline(props: { days: MemoryDay[] }) {
     <Card className="min-h-[17rem] p-4 sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <div className="font-mono text-xs uppercase tracking-[0.16em] text-cyan-200/65">
-            Memory history
-          </div>
-          <h2 className="mt-1 mb-0 font-display text-xl font-medium text-dashboard-text">
+          <h2 className="m-0 font-display text-xl font-medium text-dashboard-text">
             Activity over time
           </h2>
           <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
