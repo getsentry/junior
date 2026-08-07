@@ -112,12 +112,13 @@ describe("persistAuthPauseSessionRecord", () => {
       runtimeContext: [runtimeContext],
     });
     expect(set.mock.calls.at(-1)?.[2]).toBe(24 * 60 * 60 * 1000);
-    expect(appendToList).toHaveBeenCalledTimes(2);
-    for (const call of appendToList.mock.calls) {
-      // Shared indexes stay on the resume window so terminal writes cannot
-      // expire unfinished sibling summaries.
-      expect(call[2]?.ttlMs).toBe(24 * 60 * 60 * 1000);
-    }
+    expect(appendToList).toHaveBeenCalledTimes(1);
+    expect(appendToList.mock.calls[0]?.[0]).toBe(
+      "junior:agent_turn_session:conversation:local:ttl-split:turn:index",
+    );
+    // Recovery index stays on the resume window so terminal writes cannot
+    // expire unfinished sibling summaries.
+    expect(appendToList.mock.calls[0]?.[2]?.ttlMs).toBe(24 * 60 * 60 * 1000);
 
     set.mockClear();
     appendToList.mockClear();
@@ -131,10 +132,8 @@ describe("persistAuthPauseSessionRecord", () => {
     });
     expect(set.mock.calls.at(-1)?.[1]).not.toHaveProperty("runtimeContext");
     expect(set.mock.calls.at(-1)?.[2]).toBe(60 * 60 * 1000);
-    expect(appendToList).toHaveBeenCalledTimes(2);
-    for (const call of appendToList.mock.calls) {
-      expect(call[2]?.ttlMs).toBe(24 * 60 * 60 * 1000);
-    }
+    expect(appendToList).toHaveBeenCalledTimes(1);
+    expect(appendToList.mock.calls[0]?.[2]?.ttlMs).toBe(24 * 60 * 60 * 1000);
   });
 
   it("keeps dispatch correlation write-once across session summaries", async () => {
@@ -287,10 +286,11 @@ describe("persistAuthPauseSessionRecord", () => {
     const { getStateAdapter } = await import("@/chat/state/adapter");
     const {
       getAgentTurnSessionRecord,
-      listBoundedAgentTurnSessionSummariesForConversation,
+      listAgentTurnSessionSummariesForConversation,
       upsertAgentTurnSessionRecord,
     } = await import("@/chat/state/turn-session");
-    const { agentTurnSessionKey } = await import("@/chat/state/turn-session-keys");
+    const { agentTurnSessionKey } =
+      await import("@/chat/state/turn-session-keys");
     const conversationId = "slack:C123:no-nested-routing";
     const sessionId = "turn-no-nested-routing";
     const conversationStore: ConversationStore = {
@@ -334,7 +334,7 @@ describe("persistAuthPauseSessionRecord", () => {
     expect(stored).not.toHaveProperty("actor");
 
     const summaries =
-      await listBoundedAgentTurnSessionSummariesForConversation(conversationId);
+      await listAgentTurnSessionSummariesForConversation(conversationId);
     expect(summaries).toHaveLength(1);
     expect(summaries[0]).not.toHaveProperty("destination");
     expect(summaries[0]).not.toHaveProperty("source");
@@ -370,8 +370,10 @@ describe("persistAuthPauseSessionRecord", () => {
 
   it("strips deprecated fields from legacy redis records", async () => {
     const { getStateAdapter } = await import("@/chat/state/adapter");
-    const { getAgentTurnSessionRecord } = await import("@/chat/state/turn-session");
-    const { agentTurnSessionKey } = await import("@/chat/state/turn-session-keys");
+    const { getAgentTurnSessionRecord } =
+      await import("@/chat/state/turn-session");
+    const { agentTurnSessionKey } =
+      await import("@/chat/state/turn-session-keys");
     const conversationId = "slack:C123:legacy-nested-routing";
     const sessionId = "turn-legacy-nested-routing";
     const stateAdapter = getStateAdapter();
@@ -461,14 +463,14 @@ describe("persistAuthPauseSessionRecord", () => {
     ).resolves.toEqual([]);
   });
 
-  it("reads the bounded conversation summary index without scanning globally", async () => {
+  it("reads the conversation recovery index only", async () => {
     const { getStateAdapter } = await import("@/chat/state/adapter");
-    const { listBoundedAgentTurnSessionSummariesForConversation } =
+    const { listAgentTurnSessionSummariesForConversation } =
       await import("@/chat/state/turn-session");
     const getList = vi.spyOn(getStateAdapter(), "getList");
 
     await expect(
-      listBoundedAgentTurnSessionSummariesForConversation(
+      listAgentTurnSessionSummariesForConversation(
         "slack:C123:bounded-summary",
       ),
     ).resolves.toEqual([]);
@@ -479,7 +481,7 @@ describe("persistAuthPauseSessionRecord", () => {
 
   it("strips unknown fields from legacy summaries", async () => {
     const { getStateAdapter } = await import("@/chat/state/adapter");
-    const { listBoundedAgentTurnSessionSummariesForConversation } =
+    const { listAgentTurnSessionSummariesForConversation } =
       await import("@/chat/state/turn-session");
     const stateAdapter = getStateAdapter();
     await stateAdapter.connect();
@@ -515,7 +517,7 @@ describe("persistAuthPauseSessionRecord", () => {
     );
 
     const summaries =
-      await listBoundedAgentTurnSessionSummariesForConversation(conversationId);
+      await listAgentTurnSessionSummariesForConversation(conversationId);
     expect(summaries).toHaveLength(1);
     expect(summaries[0]).toMatchObject({
       conversationId,
@@ -581,7 +583,8 @@ describe("persistAuthPauseSessionRecord", () => {
     const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
     const { getStateAdapter } = await import("@/chat/state/adapter");
-    const { agentTurnSessionKey } = await import("@/chat/state/turn-session-keys");
+    const { agentTurnSessionKey } =
+      await import("@/chat/state/turn-session-keys");
     const { getConversationStore } = await import("@/chat/db");
 
     const conversationId = "slack:C123:actor-empty-commit";
@@ -1440,11 +1443,8 @@ describe("persistAuthPauseSessionRecord", () => {
   });
 
   it("updates the active model and reasoning across slices", async () => {
-    const {
-      getAgentTurnSessionRecord,
-      listAgentTurnSessionSummaries,
-      upsertAgentTurnSessionRecord,
-    } = await import("@/chat/state/turn-session");
+    const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
+      await import("@/chat/state/turn-session");
     const conversationId = "conversation-execution-profile";
     const sessionId = "turn-execution-profile";
     const messages = [userMessage("continue")];
@@ -1472,14 +1472,6 @@ describe("persistAuthPauseSessionRecord", () => {
     await expect(
       getAgentTurnSessionRecord(conversationId, sessionId),
     ).resolves.toMatchObject({
-      modelId: "openai/gpt-5.6",
-      reasoningLevel: "low",
-    });
-    expect(
-      (await listAgentTurnSessionSummaries()).find(
-        (summary) => summary.sessionId === sessionId,
-      ),
-    ).toMatchObject({
       modelId: "openai/gpt-5.6",
       reasoningLevel: "low",
     });

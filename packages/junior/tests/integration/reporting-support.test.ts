@@ -28,47 +28,6 @@ describe("reporting support", () => {
     process.env = { ...ORIGINAL_ENV };
   });
 
-  it("indexes only the latest safe turn-session summary", async () => {
-    const { listAgentTurnSessionSummaries, upsertAgentTurnSessionRecord } =
-      await import("@/chat/state/turn-session");
-    const conversationId = "slack:C-reporting-support:summary-index";
-
-    await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
-      conversationId,
-      sessionId: "reporting-support-turn",
-      sliceId: 1,
-      state: "running",
-      piMessages: [],
-    });
-    await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
-      conversationId,
-      sessionId: "reporting-support-turn",
-      sliceId: 2,
-      state: "completed",
-      piMessages: [],
-      cumulativeDurationMs: 1_200,
-      errorMessage: "provider failed with sensitive details",
-      loadedSkillNames: ["triage"],
-    });
-
-    const matching = (await listAgentTurnSessionSummaries()).filter(
-      (summary) => summary.sessionId === "reporting-support-turn",
-    );
-
-    expect(matching).toHaveLength(1);
-    expect(matching[0]).toMatchObject({
-      conversationId,
-      sessionId: "reporting-support-turn",
-      sliceId: 2,
-      state: "completed",
-      cumulativeDurationMs: 1_200,
-      loadedSkillNames: ["triage"],
-    });
-    expect(matching[0]).not.toHaveProperty("errorMessage");
-  });
-
   it("lists recent conversations through the conversation reporting API", async () => {
     const { getConversationStore } = await import("@/chat/db");
     const { readConversationFeed } = await import("@/api/conversations/list");

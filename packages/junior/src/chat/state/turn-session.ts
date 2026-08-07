@@ -7,7 +7,6 @@
  * `junior_conversation_events` so resumes can materialize the exact continuable
  * boundary without duplicating the event history.
  */
-import type { StateAdapter } from "chat";
 import {
   actorSchema,
   type Destination,
@@ -31,7 +30,6 @@ import { projectConversationEvents } from "@/chat/pi/conversation-events";
 import { agentTurnUsageSchema, type AgentTurnUsage } from "@/chat/usage";
 import { getStateAdapter } from "./adapter";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
-import { logWarn } from "@/chat/logging";
 import { isAgentsInstructionsMessage } from "@/chat/repository-instructions";
 import {
   retainRuntimeTurnContext,
@@ -43,14 +41,10 @@ import type {
   ConversationStore,
 } from "@/chat/conversations/store";
 import {
-  AGENT_TURN_SESSION_PREFIX,
   agentTurnSessionConversationIndexKey,
   agentTurnSessionKey,
 } from "./turn-session-keys";
 
-const AGENT_TURN_SESSION_INDEX_KEY = `${AGENT_TURN_SESSION_PREFIX}:index`;
-const AGENT_TURN_SESSION_INDEX_MAX_LENGTH = 5_000;
-const AGENT_TURN_SESSION_INDEX_READ_CONCURRENCY = 25;
 const AGENT_TURN_SESSION_RESUME_TTL_MS = 24 * 60 * 60 * 1000;
 const AGENT_TURN_SESSION_TERMINAL_TTL_MS = 60 * 60 * 1000;
 
@@ -117,14 +111,20 @@ export interface AgentTurnSessionRecord {
   updatedAtMs: number;
 }
 
-export type AgentTurnSessionSummary = Omit<
-  AgentTurnSessionRecord,
-  | "errorMessage"
-  | "actors"
-  | "piMessages"
-  | "piMessageProvenance"
-  | "turnStartMessageIndex"
->;
+export interface AgentTurnSessionSummary {
+  conversationId: string;
+  dispatchId?: string;
+  dispatchOutcome?: AgentDispatchOutcome;
+  /** Provider-owned identifier returned after visible delivery is accepted. */
+  resultMessageId?: string;
+  resumeReason?: AgentTurnResumeReason;
+  sessionId: string;
+  sliceId: number;
+  state: AgentTurnSessionStatus;
+  surface?: AgentTurnSurface;
+  updatedAtMs: number;
+  version: number;
+}
 
 interface StoredAgentTurnSessionRecord extends Omit<
   AgentTurnSessionRecord,
@@ -172,20 +172,25 @@ const agentTurnResumeReasonSchema = z.enum([
 const nonNegativeNumberSchema = z.number().finite().nonnegative();
 const seqCursorSchema = z.number().int().min(-1);
 
-/**
- * Turn-session summary projection.
- *
- * This is the shared field set for durable turn-session state and the summary
- * indexes. `.strip()` keeps only declared keys so unknown/deprecated payload
- * fields (including legacy nested destination/source/actor) are discarded on
- * both read and write. Do not switch this back to `.strict()` without an
- * explicit migration path for those dropped fields.
- *
- * The stored record schema below extends this same projection with resume-only
- * fields (committedSeq, runtimeContext, ...). Summary indexes intentionally
- * omit those heavier fields; they are not a separate domain model.
- */
+/** Thin recovery projection stored per conversation. Reporting reads SQL. */
 const agentTurnSessionSummarySchema = z
+  .object({
+    version: z.number().int().nonnegative(),
+    conversationId: z.string().min(1),
+    dispatchId: z.string().min(1).optional(),
+    dispatchOutcome: z.enum(["blocked", "completed", "failed"]).optional(),
+    resultMessageId: z.string().min(1).optional(),
+    resumeReason: agentTurnResumeReasonSchema.optional(),
+    sessionId: z.string().min(1),
+    sliceId: z.number().int().nonnegative(),
+    state: agentTurnSessionStatusSchema,
+    surface: agentTurnSurfaceSchema.optional(),
+    updatedAtMs: nonNegativeNumberSchema,
+  })
+  .strip() satisfies z.ZodType<AgentTurnSessionSummary>;
+
+/** Full turn-session record stored under the session key. */
+const storedAgentTurnSessionRecordSchema = z
   .object({
     channelName: z.string().min(1).optional(),
     version: z.number().int().nonnegative(),
@@ -208,12 +213,6 @@ const agentTurnSessionSummarySchema = z
     surface: agentTurnSurfaceSchema.optional(),
     traceId: z.string().optional(),
     updatedAtMs: nonNegativeNumberSchema,
-  })
-  .strip() satisfies z.ZodType<AgentTurnSessionSummary>;
-
-/** Full turn-session record: summary projection plus resume-only fields. */
-const storedAgentTurnSessionRecordSchema = agentTurnSessionSummarySchema
-  .extend({
     actors: z.array(actorSchema).optional(),
     committedSeq: seqCursorSchema,
     historyVersion: z.number().int().nonnegative().optional(),
@@ -266,31 +265,30 @@ function agentTurnSessionRecordTtlMs(
 }
 
 /**
- * Shared summary indexes hold many sessions. Keep them on the resume window so a
- * terminal write cannot expire unfinished siblings still under a resume lease.
- * Explicit ttl overrides (tests) still win.
+ * The per-conversation recovery index holds many sessions. Keep it on the resume
+ * window so a terminal write cannot expire unfinished siblings still under a
+ * resume lease. Explicit ttl overrides (tests) still win.
  */
 function agentTurnSessionIndexTtlMs(ttlMs?: number): number {
   return Math.max(1, ttlMs ?? AGENT_TURN_SESSION_RESUME_TTL_MS);
+}
+
+function projectAgentTurnSessionSummary(
+  record: StoredAgentTurnSessionRecord,
+): AgentTurnSessionSummary {
+  return agentTurnSessionSummarySchema.parse(record);
 }
 
 async function appendAgentTurnSessionSummary(
   summary: AgentTurnSessionSummary,
   ttlMs: number,
 ): Promise<void> {
-  const projectedSummary = agentTurnSessionSummarySchema.parse(summary);
   const stateAdapter = getStateAdapter();
-  await Promise.all([
-    stateAdapter.appendToList(AGENT_TURN_SESSION_INDEX_KEY, projectedSummary, {
-      maxLength: AGENT_TURN_SESSION_INDEX_MAX_LENGTH,
-      ttlMs,
-    }),
-    stateAdapter.appendToList(
-      agentTurnSessionConversationIndexKey(projectedSummary.conversationId),
-      projectedSummary,
-      { ttlMs },
-    ),
-  ]);
+  await stateAdapter.appendToList(
+    agentTurnSessionConversationIndexKey(summary.conversationId),
+    agentTurnSessionSummarySchema.parse(summary),
+    { ttlMs },
+  );
 }
 
 /** Store run summary metadata in the configured conversation store. */
@@ -309,7 +307,12 @@ async function recordConversationActivityMetadata(args: {
    * has a separate coarse `source` enum (slack/api/scheduler/...).
    */
   source?: Source;
-  summary: AgentTurnSessionSummary;
+  summary: AgentTurnSessionSummary & {
+    channelName?: string;
+    cumulativeDurationMs: number;
+    cumulativeUsage?: AgentTurnUsage;
+    startedAtMs: number;
+  };
 }): Promise<void> {
   const conversationStore = args.conversationStore ?? getConversationStore();
   const conversation = await conversationStore.get({
@@ -622,7 +625,7 @@ async function setStoredRecord(args: {
   source?: Source;
   /** Per-record TTL (state-split). */
   ttlMs: number;
-  /** Shared index TTL override; defaults to the resume window. */
+  /** Recovery index TTL override; defaults to the resume window. */
   indexTtlMs?: number;
   turnStartMessageIndex?: number;
 }): Promise<AgentTurnSessionRecord> {
@@ -644,19 +647,10 @@ async function setStoredRecord(args: {
     storedRecord,
     args.ttlMs,
   );
-  const {
-    actors: _actors,
-    committedSeq: _committedSeq,
-    historyVersion: _historyVersion,
-    errorMessage: _errorMessage,
-    turnStartSeq: _turnStartSeq,
-    runtimeContext: _runtimeContext,
-    ...summary
-  } = storedRecord;
-  // Indexes are multi-session; keep the resume window so a terminal write cannot
-  // expire unfinished siblings. Explicit overrides still win when provided.
+  // The per-conversation recovery index is multi-session; keep the resume
+  // window so a terminal write cannot expire unfinished siblings.
   await appendAgentTurnSessionSummary(
-    summary,
+    projectAgentTurnSessionSummary(storedRecord),
     agentTurnSessionIndexTtlMs(args.indexTtlMs),
   );
   return materializeAgentTurnSessionRecord(
@@ -864,13 +858,15 @@ export async function upsertAgentTurnSessionRecord(args: {
         channelName: args.channelName ?? existingRecord?.channelName,
         cumulativeUsage: args.cumulativeUsage,
         dispatchId: args.dispatchId ?? existingRecord?.dispatchId,
-        dispatchOutcome: args.dispatchOutcome ?? existingRecord?.dispatchOutcome,
+        dispatchOutcome:
+          args.dispatchOutcome ?? existingRecord?.dispatchOutcome,
         errorMessage: args.errorMessage,
         lastProgressAtMs: args.lastProgressAtMs,
         loadedSkillNames: args.loadedSkillNames,
         reasoningLevel: args.reasoningLevel ?? existingRecord?.reasoningLevel,
         resumeReason: args.resumeReason,
-        resultMessageId: args.resultMessageId ?? existingRecord?.resultMessageId,
+        resultMessageId:
+          args.resultMessageId ?? existingRecord?.resultMessageId,
         resumedFromSliceId: args.resumedFromSliceId,
         runtimeContext:
           args.state === "running" || args.state === "awaiting_resume"
@@ -936,31 +932,21 @@ export async function recordAgentTurnSessionSummary(args: {
     );
   }
   const nowMs = Date.now();
-  // Summary-only path writes shared indexes, not the per-session record key.
+  // Summary-only path writes the recovery index, not the per-session record key.
   const ttlMs = agentTurnSessionIndexTtlMs(args.ttlMs);
   const summary: AgentTurnSessionSummary = {
     version: existing?.version ?? 0,
     conversationId: args.conversationId,
     sessionId: args.sessionId,
     sliceId: args.sliceId,
-    startedAtMs: existing?.startedAtMs ?? args.startedAtMs ?? nowMs,
-    lastProgressAtMs: args.lastProgressAtMs ?? nowMs,
     state: args.state,
     updatedAtMs: nowMs,
-    cumulativeDurationMs:
-      args.cumulativeDurationMs ?? existing?.cumulativeDurationMs ?? 0,
     ...definedProps({
-      channelName: args.channelName ?? existing?.channelName,
-      cumulativeUsage: args.cumulativeUsage ?? existing?.cumulativeUsage,
       dispatchId: args.dispatchId ?? existingDispatchId,
       dispatchOutcome: args.dispatchOutcome ?? existingDispatchOutcome,
-      loadedSkillNames: args.loadedSkillNames ?? existing?.loadedSkillNames,
-      modelId: args.modelId ?? existing?.modelId,
-      reasoningLevel: args.reasoningLevel ?? existing?.reasoningLevel,
       resumeReason: args.resumeReason,
       resultMessageId: args.resultMessageId ?? existingResultMessageId,
       surface: args.surface ?? existing?.surface,
-      traceId: args.traceId ?? existing?.traceId,
     }),
   };
   await recordConversationActivityMetadata({
@@ -970,15 +956,22 @@ export async function recordAgentTurnSessionSummary(args: {
     destinationVisibility: args.destinationVisibility,
     nowMs,
     source: args.source,
-    summary,
+    summary: {
+      ...summary,
+      channelName: args.channelName ?? stored?.channelName,
+      cumulativeDurationMs:
+        args.cumulativeDurationMs ?? stored?.cumulativeDurationMs ?? 0,
+      cumulativeUsage: args.cumulativeUsage ?? stored?.cumulativeUsage,
+      startedAtMs: stored?.startedAtMs ?? args.startedAtMs ?? nowMs,
+    },
   });
   await appendAgentTurnSessionSummary(summary, ttlMs);
 }
 
 async function readAgentTurnSessionSummariesFromIndex(
   key: string,
-  stateAdapter: StateAdapter,
 ): Promise<AgentTurnSessionSummary[]> {
+  const stateAdapter = getStateAdapter();
   await stateAdapter.connect();
   const values = await stateAdapter.getList(key);
   const summaries = new Map<string, AgentTurnSessionSummary>();
@@ -987,12 +980,7 @@ async function readAgentTurnSessionSummariesFromIndex(
     let summary: AgentTurnSessionSummary;
     try {
       summary = parseAgentTurnSessionSummary(value);
-    } catch (error) {
-      logWarn("agent.turn.session_summary_parse.failed", {
-        "app.state.key": key,
-        "exception.message":
-          error instanceof Error ? error.message : String(error),
-      });
+    } catch {
       continue;
     }
     const summaryKey = `${summary.conversationId}:${summary.sessionId}`;
@@ -1006,93 +994,13 @@ async function readAgentTurnSessionSummariesFromIndex(
   );
 }
 
-/** List recent turn-session summaries for authenticated operational dashboards. */
-export async function listAgentTurnSessionSummaries(
-  limit = 50,
-): Promise<AgentTurnSessionSummary[]> {
-  return (
-    await readAgentTurnSessionSummariesFromIndex(
-      AGENT_TURN_SESSION_INDEX_KEY,
-      getStateAdapter(),
-    )
-  ).slice(0, Math.max(0, Math.floor(limit)));
-}
-
-/** List turn-session summaries for one conversation without the global feed cap. */
+/** List retained turn-session recovery projections for one conversation. */
 export async function listAgentTurnSessionSummariesForConversation(
-  conversationId: string,
-): Promise<AgentTurnSessionSummary[]> {
-  const stateAdapter = getStateAdapter();
-  const summaries =
-    await listBoundedAgentTurnSessionSummariesForConversation(conversationId);
-  if (summaries.length > 0) {
-    return summaries;
-  }
-
-  return (
-    await readAgentTurnSessionSummariesFromIndex(
-      AGENT_TURN_SESSION_INDEX_KEY,
-      stateAdapter,
-    )
-  ).filter((summary) => summary.conversationId === conversationId);
-}
-
-/** List retained run summaries without falling back to global history. */
-export async function listBoundedAgentTurnSessionSummariesForConversation(
   conversationId: string,
 ): Promise<AgentTurnSessionSummary[]> {
   return readAgentTurnSessionSummariesFromIndex(
     agentTurnSessionConversationIndexKey(conversationId),
-    getStateAdapter(),
   );
-}
-
-/** Read complete per-conversation summary indexes with bounded backend load. */
-export async function listAgentTurnSessionSummariesForConversations(
-  stateAdapter: StateAdapter,
-  conversationIds: string[],
-): Promise<Map<string, AgentTurnSessionSummary[]>> {
-  const ids = [...new Set(conversationIds)];
-  const globalSummaries = await readAgentTurnSessionSummariesFromIndex(
-    AGENT_TURN_SESSION_INDEX_KEY,
-    stateAdapter,
-  );
-  const globalByConversation = new Map<string, AgentTurnSessionSummary[]>();
-  for (const summary of globalSummaries) {
-    globalByConversation.set(summary.conversationId, [
-      ...(globalByConversation.get(summary.conversationId) ?? []),
-      summary,
-    ]);
-  }
-
-  const summariesByConversation = new Map<string, AgentTurnSessionSummary[]>();
-  let nextIndex = 0;
-  const readNext = async (): Promise<void> => {
-    while (nextIndex < ids.length) {
-      const conversationId = ids[nextIndex];
-      nextIndex += 1;
-      if (!conversationId) continue;
-      const summaries = await readAgentTurnSessionSummariesFromIndex(
-        agentTurnSessionConversationIndexKey(conversationId),
-        stateAdapter,
-      );
-      summariesByConversation.set(
-        conversationId,
-        summaries.length > 0
-          ? summaries
-          : (globalByConversation.get(conversationId) ?? []),
-      );
-    }
-  };
-  await Promise.all(
-    Array.from(
-      {
-        length: Math.min(AGENT_TURN_SESSION_INDEX_READ_CONCURRENCY, ids.length),
-      },
-      readNext,
-    ),
-  );
-  return summariesByConversation;
 }
 
 /** Mark an unfinished turn session record as abandoned when a newer turn wins. */
