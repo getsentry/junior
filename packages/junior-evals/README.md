@@ -108,18 +108,17 @@ Pass eval file paths, `-t` filters, and shard options directly after the `evals`
 ## Optional CI Runs
 
 - On pull requests, the `Evals` workflow can start two independent suites:
-  - end-to-end Slack/agent evals (`evals / suite *` + `evals / report`)
+  - end-to-end Slack/agent evals (`evals / suite *` + `evals / report` + `evals / score`)
   - isolated Guardian snapshots (`evals / guardian`)
 - End-to-end evals run when e2e-related files changed or the PR has the `trigger-evals` label. They still require both gateway and sandbox secrets.
 - Guardian evals run when Guardian-related files changed, the PR has `trigger-evals-guardian`, or the PR has `trigger-evals`. They only need gateway credentials.
 - Adding `trigger-evals` or `trigger-evals-guardian` fires immediately; unrelated labels do not.
 - End-to-end path triggers cover the existing Slack/agent harness and feature suites under `evals/{agent,conversation,event-tasks,github,memory,scheduler,sentry}/`, plus shared e2e harness files and `packages/junior/src/**`.
 - Guardian path triggers cover `evals/guardian/**`, the Guardian harness/config, and Guardian policy/reviewer inputs under `packages/junior/src/chat/services/guardian-action-*.ts` and `tool-support/action-review*`.
-- CI e2e shards still fail individual cases under the per-case judge threshold (`0.75`), but the workflow no longer fails the job on those case failures alone.
-- After all e2e shards finish, `evals / report` combines results, publishes the suite summary, and posts an `eval score` Check Run whose PR status line is the pass rate (for example `63.7% passed · required 80.0%`).
-- The current e2e floor is `EVAL_MIN_PASS_RATE=0.8` (`80%` of cases passed). Missing shard result files or setup/runtime crashes before results are written remain hard failures on the report job.
+- CI e2e shards still fail individual cases under the per-case judge threshold (`0.75`), but the workflow no longer fails the shard job on those case failures alone. Each shard and Guardian job publishes its own `vitest-evals` job summary (pass rate, scores, quality misses).
+- After all e2e shards finish, `evals / report` combines results and publishes the aggregate summary. A follow-up `evals / score` job under the Evals workflow owns green/red for the pass-rate floor and carries the score in its job name (for example `evals / score · 90.2% · floor 80.0%`).
+- The current e2e floor is `EVAL_MIN_PASS_RATE=0.8` (`80%` of cases passed). `vitest-evals@0.16` owns the aggregate gate math; individual case misses are warnings when the floor still passes. Missing shard result files or setup/runtime crashes before results are written remain hard failures on the report job.
 - Guardian cases assert exact `allow` / `ask` / `deny` decisions and fail the `evals / guardian` job hard on mismatch. They do not use the aggregate pass-rate floor.
-- The `vitest-evals` Check Run stays off because v0.15.0 still concludes it from any single case failure.
 - The simplest Gateway and Sandbox setup is `VERCEL_OIDC_TOKEN` alone.
 - The fallback CI setup is `AI_GATEWAY_API_KEY` plus `VERCEL_TOKEN` + `VERCEL_TEAM_ID` + `VERCEL_PROJECT_ID`.
 - End-to-end eval global setup starts one Cloudflare Quick Tunnel for the suite so Vercel Sandbox can reach the eval egress proxy. Transient tunnel allocation failures retry up to five times with backoff. Local runs require `cloudflared` on `PATH`; CI installs a pinned binary.

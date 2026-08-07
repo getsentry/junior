@@ -423,8 +423,8 @@ importers:
         specifier: ^4.1.7
         version: 4.1.7(tsx@4.22.3)
       vitest-evals:
-        specifier: 0.15.0
-        version: 0.15.0(ai@6.0.190(zod@4.4.3))(tinyrainbow@3.1.0)(vitest@4.1.7(tsx@4.22.3))(zod@4.4.3)
+        specifier: 0.16.0
+        version: 0.16.0(ai@6.0.190(zod@4.4.3))(tinyrainbow@3.1.0)(vitest@4.1.7(tsx@4.22.3))(zod@4.4.3)
       zod:
         specifier: 'catalog:'
         version: 4.4.3
@@ -4208,11 +4208,11 @@ packages:
   '@vercel/static-config@3.3.0':
     resolution: {integrity: sha512-GpS3tPwUeDJCkrKbMNtS2XLRFgfxTlN7YNUL+Bo23+fGolrDw6Oq79R3yvxTYgqRaJMGSEqC7iMw6mj6I5loxg==}
 
-  '@vitest-evals/core@0.15.0':
-    resolution: {integrity: sha512-kqyg3ocVtZxr3rP9oh01oAycRgXNRasvTgLZ8MbFGBJ4BRd4tk7Bgww253HY7fw7ZFUp4UPYNmDp5AcHajm++w==}
+  '@vitest-evals/core@0.16.0':
+    resolution: {integrity: sha512-vceH0pJ758Qxw7XBWUgIsE9OZAori6YCp0/lmHr6A05hsLsTvSL4WpVe/l9bXW48p92Xz+419+NNWFNo32hVBA==}
 
-  '@vitest-evals/report-ui@0.15.0':
-    resolution: {integrity: sha512-icrutiRhZ2T1MrHo2RW09hcEwfi/tV/FgsGAE76Wd0C02tZyCleQRjt11RWhBJiYDPpsjjjTHGCHIO6tmtX5zQ==}
+  '@vitest-evals/report-ui@0.16.0':
+    resolution: {integrity: sha512-L1dcvHgx1Kl1k9GvFs8brAZWZV9PGV1bpL3PbDMpUrcLoKyTsr5oSQYF9Sde/BlGn5wwyZB20Lph+dPtyzdxsQ==}
 
   '@vitest/coverage-v8@4.1.7':
     resolution: {integrity: sha512-qsYPeXc5Q9dFLd1i8Ap+Bx8sQgcp+rFVQo4R0dDsWNBzl26ldVF1qOO+RL24K7FDrR6pA+50XedRLSoSG24bVQ==}
@@ -8124,8 +8124,8 @@ packages:
       vite:
         optional: true
 
-  vitest-evals@0.15.0:
-    resolution: {integrity: sha512-bOYALQdLXKYFRCV8aQ+yLeH7XkmYsTxUWQxLHzJdIEcIBx2v/kPgG3Zg6m231jMCphuoM6xH4YQB3+0pDP7LLw==}
+  vitest-evals@0.16.0:
+    resolution: {integrity: sha512-2+DUXVRQw6k0l45cjaB/dLoBxaHlc0/do5chF6Kp8cxzEeXFhh7SnH1+/DUuxR+RKaPQ/AmeOZJDv0SWyu8cQA==}
     hasBin: true
     peerDependencies:
       ai: 6.0.190
@@ -12254,13 +12254,13 @@ snapshots:
       json-schema-to-ts: 1.6.4
       ts-morph: 12.0.0
 
-  '@vitest-evals/core@0.15.0':
+  '@vitest-evals/core@0.16.0':
     dependencies:
       zod: 4.4.3
 
-  '@vitest-evals/report-ui@0.15.0':
+  '@vitest-evals/report-ui@0.16.0':
     dependencies:
-      '@vitest-evals/core': 0.15.0
+      '@vitest-evals/core': 0.16.0
 
   '@vitest/coverage-v8@4.1.7(vitest@4.1.7)':
     dependencies:
@@ -17053,10 +17053,10 @@ snapshots:
     optionalDependencies:
       vite: 8.0.14(esbuild@0.28.1)(tsx@4.22.3)
 
-  vitest-evals@0.15.0(ai@6.0.190(zod@4.4.3))(tinyrainbow@3.1.0)(vitest@4.1.7(tsx@4.22.3))(zod@4.4.3):
+  vitest-evals@0.16.0(ai@6.0.190(zod@4.4.3))(tinyrainbow@3.1.0)(vitest@4.1.7(tsx@4.22.3))(zod@4.4.3):
     dependencies:
-      '@vitest-evals/core': 0.15.0
-      '@vitest-evals/report-ui': 0.15.0
+      '@vitest-evals/core': 0.16.0
+      '@vitest-evals/report-ui': 0.16.0
       tinyrainbow: 3.1.0
       vitest: 4.1.7(tsx@4.22.3)
     optionalDependencies:
