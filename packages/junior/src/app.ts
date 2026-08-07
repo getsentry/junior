@@ -113,7 +113,7 @@ export interface JuniorAppOptions {
     /** Slack emoji shown after a turn completes. Defaults to `white_check_mark`. */
     completedReactionEmoji?: string;
   };
-  /** Install-wide provider defaults (`provider.key` format). Channel overrides take precedence. */
+  /** Install-wide provider defaults. Unregistered `provider.key` entries warn at startup. */
   configDefaults?: Record<string, unknown>;
   /** Queue consumer wiring for the durable conversation worker. */
   conversationWork?: VercelConversationWorkCallbackOptions;
@@ -261,6 +261,16 @@ function hasConfiguredPluginCatalog(
   );
 }
 
+function warnUnregisteredConfigDefaults(
+  defaults: Record<string, unknown> | undefined,
+): void {
+  for (const key of Object.keys(defaults ?? {})) {
+    if (!pluginCatalogRuntime.isConfigKey(key)) {
+      logWarn("config.default.unregistered", { "app.config.key": key });
+    }
+  }
+}
+
 function pluginPackageNames(config: PluginCatalogConfig | undefined): string[] {
   return config?.packages ?? [];
 }
@@ -404,6 +414,9 @@ function dashboardHostRoutePaths(dashboard: JuniorDashboardOptions): string[] {
     peoplePath,
     `${peoplePath}/*`,
     pagePath("tasks"),
+    `${pagePath("tasks")}/*`,
+    pagePath("memories"),
+    `${pagePath("memories")}/*`,
     pagePath("system"),
     `${pagePath("system")}/*`,
     pagePath("plugins"),
@@ -649,6 +662,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     setSandboxResourceConfig(options?.sandbox);
     setExperimentalFeatures(options?.experimental);
     setConfigDefaults(options?.configDefaults);
+    warnUnregisteredConfigDefaults(options?.configDefaults);
     if (options?.slack) {
       setSlackReactionConfig(options.slack);
     }

@@ -17,6 +17,7 @@ import {
   type ToolCallSummary,
 } from "../format";
 import { MetricValue, type MetricTooltipLine } from "../components/Metric";
+import { ShimmerText } from "../components/ShimmerText";
 
 function plural(label: string, count: number): string {
   return `${formatCompactNumber(count)} ${label}${count === 1 ? "" : "s"}`;
@@ -130,31 +131,42 @@ function costTooltip(
   summary: CostUsageSummary | undefined,
   modelUsage: ConversationModelUsage[] | undefined,
   auxiliaryCosts: ConversationAuxiliaryCosts | undefined,
+  live: boolean | undefined,
 ): {
   tooltip?: MetricTooltipLine[];
   tooltipColumns?: MetricTooltipLine[][];
 } {
   const total = totalConversationCost(summary, auxiliaryCosts);
-  if (!total) return {};
   const modelSummaries = (modelUsage ?? []).flatMap((item) => {
     const modelSummary = summarizeCost(item.usage);
     return modelSummary
       ? [{ modelId: item.modelId, summary: modelSummary }]
       : [];
   });
+  const pendingLines: MetricTooltipLine[] = live
+    ? [{ value: "in progress" }]
+    : [];
+  if (!total) return { tooltip: pendingLines };
   if (!auxiliaryCosts) {
-    if (!summary) return {};
     if (!modelSummaries.length) {
-      return { tooltip: costTooltipLines(summary) };
+      return {
+        tooltip: [
+          ...(summary ? costTooltipLines(summary) : []),
+          ...pendingLines,
+        ],
+      };
     }
     return {
-      tooltip: modelSummaries.flatMap((item) => [
-        { value: modelLabel(item.modelId), valueStyle: "heading" },
-        ...costTooltipLines(item.summary).map((line) => ({
-          ...line,
-          label: `• ${line.label}`,
-        })),
-      ]),
+      tooltip: [
+        ...modelSummaries.flatMap((item) => [
+          { value: modelLabel(item.modelId), valueStyle: "heading" as const },
+          ...costTooltipLines(item.summary).map((line) => ({
+            ...line,
+            label: `• ${line.label}`,
+          })),
+        ]),
+        ...pendingLines,
+      ],
     };
   }
 
@@ -185,6 +197,7 @@ function costTooltip(
       }
     }
   }
+  conversationLines.push(...pendingLines);
   const auxiliaryLines: MetricTooltipLine[] = [
     { value: "Auxiliary", valueStyle: "heading" },
     {
@@ -220,18 +233,28 @@ function auxiliaryOperationLabel(
 export function CostMetric(props: {
   align?: "left" | "right";
   auxiliaryCosts?: ConversationAuxiliaryCosts;
+  live?: boolean;
   modelUsage?: ConversationModelUsage[];
   summary: CostUsageSummary | undefined;
 }) {
   const total = totalConversationCost(props.summary, props.auxiliaryCosts);
-  if (!total) return null;
+  if (!total && !props.live) return null;
+  const pending = Boolean(props.live);
+  const label = total
+    ? `${formatCostSummary(total)}${pending ? "+" : ""}`
+    : "$…";
   return (
     <MetricValue
       align={props.align}
       tooltipPlacement="above"
-      {...costTooltip(props.summary, props.modelUsage, props.auxiliaryCosts)}
+      {...costTooltip(
+        props.summary,
+        props.modelUsage,
+        props.auxiliaryCosts,
+        props.live,
+      )}
     >
-      {formatCostSummary(total)}
+      <ShimmerText active={pending}>{label}</ShimmerText>
     </MetricValue>
   );
 }
@@ -240,6 +263,7 @@ export function CostMetric(props: {
 export function TokenMetric(props: {
   align?: "left" | "right";
   compactionCount?: number;
+  live?: boolean;
   modelUsage?: ConversationModelUsage[];
   summary: TokenUsageSummary | undefined;
 }) {
@@ -253,7 +277,9 @@ export function TokenMetric(props: {
         props.compactionCount,
       )}
     >
-      {formatTokenSummary(props.summary)}
+      <ShimmerText active={props.live}>
+        {formatTokenSummary(props.summary)}
+      </ShimmerText>
     </MetricValue>
   );
 }
@@ -285,6 +311,7 @@ export function DurationMetric(props: {
 /** Render a tool-call count with top tool names and counts. */
 export function ToolCallsMetric(props: {
   align?: "left" | "right";
+  live?: boolean;
   loading?: boolean;
   summary: ToolCallSummary | undefined;
 }) {
@@ -297,7 +324,9 @@ export function ToolCallsMetric(props: {
   }));
   return (
     <MetricValue align={props.align} tooltip={tooltip}>
-      {plural("tool call", props.summary.total)}
+      <ShimmerText active={props.live}>
+        {plural("tool call", props.summary.total)}
+      </ShimmerText>
     </MetricValue>
   );
 }

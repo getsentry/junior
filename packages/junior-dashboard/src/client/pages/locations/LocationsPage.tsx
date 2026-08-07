@@ -1,7 +1,6 @@
 import { Duration } from "../../components/Duration";
 import { Clock3, LockKeyhole, MapPinned, MessageSquare } from "lucide-react";
 import { useDeferredValue, useState } from "react";
-import { useSearchParams } from "react-router";
 import type {
   LocationDirectoryReport,
   LocationSummaryReport,
@@ -19,10 +18,21 @@ import { PageHeader } from "../../components/layout/PageHeader";
 import { getDashboardAgentName } from "../../agentName";
 import { StatCard } from "../../components/metrics/StatCard";
 import { formatCompactNumber } from "../../format";
+import {
+  useDebouncedSearchParam,
+  useSearchParamEnum,
+} from "../../searchParams";
 import { SystemPageLayout } from "../system/SystemPageLayout";
 import { LocationDirectoryActivityChart } from "./LocationDirectoryActivityChart";
 import { LocationDirectory, type LocationSort } from "./LocationDirectory";
 import { PrivateActivityCard } from "./PrivateActivityCard";
+
+const LOCATION_SORTS = [
+  "conversations",
+  "recent",
+  "runtime",
+  "tokens",
+] as const satisfies readonly LocationSort[];
 
 /** Render the searchable directory of persisted public conversation locations. */
 export function LocationsPage() {
@@ -35,11 +45,14 @@ export function LocationsPageContent(props: {
   data: LocationDirectoryReport | undefined;
   error: unknown;
 }) {
-  const [params, setParams] = useSearchParams();
   const [range, setRange] = useState<TimeRangeDays>(90);
-  const [sort, setSort] = useState<LocationSort>("conversations");
+  const [sort, setSort] = useSearchParamEnum(
+    "sort",
+    "conversations",
+    LOCATION_SORTS,
+  );
   const deferredSort = useDeferredValue(sort);
-  const search = params.get("q") ?? "";
+  const [searchText, setSearchText, search] = useDebouncedSearchParam();
   if (!props.data && !props.error) {
     return <LoadingView label="Loading locations" />;
   }
@@ -60,13 +73,6 @@ export function LocationsPageContent(props: {
       (total, location) => total + location.durationMs,
       0,
     ) ?? 0;
-
-  function setSearch(value: string) {
-    const next = new URLSearchParams(params);
-    if (value.trim()) next.set("q", value);
-    else next.delete("q");
-    setParams(next, { replace: true });
-  }
 
   return (
     <SystemPageLayout>
@@ -123,9 +129,9 @@ export function LocationsPageContent(props: {
           <LocationDirectory
             loading={sort !== deferredSort}
             locations={locations}
-            onQueryChange={setSearch}
+            onQueryChange={setSearchText}
             onSortChange={setSort}
-            query={search}
+            query={searchText}
             sort={sort}
             totalLocations={props.data.locations.length}
           />

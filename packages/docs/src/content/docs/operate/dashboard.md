@@ -8,6 +8,7 @@ prerequisites:
   - /reference/config-and-env/
 related:
   - /reference/handler-surface/
+  - /concepts/data-and-privacy/
   - /operate/security-hardening/
   - /start-here/verify-and-troubleshoot/
 ---
@@ -169,4 +170,4 @@ After deployment:
 
 ## Next step
 
-Use [Security Hardening](/operate/security-hardening/) to review production auth boundaries, then use [Verify & Troubleshoot](/start-here/verify-and-troubleshoot/) for deployment smoke checks.
+Read [Data & Privacy](/concepts/data-and-privacy/) for retention and access rules, then use [Security Hardening](/operate/security-hardening/) and [Verify & Troubleshoot](/start-here/verify-and-troubleshoot/) for production checks.

@@ -39,16 +39,23 @@ export const plugins = defineJuniorPlugins(["@sentry/junior-hex"]);
 - Each user completes OAuth the first time Junior calls a Hex MCP tool on their behalf.
 - Junior sends the authorization link privately, then resumes the same thread automatically after the user authorizes.
 
-## Region configuration
+## Config
 
-The default MCP endpoint is `https://app.hex.tech/mcp`. For non-standard deployments, set `HEX_MCP_URL` in your environment:
+### Environment variables
 
-| Deployment      | `HEX_MCP_URL`                       |
-| --------------- | ----------------------------------- |
-| Standard        | (leave unset — uses default)        |
-| Single-tenant   | `https://your-company.hex.tech/mcp` |
-| EU multi-tenant | `https://eu.hex.tech/mcp`           |
-| HIPAA           | `https://hc.hex.tech/mcp`           |
+<details class="plugin-config">
+<summary><code>HEX_MCP_URL</code></summary>
+
+MCP endpoint for the Hex deployment this Junior instance uses.
+
+- **Define:** Set `HEX_MCP_URL` in the deployment environment, then redeploy
+- **Default:** `https://app.hex.tech/mcp`
+- **Required:** No
+- **Environment override:** `HEX_MCP_URL`
+
+Common values are `https://eu.hex.tech/mcp` for EU, `https://hc.hex.tech/mcp` for HIPAA, and `https://your-company.hex.tech/mcp` for single-tenant deployments.
+
+</details>
 
 ## Skills
 

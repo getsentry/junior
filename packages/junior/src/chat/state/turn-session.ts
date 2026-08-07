@@ -174,6 +174,8 @@ const agentTurnSessionSummarySchema = z
     conversationId: z.string().min(1),
     cumulativeDurationMs: nonNegativeNumberSchema,
     cumulativeUsage: agentTurnUsageSchema.optional(),
+    // TODO(#1267): Remove destination/source and their Redis write paths once
+    // SQL-only readers are deployed; existing records do not need to expire.
     destination: destinationSchema.optional(),
     dispatchId: z.string().min(1).optional(),
     dispatchOutcome: z.enum(["blocked", "completed", "failed"]).optional(),

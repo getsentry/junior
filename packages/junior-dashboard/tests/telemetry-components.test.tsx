@@ -118,6 +118,7 @@ function systemData(): SystemData {
       },
       metricDays: [
         {
+          conversations: 2,
           costUsd: 4.56,
           date: "2026-01-01",
           durationMs: 12_000,
@@ -351,15 +352,34 @@ describe("dashboard canonical-event components", () => {
         ],
       }),
     ];
-    const partialHtml = renderTranscript(
+    const partialClient = conversationQueryClient();
+    partialClient.setQueryData(
+      conversationDetailQueryKey("conversation-1"),
       conversation(events, { previousCursor: "older-events" }),
     );
-    const completeHtml = renderTranscript(conversation(events));
+    const completeClient = conversationQueryClient();
+    completeClient.setQueryData(
+      conversationDetailQueryKey("conversation-1"),
+      conversation(events),
+    );
 
+    const partialHtml = renderConversationPageWithClient(partialClient);
+    const completeHtml = renderConversationPageWithClient(completeClient);
+    const partialTranscriptHtml = renderTranscript(
+      conversation(events, { previousCursor: "older-events" }),
+    );
+    const completeTranscriptHtml = renderTranscript(conversation(events));
+
+    // Conversation-level turn/tool totals only when the loaded history is complete.
     expect(partialHtml).not.toContain("1 turn");
     expect(partialHtml).not.toContain("1 tool call");
     expect(completeHtml).toContain("1 turn");
     expect(completeHtml).toContain("1 tool call");
+    // Transcript no longer mirrors those conversation totals in a segment row.
+    expect(partialTranscriptHtml).not.toContain("1 turn");
+    expect(partialTranscriptHtml).not.toContain("1 tool call");
+    expect(completeTranscriptHtml).not.toContain("1 turn");
+    expect(completeTranscriptHtml).not.toContain("1 tool call");
   });
 
   it("renders each user message with its own actor", () => {
@@ -1299,13 +1319,18 @@ describe("dashboard canonical-event components", () => {
         <SystemPage data={data} />
       </MemoryRouter>,
     );
-    expect(systemHtml).toContain("Usage over time");
+    expect(systemHtml).not.toContain("Usage over time");
+    expect(systemHtml).toContain("Conversation activity");
+    expect(systemHtml).toContain('aria-label="Conversations per day"');
     expect(systemHtml).toContain("Token usage");
     expect(systemHtml).toContain("Model spend");
     expect(systemHtml).toContain("Runtime");
     expect(systemHtml).toContain("Guardian reviews");
     expect(systemHtml).toContain("Daily Guardian review results");
     expect(systemHtml).toContain("Estimated cost");
+    expect(systemHtml.indexOf("Conversation activity")).toBeLessThan(
+      systemHtml.indexOf("Token usage"),
+    );
     expect(
       systemHtml.match(/aria-label="Reporting period"/g) ?? [],
     ).toHaveLength(1);
@@ -1489,7 +1514,7 @@ describe("dashboard canonical-event components", () => {
     );
     expect(html).toContain('aria-label="2026-07-31, Cost: $0.0042"');
     expect(html).toContain(">$0.0042</text>");
-    expect(html).toContain('x1="56"');
+    expect(html).toContain('x1="72"');
   });
 
   it("renders daily chart ranges from the shared page selection", () => {

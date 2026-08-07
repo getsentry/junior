@@ -1,52 +1,52 @@
 ---
 title: Credentials & OAuth
-description: Security model for scoped credentials and provider OAuth flows.
+description: How Junior uses connected accounts without exposing secrets to the model or sandbox.
 type: conceptual
+summary: Understand connected accounts, private OAuth, and task-scoped access.
 prerequisites:
-  - /concepts/execution-model/
+  - /concepts/security-and-authority/
 related:
+  - /concepts/tasks/
   - /extend/sentry-plugin/
   - /operate/security-hardening/
 ---
 
-## Credential model
+Junior uses connected accounts only when a provider request needs them. It does not preload provider access for an entire conversation.
 
-Junior does not preload provider access for an entire chat session. Registered
-plugin providers are available to sandbox commands, and sandbox HTTP requests to
-declared provider domains are forwarded through Junior. Junior then fetches a
-actor-bound lease and injects auth at the host boundary.
+## Credential Handling
 
-- Credentials are short-lived and scoped to the actor, registered provider, and current sandbox command.
-- User-owned provider access is only activated for the author of the current message.
-- Plugin declarations determine which credentials can be injected for matching provider domains.
-- Sandbox receives placeholder env vars and proxied HTTP responses, not raw long-lived tokens.
-- Credential issuance is lazy: Junior does not mint provider tokens until sandbox traffic actually reaches a declared provider domain, avoiding wasted token work for commands that never need auth.
-- Junior does not guess intent from command text to pre-scope or pre-mint credentials; request-time provider/domain matching is the boundary.
-- Junior rejects proxied provider requests unless the sandbox has a signed actor context for that VM session and the forwarded host matches a registered provider domain.
+When sandbox traffic reaches a domain registered by a plugin, Junior fetches a short-lived credential and adds it at the host proxy.
 
-## OAuth model
+- Long-lived tokens stay outside the model and sandbox.
+- Only registered provider domains can receive credentials.
+- Junior matches the request domain instead of guessing from command text.
+- Missing identity or credential context blocks the request.
 
-OAuth-based plugins keep the visible user flow simple while preserving per-user
-authorization boundaries.
+## User and Task Access
 
-- Auth links are delivered privately to the requesting user.
-- Token exchange occurs server-side and stores the grant per user and provider.
-- OAuth completion resumes the blocked request path instead of asking the user to rerun the whole workflow.
+The current user is the default credential owner. Their account can be used only within the active turn and provider scope.
 
-## Operational invariants
+Scheduled and event tasks run as Junior, not as the creator. A task may use the creator's connected account when access was delegated to that exact task. The delegation does not apply to other tasks or conversations.
 
-- Normal plugin workflows rely on automatic credential injection, not manual credential commands.
-- Never log raw token values.
-- Never place secrets in skill files.
-- Credential failures must surface clear operator-visible errors.
+## OAuth
 
-## Common failure classes
+When a user needs to connect an account:
 
-- `credential_unavailable` with OAuth required.
-- stale/insufficient provider token access (401/403 post-issuance).
-- provider misconfiguration (client ID/secret/redirect URL mismatch).
+1. Junior sends that user a private, short-lived authorization link.
+2. The provider returns the user to Junior after approval.
+3. Junior stores the grant and resumes the blocked turn.
 
-## Next step
+Authorization links are single-use and tied to the user, provider, and conversation. Expired, replayed, or mismatched callbacks are rejected.
 
-- [Sentry Plugin](/extend/sentry-plugin/)
-- [Security Hardening](/operate/security-hardening/)
+## Common Failures
+
+- the user has not completed OAuth
+- the connected account cannot access the target
+- the plugin or OAuth client is misconfigured
+- no registered provider owns the request domain
+
+Junior asks the user to reconnect when access is missing or stale. Users should never paste tokens into Slack.
+
+## Next Step
+
+Read [Security & Authority](/concepts/security-and-authority/) for the full security model, or configure a provider such as the [Sentry Plugin](/extend/sentry-plugin/).

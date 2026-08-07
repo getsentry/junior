@@ -267,6 +267,15 @@ describe("conversation stats API", () => {
         deny: 1,
         requests: 3,
       });
+      expect(report.metricDays.at(-1)).toEqual(
+        expect.objectContaining({
+          conversations: 3,
+          costUsd: 0.0045,
+          date: "2026-06-15",
+          durationMs: 2_004,
+          tokens: 157,
+        }),
+      );
     } finally {
       vi.useRealTimers();
       await fixture.close();

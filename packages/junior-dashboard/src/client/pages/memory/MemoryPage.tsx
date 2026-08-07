@@ -10,18 +10,26 @@ import {
   Sparkles,
   UserRound,
 } from "lucide-react";
-import { useState } from "react";
-import { Navigate, NavLink, useLocation } from "react-router";
+import { useEffect } from "react";
+import {
+  Navigate,
+  NavLink,
+  useLocation,
+  useNavigate,
+  useParams,
+} from "react-router";
 import type { PluginUserPageLink } from "@sentry/junior-plugin-api";
 
 import { Button } from "../../components/Button";
 import { LoadingView } from "../../components/LoadingView";
+import { SelectableRow } from "../../components/SelectableRow";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import {
   type PluginUserPageRecord,
   usePluginUserPageData,
 } from "../user/pluginUserPageData";
+import { pathWithSearch } from "../../searchParams";
 import { cn, dashboardContainerClass } from "../../styles";
 import {
   type MemoryDashboardData,
@@ -30,19 +38,22 @@ import {
 import { MemoryDetailsDrawer } from "./MemoryDetailsDrawer";
 import { MemoryTimeline } from "./MemoryTimeline";
 import { MemoryCostChart } from "./MemoryCostChart";
+import { useMemoryRecord } from "./memoryRecord";
 
 /** Render the temporary first-class dashboard experience for memory. */
 export function MemoryPage(props: { page: PluginUserPageLink }) {
   const location = useLocation();
-  const basePath = `/plugins/${encodeURIComponent(props.page.pluginName)}/${encodeURIComponent(props.page.id)}`;
+  const { memoryId } = useParams();
+  const basePath = "/memories";
   const libraryPath = `${basePath}/library`;
   const overview = location.pathname === basePath;
-  const library = location.pathname === libraryPath;
+  const library = location.pathname === libraryPath || Boolean(memoryId);
   if (!overview && !library) return <Navigate replace to={basePath} />;
+  const libraryHref = pathWithSearch(libraryPath, location.search);
 
   const navigationClass = ({ isActive }: { isActive: boolean }) =>
     cn(
-      "relative px-1 py-3 font-mono text-[0.64rem] uppercase tracking-[0.12em] no-underline after:absolute after:inset-x-0 after:bottom-0 after:h-px",
+      "relative px-1 py-3 font-mono text-xs uppercase tracking-[0.12em] no-underline after:absolute after:inset-x-0 after:bottom-0 after:h-px",
       isActive
         ? "text-cyan-100 after:bg-cyan-300"
         : "text-dashboard-text-muted after:bg-transparent hover:text-dashboard-text",
@@ -67,11 +78,15 @@ export function MemoryPage(props: { page: PluginUserPageLink }) {
         <NavLink className={navigationClass} end to={basePath}>
           Overview
         </NavLink>
-        <NavLink className={navigationClass} to={libraryPath}>
+        <NavLink className={navigationClass} to={libraryHref}>
           Memories
         </NavLink>
       </nav>
-      {overview ? <MemoryOverview /> : <MemoryLibrary page={props.page} />}
+      {overview ? (
+        <MemoryOverview />
+      ) : (
+        <MemoryLibrary libraryPath={libraryPath} page={props.page} />
+      )}
     </div>
   );
 }
@@ -116,7 +131,10 @@ function MemoryOverview() {
   );
 }
 
-function MemoryLibrary(props: { page: PluginUserPageLink }) {
+function MemoryLibrary(props: {
+  libraryPath: string;
+  page: PluginUserPageLink;
+}) {
   const {
     action,
     content,
@@ -130,10 +148,42 @@ function MemoryLibrary(props: { page: PluginUserPageLink }) {
     setSearchText,
   } = usePluginUserPageData(props.page);
   const dashboardQuery = useMemoryDashboardData();
-  const [selectedRecordId, setSelectedRecordId] = useState<string>();
-  const selectedRecord = records.find(
-    (record) => record.id === selectedRecordId,
-  );
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { memoryId } = useParams();
+  const memoryQuery = useMemoryRecord(memoryId);
+  const selectedRecord =
+    memoryQuery.data ?? records.find((record) => record.id === memoryId);
+  const memoryPath = (pathname: string) =>
+    pathWithSearch(pathname, location.search);
+
+  useEffect(() => {
+    // Drop stale permalinks after a forget/archive or unknown id once the
+    // direct memory read has settled without a record.
+    if (
+      !memoryId ||
+      selectedRecord ||
+      memoryQuery.isFetching ||
+      memoryQuery.isPending
+    ) {
+      return;
+    }
+    if (memoryQuery.isError || memoryQuery.isFetched) {
+      navigate(pathWithSearch(props.libraryPath, location.search), {
+        replace: true,
+      });
+    }
+  }, [
+    location.search,
+    memoryId,
+    memoryQuery.isError,
+    memoryQuery.isFetched,
+    memoryQuery.isFetching,
+    memoryQuery.isPending,
+    navigate,
+    props.libraryPath,
+    selectedRecord,
+  ]);
 
   if (!query.data && !query.error) {
     return <LoadingView label="Loading memories" />;
@@ -143,7 +193,7 @@ function MemoryLibrary(props: { page: PluginUserPageLink }) {
     <section className="grid gap-4" aria-labelledby="memory-library-title">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <div className="font-mono text-[0.62rem] uppercase tracking-[0.16em] text-cyan-200/65">
+          <div className="font-mono text-xs uppercase tracking-[0.16em] text-cyan-200/65">
             Your memories
           </div>
           <h2
@@ -197,47 +247,49 @@ function MemoryLibrary(props: { page: PluginUserPageLink }) {
           </div>
         </Card>
       ) : (
-        <div className="grid items-start gap-4">
-          <div className="grid gap-3">
-            <Card padding="none">
-              <MemoryListHeader />
-              {records.map((record, index) => (
-                <MemoryRow
-                  first={index === 0}
-                  key={record.id}
-                  onSelect={() =>
-                    setSelectedRecordId((current) =>
-                      current === record.id ? undefined : record.id,
-                    )
-                  }
-                  record={record}
-                  selected={record.id === selectedRecordId}
-                />
-              ))}
-            </Card>
-            {!query.isPlaceholderData && query.hasNextPage ? (
-              <Button
-                className="mt-2 justify-self-center"
-                disabled={query.isFetchingNextPage}
-                onClick={() => void query.fetchNextPage()}
-              >
-                {query.isFetchingNextPage ? "Loading…" : "Load more"}
-              </Button>
-            ) : null}
-            {action.error ? (
-              <p className="m-0 text-center text-sm text-rose-300">
-                Could not complete this action. Try again.
-              </p>
-            ) : null}
-          </div>
-          <MemoryDetailsDrawer
-            action={action}
-            onAction={runAction}
-            onClose={() => setSelectedRecordId(undefined)}
-            record={selectedRecord}
-          />
+        <div className="grid gap-3">
+          <Card padding="none">
+            <MemoryListHeader />
+            {records.map((record, index) => (
+              <MemoryRow
+                first={index === 0}
+                key={record.id}
+                onSelect={() =>
+                  navigate(
+                    memoryPath(
+                      memoryId === record.id
+                        ? props.libraryPath
+                        : `/memories/${encodeURIComponent(record.id)}`,
+                    ),
+                  )
+                }
+                record={record}
+                selected={record.id === memoryId}
+              />
+            ))}
+          </Card>
+          {!query.isPlaceholderData && query.hasNextPage ? (
+            <Button
+              className="mt-2 justify-self-center"
+              disabled={query.isFetchingNextPage}
+              onClick={() => void query.fetchNextPage()}
+            >
+              {query.isFetchingNextPage ? "Loading…" : "Load more"}
+            </Button>
+          ) : null}
+          {action.error ? (
+            <p className="m-0 text-center text-sm text-rose-300">
+              Could not complete this action. Try again.
+            </p>
+          ) : null}
         </div>
       )}
+      <MemoryDetailsDrawer
+        action={action}
+        onAction={runAction}
+        onClose={() => navigate(memoryPath(props.libraryPath))}
+        record={selectedRecord}
+      />
     </section>
   );
 }
@@ -246,7 +298,7 @@ function MemoryListHeader() {
   return (
     <div
       aria-hidden="true"
-      className="hidden grid-cols-[minmax(0,1fr)_7rem_7rem_9rem_auto] items-center gap-3 border-b border-white/[0.07] px-4 py-2.5 font-mono text-[0.56rem] uppercase tracking-[0.12em] text-dashboard-text-muted sm:grid"
+      className="hidden grid-cols-[minmax(0,1fr)_7rem_7rem_9rem_auto] items-center gap-3 border-b border-white/[0.07] px-4 py-2.5 font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted sm:grid"
     >
       <span>Memory</span>
       <span>Visibility</span>
@@ -287,7 +339,7 @@ function MemoryCollections(props: {
           <button
             aria-selected={selected}
             className={cn(
-              "relative flex min-w-0 cursor-pointer items-center justify-between gap-2 border-0 bg-transparent px-3 py-2.5 font-mono text-[0.62rem] uppercase tracking-[0.1em] transition-colors after:absolute after:inset-x-2 after:bottom-0 after:h-px sm:shrink-0 sm:justify-start",
+              "relative flex min-w-0 cursor-pointer items-center justify-between gap-2 border-0 bg-transparent px-3 py-2.5 font-mono text-xs uppercase tracking-[0.1em] transition-colors after:absolute after:inset-x-2 after:bottom-0 after:h-px sm:shrink-0 sm:justify-start",
               selected
                 ? "text-cyan-100 after:bg-cyan-300"
                 : "text-dashboard-text-muted after:bg-transparent hover:text-dashboard-text",
@@ -301,7 +353,7 @@ function MemoryCollections(props: {
             {collection.count !== undefined ? (
               <span
                 className={cn(
-                  "rounded-sm border px-1.5 py-0.5 text-[0.54rem]",
+                  "rounded-sm border px-1.5 py-0.5 text-xs",
                   selected
                     ? "border-cyan-300/20 bg-cyan-300/10 text-cyan-100"
                     : "border-white/[0.07] bg-white/[0.025] text-dashboard-text-muted",
@@ -349,7 +401,7 @@ function MemorySummary(props: { data: MemoryDashboardData }) {
     >
       {items.map((item) => (
         <div className="bg-[#050507] px-4 py-4 sm:px-5" key={item.label}>
-          <div className="font-mono text-[0.56rem] uppercase tracking-[0.12em] text-dashboard-text-muted">
+          <div className="font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted">
             {item.label}
           </div>
           <div
@@ -360,7 +412,7 @@ function MemorySummary(props: { data: MemoryDashboardData }) {
           >
             {item.value}
           </div>
-          <div className="mt-1 font-mono text-[0.62rem] leading-relaxed text-dashboard-text-muted">
+          <div className="mt-1 font-mono text-xs leading-relaxed text-dashboard-text-muted">
             {item.detail}
           </div>
         </div>
@@ -373,13 +425,13 @@ function MemoryKindPanel(props: { data: MemoryDashboardData }) {
   const { stats } = props.data;
   return (
     <Card className="p-5 sm:p-6">
-      <div className="font-mono text-[0.6rem] uppercase tracking-[0.16em] text-cyan-200/65">
+      <div className="font-mono text-xs uppercase tracking-[0.16em] text-cyan-200/65">
         By type
       </div>
       <h2 className="mt-1 mb-0 font-display text-xl font-medium text-dashboard-text">
         What Junior remembers
       </h2>
-      <p className="mt-1 mb-0 font-mono text-[0.64rem] leading-relaxed text-dashboard-text-muted">
+      <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
         Across personal and public scopes.
       </p>
       <div className="mt-5 grid gap-px overflow-hidden rounded border border-white/[0.06] bg-white/[0.055]">
@@ -411,13 +463,13 @@ function MemoryOriginPanel(props: { data: MemoryDashboardData }) {
   const other = Math.max(0, stats.active - stats.automatic - stats.explicit);
   return (
     <Card className="p-5 sm:p-6">
-      <div className="font-mono text-[0.6rem] uppercase tracking-[0.16em] text-cyan-200/65">
+      <div className="font-mono text-xs uppercase tracking-[0.16em] text-cyan-200/65">
         By origin
       </div>
       <h2 className="mt-1 mb-0 font-display text-xl font-medium text-dashboard-text">
         How they got here
       </h2>
-      <p className="mt-1 mb-0 font-mono text-[0.64rem] leading-relaxed text-dashboard-text-muted">
+      <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
         Same totals, split by how they were written.
       </p>
       <div className="mt-5 grid gap-px overflow-hidden rounded border border-white/[0.06] bg-white/[0.055]">
@@ -460,7 +512,7 @@ function OverviewBreakdownRow(props: {
         <div className="font-display text-base font-medium text-dashboard-text">
           {props.label}
         </div>
-        <div className="mt-0.5 font-mono text-[0.6rem] leading-relaxed text-dashboard-text-muted">
+        <div className="mt-0.5 font-mono text-xs leading-relaxed text-dashboard-text-muted">
           {props.detail}
         </div>
       </div>
@@ -483,12 +535,13 @@ function MemoryRow(props: {
   const visibility = metadataValue(props.record, "Visibility");
   const isPublic = visibility === "Public";
   return (
-    <div
+    <SelectableRow
       className={cn(
-        "group flex items-stretch transition-colors",
+        "flex items-stretch",
         !props.first && "border-t border-white/[0.055]",
-        props.selected ? "bg-cyan-300/[0.045]" : "hover:bg-white/[0.025]",
       )}
+      onSelect={props.onSelect}
+      selected={props.selected}
     >
       <button
         aria-expanded={props.selected}
@@ -512,7 +565,7 @@ function MemoryRow(props: {
             <h3 className="m-0 truncate font-display text-base font-medium leading-snug text-dashboard-text">
               {props.record.title}
             </h3>
-            <div className="mt-1.5 flex min-w-0 items-center gap-x-2 font-mono text-[0.6rem] text-dashboard-text-muted">
+            <div className="mt-1.5 flex min-w-0 items-center gap-x-2 font-mono text-xs text-dashboard-text-muted">
               <span className="truncate">Source: {source}</span>
               <span
                 aria-hidden="true"
@@ -528,7 +581,7 @@ function MemoryRow(props: {
         </div>
         <span
           className={cn(
-            "hidden items-center gap-1.5 rounded border px-2 py-1 font-mono text-[0.56rem] uppercase tracking-[0.08em] sm:inline-flex",
+            "hidden items-center gap-1.5 rounded border px-2 py-1 font-mono text-xs uppercase tracking-[0.08em] sm:inline-flex",
             isPublic
               ? "border-emerald-300/20 bg-emerald-300/[0.07] text-emerald-100"
               : "border-white/[0.08] bg-white/[0.025] text-dashboard-text-muted",
@@ -543,13 +596,13 @@ function MemoryRow(props: {
         </span>
         <span
           className={cn(
-            "hidden w-fit rounded border px-2 py-1 font-mono text-[0.56rem] uppercase tracking-[0.08em] sm:block",
+            "hidden w-fit rounded border px-2 py-1 font-mono text-xs uppercase tracking-[0.08em] sm:block",
             memoryKindClass(kind),
           )}
         >
           {kind}
         </span>
-        <span className="hidden truncate font-mono text-[0.64rem] text-dashboard-text sm:block">
+        <span className="hidden truncate font-mono text-xs text-dashboard-text sm:block">
           {shortDate(remembered)}
         </span>
         <ChevronRight
@@ -563,7 +616,7 @@ function MemoryRow(props: {
           size={16}
         />
       </button>
-    </div>
+    </SelectableRow>
   );
 }
 

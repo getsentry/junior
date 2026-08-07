@@ -1,80 +1,72 @@
 ---
 title: Tasks
-description: Create, inspect, and operate Junior's scheduled and resource-event tasks.
+description: Run Junior later on a schedule or after a resource event.
 type: conceptual
-summary: Understand how Junior runs durable work on a schedule or after a registered resource event.
+summary: Understand scheduled and event tasks, their destinations, and their access.
 prerequisites:
-  - /start-here/quickstart/
-  - /start-here/slack-app-setup/
+  - /start-here/using-junior/
 related:
-  - /operate/dashboard/
+  - /concepts/resource-subscriptions/
   - /concepts/credentials-and-oauth/
-  - /operate/reliability-runbooks/
+  - /operate/dashboard/
 ---
 
-Tasks are durable instructions that Junior runs later. Task support is part of `@sentry/junior`; no Scheduler plugin or separate package is required.
+Tasks are saved instructions that Junior runs later. They are built into `@sentry/junior`.
 
-Junior supports two task kinds:
+## Task Types
 
-| Kind      | Trigger                                                | Example                                      |
-| --------- | ------------------------------------------------------ | -------------------------------------------- |
-| Scheduled | A one-time or recurring schedule                       | “Every Monday at 9 AM, post a project recap” |
-| Event     | A matching event from an enabled resource-event plugin | “When this issue closes, summarize it here”  |
+| Type | Trigger | Example |
+| ---- | ------- | ------- |
+| Scheduled task | A date or recurring schedule | “Every Monday at 9am, post a project recap” |
+| Event task | A resource event from a plugin | “When this issue closes, summarize it here” |
 
-Both kinds preserve their Slack destination and run through Junior's durable conversation work path. Signed-in users can inspect and delete their own tasks from the dashboard's **Tasks** page.
+A resource subscription is different: it follows one resource temporarily without storing an instruction. See [Resource Subscriptions](/concepts/resource-subscriptions/).
 
-## Create and manage scheduled tasks
+## Scheduled Tasks
 
-Ask Junior in the Slack conversation where the result should be delivered:
+Ask in the Slack conversation where results should appear:
 
 ```text
 remind me in 10 minutes to stretch
+every Monday at 9am, post a project recap in this channel
 ```
 
-Junior can also list, update, delete, or run a scheduled task immediately:
+Junior can list, update, delete, or run a scheduled task immediately:
 
 ```text
 what scheduled tasks do I have?
-move my weekly recap to Friday at 3 PM
+move my weekly recap to Friday at 3pm
 run the weekly recap now
 ```
 
-Simple one-time reminders can be created immediately. Recurring work and tasks that may use connected credentials require action review.
+## Event Tasks
 
-## Create event tasks
-
-Event tasks require an enabled plugin that publishes the requested resource type and event. For example, an issue plugin may allow:
+Event tasks require a plugin that publishes the selected resource and event:
 
 ```text
 when ACME-42 closes, summarize the resolution in this channel
 ```
 
-If the contributing plugin is later disabled, the task remains visible in the Tasks page but its trigger is shown as unavailable. Re-enable a compatible plugin or delete the task.
+If the plugin is disabled, the task remains visible but cannot receive events until a compatible plugin is enabled again.
 
-## Configure heartbeat delivery
+## Access and Delivery
 
-`juniorNitro()` emits the internal heartbeat route into Nitro's Vercel Build Output config. If you deploy outside Vercel, call the route every minute:
+- Tasks run as Junior and deliver to the Slack channel or DM where they were created.
+- A task may use its creator's connected account when access was delegated to that task.
+- Only the creator can enable creator credential access.
+- Event content is treated as data, not as a user instruction.
+- Action review still applies when required.
 
-| Route                     | Purpose                                               |
-| ------------------------- | ----------------------------------------------------- |
-| `/api/internal/heartbeat` | Claims due scheduled work and runs plugin heartbeats. |
+Signed-in users can inspect and delete their tasks from the dashboard **Tasks** page.
 
-Set one production heartbeat secret:
-
-| Variable                                   | Purpose                                                                            |
-| ------------------------------------------ | ---------------------------------------------------------------------------------- |
-| `CRON_SECRET` or `JUNIOR_SCHEDULER_SECRET` | Bearer token for the internal heartbeat route. Use `CRON_SECRET` with Vercel Cron. |
-| `JUNIOR_TIMEZONE`                          | Default IANA timezone for schedule authoring. Defaults to `America/Los_Angeles`.   |
-
-## Verify
+## Verify Tasks
 
 1. Ask Junior to remind you in one minute.
-2. Open the dashboard's **Tasks** page and confirm the scheduled task appears.
-3. Wait for the reminder to post in the original Slack conversation.
-4. If a resource-event plugin is enabled, create an event task and confirm it appears beside the scheduled task.
+2. Confirm the task appears on the dashboard **Tasks** page.
+3. Confirm the reminder arrives in the original Slack conversation.
 
-If due work does not run, confirm the heartbeat route is called every minute and its bearer token matches the configured secret. Then inspect conversation work logs for mailbox, lease, or delivery failures.
+If tasks do not run, follow [Reliability Runbooks](/operate/reliability-runbooks/) to check the heartbeat and conversation worker.
 
-## Next step
+## Next Step
 
-Use [Dashboard](/operate/dashboard/) to configure the authenticated Tasks view, then review [Credentials & OAuth](/concepts/credentials-and-oauth/) before creating tasks that use connected accounts.
+Read [Credentials & OAuth](/concepts/credentials-and-oauth/) before using connected accounts in scheduled or event tasks.

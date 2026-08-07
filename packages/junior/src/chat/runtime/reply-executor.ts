@@ -55,6 +55,7 @@ import {
   stripLeadingBotMention,
 } from "@/chat/runtime/thread-context";
 import { stripLeadingSteeringOverride } from "@/chat/slack/message-control";
+import { getSlackMessageText } from "@/chat/slack/message";
 import {
   persistThreadRuntimeState,
   persistThreadState,
@@ -524,8 +525,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         modelId: standardModelId(botConfig),
       },
       async () => {
+        const messageText = getSlackMessageText(message);
         const strippedUserText = stripLeadingBotMention(
-          stripLeadingSteeringOverride(message.text),
+          stripLeadingSteeringOverride(messageText),
           {
             botUserId: deps.getSlackAdapter().botUserId,
             stripLeadingSlackMentionToken:
@@ -533,7 +535,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           },
         );
         const currentText: TurnMessageText = {
-          rawText: appendSlackLegacyAttachmentText(message.text, message.raw),
+          rawText: appendSlackLegacyAttachmentText(messageText, message.raw),
           userText: appendSlackLegacyAttachmentText(
             strippedUserText,
             message.raw,

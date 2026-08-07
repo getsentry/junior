@@ -41,6 +41,7 @@ import {
 import { persistConversationMessageSummaries } from "@/chat/conversations/message-summaries";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import { appendSlackLegacyAttachmentText } from "@/chat/slack/legacy-attachments";
+import { getSlackMessageText } from "@/chat/slack/message";
 import type {
   PrepareTurnStateInput,
   TurnContext,
@@ -82,7 +83,7 @@ function hasPendingImageHydration(
 
 function getBackfillText(entry: Message): string | undefined {
   const text = normalizeConversationText(
-    appendSlackLegacyAttachmentText(entry.text, entry.raw),
+    appendSlackLegacyAttachmentText(getSlackMessageText(entry), entry.raw),
   );
   return text || undefined;
 }

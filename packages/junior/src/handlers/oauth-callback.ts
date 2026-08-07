@@ -63,6 +63,10 @@ import {
 import { escapeXml } from "@/chat/xml";
 import type { WaitUntilFn } from "@/handlers/types";
 import { scheduleAgentContinue } from "@/chat/services/agent-continue";
+import {
+  resolveTurnSessionRouting,
+  type TurnSessionRouting,
+} from "@/chat/services/turn-session-routing";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { requireSlackDestination } from "@/chat/destination";
@@ -379,12 +383,17 @@ async function resumeOAuthSessionRecordTurn(
         });
         return false;
       }
-      if (!lockedSessionRecord.source) {
+      let routing: TurnSessionRouting;
+      try {
+        routing = await resolveTurnSessionRouting({
+          conversationId: stored.resumeConversationId!,
+        });
+      } catch (error) {
         await failAgentTurnSessionRecord({
           conversationId: stored.resumeConversationId!,
           expectedVersion: lockedSessionRecord.version,
           sessionId: lockedSessionId,
-          errorMessage: "Stored Slack source missing for OAuth resume",
+          errorMessage: error instanceof Error ? error.message : String(error),
         });
         return false;
       }
@@ -425,7 +434,7 @@ async function resumeOAuthSessionRecordTurn(
             },
             actor,
             destination,
-            source: lockedSessionRecord.source,
+            source: routing.source,
             toolChannelId:
               lockedArtifacts.assistantContextChannelId ?? stored.channelId!,
           },

@@ -55,8 +55,8 @@ export function HighlightedCodeFallback(props: {
       className={cn(
         "m-0 min-w-0 whitespace-pre-wrap break-words bg-transparent p-0 text-dashboard-text",
         props.variant === "prose"
-          ? "font-display text-[0.94rem] leading-7"
-          : "font-mono text-[0.86rem] leading-relaxed",
+          ? "font-display text-base leading-7"
+          : "font-mono text-sm leading-relaxed",
       )}
     >
       <code>{props.children}</code>
@@ -74,8 +74,8 @@ export function HighlightedCodeHtml(props: {
       className={cn(
         "min-w-0 overflow-hidden [&_.line]:block [&_.line]:max-w-full [&_.line]:whitespace-pre-wrap [&_.line]:break-words [&_.line]:[overflow-wrap:anywhere] [&_code]:block [&_code]:max-w-full [&_code]:whitespace-normal [&_code]:break-words [&_code]:[overflow-wrap:anywhere] [&_pre]:!m-0 [&_pre]:!max-w-full [&_pre]:!overflow-hidden [&_pre]:!bg-transparent [&_pre]:!p-0 [&_pre]:whitespace-normal [&_pre]:break-words [&_pre]:[overflow-wrap:anywhere] [&_span]:whitespace-pre-wrap [&_span]:break-words [&_span]:[overflow-wrap:anywhere] [&_mark.search-match]:bg-amber-400/20 [&_mark.search-match]:rounded-[2px] [&_mark.search-match]:text-inherit [&_mark.search-match]:not-italic",
         props.variant === "prose"
-          ? "[&_pre]:font-display [&_pre]:text-[0.94rem] [&_pre]:leading-7"
-          : "[&_pre]:font-mono [&_pre]:text-[0.86rem] [&_pre]:leading-relaxed",
+          ? "[&_pre]:font-display [&_pre]:text-base [&_pre]:leading-7"
+          : "[&_pre]:font-mono [&_pre]:text-sm [&_pre]:leading-relaxed",
       )}
       dangerouslySetInnerHTML={{ __html: props.html }}
     />

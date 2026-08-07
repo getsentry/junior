@@ -2,6 +2,7 @@ import { defineJuniorPlugins } from "@sentry/junior";
 import { githubPlugin } from "@sentry/junior-github";
 import { linearPlugin } from "@sentry/junior-linear";
 import { memoryPlugin } from "@sentry/junior-memory";
+import { sentryPlugin } from "@sentry/junior-sentry";
 import { vercelPlugin } from "@sentry/junior-vercel";
 
 process.env.GITHUB_APP_BOT_NAME ||= "sentry-junior[bot]";
@@ -20,6 +21,6 @@ export const plugins = defineJuniorPlugins([
   linearPlugin(),
   memoryPlugin(),
   "@sentry/junior-notion",
-  "@sentry/junior-sentry",
+  sentryPlugin(),
   vercelPlugin(),
 ]);

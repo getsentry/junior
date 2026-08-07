@@ -224,7 +224,7 @@ vi.mock("@/chat/pi/client", () => ({
       reason: "test-router",
     },
   }),
-  getPiGatewayApiKey: () => "test-gateway-key",
+  getGatewayApiKey: () => "test-gateway-key",
   resolveGatewayModel: (modelId: string) => modelId,
 }));
 

@@ -55,6 +55,29 @@ export function authTestOk(
   });
 }
 
+export function teamInfoOk(
+  input: {
+    domain?: string;
+    id?: string;
+    name?: string;
+  } = {},
+): {
+  ok: true;
+  team: {
+    domain: string;
+    id: string;
+    name: string;
+  };
+} {
+  return slackOk({
+    team: {
+      domain: input.domain ?? "example",
+      id: input.id ?? "T123",
+      name: input.name ?? "Example",
+    },
+  });
+}
+
 export function chatPostMessageOk(
   input: { ts?: string; channel?: string } = {},
 ): { ok: true; ts: string; channel: string } {

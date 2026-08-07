@@ -28,7 +28,7 @@ export function Button({
         "rounded border border-white/15 bg-dashboard-surface-raised font-mono text-dashboard-text transition-colors hover:border-white/30 hover:bg-dashboard-surface-hover hover:text-dashboard-text disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-white/15 disabled:hover:bg-dashboard-surface-raised disabled:hover:text-dashboard-text",
         size === "icon"
           ? "grid size-9 place-items-center p-0"
-          : "inline-flex h-9 max-w-full items-center gap-2 px-3 text-[0.82rem] font-semibold leading-none",
+          : "inline-flex h-9 max-w-full items-center gap-2 px-3 text-sm font-semibold leading-none",
         props.disabled ? "" : "cursor-pointer",
         className,
       )}
@@ -60,7 +60,7 @@ export function ToggleButton({
 }
 
 const toggleButtonBase: Record<ToggleButtonVariant, string> = {
-  pill: "cursor-pointer rounded border px-2 py-1 font-mono text-[0.72rem] font-semibold uppercase leading-tight transition-colors focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55",
+  pill: "cursor-pointer rounded border px-2 py-1 font-mono text-xs font-semibold uppercase leading-tight transition-colors focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55",
   text: "cursor-pointer border-0 bg-transparent px-1.5 py-1 font-mono uppercase tracking-normal underline-offset-4 transition-colors focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55",
 };
 

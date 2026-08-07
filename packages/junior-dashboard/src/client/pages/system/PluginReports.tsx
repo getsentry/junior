@@ -27,7 +27,7 @@ export function PluginReports(props: {
             <h2 className="m-0 font-display text-base font-medium text-dashboard-text-muted">
               Operational reports
             </h2>
-            <p className="mt-1 mb-0 font-mono text-[0.68rem] leading-relaxed text-dashboard-text-muted">
+            <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
               {props.emptyText}
             </p>
           </div>
@@ -73,12 +73,12 @@ function PluginReportView(props: {
           <h3 className="m-0 truncate font-display text-lg font-medium text-dashboard-text">
             {title}
           </h3>
-          <div className="mt-1 hidden font-mono text-[0.62rem] text-dashboard-text-muted sm:block">
+          <div className="mt-1 hidden font-mono text-xs text-dashboard-text-muted sm:block">
             {props.report.pluginName}
           </div>
         </div>
         {props.report.generatedAt ? (
-          <div className="hidden shrink-0 font-mono text-[0.62rem] text-dashboard-text-muted sm:block">
+          <div className="hidden shrink-0 font-mono text-xs text-dashboard-text-muted sm:block">
             updated {formatTime(props.report.generatedAt)}
           </div>
         ) : null}
@@ -111,7 +111,7 @@ function PluginReportView(props: {
               <div className="truncate font-display text-2xl font-light leading-none text-dashboard-text">
                 {metric.value}
               </div>
-              <div className="mt-2 font-mono text-[0.58rem] uppercase tracking-[0.1em] text-dashboard-text-muted">
+              <div className="mt-2 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted">
                 {metric.label}
               </div>
             </div>
@@ -151,19 +151,19 @@ function PluginReportRecordSet(props: {
   return (
     <div className="border-t border-white/[0.06]">
       <div className="flex items-center justify-between gap-4 px-5 py-3">
-        <div className="font-mono text-[0.62rem] uppercase tracking-[0.12em] text-dashboard-text-muted">
+        <div className="font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted">
           {props.recordSet.title}
         </div>
-        <div className="hidden font-mono text-[0.58rem] text-dashboard-text-muted sm:block">
+        <div className="hidden font-mono text-xs text-dashboard-text-muted sm:block">
           {records.length} records
         </div>
       </div>
       {records.length === 0 ? (
-        <div className="px-5 pb-5 font-mono text-[0.68rem] leading-relaxed text-dashboard-text-muted">
+        <div className="px-5 pb-5 font-mono text-xs leading-relaxed text-dashboard-text-muted">
           {props.recordSet.emptyText ?? "No records."}
         </div>
       ) : fields.length === 0 ? (
-        <div className="px-5 pb-5 font-mono text-[0.68rem] leading-relaxed text-dashboard-text-muted">
+        <div className="px-5 pb-5 font-mono text-xs leading-relaxed text-dashboard-text-muted">
           Report records are unavailable because no fields were declared.
         </div>
       ) : (
@@ -179,10 +179,10 @@ function PluginReportRecordSet(props: {
               >
                 {fields.map((field) => (
                   <div key={field.key}>
-                    <div className="font-mono text-[0.52rem] uppercase tracking-[0.1em] text-dashboard-text-muted">
+                    <div className="font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted">
                       {field.label}
                     </div>
-                    <div className="mt-1 break-words font-mono text-[0.68rem] leading-relaxed text-dashboard-text-muted">
+                    <div className="mt-1 break-words font-mono text-xs leading-relaxed text-dashboard-text-muted">
                       {record.values[field.key] ?? ""}
                     </div>
                   </div>
@@ -192,7 +192,7 @@ function PluginReportRecordSet(props: {
           </div>
           <div className="hidden overflow-x-auto border-t border-white/[0.05] sm:block">
             <table className="w-full min-w-[36rem] border-collapse text-left">
-              <thead className="bg-black/15 font-mono text-[0.58rem] uppercase tracking-[0.1em] text-dashboard-text-muted">
+              <thead className="bg-black/15 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted">
                 <tr>
                   {fields.map((field) => (
                     <th
@@ -216,7 +216,7 @@ function PluginReportRecordSet(props: {
                   >
                     {fields.map((field) => (
                       <td
-                        className="max-w-72 truncate border-b border-white/[0.05] px-5 py-3 font-mono text-[0.7rem] text-dashboard-text-muted"
+                        className="max-w-72 truncate border-b border-white/[0.05] px-5 py-3 font-mono text-xs text-dashboard-text-muted"
                         key={field.key}
                       >
                         {record.values[field.key] ?? ""}

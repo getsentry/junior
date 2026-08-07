@@ -48,6 +48,10 @@ traffic through verified host egress.
 - Missing or invalid snapshots rebuild through the owning snapshot path;
   callers do not mutate a cached snapshot in place.
 - Snapshot state never contains real provider credentials.
+- The global baseline installs Docker and Compose clients plus
+  `junior-ensure-docker`. Sandbox prepare starts `dockerd` so nested
+  `docker compose` works after snapshot boot; the daemon is not part of the
+  snapshot process tree.
 
 ## Network And Credentials
 

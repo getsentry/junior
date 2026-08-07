@@ -106,9 +106,9 @@ export function createImageGenerateTool(
     outputSchema: imageGenerateOutputSchema,
     execute: async ({ prompt }) => {
       const fetchImpl = deps.fetch ?? fetch;
-      // Raw fetch does not resolve AI Gateway env auth on its own, so this
-      // path has to turn the documented env credential into a bearer token.
-      const apiKey = getGatewayApiKey();
+      // Raw fetch does not resolve AI Gateway auth on its own, so this path
+      // has to turn the shared gateway credential into a bearer token.
+      const apiKey = await getGatewayApiKey();
       if (!apiKey) {
         throw new Error(MISSING_GATEWAY_CREDENTIALS_ERROR);
       }

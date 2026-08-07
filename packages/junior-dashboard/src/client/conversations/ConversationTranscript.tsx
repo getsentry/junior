@@ -28,11 +28,6 @@ import {
   detectLanguage,
   transcriptRoleKind,
   formatMessageTimestamp,
-  formatTranscriptDuration,
-  summarizeCost,
-  summarizeTurns,
-  summarizeToolCalls,
-  summarizeUsage,
   transcriptMessageActorLabel,
   unavailableTranscriptLabel,
   visualStatusForSummary,
@@ -48,14 +43,6 @@ import {
   TranscriptHeadingMeta,
   TranscriptHeadingRow,
 } from "./TranscriptHeadingRow";
-import { MetricList, type MetricListItem } from "../components/Metric";
-import {
-  CostMetric,
-  DurationMetric,
-  TurnsMetric,
-  TokenMetric,
-  ToolCallsMetric,
-} from "./TelemetryMetrics";
 import { TranscriptText } from "./TranscriptText";
 import { TranscriptSubagentView } from "./TranscriptSubagentView";
 import { TranscriptContextEventView } from "./TranscriptContextEventView";
@@ -73,10 +60,7 @@ import {
   type RenderedToolEntry,
   type TranscriptViewMode,
 } from "./transcriptRenderModel";
-import {
-  transcriptEmptyClass,
-  mutedTranscriptMetaClass,
-} from "./transcriptStyles";
+import { transcriptEmptyClass } from "./transcriptStyles";
 import {
   entryMatchesSearch,
   HighlightText,
@@ -121,7 +105,6 @@ export function ConversationTranscriptView(props: {
         <span className="mt-2 w-px flex-1 bg-cyan-300/15" />
       </div>
       <div className="min-w-0">
-        <SegmentHeader conversation={props.conversation} />
         <SegmentEvents
           onOpenSubagentTranscript={props.onOpenSubagentTranscript}
           conversation={props.conversation}
@@ -198,7 +181,7 @@ function transcriptRoleClass(role: string): string {
   const kind = transcriptRoleKind(role);
 
   return cn(
-    "text-[0.88rem] leading-snug",
+    "text-sm leading-snug",
     kind === "assistant" && "text-cyan-100/75",
     kind === "user" && "text-dashboard-text",
     kind === "system" && "text-amber-200",
@@ -211,7 +194,7 @@ function transcriptRoleLabelClass(role: string): string {
   const kind = transcriptRoleKind(role);
 
   return cn(
-    "inline-block max-w-full truncate font-display text-[0.95rem] font-semibold leading-tight",
+    "inline-block max-w-full truncate font-display text-base font-semibold leading-tight",
     kind === "assistant" && "text-cyan-100",
     kind === "user" && "text-dashboard-text",
     kind === "system" && "text-amber-200",
@@ -253,23 +236,12 @@ function TranscriptMessageHeader(props: {
       leftClassName={transcriptRoleClass(props.message.role)}
       right={
         metaText ? (
-          <TranscriptHeadingMeta className="block min-w-0 break-words text-[0.72rem] leading-snug text-dashboard-text-muted md:text-[0.78rem] md:leading-none">
+          <TranscriptHeadingMeta className="block min-w-0 break-words text-xs leading-snug text-dashboard-text-muted md:leading-none">
             {metaText}
           </TranscriptHeadingMeta>
         ) : undefined
       }
     />
-  );
-}
-
-function SegmentHeader(props: { conversation: ConversationTranscript }) {
-  return (
-    <div className="min-w-0">
-      <MetricList
-        className={mutedTranscriptMetaClass()}
-        items={transcriptMeta(props.conversation)}
-      />
-    </div>
   );
 }
 
@@ -515,17 +487,17 @@ function TranscriptFailureView(props: {
         size={16}
       />
       <div className="min-w-0">
-        <div className="font-display text-[0.95rem] font-semibold leading-tight">
+        <div className="font-display text-base font-semibold leading-tight">
           {deliveryFailed ? "Message delivery failed" : "Agent response failed"}
         </div>
-        <div className="mt-1 text-[0.84rem] leading-relaxed text-rose-100/70">
+        <div className="mt-1 text-sm leading-relaxed text-rose-100/70">
           {deliveryFailed
             ? `${getDashboardAgentName()} could not deliver this message to its destination.`
             : `The model response ended before ${getDashboardAgentName()} could complete this turn.`}
         </div>
       </div>
       {timestamp ? (
-        <span className="font-mono text-[0.78rem] leading-none text-rose-100/55 max-md:col-start-2">
+        <span className="font-mono text-xs leading-none text-rose-100/55 max-md:col-start-2">
           {timestamp}
         </span>
       ) : null}
@@ -711,7 +683,7 @@ function RedactedMessageView(props: {
         message={props.message}
         conversation={props.conversation}
       />
-      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 font-mono text-[0.9rem] leading-snug text-dashboard-text-muted">
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 font-mono text-base leading-snug text-dashboard-text-muted">
         {props.message.parts.map((_part, index) => (
           <RedactedMetadataRow key={index} />
         ))}
@@ -735,98 +707,10 @@ function RedactedMetadataRow(props: { meta?: string }) {
 
 function RedactedMarker() {
   return (
-    <code className="inline-flex w-fit font-mono text-[0.82rem] leading-tight text-dashboard-text-muted">
+    <code className="inline-flex w-fit font-mono text-sm leading-tight text-dashboard-text-muted">
       {"<redacted>"}
     </code>
   );
-}
-
-function transcriptMeta(
-  conversation: ConversationTranscript,
-): MetricListItem[] {
-  const duration = formatTranscriptDuration(conversation);
-  const tokenSummary = summarizeUsage(conversation.cumulativeUsage);
-  const costSummary = summarizeCost(conversation.cumulativeUsage);
-  const completeHistory = !conversation.previousCursor;
-  const toolSummary = completeHistory
-    ? summarizeToolCalls(conversation)
-    : undefined;
-  const turnSummary = completeHistory
-    ? summarizeTurns(conversation)
-    : undefined;
-  const items: Array<MetricListItem | undefined> = [
-    duration !== "none"
-      ? {
-          content: (
-            <DurationMetric
-              endedAt={conversation.lastSeenAt}
-              label={duration}
-              startedAt={conversation.startedAt}
-            />
-          ),
-          key: "duration",
-        }
-      : undefined,
-    tokenSummary
-      ? {
-          content: (
-            <TokenMetric
-              compactionCount={
-                completeHistory
-                  ? conversation.events.filter(
-                      (event) => event.data.type === "compaction",
-                    ).length
-                  : undefined
-              }
-              modelUsage={conversation.modelUsage}
-              summary={tokenSummary}
-            />
-          ),
-          key: "tokens",
-        }
-      : undefined,
-    costSummary || conversation.auxiliaryCosts
-      ? {
-          content: (
-            <CostMetric
-              auxiliaryCosts={conversation.auxiliaryCosts}
-              modelUsage={conversation.modelUsage}
-              summary={costSummary}
-            />
-          ),
-          key: "cost",
-        }
-      : undefined,
-    turnSummary
-      ? {
-          content: <TurnsMetric summary={turnSummary} />,
-          key: "turns",
-        }
-      : undefined,
-    toolSummary && toolSummary.total > 0
-      ? {
-          content: <ToolCallsMetric summary={toolSummary} />,
-          key: "tools",
-        }
-      : undefined,
-    conversation.sentryTraceUrl
-      ? {
-          content: (
-            <a
-              className="text-dashboard-text no-underline hover:underline"
-              href={conversation.sentryTraceUrl}
-              rel="noreferrer"
-              target="_blank"
-            >
-              View in Sentry
-            </a>
-          ),
-          key: "sentry",
-        }
-      : undefined,
-  ];
-
-  return items.filter((item): item is MetricListItem => Boolean(item));
 }
 
 function TranscriptResourceEventView(props: {
@@ -838,11 +722,11 @@ function TranscriptResourceEventView(props: {
   );
   return (
     <details className="min-w-0 rounded-lg border border-violet-300/10 bg-violet-300/[0.035] px-3 py-2">
-      <summary className="cursor-pointer list-none font-display text-[0.88rem] font-semibold text-violet-100 [&::-webkit-details-marker]:hidden">
+      <summary className="cursor-pointer list-none font-display text-sm font-semibold text-violet-100 [&::-webkit-details-marker]:hidden">
         <HighlightText text={props.message.eventType ?? ""} />
       </summary>
       {text ? (
-        <div className="mt-2 whitespace-pre-wrap text-[0.8rem] leading-relaxed text-dashboard-text-muted">
+        <div className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-dashboard-text-muted">
           <HighlightText text={text} />
         </div>
       ) : redacted ? (
@@ -882,17 +766,7 @@ function TranscriptMessageView(props: {
       }}
     >
       <TranscriptMessageHeader
-        meta={[
-          props.message.route
-            ? [
-                props.message.route.modelProfile,
-                props.message.route.reasoningLevel,
-              ]
-                .filter(isString)
-                .join(" · ")
-            : undefined,
-          formatMessageTimestamp(props.message.timestamp),
-        ]}
+        meta={[formatMessageTimestamp(props.message.timestamp)]}
         message={props.message}
         conversation={props.conversation}
       />

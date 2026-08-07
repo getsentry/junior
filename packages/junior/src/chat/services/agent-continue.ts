@@ -6,7 +6,15 @@
  */
 import type { StateAdapter } from "chat";
 import type { Destination } from "@sentry/junior-plugin-api";
-import { getAgentTurnSessionRecord } from "@/chat/state/turn-session";
+import type { ConversationStore } from "@/chat/conversations/store";
+import {
+  resolveTurnSessionRouting,
+  type TurnSessionRouting,
+} from "@/chat/services/turn-session-routing";
+import {
+  failAgentTurnSessionRecord,
+  getAgentTurnSessionRecord,
+} from "@/chat/state/turn-session";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   ensureConversationWake,
@@ -30,6 +38,7 @@ export interface ScheduleAgentContinueOptions {
 /** Build the queue request for an awaiting automatic agent continuation. */
 export async function getAwaitingAgentContinueRequest(args: {
   conversationId: string;
+  conversationStore?: ConversationStore;
   sessionId: string;
 }): Promise<AgentContinueRequest | undefined> {
   const sessionRecord = await getAgentTurnSessionRecord(
@@ -46,13 +55,25 @@ export async function getAwaitingAgentContinueRequest(args: {
   ) {
     return undefined;
   }
-  if (!sessionRecord.destination) {
+  let routing: TurnSessionRouting;
+  try {
+    routing = await resolveTurnSessionRouting({
+      conversationId: args.conversationId,
+      conversationStore: args.conversationStore,
+    });
+  } catch (error) {
+    await failAgentTurnSessionRecord({
+      conversationId: args.conversationId,
+      expectedVersion: sessionRecord.version,
+      sessionId: args.sessionId,
+      errorMessage: error instanceof Error ? error.message : String(error),
+    });
     return undefined;
   }
 
   return {
     conversationId: args.conversationId,
-    destination: sessionRecord.destination,
+    destination: routing.destination,
     sessionId: args.sessionId,
     expectedVersion: sessionRecord.version,
   };

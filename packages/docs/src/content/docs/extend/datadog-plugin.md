@@ -33,28 +33,73 @@ import { defineJuniorPlugins } from "@sentry/junior";
 export const plugins = defineJuniorPlugins(["@sentry/junior-datadog"]);
 ```
 
-Set Datadog credentials in your Junior deployment environment:
+## Config
 
-```bash
-DATADOG_API_KEY=...
-DATADOG_APP_KEY=...
-DATADOG_SITE=datadoghq.com # optional; defaults to US1
-```
+Set conversation config with `jr-rpc config set`, or define the same keys for every conversation with `createApp({ configDefaults })`. Set deployment variables in the Junior environment, then redeploy. Explicit values in a request always win over conversation defaults.
 
-Use `DATADOG_API_KEY`, `DATADOG_APP_KEY`, and `DATADOG_SITE` in the Junior deployment environment. The plugin maps those host-side `DATADOG_*` values to Datadog API headers and Pup's sandbox `DD_*` env values.
+### Conversation defaults
 
-Use a Datadog application key with the smallest read scopes/role that covers the telemetry users need.
+<details class="plugin-config">
+<summary><code>datadog.env</code></summary>
 
-## Optional channel defaults
+Default Datadog environment filter when a request does not name one.
 
-If a Slack channel usually investigates the same Datadog environment or service, store that as a conversation-scoped default:
+- **Define:** `jr-rpc config set datadog.env <environment>`
+- **Install-wide default:** `configDefaults["datadog.env"]`
+- **Required:** No
+- **Environment override:** None
 
-```bash
-jr-rpc config set datadog.env prod
-jr-rpc config set datadog.service checkout
-```
+</details>
 
-These defaults are optional fallbacks. If a user names a different env or service in a request, Junior follows the explicit request instead.
+<details class="plugin-config">
+<summary><code>datadog.service</code></summary>
+
+Default Datadog service filter when a request does not name one.
+
+- **Define:** `jr-rpc config set datadog.service <service>`
+- **Install-wide default:** `configDefaults["datadog.service"]`
+- **Required:** No
+- **Environment override:** None
+
+</details>
+
+### Environment variables
+
+<details class="plugin-config">
+<summary><code>DATADOG_API_KEY</code></summary>
+
+Datadog API key used for read-only telemetry requests.
+
+- **Define:** Set `DATADOG_API_KEY` in the deployment environment
+- **Required:** Yes
+- **Environment override:** `DATADOG_API_KEY`
+
+</details>
+
+<details class="plugin-config">
+<summary><code>DATADOG_APP_KEY</code></summary>
+
+Datadog application key used for read-only telemetry requests. Grant the smallest role and scopes users need.
+
+- **Define:** Set `DATADOG_APP_KEY` in the deployment environment
+- **Required:** Yes
+- **Environment override:** `DATADOG_APP_KEY`
+
+</details>
+
+<details class="plugin-config">
+<summary><code>DATADOG_SITE</code></summary>
+
+Datadog site hostname for the org connected to this Junior deployment.
+
+- **Define:** Set `DATADOG_SITE` in the deployment environment
+- **Default:** `datadoghq.com` (US1)
+- **Required:** No
+- **Environment override:** `DATADOG_SITE`
+
+The plugin maps this value to Pup's `DD_SITE`; see [Non-US1 sites](#non-us1-sites) for standard values.
+
+</details>
 
 ## Auth model
 

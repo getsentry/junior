@@ -25,7 +25,8 @@ test("shows system usage and plugin details", async ({ page }) => {
   const browserErrors = collectBrowserErrors(page);
   await page.goto(`${server.baseURL}/system`);
 
-  await expect(page.getByText("Usage over time")).toBeVisible();
+  await expect(page.getByText("Conversation activity")).toBeVisible();
+  await expect(page.getByLabel("Conversations per day")).toBeVisible();
   await expect(page.getByText("Model spend")).toBeVisible();
   await expect(page.getByRole("region", { name: "Plugins" })).toHaveCount(0);
 

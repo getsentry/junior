@@ -1,65 +1,95 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { getGatewayApiKey, getPiGatewayApiKey } from "@/chat/pi/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const ORIGINAL_ENV = {
-  AI_GATEWAY_API_KEY: process.env.AI_GATEWAY_API_KEY,
-  VERCEL_OIDC_TOKEN: process.env.VERCEL_OIDC_TOKEN,
-};
+const mocks = vi.hoisted(() => ({
+  getEnvApiKey: vi.fn(),
+  getVercelOidcToken: vi.fn(),
+}));
 
-function restoreEnvVar(name: keyof typeof ORIGINAL_ENV): void {
-  const value = ORIGINAL_ENV[name];
-  if (value === undefined) {
-    delete process.env[name];
-    return;
-  }
-  process.env[name] = value;
-}
+vi.mock("@/chat/pi/sdk", () => ({
+  getEnvApiKey: mocks.getEnvApiKey,
+}));
 
-describe("getGatewayApiKey", () => {
+vi.mock("@vercel/oidc", () => ({
+  getVercelOidcToken: mocks.getVercelOidcToken,
+}));
+
+import {
+  getGatewayApiKey,
+  MISSING_GATEWAY_CREDENTIALS_ERROR,
+  resolveGatewayCredential,
+} from "@/chat/pi/gateway-auth";
+
+describe("resolveGatewayCredential", () => {
+  beforeEach(() => {
+    mocks.getEnvApiKey.mockReset();
+    mocks.getVercelOidcToken.mockReset();
+    mocks.getEnvApiKey.mockReturnValue(undefined);
+    mocks.getVercelOidcToken.mockRejectedValue(new Error("oidc unavailable"));
+  });
+
   afterEach(() => {
-    restoreEnvVar("AI_GATEWAY_API_KEY");
-    restoreEnvVar("VERCEL_OIDC_TOKEN");
+    vi.clearAllMocks();
   });
 
-  it("prefers explicit AI gateway API key", () => {
-    process.env.AI_GATEWAY_API_KEY = "  api-key  ";
-    process.env.VERCEL_OIDC_TOKEN = "oidc-token";
+  it("prefers runtime OIDC over an explicit API key", async () => {
+    mocks.getVercelOidcToken.mockResolvedValue("  oidc-token  ");
+    mocks.getEnvApiKey.mockReturnValue("api-key");
 
-    expect(getGatewayApiKey()).toBe("api-key");
+    await expect(resolveGatewayCredential()).resolves.toEqual({
+      mode: "oidc",
+      token: "oidc-token",
+    });
   });
 
-  it("uses Vercel OIDC token from env when no API key is configured", () => {
-    delete process.env.AI_GATEWAY_API_KEY;
-    process.env.VERCEL_OIDC_TOKEN = "oidc-token";
+  it("falls back to AI_GATEWAY_API_KEY when OIDC is unavailable", async () => {
+    mocks.getVercelOidcToken.mockRejectedValue(
+      new Error("The 'x-vercel-oidc-token' header is missing from the request."),
+    );
+    mocks.getEnvApiKey.mockReturnValue("  api-key  ");
 
-    expect(getGatewayApiKey()).toBe("oidc-token");
+    await expect(resolveGatewayCredential()).resolves.toEqual({
+      mode: "api_key",
+      token: "api-key",
+    });
+  });
+
+  it("returns undefined when neither OIDC nor API key is available", async () => {
+    await expect(resolveGatewayCredential()).resolves.toBeUndefined();
+  });
+
+  it("ignores blank OIDC tokens and continues to the API key", async () => {
+    mocks.getVercelOidcToken.mockResolvedValue("   ");
+    mocks.getEnvApiKey.mockReturnValue("api-key");
+
+    await expect(resolveGatewayCredential()).resolves.toEqual({
+      mode: "api_key",
+      token: "api-key",
+    });
   });
 });
 
-describe("getPiGatewayApiKey", () => {
-  afterEach(() => {
-    restoreEnvVar("AI_GATEWAY_API_KEY");
-    restoreEnvVar("VERCEL_OIDC_TOKEN");
+describe("getGatewayApiKey", () => {
+  beforeEach(() => {
+    mocks.getEnvApiKey.mockReset();
+    mocks.getVercelOidcToken.mockReset();
+    mocks.getEnvApiKey.mockReturnValue(undefined);
+    mocks.getVercelOidcToken.mockRejectedValue(new Error("oidc unavailable"));
   });
 
-  it("prefers explicit API key when both Gateway credentials are present", () => {
-    process.env.AI_GATEWAY_API_KEY = "api-key";
-    process.env.VERCEL_OIDC_TOKEN = "oidc-token";
+  it("returns the resolved bearer token", async () => {
+    mocks.getVercelOidcToken.mockResolvedValue("oidc-token");
 
-    expect(getPiGatewayApiKey()).toBe("api-key");
+    await expect(getGatewayApiKey()).resolves.toBe("oidc-token");
   });
 
-  it("returns the Gateway API key for Pi Agent auth hooks", () => {
-    process.env.AI_GATEWAY_API_KEY = "api-key";
-    delete process.env.VERCEL_OIDC_TOKEN;
-
-    expect(getPiGatewayApiKey()).toBe("api-key");
+  it("returns undefined when no credential is available", async () => {
+    await expect(getGatewayApiKey()).resolves.toBeUndefined();
   });
+});
 
-  it("uses Vercel OIDC when no explicit API key is configured", () => {
-    delete process.env.AI_GATEWAY_API_KEY;
-    process.env.VERCEL_OIDC_TOKEN = "oidc-token";
-
-    expect(getPiGatewayApiKey()).toBe("oidc-token");
+describe("MISSING_GATEWAY_CREDENTIALS_ERROR", () => {
+  it("points operators at OIDC first", () => {
+    expect(MISSING_GATEWAY_CREDENTIALS_ERROR).toContain("Vercel OIDC");
+    expect(MISSING_GATEWAY_CREDENTIALS_ERROR).toContain("AI_GATEWAY_API_KEY");
   });
 });

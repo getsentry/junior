@@ -38,7 +38,7 @@ Out of scope:
 ## Current CLI Data
 
 - Verified date: 2026-07-13.
-- Verified npm package: `sentry@0.38.0`, installed from the plugin `runtime-dependencies` entry.
+- Verified npm package: `sentry@0.38.0`, installed from the `runtimeDependencies` declared by `sentryPlugin()`.
 - Auth model: Junior injects `SENTRY_AUTH_TOKEN` for authenticated Sentry commands during the requesting user's turn.
 - Canonical command groups: `sentry issue`, `sentry org`, `sentry log`, `sentry trace`, `sentry alert metrics`, and `sentry api`.
 - Required migration rule: prefer singular command groups such as `sentry org list`; do not teach stale plural command forms such as `sentry organizations list`.
@@ -50,7 +50,7 @@ Out of scope:
 Authoritative sources:
 
 - Current Sentry CLI docs and live `sentry --help` output.
-- The Sentry plugin manifest and Junior runtime contracts.
+- The Sentry plugin runtime registration (`packages/junior-sentry/src/index.ts`) and Junior runtime contracts.
 - GitHub issues or PRs that document observed skill failures.
 
 Useful improvement sources:

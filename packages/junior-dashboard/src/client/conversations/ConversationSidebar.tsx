@@ -92,7 +92,7 @@ export function ConversationSidebar(props: {
             items={entries}
             renderItem={(entry) =>
               entry.kind === "section" ? (
-                <h3 className="m-0 px-3 pb-1 pt-4 font-display text-[0.72rem] font-semibold uppercase tracking-[0.08em] text-dashboard-text-muted/60">
+                <h3 className="m-0 px-3 pb-1 pt-4 font-display text-xs font-semibold uppercase tracking-[0.08em] text-dashboard-text-muted/60">
                   {entry.label}
                 </h3>
               ) : (
@@ -190,7 +190,7 @@ function ConversationSidebarRow(props: {
               )}
             />
           )}
-          <div className="truncate font-display text-[0.92rem] font-medium leading-tight text-dashboard-text">
+          <div className="truncate font-display text-base font-medium leading-tight text-dashboard-text">
             {title}
           </div>
         </div>
@@ -228,13 +228,13 @@ function ArchiveConversationErrorNotice(props: {
     <div className="rounded-lg border border-rose-300/25 bg-[#111719] px-3 py-2.5 shadow-[0_12px_32px_rgba(0,0,0,0.45)]">
       <div className="flex min-w-0 items-center gap-3">
         <div
-          className="min-w-0 flex-1 font-mono text-[0.68rem] text-rose-200/80"
+          className="min-w-0 flex-1 font-mono text-xs text-rose-200/80"
           role="alert"
         >
           Could not archive {title}.
         </div>
         <button
-          className="shrink-0 rounded border border-white/15 px-2 py-1 font-mono text-[0.65rem] text-dashboard-text-muted transition hover:border-white/30 hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-cyan-300/35"
+          className="shrink-0 rounded border border-white/15 px-2 py-1 font-mono text-xs text-dashboard-text-muted transition hover:border-white/30 hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-cyan-300/35"
           onClick={props.onDismiss}
           type="button"
         >
@@ -259,14 +259,14 @@ function ArchivedConversationNotice(props: {
     <div className="rounded-lg border border-white/15 bg-[#111719] px-3 py-2.5 shadow-[0_12px_32px_rgba(0,0,0,0.45)]">
       <div className="flex min-w-0 items-center gap-3">
         <div
-          className="min-w-0 flex-1 truncate font-mono text-[0.68rem] text-dashboard-text-muted"
+          className="min-w-0 flex-1 truncate font-mono text-xs text-dashboard-text-muted"
           role="status"
         >
           {title} archived
         </div>
         <button
           aria-label={`Undo archive for ${title}`}
-          className="shrink-0 rounded border border-white/15 px-2 py-1 font-mono text-[0.65rem] text-cyan-100/75 transition hover:border-white/30 hover:text-cyan-50 focus:outline-none focus:ring-2 focus:ring-cyan-300/35 disabled:opacity-40"
+          className="shrink-0 rounded border border-white/15 px-2 py-1 font-mono text-xs text-cyan-100/75 transition hover:border-white/30 hover:text-cyan-50 focus:outline-none focus:ring-2 focus:ring-cyan-300/35 disabled:opacity-40"
           disabled={restore.isPending}
           onClick={() =>
             restore.mutate({
@@ -281,7 +281,7 @@ function ArchivedConversationNotice(props: {
       </div>
       {restore.error ? (
         <div
-          className="mt-1 font-mono text-[0.62rem] text-rose-200/80"
+          className="mt-1 font-mono text-xs text-rose-200/80"
           role="alert"
         >
           Could not restore the conversation.

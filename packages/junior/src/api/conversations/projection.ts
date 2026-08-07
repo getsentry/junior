@@ -70,17 +70,28 @@ function surfaceFromSource(
   return surfaceFromConversationId(conversationId);
 }
 
-function sourceUrlFromConversation(
-  conversation: ConversationProjectionSource,
-  canViewPrivateContent: boolean,
-): string | undefined {
+function sourceUrlFromConversation(args: {
+  canViewPrivateContent: boolean;
+  conversation: ConversationProjectionSource;
+  teamDomainByTeamId?: ReadonlyMap<string, string>;
+}): string | undefined {
+  const { conversation } = args;
   if (
-    !canViewPrivateContent ||
+    !args.canViewPrivateContent ||
     conversation.sessionSource?.platform !== "slack"
   ) {
     return undefined;
   }
-  return buildSlackSourceUrl(conversation.sessionSource);
+  const teamDomain = args.teamDomainByTeamId?.get(
+    conversation.sessionSource.teamId,
+  );
+  const threadTs = conversation.sessionSource.threadTs;
+  if (!teamDomain || !threadTs) return undefined;
+  return buildSlackSourceUrl({
+    channelId: conversation.sessionSource.channelId,
+    teamDomain,
+    threadTs,
+  });
 }
 
 function actorIdentityReport(
@@ -195,6 +206,7 @@ export function conversationSummaryFromStoredConversation(args: {
   conversation: ConversationProjectionSource;
   durationMs: number;
   locationId?: string;
+  teamDomainByTeamId?: ReadonlyMap<string, string>;
   usage?: ConversationUsage;
 }): ConversationSummaryReport {
   const { conversation, durationMs, usage } = args;
@@ -209,10 +221,13 @@ export function conversationSummaryFromStoredConversation(args: {
     conversation.conversationId,
   );
   const actorIdentity = actorIdentityReport(conversation.actor);
-  const sourceUrl = sourceUrlFromConversation(
-    conversation,
+  const sourceUrl = sourceUrlFromConversation({
     canViewPrivateContent,
-  );
+    conversation,
+    ...(args.teamDomainByTeamId
+      ? { teamDomainByTeamId: args.teamDomainByTeamId }
+      : {}),
+  });
   const slackThread = parseSlackThreadId(conversation.conversationId);
   const channelName = channelNameFromConversation(
     conversation,

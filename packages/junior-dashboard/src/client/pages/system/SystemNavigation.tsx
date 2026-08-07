@@ -11,7 +11,7 @@ import { systemPluginsPath } from "./SystemPlugins";
 export function SystemNavigation() {
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     cn(
-      "relative flex h-12 shrink-0 items-center px-3 font-display text-xs font-medium no-underline transition-colors after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:transition-colors sm:text-[0.8rem]",
+      "relative flex h-12 shrink-0 items-center px-3 font-display text-xs font-medium no-underline transition-colors after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:transition-colors sm:text-sm",
       isActive
         ? "text-dashboard-text after:bg-cyan-300"
         : cn(

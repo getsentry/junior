@@ -15,6 +15,10 @@ import { PageHeader } from "../../components/layout/PageHeader";
 import { getDashboardAgentName } from "../../agentName";
 import { StatCard } from "../../components/metrics/StatCard";
 import { formatCompactNumber } from "../../format";
+import {
+  useDebouncedSearchParam,
+  useSearchParamEnum,
+} from "../../searchParams";
 import { SystemPageLayout } from "../system/SystemPageLayout";
 import { PeopleActivityChart } from "./PeopleActivityChart";
 import {
@@ -22,6 +26,13 @@ import {
   PeopleDirectory,
   type PeopleSort,
 } from "./PeopleDirectory";
+
+const PEOPLE_SORTS = [
+  "activeDays",
+  "conversations",
+  "recent",
+  "runtime",
+] as const satisfies readonly PeopleSort[];
 
 /** Render the actor directory returned by the REST API. */
 export function PeoplePage() {
@@ -34,9 +45,14 @@ export function PeoplePageContent(props: {
   data: ActorDirectoryReport | undefined;
   error: unknown;
 }) {
-  const [peopleSearch, setPeopleSearch] = useState("");
+  const [peopleSearch, setPeopleSearch, peopleQuery] =
+    useDebouncedSearchParam();
   const [range, setRange] = useState<TimeRangeDays>(90);
-  const [sort, setSort] = useState<PeopleSort>("conversations");
+  const [sort, setSort] = useSearchParamEnum(
+    "sort",
+    "conversations",
+    PEOPLE_SORTS,
+  );
   const deferredSort = useDeferredValue(sort);
   if (!props.data && !props.error) {
     return <LoadingView label="Loading people" />;
@@ -45,7 +61,7 @@ export function PeoplePageContent(props: {
   const data = props.data;
   const visibleActivity = data?.activityDays.slice(-range) ?? [];
   const people = data
-    ? filterPeople(data.people, peopleSearch, deferredSort)
+    ? filterPeople(data.people, peopleQuery, deferredSort)
     : [];
   const indexedConversations =
     data?.people.reduce((total, person) => total + person.conversations, 0) ??

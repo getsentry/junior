@@ -1,5 +1,3 @@
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
-
 let installDefaults: Record<string, unknown> = {};
 
 function cloneDefaults(
@@ -18,7 +16,7 @@ function isConfigDefaultsRecord(
   );
 }
 
-/** Store install-wide config defaults; keys must be registered plugin config keys. */
+/** Store install-wide configuration defaults. */
 export function setConfigDefaults(
   defaults: Record<string, unknown> | undefined,
 ): void {
@@ -31,14 +29,6 @@ export function setConfigDefaults(
     throw new Error(
       "configDefaults must be an object keyed by plugin config key",
     );
-  }
-
-  for (const key of Object.keys(defaults)) {
-    if (!pluginCatalogRuntime.isConfigKey(key)) {
-      throw new Error(
-        `configDefaults: "${key}" is not a registered plugin config key`,
-      );
-    }
   }
 
   installDefaults = cloneDefaults(defaults);

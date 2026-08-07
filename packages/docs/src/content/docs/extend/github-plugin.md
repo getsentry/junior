@@ -1,30 +1,33 @@
 ---
 title: GitHub Plugin
-description: Configure GitHub App credentials for GitHub repository workflows.
+description: Configure the GitHub App and use Junior for repository workflows and resource events.
 type: tutorial
-summary: Set up GitHub deployment lookup and watches alongside Junior-owned workflow dispatches, issues, pull requests, and branch pushes.
+summary: Install the GitHub plugin, configure the App, then use repository workflows and resource subscriptions.
 prerequisites:
   - /extend/
 related:
   - /concepts/credentials-and-oauth/
+  - /concepts/resource-subscriptions/
   - /reference/config-and-env/
   - /reference/runtime-commands/
 ---
 
-The GitHub plugin uses one GitHub App permission envelope for the repositories Junior can reach. Junior acts as the App installation for reads, workflow dispatches, issue and pull request maintenance, pull request reviews, and Git branch pushes. Human OAuth remains reserved for operations whose GitHub meaning is personal, such as user-attachment uploads.
+Use the GitHub plugin when Junior should work in repositories through a GitHub
+App: issues, pull requests, reviews, branch pushes, workflow dispatches,
+reruns, and cancellations, deployment and release lookups, and resource subscriptions.
 
-## Install
+Junior uses the App installation for bot-owned work. Human OAuth is only for
+operations that must run as the requesting user, such as user-attachment uploads.
 
-Install the plugin package alongside `@sentry/junior`:
+## Setup
+
+### 1. Install
 
 ```bash
 pnpm add @sentry/junior @sentry/junior-github
 ```
 
-## Runtime setup
-
-Add the GitHub plugin factory to the plugin set exported from `plugins.ts`. The factory registers the GitHub manifest,
-bundled skills, and Git commit attribution hooks together.
+### 2. Register the plugin
 
 ```ts title="plugins.ts"
 import { defineJuniorPlugins } from "@sentry/junior";
@@ -38,49 +41,200 @@ export const plugins = defineJuniorPlugins([
 ]);
 ```
 
-Junior requests read-level installation tokens for read traffic. Allowlisted writes receive a repository-scoped token with the complete permission envelope approved on the GitHub App installation, so a branch push and the following pull request operation cannot receive mismatched permissions. Unsupported writes are still denied by the egress policy instead of borrowing a user token.
+The factory registers the GitHub manifest, bundled skills, and Git commit
+attribution hooks. Do not register this plugin as a bare package-name string.
 
-You can optionally declare `appPermissions` when registering the plugin. Junior uses that declaration to avoid an installation lookup when downscoping read tokens; it does not downscope write tokens. Keep the declaration aligned with the permissions approved in the GitHub App settings.
+Optional: declare `appPermissions` to match the App permissions approved in
+GitHub. Junior uses that declaration when downscoping read tokens; it does not
+narrow write tokens.
 
-## Configure environment variables
+### 3. Create the GitHub App
 
-Set these values in the host environment:
+1. Create a GitHub App and generate a private key.
+2. Grant repository permissions:
+   - Actions: Read and write
+   - Checks: Read
+   - Contents: Read and write
+   - Deployments: Read
+   - Issues: Read and write
+   - Metadata: Read
+   - Pull requests: Read and write
+   - Workflows: Write
+3. Install the App on the organization or repositories Junior should reach.
+4. Copy the App ID, OAuth client ID and secret, installation ID, bot name, and
+   bot noreply email into your deployment environment.
 
-| Variable                   | Required | Purpose                                                                |
-| -------------------------- | -------- | ---------------------------------------------------------------------- |
-| `GITHUB_APP_ID`            | Yes      | GitHub App identity.                                                   |
-| `GITHUB_APP_CLIENT_ID`     | Yes      | GitHub App OAuth client id for user-token auth.                        |
-| `GITHUB_APP_CLIENT_SECRET` | Yes      | GitHub App OAuth client secret for user-token auth.                    |
-| `GITHUB_APP_PRIVATE_KEY`   | Yes      | GitHub App signing key.                                                |
-| `GITHUB_INSTALLATION_ID`   | Yes      | Repository or organization installation target.                        |
-| `GITHUB_APP_BOT_NAME`      | Yes      | Git author and committer display name.                                 |
-| `GITHUB_APP_BOT_EMAIL`     | Yes      | App bot noreply email used for Git attribution and work ownership.     |
-| `GITHUB_WEBHOOK_SECRET`    | No       | Webhook signing secret for deployment, pull request, release, and issue events. |
+If Junior should receive resource events or report PR/issue outcomes, also:
 
-`GITHUB_INSTALLATION_ID` selects the GitHub App installation for the deployment.
-`GITHUB_APP_BOT_EMAIL` uses the GitHub noreply format
-`<bot-user-id>+<app-slug>[bot]@users.noreply.github.com`. Get the bot user id
-from `https://api.github.com/users/<app-slug>%5Bbot%5D`. Junior derives the
-App bot login after the `+` when classifying pull requests and issues for
-outcome reporting.
+1. Set the webhook URL to `https://<your-domain>/api/webhooks/github`.
+2. Set the webhook secret to the same value as `GITHUB_WEBHOOK_SECRET`.
+3. Subscribe the App to: Check suite, Deployment, Deployment status, Issues,
+   Issue comment, Pull request, Pull request review, Pull request review
+   comment, and Release.
 
-Vercel example:
+Keep the App writable if Junior should create issues, push branches, or open
+pull requests. Junior scopes write tokens to the target repository and still
+denies unsupported writes through the egress allowlist.
 
-```bash
-vercel env add GITHUB_APP_ID production
-vercel env add GITHUB_APP_CLIENT_ID production
-vercel env add GITHUB_APP_CLIENT_SECRET production
-vercel env add GITHUB_INSTALLATION_ID production
-vercel env add GITHUB_APP_BOT_NAME production
-vercel env add GITHUB_APP_BOT_EMAIL production
-vercel env add GITHUB_APP_PRIVATE_KEY production --sensitive < ./github-app-private-key.pem
-vercel env add GITHUB_WEBHOOK_SECRET production
-```
+Install the App only on repositories where Junior may push. Protect important
+branches in GitHub. Across many repositories, users should include `owner/repo`
+when the target is not obvious, and those repositories must share the same
+installation ID.
+
+## Config
+
+Set conversation config with `jr-rpc config set`, or define the same keys for every conversation with `createApp({ configDefaults })`. Pass factory options to `githubPlugin({ ... })` in `plugins.ts`. Set the named deployment variables, then redeploy. Explicit repositories in requests always win over defaults.
+
+### Conversation defaults
+
+<details class="plugin-config">
+<summary><code>github.org</code></summary>
+
+Default GitHub organization or owner when a request does not name one.
+
+- **Define:** `jr-rpc config set github.org <owner>`
+- **Install-wide default:** `configDefaults["github.org"]`
+- **Required:** No
+- **Environment override:** None
+
+</details>
+
+<details class="plugin-config">
+<summary><code>github.repo</code></summary>
+
+Default repository in `owner/repo` form when a request does not name one.
+
+- **Define:** `jr-rpc config set github.repo <owner/repo>`
+- **Install-wide default:** `configDefaults["github.repo"]`
+- **Required:** No
+- **Environment override:** None
+
+</details>
+
+### Plugin options
+
+<details class="plugin-config">
+<summary><code>appPermissions</code></summary>
+
+GitHub App permissions Junior may downscope to read for installation read tokens. Write tokens retain the App installation's full permission envelope.
+
+- **Define:** `githubPlugin({ appPermissions: { contents: "write", issues: "write" } })` in `plugins.ts`
+- **Required:** No
+- **Environment override:** None
+
+</details>
+
+<details class="plugin-config">
+<summary><code>additionalUserScopes</code></summary>
+
+Extra OAuth scopes requested for operations that must run as the user.
+
+- **Define:** `githubPlugin({ additionalUserScopes: ["scope"] })` in `plugins.ts`
+- **Required:** No
+- **Environment override:** None
+
+</details>
+
+<details class="plugin-config">
+<summary><code>appIdEnv</code></summary>
+
+Names the deployment variable containing the GitHub App ID.
+
+- **Define:** `githubPlugin({ appIdEnv: "GITHUB_APP_ID" })` in `plugins.ts`
+- **Default:** `GITHUB_APP_ID`
+- **Required:** Yes
+- **Environment variable:** The variable named by this option
+
+</details>
+
+<details class="plugin-config">
+<summary><code>clientIdEnv</code></summary>
+
+Names the deployment variable containing the GitHub App OAuth client ID.
+
+- **Define:** `githubPlugin({ clientIdEnv: "GITHUB_APP_CLIENT_ID" })` in `plugins.ts`
+- **Default:** `GITHUB_APP_CLIENT_ID`
+- **Required:** Yes
+- **Environment variable:** The variable named by this option
+
+</details>
+
+<details class="plugin-config">
+<summary><code>clientSecretEnv</code></summary>
+
+Names the deployment variable containing the GitHub App OAuth client secret.
+
+- **Define:** `githubPlugin({ clientSecretEnv: "GITHUB_APP_CLIENT_SECRET" })` in `plugins.ts`
+- **Default:** `GITHUB_APP_CLIENT_SECRET`
+- **Required:** Yes
+- **Environment variable:** The variable named by this option
+
+</details>
+
+<details class="plugin-config">
+<summary><code>privateKeyEnv</code></summary>
+
+Names the deployment variable containing the GitHub App private key.
+
+- **Define:** `githubPlugin({ privateKeyEnv: "GITHUB_APP_PRIVATE_KEY" })` in `plugins.ts`
+- **Default:** `GITHUB_APP_PRIVATE_KEY`
+- **Required:** Yes
+- **Environment variable:** The variable named by this option
+
+</details>
+
+<details class="plugin-config">
+<summary><code>installationIdEnv</code></summary>
+
+Names the deployment variable containing the GitHub App installation ID.
+
+- **Define:** `githubPlugin({ installationIdEnv: "GITHUB_INSTALLATION_ID" })` in `plugins.ts`
+- **Default:** `GITHUB_INSTALLATION_ID`
+- **Required:** Yes
+- **Environment variable:** The variable named by this option
+
+</details>
+
+<details class="plugin-config">
+<summary><code>botNameEnv</code></summary>
+
+Names the deployment variable containing Junior's Git author and committer name.
+
+- **Define:** `githubPlugin({ botNameEnv: "GITHUB_APP_BOT_NAME" })` in `plugins.ts`
+- **Default:** `GITHUB_APP_BOT_NAME`
+- **Required:** Yes
+- **Environment variable:** The variable named by this option
+
+</details>
+
+<details class="plugin-config">
+<summary><code>botEmailEnv</code></summary>
+
+Names the deployment variable containing Junior's Git author and committer email.
+
+- **Define:** `githubPlugin({ botEmailEnv: "GITHUB_APP_BOT_EMAIL" })` in `plugins.ts`
+- **Default:** `GITHUB_APP_BOT_EMAIL`
+- **Required:** Yes
+- **Environment variable:** The variable named by this option
+
+Use `<bot-user-id>+<app-slug>[bot]@users.noreply.github.com`. Get the bot user ID from `https://api.github.com/users/<app-slug>%5Bbot%5D`.
+
+</details>
+
+### Environment variables
+
+<details class="plugin-config">
+<summary><code>GITHUB_WEBHOOK_SECRET</code></summary>
+
+Webhook signing secret for resource events and PR or issue outcome reporting.
+
+- **Define:** Set `GITHUB_WEBHOOK_SECRET` in the deployment environment
+- **Required:** Yes for resource events and outcome reporting; otherwise no
+- **Environment override:** `GITHUB_WEBHOOK_SECRET`
+
+</details>
 
 ## Run migrations
-
-After installing or upgrading the GitHub plugin, run its packaged SQL migration
-from the deployed app environment:
 
 ```bash
 pnpm exec junior upgrade
@@ -89,231 +243,259 @@ pnpm exec junior upgrade
 This creates the `junior_github_pull_requests` and `junior_github_issues`
 projections used by webhook ingestion and the `/system` outcome report.
 
-## Create the GitHub App
+## Capabilities
 
-Create and install a GitHub App before you verify GitHub workflows:
+Once configured, Junior can:
 
-1. Open GitHub App settings and create a new app.
-2. Generate a private key and store the downloaded `.pem` file securely.
-3. Grant repository permissions for:
-   - Actions: Read and write
-   - Checks: Read
-   - Deployments: Read
-   - Issues: Read and write
-   - Contents: Read and write
-   - Pull requests: Read and write
-   - Workflows: Write
-   - Metadata: Read
-4. If Junior should watch pull requests or report pull request and issue outcomes, enable webhooks and set the webhook URL to:
+- Create, update, and comment on issues and pull requests
+- Review pull requests and leave inline review comments as the App bot
+- Push branches and open draft pull requests
+- Dispatch workflows, rerun workflow runs or jobs, and cancel workflow runs
+- Look up deployments and releases
+- Watch or automate matching resource events when webhooks are enabled
 
-   ```text
-   https://<your-domain>/api/webhooks/github
-   ```
+Bot-owned writes use installation credentials. Personal operations still use
+private user authorization when required. Merge remains outside the write
+allowlist.
 
-5. Set the webhook secret to the same value as `GITHUB_WEBHOOK_SECRET`, then subscribe the app to these repository events:
-   - Check suite
-   - Deployment
-   - Deployment status
-   - Issues
-   - Issue comment
-   - Pull request
-   - Pull request review
-   - Pull request review comment
-   - Release
-6. Install the app on the repository or organization Junior should access.
-7. Copy the App ID, OAuth client ID/secret, installation ID, bot name, bot noreply email, and, if you enabled webhooks, the webhook secret into your deployment environment.
+### Resource subscriptions
 
-Do not lower the GitHub App permission itself to read-only if Junior should create issues, push branches, or open pull requests. Junior scopes write tokens to the target repository and keeps write operations constrained by the egress allowlist.
+Set `GITHUB_WEBHOOK_SECRET` to enable resource events. See
+[Resource Subscriptions](/concepts/resource-subscriptions/) for temporary
+resource subscriptions versus durable event tasks.
 
-Git smart-HTTP push classification is repository-scoped, not branch-scoped. It does not independently identify Junior-managed branches or detect force updates or ref deletion. Protect important branches in GitHub and install the App only on repositories where Junior may push.
+Issue and pull request events can target one item with `owner/repo#number`, or
+every item of that kind in a repository with `owner/repo`.
 
-If your team works across multiple repositories, have users include `owner/repo` in their GitHub request whenever the target is not obvious from the conversation.
-That only helps when those repositories are covered by the same GitHub App installation ID.
+#### `deployment_source`
 
-## React to pull request and issue events
+One commit, optionally limited to an environment. Identifier:
+`deployment-source:owner/repo[:environment]:<full-commit-sha>`.
 
-When `GITHUB_WEBHOOK_SECRET` is configured, GitHub tools can return subscribable
-pull request, issue, and release resources. Junior can use those resources in two ways. A
-temporary resource watch sends matching updates back to the current Slack
-thread. A durable event task runs a stored instruction whenever its selected
-events occur and remains configured for the Slack channel until someone deletes
-it.
+<details class="resource-event">
+<summary><code>deployment.created</code></summary>
 
-Resource watches and event tasks require a single-workspace Slack deployment
-configured with `SLACK_BOT_TOKEN`. Junior does not offer or deliver resource
-events in multi-workspace Slack mode because a provider webhook does not carry a
-verified Slack workspace binding.
+A deployment was created.
 
-Both forms run headlessly as Junior, not as the webhook sender. Resource watches
-use the plugin's scoped installation credentials. Event tasks make their
-creator's connected credentials available by default when the stored work needs
-user-bound access, but the execution actor remains Junior. Pull request reviews and inline review comments
-are bot-owned and use installation credentials so feedback posts as Junior;
-merge remains outside the write allowlist.
+</details>
 
-Supported GitHub webhook deliveries become these Junior resource events:
+<details class="resource-event">
+<summary><code>deployment.queued</code></summary>
 
-| GitHub delivery                       | Junior event types                                                                                       |
-| ------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `check_suite` completed               | `pull_request.checks.failed`, `pull_request.checks.recovered`                                            |
-| `issue_comment` created on a PR       | `pull_request.comment.created`                                                                           |
-| `pull_request_review` submitted       | `pull_request.review.approved`, `pull_request.review.changes_requested`, `pull_request.review.commented` |
-| `pull_request_review_comment` created | `pull_request.review_comment.created`                                                                    |
-| `pull_request` opened                 | `pull_request.opened`; also `pull_request.ready_for_review` when the PR is not a draft                    |
-| `pull_request` ready_for_review       | `pull_request.ready_for_review`                                                                          |
-| `pull_request` closed                 | `pull_request.merged`, `pull_request.closed_unmerged`                                                    |
-| `issues` opened, closed, or reopened  | `issue.opened`, `issue.closed`, `issue.reopened`                                                         |
-| `issue_comment` created on an issue   | `issue.comment.created`                                                                                  |
-| `release` published                   | `release.published`                                                                                      |
+The deployment entered the queue.
 
-`pull_request.merged` and `pull_request.closed_unmerged` complete a temporary
-pull request watch after Junior accepts the event. Other watch events remain
-active until the watch expires or is cancelled. Event tasks do not complete
-after a terminal event; they remain configured until deleted.
+</details>
 
-Issue and pull request events can target one item with `owner/repo#number` or
-every item of that kind in a repository with `owner/repo`. Webhook events use
-normal queued delivery. They do not interrupt active work, bypass Slack routing,
-or act as user-authored commands.
+<details class="resource-event">
+<summary><code>deployment.pending</code></summary>
 
-## Watch release events
+The deployment is waiting to start.
 
-Use `github_getRelease` when Junior should inspect or watch GitHub releases for
-an exact repository. Supply a tag to limit the lookup and watch to that release,
-or omit it to watch every published release in the repository. The result
-includes the latest matching release when GitHub has created one. It also remains
-subscribable before the release exists, which lets Junior wait for a publish that
-has not happened yet.
+</details>
 
-The GitHub App needs `Contents: read` (already required for repository access),
-and its webhook must subscribe to Release. Junior maps those deliveries to this
-resource event:
+<details class="resource-event">
+<summary><code>deployment.in_progress</code></summary>
 
-| GitHub delivery     | Junior event types  |
-| ------------------- | ------------------- |
-| `release` published | `release.published` |
+The deployment started.
 
-For a tag-specific watch, `release.published` completes the subscription after
-Junior accepts the event. A repository-wide release watch remains active across
-publishes so later tags can also notify the conversation; it ends through
-cancellation or its configured TTL. Draft releases are ignored. Release tag,
-name, and body values are provider-controlled and only appear in untrusted event
-text.
+</details>
 
-## Watch deployment events
+<details class="resource-event">
+<summary><code>deployment.succeeded</code></summary>
 
-Use `github_getDeployment` when Junior should inspect or watch deployments for
-an exact repository and full commit SHA. Supply an environment to limit the
-lookup and watch to that environment, or omit it to watch deployments for the
-commit across environments. The result includes the latest matching deployment
-and its latest status when GitHub has created one. It also remains subscribable
-before the deployment exists, which lets Junior wait for a deployment that
-will be created after a branch merge or release action.
+The deployment completed successfully.
 
-The GitHub App needs `Deployments: read`, and its webhook must subscribe to
-both Deployment and Deployment status. Junior maps those deliveries to these
-resource events:
+</details>
 
-| GitHub delivery             | Junior event types                                                                                                                   |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `deployment` created        | `deployment.created`                                                                                                                 |
-| `deployment_status` created | `deployment.queued`, `deployment.pending`, `deployment.in_progress`, `deployment.succeeded`, `deployment.failed`, `deployment.error` |
+<details class="resource-event">
+<summary><code>deployment.failed</code></summary>
 
-For an environment-specific watch, success, failure, and error complete the
-subscription after Junior accepts the event. A commit-wide watch remains active
-across terminal outcomes so it can observe deployments in later environments;
-it ends through cancellation or its configured TTL. Creation and progress
-events keep either watch active. GitHub does not send a `deployment_status`
-webhook for the `inactive` state, so Junior does not offer an inactive event.
+The deployment failed.
 
-The GitHub plugin classifies a pull request or issue as Junior-owned on its
-signed `opened` event when the author matches the bot login derived from
-`GITHUB_APP_BOT_EMAIL` and the opening body contains Junior's session footer.
-It keeps tracking that projection through later lifecycle events even if the
-body changes. The `/system` dashboard charts daily pull request and issue
-creation for 7-, 30-, and 90-day windows. It also reports pull request and
-issue closure summaries with 30-day repository breakdowns. This reporting is
-independent of conversation subscriptions and never stores pull request or
-issue bodies.
+</details>
 
-When a tracked pull request merges, Junior reads its commit list with the
-GitHub App installation credential. A merged pull request is `Junior-only` when
-every commit's Git author matches the configured bot login or bot email. If any
-commit has another author, the report classifies the pull request as `mixed`.
-Older records, empty commit lists, and lookups that fail remain `unknown`; the
-pull request outcome is still recorded. The repository breakdown exposes only
-the count of Junior-only merges. Junior stores the full classification, not
-commit SHAs, author identities, or email addresses.
+<details class="resource-event">
+<summary><code>deployment.error</code></summary>
 
-The pull request projection also keeps the native Junior conversation ids from
-bot-written session footers in a deduplicated `text[]`. These are opaque
-association values, not foreign keys, and later bot-authored footer updates add
-to the array without removing earlier ids. Junior does not store conversation
-content in the GitHub projection.
+The deployment reported an error.
 
-If GitHub delivers a terminal event before its opening event, the plugin can
-establish the same ownership from the bot-and-footer marker on that terminal
-payload. This recovery applies to both pull requests and issues. A later stale
-opening event cannot regress the recorded outcome.
+</details>
+
+#### `issue`
+
+One issue: `owner/repo#number`.
+
+<details class="resource-event">
+<summary><code>issue.comment.created</code></summary>
+
+A comment was added.
+
+</details>
+
+<details class="resource-event">
+<summary><code>issue.opened</code></summary>
+
+The issue was opened.
+
+</details>
+
+<details class="resource-event">
+<summary><code>issue.closed</code></summary>
+
+The issue was closed.
+
+</details>
+
+<details class="resource-event">
+<summary><code>issue.reopened</code></summary>
+
+The issue was reopened.
+
+</details>
+
+#### `pull_request`
+
+One pull request: `owner/repo#number`.
+
+<details class="resource-event">
+<summary><code>pull_request.checks.failed</code></summary>
+
+One or more checks failed.
+
+</details>
+
+<details class="resource-event">
+<summary><code>pull_request.checks.recovered</code></summary>
+
+Previously failing checks recovered.
+
+</details>
+
+<details class="resource-event">
+<summary><code>pull_request.comment.created</code></summary>
+
+A conversation comment was added.
+
+</details>
+
+<details class="resource-event">
+<summary><code>pull_request.opened</code></summary>
+
+The pull request was opened.
+
+</details>
+
+<details class="resource-event">
+<summary><code>pull_request.ready_for_review</code></summary>
+
+The pull request became ready for review.
+
+</details>
+
+<details class="resource-event">
+<summary><code>pull_request.review.approved</code></summary>
+
+A reviewer approved the pull request.
+
+</details>
+
+<details class="resource-event">
+<summary><code>pull_request.review.changes_requested</code></summary>
+
+A reviewer requested changes.
+
+</details>
+
+<details class="resource-event">
+<summary><code>pull_request.review.commented</code></summary>
+
+A reviewer submitted a comment-only review.
+
+</details>
+
+<details class="resource-event">
+<summary><code>pull_request.review_comment.created</code></summary>
+
+An inline review comment was added.
+
+</details>
+
+<details class="resource-event">
+<summary><code>pull_request.merged</code></summary>
+
+The pull request was merged.
+
+</details>
+
+<details class="resource-event">
+<summary><code>pull_request.closed_unmerged</code></summary>
+
+The pull request closed without merging.
+
+</details>
+
+#### `release_source`
+
+One repository, optionally limited to a tag. Identifier:
+`release-source:owner/repo[:tag]`.
+
+<details class="resource-event">
+<summary><code>release.published</code></summary>
+
+A release was published.
+
+</details>
+
+#### `repository`
+
+Every issue and pull request in `owner/repo`. Supports the same `issue` and
+`pull_request` events listed above.
 
 ## Verify
-
-Run a real GitHub workflow in the chat surface where people will use it:
 
 ```text
 Create a GitHub issue in owner/repo titled "Junior GitHub plugin check" with body "Verification run"
 ```
 
-Then confirm:
+Confirm:
 
-1. The issue is created in the expected repository.
-2. The author is the GitHub App bot, and the body includes `Requested by` attribution for the verified runtime actor.
-3. A follow-up GitHub request can update or comment on the same issue without asking the user to authorize GitHub or handle tokens manually.
-4. A pushed branch can be turned into a draft PR with `github_createPullRequest` using explicit `repo`, `head`, and `base` values.
-5. After that PR merges, `/system` includes it in the repository's Junior-only merge count when every commit belongs to Junior.
+1. The issue lands in the expected repository.
+2. The author is the App bot, and the body includes `Requested by` attribution.
+3. A follow-up can update or comment on the same issue without manual tokens.
+4. A pushed branch can become a draft PR with `github_createPullRequest`.
+5. If webhooks are enabled, ask Junior to watch a PR or deployment and confirm a
+   matching GitHub delivery to `/api/webhooks/github` produces the expected
+   Slack follow-up.
 
-For code changes, a local `git commit` does not call GitHub. The GitHub write happens when Junior pushes the branch. The App installation requires `Contents: write`; grant it `Workflows: write` when Junior may change files under `.github/workflows`. Creating the PR after the branch exists is a separate pull-request write operation, but it uses the same repository-scoped write credential.
-
-To verify PR event watches, create a PR through Junior in Slack and ask Junior to keep an eye on CI, review changes, or merge state. Trigger one configured GitHub webhook event, then confirm GitHub reports a successful delivery to `/api/webhooks/github` and Junior handles the event in the original Slack conversation according to the watch intent.
-
-To verify deployment watches, ask Junior to watch a known repository,
-environment, and commit SHA before the deployment finishes. Confirm the
-conversation has an active deployment-source subscription, then verify that a
-Deployment status delivery reaches `/api/webhooks/github` and produces the
-expected follow-up in the original conversation.
-
-## Security model
-
-- Junior mints GitHub App installation and user-to-server tokens on the host, not in the sandbox.
-- When the GitHub skill runs authenticated `gh` or `git` commands, sandbox traffic to `api.github.com` and `github.com` is forwarded through Junior for host-side auth.
-- App-readable requests use installation tokens downscoped to read. Allowlisted workflow dispatch, issue, pull request, review, inline review comment, and branch writes use repository-scoped installation tokens carrying the complete installed App permission envelope. GitHub account identity checks and other personal operations such as user-attachment uploads use user-to-server tokens.
-- GitHub App user-to-server tokens do not use OAuth scopes as their permission model. Their effective access comes from the App permissions, installation scope, and requesting user's access.
-- The GitHub App installation determines which repositories are reachable, and repository write grants narrow issued tokens to the parsed target repository.
-- The host-side lease is bounded by the sandbox session and token expiry. It is not exposed as reusable long-lived auth inside the sandbox.
-- GitHub webhooks are accepted only when the `X-Hub-Signature-256` header matches `GITHUB_WEBHOOK_SECRET` and the payload installation matches `GITHUB_INSTALLATION_ID`.
-- Resource event subscriptions are conversation-scoped. Core owns subscription records, dedupe, TTL, and mailbox delivery; the GitHub plugin owns signature verification, provider normalization, and its pull request and issue outcome projections.
-- Event tasks are Slack-destination scoped. The creator's connected credentials are available by default when needed, but the task still executes as Junior. Another channel member can manage the task from that destination but cannot enable the creator's credentials.
-- Resource-watch turns do not inherit a subscriber's user credential. Bot-owned issue, pull request, review, inline review comment, and smart-HTTP push operations use scoped installation credentials; human-owned operations still enter the normal authorization flow.
-- The write boundary is the App installation scope, the single-repository token scope, and Junior's endpoint allowlist. `appPermissions` declarations do not narrow write tokens.
+A local `git commit` does not call GitHub. The write happens on push. Grant
+`Workflows: write` when Junior may change files under `.github/workflows`.
 
 ## Failure modes
 
-- `Access denied` from GitHub: the app is not installed on the target repository or organization. Install the app on that target, then retry.
-- `Bad credentials` or signing errors: `GITHUB_APP_PRIVATE_KEY` does not match the App ID. Upload the private key generated for the same app as `GITHUB_APP_ID`.
-- PR creation works but Junior never offers to watch the PR: `GITHUB_WEBHOOK_SECRET` is missing from the deployment environment. Set it, redeploy, and create a new PR through Junior.
-- `github_getDeployment` returns `403`: grant the GitHub App `Deployments: read`, approve the updated permission on its installation, and retry.
-- Deployment metadata is available but Junior never offers to watch it: `GITHUB_WEBHOOK_SECRET` is missing. Set it, redeploy, and run `github_getDeployment` again.
-- Release metadata is available but Junior never offers to watch it: `GITHUB_WEBHOOK_SECRET` is missing, or the GitHub App webhook is not subscribed to Release. Set the secret, add the Release event, redeploy, and run `github_getRelease` again.
-- GitHub webhook delivery returns `401`: the webhook secret in GitHub App settings does not match `GITHUB_WEBHOOK_SECRET`, or GitHub did not send `X-Hub-Signature-256`. Update the app webhook secret and retry the delivery.
-- GitHub webhook delivery returns `202 Ignored`: the delivery was signed correctly but belongs to another GitHub App installation, or it does not map to a supported deployment, pull request, release, or issue event. Confirm `GITHUB_INSTALLATION_ID` and use one of the configured event types above.
-- GitHub delivery succeeds but no Slack follow-up appears: confirm the original conversation has a resource watch, or the Slack destination has an event task, for the same identifier and event type. A successful webhook alone does not create either one.
-- Resource watches or event tasks are unavailable in Slack OAuth mode: resource-event delivery currently requires a single-workspace `SLACK_BOT_TOKEN` deployment. Use that deployment mode or wait until the provider installation can be bound to a Slack workspace.
-- Missing repository context: Junior could not determine which repository to use. Include `owner/repo` directly in the GitHub request, or configure a default GitHub repository for that thread, and retry.
-- A `403` response that says to use `github_createIssue` or `github_createPullRequest` is a Junior routing denial, not evidence of missing App permissions. Retry with the named tool.
-- Private OAuth prompt for a human-identity operation such as a user-attachment upload: the actor has not authorized the GitHub App yet, or the stored user-to-server token expired. Complete the private authorization prompt; do not paste personal access tokens into the chat or sandbox.
-- Permission-style failures during issue or pull request workflows: the GitHub App lacks the required permission or installation scope. Update the app permissions or install target, then retry.
-- Fork creation is outside the write allowlist. Routine PR creation should push a branch explicitly and use `github_createPullRequest` instead of creating a fork.
+- `Access denied`: install the App on the target repository or organization.
+- `Bad credentials` or signing errors: `GITHUB_APP_PRIVATE_KEY` does not match
+  `GITHUB_APP_ID`.
+- Junior never offers to watch a PR, release, or deployment:
+  `GITHUB_WEBHOOK_SECRET` is missing, or the App webhook is not subscribed to
+  the needed event. Set the secret, fix the subscription, redeploy, and retry.
+- `github_getDeployment` returns `403`: grant `Deployments: read`, approve the
+  permission on the installation, and retry.
+- Webhook delivery returns `401`: the App webhook secret does not match
+  `GITHUB_WEBHOOK_SECRET`, or `X-Hub-Signature-256` is missing.
+- Webhook delivery returns `202 Ignored`: wrong installation, or an unsupported
+  event mapping. Confirm `GITHUB_INSTALLATION_ID` and the event type.
+- Delivery succeeds but nothing appears in Slack: create a resource subscription
+  or event task first. A webhook alone does not create either one.
+- Missing repository context: include `owner/repo`, or set a thread default
+  repository.
+- A `403` that names `github_createIssue` or `github_createPullRequest` is a
+  Junior routing denial. Retry with the named tool.
+- Private OAuth prompt for a personal operation: complete the private
+  authorization prompt. Do not paste personal access tokens into chat.
+- Permission failures on issue or PR workflows: update App permissions or the
+  install target, then retry.
 
 ## Next step
 
-Read [Plugin Auth & Context](/reference/runtime-commands/) for the public auth and target-context model.
+Read [Plugin Auth & Context](/reference/runtime-commands/) for the public auth
+and target-context model.

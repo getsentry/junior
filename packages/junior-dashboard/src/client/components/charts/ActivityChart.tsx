@@ -15,7 +15,7 @@ export type ActivityChartLayout = {
 /** Create the shared plot dimensions used by dashboard activity charts. */
 export function createActivityChartLayout(height: number): ActivityChartLayout {
   const width = 960;
-  const left = 42;
+  const left = 56;
   const right = 18;
   const top = 24;
   const bottom = 36;
@@ -67,7 +67,7 @@ export function ActivityChartGrid(props: {
         <text
           fill="rgba(255,255,255,0.5)"
           fontFamily="ui-monospace, monospace"
-          fontSize="10"
+          fontSize="13"
           textAnchor="end"
           x={props.layout.left - 8}
           y={yPosition + 3}
@@ -92,7 +92,7 @@ export function ActivityChartDateLabels(props: {
       <text
         fill="rgba(255,255,255,0.5)"
         fontFamily="ui-monospace, monospace"
-        fontSize="10"
+        fontSize="13"
         key={date}
         textAnchor={
           index === 0

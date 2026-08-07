@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { parseMarkdown } from "chat";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
   getPersistedThreadState,
@@ -7,6 +8,7 @@ import {
 } from "@/chat/runtime/thread-state";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import { commitMessages } from "@/chat/conversations/projection";
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
@@ -111,6 +113,53 @@ describe("Slack behavior: message content", () => {
 
     expect(calls).toHaveLength(1);
     expect(calls[0]?.prompt).toBe("please summarize the deploy status");
+  });
+
+  it("includes full structured link targets in agent and conversation text", async () => {
+    const calls: CapturedCall[] = [];
+    const fullUrl =
+      "https://evals.sentry.dev/run/536be3d5-76e9-4d2c-b172-9756b5b4e6fc";
+
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        replyExecutor: {
+          agentRunner: {
+            run: async (request) => {
+              calls.push({ prompt: request.input.messageText });
+              return completedReply("Reviewed.");
+            },
+          },
+        },
+      },
+    });
+
+    const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700005000.500" });
+    const message = createTestMessage({
+      id: "m-content-link-target",
+      text: "<@U0APP> inspect evals.sentry.dev/run/…",
+      formatted: parseMarkdown(
+        `<@U0APP> inspect [evals.sentry.dev/run/…](${fullUrl})`,
+      ),
+      isMention: true,
+      threadId: thread.id,
+      author: { userId: "U0TESTER" },
+    });
+
+    await slackRuntime.handleNewMention(thread, message, {
+      destination: createTestDestination(thread),
+    });
+
+    expect(calls[0]?.prompt).toBe(
+      `inspect [evals.sentry.dev/run/…](${fullUrl})`,
+    );
+    const conversation = coerceThreadConversationState(thread.getState());
+    await hydrateConversationMessages({
+      conversation,
+      conversationId: thread.id,
+    });
+    expect(
+      conversation.messages.find((entry) => entry.id === message.id)?.text,
+    ).toBe(`inspect [evals.sentry.dev/run/…](${fullUrl})`);
   });
 
   it("preserves non-leading mention tokens in user content", async () => {

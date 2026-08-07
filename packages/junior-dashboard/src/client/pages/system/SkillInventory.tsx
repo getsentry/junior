@@ -43,7 +43,7 @@ export function SkillInventory(props: { skills: SkillReport[] }) {
             />
           ))
         ) : (
-          <div className="rounded-lg border border-dashed border-white/[0.08] px-4 py-8 text-center font-mono text-[0.72rem] text-dashboard-text-muted">
+          <div className="rounded-lg border border-dashed border-white/[0.08] px-4 py-8 text-center font-mono text-xs text-dashboard-text-muted">
             No skills have been discovered yet.
           </div>
         )}
@@ -69,12 +69,12 @@ function SkillGroupCard(props: { group: SkillGroup }) {
             <h3 className="m-0 truncate font-display text-base font-medium text-dashboard-text">
               {label}
             </h3>
-            <div className="mt-0.5 font-mono text-[0.55rem] uppercase tracking-[0.1em] text-dashboard-text-muted">
+            <div className="mt-0.5 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted">
               {props.group.pluginProvider ? "plugin provider" : "core or local"}
             </div>
           </div>
         </div>
-        <span className="font-mono text-[0.62rem] text-dashboard-text-muted">
+        <span className="font-mono text-xs text-dashboard-text-muted">
           {formatCompactNumber(props.group.skills.length)} skill
           {props.group.skills.length === 1 ? "" : "s"}
         </span>
@@ -82,7 +82,7 @@ function SkillGroupCard(props: { group: SkillGroup }) {
       <div className="flex flex-wrap gap-2">
         {props.group.skills.map((skill) => (
           <span
-            className="rounded border border-white/[0.07] bg-black/20 px-2.5 py-1.5 font-mono text-[0.68rem] text-dashboard-text-muted"
+            className="rounded border border-white/[0.07] bg-black/20 px-2.5 py-1.5 font-mono text-xs text-dashboard-text-muted"
             key={skill.name}
           >
             {skill.name}
@@ -99,7 +99,7 @@ function InventoryMetric(props: { label: string; value: number }) {
       <div className="font-display text-xl font-light leading-none text-dashboard-text">
         {formatCompactNumber(props.value)}
       </div>
-      <div className="mt-1.5 font-mono text-[0.52rem] uppercase tracking-[0.1em] text-dashboard-text-muted">
+      <div className="mt-1.5 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted">
         {props.label}
       </div>
     </div>

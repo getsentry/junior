@@ -113,8 +113,24 @@ Set the core runtime variables in Vercel:
 | `CRON_SECRET`                               | Yes         | Authenticates Vercel Cron requests to the internal heartbeat route.            |
 | `JUNIOR_BASE_URL`                           | Conditional | Canonical URL for OAuth and callback URLs when Vercel URL envs are not enough. |
 | `JUNIOR_STATE_KEY_PREFIX`                   | No          | Redis key namespace for this deployment when sharing one Redis database.       |
-| `AI_GATEWAY_API_KEY`                        | Optional    | AI Gateway auth when your setup requires it.                                   |
+| `AI_GATEWAY_API_KEY`                        | Optional    | Fallback AI Gateway auth when OIDC is unavailable. Prefer project OIDC on Vercel. |
 | `VERCEL_SANDBOX_KEEPALIVE_MS`               | Recommended | Extends an active sandbox on each tool acquire. Set to `900000` (15 minutes).  |
+
+### AI Gateway auth (preferred: project OIDC)
+
+On Vercel, Junior authenticates to AI Gateway with **project OIDC** first so
+usage and spend attribute to this project instead of showing as `unknown`.
+
+1. Project Settings → Security → enable **Secure backend access with OIDC
+   federation** (Team issuer mode is fine).
+2. Do **not** set `AI_GATEWAY_API_KEY` in production unless you need a non-OIDC
+   fallback. When both are present, Junior prefers OIDC.
+3. For local development without OIDC, either run `vercel link` + `vercel env
+   pull` or set `AI_GATEWAY_API_KEY`.
+
+`AI_GATEWAY_API_KEY` remains supported for CI and non-Vercel hosts. Team-scoped
+keys without a `projectId` will still show as `unknown` in the AI Gateway
+projects breakdown.
 
 ### Keep active sandboxes alive
 
@@ -143,7 +159,7 @@ Generate `CRON_SECRET` the same way and store it in Vercel for the production en
 
 ## Enable snapshot warmup credentials
 
-If enabled plugins need sandbox runtime dependencies, `junior snapshot create` runs during build. In Vercel, enable OIDC so `VERCEL_OIDC_TOKEN` is available during the build.
+If enabled plugins need sandbox runtime dependencies, `junior snapshot create` runs during build. In Vercel, enable OIDC so build-time `VERCEL_OIDC_TOKEN` and runtime request OIDC are available. OIDC is also the preferred AI Gateway auth path for project attribution.
 
 Snapshot warmup also needs `REDIS_URL` during build because the snapshot registry is Redis-backed.
 

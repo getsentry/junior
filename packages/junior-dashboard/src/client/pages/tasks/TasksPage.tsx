@@ -1,4 +1,5 @@
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useMemo } from "react";
+import { useLocation, useNavigate, useParams } from "react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { TaskSummary } from "@sentry/junior/api/schema";
 import {
@@ -12,16 +13,29 @@ import { useTasksData } from "../../api";
 import { Button, ToggleButton } from "../../components/Button";
 import { LoadingView } from "../../components/LoadingView";
 import { SearchInput } from "../../components/SearchInput";
+import { SelectableRow } from "../../components/SelectableRow";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { deleteDashboardResource } from "../../http";
 import { formatTime } from "../../format";
+import {
+  pathWithSearch,
+  useDebouncedSearchParam,
+  useSearchParamEnum,
+} from "../../searchParams";
 import { cn, dashboardContainerClass } from "../../styles";
 import { TaskDetailsDrawer } from "./TaskDetailsDrawer";
 import { TaskExecutionChart } from "./TaskExecutionChart";
 
 type TaskFilter = "all" | TaskSummary["kind"];
 type TaskScope = "mine" | "public";
+
+const TASK_FILTERS = [
+  "all",
+  "scheduled",
+  "event",
+] as const satisfies readonly TaskFilter[];
+const TASK_SCOPES = ["mine", "public"] as const satisfies readonly TaskScope[];
 
 function formatDate(value: string): string {
   return formatTime(value, {
@@ -62,11 +76,15 @@ function taskMatches(task: TaskSummary, search: string): boolean {
 export function TasksPage(props: { enabled: boolean }) {
   const query = useTasksData(props.enabled);
   const queryClient = useQueryClient();
-  const [filter, setFilter] = useState<TaskFilter>("all");
-  const [scope, setScope] = useState<TaskScope>("mine");
-  const [searchText, setSearchText] = useState("");
-  const [selectedTaskKey, setSelectedTaskKey] = useState<string>();
-  const search = searchText.trim().toLowerCase();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { taskId } = useParams();
+  const [filter, setFilter] = useSearchParamEnum("type", "all", TASK_FILTERS);
+  const [scope, setScope] = useSearchParamEnum("scope", "mine", TASK_SCOPES);
+  const [searchText, setSearchText, searchQuery] = useDebouncedSearchParam();
+  const search = searchQuery.toLowerCase();
+  const tasksPath = (pathname: string) =>
+    pathWithSearch(pathname, location.search);
   const tasks = query.data?.tasks ?? [];
   const mineCount = tasks.filter((task) => task.ownedByViewer).length;
   const publicCount = tasks.filter(
@@ -92,8 +110,8 @@ export function TasksPage(props: { enabled: boolean }) {
   );
   const visibleTaskCount = visibleTasks.length;
   const selectedTask = useMemo(
-    () => tasks.find((task) => `${task.kind}:${task.id}` === selectedTaskKey),
-    [selectedTaskKey, tasks],
+    () => tasks.find((task) => task.id === taskId),
+    [taskId, tasks],
   );
   const deletion = useMutation({
     mutationFn: async (task: TaskSummary) => {
@@ -204,11 +222,15 @@ export function TasksPage(props: { enabled: boolean }) {
                       }
                     }}
                     onSelect={() =>
-                      setSelectedTaskKey((current) =>
-                        current === key ? undefined : key,
+                      navigate(
+                        tasksPath(
+                          taskId === task.id
+                            ? "/tasks"
+                            : `/tasks/${encodeURIComponent(task.id)}`,
+                        ),
                       )
                     }
-                    selected={selectedTaskKey === key}
+                    selected={taskId === task.id}
                     task={task}
                   />
                 );
@@ -228,7 +250,7 @@ export function TasksPage(props: { enabled: boolean }) {
         ) : null}
       </section>
       <TaskDetailsDrawer
-        onClose={() => setSelectedTaskKey(undefined)}
+        onClose={() => navigate(tasksPath("/tasks"))}
         task={selectedTask}
       />
     </div>
@@ -257,7 +279,7 @@ function emptyText(input: {
 function TaskFilterGroup(props: { children: ReactNode; label: string }) {
   return (
     <div>
-      <div className="mb-2 font-mono text-[0.62rem] uppercase tracking-[0.12em] text-dashboard-text-muted">
+      <div className="mb-2 font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted">
         {props.label}
       </div>
       <div
@@ -275,7 +297,7 @@ function TaskListHeader() {
   return (
     <div
       aria-hidden="true"
-      className="hidden grid-cols-[minmax(0,1.35fr)_minmax(9rem,0.65fr)_minmax(13rem,1fr)_auto_auto_auto] items-center gap-3 border-b border-white/[0.07] px-4 py-2.5 font-mono text-[0.56rem] uppercase tracking-[0.12em] text-dashboard-text-muted lg:grid"
+      className="hidden grid-cols-[minmax(0,1.35fr)_minmax(9rem,0.65fr)_minmax(13rem,1fr)_auto_auto_auto] items-center gap-3 border-b border-white/[0.07] px-4 py-2.5 font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted lg:grid"
     >
       <span>Task</span>
       <span>Destination</span>
@@ -297,11 +319,10 @@ function TaskRow(props: {
   const { task } = props;
   return (
     <article role="listitem">
-      <div
-        className={cn(
-          "grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 px-4 py-3 transition-colors md:grid-cols-[minmax(0,1.4fr)_minmax(9rem,0.7fr)_auto_auto] lg:grid-cols-[minmax(0,1.35fr)_minmax(9rem,0.65fr)_minmax(13rem,1fr)_auto_auto_auto]",
-          props.selected ? "bg-cyan-300/[0.045]" : "hover:bg-white/[0.025]",
-        )}
+      <SelectableRow
+        className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 px-4 py-3 md:grid-cols-[minmax(0,1.4fr)_minmax(9rem,0.7fr)_auto_auto] lg:grid-cols-[minmax(0,1.35fr)_minmax(9rem,0.65fr)_minmax(13rem,1fr)_auto_auto_auto]"
+        onSelect={props.onSelect}
+        selected={props.selected}
       >
         <button
           aria-expanded={props.selected}
@@ -314,7 +335,7 @@ function TaskRow(props: {
             <span className="block truncate font-display text-base font-medium text-dashboard-text">
               {task.instruction}
             </span>
-            <span className="mt-1 flex min-w-0 items-center gap-1.5 font-mono text-[0.58rem] uppercase tracking-[0.08em] text-dashboard-text-muted">
+            <span className="mt-1 flex min-w-0 items-center gap-1.5 font-mono text-xs uppercase tracking-[0.08em] text-dashboard-text-muted">
               <span>{task.kind}</span>
               <span aria-hidden="true" className="opacity-35">
                 ·
@@ -342,7 +363,7 @@ function TaskRow(props: {
           <div className="truncate text-sm font-medium text-dashboard-text">
             {task.destination.label}
           </div>
-          <div className="mt-1 font-mono text-[0.58rem] uppercase tracking-[0.08em] text-dashboard-text-muted">
+          <div className="mt-1 font-mono text-xs uppercase tracking-[0.08em] text-dashboard-text-muted">
             {task.destination.visibility}
           </div>
         </div>
@@ -350,7 +371,7 @@ function TaskRow(props: {
           <div className="truncate text-sm text-dashboard-text">
             {task.kind === "scheduled" ? task.schedule : task.resource}
           </div>
-          <div className="mt-1 truncate font-mono text-[0.58rem] text-dashboard-text-muted">
+          <div className="mt-1 truncate font-mono text-xs text-dashboard-text-muted">
             {task.kind === "scheduled"
               ? task.nextRunAt
                 ? `Next ${formatRunDate(task.nextRunAt)}`
@@ -398,7 +419,7 @@ function TaskRow(props: {
         ) : (
           <span aria-hidden="true" className="size-8" />
         )}
-      </div>
+      </SelectableRow>
     </article>
   );
 }
@@ -437,7 +458,7 @@ function TaskSourceMark(props: { task: TaskSummary }) {
       {isGitHub ? (
         <GitHubMark />
       ) : (
-        <span className="font-mono text-[0.65rem] font-semibold uppercase tracking-[0.08em]">
+        <span className="font-mono text-xs font-semibold uppercase tracking-[0.08em]">
           {sourceMark}
         </span>
       )}
@@ -465,7 +486,7 @@ function TaskTag(props: {
   return (
     <span
       className={cn(
-        "rounded-full border px-2 py-0.5 font-mono text-[0.62rem] uppercase tracking-[0.08em]",
+        "rounded-full border px-2 py-0.5 font-mono text-xs uppercase tracking-[0.08em]",
         props.tone === "success"
           ? "border-emerald-300/20 bg-emerald-300/[0.06] text-emerald-200/80"
           : props.tone === "warning"

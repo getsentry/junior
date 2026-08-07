@@ -1,7 +1,6 @@
 import {
   calculateCost,
   completeSimple,
-  getEnvApiKey,
   getModels,
   registerApiProvider,
   streamAnthropic,
@@ -11,6 +10,14 @@ import {
   type ThinkingLevel,
 } from "@/chat/pi/sdk";
 import { createGatewayProvider } from "@ai-sdk/gateway";
+import { resolveGatewayCredential } from "@/chat/pi/gateway-auth";
+
+export {
+  getGatewayApiKey,
+  MISSING_GATEWAY_CREDENTIALS_ERROR,
+  resolveGatewayCredential,
+  type GatewayCredential,
+} from "@/chat/pi/gateway-auth";
 import {
   embedMany,
   generateObject,
@@ -40,7 +47,6 @@ import {
   withSpan,
   type LogContext,
 } from "@/chat/logging";
-import { toOptionalTrimmed } from "@/chat/optional-string";
 import {
   getCurrentConversationPrivacy,
   toCanonicalInputMessage,
@@ -74,9 +80,6 @@ const EMBEDDING_INPUT_COST_USD_PER_MILLION_TOKENS: Readonly<
   "voyage/voyage-3.5": 0.06,
   "voyage/voyage-3.5-lite": 0.02,
 };
-export const MISSING_GATEWAY_CREDENTIALS_ERROR =
-  "Missing AI gateway credentials (AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN)";
-
 function embeddingCostUsd(
   modelId: string,
   inputTokens: number,
@@ -86,22 +89,6 @@ function embeddingCostUsd(
   return costPerMillionTokens === undefined
     ? undefined
     : (inputTokens * costPerMillionTokens) / 1_000_000;
-}
-
-/**
- * Resolve the documented AI Gateway env credentials for the paths that need
- * the bearer token string directly.
- */
-export function getGatewayApiKey(): string | undefined {
-  return (
-    toOptionalTrimmed(getEnvApiKey("vercel-ai-gateway")) ??
-    toOptionalTrimmed(process.env.VERCEL_OIDC_TOKEN)
-  );
-}
-
-/** Return the Gateway credential shape expected by Pi Agent getApiKey hooks. */
-export function getPiGatewayApiKey(): string | undefined {
-  return getGatewayApiKey();
 }
 
 function extractText(message: {
@@ -142,12 +129,9 @@ export async function completeText(params: {
   metadata?: Record<string, unknown>;
 }) {
   const model = resolveGatewayModel(params.modelId);
-  const apiKey = getPiGatewayApiKey();
-  const authMode = toOptionalTrimmed(process.env.AI_GATEWAY_API_KEY)
-    ? "api_key"
-    : toOptionalTrimmed(process.env.VERCEL_OIDC_TOKEN)
-      ? "oidc"
-      : "api_key";
+  const credential = await resolveGatewayCredential();
+  const apiKey = credential?.token;
+  const authMode = credential?.mode ?? "api_key";
   const effectivePrivacy = getCurrentConversationPrivacy() ?? "private";
   const messageAttributeMode =
     params.messageAttributeMode ??
@@ -366,8 +350,10 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
   signal?: AbortSignal;
   metadata?: Record<string, unknown>;
 }): Promise<{ costUsd?: number; object: z.infer<TSchema> }> {
-  const apiKey = getGatewayApiKey();
-  const provider = createGatewayProvider(apiKey ? { apiKey } : {});
+  const credential = await resolveGatewayCredential();
+  const provider = createGatewayProvider(
+    credential ? { apiKey: credential.token } : {},
+  );
   let result: GenerateObjectResult<unknown>;
   try {
     result = await withSpan(
@@ -412,6 +398,7 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
         "gen_ai.output.type": "json",
         "server.address": GEN_AI_SERVER_ADDRESS,
         "server.port": GEN_AI_SERVER_PORT,
+        "gen_ai.provider.auth_mode": credential?.mode ?? "api_key",
         ...(params.thinkingLevel
           ? { "gen_ai.request.reasoning.level": params.thinkingLevel }
           : {}),
@@ -456,8 +443,10 @@ export async function embedTexts(params: {
   if (texts.length === 0 || texts.some((text) => text.length === 0)) {
     throw new Error("Embedding text is required.");
   }
-  const apiKey = getGatewayApiKey();
-  const provider = createGatewayProvider(apiKey ? { apiKey } : {});
+  const credential = await resolveGatewayCredential();
+  const provider = createGatewayProvider(
+    credential ? { apiKey: credential.token } : {},
+  );
   try {
     const result = await withSpan(
       `${GEN_AI_OPERATION_EMBEDDINGS} ${params.modelId}`,
@@ -505,6 +494,7 @@ export async function embedTexts(params: {
         "gen_ai.request.model": params.modelId,
         "server.address": GEN_AI_SERVER_ADDRESS,
         "server.port": GEN_AI_SERVER_PORT,
+        "gen_ai.provider.auth_mode": credential?.mode ?? "api_key",
       },
     );
     return {

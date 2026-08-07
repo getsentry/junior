@@ -1773,6 +1773,62 @@ describe("memory plugin storage", () => {
     }
   });
 
+  it("stores Slack conversation memories for system runs", async () => {
+    const fixture = await createMemoryFixture();
+    const actor = { platform: "system" as const, name: "scheduler" };
+    const { model } = extractionModel([
+      {
+        kind: "preference",
+        content: "Prefers concise deployment notes.",
+      },
+      {
+        kind: "knowledge",
+        content: "Production deploys require a release marker.",
+      },
+    ]);
+    const runtime = slackContext();
+
+    try {
+      await processMemorySession(
+        processSessionContext({
+          db: memoryDb(fixture),
+          model,
+          run: {
+            async load() {
+              return completedRun({
+                conversationId: runtime.conversationId,
+                destination: slackDestination(runtime),
+                actor,
+                actors: [actor],
+                transcript: [
+                  instructionMessage(
+                    "I prefer concise deployment notes. Production deploys require a release marker.",
+                    actor,
+                  ),
+                ],
+                source: runtime.source,
+              });
+            },
+          },
+        }),
+      );
+
+      await expect(
+        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          content: "Production deploys require a release marker.",
+          scope: "conversation",
+          sourcePlatform: "slack",
+          subjectType: "conversation",
+          kind: "knowledge",
+        }),
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("stores a personal preference when every cited entry is a run-actor instruction", async () => {
     const fixture = await createMemoryFixture();
 
@@ -2854,7 +2910,8 @@ WHERE id = '${superseded.memory.id}'
       // shared lexical recency window can fill with newer workspace knowledge
       // before ranking sees the older actor preference.
       const query = "what time is it";
-      const preferenceContent = "Located in San Francisco and uses Pacific Time (PT).";
+      const preferenceContent =
+        "Located in San Francisco and uses Pacific Time (PT).";
       let nowMs = TEST_NOW_MS;
       const store = createMemoryStore(memoryDb(fixture), slackContext(), {
         // No embedder: force the pure lexical path that production noise hits.

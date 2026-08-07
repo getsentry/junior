@@ -69,7 +69,7 @@ describe("conversation list API", () => {
         conversations: [
           expect.objectContaining({
             conversationId: "slack:C123:source-link",
-            sourceUrl: "https://slack.com/app_redirect?channel=C123&team=T123",
+            sourceUrl: "https://example.slack.com/archives/C123/p1700000000000100?thread_ts=1700000000.000100&cid=C123",
           }),
         ],
       });

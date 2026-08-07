@@ -335,7 +335,7 @@ function forbidden(request: Request, agentName: string): Response {
 <body class="m-0 bg-black font-sans text-white [color-scheme:dark]">
   <main class="grid min-h-screen place-items-center p-8">
     <section class="max-w-lg border-l-4 border-rose-400 pl-4">
-      <h1 class="m-0 mb-3 text-[1.75rem] font-bold leading-tight">Access denied</h1>
+      <h1 class="m-0 mb-3 text-3xl font-bold leading-tight">Access denied</h1>
       <p class="m-0 leading-relaxed text-[#b8b8b8]">Your Google account is authenticated, but it is not allowed to use this ${escapeHtml(agentName)} dashboard.</p>
     </section>
   </main>
@@ -469,7 +469,12 @@ function dashboardPagePaths(
       path: basePath === "/" ? "/system" : `${basePath}/system`,
     },
     {
+      nested: true,
       path: basePath === "/" ? "/tasks" : `${basePath}/tasks`,
+    },
+    {
+      nested: true,
+      path: basePath === "/" ? "/memories" : `${basePath}/memories`,
     },
     {
       path:
@@ -508,7 +513,7 @@ function renderDashboard(basePath: string, agentName: string): Response {
   <div id="dashboard-root">
     <main class="grid min-h-screen place-items-center bg-black px-4 py-8 font-sans text-white md:px-8" aria-busy="true">
       <section class="grid w-full max-w-lg grid-cols-[auto_minmax(0,1fr)] items-center gap-3 border border-white/15 bg-[#0b0b0b] p-4">
-        <div class="grid size-9 shrink-0 select-none place-items-center bg-black text-[0.82rem] font-black leading-none text-white">Jr</div>
+        <div class="grid size-9 shrink-0 select-none place-items-center bg-black text-sm font-black leading-none text-white">Jr</div>
         <div class="min-w-0">
           <div class="font-bold">Loading ${escapeHtml(agentName)}</div>
           <div class="${dashboardRainbowProgressClass} mt-3 h-1.5 w-full" role="progressbar" aria-label="Loading ${escapeHtml(agentName)}"></div>

@@ -67,20 +67,46 @@ describe("Vercel webhook resource events", () => {
     ["deployment.succeeded", "succeeded"],
     ["deployment.error", "failed"],
     ["deployment.canceled", "was canceled"],
-  ] as const)("normalizes %s as a terminal event", (eventType, outcome) => {
-    expect(
-      normalizeVercelResourceEvents({ body: webhookBody(eventType) }),
-    ).toEqual([
-      {
-        eventKey: `vercel:evt_delivery_123:${eventType}`,
-        eventType,
-        occurredAtMs: 1_784_043_000_000,
-        identifier: `deployment-source:prj_junior:production:${COMMIT_SHA}`,
-        terminal: true,
-        trustedSummary: `Vercel production deployment for prj_junior at abcdef012345 (dpl_123abc) ${outcome}.`,
-      },
-    ]);
-  });
+  ] as const)(
+    "normalizes %s across project, target, and commit watches",
+    (eventType, outcome) => {
+      expect(
+        normalizeVercelResourceEvents({ body: webhookBody(eventType) }),
+      ).toEqual([
+        {
+          eventKey: `vercel:evt_delivery_123:${eventType}`,
+          eventType,
+          occurredAtMs: 1_784_043_000_000,
+          identifier: "prj_junior",
+          trustedSummary: `Vercel deployments for prj_junior (dpl_123abc) ${outcome}.`,
+          untrustedText: `Target: production
+Commit: ${COMMIT_SHA}
+Deployment: dpl_123abc`,
+        },
+        {
+          eventKey: `vercel:evt_delivery_123:${eventType}`,
+          eventType,
+          occurredAtMs: 1_784_043_000_000,
+          identifier: "prj_junior:production",
+          trustedSummary: `Vercel production deployments for prj_junior (dpl_123abc) ${outcome}.`,
+          untrustedText: `Target: production
+Commit: ${COMMIT_SHA}
+Deployment: dpl_123abc`,
+        },
+        {
+          eventKey: `vercel:evt_delivery_123:${eventType}`,
+          eventType,
+          occurredAtMs: 1_784_043_000_000,
+          identifier: `prj_junior:production:${COMMIT_SHA}`,
+          terminal: true,
+          trustedSummary: `Vercel production deployment for prj_junior at abcdef012345 (dpl_123abc) ${outcome}.`,
+          untrustedText: `Target: production
+Commit: ${COMMIT_SHA}
+Deployment: dpl_123abc`,
+        },
+      ]);
+    },
+  );
 
   it("maps a null Vercel target and alternate Git provider metadata to preview", () => {
     const body = webhookBody("deployment.succeeded", null);
@@ -90,8 +116,41 @@ describe("Vercel webhook resource events", () => {
 
     expect(normalizeVercelResourceEvents({ body })).toEqual([
       expect.objectContaining({
-        identifier: `deployment-source:prj_junior:preview:${COMMIT_SHA}`,
+        identifier: "prj_junior",
       }),
+      expect.objectContaining({
+        identifier: "prj_junior:preview",
+      }),
+      expect.objectContaining({
+        identifier: `prj_junior:preview:${COMMIT_SHA}`,
+        terminal: true,
+      }),
+    ]);
+  });
+
+  it("still fans out project and target watches when commit metadata is missing", () => {
+    const body = webhookBody();
+    body.payload.deployment.meta = {};
+
+    expect(normalizeVercelResourceEvents({ body })).toEqual([
+      {
+        eventKey: "vercel:evt_delivery_123:deployment.succeeded",
+        eventType: "deployment.succeeded",
+        occurredAtMs: 1_784_043_000_000,
+        identifier: "prj_junior",
+        trustedSummary:
+          "Vercel deployments for prj_junior (dpl_123abc) succeeded.",
+        untrustedText: "Target: production\nDeployment: dpl_123abc",
+      },
+      {
+        eventKey: "vercel:evt_delivery_123:deployment.succeeded",
+        eventType: "deployment.succeeded",
+        occurredAtMs: 1_784_043_000_000,
+        identifier: "prj_junior:production",
+        trustedSummary:
+          "Vercel production deployments for prj_junior (dpl_123abc) succeeded.",
+        untrustedText: "Target: production\nDeployment: dpl_123abc",
+      },
     ]);
   });
 
@@ -129,7 +188,7 @@ describe("Vercel webhook resource events", () => {
     ).toEqual([]);
   });
 
-  it("publishes an event from a valid signed delivery", async () => {
+  it("publishes every matching watch from a valid signed delivery", async () => {
     const fixture = routeFixture();
 
     const response = await fixture.route.handler(signedRequest(webhookBody()));
@@ -139,6 +198,16 @@ describe("Vercel webhook resource events", () => {
     expect(fixture.events).toEqual([
       expect.objectContaining({
         eventType: "deployment.succeeded",
+        identifier: "prj_junior",
+      }),
+      expect.objectContaining({
+        eventType: "deployment.succeeded",
+        identifier: "prj_junior:production",
+      }),
+      expect.objectContaining({
+        eventType: "deployment.succeeded",
+        identifier: `prj_junior:production:${COMMIT_SHA}`,
+        terminal: true,
       }),
     ]);
   });
@@ -154,7 +223,7 @@ describe("Vercel webhook resource events", () => {
     const response = await route?.handler(signedRequest(webhookBody()));
 
     expect(response?.status).toBe(202);
-    expect(publish).toHaveBeenCalledOnce();
+    expect(publish).toHaveBeenCalledTimes(3);
   });
 
   it("rejects a delivery whose signature does not match", async () => {
@@ -168,7 +237,7 @@ describe("Vercel webhook resource events", () => {
     expect(fixture.events).toEqual([]);
   });
 
-  it("accepts but ignores events without a usable source commit", async () => {
+  it("accepts and publishes project watches when commit metadata is missing", async () => {
     const fixture = routeFixture();
     const body = webhookBody();
     body.payload.deployment.meta = {};
@@ -176,8 +245,15 @@ describe("Vercel webhook resource events", () => {
     const response = await fixture.route.handler(signedRequest(body));
 
     expect(response.status).toBe(202);
-    await expect(response.text()).resolves.toBe("Ignored");
-    expect(fixture.events).toEqual([]);
+    await expect(response.text()).resolves.toBe("Accepted");
+    expect(fixture.events).toEqual([
+      expect.objectContaining({
+        identifier: "prj_junior",
+      }),
+      expect.objectContaining({
+        identifier: "prj_junior:production",
+      }),
+    ]);
   });
 
   it("returns a client error for malformed signed JSON", async () => {

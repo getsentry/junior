@@ -10,7 +10,7 @@ export function SectionIntro(props: {
 }) {
   return (
     <div className={props.className}>
-      <div className="font-mono text-[0.62rem] uppercase tracking-[0.16em] text-cyan-200/65">
+      <div className="font-mono text-xs uppercase tracking-[0.16em] text-cyan-200/65">
         {props.eyebrow}
       </div>
       <h2
@@ -20,7 +20,7 @@ export function SectionIntro(props: {
         {props.title}
       </h2>
       {props.description ? (
-        <p className="mt-1.5 mb-0 max-w-2xl font-mono text-[0.66rem] leading-relaxed text-dashboard-text-muted">
+        <p className="mt-1.5 mb-0 max-w-2xl font-mono text-xs leading-relaxed text-dashboard-text-muted">
           {props.description}
         </p>
       ) : null}

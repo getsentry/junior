@@ -38,19 +38,47 @@ export const plugins = defineJuniorPlugins(["@sentry/junior-cloudflare"]);
 - Junior sends the authorization link privately, then resumes the same thread automatically after the user authorizes.
 - The plugin is optimized for interactive user-driven work in Slack.
 
-## Optional channel defaults
+## Config
 
-If a Slack channel consistently works with the same Cloudflare account, zone, or Worker, store those as conversation-scoped defaults:
+Set conversation config with `jr-rpc config set`, or define the same keys for every conversation with `createApp({ configDefaults })`. An explicit account, zone, or Worker in a request always wins.
 
-```bash
-jr-rpc config set cloudflare.account.id <account_id>
-jr-rpc config set cloudflare.zone.id <zone_id>
-jr-rpc config set cloudflare.worker.name sentry-mcp
-```
+### Conversation defaults
 
-These defaults are optional. When not set, Junior discovers the account, zone, or Worker from the API on first use (requires Account Resources: Read permission). If the user names a different account, zone, or Worker in a request, Junior follows the explicit request instead.
+<details class="plugin-config">
+<summary><code>cloudflare.account.id</code></summary>
 
-Use `cloudflare.worker.name` for the Worker a channel usually investigates. For example, if most operations in a channel are about the `sentry-mcp` Worker, this default lets users ask "check the latest errors" or "show the recent deploy" without repeating the Worker name.
+Default Cloudflare account when a request does not identify one.
+
+- **Define:** `jr-rpc config set cloudflare.account.id <account_id>`
+- **Install-wide default:** `configDefaults["cloudflare.account.id"]`
+- **Required:** No; Junior can discover it with Account Resources: Read
+- **Environment override:** None
+
+</details>
+
+<details class="plugin-config">
+<summary><code>cloudflare.zone.id</code></summary>
+
+Default Cloudflare zone when a request does not identify one.
+
+- **Define:** `jr-rpc config set cloudflare.zone.id <zone_id>`
+- **Install-wide default:** `configDefaults["cloudflare.zone.id"]`
+- **Required:** No
+- **Environment override:** None
+
+</details>
+
+<details class="plugin-config">
+<summary><code>cloudflare.worker.name</code></summary>
+
+Default Worker for requests such as “check the latest errors” or “show the recent deploy.”
+
+- **Define:** `jr-rpc config set cloudflare.worker.name <worker_name>`
+- **Install-wide default:** `configDefaults["cloudflare.worker.name"]`
+- **Required:** No
+- **Environment override:** None
+
+</details>
 
 ## What users can do
 

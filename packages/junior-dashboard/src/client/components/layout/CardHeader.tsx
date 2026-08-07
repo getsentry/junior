@@ -17,17 +17,17 @@ export function CardHeader(props: {
       )}
     >
       <div>
-        <h3 className="m-0 font-mono text-[0.68rem] font-medium uppercase tracking-[0.14em] text-dashboard-text-muted">
+        <h3 className="m-0 font-mono text-xs font-medium uppercase tracking-[0.14em] text-dashboard-text-muted">
           {props.title}
         </h3>
         {props.description ? (
-          <p className="mt-1 mb-0 font-mono text-[0.68rem] leading-relaxed text-dashboard-text-muted">
+          <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
             {props.description}
           </p>
         ) : null}
       </div>
       {props.trailing ? (
-        <div className="font-mono text-[0.64rem] text-dashboard-text-muted">
+        <div className="font-mono text-xs text-dashboard-text-muted">
           {props.trailing}
         </div>
       ) : null}

@@ -54,15 +54,7 @@ export function createSlackDispatchTurnRunner(options: {
       threadId: conversationId,
       text: dispatch.input,
       attachments: [],
-      formatted: {
-        type: "root",
-        children: [
-          {
-            type: "paragraph",
-            children: [{ type: "text", value: dispatch.input }],
-          },
-        ],
-      },
+      formatted: { type: "root", children: [] },
       metadata: {
         dateSent: new Date(dispatch.createdAtMs),
         edited: false,

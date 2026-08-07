@@ -31,7 +31,7 @@ behavior.
 | [Memory](/extend/memory-plugin/)               | Long-term scoped memory                       |
 | [Notion](/extend/notion-plugin/)               | Notion content                                |
 | [Scheduler](/extend/scheduler-plugin/)         | Durable scheduled tasks                       |
-| [Sentry](/extend/sentry-plugin/)               | Sentry issues and telemetry                   |
+| [Sentry](/extend/sentry-plugin/)               | Sentry issues, telemetry, and issue webhooks  |
 | [Vercel](/extend/vercel-plugin/)               | Vercel projects and deployments               |
 
 ## Install packaged plugins
@@ -47,13 +47,14 @@ Create one plugin set for local development and production builds:
 ```ts title="plugins.ts"
 import { defineJuniorPlugins } from "@sentry/junior";
 import { githubPlugin } from "@sentry/junior-github";
+import { sentryPlugin } from "@sentry/junior-sentry";
 
 export const plugins = defineJuniorPlugins([
   githubPlugin({
     botNameEnv: "GITHUB_APP_BOT_NAME",
     botEmailEnv: "GITHUB_APP_BOT_EMAIL",
   }),
-  "@sentry/junior-sentry",
+  sentryPlugin(),
 ]);
 ```
 

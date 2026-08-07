@@ -16,7 +16,7 @@ export function PluginPanels(props: { plugins: SystemPlugin[] }) {
         </div>
       ) : (
         <Card padding="md">
-          <div className="font-mono text-[0.72rem] text-dashboard-text-muted">
+          <div className="font-mono text-xs text-dashboard-text-muted">
             No plugin inventory has been reported yet.
           </div>
         </Card>
@@ -43,7 +43,7 @@ function PluginPanel(props: { plugin: SystemPlugin }) {
             <h3 className="m-0 truncate font-display text-lg font-medium text-dashboard-text">
               {props.plugin.displayName}
             </h3>
-            <p className="mt-1 mb-0 line-clamp-2 font-mono text-[0.66rem] leading-relaxed text-dashboard-text-muted">
+            <p className="mt-1 mb-0 line-clamp-2 font-mono text-xs leading-relaxed text-dashboard-text-muted">
               {props.plugin.description}
             </p>
           </div>
@@ -69,7 +69,7 @@ function PluginPanel(props: { plugin: SystemPlugin }) {
               <div className="truncate font-display text-lg font-light text-dashboard-text">
                 {metric.value}
               </div>
-              <div className="mt-1 truncate font-mono text-[0.52rem] uppercase tracking-[0.1em] text-dashboard-text-muted">
+              <div className="mt-1 truncate font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted">
                 {metric.label}
               </div>
             </div>
@@ -90,7 +90,7 @@ function PluginPanel(props: { plugin: SystemPlugin }) {
 function PanelFact(props: { icon: typeof Sparkles; label: string }) {
   const Icon = props.icon;
   return (
-    <span className="inline-flex items-center gap-1.5 font-mono text-[0.58rem] uppercase tracking-[0.08em] text-dashboard-text-muted">
+    <span className="inline-flex items-center gap-1.5 font-mono text-xs uppercase tracking-[0.08em] text-dashboard-text-muted">
       <Icon aria-hidden="true" size={11} />
       {props.label}
     </span>

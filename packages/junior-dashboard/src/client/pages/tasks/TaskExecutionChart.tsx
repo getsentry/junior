@@ -18,7 +18,7 @@ export function TaskExecutionChart(props: { days: TaskExecutionDay[] }) {
   const days = props.days.slice(-range);
   const width = 720;
   const height = 200;
-  const left = 38;
+  const left = 56;
   const right = 12;
   const top = 14;
   const bottom = 34;
@@ -34,13 +34,13 @@ export function TaskExecutionChart(props: { days: TaskExecutionDay[] }) {
     <Card className="min-h-[17rem] p-4 sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <div className="font-mono text-[0.6rem] uppercase tracking-[0.16em] text-cyan-200/65">
+          <div className="font-mono text-xs uppercase tracking-[0.16em] text-cyan-200/65">
             Task executions
           </div>
           <h2 className="mt-1 mb-0 font-display text-xl font-medium text-dashboard-text">
             Activity over time
           </h2>
-          <p className="mt-1 mb-0 font-mono text-[0.64rem] leading-relaxed text-dashboard-text-muted">
+          <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
             Successful scheduled and event task runs each day.
           </p>
         </div>
@@ -52,7 +52,7 @@ export function TaskExecutionChart(props: { days: TaskExecutionDay[] }) {
             <button
               aria-pressed={range === days}
               className={cn(
-                "cursor-pointer rounded-sm border-0 px-2.5 py-1.5 font-mono text-[0.58rem] uppercase tracking-[0.1em] transition-colors",
+                "cursor-pointer rounded-sm border-0 px-2.5 py-1.5 font-mono text-xs uppercase tracking-[0.1em] transition-colors",
                 range === days
                   ? "bg-cyan-300/10 text-cyan-100"
                   : "bg-transparent text-dashboard-text-muted hover:text-dashboard-text",
@@ -73,7 +73,7 @@ export function TaskExecutionChart(props: { days: TaskExecutionDay[] }) {
       >
         {series.map((item) => (
           <span
-            className="inline-flex items-center gap-1.5 font-mono text-[0.58rem] text-dashboard-text-muted"
+            className="inline-flex items-center gap-1.5 font-mono text-xs text-dashboard-text-muted"
             key={item.key}
           >
             <i
@@ -107,7 +107,7 @@ export function TaskExecutionChart(props: { days: TaskExecutionDay[] }) {
                 <text
                   fill="rgba(255,255,255,0.34)"
                   fontFamily="ui-monospace, monospace"
-                  fontSize="9"
+                  fontSize="13"
                   textAnchor="end"
                   x={left - 7}
                   y={y + 3}
@@ -175,7 +175,7 @@ export function TaskExecutionChart(props: { days: TaskExecutionDay[] }) {
                 <text
                   fill="rgba(255,255,255,0.34)"
                   fontFamily="ui-monospace, monospace"
-                  fontSize="9"
+                  fontSize="13"
                   key={day.date}
                   textAnchor={
                     index === 0
@@ -200,7 +200,7 @@ export function TaskExecutionChart(props: { days: TaskExecutionDay[] }) {
           )}
         </svg>
         {!hasExecutions ? (
-          <div className="pointer-events-none absolute inset-0 grid place-items-center pt-12 font-mono text-[0.68rem] text-dashboard-text-muted">
+          <div className="pointer-events-none absolute inset-0 grid place-items-center pt-12 font-mono text-xs text-dashboard-text-muted">
             No task executions in this period.
           </div>
         ) : null}

@@ -1,34 +1,45 @@
 # @sentry/junior-sentry
 
-`@sentry/junior-sentry` adds Sentry investigation workflows and explicitly requested alert/monitor creation to Junior via per-user OAuth.
-
-Install it alongside `@sentry/junior`:
+Sentry investigations (per-user OAuth) and signed issue webhooks (internal integration) for Junior.
 
 ```bash
 pnpm add @sentry/junior @sentry/junior-sentry
 ```
 
-Add the package name to the plugin set exported from `plugins.ts`:
-
 ```ts
 import { defineJuniorPlugins } from "@sentry/junior";
+import { sentryPlugin } from "@sentry/junior-sentry";
 
-export const plugins = defineJuniorPlugins(["@sentry/junior-sentry"]);
+export const plugins = defineJuniorPlugins([sentryPlugin()]);
 ```
 
-## Sentry CLI Surface
+## User OAuth
 
-The plugin installs the npm `sentry` package as a runtime dependency and injects the current user's OAuth token as `SENTRY_AUTH_TOKEN` for Sentry skill commands. The OAuth grant supports alert, issue, project, team, member lookup, and release workflows. Existing connections must reconnect after upgrading to grant newly added scopes.
+Set `SENTRY_CLIENT_ID` and `SENTRY_CLIENT_SECRET` from a Sentry OAuth app whose redirect is:
 
-As of 2026-07-13, `sentry@latest` is `0.38.0`. The verified command groups used by the bundled skill are:
+```text
+<base-url>/api/oauth/callback/sentry
+```
+
+Junior injects the user's token as `SENTRY_AUTH_TOKEN` for skill/CLI commands. Reconnect after scope changes.
+
+Verified CLI surface (check live `sentry --help` before blocking):
 
 - `sentry issue list|events|explain|plan|view`
 - `sentry org list|view`
 - `sentry log list|view`
 - `sentry trace list|view|logs`
 - `sentry alert metrics list|view|create|edit|delete`
-- `sentry api <endpoint>` as a fallback when no first-class command covers the request
+- `sentry api <endpoint>` fallback
 
-The skill must verify live `sentry --help` output before declaring a Sentry data surface unavailable. Prefer singular command groups such as `sentry org list`; do not use stale forms such as `sentry organizations list`.
+## Issue webhooks
 
-Full setup guide: https://junior.sentry.dev/extend/sentry-plugin/
+Use a **Sentry internal integration** (not a public app install flow):
+
+1. Subscribe to the **issue** webhook resource.
+2. Point it at `https://<junior-host>/api/webhooks/sentry`.
+3. Set the org slug as `SENTRY_WEBHOOK_ORG` and the integration client secret as `SENTRY_WEBHOOK_SECRET`, then redeploy.
+
+Junior verifies `Sentry-Hook-Signature`, rejects payloads outside `SENTRY_WEBHOOK_ORG`, and publishes `issue.created` for `org/project#issueId` and `org/project`. Create watches/event tasks before the issue arrives; unmatched deliveries are not replayed.
+
+Full guide: https://junior.sentry.dev/extend/sentry-plugin/

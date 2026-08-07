@@ -39,7 +39,7 @@ function TooltipLines(props: { lines: MetricTooltipLine[] }) {
               className={cn(
                 "min-w-0 break-words font-medium text-dashboard-text-muted",
                 line.labelStyle === "code" &&
-                  "break-all font-mono text-[0.74rem] text-dashboard-text",
+                  "break-all font-mono text-xs text-dashboard-text",
               )}
             >
               {line.label}
@@ -81,7 +81,7 @@ export function MetricValue(props: {
     <Tooltip
       align={props.align}
       className={cn(
-        "w-[calc(100vw-2rem)] rounded-lg border border-white/15 bg-[#050505] px-3 py-2 text-left text-[0.76rem] font-normal leading-relaxed text-dashboard-text-muted shadow-xl shadow-black/35",
+        "w-[calc(100vw-2rem)] rounded-lg border border-white/15 bg-[#050505] px-3 py-2 text-left text-xs font-normal leading-relaxed text-dashboard-text-muted shadow-xl shadow-black/35",
         wide ? "max-w-[32.5rem]" : "max-w-80",
       )}
       content={

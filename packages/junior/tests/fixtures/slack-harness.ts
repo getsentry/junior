@@ -71,6 +71,7 @@ export function createTestMessage(args: {
   author?: Partial<Author>;
   isMention?: boolean;
   attachments?: Message["attachments"];
+  formatted?: Message["formatted"];
   raw?: Record<string, unknown>;
 }): Message {
   const threadId = args.threadId ?? "slack:C0TEST:1700000000.000";
@@ -85,7 +86,7 @@ export function createTestMessage(args: {
     isMention: args.isMention,
     attachments: args.attachments ?? [],
     metadata: { dateSent: new Date(), edited: false },
-    formatted: { type: "root", children: [] },
+    formatted: args.formatted ?? { type: "root", children: [] },
     raw: args.raw ?? {
       ...(inferredChannel ? { channel: inferredChannel } : {}),
       ...(inferredTs ? { ts: inferredTs, thread_ts: inferredTs } : {}),

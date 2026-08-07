@@ -29,7 +29,7 @@ The common deploy path runs snapshot warmup during build:
 
 ## Snapshot profile
 
-Junior computes the snapshot profile from its global baseline and loaded plugin declarations. The baseline provides Docker, Docker Compose, and other core command-line tools.
+Junior computes the snapshot profile from its global baseline and loaded plugin declarations. The baseline provides Docker, Docker Compose, `junior-ensure-docker` (starts `dockerd` after snapshot boot), and other core command-line tools. Nested containers need that daemon start because snapshots keep packages and files, not a running Docker process.
 
 | Input                | Source                                                                |
 | -------------------- | --------------------------------------------------------------------- |

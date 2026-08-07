@@ -60,6 +60,10 @@ import {
 import { formatProviderLabel } from "@/chat/oauth-flow";
 import { markTurnFailed } from "@/chat/runtime/turn";
 import { scheduleAgentContinue } from "@/chat/services/agent-continue";
+import {
+  resolveTurnSessionRouting,
+  type TurnSessionRouting,
+} from "@/chat/services/turn-session-routing";
 import { htmlCallbackResponse } from "@/handlers/oauth-html";
 import type { WaitUntilFn } from "@/handlers/types";
 import { createSlackResumeActor, isUserActor, type Actor } from "@/chat/actor";
@@ -362,12 +366,17 @@ async function resumeAuthorizedMcpTurn(args: {
         });
         return false;
       }
-      if (!lockedSessionRecord.source) {
+      let routing: TurnSessionRouting;
+      try {
+        routing = await resolveTurnSessionRouting({
+          conversationId: authSession.conversationId,
+        });
+      } catch (error) {
         await failAgentTurnSessionRecord({
           conversationId: authSession.conversationId,
           expectedVersion: lockedSessionRecord.version,
           sessionId: lockedSessionId,
-          errorMessage: "Stored Slack source missing for MCP OAuth resume",
+          errorMessage: error instanceof Error ? error.message : String(error),
         });
         return false;
       }
@@ -403,7 +412,7 @@ async function resumeAuthorizedMcpTurn(args: {
             },
             actor,
             destination,
-            source: lockedSessionRecord.source,
+            source: routing.source,
             toolChannelId:
               authSession.toolChannelId ??
               lockedArtifacts.assistantContextChannelId ??

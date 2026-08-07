@@ -143,6 +143,7 @@ function statsWindow(nowMs: number) {
 
 function metricDays(
   rows: Array<{
+    conversations: number;
     costUsd: number | null;
     date: string;
     durationMs: number;
@@ -164,10 +165,11 @@ function metricDays(
     const date = cursor.toISOString().slice(0, 10);
     const row = byDate.get(date);
     days.push({
+      conversations: row?.conversations ?? 0,
       date,
       durationMs: row?.durationMs ?? 0,
       ...(row?.costUsd !== null && row?.costUsd !== undefined
-        ? { costUsd: row.costUsd }
+        ? { costUsd: addUsd(undefined, row.costUsd) }
         : {}),
       ...(row?.tokens !== null && row?.tokens !== undefined
         ? { tokens: row.tokens }
@@ -319,6 +321,7 @@ async function aggregateStats(db: JuniorDatabase, start: Date, end: Date) {
       ),
     db
       .select({
+        conversations: treeAggregateColumns.conversations,
         costUsd: treeAggregateColumns.costUsd,
         date: activityDate,
         durationMs: treeAggregateColumns.durationMs,

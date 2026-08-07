@@ -55,6 +55,10 @@ import {
   scheduleAgentContinue as defaultScheduleAgentContinue,
   type AgentContinueRequest,
 } from "@/chat/services/agent-continue";
+import {
+  resolveTurnSessionRouting,
+  type TurnSessionRouting,
+} from "@/chat/services/turn-session-routing";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import { postSlackMessage } from "@/chat/slack/outbound";
 import { getStateAdapter } from "@/chat/state/adapter";
@@ -198,10 +202,11 @@ async function persistFailedReplyState(
 
 /** Convert startup failures into durable failed state before rethrowing. */
 async function failContinuationStartup(args: {
+  errorMessage: string;
   sessionRecord: AgentTurnSessionRecord;
 }): Promise<void> {
   try {
-    await persistFailedReplyState(args.sessionRecord);
+    await persistFailedReplyState(args.sessionRecord, args.errorMessage);
   } catch (persistError) {
     await failSessionRecordBestEffort({
       sessionRecord: args.sessionRecord,
@@ -288,18 +293,28 @@ async function failUnresumableContinuation(args: {
     errorMessage: args.errorMessage,
   });
   if (args.summary.dispatchId) {
-    await recordAgentTurnSessionSummary({
-      actor: args.summary.actor,
-      conversationId: args.conversationId,
-      destination: args.summary.destination,
-      dispatchId: args.summary.dispatchId,
-      dispatchOutcome: "failed",
-      sessionId: args.summary.sessionId,
-      sliceId: args.summary.sliceId,
-      source: args.summary.source,
-      state: "failed",
-      surface: args.summary.surface,
-    });
+    try {
+      const routing = await resolveTurnSessionRouting({
+        conversationId: args.conversationId,
+      });
+      await recordAgentTurnSessionSummary({
+        actor: args.summary.actor,
+        conversationId: args.conversationId,
+        destination: routing.destination,
+        dispatchId: args.summary.dispatchId,
+        dispatchOutcome: "failed",
+        sessionId: args.summary.sessionId,
+        sliceId: args.summary.sliceId,
+        source: routing.source,
+        state: "failed",
+        surface: args.summary.surface,
+      });
+    } catch (error) {
+      logException(error, "agent.continue.dispatch_failure_summary.failed", {
+        "app.ai.conversation_id": args.conversationId,
+        "app.ai.session_id": args.summary.sessionId,
+      });
+    }
   }
 }
 
@@ -434,15 +449,11 @@ async function continueSlackAgentRunInContext(
             },
           };
         }
-        if (!activeSessionRecord.source) {
-          await failAgentTurnSessionRecord({
-            conversationId: payload.conversationId,
-            expectedVersion: activeSessionRecord.version,
-            sessionId: payload.sessionId,
-            errorMessage: "Stored Slack source missing for continuation",
-          });
-          return false;
-        }
+        const routing = await resolveTurnSessionRouting({
+          conversationId: payload.conversationId,
+        });
+        const source = routing.source;
+        const routingDestination = routing.destination;
 
         const turnMessages =
           activeSessionRecord.turnStartMessageIndex === undefined
@@ -459,14 +470,14 @@ async function continueSlackAgentRunInContext(
           }
           await recordAgentTurnSessionSummary({
             conversationId: payload.conversationId,
-            destination: payload.destination,
+            destination: routingDestination,
             destinationVisibility:
               options.routingContext?.destinationVisibility,
             dispatchId,
             dispatchOutcome,
             sessionId: payload.sessionId,
             sliceId: activeSessionRecord.sliceId,
-            source: activeSessionRecord.source,
+            source,
             state: "failed",
             surface: options.routingContext?.surface ?? "slack",
           });
@@ -498,8 +509,8 @@ async function continueSlackAgentRunInContext(
               ...((options.routingContext?.actor ?? actor)
                 ? { actor: options.routingContext?.actor ?? actor }
                 : {}),
-              destination: payload.destination,
-              source: activeSessionRecord.source,
+              destination: routingDestination,
+              source,
               toolChannelId:
                 artifacts.assistantContextChannelId ?? destination.channelId,
             },
@@ -567,6 +578,8 @@ async function continueSlackAgentRunInContext(
       } catch (error) {
         if (sessionRecord) {
           await failContinuationStartup({
+            errorMessage:
+              error instanceof Error ? error.message : String(error),
             sessionRecord,
           });
         }
@@ -588,20 +601,6 @@ async function failStrandedSessionWithFallback(args: {
     sessionId: args.sessionRecord.sessionId,
     errorMessage: args.errorMessage,
   });
-  if (args.sessionRecord.dispatchId) {
-    await recordAgentTurnSessionSummary({
-      actor: args.sessionRecord.actor,
-      conversationId: args.conversationId,
-      destination: args.sessionRecord.destination,
-      dispatchId: args.sessionRecord.dispatchId,
-      dispatchOutcome: "failed",
-      sessionId: args.sessionRecord.sessionId,
-      sliceId: args.sessionRecord.sliceId,
-      source: args.sessionRecord.source,
-      state: "failed",
-      surface: args.sessionRecord.surface,
-    });
-  }
   const currentState = await getPersistedThreadState(args.conversationId);
   const conversation = coerceThreadConversationState(currentState);
   await hydrateConversationMessages({
@@ -626,13 +625,37 @@ async function failStrandedSessionWithFallback(args: {
     "app.ai.conversation_id": args.conversationId,
     "app.ai.session_id": args.sessionRecord.sessionId,
   });
+  let routing: TurnSessionRouting;
+  try {
+    routing = await resolveTurnSessionRouting({
+      conversationId: args.conversationId,
+    });
+  } catch (error) {
+    logException(error, "agent.turn.stranded_session.routing_unavailable", {
+      "app.ai.conversation_id": args.conversationId,
+      "app.ai.session_id": args.sessionRecord.sessionId,
+    });
+    return;
+  }
+  if (args.sessionRecord.dispatchId) {
+    await recordAgentTurnSessionSummary({
+      actor: args.sessionRecord.actor,
+      conversationId: args.conversationId,
+      destination: routing.destination,
+      dispatchId: args.sessionRecord.dispatchId,
+      dispatchOutcome: "failed",
+      sessionId: args.sessionRecord.sessionId,
+      sliceId: args.sessionRecord.sliceId,
+      source: routing.source,
+      state: "failed",
+      surface: args.sessionRecord.surface,
+    });
+  }
   const thread = parseSlackThreadId(args.conversationId);
   const channelId =
     thread?.channelId ??
-    requireSlackDestination(
-      args.sessionRecord.destination,
-      "Stranded agent continuation",
-    ).channelId;
+    requireSlackDestination(routing.destination, "Stranded agent continuation")
+      .channelId;
   await postSlackMessage({
     channelId,
     ...(thread?.threadTs ? { threadTs: thread.threadTs } : {}),
@@ -680,13 +703,26 @@ async function recoverStrandedRunningSession(args: {
   const modelProfile = recoveryProjection.modelProfile;
   const modelId = modelIdForProfile(botConfig, modelProfile);
 
+  let routing: TurnSessionRouting;
+  try {
+    routing = await resolveTurnSessionRouting({
+      conversationId: args.conversationId,
+    });
+  } catch (error) {
+    await failStrandedSessionWithFallback({
+      conversationId: args.conversationId,
+      errorMessage: error instanceof Error ? error.message : String(error),
+      sessionRecord,
+    });
+    return false;
+  }
   const parked = await persistYieldSessionRecord({
     channelName: sessionRecord.channelName,
     conversationId: args.conversationId,
     sessionId: sessionRecord.sessionId,
     currentSliceId: sessionRecord.sliceId,
-    destination: sessionRecord.destination,
-    source: sessionRecord.source,
+    destination: routing.destination,
+    source: routing.source,
     messages: sessionRecord.piMessages,
     errorMessage: "Recovered running session after hard worker death",
     modelId,

@@ -8,6 +8,7 @@ import {
   type TracePropagationHeaders,
 } from "@/chat/logging";
 import { getVercelSandboxCredentials } from "@/chat/sandbox/credentials";
+import { ensureDockerDaemon } from "@/chat/sandbox/docker";
 import {
   isAlreadyExistsError,
   isSandboxMissingError,
@@ -271,6 +272,8 @@ export function createSandboxRuntime(
     targetSandbox: SandboxSession,
   ): Promise<void> => {
     await syncSkills(targetSandbox);
+    // Snapshots ship Docker clients; the daemon is per-boot and must start here.
+    await ensureDockerDaemon(targetSandbox);
     await options.onSandboxPrepare?.(targetSandbox);
   };
 

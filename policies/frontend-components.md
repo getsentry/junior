@@ -15,6 +15,9 @@ stylesheets or semantic class contracts.
   `<div className="field">` style hooks.
 - Keep Tailwind classes colocated with the component or component-local helper
   that owns the markup.
+- Use the named type scale from the dashboard Tailwind theme
+  (`text-xs` through `text-4xl`). Do not use arbitrary `text-[Nrem]` sizes, and
+  do not go smaller than `text-xs` in product UI.
 - Use stylesheets only for Tailwind entry files, minimal global resets, vendor
   integration constraints, or selectors that cannot reasonably be represented
   with utilities.

@@ -37,10 +37,10 @@ describe("install config defaults", () => {
     expect(getConfigDefaults()).toEqual({});
   });
 
-  it("rejects keys that are not registered plugin config keys", () => {
-    expect(() => setConfigDefaults({ "unknown.key": "value" })).toThrow(
-      "not a registered plugin config key",
-    );
+  it("stores unregistered plugin config keys", () => {
+    setConfigDefaults({ "unknown.key": "value" });
+
+    expect(getConfigDefaults()).toEqual({ "unknown.key": "value" });
   });
 
   it("rejects null defaults", () => {

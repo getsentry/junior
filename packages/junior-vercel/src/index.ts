@@ -2,15 +2,18 @@
  * Vercel plugin runtime boundary.
  *
  * This package owns Vercel CLI setup, host-managed API authentication, signed
- * webhook normalization, and deployment-source tools. Junior core owns the
- * resulting conversation subscriptions and event delivery.
+ * webhook normalization, and deployment tools. Junior core owns the resulting
+ * conversation subscriptions and event delivery.
  */
 import {
   defineJuniorPlugin,
   type PluginRegistration,
 } from "@sentry/junior-plugin-api";
-import { createVercelDeploymentSourceTool } from "./tools/deployment-source.js";
-import { VERCEL_DEPLOYMENT_EVENTS } from "./resource-events/deployment-source.js";
+import { createVercelDeploymentTool } from "./tools/deployment.js";
+import {
+  VERCEL_DEPLOYMENT_EVENTS,
+  VERCEL_DEPLOYMENT_SUGGESTED_EVENTS,
+} from "./resource-events/deployment.js";
 import { createVercelWebhookRoute } from "./webhooks/handler.js";
 import { vercelWebhookSecret } from "./webhooks/secret.js";
 
@@ -21,9 +24,9 @@ export function vercelPlugin(): PluginRegistration {
     resourceEvents: {
       resourceTypes: [
         {
-          type: "deployment_source",
+          type: "deployment",
           supportedEvents: [...VERCEL_DEPLOYMENT_EVENTS],
-          suggestedEvents: [...VERCEL_DEPLOYMENT_EVENTS],
+          suggestedEvents: [...VERCEL_DEPLOYMENT_SUGGESTED_EVENTS],
         },
       ],
       isEnabled: () => Boolean(vercelWebhookSecret()),
@@ -64,7 +67,7 @@ export function vercelPlugin(): PluginRegistration {
       },
       tools(ctx) {
         return {
-          deploymentSource: createVercelDeploymentSourceTool(ctx),
+          deployment: createVercelDeploymentTool(ctx),
         };
       },
     },

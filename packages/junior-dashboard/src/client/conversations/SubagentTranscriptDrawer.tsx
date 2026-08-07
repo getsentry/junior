@@ -65,8 +65,8 @@ export function SubagentTranscriptDrawer(props: {
                 {label}
               </h2>
             </div>
-            <div className="mt-2 grid min-w-0 gap-1.5 text-[0.78rem] leading-snug">
-              <code className="min-w-0 break-all font-mono text-[0.72rem] text-dashboard-text sm:text-[0.78rem]">
+            <div className="mt-2 grid min-w-0 gap-1.5 text-xs leading-snug">
+              <code className="min-w-0 break-all font-mono text-xs text-dashboard-text">
                 {props.target.conversationId}
               </code>
               <Link
@@ -78,7 +78,7 @@ export function SubagentTranscriptDrawer(props: {
                 <ExternalLink aria-hidden="true" size={12} strokeWidth={2.25} />
               </Link>
             </div>
-            <div className="mt-1 break-words font-mono text-[0.78rem] leading-snug text-dashboard-text-muted">
+            <div className="mt-1 break-words font-mono text-xs leading-snug text-dashboard-text-muted">
               {meta.join(" · ")}
             </div>
             <div className="absolute right-4 top-3 flex items-center gap-1.5 md:right-5">

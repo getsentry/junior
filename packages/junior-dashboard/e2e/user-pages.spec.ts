@@ -28,13 +28,10 @@ test("opens a registered plugin page from primary navigation", async ({
   await page.goto(server.baseURL);
 
   const memoriesLink = page.getByRole("link", { name: "Memories" });
-  await expect(memoriesLink).toHaveAttribute(
-    "href",
-    "/plugins/memory/memories",
-  );
+  await expect(memoriesLink).toHaveAttribute("href", "/memories");
   await memoriesLink.click();
 
-  await expect(page).toHaveURL(`${server.baseURL}/plugins/memory/memories`);
+  await expect(page).toHaveURL(`${server.baseURL}/memories`);
   await expect(
     page.getByRole("heading", { name: "Memories", exact: true }).first(),
   ).toBeVisible();
@@ -75,9 +72,7 @@ test("opens a registered plugin page from primary navigation", async ({
     .getByRole("navigation", { name: "Memory navigation" })
     .getByRole("link", { name: "Memories" })
     .click();
-  await expect(page).toHaveURL(
-    `${server.baseURL}/plugins/memory/memories/library`,
-  );
+  await expect(page).toHaveURL(`${server.baseURL}/memories/library`);
   await expect(
     page.getByRole("button", {
       name: /^View memory details: I prefer concise summaries/,
@@ -185,7 +180,7 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
 test("opens memory details in a slide-out drawer", async ({ page }) => {
   await page.setViewportSize({ height: 900, width: 1440 });
   const browserErrors = collectBrowserErrors(page);
-  await page.goto(`${server.baseURL}/plugins/memory/memories/library`);
+  await page.goto(`${server.baseURL}/memories/library`);
 
   const memory = page.getByRole("button", {
     name: /^View memory details: I prefer concise summaries/,
@@ -206,9 +201,7 @@ test("opens memory details in a slide-out drawer", async ({ page }) => {
   await expect(closeMemoryDetails).toBeFocused();
   await expect(details.getByText("Memory details")).toBeVisible();
   await expect(details.getByText("Why Junior remembers this")).toBeVisible();
-  await expect(
-    details.getByText(/Preference · Private ·/),
-  ).toBeVisible();
+  await expect(details.getByText(/Preference · Private ·/)).toBeVisible();
   await expect(
     details.getByText(/Junior learned this from a Slack conversation/),
   ).toBeVisible();
@@ -249,7 +242,7 @@ test("renders an empty registered plugin page", async ({ page }) => {
   });
   const browserErrors = collectBrowserErrors(page);
 
-  await page.goto(`${server.baseURL}/plugins/memory/memories/library`);
+  await page.goto(`${server.baseURL}/memories/library`);
 
   await expect(page.getByText("No memories yet.")).toBeVisible();
   expect(browserErrors).toEqual([]);
@@ -260,7 +253,7 @@ test("shows the memory overview error state", async ({ page }) => {
     await route.fulfill({ json: { error: "Unavailable" }, status: 500 });
   });
 
-  await page.goto(`${server.baseURL}/plugins/memory/memories`);
+  await page.goto(`${server.baseURL}/memories`);
 
   await expect(
     page.getByText("Memory history is temporarily unavailable."),
@@ -321,6 +314,28 @@ test("searches, paginates, and forgets plugin page records", async ({
   await page.route(
     "**/api/plugins/memory/memories/memory-search",
     async (route) => {
+      if (route.request().method() === "GET") {
+        if (forgotMemory) {
+          await route.fulfill({
+            json: { error: "Memory was not found." },
+            status: 404,
+          });
+          return;
+        }
+        await route.fulfill({
+          json: {
+            content: "Deploy runbooks live in Notion.",
+            createdAt: "2026-07-30T12:00:00.000Z",
+            id: "memory-search",
+            kind: "knowledge",
+            observedAt: "2026-07-30T12:00:00.000Z",
+            origin: "explicit",
+            sourcePlatform: "slack",
+            visibility: "private",
+          },
+        });
+        return;
+      }
       forgetRequests += 1;
       expect(route.request().method()).toBe("DELETE");
       forgotMemory = true;
@@ -329,7 +344,7 @@ test("searches, paginates, and forgets plugin page records", async ({
   );
   const browserErrors = collectBrowserErrors(page);
 
-  await page.goto(`${server.baseURL}/plugins/memory/memories/library`);
+  await page.goto(`${server.baseURL}/memories/library`);
   await expect(
     page.getByRole("button", {
       name: /^View memory details: First page memory/,

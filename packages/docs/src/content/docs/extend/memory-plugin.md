@@ -39,41 +39,102 @@ export const plugins = defineJuniorPlugins([memoryPlugin()]);
 
 Do not register `@sentry/junior-memory` as a bare package-name string. The memory plugin uses `defineJuniorPlugin` with runtime hooks for tool registration and session processing; a bare string skips those hooks and the plugin will not activate its runtime behavior.
 
-Pass `modelId` to override the model used for memory classification, consolidation, and automatic recall relevance:
+## Config
 
-```ts title="plugins.ts"
-import { defineJuniorPlugins } from "@sentry/junior";
-import { memoryPlugin } from "@sentry/junior-memory";
+Pass plugin options to `memoryPlugin({ ... })` in `plugins.ts`. Set deployment variables in the Junior environment, then redeploy.
 
-export const plugins = defineJuniorPlugins([
-  memoryPlugin({ modelId: "anthropic/claude-sonnet-4-5" }),
-]);
-```
+### Plugin options
 
-Automatic prompt recall and passive session extraction can be disabled independently. Explicit memory tools remain available in either case:
+<details class="plugin-config">
+<summary><code>modelId</code></summary>
 
-```ts title="plugins.ts"
-export const plugins = defineJuniorPlugins([
-  memoryPlugin({
-    disableRecall: true,
-    disableExtraction: true,
-  }),
-]);
-```
+Model used for memory classification, consolidation, and automatic recall relevance.
 
-## Configure environment variables
+- **Define:** `memoryPlugin({ modelId: "anthropic/claude-sonnet-4-5" })` in `plugins.ts`
+- **Default:** The app's structured model
+- **Required:** No
+- **Environment override:** `AI_MEMORY_MODEL`; the plugin option takes precedence
 
-| Variable                            | Required | Purpose                                                                                                                                                                                                      |
-| ----------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `DATABASE_URL`                      | Yes      | Postgres connection string for memory storage.                                                                                                                                                               |
-| `JUNIOR_DATABASE_DRIVER`            | No       | SQL client driver: `neon` (default) or `postgres`. Set `postgres` for non-Neon deployments.                                                                                                                  |
-| `JUNIOR_SQL_STATEMENT_TIMEOUT_MS`   | No       | Runtime PostgreSQL statement timeout in milliseconds. Defaults to `30000`; set `0` to disable.                                                                                                               |
-| `AI_EMBEDDING_MODEL`                | No       | Embedding model for vector search. Defaults to `openai/text-embedding-3-small` (1536 dims).                                                                                                                  |
-| `AI_MEMORY_MODEL`                   | No       | Model for memory classification, consolidation, and automatic recall relevance. Defaults to the app's structured model.                                                                                      |
+</details>
 
-`AI_EMBEDDING_MODEL` must produce 1536-dimensional vectors. Changing this value after memories exist requires flushing the `junior_memory_embeddings` table and re-running to regenerate vectors with the new model. Automatic recall keeps a fixed cosine distance cutoff of `0.45` for `text-embedding-3-small`; retune that constant in the memory store if the embedding model changes.
+<details class="plugin-config">
+<summary><code>disableRecall</code></summary>
 
-For non-Neon managed Postgres (Railway, Supabase, AWS RDS, or self-hosted), set `JUNIOR_DATABASE_DRIVER=postgres`. Local URLs (`localhost`, `127.0.0.1`) automatically use the `postgres` driver.
+Disables automatic prompt recall while keeping explicit memory tools available.
+
+- **Define:** `memoryPlugin({ disableRecall: true })` in `plugins.ts`
+- **Default:** `false`
+- **Required:** No
+- **Environment override:** None
+
+</details>
+
+<details class="plugin-config">
+<summary><code>disableExtraction</code></summary>
+
+Disables passive memory extraction from completed sessions while keeping explicit memory tools available.
+
+- **Define:** `memoryPlugin({ disableExtraction: true })` in `plugins.ts`
+- **Default:** `false`
+- **Required:** No
+- **Environment override:** None
+
+</details>
+
+### Environment variables
+
+<details class="plugin-config">
+<summary><code>DATABASE_URL</code></summary>
+
+Postgres connection string for memory storage.
+
+- **Define:** Set `DATABASE_URL` in the deployment environment
+- **Required:** Yes
+- **Environment override:** `DATABASE_URL`
+
+The database must support pgvector.
+
+</details>
+
+<details class="plugin-config">
+<summary><code>JUNIOR_DATABASE_DRIVER</code></summary>
+
+SQL client driver for memory storage.
+
+- **Define:** Set `JUNIOR_DATABASE_DRIVER` in the deployment environment
+- **Default:** `neon`; local URLs automatically use `postgres`
+- **Required:** No
+- **Environment override:** `JUNIOR_DATABASE_DRIVER`
+
+Use `postgres` for non-Neon managed Postgres such as Railway, Supabase, AWS RDS, or self-hosted Postgres.
+
+</details>
+
+<details class="plugin-config">
+<summary><code>JUNIOR_SQL_STATEMENT_TIMEOUT_MS</code></summary>
+
+Runtime PostgreSQL statement timeout in milliseconds.
+
+- **Define:** Set `JUNIOR_SQL_STATEMENT_TIMEOUT_MS` in the deployment environment
+- **Default:** `30000`; set `0` to disable
+- **Required:** No
+- **Environment override:** `JUNIOR_SQL_STATEMENT_TIMEOUT_MS`
+
+</details>
+
+<details class="plugin-config">
+<summary><code>AI_EMBEDDING_MODEL</code></summary>
+
+Embedding model used for vector search.
+
+- **Define:** Set `AI_EMBEDDING_MODEL` in the deployment environment
+- **Default:** `openai/text-embedding-3-small`
+- **Required:** No
+- **Environment override:** `AI_EMBEDDING_MODEL`
+
+The model must produce 1536-dimensional vectors. Changing it after memories exist requires flushing `junior_memory_embeddings` so embeddings can be regenerated. Automatic recall's fixed `0.45` cosine distance cutoff is tuned for the default model.
+
+</details>
 
 ## Manage personal memories
 

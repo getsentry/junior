@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSlackSource } from "@sentry/junior-plugin-api";
+import { getConversationStore } from "@/chat/db";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import {
@@ -33,6 +34,23 @@ function restoreEnv(name: string, value: string | undefined): void {
 }
 
 const agentRunnerShouldNotRun = neverRunAgentRunner();
+
+async function seedConversationRouting(args: {
+  conversationId: string;
+  threadTs: string;
+}): Promise<void> {
+  await getConversationStore().recordActivity({
+    conversationId: args.conversationId,
+    destination: SLACK_DESTINATION,
+    sessionSource: createSlackSource({
+      teamId: SLACK_DESTINATION.teamId,
+      channelId: SLACK_DESTINATION.channelId,
+      threadTs: args.threadTs,
+      visibility: "private",
+    }),
+    visibility: "private",
+  });
+}
 
 describe("agent continuation runner callbacks", () => {
   beforeEach(async () => {
@@ -73,6 +91,10 @@ describe("agent continuation runner callbacks", () => {
           timestamp: 1,
         },
       ],
+    });
+    await seedConversationRouting({
+      conversationId,
+      threadTs: "1712345.0005",
     });
     await persistThreadStateById(conversationId, {
       artifacts: {
@@ -155,9 +177,11 @@ describe("agent continuation runner callbacks", () => {
     });
   });
 
-  it("fails before continuing when a continuation record is missing source", async () => {
+  it("fails before continuing when sql conversation source is missing", async () => {
     const conversationId = "slack:C123:1712345.0007";
     const sessionId = "turn_msg_7";
+    // Destination-only upsert leaves sessionSource unset so resume hard-fails
+    // at the SQL routing boundary instead of rebuilding from redis/source.
     const sessionRecord = await upsertAgentTurnSessionRecord({
       modelId: "test/model",
       conversationId,
@@ -225,10 +249,113 @@ describe("agent continuation runner callbacks", () => {
         {
           agentRunner: agentRunnerShouldNotRun,
           resumeTurn: async (args) => {
+            await args.beforeStart?.();
+            throw new Error("Expected continuation preparation to fail");
+          },
+        },
+      ),
+    ).rejects.toThrow(
+      `Conversation ${conversationId} is missing durable routing metadata`,
+    );
+    await expect(
+      getAgentTurnSessionRecord(conversationId, sessionId),
+    ).resolves.toMatchObject({
+      state: "failed",
+      errorMessage: `Conversation ${conversationId} is missing durable routing metadata`,
+    });
+  });
+
+  it("loads continuation source from sql conversation metadata", async () => {
+    const conversationId = "slack:C123:1712345.0008";
+    const sessionId = "turn_msg_8";
+    const sessionSource = createSlackSource({
+      teamId: SLACK_DESTINATION.teamId,
+      channelId: SLACK_DESTINATION.channelId,
+      threadTs: "1712345.0008",
+      visibility: "private",
+    });
+    const sessionRecord = await upsertAgentTurnSessionRecord({
+      modelId: "test/model",
+      conversationId,
+      sessionId,
+      sliceId: 2,
+      state: "awaiting_resume",
+      resumeReason: "timeout",
+      actor: {
+        platform: "slack",
+        teamId: SLACK_DESTINATION.teamId,
+        userId: "U123",
+        userName: "stored-user",
+        fullName: "Stored User",
+        email: "stored@example.com",
+      },
+      piMessages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "hello" }],
+          timestamp: 1,
+        },
+      ],
+    });
+    await getConversationStore().recordActivity({
+      conversationId,
+      destination: SLACK_DESTINATION,
+      sessionSource,
+      visibility: "private",
+    });
+    await persistThreadStateById(conversationId, {
+      conversation: {
+        schemaVersion: 1,
+        backfill: {},
+        compactions: [],
+        messages: [
+          {
+            id: "msg.8",
+            role: "user",
+            text: "resume this request",
+            createdAtMs: 1,
+            author: {
+              userId: "U123",
+            },
+          },
+        ],
+        processing: {
+          activeTurnId: sessionId,
+        },
+        stats: {
+          compactedMessageCount: 0,
+          estimatedContextTokens: 0,
+          totalMessageCount: 1,
+          updatedAtMs: 1,
+        },
+        vision: {
+          byFileId: {},
+        },
+      },
+    });
+
+    const { continueSlackAgentRun } =
+      await import("@/chat/runtime/agent-continue-runner");
+
+    await expect(
+      continueSlackAgentRun(
+        {
+          conversationId,
+          destination: SLACK_DESTINATION,
+          sessionId,
+          expectedVersion: sessionRecord.version,
+        },
+        {
+          agentRunner: agentRunnerShouldNotRun,
+          resumeTurn: async (args) => {
             const prepared = await args.beforeStart?.();
-            if (prepared !== false) {
-              throw new Error("Expected continuation preparation to fail");
+            if (!prepared) {
+              throw new Error("Expected the continuation to prepare");
             }
+            if (!prepared.replyContext) {
+              throw new Error("Expected prepared continuation reply context");
+            }
+            expect(prepared.replyContext.routing.source).toEqual(sessionSource);
             return true;
           },
         },
@@ -237,8 +364,7 @@ describe("agent continuation runner callbacks", () => {
     await expect(
       getAgentTurnSessionRecord(conversationId, sessionId),
     ).resolves.toMatchObject({
-      state: "failed",
-      errorMessage: "Stored Slack source missing for continuation",
+      state: "awaiting_resume",
     });
   });
 
@@ -266,6 +392,10 @@ describe("agent continuation runner callbacks", () => {
           timestamp: 1,
         },
       ],
+    });
+    await seedConversationRouting({
+      conversationId,
+      threadTs: "1712345.0006",
     });
     await persistThreadStateById(conversationId, {
       conversation: {

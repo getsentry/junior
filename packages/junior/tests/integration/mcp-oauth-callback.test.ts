@@ -316,12 +316,11 @@ describe("mcp oauth callback integration", () => {
   it("finalizes MCP OAuth and resumes the stored thread with persisted context", async () => {
     const threadId = "slack:C123:1700000000.001";
     const sessionId = "turn_user-1";
+    // Resume loads SQL sessionSource, which drops per-message timestamps.
     const storedSource = createSlackSource({
       teamId: "T123",
       channelId: "C123",
-      messageTs: "1700000000.mcp-source",
       threadTs: "1700000000.001",
-
       visibility: "private",
     });
 

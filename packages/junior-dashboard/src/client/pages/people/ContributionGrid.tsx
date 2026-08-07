@@ -53,7 +53,7 @@ export function ContributionGrid(props: { days: ContributionDay[] }) {
       <div className="min-w-[36rem]">
         <div
           aria-hidden="true"
-          className="mb-1 grid gap-1 text-[0.64rem] font-semibold leading-none text-dashboard-text-muted"
+          className="mb-1 grid gap-1 text-xs font-semibold leading-none text-dashboard-text-muted"
           style={{
             gridTemplateColumns: `repeat(${weeks.length}, minmax(0.75rem, 1fr))`,
           }}
@@ -113,7 +113,7 @@ export function ContributionGrid(props: { days: ContributionDay[] }) {
             ),
           )}
         </div>
-        <div className="mt-3 flex items-center gap-1 text-[0.7rem] font-semibold uppercase leading-none text-dashboard-text-muted">
+        <div className="mt-3 flex items-center gap-1 text-xs font-semibold uppercase leading-none text-dashboard-text-muted">
           <span>Less</span>
           {[0, 1, 2, 3, 4].map((level) => (
             <span

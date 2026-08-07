@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior-sentry",
-  "version": "0.135.0",
+  "version": "0.137.0",
   "private": false,
   "publishConfig": {
     "access": "public"
@@ -11,8 +11,37 @@
     "url": "git+https://github.com/getsentry/junior.git",
     "directory": "packages/junior-sentry"
   },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "default": "./dist/testing.js"
+    }
+  },
   "files": [
-    "plugin.yaml",
+    "dist",
     "skills"
-  ]
+  ],
+  "scripts": {
+    "build": "tsup && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "lint": "oxlint --config ../junior/.oxlintrc.json --deny-warnings src tests tsup.config.ts vitest.config.ts",
+    "prepare": "pnpm run build",
+    "prepack": "pnpm run build",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@sentry/junior-plugin-api": "workspace:*",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "oxlint": "^1.66.0",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.7"
+  }
 }

@@ -50,7 +50,7 @@ export function TranscriptTurnContextView(props: {
         </button>
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute right-0 bottom-[calc(100%+0.35rem)] z-10 whitespace-nowrap rounded border border-white/10 bg-[#111] px-2 py-1 text-[0.68rem] font-medium text-dashboard-text-muted opacity-0 shadow-lg transition-opacity group-hover/context:opacity-100 group-focus-within/context:opacity-100"
+          className="pointer-events-none absolute right-0 bottom-[calc(100%+0.35rem)] z-10 whitespace-nowrap rounded border border-white/10 bg-[#111] px-2 py-1 text-xs font-medium text-dashboard-text-muted opacity-0 shadow-lg transition-opacity group-hover/context:opacity-100 group-focus-within/context:opacity-100"
         >
           View turn context
         </span>
@@ -148,11 +148,11 @@ function TurnContext(props: { context: TranscriptViewTurnContext }) {
               size={15}
             />
           )}
-          <h3 className="m-0 truncate text-[0.82rem] font-semibold text-dashboard-text">
+          <h3 className="m-0 truncate text-sm font-semibold text-dashboard-text">
             {memory ? "Recalled memories" : props.context.pluginName}
           </h3>
         </div>
-        <span className="shrink-0 text-[0.7rem] text-dashboard-text-muted">
+        <span className="shrink-0 text-xs text-dashboard-text-muted">
           {props.context.kind} · v{props.context.version}
         </span>
       </div>
@@ -188,21 +188,21 @@ function MemoryRecall(props: {
             />
             <span className="min-w-0 flex-1">
               <span className="flex items-center justify-between gap-3">
-                <span className="text-[0.72rem] font-medium text-dashboard-text-muted">
+                <span className="text-xs font-medium text-dashboard-text-muted">
                   Memory {index + 1}
                 </span>
-                <span className="shrink-0 text-[0.68rem] text-dashboard-text-muted">
+                <span className="shrink-0 text-xs text-dashboard-text-muted">
                   {memory.kind} · {memory.scope}
                 </span>
               </span>
-              <span className="mt-1 block truncate text-[0.8rem] text-dashboard-text-muted">
+              <span className="mt-1 block truncate text-sm text-dashboard-text-muted">
                 <HighlightText text={memory.content} />
               </span>
             </span>
           </summary>
 
           <div className="border-t border-white/8 bg-white/[0.025] px-4 py-4">
-            <div className="whitespace-pre-wrap text-[0.88rem] leading-6 text-dashboard-text">
+            <div className="whitespace-pre-wrap text-sm leading-6 text-dashboard-text">
               <HighlightText text={memory.content} />
             </div>
 
@@ -233,7 +233,7 @@ function MemoryRecall(props: {
           </div>
         </details>
       ))}
-      <p className="m-0 border-t border-white/10 px-3 py-2 text-[0.68rem] text-dashboard-text-muted">
+      <p className="m-0 border-t border-white/10 px-3 py-2 text-xs text-dashboard-text-muted">
         {props.memories.length}{" "}
         {props.memories.length === 1 ? "memory" : "memories"} · Loaded{" "}
         {formatMessageTimestamp(Date.parse(props.loadedAt))}
@@ -245,10 +245,10 @@ function MemoryRecall(props: {
 function GenericContext(props: { context: TranscriptViewTurnContext }) {
   return (
     <div>
-      <pre className="m-0 overflow-x-auto whitespace-pre-wrap break-words rounded-lg bg-white/[0.04] p-3 text-[0.75rem] leading-relaxed text-dashboard-text-muted">
+      <pre className="m-0 overflow-x-auto whitespace-pre-wrap break-words rounded-lg bg-white/[0.04] p-3 text-xs leading-relaxed text-dashboard-text-muted">
         <HighlightText text={JSON.stringify(props.context.content, null, 2)} />
       </pre>
-      <p className="m-0 mt-3 text-[0.7rem] text-dashboard-text-muted">
+      <p className="m-0 mt-3 text-xs text-dashboard-text-muted">
         Loaded {formatMessageTimestamp(Date.parse(props.context.loadedAt))}
       </p>
     </div>

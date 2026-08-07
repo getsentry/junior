@@ -1,4 +1,71 @@
 # Changelog
+## 0.137.0
+
+### New Features ✨
+
+#### Dashboard
+
+- Show conversation activity on system overview by @sentry-junior in [#1282](https://github.com/getsentry/junior/pull/1282)
+- Make detail rows selectable by @sentry-junior in [#1271](https://github.com/getsentry/junior/pull/1271)
+
+#### Other
+
+- (github) Allow workflow run control by @sentry-junior in [#1269](https://github.com/getsentry/junior/pull/1269)
+- (slack) Build thread archive source urls from team.info by @sentry-junior in [#1283](https://github.com/getsentry/junior/pull/1283)
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Enforce a readable type scale floor by @sentry-junior in [#1284](https://github.com/getsentry/junior/pull/1284)
+- Show live conversation metrics by @sentry-junior in [#1280](https://github.com/getsentry/junior/pull/1280)
+
+#### Slack
+
+- Trust canonical formatted message text by @sentry-junior in [#1270](https://github.com/getsentry/junior/pull/1270)
+- Align passive reply router with Guardian by @sentry-junior in [#1281](https://github.com/getsentry/junior/pull/1281)
+
+#### Other
+
+- (ai-gateway) Prefer Vercel OIDC for project attribution by @sentry-junior in [#1275](https://github.com/getsentry/junior/pull/1275)
+- (ci) Unblock mainline typecheck, lint, and integration failures by @sentry-junior in [#1285](https://github.com/getsentry/junior/pull/1285)
+- (config) Warn on unregistered config defaults by @dcramer in [#1265](https://github.com/getsentry/junior/pull/1265)
+- (sandbox) Start dockerd for nested Docker Compose by @sentry-junior in [#1274](https://github.com/getsentry/junior/pull/1274)
+
+### Documentation 📚
+
+- (concepts) Rewrite product model docs by @sentry-junior in [#1277](https://github.com/getsentry/junior/pull/1277)
+- (plugins) Standardize config reference sections by @sentry-junior in [#1278](https://github.com/getsentry/junior/pull/1278)
+- (reference) Keep plugin env off config page by @sentry-junior in [#1276](https://github.com/getsentry/junior/pull/1276)
+- (sentry) Use plugin constructor in setup guidance by @sentry-junior in [#1273](https://github.com/getsentry/junior/pull/1273)
+
+### Internal Changes 🔧
+
+- (chat) Load turn-session routing from SQL on resume by @sentry-junior in [#1268](https://github.com/getsentry/junior/pull/1268)
+
+### Other
+
+- .github/workflows: Migrate workflows to Blacksmith runners by @blacksmith-sh in [#1272](https://github.com/getsentry/junior/pull/1272)
+
+## 0.136.1
+
+### Bug Fixes 🐛
+
+- (memory) Accept canonical system actors by @dcramer in [#1264](https://github.com/getsentry/junior/pull/1264)
+
+## 0.136.0
+
+### New Features ✨
+
+- (dashboard) Add shareable task and memory views by @sentry-junior in [#1262](https://github.com/getsentry/junior/pull/1262)
+- (github) Expose pull_request.opened and ready_for_review events by @sentry-junior in [#1259](https://github.com/getsentry/junior/pull/1259)
+- (sentry) Add issue resource events by @sentry-junior in [#1260](https://github.com/getsentry/junior/pull/1260)
+- (vercel) Add project-scoped deployment subscriptions by @sentry-junior in [#1263](https://github.com/getsentry/junior/pull/1263)
+
+### Documentation 📚
+
+- (plugins) Document resource subscriptions by @sentry-junior in [#1261](https://github.com/getsentry/junior/pull/1261)
+
 ## 0.135.0
 
 ### Bug Fixes 🐛

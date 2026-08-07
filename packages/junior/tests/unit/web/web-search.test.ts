@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createWebSearchTool } from "@/chat/tools/web/search";
 import { generateText } from "ai";
 import { createGatewayProvider } from "@ai-sdk/gateway";
+import { resolveGatewayCredential } from "@/chat/pi/gateway-auth";
 
 vi.mock("ai", () => ({
   generateText: vi.fn(),
@@ -9,6 +10,10 @@ vi.mock("ai", () => ({
 
 vi.mock("@ai-sdk/gateway", () => ({
   createGatewayProvider: vi.fn(),
+}));
+
+vi.mock("@/chat/pi/gateway-auth", () => ({
+  resolveGatewayCredential: vi.fn(),
 }));
 
 describe("createWebSearchTool", () => {
@@ -23,6 +28,7 @@ describe("createWebSearchTool", () => {
 
   beforeEach(() => {
     vi.mocked(createGatewayProvider).mockReturnValue(gatewayProvider as never);
+    vi.mocked(resolveGatewayCredential).mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -59,7 +65,7 @@ describe("createWebSearchTool", () => {
       {} as never,
     );
 
-    expect(createGatewayProvider).toHaveBeenCalledWith();
+    expect(createGatewayProvider).toHaveBeenCalledWith({});
     expect(gatewayProvider.tools.parallelSearch).toHaveBeenCalledWith({
       mode: "agentic",
       maxResults: 2,
@@ -83,6 +89,27 @@ describe("createWebSearchTool", () => {
           snippet: "Gateway docs",
         },
       ],
+    });
+  });
+
+  it("passes the shared OIDC credential into the gateway provider", async () => {
+    vi.mocked(resolveGatewayCredential).mockResolvedValue({
+      mode: "oidc",
+      token: "oidc-token",
+    });
+    vi.mocked(generateText).mockResolvedValueOnce({
+      toolResults: [],
+    } as never);
+
+    const tool = createWebSearchTool(defaultModelId);
+    if (typeof tool.execute !== "function") {
+      throw new Error("webSearch execute function missing");
+    }
+
+    await tool.execute({ query: "oidc query" }, {} as never);
+
+    expect(createGatewayProvider).toHaveBeenCalledWith({
+      apiKey: "oidc-token",
     });
   });
 
@@ -153,6 +180,9 @@ describe("createWebSearchTool", () => {
       () => undefined,
       (error: unknown) => error,
     );
+    // Credential resolution is async before generateText starts.
+    await Promise.resolve();
+    await Promise.resolve();
     expect(capturedSignal?.aborted).toBe(false);
     await vi.advanceTimersByTimeAsync(60_000);
     await expect(settled).resolves.toMatchObject({

@@ -156,6 +156,7 @@ export async function enqueueAgentDispatch(
     destination: claimedDispatch.destination,
     nowMs,
     source: "plugin",
+    sessionSource: claimedDispatch.source,
     visibility: claimedDispatch.destinationVisibility,
   });
   await appendAndEnqueueInboundMessage({

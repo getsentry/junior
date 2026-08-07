@@ -85,7 +85,7 @@ export function Transcript(props: {
         {props.historyError ? (
           <div
             aria-live="polite"
-            className="mb-2 text-center font-mono text-[0.7rem] text-amber-100/65"
+            className="mb-2 text-center font-mono text-xs text-amber-100/65"
           >
             Earlier events could not be loaded.
           </div>

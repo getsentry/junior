@@ -39,6 +39,12 @@ component integration without standing in for browser E2E.
 Run `JUNIOR_DASHBOARD_COMPONENT_GALLERY=true pnpm dev` from the repository root
 and open `/dev` to inspect the typed component fixtures.
 
+## Type scale
+
+Font sizes come from the named scale in `src/tailwind.css` (`text-xs` through
+`text-4xl`). `text-xs` (13px) is the floor for labels, badges, meta, and table
+headers. Prefer those steps over arbitrary `text-[Nrem]` values.
+
 User-facing setup lives in
 `packages/docs/src/content/docs/operate/dashboard.md`. Follow
 `../../policies/data-redaction.md` and `../../policies/frontend-components.md`.

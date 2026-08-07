@@ -45,7 +45,13 @@ The endpoint must be publicly reachable. Subscribe it to `deployment.succeeded`,
 
 Deployment watches use Vercel's canonical `prj_...` ID. Junior resolves that ID from the project name or ID and optional team slug or ID through Vercel's authenticated project API.
 
-Create the conversation watch before the terminal deployment event. A valid webhook delivery does not create a watch by itself, and unmatched deliveries are not replayed later.
+Supported scopes (`deployment` resource type):
+
+- `prj_...` for every deployment in the project
+- `prj_...:production` for every production deployment
+- `prj_...:production:<sha>` for one commit-scoped deployment
+
+Create the conversation watch or event task before the terminal deployment event. A valid webhook delivery does not create a watch by itself, and unmatched deliveries are not replayed later.
 
 ## Auth model
 

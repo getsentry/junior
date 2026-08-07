@@ -53,7 +53,7 @@ export function ToolFrame(props: {
       )}
       right={
         metaText ? (
-          <TranscriptHeadingMeta className="min-w-0 break-words text-[0.8rem] text-dashboard-text-muted">
+          <TranscriptHeadingMeta className="min-w-0 break-words text-sm text-dashboard-text-muted">
             {metaText}
           </TranscriptHeadingMeta>
         ) : undefined
@@ -63,7 +63,7 @@ export function ToolFrame(props: {
   );
   const mobileMeta =
     metaText && props.children ? (
-      <div className="hidden min-w-0 break-words py-1 font-mono text-[0.78rem] leading-snug text-dashboard-text-muted max-md:block">
+      <div className="hidden min-w-0 break-words py-1 font-mono text-xs leading-snug text-dashboard-text-muted max-md:block">
         {metaText}
       </div>
     ) : null;
@@ -95,7 +95,7 @@ export function toolFrameClass(): string {
 
 function toolHeaderClass(interactive: boolean): string {
   return cn(
-    "block py-1.5 font-mono text-[0.82rem] leading-tight text-dashboard-text-muted",
+    "block py-1.5 font-mono text-sm leading-tight text-dashboard-text-muted",
     interactive
       ? "cursor-pointer list-none transition-colors hover:text-dashboard-text hover:[&_*]:text-dashboard-text focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55 focus-visible:text-dashboard-text focus-visible:[&_*]:text-dashboard-text [&::-webkit-details-marker]:hidden"
       : "cursor-default",

@@ -27,29 +27,29 @@ export function TranscriptContextEventView(props: {
     >
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1">
         <strong
-          className={`font-display text-[0.88rem] font-semibold ${
+          className={`font-display text-sm font-semibold ${
             handoff ? "text-sky-100" : "text-amber-100"
           }`}
         >
           {handoff ? "Model handoff" : "Context compacted"}
         </strong>
         {typeof props.timestamp === "number" ? (
-          <span className="text-[0.76rem] text-dashboard-text-muted">
+          <span className="text-xs text-dashboard-text-muted">
             {formatMessageTimestamp(props.timestamp)}
           </span>
         ) : null}
       </div>
-      <div className="mt-1.5 text-[0.8rem] text-dashboard-text-muted">
+      <div className="mt-1.5 text-sm text-dashboard-text-muted">
         {handoff
           ? `Execution continued with the ${event.modelProfile} profile (${event.modelId}${event.reasoningLevel ? `, ${event.reasoningLevel}` : ""}).`
           : `Earlier context was summarized${compactionDetail}${compactionModel} before execution continued.`}
       </div>
       {event.summary ? (
         <details className="mt-2 border-t border-white/[0.06] pt-2">
-          <summary className="cursor-pointer select-none text-[0.78rem] font-medium text-dashboard-text-muted">
+          <summary className="cursor-pointer select-none text-xs font-medium text-dashboard-text-muted">
             Continuation summary
           </summary>
-          <div className="mt-2 text-[0.8rem] leading-relaxed text-dashboard-text-muted">
+          <div className="mt-2 text-sm leading-relaxed text-dashboard-text-muted">
             <TranscriptText role="system" text={event.summary} />
           </div>
         </details>

@@ -181,7 +181,7 @@ function PluginReportError(props: { showingReports: boolean }) {
           <div className="font-display text-sm font-medium text-dashboard-text-muted">
             Plugin stats failed to load.
           </div>
-          <div className="mt-1 font-mono text-[0.64rem] leading-relaxed text-dashboard-text-muted">
+          <div className="mt-1 font-mono text-xs leading-relaxed text-dashboard-text-muted">
             {props.showingReports
               ? `Showing the last operational reports ${getDashboardAgentName()} received.`
               : "Plugin details and capabilities are still available."}

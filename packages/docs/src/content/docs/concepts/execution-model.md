@@ -1,42 +1,56 @@
 ---
 title: Execution Model
-description: End-to-end runtime lifecycle from webhook ingress to threaded response.
+description: How Junior turns a request into durable work and a reply.
 type: conceptual
+summary: Understand how Junior accepts work and survives pauses or retries.
 prerequisites:
-  - /start-here/quickstart/
+  - /start-here/using-junior/
 related:
-  - /concepts/thread-routing/
-  - /concepts/credentials-and-oauth/
-  - /operate/reliability-runbooks/
+  - /concepts/conversations/
+  - /concepts/security-and-authority/
+  - /concepts/tasks/
 ---
 
-## Runtime lifecycle
+Junior stores work before processing it. This lets a turn continue after a timeout, authorization prompt, or worker restart.
 
-1. Slack sends an event to `/api/webhooks/slack`.
-2. Junior validates and routes the event.
-3. Conversation work is enqueued to the durable conversation-work queue.
-4. `/api/internal/agent/continue` processes queued conversation work.
-5. The agent run continues with configured tools, loaded skills, and capability gates.
-6. If sandbox traffic reaches a declared provider domain, the sandbox egress proxy lazily fetches actor-bound credentials and injects them at the host boundary.
-7. If OAuth is required, Junior sends the link privately to the requesting user and resumes the blocked request after the callback.
-8. Reply is posted back to the original Slack thread.
-9. Successful completed sessions can schedule plugin background tasks through `/api/internal/plugin/tasks`.
+## Lifecycle
 
-## Why queue-backed processing exists
+1. A Slack message, task, or plugin event arrives.
+2. Junior validates and stores the work.
+3. A worker starts or resumes the conversation's active turn.
+4. The turn uses tools, skills, and sandbox commands as needed.
+5. Completed replies return to the original destination.
+6. Paused work resumes from its latest safe checkpoint.
 
-- Avoids long-running webhook request paths.
-- Makes retries explicit and observable.
-- Preserves thread execution invariants in background turns.
+Queue messages only wake a worker. Stored conversation state remains the source of truth.
 
-## Core invariants
+## Turns and Ordering
 
-- Webhook ingress and queue callbacks are required for production.
-- Tool usage is agent-run scoped; sandbox credential leases are actor-bound and minted lazily only after forwarded provider traffic needs them.
-- Registered plugin providers determine which provider credentials can be injected for matching provider domains.
-- Failure states are logged and surfaced for operator recovery.
+A **turn** covers one request through its final outcome. It may span several bounded attempts while keeping the same conversation and turn identity.
 
-## Where to go next
+Only one worker owns a conversation at a time. New mentions can steer active work at a safe point. Other messages wait for the current turn to finish.
 
-- [Thread Routing](/concepts/thread-routing/)
-- [Credentials & OAuth](/concepts/credentials-and-oauth/)
-- [Reliability Runbooks](/operate/reliability-runbooks/)
+Progress updates are status, not final replies. Text produced while calling tools stays internal until Junior produces a reply.
+
+## Recovery
+
+Junior checkpoints completed tool work and resumes from the latest saved state. This applies when:
+
+- OAuth pauses a turn
+- work exceeds one execution window
+- a worker stops unexpectedly
+- delivery fails and can be retried
+
+Sandbox files are not durable state and may disappear between attempts.
+
+## Delivery Guarantees
+
+- Accepted work survives process loss.
+- Retries are bounded.
+- Duplicate inbound events should resolve to the same work.
+- Junior does not intentionally repeat an accepted reply.
+- An ambiguous Slack delivery failure may still produce a duplicate reply on retry.
+
+## Next Step
+
+Read [Conversations](/concepts/conversations/) for thread behavior or [Security & Authority](/concepts/security-and-authority/) for action controls.

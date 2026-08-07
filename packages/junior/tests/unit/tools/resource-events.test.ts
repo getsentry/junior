@@ -156,7 +156,7 @@ describe("resource event tools", () => {
       vercel: {
         resourceTypes: [
           {
-            type: "deployment_source",
+            type: "deployment",
             supportedEvents: ["deployment.succeeded"],
           },
         ],
@@ -192,7 +192,7 @@ describe("resource event tools", () => {
       vercel: {
         resourceTypes: [
           {
-            type: "deployment_source",
+            type: "deployment",
             supportedEvents: ["deployment.succeeded"],
           },
         ],
@@ -212,7 +212,7 @@ describe("resource event tools", () => {
           },
         },
         namespace: { enum: ["github", "vercel"] },
-        resourceType: { enum: ["deployment_source", "pull_request"] },
+        resourceType: { enum: ["deployment", "pull_request"] },
       },
     });
   });

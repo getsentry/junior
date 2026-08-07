@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { vercelPlugin } from "../src";
-import { createVercelDeploymentSourceTool } from "../src/tools/deployment-source";
+import { createVercelDeploymentTool } from "../src/tools/deployment";
 
 const COMMIT_SHA = "ABCDEF0123456789ABCDEF0123456789ABCDEF01";
 
@@ -11,14 +11,14 @@ function toolFixture(
   const fetch = vi.fn().mockResolvedValue(response);
   return {
     fetch,
-    tool: createVercelDeploymentSourceTool({
+    tool: createVercelDeploymentTool({
       egress: { fetch },
       resourceEvents: { canSubscribe },
     } as never),
   };
 }
 
-describe("Vercel deployment source", () => {
+describe("Vercel deployment", () => {
   beforeEach(() => {
     vi.stubEnv("VERCEL_WEBHOOK_SECRET", "");
   });
@@ -27,7 +27,7 @@ describe("Vercel deployment source", () => {
     vi.unstubAllEnvs();
   });
 
-  it("resolves a channel project and returns a subscribable source", async () => {
+  it("resolves a channel project and returns a commit-scoped subscribable resource", async () => {
     vi.stubEnv("VERCEL_WEBHOOK_SECRET", " webhook-secret ");
     const { fetch, tool } = toolFixture();
 
@@ -39,7 +39,7 @@ describe("Vercel deployment source", () => {
           target: "production",
           team: "sentry",
         },
-        { toolCallId: "deployment-source" },
+        { toolCallId: "deployment" },
       ),
     ).resolves.toMatchObject({
       commitSha: COMMIT_SHA.toLowerCase(),
@@ -47,13 +47,13 @@ describe("Vercel deployment source", () => {
       projectId: "prj_junior",
       subscribable: {
         namespace: "vercel",
-        identifier: `deployment-source:prj_junior:production:${COMMIT_SHA.toLowerCase()}`,
+        identifier: `prj_junior:production:${COMMIT_SHA.toLowerCase()}`,
         suggestedEvents: [
           "deployment.succeeded",
           "deployment.error",
           "deployment.canceled",
         ],
-        type: "deployment_source",
+        type: "deployment",
       },
     });
     expect(fetch).toHaveBeenCalledWith({
@@ -62,6 +62,67 @@ describe("Vercel deployment source", () => {
       request: expect.objectContaining({
         url: "https://api.vercel.com/v9/projects/junior?slug=sentry",
       }),
+    });
+  });
+
+  it("returns a project-wide subscribable resource when commit and target are omitted", async () => {
+    vi.stubEnv("VERCEL_WEBHOOK_SECRET", "webhook-secret");
+    const { tool } = toolFixture();
+
+    await expect(
+      tool.execute?.(
+        { project: "junior" },
+        { toolCallId: "deployment-project" },
+      ),
+    ).resolves.toMatchObject({
+      commitSha: null,
+      deploymentTarget: null,
+      projectId: "prj_junior",
+      subscribable: {
+        identifier: "prj_junior",
+        label: "Vercel deployments for prj_junior",
+        type: "deployment",
+      },
+    });
+  });
+
+  it("returns a target-scoped subscribable resource without a commit", async () => {
+    vi.stubEnv("VERCEL_WEBHOOK_SECRET", "webhook-secret");
+    const { tool } = toolFixture();
+
+    await expect(
+      tool.execute?.(
+        { project: "junior", target: "production" },
+        { toolCallId: "deployment-target" },
+      ),
+    ).resolves.toMatchObject({
+      commitSha: null,
+      deploymentTarget: "production",
+      projectId: "prj_junior",
+      subscribable: {
+        identifier: "prj_junior:production",
+        label: "Vercel production deployments for prj_junior",
+        type: "deployment",
+      },
+    });
+  });
+
+  it("defaults a commit-scoped watch to production when target is omitted", async () => {
+    vi.stubEnv("VERCEL_WEBHOOK_SECRET", "webhook-secret");
+    const { tool } = toolFixture();
+
+    await expect(
+      tool.execute?.(
+        { commitSha: COMMIT_SHA, project: "junior" },
+        { toolCallId: "deployment-default-target" },
+      ),
+    ).resolves.toMatchObject({
+      commitSha: COMMIT_SHA.toLowerCase(),
+      deploymentTarget: "production",
+      projectId: "prj_junior",
+      subscribable: {
+        identifier: `prj_junior:production:${COMMIT_SHA.toLowerCase()}`,
+      },
     });
   });
 
@@ -75,7 +136,7 @@ describe("Vercel deployment source", () => {
         target: "production",
         team: "team_sentry",
       },
-      { toolCallId: "deployment-source-team-id" },
+      { toolCallId: "deployment-team-id" },
     );
 
     expect(fetch).toHaveBeenCalledWith({
@@ -91,8 +152,8 @@ describe("Vercel deployment source", () => {
     const { tool } = toolFixture();
 
     const result = await tool.execute?.(
-      { commitSha: COMMIT_SHA, project: "junior", target: "staging" },
-      { toolCallId: "deployment-source-without-webhooks" },
+      { project: "junior", target: "staging" },
+      { toolCallId: "deployment-without-webhooks" },
     );
 
     expect(result).not.toHaveProperty("subscribable");
@@ -104,8 +165,8 @@ describe("Vercel deployment source", () => {
     const { tool } = toolFixture(undefined, false);
 
     const result = await tool.execute?.(
-      { commitSha: COMMIT_SHA, project: "junior", target: "staging" },
-      { toolCallId: "deployment-source-without-subscriptions" },
+      { project: "junior", target: "staging" },
+      { toolCallId: "deployment-without-subscriptions" },
     );
 
     expect(result).not.toHaveProperty("subscribable");
@@ -117,8 +178,8 @@ describe("Vercel deployment source", () => {
 
     await expect(
       tool.execute?.(
-        { commitSha: COMMIT_SHA, project: "missing", target: "production" },
-        { toolCallId: "deployment-source-missing-project" },
+        { project: "missing", target: "production" },
+        { toolCallId: "deployment-missing-project" },
       ),
     ).rejects.toThrow("Vercel project lookup failed with HTTP 404");
   });
@@ -137,11 +198,14 @@ describe("Vercel deployment source", () => {
         VERCEL_WEBHOOK_SECRET: {},
       },
     });
+    expect(plugin.resourceEvents?.resourceTypes).toEqual([
+      expect.objectContaining({ type: "deployment" }),
+    ]);
     expect(
       plugin.hooks?.tools?.({
         egress: { fetch: vi.fn() },
       } as never),
-    ).toHaveProperty("deploymentSource");
+    ).toHaveProperty("deployment");
     expect(
       plugin.hooks?.routes?.({
         resourceEvents: { async publish() {} },

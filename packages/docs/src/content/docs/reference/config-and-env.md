@@ -1,12 +1,13 @@
 ---
 title: Config & Environment
-description: Required and optional environment variables for runtime and plugins.
+description: Required and optional environment variables for the Junior runtime.
 type: reference
+summary: Look up core runtime, dashboard, sandbox, and createApp configuration without plugin-specific setup.
 prerequisites:
   - /start-here/quickstart/
 related:
-  - /extend/github-plugin/
-  - /extend/sentry-plugin/
+  - /extend/
+  - /concepts/security-and-authority/
   - /operate/security-hardening/
 ---
 
@@ -39,7 +40,7 @@ related:
 | `JUNIOR_STATE_KEY_PREFIX`                   | No          | Optional namespace prepended to all state-adapter keys, locks, and queues. Use separate prefixes when sharing one Redis database across environments.                                            |
 | `CRON_SECRET` or `JUNIOR_SCHEDULER_SECRET`  | Conditional | Bearer token for the internal heartbeat route; use `CRON_SECRET` with Vercel Cron, or `JUNIOR_SCHEDULER_SECRET` for a non-Vercel heartbeat caller.                                               |
 | `JUNIOR_TIMEZONE`                           | No          | Default IANA timezone for scheduler authoring when the scheduler plugin is enabled. Defaults to `America/Los_Angeles`.                                                                           |
-| `AI_GATEWAY_API_KEY`                        | No          | AI gateway auth if used in your setup.                                                                                                                                                           |
+| `AI_GATEWAY_API_KEY`                        | No          | Fallback AI Gateway auth when Vercel OIDC is unavailable (local/CI/non-Vercel hosts). On Vercel, prefer project OIDC so usage attributes to the project.                                          |
 
 Junior applies `JUNIOR_SQL_STATEMENT_TIMEOUT_MS` through PostgreSQL `statement_timeout` for both the Neon and node-postgres drivers. `junior upgrade` does not apply this runtime limit because schema migrations can legitimately take longer.
 
@@ -61,10 +62,6 @@ context, and bounded user, assistant, tool-call, and tool-result evidence using
 the Codex Guardian transcript selection rules. Guardian defaults to
 `openai/gpt-5.6-luna`; set `AI_GUARDIAN_MODEL` to override it. Input and output
 payloads from this review are excluded from telemetry.
-
-When `@sentry/junior-memory` is enabled, the configured Postgres database must
-support pgvector because the plugin migration creates the `vector` extension
-and stores 1536-dimensional memory embeddings.
 
 Generate `JUNIOR_SECRET` with Node, then store the generated value in every environment that runs the same app:
 
@@ -117,24 +114,9 @@ The egress proxy verifies Vercel-signed Sandbox OIDC tokens per request to authe
 | ----------------- | ----------- | ---------------------------------------------------------------------------- |
 | `JUNIOR_BASE_URL` | Conditional | Public URL for the credential egress proxy, unless Vercel URL envs cover it. |
 
-## GitHub plugin
+## Plugin environment variables
 
-| Variable                   | Required | Purpose                                                     |
-| -------------------------- | -------- | ----------------------------------------------------------- |
-| `GITHUB_APP_ID`            | Yes      | GitHub App identity.                                        |
-| `GITHUB_APP_CLIENT_ID`     | Yes      | GitHub App OAuth client ID for user-token auth.             |
-| `GITHUB_APP_CLIENT_SECRET` | Yes      | GitHub App OAuth client secret for user-token auth.         |
-| `GITHUB_APP_PRIVATE_KEY`   | Yes      | GitHub App signing key.                                     |
-| `GITHUB_INSTALLATION_ID`   | Yes      | Repository/org installation target.                         |
-| `GITHUB_APP_BOT_NAME`      | Yes      | Git author and committer display name.                      |
-| `GITHUB_APP_BOT_EMAIL`     | Yes      | App bot noreply email for Git attribution and PR ownership. |
-
-## Sentry plugin
-
-| Variable               | Required | Purpose              |
-| ---------------------- | -------- | -------------------- |
-| `SENTRY_CLIENT_ID`     | Yes      | OAuth client ID.     |
-| `SENTRY_CLIENT_SECRET` | Yes      | OAuth client secret. |
+Provider credentials and other plugin-specific variables live on each plugin setup page under [Extend](/extend/). Keep this page limited to core runtime configuration.
 
 ## Experimental features
 
@@ -174,7 +156,7 @@ const app = await createApp({
 });
 ```
 
-Keys must be registered plugin config keys. Channel-scoped overrides (`jr-rpc config set`) take precedence.
+Keys should be registered plugin config keys. Junior retains unregistered defaults but warns at startup because they usually indicate missing plugin wiring. Channel-scoped overrides (`jr-rpc config set`) take precedence.
 
 ## Sandbox configuration
 

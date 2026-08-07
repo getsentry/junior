@@ -28,6 +28,7 @@ import { PersonProfilePage } from "./pages/people/PersonProfilePage";
 import { SystemPage } from "./pages/system/SystemPage";
 import { TasksPage } from "./pages/tasks/TasksPage";
 import {
+  MemoryPermalinkRoute,
   PluginUserPageRoute,
   pluginUserPagePath,
 } from "./pages/user/PluginUserPage";
@@ -84,7 +85,7 @@ export function DashboardShell() {
 
   const navLinkClass = ({ isActive }: { isActive: boolean }) =>
     cn(
-      "shrink-0 whitespace-nowrap rounded-md px-2.5 py-2 font-mono text-[0.62rem] font-medium uppercase tracking-[0.08em] no-underline transition-colors sm:text-[0.68rem] sm:tracking-[0.12em]",
+      "shrink-0 whitespace-nowrap rounded-md px-2.5 py-2 font-mono text-xs font-medium uppercase tracking-[0.08em] no-underline transition-colors sm:tracking-[0.12em]",
       isActive
         ? "bg-cyan-300/[0.1] text-cyan-50"
         : cn("hover:bg-white/[0.035]", dashboardInteractiveTextClass),
@@ -181,7 +182,7 @@ export function DashboardShell() {
               <Navigate replace to="/" />
             )
           }
-          path="/tasks"
+          path="/tasks/:taskId?"
         />
         <Route
           element={<LegacySystemRedirect section="locations" />}
@@ -301,6 +302,30 @@ export function DashboardShell() {
             )
           }
           path="/settings/api-tokens"
+        />
+        <Route
+          element={
+            loading || userPagesQuery.isPending ? (
+              <LoadingView label="Loading memory" />
+            ) : loggedIn && userPagesQuery.data ? (
+              <MemoryPermalinkRoute pages={userPagesQuery.data} />
+            ) : (
+              <Navigate replace to="/" />
+            )
+          }
+          path="/memories/:memoryId?"
+        />
+        <Route
+          element={
+            loading || userPagesQuery.isPending ? (
+              <LoadingView label="Loading memories" />
+            ) : loggedIn && userPagesQuery.data ? (
+              <MemoryPermalinkRoute pages={userPagesQuery.data} />
+            ) : (
+              <Navigate replace to="/" />
+            )
+          }
+          path="/memories/library"
         />
         <Route
           element={

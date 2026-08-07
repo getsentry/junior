@@ -341,6 +341,16 @@ function githubApiWriteGrantName(
   ) {
     return "installation-write";
   }
+  if (
+    method === "POST" &&
+    (/^\/repos\/[^/]+\/[^/]+\/actions\/runs\/[^/]+\/(cancel|rerun|rerun-failed-jobs)$/.test(
+      pathname,
+    ) ||
+      /^\/repos\/[^/]+\/[^/]+\/actions\/jobs\/[^/]+\/rerun$/.test(pathname))
+  ) {
+    // Actions run control uses run-level cancel/rerun and job-level rerun endpoints.
+    return "installation-write";
+  }
   if (method === "POST" && /^\/repos\/[^/]+\/[^/]+\/issues$/.test(pathname)) {
     return "installation-write";
   }

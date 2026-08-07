@@ -3,7 +3,7 @@ import {
   useMutation,
   useQueryClient,
 } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef } from "react";
 import { useSearchParams } from "react-router";
 import {
   pluginUserPageContentSchema,
@@ -12,6 +12,7 @@ import {
 } from "@sentry/junior-plugin-api";
 
 import { deleteDashboardResource, fetchDashboardJson } from "../../http";
+import { useDebouncedSearchParam } from "../../searchParams";
 
 export type PluginUserPageRecord = PluginUserPageContent["records"][number];
 export type PluginUserPageRecordAction = NonNullable<
@@ -24,26 +25,7 @@ export function usePluginUserPageData(page: PluginUserPageLink) {
   const queryClient = useQueryClient();
   const actionStarted = useRef(false);
   const filter = searchParams.get("filter")?.trim() ?? "";
-  const searchQuery = searchParams.get("q")?.trim() ?? "";
-  const [searchText, setSearchText] = useState(searchQuery);
-
-  useEffect(() => setSearchText(searchQuery), [searchQuery]);
-  useEffect(() => {
-    const timeout = window.setTimeout(() => {
-      const normalized = searchText.trim();
-      if (normalized === searchQuery) return;
-      setSearchParams(
-        (current) => {
-          const next = new URLSearchParams(current);
-          if (normalized) next.set("q", normalized);
-          else next.delete("q");
-          return next;
-        },
-        { replace: true },
-      );
-    }, 250);
-    return () => window.clearTimeout(timeout);
-  }, [searchQuery, searchText, setSearchParams]);
+  const [searchText, setSearchText, searchQuery] = useDebouncedSearchParam();
 
   const query = useInfiniteQuery({
     initialPageParam: undefined as string | undefined,
@@ -86,7 +68,17 @@ export function usePluginUserPageData(page: PluginUserPageLink) {
       deleteDashboardResource(recordAction.href),
     onMutate: () => ({ pluginName: page.pluginName }),
     onSuccess: async (_result, _recordAction, context) => {
-      await queryClient.resetQueries({
+      // Drop detail caches first so a forgotten permalink is not refetched
+      // while list/summary queries refresh under the same plugin prefix.
+      queryClient.removeQueries({
+        queryKey: [
+          "dashboard",
+          "plugin-user-page",
+          context.pluginName,
+          "record",
+        ],
+      });
+      await queryClient.invalidateQueries({
         queryKey: ["dashboard", "plugin-user-page", context.pluginName],
       });
     },

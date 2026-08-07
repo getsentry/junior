@@ -89,7 +89,7 @@ function MetricChart(props: {
   const { chart, days } = props;
   const width = 400;
   const height = 250;
-  const left = 48;
+  const left = 64;
   const right = 14;
   const top = 22;
   const bottom = 34;
@@ -119,10 +119,10 @@ function MetricChart(props: {
       <div className="border-b border-white/[0.06] px-4 py-4">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h3 className="m-0 font-mono text-[0.68rem] font-medium uppercase tracking-[0.14em] text-dashboard-text-muted">
+            <h3 className="m-0 font-mono text-xs font-medium uppercase tracking-[0.14em] text-dashboard-text-muted">
               {chart.title}
             </h3>
-            <p className="mt-1 mb-0 font-mono text-[0.64rem] leading-relaxed text-dashboard-text-muted">
+            <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
               {chart.description}
             </p>
           </div>
@@ -130,7 +130,7 @@ function MetricChart(props: {
             <div className="font-display text-xl font-light text-dashboard-text">
               {chart.format(total)}
             </div>
-            <div className="font-mono text-[0.56rem] uppercase tracking-[0.1em] text-dashboard-text-muted">
+            <div className="font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted">
               period total
             </div>
           </div>
@@ -170,7 +170,7 @@ function MetricChart(props: {
                 <text
                   fill="rgba(255,255,255,0.35)"
                   fontFamily="ui-monospace, monospace"
-                  fontSize="9"
+                  fontSize="13"
                   textAnchor="end"
                   x={left - 7}
                   y={y + 3}
@@ -240,7 +240,7 @@ function MetricChart(props: {
               <text
                 fill="rgba(255,255,255,0.35)"
                 fontFamily="ui-monospace, monospace"
-                fontSize="9"
+                fontSize="13"
                 key={day.date}
                 textAnchor={
                   index === 0

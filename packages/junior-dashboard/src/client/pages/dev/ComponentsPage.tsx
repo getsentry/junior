@@ -26,6 +26,7 @@ import type { TranscriptViewToolCallPart } from "../../types";
 import { LocationDirectoryActivityChart } from "../locations/LocationDirectoryActivityChart";
 import { ContributionGrid } from "../people/ContributionGrid";
 import { PeopleActivityChart } from "../people/PeopleActivityChart";
+import { ConversationActivityChart } from "../system/ConversationActivityChart";
 
 const EVENT_NOTIFICATION = `[event notification]
 
@@ -70,6 +71,7 @@ See https://docs.sentry.io for product docs.`;
 
 const METRIC_DAYS: ConversationMetricDay[] = fixtureDates(14).map(
   (date, index) => ({
+    conversations: 4 + ((index * 5) % 17),
     costUsd: 0.7 + ((index * 7) % 11) * 0.18,
     date,
     durationMs: 90_000 + ((index * 41) % 13) * 24_000,
@@ -323,6 +325,7 @@ export function ComponentsPage() {
         description="Production chart components rendered with deterministic fixtures."
         title="Charts"
       >
+        <ConversationActivityChart days={METRIC_DAYS} />
         <SystemMetricCharts days={METRIC_DAYS} />
         <PeopleActivityChart days={PEOPLE_DAYS} />
         <LocationDirectoryActivityChart days={LOCATION_DAYS} />
@@ -367,13 +370,13 @@ export function ToolCallGallery() {
         <span className="w-px bg-cyan-300/15" />
       </div>
       <div className="grid min-w-0 gap-3">
-        <p className="m-0 text-[0.78rem] leading-relaxed text-dashboard-text-muted">
+        <p className="m-0 text-xs leading-relaxed text-dashboard-text-muted">
           Click any row to compare its collapsed signature with the full
           arguments and result.
         </p>
         {TOOL_CALL_FIXTURES.map((fixture) => (
           <div className="grid min-w-0 gap-1" key={fixture.part.id}>
-            <div className="font-mono text-[0.65rem] uppercase tracking-[0.08em] text-dashboard-text-muted">
+            <div className="font-mono text-xs uppercase tracking-[0.08em] text-dashboard-text-muted">
               {fixture.description}
             </div>
             <TranscriptToolView
@@ -410,7 +413,7 @@ function GallerySection(props: {
 function Fixture(props: { children: ReactNode; title: string }) {
   return (
     <Card className="grid min-w-0 gap-3 p-4 sm:p-5" padding="none">
-      <div className="border-b border-white/[0.05] pb-3 font-mono text-[0.68rem] font-medium uppercase tracking-[0.14em] text-dashboard-text-muted">
+      <div className="border-b border-white/[0.05] pb-3 font-mono text-xs font-medium uppercase tracking-[0.14em] text-dashboard-text-muted">
         {props.title}
       </div>
       <div className="min-w-0">{props.children}</div>

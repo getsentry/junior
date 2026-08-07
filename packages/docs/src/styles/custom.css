@@ -41,6 +41,12 @@ html:root[data-theme="light"] {
   text-decoration-color: var(--jr-acid);
 }
 
+.sl-markdown-content details.resource-event,
+.sl-markdown-content details.plugin-config {
+  border-inline-start: 0;
+  padding-inline-start: 0;
+}
+
 .site-title {
   align-items: center;
   display: inline-flex;

@@ -84,7 +84,7 @@ export function ConversationPage(props: {
               Conversation
             </div>
             <div className="min-w-0">
-              <h2 className="m-0 line-clamp-2 font-display text-xl font-medium leading-tight tracking-[-0.03em] md:line-clamp-none md:truncate md:text-2xl md:text-[1.75rem]">
+              <h2 className="m-0 line-clamp-2 font-display text-xl font-medium leading-tight tracking-[-0.03em] md:line-clamp-none md:truncate md:text-3xl">
                 {conversationDisplayTitle(conversation)}
               </h2>
             </div>
@@ -104,7 +104,7 @@ export function ConversationPage(props: {
               )}
             </div>
             <Button
-              className="h-auto px-2.5 py-1 text-[0.65rem] font-normal text-dashboard-text-muted"
+              className="h-auto px-2.5 py-1 text-xs font-normal text-dashboard-text-muted"
               disabled={!conversation || archive.isPending}
               onClick={() =>
                 archive.mutate({
@@ -133,13 +133,13 @@ export function ConversationPage(props: {
         {detail.isPending ? (
           <TranscriptLoading />
         ) : detail.error && !detail.data ? (
-          <Card className="border-white/[0.07] bg-white/[0.025] p-4 font-mono text-[0.76rem] leading-relaxed text-dashboard-text-muted">
+          <Card className="border-white/[0.07] bg-white/[0.025] p-4 font-mono text-xs leading-relaxed text-dashboard-text-muted">
             {detail.error.message}
           </Card>
         ) : (
           <>
             {detail.error ? (
-              <div className="mb-3 rounded-lg border border-amber-300/15 bg-amber-300/[0.045] px-4 py-2 font-mono text-[0.7rem] text-amber-100/65">
+              <div className="mb-3 rounded-lg border border-amber-300/15 bg-amber-300/[0.045] px-4 py-2 font-mono text-xs text-amber-100/65">
                 Transcript refresh failed. Showing the latest available data.
               </div>
             ) : null}
@@ -216,7 +216,7 @@ function ConversationAnnotations(props: {
       <div className="flex flex-wrap gap-2">
         {links.map((link) => (
           <a
-            className="inline-flex items-center gap-1.5 rounded border border-cyan-300/15 bg-cyan-300/[0.055] px-2 py-1 font-mono text-[0.68rem] leading-snug text-cyan-50 no-underline"
+            className="inline-flex items-center gap-1.5 rounded border border-cyan-300/15 bg-cyan-300/[0.055] px-2 py-1 font-mono text-xs leading-snug text-cyan-50 no-underline"
             href={link.url}
             key={`${link.plugin}:${link.key}`}
             rel="noreferrer"
@@ -286,12 +286,6 @@ function ConversationIdentity(props: {
   const email = props.conversation?.actorIdentity?.email?.trim();
   const owner = conversationActorLabel(props.conversation);
   const id = props.conversationId ?? props.conversation?.id;
-  const location = props.conversation
-    ? slackLocationLabel(props.conversation, {
-        includeId: false,
-      })
-    : undefined;
-  const sourceUrl = props.detail?.sourceUrl ?? props.conversation?.sourceUrl;
   const ownerNode = owner ? (
     email ? (
       <Link
@@ -318,22 +312,14 @@ function ConversationIdentity(props: {
   return (
     <>
       <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 md:hidden">
-        {location ? (
-          <span className="min-w-0 max-w-full truncate">
-            <SourceLocation label={location} sourceUrl={sourceUrl} />
-          </span>
-        ) : null}
-        {location && ownerNode ? (
-          <span className="text-dashboard-text-muted">·</span>
-        ) : null}
         {ownerNode ? (
           <span className="min-w-0 max-w-full truncate">{ownerNode}</span>
         ) : null}
         {sentryLink ? (
           <>
-            {(location || ownerNode) && (
+            {ownerNode ? (
               <span className="text-dashboard-text-muted">·</span>
-            )}
+            ) : null}
             {sentryLink}
           </>
         ) : null}
@@ -395,6 +381,8 @@ function ConversationStats(props: {
   });
   const sourceUrl = props.detail?.sourceUrl ?? props.conversation.sourceUrl;
   const durationLabel = formatConversationDuration(props.conversation);
+  const live =
+    (props.detail?.status ?? props.conversation.status) === "active";
   const rawStats: Array<MetricListItem | undefined> = [
     location
       ? {
@@ -425,6 +413,7 @@ function ConversationStats(props: {
                     ).length
                   : undefined
               }
+              live={live}
               modelUsage={props.detail?.modelUsage}
               summary={tokenSummary}
             />
@@ -434,7 +423,8 @@ function ConversationStats(props: {
       : undefined,
     costSummary ||
     props.detail?.auxiliaryCosts ||
-    props.conversation.auxiliaryCosts
+    props.conversation.auxiliaryCosts ||
+    live
       ? {
           content: (
             <CostMetric
@@ -442,6 +432,7 @@ function ConversationStats(props: {
                 props.detail?.auxiliaryCosts ??
                 props.conversation.auxiliaryCosts
               }
+              live={live}
               modelUsage={props.detail?.modelUsage}
               summary={costSummary}
             />
@@ -460,7 +451,11 @@ function ConversationStats(props: {
     !props.detail || (toolSummary && toolSummary.total > 0)
       ? {
           content: (
-            <ToolCallsMetric loading={!props.detail} summary={toolSummary} />
+            <ToolCallsMetric
+              live={live}
+              loading={!props.detail}
+              summary={toolSummary}
+            />
           ),
           key: "tools",
         }
@@ -471,7 +466,7 @@ function ConversationStats(props: {
   );
 
   return (
-    <div className="col-span-full mt-1 hidden border-t border-white/[0.07] pt-3 md:block">
+    <div className="col-span-full mt-1 border-t border-white/[0.07] pt-3">
       <MetricList
         className="break-words text-xs leading-[1.5] text-dashboard-text-muted"
         items={stats}

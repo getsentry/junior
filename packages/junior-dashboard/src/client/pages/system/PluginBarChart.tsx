@@ -26,7 +26,7 @@ export function PluginBarChart(props: {
   const seriesFormat = commonSeriesFormat(widget);
   const width = 520;
   const height = 250;
-  const left = seriesFormat === "usd" ? 56 : 42;
+  const left = seriesFormat === "usd" ? 72 : 56;
   const top = 16;
   const bottom = 36;
   const plotHeight = height - top - bottom;
@@ -46,12 +46,12 @@ export function PluginBarChart(props: {
     <div className="overflow-hidden rounded border border-white/[0.07] bg-dashboard-surface-panel">
       <div className="border-b border-white/[0.06] px-4 py-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <h4 className="m-0 font-mono text-[0.68rem] font-medium uppercase tracking-[0.14em] text-dashboard-text-muted">
+          <h4 className="m-0 font-mono text-xs font-medium uppercase tracking-[0.14em] text-dashboard-text-muted">
             {widget.title}
           </h4>
         </div>
         {widget.description ? (
-          <p className="mt-1 mb-0 font-mono text-[0.62rem] text-dashboard-text-muted">
+          <p className="mt-1 mb-0 font-mono text-xs text-dashboard-text-muted">
             {widget.description}
           </p>
         ) : null}
@@ -59,7 +59,7 @@ export function PluginBarChart(props: {
           <div aria-label="Chart legend" className="mt-3 flex flex-wrap gap-3">
             {widget.series.map((series, index) => (
               <span
-                className="flex items-center gap-1.5 font-mono text-[0.58rem] text-dashboard-text-muted"
+                className="flex items-center gap-1.5 font-mono text-xs text-dashboard-text-muted"
                 key={series.key}
               >
                 <i
@@ -77,7 +77,7 @@ export function PluginBarChart(props: {
         ) : null}
       </div>
       {categories.length === 0 ? (
-        <p className="m-0 p-4 font-mono text-[0.68rem] text-dashboard-text-muted">
+        <p className="m-0 p-4 font-mono text-xs text-dashboard-text-muted">
           {widget.emptyText ?? "No chart data."}
         </p>
       ) : (
@@ -102,7 +102,7 @@ export function PluginBarChart(props: {
                 <text
                   fill="rgba(255,255,255,0.35)"
                   fontFamily="ui-monospace, monospace"
-                  fontSize="9"
+                  fontSize="13"
                   textAnchor="end"
                   x={left - 6}
                   y={y + 3}
@@ -156,7 +156,7 @@ export function PluginBarChart(props: {
               <text
                 fill="rgba(255,255,255,0.4)"
                 fontFamily="ui-monospace, monospace"
-                fontSize="9"
+                fontSize="13"
                 key={category.id}
                 textAnchor="middle"
                 x={left + index * step + step / 2}

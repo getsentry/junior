@@ -115,6 +115,69 @@ export async function mockDashboardApis(page: Page) {
       ],
     });
   });
+  await page.route("**/api/plugins/memory/memories/*", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    const id = decodeURIComponent(
+      new URL(route.request().url()).pathname.split("/").pop() ?? "",
+    );
+    const memory =
+      id === "memory-1"
+        ? {
+            content: "I prefer concise summaries.",
+            createdAt: "2026-07-29T09:14:00.000Z",
+            id: "memory-1",
+            kind: "preference",
+            observedAt: "2026-07-29T09:14:00.000Z",
+            origin: "automatic",
+            sourcePlatform: "slack",
+            visibility: "private",
+          }
+        : id === "memory-2"
+          ? {
+              content: "Release notes should include migration risks.",
+              createdAt: "2026-07-27T16:42:00.000Z",
+              id: "memory-2",
+              kind: "knowledge",
+              observedAt: "2026-07-27T16:42:00.000Z",
+              origin: "explicit",
+              sourcePlatform: "slack",
+              visibility: "public",
+            }
+          : id === "memory-3"
+            ? {
+                content: "Start incident reviews with the customer impact.",
+                createdAt: "2026-07-24T11:08:00.000Z",
+                id: "memory-3",
+                kind: "procedure",
+                observedAt: "2026-07-24T11:08:00.000Z",
+                origin: "automatic",
+                sourcePlatform: "slack",
+                visibility: "public",
+              }
+            : id === "memory-search"
+              ? {
+                  content: "Deploy runbooks live in Notion.",
+                  createdAt: "2026-07-30T12:00:00.000Z",
+                  id: "memory-search",
+                  kind: "knowledge",
+                  observedAt: "2026-07-30T12:00:00.000Z",
+                  origin: "explicit",
+                  sourcePlatform: "slack",
+                  visibility: "private",
+                }
+              : undefined;
+    if (!memory) {
+      await route.fulfill({
+        json: { error: "Memory was not found." },
+        status: 404,
+      });
+      return;
+    }
+    await route.fulfill({ json: memory });
+  });
   await page.route("**/api/user-pages/memory/memories*", async (route) => {
     const filter = new URL(route.request().url()).searchParams.get("filter");
     const allRecords = [

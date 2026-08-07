@@ -117,6 +117,9 @@ describe("dashboard routes", () => {
       "/system",
       "/system/plugins/github",
       "/tasks",
+      "/tasks/task-1",
+      "/memories",
+      "/memories/memory-1",
     ]) {
       const response = await app.fetch(new Request(`http://localhost${path}`));
       expect(response.status).toBe(302);
@@ -450,6 +453,9 @@ describe("dashboard routes", () => {
       "/system",
       "/system/plugins/github",
       "/tasks",
+      "/tasks/task-1",
+      "/memories",
+      "/memories/memory-1",
       "/settings/api-tokens",
       "/plugins/memory/memories",
       "/plugins/memory/memories/library",

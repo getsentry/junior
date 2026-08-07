@@ -143,10 +143,13 @@ function routeExtractedMemory(
     return "drop";
   }
   if (memory.kind === "preference") {
-    // Only a run attributed to exactly one run actor may store a preference; an
-    // empty actor set (system runs) fails closed to "drop".
-    const exactlyOneRunActor = Boolean(run.actor) && run.actors.length === 1;
-    if (!exactlyOneRunActor) {
+    // Only a run attributed to exactly one human run actor may store a preference.
+    const exactlyOneHumanRunActor =
+      run.actor !== undefined &&
+      run.actor.platform !== "system" &&
+      run.actors.length === 1 &&
+      run.actors[0]?.platform !== "system";
+    if (!exactlyOneHumanRunActor) {
       return "drop";
     }
     // Never downgrade an unproven first-person preference to conversation scope.

@@ -1,43 +1,63 @@
 ---
 title: Skills & Plugins
-description: How local skills and plugin-provided integrations are composed.
+description: How Junior gets instructions, tools, and external integrations.
 type: conceptual
+summary: Understand the difference between skills, tools, plugins, and sandbox commands.
 prerequisites:
-  - /start-here/quickstart/
+  - /start-here/overview/
 related:
   - /extend/
+  - /concepts/security-and-authority/
+  - /concepts/resource-subscriptions/
 ---
 
-## Mental model
+Junior combines instructions with configured capabilities.
 
-Skills tell Junior how to behave. Plugins tell Junior what external integration
-surface and credential sources may exist.
+## Components
 
-- Skills define focused instruction bundles.
-- Plugins declare optional credentials, runtime dependencies, and skills.
-- Runtime selects and executes skills based on task context. Registered plugin provider declarations constrain credential access.
-- Plugins own runtime setup. If a skill needs a CLI, system package, MCP server, OAuth provider, or token delivery path, that requirement belongs in the plugin manifest instead of the skill prose.
+| Component | Purpose |
+| --------- | ------- |
+| Skill | Instructions for a type of work |
+| Tool | An action Junior can take |
+| Plugin | An integration enabled by the app operator |
+| Sandbox | Isolated command execution |
 
-## Skill sources
+## Skills
 
-- Local skills: `app/skills/<skill-name>/SKILL.md`
-- Plugin skills: shipped in installed plugin packages
+Skills are focused playbooks loaded when they match the request.
 
-## Capability gating
+- Local skills live in `app/skills/<skill-name>/SKILL.md`.
+- Plugins can include their own skills.
+- Skills do not install packages, configure OAuth, or grant access.
 
-Credentials are not ambient. When sandbox traffic reaches a registered
-provider's declared domain, the runtime fetches a credential for the current
-actor and turn, then injects it automatically. If no registered provider
-owns the destination domain, the request is not given provider auth.
+If a skill needs a CLI, system package, MCP server, or credential flow, declare it in the plugin instead.
 
-## Validation
+## Plugins
+
+Junior loads plugins only from explicit app configuration. A plugin can register:
+
+- tools and skills
+- provider credentials and domains
+- MCP servers
+- runtime dependencies
+- routes and resource events
+
+Plugins run as trusted application code. The host still owns credential handling, validation, action review, and durable execution.
+
+## Tools
+
+Core tools are part of Junior. Plugins and MCP servers can add more tools. Every tool has an input contract, and actions may require review before they run.
+
+Tool output is treated as data. It cannot change the active user, destination, or credential authority.
+
+## Validate Configuration
 
 ```bash
 pnpm exec junior check
 ```
 
-Move package installs, CLI bootstraps, MCP server setup, and API-key configuration to `plugin.yaml` so reviewed manifests, not arbitrary skill instructions, control the runtime authority surface.
+Keep package installs, CLIs, MCP servers, and API-key configuration in `plugin.yaml` or the plugin definition.
 
-## Next step
+## Next Step
 
-- [Plugins](/extend/)
+Browse [Plugins](/extend/) for available integrations. Read [Security & Authority](/concepts/security-and-authority/) for capability and review boundaries.

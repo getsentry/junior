@@ -42,18 +42,35 @@ export const plugins = defineJuniorPlugins([linearPlugin()]);
 
 Junior uses Linear's hosted MCP tools for reads and writes. When an issue is created through that path, Junior links it to the current conversation.
 
-## Optional channel defaults
+## Config
 
-If a Slack channel usually files work into the same Linear team or project, store that as a conversation-scoped default:
+Set conversation config with `jr-rpc config set`, or define the same keys for every conversation with `createApp({ configDefaults })`. An explicit team or project in a request always wins.
 
-```bash
-jr-rpc config set linear.team Platform
-jr-rpc config set linear.project "Cross-team reliability"
-```
+### Conversation defaults
 
-Use `linear.team` when a channel consistently maps to one owning team. Use `linear.project` only when a channel is genuinely centered on one project.
+<details class="plugin-config">
+<summary><code>linear.team</code></summary>
 
-These defaults are optional fallbacks. If a user names a different team or project in a request, Junior should follow the explicit request instead of the stored default.
+Default owning team for issue creation when a request does not name one.
+
+- **Define:** `jr-rpc config set linear.team <team>`
+- **Install-wide default:** `configDefaults["linear.team"]`
+- **Required:** No
+- **Environment override:** None
+
+</details>
+
+<details class="plugin-config">
+<summary><code>linear.project</code></summary>
+
+Default project for issue creation when a request does not name one. Use it only when the conversation is genuinely centered on one project.
+
+- **Define:** `jr-rpc config set linear.project <project>`
+- **Install-wide default:** `configDefaults["linear.project"]`
+- **Required:** No
+- **Environment override:** None
+
+</details>
 
 ## What users can do
 

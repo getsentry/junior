@@ -72,6 +72,7 @@ import {
 } from "@/chat/scheduled-tasks";
 import { githubPlugin } from "@sentry/junior-github";
 import { memoryPlugin } from "@sentry/junior-memory";
+import { sentryPlugin } from "@sentry/junior-sentry";
 import { runPluginHeartbeats } from "@/chat/agent-dispatch/heartbeat";
 import { runScheduledTaskHeartbeat } from "@/chat/scheduled-tasks/heartbeat";
 import {
@@ -1570,6 +1571,7 @@ function runtimePluginsForScenario(
       ? [githubPlugin({ appPermissions: { deployments: "read" } })]
       : []),
     ...(packages.has("@sentry/junior-memory") ? [memoryPlugin()] : []),
+    ...(packages.has("@sentry/junior-sentry") ? [sentryPlugin()] : []),
   ];
 }
 

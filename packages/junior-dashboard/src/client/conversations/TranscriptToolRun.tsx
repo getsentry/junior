@@ -50,7 +50,7 @@ export function TranscriptToolRun(props: {
 
   return (
     <details className="group/tool-run min-w-0">
-      <summary className="group flex w-full cursor-pointer list-none items-center gap-2 py-1.5 text-left font-mono text-[0.78rem] leading-tight text-dashboard-text-muted transition-colors hover:text-dashboard-text focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55 [&::-webkit-details-marker]:hidden">
+      <summary className="group flex w-full cursor-pointer list-none items-center gap-2 py-1.5 text-left font-mono text-xs leading-tight text-dashboard-text-muted transition-colors hover:text-dashboard-text focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55 [&::-webkit-details-marker]:hidden">
         <span className="h-px min-w-4 flex-1 bg-white/10 transition-colors group-hover:bg-white/20" />
         <span className="shrink-0 group-open/tool-run:hidden">
           show {label}

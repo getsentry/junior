@@ -21,7 +21,7 @@ concurrency:
 jobs:
   changes:
     name: changes / detect
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     permissions:
       contents: read
     outputs:
@@ -102,7 +102,7 @@ jobs:
 
   release-check:
     name: check / release config
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
     if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.release == 'true' || needs.changes.outputs.full == 'true'
     steps:
@@ -112,7 +112,7 @@ jobs:
 
   skills-check:
     name: check / skills
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
     if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.core == 'true' || needs.changes.outputs.plugins == 'true' || needs.changes.outputs.full == 'true'
     steps:
@@ -122,7 +122,7 @@ jobs:
 
   lint:
     name: lint / workspace
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
     if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.core == 'true' || needs.changes.outputs.dashboard == 'true' || needs.changes.outputs.lint_config == 'true' || needs.changes.outputs.plugins == 'true' || needs.changes.outputs.full == 'true'
     steps:
@@ -132,7 +132,7 @@ jobs:
 
   typecheck:
     name: check / types
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
     if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.core == 'true' || needs.changes.outputs.dashboard == 'true' || needs.changes.outputs.docs == 'true' || needs.changes.outputs.evals == 'true' || needs.changes.outputs.example == 'true' || needs.changes.outputs.plugins == 'true' || needs.changes.outputs.full == 'true'
     steps:
@@ -142,7 +142,7 @@ jobs:
 
   junior-tests:
     name: test / junior ${{ matrix.suite }}
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
     if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.core == 'true' || needs.changes.outputs.plugins == 'true' || needs.changes.outputs.full == 'true'
     permissions:
@@ -206,7 +206,7 @@ jobs:
 
   plugin-tests:
     name: test / plugins
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
     if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.core == 'true' || needs.changes.outputs.plugins == 'true' || needs.changes.outputs.full == 'true'
     steps:
@@ -214,14 +214,16 @@ jobs:
       - uses: ./.github/actions/setup-node-pnpm
       - run: pnpm --filter @sentry/junior-memory build
       - run: pnpm --filter @sentry/junior-github build
+      - run: pnpm --filter @sentry/junior-sentry build
       - run: pnpm --filter @sentry/junior-vercel build
       - run: pnpm --filter @sentry/junior-memory test
       - run: pnpm --filter @sentry/junior-github test
+      - run: pnpm --filter @sentry/junior-sentry test
       - run: pnpm --filter @sentry/junior-vercel test
 
   dashboard-tests:
     name: test / dashboard
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
     if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.dashboard == 'true' || needs.changes.outputs.full == 'true'
     permissions:
@@ -249,7 +251,7 @@ jobs:
 
   dashboard-e2e:
     name: test / dashboard e2e
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
     if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.dashboard == 'true' || needs.changes.outputs.full == 'true'
     env:
@@ -286,7 +288,7 @@ jobs:
 
   build-packages:
     name: build / packages
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
     if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.core == 'true' || needs.changes.outputs.dashboard == 'true' || needs.changes.outputs.plugins == 'true' || needs.changes.outputs.full == 'true'
     steps:
@@ -296,7 +298,7 @@ jobs:
 
   build-example:
     name: build / example
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
     if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.example == 'true' || needs.changes.outputs.core == 'true' || needs.changes.outputs.full == 'true'
     steps:
@@ -310,7 +312,7 @@ jobs:
 
   docs-check:
     name: check / docs
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
     if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.docs == 'true' || needs.changes.outputs.core == 'true' || needs.changes.outputs.full == 'true'
     steps:
@@ -320,7 +322,7 @@ jobs:
 
   pack-release-artifacts:
     name: pack / release artifacts
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs:
       - changes
       - release-check
@@ -368,7 +370,7 @@ jobs:
 
   required:
     name: ci / required
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs:
       - changes
       - release-check

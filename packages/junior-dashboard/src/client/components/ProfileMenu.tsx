@@ -158,7 +158,7 @@ export function ProfileMenu({
         </span>
         <span
           aria-hidden="true"
-          className="grid size-7 place-items-center rounded-full bg-[#beaaff] text-[0.68rem] font-bold tracking-wide text-black shadow-sm shadow-black/40"
+          className="grid size-7 place-items-center rounded-full bg-[#beaaff] text-xs font-bold tracking-wide text-black shadow-sm shadow-black/40"
         >
           {initials(identity.user.name, email)}
         </span>
@@ -189,7 +189,7 @@ export function ProfileMenu({
             ) : null}
           </div>
           <Link
-            className="mt-1 flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[0.82rem] font-semibold text-dashboard-text no-underline transition-colors hover:bg-white/10 hover:text-dashboard-text focus-visible:bg-white/10 focus-visible:text-dashboard-text focus-visible:outline-none"
+            className="mt-1 flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-semibold text-dashboard-text no-underline transition-colors hover:bg-white/10 hover:text-dashboard-text focus-visible:bg-white/10 focus-visible:text-dashboard-text focus-visible:outline-none"
             onClick={() => setOpen(false)}
             to={peoplePath(email)}
           >
@@ -197,7 +197,7 @@ export function ProfileMenu({
             My profile
           </Link>
           <Link
-            className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[0.82rem] font-semibold text-dashboard-text no-underline transition-colors hover:bg-white/10 hover:text-dashboard-text focus-visible:bg-white/10 focus-visible:text-dashboard-text focus-visible:outline-none"
+            className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-semibold text-dashboard-text no-underline transition-colors hover:bg-white/10 hover:text-dashboard-text focus-visible:bg-white/10 focus-visible:text-dashboard-text focus-visible:outline-none"
             onClick={() => setOpen(false)}
             to="/settings/api-tokens"
           >
@@ -208,7 +208,7 @@ export function ProfileMenu({
             .filter((page) => page.navigation === "profile")
             .map((page) => (
               <Link
-                className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[0.82rem] font-semibold text-dashboard-text no-underline transition-colors hover:bg-white/10 hover:text-dashboard-text focus-visible:bg-white/10 focus-visible:text-dashboard-text focus-visible:outline-none"
+                className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-semibold text-dashboard-text no-underline transition-colors hover:bg-white/10 hover:text-dashboard-text focus-visible:bg-white/10 focus-visible:text-dashboard-text focus-visible:outline-none"
                 key={`${page.pluginName}:${page.id}`}
                 onClick={() => setOpen(false)}
                 to={pluginUserPagePath(page.pluginName, page.id)}
@@ -218,7 +218,7 @@ export function ProfileMenu({
               </Link>
             ))}
           <button
-            className="flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-[0.82rem] font-semibold text-dashboard-text transition-colors hover:bg-white/10 hover:text-dashboard-text focus-visible:bg-white/10 focus-visible:text-dashboard-text focus-visible:outline-none"
+            className="flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold text-dashboard-text transition-colors hover:bg-white/10 hover:text-dashboard-text focus-visible:bg-white/10 focus-visible:text-dashboard-text focus-visible:outline-none"
             onClick={() => {
               setOpen(false);
               void onSignOut();

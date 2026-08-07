@@ -10,8 +10,30 @@
   --font-mono:
     "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
     "Liberation Mono", monospace;
-  --text-xs: 0.8125rem;
-  --text-xs--line-height: 1rem;
+
+  /*
+   * Dashboard type scale.
+   * Prefer these named steps over arbitrary text-[Nrem] values.
+   * text-xs is the floor for chrome (labels, badges, meta, table headers).
+   * Do not go smaller than text-xs in product UI.
+   */
+  --text-xs: 0.8125rem; /* 13px — labels, badges, meta, table headers */
+  --text-xs--line-height: 1.15;
+  --text-sm: 0.875rem; /* 14px — secondary body, descriptions, tool meta */
+  --text-sm--line-height: 1.35;
+  --text-base: 1rem; /* 16px — primary body, list titles */
+  --text-base--line-height: 1.5;
+  --text-lg: 1.125rem; /* 18px — section/card titles */
+  --text-lg--line-height: 1.35;
+  --text-xl: 1.25rem; /* 20px — page section titles */
+  --text-xl--line-height: 1.3;
+  --text-2xl: 1.5rem; /* 24px — prominent titles */
+  --text-2xl--line-height: 1.25;
+  --text-3xl: 1.875rem; /* 30px — page titles */
+  --text-3xl--line-height: 1.2;
+  --text-4xl: 2.25rem; /* 36px — large display titles */
+  --text-4xl--line-height: 1.15;
+
   --color-dashboard-text: #f4f4f5;
   --color-dashboard-text-muted: #a1a1aa;
   --color-dashboard-surface-panel: #09090b;
@@ -59,7 +81,7 @@
   }
 }
 
-@keyframes junior-tool-shimmer {
+@keyframes junior-text-shimmer {
   0% {
     background-position: 200% 50%;
   }

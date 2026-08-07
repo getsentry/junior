@@ -241,9 +241,8 @@ describe("createApp plugin config", () => {
     ).rejects.toThrow("Plugin package names must be valid npm package names");
   });
 
-  it("rolls back plugin config when config default validation fails", async () => {
+  it("allows config defaults for an unregistered plugin key", async () => {
     const tempRoot = await makeTempDir();
-    await writePluginPackage(tempRoot, "@acme/base-plugin", "base");
     await writePluginPackage(tempRoot, "@acme/next-plugin", "next");
     await fs.writeFile(
       path.join(tempRoot, "package.json"),
@@ -251,7 +250,6 @@ describe("createApp plugin config", () => {
         name: "temp-junior-app",
         private: true,
         dependencies: {
-          "@acme/base-plugin": "1.0.0",
           "@acme/next-plugin": "1.0.0",
         },
       }),
@@ -260,23 +258,14 @@ describe("createApp plugin config", () => {
     process.chdir(tempRoot);
 
     await createApp({
-      plugins: defineJuniorPlugins(["@acme/base-plugin"]),
-      configDefaults: { "base.org": "sentry" },
+      plugins: defineJuniorPlugins(["@acme/next-plugin"]),
+      configDefaults: { "missing.org": "sentry" },
     });
-
-    await expect(
-      createApp({
-        plugins: defineJuniorPlugins(["@acme/next-plugin"]),
-        configDefaults: { "missing.org": "sentry" },
-      }),
-    ).rejects.toThrow(
-      'configDefaults: "missing.org" is not a registered plugin config key',
-    );
 
     expect(
       pluginCatalogRuntime.getProviders().map((plugin) => plugin.manifest.name),
-    ).toEqual(["base"]);
-    expect(getConfigDefaults()).toEqual({ "base.org": "sentry" });
+    ).toEqual(["next"]);
+    expect(getConfigDefaults()).toEqual({ "missing.org": "sentry" });
   });
 
   it("fails startup and rolls back config when a configured plugin package is missing", async () => {

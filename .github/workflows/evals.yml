@@ -19,7 +19,7 @@ concurrency:
 jobs:
   gate:
     name: evals / gate
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     outputs:
       eval_file_changed: ${{ steps.changes.outputs.eval_file_changed }}
       evals_requested: ${{ steps.request.outputs.evals_requested }}
@@ -106,7 +106,7 @@ jobs:
     name: evals / suite ${{ matrix.shard }}/4
     needs: gate
     if: needs.gate.outputs.should_run == 'true'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     strategy:
       fail-fast: false
       matrix:

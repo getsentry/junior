@@ -59,7 +59,7 @@ import {
   GEN_AI_PROVIDER_NAME,
   completeObject,
   completeText,
-  getPiGatewayApiKey,
+  getGatewayApiKey,
   resolveGatewayModel,
 } from "@/chat/pi/client";
 import type { PiMessage } from "@/chat/pi/messages";
@@ -1063,12 +1063,12 @@ async function executeAgentRunInPrivacyContext(
       return acceptedMessages;
     };
 
-    const apiKeyOverride = getPiGatewayApiKey();
     // Pi converts prepareNextTurn exceptions into error turns instead of
     // rejecting. Preserve Junior's yield so runAgentStep can restore it after
     // the Pi run settles without leaking Pi mechanics into the resume API.
     agent = new Agent({
-      ...(apiKeyOverride ? { getApiKey: () => apiKeyOverride } : {}),
+      // Resolve on every provider call so runtime OIDC tokens stay fresh.
+      getApiKey: getGatewayApiKey,
       streamFn: createTracedStreamFn({
         conversationPrivacy,
         ...(streamFn ? { base: streamFn } : {}),
