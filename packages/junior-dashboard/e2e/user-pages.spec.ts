@@ -188,9 +188,11 @@ test("opens one task's execution history", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Executions over time" }),
   ).toBeVisible();
-  await expect(page.getByText("Weekly project summary")).toBeVisible();
-  await expect(page.getByText("COMPLETED").first()).toBeVisible();
-  await expect(page.getByText("No conversation")).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: /Weekly project summary/ }),
+  ).toBeVisible();
+  await expect(page.getByText("COMPLETED", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("No conversation", { exact: true })).toBeVisible();
   expect(browserErrors).toEqual([]);
 });
 
