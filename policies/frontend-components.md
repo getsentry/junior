@@ -16,8 +16,9 @@ stylesheets or semantic class contracts.
 - Keep Tailwind classes colocated with the component or component-local helper
   that owns the markup.
 - Use the named type scale from the dashboard Tailwind theme
-  (`text-xs` through `text-4xl`). Do not use arbitrary `text-[Nrem]` sizes, and
-  do not go smaller than `text-xs` in product UI.
+  (`text-2xs` through `text-4xl`). Reserve `text-2xs` for compact metric labels
+  and chart annotations; use `text-xs` or larger for body copy, controls, and
+  standalone metadata. Do not use arbitrary `text-[Nrem]` sizes.
 - Use stylesheets only for Tailwind entry files, minimal global resets, vendor
   integration constraints, or selectors that cannot reasonably be represented
   with utilities.

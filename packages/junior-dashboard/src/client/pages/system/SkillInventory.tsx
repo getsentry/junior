@@ -98,7 +98,7 @@ function InventoryMetric(props: { label: string; value: number }) {
       <div className="font-display text-xl font-light leading-none text-dashboard-text">
         {formatCompactNumber(props.value)}
       </div>
-      <div className="mt-1.5 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted">
+      <div className="mt-1.5 font-mono text-2xs uppercase tracking-[0.1em] text-dashboard-text-muted">
         {props.label}
       </div>
     </div>

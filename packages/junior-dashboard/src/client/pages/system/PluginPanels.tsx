@@ -69,7 +69,7 @@ function PluginPanel(props: { plugin: SystemPlugin }) {
               <div className="truncate font-display text-lg font-light text-dashboard-text">
                 {metric.value}
               </div>
-              <div className="mt-1 truncate font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted">
+              <div className="mt-1 truncate font-mono text-2xs uppercase tracking-[0.1em] text-dashboard-text-muted">
                 {metric.label}
               </div>
             </div>

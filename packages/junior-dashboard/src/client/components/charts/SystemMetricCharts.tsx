@@ -130,7 +130,7 @@ function MetricChart(props: {
             <div className="font-display text-xl font-light text-dashboard-text">
               {chart.format(total)}
             </div>
-            <div className="font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted">
+            <div className="font-mono text-2xs uppercase tracking-[0.1em] text-dashboard-text-muted">
               period total
             </div>
           </div>
@@ -170,7 +170,7 @@ function MetricChart(props: {
                 <text
                   fill="rgba(255,255,255,0.35)"
                   fontFamily="ui-monospace, monospace"
-                  fontSize="13"
+                  fontSize="12"
                   textAnchor="end"
                   x={left - 7}
                   y={y + 3}
@@ -240,7 +240,7 @@ function MetricChart(props: {
               <text
                 fill="rgba(255,255,255,0.35)"
                 fontFamily="ui-monospace, monospace"
-                fontSize="13"
+                fontSize="12"
                 key={day.date}
                 textAnchor={
                   index === 0

@@ -102,7 +102,7 @@ export function PluginBarChart(props: {
                 <text
                   fill="rgba(255,255,255,0.35)"
                   fontFamily="ui-monospace, monospace"
-                  fontSize="13"
+                  fontSize="12"
                   textAnchor="end"
                   x={left - 6}
                   y={y + 3}
@@ -156,7 +156,7 @@ export function PluginBarChart(props: {
               <text
                 fill="rgba(255,255,255,0.4)"
                 fontFamily="ui-monospace, monospace"
-                fontSize="13"
+                fontSize="12"
                 key={category.id}
                 textAnchor="middle"
                 x={left + index * step + step / 2}
