@@ -48,6 +48,13 @@ export type SchedulerDb = PgDatabase<
   PgQueryResultHKT,
   typeof schedulerSqlSchema
 >;
+
+/** Persisted late/stale skip payload logged after the claim lock commits. */
+type SkippedRunTelemetry = {
+  errorMessage: string;
+  run: ScheduledRun;
+  task: ScheduledTask;
+};
 const slackDestinationSchema = destinationSchema.refine(isSlackDestination);
 const taskPrincipalSchema = z
   .object({
@@ -822,7 +829,16 @@ class PluginStateSchedulerStore implements SchedulerStore {
       }
 
       if (isMissedRunTooOld({ nowMs: args.nowMs, scheduledForMs })) {
-        await this.skipMissedRun({ nowMs: args.nowMs, scheduledForMs, task });
+        const skipped = await this.skipMissedRun({
+          nowMs: args.nowMs,
+          scheduledForMs,
+          task,
+        });
+        if (skipped) {
+          logScheduledTaskRunSkipped(skipped.task, skipped.run, {
+            "app.task.run.error": skipped.errorMessage,
+          });
+        }
         await clearActiveRun(this.state, task.id, runId);
         continue;
       }
@@ -865,8 +881,8 @@ class PluginStateSchedulerStore implements SchedulerStore {
     nowMs: number;
     scheduledForMs: number;
     task: ScheduledTask;
-  }): Promise<void> {
-    await withLock(this.state, taskLockKey(args.task.id), async () => {
+  }): Promise<SkippedRunTelemetry | undefined> {
+    return await withLock(this.state, taskLockKey(args.task.id), async () => {
       const current =
         (await getTaskFromState(this.state, args.task.id)) ?? undefined;
       if (
@@ -874,7 +890,7 @@ class PluginStateSchedulerStore implements SchedulerStore {
         current.status !== "active" ||
         getDueRunAtMs(current, args.nowMs) !== args.scheduledForMs
       ) {
-        return;
+        return undefined;
       }
 
       const duplicateOf = await this.findStaleRecoveryCanonicalTask(current);
@@ -888,9 +904,6 @@ class PluginStateSchedulerStore implements SchedulerStore {
         task: current,
       });
       await this.state.set(runKey(skipped.id), skipped, SCHEDULED_RUN_TTL_MS);
-      logScheduledTaskRunSkipped(current, skipped, {
-        "app.task.run.error": errorMessage,
-      });
 
       const isRunNow = current.runNowAtMs === args.scheduledForMs;
       let nextRunAtMs: number | undefined;
@@ -915,6 +928,7 @@ class PluginStateSchedulerStore implements SchedulerStore {
         },
         current,
       );
+      return { errorMessage, run: skipped, task: current };
     });
   }
 
@@ -1527,90 +1541,104 @@ class SqlSchedulerStore implements SchedulerStore, SchedulerOperationalStore {
   async claimDueRun(args: {
     nowMs: number;
   }): Promise<ScheduledRun | undefined> {
-    return await withSqlLock(this.db, "junior:scheduler:claim", async (db) => {
-      const rows = await db
-        .select({
-          creatorIdentityId: juniorSchedulerTasks.creatorIdentityId,
-          record: juniorSchedulerTasks.record,
-        })
-        .from(juniorSchedulerTasks)
-        .where(
-          and(
-            eq(juniorSchedulerTasks.status, "active"),
-            or(
-              and(
-                isNotNull(juniorSchedulerTasks.runNowAtMs),
-                lte(juniorSchedulerTasks.runNowAtMs, args.nowMs),
-              ),
-              and(
-                isNotNull(juniorSchedulerTasks.nextRunAtMs),
-                lte(juniorSchedulerTasks.nextRunAtMs, args.nowMs),
+    const skippedRuns: SkippedRunTelemetry[] = [];
+    const claimed = await withSqlLock(
+      this.db,
+      "junior:scheduler:claim",
+      async (db) => {
+        const rows = await db
+          .select({
+            creatorIdentityId: juniorSchedulerTasks.creatorIdentityId,
+            record: juniorSchedulerTasks.record,
+          })
+          .from(juniorSchedulerTasks)
+          .where(
+            and(
+              eq(juniorSchedulerTasks.status, "active"),
+              or(
+                and(
+                  isNotNull(juniorSchedulerTasks.runNowAtMs),
+                  lte(juniorSchedulerTasks.runNowAtMs, args.nowMs),
+                ),
+                and(
+                  isNotNull(juniorSchedulerTasks.nextRunAtMs),
+                  lte(juniorSchedulerTasks.nextRunAtMs, args.nowMs),
+                ),
               ),
             ),
-          ),
-        )
-        .orderBy(
-          asc(juniorSchedulerTasks.createdAtMs),
-          asc(juniorSchedulerTasks.id),
-        );
+          )
+          .orderBy(
+            asc(juniorSchedulerTasks.createdAtMs),
+            asc(juniorSchedulerTasks.id),
+          );
 
-      for (const row of rows) {
-        const task = parseSqlTaskRow(row);
-        if (!task) {
-          continue;
-        }
-        const scheduledForMs = getDueRunAtMs(task, args.nowMs);
-        if (scheduledForMs === undefined) {
-          continue;
-        }
-        const runId = buildRunId(task.id, scheduledForMs);
-        const incompleteRuns = await listIncompleteRunsForTasksFromSql(db, [
-          task,
-        ]);
-        const incompleteRun = incompleteRuns.find((run) => run.id === runId);
-        const blockingRun = incompleteRuns.find(
-          (run) => run.id !== runId && !isStalePendingRun(run, args.nowMs),
-        );
-        if (blockingRun) {
-          continue;
-        }
-        if (incompleteRun) {
-          if (!isStalePendingRun(incompleteRun, args.nowMs)) {
+        for (const row of rows) {
+          const task = parseSqlTaskRow(row);
+          if (!task) {
             continue;
           }
-          const reclaimed = {
-            ...incompleteRun,
-            attempt: incompleteRun.attempt + 1,
-            claimedAtMs: args.nowMs,
-          };
-          await upsertSqlRun(db, reclaimed);
-          return reclaimed;
-        }
-        const existingRun = await getRunFromSql(db, runId);
-        if (existingRun) {
-          continue;
-        }
+          const scheduledForMs = getDueRunAtMs(task, args.nowMs);
+          if (scheduledForMs === undefined) {
+            continue;
+          }
+          const runId = buildRunId(task.id, scheduledForMs);
+          const incompleteRuns = await listIncompleteRunsForTasksFromSql(db, [
+            task,
+          ]);
+          const incompleteRun = incompleteRuns.find((run) => run.id === runId);
+          const blockingRun = incompleteRuns.find(
+            (run) => run.id !== runId && !isStalePendingRun(run, args.nowMs),
+          );
+          if (blockingRun) {
+            continue;
+          }
+          if (incompleteRun) {
+            if (!isStalePendingRun(incompleteRun, args.nowMs)) {
+              continue;
+            }
+            const reclaimed = {
+              ...incompleteRun,
+              attempt: incompleteRun.attempt + 1,
+              claimedAtMs: args.nowMs,
+            };
+            await upsertSqlRun(db, reclaimed);
+            return reclaimed;
+          }
+          const existingRun = await getRunFromSql(db, runId);
+          if (existingRun) {
+            continue;
+          }
 
-        if (isMissedRunTooOld({ nowMs: args.nowMs, scheduledForMs })) {
-          await this.skipMissedRun(db, {
-            nowMs: args.nowMs,
+          if (isMissedRunTooOld({ nowMs: args.nowMs, scheduledForMs })) {
+            const skipped = await this.skipMissedRun(db, {
+              nowMs: args.nowMs,
+              scheduledForMs,
+              task,
+            });
+            if (skipped) {
+              skippedRuns.push(skipped);
+            }
+            continue;
+          }
+
+          const run = buildScheduledRun({
+            claimedAtMs: args.nowMs,
             scheduledForMs,
             task,
           });
-          continue;
+          await upsertSqlRun(db, run);
+          return run;
         }
 
-        const run = buildScheduledRun({
-          claimedAtMs: args.nowMs,
-          scheduledForMs,
-          task,
-        });
-        await upsertSqlRun(db, run);
-        return run;
-      }
-
-      return undefined;
-    });
+        return undefined;
+      },
+    );
+    for (const skipped of skippedRuns) {
+      logScheduledTaskRunSkipped(skipped.task, skipped.run, {
+        "app.task.run.error": skipped.errorMessage,
+      });
+    }
+    return claimed;
   }
 
   private async skipMissedRun(
@@ -1620,14 +1648,14 @@ class SqlSchedulerStore implements SchedulerStore, SchedulerOperationalStore {
       scheduledForMs: number;
       task: ScheduledTask;
     },
-  ): Promise<void> {
+  ): Promise<SkippedRunTelemetry | undefined> {
     const current = await getTaskFromSql(db, args.task.id);
     if (
       !current ||
       current.status !== "active" ||
       getDueRunAtMs(current, args.nowMs) !== args.scheduledForMs
     ) {
-      return;
+      return undefined;
     }
 
     const duplicateOf = await this.findStaleRecoveryCanonicalTask(db, current);
@@ -1641,9 +1669,6 @@ class SqlSchedulerStore implements SchedulerStore, SchedulerOperationalStore {
       task: current,
     });
     await upsertSqlRun(db, skipped);
-    logScheduledTaskRunSkipped(current, skipped, {
-      "app.task.run.error": errorMessage,
-    });
 
     const isRunNow = current.runNowAtMs === args.scheduledForMs;
     let nextRunAtMs: number | undefined;
@@ -1669,6 +1694,7 @@ class SqlSchedulerStore implements SchedulerStore, SchedulerOperationalStore {
       },
       current,
     );
+    return { errorMessage, run: skipped, task: current };
   }
 
   private async findStaleRecoveryCanonicalTask(
