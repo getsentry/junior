@@ -18,12 +18,25 @@ export function findTranscriptMarkdownLinks(
   text: string,
 ): TranscriptMarkdownLink[] {
   const literalRanges = findLiteralRanges(text);
+  const markdownSyntaxRanges = findMarkdownLinkSyntaxRanges(
+    text,
+    literalRanges,
+  );
   const markdownLinks = findMarkdownLinks(text, literalRanges);
+  const autolinks = findCommonMarkAutolinks(
+    text,
+    mergeRanges([...literalRanges, ...markdownSyntaxRanges]),
+  );
   const bareRanges = mergeRanges([
     ...literalRanges,
-    ...findMarkdownLinkSyntaxRanges(text, literalRanges),
+    ...markdownSyntaxRanges,
+    ...autolinks,
   ]);
-  return [...markdownLinks, ...findBareLinks(text, bareRanges)].sort(
+  return [
+    ...markdownLinks,
+    ...autolinks,
+    ...findBareLinks(text, bareRanges),
+  ].sort(
     (left, right) => left.start - right.start || left.end - right.end,
   );
 }
@@ -137,6 +150,30 @@ function readMarkdownDestination(
     const href = text.slice(start, index);
     return href ? { end: index + 1, href } : undefined;
   }
+}
+
+function findCommonMarkAutolinks(
+  text: string,
+  ignoredRanges: TextRange[],
+): TranscriptMarkdownLink[] {
+  const links: TranscriptMarkdownLink[] = [];
+  const pattern = /<(https?:\/\/[^<>\s]+|mailto:[^<>\s]+)>/gi;
+  let match: RegExpExecArray | null;
+
+  while ((match = pattern.exec(text))) {
+    if (isInRange(match.index, ignoredRanges) || isEscaped(text, match.index)) {
+      continue;
+    }
+    const href = safeLinkHref(match[1] ?? "");
+    if (!href) continue;
+    links.push({
+      end: match.index + match[0].length,
+      href,
+      label: href,
+      start: match.index,
+    });
+  }
+  return links;
 }
 
 function findNextBareLink(
