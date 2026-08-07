@@ -23,6 +23,19 @@ function renderField(raw: unknown): string | undefined {
   return title || value;
 }
 
+function normalizeAttachmentText(value: string): string {
+  // Slack unfurl attachments often collapse intentional line breaks. Restore
+  // the common shapes so durable transcripts keep readable multi-line lists:
+  // - paragraph breaks before a list ("out.  - item")
+  // - single spaces between markdown-ish list items ("- **a:** x - **b:** y")
+  return value
+    .replace(/\r\n?/g, "\n")
+    .replace(/ {2,}(?=[-*+]\s|\d+\.\s)/g, "\n")
+    .replace(/(?<=\S) (?=[-*+] \*\*[^*\n]+\*\*)/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function renderAttachment(raw: unknown): string {
   if (!raw || typeof raw !== "object") return "";
   const obj = raw as Record<string, unknown>;
@@ -40,7 +53,7 @@ function renderAttachment(raw: unknown): string {
 
   const add = (value: string | undefined) => {
     if (!value) return;
-    const normalized = value.trim();
+    const normalized = normalizeAttachmentText(value);
     if (!normalized || seen.has(normalized)) return;
     seen.add(normalized);
     parts.push(normalized);
@@ -54,7 +67,7 @@ function renderAttachment(raw: unknown): string {
   add(authorName);
   if (title && titleLink) {
     add(`${title} (${titleLink})`);
-    seen.add(title.trim());
+    seen.add(normalizeAttachmentText(title));
   } else {
     add(title);
   }
@@ -66,7 +79,9 @@ function renderAttachment(raw: unknown): string {
 
   add(footer);
 
-  return parts.join(" | ");
+  // Keep multi-line bodies readable. Compact single-line attachments still
+  // collapse cleanly onto one line via the final trim.
+  return parts.join("\n");
 }
 
 /** Render legacy Slack attachment fields so attachment-only messages still carry context. */
