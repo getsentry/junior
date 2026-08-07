@@ -8,8 +8,8 @@ import {
   slackEvals,
   visibleAssistantText,
   visibleThreadReplies,
-} from "../../src/helpers";
-import { warmSandboxSnapshot } from "../../src/snapshot-warmup";
+} from "../../../src/helpers";
+import { warmSandboxSnapshot } from "../../../src/snapshot-warmup";
 
 const SNAPSHOT_WARMUP_TIMEOUT_MS = 10 * 60 * 1000;
 

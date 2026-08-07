@@ -8,9 +8,9 @@ import {
   slackEvals,
   threadMessage,
   visibleAssistantText,
-} from "../../src/helpers";
-import { readEvalEgressFixtureState } from "../../src/setup";
-import { warmSandboxSnapshot } from "../../src/snapshot-warmup";
+} from "../../../src/helpers";
+import { readEvalEgressFixtureState } from "../../../src/setup";
+import { warmSandboxSnapshot } from "../../../src/snapshot-warmup";
 
 type EvalRun = HarnessRun;
 const SNAPSHOT_WARMUP_TIMEOUT_MS = 10 * 60 * 1000;
