@@ -255,7 +255,7 @@ jobs:
         # Only when Vitest wrote results. Exact decision misses already failed
         # the run step; this adds the rich job summary under Evals.
         if: always() && !cancelled() && hashFiles('packages/junior-evals/guardian-results.json') != ''
-        uses: getsentry/vitest-evals@v0.16.0
+        uses: getsentry/vitest-evals@v0.16.1
         with:
           results: packages/junior-evals/guardian-results.json
           publish-summary: true
@@ -421,7 +421,7 @@ jobs:
           fi
       - name: Publish behavioral shard summary
         if: steps.results.conclusion == 'success'
-        uses: getsentry/vitest-evals@v0.16.0
+        uses: getsentry/vitest-evals@v0.16.1
         with:
           results: packages/junior-evals/behavioral-results-${{ matrix.shard }}.json
           publish-summary: true
@@ -487,7 +487,7 @@ jobs:
         # Soft-fail: keep this job green so the PR checks list is not dominated
         # by canned "Failing after Xs" text. evals / score owns red/green.
         continue-on-error: true
-        uses: getsentry/vitest-evals@v0.16.0
+        uses: getsentry/vitest-evals@v0.16.1
         with:
           results: eval-results/*.json
           publish-summary: true

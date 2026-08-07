@@ -135,7 +135,7 @@ Pass eval file paths, `-t` filters, and shard options directly after the suite s
 - The behavioral floor is `EVAL_MIN_PASS_RATE=0.8` (`80%` of cases passed). `vitest-evals@0.16` owns the aggregate gate math; individual case misses are warnings when the floor still passes. Missing shard result files or setup/runtime crashes before results are written remain hard failures on the report job.
 - Integration cases fail the `evals / integration *` jobs hard on any miss. They do not use the aggregate pass-rate floor.
 - Guardian cases assert exact `allow` / `ask` / `deny` decisions and fail the `evals / guardian` job hard on mismatch. They do not use the aggregate pass-rate floor.
-- The `vitest-evals` Check Run stays off because v0.15.0 still concludes it from any single case failure.
+- The `vitest-evals` Check Run stays off so status stays on real Evals workflow jobs (`evals / score`, guardian/integration rows) instead of a detached Checks API entry.
 - The simplest Gateway and Sandbox setup is `VERCEL_OIDC_TOKEN` alone.
 - The fallback CI setup is `AI_GATEWAY_API_KEY` plus `VERCEL_TOKEN` + `VERCEL_TEAM_ID` + `VERCEL_PROJECT_ID`.
 - Behavioral and integration global setup starts one Cloudflare Quick Tunnel for the suite so Vercel Sandbox can reach the eval egress proxy. Transient tunnel allocation failures retry up to five times with backoff. Local runs require `cloudflared` on `PATH`; CI installs a pinned binary.
