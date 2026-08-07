@@ -8,7 +8,6 @@ import {
   Message as ChatMessage,
   ThreadImpl,
   type Message,
-  type SerializedMessage,
 } from "chat";
 import type {
   Destination,
@@ -1148,23 +1147,32 @@ function toEvalAssistantPost(value: unknown): EvalAssistantPost {
   };
 }
 
-function toIncomingMessage(event: MentionEvent | SubscribedMessageEvent) {
-  const runtimeThreadId = buildRuntimeThreadId(event.thread);
+/**
+ * Build a real Chat SDK Message from an eval fixture.
+ *
+ * Synthetic Slack ingress keeps an empty formatted AST so plain fixture text
+ * remains the source of truth, matching mailbox restore and edited-message
+ * construction elsewhere in Junior.
+ */
+function toEvalSlackMessage(
+  event: MentionEvent | SubscribedMessageEvent,
+  threadId: string,
+  dateSentMs: number = Date.now(),
+): Message {
   // In Slack payloads, `ts` identifies the specific message while `thread_ts`
   // identifies the thread root. Eval fixtures provide unique `message.id` per
   // event, so prefer it for `raw.ts` to avoid collapsing all replies to the
   // same timestamp in multi-turn thread scenarios.
   const messageTs = event.message.id ?? event.thread.thread_ts;
-  return {
+  return new ChatMessage({
     id: event.message.id ?? "",
+    threadId,
     text: event.message.text ?? "",
     isMention: event.message.is_mention,
     attachments: [],
-    metadata: { dateSent: new Date(), edited: false },
-    channelId: event.thread.channel_id,
-    threadId: runtimeThreadId,
-    threadTs: event.thread.thread_ts,
-    runId: event.thread.run_id,
+    // Empty root keeps plain fixture text authoritative for synthetic ingress.
+    formatted: { type: "root", children: [] },
+    metadata: { dateSent: new Date(dateSentMs), edited: false },
     raw: {
       ...(event.message.raw ?? {}),
       channel: event.thread.channel_id,
@@ -1182,28 +1190,7 @@ function toIncomingMessage(event: MentionEvent | SubscribedMessageEvent) {
       isMe: event.message.author?.is_me ?? false,
       isBot: event.message.author?.is_bot ?? false,
     },
-  };
-}
-
-/** Serialize an eval message fixture the way Slack ingress persists messages. */
-function toSerializedSlackMessage(
-  event: MentionEvent | SubscribedMessageEvent,
-  threadId: string,
-  dateSentMs: number,
-): SerializedMessage {
-  const incoming = toIncomingMessage(event);
-  return {
-    _type: "chat:Message",
-    attachments: [],
-    author: incoming.author,
-    formatted: { type: "root", children: [] },
-    id: incoming.id,
-    isMention: incoming.isMention ?? false,
-    metadata: { dateSent: new Date(dateSentMs).toISOString(), edited: false },
-    raw: incoming.raw,
-    text: incoming.text,
-    threadId,
-  };
+  });
 }
 
 function upsertThreadTranscriptMessage(
@@ -2250,8 +2237,10 @@ async function processEvents(args: {
         (event.message.is_mention ?? event.type === "new_mention")
           ? ("mention" as const)
           : ("subscribed" as const);
-      const message = ChatMessage.fromJSON(
-        toSerializedSlackMessage(event, thread.id, Date.now() + index),
+      const message = toEvalSlackMessage(
+        event,
+        thread.id,
+        Date.now() + index,
       );
       upsertThreadTranscriptMessage(transcript, message);
       const ingressThread = new ThreadImpl({
@@ -2282,9 +2271,7 @@ async function processEvents(args: {
   const enqueueEvent = (event: MentionEvent | SubscribedMessageEvent): void => {
     recordUserMessage(args.observations, event);
     const { thread, transcript } = getThreadRecord(event.thread);
-    const message = ChatMessage.fromJSON(
-      toSerializedSlackMessage(event, thread.id, Date.now()),
-    );
+    const message = toEvalSlackMessage(event, thread.id);
     upsertThreadTranscriptMessage(transcript, message);
     const kind = determineThreadMessageKind({
       isDirectMessage: thread.id.startsWith("slack:D"),
@@ -2777,12 +2764,3 @@ export async function runEvalScenario(
 }
 
 // Compile-time guards for Thread and Message fakes are in tests/fixtures/slack-harness.ts.
-// The toIncomingMessage function below still needs a local check since it maps from eval-specific fixtures.
-type AssertAssignable<_TSub extends TSuper, TSuper> = true;
-type _MessageCheck = AssertAssignable<
-  ReturnType<typeof toIncomingMessage>,
-  Pick<
-    Message,
-    "id" | "text" | "isMention" | "attachments" | "metadata" | "author"
-  >
->;
