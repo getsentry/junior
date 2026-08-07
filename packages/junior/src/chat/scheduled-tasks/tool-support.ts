@@ -7,6 +7,7 @@ import {
   type SlackSource,
   type User,
 } from "@sentry/junior-plugin-api";
+import { getDashboardTaskLink } from "@/chat/slack/dashboard-link";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { z } from "zod";
@@ -50,6 +51,7 @@ const compactTaskResultSchema = z
       })
       .strict(),
     credential_mode: z.enum(["system", "creator"]),
+    dashboard_url: z.string().url().nullable(),
     last_run_at: z.string().nullable(),
     run_now_at: z.string().nullable(),
   })
@@ -220,6 +222,7 @@ export function compactTask(task: ScheduledTask): CompactTaskResult {
       : null,
     conversation_access: task.conversationAccess,
     credential_mode: task.credentialMode,
+    dashboard_url: getDashboardTaskLink(task.id) ?? null,
     last_run_at: task.lastRunAtMs
       ? new Date(task.lastRunAtMs).toISOString()
       : null,

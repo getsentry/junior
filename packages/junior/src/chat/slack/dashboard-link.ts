@@ -59,10 +59,7 @@ export function setDashboardConversationLinkOptions(
   return previous;
 }
 
-/** Build the dashboard conversation URL when the core dashboard is enabled. */
-export function getDashboardConversationLink(
-  conversationId: string,
-): string | undefined {
+function resolveDashboardPath(segmentPath: string): string | undefined {
   if (!dashboardConversationLinkOptions) {
     return undefined;
   }
@@ -72,8 +69,20 @@ export function getDashboardConversationLink(
     "/",
   );
   const path =
-    basePath === "/"
-      ? `/conversations/${encodeURIComponent(conversationId)}`
-      : `${basePath}/conversations/${encodeURIComponent(conversationId)}`;
+    basePath === "/" ? segmentPath : `${basePath}${segmentPath}`;
   return `${baseURL}${path}`;
+}
+
+/** Build the dashboard conversation URL when the core dashboard is enabled. */
+export function getDashboardConversationLink(
+  conversationId: string,
+): string | undefined {
+  return resolveDashboardPath(
+    `/conversations/${encodeURIComponent(conversationId)}`,
+  );
+}
+
+/** Build the dashboard task detail URL when the core dashboard is enabled. */
+export function getDashboardTaskLink(taskId: string): string | undefined {
+  return resolveDashboardPath(`/tasks/${encodeURIComponent(taskId)}`);
 }

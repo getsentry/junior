@@ -161,3 +161,26 @@ describe("buildSlackReplyBlocks", () => {
     expect(buildSlackReplyBlocks("   ", footer)).toBeUndefined();
   });
 });
+
+describe("getDashboardTaskLink", () => {
+  it("builds a task detail URL when dashboard links are configured", async () => {
+    const { getDashboardTaskLink } = await import(
+      "@/chat/slack/dashboard-link"
+    );
+    setDashboardConversationLinkOptions({
+      basePath: "/ops",
+      baseURL: "https://junior.example.com",
+    });
+
+    expect(getDashboardTaskLink("sched_abc")).toBe(
+      "https://junior.example.com/ops/tasks/sched_abc",
+    );
+  });
+
+  it("returns undefined when dashboard links are disabled", async () => {
+    const { getDashboardTaskLink } = await import(
+      "@/chat/slack/dashboard-link"
+    );
+    expect(getDashboardTaskLink("sched_abc")).toBeUndefined();
+  });
+});
