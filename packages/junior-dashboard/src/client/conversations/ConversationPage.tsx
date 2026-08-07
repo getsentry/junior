@@ -355,23 +355,29 @@ function SourceLocation(props: { label: string; sourceUrl?: string }) {
   );
 }
 
-function liveModelId(
+/** Resolve the model still running an open turn, including mid-turn handoffs. */
+export function liveModelId(
   detail: ConversationDetailReport | undefined,
 ): string | undefined {
   if (!detail) return undefined;
   const openTurns = new Set<string>();
+  let modelId: string | undefined;
   for (const event of detail.events) {
-    if (event.data.type !== "turn_lifecycle") continue;
-    if (event.data.state === "started") openTurns.add(event.data.turnId);
-    else openTurns.delete(event.data.turnId);
-  }
-  for (let index = detail.events.length - 1; index >= 0; index -= 1) {
-    const data = detail.events[index]?.data;
-    if (data?.type === "turn_routed" && openTurns.has(data.turnId)) {
-      return data.modelId;
+    const data = event.data;
+    if (data.type === "turn_lifecycle") {
+      if (data.state === "started") openTurns.add(data.turnId);
+      else openTurns.delete(data.turnId);
+      if (openTurns.size === 0) modelId = undefined;
+      continue;
     }
+    if (openTurns.size === 0) continue;
+    if (data.type === "turn_routed" && openTurns.has(data.turnId)) {
+      modelId = data.modelId;
+      continue;
+    }
+    if (data.type === "handoff") modelId = data.modelId;
   }
-  return undefined;
+  return openTurns.size > 0 ? modelId : undefined;
 }
 
 function ConversationStats(props: {
