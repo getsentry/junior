@@ -15,8 +15,10 @@ Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`, `pnpm s
 | -------------------------- | ------------------------------------------------------------------------------ |
 | Unit/integration test file | `pnpm --filter @sentry/junior exec vitest run path/to/file.test.ts`            |
 | Eval harness test file     | `pnpm --filter @sentry/junior-evals test path/to/file.test.ts`                 |
-| Eval file                  | `pnpm --filter @sentry/junior-evals evals path/to/eval.eval.ts`                |
-| Eval case                  | `pnpm --filter @sentry/junior-evals evals path/to/eval.eval.ts -t "case name"` |
+| Qualitative eval file      | `pnpm --filter @sentry/junior-evals evals:qualitative path/to/eval.eval.ts`    |
+| Qualitative eval case      | `pnpm --filter @sentry/junior-evals evals:qualitative path/to/eval.eval.ts -t "case name"` |
+| Invariant eval file        | `pnpm --filter @sentry/junior-evals evals:invariant path/to/file.eval.ts`      |
+| Invariant eval case        | `pnpm --filter @sentry/junior-evals evals:invariant path/to/file.eval.ts -t "case name"` |
 | Guardian eval file         | `pnpm --filter @sentry/junior-evals evals:guardian path/to/file.eval.ts`       |
 | Guardian eval case         | `pnpm --filter @sentry/junior-evals evals:guardian path/to/file.eval.ts -t "case name"` |
 | Generate package schema    | `pnpm --filter <package> db:generate`                                          |

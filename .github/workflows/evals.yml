@@ -16,9 +16,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
-# Combined suite floor for qualitative variability. Individual case failures
-# still appear in the report; CI only blocks when the aggregate pass rate dips
-# below this value. Infrastructure/setup failures remain hard failures.
+# Aggregate floor for qualitative variability only. Invariant and Guardian
+# suites fail hard on any case miss. Infrastructure/setup failures remain hard
+# failures for every suite.
 env:
   EVAL_MIN_PASS_RATE: "0.8"
 
@@ -27,14 +27,17 @@ jobs:
     name: evals / gate
     runs-on: blacksmith-4vcpu-ubuntu-2404
     outputs:
-      eval_file_changed: ${{ steps.changes.outputs.eval_file_changed }}
-      evals_requested: ${{ steps.request.outputs.evals_requested }}
       gateway_ready: ${{ steps.secrets.outputs.gateway_ready }}
       guardian_file_changed: ${{ steps.changes.outputs.guardian_file_changed }}
       guardian_requested: ${{ steps.request.outputs.guardian_requested }}
+      invariant_file_changed: ${{ steps.changes.outputs.invariant_file_changed }}
+      invariant_requested: ${{ steps.request.outputs.invariant_requested }}
+      qualitative_file_changed: ${{ steps.changes.outputs.qualitative_file_changed }}
+      qualitative_requested: ${{ steps.request.outputs.qualitative_requested }}
       sandbox_ready: ${{ steps.secrets.outputs.sandbox_ready }}
-      should_run: ${{ steps.decision.outputs.should_run }}
       should_run_guardian: ${{ steps.decision.outputs.should_run_guardian }}
+      should_run_invariant: ${{ steps.decision.outputs.should_run_invariant }}
+      should_run_qualitative: ${{ steps.decision.outputs.should_run_qualitative }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -47,33 +50,61 @@ jobs:
 
           action="$(jq -r '.action // ""' "$GITHUB_EVENT_PATH")"
           label_name="$(jq -r '.label.name // ""' "$GITHUB_EVENT_PATH")"
-          requested=false
+          all_requested=false
+          qualitative_requested=false
+          invariant_requested=false
           guardian_requested=false
+
+          has_label() {
+            local name="$1"
+            jq -e --arg name "$name" '.pull_request.labels[]?.name | select(. == $name)' "$GITHUB_EVENT_PATH" >/dev/null
+          }
+
           if [[ "$action" == "labeled" ]]; then
-            if [[ "$label_name" == "trigger-evals" ]]; then
-              requested=true
-            fi
-            if [[ "$label_name" == "trigger-evals-guardian" || "$label_name" == "trigger-evals" ]]; then
-              guardian_requested=true
-            fi
+            case "$label_name" in
+              trigger-evals)
+                all_requested=true
+                ;;
+              trigger-evals-qualitative)
+                qualitative_requested=true
+                ;;
+              trigger-evals-invariant)
+                invariant_requested=true
+                ;;
+              trigger-evals-guardian)
+                guardian_requested=true
+                ;;
+            esac
           else
-            if jq -e '.pull_request.labels[]?.name | select(. == "trigger-evals")' "$GITHUB_EVENT_PATH" >/dev/null; then
-              requested=true
-              guardian_requested=true
+            if has_label "trigger-evals"; then
+              all_requested=true
             fi
-            if jq -e '.pull_request.labels[]?.name | select(. == "trigger-evals-guardian")' "$GITHUB_EVENT_PATH" >/dev/null; then
+            if has_label "trigger-evals-qualitative"; then
+              qualitative_requested=true
+            fi
+            if has_label "trigger-evals-invariant"; then
+              invariant_requested=true
+            fi
+            if has_label "trigger-evals-guardian"; then
               guardian_requested=true
             fi
           fi
 
-          echo "evals_requested=$requested" >> "$GITHUB_OUTPUT"
+          if [[ "$all_requested" == "true" ]]; then
+            qualitative_requested=true
+            invariant_requested=true
+            guardian_requested=true
+          fi
+
+          echo "qualitative_requested=$qualitative_requested" >> "$GITHUB_OUTPUT"
+          echo "invariant_requested=$invariant_requested" >> "$GITHUB_OUTPUT"
           echo "guardian_requested=$guardian_requested" >> "$GITHUB_OUTPUT"
 
       - uses: getsentry/action-filter-paths@98a158469c63115591d1c2952d34450838ab3bc1 # v0.1.0
         id: changes
         with:
           filters: |
-            eval_file_changed:
+            qualitative_file_changed:
               - 'packages/junior-evals/evals/agent/**'
               - 'packages/junior-evals/evals/conversation/**'
               - 'packages/junior-evals/evals/event-tasks/**'
@@ -95,6 +126,23 @@ jobs:
               - 'packages/junior-evals/src/snapshot-warmup.ts'
               - 'packages/junior-evals/tests/**'
               - 'packages/junior-evals/vitest.evals.config.ts'
+              - 'packages/junior-evals/vitest.evals.qualitative.config.ts'
+              - 'packages/junior/src/**'
+            invariant_file_changed:
+              - 'packages/junior-evals/evals/invariant/**'
+              - 'packages/junior-evals/package.json'
+              - 'packages/junior-evals/global-setup.ts'
+              - 'packages/junior-evals/postgres-global-setup.ts'
+              - 'packages/junior-evals/src/behavior-harness.ts'
+              - 'packages/junior-evals/src/eval-ai-gateway-dispatcher.ts'
+              - 'packages/junior-evals/src/eval-context.ts'
+              - 'packages/junior-evals/src/eval-egress.ts'
+              - 'packages/junior-evals/src/eval-plugin-fixtures.ts'
+              - 'packages/junior-evals/src/helpers.ts'
+              - 'packages/junior-evals/src/setup.ts'
+              - 'packages/junior-evals/src/slack-link.ts'
+              - 'packages/junior-evals/src/snapshot-warmup.ts'
+              - 'packages/junior-evals/vitest.evals.invariant.config.ts'
               - 'packages/junior/src/**'
             guardian_file_changed:
               - 'packages/junior-evals/evals/guardian/**'
@@ -137,39 +185,50 @@ jobs:
 
       - id: decision
         env:
-          EVAL_FILE_CHANGED: ${{ steps.changes.outputs.eval_file_changed }}
-          EVALS_REQUESTED: ${{ steps.request.outputs.evals_requested }}
           GATEWAY_READY: ${{ steps.secrets.outputs.gateway_ready }}
           GUARDIAN_FILE_CHANGED: ${{ steps.changes.outputs.guardian_file_changed }}
           GUARDIAN_REQUESTED: ${{ steps.request.outputs.guardian_requested }}
+          INVARIANT_FILE_CHANGED: ${{ steps.changes.outputs.invariant_file_changed }}
+          INVARIANT_REQUESTED: ${{ steps.request.outputs.invariant_requested }}
+          QUALITATIVE_FILE_CHANGED: ${{ steps.changes.outputs.qualitative_file_changed }}
+          QUALITATIVE_REQUESTED: ${{ steps.request.outputs.qualitative_requested }}
           SANDBOX_READY: ${{ steps.secrets.outputs.sandbox_ready }}
         run: |
           set -euo pipefail
 
-          should_run=false
-          if [[ "$GATEWAY_READY" == "true" && "$SANDBOX_READY" == "true" && ( "$EVAL_FILE_CHANGED" == "true" || "$EVALS_REQUESTED" == "true" ) ]]; then
-            should_run=true
+          should_run_qualitative=false
+          if [[ "$GATEWAY_READY" == "true" && "$SANDBOX_READY" == "true" && ( "$QUALITATIVE_FILE_CHANGED" == "true" || "$QUALITATIVE_REQUESTED" == "true" ) ]]; then
+            should_run_qualitative=true
+          fi
+
+          should_run_invariant=false
+          if [[ "$GATEWAY_READY" == "true" && "$SANDBOX_READY" == "true" && ( "$INVARIANT_FILE_CHANGED" == "true" || "$INVARIANT_REQUESTED" == "true" ) ]]; then
+            should_run_invariant=true
           fi
 
           should_run_guardian=false
-          if [[ "$GATEWAY_READY" == "true" && ( "$GUARDIAN_FILE_CHANGED" == "true" || "$GUARDIAN_REQUESTED" == "true" || "$EVALS_REQUESTED" == "true" ) ]]; then
+          if [[ "$GATEWAY_READY" == "true" && ( "$GUARDIAN_FILE_CHANGED" == "true" || "$GUARDIAN_REQUESTED" == "true" ) ]]; then
             should_run_guardian=true
           fi
 
-          echo "should_run=$should_run" >> "$GITHUB_OUTPUT"
+          echo "should_run_qualitative=$should_run_qualitative" >> "$GITHUB_OUTPUT"
+          echo "should_run_invariant=$should_run_invariant" >> "$GITHUB_OUTPUT"
           echo "should_run_guardian=$should_run_guardian" >> "$GITHUB_OUTPUT"
           {
             echo "## Eval Gate"
             echo
-            echo "- eval_file_changed: $EVAL_FILE_CHANGED"
-            echo "- evals_requested: $EVALS_REQUESTED"
+            echo "- qualitative_file_changed: $QUALITATIVE_FILE_CHANGED"
+            echo "- qualitative_requested: $QUALITATIVE_REQUESTED"
+            echo "- invariant_file_changed: $INVARIANT_FILE_CHANGED"
+            echo "- invariant_requested: $INVARIANT_REQUESTED"
             echo "- guardian_file_changed: $GUARDIAN_FILE_CHANGED"
             echo "- guardian_requested: $GUARDIAN_REQUESTED"
             echo "- gateway_ready: $GATEWAY_READY"
             echo "- sandbox_ready: $SANDBOX_READY"
-            echo "- will_run: $should_run"
+            echo "- will_run_qualitative: $should_run_qualitative"
+            echo "- will_run_invariant: $should_run_invariant"
             echo "- will_run_guardian: $should_run_guardian"
-            echo "- min_pass_rate: $EVAL_MIN_PASS_RATE"
+            echo "- qualitative_min_pass_rate: $EVAL_MIN_PASS_RATE"
           } >> "$GITHUB_STEP_SUMMARY"
 
   guardian:
@@ -201,10 +260,81 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-  evals:
-    name: evals / suite ${{ matrix.shard }}/4
+  invariant:
+    # Strict system-correctness suite. Any case failure fails the job hard.
+    name: evals / invariant ${{ matrix.shard }}/2
     needs: gate
-    if: needs.gate.outputs.should_run == 'true'
+    if: needs.gate.outputs.should_run_invariant == 'true'
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: junior
+          POSTGRES_PASSWORD: junior
+          POSTGRES_DB: junior
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U junior -d junior"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      JUNIOR_EVAL_REDIS_URL: redis://127.0.0.1:6379
+      DATABASE_URL: postgres://junior:junior@localhost:5432/junior
+      AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_OIDC_TOKEN: ${{ secrets.VERCEL_OIDC_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: Install cloudflared
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error \
+            https://github.com/cloudflare/cloudflared/releases/download/2026.7.2/cloudflared-linux-amd64 \
+            --output "$RUNNER_TEMP/cloudflared"
+          echo "ec905ea7b7e327ff8abdde8cb64697a2152de74dbcdbf6aec9db8364eb3886cd  $RUNNER_TEMP/cloudflared" | sha256sum --check
+          chmod +x "$RUNNER_TEMP/cloudflared"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/cloudflared" version
+      - name: Verify eval egress lifecycle
+        run: pnpm --filter @sentry/junior-evals test tests/integration/eval-egress.test.ts
+      - name: Run invariant evals
+        env:
+          VITEST_EVALS_OUTPUT_FILE: invariant-results-${{ matrix.shard }}.json
+          VITEST_EVALS_REPORT_LEVEL: info
+        run: pnpm --filter @sentry/junior-evals evals:invariant --shard=${{ matrix.shard }}/2
+      - name: Upload invariant eval results
+        if: always() && !cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: invariant-evals-${{ matrix.shard }}
+          path: packages/junior-evals/invariant-results-${{ matrix.shard }}.json
+          if-no-files-found: warn
+          retention-days: 7
+
+  qualitative:
+    name: evals / qualitative ${{ matrix.shard }}/4
+    needs: gate
+    if: needs.gate.outputs.should_run_qualitative == 'true'
     runs-on: blacksmith-4vcpu-ubuntu-2404
     strategy:
       fail-fast: false
@@ -257,41 +387,41 @@ jobs:
           "$RUNNER_TEMP/cloudflared" version
       - name: Verify eval egress lifecycle
         run: pnpm --filter @sentry/junior-evals test tests/integration/eval-egress.test.ts
-      - name: Run evals
+      - name: Run qualitative evals
         id: run
         continue-on-error: true
         env:
-          VITEST_EVALS_OUTPUT_FILE: vitest-results-${{ matrix.shard }}.json
+          VITEST_EVALS_OUTPUT_FILE: qualitative-results-${{ matrix.shard }}.json
           VITEST_EVALS_REPORT_LEVEL: info
-        run: pnpm --filter @sentry/junior-evals evals --shard=${{ matrix.shard }}/4
-      - name: Require eval results
+        run: pnpm --filter @sentry/junior-evals evals:qualitative --shard=${{ matrix.shard }}/4
+      - name: Require qualitative eval results
         id: results
         # Run is continue-on-error so case failures still reach this check.
         # Missing results mean setup/runtime crashed and must fail the shard.
         if: steps.run.conclusion != 'skipped'
         run: |
           set -euo pipefail
-          result_file="packages/junior-evals/vitest-results-${{ matrix.shard }}.json"
+          result_file="packages/junior-evals/qualitative-results-${{ matrix.shard }}.json"
           if [[ ! -f "$result_file" ]]; then
-            echo "::error::missing eval results for shard ${{ matrix.shard }} ($result_file). Treat setup/runtime crashes as hard failures."
+            echo "::error::missing qualitative eval results for shard ${{ matrix.shard }} ($result_file). Treat setup/runtime crashes as hard failures."
             exit 1
           fi
-      - name: Upload eval results
+      - name: Upload qualitative eval results
         if: steps.results.conclusion == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: vitest-evals-${{ matrix.shard }}
-          path: packages/junior-evals/vitest-results-${{ matrix.shard }}.json
+          name: qualitative-evals-${{ matrix.shard }}
+          path: packages/junior-evals/qualitative-results-${{ matrix.shard }}.json
           if-no-files-found: error
           retention-days: 7
 
   report:
     # Keep this a boring infra job name. The PR checks list secondary line comes
-    # from the separate Checks API run published below (`eval score`), not from
-    # this workflow job row (those always say "Failing after Xs").
+    # from the separate Checks API run published below (`eval score / qualitative`),
+    # not from this workflow job row (those always say "Failing after Xs").
     name: evals / report
-    needs: [gate, evals]
-    if: ${{ always() && !cancelled() && needs.gate.outputs.should_run == 'true' }}
+    needs: [gate, qualitative]
+    if: ${{ always() && !cancelled() && needs.gate.outputs.should_run_qualitative == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     permissions:
       contents: read
@@ -301,28 +431,28 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Download eval results
+      - name: Download qualitative eval results
         uses: actions/download-artifact@v4
         with:
-          pattern: vitest-evals-*
+          pattern: qualitative-evals-*
           path: eval-results
           merge-multiple: true
 
-      - name: Require all shard results
+      - name: Require all qualitative shard results
         run: |
           set -euo pipefail
           expected=4
           shopt -s nullglob
-          files=(eval-results/vitest-results-*.json)
+          files=(eval-results/qualitative-results-*.json)
           count="${#files[@]}"
           if [[ "$count" -ne "$expected" ]]; then
-            echo "::error::expected $expected eval result files, found $count"
+            echo "::error::expected $expected qualitative eval result files, found $count"
             printf '%s\n' "${files[@]:-}"
             exit 1
           fi
           ls -la eval-results
 
-      - name: Publish combined eval report
+      - name: Publish combined qualitative eval report
         id: report
         uses: getsentry/vitest-evals@51b8efebcbe9532efc332bf1ff2abbae582bd093 # v0.15.0
         with:
@@ -332,7 +462,7 @@ jobs:
           publish-check: false
           fail-on-failures: false
 
-      - name: Gate on eval pass rate
+      - name: Gate qualitative suite on pass rate
         env:
           EVALS_TOTAL: ${{ steps.report.outputs.evals-total }}
           EVALS_FAILED: ${{ steps.report.outputs.evals-failed }}
@@ -352,4 +482,4 @@ jobs:
             --score-average "${SCORE_AVERAGE:-n/a}" \
             --publish-check true \
             --soft-fail true \
-            --check-name "eval score"
+            --check-name "eval score / qualitative"

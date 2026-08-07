@@ -42,7 +42,9 @@ Run from repo root:
 
 ```bash
 pnpm test
-pnpm evals
+pnpm evals                 # qualitative suite
+pnpm evals:invariant       # hard pass/fail system suite
+pnpm evals:guardian        # isolated Guardian snapshots
 pnpm typecheck
 pnpm skills:check
 pnpm docs:check
