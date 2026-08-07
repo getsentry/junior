@@ -2,6 +2,7 @@ name: Evals
 
 permissions:
   contents: read
+  checks: write
 
 on:
   pull_request:
@@ -258,12 +259,6 @@ jobs:
         uses: getsentry/vitest-evals@v0.16.1
         with:
           results: packages/junior-evals/guardian-results.json
-          publish-summary: true
-          publish-annotations: true
-          # Keep this under the Evals workflow job (no detached Checks API run).
-          publish-check: false
-          # Guardian is exact allow/ask/deny; any miss fails the job.
-          fail-on-failures: true
       - name: Upload Guardian eval results
         if: always() && !cancelled()
         uses: actions/upload-artifact@v4
@@ -420,16 +415,11 @@ jobs:
             exit 1
           fi
       - name: Publish behavioral shard summary
+        # Job-summary only. Aggregate gate + PR status live on evals / report.
         if: steps.results.conclusion == 'success'
         uses: getsentry/vitest-evals@v0.16.1
         with:
           results: packages/junior-evals/behavioral-results-${{ matrix.shard }}.json
-          publish-summary: true
-          publish-annotations: true
-          # Per-shard output stays on this Evals job. Aggregate gate lives on
-          # evals / score so one weak shard does not double-red the PR list.
-          publish-check: false
-          fail-on-failures: false
       - name: Upload behavioral eval results
         if: steps.results.conclusion == 'success'
         uses: actions/upload-artifact@v4
@@ -440,22 +430,14 @@ jobs:
           retention-days: 7
 
   report:
-    # Boring aggregator job: download shards, write the rich combined summary,
-    # export gate outputs. Green/red for the floor is owned by evals / score so
-    # this row stays an infra step and does not fight the score job name.
+    # Combine behavioral shards, write the job summary, and publish the
+    # `evals / score` Check Run. v0.16.1 attaches that check to the PR head and
+    # soft-fails this step when the check publishes, so the Check Run title owns
+    # the pass-rate secondary line instead of a hand-rolled score job.
     name: evals / report
     needs: [gate, behavioral]
     if: ${{ always() && !cancelled() && needs.gate.outputs.should_run_behavioral == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
-    outputs:
-      gate_status: ${{ steps.report.outputs.gate-status }}
-      gate_title: ${{ steps.report.outputs.gate-title }}
-      gate_message: ${{ steps.report.outputs.gate-message }}
-      pass_rate: ${{ steps.report.outputs.pass-rate }}
-      score_average: ${{ steps.report.outputs.score-average }}
-      evals_total: ${{ steps.report.outputs.evals-total }}
-      evals_passed: ${{ steps.report.outputs.evals-passed }}
-      evals_failed: ${{ steps.report.outputs.evals-failed }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -484,103 +466,9 @@ jobs:
 
       - name: Publish combined behavioral eval report
         id: report
-        # Soft-fail: keep this job green so the PR checks list is not dominated
-        # by canned "Failing after Xs" text. evals / score owns red/green.
-        continue-on-error: true
         uses: getsentry/vitest-evals@v0.16.1
         with:
           results: eval-results/*.json
-          publish-summary: true
-          publish-annotations: true
-          # Detached Checks API runs attach under random github-actions suites
-          # (sometimes CodeQL). Prefer a real Evals workflow job for status.
-          publish-check: false
+          publish-check: true
+          check-name: evals / score
           min-pass-rate: ${{ env.EVAL_MIN_PASS_RATE }}
-
-      - name: Record gate decision
-        env:
-          GATE_STATUS: ${{ steps.report.outputs.gate-status }}
-          GATE_TITLE: ${{ steps.report.outputs.gate-title }}
-          GATE_MESSAGE: ${{ steps.report.outputs.gate-message }}
-          PASS_RATE: ${{ steps.report.outputs.pass-rate }}
-          SCORE_AVERAGE: ${{ steps.report.outputs.score-average }}
-          EVALS_TOTAL: ${{ steps.report.outputs.evals-total }}
-          EVALS_PASSED: ${{ steps.report.outputs.evals-passed }}
-          EVALS_FAILED: ${{ steps.report.outputs.evals-failed }}
-          REPORT_OUTCOME: ${{ steps.report.outcome }}
-        run: |
-          set -euo pipefail
-          {
-            echo "## Eval Score Gate"
-            echo
-            echo "- report step: $REPORT_OUTCOME"
-            echo "- status: ${GATE_STATUS:-missing}"
-            echo "- title: ${GATE_TITLE:-missing}"
-            echo "- message: ${GATE_MESSAGE:-missing}"
-            echo "- pass rate: ${PASS_RATE:-n/a}"
-            echo "- avg score: ${SCORE_AVERAGE:-n/a}"
-            echo "- cases: ${EVALS_PASSED:-?}/${EVALS_TOTAL:-?} passed (${EVALS_FAILED:-?} failed)"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-          if [[ -z "${GATE_STATUS:-}" || -z "${GATE_TITLE:-}" ]]; then
-            echo "::error::combined eval report did not export gate outputs"
-            exit 1
-          fi
-
-          echo "gate title: $GATE_TITLE"
-          echo "gate message: $GATE_MESSAGE"
-
-  score:
-    # Real Evals workflow check (not a detached Checks API run), so it stays
-    # grouped under Evals instead of hitchhiking on CodeQL. Job name carries the
-    # secondary status line the PR checks list shows beside the conclusion.
-    name: evals / score · ${{ needs.report.outputs.gate_title || 'pending' }}
-    needs: [gate, report]
-    if: ${{ always() && !cancelled() && needs.gate.outputs.should_run_behavioral == 'true' && needs.report.result == 'success' }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-    steps:
-      - name: Enforce eval pass-rate floor
-        env:
-          GATE_STATUS: ${{ needs.report.outputs.gate_status }}
-          GATE_TITLE: ${{ needs.report.outputs.gate_title }}
-          GATE_MESSAGE: ${{ needs.report.outputs.gate_message }}
-          PASS_RATE: ${{ needs.report.outputs.pass_rate }}
-          SCORE_AVERAGE: ${{ needs.report.outputs.score_average }}
-          EVALS_TOTAL: ${{ needs.report.outputs.evals_total }}
-          EVALS_PASSED: ${{ needs.report.outputs.evals_passed }}
-          EVALS_FAILED: ${{ needs.report.outputs.evals_failed }}
-        run: |
-          set -euo pipefail
-          {
-            echo "## ${GATE_TITLE}"
-            echo
-            echo "- status: ${GATE_STATUS}"
-            echo "- ${GATE_MESSAGE}"
-            echo "- pass rate: ${PASS_RATE:-n/a}"
-            echo "- avg score: ${SCORE_AVERAGE:-n/a}"
-            echo "- cases: ${EVALS_PASSED:-?}/${EVALS_TOTAL:-?} passed (${EVALS_FAILED:-?} failed)"
-            echo "- floor: ${EVAL_MIN_PASS_RATE}"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-          echo "$GATE_TITLE"
-          echo "$GATE_MESSAGE"
-
-          if [[ "$GATE_STATUS" != "passed" ]]; then
-            # Escape workflow-command property/data so % and : in titles stay literal.
-            escape_data() {
-              local value="$1"
-              value=${value//'%'/'%25'}
-              value=${value//$'\r'/'%0D'}
-              value=${value//$'\n'/'%0A'}
-              printf '%s' "$value"
-            }
-            escape_property() {
-              local value
-              value=$(escape_data "$1")
-              value=${value//':'/'%3A'}
-              value=${value//','/'%2C'}
-              printf '%s' "$value"
-            }
-            echo "::error title=$(escape_property "$GATE_TITLE")::$(escape_data "$GATE_MESSAGE")"
-            exit 1
-          fi

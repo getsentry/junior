@@ -85,7 +85,7 @@ After adding secrets:
    - `gateway_ready: true`
    - `sandbox_ready: true` for behavioral/integration runs
    - `will_run_behavioral`, `will_run_integration`, and/or `will_run_guardian` as expected
-4. For behavioral runs, confirm each `evals / behavioral *` job has a shard summary, `evals / report` has the combined summary, and `evals / score` shows the pass-rate gate in its job name.
+4. For behavioral runs, confirm each `evals / behavioral *` job has a shard summary, `evals / report` has the combined summary, and the `evals / score` Check Run shows the pass-rate gate title.
 5. For integration runs, confirm the `evals / integration *` jobs completed. Any case miss fails those jobs hard.
 6. For Guardian runs, confirm the `evals / guardian` job summary published and the job completed. Exact decision mismatches fail that job hard.
 
@@ -96,10 +96,10 @@ Only the behavioral suite uses the aggregate floor.
 Behavioral shard jobs keep running after individual case failures so every shard can upload its Vitest JSON results and publish its own job summary. Then:
 
 1. `evals / report` downloads all behavioral shard result files and publishes one combined `vitest-evals` summary (metric table, score distribution, quality misses)
-2. `evals / report` stays green even when the floor is missed (`continue-on-error`) and exports gate outputs
-3. `evals / score · <gate title>` is a real Evals workflow job that owns green/red for `EVAL_MIN_PASS_RATE` (currently `0.8`) and carries the score in the job name shown on the PR checks list
+2. the same step publishes an `evals / score` Check Run with `min-pass-rate` (`EVAL_MIN_PASS_RATE`, currently `0.8`)
+3. `vitest-evals@0.16.1` attaches that Check Run to the PR head SHA and soft-fails the report step when the check publishes, so the Check Run title owns the pass-rate secondary line on the PR checks list
 
-We intentionally do **not** publish a detached Checks API run for the score. Those attach under random `github-actions` suites (sometimes CodeQL) and can target the PR merge commit instead of the head SHA.
+If Check Run publishing is skipped or fails, the report step still fails on a rejected gate so status is not silently lost.
 
 When the aggregate gate passes, individual case misses are warnings rather than failures. Setup crashes and missing result files still fail the report job hard.
 
