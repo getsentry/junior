@@ -19,10 +19,17 @@ function toOptionalTrimmed(value: string | undefined): string | undefined {
 
 /** Resolve the deployment version used for release and telemetry correlation. */
 export function getDeploymentServiceVersion(): string | undefined {
-  return (
-    toOptionalTrimmed(process.env.SENTRY_RELEASE) ??
-    toOptionalTrimmed(process.env.VERCEL_GIT_COMMIT_SHA)
+  const configuredRelease = toOptionalTrimmed(process.env.SENTRY_RELEASE);
+  if (configuredRelease) {
+    return configuredRelease;
+  }
+
+  const deploymentRevision = toOptionalTrimmed(
+    process.env.VERCEL_GIT_COMMIT_SHA,
   );
+  return deploymentRevision
+    ? `${JUNIOR_VERSION}+${deploymentRevision}`
+    : undefined;
 }
 
 /** Resolve deployment-scoped telemetry attributes from host environment. */
