@@ -19,6 +19,9 @@ stores the terminal result for its parent to read later.
   purged with their root conversation tree. Recursive delegation is disabled
   until depth, cancellation, and authority rules are defined. Children cannot
   spawn, hand off model profiles, or otherwise override their run policy.
+- Each parent may keep at most
+  `MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT` non-terminal child invocations in
+  flight (named busy-locking is separate and still applies per name).
 
 SQL owns bindings, invocation status, bounded execution authority, and terminal
 results. The conversation event log and session record continue to own agent

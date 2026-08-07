@@ -2,7 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createLocalSource } from "@sentry/junior-plugin-api";
 import type { AgentRunRequest } from "@/chat/agent/request";
 import type { PiMessage } from "@/chat/pi/messages";
-import { getAgentInvocation } from "@/chat/agent-invocations/store";
+import { AgentInvocationLimitError } from "@/chat/agent-invocations/errors";
+import {
+  getAgentInvocation,
+  MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT,
+} from "@/chat/agent-invocations/store";
 import {
   createAgentInvocationWorker,
   routeAgentInvocationWork,
@@ -383,6 +387,57 @@ describe("agent invocation identity and concurrency", () => {
 
       await harness.drainQueuedWork();
       expect(run).toHaveBeenCalledTimes(2);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("rejects new children once the parent concurrent active limit is reached", async () => {
+    const harness = await createHarness(async (request) => {
+      await request.durability?.onInputCommitted?.();
+      return await successfulRun(request, `result:${request.input.messageText}`);
+    });
+    try {
+      const active = await Promise.all(
+        Array.from(
+          { length: MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT },
+          (_, index) =>
+            harness.spawn({
+              idempotencyKey: `limit-${index}`,
+              input: `active task ${index}`,
+            }),
+        ),
+      );
+      expect(active).toHaveLength(MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT);
+
+      await expect(
+        harness.spawn({
+          idempotencyKey: "limit-overflow",
+          input: "one too many",
+        }),
+      ).rejects.toBeInstanceOf(AgentInvocationLimitError);
+
+      // Idempotent replay of an in-flight invocation must not count as new fan-out.
+      await expect(
+        harness.spawn({
+          idempotencyKey: "limit-0",
+          input: "active task 0",
+        }),
+      ).resolves.toMatchObject({
+        invocationId: active[0]?.invocationId,
+      });
+
+      await harness.drainQueuedWork();
+
+      await expect(
+        harness.spawn({
+          idempotencyKey: "limit-after-drain",
+          input: "room again",
+        }),
+      ).resolves.toMatchObject({
+        status: "pending",
+      });
+      await harness.drainQueuedWork();
     } finally {
       await harness.close();
     }

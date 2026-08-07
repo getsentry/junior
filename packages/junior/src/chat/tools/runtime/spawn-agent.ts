@@ -1,5 +1,8 @@
 import { z } from "zod";
-import { AgentInvocationBusyError } from "@/chat/agent-invocations/errors";
+import {
+  AgentInvocationBusyError,
+  AgentInvocationLimitError,
+} from "@/chat/agent-invocations/errors";
 import { agentNameSchema } from "@/chat/agent-invocations/types";
 import { TURN_REASONING_LEVELS } from "@/chat/reasoning-level";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
@@ -66,6 +69,12 @@ export function createSpawnAgentTool(
         if (error instanceof AgentInvocationBusyError) {
           throw new ToolInputError(
             `${error.message}. Wait for it to finish or use a different name.`,
+            { cause: error },
+          );
+        }
+        if (error instanceof AgentInvocationLimitError) {
+          throw new ToolInputError(
+            `${error.message}. Wait for active children to finish before spawning more.`,
             { cause: error },
           );
         }

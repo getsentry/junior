@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, count, eq, inArray } from "drizzle-orm";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
 import { juniorAgentBindings, juniorAgentInvocations } from "@/db/schema";
 import {
@@ -11,9 +11,14 @@ import {
   type AgentInvocationStatus,
   type CreateAgentInvocationInput,
 } from "./types";
-import { AgentInvocationBusyError } from "./errors";
+import {
+  AgentInvocationBusyError,
+  AgentInvocationLimitError,
+} from "./errors";
 
 const CREATE_LOCK_PREFIX = "junior:agent_invocation:create";
+/** Cap concurrent non-terminal children one parent can keep in flight. */
+export const MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT = 8;
 const TERMINAL_AGENT_INVOCATION_STATUSES = [
   "blocked",
   "completed",
@@ -198,6 +203,25 @@ async function getNonTerminalAgentInvocationForConversation(
   return rows[0] ? invocationFromRow(rows[0]) : undefined;
 }
 
+async function countNonTerminalAgentInvocationsForParent(
+  parentConversationId: string,
+): Promise<number> {
+  const rows = await getSqlExecutor()
+    .db()
+    .select({ value: count() })
+    .from(juniorAgentInvocations)
+    .where(
+      and(
+        eq(juniorAgentInvocations.parentConversationId, parentConversationId),
+        inArray(
+          juniorAgentInvocations.status,
+          NON_TERMINAL_AGENT_INVOCATION_STATUSES,
+        ),
+      ),
+    );
+  return rows[0]?.value ?? 0;
+}
+
 /**
  * Create or replay one invocation, reusing named child conversations and
  * keeping unnamed child identities scoped to the invocation.
@@ -214,9 +238,8 @@ export async function createAgentInvocation(
   const childConversationId = input.agentName
     ? getNamedAgentConversationId(input.parentConversationId, input.agentName)
     : getUnnamedAgentConversationId(invocationId);
-  const lockName = `${CREATE_LOCK_PREFIX}:${
-    input.agentName ? childConversationId : invocationId
-  }`;
+  // Parent-scoped lock so concurrent creates share one active-count check.
+  const lockName = `${CREATE_LOCK_PREFIX}:${input.parentConversationId}`;
   return await getSqlExecutor().withLock(lockName, async () => {
     const existing = await getAgentInvocation(invocationId);
     if (existing) {
@@ -226,6 +249,15 @@ export async function createAgentInvocation(
         );
       }
       return existing;
+    }
+
+    const activeCount = await countNonTerminalAgentInvocationsForParent(
+      input.parentConversationId,
+    );
+    if (activeCount >= MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT) {
+      throw new AgentInvocationLimitError(
+        MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT,
+      );
     }
 
     await getConversationStore().createChild({
