@@ -15,7 +15,10 @@ import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { recordTaskExecution } from "@/chat/tasks/execution-stats";
 import { sanitizeScheduledTaskPrincipal } from "./identity";
 import { createSchedulerSqlStore, type SchedulerStore } from "./store";
-import { scheduledTaskRunAttributes } from "./telemetry";
+import {
+  logScheduledTaskRunSkipped,
+  scheduledTaskRunAttributes,
+} from "./telemetry";
 import type { ScheduledRun, ScheduledTask } from "./types";
 
 const SCHEDULED_TASK_HEARTBEAT_LIMIT = 10;
@@ -126,8 +129,7 @@ async function logRunOutcome(args: {
   eventName:
     | "scheduled_task.run.completed"
     | "scheduled_task.run.failed"
-    | "scheduled_task.run.blocked"
-    | "scheduled_task.run.skipped";
+    | "scheduled_task.run.blocked";
   run: ScheduledRun;
   store: SchedulerStore;
   /** Prefer a fresh task load after terminal status transitions. */
@@ -365,12 +367,8 @@ export async function runScheduledTaskHeartbeat(args: {
         runId: run.id,
       });
       if (skipped) {
-        await logRunOutcome({
-          eventName: "scheduled_task.run.skipped",
-          run: skipped,
-          store,
-          task,
-          extras: { "app.task.run.error": skippedReason },
+        logScheduledTaskRunSkipped(task, skipped, {
+          "app.task.run.error": skippedReason,
         });
       }
       continue;

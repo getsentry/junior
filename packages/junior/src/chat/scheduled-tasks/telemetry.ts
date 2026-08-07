@@ -1,4 +1,5 @@
 /** Safe structured telemetry attributes for scheduled-task lifecycle events. */
+import { logInfo } from "@/chat/logging";
 import type { ScheduledRun, ScheduledTask } from "./types";
 
 /** Correlation attributes shared by scheduled-task create and run events. */
@@ -62,4 +63,28 @@ export function scheduledTaskRunAttributes(
       : {}),
     ...extras,
   });
+}
+
+/** Emit the lifecycle event for one skipped scheduled-task run. */
+export function logScheduledTaskRunSkipped(
+  task: Pick<
+    ScheduledTask,
+    | "id"
+    | "conversationAccess"
+    | "credentialMode"
+    | "destination"
+    | "nextRunAtMs"
+    | "schedule"
+    | "status"
+  >,
+  run: Pick<
+    ScheduledRun,
+    "id" | "dispatchId" | "scheduledForMs" | "resultMessageTs" | "status"
+  >,
+  extras: Record<string, unknown> = {},
+): void {
+  logInfo(
+    "scheduled_task.run.skipped",
+    scheduledTaskRunAttributes(task, run, extras),
+  );
 }

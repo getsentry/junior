@@ -219,7 +219,8 @@ failed without an obvious Slack error.
 Events: `scheduled_task.create.completed`, `scheduled_task.run.claimed`,
 `scheduled_task.run.dispatched`, `scheduled_task.run.completed`,
 `scheduled_task.run.failed`, `scheduled_task.run.blocked`,
-`scheduled_task.run.skipped`, `scheduled_tasks.heartbeat.dispatched`,
+`scheduled_task.run.skipped` (heartbeat `shouldSkipRun` and claim-time late/stale
+skips), `scheduled_tasks.heartbeat.dispatched`,
 `scheduled_tasks.heartbeat.failed`, `task.execution.stat_failed`
 
 Spans: create-turn `gen_ai.execute_tool` for `slackScheduleCreateTask`; fire

@@ -28,6 +28,7 @@ import {
   juniorSchedulerRuns,
   juniorSchedulerTasks,
 } from "@/db/schema/scheduled-tasks";
+import { logScheduledTaskRunSkipped } from "./telemetry";
 import {
   scheduledTaskCredentialModeSchema,
   type ScheduledRun,
@@ -880,16 +881,16 @@ class PluginStateSchedulerStore implements SchedulerStore {
       const errorMessage = duplicateOf
         ? `Duplicate stale scheduled task was skipped without dispatch. Canonical task: ${duplicateOf.id}.`
         : "Scheduled occurrence was more than 24 hours late and was skipped without dispatch.";
-      await this.state.set(
-        runKey(buildRunId(current.id, args.scheduledForMs)),
-        buildSkippedScheduledRun({
-          completedAtMs: args.nowMs,
-          errorMessage,
-          scheduledForMs: args.scheduledForMs,
-          task: current,
-        }),
-        SCHEDULED_RUN_TTL_MS,
-      );
+      const skipped = buildSkippedScheduledRun({
+        completedAtMs: args.nowMs,
+        errorMessage,
+        scheduledForMs: args.scheduledForMs,
+        task: current,
+      });
+      await this.state.set(runKey(skipped.id), skipped, SCHEDULED_RUN_TTL_MS);
+      logScheduledTaskRunSkipped(current, skipped, {
+        "app.task.run.error": errorMessage,
+      });
 
       const isRunNow = current.runNowAtMs === args.scheduledForMs;
       let nextRunAtMs: number | undefined;
@@ -1633,15 +1634,16 @@ class SqlSchedulerStore implements SchedulerStore, SchedulerOperationalStore {
     const errorMessage = duplicateOf
       ? `Duplicate stale scheduled task was skipped without dispatch. Canonical task: ${duplicateOf.id}.`
       : "Scheduled occurrence was more than 24 hours late and was skipped without dispatch.";
-    await upsertSqlRun(
-      db,
-      buildSkippedScheduledRun({
-        completedAtMs: args.nowMs,
-        errorMessage,
-        scheduledForMs: args.scheduledForMs,
-        task: current,
-      }),
-    );
+    const skipped = buildSkippedScheduledRun({
+      completedAtMs: args.nowMs,
+      errorMessage,
+      scheduledForMs: args.scheduledForMs,
+      task: current,
+    });
+    await upsertSqlRun(db, skipped);
+    logScheduledTaskRunSkipped(current, skipped, {
+      "app.task.run.error": errorMessage,
+    });
 
     const isRunNow = current.runNowAtMs === args.scheduledForMs;
     let nextRunAtMs: number | undefined;
