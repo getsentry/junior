@@ -6,7 +6,7 @@ import {
   slackEvals,
   threadMessage,
   visibleThreadReplies,
-} from "../../../src/helpers";
+} from "../../src/helpers";
 
 describeEval("Passive Behavior", slackEvals, (it) => {
   const sideConversationThread = {
