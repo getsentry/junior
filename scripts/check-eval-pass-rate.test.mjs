@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import {
   DEFAULT_CHECK_NAME,
   DEFAULT_MIN_PASS_RATE,
@@ -10,6 +13,7 @@ import {
   formatPercent,
   parseEvalPassRateArgs,
   publishEvalScoreCheck,
+  resolveCheckSha,
 } from "./check-eval-pass-rate.mjs";
 
 test("defaults the floor to 80%", () => {
@@ -156,6 +160,38 @@ test("rejects invalid CLI args", () => {
       ]),
     /missing value for --min-pass-rate/,
   );
+});
+
+test("prefers the PR head SHA over the merge commit SHA", () => {
+  const eventPath = path.join(
+    os.tmpdir(),
+    `eval-check-sha-${process.pid}.json`,
+  );
+  fs.writeFileSync(
+    eventPath,
+    JSON.stringify({ pull_request: { head: { sha: "headsha" } } }),
+  );
+
+  try {
+    assert.equal(
+      resolveCheckSha({
+        EVAL_CHECK_SHA: "explicit",
+        GITHUB_SHA: "mergesha",
+        GITHUB_EVENT_PATH: eventPath,
+      }),
+      "explicit",
+    );
+    assert.equal(
+      resolveCheckSha({
+        GITHUB_SHA: "mergesha",
+        GITHUB_EVENT_PATH: eventPath,
+      }),
+      "headsha",
+    );
+    assert.equal(resolveCheckSha({ GITHUB_SHA: "mergesha" }), "mergesha");
+  } finally {
+    fs.unlinkSync(eventPath);
+  }
 });
 
 test("publishes a completed Check Run with the custom title", async () => {

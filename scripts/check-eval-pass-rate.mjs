@@ -304,6 +304,38 @@ function detailsUrlFromEnv(env = process.env) {
   return `${server}/${repository}/actions/runs/${runId}`;
 }
 
+/**
+ * Resolve the commit SHA the Check Run should attach to.
+ *
+ * On `pull_request`, `GITHUB_SHA` is the temporary merge commit. PR status and
+ * required checks are tied to the head commit, so prefer an explicit head SHA
+ * (workflow-provided or from the event payload) before falling back.
+ */
+export function resolveCheckSha(env = process.env) {
+  const explicit =
+    env.EVAL_CHECK_SHA?.trim() ||
+    env.GITHUB_PR_HEAD_SHA?.trim() ||
+    env.GITHUB_HEAD_SHA?.trim();
+  if (explicit) {
+    return explicit;
+  }
+
+  const eventPath = env.GITHUB_EVENT_PATH?.trim();
+  if (eventPath) {
+    try {
+      const event = JSON.parse(fs.readFileSync(eventPath, "utf8"));
+      const headSha = event?.pull_request?.head?.sha;
+      if (typeof headSha === "string" && headSha.trim()) {
+        return headSha.trim();
+      }
+    } catch {
+      // Fall through to GITHUB_SHA when the event payload is unavailable.
+    }
+  }
+
+  return env.GITHUB_SHA?.trim() || undefined;
+}
+
 async function main() {
   try {
     const input = parseEvalPassRateArgs(process.argv.slice(2));
@@ -320,10 +352,10 @@ async function main() {
     if (input.publishCheck) {
       const token = process.env.GITHUB_TOKEN?.trim();
       const repository = process.env.GITHUB_REPOSITORY?.trim();
-      const sha = process.env.GITHUB_SHA?.trim();
+      const sha = resolveCheckSha();
       if (!token || !repository || !sha) {
         throw new Error(
-          "publish-check requires GITHUB_TOKEN, GITHUB_REPOSITORY, and GITHUB_SHA",
+          "publish-check requires GITHUB_TOKEN, GITHUB_REPOSITORY, and a head commit SHA (EVAL_CHECK_SHA or pull_request.head.sha)",
         );
       }
       const published = await publishEvalScoreCheck({
