@@ -174,8 +174,9 @@ const agentTurnSessionSummarySchema = z
     conversationId: z.string().min(1),
     cumulativeDurationMs: nonNegativeNumberSchema,
     cumulativeUsage: agentTurnUsageSchema.optional(),
-    // TODO(#1267): Remove destination/source and their Redis write paths once
-    // SQL-only readers are deployed; existing records do not need to expire.
+    // TODO(#1267): Drop destination/source from the parse schema after old
+    // dual-written records are gone. Writers no longer store them in Redis;
+    // SQL owns routing via resolveTurnSessionRouting.
     destination: destinationSchema.optional(),
     dispatchId: z.string().min(1).optional(),
     dispatchOutcome: z.enum(["blocked", "completed", "failed"]).optional(),
@@ -185,6 +186,7 @@ const agentTurnSessionSummarySchema = z
     loadedSkillNames: z.array(z.string()).optional(),
     modelId: z.string().min(1).optional(),
     reasoningLevel: z.string().min(1).optional(),
+    // TODO(#1267): Stop writing actor once resume rebuilds it without Redis.
     actor: actorSchema.optional(),
     resumeReason: agentTurnResumeReasonSchema.optional(),
     resumedFromSliceId: z.number().int().nonnegative().optional(),
@@ -197,6 +199,18 @@ const agentTurnSessionSummarySchema = z
     updatedAtMs: nonNegativeNumberSchema,
   })
   .strict() satisfies z.ZodType<AgentTurnSessionSummary>;
+
+/**
+ * Nested destination/source stay off Redis turn-session payloads. Callers still
+ * pass them so SQL conversation metadata dual-writes keep working; resume
+ * reads routing from SQL via resolveTurnSessionRouting.
+ */
+function omitNestedRoutingFields<
+  T extends { destination?: Destination; source?: Source },
+>(value: T): Omit<T, "destination" | "source"> {
+  const { destination: _destination, source: _source, ...rest } = value;
+  return rest;
+}
 
 const storedAgentTurnSessionRecordSchema = agentTurnSessionSummarySchema
   .extend({
@@ -260,9 +274,11 @@ async function appendAgentTurnSessionSummary(
 /** Store run summary metadata in the configured conversation store. */
 async function recordConversationActivityMetadata(args: {
   conversationStore?: ConversationStore;
+  destination?: Destination;
   /** Confirmed destination visibility; omit when unavailable. */
   destinationVisibility?: ConversationPrivacy;
   nowMs: number;
+  sessionSource?: Source;
   summary: AgentTurnSessionSummary;
 }): Promise<void> {
   const conversationStore = args.conversationStore ?? getConversationStore();
@@ -270,7 +286,9 @@ async function recordConversationActivityMetadata(args: {
     conversationId: args.summary.conversationId,
   });
   const isChild = Boolean(conversation?.lineage);
-  const destination = isChild ? undefined : args.summary.destination;
+  // Nested destination/source stay off Redis turn-session payloads; callers pass
+  // live routing here for SQL dual-write. Child conversations stay destinationless.
+  const destination = isChild ? undefined : args.destination;
   const source = isChild
     ? "internal"
     : destination?.platform === "local"
@@ -284,7 +302,7 @@ async function recordConversationActivityMetadata(args: {
     nowMs: args.nowMs,
     actor: sessionLogActor(args.summary.actor),
     source,
-    ...(args.summary.source ? { sessionSource: args.summary.source } : {}),
+    ...(args.sessionSource ? { sessionSource: args.sessionSource } : {}),
     visibility: isChild ? undefined : args.destinationVisibility,
   });
   await conversationStore.recordExecution({
@@ -507,11 +525,9 @@ function buildStoredRecord(args: {
   conversationId: string;
   cumulativeDurationMs: number;
   cumulativeUsage?: AgentTurnUsage;
-  destination?: Destination;
   dispatchId?: string;
   dispatchOutcome?: AgentDispatchOutcome;
   resultMessageId?: string;
-  source?: Source;
   committedSeq: number;
   historyVersion?: number;
   lastProgressAtMs?: number;
@@ -556,11 +572,9 @@ function buildStoredRecord(args: {
       : {}),
     cumulativeDurationMs: args.cumulativeDurationMs,
     ...(args.cumulativeUsage ? { cumulativeUsage: args.cumulativeUsage } : {}),
-    ...(args.destination ? { destination: args.destination } : {}),
     ...(args.dispatchId ? { dispatchId: args.dispatchId } : {}),
     ...(args.dispatchOutcome ? { dispatchOutcome: args.dispatchOutcome } : {}),
     ...(args.resultMessageId ? { resultMessageId: args.resultMessageId } : {}),
-    ...(args.source ? { source: args.source } : {}),
     ...(args.actor ? { actor: args.actor } : {}),
     ...(args.actors ? { actors: args.actors } : {}),
     ...(args.loadedSkillNames
@@ -580,26 +594,32 @@ function buildStoredRecord(args: {
 
 async function setStoredRecord(args: {
   conversationStore?: ConversationStore;
+  destination?: Destination;
   /** Confirmed destination visibility; omit when unavailable. */
   destinationVisibility?: ConversationPrivacy;
   piMessages: PiMessage[];
   piMessageProvenance: ConversationMessageProvenance[];
   record: StoredAgentTurnSessionRecord;
+  sessionSource?: Source;
   ttlMs: number;
   turnStartMessageIndex?: number;
 }): Promise<AgentTurnSessionRecord> {
   const stateAdapter = getStateAdapter();
   await stateAdapter.connect();
 
+  // Never dual-write nested destination/source into Redis; SQL owns routing.
+  const redisRecord = omitNestedRoutingFields(args.record);
   await recordConversationActivityMetadata({
     conversationStore: args.conversationStore,
+    destination: args.destination,
     destinationVisibility: args.destinationVisibility,
     nowMs: Date.now(),
-    summary: args.record,
+    sessionSource: args.sessionSource,
+    summary: redisRecord,
   });
   await stateAdapter.set(
-    agentTurnSessionKey(args.record.conversationId, args.record.sessionId),
-    args.record,
+    agentTurnSessionKey(redisRecord.conversationId, redisRecord.sessionId),
+    redisRecord,
     args.ttlMs,
   );
   const {
@@ -610,10 +630,10 @@ async function setStoredRecord(args: {
     turnStartSeq: _turnStartSeq,
     runtimeContext: _runtimeContext,
     ...summary
-  } = args.record;
+  } = redisRecord;
   await appendAgentTurnSessionSummary(summary, args.ttlMs);
   return materializeAgentTurnSessionRecord(
-    args.record,
+    redisRecord,
     {
       messages: [...args.piMessages],
       provenance: [...args.piMessageProvenance],
@@ -643,6 +663,10 @@ async function updateAgentTurnSessionState(args: {
     piMessages: args.existing.piMessages,
     piMessageProvenance: args.existing.piMessageProvenance,
     ttlMs: AGENT_TURN_SESSION_TTL_MS,
+    ...(args.existing.destination
+      ? { destination: args.existing.destination }
+      : {}),
+    ...(args.existing.source ? { sessionSource: args.existing.source } : {}),
     ...(args.existing.turnStartMessageIndex !== undefined
       ? { turnStartMessageIndex: args.existing.turnStartMessageIndex }
       : {}),
@@ -669,9 +693,6 @@ async function updateAgentTurnSessionState(args: {
       ...(args.existing.cumulativeUsage
         ? { cumulativeUsage: args.existing.cumulativeUsage }
         : {}),
-      ...(args.existing.destination
-        ? { destination: args.existing.destination }
-        : {}),
       ...(args.existing.dispatchId
         ? { dispatchId: args.existing.dispatchId }
         : {}),
@@ -681,7 +702,6 @@ async function updateAgentTurnSessionState(args: {
       ...(args.existing.resultMessageId
         ? { resultMessageId: args.existing.resultMessageId }
         : {}),
-      ...(args.existing.source ? { source: args.existing.source } : {}),
       ...(args.existing.loadedSkillNames
         ? { loadedSkillNames: args.existing.loadedSkillNames }
         : {}),
@@ -810,9 +830,13 @@ export async function upsertAgentTurnSessionRecord(args: {
       ? undefined
       : commit.messageSeqs.filter((seq) => seq <= turnStartSeq).length);
 
+  const destination = args.destination ?? existingRecord?.destination;
+  const sessionSource = args.source ?? existingRecord?.source;
   return await setStoredRecord({
     conversationStore: args.conversationStore,
+    ...(destination ? { destination } : {}),
     destinationVisibility: args.destinationVisibility,
+    ...(sessionSource ? { sessionSource } : {}),
     piMessages: commit.messages,
     piMessageProvenance: commit.provenance,
     ttlMs,
@@ -843,9 +867,6 @@ export async function upsertAgentTurnSessionRecord(args: {
       ...(args.cumulativeUsage
         ? { cumulativeUsage: args.cumulativeUsage }
         : {}),
-      ...((args.destination ?? existingRecord?.destination)
-        ? { destination: args.destination ?? existingRecord?.destination }
-        : {}),
       ...((args.dispatchId ?? existingRecord?.dispatchId)
         ? { dispatchId: args.dispatchId ?? existingRecord?.dispatchId }
         : {}),
@@ -860,9 +881,6 @@ export async function upsertAgentTurnSessionRecord(args: {
             resultMessageId:
               args.resultMessageId ?? existingRecord?.resultMessageId,
           }
-        : {}),
-      ...((args.source ?? existingRecord?.source)
-        ? { source: args.source ?? existingRecord?.source }
         : {}),
       ...(args.loadedSkillNames
         ? { loadedSkillNames: args.loadedSkillNames }
@@ -949,6 +967,8 @@ export async function recordAgentTurnSessionSummary(args: {
   }
   const nowMs = Date.now();
   const ttlMs = Math.max(1, args.ttlMs ?? AGENT_TURN_SESSION_TTL_MS);
+  const destination = args.destination ?? existing?.destination;
+  const sessionSource = args.source ?? existing?.source;
   const summary: AgentTurnSessionSummary = {
     version: existing?.version ?? 0,
     ...((args.channelName ?? existing?.channelName)
@@ -966,9 +986,6 @@ export async function recordAgentTurnSessionSummary(args: {
     ...((args.cumulativeUsage ?? existing?.cumulativeUsage)
       ? { cumulativeUsage: args.cumulativeUsage ?? existing?.cumulativeUsage }
       : {}),
-    ...((args.destination ?? existing?.destination)
-      ? { destination: args.destination ?? existing?.destination }
-      : {}),
     ...((args.dispatchId ?? existingDispatchId)
       ? { dispatchId: args.dispatchId ?? existingDispatchId }
       : {}),
@@ -977,9 +994,6 @@ export async function recordAgentTurnSessionSummary(args: {
       : {}),
     ...((args.resultMessageId ?? existingResultMessageId)
       ? { resultMessageId: args.resultMessageId ?? existingResultMessageId }
-      : {}),
-    ...((args.source ?? existing?.source)
-      ? { source: args.source ?? existing?.source }
       : {}),
     ...((args.actor ?? existing?.actor)
       ? { actor: args.actor ?? existing?.actor }
@@ -1005,8 +1019,10 @@ export async function recordAgentTurnSessionSummary(args: {
   };
   await recordConversationActivityMetadata({
     conversationStore: args.conversationStore,
+    ...(destination ? { destination } : {}),
     destinationVisibility: args.destinationVisibility,
     nowMs,
+    ...(sessionSource ? { sessionSource } : {}),
     summary,
   });
   await appendAgentTurnSessionSummary(summary, ttlMs);

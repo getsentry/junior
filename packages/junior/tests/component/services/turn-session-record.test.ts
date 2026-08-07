@@ -232,6 +232,124 @@ describe("persistAuthPauseSessionRecord", () => {
     }
   });
 
+  it("keeps nested destination/source out of redis while dual-writing sql", async () => {
+    const { getStateAdapter } = await import("@/chat/state/adapter");
+    const {
+      getAgentTurnSessionRecord,
+      listBoundedAgentTurnSessionSummariesForConversation,
+      upsertAgentTurnSessionRecord,
+    } = await import("@/chat/state/turn-session");
+    const { agentTurnSessionKey } = await import("@/chat/state/turn-session-keys");
+    const conversationId = "slack:C123:no-nested-routing";
+    const sessionId = "turn-no-nested-routing";
+    const conversationStore: ConversationStore = {
+      get: vi.fn(),
+      getConversationIdByProviderConversation: vi.fn(async () => undefined),
+      bindProviderConversation: vi.fn(),
+      getDestinationVisibility: vi.fn(async () => undefined),
+      recordActivity: vi.fn(async () => undefined),
+      recordExecution: vi.fn(async () => undefined),
+      listByActivity: vi.fn(),
+    };
+
+    await upsertAgentTurnSessionRecord({
+      modelId: "test/model",
+      conversationId,
+      conversationStore,
+      destination: SLACK_DESTINATION,
+      piMessages: [userMessage("keep routing in sql")],
+      sessionId,
+      sliceId: 1,
+      source: SLACK_SOURCE,
+      state: "running",
+      surface: "slack",
+    });
+
+    const stateAdapter = getStateAdapter();
+    await stateAdapter.connect();
+    const stored = await stateAdapter.get(
+      agentTurnSessionKey(conversationId, sessionId),
+    );
+    expect(stored).toEqual(
+      expect.objectContaining({
+        conversationId,
+        sessionId,
+        state: "running",
+      }),
+    );
+    expect(stored).not.toHaveProperty("destination");
+    expect(stored).not.toHaveProperty("source");
+
+    const summaries =
+      await listBoundedAgentTurnSessionSummariesForConversation(conversationId);
+    expect(summaries).toHaveLength(1);
+    expect(summaries[0]).not.toHaveProperty("destination");
+    expect(summaries[0]).not.toHaveProperty("source");
+
+    // Materialized reads no longer surface nested routing from redis.
+    const record = await getAgentTurnSessionRecord(conversationId, sessionId);
+    expect(record).toMatchObject({
+      conversationId,
+      sessionId,
+      state: "running",
+    });
+    expect(record).not.toHaveProperty("destination");
+    expect(record).not.toHaveProperty("source");
+
+    expect(conversationStore.recordActivity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId,
+        destination: SLACK_DESTINATION,
+        sessionSource: SLACK_SOURCE,
+        source: "slack",
+      }),
+    );
+    expect(conversationStore.recordExecution).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId,
+        destination: SLACK_DESTINATION,
+        source: "slack",
+      }),
+    );
+  });
+
+  it("still materializes nested destination/source from legacy redis records", async () => {
+    const { getStateAdapter } = await import("@/chat/state/adapter");
+    const { getAgentTurnSessionRecord } = await import("@/chat/state/turn-session");
+    const { agentTurnSessionKey } = await import("@/chat/state/turn-session-keys");
+    const conversationId = "slack:C123:legacy-nested-routing";
+    const sessionId = "turn-legacy-nested-routing";
+    const stateAdapter = getStateAdapter();
+    await stateAdapter.connect();
+    await stateAdapter.set(
+      agentTurnSessionKey(conversationId, sessionId),
+      {
+        version: 1,
+        conversationId,
+        sessionId,
+        sliceId: 1,
+        state: "awaiting_resume",
+        startedAtMs: 1_000,
+        lastProgressAtMs: 1_000,
+        updatedAtMs: 1_000,
+        committedSeq: -1,
+        cumulativeDurationMs: 0,
+        destination: SLACK_DESTINATION,
+        source: SLACK_SOURCE,
+        resumeReason: "timeout",
+      },
+      60_000,
+    );
+
+    await expect(
+      getAgentTurnSessionRecord(conversationId, sessionId),
+    ).resolves.toMatchObject({
+      destination: SLACK_DESTINATION,
+      source: SLACK_SOURCE,
+      state: "awaiting_resume",
+    });
+  });
+
   it("fails before storing a turn-session record when SQL metadata fails", async () => {
     const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
