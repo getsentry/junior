@@ -55,11 +55,6 @@ jobs:
           integration_requested=false
           guardian_requested=false
 
-          has_label() {
-            local name="$1"
-            jq -e --arg name "$name" '.pull_request.labels[]?.name | select(. == $name)' "$GITHUB_EVENT_PATH" >/dev/null
-          }
-
           if [[ "$action" == "labeled" ]]; then
             case "$label_name" in
               trigger-evals)
@@ -75,19 +70,6 @@ jobs:
                 guardian_requested=true
                 ;;
             esac
-          else
-            if has_label "trigger-evals"; then
-              all_requested=true
-            fi
-            if has_label "trigger-evals-behavioral"; then
-              behavioral_requested=true
-            fi
-            if has_label "trigger-evals-integration"; then
-              integration_requested=true
-            fi
-            if has_label "trigger-evals-guardian"; then
-              guardian_requested=true
-            fi
           fi
 
           if [[ "$all_requested" == "true" ]]; then
