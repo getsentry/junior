@@ -200,7 +200,6 @@ jobs:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     permissions:
       contents: read
-      checks: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -232,10 +231,10 @@ jobs:
         uses: getsentry/vitest-evals@51b8efebcbe9532efc332bf1ff2abbae582bd093 # v0.15.0
         with:
           results: eval-results/*.json
-          publish-check: true
-          check-name: evals
-          # Case-level failures are expected under a score-based gate. The
-          # pass-rate step below owns workflow failure for quality misses.
+          # Keep the Check Run off for now: v0.15.0 concludes it from any case
+          # failure, which fights the aggregate pass-rate gate below. Job
+          # summary + annotations still publish; the report job owns green/red.
+          publish-check: false
           fail-on-failures: false
 
       - name: Gate on eval pass rate

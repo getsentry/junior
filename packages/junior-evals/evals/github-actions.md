@@ -89,8 +89,10 @@ After adding secrets:
 Shard jobs keep running after individual case failures so every shard can upload its Vitest JSON results. The final `evals / report` job:
 
 1. Downloads all shard result files
-2. Publishes one combined `vitest-evals` summary/check with pass counts and average score
+2. Publishes one combined `vitest-evals` job summary with pass counts and average score
 3. Fails the workflow only when the aggregate pass rate is below `EVAL_MIN_PASS_RATE` (currently `0.8`)
+
+The published GitHub Check Run stays disabled in this slice because `vitest-evals` v0.15.0 still concludes it from any case failure. The `evals / report` job is the green/red signal until the reporter can honor an aggregate floor.
 
 Setup crashes and missing result files still fail hard. Case-level quality misses are visible in the report without automatically failing CI unless the suite drops below the floor.
 
