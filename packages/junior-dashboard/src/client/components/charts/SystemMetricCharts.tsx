@@ -130,7 +130,7 @@ function MetricChart(props: {
             <div className="font-display text-xl font-light text-dashboard-text">
               {chart.format(total)}
             </div>
-            <div className="font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted">
+            <div className="font-mono text-xs leading-relaxed text-dashboard-text-muted">
               period total
             </div>
           </div>
