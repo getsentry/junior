@@ -41,6 +41,7 @@ function conversationStore(
   overrides: Partial<ConversationStore> = {},
 ): ConversationStore {
   return {
+    createChild: vi.fn(),
     get: vi.fn(async () => undefined),
     getConversationIdByProviderConversation: vi.fn(async () => undefined),
     bindProviderConversation: vi.fn(),
