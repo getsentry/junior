@@ -320,25 +320,26 @@ async function withPluginTaskLock<T>(
   }
 }
 
-/** Load the bounded completed-run projection exposed to plugin tasks. */
-
-/** Rebuild the singular execution actor after Redis stopped storing it. */
+/**
+ * Rebuild the singular execution actor after Redis stopped storing it.
+ *
+ * Prefer the first committed instruction actor (the usual credential-bound
+ * run actor). Dispatch-only system runs have no instruction actors, so fall
+ * back to the dispatch record when present.
+ */
 async function resolvePluginRunActor(args: {
   actors: Actor[];
   dispatchId?: string;
 }): Promise<Actor | undefined> {
-  // Prefer the first instruction actor — usually the credential-bound run actor.
-  const first = args.actors[0];
-  if (first) {
-    return first;
+  if (args.actors[0]) {
+    return args.actors[0];
   }
-  if (!args.dispatchId) {
-    return undefined;
-  }
-  const dispatch = await getDispatchRecord(args.dispatchId);
-  return dispatch?.actor;
+  return args.dispatchId
+    ? (await getDispatchRecord(args.dispatchId))?.actor
+    : undefined;
 }
 
+/** Load the bounded completed-run projection exposed to plugin tasks. */
 async function loadPluginRun(
   params: PluginTaskParams,
 ): Promise<PluginRunContext> {
