@@ -302,8 +302,8 @@ function TaskListHeader() {
       <span>Task</span>
       <span>Destination</span>
       <span>Trigger</span>
-      <span />
-      <span />
+      <span aria-hidden="true" className="size-8" />
+      <span aria-hidden="true" className="size-9" />
     </div>
   );
 }

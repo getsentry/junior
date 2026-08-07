@@ -298,13 +298,13 @@ function MemoryListHeader() {
   return (
     <div
       aria-hidden="true"
-      className="hidden grid-cols-[minmax(0,1fr)_7rem_7rem_9rem_auto] items-center gap-3 border-b border-white/[0.07] px-4 py-2.5 font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted sm:grid"
+      className="hidden grid-cols-[minmax(0,1fr)_7rem_7rem_9rem_auto] items-center gap-3 border-b border-white/[0.07] px-4 py-2.5 text-left font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted sm:grid"
     >
       <span>Memory</span>
       <span>Visibility</span>
       <span>Type</span>
       <span>Learned</span>
-      <span />
+      <span aria-hidden="true" className="size-4" />
     </div>
   );
 }
