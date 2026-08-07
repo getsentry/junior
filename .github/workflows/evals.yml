@@ -231,33 +231,9 @@ jobs:
           ls -la eval-results
 
       - name: Publish combined eval report
-        id: report
-        uses: getsentry/vitest-evals@51b8efebcbe9532efc332bf1ff2abbae582bd093 # v0.15.0
+        uses: getsentry/vitest-evals@542bab9411e1638c14f177c1884d5334089dcdd4 # v0.16.0
         with:
           results: eval-results/*.json
-          # Do not use vitest-evals' Check Run: v0.15.0 concludes it from any
-          # case failure. We publish our own score-floor Check Run below.
-          publish-check: false
-          fail-on-failures: false
-
-      - name: Gate on eval pass rate
-        env:
-          EVALS_TOTAL: ${{ steps.report.outputs.evals-total }}
-          EVALS_FAILED: ${{ steps.report.outputs.evals-failed }}
-          SCORE_AVERAGE: ${{ steps.report.outputs.score-average }}
-          GITHUB_TOKEN: ${{ github.token }}
-          # pull_request GITHUB_SHA is the merge commit; PR status needs head.
-          EVAL_CHECK_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: |
-          set -euo pipefail
-          # soft-fail keeps this workflow job green so the PR checks list is not
-          # dominated by GitHub's canned job failure text. The published Check
-          # Run owns green/red and the custom secondary status line.
-          node scripts/check-eval-pass-rate.mjs \
-            --total "$EVALS_TOTAL" \
-            --failed "$EVALS_FAILED" \
-            --min-pass-rate "$EVAL_MIN_PASS_RATE" \
-            --score-average "${SCORE_AVERAGE:-n/a}" \
-            --publish-check true \
-            --soft-fail true \
-            --check-name "eval score"
+          publish-check: true
+          check-name: eval score
+          min-pass-rate: ${{ env.EVAL_MIN_PASS_RATE }}

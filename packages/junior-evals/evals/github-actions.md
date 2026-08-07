@@ -90,10 +90,10 @@ Shard jobs keep running after individual case failures so every shard can upload
 
 1. Downloads all shard result files
 2. Publishes one combined `vitest-evals` job summary with pass counts and average score
-3. Posts an `eval score` Check Run whose PR checks secondary line is the pass rate / floor text
-4. Leaves the workflow job green for quality misses so GitHub does not also show a canned "Failing after Xs" job row
+3. Posts an `eval score` Check Run whose title shows the pass rate and required floor
+4. Fails the report step and Check Run when the aggregate pass rate is below `EVAL_MIN_PASS_RATE` (currently `0.8`)
 
-The Check Run fails when the aggregate pass rate is below `EVAL_MIN_PASS_RATE` (currently `0.8`). Setup crashes and missing result files still fail the report job hard. The upstream `vitest-evals` Check Run stays disabled because v0.15.0 still concludes it from any case failure.
+When the aggregate gate passes, individual case misses are warnings rather than failures. Setup crashes and missing result files still fail the report job hard.
 
 If `sandbox_ready` is false, either `VERCEL_OIDC_TOKEN` is missing or the fallback token set is incomplete.
 
