@@ -45,15 +45,14 @@ Not in scope:
 
 - Integration system cases: `evals/integration/`
   - primary runtime/system correctness that must never regress (hard pass/fail)
-  - conversation delivery, mention/channel routing limits, lifecycle, OAuth plumbing, and subscription stop/silence contracts
+  - conversation delivery, mention/channel routing limits, lifecycle, OAuth plumbing, subscription stop-watch, event-task contracts, and scheduler create/credential/management contracts
 - Behavioral conversation cases: `evals/conversation/`
   - participation, actor attribution, continuity, storage, output shape, and model-variable routing judgment
 - Behavioral agent cases: `evals/agent/`
-  - skills, providers, research, files, subscription summary quality, and skill routing
+  - skills, providers, research, files, subscription intent/summary quality, and skill routing
 - Behavioral feature cases:
-  - `evals/event-tasks/`
   - `evals/memory/`
-  - `evals/scheduler/`
+  - `evals/scheduler/` (due-occurrence delivery quality)
   - `evals/github/`
   - `evals/sentry/`
 - Isolated Guardian decisions: `evals/guardian/`
@@ -128,7 +127,7 @@ Pass eval file paths, `-t` filters, and shard options directly after the suite s
   - `trigger-evals-behavioral`, `trigger-evals-integration`, and `trigger-evals-guardian` start one suite
 - Behavioral and integration evals require both gateway and sandbox secrets. Guardian only needs gateway credentials.
 - Adding a trigger label fires immediately; unrelated labels do not.
-- Behavioral path triggers cover domain folders under `evals/{agent,conversation,event-tasks,github,memory,scheduler,sentry}/`, shared harness files, and `packages/junior/src/**`.
+- Behavioral path triggers cover domain folders under `evals/{agent,conversation,github,memory,scheduler,sentry}/`, shared harness files, and `packages/junior/src/**`.
 - Integration path triggers cover `evals/integration/**`, the integration config, shared harness files, and `packages/junior/src/**`.
 - Guardian path triggers cover `evals/guardian/**`, the Guardian harness/config, and Guardian policy/reviewer inputs under `packages/junior/src/chat/services/guardian-action-*.ts` and `tool-support/action-review*`.
 - Behavioral shards still fail individual cases under the per-case judge threshold (`0.75`), but the workflow no longer fails the shard job on those case failures alone. Each behavioral shard and Guardian job publishes its own `vitest-evals` job summary (pass rate, scores, quality misses).

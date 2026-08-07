@@ -90,7 +90,6 @@ jobs:
             behavioral_file_changed:
               - 'packages/junior-evals/evals/agent/**'
               - 'packages/junior-evals/evals/conversation/**'
-              - 'packages/junior-evals/evals/event-tasks/**'
               - 'packages/junior-evals/evals/github/**'
               - 'packages/junior-evals/evals/memory/**'
               - 'packages/junior-evals/evals/scheduler/**'

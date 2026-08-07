@@ -1,6 +1,6 @@
 import { assistantMessages, describeEval, toolCalls } from "vitest-evals";
 import { expect } from "vitest";
-import { eventTaskMatched, rubric, slackEvals } from "../../src/helpers";
+import { eventTaskMatched, rubric, slackEvals } from "../../../src/helpers";
 
 describeEval("Event Task Delivery", slackEvals, (it) => {
   it("when a resource event matches, execute the task with provider text as data", async ({

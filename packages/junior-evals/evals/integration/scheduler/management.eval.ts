@@ -1,11 +1,11 @@
 import { describeEval } from "vitest-evals";
 import { expect } from "vitest";
-import { mention, rubric, slackEvals, threadMessage } from "../../src/helpers";
+import { mention, rubric, slackEvals, threadMessage } from "../../../src/helpers";
 import {
   scheduledTaskCreateCalls,
   scheduledTaskUpdateCalls,
   seedScheduledTask,
-} from "./helpers";
+} from "../../scheduler/helpers";
 
 describeEval("Schedule Management", slackEvals, (it) => {
   it("when asked to reschedule an existing task, replace its cadence", async ({

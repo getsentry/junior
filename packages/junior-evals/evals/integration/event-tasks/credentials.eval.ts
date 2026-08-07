@@ -1,6 +1,6 @@
 import { describeEval, toolCalls } from "vitest-evals";
 import { expect } from "vitest";
-import { mention, rubric, slackEvals } from "../../src/helpers";
+import { mention, rubric, slackEvals } from "../../../src/helpers";
 import {
   eventTaskCreateCalls,
   eventTaskManagementCalls,
