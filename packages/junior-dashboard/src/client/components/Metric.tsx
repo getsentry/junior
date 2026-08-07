@@ -55,7 +55,7 @@ function TooltipLines(props: { lines: MetricTooltipLine[] }) {
             <>
               {line.value}
               {line.live ? (
-                <span className="ml-2 inline-flex items-center gap-1.5 font-sans text-[0.7rem] font-normal tracking-wide text-dashboard-text-muted">
+                <span className="ml-2 inline-flex items-center gap-1.5 font-sans text-xs font-normal tracking-wide text-dashboard-text-muted">
                   <span aria-hidden="true">·</span>
                   <ShimmerText active>in progress</ShimmerText>
                 </span>
