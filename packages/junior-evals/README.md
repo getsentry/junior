@@ -111,8 +111,8 @@ Pass eval file paths, `-t` filters, and shard options directly after the `evals`
   - end-to-end Slack/agent evals (`evals / suite *` + `evals / report`)
   - isolated Guardian snapshots (`evals / guardian`)
 - End-to-end evals run when e2e-related files changed or the PR has the `trigger-evals` label. They still require both gateway and sandbox secrets.
-- Guardian evals run when Guardian-related files changed, the PR has `trigger-guardian-evals`, or the PR has `trigger-evals`. They only need gateway credentials.
-- Adding `trigger-evals` or `trigger-guardian-evals` fires immediately; unrelated labels do not.
+- Guardian evals run when Guardian-related files changed, the PR has `trigger-evals-guardian`, or the PR has `trigger-evals`. They only need gateway credentials.
+- Adding `trigger-evals` or `trigger-evals-guardian` fires immediately; unrelated labels do not.
 - End-to-end path triggers cover the existing Slack/agent harness and feature suites under `evals/{agent,conversation,event-tasks,github,memory,scheduler,sentry}/`, plus shared e2e harness files and `packages/junior/src/**`.
 - Guardian path triggers cover `evals/guardian/**`, the Guardian harness/config, and Guardian policy/reviewer inputs under `packages/junior/src/chat/services/guardian-action-*.ts` and `tool-support/action-review*`.
 - CI e2e shards still fail individual cases under the per-case judge threshold (`0.75`), but the workflow no longer fails the job on those case failures alone.

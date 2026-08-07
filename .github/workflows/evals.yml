@@ -53,7 +53,7 @@ jobs:
             if [[ "$label_name" == "trigger-evals" ]]; then
               requested=true
             fi
-            if [[ "$label_name" == "trigger-guardian-evals" || "$label_name" == "trigger-evals" ]]; then
+            if [[ "$label_name" == "trigger-evals-guardian" || "$label_name" == "trigger-evals" ]]; then
               guardian_requested=true
             fi
           else
@@ -61,7 +61,7 @@ jobs:
               requested=true
               guardian_requested=true
             fi
-            if jq -e '.pull_request.labels[]?.name | select(. == "trigger-guardian-evals")' "$GITHUB_EVENT_PATH" >/dev/null; then
+            if jq -e '.pull_request.labels[]?.name | select(. == "trigger-evals-guardian")' "$GITHUB_EVENT_PATH" >/dev/null; then
               guardian_requested=true
             fi
           fi

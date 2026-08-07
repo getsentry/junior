@@ -68,9 +68,9 @@ Only needed for the token-based fallback above. Create an AI Gateway key in the 
 The `Evals` workflow can start two independent suites on pull requests:
 
 - end-to-end Slack/agent evals when e2e-related files changed or the PR has `trigger-evals`
-- isolated Guardian snapshots when Guardian-related files changed, the PR has `trigger-guardian-evals`, or the PR has `trigger-evals`
+- isolated Guardian snapshots when Guardian-related files changed, the PR has `trigger-evals-guardian`, or the PR has `trigger-evals`
 
-Adding `trigger-evals` or `trigger-guardian-evals` fires immediately. If the label is already on the PR, future `synchronize` events still run the matching suite(s).
+Adding `trigger-evals` or `trigger-evals-guardian` fires immediately. If the label is already on the PR, future `synchronize` events still run the matching suite(s).
 
 Guardian evals only need gateway credentials. End-to-end evals still need gateway plus sandbox access.
 
@@ -78,7 +78,7 @@ Guardian evals only need gateway credentials. End-to-end evals still need gatewa
 
 After adding secrets:
 
-1. Push a commit to the PR, or add the `trigger-evals` / `trigger-guardian-evals` label.
+1. Push a commit to the PR, or add the `trigger-evals` / `trigger-evals-guardian` label.
 2. Open the `Evals` workflow summary.
 3. Confirm the gate reports:
    - `gateway_ready: true`
