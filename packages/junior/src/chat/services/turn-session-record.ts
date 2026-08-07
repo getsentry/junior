@@ -32,6 +32,80 @@ export interface TurnSessionState {
   existingSessionRecord?: AgentTurnSessionRecord;
 }
 
+type UpsertTurnSessionRecord = Parameters<typeof upsertAgentTurnSessionRecord>[0];
+
+/** Keep only keys whose value is defined. */
+function definedProps<T extends Record<string, unknown>>(
+  values: T,
+): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(values).filter(([, value]) => value !== undefined),
+  ) as Partial<T>;
+}
+
+/**
+ * Shared optional fields carried across turn-session writes.
+ * Callers resolve inheritance for skill/reasoning fields before calling;
+ * routing/identity fields fall back to the latest stored record here.
+ */
+interface TurnSessionWriteContext {
+  actor?: Actor;
+  channelName?: string;
+  conversationId: string;
+  destination?: Destination;
+  destinationVisibility?: ConversationPrivacy;
+  dispatchId?: string;
+  loadedSkillNames?: string[];
+  modelId: string;
+  reasoningLevel?: string;
+  sessionId: string;
+  source?: Source;
+  surface?: AgentTurnSurface;
+  turnStartMessageIndex?: number;
+}
+
+function sessionWriteContext(
+  args: TurnSessionWriteContext,
+  latest?: AgentTurnSessionRecord,
+): Pick<
+  UpsertTurnSessionRecord,
+  | "actor"
+  | "channelName"
+  | "conversationId"
+  | "destination"
+  | "destinationVisibility"
+  | "dispatchId"
+  | "loadedSkillNames"
+  | "modelId"
+  | "reasoningLevel"
+  | "sessionId"
+  | "source"
+  | "surface"
+  | "traceId"
+  | "turnStartMessageIndex"
+> {
+  return {
+    conversationId: args.conversationId,
+    modelId: args.modelId,
+    sessionId: args.sessionId,
+    ...definedProps({
+      actor: args.actor ?? latest?.actor,
+      channelName: args.channelName ?? latest?.channelName,
+      destination: args.destination,
+      destinationVisibility: args.destinationVisibility,
+      dispatchId: args.dispatchId ?? latest?.dispatchId,
+      // Caller-resolved: some paths inherit these, others stay caller-only.
+      loadedSkillNames: args.loadedSkillNames,
+      reasoningLevel: args.reasoningLevel,
+      source: args.source,
+      surface: args.surface ?? latest?.surface,
+      traceId: getActiveTraceId() ?? latest?.traceId,
+      turnStartMessageIndex:
+        args.turnStartMessageIndex ?? latest?.turnStartMessageIndex,
+    }),
+  };
+}
+
 function logSessionRecordError(
   error: unknown,
   eventName: string,
@@ -127,49 +201,35 @@ export async function persistRunningSessionRecord(args: {
       args.conversationId,
       args.sessionId,
     );
+    // Running checkpoints keep caller-owned skill/reasoning values only.
     await upsertAgentTurnSessionRecord({
-      ...((args.channelName ?? latestSessionRecord?.channelName)
-        ? { channelName: args.channelName ?? latestSessionRecord?.channelName }
-        : {}),
-      conversationId: args.conversationId,
+      ...sessionWriteContext(
+        {
+          actor: args.actor,
+          channelName: args.channelName,
+          conversationId: args.conversationId,
+          destination: args.destination,
+          destinationVisibility: args.destinationVisibility,
+          dispatchId: args.dispatchId,
+          loadedSkillNames: args.loadedSkillNames,
+          modelId: args.modelId,
+          reasoningLevel: args.reasoningLevel,
+          sessionId: args.sessionId,
+          source: args.source,
+          surface: args.surface,
+          turnStartMessageIndex: args.turnStartMessageIndex,
+        },
+        latestSessionRecord,
+      ),
+      ...definedProps({
+        trailingMessageProvenance: args.trailingMessageProvenance,
+        turnContexts: args.turnContexts,
+      }),
       cumulativeDurationMs: latestSessionRecord?.cumulativeDurationMs,
       cumulativeUsage: latestSessionRecord?.cumulativeUsage,
-      ...(args.destination ? { destination: args.destination } : {}),
-      destinationVisibility: args.destinationVisibility,
-      ...((args.dispatchId ?? latestSessionRecord?.dispatchId)
-        ? { dispatchId: args.dispatchId ?? latestSessionRecord?.dispatchId }
-        : {}),
-      ...(args.source ? { source: args.source } : {}),
-      sessionId: args.sessionId,
+      piMessages: args.messages,
       sliceId: args.sliceId,
       state: "running",
-      piMessages: args.messages,
-      ...(args.trailingMessageProvenance
-        ? { trailingMessageProvenance: args.trailingMessageProvenance }
-        : {}),
-      ...((args.surface ?? latestSessionRecord?.surface)
-        ? { surface: args.surface ?? latestSessionRecord?.surface }
-        : {}),
-      ...(args.loadedSkillNames
-        ? { loadedSkillNames: args.loadedSkillNames }
-        : {}),
-      modelId: args.modelId,
-      ...(args.reasoningLevel ? { reasoningLevel: args.reasoningLevel } : {}),
-      ...(args.turnContexts ? { turnContexts: args.turnContexts } : {}),
-      ...((args.actor ?? latestSessionRecord?.actor)
-        ? { actor: args.actor ?? latestSessionRecord?.actor }
-        : {}),
-      ...((getActiveTraceId() ?? latestSessionRecord?.traceId)
-        ? { traceId: getActiveTraceId() ?? latestSessionRecord?.traceId }
-        : {}),
-      ...((args.turnStartMessageIndex ??
-        latestSessionRecord?.turnStartMessageIndex) !== undefined
-        ? {
-            turnStartMessageIndex:
-              args.turnStartMessageIndex ??
-              latestSessionRecord?.turnStartMessageIndex,
-          }
-        : {}),
     });
     return true;
   } catch (recordError) {
@@ -234,72 +294,45 @@ export async function persistCompletedSessionRecord(args: {
       "Completed session record requires a slice id from the caller or the latest stored record",
     );
   }
-  const modelId = args.modelId;
-  const reasoningLevel =
-    args.reasoningLevel ?? latestSessionRecord?.reasoningLevel;
-  const target: Parameters<typeof upsertAgentTurnSessionRecord>[0] = {
-    ...((args.channelName ?? latestSessionRecord?.channelName)
-      ? { channelName: args.channelName ?? latestSessionRecord?.channelName }
-      : {}),
-    conversationId: args.conversationId,
-    cumulativeDurationMs: addDurationMs(
-      latestSessionRecord?.cumulativeDurationMs,
-      args.currentDurationMs,
+  const target: UpsertTurnSessionRecord = {
+    ...sessionWriteContext(
+      {
+        actor: args.actor,
+        channelName: args.channelName,
+        conversationId: args.conversationId,
+        destination: args.destination,
+        destinationVisibility: args.destinationVisibility,
+        dispatchId: args.dispatchId,
+        loadedSkillNames:
+          args.loadedSkillNames ?? latestSessionRecord?.loadedSkillNames,
+        modelId: args.modelId,
+        reasoningLevel:
+          args.reasoningLevel ?? latestSessionRecord?.reasoningLevel,
+        sessionId: args.sessionId,
+        source: args.source,
+        surface: args.surface,
+        turnStartMessageIndex: args.turnStartMessageIndex,
+      },
+      latestSessionRecord,
     ),
-    cumulativeUsage: addAgentTurnUsage(
-      latestSessionRecord?.cumulativeUsage,
-      args.currentUsage,
-    ),
-    ...(args.destination ? { destination: args.destination } : {}),
-    ...((args.dispatchId ?? latestSessionRecord?.dispatchId)
-      ? { dispatchId: args.dispatchId ?? latestSessionRecord?.dispatchId }
-      : {}),
-    ...((args.dispatchOutcome ?? latestSessionRecord?.dispatchOutcome)
-      ? {
-          dispatchOutcome:
-            args.dispatchOutcome ?? latestSessionRecord?.dispatchOutcome,
-        }
-      : {}),
-    ...(args.errorMessage ? { errorMessage: args.errorMessage } : {}),
-    ...((args.resultMessageId ?? latestSessionRecord?.resultMessageId)
-      ? {
-          resultMessageId:
-            args.resultMessageId ?? latestSessionRecord?.resultMessageId,
-        }
-      : {}),
-    ...(args.source ? { source: args.source } : {}),
-    ...(args.destinationVisibility
-      ? { destinationVisibility: args.destinationVisibility }
-      : {}),
-    sessionId: args.sessionId,
+    ...definedProps({
+      cumulativeDurationMs: addDurationMs(
+        latestSessionRecord?.cumulativeDurationMs,
+        args.currentDurationMs,
+      ),
+      cumulativeUsage: addAgentTurnUsage(
+        latestSessionRecord?.cumulativeUsage,
+        args.currentUsage,
+      ),
+      dispatchOutcome:
+        args.dispatchOutcome ?? latestSessionRecord?.dispatchOutcome,
+      errorMessage: args.errorMessage,
+      resultMessageId:
+        args.resultMessageId ?? latestSessionRecord?.resultMessageId,
+    }),
+    piMessages: args.allMessages,
     sliceId,
     state: "completed",
-    piMessages: args.allMessages,
-    ...((args.surface ?? latestSessionRecord?.surface)
-      ? { surface: args.surface ?? latestSessionRecord?.surface }
-      : {}),
-    ...((args.loadedSkillNames ?? latestSessionRecord?.loadedSkillNames)
-      ? {
-          loadedSkillNames:
-            args.loadedSkillNames ?? latestSessionRecord?.loadedSkillNames,
-        }
-      : {}),
-    modelId,
-    ...(reasoningLevel ? { reasoningLevel } : {}),
-    ...((args.actor ?? latestSessionRecord?.actor)
-      ? { actor: args.actor ?? latestSessionRecord?.actor }
-      : {}),
-    ...((getActiveTraceId() ?? latestSessionRecord?.traceId)
-      ? { traceId: getActiveTraceId() ?? latestSessionRecord?.traceId }
-      : {}),
-    ...((args.turnStartMessageIndex ??
-      latestSessionRecord?.turnStartMessageIndex) !== undefined
-      ? {
-          turnStartMessageIndex:
-            args.turnStartMessageIndex ??
-            latestSessionRecord?.turnStartMessageIndex,
-        }
-      : {}),
   };
   await persistWithRetry(async () => {
     await upsertAgentTurnSessionRecord(target);
@@ -390,50 +423,41 @@ export async function persistAuthPauseSessionRecord(args: {
       return undefined;
     }
     return await upsertAgentTurnSessionRecord({
-      ...((args.channelName ?? latestSessionRecord?.channelName)
-        ? { channelName: args.channelName ?? latestSessionRecord?.channelName }
-        : {}),
-      conversationId: args.conversationId,
-      cumulativeDurationMs: addDurationMs(
-        latestSessionRecord?.cumulativeDurationMs,
-        args.currentDurationMs,
+      ...sessionWriteContext(
+        {
+          actor: args.actor,
+          channelName: args.channelName,
+          conversationId: args.conversationId,
+          destination: args.destination,
+          destinationVisibility: args.destinationVisibility,
+          dispatchId: args.dispatchId,
+          // Auth-pause keeps caller-owned skill names only.
+          loadedSkillNames: args.loadedSkillNames,
+          modelId: args.modelId,
+          reasoningLevel:
+            args.reasoningLevel ?? latestSessionRecord?.reasoningLevel,
+          sessionId: args.sessionId,
+          source: args.source,
+          surface: args.surface,
+        },
+        latestSessionRecord,
       ),
-      cumulativeUsage: addAgentTurnUsage(
-        latestSessionRecord?.cumulativeUsage,
-        args.currentUsage,
-      ),
-      ...(args.destination ? { destination: args.destination } : {}),
-      destinationVisibility: args.destinationVisibility,
-      ...((args.dispatchId ?? latestSessionRecord?.dispatchId)
-        ? { dispatchId: args.dispatchId ?? latestSessionRecord?.dispatchId }
-        : {}),
-      ...(args.source ? { source: args.source } : {}),
-      sessionId: args.sessionId,
-      sliceId: nextSliceId,
-      state: "awaiting_resume",
+      ...definedProps({
+        cumulativeDurationMs: addDurationMs(
+          latestSessionRecord?.cumulativeDurationMs,
+          args.currentDurationMs,
+        ),
+        cumulativeUsage: addAgentTurnUsage(
+          latestSessionRecord?.cumulativeUsage,
+          args.currentUsage,
+        ),
+      }),
+      errorMessage: args.errorMessage,
       piMessages,
-      ...((args.surface ?? latestSessionRecord?.surface)
-        ? { surface: args.surface ?? latestSessionRecord?.surface }
-        : {}),
-      ...(args.loadedSkillNames
-        ? { loadedSkillNames: args.loadedSkillNames }
-        : {}),
-      modelId: args.modelId,
-      ...((args.reasoningLevel ?? latestSessionRecord?.reasoningLevel)
-        ? {
-            reasoningLevel:
-              args.reasoningLevel ?? latestSessionRecord?.reasoningLevel,
-          }
-        : {}),
       resumeReason: "auth",
       resumedFromSliceId: args.currentSliceId,
-      errorMessage: args.errorMessage,
-      ...((args.actor ?? latestSessionRecord?.actor)
-        ? { actor: args.actor ?? latestSessionRecord?.actor }
-        : {}),
-      ...((getActiveTraceId() ?? latestSessionRecord?.traceId)
-        ? { traceId: getActiveTraceId() ?? latestSessionRecord?.traceId }
-        : {}),
+      sliceId: nextSliceId,
+      state: "awaiting_resume",
     });
   } catch (recordError) {
     logSessionRecordError(
@@ -497,91 +521,53 @@ export async function persistContinuationSessionRecord(
       latestSessionRecord?.cumulativeUsage,
       args.currentUsage,
     );
-    if (nextSliceId > botConfig.maxSlicesPerTurn) {
-      return await upsertAgentTurnSessionRecord({
-        ...((args.channelName ?? latestSessionRecord?.channelName)
-          ? {
-              channelName: args.channelName ?? latestSessionRecord?.channelName,
-            }
-          : {}),
-        conversationId: args.conversationId,
+    const shared = {
+      ...sessionWriteContext(
+        {
+          actor: args.actor,
+          channelName: args.channelName,
+          conversationId: args.conversationId,
+          destination: args.destination,
+          destinationVisibility: args.destinationVisibility,
+          dispatchId: args.dispatchId,
+          // Continuation keeps caller-owned skill names only.
+          loadedSkillNames: args.loadedSkillNames,
+          modelId: args.modelId,
+          reasoningLevel:
+            args.reasoningLevel ?? latestSessionRecord?.reasoningLevel,
+          sessionId: args.sessionId,
+          source: args.source,
+          surface: args.surface,
+        },
+        latestSessionRecord,
+      ),
+      ...definedProps({
         cumulativeDurationMs,
         cumulativeUsage,
-        ...(args.destination ? { destination: args.destination } : {}),
-        destinationVisibility: args.destinationVisibility,
-        ...((args.dispatchId ?? latestSessionRecord?.dispatchId)
-          ? { dispatchId: args.dispatchId ?? latestSessionRecord?.dispatchId }
-          : {}),
-        ...(args.source ? { source: args.source } : {}),
-        sessionId: args.sessionId,
-        sliceId: args.currentSliceId,
-        state: "failed",
-        piMessages,
-        ...((args.surface ?? latestSessionRecord?.surface)
-          ? { surface: args.surface ?? latestSessionRecord?.surface }
-          : {}),
-        ...(args.loadedSkillNames
-          ? { loadedSkillNames: args.loadedSkillNames }
-          : {}),
-        modelId: args.modelId,
-        ...((args.reasoningLevel ?? latestSessionRecord?.reasoningLevel)
-          ? {
-              reasoningLevel:
-                args.reasoningLevel ?? latestSessionRecord?.reasoningLevel,
-            }
-          : {}),
-        resumeReason: args.resumeReason,
-        resumedFromSliceId: latestSessionRecord?.resumedFromSliceId,
+      }),
+      piMessages,
+      resumeReason: args.resumeReason,
+    } satisfies Partial<UpsertTurnSessionRecord>;
+
+    if (nextSliceId > botConfig.maxSlicesPerTurn) {
+      return await upsertAgentTurnSessionRecord({
+        ...shared,
+        ...definedProps({
+          resumedFromSliceId: latestSessionRecord?.resumedFromSliceId,
+        }),
         errorMessage: new TurnSliceLimitExceededError(
           botConfig.maxSlicesPerTurn,
         ).message,
-        ...((args.actor ?? latestSessionRecord?.actor)
-          ? { actor: args.actor ?? latestSessionRecord?.actor }
-          : {}),
-        ...((getActiveTraceId() ?? latestSessionRecord?.traceId)
-          ? { traceId: getActiveTraceId() ?? latestSessionRecord?.traceId }
-          : {}),
+        sliceId: args.currentSliceId,
+        state: "failed",
       });
     }
     return await upsertAgentTurnSessionRecord({
-      ...((args.channelName ?? latestSessionRecord?.channelName)
-        ? { channelName: args.channelName ?? latestSessionRecord?.channelName }
-        : {}),
-      conversationId: args.conversationId,
-      cumulativeDurationMs,
-      cumulativeUsage,
-      ...(args.destination ? { destination: args.destination } : {}),
-      destinationVisibility: args.destinationVisibility,
-      ...((args.dispatchId ?? latestSessionRecord?.dispatchId)
-        ? { dispatchId: args.dispatchId ?? latestSessionRecord?.dispatchId }
-        : {}),
-      ...(args.source ? { source: args.source } : {}),
-      sessionId: args.sessionId,
+      ...shared,
+      errorMessage: args.errorMessage,
+      resumedFromSliceId: args.currentSliceId,
       sliceId: nextSliceId,
       state: "awaiting_resume",
-      piMessages,
-      ...((args.surface ?? latestSessionRecord?.surface)
-        ? { surface: args.surface ?? latestSessionRecord?.surface }
-        : {}),
-      ...(args.loadedSkillNames
-        ? { loadedSkillNames: args.loadedSkillNames }
-        : {}),
-      modelId: args.modelId,
-      ...((args.reasoningLevel ?? latestSessionRecord?.reasoningLevel)
-        ? {
-            reasoningLevel:
-              args.reasoningLevel ?? latestSessionRecord?.reasoningLevel,
-          }
-        : {}),
-      resumeReason: args.resumeReason,
-      resumedFromSliceId: args.currentSliceId,
-      errorMessage: args.errorMessage,
-      ...((args.actor ?? latestSessionRecord?.actor)
-        ? { actor: args.actor ?? latestSessionRecord?.actor }
-        : {}),
-      ...((getActiveTraceId() ?? latestSessionRecord?.traceId)
-        ? { traceId: getActiveTraceId() ?? latestSessionRecord?.traceId }
-        : {}),
     });
   } catch (recordError) {
     logSessionRecordError(
@@ -630,49 +616,40 @@ export async function persistYieldSessionRecord(args: {
       args.sessionId,
     );
     return await upsertAgentTurnSessionRecord({
-      ...((args.channelName ?? latestSessionRecord?.channelName)
-        ? { channelName: args.channelName ?? latestSessionRecord?.channelName }
-        : {}),
-      conversationId: args.conversationId,
-      cumulativeDurationMs: addDurationMs(
-        latestSessionRecord?.cumulativeDurationMs,
-        args.currentDurationMs,
+      ...sessionWriteContext(
+        {
+          actor: args.actor,
+          channelName: args.channelName,
+          conversationId: args.conversationId,
+          destination: args.destination,
+          dispatchId: args.dispatchId,
+          // Yield keeps caller-owned skill names only.
+          loadedSkillNames: args.loadedSkillNames,
+          modelId: args.modelId,
+          reasoningLevel:
+            args.reasoningLevel ?? latestSessionRecord?.reasoningLevel,
+          sessionId: args.sessionId,
+          source: args.source,
+          surface: args.surface,
+        },
+        latestSessionRecord,
       ),
-      cumulativeUsage: addAgentTurnUsage(
-        latestSessionRecord?.cumulativeUsage,
-        args.currentUsage,
-      ),
-      ...(args.destination ? { destination: args.destination } : {}),
-      ...((args.dispatchId ?? latestSessionRecord?.dispatchId)
-        ? { dispatchId: args.dispatchId ?? latestSessionRecord?.dispatchId }
-        : {}),
-      ...(args.source ? { source: args.source } : {}),
-      sessionId: args.sessionId,
+      ...definedProps({
+        cumulativeDurationMs: addDurationMs(
+          latestSessionRecord?.cumulativeDurationMs,
+          args.currentDurationMs,
+        ),
+        cumulativeUsage: addAgentTurnUsage(
+          latestSessionRecord?.cumulativeUsage,
+          args.currentUsage,
+        ),
+        resumedFromSliceId: latestSessionRecord?.resumedFromSliceId,
+      }),
+      errorMessage: args.errorMessage,
+      piMessages,
+      resumeReason: "yield",
       sliceId: args.currentSliceId,
       state: "awaiting_resume",
-      piMessages,
-      ...((args.surface ?? latestSessionRecord?.surface)
-        ? { surface: args.surface ?? latestSessionRecord?.surface }
-        : {}),
-      ...(args.loadedSkillNames
-        ? { loadedSkillNames: args.loadedSkillNames }
-        : {}),
-      modelId: args.modelId,
-      ...((args.reasoningLevel ?? latestSessionRecord?.reasoningLevel)
-        ? {
-            reasoningLevel:
-              args.reasoningLevel ?? latestSessionRecord?.reasoningLevel,
-          }
-        : {}),
-      resumeReason: "yield",
-      resumedFromSliceId: latestSessionRecord?.resumedFromSliceId,
-      errorMessage: args.errorMessage,
-      ...((args.actor ?? latestSessionRecord?.actor)
-        ? { actor: args.actor ?? latestSessionRecord?.actor }
-        : {}),
-      ...((getActiveTraceId() ?? latestSessionRecord?.traceId)
-        ? { traceId: getActiveTraceId() ?? latestSessionRecord?.traceId }
-        : {}),
     });
   } catch (recordError) {
     logSessionRecordError(
