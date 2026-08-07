@@ -319,21 +319,25 @@ describe("Tasks API", () => {
         "http://localhost/api/tasks/scheduled/sched_tasks_api/executions",
       );
       expect(executionsResponse.status).toBe(200);
-      expect(
-        taskExecutionListSchema.parse(await executionsResponse.json()),
-      ).toEqual({
+      const executionList = taskExecutionListSchema.parse(
+        await executionsResponse.json(),
+      );
+      expect(executionList).toEqual({
+        executionDays: expect.any(Array),
         executions: [
           {
             conversationId: "agent-dispatch:sched-run-2",
             executedAt: "2026-08-04T13:00:00.000Z",
             executionId: "sched-run-2",
             status: "failed",
+            title: "Task execution fixture",
           },
           {
             conversationId: "agent-dispatch:sched-run-1",
             executedAt: "2026-08-04T12:00:00.000Z",
             executionId: "sched-run-1",
             status: "completed",
+            title: "Task execution fixture",
           },
         ],
         task: expect.objectContaining({
@@ -342,6 +346,15 @@ describe("Tasks API", () => {
           totalRuns: 2,
         }),
         truncated: false,
+      });
+      expect(executionList.executionDays).toHaveLength(90);
+      expect(
+        executionList.executionDays.find((day) => day.date === "2026-08-04"),
+      ).toEqual({
+        blocked: 0,
+        completed: 1,
+        date: "2026-08-04",
+        failed: 1,
       });
 
       const deniedExecutions = await authenticatedApi(

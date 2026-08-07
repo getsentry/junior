@@ -8,6 +8,7 @@ import type {
 import {
   readTaskExecutionDays,
   readTaskExecutions,
+  readTaskExecutionStatusDays,
   readTaskExecutionSummaries,
   type TaskExecutionSummary,
 } from "@/chat/tasks/execution-stats";
@@ -466,15 +467,20 @@ export async function readViewerTaskExecutions(
 ): Promise<TaskExecutionList> {
   const candidate = await resolveViewerTaskCandidate(user, kind, id);
   if (!candidate) throw new ViewerTaskNotFoundError();
-  const [task, executions] = await Promise.all([
+  const [task, executions, executionDays] = await Promise.all([
     taskSummaryForCandidate(candidate),
     readTaskExecutions({
       kind,
       limit: TASK_EXECUTION_LIST_LIMIT + 1,
       taskId: id,
     }),
+    readTaskExecutionStatusDays({
+      kind,
+      taskId: id,
+    }),
   ]);
   return {
+    executionDays,
     executions: executions.slice(0, TASK_EXECUTION_LIST_LIMIT),
     task,
     truncated: executions.length > TASK_EXECUTION_LIST_LIMIT,

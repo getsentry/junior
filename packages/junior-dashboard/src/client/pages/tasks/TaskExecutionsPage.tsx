@@ -1,6 +1,12 @@
 import { useMemo } from "react";
-import { ArrowLeft, CircleCheck, CircleDashed, CircleX } from "lucide-react";
-import { Link, Navigate, useParams, useSearchParams } from "react-router";
+import { ArrowLeft } from "lucide-react";
+import {
+  Link,
+  Navigate,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router";
 import type {
   TaskExecution,
   TaskExecutionList,
@@ -14,9 +20,9 @@ import { conversationPath, formatTime } from "../../format";
 import { DashboardApiError } from "../../http";
 import { pathWithSearch } from "../../searchParams";
 import { cn, dashboardContainerClass } from "../../styles";
-import { TranscriptText } from "../../conversations/TranscriptText";
+import { TaskExecutionStatusChart } from "./TaskExecutionStatusChart";
 
-/** Render one task's terminal executions as a browsable list. */
+/** Render one task's terminal executions as a browsable conversation-style list. */
 export function TaskExecutionsPage(props: { enabled: boolean }) {
   const { taskId, kind } = useParams();
   const [searchParams] = useSearchParams();
@@ -95,25 +101,19 @@ function TaskExecutionsView(props: {
             Back to task
           </Link>
           <PageHeader
-            description={`${data.task.kind} task · ${data.task.destination.label}`}
-            title="Task executions"
+            description={`${data.task.kind} task · ${data.task.destination.label} · ${statusSummary}`}
+            title={data.task.instruction}
           />
         </div>
 
-        <Card className="grid gap-3 p-4">
-          <div className="font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted">
-            Instruction
-          </div>
-          <TranscriptText text={data.task.instruction} />
-          <div className="font-mono text-xs text-dashboard-text-muted">
-            {statusSummary}
-          </div>
-        </Card>
+        {data.executionDays.length > 0 ? (
+          <TaskExecutionStatusChart days={data.executionDays} />
+        ) : null}
 
         <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1 border-b border-white/[0.07] pb-3">
           <p className="m-0 font-display text-lg text-dashboard-text">
             {data.executions.length}{" "}
-            {data.executions.length === 1 ? "execution" : "executions"}
+            {data.executions.length === 1 ? "run" : "runs"}
           </p>
           <p className="m-0 text-xs text-dashboard-text-muted">
             Newest first. Click a run to open its conversation.
@@ -128,10 +128,18 @@ function TaskExecutionsView(props: {
           </Card>
         ) : (
           <Card>
-            <div className="divide-y divide-white/[0.07]" role="list">
+            <div
+              className="sticky top-0 z-[1] hidden grid-cols-[minmax(13rem,1.7fr)_minmax(10rem,1fr)] items-center gap-3 border-b border-white/[0.06] bg-black/25 px-3 py-2.5 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted md:grid"
+              role="row"
+            >
+              <div>Conversation</div>
+              <div className="justify-self-end">Status</div>
+            </div>
+            <div className="min-w-0" role="table">
               {data.executions.map((execution) => (
                 <ExecutionRow
                   execution={execution}
+                  fallbackTitle={data.task.instruction}
                   key={execution.executionId}
                 />
               ))}
@@ -149,62 +157,74 @@ function TaskExecutionsView(props: {
   );
 }
 
-function ExecutionRow(props: { execution: TaskExecution }) {
-  const { execution } = props;
-  const content = (
-    <div className="flex min-w-0 items-center gap-3 px-4 py-3">
-      <StatusMark status={execution.status} />
-      <div className="min-w-0 flex-1">
-        <div className="truncate font-display text-base font-medium text-dashboard-text capitalize">
-          {execution.status}
+function ExecutionRow(props: {
+  execution: TaskExecution;
+  fallbackTitle: string;
+}) {
+  const { execution, fallbackTitle } = props;
+  const navigate = useNavigate();
+  const title =
+    execution.title?.trim() ||
+    (execution.conversationId ? fallbackTitle : "No conversation");
+  const subtitle = [
+    formatRunDate(execution.executedAt),
+    execution.conversationId ?? "not linked",
+  ].join(" · ");
+  const openConversation = () => {
+    if (!execution.conversationId) return;
+    navigate(conversationPath(execution.conversationId));
+  };
+
+  return (
+    <div
+      aria-disabled={!execution.conversationId}
+      className={cn(
+        "group grid min-w-0 grid-cols-[minmax(13rem,1.7fr)_minmax(10rem,1fr)] items-center gap-3 overflow-hidden border-b border-b-white/[0.055] px-3 py-3 text-left text-inherit transition-colors max-md:grid-cols-1 max-md:px-4 max-md:py-4",
+        execution.conversationId
+          ? "cursor-pointer hover:bg-white/[0.035]"
+          : "cursor-default opacity-80",
+      )}
+      onClick={openConversation}
+      onKeyDown={(event) => {
+        if (!execution.conversationId) return;
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          openConversation();
+        }
+      }}
+      role={execution.conversationId ? "link" : "row"}
+      tabIndex={execution.conversationId ? 0 : undefined}
+    >
+      <div className="min-w-0">
+        <div className="min-w-0 truncate text-base font-bold leading-tight text-dashboard-text">
+          {title}
         </div>
-        <div className="mt-1 truncate font-mono text-xs text-dashboard-text-muted">
-          {formatRunDate(execution.executedAt)}
-          {execution.conversationId ? " · open conversation" : " · no conversation"}
+        <div className="mt-1 break-words text-sm leading-relaxed text-dashboard-text-muted md:truncate">
+          {subtitle}
         </div>
+      </div>
+      <div className="grid min-w-0 justify-items-end gap-1 text-right max-md:justify-items-start max-md:text-left">
+        <StatusBadge status={execution.status} />
       </div>
     </div>
   );
-
-  if (!execution.conversationId) {
-    return (
-      <article className="opacity-80" role="listitem">
-        {content}
-      </article>
-    );
-  }
-
-  return (
-    <article role="listitem">
-      <Link
-        className="block text-inherit no-underline transition-colors hover:bg-white/[0.03]"
-        to={conversationPath(execution.conversationId)}
-      >
-        {content}
-      </Link>
-    </article>
-  );
 }
 
-function StatusMark(props: { status: TaskExecution["status"] }) {
-  const Icon =
-    props.status === "completed"
-      ? CircleCheck
-      : props.status === "failed"
-        ? CircleX
-        : CircleDashed;
+function StatusBadge(props: { status: TaskExecution["status"] }) {
   return (
-    <div
-      aria-hidden="true"
+    <span
       className={cn(
-        "grid size-9 shrink-0 place-items-center rounded border border-white/[0.08] bg-white/[0.03]",
-        props.status === "completed" && "text-emerald-300/80",
-        props.status === "failed" && "text-rose-300/85",
-        props.status === "blocked" && "text-amber-300/80",
+        "inline-flex items-center rounded border px-2 py-1 font-mono text-xs uppercase tracking-[0.1em]",
+        props.status === "completed" &&
+          "border-emerald-400/25 bg-emerald-400/10 text-emerald-200",
+        props.status === "failed" &&
+          "border-rose-400/25 bg-rose-400/10 text-rose-200",
+        props.status === "blocked" &&
+          "border-amber-400/25 bg-amber-400/10 text-amber-100",
       )}
     >
-      <Icon size={16} />
-    </div>
+      {props.status}
+    </span>
   );
 }
 

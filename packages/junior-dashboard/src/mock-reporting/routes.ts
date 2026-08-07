@@ -17,6 +17,9 @@ import {
   locationParamsSchema,
   personalSpendReportSchema,
   personParamsSchema,
+  taskExecutionListSchema,
+  taskListSchema,
+  taskParamsSchema,
 } from "@sentry/junior/api/schema";
 import {
   readMockConversationDetail,
@@ -28,6 +31,8 @@ import {
   readMockPeopleDirectory,
   readMockPeopleProfile,
   readMockPersonalSpend,
+  readMockTaskExecutions,
+  readMockTaskList,
 } from "./fixtures";
 
 function errorResponse(error: string, status: 400 | 404): Response {
@@ -123,6 +128,17 @@ export function createMockReportingApi(): Hono<{
     return report
       ? jsonResponse(conversationDetailReportSchema, report)
       : errorResponse("Conversation not found.", 404);
+  });
+  app.get("/tasks", () => jsonResponse(taskListSchema, readMockTaskList()));
+  app.get("/tasks/:kind/:id/executions", (c) => {
+    const params = taskParamsSchema.safeParse(c.req.param());
+    if (!params.success) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    const report = readMockTaskExecutions(params.data.kind, params.data.id);
+    return report
+      ? jsonResponse(taskExecutionListSchema, report)
+      : errorResponse("Task not found.", 404);
   });
 
   return app;

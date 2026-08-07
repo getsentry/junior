@@ -87,6 +87,7 @@ export {
   scheduledTaskSummarySchema,
   taskExecutionListSchema,
   taskExecutionSchema,
+  taskExecutionStatusDaySchema,
   taskExecutionStatusSchema,
   taskListSchema,
   taskParamsSchema,
@@ -96,6 +97,7 @@ export type {
   TaskExecution,
   TaskExecutionDay,
   TaskExecutionList,
+  TaskExecutionStatusDay,
   TaskList,
   TaskSummary,
 } from "./schema/task";
