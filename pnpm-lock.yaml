@@ -92,7 +92,7 @@ importers:
         version: link:../../packages/junior-datadog
       '@sentry/junior-github':
         specifier: workspace:*
-        version: link:../../packages/junior-github
+        version: file:packages/junior-github
       '@sentry/junior-hex':
         specifier: workspace:*
         version: link:../../packages/junior-hex
@@ -101,7 +101,7 @@ importers:
         version: link:../../packages/junior-linear
       '@sentry/junior-memory':
         specifier: workspace:*
-        version: link:../../packages/junior-memory
+        version: file:packages/junior-memory
       '@sentry/junior-notion':
         specifier: workspace:*
         version: link:../../packages/junior-notion
@@ -330,8 +330,8 @@ importers:
         specifier: ^19.2.6
         version: 19.2.7
       react-router:
-        specifier: ^7.16.0
-        version: 7.16.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+        specifier: ^7.18.2
+        version: 7.18.2(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       shiki:
         specifier: 4.1.0
         version: 4.1.0
@@ -391,10 +391,10 @@ importers:
         version: file:packages/junior
       '@sentry/junior-github':
         specifier: workspace:*
-        version: link:../junior-github
+        version: file:packages/junior-github
       '@sentry/junior-memory':
         specifier: workspace:*
-        version: link:../junior-memory
+        version: file:packages/junior-memory
       '@sentry/junior-plugin-api':
         specifier: workspace:*
         version: link:../junior-plugin-api
@@ -3755,6 +3755,9 @@ packages:
   '@sinclair/typebox@0.34.49':
     resolution: {integrity: sha512-brySQQs7Jtn0joV8Xh9ZV/hZb9Ozb0pmazDIASBkYKCjXrXU3mpcFahmK/z4YDhGkQvP9mWJbVyahdtU5wQA+A==}
 
+  '@sinclair/typebox@0.34.52':
+    resolution: {integrity: sha512-XiMQh7qqVlxZzcVD+kkGMNGMzcTrDMLWI7S4x7z1MkCkbDPrekpZXEUK0eZqZFMuHQg2a2DZOcDIh9o5v3Gonw==}
+
   '@slack/logger@4.0.1':
     resolution: {integrity: sha512-6cmdPrV/RYfd2U0mDGiMK8S7OJqpCTm7enMLRR3edccsPX8j7zXTLnaEF4fhxxJJTAIOil6+qZrnUPTuaLvwrQ==}
     engines: {node: '>= 18', npm: '>= 8.6.0'}
@@ -7107,8 +7110,8 @@ packages:
   react-is@19.2.7:
     resolution: {integrity: sha512-kZFnouyVv7eP/Phmrlo9FK+zcAdriZJvzxXHF1Sl1P377WSGe2G/JxVolhTrB/jeV47lKImhNUsijjHAAbcl/A==}
 
-  react-router@7.16.0:
-    resolution: {integrity: sha512-wArC8lVyJb3+jM9OpDyW6hLCizACWkvQR/sSGqSs+o5uEXEtGlqdZ4v8hENR3Jad6i+LRkK93q/+bQAcvl6V1A==}
+  react-router@7.18.2:
+    resolution: {integrity: sha512-aUVMjFm3GAPTTZL7oYr5E7ETiqfQCHRLH+B+5afnICvf0r7kkK4eR6SMuwbSTJw/7t+12khT/Kahij49fqOCIg==}
     engines: {node: '>=20.0.0'}
     peerDependencies:
       react: '>=18'
@@ -11086,7 +11089,7 @@ snapshots:
       react: 19.2.6
       react-dom: 19.2.6(react@19.2.6)
       react-is: 19.2.7
-      react-router: 7.16.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      react-router: 7.18.2(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       shiki: 4.1.0
       zod: 4.4.3
     transitivePeerDependencies:
@@ -11173,11 +11176,86 @@ snapshots:
       - xml2js
       - zephyr-agent
 
+  '@sentry/junior-github@file:packages/junior-github':
+    dependencies:
+      '@sentry/junior-plugin-api': file:packages/junior-plugin-api
+      '@sinclair/typebox': 0.34.52
+      drizzle-orm: 0.45.2
+      zod: 4.4.3
+    transitivePeerDependencies:
+      - '@aws-sdk/client-rds-data'
+      - '@cloudflare/workers-types'
+      - '@electric-sql/pglite'
+      - '@libsql/client'
+      - '@libsql/client-wasm'
+      - '@neondatabase/serverless'
+      - '@op-engineering/op-sqlite'
+      - '@opentelemetry/api'
+      - '@planetscale/database'
+      - '@prisma/client'
+      - '@tidbcloud/serverless'
+      - '@types/better-sqlite3'
+      - '@types/pg'
+      - '@types/sql.js'
+      - '@upstash/redis'
+      - '@vercel/postgres'
+      - '@xata.io/client'
+      - better-sqlite3
+      - bun-types
+      - expo-sqlite
+      - gel
+      - knex
+      - kysely
+      - mysql2
+      - pg
+      - postgres
+      - prisma
+      - sql.js
+      - sqlite3
+
   '@sentry/junior-github@file:packages/junior-github(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)':
     dependencies:
       '@sentry/junior-plugin-api': file:packages/junior-plugin-api
-      '@sinclair/typebox': 0.34.49
+      '@sinclair/typebox': 0.34.52
       drizzle-orm: 0.45.2(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)
+      zod: 4.4.3
+    transitivePeerDependencies:
+      - '@aws-sdk/client-rds-data'
+      - '@cloudflare/workers-types'
+      - '@electric-sql/pglite'
+      - '@libsql/client'
+      - '@libsql/client-wasm'
+      - '@neondatabase/serverless'
+      - '@op-engineering/op-sqlite'
+      - '@opentelemetry/api'
+      - '@planetscale/database'
+      - '@prisma/client'
+      - '@tidbcloud/serverless'
+      - '@types/better-sqlite3'
+      - '@types/pg'
+      - '@types/sql.js'
+      - '@upstash/redis'
+      - '@vercel/postgres'
+      - '@xata.io/client'
+      - better-sqlite3
+      - bun-types
+      - expo-sqlite
+      - gel
+      - knex
+      - kysely
+      - mysql2
+      - pg
+      - postgres
+      - prisma
+      - sql.js
+      - sqlite3
+
+  '@sentry/junior-memory@file:packages/junior-memory':
+    dependencies:
+      '@sentry/junior-plugin-api': file:packages/junior-plugin-api
+      '@sinclair/typebox': 0.34.52
+      commander: 14.0.3
+      drizzle-orm: 0.45.2
       zod: 4.4.3
     transitivePeerDependencies:
       - '@aws-sdk/client-rds-data'
@@ -11213,7 +11291,7 @@ snapshots:
   '@sentry/junior-memory@file:packages/junior-memory(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)':
     dependencies:
       '@sentry/junior-plugin-api': file:packages/junior-plugin-api
-      '@sinclair/typebox': 0.34.49
+      '@sinclair/typebox': 0.34.52
       commander: 14.0.3
       drizzle-orm: 0.45.2(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)
       zod: 4.4.3
@@ -11547,6 +11625,8 @@ snapshots:
   '@sinclair/typebox@0.25.24': {}
 
   '@sinclair/typebox@0.34.49': {}
+
+  '@sinclair/typebox@0.34.52': {}
 
   '@slack/logger@4.0.1':
     dependencies:
@@ -15847,7 +15927,7 @@ snapshots:
 
   react-is@19.2.7: {}
 
-  react-router@7.16.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6):
+  react-router@7.18.2(react-dom@19.2.6(react@19.2.6))(react@19.2.6):
     dependencies:
       cookie: 1.1.1
       react: 19.2.6
