@@ -68,6 +68,7 @@ export type SqlDriver = "neon" | "postgres";
 export interface ChatConfig {
   bot: BotConfig;
   functionMaxDurationSeconds: number;
+  conversationWorkEnabled: boolean;
   conversationWorkSoftYieldAfterMs: number;
   sql: {
     databaseUrl: string;
@@ -175,6 +176,17 @@ function parseSlashCommand(rawValue: string | undefined): string {
     );
   }
   return command;
+}
+
+function parseConversationWorkEnabled(rawValue: string | undefined): boolean {
+  const value = toOptionalTrimmed(rawValue)?.toLowerCase();
+  if (value === undefined || value === "true") {
+    return true;
+  }
+  if (value === "false") {
+    return false;
+  }
+  throw new Error("JUNIOR_CONVERSATION_WORK_ENABLED must be true or false");
 }
 
 function parseCrossActorMidRunMode(
@@ -400,6 +412,9 @@ export function readChatConfig(
   return {
     bot: readBotConfig(env, resolvedFunctionMaxDurationSeconds),
     functionMaxDurationSeconds: resolvedFunctionMaxDurationSeconds,
+    conversationWorkEnabled: parseConversationWorkEnabled(
+      env.JUNIOR_CONVERSATION_WORK_ENABLED,
+    ),
     conversationWorkSoftYieldAfterMs: resolveConversationWorkSoftYieldAfterMs(
       resolvedFunctionMaxDurationSeconds,
     ),

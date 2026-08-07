@@ -60,6 +60,7 @@ export const CONVERSATION_WORK_LEASE_TTL_MS = 90_000;
 export const CONVERSATION_WORK_CHECK_IN_INTERVAL_MS = 15_000;
 export const CONVERSATION_WORK_STALE_ENQUEUE_MS = 60_000;
 export const CONVERSATION_WORK_MAX_DELIVERY_ATTEMPTS = 5;
+export const CONVERSATION_WORK_MAX_NO_PROGRESS_ATTEMPTS = 5;
 
 const inboundMessageSourceSchema = z.enum([
   "api",
@@ -130,6 +131,8 @@ export interface ConversationExecution {
   inboundMessageIds: string[];
   lastCheckpointAtMs?: number;
   lastEnqueuedAtMs?: number;
+  lastProgressAtMs?: number;
+  noProgressAttemptCount?: number;
   lease?: Lease;
   pendingCount: number;
   pendingMessages: InboundMessage[];
@@ -434,6 +437,8 @@ function normalizeExecution(
     lease,
     lastCheckpointAtMs: toOptionalNumber(value.lastCheckpointAtMs),
     lastEnqueuedAtMs: toOptionalNumber(value.lastEnqueuedAtMs),
+    lastProgressAtMs: toOptionalNumber(value.lastProgressAtMs),
+    noProgressAttemptCount: toOptionalNumber(value.noProgressAttemptCount),
     runId: toOptionalString(value.runId),
     updatedAtMs: toOptionalNumber(value.updatedAtMs),
   };
@@ -1139,6 +1144,8 @@ export async function appendInboundMessage(args: {
           {
             ...current.execution,
             status,
+            lastProgressAtMs: nowMs,
+            noProgressAttemptCount: 0,
             inboundMessageIds: [
               ...current.execution.inboundMessageIds,
               args.message.inboundMessageId,
@@ -1593,6 +1600,8 @@ export async function ackMessages(args: {
         current,
         {
           ...current.execution,
+          lastProgressAtMs: nowMs,
+          noProgressAttemptCount: 0,
           pendingMessages,
         },
         nowMs,
@@ -1703,6 +1712,42 @@ export async function releaseConversationWork(args: {
   });
 }
 
+/** Record a recovery attempt that made no durable progress and stop exhausted work. */
+export async function recordConversationNoProgress(args: {
+  conversationId: string;
+  leaseToken: string;
+  nowMs?: number;
+  state?: StateAdapter;
+}): Promise<"lost_lease" | "recorded" | "stopped"> {
+  const nowMs = args.nowMs ?? now();
+  return await withConversationMutation(args, async (state, lock) => {
+    const current = await readConversation(state, args.conversationId);
+    if (!current || current.execution.lease?.token !== args.leaseToken) {
+      return "lost_lease";
+    }
+    const count = (current.execution.noProgressAttemptCount ?? 0) + 1;
+    const stopped = count >= CONVERSATION_WORK_MAX_NO_PROGRESS_ATTEMPTS;
+    await writeConversation(
+      state,
+      lock,
+      withExecutionUpdate(
+        current,
+        {
+          ...current.execution,
+          lastEnqueuedAtMs: undefined,
+          lease: stopped ? undefined : current.execution.lease,
+          noProgressAttemptCount: count,
+          pendingMessages: stopped ? [] : current.execution.pendingMessages,
+          runId: stopped ? undefined : current.execution.runId,
+          status: stopped ? "failed" : "awaiting_resume",
+        },
+        nowMs,
+      ),
+    );
+    return stopped ? "stopped" : "recorded";
+  });
+}
+
 /** Finish a leased conversation and report whether runnable work remains. */
 export async function completeConversationWork(args: {
   conversationId: string;
@@ -1732,6 +1777,8 @@ export async function completeConversationWork(args: {
             : hasPending
               ? "pending"
               : "idle",
+          lastProgressAtMs: nowMs,
+          noProgressAttemptCount: 0,
           runId: runnable ? current.execution.runId : undefined,
         },
         nowMs,

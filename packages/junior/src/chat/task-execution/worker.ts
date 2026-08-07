@@ -24,6 +24,7 @@ import {
   isFinalAttempt,
   isInvalidConversationRecordError,
   recordAttemptFailure,
+  recordConversationNoProgress,
   releaseConversationWork,
   requestConversationContinuation,
   startConversationWork,
@@ -127,6 +128,34 @@ async function requestLostLeaseRecovery(args: {
   nowMs: number;
   options: ProcessConversationWorkOptions;
 }): Promise<void> {
+  const before = await getConversationWorkState({
+    conversationId: args.conversationId,
+    state: args.options.state,
+  });
+  const noProgress = await recordConversationNoProgress({
+    conversationId: args.conversationId,
+    leaseToken: args.leaseToken,
+    conversationStore: args.options.conversationStore,
+    nowMs: args.nowMs,
+    state: args.options.state,
+  });
+  if (noProgress === "lost_lease") {
+    return;
+  }
+  if (noProgress === "stopped") {
+    logException(
+      new Error("Conversation work stopped after repeated runs without progress"),
+      "conversation.work.no_progress.exhausted",
+      {
+        "app.run.id": before?.execution.runId ?? "unknown",
+        "app.worker.last_progress_at_ms":
+          before?.execution.lastProgressAtMs ?? before?.createdAtMs ?? 0,
+        "app.worker.no_progress_attempt_count":
+          (before?.execution.noProgressAttemptCount ?? 0) + 1,
+      },
+    );
+    return;
+  }
   const resumeRequested = await requestConversationContinuation({
     conversationId: args.conversationId,
     destination: args.destination,
@@ -684,6 +713,26 @@ async function processConversationWorkInContext(
           state: options.state,
         });
       } else {
+        const noProgress = failure
+          ? "recorded"
+          : await recordConversationNoProgress({
+              conversationId,
+              leaseToken: lease.leaseToken,
+              conversationStore: options.conversationStore,
+              nowMs: errorNowMs,
+              state: options.state,
+            });
+        if (noProgress === "stopped") {
+          logException(error, "conversation.work.no_progress.exhausted", {
+            "app.run.id": initial.execution.runId ?? "unknown",
+            "app.worker.last_progress_at_ms":
+              initial.execution.lastProgressAtMs ?? initial.createdAtMs,
+            "app.worker.no_progress_attempt_count":
+              (initial.execution.noProgressAttemptCount ?? 0) + 1,
+          });
+          recoveryRecorded = true;
+          return { status: "failed" };
+        }
         const resumeRequested = await requestConversationContinuation({
           conversationId,
           destination,

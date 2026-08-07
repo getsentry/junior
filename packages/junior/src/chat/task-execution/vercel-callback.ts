@@ -92,6 +92,15 @@ async function handleConversationQueueMessage(
   metadata: MessageMetadata,
   options: VercelConversationWorkCallbackOptions,
 ): Promise<void> {
+  if (!getChatConfig().conversationWorkEnabled) {
+    logWarn("conversation.work.processing.disabled", {
+      "app.queue.consumer_group": metadata.consumerGroup,
+      "app.queue.delivery_count": metadata.deliveryCount,
+      "app.queue.message_id": metadata.messageId,
+      "app.queue.topic_name": metadata.topicName,
+    });
+    return;
+  }
   const verification = verifyConversationQueueMessage(message);
   if (verification.status === "rejected") {
     logConversationQueueMessageRejected(verification.reason, metadata);

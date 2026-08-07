@@ -1,5 +1,6 @@
 import type { StateAdapter } from "chat";
-import { logException, logInfo, withLogContext } from "@/chat/logging";
+import { getChatConfig } from "@/chat/config";
+import { logException, logInfo, logWarn, withLogContext } from "@/chat/logging";
 import type { ConversationWorkQueue } from "./queue";
 import {
   clearExpiredConversationLease,
@@ -35,6 +36,10 @@ export async function recoverConversationWork(args: {
   queue: ConversationWorkQueue;
   state?: StateAdapter;
 }): Promise<ConversationWorkRecoveryResult> {
+  if (!getChatConfig().conversationWorkEnabled) {
+    logWarn("conversation.work.recovery.disabled");
+    return { expiredLeaseCount: 0, pendingCount: 0 };
+  }
   const result: ConversationWorkRecoveryResult = {
     expiredLeaseCount: 0,
     pendingCount: 0,

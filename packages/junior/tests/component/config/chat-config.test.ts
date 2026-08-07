@@ -283,6 +283,24 @@ describe("chat config", () => {
     );
   });
 
+  it("enables conversation work by default", async () => {
+    const { getChatConfig } = await loadConfig();
+    expect(getChatConfig().conversationWorkEnabled).toBe(true);
+  });
+
+  it("disables conversation work when configured", async () => {
+    process.env.JUNIOR_CONVERSATION_WORK_ENABLED = "false";
+    const { getChatConfig } = await loadConfig();
+    expect(getChatConfig().conversationWorkEnabled).toBe(false);
+  });
+
+  it("rejects an invalid conversation work switch", async () => {
+    process.env.JUNIOR_CONVERSATION_WORK_ENABLED = "sometimes";
+    await expect(loadConfig()).rejects.toThrow(
+      "JUNIOR_CONVERSATION_WORK_ENABLED must be true or false",
+    );
+  });
+
   it("uses a 30 second SQL statement timeout by default", async () => {
     const { getChatConfig } = await loadConfig();
     expect(getChatConfig().sql.statementTimeoutMs).toBe(30_000);

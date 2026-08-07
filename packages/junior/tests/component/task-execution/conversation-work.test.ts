@@ -1303,6 +1303,33 @@ describe("conversation work execution", () => {
     ]);
   });
 
+  it("stops recovery after repeated lost-lease runs without progress", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    let currentNowMs = 1_000;
+    await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
+
+    for (let attempt = 1; attempt <= 5; attempt += 1) {
+      currentNowMs = attempt * 1_000;
+      await expect(
+        processConversationWork(conversationQueueMessage(), {
+          nowMs: () => currentNowMs,
+          queue,
+          run: async () => ({ status: "lost_lease" }),
+        }),
+      ).resolves.toEqual({ status: "lost_lease" });
+    }
+
+    const state = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+    });
+    expect(state?.execution.status).toBe("failed");
+    expect(state?.execution.noProgressAttemptCount).toBe(5);
+    expect(state?.lease).toBeUndefined();
+    expect(state?.needsRun).toBe(false);
+    expect(state ? countPendingConversationMessages(state) : 0).toBe(0);
+    expect(queue.sentRecords()).toHaveLength(4);
+  });
+
   it("drains pending messages and completes the leased conversation", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });

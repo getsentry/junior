@@ -9,6 +9,7 @@ export {
   CONVERSATION_WORK_CHECK_IN_INTERVAL_MS,
   CONVERSATION_WORK_LEASE_TTL_MS,
   CONVERSATION_WORK_MAX_DELIVERY_ATTEMPTS,
+  CONVERSATION_WORK_MAX_NO_PROGRESS_ATTEMPTS,
   CONVERSATION_WORK_STALE_ENQUEUE_MS,
   isFinalAttempt,
   isInvalidConversationRecordError,
@@ -125,6 +126,19 @@ export async function getConversationWorkState(args: {
   state?: StateAdapter;
 }) {
   return await workState.getConversationWorkState(args);
+}
+
+/** Persist one run with no durable progress for the conversation circuit breaker. */
+export async function recordConversationNoProgress(args: {
+  conversationId: string;
+  conversationStore?: ConversationStore;
+  leaseToken: string;
+  nowMs?: number;
+  state?: StateAdapter;
+}) {
+  const result = await workState.recordConversationNoProgress(args);
+  await recordExecutionMetadata(args);
+  return result;
 }
 
 /** Count mailbox messages that have not yet reached the conversation event log. */
