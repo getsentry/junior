@@ -144,7 +144,7 @@ export function MemoryDetailsDrawer(props: {
       <aside className="absolute top-0 right-0 grid h-full w-full grid-rows-[auto_minmax(0,1fr)] bg-[#070707] shadow-[-20px_0_60px_rgba(0,0,0,0.45)] md:w-[min(560px,94vw)] md:border-l md:border-white/12">
         <header className="relative border-b border-white/10 bg-dashboard-surface-raised px-4 py-3 md:px-5">
           <div className="min-w-0 pr-12">
-            <div className="font-mono text-[0.58rem] uppercase tracking-[0.14em] text-cyan-200/65">
+            <div className="font-mono text-xs uppercase tracking-[0.14em] text-cyan-200/65">
               Memory details
             </div>
             <h2
@@ -153,7 +153,7 @@ export function MemoryDetailsDrawer(props: {
             >
               What Junior remembers
             </h2>
-            <div className="mt-1 break-words font-mono text-[0.78rem] leading-snug text-dashboard-text-muted">
+            <div className="mt-1 break-words font-mono text-xs leading-snug text-dashboard-text-muted">
               {kind} · {visibility} · {shortDate(remembered)}
             </div>
           </div>
@@ -172,7 +172,7 @@ export function MemoryDetailsDrawer(props: {
         <div className="min-h-0 overflow-auto px-4 py-4 md:px-5">
           <section className="grid gap-5">
             <div>
-              <div className="mb-2 font-mono text-[0.54rem] uppercase tracking-[0.12em] text-dashboard-text-muted">
+              <div className="mb-2 font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted">
                 Memory
               </div>
               <TranscriptText text={record.title} />
@@ -190,10 +190,10 @@ export function MemoryDetailsDrawer(props: {
                 size={15}
               />
               <div>
-                <div className="font-mono text-[0.55rem] uppercase tracking-[0.12em] text-cyan-200/65">
+                <div className="font-mono text-xs uppercase tracking-[0.12em] text-cyan-200/65">
                   Why Junior remembers this
                 </div>
-                <div className="mt-1 font-mono text-[0.66rem] leading-relaxed text-dashboard-text">
+                <div className="mt-1 font-mono text-xs leading-relaxed text-dashboard-text">
                   {story} {scopeCopy}
                 </div>
               </div>
@@ -211,7 +211,7 @@ export function MemoryDetailsDrawer(props: {
 
             {forgetAction ? (
               <button
-                className="inline-flex w-fit cursor-pointer items-center gap-2 rounded border border-rose-300/15 bg-rose-300/[0.035] px-3 py-2 font-mono text-[0.62rem] uppercase tracking-[0.08em] text-rose-200/75 transition-colors hover:border-rose-300/30 hover:bg-rose-300/[0.07] hover:text-rose-100"
+                className="inline-flex w-fit cursor-pointer items-center gap-2 rounded border border-rose-300/15 bg-rose-300/[0.035] px-3 py-2 font-mono text-xs uppercase tracking-[0.08em] text-rose-200/75 transition-colors hover:border-rose-300/30 hover:bg-rose-300/[0.07] hover:text-rose-100"
                 disabled={props.action.isPending}
                 onClick={() => {
                   if (
@@ -234,7 +234,7 @@ export function MemoryDetailsDrawer(props: {
                 Forget this memory
               </button>
             ) : isPublic ? (
-              <div className="inline-flex w-fit items-center gap-2 rounded border border-white/[0.08] px-3 py-2 font-mono text-[0.62rem] uppercase tracking-[0.08em] text-dashboard-text-muted">
+              <div className="inline-flex w-fit items-center gap-2 rounded border border-white/[0.08] px-3 py-2 font-mono text-xs uppercase tracking-[0.08em] text-dashboard-text-muted">
                 <Globe2 aria-hidden="true" size={13} />
                 View only · public memories can&apos;t be deleted
               </div>
@@ -249,10 +249,10 @@ export function MemoryDetailsDrawer(props: {
 function MemoryDetail(props: { children: ReactNode; label: string }) {
   return (
     <div className="min-w-0 bg-[#09090b] px-3 py-3">
-      <dt className="font-mono text-[0.54rem] uppercase tracking-[0.12em] text-dashboard-text-muted">
+      <dt className="font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted">
         {props.label}
       </dt>
-      <dd className="mt-1.5 ml-0 break-words font-mono text-[0.66rem] leading-relaxed text-dashboard-text">
+      <dd className="mt-1.5 ml-0 break-words font-mono text-sm leading-relaxed text-dashboard-text">
         {props.children}
       </dd>
     </div>

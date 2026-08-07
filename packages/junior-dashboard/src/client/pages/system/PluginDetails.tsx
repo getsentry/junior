@@ -58,7 +58,7 @@ function Detail(props: { icon: typeof Boxes; label: string; value: string }) {
         <div className="truncate font-display text-base font-medium text-dashboard-text">
           {props.value}
         </div>
-        <div className="mt-0.5 font-mono text-[0.52rem] uppercase tracking-[0.1em] text-dashboard-text-muted">
+        <div className="mt-0.5 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted">
           {props.label}
         </div>
       </div>
@@ -73,14 +73,14 @@ function CapabilityList(props: {
 }) {
   return (
     <div>
-      <h3 className="m-0 font-mono text-[0.6rem] font-medium uppercase tracking-[0.12em] text-dashboard-text-muted">
+      <h3 className="m-0 font-mono text-xs font-medium uppercase tracking-[0.12em] text-dashboard-text-muted">
         {props.title}
       </h3>
       {props.items.length ? (
         <div className="mt-2.5 flex flex-wrap gap-2">
           {props.items.map((item) => (
             <span
-              className="rounded border border-white/[0.07] bg-black/20 px-2.5 py-1.5 font-mono text-[0.65rem] text-dashboard-text-muted"
+              className="rounded border border-white/[0.07] bg-black/20 px-2.5 py-1.5 font-mono text-xs text-dashboard-text-muted"
               key={item}
             >
               {item}
@@ -88,7 +88,7 @@ function CapabilityList(props: {
           ))}
         </div>
       ) : (
-        <p className="mt-2 mb-0 font-mono text-[0.65rem] leading-relaxed text-dashboard-text-muted">
+        <p className="mt-2 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
           {props.emptyText}
         </p>
       )}

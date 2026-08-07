@@ -279,7 +279,7 @@ function emptyText(input: {
 function TaskFilterGroup(props: { children: ReactNode; label: string }) {
   return (
     <div>
-      <div className="mb-2 font-mono text-[0.62rem] uppercase tracking-[0.12em] text-dashboard-text-muted">
+      <div className="mb-2 font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted">
         {props.label}
       </div>
       <div
@@ -297,7 +297,7 @@ function TaskListHeader() {
   return (
     <div
       aria-hidden="true"
-      className="hidden grid-cols-[minmax(0,1.35fr)_minmax(9rem,0.65fr)_minmax(13rem,1fr)_auto_auto_auto] items-center gap-3 border-b border-white/[0.07] px-4 py-2.5 font-mono text-[0.56rem] uppercase tracking-[0.12em] text-dashboard-text-muted lg:grid"
+      className="hidden grid-cols-[minmax(0,1.35fr)_minmax(9rem,0.65fr)_minmax(13rem,1fr)_auto_auto_auto] items-center gap-3 border-b border-white/[0.07] px-4 py-2.5 font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted lg:grid"
     >
       <span>Task</span>
       <span>Destination</span>
@@ -335,7 +335,7 @@ function TaskRow(props: {
             <span className="block truncate font-display text-base font-medium text-dashboard-text">
               {task.instruction}
             </span>
-            <span className="mt-1 flex min-w-0 items-center gap-1.5 font-mono text-[0.58rem] uppercase tracking-[0.08em] text-dashboard-text-muted">
+            <span className="mt-1 flex min-w-0 items-center gap-1.5 font-mono text-xs uppercase tracking-[0.08em] text-dashboard-text-muted">
               <span>{task.kind}</span>
               <span aria-hidden="true" className="opacity-35">
                 ·
@@ -363,7 +363,7 @@ function TaskRow(props: {
           <div className="truncate text-sm font-medium text-dashboard-text">
             {task.destination.label}
           </div>
-          <div className="mt-1 font-mono text-[0.58rem] uppercase tracking-[0.08em] text-dashboard-text-muted">
+          <div className="mt-1 font-mono text-xs uppercase tracking-[0.08em] text-dashboard-text-muted">
             {task.destination.visibility}
           </div>
         </div>
@@ -371,7 +371,7 @@ function TaskRow(props: {
           <div className="truncate text-sm text-dashboard-text">
             {task.kind === "scheduled" ? task.schedule : task.resource}
           </div>
-          <div className="mt-1 truncate font-mono text-[0.58rem] text-dashboard-text-muted">
+          <div className="mt-1 truncate font-mono text-xs text-dashboard-text-muted">
             {task.kind === "scheduled"
               ? task.nextRunAt
                 ? `Next ${formatRunDate(task.nextRunAt)}`
@@ -458,7 +458,7 @@ function TaskSourceMark(props: { task: TaskSummary }) {
       {isGitHub ? (
         <GitHubMark />
       ) : (
-        <span className="font-mono text-[0.65rem] font-semibold uppercase tracking-[0.08em]">
+        <span className="font-mono text-xs font-semibold uppercase tracking-[0.08em]">
           {sourceMark}
         </span>
       )}
@@ -486,7 +486,7 @@ function TaskTag(props: {
   return (
     <span
       className={cn(
-        "rounded-full border px-2 py-0.5 font-mono text-[0.62rem] uppercase tracking-[0.08em]",
+        "rounded-full border px-2 py-0.5 font-mono text-xs uppercase tracking-[0.08em]",
         props.tone === "success"
           ? "border-emerald-300/20 bg-emerald-300/[0.06] text-emerald-200/80"
           : props.tone === "warning"

@@ -44,7 +44,7 @@ export function TranscriptReasoningView(props: {
         }
         right={
           timestamp ? (
-            <TranscriptHeadingMeta className="min-w-0 break-words text-[0.78rem] not-italic text-dashboard-text-muted max-md:hidden">
+            <TranscriptHeadingMeta className="min-w-0 break-words text-xs not-italic text-dashboard-text-muted max-md:hidden">
               {timestamp}
             </TranscriptHeadingMeta>
           ) : undefined
@@ -64,7 +64,7 @@ export function TranscriptReasoningView(props: {
 
   if (searchActive) {
     return (
-      <div className="py-1.5 text-[0.84rem] leading-relaxed text-dashboard-text-muted">
+      <div className="py-1.5 text-sm leading-relaxed text-dashboard-text-muted">
         <div className="grid list-none grid-cols-[1rem_minmax(0,1fr)] items-start gap-2">
           {summary}
         </div>
@@ -74,7 +74,7 @@ export function TranscriptReasoningView(props: {
   }
 
   return (
-    <details className="group/reasoning py-1.5 text-[0.84rem] leading-relaxed text-dashboard-text-muted">
+    <details className="group/reasoning py-1.5 text-sm leading-relaxed text-dashboard-text-muted">
       <summary className="grid cursor-pointer list-none grid-cols-[1rem_minmax(0,1fr)] items-start gap-2 transition-colors hover:text-dashboard-text [&::-webkit-details-marker]:hidden">
         {summary}
       </summary>

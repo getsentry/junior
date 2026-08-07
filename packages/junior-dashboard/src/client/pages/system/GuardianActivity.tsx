@@ -35,7 +35,7 @@ function Stat(props: {
       <div className="font-display text-xl font-light text-dashboard-text">
         <span className={props.valueClassName}>{props.value}</span>
       </div>
-      <div className="mt-1 font-mono text-[0.56rem] uppercase tracking-[0.1em] text-dashboard-text-muted">
+      <div className="mt-1 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted">
         {props.label}
       </div>
     </div>
@@ -60,14 +60,14 @@ export function GuardianActivity(props: { days: GuardianMetricDay[] }) {
       <div className="border-b border-white/[0.06] px-4 py-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h3 className="m-0 font-mono text-[0.68rem] font-medium uppercase tracking-[0.14em] text-dashboard-text-muted">
+            <h3 className="m-0 font-mono text-xs font-medium uppercase tracking-[0.14em] text-dashboard-text-muted">
               Guardian reviews
             </h3>
-            <p className="mt-1 mb-0 font-mono text-[0.64rem] leading-relaxed text-dashboard-text-muted">
+            <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
               Daily decisions before reviewed actions execute.
             </p>
           </div>
-          <div className="font-mono text-[0.58rem] uppercase tracking-[0.1em] text-dashboard-text-muted">
+          <div className="font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted">
             <span className="mr-3 text-emerald-200/75">Allow</span>
             <span className="mr-3 text-amber-200/75">Ask</span>
             <span className="text-rose-200/75">Deny</span>
@@ -152,7 +152,7 @@ export function GuardianActivity(props: { days: GuardianMetricDay[] }) {
             );
           })}
         </div>
-        <div className="relative mt-2 h-4 font-mono text-[0.56rem] text-dashboard-text-muted">
+        <div className="relative mt-2 h-4 font-mono text-xs text-dashboard-text-muted">
           {labels.map((index) => {
             const day = props.days[index];
             if (!day) return null;

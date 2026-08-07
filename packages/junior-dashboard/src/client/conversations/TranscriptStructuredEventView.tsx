@@ -14,7 +14,7 @@ export function TranscriptStructuredEventView(props: {
   const timestamp = formatMessageTimestamp(props.timestamp);
   const details = presentation.details ?? [];
   const surfaceClass =
-    "min-w-0 rounded-lg border border-violet-300/10 bg-violet-300/[0.035] px-3 py-2 font-mono text-[0.82rem] leading-tight";
+    "min-w-0 rounded-lg border border-violet-300/10 bg-violet-300/[0.035] px-3 py-2 font-mono text-sm leading-tight";
   const body =
     details.length > 0 ? (
       <div className="grid gap-2 pb-1 pt-2">
@@ -23,11 +23,11 @@ export function TranscriptStructuredEventView(props: {
             className="rounded border border-white/[0.06] bg-white/[0.025] px-3 py-2.5"
             key={`${detail.title}:${index}`}
           >
-            <div className="whitespace-pre-wrap break-words text-[0.84rem] text-dashboard-text">
+            <div className="whitespace-pre-wrap break-words text-sm text-dashboard-text">
               <HighlightText text={detail.title} />
             </div>
             {detail.description ? (
-              <div className="mt-1 whitespace-pre-wrap break-words text-[0.78rem] leading-relaxed text-dashboard-text-muted">
+              <div className="mt-1 whitespace-pre-wrap break-words text-xs leading-relaxed text-dashboard-text-muted">
                 <HighlightText text={detail.description} />
               </div>
             ) : null}
@@ -35,7 +35,7 @@ export function TranscriptStructuredEventView(props: {
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {detail.metadata.map((value) => (
                   <span
-                    className="rounded bg-white/[0.05] px-1.5 py-0.5 font-mono text-[0.68rem] text-dashboard-text-muted"
+                    className="rounded bg-white/[0.05] px-1.5 py-0.5 font-mono text-xs text-dashboard-text-muted"
                     key={value}
                   >
                     <HighlightText text={value} />
@@ -50,17 +50,17 @@ export function TranscriptStructuredEventView(props: {
   const header = (
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-2 max-md:grid-cols-[minmax(0,1fr)]">
       <div className="min-w-0">
-        <div className="font-display text-[0.88rem] font-semibold text-violet-100">
+        <div className="font-display text-sm font-semibold text-violet-100">
           <HighlightText text={presentation.title} />
         </div>
         {presentation.preview ? (
-          <div className="mt-0.5 truncate text-[0.78rem] text-dashboard-text-muted">
+          <div className="mt-0.5 truncate text-xs text-dashboard-text-muted">
             <HighlightText text={presentation.preview} />
           </div>
         ) : null}
       </div>
       {timestamp ? (
-        <span className="font-mono text-[0.72rem] text-dashboard-text-muted max-md:hidden">
+        <span className="font-mono text-xs text-dashboard-text-muted max-md:hidden">
           {timestamp}
         </span>
       ) : null}

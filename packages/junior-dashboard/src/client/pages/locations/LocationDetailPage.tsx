@@ -93,10 +93,10 @@ function LocationDetail(props: { detail: LocationDetailReport }) {
             <MapPin aria-hidden="true" size={16} />
           </span>
           <div>
-            <h3 className="m-0 font-mono text-[0.68rem] font-medium uppercase tracking-[0.14em] text-dashboard-text-muted">
+            <h3 className="m-0 font-mono text-xs font-medium uppercase tracking-[0.14em] text-dashboard-text-muted">
               People seen here
             </h3>
-            <p className="mt-1 mb-0 font-mono text-[0.68rem] text-dashboard-text-muted">
+            <p className="mt-1 mb-0 font-mono text-xs text-dashboard-text-muted">
               Verified contributors across persisted conversations.
             </p>
           </div>
@@ -113,10 +113,10 @@ function LocationDetail(props: { detail: LocationDetailReport }) {
               ].join(":");
               const content = (
                 <>
-                  <div className="truncate font-display text-[0.95rem] font-medium text-dashboard-text">
+                  <div className="truncate font-display text-base font-medium text-dashboard-text">
                     {item.label}
                   </div>
-                  <div className="mt-1 font-mono text-[0.66rem] text-dashboard-text-muted">
+                  <div className="mt-1 font-mono text-xs text-dashboard-text-muted">
                     {formatCompactNumber(item.conversations)} conversations /{" "}
                     <Duration value={item.durationMs} />
                   </div>

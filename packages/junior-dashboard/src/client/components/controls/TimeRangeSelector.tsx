@@ -18,7 +18,7 @@ export function TimeRangeSelector(props: {
         <button
           aria-pressed={props.value === days}
           className={cn(
-            "h-7 min-w-10 cursor-pointer rounded border px-2 font-mono text-[0.68rem] transition-colors",
+            "h-7 min-w-10 cursor-pointer rounded border px-2 font-mono text-xs transition-colors",
             props.value === days
               ? "border-amber-500/30 bg-amber-500/20 text-amber-400"
               : cn(

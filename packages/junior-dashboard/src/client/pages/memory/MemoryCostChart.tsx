@@ -51,17 +51,17 @@ export function MemoryCostChart(props: {
     <Card className="min-h-[17rem] p-4 sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <div className="font-mono text-[0.6rem] uppercase tracking-[0.16em] text-cyan-200/65">
+          <div className="font-mono text-xs uppercase tracking-[0.16em] text-cyan-200/65">
             Memory cost
           </div>
           <h2 className="mt-1 mb-0 font-display text-xl font-medium text-dashboard-text">
             {formatCostSummary({ total })}
           </h2>
-          <p className="mt-1 mb-0 font-mono text-[0.64rem] leading-relaxed text-dashboard-text-muted">
+          <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
             System-wide estimate across {formatRunCount(runs)} spanning
             extraction and recall.
           </p>
-          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[0.6rem] text-dashboard-text-muted">
+          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-xs text-dashboard-text-muted">
             <span className="inline-flex items-center gap-1.5">
               <span
                 aria-hidden="true"
@@ -86,7 +86,7 @@ export function MemoryCostChart(props: {
             <button
               aria-pressed={range === days}
               className={cn(
-                "cursor-pointer rounded-sm border-0 px-2.5 py-1.5 font-mono text-[0.58rem] uppercase tracking-[0.1em] transition-colors",
+                "cursor-pointer rounded-sm border-0 px-2.5 py-1.5 font-mono text-xs uppercase tracking-[0.1em] transition-colors",
                 range === days
                   ? "bg-cyan-300/10 text-cyan-100"
                   : "bg-transparent text-dashboard-text-muted hover:text-dashboard-text",
@@ -202,7 +202,7 @@ export function MemoryCostChart(props: {
           )}
         </svg>
         {runs === 0 ? (
-          <div className="pointer-events-none absolute inset-0 grid place-items-center pt-12 font-mono text-[0.68rem] text-dashboard-text-muted">
+          <div className="pointer-events-none absolute inset-0 grid place-items-center pt-12 font-mono text-xs text-dashboard-text-muted">
             No memory extraction or recall ran in this period.
           </div>
         ) : null}

@@ -151,7 +151,7 @@ function ToolBody(props: { children: ReactNode; label?: string }) {
   return (
     <div className="min-w-0 max-w-full overflow-hidden border-t border-white/10 py-2">
       {props.label ? (
-        <div className="pb-2 font-mono text-[0.68rem] font-bold uppercase leading-none text-[#9a8fd0]">
+        <div className="pb-2 font-mono text-xs font-bold uppercase leading-none text-[#9a8fd0]">
           {props.label}
         </div>
       ) : null}

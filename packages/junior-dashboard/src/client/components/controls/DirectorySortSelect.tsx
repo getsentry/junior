@@ -12,12 +12,12 @@ export function DirectorySortSelect(props: {
 }) {
   return (
     <label className="grid h-9 min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center overflow-hidden rounded-lg border border-white/10 bg-white/[0.025] transition-colors hover:border-white/20 focus-within:border-amber-500/35 focus-within:ring-1 focus-within:ring-amber-500/15">
-      <span className="flex h-full items-center border-r border-white/[0.07] px-2 font-mono text-[0.62rem] uppercase tracking-[0.12em] text-dashboard-text-muted">
+      <span className="flex h-full items-center border-r border-white/[0.07] px-2 font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted">
         Sort
       </span>
       <select
         aria-label={props.ariaLabel}
-        className="h-full min-w-0 bg-dashboard-control px-2 font-mono text-[0.72rem] text-dashboard-text-muted outline-none [color-scheme:dark]"
+        className="h-full min-w-0 bg-dashboard-control px-2 font-mono text-xs text-dashboard-text-muted outline-none [color-scheme:dark]"
         value={props.value}
         onChange={(event) => props.onChange(event.currentTarget.value)}
       >

@@ -33,7 +33,7 @@ export function SystemActivity(props: {
   return (
     <section aria-label="Runtime telemetry" className="grid gap-4">
       {props.error ? (
-        <p className="m-0 font-mono text-[0.63rem] text-rose-200/65">
+        <p className="m-0 font-mono text-xs text-rose-200/65">
           Metrics refresh failed. Showing cached data.
         </p>
       ) : null}

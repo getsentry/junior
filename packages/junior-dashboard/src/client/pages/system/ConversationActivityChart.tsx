@@ -26,10 +26,10 @@ export function ConversationActivityChart(props: {
       <div className="border-b border-white/[0.06] px-4 py-4 sm:px-5">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h3 className="m-0 font-mono text-[0.68rem] font-medium uppercase tracking-[0.14em] text-dashboard-text-muted">
+            <h3 className="m-0 font-mono text-xs font-medium uppercase tracking-[0.14em] text-dashboard-text-muted">
               Conversation activity
             </h3>
-            <p className="mt-1 mb-0 font-mono text-[0.64rem] leading-relaxed text-dashboard-text-muted">
+            <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
               Root conversations with recorded activity, bucketed by day.
             </p>
           </div>
@@ -37,7 +37,7 @@ export function ConversationActivityChart(props: {
             <div className="font-display text-xl font-light text-dashboard-text">
               {formatCompactNumber(total)}
             </div>
-            <div className="font-mono text-[0.56rem] uppercase tracking-[0.1em] text-dashboard-text-muted">
+            <div className="font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted">
               period total
             </div>
           </div>

@@ -84,7 +84,7 @@ export function ConversationPage(props: {
               Conversation
             </div>
             <div className="min-w-0">
-              <h2 className="m-0 line-clamp-2 font-display text-xl font-medium leading-tight tracking-[-0.03em] md:line-clamp-none md:truncate md:text-2xl md:text-[1.75rem]">
+              <h2 className="m-0 line-clamp-2 font-display text-xl font-medium leading-tight tracking-[-0.03em] md:line-clamp-none md:truncate md:text-3xl">
                 {conversationDisplayTitle(conversation)}
               </h2>
             </div>
@@ -104,7 +104,7 @@ export function ConversationPage(props: {
               )}
             </div>
             <Button
-              className="h-auto px-2.5 py-1 text-[0.65rem] font-normal text-dashboard-text-muted"
+              className="h-auto px-2.5 py-1 text-xs font-normal text-dashboard-text-muted"
               disabled={!conversation || archive.isPending}
               onClick={() =>
                 archive.mutate({
@@ -133,13 +133,13 @@ export function ConversationPage(props: {
         {detail.isPending ? (
           <TranscriptLoading />
         ) : detail.error && !detail.data ? (
-          <Card className="border-white/[0.07] bg-white/[0.025] p-4 font-mono text-[0.76rem] leading-relaxed text-dashboard-text-muted">
+          <Card className="border-white/[0.07] bg-white/[0.025] p-4 font-mono text-xs leading-relaxed text-dashboard-text-muted">
             {detail.error.message}
           </Card>
         ) : (
           <>
             {detail.error ? (
-              <div className="mb-3 rounded-lg border border-amber-300/15 bg-amber-300/[0.045] px-4 py-2 font-mono text-[0.7rem] text-amber-100/65">
+              <div className="mb-3 rounded-lg border border-amber-300/15 bg-amber-300/[0.045] px-4 py-2 font-mono text-xs text-amber-100/65">
                 Transcript refresh failed. Showing the latest available data.
               </div>
             ) : null}
@@ -216,7 +216,7 @@ function ConversationAnnotations(props: {
       <div className="flex flex-wrap gap-2">
         {links.map((link) => (
           <a
-            className="inline-flex items-center gap-1.5 rounded border border-cyan-300/15 bg-cyan-300/[0.055] px-2 py-1 font-mono text-[0.68rem] leading-snug text-cyan-50 no-underline"
+            className="inline-flex items-center gap-1.5 rounded border border-cyan-300/15 bg-cyan-300/[0.055] px-2 py-1 font-mono text-xs leading-snug text-cyan-50 no-underline"
             href={link.url}
             key={`${link.plugin}:${link.key}`}
             rel="noreferrer"

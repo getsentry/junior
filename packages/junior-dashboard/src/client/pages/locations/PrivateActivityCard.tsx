@@ -13,10 +13,10 @@ export function PrivateActivityCard(props: { item: ConversationStatsItem }) {
           <LockKeyhole aria-hidden="true" size={15} />
         </span>
         <div className="min-w-0">
-          <div className="font-display text-[1rem] font-medium text-dashboard-text">
+          <div className="font-display text-base font-medium text-dashboard-text">
             Private activity
           </div>
-          <div className="mt-1 font-mono text-[0.67rem] leading-relaxed text-dashboard-text-muted">
+          <div className="mt-1 font-mono text-xs leading-relaxed text-dashboard-text-muted">
             DMs, private channels, and unknown visibility stay combined and
             unlinked.
           </div>
@@ -25,7 +25,7 @@ export function PrivateActivityCard(props: { item: ConversationStatsItem }) {
           <div className="font-display text-2xl font-light text-dashboard-text">
             {formatCompactNumber(props.item.conversations)}
           </div>
-          <div className="font-mono text-[0.58rem] uppercase tracking-[0.1em] text-dashboard-text-muted">
+          <div className="font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted">
             conversations
           </div>
         </div>
