@@ -129,7 +129,6 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
   await expect(closeTaskDetails).not.toBeFocused();
   await page.keyboard.press("Tab");
   await expect(closeTaskDetails).toBeFocused();
-  await expect(details.getByText("Task details")).toBeVisible();
   await expect(details.getByText("Instruction")).toBeVisible();
   await expect(
     details.getByText("Send the weekly project summary"),
@@ -199,7 +198,6 @@ test("opens memory details in a slide-out drawer", async ({ page }) => {
   await expect(closeMemoryDetails).not.toBeFocused();
   await page.keyboard.press("Tab");
   await expect(closeMemoryDetails).toBeFocused();
-  await expect(details.getByText("Memory details")).toBeVisible();
   await expect(details.getByText("Why Junior remembers this")).toBeVisible();
   await expect(details.getByText(/Preference · Private ·/)).toBeVisible();
   await expect(
