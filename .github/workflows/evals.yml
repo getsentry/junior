@@ -231,7 +231,7 @@ jobs:
           ls -la eval-results
 
       - name: Publish combined eval report
-        uses: getsentry/vitest-evals@542bab9411e1638c14f177c1884d5334089dcdd4 # v0.16.0
+        uses: getsentry/vitest-evals@v0.16.0
         with:
           results: eval-results/*.json
           publish-check: true
