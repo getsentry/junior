@@ -437,13 +437,31 @@ export async function markDispatchAwaitingResume(
   );
 }
 
+async function recordEventTaskExecution(
+  previous: DispatchRecord | undefined,
+  next: DispatchRecord | undefined,
+  status: "blocked" | "completed" | "failed",
+): Promise<void> {
+  if (!next || next.status !== status || previous?.status === status) return;
+  if (next.plugin !== "junior") return;
+  const eventTaskId = next.metadata?.eventTaskId;
+  if (!eventTaskId) return;
+  await recordTaskExecution("event", eventTaskId, {
+    conversationId: getDispatchConversationId(next),
+    executionId: next.id,
+    nowMs: next.updatedAtMs,
+    status,
+  });
+}
+
 /** Project a blocked turn to the plugin API. */
 export async function markDispatchBlocked(
   id: string,
   errorMessage: string,
   resultMessageTs?: string,
 ): Promise<DispatchRecord | undefined> {
-  return await transitionDispatch(id, (record) =>
+  const previous = await getDispatchRecord(id);
+  const next = await transitionDispatch(id, (record) =>
     isTerminalDispatchStatus(record.status)
       ? record
       : {
@@ -453,6 +471,8 @@ export async function markDispatchBlocked(
           status: "blocked",
         },
   );
+  await recordEventTaskExecution(previous, next, "blocked");
+  return next;
 }
 
 /** Project a completed turn and its accepted Slack message to the plugin API. */
@@ -471,20 +491,7 @@ export async function markDispatchCompleted(
           status: "completed",
         },
   );
-  if (
-    next?.status === "completed" &&
-    previous?.status !== "completed" &&
-    next.plugin === "junior"
-  ) {
-    const eventTaskId = next.metadata?.eventTaskId;
-    if (eventTaskId) {
-      await recordTaskExecution("event", eventTaskId, {
-        conversationId: getDispatchConversationId(next),
-        executionId: next.id,
-        nowMs: next.updatedAtMs,
-      });
-    }
-  }
+  await recordEventTaskExecution(previous, next, "completed");
   return next;
 }
 
@@ -494,7 +501,8 @@ export async function markDispatchFailed(
   errorMessage: string,
   resultMessageTs?: string,
 ): Promise<DispatchRecord | undefined> {
-  return await transitionDispatch(id, (record) =>
+  const previous = await getDispatchRecord(id);
+  const next = await transitionDispatch(id, (record) =>
     isTerminalDispatchStatus(record.status)
       ? record
       : {
@@ -504,6 +512,8 @@ export async function markDispatchFailed(
           status: "failed",
         },
   );
+  await recordEventTaskExecution(previous, next, "failed");
+  return next;
 }
 
 /** Remove a dispatch after its durable mailbox append has succeeded. */

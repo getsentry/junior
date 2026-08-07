@@ -26,6 +26,7 @@ import { PeoplePage } from "./pages/people/PeoplePage";
 import { PersonalTokensPage } from "./pages/PersonalTokensPage";
 import { PersonProfilePage } from "./pages/people/PersonProfilePage";
 import { SystemPage } from "./pages/system/SystemPage";
+import { TaskExecutionsPage } from "./pages/tasks/TaskExecutionsPage";
 import { TasksPage } from "./pages/tasks/TasksPage";
 import {
   MemoryPermalinkRoute,
@@ -172,6 +173,18 @@ export function DashboardShell() {
       </header>
 
       <Routes>
+        <Route
+          element={
+            loading ? (
+              <LoadingView label="Loading task executions" />
+            ) : loggedIn ? (
+              <TaskExecutionsPage enabled={loggedIn} />
+            ) : (
+              <Navigate replace to="/" />
+            )
+          }
+          path="/tasks/:kind/:taskId/executions"
+        />
         <Route
           element={
             loading ? (

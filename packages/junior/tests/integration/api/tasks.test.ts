@@ -1,6 +1,9 @@
 import { Hono } from "hono";
 import { describe, expect, test } from "vitest";
-import { taskListSchema } from "@/api/schema/task";
+import {
+  taskExecutionListSchema,
+  taskListSchema,
+} from "@/api/schema/task";
 import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
@@ -226,21 +229,25 @@ describe("Tasks API", () => {
         conversationId: "agent-dispatch:sched-run-1",
         executionId: "sched-run-1",
         nowMs: Date.parse("2026-08-04T12:00:00.000Z"),
+        status: "completed",
       });
       await recordTaskExecution("scheduled", "sched_tasks_api", {
         conversationId: "agent-dispatch:sched-run-2",
         executionId: "sched-run-2",
         nowMs: Date.parse("2026-08-04T13:00:00.000Z"),
+        status: "failed",
       });
       await recordTaskExecution("event", "event_tasks_api", {
         conversationId: "agent-dispatch:event-run-1",
-        executionId: "sched-run-1",
+        executionId: "event-run-1",
         nowMs: Date.parse("2026-08-03T12:00:00.000Z"),
+        status: "completed",
       });
       await recordTaskExecution("scheduled", "sched_tasks_api", {
         conversationId: "agent-dispatch:sched-run-2",
         executionId: "sched-run-2",
         nowMs: Date.parse("2026-08-04T13:00:00.000Z"),
+        status: "failed",
       });
 
       const response = await authenticatedApi("VIEWER@example.com").request(
@@ -305,6 +312,44 @@ describe("Tasks API", () => {
         ],
         truncated: false,
       });
+
+      const executionsResponse = await authenticatedApi(
+        "viewer@example.com",
+      ).request(
+        "http://localhost/api/tasks/scheduled/sched_tasks_api/executions",
+      );
+      expect(executionsResponse.status).toBe(200);
+      expect(
+        taskExecutionListSchema.parse(await executionsResponse.json()),
+      ).toEqual({
+        executions: [
+          {
+            conversationId: "agent-dispatch:sched-run-2",
+            executedAt: "2026-08-04T13:00:00.000Z",
+            executionId: "sched-run-2",
+            status: "failed",
+          },
+          {
+            conversationId: "agent-dispatch:sched-run-1",
+            executedAt: "2026-08-04T12:00:00.000Z",
+            executionId: "sched-run-1",
+            status: "completed",
+          },
+        ],
+        task: expect.objectContaining({
+          id: "sched_tasks_api",
+          kind: "scheduled",
+          totalRuns: 2,
+        }),
+        truncated: false,
+      });
+
+      const deniedExecutions = await authenticatedApi(
+        "viewer@example.com",
+      ).request(
+        "http://localhost/api/tasks/event/event_private_tasks_api/executions",
+      );
+      expect(deniedExecutions.status).toBe(404);
 
       for (let index = 0; index <= 100; index += 1) {
         await scheduledStore.saveTask({

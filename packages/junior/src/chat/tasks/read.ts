@@ -1,8 +1,13 @@
 import type { SlackDestination, User } from "@sentry/junior-plugin-api";
 import { and, eq, or } from "drizzle-orm";
-import type { TaskList, TaskSummary } from "@/api/schema/task";
+import type {
+  TaskExecutionList,
+  TaskList,
+  TaskSummary,
+} from "@/api/schema/task";
 import {
   readTaskExecutionDays,
+  readTaskExecutions,
   readTaskExecutionSummaries,
   type TaskExecutionSummary,
 } from "@/chat/tasks/execution-stats";
@@ -30,6 +35,7 @@ import { juniorDestinations, juniorIdentities, juniorUsers } from "@/db/schema";
 
 const TASK_LIST_LIMIT = 100;
 const TASK_FETCH_LIMIT = TASK_LIST_LIMIT + 1;
+const TASK_EXECUTION_LIST_LIMIT = 100;
 
 type TaskCandidate =
   | {
@@ -187,6 +193,7 @@ function scheduledTaskSummary(
   ownedByViewer: boolean,
   destination: DestinationDetails,
   stats: TaskExecutionSummary | undefined,
+  createdByEmail?: string,
 ): TaskSummary {
   if (task.status === "deleted") {
     throw new Error("Deleted scheduled tasks cannot enter the Tasks view");
@@ -195,6 +202,7 @@ function scheduledTaskSummary(
   return {
     createdAt: new Date(task.createdAtMs).toISOString(),
     createdBy: creatorLabel(task.createdBy),
+    ...(createdByEmail ? { createdByEmail } : {}),
     destination: {
       channelId: task.destination.channelId,
       label: destination.label,
@@ -214,12 +222,40 @@ function scheduledTaskSummary(
   };
 }
 
-/** Read viewer-owned and public-workspace tasks as one bounded newest-first projection. */
-export async function readViewerTasks(user: User): Promise<TaskList> {
-  const db = getDb();
-  const schedulerStore = createSchedulerSqlStore(db);
-  const identityIds = new Set(user.identities.map((identity) => identity.id));
-  const teamIds = [
+function eventTaskSummary(
+  task: EventTask,
+  ownedByViewer: boolean,
+  destination: DestinationDetails,
+  stats: TaskExecutionSummary | undefined,
+  createdByEmail?: string,
+): TaskSummary {
+  return {
+    createdAt: new Date(task.createdAtMs).toISOString(),
+    createdBy: creatorLabel(task.createdBy),
+    ...(createdByEmail ? { createdByEmail } : {}),
+    destination: {
+      channelId: task.destination.channelId,
+      label: destination.label,
+      teamId: task.destination.teamId,
+      visibility: destination.visibility,
+    },
+    events: task.trigger.events,
+    id: task.id,
+    instruction: task.task.text,
+    kind: "event",
+    ...executionSummaryFields(stats),
+    ownedByViewer,
+    resource: `${task.trigger.label} · ${task.trigger.identifier}`,
+    source: task.trigger.namespace,
+    triggerAvailable: eventTaskTriggerAvailable(
+      task,
+      getResourceEventCatalog(),
+    ),
+  };
+}
+
+function viewerTeamIds(user: User): string[] {
+  return [
     ...new Set(
       user.identities
         .filter((identity) => identity.provider === "slack")
@@ -227,6 +263,94 @@ export async function readViewerTasks(user: User): Promise<TaskList> {
         .filter((teamId): teamId is string => Boolean(teamId)),
     ),
   ];
+}
+
+async function resolveViewerTaskCandidate(
+  user: User,
+  kind: "scheduled" | "event",
+  id: string,
+): Promise<TaskCandidate | undefined> {
+  const db = getDb();
+  const identityIds = new Set(user.identities.map((identity) => identity.id));
+  const teamIds = viewerTeamIds(user);
+  if (kind === "scheduled") {
+    const task = await createSchedulerSqlStore(db).getTask(id);
+    if (!task || task.status === "deleted") return undefined;
+    const ownedByViewer = identityIds.has(task.creatorIdentityId);
+    const destinations = await destinationDetails([task.destination]);
+    const destination = destinations.get(destinationKey(task.destination));
+    const publicToViewer =
+      teamIds.includes(task.destination.teamId) &&
+      destination?.visibility === "public";
+    if (!ownedByViewer && !publicToViewer) return undefined;
+    return {
+      kind: "scheduled",
+      ownedByViewer,
+      publicToViewer,
+      task,
+    };
+  }
+  const task = await getEventTask(db, id);
+  if (!task) return undefined;
+  const ownedByViewer = eventTaskBelongsToUser(task, user);
+  const destinations = await destinationDetails([task.destination]);
+  const destination = destinations.get(destinationKey(task.destination));
+  const publicToViewer =
+    teamIds.includes(task.destination.teamId) &&
+    destination?.visibility === "public";
+  if (!ownedByViewer && !publicToViewer) return undefined;
+  return {
+    kind: "event",
+    ownedByViewer,
+    publicToViewer,
+    task,
+  };
+}
+
+async function taskSummaryForCandidate(
+  candidate: TaskCandidate,
+): Promise<TaskSummary> {
+  const [destinations, creatorEmails, stats] = await Promise.all([
+    destinationDetails([candidate.task.destination]),
+    creatorProfileEmails([candidate]),
+    readTaskExecutionSummaries(candidate.kind, "junior"),
+  ]);
+  const destination = destinations.get(
+    destinationKey(candidate.task.destination),
+  ) ?? {
+    label: `Channel ${candidate.task.destination.channelId}`,
+    visibility: "private" as const,
+  };
+  const createdByEmail = creatorEmails.get(
+    creatorKey(
+      candidate.task.destination.teamId,
+      candidate.task.createdBy.slackUserId,
+    ),
+  );
+  if (candidate.kind === "scheduled") {
+    return scheduledTaskSummary(
+      candidate.task,
+      candidate.ownedByViewer,
+      destination,
+      stats.get(candidate.task.id),
+      createdByEmail,
+    );
+  }
+  return eventTaskSummary(
+    candidate.task,
+    candidate.ownedByViewer,
+    destination,
+    stats.get(candidate.task.id),
+    createdByEmail,
+  );
+}
+
+/** Read viewer-owned and public-workspace tasks as one bounded newest-first projection. */
+export async function readViewerTasks(user: User): Promise<TaskList> {
+  const db = getDb();
+  const schedulerStore = createSchedulerSqlStore(db);
+  const identityIds = new Set(user.identities.map((identity) => identity.id));
+  const teamIds = viewerTeamIds(user);
   const [scheduledPage, publicScheduled, eventTasks, publicEventTasks] =
     await Promise.all([
       createViewerScheduledTasks(schedulerStore, user).list({
@@ -277,7 +401,6 @@ export async function readViewerTasks(user: User): Promise<TaskList> {
     destinationDetails(selected.map(({ task }) => task.destination)),
     creatorProfileEmails(selected),
   ]);
-  const eventCatalog = getResourceEventCatalog();
   const visible = selected.filter(
     (candidate) =>
       candidate.ownedByViewer ||
@@ -303,38 +426,21 @@ export async function readViewerTasks(user: User): Promise<TaskList> {
       ),
     );
     if (candidate.kind === "scheduled") {
-      const summary = scheduledTaskSummary(
+      return scheduledTaskSummary(
         candidate.task,
         candidate.ownedByViewer,
         destination,
         scheduledStats.get(candidate.task.id),
+        createdByEmail,
       );
-      return {
-        ...summary,
-        ...(createdByEmail ? { createdByEmail } : {}),
-      };
     }
-    const task = candidate.task;
-    return {
-      createdAt: new Date(task.createdAtMs).toISOString(),
-      createdBy: creatorLabel(task.createdBy),
-      ...(createdByEmail ? { createdByEmail } : {}),
-      destination: {
-        channelId: task.destination.channelId,
-        label: destination.label,
-        teamId: task.destination.teamId,
-        visibility: destination.visibility,
-      },
-      events: task.trigger.events,
-      id: task.id,
-      instruction: task.task.text,
-      kind: "event",
-      ...executionSummaryFields(eventStats.get(task.id)),
-      ownedByViewer: candidate.ownedByViewer,
-      resource: `${task.trigger.label} · ${task.trigger.identifier}`,
-      source: task.trigger.namespace,
-      triggerAvailable: eventTaskTriggerAvailable(task, eventCatalog),
-    };
+    return eventTaskSummary(
+      candidate.task,
+      candidate.ownedByViewer,
+      destination,
+      eventStats.get(candidate.task.id),
+      createdByEmail,
+    );
   });
   return {
     executionDays,
@@ -350,6 +456,29 @@ export class ViewerTaskNotFoundError extends Error {
     super("Task was not found.");
     this.name = "ViewerTaskNotFoundError";
   }
+}
+
+/** Read one viewer-visible task and its newest terminal executions. */
+export async function readViewerTaskExecutions(
+  user: User,
+  kind: "scheduled" | "event",
+  id: string,
+): Promise<TaskExecutionList> {
+  const candidate = await resolveViewerTaskCandidate(user, kind, id);
+  if (!candidate) throw new ViewerTaskNotFoundError();
+  const [task, executions] = await Promise.all([
+    taskSummaryForCandidate(candidate),
+    readTaskExecutions({
+      kind,
+      limit: TASK_EXECUTION_LIST_LIMIT + 1,
+      taskId: id,
+    }),
+  ]);
+  return {
+    executions: executions.slice(0, TASK_EXECUTION_LIST_LIMIT),
+    task,
+    truncated: executions.length > TASK_EXECUTION_LIST_LIMIT,
+  };
 }
 
 /** Delete one viewer-owned scheduled or event task. */

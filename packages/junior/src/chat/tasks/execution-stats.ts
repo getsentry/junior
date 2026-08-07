@@ -1,9 +1,17 @@
 import { and, asc, count, desc, eq, gte, lte, max, sql } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import { logWarn } from "@/chat/logging";
-import { juniorTaskExecutions } from "@/db/schema";
+import {
+  juniorTaskExecutions,
+  type TaskExecutionStatus,
+} from "@/db/schema/task-executions";
 
 export const TASK_EXECUTION_TYPES = ["scheduled", "event"] as const;
+export const TASK_EXECUTION_STATUSES = [
+  "blocked",
+  "completed",
+  "failed",
+] as const satisfies readonly TaskExecutionStatus[];
 
 export type TaskExecutionType = (typeof TASK_EXECUTION_TYPES)[number];
 
@@ -20,6 +28,13 @@ export type TaskExecutionSummary = {
   totalRuns: number;
 };
 
+export type TaskExecutionRecord = {
+  conversationId?: string;
+  executedAt: string;
+  executionId: string;
+  status: TaskExecutionStatus;
+};
+
 function utcDate(nowMs: number): string {
   return new Date(nowMs).toISOString().slice(0, 10);
 }
@@ -28,28 +43,33 @@ function emptyDay(date: string): TaskExecutionDay {
   return { date, event: 0, scheduled: 0 };
 }
 
-/** Record one successful task execution and its durable conversation. */
+/** Record one terminal task execution and its durable conversation when present. */
 export async function recordTaskExecution(
   type: TaskExecutionType,
   taskId: string,
   options: {
-    conversationId: string;
+    conversationId?: string;
     executionId: string;
     namespace?: string;
     nowMs?: number;
+    status?: TaskExecutionStatus;
   },
 ): Promise<void> {
   const namespace = options.namespace ?? "junior";
   const nowMs = options.nowMs ?? Date.now();
+  const status = options.status ?? "completed";
   try {
     await getDb()
       .insert(juniorTaskExecutions)
       .values({
-        conversationId: options.conversationId,
+        ...(options.conversationId
+          ? { conversationId: options.conversationId }
+          : {}),
         executedAtMs: nowMs,
         executionId: options.executionId,
         kind: type,
         namespace,
+        status,
         taskId,
       })
       .onConflictDoNothing({
@@ -64,6 +84,7 @@ export async function recordTaskExecution(
       error,
       "app.task.execution.id": options.executionId,
       "app.task.execution.namespace": namespace,
+      "app.task.execution.status": status,
       "app.task.execution.task_id": taskId,
       "app.task.execution.type": type,
     });
@@ -118,7 +139,9 @@ export async function readTaskExecutionSummaries(
     rows.map((row) => [
       row.taskId,
       {
-        lastConversationId: row.lastConversationId,
+        ...(row.lastConversationId
+          ? { lastConversationId: row.lastConversationId }
+          : {}),
         ...(row.lastExecutedAtMs !== null
           ? { lastExecutedAtMs: row.lastExecutedAtMs }
           : {}),
@@ -129,7 +152,7 @@ export async function readTaskExecutionSummaries(
   );
 }
 
-/** Load a fixed trailing window of successful executions stacked by task type. */
+/** Load a fixed trailing window of completed executions stacked by task type. */
 export async function readTaskExecutionDays(
   dayCount = 90,
   options: { nowMs?: number } = {},
@@ -151,6 +174,7 @@ export async function readTaskExecutionDays(
       and(
         gte(juniorTaskExecutions.executedAtMs, startMs),
         lte(juniorTaskExecutions.executedAtMs, endMs),
+        eq(juniorTaskExecutions.status, "completed"),
       ),
     )
     .groupBy(executionDate, juniorTaskExecutions.kind)
@@ -168,4 +192,40 @@ export async function readTaskExecutionDays(
     else if (row.kind === "event") day.event = row.count;
   }
   return [...byDate.values()];
+}
+
+/** Load newest-first executions for one task. */
+export async function readTaskExecutions(args: {
+  kind: TaskExecutionType;
+  limit: number;
+  namespace?: string;
+  taskId: string;
+}): Promise<TaskExecutionRecord[]> {
+  const namespace = args.namespace ?? "junior";
+  const rows = await getDb()
+    .select({
+      conversationId: juniorTaskExecutions.conversationId,
+      executedAtMs: juniorTaskExecutions.executedAtMs,
+      executionId: juniorTaskExecutions.executionId,
+      status: juniorTaskExecutions.status,
+    })
+    .from(juniorTaskExecutions)
+    .where(
+      and(
+        eq(juniorTaskExecutions.kind, args.kind),
+        eq(juniorTaskExecutions.namespace, namespace),
+        eq(juniorTaskExecutions.taskId, args.taskId),
+      ),
+    )
+    .orderBy(
+      desc(juniorTaskExecutions.executedAtMs),
+      desc(juniorTaskExecutions.executionId),
+    )
+    .limit(args.limit);
+  return rows.map((row) => ({
+    ...(row.conversationId ? { conversationId: row.conversationId } : {}),
+    executedAt: new Date(row.executedAtMs).toISOString(),
+    executionId: row.executionId,
+    status: row.status,
+  }));
 }
