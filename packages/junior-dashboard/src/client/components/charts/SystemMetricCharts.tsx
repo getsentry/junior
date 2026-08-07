@@ -170,7 +170,7 @@ function MetricChart(props: {
                 <text
                   fill="rgba(255,255,255,0.35)"
                   fontFamily="ui-monospace, monospace"
-                  fontSize="9"
+                  fontSize="13"
                   textAnchor="end"
                   x={left - 7}
                   y={y + 3}
@@ -240,7 +240,7 @@ function MetricChart(props: {
               <text
                 fill="rgba(255,255,255,0.35)"
                 fontFamily="ui-monospace, monospace"
-                fontSize="9"
+                fontSize="13"
                 key={day.date}
                 textAnchor={
                   index === 0

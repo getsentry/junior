@@ -106,7 +106,7 @@ export function MemoryTimeline(props: { days: MemoryDay[] }) {
                 <text
                   fill="rgba(255,255,255,0.34)"
                   fontFamily="ui-monospace, monospace"
-                  fontSize="9"
+                  fontSize="13"
                   textAnchor="end"
                   x={left - 7}
                   y={y + 3}
@@ -151,7 +151,7 @@ export function MemoryTimeline(props: { days: MemoryDay[] }) {
                 <text
                   fill="rgba(255,255,255,0.34)"
                   fontFamily="ui-monospace, monospace"
-                  fontSize="9"
+                  fontSize="13"
                   key={day.date}
                   textAnchor={
                     index === 0
