@@ -7,7 +7,7 @@
  * `junior_conversation_events` so resumes can materialize the exact continuable
  * boundary without duplicating the event history.
  */
-import { THREAD_STATE_TTL_MS, type StateAdapter } from "chat";
+import type { StateAdapter } from "chat";
 import {
   actorSchema,
   type Destination,
@@ -51,7 +51,8 @@ import {
 const AGENT_TURN_SESSION_INDEX_KEY = `${AGENT_TURN_SESSION_PREFIX}:index`;
 const AGENT_TURN_SESSION_INDEX_MAX_LENGTH = 5_000;
 const AGENT_TURN_SESSION_INDEX_READ_CONCURRENCY = 25;
-const AGENT_TURN_SESSION_TTL_MS = THREAD_STATE_TTL_MS;
+const AGENT_TURN_SESSION_RESUME_TTL_MS = 24 * 60 * 60 * 1000;
+const AGENT_TURN_SESSION_TERMINAL_TTL_MS = 60 * 60 * 1000;
 
 /** Keep only keys whose value is defined. */
 function definedProps<T extends Record<string, unknown>>(
@@ -250,6 +251,18 @@ function parseAgentTurnSessionRecord(
 
 function parseAgentTurnSessionSummary(value: unknown): AgentTurnSessionSummary {
   return agentTurnSessionSummarySchema.parse(value);
+}
+
+function agentTurnSessionTtlMs(
+  state: AgentTurnSessionStatus,
+  ttlMs?: number,
+): number {
+  if (ttlMs !== undefined) {
+    return Math.max(1, ttlMs);
+  }
+  return state === "running" || state === "awaiting_resume"
+    ? AGENT_TURN_SESSION_RESUME_TTL_MS
+    : AGENT_TURN_SESSION_TERMINAL_TTL_MS;
 }
 
 async function appendAgentTurnSessionSummary(
@@ -659,7 +672,7 @@ async function updateAgentTurnSessionState(args: {
   return await setStoredRecord({
     piMessages: args.existing.piMessages,
     piMessageProvenance: args.existing.piMessageProvenance,
-    ttlMs: AGENT_TURN_SESSION_TTL_MS,
+    ttlMs: agentTurnSessionTtlMs(args.state),
     ...definedProps({
       turnStartMessageIndex: args.existing.turnStartMessageIndex,
     }),
@@ -687,7 +700,6 @@ async function updateAgentTurnSessionState(args: {
         resumeReason: args.existing.resumeReason,
         resultMessageId: args.existing.resultMessageId,
         resumedFromSliceId: args.existing.resumedFromSliceId,
-        runtimeContext: parsed.runtimeContext,
         surface: args.existing.surface,
         traceId: args.existing.traceId,
         turnStartSeq: parsed.turnStartSeq,
@@ -749,7 +761,7 @@ export async function upsertAgentTurnSessionRecord(args: {
       `Turn session ${args.sessionId} dispatchId cannot be changed`,
     );
   }
-  const ttlMs = Math.max(1, args.ttlMs ?? AGENT_TURN_SESSION_TTL_MS);
+  const ttlMs = agentTurnSessionTtlMs(args.state, args.ttlMs);
   // Attribute new user input to the turn's actor as an instruction; the event
   // store reuses committed provenance for the unchanged prefix and defaults the
   // rest to context. Platform-neutral so local identities are preserved too.
@@ -840,7 +852,10 @@ export async function upsertAgentTurnSessionRecord(args: {
         resumeReason: args.resumeReason,
         resultMessageId: args.resultMessageId ?? existingRecord?.resultMessageId,
         resumedFromSliceId: args.resumedFromSliceId,
-        runtimeContext: retainedRuntimeContext,
+        runtimeContext:
+          args.state === "running" || args.state === "awaiting_resume"
+            ? retainedRuntimeContext
+            : undefined,
         startedAtMs: existingRecord?.startedAtMs,
         surface: args.surface ?? existingRecord?.surface,
         traceId: args.traceId ?? existingRecord?.traceId,
@@ -901,7 +916,7 @@ export async function recordAgentTurnSessionSummary(args: {
     );
   }
   const nowMs = Date.now();
-  const ttlMs = Math.max(1, args.ttlMs ?? AGENT_TURN_SESSION_TTL_MS);
+  const ttlMs = agentTurnSessionTtlMs(args.state, args.ttlMs);
   const summary: AgentTurnSessionSummary = {
     version: existing?.version ?? 0,
     conversationId: args.conversationId,

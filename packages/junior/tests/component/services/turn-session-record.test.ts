@@ -89,6 +89,52 @@ describe("persistAuthPauseSessionRecord", () => {
     process.env = { ...ORIGINAL_ENV };
   });
 
+  it("keeps unfinished turn sessions for one day and terminal sessions for one hour", async () => {
+    const { getStateAdapter } = await import("@/chat/state/adapter");
+    const { upsertAgentTurnSessionRecord } =
+      await import("@/chat/state/turn-session");
+    const stateAdapter = getStateAdapter();
+    const set = vi.spyOn(stateAdapter, "set");
+    const appendToList = vi.spyOn(stateAdapter, "appendToList");
+
+    const runtimeContext = buildAgentsInstructionsMessage({
+      text: "repo instructions",
+    });
+    await upsertAgentTurnSessionRecord({
+      conversationId: "local:ttl-split:turn",
+      modelId: "test/model",
+      piMessages: [runtimeContext],
+      sessionId: "turn-ttl-split",
+      sliceId: 1,
+      state: "running",
+    });
+    expect(set.mock.calls.at(-1)?.[1]).toMatchObject({
+      runtimeContext: [runtimeContext],
+    });
+    expect(set.mock.calls.at(-1)?.[2]).toBe(24 * 60 * 60 * 1000);
+    expect(appendToList).toHaveBeenCalledTimes(2);
+    for (const call of appendToList.mock.calls) {
+      expect(call[2]?.ttlMs).toBe(24 * 60 * 60 * 1000);
+    }
+
+    set.mockClear();
+    appendToList.mockClear();
+    await upsertAgentTurnSessionRecord({
+      conversationId: "local:ttl-split:turn",
+      modelId: "test/model",
+      piMessages: [runtimeContext],
+      sessionId: "turn-ttl-split",
+      sliceId: 1,
+      state: "completed",
+    });
+    expect(set.mock.calls.at(-1)?.[1]).not.toHaveProperty("runtimeContext");
+    expect(set.mock.calls.at(-1)?.[2]).toBe(60 * 60 * 1000);
+    expect(appendToList).toHaveBeenCalledTimes(2);
+    for (const call of appendToList.mock.calls) {
+      expect(call[2]?.ttlMs).toBe(60 * 60 * 1000);
+    }
+  });
+
   it("keeps dispatch correlation write-once across session summaries", async () => {
     const { recordAgentTurnSessionSummary } =
       await import("@/chat/state/turn-session");
