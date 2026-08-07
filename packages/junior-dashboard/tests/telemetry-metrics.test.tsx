@@ -60,17 +60,31 @@ describe("CostMetric", () => {
 
   it("shows provisional cost while conversation metrics are live", () => {
     const emptyHtml = renderToStaticMarkup(
-      <CostMetric live summary={undefined} />,
+      <CostMetric
+        live
+        liveModelId="xai/grok-4-5"
+        summary={undefined}
+      />,
     );
     expect(emptyHtml).toContain("$…");
-    expect(emptyHtml).toContain("in progress");
+    expect(emptyHtml).toContain("grok-4-5 (in progress)");
     expect(emptyHtml).toContain("junior-text-shimmer");
 
     const partialHtml = renderToStaticMarkup(
-      <CostMetric live summary={{ total: 0.041 }} />,
+      <CostMetric
+        live
+        liveModelId="xai/grok-4-5"
+        modelUsage={[
+          {
+            modelId: "xai/grok-4-5",
+            usage: { cost: { total: 0.041 } },
+          },
+        ]}
+        summary={{ total: 0.041 }}
+      />,
     );
     expect(partialHtml).toContain("$0.04+");
-    expect(partialHtml).toContain("in progress");
+    expect(partialHtml).toContain("grok-4-5 (in progress)");
     expect(partialHtml).toContain("junior-text-shimmer");
 
     const settledHtml = renderToStaticMarkup(
@@ -86,10 +100,18 @@ describe("CostMetric", () => {
     const tokenHtml = renderToStaticMarkup(
       <TokenMetric
         live
+        liveModelId="xai/grok-4-5"
+        modelUsage={[
+          {
+            modelId: "xai/grok-4-5",
+            usage: { inputTokens: 1_200, outputTokens: 420 },
+          },
+        ]}
         summary={{ inputTokens: 1_200, outputTokens: 420, totalTokens: 1_620 }}
       />,
     );
     expect(tokenHtml).toContain("1.6k tokens");
+    expect(tokenHtml).toContain("grok-4-5 (in progress)");
     expect(tokenHtml).toContain("junior-text-shimmer");
 
     const toolHtml = renderToStaticMarkup(

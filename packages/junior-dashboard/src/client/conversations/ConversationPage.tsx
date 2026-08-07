@@ -355,6 +355,25 @@ function SourceLocation(props: { label: string; sourceUrl?: string }) {
   );
 }
 
+function liveModelId(
+  detail: ConversationDetailReport | undefined,
+): string | undefined {
+  if (!detail) return undefined;
+  const openTurns = new Set<string>();
+  for (const event of detail.events) {
+    if (event.data.type !== "turn_lifecycle") continue;
+    if (event.data.state === "started") openTurns.add(event.data.turnId);
+    else openTurns.delete(event.data.turnId);
+  }
+  for (let index = detail.events.length - 1; index >= 0; index -= 1) {
+    const data = detail.events[index]?.data;
+    if (data?.type === "turn_routed" && openTurns.has(data.turnId)) {
+      return data.modelId;
+    }
+  }
+  return undefined;
+}
+
 function ConversationStats(props: {
   conversation: Conversation | undefined;
   detail?: ConversationDetailReport;
@@ -380,6 +399,7 @@ function ConversationStats(props: {
   const durationLabel = formatConversationDuration(props.conversation);
   const live =
     (props.detail?.status ?? props.conversation.status) === "active";
+  const activeModelId = liveModelId(props.detail);
   const rawStats: Array<MetricListItem | undefined> = [
     location
       ? {
@@ -411,6 +431,7 @@ function ConversationStats(props: {
                   : undefined
               }
               live={live}
+              liveModelId={activeModelId}
               modelUsage={props.detail?.modelUsage}
               summary={tokenSummary}
             />
@@ -430,6 +451,7 @@ function ConversationStats(props: {
                 props.conversation.auxiliaryCosts
               }
               live={live}
+              liveModelId={activeModelId}
               modelUsage={props.detail?.modelUsage}
               summary={costSummary}
             />

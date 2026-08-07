@@ -66,14 +66,16 @@ function usageTooltipLines(
   ];
 }
 
-function modelLabel(modelId: string): string {
-  return modelId.split("/").at(-1) ?? modelId;
+function modelLabel(modelId: string, liveModelId?: string): string {
+  const label = modelId.split("/").at(-1) ?? modelId;
+  return modelId === liveModelId ? `${label} (in progress)` : label;
 }
 
 function tokenTooltip(
   summary: TokenUsageSummary,
   modelUsage: ConversationModelUsage[] | undefined,
   compactionCount: number | undefined,
+  liveModelId: string | undefined,
 ): MetricTooltipLine[] {
   const lines: Array<MetricTooltipLine | undefined> = [
     compactionCount
@@ -83,15 +85,23 @@ function tokenTooltip(
   if (!modelUsage?.length) {
     lines.push(...usageTooltipLines(summary));
   }
+  let includesLiveModel = false;
   for (const item of modelUsage ?? []) {
     const modelSummary = summarizeUsage(item.usage);
     if (!modelSummary) continue;
+    includesLiveModel ||= item.modelId === liveModelId;
     lines.push(
-      { value: modelLabel(item.modelId), valueStyle: "heading" },
+      { value: modelLabel(item.modelId, liveModelId), valueStyle: "heading" },
       ...usageTooltipLines(modelSummary).map((line) =>
         line?.label ? { ...line, label: `• ${line.label}` } : line,
       ),
     );
+  }
+  if (liveModelId && !includesLiveModel) {
+    lines.push({
+      value: modelLabel(liveModelId, liveModelId),
+      valueStyle: "heading",
+    });
   }
   return lines.filter(isMetricTooltipLine);
 }
@@ -131,7 +141,7 @@ function costTooltip(
   summary: CostUsageSummary | undefined,
   modelUsage: ConversationModelUsage[] | undefined,
   auxiliaryCosts: ConversationAuxiliaryCosts | undefined,
-  live: boolean | undefined,
+  liveModelId: string | undefined,
 ): {
   tooltip?: MetricTooltipLine[];
   tooltipColumns?: MetricTooltipLine[][];
@@ -143,9 +153,15 @@ function costTooltip(
       ? [{ modelId: item.modelId, summary: modelSummary }]
       : [];
   });
-  const pendingLines: MetricTooltipLine[] = live
-    ? [{ value: "in progress" }]
-    : [];
+  const pendingLines: MetricTooltipLine[] =
+    liveModelId && !modelSummaries.some((item) => item.modelId === liveModelId)
+      ? [
+          {
+            value: modelLabel(liveModelId, liveModelId),
+            valueStyle: "heading",
+          },
+        ]
+      : [];
   if (!total) return { tooltip: pendingLines };
   if (!auxiliaryCosts) {
     if (!modelSummaries.length) {
@@ -159,7 +175,10 @@ function costTooltip(
     return {
       tooltip: [
         ...modelSummaries.flatMap((item) => [
-          { value: modelLabel(item.modelId), valueStyle: "heading" as const },
+          {
+            value: modelLabel(item.modelId, liveModelId),
+            valueStyle: "heading" as const,
+          },
           ...costTooltipLines(item.summary).map((line) => ({
             ...line,
             label: `• ${line.label}`,
@@ -188,7 +207,10 @@ function costTooltip(
     } else {
       for (const item of modelSummaries) {
         conversationLines.push(
-          { value: modelLabel(item.modelId), valueStyle: "heading" },
+          {
+            value: modelLabel(item.modelId, liveModelId),
+            valueStyle: "heading",
+          },
           ...costTooltipLines(item.summary).map((line) => ({
             ...line,
             label: `• ${line.label}`,
@@ -234,6 +256,7 @@ export function CostMetric(props: {
   align?: "left" | "right";
   auxiliaryCosts?: ConversationAuxiliaryCosts;
   live?: boolean;
+  liveModelId?: string;
   modelUsage?: ConversationModelUsage[];
   summary: CostUsageSummary | undefined;
 }) {
@@ -251,7 +274,7 @@ export function CostMetric(props: {
         props.summary,
         props.modelUsage,
         props.auxiliaryCosts,
-        props.live,
+        props.liveModelId,
       )}
     >
       <ShimmerText active={pending}>{label}</ShimmerText>
@@ -264,6 +287,7 @@ export function TokenMetric(props: {
   align?: "left" | "right";
   compactionCount?: number;
   live?: boolean;
+  liveModelId?: string;
   modelUsage?: ConversationModelUsage[];
   summary: TokenUsageSummary | undefined;
 }) {
@@ -275,6 +299,7 @@ export function TokenMetric(props: {
         props.summary,
         props.modelUsage,
         props.compactionCount,
+        props.liveModelId,
       )}
     >
       <ShimmerText active={props.live}>
