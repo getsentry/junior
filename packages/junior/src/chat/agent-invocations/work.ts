@@ -261,17 +261,17 @@ async function recoverRunningSession(
     });
     return;
   }
+  // Child invocation conversations are destinationless; routing lives on the
+  // parent invocation record, not the turn-session projection.
   const parked = await persistYieldSessionRecord({
     conversationId: invocation.childConversationId,
     currentSliceId: session.sliceId,
-    destination: session.destination,
     errorMessage: "Recovered running agent invocation after worker loss",
     messages: session.piMessages,
     modelId: session.modelId,
     actor: session.actor,
     reasoningLevel: session.reasoningLevel,
     sessionId: session.sessionId,
-    source: session.source,
     surface: session.surface,
   });
   if (!parked) {
