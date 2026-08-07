@@ -496,7 +496,7 @@ export async function deadLetterAttempt(args: {
   return result;
 }
 
-/** Clear an expired durable lease so a later worker can resume safely. */
+/** Recover an expired lease and persist the resulting retry state. */
 export async function clearExpiredConversationLease(args: {
   conversationId: string;
   conversationStore?: ConversationStore;

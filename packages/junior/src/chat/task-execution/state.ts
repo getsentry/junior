@@ -1144,8 +1144,6 @@ export async function appendInboundMessage(args: {
           {
             ...current.execution,
             status,
-            lastProgressAtMs: nowMs,
-            retryCount: 0,
             inboundMessageIds: [
               ...current.execution.inboundMessageIds,
               args.message.inboundMessageId,
@@ -1427,6 +1425,7 @@ export async function startConversationWork(args: {
       lastCheckInAtMs: nowMs,
       expiresAtMs: nowMs + CONVERSATION_WORK_LEASE_TTL_MS,
     };
+    const startsNewRun = current.execution.runId === undefined;
     await writeConversation(
       state,
       lock,
@@ -1441,6 +1440,7 @@ export async function startConversationWork(args: {
               : "running",
           runId: current.execution.runId ?? randomUUID(),
           lastEnqueuedAtMs: undefined,
+          retryCount: startsNewRun ? 0 : current.execution.retryCount,
         },
         nowMs,
       ),
@@ -1553,6 +1553,8 @@ export async function drainConversationMailbox(args: {
             pendingMessages.length === 0
               ? "running"
               : current.execution.status,
+          lastProgressAtMs: nowMs,
+          retryCount: 0,
           pendingMessages,
         },
         nowMs,
@@ -1778,7 +1780,7 @@ export async function completeConversationWork(args: {
               ? "pending"
               : "idle",
           lastProgressAtMs: nowMs,
-          retryCount: 0,
+          retryCount: runnable ? current.execution.retryCount : 0,
           runId: runnable ? current.execution.runId : undefined,
         },
         nowMs,
@@ -1922,12 +1924,12 @@ export async function deadLetterAttempt(args: {
   });
 }
 
-/** Clear an expired durable lease so a later worker can resume safely. */
+/** Recover an expired lease, consuming the retry budget under the mutation lock. */
 export async function clearExpiredConversationLease(args: {
   conversationId: string;
   nowMs?: number;
   state?: StateAdapter;
-}): Promise<boolean> {
+}): Promise<"not_expired" | "requeued" | "stopped"> {
   const nowMs = args.nowMs ?? now();
   return await withConversationMutation(args, async (state, lock) => {
     const current = await readConversation(state, args.conversationId);
@@ -1935,8 +1937,10 @@ export async function clearExpiredConversationLease(args: {
       !current?.execution.lease ||
       current.execution.lease.expiresAtMs > nowMs
     ) {
-      return false;
+      return "not_expired";
     }
+    const retryCount = (current.execution.retryCount ?? 0) + 1;
+    const stopped = retryCount >= CONVERSATION_WORK_MAX_RETRIES;
     await writeConversation(
       state,
       lock,
@@ -1944,13 +1948,17 @@ export async function clearExpiredConversationLease(args: {
         current,
         {
           ...current.execution,
+          lastEnqueuedAtMs: undefined,
           lease: undefined,
-          status: "awaiting_resume",
+          retryCount,
+          pendingMessages: stopped ? [] : current.execution.pendingMessages,
+          runId: stopped ? undefined : current.execution.runId,
+          status: stopped ? "failed" : "awaiting_resume",
         },
         nowMs,
       ),
     );
-    return true;
+    return stopped ? "stopped" : "requeued";
   });
 }
 

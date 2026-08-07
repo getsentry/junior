@@ -16,6 +16,7 @@ import {
   clearConsumedConversationWake,
   completeConversationWork,
   CONVERSATION_WORK_CHECK_IN_INTERVAL_MS,
+  CONVERSATION_WORK_MAX_RETRIES,
   countPendingConversationMessages,
   deadLetterAttempt,
   drainConversationMailbox,
@@ -231,6 +232,19 @@ function isTerminalFailure(failure: AttemptFailure): boolean {
     failure.deadLetteredMessages.length > 0 &&
     failure.pendingCount === 0
   );
+}
+
+function logRetryExhausted(args: {
+  error: unknown;
+  retryCount: number;
+  work: ConversationWorkState;
+}): void {
+  logException(args.error, "conversation.work.retry.exhausted", {
+    "app.run.id": args.work.execution.runId ?? "unknown",
+    "app.worker.last_progress_at_ms":
+      args.work.execution.lastProgressAtMs ?? args.work.createdAtMs,
+    "app.worker.retry_count": args.retryCount,
+  });
 }
 
 function startLeaseCheckIn(args: {
@@ -621,6 +635,15 @@ async function processConversationWorkInContext(
           options,
         });
         if (isTerminalFailure(failure)) {
+          if (failure.retryCount >= CONVERSATION_WORK_MAX_RETRIES) {
+            logRetryExhausted({
+              error: new Error(
+                "Conversation work stopped after repeated failed attempts",
+              ),
+              retryCount: failure.retryCount,
+              work: leasedWork,
+            });
+          }
           await deadLetterAttempt({
             conversationId,
             leaseToken: lease.leaseToken,
@@ -705,6 +728,13 @@ async function processConversationWorkInContext(
             })
           : undefined;
       if (failure && isTerminalFailure(failure)) {
+        if (failure.retryCount >= CONVERSATION_WORK_MAX_RETRIES) {
+          logRetryExhausted({
+            error,
+            retryCount: failure.retryCount,
+            work: initial,
+          });
+        }
         await deadLetterAttempt({
           conversationId,
           leaseToken: lease.leaseToken,

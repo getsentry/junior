@@ -93,12 +93,26 @@ export async function recoverConversationWork(args: {
           work.execution.lease &&
           work.execution.lease.expiresAtMs <= args.nowMs
         ) {
-          const cleared = await clearExpiredConversationLease({
+          const recovery = await clearExpiredConversationLease({
             conversationId,
             nowMs: args.nowMs,
             state: args.state,
           });
-          if (!cleared) {
+          if (recovery === "not_expired") {
+            return;
+          }
+          if (recovery === "stopped") {
+            logException(
+              new Error("Conversation work stopped after repeated failed attempts"),
+              "conversation.work.retry.exhausted",
+              {
+                "app.run.id": work.execution.runId ?? "unknown",
+                "app.worker.last_progress_at_ms":
+                  work.execution.lastProgressAtMs ?? work.createdAtMs,
+                "app.worker.retry_count":
+                  (work.execution.retryCount ?? 0) + 1,
+              },
+            );
             return;
           }
           const wake = await ensureConversationWake({

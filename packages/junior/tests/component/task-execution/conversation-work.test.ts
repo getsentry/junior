@@ -13,6 +13,7 @@ import {
   completeConversationWork,
   CONVERSATION_WORK_LEASE_TTL_MS,
   CONVERSATION_WORK_MAX_DELIVERY_ATTEMPTS,
+  CONVERSATION_WORK_MAX_RETRIES,
   countPendingConversationMessages,
   drainConversationMailbox,
   getConversationWorkState,
@@ -1684,6 +1685,53 @@ describe("conversation work execution", () => {
         idempotencyKey: `heartbeat:lease:${CONVERSATION_ID}:92000`,
       },
     ]);
+  });
+
+  it("stops heartbeat recovery after repeated lease expirations", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
+
+    for (let retry = 1; retry <= CONVERSATION_WORK_MAX_RETRIES; retry += 1) {
+      const acquiredAtMs = retry * 100_000;
+      await expect(
+        startConversationWork({
+          conversationId: CONVERSATION_ID,
+          nowMs: acquiredAtMs,
+        }),
+      ).resolves.toMatchObject({ status: "acquired" });
+      await recoverConversationWork({
+        nowMs: acquiredAtMs + CONVERSATION_WORK_LEASE_TTL_MS,
+        queue,
+      });
+      queue.clearSentRecords();
+    }
+
+    const state = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+    });
+    expect(state?.execution.status).toBe("failed");
+    expect(state?.execution.retryCount).toBe(CONVERSATION_WORK_MAX_RETRIES);
+    expect(state?.lease).toBeUndefined();
+    expect(state?.needsRun).toBe(false);
+    expect(state?.messages).toEqual([]);
+  });
+
+  it("does not reset retries when new input arrives", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
+    await processConversationWork(conversationQueueMessage(), {
+      nowMs: () => 2_000,
+      queue,
+      run: async () => ({ status: "lost_lease" }),
+    });
+
+    await appendInboundMessage({ message: inboundMessage("m2"), nowMs: 3_000 });
+
+    await expect(
+      getConversationWorkState({ conversationId: CONVERSATION_ID }),
+    ).resolves.toMatchObject({
+      execution: { retryCount: 1 },
+    });
   });
 
   it("prioritizes turn recovery after an execution lease expires", async () => {
