@@ -65,28 +65,31 @@ Only needed for the token-based fallback above. Create an AI Gateway key in the 
 
 ## Triggering Evals On A PR
 
-The `Evals` workflow runs on pull requests when either:
+The `Evals` workflow can start two independent suites on pull requests:
 
-- eval-related files changed
-- the PR has the `trigger-evals` label
+- end-to-end Slack/agent evals when e2e-related files changed or the PR has `trigger-evals`
+- isolated Guardian snapshots when Guardian-related files changed, the PR has `trigger-guardian-evals`, or the PR has `trigger-evals`
 
-Adding the `trigger-evals` label fires the workflow immediately. If the label is already on the PR, future `synchronize` events still run evals.
+Adding `trigger-evals` or `trigger-guardian-evals` fires immediately. If the label is already on the PR, future `synchronize` events still run the matching suite(s).
+
+Guardian evals only need gateway credentials. End-to-end evals still need gateway plus sandbox access.
 
 ## Verification
 
 After adding secrets:
 
-1. Push a commit to the PR, or add the `trigger-evals` label.
+1. Push a commit to the PR, or add the `trigger-evals` / `trigger-guardian-evals` label.
 2. Open the `Evals` workflow summary.
 3. Confirm the gate reports:
    - `gateway_ready: true`
-   - `sandbox_ready: true`
-   - `will_run: true`
-4. Confirm the `evals / report` job published the combined suite summary and pass-rate gate.
+   - `sandbox_ready: true` for end-to-end runs
+   - `will_run: true` and/or `will_run_guardian: true`
+4. For end-to-end runs, confirm the `evals / report` job published the combined suite summary and pass-rate gate.
+5. For Guardian runs, confirm the `evals / guardian` job completed. Exact decision mismatches fail that job hard.
 
 ## Score-Based CI Gate
 
-Shard jobs keep running after individual case failures so every shard can upload its Vitest JSON results. The final `evals / report` job:
+End-to-end shard jobs keep running after individual case failures so every shard can upload its Vitest JSON results. The final `evals / report` job:
 
 1. Downloads all shard result files
 2. Publishes one combined `vitest-evals` job summary with pass counts and average score
@@ -94,6 +97,8 @@ Shard jobs keep running after individual case failures so every shard can upload
 4. Leaves the workflow job green for quality misses so GitHub does not also show a canned "Failing after Xs" job row
 
 The Check Run fails when the aggregate pass rate is below `EVAL_MIN_PASS_RATE` (currently `0.8`). Setup crashes and missing result files still fail the report job hard. The upstream `vitest-evals` Check Run stays disabled because v0.15.0 still concludes it from any case failure.
+
+Guardian snapshots are not part of that aggregate floor. They assert exact `allow` / `ask` / `deny` decisions and fail `evals / guardian` on mismatch.
 
 If `sandbox_ready` is false, either `VERCEL_OIDC_TOKEN` is missing or the fallback token set is incomplete.
 

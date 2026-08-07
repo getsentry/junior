@@ -32,6 +32,7 @@
     "test:e2e:dashboard": "pnpm --filter @sentry/junior-dashboard build && playwright test -c packages/junior-dashboard/playwright.config.ts",
     "test:watch": "pnpm --filter @sentry/junior test:watch",
     "evals": "pnpm --filter @sentry/junior-evals evals",
+    "evals:guardian": "pnpm --filter @sentry/junior-evals evals:guardian",
     "evals:record": "pnpm --filter @sentry/junior-evals evals:record",
     "typecheck": "pnpm -r run typecheck",
     "skills:check": "pnpm --filter @sentry/junior skills:check",

@@ -47,7 +47,10 @@ Not in scope:
   - `evals/scheduler/`
   - `evals/github/`
   - `evals/sentry/`
+- Isolated Guardian decisions: `evals/guardian/`
+  - exact `ToolActionProposal` snapshots scored only on `allow` / `ask` / `deny`
 - Helpers and event builders: `src/helpers.ts`
+- Guardian harness: `src/guardian-harness.ts`
 - Harness/runtime adapter: `src/behavior-harness.ts`
 
 ## Execution Model
@@ -92,42 +95,43 @@ Tool replay:
 
 ## Running
 
-- `pnpm evals`: Run all eval cases (from workspace root)
-- `pnpm --filter @sentry/junior-evals evals`: Run from any directory
-- `pnpm --filter @sentry/junior-evals evals evals/sentry/skills.eval.ts`: Run one eval file
-- `pnpm --filter @sentry/junior-evals evals evals/agent/subscriptions.eval.ts -t "subscribed"`: Run one eval case by name
-- `pnpm --filter @sentry/junior-evals evals --shard=1/4`: Run one of the four CI shards
+- `pnpm evals`: Run the end-to-end Slack/agent suite (excludes isolated Guardian)
+- `pnpm evals:guardian`: Run isolated Guardian decision snapshots
+- `pnpm --filter @sentry/junior-evals evals`: Run the e2e suite from any directory
+- `pnpm --filter @sentry/junior-evals evals:guardian`: Run Guardian from any directory
+- `pnpm --filter @sentry/junior-evals evals evals/sentry/skills.eval.ts`: Run one e2e eval file
+- `pnpm --filter @sentry/junior-evals evals:guardian evals/guardian/action-review.eval.ts -t "deny"`: Run one Guardian case
+- `pnpm --filter @sentry/junior-evals evals --shard=1/4`: Run one of the four CI e2e shards
 
-Pass eval file paths, `-t` filters, and shard options directly after the `evals` script. Do not use `pnpm exec vitest` directly, and do not insert `--` before eval arguments.
+Pass eval file paths, `-t` filters, and shard options directly after the `evals` or `evals:guardian` script. Do not use `pnpm exec vitest` directly, and do not insert `--` before eval arguments.
 
 ## Optional CI Runs
 
-- On pull requests, the `Evals` workflow runs when either eval-related files changed or the PR has the `trigger-evals` label.
-- Adding the `trigger-evals` label triggers a run immediately; adding unrelated labels does not.
-- Eval-related files are:
-  - `packages/junior-evals/evals/**`
-  - `packages/junior-evals/package.json`
-  - `packages/junior-evals/global-setup.ts`
-  - `packages/junior-evals/postgres-global-setup.ts`
-  - `packages/junior-evals/src/**`
-  - `packages/junior-evals/tests/**`
-  - `packages/junior-evals/vitest.evals.config.ts`
-  - `packages/junior/src/**`
-- CI shards still fail individual cases under the per-case judge threshold (`0.75`), but the workflow no longer fails the job on those case failures alone.
-- After all shards finish, `evals / report` combines results, publishes the suite summary, and posts an `eval score` Check Run whose PR status line is the pass rate (for example `63.7% passed · required 80.0%`).
-- The current floor is `EVAL_MIN_PASS_RATE=0.8` (`80%` of cases passed). Missing shard result files or setup/runtime crashes before results are written remain hard failures on the report job.
+- On pull requests, the `Evals` workflow can start two independent suites:
+  - end-to-end Slack/agent evals (`evals / suite *` + `evals / report`)
+  - isolated Guardian snapshots (`evals / guardian`)
+- End-to-end evals run when e2e-related files changed or the PR has the `trigger-evals` label. They still require both gateway and sandbox secrets.
+- Guardian evals run when Guardian-related files changed, the PR has `trigger-guardian-evals`, or the PR has `trigger-evals`. They only need gateway credentials.
+- Adding `trigger-evals` or `trigger-guardian-evals` fires immediately; unrelated labels do not.
+- End-to-end path triggers cover the existing Slack/agent harness and feature suites under `evals/{agent,conversation,event-tasks,github,memory,scheduler,sentry}/`, plus shared e2e harness files and `packages/junior/src/**`.
+- Guardian path triggers cover `evals/guardian/**`, the Guardian harness/config, and Guardian policy/reviewer inputs under `packages/junior/src/chat/services/guardian-action-*.ts` and `tool-support/action-review*`.
+- CI e2e shards still fail individual cases under the per-case judge threshold (`0.75`), but the workflow no longer fails the job on those case failures alone.
+- After all e2e shards finish, `evals / report` combines results, publishes the suite summary, and posts an `eval score` Check Run whose PR status line is the pass rate (for example `63.7% passed · required 80.0%`).
+- The current e2e floor is `EVAL_MIN_PASS_RATE=0.8` (`80%` of cases passed). Missing shard result files or setup/runtime crashes before results are written remain hard failures on the report job.
+- Guardian cases assert exact `allow` / `ask` / `deny` decisions and fail the `evals / guardian` job hard on mismatch. They do not use the aggregate pass-rate floor.
 - The `vitest-evals` Check Run stays off because v0.15.0 still concludes it from any single case failure.
 - The simplest Gateway and Sandbox setup is `VERCEL_OIDC_TOKEN` alone.
 - The fallback CI setup is `AI_GATEWAY_API_KEY` plus `VERCEL_TOKEN` + `VERCEL_TEAM_ID` + `VERCEL_PROJECT_ID`.
-- Eval global setup starts one Cloudflare Quick Tunnel for the suite so Vercel Sandbox can reach the eval egress proxy. Transient tunnel allocation failures retry up to five times with backoff. Local runs require `cloudflared` on `PATH`; CI installs a pinned binary.
-- Eval state always uses a loopback Redis. Local runs default to `redis://127.0.0.1:6382`; CI sets `JUNIOR_EVAL_REDIS_URL` for its Redis service.
+- End-to-end eval global setup starts one Cloudflare Quick Tunnel for the suite so Vercel Sandbox can reach the eval egress proxy. Transient tunnel allocation failures retry up to five times with backoff. Local runs require `cloudflared` on `PATH`; CI installs a pinned binary.
+- End-to-end eval state always uses a loopback Redis. Local runs default to `redis://127.0.0.1:6382`; CI sets `JUNIOR_EVAL_REDIS_URL` for its Redis service.
 - Setup details for GitHub Actions live in `evals/github-actions.md`.
 
-Evals require real Vercel Sandbox access and public Quick Tunnel connectivity. If either bootstrap fails, the eval fails immediately with no local fallback path.
+End-to-end evals require real Vercel Sandbox access and public Quick Tunnel connectivity. If either bootstrap fails, the eval fails immediately with no local fallback path. Guardian evals only need AI Gateway access.
 
 ## Authoring Rules
 
 - Add Slack conversation cases under `evals/conversation/`, agent/tool cases under `evals/agent/`, and feature-specific cases under `evals/<feature>/` using `describeEval()` with `slackEvals`.
+- Add isolated Guardian decision snapshots under `evals/guardian/` using `describeEval()` with `guardianEvals`. Feed exact `ToolActionProposal` objects and assert only the expected `allow` / `ask` / `deny` decision.
 - Put messages that should be pending before processing starts in `initialEvents`.
 - Put ordinary later events in `events`; each is delivered after preceding work settles.
 - Wrap messages with `steer(...)` when they should arrive through normal ingress while the preceding agent run is active.
@@ -184,6 +188,7 @@ Treat these as end-to-end behavior tests. Organize files by the user-visible are
 
 - `evals/conversation/`: Slack conversation behavior.
 - `evals/agent/`: agent execution, skills, tools, providers, and auth.
+- `evals/guardian/`: isolated Guardian decision snapshots (no main agent).
 - `evals/<feature>/`: feature journeys such as memory, scheduler, GitHub, and Sentry.
 - Use short behavior nouns for filenames: `routing.eval.ts`, `delivery.eval.ts`, `credentials.eval.ts`.
 - Keep one coherent behavior area per file. Split files when cases exercise independently understandable journeys.
