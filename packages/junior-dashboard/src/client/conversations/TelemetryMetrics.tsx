@@ -66,9 +66,19 @@ function usageTooltipLines(
   ];
 }
 
-function modelLabel(modelId: string, liveModelId?: string): string {
-  const label = modelId.split("/").at(-1) ?? modelId;
-  return modelId === liveModelId ? `${label} (in progress)` : label;
+function modelLabel(modelId: string): string {
+  return modelId.split("/").at(-1) ?? modelId;
+}
+
+function modelHeading(
+  modelId: string,
+  liveModelId: string | undefined,
+): MetricTooltipLine {
+  return {
+    live: modelId === liveModelId,
+    value: modelLabel(modelId),
+    valueStyle: "heading",
+  };
 }
 
 function tokenTooltip(
@@ -91,17 +101,14 @@ function tokenTooltip(
     if (!modelSummary) continue;
     includesLiveModel ||= item.modelId === liveModelId;
     lines.push(
-      { value: modelLabel(item.modelId, liveModelId), valueStyle: "heading" },
+      modelHeading(item.modelId, liveModelId),
       ...usageTooltipLines(modelSummary).map((line) =>
         line?.label ? { ...line, label: `• ${line.label}` } : line,
       ),
     );
   }
   if (liveModelId && !includesLiveModel) {
-    lines.push({
-      value: modelLabel(liveModelId, liveModelId),
-      valueStyle: "heading",
-    });
+    lines.push(modelHeading(liveModelId, liveModelId));
   }
   return lines.filter(isMetricTooltipLine);
 }
@@ -155,12 +162,7 @@ function costTooltip(
   });
   const pendingLines: MetricTooltipLine[] =
     liveModelId && !modelSummaries.some((item) => item.modelId === liveModelId)
-      ? [
-          {
-            value: modelLabel(liveModelId, liveModelId),
-            valueStyle: "heading",
-          },
-        ]
+      ? [modelHeading(liveModelId, liveModelId)]
       : [];
   if (!total) return { tooltip: pendingLines };
   if (!auxiliaryCosts) {
@@ -175,10 +177,7 @@ function costTooltip(
     return {
       tooltip: [
         ...modelSummaries.flatMap((item) => [
-          {
-            value: modelLabel(item.modelId, liveModelId),
-            valueStyle: "heading" as const,
-          },
+          modelHeading(item.modelId, liveModelId),
           ...costTooltipLines(item.summary).map((line) => ({
             ...line,
             label: `• ${line.label}`,
@@ -207,10 +206,7 @@ function costTooltip(
     } else {
       for (const item of modelSummaries) {
         conversationLines.push(
-          {
-            value: modelLabel(item.modelId, liveModelId),
-            valueStyle: "heading",
-          },
+          modelHeading(item.modelId, liveModelId),
           ...costTooltipLines(item.summary).map((line) => ({
             ...line,
             label: `• ${line.label}`,

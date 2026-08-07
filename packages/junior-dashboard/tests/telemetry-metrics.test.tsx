@@ -5,16 +5,19 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("../src/client/components/Metric", () => ({
   MetricValue: (props: {
     children: ReactNode;
-    tooltip?: Array<{ label?: string; value: string }>;
-    tooltipColumns?: Array<Array<{ label?: string; value: string }>>;
+    tooltip?: Array<{ label?: string; live?: boolean; value: string }>;
+    tooltipColumns?: Array<
+      Array<{ label?: string; live?: boolean; value: string }>
+    >;
     tooltipPlacement?: "above" | "below";
   }) => (
     <span data-tooltip-placement={props.tooltipPlacement}>
       {props.children}
       {[...(props.tooltip ?? []), ...(props.tooltipColumns?.flat() ?? [])].map(
         (line) => (
-          <span key={`${line.label}-${line.value}`}>
+          <span key={`${line.label}-${line.value}-${line.live ? "live" : ""}`}>
             {line.label}: {line.value}
+            {line.live ? " · in progress" : ""}
           </span>
         ),
       )}
@@ -67,7 +70,8 @@ describe("CostMetric", () => {
       />,
     );
     expect(emptyHtml).toContain("$…");
-    expect(emptyHtml).toContain("grok-4-5 (in progress)");
+    expect(emptyHtml).toContain("grok-4-5");
+    expect(emptyHtml).toContain("· in progress");
     expect(emptyHtml).toContain("junior-text-shimmer");
 
     const partialHtml = renderToStaticMarkup(
@@ -84,7 +88,8 @@ describe("CostMetric", () => {
       />,
     );
     expect(partialHtml).toContain("$0.04+");
-    expect(partialHtml).toContain("grok-4-5 (in progress)");
+    expect(partialHtml).toContain("grok-4-5");
+    expect(partialHtml).toContain("· in progress");
     expect(partialHtml).toContain("junior-text-shimmer");
 
     const settledHtml = renderToStaticMarkup(
@@ -111,7 +116,8 @@ describe("CostMetric", () => {
       />,
     );
     expect(tokenHtml).toContain("1.6k tokens");
-    expect(tokenHtml).toContain("grok-4-5 (in progress)");
+    expect(tokenHtml).toContain("grok-4-5");
+    expect(tokenHtml).toContain("· in progress");
     expect(tokenHtml).toContain("junior-text-shimmer");
 
     const toolHtml = renderToStaticMarkup(
