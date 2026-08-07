@@ -241,8 +241,9 @@ function isResourceEventConversationMessage(message: {
  * resolve to `undefined` and let the caller fail the session visibly.
  *
  * Turn-session Redis no longer stores execution actor. Prefer profile data
- * from the durable conversation work record when it matches the resume user,
- * otherwise rebuild from the author id + destination team alone.
+ * from the durable conversation work record when it matches the resume user.
+ * Work-state lookup/profile enrichment is best-effort: any failure there still
+ * falls through to bare author id + destination team rebuild.
  */
 async function resolveContinuationActor(args: {
   conversationId: string;
@@ -259,13 +260,21 @@ async function resolveContinuationActor(args: {
       workActor.teamId === args.teamId &&
       workActor.slackUserId === args.userId
     ) {
-      return createSlackActor(args.teamId, args.userId, {
-        email: workActor.email,
-        fullName: workActor.fullName,
-        userName: workActor.slackUserName,
-      });
+      try {
+        return createSlackActor(args.teamId, args.userId, {
+          email: workActor.email,
+          fullName: workActor.fullName,
+          userName: workActor.slackUserName,
+        });
+      } catch {
+        // Fall through to bare rebuild when stored profile data is unusable.
+      }
     }
+  } catch {
+    // Work-state is optional enrichment; bare rebuild remains available.
+  }
 
+  try {
     return createSlackResumeActor({
       teamId: args.teamId,
       userId: args.userId,
