@@ -45,11 +45,11 @@ Not in scope:
 
 - Integration system cases: `evals/integration/`
   - primary runtime/system correctness that must never regress (hard pass/fail)
-  - conversation delivery, mention/channel routing limits, lifecycle, OAuth plumbing, and subscription stop/silence contracts
+  - conversation delivery, mention/channel routing limits, lifecycle, OAuth plumbing, and subscription stop-watch contracts
 - Behavioral conversation cases: `evals/conversation/`
   - participation, actor attribution, continuity, storage, output shape, and model-variable routing judgment
 - Behavioral agent cases: `evals/agent/`
-  - skills, providers, research, files, subscription summary quality, and skill routing
+  - skills, providers, research, files, subscription intent/summary quality, and skill routing
 - Behavioral feature cases:
   - `evals/event-tasks/`
   - `evals/memory/`

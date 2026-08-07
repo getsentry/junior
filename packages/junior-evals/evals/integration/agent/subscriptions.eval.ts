@@ -1,12 +1,6 @@
 import { describeEval, toolCalls } from "vitest-evals";
 import { expect } from "vitest";
-import {
-  githubWebhook,
-  mention,
-  rubric,
-  slackEvals,
-  visibleThreadReplies,
-} from "../../../src/helpers";
+import { mention, rubric, slackEvals } from "../../../src/helpers";
 
 describeEval("Resource Event Subscriptions", slackEvals, (it) => {
   it("when a follow-up stops monitoring, cancel the selected watch before confirming", async ({
@@ -76,35 +70,5 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
       },
       status: "ok",
     });
-  });
-
-  it("when a subscribed event does not serve the intent, stay silent", async ({
-    run,
-  }) => {
-    const result = await run({
-      initialEvents: [
-        githubWebhook({
-          eventName: "check_suite",
-          subscription: {
-            events: ["pull_request.checks.recovered"],
-            intent:
-              "Let the original Slack thread know when Junior's pull request lands.",
-            label: "GitHub PR getsentry/junior#702",
-            identifier: "getsentry/junior#702",
-            resourceType: "pull_request",
-          },
-          body: {
-            action: "completed",
-            repository: { full_name: "getsentry/junior" },
-            check_suite: {
-              conclusion: "success",
-              head_sha: "abcdef1234567890",
-              pull_requests: [{ number: 702 }],
-            },
-          },
-        }),
-      ],
-    });
-    expect(visibleThreadReplies(result.session)).toHaveLength(0);
   });
 });
