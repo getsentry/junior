@@ -62,9 +62,9 @@ export default defineConfig({
     environment: "node",
     fileParallelism: false,
     globalSetup: [path.resolve(__dirname, "global-setup.ts")],
-    // Behavioral quality cases. Invariant and Guardian suites have their own configs.
+    // Behavioral quality cases. Integration and Guardian suites have their own configs.
     include: ["evals/**/*.eval.ts"],
-    exclude: ["evals/guardian/**", "evals/invariant/**"],
+    exclude: ["evals/guardian/**", "evals/integration/**"],
     maxWorkers: 1,
     setupFiles: [
       path.resolve(__dirname, "src/setup.ts"),

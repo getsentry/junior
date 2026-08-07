@@ -68,12 +68,12 @@ Only needed for the token-based fallback above. Create an AI Gateway key in the 
 The `Evals` workflow can start three independent suites on pull requests:
 
 - qualitative Slack/agent evals when qualitative-related files changed or the PR has `trigger-evals-qualitative` / `trigger-evals`
-- invariant system evals when invariant-related files changed or the PR has `trigger-evals-invariant` / `trigger-evals`
+- integration system evals when integration-related files changed or the PR has `trigger-evals-integration` / `trigger-evals`
 - isolated Guardian snapshots when Guardian-related files changed or the PR has `trigger-evals-guardian` / `trigger-evals`
 
 Suite labels follow `trigger-evals-[domain]`. Adding a trigger label fires immediately. If the label is already on the PR, future `synchronize` events still run the matching suite(s).
 
-Guardian evals only need gateway credentials. Qualitative and invariant evals still need gateway plus sandbox access.
+Guardian evals only need gateway credentials. Qualitative and integration evals still need gateway plus sandbox access.
 
 ## Verification
 
@@ -83,10 +83,10 @@ After adding secrets:
 2. Open the `Evals` workflow summary.
 3. Confirm the gate reports:
    - `gateway_ready: true`
-   - `sandbox_ready: true` for qualitative/invariant runs
-   - `will_run_qualitative`, `will_run_invariant`, and/or `will_run_guardian` as expected
+   - `sandbox_ready: true` for qualitative/integration runs
+   - `will_run_qualitative`, `will_run_integration`, and/or `will_run_guardian` as expected
 4. For qualitative runs, confirm the `evals / report` job published the combined suite summary and pass-rate gate.
-5. For invariant runs, confirm the `evals / invariant *` jobs completed. Any case miss fails those jobs hard.
+5. For integration runs, confirm the `evals / integration *` jobs completed. Any case miss fails those jobs hard.
 6. For Guardian runs, confirm the `evals / guardian` job completed. Exact decision mismatches fail that job hard.
 
 ## Score-Based CI Gate
@@ -102,7 +102,7 @@ Qualitative shard jobs keep running after individual case failures so every shar
 
 The Check Run fails when the aggregate pass rate is below `EVAL_MIN_PASS_RATE` (currently `0.8`). Setup crashes and missing result files still fail the report job hard. The upstream `vitest-evals` Check Run stays disabled because v0.15.0 still concludes it from any case failure.
 
-Invariant shards fail hard on any case miss and do not use the aggregate floor. Guardian snapshots assert exact `allow` / `ask` / `deny` decisions and fail `evals / guardian` on mismatch.
+Integration shards fail hard on any case miss and do not use the aggregate floor. Guardian snapshots assert exact `allow` / `ask` / `deny` decisions and fail `evals / guardian` on mismatch.
 
 If `sandbox_ready` is false, either `VERCEL_OIDC_TOKEN` is missing or the fallback token set is incomplete.
 

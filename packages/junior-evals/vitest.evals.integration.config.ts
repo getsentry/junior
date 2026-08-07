@@ -14,7 +14,7 @@ const memoryPackageRoot = path.resolve(__dirname, "../junior-memory");
 const EVAL_TEST_TIMEOUT_MS = 120_000;
 const evalReportPath = path.resolve(
   evalsPackageRoot,
-  process.env.VITEST_EVALS_OUTPUT_FILE ?? "invariant-results.json",
+  process.env.VITEST_EVALS_OUTPUT_FILE ?? "integration-results.json",
 );
 
 loadJuniorTestEnvFiles({
@@ -25,7 +25,7 @@ loadJuniorTestEnvFiles({
 process.env.JUNIOR_SECRET = "junior-test-secret";
 process.env.JUNIOR_BASE_URL ??= "https://junior.example.com";
 process.env.JUNIOR_STATE_ADAPTER = "redis";
-process.env.JUNIOR_STATE_KEY_PREFIX ??= `junior:eval-invariant:${randomUUID()}`;
+process.env.JUNIOR_STATE_KEY_PREFIX ??= `junior:eval-integration:${randomUUID()}`;
 process.env.REDIS_URL =
   process.env.JUNIOR_EVAL_REDIS_URL?.trim() || "redis://127.0.0.1:6382";
 const evalRedisHostname = new URL(process.env.REDIS_URL).hostname;
@@ -63,7 +63,7 @@ export default defineConfig({
     fileParallelism: false,
     globalSetup: [path.resolve(__dirname, "global-setup.ts")],
     // Strict system-correctness cases. Any failure fails the suite hard.
-    include: ["evals/invariant/**/*.eval.ts"],
+    include: ["evals/integration/**/*.eval.ts"],
     maxWorkers: 1,
     setupFiles: [
       path.resolve(__dirname, "src/setup.ts"),

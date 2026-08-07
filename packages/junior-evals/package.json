@@ -8,7 +8,7 @@
     "typecheck": "tsc --noEmit",
     "evals": "vitest run -c vitest.evals.qualitative.config.ts",
     "evals:qualitative": "vitest run -c vitest.evals.qualitative.config.ts",
-    "evals:invariant": "vitest run -c vitest.evals.invariant.config.ts",
+    "evals:integration": "vitest run -c vitest.evals.integration.config.ts",
     "evals:guardian": "vitest run -c vitest.evals.guardian.config.ts",
     "evals:record": "VITEST_EVALS_REPLAY_MODE=record vitest run -c vitest.evals.qualitative.config.ts"
   },

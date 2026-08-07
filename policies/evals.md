@@ -6,15 +6,15 @@ Evals are integration tests for agent-facing behavior through the real runtime.
 
 Suite policy:
 
-- **Invariant** (`evals/invariant/**`): primary system functionality that must never regress. Failures are hard pass/fail.
-- **Qualitative** (domain folders under `evals/` except `invariant/` and `guardian/`): behavioral quality with bounded variability. CI gates on the aggregate suite floor, not a single weak case.
+- **Integration** (`evals/integration/**`): full-runtime integration coverage that must never regress. Failures are hard pass/fail.
+- **Qualitative** (domain folders under `evals/` except `integration/` and `guardian/`): behavioral quality with bounded variability. CI gates on the aggregate suite floor, not a single weak case.
 - **Guardian** (`evals/guardian/**`): isolated decision snapshots with exact `allow` / `ask` / `deny` assertions. Failures are hard pass/fail.
 
 ## Policy
 
 - Keep prompts realistic; do not script the user request to make the eval pass.
 - Assert behavior invariants, not incidental wording or execution sequence.
-- Put never-break system correctness under `evals/invariant/**`. Put quality measurement under qualitative domain folders.
+- Put never-break full-runtime integration coverage under `evals/integration/**`. Put quality measurement under qualitative domain folders.
 - Do not patch product prompts with eval-shaped examples, fixture names, exact user messages, expected answers, or distinctive scenario phrases from eval files.
 - When an eval fails, first state the general product invariant the failure exposed, then fix the product prompt or implementation at that invariant level.
 - Product prompt examples must be neutral examples that are not reused from eval scenarios.

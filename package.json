@@ -33,7 +33,7 @@
     "test:watch": "pnpm --filter @sentry/junior test:watch",
     "evals": "pnpm --filter @sentry/junior-evals evals",
     "evals:qualitative": "pnpm --filter @sentry/junior-evals evals:qualitative",
-    "evals:invariant": "pnpm --filter @sentry/junior-evals evals:invariant",
+    "evals:integration": "pnpm --filter @sentry/junior-evals evals:integration",
     "evals:guardian": "pnpm --filter @sentry/junior-evals evals:guardian",
     "evals:record": "pnpm --filter @sentry/junior-evals evals:record",
     "typecheck": "pnpm -r run typecheck",

@@ -16,7 +16,7 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
-# Aggregate floor for qualitative variability only. Invariant and Guardian
+# Aggregate floor for qualitative variability only. Integration and Guardian
 # suites fail hard on any case miss. Infrastructure/setup failures remain hard
 # failures for every suite.
 env:
@@ -30,13 +30,13 @@ jobs:
       gateway_ready: ${{ steps.secrets.outputs.gateway_ready }}
       guardian_file_changed: ${{ steps.changes.outputs.guardian_file_changed }}
       guardian_requested: ${{ steps.request.outputs.guardian_requested }}
-      invariant_file_changed: ${{ steps.changes.outputs.invariant_file_changed }}
-      invariant_requested: ${{ steps.request.outputs.invariant_requested }}
+      integration_file_changed: ${{ steps.changes.outputs.integration_file_changed }}
+      integration_requested: ${{ steps.request.outputs.integration_requested }}
       qualitative_file_changed: ${{ steps.changes.outputs.qualitative_file_changed }}
       qualitative_requested: ${{ steps.request.outputs.qualitative_requested }}
       sandbox_ready: ${{ steps.secrets.outputs.sandbox_ready }}
       should_run_guardian: ${{ steps.decision.outputs.should_run_guardian }}
-      should_run_invariant: ${{ steps.decision.outputs.should_run_invariant }}
+      should_run_integration: ${{ steps.decision.outputs.should_run_integration }}
       should_run_qualitative: ${{ steps.decision.outputs.should_run_qualitative }}
     steps:
       - uses: actions/checkout@v4
@@ -52,7 +52,7 @@ jobs:
           label_name="$(jq -r '.label.name // ""' "$GITHUB_EVENT_PATH")"
           all_requested=false
           qualitative_requested=false
-          invariant_requested=false
+          integration_requested=false
           guardian_requested=false
 
           has_label() {
@@ -68,8 +68,8 @@ jobs:
               trigger-evals-qualitative)
                 qualitative_requested=true
                 ;;
-              trigger-evals-invariant)
-                invariant_requested=true
+              trigger-evals-integration)
+                integration_requested=true
                 ;;
               trigger-evals-guardian)
                 guardian_requested=true
@@ -82,8 +82,8 @@ jobs:
             if has_label "trigger-evals-qualitative"; then
               qualitative_requested=true
             fi
-            if has_label "trigger-evals-invariant"; then
-              invariant_requested=true
+            if has_label "trigger-evals-integration"; then
+              integration_requested=true
             fi
             if has_label "trigger-evals-guardian"; then
               guardian_requested=true
@@ -92,12 +92,12 @@ jobs:
 
           if [[ "$all_requested" == "true" ]]; then
             qualitative_requested=true
-            invariant_requested=true
+            integration_requested=true
             guardian_requested=true
           fi
 
           echo "qualitative_requested=$qualitative_requested" >> "$GITHUB_OUTPUT"
-          echo "invariant_requested=$invariant_requested" >> "$GITHUB_OUTPUT"
+          echo "integration_requested=$integration_requested" >> "$GITHUB_OUTPUT"
           echo "guardian_requested=$guardian_requested" >> "$GITHUB_OUTPUT"
 
       - uses: getsentry/action-filter-paths@98a158469c63115591d1c2952d34450838ab3bc1 # v0.1.0
@@ -128,8 +128,8 @@ jobs:
               - 'packages/junior-evals/vitest.evals.config.ts'
               - 'packages/junior-evals/vitest.evals.qualitative.config.ts'
               - 'packages/junior/src/**'
-            invariant_file_changed:
-              - 'packages/junior-evals/evals/invariant/**'
+            integration_file_changed:
+              - 'packages/junior-evals/evals/integration/**'
               - 'packages/junior-evals/package.json'
               - 'packages/junior-evals/global-setup.ts'
               - 'packages/junior-evals/postgres-global-setup.ts'
@@ -142,7 +142,7 @@ jobs:
               - 'packages/junior-evals/src/setup.ts'
               - 'packages/junior-evals/src/slack-link.ts'
               - 'packages/junior-evals/src/snapshot-warmup.ts'
-              - 'packages/junior-evals/vitest.evals.invariant.config.ts'
+              - 'packages/junior-evals/vitest.evals.integration.config.ts'
               - 'packages/junior/src/**'
             guardian_file_changed:
               - 'packages/junior-evals/evals/guardian/**'
@@ -188,8 +188,8 @@ jobs:
           GATEWAY_READY: ${{ steps.secrets.outputs.gateway_ready }}
           GUARDIAN_FILE_CHANGED: ${{ steps.changes.outputs.guardian_file_changed }}
           GUARDIAN_REQUESTED: ${{ steps.request.outputs.guardian_requested }}
-          INVARIANT_FILE_CHANGED: ${{ steps.changes.outputs.invariant_file_changed }}
-          INVARIANT_REQUESTED: ${{ steps.request.outputs.invariant_requested }}
+          INTEGRATION_FILE_CHANGED: ${{ steps.changes.outputs.integration_file_changed }}
+          INTEGRATION_REQUESTED: ${{ steps.request.outputs.integration_requested }}
           QUALITATIVE_FILE_CHANGED: ${{ steps.changes.outputs.qualitative_file_changed }}
           QUALITATIVE_REQUESTED: ${{ steps.request.outputs.qualitative_requested }}
           SANDBOX_READY: ${{ steps.secrets.outputs.sandbox_ready }}
@@ -201,9 +201,9 @@ jobs:
             should_run_qualitative=true
           fi
 
-          should_run_invariant=false
-          if [[ "$GATEWAY_READY" == "true" && "$SANDBOX_READY" == "true" && ( "$INVARIANT_FILE_CHANGED" == "true" || "$INVARIANT_REQUESTED" == "true" ) ]]; then
-            should_run_invariant=true
+          should_run_integration=false
+          if [[ "$GATEWAY_READY" == "true" && "$SANDBOX_READY" == "true" && ( "$INTEGRATION_FILE_CHANGED" == "true" || "$INTEGRATION_REQUESTED" == "true" ) ]]; then
+            should_run_integration=true
           fi
 
           should_run_guardian=false
@@ -212,21 +212,21 @@ jobs:
           fi
 
           echo "should_run_qualitative=$should_run_qualitative" >> "$GITHUB_OUTPUT"
-          echo "should_run_invariant=$should_run_invariant" >> "$GITHUB_OUTPUT"
+          echo "should_run_integration=$should_run_integration" >> "$GITHUB_OUTPUT"
           echo "should_run_guardian=$should_run_guardian" >> "$GITHUB_OUTPUT"
           {
             echo "## Eval Gate"
             echo
             echo "- qualitative_file_changed: $QUALITATIVE_FILE_CHANGED"
             echo "- qualitative_requested: $QUALITATIVE_REQUESTED"
-            echo "- invariant_file_changed: $INVARIANT_FILE_CHANGED"
-            echo "- invariant_requested: $INVARIANT_REQUESTED"
+            echo "- integration_file_changed: $INTEGRATION_FILE_CHANGED"
+            echo "- integration_requested: $INTEGRATION_REQUESTED"
             echo "- guardian_file_changed: $GUARDIAN_FILE_CHANGED"
             echo "- guardian_requested: $GUARDIAN_REQUESTED"
             echo "- gateway_ready: $GATEWAY_READY"
             echo "- sandbox_ready: $SANDBOX_READY"
             echo "- will_run_qualitative: $should_run_qualitative"
-            echo "- will_run_invariant: $should_run_invariant"
+            echo "- will_run_integration: $should_run_integration"
             echo "- will_run_guardian: $should_run_guardian"
             echo "- qualitative_min_pass_rate: $EVAL_MIN_PASS_RATE"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -260,11 +260,11 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-  invariant:
+  integration:
     # Strict system-correctness suite. Any case failure fails the job hard.
-    name: evals / invariant ${{ matrix.shard }}/2
+    name: evals / integration ${{ matrix.shard }}/2
     needs: gate
-    if: needs.gate.outputs.should_run_invariant == 'true'
+    if: needs.gate.outputs.should_run_integration == 'true'
     runs-on: blacksmith-4vcpu-ubuntu-2404
     strategy:
       fail-fast: false
@@ -317,17 +317,17 @@ jobs:
           "$RUNNER_TEMP/cloudflared" version
       - name: Verify eval egress lifecycle
         run: pnpm --filter @sentry/junior-evals test tests/integration/eval-egress.test.ts
-      - name: Run invariant evals
+      - name: Run integration evals
         env:
-          VITEST_EVALS_OUTPUT_FILE: invariant-results-${{ matrix.shard }}.json
+          VITEST_EVALS_OUTPUT_FILE: integration-results-${{ matrix.shard }}.json
           VITEST_EVALS_REPORT_LEVEL: info
-        run: pnpm --filter @sentry/junior-evals evals:invariant --shard=${{ matrix.shard }}/2
-      - name: Upload invariant eval results
+        run: pnpm --filter @sentry/junior-evals evals:integration --shard=${{ matrix.shard }}/2
+      - name: Upload integration eval results
         if: always() && !cancelled()
         uses: actions/upload-artifact@v4
         with:
-          name: invariant-evals-${{ matrix.shard }}
-          path: packages/junior-evals/invariant-results-${{ matrix.shard }}.json
+          name: integration-evals-${{ matrix.shard }}
+          path: packages/junior-evals/integration-results-${{ matrix.shard }}.json
           if-no-files-found: warn
           retention-days: 7
 
