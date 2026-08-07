@@ -113,6 +113,9 @@ Pass eval file paths, `-t` filters, and shard options directly after the `evals`
   - `packages/junior-evals/tests/**`
   - `packages/junior-evals/vitest.evals.config.ts`
   - `packages/junior/src/**`
+- CI shards still fail individual cases under the per-case judge threshold (`0.75`), but the workflow no longer fails the job on those case failures alone.
+- After all shards finish, a combined report job publishes one suite summary/check (pass counts, average score, score distribution) and gates CI on aggregate pass rate.
+- The current floor is `EVAL_MIN_PASS_RATE=0.8` (`80%` of cases passed). Missing shard result files or setup/runtime crashes before results are written remain hard failures.
 - The simplest Gateway and Sandbox setup is `VERCEL_OIDC_TOKEN` alone.
 - The fallback CI setup is `AI_GATEWAY_API_KEY` plus `VERCEL_TOKEN` + `VERCEL_TEAM_ID` + `VERCEL_PROJECT_ID`.
 - Eval global setup starts one Cloudflare Quick Tunnel for the suite so Vercel Sandbox can reach the eval egress proxy. Transient tunnel allocation failures retry up to five times with backoff. Local runs require `cloudflared` on `PATH`; CI installs a pinned binary.

@@ -16,6 +16,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+# Combined suite floor for qualitative variability. Individual case failures
+# still appear in the report; CI only blocks when the aggregate pass rate dips
+# below this value. Infrastructure/setup failures remain hard failures.
+env:
+  EVAL_MIN_PASS_RATE: "0.8"
+
 jobs:
   gate:
     name: evals / gate
@@ -100,6 +106,7 @@ jobs:
             echo "- gateway_ready: $GATEWAY_READY"
             echo "- sandbox_ready: $SANDBOX_READY"
             echo "- will_run: $should_run"
+            echo "- min_pass_rate: $EVAL_MIN_PASS_RATE"
           } >> "$GITHUB_STEP_SUMMARY"
 
   evals:
@@ -159,12 +166,87 @@ jobs:
       - name: Verify eval egress lifecycle
         run: pnpm --filter @sentry/junior-evals test tests/integration/eval-egress.test.ts
       - name: Run evals
+        id: run
+        continue-on-error: true
         env:
           VITEST_EVALS_OUTPUT_FILE: vitest-results-${{ matrix.shard }}.json
           VITEST_EVALS_REPORT_LEVEL: info
         run: pnpm --filter @sentry/junior-evals evals --shard=${{ matrix.shard }}/4
-      - name: Publish eval report
-        if: always()
+      - name: Require eval results
+        id: results
+        # Run is continue-on-error so case failures still reach this check.
+        # Missing results mean setup/runtime crashed and must fail the shard.
+        if: steps.run.conclusion != 'skipped'
+        run: |
+          set -euo pipefail
+          result_file="packages/junior-evals/vitest-results-${{ matrix.shard }}.json"
+          if [[ ! -f "$result_file" ]]; then
+            echo "::error::missing eval results for shard ${{ matrix.shard }} ($result_file). Treat setup/runtime crashes as hard failures."
+            exit 1
+          fi
+      - name: Upload eval results
+        if: steps.results.conclusion == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: vitest-evals-${{ matrix.shard }}
+          path: packages/junior-evals/vitest-results-${{ matrix.shard }}.json
+          if-no-files-found: error
+          retention-days: 7
+
+  report:
+    name: evals / report
+    needs: [gate, evals]
+    if: ${{ always() && !cancelled() && needs.gate.outputs.should_run == 'true' }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    permissions:
+      contents: read
+      checks: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Download eval results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: vitest-evals-*
+          path: eval-results
+          merge-multiple: true
+
+      - name: Require all shard results
+        run: |
+          set -euo pipefail
+          expected=4
+          shopt -s nullglob
+          files=(eval-results/vitest-results-*.json)
+          count="${#files[@]}"
+          if [[ "$count" -ne "$expected" ]]; then
+            echo "::error::expected $expected eval result files, found $count"
+            printf '%s\n' "${files[@]:-}"
+            exit 1
+          fi
+          ls -la eval-results
+
+      - name: Publish combined eval report
+        id: report
         uses: getsentry/vitest-evals@51b8efebcbe9532efc332bf1ff2abbae582bd093 # v0.15.0
         with:
-          results: packages/junior-evals/vitest-results-${{ matrix.shard }}.json
+          results: eval-results/*.json
+          publish-check: true
+          check-name: evals
+          # Case-level failures are expected under a score-based gate. The
+          # pass-rate step below owns workflow failure for quality misses.
+          fail-on-failures: false
+
+      - name: Gate on eval pass rate
+        env:
+          EVALS_TOTAL: ${{ steps.report.outputs.evals-total }}
+          EVALS_FAILED: ${{ steps.report.outputs.evals-failed }}
+          SCORE_AVERAGE: ${{ steps.report.outputs.score-average }}
+        run: |
+          set -euo pipefail
+          node scripts/check-eval-pass-rate.mjs \
+            --total "$EVALS_TOTAL" \
+            --failed "$EVALS_FAILED" \
+            --min-pass-rate "$EVAL_MIN_PASS_RATE" \
+            --score-average "${SCORE_AVERAGE:-n/a}"

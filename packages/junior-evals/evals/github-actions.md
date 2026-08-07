@@ -82,6 +82,17 @@ After adding secrets:
    - `gateway_ready: true`
    - `sandbox_ready: true`
    - `will_run: true`
+4. Confirm the `evals / report` job published the combined suite summary and pass-rate gate.
+
+## Score-Based CI Gate
+
+Shard jobs keep running after individual case failures so every shard can upload its Vitest JSON results. The final `evals / report` job:
+
+1. Downloads all shard result files
+2. Publishes one combined `vitest-evals` summary/check with pass counts and average score
+3. Fails the workflow only when the aggregate pass rate is below `EVAL_MIN_PASS_RATE` (currently `0.8`)
+
+Setup crashes and missing result files still fail hard. Case-level quality misses are visible in the report without automatically failing CI unless the suite drops below the floor.
 
 If `sandbox_ready` is false, either `VERCEL_OIDC_TOKEN` is missing or the fallback token set is incomplete.
 
