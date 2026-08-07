@@ -85,11 +85,12 @@ function sourceUrlFromConversation(args: {
   const teamDomain = args.teamDomainByTeamId?.get(
     conversation.sessionSource.teamId,
   );
-  if (!teamDomain) return undefined;
+  const threadTs = conversation.sessionSource.threadTs;
+  if (!teamDomain || !threadTs) return undefined;
   return buildSlackSourceUrl({
     channelId: conversation.sessionSource.channelId,
     teamDomain,
-    threadTs: conversation.sessionSource.threadTs,
+    threadTs,
   });
 }
 
