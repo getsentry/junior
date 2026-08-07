@@ -256,7 +256,7 @@ jobs:
         # Only when Vitest wrote results. Exact decision misses already failed
         # the run step; this adds the rich job summary under Evals.
         if: always() && !cancelled() && hashFiles('packages/junior-evals/guardian-results.json') != ''
-        uses: getsentry/vitest-evals@v0.16.1
+        uses: getsentry/vitest-evals@abea6a519955e5df56ecb2a2d83bae9c821561e1 # v0.16.1
         with:
           results: packages/junior-evals/guardian-results.json
       - name: Upload Guardian eval results
@@ -417,7 +417,7 @@ jobs:
       - name: Publish behavioral shard summary
         # Job-summary only. Aggregate gate + PR status live on evals / report.
         if: steps.results.conclusion == 'success'
-        uses: getsentry/vitest-evals@v0.16.1
+        uses: getsentry/vitest-evals@abea6a519955e5df56ecb2a2d83bae9c821561e1 # v0.16.1
         with:
           results: packages/junior-evals/behavioral-results-${{ matrix.shard }}.json
       - name: Upload behavioral eval results
@@ -466,7 +466,7 @@ jobs:
 
       - name: Publish combined behavioral eval report
         id: report
-        uses: getsentry/vitest-evals@v0.16.1
+        uses: getsentry/vitest-evals@abea6a519955e5df56ecb2a2d83bae9c821561e1 # v0.16.1
         with:
           results: eval-results/*.json
           publish-check: true
