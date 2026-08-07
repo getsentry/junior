@@ -85,7 +85,6 @@ export function PeoplePageContent(props: {
             ? "People failed to load."
             : `See who's been working with ${getDashboardAgentName()}, how often, and for how long.`
         }
-        eyebrow="System / activity"
         title="People"
       />
       {props.error ? (

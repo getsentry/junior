@@ -10,7 +10,6 @@ export function PluginDetails(props: { plugin: SystemPlugin }) {
     <section aria-labelledby="plugin-details-heading" className="grid gap-3">
       <SectionIntro
         className="px-1"
-        eyebrow="Plugin information"
         id="plugin-details-heading"
         title="Details"
       />

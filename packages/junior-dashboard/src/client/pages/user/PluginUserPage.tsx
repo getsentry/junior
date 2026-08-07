@@ -76,7 +76,6 @@ export function PluginUserPage(props: { page: PluginUserPageLink }) {
       <section className="mx-auto grid w-full max-w-3xl gap-6">
         <PageHeader
           description={props.page.description}
-          eyebrow={props.page.pluginDisplayName}
           title={props.page.label}
         />
         {content?.metrics?.length ? (

@@ -133,7 +133,6 @@ export function TasksPage(props: { enabled: boolean }) {
       <section className="mx-auto grid w-full max-w-6xl gap-5">
         <PageHeader
           description="Scheduled and event-driven work created by users."
-          eyebrow="Automation"
           title="Tasks"
         />
         {query.data?.executionDays?.length ? (

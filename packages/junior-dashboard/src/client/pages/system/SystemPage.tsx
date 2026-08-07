@@ -88,7 +88,6 @@ function OverviewSystemPage(props: {
           />
         }
         description={`A live read on ${agentNamePossessive()} runtime and model usage.`}
-        eyebrow={`${agentNamePossessive()} engine room`}
         title="System"
       />
       <SystemActivity
@@ -109,7 +108,6 @@ function PluginsSystemPage(props: {
     <>
       <PageHeader
         description={`Loaded capabilities and operational reports for ${getDashboardAgentName()}.`}
-        eyebrow="System / capabilities"
         title="Plugins"
       />
       {props.data.pluginReportsError ? (
@@ -148,7 +146,6 @@ function PluginSystemPage(props: {
           ) : undefined
         }
         description={props.plugin.description}
-        eyebrow="System / plugins"
         title={props.plugin.displayName}
       />
       {props.data.pluginReportsError ? (

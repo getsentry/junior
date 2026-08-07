@@ -137,11 +137,8 @@ export function TaskDetailsDrawer(props: {
       <aside className="absolute top-0 right-0 grid h-full w-full grid-rows-[auto_minmax(0,1fr)] bg-[#070707] shadow-[-20px_0_60px_rgba(0,0,0,0.45)] md:w-[min(560px,94vw)] md:border-l md:border-white/12">
         <header className="relative border-b border-white/10 bg-dashboard-surface-raised px-4 py-3 md:px-5">
           <div className="min-w-0 pr-12">
-            <div className="font-mono text-xs uppercase tracking-[0.14em] text-cyan-200/65">
-              Task details
-            </div>
             <h2
-              className="mt-1 mb-0 font-display text-lg font-medium tracking-normal text-dashboard-text capitalize"
+              className="m-0 font-display text-lg font-medium tracking-normal text-dashboard-text capitalize"
               id={titleId}
             >
               {task.kind} task

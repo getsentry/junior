@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Archive, MessageSquareText } from "lucide-react";
+import { Archive } from "lucide-react";
 import { Link } from "react-router";
 
 import { useArchiveConversation } from "./queries";
@@ -48,10 +48,6 @@ export function ConversationSidebar(props: {
   return (
     <aside className="relative grid h-full min-h-0 min-w-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-white/[0.07] bg-white/[0.02]">
       <div className="px-5 pb-3 pt-5">
-        <div className="mb-2 flex items-center gap-2 font-mono text-xs uppercase tracking-[0.16em] text-cyan-200/65">
-          <MessageSquareText aria-hidden="true" size={13} />
-          Your trail
-        </div>
         <div className="flex items-end justify-between gap-3">
           <h2 className="m-0 font-display text-xl font-medium leading-tight text-dashboard-text">
             Conversations

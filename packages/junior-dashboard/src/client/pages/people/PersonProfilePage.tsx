@@ -79,13 +79,11 @@ export function Profile(props: { profile: ActorProfileReport }) {
               : ""}
           </>
         }
-        eyebrow="Person"
         title={displayName}
       />
 
       <section className="grid gap-4" aria-labelledby="profile-metrics-title">
         <SectionIntro
-          eyebrow="Runtime telemetry"
           id="profile-metrics-title"
           title="Usage over time"
         />

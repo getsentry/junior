@@ -83,7 +83,6 @@ export function LocationsPageContent(props: {
             ? "Locations failed to load."
             : `See the public channels where ${getDashboardAgentName()} has been working and how busy they've been.`
         }
-        eyebrow="System / activity"
         title="Locations"
       />
       {props.error ? (

@@ -80,9 +80,6 @@ export function ConversationPage(props: {
       <section className="min-w-0">
         <Card className="relative mb-3 grid gap-2 border-white/[0.07] bg-white/[0.025] p-3 md:mb-5 md:grid-cols-[minmax(0,1fr)_auto] md:gap-3 md:p-5">
           <div className="min-w-0">
-            <div className="mb-1 hidden font-mono text-xs uppercase tracking-[0.16em] text-cyan-200/65 md:mb-2 md:block">
-              Conversation
-            </div>
             <div className="min-w-0">
               <h2 className="m-0 line-clamp-2 font-display text-xl font-medium leading-tight tracking-[-0.03em] md:line-clamp-none md:truncate md:text-3xl">
                 {conversationDisplayTitle(conversation)}

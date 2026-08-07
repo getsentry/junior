@@ -54,7 +54,6 @@ function LocationDetail(props: { detail: LocationDetailReport }) {
     <>
       <PageHeader
         description={`${detail.provider} public ${detail.kind} / ${detail.providerDestinationId} / last active ${formatRelativeTime(detail.lastSeenAt)}`}
-        eyebrow="System / locations"
         title={detail.label}
       />
 

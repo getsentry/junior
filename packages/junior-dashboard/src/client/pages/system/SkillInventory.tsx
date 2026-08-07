@@ -26,7 +26,6 @@ export function SkillInventory(props: { skills: SkillReport[] }) {
               registered.
             </>
           }
-          eyebrow="Capability map"
           title="Skills"
         />
         <div className="grid min-w-[12rem] grid-cols-2 overflow-hidden rounded-lg border border-white/[0.07] bg-black/15 max-sm:w-full max-sm:min-w-0">

@@ -232,7 +232,6 @@ export function ComponentsPage() {
     >
       <PageHeader
         description="Reusable dashboard fixtures for visual and interaction checks."
-        eyebrow="Development"
         title="Component gallery"
       />
 

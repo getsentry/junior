@@ -40,7 +40,6 @@ export function PluginReports(props: {
     <div className="grid gap-3">
       <SectionIntro
         className="px-1"
-        eyebrow="Live signals"
         title="Operational reports"
       />
       {props.reports.map((report) => (

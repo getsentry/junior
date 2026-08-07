@@ -68,7 +68,6 @@ export function MemoryPage(props: { page: PluginUserPageLink }) {
     >
       <PageHeader
         description={props.page.description}
-        eyebrow="Memory system"
         title={props.page.label}
       />
       <nav
@@ -193,11 +192,8 @@ function MemoryLibrary(props: {
     <section className="grid gap-4" aria-labelledby="memory-library-title">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <div className="font-mono text-xs uppercase tracking-[0.16em] text-cyan-200/65">
-            Your memories
-          </div>
           <h2
-            className="mt-1 mb-0 font-display text-xl font-medium tracking-[-0.02em] text-dashboard-text"
+            className="m-0 font-display text-xl font-medium tracking-[-0.02em] text-dashboard-text"
             id="memory-library-title"
           >
             {searchQuery ? "Search results" : "What Junior remembers"}
