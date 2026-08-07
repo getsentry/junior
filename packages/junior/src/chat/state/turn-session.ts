@@ -101,11 +101,9 @@ export interface AgentTurnSessionRecord {
    * All distinct actors annotated on this run's committed instruction-authority
    * messages, in first-seen order. Persisted as an attribution handle so a
    * summary-only handoff cannot erase them. It never grants authority or
-   * replaces the singular execution actor.
+   * replaces the singular execution actor, which is rebuilt at resume.
    */
   actors: Actor[];
-  /** The single actor this run executes as (credential binding, auth flows). */
-  actor?: Actor;
   resumeReason?: AgentTurnResumeReason;
   resumedFromSliceId?: number;
   sessionId: string;
@@ -178,9 +176,9 @@ const seqCursorSchema = z.number().int().min(-1);
  *
  * This is the shared field set for durable turn-session state and the summary
  * indexes. `.strip()` keeps only declared keys so unknown/deprecated payload
- * fields (including legacy nested destination/source) are discarded on both
- * read and write. Do not switch this back to `.strict()` without an explicit
- * migration path for those dropped fields.
+ * fields (including legacy nested destination/source/actor) are discarded on
+ * both read and write. Do not switch this back to `.strict()` without an
+ * explicit migration path for those dropped fields.
  *
  * The stored record schema below extends this same projection with resume-only
  * fields (committedSeq, runtimeContext, ...). Summary indexes intentionally
@@ -200,8 +198,6 @@ const agentTurnSessionSummarySchema = z
     loadedSkillNames: z.array(z.string()).optional(),
     modelId: z.string().min(1).optional(),
     reasoningLevel: z.string().min(1).optional(),
-    // TODO(#1267): Remove actor from this projection once resume rebuilds it.
-    actor: actorSchema.optional(),
     resumeReason: agentTurnResumeReasonSchema.optional(),
     resumedFromSliceId: z.number().int().nonnegative().optional(),
     sessionId: z.string().min(1),
@@ -277,6 +273,8 @@ async function appendAgentTurnSessionSummary(
 
 /** Store run summary metadata in the configured conversation store. */
 async function recordConversationActivityMetadata(args: {
+  /** Live execution actor for SQL dual-write only; never stored in Redis. */
+  actor?: Actor;
   conversationStore?: ConversationStore;
   destination?: Destination;
   /** Confirmed destination visibility; omit when unavailable. */
@@ -296,8 +294,9 @@ async function recordConversationActivityMetadata(args: {
     conversationId: args.summary.conversationId,
   });
   const isChild = Boolean(conversation?.lineage);
-  // Nested destination/source stay off Redis turn-session payloads; callers pass
-  // live routing here for SQL dual-write. Child conversations stay destinationless.
+  // Nested destination/source/actor stay off Redis turn-session payloads; callers
+  // pass live routing/identity here for SQL dual-write. Child conversations stay
+  // destinationless.
   const destination = isChild ? undefined : args.destination;
   // Only derive ConversationSource when routing is known. Abandon/fail no longer
   // carry nested destination, and SQL coalesce(excluded, existing) would otherwise
@@ -315,7 +314,7 @@ async function recordConversationActivityMetadata(args: {
     conversationId: args.summary.conversationId,
     destination,
     nowMs: args.nowMs,
-    actor: sessionLogActor(args.summary.actor),
+    actor: sessionLogActor(args.actor),
     ...definedProps({ source: activitySource }),
     ...(args.source ? { sessionSource: args.source } : {}),
     visibility: isChild ? undefined : args.destinationVisibility,
@@ -333,7 +332,7 @@ async function recordConversationActivityMetadata(args: {
         ? { usage: args.summary.cumulativeUsage }
         : {}),
     },
-    actor: sessionLogActor(args.summary.actor),
+    actor: sessionLogActor(args.actor),
     ...definedProps({ source: activitySource }),
     updatedAtMs: args.nowMs,
     visibility: isChild ? undefined : args.destinationVisibility,
@@ -365,7 +364,6 @@ function materializeAgentTurnSessionRecord(
     actors: stored.actors ?? instructionActors(piProjection.provenance),
     cumulativeDurationMs: stored.cumulativeDurationMs,
     ...definedProps({
-      actor: stored.actor,
       channelName: stored.channelName,
       cumulativeUsage: stored.cumulativeUsage,
       dispatchId: stored.dispatchId,
@@ -540,7 +538,6 @@ function buildStoredRecord(args: {
   modelId?: string;
   previousVersion?: number;
   reasoningLevel?: string;
-  actor?: Actor;
   actors?: Actor[];
   sessionId: string;
   sliceId: number;
@@ -567,7 +564,6 @@ function buildStoredRecord(args: {
     committedSeq: args.committedSeq,
     cumulativeDurationMs: args.cumulativeDurationMs,
     ...definedProps({
-      actor: args.actor,
       actors: args.actors,
       channelName: args.channelName,
       cumulativeUsage: args.cumulativeUsage,
@@ -593,6 +589,7 @@ function buildStoredRecord(args: {
 }
 
 async function setStoredRecord(args: {
+  actor?: Actor;
   conversationStore?: ConversationStore;
   destination?: Destination;
   /** Confirmed destination visibility; omit when unavailable. */
@@ -609,6 +606,7 @@ async function setStoredRecord(args: {
 
   const storedRecord = storedAgentTurnSessionRecordSchema.parse(args.record);
   await recordConversationActivityMetadata({
+    actor: args.actor,
     conversationStore: args.conversationStore,
     destination: args.destination,
     destinationVisibility: args.destinationVisibility,
@@ -677,7 +675,6 @@ async function updateAgentTurnSessionState(args: {
       cumulativeDurationMs: args.existing.cumulativeDurationMs,
       actors: args.existing.actors,
       ...definedProps({
-        actor: args.existing.actor,
         channelName: parsed.channelName,
         cumulativeUsage: args.existing.cumulativeUsage,
         dispatchId: args.existing.dispatchId,
@@ -756,7 +753,9 @@ export async function upsertAgentTurnSessionRecord(args: {
   // Attribute new user input to the turn's actor as an instruction; the event
   // store reuses committed provenance for the unchanged prefix and defaults the
   // rest to context. Platform-neutral so local identities are preserved too.
-  const instructionActor = args.actor ?? existingRecord?.actor;
+  // Execution actor is not stored in Redis — callers pass it live for SQL
+  // dual-write and fresh instruction attribution only.
+  const instructionActor = args.actor;
   const commit = await commitMessages({
     conversationId: args.conversationId,
     messages: args.piMessages,
@@ -804,6 +803,7 @@ export async function upsertAgentTurnSessionRecord(args: {
       : commit.messageSeqs.filter((seq) => seq <= turnStartSeq).length);
 
   return await setStoredRecord({
+    actor: args.actor,
     conversationStore: args.conversationStore,
     destination: args.destination,
     destinationVisibility: args.destinationVisibility,
@@ -829,7 +829,6 @@ export async function upsertAgentTurnSessionRecord(args: {
         ...commit.provenance,
       ]),
       ...definedProps({
-        actor: args.actor ?? existingRecord?.actor,
         channelName: args.channelName ?? existingRecord?.channelName,
         cumulativeUsage: args.cumulativeUsage,
         dispatchId: args.dispatchId ?? existingRecord?.dispatchId,
@@ -915,7 +914,6 @@ export async function recordAgentTurnSessionSummary(args: {
     cumulativeDurationMs:
       args.cumulativeDurationMs ?? existing?.cumulativeDurationMs ?? 0,
     ...definedProps({
-      actor: args.actor ?? existing?.actor,
       channelName: args.channelName ?? existing?.channelName,
       cumulativeUsage: args.cumulativeUsage ?? existing?.cumulativeUsage,
       dispatchId: args.dispatchId ?? existingDispatchId,
@@ -930,6 +928,7 @@ export async function recordAgentTurnSessionSummary(args: {
     }),
   };
   await recordConversationActivityMetadata({
+    actor: args.actor,
     conversationStore: args.conversationStore,
     destination: args.destination,
     destinationVisibility: args.destinationVisibility,

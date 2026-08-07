@@ -45,8 +45,9 @@ function definedProps<T extends Record<string, unknown>>(
 
 /**
  * Shared optional fields carried across turn-session writes.
- * Callers resolve inheritance for skill/reasoning fields before calling;
- * routing/identity fields fall back to the latest stored record here.
+ * Callers resolve inheritance for skill/reasoning fields before calling.
+ * Routing/identity fields are live-only for SQL dual-write — Redis no longer
+ * stores destination/source/actor on the turn-session projection.
  */
 interface TurnSessionWriteContext {
   actor?: Actor;
@@ -89,7 +90,8 @@ function sessionWriteContext(
     modelId: args.modelId,
     sessionId: args.sessionId,
     ...definedProps({
-      actor: args.actor ?? latest?.actor,
+      // Live only: Redis no longer stores execution actor across resumes.
+      actor: args.actor,
       channelName: args.channelName ?? latest?.channelName,
       destination: args.destination,
       destinationVisibility: args.destinationVisibility,

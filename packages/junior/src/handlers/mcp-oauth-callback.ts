@@ -66,7 +66,7 @@ import {
 } from "@/chat/services/turn-session-routing";
 import { htmlCallbackResponse } from "@/handlers/oauth-html";
 import type { WaitUntilFn } from "@/handlers/types";
-import { createSlackResumeActor, isUserActor, type Actor } from "@/chat/actor";
+import { createSlackResumeActor, type Actor } from "@/chat/actor";
 import { requireSlackDestination } from "@/chat/destination";
 import { relayLocalOAuthCallback } from "@/chat/local/oauth-relay";
 
@@ -351,9 +351,6 @@ async function resumeAuthorizedMcpTurn(args: {
       let actor: Actor;
       try {
         actor = createSlackResumeActor({
-          actor: isUserActor(lockedSessionRecord.actor)
-            ? lockedSessionRecord.actor
-            : undefined,
           teamId: destination.teamId,
           userId: authSession.userId,
         });
@@ -362,7 +359,7 @@ async function resumeAuthorizedMcpTurn(args: {
           conversationId: authSession.conversationId,
           expectedVersion: lockedSessionRecord.version,
           sessionId: lockedSessionId,
-          errorMessage: "Stored Slack actor identity did not match OAuth actor",
+          errorMessage: "Unable to rebuild Slack actor for OAuth resume",
         });
         return false;
       }

@@ -76,14 +76,6 @@ describe("agent continuation runner callbacks", () => {
       destination: SLACK_DESTINATION,
       source: SLACK_SOURCE,
       resumeReason: "timeout",
-      actor: {
-        platform: "slack",
-        teamId: SLACK_DESTINATION.teamId,
-        userId: "U123",
-        userName: "stored-user",
-        fullName: "Stored User",
-        email: "stored@example.com",
-      },
       piMessages: [
         {
           role: "user",
@@ -151,13 +143,11 @@ describe("agent continuation runner callbacks", () => {
             if (!prepared.replyContext) {
               throw new Error("Expected prepared continuation reply context");
             }
+            // Redis no longer stores execution actor; bare author + team rebuild.
             expect(prepared.replyContext.routing.actor).toEqual({
-              email: "stored@example.com",
-              fullName: "Stored User",
               platform: "slack",
               teamId: "T123",
               userId: "U123",
-              userName: "stored-user",
             });
             const runArgs = { ...args, ...prepared };
             await runArgs.onPostDeliveryCommitFailure?.(
@@ -368,7 +358,7 @@ describe("agent continuation runner callbacks", () => {
     });
   });
 
-  it("fails before continuing when stored actor and message author differ", async () => {
+  it("fails before continuing when the turn user message has no author id", async () => {
     const conversationId = "slack:C123:1712345.0006";
     const sessionId = "turn_msg_6";
     const sessionRecord = await upsertAgentTurnSessionRecord({
@@ -379,12 +369,6 @@ describe("agent continuation runner callbacks", () => {
       state: "awaiting_resume",
       destination: SLACK_DESTINATION,
       resumeReason: "timeout",
-      actor: {
-        platform: "slack",
-        teamId: SLACK_DESTINATION.teamId,
-        userId: "U999",
-        userName: "wrong-user",
-      },
       piMessages: [
         {
           role: "user",
@@ -408,9 +392,7 @@ describe("agent continuation runner callbacks", () => {
             role: "user",
             text: "resume this request",
             createdAtMs: 1,
-            author: {
-              userId: "U123",
-            },
+            author: {},
           },
         ],
         processing: {
@@ -431,8 +413,8 @@ describe("agent continuation runner callbacks", () => {
     const { continueSlackAgentRun } =
       await import("@/chat/runtime/agent-continue-runner");
 
-    // A mismatched stored actor must never throw out of the continue
-    // callback (issue #727: a throw NACKs the queue delivery and wedges the
+    // Missing author identity must never throw out of the continue callback
+    // (issue #727: a throw NACKs the queue delivery and wedges the
     // conversation); it terminally fails the session instead.
     await expect(
       continueSlackAgentRun(
@@ -458,7 +440,6 @@ describe("agent continuation runner callbacks", () => {
       getAgentTurnSessionRecord(conversationId, sessionId),
     ).resolves.toMatchObject({
       state: "failed",
-      errorMessage: "Stored Slack actor missing for continuation",
     });
   });
 });
