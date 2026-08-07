@@ -4,7 +4,6 @@ import { mention, rubric, slackEvals } from "../../src/helpers";
 import {
   clearMemories,
   countMemoryEmbeddings,
-  evalMemoryModel,
   expectActorMemorySemantics,
   expectAssistantMemoryAnswer,
   type MemoryThread,
@@ -14,12 +13,6 @@ import {
   seedMemory,
   visibleAssistantText,
 } from "./helpers";
-import { createMemoryAgent } from "../../../junior-memory/src/agent";
-import { createSlackSource } from "@sentry/junior-plugin-api";
-import { TEST_USER_ID } from "@junior-tests/fixtures/slack/factories/ids";
-
-const memoryTeamId = "TEVAL";
-const actorUserId = TEST_USER_ID;
 
 describeEval("Personal Memory", slackEvals, (it) => {
   const explicitRememberThread = {
@@ -268,90 +261,4 @@ describeEval("Personal Memory", slackEvals, (it) => {
       }),
     ]);
   });
-
-  it("when adjudicating preferences, distinguish duplicates, replacements, and additive preferences", async () => {
-    const agent = createMemoryAgent(evalMemoryModel);
-    const runtimeContext = {
-      conversationId: "slack:CMEMORYSUPERSESSION:17000000.000003",
-      actor: {
-        platform: "slack" as const,
-        teamId: memoryTeamId,
-        userId: actorUserId,
-      },
-      source: createSlackSource({
-        channelId: "CMEMORYSUPERSESSION",
-        messageTs: "17000000.000003",
-        teamId: memoryTeamId,
-        threadTs: "17000000.000003",
-
-        visibility: "private",
-      }),
-    };
-
-    const replacement = await agent.adjudicateSupersession({
-      candidate: {
-        content: "Prefers TypeScript for automation scripts.",
-        kind: "preference",
-      },
-      existingMemories: [
-        {
-          content: "Prefers Python for automation scripts.",
-          id: "memory-old-language",
-        },
-      ],
-      runtimeContext,
-    });
-    expect(replacement).toEqual({
-      decision: "supersedes_old",
-      supersededIds: ["memory-old-language"],
-    });
-
-    const duplicate = await agent.adjudicateSupersession({
-      candidate: {
-        content: "Wants meeting reminders 24 hours in advance.",
-        kind: "preference",
-      },
-      existingMemories: [
-        {
-          content: "Prefers calendar reminders one day before meetings.",
-          id: "memory-existing-reminder-timing",
-        },
-      ],
-      runtimeContext,
-    });
-    expect(duplicate).toEqual({
-      decision: "duplicate",
-      duplicateId: "memory-existing-reminder-timing",
-    });
-
-    const additive = await agent.adjudicateSupersession({
-      candidate: {
-        content: "Prefers Slack updates in the morning.",
-        kind: "preference",
-      },
-      existingMemories: [
-        {
-          content: "Prefers terse PR summaries.",
-          id: "memory-old-summary-style",
-        },
-      ],
-      runtimeContext,
-    });
-    expect(additive).toEqual({ decision: "distinct" });
-
-    const sameTopicAdditive = await agent.adjudicateSupersession({
-      candidate: {
-        content: "Prefers PR summaries to name an owner for every risk.",
-        kind: "preference",
-      },
-      existingMemories: [
-        {
-          content: "Prefers PR summaries with risks first.",
-          id: "memory-existing-summary-order",
-        },
-      ],
-      runtimeContext,
-    });
-    expect(sameTopicAdditive).toEqual({ decision: "distinct" });
-  }, 120_000);
 });

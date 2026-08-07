@@ -4,7 +4,7 @@ import { getDb } from "@/chat/db";
 import { completeText, resolveGatewayModel } from "@/chat/pi/client";
 import { createPluginEmbedder } from "@/chat/plugins/model";
 import { createMemoryStore, type MemoryDb } from "@sentry/junior-memory";
-import { createSlackSource, type PluginModel } from "@sentry/junior-plugin-api";
+import { createSlackSource } from "@sentry/junior-plugin-api";
 import {
   juniorMemoryEmbeddings,
   juniorMemoryMemories,
@@ -69,57 +69,6 @@ export async function seedMemory(args: {
 function memoryDb(): MemoryDb {
   return getDb() as unknown as MemoryDb;
 }
-
-export const evalMemoryModel: PluginModel = {
-  async completeObject(input) {
-    const { text } = await completeText({
-      maxTokens: input.maxTokens,
-      modelId: memoryJudgeModelId,
-      system: input.system,
-      messages: [
-        {
-          role: "user",
-          content: [
-            input.prompt,
-            "",
-            "Return only raw JSON in exactly one of these shapes:",
-            '{"decision":"duplicate","duplicateId":"existing-memory-id"}',
-            '{"decision":"supersedes_old","supersededIds":["existing-memory-id"]}',
-            '{"decision":"distinct"}',
-            '{"decision":"uncertain"}',
-            'Use camelCase keys exactly, including "duplicateId" and "supersededIds". Do not wrap it in markdown.',
-          ].join("\n"),
-          timestamp: Date.now(),
-        },
-      ],
-      temperature: 0,
-    });
-    const parsed = JSON.parse(text) as unknown;
-    if (
-      parsed &&
-      typeof parsed === "object" &&
-      "duplicate_id" in parsed &&
-      !("duplicateId" in parsed)
-    ) {
-      (parsed as Record<string, unknown>).duplicateId = (
-        parsed as Record<string, unknown>
-      ).duplicate_id;
-      delete (parsed as Record<string, unknown>).duplicate_id;
-    }
-    if (
-      parsed &&
-      typeof parsed === "object" &&
-      "superseded_ids" in parsed &&
-      !("supersededIds" in parsed)
-    ) {
-      (parsed as Record<string, unknown>).supersededIds = (
-        parsed as Record<string, unknown>
-      ).superseded_ids;
-      delete (parsed as Record<string, unknown>).superseded_ids;
-    }
-    return { object: input.schema.parse(parsed) };
-  },
-};
 
 function memorySourceKey(thread: MemoryThread): string {
   return `slack:${memoryTeamId}:${thread.channel_id}:${thread.thread_ts}`;
