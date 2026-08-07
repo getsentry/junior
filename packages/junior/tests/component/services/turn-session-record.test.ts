@@ -114,6 +114,8 @@ describe("persistAuthPauseSessionRecord", () => {
     expect(set.mock.calls.at(-1)?.[2]).toBe(24 * 60 * 60 * 1000);
     expect(appendToList).toHaveBeenCalledTimes(2);
     for (const call of appendToList.mock.calls) {
+      // Shared indexes stay on the resume window so terminal writes cannot
+      // expire unfinished sibling summaries.
       expect(call[2]?.ttlMs).toBe(24 * 60 * 60 * 1000);
     }
 
@@ -131,7 +133,7 @@ describe("persistAuthPauseSessionRecord", () => {
     expect(set.mock.calls.at(-1)?.[2]).toBe(60 * 60 * 1000);
     expect(appendToList).toHaveBeenCalledTimes(2);
     for (const call of appendToList.mock.calls) {
-      expect(call[2]?.ttlMs).toBe(60 * 60 * 1000);
+      expect(call[2]?.ttlMs).toBe(24 * 60 * 60 * 1000);
     }
   });
 

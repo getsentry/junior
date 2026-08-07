@@ -253,7 +253,7 @@ function parseAgentTurnSessionSummary(value: unknown): AgentTurnSessionSummary {
   return agentTurnSessionSummarySchema.parse(value);
 }
 
-function agentTurnSessionTtlMs(
+function agentTurnSessionRecordTtlMs(
   state: AgentTurnSessionStatus,
   ttlMs?: number,
 ): number {
@@ -263,6 +263,15 @@ function agentTurnSessionTtlMs(
   return state === "running" || state === "awaiting_resume"
     ? AGENT_TURN_SESSION_RESUME_TTL_MS
     : AGENT_TURN_SESSION_TERMINAL_TTL_MS;
+}
+
+/**
+ * Shared summary indexes hold many sessions. Keep them on the resume window so a
+ * terminal write cannot expire unfinished siblings still under a resume lease.
+ * Explicit ttl overrides (tests) still win.
+ */
+function agentTurnSessionIndexTtlMs(ttlMs?: number): number {
+  return Math.max(1, ttlMs ?? AGENT_TURN_SESSION_RESUME_TTL_MS);
 }
 
 async function appendAgentTurnSessionSummary(
@@ -611,7 +620,10 @@ async function setStoredRecord(args: {
   piMessageProvenance: ConversationMessageProvenance[];
   record: StoredAgentTurnSessionRecord;
   source?: Source;
+  /** Per-record TTL (state-split). */
   ttlMs: number;
+  /** Shared index TTL override; defaults to the resume window. */
+  indexTtlMs?: number;
   turnStartMessageIndex?: number;
 }): Promise<AgentTurnSessionRecord> {
   const stateAdapter = getStateAdapter();
@@ -641,7 +653,12 @@ async function setStoredRecord(args: {
     runtimeContext: _runtimeContext,
     ...summary
   } = storedRecord;
-  await appendAgentTurnSessionSummary(summary, args.ttlMs);
+  // Indexes are multi-session; keep the resume window so a terminal write cannot
+  // expire unfinished siblings. Explicit overrides still win when provided.
+  await appendAgentTurnSessionSummary(
+    summary,
+    agentTurnSessionIndexTtlMs(args.indexTtlMs),
+  );
   return materializeAgentTurnSessionRecord(
     storedRecord,
     {
@@ -672,7 +689,7 @@ async function updateAgentTurnSessionState(args: {
   return await setStoredRecord({
     piMessages: args.existing.piMessages,
     piMessageProvenance: args.existing.piMessageProvenance,
-    ttlMs: agentTurnSessionTtlMs(args.state),
+    ttlMs: agentTurnSessionRecordTtlMs(args.state),
     ...definedProps({
       turnStartMessageIndex: args.existing.turnStartMessageIndex,
     }),
@@ -761,7 +778,7 @@ export async function upsertAgentTurnSessionRecord(args: {
       `Turn session ${args.sessionId} dispatchId cannot be changed`,
     );
   }
-  const ttlMs = agentTurnSessionTtlMs(args.state, args.ttlMs);
+  const ttlMs = agentTurnSessionRecordTtlMs(args.state, args.ttlMs);
   // Attribute new user input to the turn's actor as an instruction; the event
   // store reuses committed provenance for the unchanged prefix and defaults the
   // rest to context. Platform-neutral so local identities are preserved too.
@@ -823,6 +840,9 @@ export async function upsertAgentTurnSessionRecord(args: {
     piMessages: commit.messages,
     piMessageProvenance: commit.provenance,
     ttlMs,
+    // Pass through only an explicit override so indexes stay on the resume window
+    // by default even when the record takes a short terminal TTL.
+    ...definedProps({ indexTtlMs: args.ttlMs }),
     turnStartMessageIndex,
     record: buildStoredRecord({
       conversationId: args.conversationId,
@@ -916,7 +936,8 @@ export async function recordAgentTurnSessionSummary(args: {
     );
   }
   const nowMs = Date.now();
-  const ttlMs = agentTurnSessionTtlMs(args.state, args.ttlMs);
+  // Summary-only path writes shared indexes, not the per-session record key.
+  const ttlMs = agentTurnSessionIndexTtlMs(args.ttlMs);
   const summary: AgentTurnSessionSummary = {
     version: existing?.version ?? 0,
     conversationId: args.conversationId,
