@@ -131,7 +131,6 @@ describe("dashboard routes", () => {
       expect(location.searchParams.get("next")).toBe(path);
     }
   });
-
   it("uses the requested dashboard path as the Google sign-in callback", async () => {
     let callbackURL: string | undefined;
     const app = createDashboardApp({
