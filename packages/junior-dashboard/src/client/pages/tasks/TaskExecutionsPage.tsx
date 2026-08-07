@@ -75,7 +75,13 @@ function TaskExecutionsView(props: {
   data: TaskExecutionList;
 }) {
   const { data } = props;
-  const counts = useMemo(() => countByStatus(data.executions), [data.executions]);
+  const counts = useMemo(
+    () => countByStatus(data.executions),
+    [data.executions],
+  );
+  const statusSummary = data.truncated
+    ? `${data.task.totalRuns} total · status counts cover the ${data.executions.length} loaded runs`
+    : `${data.task.totalRuns} total · ${counts.completed} completed · ${counts.failed} failed · ${counts.blocked} blocked`;
 
   return (
     <div className={`${dashboardContainerClass} px-4 py-8 md:px-8`}>
@@ -99,11 +105,8 @@ function TaskExecutionsView(props: {
             Instruction
           </div>
           <TranscriptText text={data.task.instruction} />
-          <div className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-xs text-dashboard-text-muted">
-            <span>{data.task.totalRuns} total</span>
-            <span>{counts.completed} completed</span>
-            <span>{counts.failed} failed</span>
-            <span>{counts.blocked} blocked</span>
+          <div className="font-mono text-xs text-dashboard-text-muted">
+            {statusSummary}
           </div>
         </Card>
 
