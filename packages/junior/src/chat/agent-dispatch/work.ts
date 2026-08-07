@@ -8,6 +8,7 @@
 import type { StateAdapter } from "chat";
 import { z } from "zod";
 import type { ConversationStore } from "@/chat/conversations/store";
+import { credentialContextForActor } from "@/chat/credentials/context";
 import { getConversationStore } from "@/chat/db";
 import {
   getConversationTurnBoundaryError,
@@ -75,12 +76,10 @@ export function buildDispatchRoutingContext(
 ): DispatchRoutingContext {
   return {
     actor: dispatch.actor,
-    credentialContext: {
-      actor: dispatch.actor,
-      ...(dispatch.credentialSubject
-        ? { subject: dispatch.credentialSubject }
-        : {}),
-    },
+    credentialContext: credentialContextForActor(
+      dispatch.actor,
+      dispatch.credentialSubject,
+    ),
     destinationVisibility: dispatch.destinationVisibility,
     dispatch: {
       actor: dispatch.actor,

@@ -51,6 +51,7 @@ import {
   commitAcceptedReply,
   loadProjection,
 } from "@/chat/conversations/projection";
+import { credentialContextForActor } from "@/chat/credentials/context";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import {
   ConversationTurnLifecycleService,
@@ -344,12 +345,10 @@ async function runLocalAgentTurnInContext(
           piMessages: messages,
         },
         routing: {
-          credentialContext: {
-            actor: { type: "user", userId: "local-cli" },
-          },
+          actor: localActor,
+          credentialContext: credentialContextForActor(localActor),
           destination,
           source,
-          actor: localActor,
           surface: "internal",
         },
         authorization,

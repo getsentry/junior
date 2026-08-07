@@ -6,9 +6,12 @@ sandbox.
 
 ## Authority
 
+- Set the run `actor` first, then project credentials with
+  `credentialContextForActor(actor, subject?)`. Do not hand-build parallel
+  actor/credential shapes.
 - The current actor is the default credential subject.
 - A different subject requires explicit delegation carried through the durable
-  execution context.
+  execution context (system actor + `credentialContext.subject`).
 - Runtime binds Slack DM delegation to the exact destination and scheduler
   delegation to the exact scheduler plugin and task id before persistence.
 - A scheduled run with a delegated creator subject remains system-acted and
