@@ -8,6 +8,7 @@ import {
 } from "@/chat/runtime/thread-state";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import { commitMessages } from "@/chat/conversations/projection";
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
@@ -152,6 +153,10 @@ describe("Slack behavior: message content", () => {
       `inspect [evals.sentry.dev/run/…](${fullUrl})`,
     );
     const conversation = coerceThreadConversationState(thread.getState());
+    await hydrateConversationMessages({
+      conversation,
+      conversationId: thread.id,
+    });
     expect(
       conversation.messages.find((entry) => entry.id === message.id)?.text,
     ).toBe(`inspect [evals.sentry.dev/run/…](${fullUrl})`);
