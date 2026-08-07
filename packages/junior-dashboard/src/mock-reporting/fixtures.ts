@@ -148,6 +148,12 @@ function activeConversation(nowMs: number): ConversationDetailReport {
     },
     cumulativeDurationMs: 31_000,
     cumulativeUsage: usage(0.041),
+    modelUsage: [
+      {
+        modelId: "openai/gpt-5.6-sol",
+        usage: usage(0.041),
+      },
+    ],
     sentryConversationUrl: sentryConversationUrl(ACTIVE_CONVERSATION_ID),
     sourceUrl: slackSourceUrl("CQA123", "1770003600.000200"),
     events: [

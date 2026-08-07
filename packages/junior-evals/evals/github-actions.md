@@ -84,21 +84,22 @@ After adding secrets:
    - `gateway_ready: true`
    - `sandbox_ready: true` for end-to-end runs
    - `will_run: true` and/or `will_run_guardian: true`
-4. For end-to-end runs, confirm the `evals / report` job published the combined suite summary and pass-rate gate.
-5. For Guardian runs, confirm the `evals / guardian` job completed. Exact decision mismatches fail that job hard.
+4. For end-to-end runs, confirm each `evals / suite *` job has a shard summary, `evals / report` has the combined summary, and `evals / score` shows the pass-rate gate in its job name.
+5. For Guardian runs, confirm the `evals / guardian` job summary published and the job completed. Exact decision mismatches fail that job hard.
 
 ## Score-Based CI Gate
 
-End-to-end shard jobs keep running after individual case failures so every shard can upload its Vitest JSON results. The final `evals / report` job:
+End-to-end shard jobs keep running after individual case failures so every shard can upload its Vitest JSON results and publish its own job summary. Then:
 
-1. Downloads all shard result files
-2. Publishes one combined `vitest-evals` job summary with pass counts and average score
-3. Posts an `eval score` Check Run whose title shows the pass rate and required floor
-4. Fails the report step and Check Run when the aggregate pass rate is below `EVAL_MIN_PASS_RATE` (currently `0.8`)
+1. `evals / report` downloads all shard result files and publishes one combined `vitest-evals` summary (metric table, score distribution, quality misses)
+2. `evals / report` stays green even when the floor is missed (`continue-on-error`) and exports gate outputs
+3. `evals / score · <gate title>` is a real Evals workflow job that owns green/red for `EVAL_MIN_PASS_RATE` (currently `0.8`) and carries the score in the job name shown on the PR checks list
+
+We intentionally do **not** publish a detached Checks API run for the score. Those attach under random `github-actions` suites (sometimes CodeQL) and can target the PR merge commit instead of the head SHA.
 
 When the aggregate gate passes, individual case misses are warnings rather than failures. Setup crashes and missing result files still fail the report job hard.
 
-Guardian snapshots are not part of that aggregate floor. They assert exact `allow` / `ask` / `deny` decisions and fail `evals / guardian` on mismatch.
+Guardian snapshots are not part of that aggregate floor. They assert exact `allow` / `ask` / `deny` decisions, publish their own job summary, and fail `evals / guardian` on mismatch.
 
 If `sandbox_ready` is false, either `VERCEL_OIDC_TOKEN` is missing or the fallback token set is incomplete.
 

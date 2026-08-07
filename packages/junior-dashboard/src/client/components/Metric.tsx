@@ -1,11 +1,13 @@
 import type { ReactNode } from "react";
 
 import { cn } from "../styles";
+import { ShimmerText } from "./ShimmerText";
 import { Tooltip } from "./Tooltip";
 
 export type MetricTooltipLine = {
   label?: string;
   labelStyle?: "code";
+  live?: boolean;
   value: string;
   valueStyle?: "heading";
 };
@@ -32,7 +34,7 @@ function TooltipLines(props: { lines: MetricTooltipLine[] }) {
                     "mt-1 border-t border-white/10 pt-2",
                 )
           }
-          key={`${index}-${line.label ?? ""}-${line.value}`}
+          key={`${index}-${line.label ?? ""}-${line.value}-${line.live ? "live" : ""}`}
         >
           {line.label ? (
             <span
@@ -50,7 +52,15 @@ function TooltipLines(props: { lines: MetricTooltipLine[] }) {
               {line.value}
             </span>
           ) : (
-            line.value
+            <>
+              {line.value}
+              {line.live ? (
+                <span className="ml-2 inline-flex items-center gap-1.5 font-sans text-xs font-normal tracking-wide text-dashboard-text-muted">
+                  <span aria-hidden="true">·</span>
+                  <ShimmerText active>in progress</ShimmerText>
+                </span>
+              ) : null}
+            </>
           )}
         </span>
       ))}

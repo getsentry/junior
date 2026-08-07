@@ -355,6 +355,31 @@ function SourceLocation(props: { label: string; sourceUrl?: string }) {
   );
 }
 
+/** Resolve the model still running an open turn, including mid-turn handoffs. */
+export function liveModelId(
+  detail: ConversationDetailReport | undefined,
+): string | undefined {
+  if (!detail) return undefined;
+  const openTurns = new Set<string>();
+  let modelId: string | undefined;
+  for (const event of detail.events) {
+    const data = event.data;
+    if (data.type === "turn_lifecycle") {
+      if (data.state === "started") openTurns.add(data.turnId);
+      else openTurns.delete(data.turnId);
+      if (openTurns.size === 0) modelId = undefined;
+      continue;
+    }
+    if (openTurns.size === 0) continue;
+    if (data.type === "turn_routed" && openTurns.has(data.turnId)) {
+      modelId = data.modelId;
+      continue;
+    }
+    if (data.type === "handoff") modelId = data.modelId;
+  }
+  return openTurns.size > 0 ? modelId : undefined;
+}
+
 function ConversationStats(props: {
   conversation: Conversation | undefined;
   detail?: ConversationDetailReport;
@@ -380,6 +405,7 @@ function ConversationStats(props: {
   const durationLabel = formatConversationDuration(props.conversation);
   const live =
     (props.detail?.status ?? props.conversation.status) === "active";
+  const activeModelId = liveModelId(props.detail);
   const rawStats: Array<MetricListItem | undefined> = [
     location
       ? {
@@ -411,6 +437,7 @@ function ConversationStats(props: {
                   : undefined
               }
               live={live}
+              liveModelId={activeModelId}
               modelUsage={props.detail?.modelUsage}
               summary={tokenSummary}
             />
@@ -430,6 +457,7 @@ function ConversationStats(props: {
                 props.conversation.auxiliaryCosts
               }
               live={live}
+              liveModelId={activeModelId}
               modelUsage={props.detail?.modelUsage}
               summary={costSummary}
             />
