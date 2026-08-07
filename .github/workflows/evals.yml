@@ -324,6 +324,9 @@ jobs:
 
       - name: Publish combined eval report
         uses: getsentry/vitest-evals@v0.16.0
+        env:
+          # pull_request GITHUB_SHA is the merge commit; PR checks need head.
+          GITHUB_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         with:
           results: eval-results/*.json
           publish-check: true
