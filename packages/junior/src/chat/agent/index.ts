@@ -1115,11 +1115,11 @@ async function executeAgentRunInPrivacyContext(
       },
       afterToolCall: async ({ result, toolCall }, signal) => {
         // Host continuity is session-owned (`resumeReason: "timeout"` + auto
-        // continue). If this slice aborted a tool, record only that the attempt
-        // timed out — not cancelled/deadline jargon.
+        // continue). If this slice preempted a tool, reuse the normal
+        // `timed_out` tool field — not cancelled/deadline jargon.
         const sourceResult =
           runResume.timedOut && signal?.aborted
-            ? (projectTimedOutToolResult(result) ?? result)
+            ? projectTimedOutToolResult(result)
             : result;
         const projectedResult = wiring.projectActionReviewResult(
           toolCall.id,

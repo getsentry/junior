@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { projectTimedOutToolResult } from "@/chat/tool-support/timed-out-tool-result";
 
 describe("projectTimedOutToolResult", () => {
-  it("replaces aborted tool results with a timed_out outcome", () => {
+  it("projects host-preempted tools onto the native timed_out field", () => {
     const result = projectTimedOutToolResult({
       content: [
         {
@@ -28,28 +28,43 @@ describe("projectTimedOutToolResult", () => {
         {
           type: "text",
           text: JSON.stringify({
-            outcome: "timed_out",
             target: "pnpm test",
+            timed_out: true,
           }),
         },
       ],
       details: {
-        outcome: "timed_out",
         target: "pnpm test",
+        timed_out: true,
       },
       isError: false,
     });
     expect(JSON.stringify(result)).not.toMatch(
-      /cancelled|turn_deadline|execution_slice|unconfirmed|deadline/i,
+      /cancelled|turn_deadline|execution_slice|unconfirmed|outcome|deadline/i,
     );
   });
 
-  it("leaves non-aborted tool outcomes unchanged", () => {
+  it("still projects when details only carry a target", () => {
     expect(
       projectTimedOutToolResult({
-        content: [{ type: "text", text: "ok" }],
-        details: { target: "pnpm test", aborted: false, exit_code: 0 },
+        content: [{ type: "text", text: "partial" }],
+        details: { target: "editFile" },
       }),
-    ).toBeUndefined();
+    ).toEqual({
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            target: "editFile",
+            timed_out: true,
+          }),
+        },
+      ],
+      details: {
+        target: "editFile",
+        timed_out: true,
+      },
+      isError: false,
+    });
   });
 });

@@ -47,9 +47,7 @@ vi.mock("@/chat/pi/traced-stream", () => ({
 
       const timeoutContinuation =
         !options?.signal?.aborted &&
-        JSON.stringify(context.messages ?? []).includes(
-          '"outcome":"timed_out"',
-        );
+        JSON.stringify(context.messages ?? []).includes('"timed_out":true');
       const message =
         call === 1
           ? {
@@ -286,7 +284,7 @@ describe("tool timeout continuation composition", () => {
       isError: false,
       details: {
         target: "run-the-targeted-cloudflare-test",
-        outcome: "timed_out",
+        timed_out: true,
       },
     });
     const suspendedToolResult = JSON.stringify(

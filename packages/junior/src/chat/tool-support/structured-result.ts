@@ -18,6 +18,8 @@ export const juniorToolOutputSchema = z
   .object({
     target: z.string().min(1).optional(),
     truncated: z.boolean().optional(),
+    /** True when this attempt did not finish before its time budget. */
+    timed_out: z.boolean().optional(),
     continuation: juniorToolContinuationSchema.optional(),
   })
   .passthrough();
