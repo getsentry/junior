@@ -1,6 +1,13 @@
 import { useState } from "react";
 
+import {
+  ActivityChartDateLabels,
+  ActivityTooltipRows,
+  createActivityChartLayout,
+  formatActivityDate,
+} from "../../components/charts/ActivityChart";
 import { Card } from "../../components/layout/Card";
+import { Tooltip } from "../../components/Tooltip";
 import { formatCostSummary } from "../../format";
 import { cn } from "../../styles";
 import type { MemoryCostDay } from "./memoryDashboard";
@@ -37,14 +44,11 @@ export function MemoryCostChart(props: {
     0.01,
     ...days.map((day) => day.extraction.costUsd + day.recall.costUsd),
   );
-  const width = 720;
-  const height = 200;
+  const layout = createActivityChartLayout(200);
+  // Cost charts need a wider left gutter for currency tick labels.
   const left = 64;
-  const right = 12;
-  const top = 14;
-  const bottom = 34;
-  const plotHeight = height - top - bottom;
-  const step = (width - left - right) / days.length;
+  const plotWidth = layout.width - left - layout.right;
+  const step = days.length > 0 ? plotWidth / days.length : plotWidth;
   const barWidth = Math.max(2, Math.min(13, step * 0.68));
 
   return (
@@ -79,20 +83,20 @@ export function MemoryCostChart(props: {
           aria-label="Memory cost range"
           className="inline-flex rounded border border-white/[0.08] bg-black/20 p-0.5"
         >
-          {([7, 30, 90] as const).map((days) => (
+          {([7, 30, 90] as const).map((daysOption) => (
             <button
-              aria-pressed={range === days}
+              aria-pressed={range === daysOption}
               className={cn(
                 "cursor-pointer rounded-sm border-0 px-2.5 py-1.5 font-mono text-xs uppercase tracking-[0.1em] transition-colors",
-                range === days
+                range === daysOption
                   ? "bg-cyan-300/10 text-cyan-100"
                   : "bg-transparent text-dashboard-text-muted hover:text-dashboard-text",
               )}
-              key={days}
-              onClick={() => setRange(days)}
+              key={daysOption}
+              onClick={() => setRange(daysOption)}
               type="button"
             >
-              {days}d
+              {daysOption}d
             </button>
           ))}
         </div>
@@ -103,17 +107,17 @@ export function MemoryCostChart(props: {
           aria-label={`Memory extraction and recall cost during the last ${range} days`}
           className="block h-auto min-h-40 w-full"
           role="img"
-          viewBox={`0 0 ${width} ${height}`}
+          viewBox={`0 0 ${layout.width} ${layout.height}`}
         >
           {[maximum, maximum / 2, 0].map((value, index) => {
-            const y = top + index * (plotHeight / 2);
+            const y = layout.top + index * (layout.plotHeight / 2);
             return (
               <g key={index}>
                 <line
                   stroke="rgba(255,255,255,0.07)"
                   strokeDasharray="3 5"
                   x1={left}
-                  x2={width - right}
+                  x2={layout.width - layout.right}
                   y1={y}
                   y2={y}
                 />
@@ -132,71 +136,74 @@ export function MemoryCostChart(props: {
           })}
           {days.map((day, index) => {
             const extractionHeight =
-              (day.extraction.costUsd / maximum) * plotHeight;
-            const recallHeight = (day.recall.costUsd / maximum) * plotHeight;
+              (day.extraction.costUsd / maximum) * layout.plotHeight;
+            const recallHeight =
+              (day.recall.costUsd / maximum) * layout.plotHeight;
             const x = left + index * step + (step - barWidth) / 2;
-            const extractionLabel = `${formatDate(day.date)} extraction: ${formatCostSummary({ total: day.extraction.costUsd })}, ${formatRunCount(day.extraction.events)}`;
-            const recallLabel = `${formatDate(day.date)} recall: ${formatCostSummary({ total: day.recall.costUsd })}, ${formatRunCount(day.recall.events)}`;
+            const dayTotal = day.extraction.costUsd + day.recall.costUsd;
             return (
-              <g key={day.date}>
-                <rect
-                  aria-label={extractionLabel}
-                  fill="#67e8f9"
-                  height={extractionHeight}
-                  opacity={day.extraction.costUsd > 0 ? 0.82 : 0.1}
-                  rx="1"
-                  width={barWidth}
-                  x={x}
-                  y={top + plotHeight - extractionHeight}
+              <Tooltip
+                content={
+                  <ActivityTooltipRows
+                    rows={[
+                      [
+                        "extraction",
+                        `${formatCostSummary({ total: day.extraction.costUsd })} · ${formatRunCount(day.extraction.events)}`,
+                      ],
+                      [
+                        "recall",
+                        `${formatCostSummary({ total: day.recall.costUsd })} · ${formatRunCount(day.recall.events)}`,
+                      ],
+                      ["total", formatCostSummary({ total: dayTotal })],
+                    ]}
+                  />
+                }
+                key={day.date}
+                label={formatActivityDate(day.date)}
+              >
+                <g
+                  aria-label={`${formatActivityDate(day.date)}: extraction ${formatCostSummary({ total: day.extraction.costUsd })}, ${formatRunCount(day.extraction.events)}; recall ${formatCostSummary({ total: day.recall.costUsd })}, ${formatRunCount(day.recall.events)}`}
+                  tabIndex={0}
                 >
-                  <title>{extractionLabel}</title>
-                </rect>
-                <rect
-                  aria-label={recallLabel}
-                  fill="#e879f9"
-                  height={recallHeight}
-                  opacity={day.recall.costUsd > 0 ? 0.82 : 0.1}
-                  rx="1"
-                  width={barWidth}
-                  x={x}
-                  y={top + plotHeight - extractionHeight - recallHeight}
-                >
-                  <title>{recallLabel}</title>
-                </rect>
-              </g>
+                  <rect
+                    fill="#67e8f9"
+                    height={extractionHeight}
+                    opacity={day.extraction.costUsd > 0 ? 0.82 : 0.1}
+                    rx="1"
+                    width={barWidth}
+                    x={x}
+                    y={layout.top + layout.plotHeight - extractionHeight}
+                  />
+                  <rect
+                    fill="#e879f9"
+                    height={recallHeight}
+                    opacity={day.recall.costUsd > 0 ? 0.82 : 0.1}
+                    rx="1"
+                    width={barWidth}
+                    x={x}
+                    y={
+                      layout.top +
+                      layout.plotHeight -
+                      extractionHeight -
+                      recallHeight
+                    }
+                  />
+                  <rect
+                    fill="transparent"
+                    height={layout.plotHeight}
+                    width={Math.max(barWidth, 8)}
+                    x={x - (Math.max(barWidth, 8) - barWidth) / 2}
+                    y={layout.top}
+                  />
+                </g>
+              </Tooltip>
             );
           })}
-          {[0, Math.floor((days.length - 1) / 2), days.length - 1].map(
-            (index) => {
-              const day = days[index];
-              if (!day) return null;
-              return (
-                <text
-                  fill="rgba(255,255,255,0.34)"
-                  fontFamily="ui-monospace, monospace"
-                  fontSize="12"
-                  key={day.date}
-                  textAnchor={
-                    index === 0
-                      ? "start"
-                      : index === days.length - 1
-                        ? "end"
-                        : "middle"
-                  }
-                  x={
-                    index === 0
-                      ? left
-                      : index === days.length - 1
-                        ? width - right
-                        : left + index * step + step / 2
-                  }
-                  y={height - 9}
-                >
-                  {formatDate(day.date)}
-                </text>
-              );
-            },
-          )}
+          <ActivityChartDateLabels
+            dates={days.map((day) => day.date)}
+            layout={{ ...layout, left }}
+            xPosition={(index) => left + index * step + step / 2}
+          />
         </svg>
         {runs === 0 ? (
           <div className="pointer-events-none absolute inset-0 grid place-items-center pt-12 font-mono text-xs text-dashboard-text-muted">
@@ -210,12 +217,4 @@ export function MemoryCostChart(props: {
 
 function formatRunCount(count: number): string {
   return `${count.toLocaleString()} ${count === 1 ? "run" : "runs"}`;
-}
-
-function formatDate(date: string): string {
-  return new Intl.DateTimeFormat("en-US", {
-    day: "numeric",
-    month: "short",
-    timeZone: "UTC",
-  }).format(new Date(`${date}T00:00:00.000Z`));
 }

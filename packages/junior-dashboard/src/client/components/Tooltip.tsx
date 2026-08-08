@@ -2,6 +2,7 @@ import * as HoverCard from "@radix-ui/react-hover-card";
 import {
   type ReactElement,
   type ReactNode,
+  type RefObject,
   useEffect,
   useId,
   useRef,
@@ -23,6 +24,26 @@ const VIEWPORT_GAP = 8;
 const ANCHOR_GAP = 10;
 const CLOSE_DELAY_MS = 150;
 
+/** SVG hosts cannot wrap triggers in an HTML span without collapsing geometry. */
+const SVG_TRIGGER_TAGS = new Set([
+  "circle",
+  "ellipse",
+  "g",
+  "line",
+  "path",
+  "polygon",
+  "polyline",
+  "rect",
+  "svg",
+  "text",
+]);
+
+function isSvgTrigger(element: ReactElement): boolean {
+  return (
+    typeof element.type === "string" && SVG_TRIGGER_TAGS.has(element.type)
+  );
+}
+
 /** Show selectable dashboard details beside an element. */
 export function Tooltip({
   align = "center",
@@ -33,10 +54,11 @@ export function Tooltip({
   placement = "above",
 }: TooltipProps) {
   const tooltipId = useId();
-  const rootRef = useRef<HTMLSpanElement | null>(null);
+  const rootRef = useRef<Element | null>(null);
   const touchStartedOpenRef = useRef<boolean | null>(null);
   const suppressOpenUntilRef = useRef(0);
   const [open, setOpen] = useState(false);
+  const svgTrigger = isSvgTrigger(children);
 
   useEffect(() => {
     if (!open) return;
@@ -57,75 +79,91 @@ export function Tooltip({
     };
   }, [open, tooltipId]);
 
-  return (
-    <span className="inline-flex" ref={rootRef}>
-      <HoverCard.Root
-        closeDelay={CLOSE_DELAY_MS}
-        onOpenChange={(nextOpen) => {
-          // Touch toggle/outside close can race HoverCard's hover reopen.
-          if (nextOpen && performance.now() < suppressOpenUntilRef.current) {
+  const card = (
+    <HoverCard.Root
+      closeDelay={CLOSE_DELAY_MS}
+      onOpenChange={(nextOpen) => {
+        // Touch toggle/outside close can race HoverCard's hover reopen.
+        if (nextOpen && performance.now() < suppressOpenUntilRef.current) {
+          return;
+        }
+        setOpen(nextOpen);
+      }}
+      open={open}
+      openDelay={0}
+    >
+      <HoverCard.Trigger
+        aria-describedby={open ? tooltipId : undefined}
+        asChild
+        onPointerCancel={() => {
+          touchStartedOpenRef.current = null;
+        }}
+        onPointerDown={(event) => {
+          if (event.pointerType === "touch") {
+            touchStartedOpenRef.current = open;
+          }
+        }}
+        onPointerUp={(event) => {
+          if (
+            event.pointerType !== "touch" ||
+            touchStartedOpenRef.current === null
+          ) {
             return;
           }
+          const nextOpen = !touchStartedOpenRef.current;
+          if (!nextOpen) {
+            suppressOpenUntilRef.current =
+              performance.now() + CLOSE_DELAY_MS + 50;
+          }
           setOpen(nextOpen);
+          touchStartedOpenRef.current = null;
         }}
-        open={open}
-        openDelay={0}
+        ref={
+          svgTrigger
+            ? (node) => {
+                rootRef.current = node;
+              }
+            : undefined
+        }
       >
-        <HoverCard.Trigger
-          aria-describedby={open ? tooltipId : undefined}
-          asChild
-          onPointerCancel={() => {
-            touchStartedOpenRef.current = null;
-          }}
-          onPointerDown={(event) => {
-            if (event.pointerType === "touch") {
-              touchStartedOpenRef.current = open;
-            }
-          }}
-          onPointerUp={(event) => {
-            if (
-              event.pointerType !== "touch" ||
-              touchStartedOpenRef.current === null
-            ) {
-              return;
-            }
-            const nextOpen = !touchStartedOpenRef.current;
-            if (!nextOpen) {
-              suppressOpenUntilRef.current =
-                performance.now() + CLOSE_DELAY_MS + 50;
-            }
-            setOpen(nextOpen);
-            touchStartedOpenRef.current = null;
-          }}
+        {children}
+      </HoverCard.Trigger>
+      <HoverCard.Portal>
+        <HoverCard.Content
+          align={
+            align === "left" ? "start" : align === "right" ? "end" : "center"
+          }
+          className={cn(
+            "z-50 select-text outline-none",
+            className ??
+              "min-w-36 max-w-64 rounded-md border border-white/15 bg-dashboard-surface-raised px-3 py-2 font-mono text-xs leading-relaxed text-dashboard-text-muted shadow-2xl shadow-black/70",
+          )}
+          collisionPadding={VIEWPORT_GAP}
+          hideWhenDetached
+          id={tooltipId}
+          role="tooltip"
+          side={placement === "above" ? "top" : "bottom"}
+          sideOffset={ANCHOR_GAP}
         >
-          {children}
-        </HoverCard.Trigger>
-        <HoverCard.Portal>
-          <HoverCard.Content
-            align={
-              align === "left" ? "start" : align === "right" ? "end" : "center"
-            }
-            className={cn(
-              "z-50 select-text outline-none",
-              className ??
-                "min-w-36 max-w-64 rounded-md border border-white/15 bg-dashboard-surface-raised px-3 py-2 font-mono text-xs leading-relaxed text-dashboard-text-muted shadow-2xl shadow-black/70",
-            )}
-            collisionPadding={VIEWPORT_GAP}
-            hideWhenDetached
-            id={tooltipId}
-            role="tooltip"
-            side={placement === "above" ? "top" : "bottom"}
-            sideOffset={ANCHOR_GAP}
-          >
-            {label ? (
-              <div className="mb-1 font-semibold uppercase tracking-[0.1em] text-dashboard-text-muted">
-                {label}
-              </div>
-            ) : null}
-            {content}
-          </HoverCard.Content>
-        </HoverCard.Portal>
-      </HoverCard.Root>
+          {label ? (
+            <div className="mb-1 font-semibold uppercase tracking-[0.1em] text-dashboard-text-muted">
+              {label}
+            </div>
+          ) : null}
+          {content}
+        </HoverCard.Content>
+      </HoverCard.Portal>
+    </HoverCard.Root>
+  );
+
+  if (svgTrigger) return card;
+
+  return (
+    <span
+      className="inline-flex"
+      ref={rootRef as RefObject<HTMLSpanElement | null>}
+    >
+      {card}
     </span>
   );
 }

@@ -15,7 +15,7 @@ function costDays(costUsd: number, events: number) {
 }
 
 describe("MemoryCostChart", () => {
-  it("stacks extraction and recall cost for each day", () => {
+  it("stacks extraction and recall cost for each day with shared tooltips", () => {
     const html = renderToStaticMarkup(
       <MemoryCostChart
         extractionDays={costDays(0.005, 1)}
@@ -26,11 +26,14 @@ describe("MemoryCostChart", () => {
     expect(html).toContain("$0.01");
     expect(html).toContain("Extraction $0.005");
     expect(html).toContain("Recall $0.005");
-    expect(html).toMatch(
-      /aria-label="Jul 30 extraction: \$0\.005, 1 run"[^>]+height="76"[^>]+y="90"/,
+    expect(html).toContain(
+      'aria-label="Jul 30: extraction $0.005, 1 run; recall $0.005, 2 runs"',
     );
     expect(html).toMatch(
-      /aria-label="Jul 30 recall: \$0\.005, 2 runs"[^>]+height="76"[^>]+y="14"/,
+      /fill="#67e8f9"[^>]+height="70"[^>]+y="94"/,
+    );
+    expect(html).toMatch(
+      /fill="#e879f9"[^>]+height="70"[^>]+y="24"/,
     );
   });
 });

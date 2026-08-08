@@ -1,6 +1,14 @@
 import { useState } from "react";
 
+import {
+  ActivityChartDateLabels,
+  ActivityChartGrid,
+  ActivityTooltipRows,
+  createActivityChartLayout,
+  formatActivityDate,
+} from "../../components/charts/ActivityChart";
 import { Card } from "../../components/layout/Card";
+import { Tooltip } from "../../components/Tooltip";
 import { cn } from "../../styles";
 import type { MemoryDay } from "./memoryDashboard";
 
@@ -15,15 +23,8 @@ const series = [
 export function MemoryTimeline(props: { days: MemoryDay[] }) {
   const [range, setRange] = useState<MemoryRange>(30);
   const days = props.days.slice(-range);
-  const width = 720;
-  const height = 200;
-  const left = 56;
-  const right = 12;
-  const top = 14;
-  const bottom = 34;
-  const plotHeight = height - top - bottom;
-  const plotWidth = width - left - right;
-  const step = plotWidth / days.length;
+  const layout = createActivityChartLayout(200);
+  const step = days.length > 0 ? layout.plotWidth / days.length : layout.plotWidth;
   const barWidth = Math.max(2, Math.min(13, step * 0.68));
   const totals = days.map((day) => day.personal + day.public);
   const maximum = Math.max(1, ...totals);
@@ -44,20 +45,20 @@ export function MemoryTimeline(props: { days: MemoryDay[] }) {
           aria-label="Memory timeline range"
           className="inline-flex rounded border border-white/[0.08] bg-black/20 p-0.5"
         >
-          {([7, 30, 90] as const).map((days) => (
+          {([7, 30, 90] as const).map((daysOption) => (
             <button
-              aria-pressed={range === days}
+              aria-pressed={range === daysOption}
               className={cn(
                 "cursor-pointer rounded-sm border-0 px-2.5 py-1.5 font-mono text-xs uppercase tracking-[0.1em] transition-colors",
-                range === days
+                range === daysOption
                   ? "bg-cyan-300/10 text-cyan-100"
                   : "bg-transparent text-dashboard-text-muted hover:text-dashboard-text",
               )}
-              key={days}
-              onClick={() => setRange(days)}
+              key={daysOption}
+              onClick={() => setRange(daysOption)}
               type="button"
             >
-              {days}d
+              {daysOption}d
             </button>
           ))}
         </div>
@@ -86,91 +87,64 @@ export function MemoryTimeline(props: { days: MemoryDay[] }) {
           aria-label={`Memories learned during the last ${range} days`}
           className="block h-auto min-h-40 w-full"
           role="img"
-          viewBox={`0 0 ${width} ${height}`}
+          viewBox={`0 0 ${layout.width} ${layout.height}`}
         >
-          {[maximum, maximum / 2, 0].map((value, index) => {
-            const y = top + index * (plotHeight / 2);
-            return (
-              <g key={index}>
-                <line
-                  stroke="rgba(255,255,255,0.07)"
-                  strokeDasharray="3 5"
-                  x1={left}
-                  x2={width - right}
-                  y1={y}
-                  y2={y}
-                />
-                <text
-                  fill="rgba(255,255,255,0.34)"
-                  fontFamily="ui-monospace, monospace"
-                  fontSize="12"
-                  textAnchor="end"
-                  x={left - 7}
-                  y={y + 3}
-                >
-                  {Math.round(value)}
-                </text>
-              </g>
-            );
-          })}
+          <ActivityChartGrid layout={layout} maximum={maximum} />
           {days.map((day, dayIndex) => {
             let stackedHeight = 0;
-            const x = left + dayIndex * step + (step - barWidth) / 2;
+            const x = layout.left + dayIndex * step + (step - barWidth) / 2;
             const total = totals[dayIndex] ?? 0;
             return (
-              <g key={day.date}>
-                <title>{`${formatDate(day.date)}: ${total} memories`}</title>
-                {series.map((item) => {
-                  const value = day[item.key];
-                  const segmentHeight = (value / maximum) * plotHeight;
-                  stackedHeight += segmentHeight;
-                  return (
-                    <rect
-                      fill={item.color}
-                      height={segmentHeight}
-                      key={item.key}
-                      opacity={0.82}
-                      rx="1"
-                      width={barWidth}
-                      x={x}
-                      y={top + plotHeight - stackedHeight}
-                    />
-                  );
-                })}
-              </g>
+              <Tooltip
+                content={
+                  <ActivityTooltipRows
+                    rows={[
+                      ["personal", day.personal],
+                      ["public", day.public],
+                      ["total", total],
+                    ]}
+                  />
+                }
+                key={day.date}
+                label={formatActivityDate(day.date)}
+              >
+                <g
+                  aria-label={`${formatActivityDate(day.date)}: ${day.personal} personal, ${day.public} public, ${total} total memories`}
+                  tabIndex={0}
+                >
+                  {series.map((item) => {
+                    const value = day[item.key];
+                    const segmentHeight = (value / maximum) * layout.plotHeight;
+                    stackedHeight += segmentHeight;
+                    return (
+                      <rect
+                        fill={item.color}
+                        height={segmentHeight}
+                        key={item.key}
+                        opacity={0.82}
+                        rx="1"
+                        width={barWidth}
+                        x={x}
+                        y={layout.top + layout.plotHeight - stackedHeight}
+                      />
+                    );
+                  })}
+                  <rect
+                    fill="transparent"
+                    height={layout.plotHeight}
+                    width={Math.max(barWidth, 8)}
+                    x={x - (Math.max(barWidth, 8) - barWidth) / 2}
+                    y={layout.top}
+                  />
+                </g>
+              </Tooltip>
             );
           })}
-          {[0, Math.floor((days.length - 1) / 2), days.length - 1].map(
-            (index) => {
-              const day = days[index];
-              if (!day) return null;
-              return (
-                <text
-                  fill="rgba(255,255,255,0.34)"
-                  fontFamily="ui-monospace, monospace"
-                  fontSize="12"
-                  key={day.date}
-                  textAnchor={
-                    index === 0
-                      ? "start"
-                      : index === days.length - 1
-                        ? "end"
-                        : "middle"
-                  }
-                  x={
-                    index === 0
-                      ? left
-                      : index === days.length - 1
-                        ? width - right
-                        : left + index * step + step / 2
-                  }
-                  y={height - 9}
-                >
-                  {formatDate(day.date)}
-                </text>
-              );
-            },
-          )}
+          <ActivityChartDateLabels
+            dates={days.map((day) => day.date)}
+            layout={layout}
+            xPosition={(index) => layout.left + index * step + step / 2}
+          />
         </svg>
         {!hasMemories ? (
           <div className="pointer-events-none absolute inset-0 grid place-items-center pt-12 font-mono text-xs text-dashboard-text-muted">
@@ -180,12 +154,4 @@ export function MemoryTimeline(props: { days: MemoryDay[] }) {
       </div>
     </Card>
   );
-}
-
-function formatDate(date: string): string {
-  return new Intl.DateTimeFormat("en-US", {
-    day: "numeric",
-    month: "short",
-    timeZone: "UTC",
-  }).format(new Date(`${date}T00:00:00.000Z`));
 }
