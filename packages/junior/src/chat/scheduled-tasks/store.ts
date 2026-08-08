@@ -121,7 +121,6 @@ const taskRecordFields = {
   status: z.enum(["active", "blocked", "completed", "deleted", "paused"]),
   statusReason: z.string().optional(),
   task: taskSpecSchema,
-  title: z.string().min(1).max(60).optional(),
   updatedAtMs: z.number(),
   version: z.number().optional(),
 };
@@ -570,9 +569,19 @@ function canFinishRun(
 }
 
 /** Decode retained scheduler task state, skipping invalid legacy records. */
-function parseStoredTask(value: unknown): ScheduledTask | undefined {
-  const parsed = taskRecordSchema.safeParse(parseJsonRecord(value));
-  return parsed.success ? stripLegacyTaskFields(parsed.data) : undefined;
+function parseStoredTask(
+  value: unknown,
+  title?: string | null,
+): ScheduledTask | undefined {
+  const record = parseJsonRecord<Record<string, unknown>>(value);
+  if (!record) return undefined;
+  // Title is SQL-column-backed; ignore any legacy JSON title key.
+  const { title: recordTitle, ...rest } = record;
+  const parsed = taskRecordSchema.safeParse(rest);
+  if (!parsed.success) return undefined;
+  const storedTitle =
+    title ?? (typeof recordTitle === "string" ? recordTitle : null);
+  return stripLegacyTaskFields(parsed.data, storedTitle);
 }
 
 /** Decode retained scheduler run state, skipping invalid legacy records. */
@@ -584,8 +593,12 @@ function parseStoredRun(value: unknown): ScheduledRun | undefined {
 type StoredScheduledTask = z.infer<typeof taskRecordSchema>;
 
 /** Coerce legacy paused rows to deleted tombstones during rolling deploy. */
-function stripLegacyTaskFields(task: StoredScheduledTask): ScheduledTask {
+function stripLegacyTaskFields(
+  task: StoredScheduledTask,
+  title?: string | null,
+): ScheduledTask {
   const { version: _version, status, ...current } = task;
+  const storedTitle = title?.trim() || undefined;
   if (status === "paused") {
     const {
       nextRunAtMs: _nextRunAtMs,
@@ -595,12 +608,20 @@ function stripLegacyTaskFields(task: StoredScheduledTask): ScheduledTask {
     return {
       ...rest,
       status: "deleted",
+      ...(storedTitle ? { title: storedTitle } : {}),
     };
   }
   return {
     ...current,
     status,
+    ...(storedTitle ? { title: storedTitle } : {}),
   };
+}
+
+/** JSON record payload must not carry the SQL-backed title column. */
+function scheduledTaskJsonRecord(task: ScheduledTask): ScheduledTask {
+  const { title: _title, ...record } = task;
+  return record;
 }
 
 function stripLegacyRunFields(
@@ -646,7 +667,7 @@ function listedScheduledTask(
 }
 
 function requireStoredTask(task: ScheduledTask): ScheduledTask {
-  const parsed = parseStoredTask(task);
+  const parsed = parseStoredTask(task, task.title);
   if (!parsed) {
     throw new Error("Scheduled task routing context is invalid.");
   }
@@ -754,6 +775,7 @@ class PluginStateSchedulerStore implements SchedulerStore {
     ) {
       await this.state.delete(claimKey(task.id, task.nextRunAtMs));
     }
+    // Plugin-state keeps title inside the JSON blob; SQL uses a dedicated column.
     await this.state.set(taskKey(task.id), task, SCHEDULER_RECORD_TTL_MS);
 
     if (task.status === "deleted") {
@@ -1203,6 +1225,7 @@ export function createSchedulerOperationalStore(
 type SchedulerTaskRow = {
   creatorIdentityId: string | null;
   record: unknown;
+  title: string | null;
 };
 
 type SchedulerRunRow = {
@@ -1213,18 +1236,18 @@ type SchedulerRunRow = {
 function parseSqlTaskRecord(
   value: unknown,
   creatorIdentityId: string | null,
+  title?: string | null,
 ): ScheduledTask | undefined {
   const record = parseJsonRecord<Record<string, unknown>>(value);
   // A v0.127 runtime may rewrite the JSON record during a rolling deploy, so
   // the indexed identity column remains authoritative while both versions run.
-  const parsed = taskRecordSchema.safeParse(
-    record && creatorIdentityId ? { ...record, creatorIdentityId } : record,
-  );
-  return parsed.success ? stripLegacyTaskFields(parsed.data) : undefined;
+  const withIdentity =
+    record && creatorIdentityId ? { ...record, creatorIdentityId } : record;
+  return parseStoredTask(withIdentity, title);
 }
 
 function parseSqlTaskRow(row: SchedulerTaskRow): ScheduledTask | undefined {
-  return parseSqlTaskRecord(row.record, row.creatorIdentityId);
+  return parseSqlTaskRecord(row.record, row.creatorIdentityId, row.title);
 }
 
 /** Decode scheduler SQL run records and reject rows unsafe for scan paths. */
@@ -1248,6 +1271,7 @@ async function upsertSqlTask(
   db: SchedulerDb,
   task: ScheduledTask,
 ): Promise<void> {
+  const title = task.title?.trim() || null;
   await db
     .insert(juniorSchedulerTasks)
     .values({
@@ -1257,10 +1281,11 @@ async function upsertSqlTask(
       creatorSlackUserId: task.createdBy.slackUserId,
       id: task.id,
       nextRunAtMs: task.nextRunAtMs,
-      record: task,
+      record: scheduledTaskJsonRecord(task),
       runNowAtMs: task.runNowAtMs,
       status: task.status,
       teamId: task.destination.teamId,
+      title,
     })
     .onConflictDoUpdate({
       target: juniorSchedulerTasks.id,
@@ -1273,6 +1298,7 @@ async function upsertSqlTask(
         runNowAtMs: sql`excluded.run_now_at_ms`,
         status: sql`excluded.status`,
         teamId: sql`excluded.team_id`,
+        title: sql`excluded.title`,
       },
     });
 }
@@ -1306,6 +1332,7 @@ async function getTaskFromSql(
     .select({
       creatorIdentityId: juniorSchedulerTasks.creatorIdentityId,
       record: juniorSchedulerTasks.record,
+      title: juniorSchedulerTasks.title,
     })
     .from(juniorSchedulerTasks)
     .where(eq(juniorSchedulerTasks.id, taskId))
@@ -1330,6 +1357,7 @@ async function listTasksFromSql(db: SchedulerDb): Promise<ScheduledTask[]> {
     .select({
       creatorIdentityId: juniorSchedulerTasks.creatorIdentityId,
       record: juniorSchedulerTasks.record,
+      title: juniorSchedulerTasks.title,
     })
     .from(juniorSchedulerTasks)
     .where(notInArray(juniorSchedulerTasks.status, ["deleted", "paused"]))
@@ -1361,7 +1389,7 @@ async function listTasksCreatedByFromSql(
       : undefined;
     const search = query
       ? or(
-          sql<boolean>`strpos(lower(${juniorSchedulerTasks.record}->>'title'), ${query}) > 0`,
+          sql<boolean>`strpos(lower(${juniorSchedulerTasks.title}), ${query}) > 0`,
           sql<boolean>`strpos(lower(${juniorSchedulerTasks.record}->'task'->>'text'), ${query}) > 0`,
           sql<boolean>`strpos(lower(${juniorSchedulerTasks.record}->'schedule'->>'description'), ${query}) > 0`,
           sql<boolean>`strpos(lower(${juniorSchedulerTasks.record}->'schedule'->>'timezone'), ${query}) > 0`,
@@ -1374,6 +1402,7 @@ async function listTasksCreatedByFromSql(
         creatorIdentityId: juniorSchedulerTasks.creatorIdentityId,
         id: juniorSchedulerTasks.id,
         record: juniorSchedulerTasks.record,
+        title: juniorSchedulerTasks.title,
       })
       .from(juniorSchedulerTasks)
       .where(
@@ -1411,6 +1440,7 @@ async function listTasksForTeamFromSql(
     .select({
       creatorIdentityId: juniorSchedulerTasks.creatorIdentityId,
       record: juniorSchedulerTasks.record,
+      title: juniorSchedulerTasks.title,
     })
     .from(juniorSchedulerTasks)
     .where(
@@ -1437,6 +1467,7 @@ export async function listPublicScheduledTasksForTeams(
     .select({
       creatorIdentityId: juniorSchedulerTasks.creatorIdentityId,
       record: juniorSchedulerTasks.record,
+      title: juniorSchedulerTasks.title,
     })
     .from(juniorSchedulerTasks)
     .innerJoin(
@@ -1570,6 +1601,7 @@ class SqlSchedulerStore implements SchedulerStore, SchedulerOperationalStore {
           .select({
             creatorIdentityId: juniorSchedulerTasks.creatorIdentityId,
             record: juniorSchedulerTasks.record,
+            title: juniorSchedulerTasks.title,
           })
           .from(juniorSchedulerTasks)
           .where(

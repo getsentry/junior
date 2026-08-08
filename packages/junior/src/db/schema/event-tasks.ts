@@ -9,6 +9,8 @@ export const juniorEventTasks = pgTable(
     namespace: text("namespace").notNull(),
     identifier: text("identifier").notNull(),
     createdAtMs: bigint("created_at_ms", { mode: "number" }).notNull(),
+    /** Short display title generated from the task instruction. */
+    title: text("title"),
     task: jsonb("task_json").$type<EventTask>().notNull(),
   },
   (table) => [

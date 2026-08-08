@@ -39,11 +39,15 @@ export const eventTaskSchema = z
     destination: slackDestinationSchema,
     destinationVisibility: destinationVisibilitySchema,
     task: z.object({ text: z.string().min(1) }).strict(),
-    /** Short display title generated from the task instruction. */
-    title: z.string().min(1).max(60).optional(),
     trigger: eventTaskTriggerSchema,
   })
   .strict();
 
 /** Durable instruction dispatched for matching resource events. */
-export type EventTask = z.output<typeof eventTaskSchema>;
+export type EventTask = z.output<typeof eventTaskSchema> & {
+  /**
+   * Short display title generated from the task instruction.
+   * SQL-backed column; never stored inside the JSON task payload.
+   */
+  title?: string;
+};
