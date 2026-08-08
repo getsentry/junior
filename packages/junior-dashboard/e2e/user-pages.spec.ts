@@ -201,6 +201,9 @@ test("lists runs across tasks", async ({ page }) => {
   await page.goto(`${server.baseURL}/tasks/runs`);
 
   await expect(page.getByRole("heading", { name: "Runs" })).toBeVisible();
+  await expect(page.getByLabel("Search runs")).toBeVisible();
+  await expect(page.getByRole("group", { name: "Type" })).toBeVisible();
+  await expect(page.getByRole("group", { name: "Status" })).toBeVisible();
   await expect(page.getByText("Weekly project summary").first()).toBeVisible();
   await expect(
     page.getByText("scheduled", { exact: true }).first(),

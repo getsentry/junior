@@ -1,4 +1,4 @@
-import { type ReactNode, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { TaskSummary } from "@sentry/junior/api/schema";
@@ -11,8 +11,13 @@ import {
 } from "lucide-react";
 import { useTasksData } from "../../api";
 import { Button, ToggleButton } from "../../components/Button";
+import { FilterBar, FilterGroup } from "../../components/FilterBar";
 import { LoadingView } from "../../components/LoadingView";
-import { SearchInput } from "../../components/SearchInput";
+import {
+  pageCount,
+  pageItems,
+  PagePagination,
+} from "../../components/Pagination";
 import { SelectableRow } from "../../components/SelectableRow";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
@@ -24,9 +29,11 @@ import {
   useDebouncedSearchParam,
   useSearchParamEnum,
 } from "../../searchParams";
-import { cn, dashboardContainerClass } from "../../styles";
+import { cn } from "../../styles";
 import { TaskDetailsDrawer } from "./TaskDetailsDrawer";
 import { TaskExecutionChart } from "./TaskExecutionChart";
+
+const TASK_PAGE_SIZE = 25;
 
 type TaskFilter = "all" | TaskSummary["kind"];
 type TaskScope = "mine" | "public";
@@ -90,6 +97,7 @@ export function TasksPage(props: {
   const [filter, setFilter] = useSearchParamEnum("type", "all", TASK_FILTERS);
   const [scope, setScope] = useSearchParamEnum("scope", "mine", TASK_SCOPES);
   const [searchText, setSearchText, searchQuery] = useDebouncedSearchParam();
+  const [page, setPage] = useState(1);
   const search = searchQuery.toLowerCase();
   const listPath = "/tasks/list";
   const tasksPath = (pathname: string) =>
@@ -118,10 +126,26 @@ export function TasksPage(props: {
     [filter, scopedTasks, search],
   );
   const visibleTaskCount = visibleTasks.length;
+  const totalPages = pageCount(visibleTaskCount, TASK_PAGE_SIZE);
+  const pagedTasks = useMemo(
+    () =>
+      props.view === "list"
+        ? pageItems(visibleTasks, page, TASK_PAGE_SIZE)
+        : visibleTasks,
+    [page, props.view, visibleTasks],
+  );
   const selectedTask = useMemo(
     () => tasks.find((task) => task.id === taskId),
     [taskId, tasks],
   );
+
+  useEffect(() => {
+    setPage(1);
+  }, [filter, scope, searchQuery, props.view]);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
   const deletion = useMutation({
     mutationFn: async (task: TaskSummary) => {
       await deleteDashboardResource(
@@ -138,139 +162,144 @@ export function TasksPage(props: {
   }
 
   return (
-    <div className={`${dashboardContainerClass} px-4 py-8 md:px-8`}>
-      <section className="mx-auto grid w-full max-w-6xl gap-5">
-        <PageHeader
-          description={
-            props.view === "overview"
-              ? "Scheduled and event-driven work created by users."
-              : "Find and manage tasks across your linked workspaces."
-          }
-          {...(props.view === "overview" && query.data?.executionDays?.length
-            ? { onRangeChange: setRange, range }
-            : {})}
-          title={props.view === "overview" ? "Tasks" : "All tasks"}
+    <>
+      <PageHeader
+        description={
+          props.view === "overview"
+            ? "Scheduled and event-driven work created by users."
+            : "Find and manage tasks across your linked workspaces."
+        }
+        {...(props.view === "overview" && query.data?.executionDays?.length
+          ? { onRangeChange: setRange, range }
+          : {})}
+        title={props.view === "overview" ? "Tasks" : "All tasks"}
+      />
+      {props.view === "overview" && query.data?.executionDays?.length ? (
+        <TaskExecutionChart days={query.data.executionDays} range={range} />
+      ) : null}
+      {props.view === "list" ? (
+        <FilterBar
+          search={{
+            label: "Search tasks",
+            onChange: setSearchText,
+            placeholder: "Title, instruction, location, or creator",
+            value: searchText,
+          }}
+        >
+          <FilterGroup label="Scope">
+            <ToggleButton
+              className="inline-flex items-center gap-1.5"
+              onClick={() => setScope("mine")}
+              pressed={scope === "mine"}
+              variant="pill"
+            >
+              <UserRound aria-hidden="true" size={13} />
+              Mine <span className="opacity-65">{mineCount}</span>
+            </ToggleButton>
+            <ToggleButton
+              className="inline-flex items-center gap-1.5"
+              onClick={() => setScope("public")}
+              pressed={scope === "public"}
+              variant="pill"
+            >
+              <Globe2 aria-hidden="true" size={13} />
+              Public <span className="opacity-65">{publicCount}</span>
+            </ToggleButton>
+          </FilterGroup>
+          <FilterGroup label="Type">
+            {(["all", "scheduled", "event"] as const).map((kind) => (
+              <ToggleButton
+                key={kind}
+                onClick={() => setFilter(kind)}
+                pressed={filter === kind}
+                variant="pill"
+              >
+                {kind}
+              </ToggleButton>
+            ))}
+          </FilterGroup>
+        </FilterBar>
+      ) : null}
+      <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1 border-b border-white/[0.07] pb-3">
+        <p className="m-0 font-display text-lg text-dashboard-text">
+          {visibleTaskCount} {visibleTaskCount === 1 ? "task" : "tasks"}
+        </p>
+        <p className="m-0 text-xs text-dashboard-text-muted">
+          {scope === "mine"
+            ? "Tasks you created, including private destinations."
+            : "All tasks assigned to public destinations in your linked workspaces."}
+        </p>
+      </div>
+      {query.error ? (
+        <Card padding="md">
+          <p className="m-0 text-sm text-rose-300">
+            Tasks could not be loaded. Try again.
+          </p>
+        </Card>
+      ) : visibleTaskCount === 0 ? (
+        <Card padding="md">
+          <p className="m-0 text-sm text-dashboard-text-muted">
+            {emptyText({ filter, mineCount, publicCount, scope, search })}
+          </p>
+        </Card>
+      ) : (
+        <Card>
+          <TaskListHeader />
+          <div className="divide-y divide-white/[0.07]" role="list">
+            {pagedTasks.map((task) => {
+              const key = `${task.kind}:${task.id}`;
+              return (
+                <TaskRow
+                  deleting={
+                    deletion.isPending && deletion.variables?.id === task.id
+                  }
+                  key={key}
+                  onDelete={() => {
+                    if (window.confirm(`Delete this ${task.kind} task?`)) {
+                      deletion.mutate(task);
+                    }
+                  }}
+                  onSelect={() =>
+                    navigate(
+                      tasksPath(
+                        taskId === task.id
+                          ? listPath
+                          : `${listPath}/${encodeURIComponent(task.id)}`,
+                      ),
+                    )
+                  }
+                  selected={taskId === task.id}
+                  task={task}
+                />
+              );
+            })}
+          </div>
+        </Card>
+      )}
+      {props.view === "list" ? (
+        <PagePagination
+          onPageChange={setPage}
+          page={page}
+          pageCount={totalPages}
+          pageSize={TASK_PAGE_SIZE}
+          total={visibleTaskCount}
         />
-        {props.view === "overview" && query.data?.executionDays?.length ? (
-          <TaskExecutionChart days={query.data.executionDays} range={range} />
-        ) : null}
-        {props.view === "list" ? (
-          <Card className="grid gap-4 p-4 lg:grid-cols-[auto_auto_minmax(16rem,1fr)] lg:items-end">
-            <TaskFilterGroup label="Scope">
-              <ToggleButton
-                className="inline-flex items-center gap-1.5"
-                onClick={() => setScope("mine")}
-                pressed={scope === "mine"}
-                variant="pill"
-              >
-                <UserRound aria-hidden="true" size={13} />
-                Mine <span className="opacity-65">{mineCount}</span>
-              </ToggleButton>
-              <ToggleButton
-                className="inline-flex items-center gap-1.5"
-                onClick={() => setScope("public")}
-                pressed={scope === "public"}
-                variant="pill"
-              >
-                <Globe2 aria-hidden="true" size={13} />
-                Public <span className="opacity-65">{publicCount}</span>
-              </ToggleButton>
-            </TaskFilterGroup>
-            <TaskFilterGroup label="Type">
-              {(["all", "scheduled", "event"] as const).map((kind) => (
-                <ToggleButton
-                  key={kind}
-                  onClick={() => setFilter(kind)}
-                  pressed={filter === kind}
-                  variant="pill"
-                >
-                  {kind}
-                </ToggleButton>
-              ))}
-            </TaskFilterGroup>
-            <TaskFilterGroup label="Search">
-              <SearchInput
-                className="w-full lg:max-w-sm"
-                label="Search tasks"
-                onChange={setSearchText}
-                placeholder="Title, instruction, location, or creator"
-                value={searchText}
-              />
-            </TaskFilterGroup>
-          </Card>
-        ) : null}
-        <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1 border-b border-white/[0.07] pb-3">
-          <p className="m-0 font-display text-lg text-dashboard-text">
-            {visibleTaskCount} {visibleTaskCount === 1 ? "task" : "tasks"}
-          </p>
-          <p className="m-0 text-xs text-dashboard-text-muted">
-            {scope === "mine"
-              ? "Tasks you created, including private destinations."
-              : "All tasks assigned to public destinations in your linked workspaces."}
-          </p>
-        </div>
-        {query.error ? (
-          <Card padding="md">
-            <p className="m-0 text-sm text-rose-300">
-              Tasks could not be loaded. Try again.
-            </p>
-          </Card>
-        ) : visibleTaskCount === 0 ? (
-          <Card padding="md">
-            <p className="m-0 text-sm text-dashboard-text-muted">
-              {emptyText({ filter, mineCount, publicCount, scope, search })}
-            </p>
-          </Card>
-        ) : (
-          <Card>
-            <TaskListHeader />
-            <div className="divide-y divide-white/[0.07]" role="list">
-              {visibleTasks.map((task) => {
-                const key = `${task.kind}:${task.id}`;
-                return (
-                  <TaskRow
-                    deleting={
-                      deletion.isPending && deletion.variables?.id === task.id
-                    }
-                    key={key}
-                    onDelete={() => {
-                      if (window.confirm(`Delete this ${task.kind} task?`)) {
-                        deletion.mutate(task);
-                      }
-                    }}
-                    onSelect={() =>
-                      navigate(
-                        tasksPath(
-                          taskId === task.id
-                            ? listPath
-                            : `${listPath}/${encodeURIComponent(task.id)}`,
-                        ),
-                      )
-                    }
-                    selected={taskId === task.id}
-                    task={task}
-                  />
-                );
-              })}
-            </div>
-          </Card>
-        )}
-        {query.data?.truncated ? (
-          <p className="m-0 text-center text-xs text-dashboard-text-muted">
-            Showing up to 100 recent tasks in each scope.
-          </p>
-        ) : null}
-        {deletion.error ? (
-          <p className="m-0 text-center text-sm text-rose-300">
-            The task could not be deleted. Try again.
-          </p>
-        ) : null}
-      </section>
+      ) : null}
+      {query.data?.truncated ? (
+        <p className="m-0 text-center text-xs text-dashboard-text-muted">
+          Showing up to 100 recent tasks in each scope.
+        </p>
+      ) : null}
+      {deletion.error ? (
+        <p className="m-0 text-center text-sm text-rose-300">
+          The task could not be deleted. Try again.
+        </p>
+      ) : null}
       <TaskDetailsDrawer
         onClose={() => navigate(tasksPath(listPath))}
         task={selectedTask}
       />
-    </div>
+    </>
   );
 }
 
@@ -291,23 +320,6 @@ function emptyText(input: {
     return "No tasks are assigned to public destinations in your linked workspaces.";
   }
   return "No tasks are available.";
-}
-
-function TaskFilterGroup(props: { children: ReactNode; label: string }) {
-  return (
-    <div>
-      <div className="mb-2 font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted">
-        {props.label}
-      </div>
-      <div
-        className="flex flex-wrap gap-2"
-        role="group"
-        aria-label={props.label}
-      >
-        {props.children}
-      </div>
-    </div>
-  );
 }
 
 function TaskListHeader() {

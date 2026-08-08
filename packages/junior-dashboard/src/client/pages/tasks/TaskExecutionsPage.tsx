@@ -20,7 +20,7 @@ import { PageHeader } from "../../components/layout/PageHeader";
 import { conversationPath, formatTime } from "../../format";
 import { DashboardApiError } from "../../http";
 import { pathWithSearch } from "../../searchParams";
-import { cn, dashboardContainerClass } from "../../styles";
+import { cn } from "../../styles";
 import { TaskExecutionStatusChart } from "./TaskExecutionStatusChart";
 
 /** Render one task's terminal executions as a browsable conversation-style list. */
@@ -46,29 +46,27 @@ export function TaskExecutionsPage(props: { enabled: boolean }) {
   }
   if (query.error || !query.data) {
     return (
-      <div className={`${dashboardContainerClass} px-4 py-8 md:px-8`}>
-        <section className="mx-auto grid w-full max-w-4xl gap-5">
-          <PageHeader
-            description="Terminal runs for one scheduled or event task."
-            title="Task executions"
-          />
-          <Card padding="md">
-            <p className="m-0 text-sm text-rose-300">
-              {query.error instanceof DashboardApiError &&
-              query.error.status === 404
-                ? "This task was not found or is not visible to you."
-                : "Task executions could not be loaded. Try again."}
-            </p>
-            <Link
-              className="mt-3 inline-flex items-center gap-2 font-mono text-xs text-dashboard-text-muted no-underline hover:text-dashboard-text"
-              to="/tasks/list"
-            >
-              <ArrowLeft aria-hidden="true" size={14} />
-              Back to tasks
-            </Link>
-          </Card>
-        </section>
-      </div>
+      <>
+        <PageHeader
+          description="Terminal runs for one scheduled or event task."
+          title="Task executions"
+        />
+        <Card padding="md">
+          <p className="m-0 text-sm text-rose-300">
+            {query.error instanceof DashboardApiError &&
+            query.error.status === 404
+              ? "This task was not found or is not visible to you."
+              : "Task executions could not be loaded. Try again."}
+          </p>
+          <Link
+            className="mt-3 inline-flex items-center gap-2 font-mono text-xs text-dashboard-text-muted no-underline hover:text-dashboard-text"
+            to="/tasks/list"
+          >
+            <ArrowLeft aria-hidden="true" size={14} />
+            Back to tasks
+          </Link>
+        </Card>
+      </>
     );
   }
 
@@ -91,73 +89,71 @@ function TaskExecutionsView(props: {
     : `${data.task.totalRuns} total · ${statusCounts}`;
 
   return (
-    <div className={`${dashboardContainerClass} px-4 py-8 md:px-8`}>
-      <section className="mx-auto grid w-full max-w-4xl gap-5">
-        <div>
-          <Link
-            className="mb-3 inline-flex items-center gap-2 font-mono text-xs text-dashboard-text-muted no-underline hover:text-dashboard-text"
-            to={props.backTo}
+    <>
+      <div>
+        <Link
+          className="mb-3 inline-flex items-center gap-2 font-mono text-xs text-dashboard-text-muted no-underline hover:text-dashboard-text"
+          to={props.backTo}
+        >
+          <ArrowLeft aria-hidden="true" size={14} />
+          Back to task
+        </Link>
+        <PageHeader
+          description={`${data.task.kind} task · ${data.task.destination.label} · ${statusSummary}`}
+          {...(data.executionDays.length > 0
+            ? { onRangeChange: setRange, range }
+            : {})}
+          title={data.task.title}
+        />
+      </div>
+
+      {data.executionDays.length > 0 ? (
+        <TaskExecutionStatusChart days={data.executionDays} range={range} />
+      ) : null}
+
+      <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1 border-b border-white/[0.07] pb-3">
+        <p className="m-0 font-display text-lg text-dashboard-text">
+          {data.executions.length}{" "}
+          {data.executions.length === 1 ? "run" : "runs"}
+        </p>
+        <p className="m-0 text-xs text-dashboard-text-muted">
+          Newest first. Click a run to open its conversation.
+        </p>
+      </div>
+
+      {data.executions.length === 0 ? (
+        <Card padding="md">
+          <p className="m-0 text-sm text-dashboard-text-muted">
+            This task has not produced any terminal executions yet.
+          </p>
+        </Card>
+      ) : (
+        <Card>
+          <div
+            className="sticky top-0 z-[1] hidden grid-cols-[minmax(13rem,1.7fr)_minmax(10rem,1fr)] items-center gap-3 border-b border-white/[0.06] bg-black/25 px-3 py-2.5 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted md:grid"
+            role="row"
           >
-            <ArrowLeft aria-hidden="true" size={14} />
-            Back to task
-          </Link>
-          <PageHeader
-            description={`${data.task.kind} task · ${data.task.destination.label} · ${statusSummary}`}
-            {...(data.executionDays.length > 0
-              ? { onRangeChange: setRange, range }
-              : {})}
-            title={data.task.title}
-          />
-        </div>
+            <div>Conversation</div>
+            <div className="justify-self-end">Status</div>
+          </div>
+          <div className="min-w-0" role="table">
+            {data.executions.map((execution) => (
+              <ExecutionRow
+                execution={execution}
+                fallbackTitle={data.task.title}
+                key={execution.executionId}
+              />
+            ))}
+          </div>
+        </Card>
+      )}
 
-        {data.executionDays.length > 0 ? (
-          <TaskExecutionStatusChart days={data.executionDays} range={range} />
-        ) : null}
-
-        <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1 border-b border-white/[0.07] pb-3">
-          <p className="m-0 font-display text-lg text-dashboard-text">
-            {data.executions.length}{" "}
-            {data.executions.length === 1 ? "run" : "runs"}
-          </p>
-          <p className="m-0 text-xs text-dashboard-text-muted">
-            Newest first. Click a run to open its conversation.
-          </p>
-        </div>
-
-        {data.executions.length === 0 ? (
-          <Card padding="md">
-            <p className="m-0 text-sm text-dashboard-text-muted">
-              This task has not produced any terminal executions yet.
-            </p>
-          </Card>
-        ) : (
-          <Card>
-            <div
-              className="sticky top-0 z-[1] hidden grid-cols-[minmax(13rem,1.7fr)_minmax(10rem,1fr)] items-center gap-3 border-b border-white/[0.06] bg-black/25 px-3 py-2.5 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted md:grid"
-              role="row"
-            >
-              <div>Conversation</div>
-              <div className="justify-self-end">Status</div>
-            </div>
-            <div className="min-w-0" role="table">
-              {data.executions.map((execution) => (
-                <ExecutionRow
-                  execution={execution}
-                  fallbackTitle={data.task.title}
-                  key={execution.executionId}
-                />
-              ))}
-            </div>
-          </Card>
-        )}
-
-        {data.truncated ? (
-          <p className="m-0 text-center text-xs text-dashboard-text-muted">
-            Showing the 100 most recent executions.
-          </p>
-        ) : null}
-      </section>
-    </div>
+      {data.truncated ? (
+        <p className="m-0 text-center text-xs text-dashboard-text-muted">
+          Showing the 100 most recent executions.
+        </p>
+      ) : null}
+    </>
   );
 }
 
