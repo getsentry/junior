@@ -122,10 +122,11 @@ export function GuardianActivity(props: { days: GuardianMetricDay[] }) {
                 }
                 key={day.date}
                 label={shortDate(day.date)}
+                triggerClassName="h-full min-w-0 flex-1 items-end"
               >
                 <button
                   aria-label={`${shortDate(day.date)}: ${day.allow} allowed, ${day.ask} asked, ${day.deny} denied, ${formatCostSummary({ total: day.costUsd ?? 0 })}`}
-                  className="flex min-w-0 flex-1 flex-col justify-end overflow-hidden rounded-t-sm bg-white/[0.035] focus-visible:outline-1 focus-visible:outline-cyan-300"
+                  className="flex w-full min-w-0 flex-col justify-end overflow-hidden rounded-t-sm bg-white/[0.035] focus-visible:outline-1 focus-visible:outline-cyan-300"
                   style={{ height: `${height}%` }}
                   type="button"
                 >

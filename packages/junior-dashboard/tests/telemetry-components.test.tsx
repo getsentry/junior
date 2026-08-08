@@ -1328,6 +1328,12 @@ describe("dashboard canonical-event components", () => {
     expect(systemHtml).toContain("Guardian reviews");
     expect(systemHtml).toContain("Daily Guardian review results");
     expect(systemHtml).toContain("Estimated cost");
+    expect(systemHtml).toContain(
+      'class="inline-flex h-full min-w-0 flex-1 items-end"',
+    );
+    expect(systemHtml).toContain(
+      'class="flex w-full min-w-0 flex-col justify-end',
+    );
     expect(systemHtml.indexOf("Conversation activity")).toBeLessThan(
       systemHtml.indexOf("Token usage"),
     );
