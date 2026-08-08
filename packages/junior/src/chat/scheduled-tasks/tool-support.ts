@@ -170,7 +170,7 @@ export function getConversationAccess(
   };
 }
 
-/** Keep scheduler management operations bound to the task's original Slack destination. */
+/** Keep scheduler management operations bound to the task's current Slack destination. */
 export function sameDestination(
   task: ScheduledTask,
   destination: SlackDestination,
@@ -199,7 +199,7 @@ export async function getWritableTask(args: {
 
   if (!sameDestination(task, destination)) {
     throwToolInputError(
-      "Scheduled task can only be managed from the Slack destination where it was created.",
+      "Scheduled task can only be managed from the Slack destination where it currently delivers.",
     );
   }
   return task;
