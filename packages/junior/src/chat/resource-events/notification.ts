@@ -1,6 +1,6 @@
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
-import { createSlackResourceEventInboundMessage } from "@/chat/task-execution/slack-work";
+import { createResourceEventInboundMessage } from "@/chat/task-execution/synthetic-inbound";
 import type { ResourceEventSubscription } from "@/chat/resource-events/store";
 
 export interface ResourceEventNotification {
@@ -66,7 +66,7 @@ export async function enqueueResourceEventNotification(args: {
     id: args.subscription.id,
   };
   return await appendAndEnqueueInboundMessage({
-    message: createSlackResourceEventInboundMessage({
+    message: createResourceEventInboundMessage({
       event: args.event,
       subscription,
       text: renderResourceEventNotificationText(args.subscription, args.event),

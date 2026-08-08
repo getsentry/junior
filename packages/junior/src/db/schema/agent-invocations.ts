@@ -31,6 +31,7 @@ export const AGENT_INVOCATION_MAILBOX_STATUSES = [
 export const AGENT_INVOCATION_PARENT_NOTIFICATION_STATUSES = [
   "pending",
   "notified",
+  "failed",
 ] as const;
 
 export const juniorAgentBindings = pgTable(

@@ -474,6 +474,26 @@ export async function markAgentInvocationParentNotified(
     );
 }
 
+/** Record a permanent parent-mailbox delivery failure that should not retry. */
+export async function markAgentInvocationParentNotificationFailed(
+  invocationId: string,
+  nowMs = Date.now(),
+): Promise<void> {
+  await getSqlExecutor()
+    .db()
+    .update(juniorAgentInvocations)
+    .set({
+      parentNotificationStatus: "failed",
+      updatedAt: new Date(nowMs),
+    })
+    .where(
+      and(
+        eq(juniorAgentInvocations.invocationId, invocationId),
+        eq(juniorAgentInvocations.parentNotificationStatus, "pending"),
+      ),
+    );
+}
+
 /** Return whether an invocation already owns its immutable terminal result. */
 export function isTerminalAgentInvocation(
   invocation: AgentInvocation,

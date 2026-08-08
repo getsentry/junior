@@ -48,9 +48,20 @@ conversation tree.
 7. The worker appends one idempotent parent-mailbox result message and marks
    `parentNotificationStatus: "notified"`. Queue delivery is only a wake-up
    hint; parent delivery remains discoverable from the invocation while pending.
+   Permanent builder/destination failures move to
+   `parentNotificationStatus: "failed"` so they stay queryable without infinite
+   retries.
 8. The heartbeat repairs child mailbox appends left in
    `mailboxStatus: "pending"` and parent notifications left in
    `parentNotificationStatus: "pending"`.
+
+Parent-result delivery shares the synthetic inbound shape with resource events
+(`task-execution/synthetic-inbound.ts`): stable inbound id, kind + durable
+reference metadata, rendered text, and a Slack envelope only when the parent
+destination is Slack. It does **not** use resource-event subscriptions. The
+parent conversation id is always the mailbox identity; authority for the parent
+turn is restored from the invocation's actor + credentialContext rather than a
+synthetic system principal.
 
 The child conversation has no provider destination. Each invocation carries
 the actor, credential context, source, and destination that bound its tool

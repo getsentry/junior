@@ -59,6 +59,13 @@ const agentDispatchMailboxMetadataSchema = z
   })
   .strict();
 
+const agentInvocationResultMailboxMetadataSchema = z
+  .object({
+    agentInvocationId: z.string().min(1),
+    kind: z.literal("agent_invocation_result"),
+  })
+  .passthrough();
+
 export const AGENT_DISPATCH_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 interface DurableDispatchTurnResult extends DispatchTurnResult {
@@ -198,11 +205,25 @@ function dispatchIdFromMessages(
   return ids.values().next().value;
 }
 
+function onlyAgentInvocationResultMessages(
+  messages: readonly InboundMessage[],
+): boolean {
+  return (
+    messages.length > 0 &&
+    messages.every((message) =>
+      agentInvocationResultMailboxMetadataSchema.safeParse(message.input.metadata)
+        .success,
+    )
+  );
+}
+
 /**
  * Resolve a dispatch from concrete mailbox metadata or the active turn.
  *
  * Provider source and conversation-id conventions are deliberately not
- * execution routing authority.
+ * execution routing authority. Parent-result wakes for a dispatch conversation
+ * still resolve through the active/durable dispatch so delivery does not fall
+ * through to the Slack worker with the wrong conversation identity.
  */
 export async function resolveAgentDispatchId(
   context: ConversationWorkerContext,
@@ -211,7 +232,10 @@ export async function resolveAgentDispatchId(
   if (mailboxDispatchId) {
     return mailboxDispatchId;
   }
-  if (context.attempt.messages.length > 0) {
+  if (
+    context.attempt.messages.length > 0 &&
+    !onlyAgentInvocationResultMessages(context.attempt.messages)
+  ) {
     return undefined;
   }
 
@@ -451,7 +475,15 @@ export function createAgentDispatchConversationWorker(
       }
       acknowledged = true;
     };
-    if (isTerminalDispatchStatus(dispatch.status)) {
+    // Child results wake the parent mailbox. The durable result lives on the
+    // invocation; this wake is queue ownership only. Ack it, then advance any
+    // still-open dispatch the same way an empty resume wake would.
+    if (onlyAgentInvocationResultMessages(context.attempt.messages)) {
+      await acknowledge();
+      if (isTerminalDispatchStatus(dispatch.status)) {
+        return { status: "completed" };
+      }
+    } else if (isTerminalDispatchStatus(dispatch.status)) {
       await acknowledge();
       return { status: "completed" };
     }

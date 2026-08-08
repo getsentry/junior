@@ -4,15 +4,17 @@ import {
   getAgentInvocation,
   getAgentInvocationParentResultMessageId,
   isTerminalAgentInvocation,
+  markAgentInvocationParentNotificationFailed,
   markAgentInvocationParentNotified,
 } from "@/chat/agent-invocations/store";
 import type { AgentInvocation } from "@/chat/agent-invocations/types";
-import { createSlackAgentInvocationResultInboundMessage } from "@/chat/task-execution/slack-work";
+import { createAgentInvocationResultInboundMessage } from "@/chat/task-execution/synthetic-inbound";
 import {
   appendAndEnqueueInboundMessage,
   type InboundMessage,
 } from "@/chat/task-execution/store";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import { logException } from "@/chat/logging";
 
 type NotifyOptions = {
   conversationStore?: ConversationStore;
@@ -20,6 +22,14 @@ type NotifyOptions = {
   queue: ConversationWorkQueue;
   state?: StateAdapter;
 };
+
+/** Permanent parent-delivery failures that should not keep retrying. */
+export class PermanentAgentInvocationParentNotificationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PermanentAgentInvocationParentNotificationError";
+  }
+}
 
 /** Render the parent-facing terminal result text for one agent invocation. */
 export function renderAgentInvocationParentResultText(
@@ -53,13 +63,19 @@ export function renderAgentInvocationParentResultText(
   return lines.join("\n");
 }
 
-/** Build the stable parent mailbox entry for one terminal agent invocation. */
+/**
+ * Build the stable parent mailbox entry for one terminal agent invocation.
+ *
+ * Shape matches other internal wakes (dispatch / child invocation): kind +
+ * durable reference id + rendered text. Slack parents also carry the synthetic
+ * envelope resource events use so the shared Slack worker can restore the turn.
+ */
 export function buildAgentInvocationParentResultInboundMessage(
   invocation: AgentInvocation,
   nowMs = Date.now(),
 ): InboundMessage {
   if (!isTerminalAgentInvocation(invocation)) {
-    throw new Error(
+    throw new PermanentAgentInvocationParentNotificationError(
       `Agent invocation ${invocation.invocationId} is not terminal`,
     );
   }
@@ -69,8 +85,8 @@ export function buildAgentInvocationParentResultInboundMessage(
   const inboundMessageId = getAgentInvocationParentResultMessageId(
     invocation.invocationId,
   );
-  if (invocation.destination.platform === "slack") {
-    return createSlackAgentInvocationResultInboundMessage({
+  try {
+    return createAgentInvocationResultInboundMessage({
       createdAtMs,
       destination: invocation.destination,
       inboundMessageId,
@@ -79,25 +95,13 @@ export function buildAgentInvocationParentResultInboundMessage(
       receivedAtMs: nowMs,
       text,
     });
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Agent invocation parent delivery could not build mailbox input";
+    throw new PermanentAgentInvocationParentNotificationError(message);
   }
-  return {
-    conversationId: invocation.parentConversationId,
-    createdAtMs,
-    delivery: "defer",
-    destination: invocation.destination,
-    inboundMessageId,
-    input: {
-      authorId: invocation.invocationId,
-      text,
-      metadata: {
-        agentInvocationId: invocation.invocationId,
-        kind: "agent_invocation_result",
-        status: invocation.status,
-      },
-    },
-    receivedAtMs: nowMs,
-    source: "internal",
-  };
 }
 
 /**
@@ -105,7 +109,8 @@ export function buildAgentInvocationParentResultInboundMessage(
  *
  * Queue delivery is only a wake-up hint. The durable parent-notification status
  * remains pending until the mailbox append path succeeds so heartbeat repair
- * can retry from invocation state.
+ * can retry from invocation state. Permanent builder/destination mismatches
+ * move to failed so they stay queryable without infinite retries.
  */
 export async function notifyParentOfAgentInvocationResult(
   invocation: AgentInvocation,
@@ -130,12 +135,26 @@ export async function notifyParentOfAgentInvocationResult(
   ) {
     return;
   }
-  await appendAndEnqueueInboundMessage({
-    message: buildAgentInvocationParentResultInboundMessage(latest, nowMs),
-    conversationStore: options.conversationStore,
-    nowMs,
-    queue: options.queue,
-    state: options.state,
-  });
-  await markAgentInvocationParentNotified(latest.invocationId, nowMs);
+  try {
+    await appendAndEnqueueInboundMessage({
+      message: buildAgentInvocationParentResultInboundMessage(latest, nowMs),
+      conversationStore: options.conversationStore,
+      nowMs,
+      queue: options.queue,
+      state: options.state,
+    });
+    await markAgentInvocationParentNotified(latest.invocationId, nowMs);
+  } catch (error) {
+    if (error instanceof PermanentAgentInvocationParentNotificationError) {
+      await markAgentInvocationParentNotificationFailed(
+        latest.invocationId,
+        nowMs,
+      );
+      logException(error, "agent.invocation.parent_notification.failed", {
+        "app.agent.invocation_id": latest.invocationId,
+      });
+      return;
+    }
+    throw error;
+  }
 }

@@ -110,8 +110,8 @@ import {
   RESOURCE_EVENT_SYSTEM_ACTOR,
 } from "@/chat/resource-events/actor";
 import {
-  AGENT_INVOCATION_RESULT_SYSTEM_ACTOR,
   isAgentInvocationResultSlackMessage,
+  resolveAgentInvocationResultAuthority,
 } from "@/chat/agent-invocations/actor";
 import type { AgentContinueRequest } from "@/chat/services/agent-continue";
 import {
@@ -569,8 +569,17 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           executionActor = RESOURCE_EVENT_SYSTEM_ACTOR;
           credentialContext = credentialContextForActor(executionActor);
         } else if (isAgentInvocationResultSlackMessage(message)) {
-          executionActor = AGENT_INVOCATION_RESULT_SYSTEM_ACTOR;
-          credentialContext = credentialContextForActor(executionActor);
+          const restored = await resolveAgentInvocationResultAuthority({
+            messageId: message.id,
+            raw: message.raw,
+          });
+          if (!restored) {
+            throw new Error(
+              "Agent invocation result turn requires durable parent authority",
+            );
+          }
+          executionActor = restored.actor;
+          credentialContext = restored.credentialContext;
         } else {
           executionActor = await ensureSlackMessageActorIdentity(
             message,
@@ -1414,9 +1423,11 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               channelConfiguration: preparedState.channelConfiguration,
               disabledFeatures:
                 options.execution?.disabledFeatures ??
-                (message.author.isBot === true
-                  ? (["interactive-auth"] as const)
-                  : undefined),
+                (isAgentInvocationResultSlackMessage(message)
+                  ? undefined
+                  : message.author.isBot === true
+                    ? (["interactive-auth"] as const)
+                    : undefined),
               turnDeadlineAtMs: getTurnRequestDeadline()?.deadlineAtMs,
             },
             state: {
