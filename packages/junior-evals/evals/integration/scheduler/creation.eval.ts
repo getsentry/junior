@@ -62,12 +62,12 @@ describeEval("Schedule Creation", slackEvals, (it) => {
     expect(createCall.arguments).not.toHaveProperty("next_run_at");
   });
 
-  it("when asked for a specific one-off reminder, preserve the future work in the schedule", async ({
+  it("when asked to tell the channel something later, preserve the future work in the schedule", async ({
     run,
   }) => {
     const result = await run({
       initialEvents: [
-        mention("@bot in 2 minutes, post 'standup moved' to this channel"),
+        mention("@bot in 2 minutes tell the channel standup moved"),
       ],
     });
     const createCalls = scheduledTaskCreateCalls(result.session);
