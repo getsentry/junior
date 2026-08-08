@@ -16,6 +16,7 @@ import type {
   ConversationEvent,
 } from "@/chat/conversations/history";
 import {
+  agentsInstructionsUpdatedEvent,
   authenticationLinkedEvent,
   authenticationUnlinkedEvent,
   JUNIOR_NATIVE_EVENT_NAMESPACE,
@@ -554,6 +555,47 @@ export async function recordAuthenticationUnlinked(
   args: AuthenticationAccountChangeArgs,
 ): Promise<void> {
   await recordAuthenticationAccountChange("unlinked", args);
+}
+
+type AgentsInstructionsTransitionArgs = {
+  action: "loaded" | "replaced" | "cleared";
+  conversationId: string;
+  directory?: string;
+  fingerprint: string;
+  sources: Array<{ path: string }>;
+  textBytes?: number;
+  turnId: string;
+};
+
+/** Record one AGENTS.md bootstrap transition as host transcript metadata. */
+export async function recordAgentsInstructionsUpdated(
+  args: AgentsInstructionsTransitionArgs,
+): Promise<void> {
+  const content = agentsInstructionsUpdatedEvent.parse({
+    action: args.action,
+    fingerprint: args.fingerprint,
+    sources: args.sources,
+    ...(args.directory ? { directory: args.directory } : {}),
+    ...(typeof args.textBytes === "number"
+      ? { textBytes: args.textBytes }
+      : {}),
+  });
+  await getConversationEventStore().append(args.conversationId, [
+    {
+      createdAtMs: Date.now(),
+      idempotencyKey:
+        `native:${JUNIOR_NATIVE_EVENT_NAMESPACE}:agents_instructions_updated:` +
+        `${args.turnId}:${args.action}:${args.fingerprint}`,
+      data: {
+        type: "structured_event",
+        namespace: JUNIOR_NATIVE_EVENT_NAMESPACE,
+        name: agentsInstructionsUpdatedEvent.eventName,
+        version: agentsInstructionsUpdatedEvent.version,
+        turnId: args.turnId,
+        content,
+      },
+    },
+  ]);
 }
 
 /** Load a previously selected execution profile for a resumed turn. */

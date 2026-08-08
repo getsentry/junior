@@ -44,6 +44,7 @@ import {
   loadConnectedMcpProviders,
   loadTurnRoute,
   openConversationProjection,
+  recordAgentsInstructionsUpdated,
   recordToolExecutionStarted,
   recordMcpProviderConnected,
   recordTurnRoute,
@@ -63,7 +64,10 @@ import {
   resolveGatewayModel,
 } from "@/chat/pi/client";
 import type { PiMessage } from "@/chat/pi/messages";
-import { renderAgentsInstructions } from "@/chat/repository-instructions";
+import {
+  findVisibleAgentsInstructions,
+  renderAgentsInstructions,
+} from "@/chat/repository-instructions";
 import { createRepositoryInstructionsContext } from "@/chat/agent/repository-context";
 import {
   extractAssistantText,
@@ -795,6 +799,60 @@ async function executeAgentRunInPrivacyContext(
     const initialRepositoryInstructions = wiring.getSandboxRef()
       ? await wiring.captureRepositoryInstructions()
       : undefined;
+    const recordAgentsTransition = async (transition: {
+      action: "loaded" | "replaced" | "cleared";
+      directory?: string;
+      fingerprint: string;
+      sources: Array<{ path: string }>;
+      textBytes?: number;
+    }) => {
+      try {
+        await recordAgentsInstructionsUpdated({
+          action: transition.action,
+          conversationId,
+          fingerprint: transition.fingerprint,
+          sources: transition.sources,
+          turnId,
+          ...(transition.directory
+            ? { directory: transition.directory }
+            : {}),
+          ...(typeof transition.textBytes === "number"
+            ? { textBytes: transition.textBytes }
+            : {}),
+        });
+      } catch (error) {
+        // Host-only transcript markers are best-effort reporting writes; a
+        // failed append must not abort the in-flight model turn.
+        logException(error, "agent.agents_instructions_event.append.failed", {
+          "app.agents.action": transition.action,
+        });
+      }
+    };
+    if (initialRepositoryInstructions) {
+      const priorVisibleAgents = findVisibleAgentsInstructions(
+        priorPiMessages ?? [],
+      );
+      const alreadyActive =
+        priorVisibleAgents?.active === true &&
+        priorVisibleAgents.directory ===
+          initialRepositoryInstructions.directory &&
+        priorVisibleAgents.text === initialRepositoryInstructions.text;
+      if (!alreadyActive) {
+        await recordAgentsTransition({
+          action:
+            priorVisibleAgents?.active === true ? "replaced" : "loaded",
+          directory: initialRepositoryInstructions.directory,
+          fingerprint: initialRepositoryInstructions.fingerprint,
+          sources: initialRepositoryInstructions.sources.map((source) => ({
+            path: source.path,
+          })),
+          textBytes: Buffer.byteLength(
+            initialRepositoryInstructions.text,
+            "utf8",
+          ),
+        });
+      }
+    }
     const getPendingAuthPause = wiring.getPendingAuthPause;
     const toolsWithoutHandoff = wiring.agentTools.filter(
       (tool) => tool.name !== HANDOFF_TOOL_NAME,
@@ -871,6 +929,7 @@ async function executeAgentRunInPrivacyContext(
       capture: wiring.captureRepositoryInstructions,
       hasSandbox: () => Boolean(wiring.getSandboxRef()),
       initialInstructions: initialRepositoryInstructions,
+      onTransition: recordAgentsTransition,
       promptContextContentParts,
       restoredMessages: existingSessionRecord?.piMessages,
       restoredProvenance: existingSessionRecord?.piMessageProvenance,

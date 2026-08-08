@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  agentsInstructionsUpdatedEvent,
   authenticationLinkedEvent,
   authenticationUnlinkedEvent,
   renderJuniorNativeConversationEvent,
@@ -106,5 +107,55 @@ describe("junior native authentication events", () => {
         content: {},
       }),
     ).toBeUndefined();
+  });
+
+  it("renders AGENTS.md load presentation without the instruction body", () => {
+    expect(
+      agentsInstructionsUpdatedEvent.renderEvent({
+        action: "loaded",
+        directory: "/vercel/sandbox/junior",
+        fingerprint: "abc123",
+        sources: [{ path: "/vercel/sandbox/junior/AGENTS.md" }],
+        textBytes: 2048,
+      }),
+    ).toEqual({
+      icon: "brain",
+      title: "Loaded AGENTS.md",
+      preview: "`/vercel/sandbox/junior`",
+      details: [
+        {
+          title: "Loaded AGENTS.md",
+          description:
+            "Directory: `/vercel/sandbox/junior` · Sources: `/vercel/sandbox/junior/AGENTS.md` · 2048 bytes",
+          metadata: ["loaded", "/vercel/sandbox/junior/AGENTS.md"],
+        },
+      ],
+    });
+
+    const data: ConversationEventData = {
+      type: "structured_event",
+      namespace: "junior",
+      name: "agents_instructions_updated",
+      version: 1,
+      turnId: "turn-1",
+      content: {
+        action: "loaded",
+        directory: "/vercel/sandbox/junior",
+        fingerprint: "abc123",
+        sources: [{ path: "/vercel/sandbox/junior/AGENTS.md" }],
+        textBytes: 2048,
+      },
+    };
+
+    expect(
+      conversationEventSchema.parse({
+        schemaVersion: 1,
+        seq: 2,
+        historyVersion: 0,
+        idempotencyKey: "native-agents-1",
+        createdAtMs: 2_000,
+        data,
+      }).data,
+    ).toEqual(data);
   });
 });

@@ -131,4 +131,36 @@ describe("plugin event transcript projection", () => {
     expect(entryMatchesSearch(entries[0]!, "dcramer")).toBe(true);
     expect(messageRawText(messages[0]!)).toContain("GitHub connected");
   });
+
+  it("creates a searchable AGENTS.md load event entry", () => {
+    const messages = conversationTranscriptMessages(
+      conversation([
+        pluginEvent({
+          type: "structured_event",
+          namespace: "junior",
+          name: "agents_instructions_updated",
+          version: 1,
+          turnId: "turn-1",
+          presentation: {
+            icon: "brain",
+            title: "Loaded AGENTS.md",
+            preview: "`/vercel/sandbox/junior`",
+          },
+        }),
+      ]),
+    );
+    const entries = groupTranscriptMessages(messages);
+
+    expect(entries).toEqual([
+      expect.objectContaining({
+        kind: "structured_event",
+        part: expect.objectContaining({
+          namespace: "junior",
+          name: "agents_instructions_updated",
+        }),
+      }),
+    ]);
+    expect(entryMatchesSearch(entries[0]!, "agents.md")).toBe(true);
+    expect(messageRawText(messages[0]!)).toContain("Loaded AGENTS.md");
+  });
 });

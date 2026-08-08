@@ -434,6 +434,26 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
           ],
         },
       }),
+      reportEvent(14, iso(Date.parse(startedAt), 62_000), {
+        type: "structured_event",
+        namespace: "junior",
+        name: "agents_instructions_updated",
+        version: 1,
+        turnId: "qa-turn",
+        presentation: {
+          icon: "brain",
+          title: "Loaded AGENTS.md",
+          preview: "`/vercel/sandbox/junior`",
+          details: [
+            {
+              title: "Loaded AGENTS.md",
+              description:
+                "Directory: `/vercel/sandbox/junior` · Sources: `/vercel/sandbox/junior/AGENTS.md` · 2048 bytes",
+              metadata: ["loaded", "/vercel/sandbox/junior/AGENTS.md"],
+            },
+          ],
+        },
+      }),
     ],
   });
 }

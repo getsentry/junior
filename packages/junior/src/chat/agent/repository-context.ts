@@ -13,10 +13,21 @@ import {
   type RepositoryInstructions,
 } from "@/chat/repository-instructions";
 
+export type AgentsInstructionsTransition = {
+  action: "loaded" | "replaced" | "cleared";
+  directory?: string;
+  fingerprint: string;
+  sources: Array<{ path: string }>;
+  textBytes?: number;
+};
+
 type RepositoryInstructionsContextOptions = {
   capture(): Promise<RepositoryInstructions | undefined>;
   hasSandbox(): boolean;
   initialInstructions?: RepositoryInstructions;
+  onTransition?: (
+    transition: AgentsInstructionsTransition,
+  ) => void | Promise<void>;
   restoredMessages?: PiMessage[];
   restoredProvenance?: ConversationMessageProvenance[];
   promptContextContentParts: UserContentPart[];
@@ -39,6 +50,21 @@ function findRestoredInstructions(
   return restoredContext
     ? findVisibleAgentsInstructions([restoredContext.message])
     : undefined;
+}
+
+function transitionFromInstructions(args: {
+  action: "loaded" | "replaced";
+  instructions: RepositoryInstructions;
+}): AgentsInstructionsTransition {
+  return {
+    action: args.action,
+    directory: args.instructions.directory,
+    fingerprint: args.instructions.fingerprint,
+    sources: args.instructions.sources.map((source) => ({
+      path: source.path,
+    })),
+    textBytes: Buffer.byteLength(args.instructions.text, "utf8"),
+  };
 }
 
 /** Track model-visible AGENTS.md state and append updates before later samples. */
@@ -64,6 +90,11 @@ export function createRepositoryInstructionsContext(
     visibleInstructions.text === options.initialInstructions.text
       ? options.initialInstructions.fingerprint
       : undefined;
+  const notifyTransition = async (
+    transition: AgentsInstructionsTransition,
+  ): Promise<void> => {
+    await options.onTransition?.(transition);
+  };
 
   return {
     async applyUpdate(
@@ -85,6 +116,7 @@ export function createRepositoryInstructionsContext(
         return currentUpdate;
       }
 
+      const wasVisible = instructionsVisible;
       const message = instructions
         ? buildAgentsInstructionsMessage({
             directory: instructions.directory,
@@ -98,6 +130,20 @@ export function createRepositoryInstructionsContext(
       options.setMessages(messages);
       visibleFingerprint = instructions?.fingerprint;
       instructionsVisible = Boolean(instructions);
+      if (instructions) {
+        await notifyTransition(
+          transitionFromInstructions({
+            action: wasVisible ? "replaced" : "loaded",
+            instructions,
+          }),
+        );
+      } else {
+        await notifyTransition({
+          action: "cleared",
+          fingerprint: "cleared",
+          sources: [],
+        });
+      }
       return {
         ...currentUpdate,
         context: { ...context, messages },
