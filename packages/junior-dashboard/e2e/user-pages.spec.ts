@@ -123,7 +123,8 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
   await expect(
     page.getByLabel("Task executions during the last 7 days"),
   ).toBeVisible();
-  await expect(page.getByText("2 tasks")).toBeVisible();
+  await expect(page.getByText("2 tasks")).not.toBeVisible();
+  await expect(page.getByText("Weekly project summary")).not.toBeVisible();
   await page
     .getByLabel("Tasks navigation")
     .getByRole("link", { name: "Tasks" })
@@ -131,6 +132,7 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
   await expect(page).toHaveURL(`${server.baseURL}/tasks/list`);
   await expect(page.getByRole("heading", { name: "All tasks" })).toBeVisible();
   await expect(page.getByLabel("Search tasks")).toBeVisible();
+  await expect(page.getByText("2 tasks")).toBeVisible();
   await expect(page.getByText("Weekly project summary")).toBeVisible();
   await expect(page.getByText("Closed issue summary")).toBeVisible();
   await expect(page.getByLabel("Scheduled task")).toBeVisible();

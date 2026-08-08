@@ -178,127 +178,127 @@ export function TasksPage(props: {
         <TaskExecutionChart days={query.data.executionDays} range={range} />
       ) : null}
       {props.view === "list" ? (
-        <FilterBar
-          search={{
-            label: "Search tasks",
-            onChange: setSearchText,
-            placeholder: "Title, instruction, location, or creator",
-            value: searchText,
-          }}
-        >
-          <FilterGroup label="Scope">
-            <ToggleButton
-              className="inline-flex items-center gap-1.5"
-              onClick={() => setScope("mine")}
-              pressed={scope === "mine"}
-              variant="pill"
-            >
-              <UserRound aria-hidden="true" size={13} />
-              Mine <span className="opacity-65">{mineCount}</span>
-            </ToggleButton>
-            <ToggleButton
-              className="inline-flex items-center gap-1.5"
-              onClick={() => setScope("public")}
-              pressed={scope === "public"}
-              variant="pill"
-            >
-              <Globe2 aria-hidden="true" size={13} />
-              Public <span className="opacity-65">{publicCount}</span>
-            </ToggleButton>
-          </FilterGroup>
-          <FilterGroup label="Type">
-            {(["all", "scheduled", "event"] as const).map((kind) => (
+        <>
+          <FilterBar
+            search={{
+              label: "Search tasks",
+              onChange: setSearchText,
+              placeholder: "Title, instruction, location, or creator",
+              value: searchText,
+            }}
+          >
+            <FilterGroup label="Scope">
               <ToggleButton
-                key={kind}
-                onClick={() => setFilter(kind)}
-                pressed={filter === kind}
+                className="inline-flex items-center gap-1.5"
+                onClick={() => setScope("mine")}
+                pressed={scope === "mine"}
                 variant="pill"
               >
-                {kind}
+                <UserRound aria-hidden="true" size={13} />
+                Mine <span className="opacity-65">{mineCount}</span>
               </ToggleButton>
-            ))}
-          </FilterGroup>
-        </FilterBar>
-      ) : null}
-      <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1 border-b border-white/[0.07] pb-3">
-        <p className="m-0 font-display text-lg text-dashboard-text">
-          {visibleTaskCount} {visibleTaskCount === 1 ? "task" : "tasks"}
-        </p>
-        <p className="m-0 text-xs text-dashboard-text-muted">
-          {scope === "mine"
-            ? "Tasks you created, including private destinations."
-            : "All tasks assigned to public destinations in your linked workspaces."}
-        </p>
-      </div>
-      {query.error ? (
-        <Card padding="md">
-          <p className="m-0 text-sm text-rose-300">
-            Tasks could not be loaded. Try again.
-          </p>
-        </Card>
-      ) : visibleTaskCount === 0 ? (
-        <Card padding="md">
-          <p className="m-0 text-sm text-dashboard-text-muted">
-            {emptyText({ filter, mineCount, publicCount, scope, search })}
-          </p>
-        </Card>
-      ) : (
-        <Card>
-          <TaskListHeader />
-          <div className="divide-y divide-white/[0.07]" role="list">
-            {pagedTasks.map((task) => {
-              const key = `${task.kind}:${task.id}`;
-              return (
-                <TaskRow
-                  deleting={
-                    deletion.isPending && deletion.variables?.id === task.id
-                  }
-                  key={key}
-                  onDelete={() => {
-                    if (window.confirm(`Delete this ${task.kind} task?`)) {
-                      deletion.mutate(task);
-                    }
-                  }}
-                  onSelect={() =>
-                    navigate(
-                      tasksPath(
-                        taskId === task.id
-                          ? listPath
-                          : `${listPath}/${encodeURIComponent(task.id)}`,
-                      ),
-                    )
-                  }
-                  selected={taskId === task.id}
-                  task={task}
-                />
-              );
-            })}
+              <ToggleButton
+                className="inline-flex items-center gap-1.5"
+                onClick={() => setScope("public")}
+                pressed={scope === "public"}
+                variant="pill"
+              >
+                <Globe2 aria-hidden="true" size={13} />
+                Public <span className="opacity-65">{publicCount}</span>
+              </ToggleButton>
+            </FilterGroup>
+            <FilterGroup label="Type">
+              {(["all", "scheduled", "event"] as const).map((kind) => (
+                <ToggleButton
+                  key={kind}
+                  onClick={() => setFilter(kind)}
+                  pressed={filter === kind}
+                  variant="pill"
+                >
+                  {kind}
+                </ToggleButton>
+              ))}
+            </FilterGroup>
+          </FilterBar>
+          <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1 border-b border-white/[0.07] pb-3">
+            <p className="m-0 font-display text-lg text-dashboard-text">
+              {visibleTaskCount} {visibleTaskCount === 1 ? "task" : "tasks"}
+            </p>
+            <p className="m-0 text-xs text-dashboard-text-muted">
+              {scope === "mine"
+                ? "Tasks you created, including private destinations."
+                : "All tasks assigned to public destinations in your linked workspaces."}
+            </p>
           </div>
-        </Card>
-      )}
-      {props.view === "list" ? (
-        <PagePagination
-          onPageChange={setPage}
-          page={page}
-          pageCount={totalPages}
-          pageSize={TASK_PAGE_SIZE}
-          total={visibleTaskCount}
-        />
+          {query.error ? (
+            <Card padding="md">
+              <p className="m-0 text-sm text-rose-300">
+                Tasks could not be loaded. Try again.
+              </p>
+            </Card>
+          ) : visibleTaskCount === 0 ? (
+            <Card padding="md">
+              <p className="m-0 text-sm text-dashboard-text-muted">
+                {emptyText({ filter, mineCount, publicCount, scope, search })}
+              </p>
+            </Card>
+          ) : (
+            <Card>
+              <TaskListHeader />
+              <div className="divide-y divide-white/[0.07]" role="list">
+                {pagedTasks.map((task) => {
+                  const key = `${task.kind}:${task.id}`;
+                  return (
+                    <TaskRow
+                      deleting={
+                        deletion.isPending && deletion.variables?.id === task.id
+                      }
+                      key={key}
+                      onDelete={() => {
+                        if (window.confirm(`Delete this ${task.kind} task?`)) {
+                          deletion.mutate(task);
+                        }
+                      }}
+                      onSelect={() =>
+                        navigate(
+                          tasksPath(
+                            taskId === task.id
+                              ? listPath
+                              : `${listPath}/${encodeURIComponent(task.id)}`,
+                          ),
+                        )
+                      }
+                      selected={taskId === task.id}
+                      task={task}
+                    />
+                  );
+                })}
+              </div>
+            </Card>
+          )}
+          <PagePagination
+            onPageChange={setPage}
+            page={page}
+            pageCount={totalPages}
+            pageSize={TASK_PAGE_SIZE}
+            total={visibleTaskCount}
+          />
+          {query.data?.truncated ? (
+            <p className="m-0 text-center text-xs text-dashboard-text-muted">
+              Showing up to 100 recent tasks in each scope.
+            </p>
+          ) : null}
+          {deletion.error ? (
+            <p className="m-0 text-center text-sm text-rose-300">
+              The task could not be deleted. Try again.
+            </p>
+          ) : null}
+          <TaskDetailsDrawer
+            onClose={() => navigate(tasksPath(listPath))}
+            task={selectedTask}
+          />
+        </>
       ) : null}
-      {query.data?.truncated ? (
-        <p className="m-0 text-center text-xs text-dashboard-text-muted">
-          Showing up to 100 recent tasks in each scope.
-        </p>
-      ) : null}
-      {deletion.error ? (
-        <p className="m-0 text-center text-sm text-rose-300">
-          The task could not be deleted. Try again.
-        </p>
-      ) : null}
-      <TaskDetailsDrawer
-        onClose={() => navigate(tasksPath(listPath))}
-        task={selectedTask}
-      />
     </>
   );
 }
