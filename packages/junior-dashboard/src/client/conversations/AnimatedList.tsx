@@ -124,15 +124,15 @@ function AnimatedListRow<T>(props: {
   onExited(key: string): void;
   renderItem(item: T): ReactNode;
 }) {
-  const { animatedItem } = props;
+  const { animatedItem, durationMs, onExited } = props;
   useEffect(() => {
     if (animatedItem.state !== "exiting") return;
     const timeout = window.setTimeout(
-      () => props.onExited(animatedItem.key),
-      props.durationMs,
+      () => onExited(animatedItem.key),
+      durationMs,
     );
     return () => window.clearTimeout(timeout);
-  }, [animatedItem.key, animatedItem.state, props.durationMs, props.onExited]);
+  }, [animatedItem.key, animatedItem.state, durationMs, onExited]);
 
   return (
     <div

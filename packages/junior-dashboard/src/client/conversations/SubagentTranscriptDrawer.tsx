@@ -22,17 +22,18 @@ export function SubagentTranscriptDrawer(props: {
   onClose: () => void;
   target: SubagentTranscriptTarget | undefined;
 }) {
-  const query = useConversationData(props.target?.conversationId);
+  const { onClose, target } = props;
+  const query = useConversationData(target?.conversationId);
 
   useEffect(() => {
-    if (!props.target) return undefined;
+    if (!target) return undefined;
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") props.onClose();
+      if (event.key === "Escape") onClose();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [props.onClose, props.target]);
+  }, [onClose, target]);
 
   if (!props.target) return null;
 

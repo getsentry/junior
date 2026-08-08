@@ -1,7 +1,10 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["eslint", "typescript", "unicorn", "oxc", "react"],
   "jsPlugins": ["@tanstack/eslint-plugin-query"],
   "rules": {
+    "react/rules-of-hooks": "error",
+    "react/exhaustive-deps": "error",
     "@tanstack/query/exhaustive-deps": "error",
     "@tanstack/query/infinite-query-property-order": "error",
     "@tanstack/query/mutation-property-order": "error",

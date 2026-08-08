@@ -311,9 +311,10 @@ export function useConversationData(conversationId: string | undefined) {
   const isLoadingPreviousPage =
     history.isFetchingNextPage || historyNeedsReconciliation;
 
+  const refetchDetail = detail.refetch;
   useEffect(() => {
-    if (shouldRefreshDetail) void detail.refetch();
-  }, [detail.refetch, shouldRefreshDetail]);
+    if (shouldRefreshDetail) void refetchDetail();
+  }, [refetchDetail, shouldRefreshDetail]);
 
   useEffect(() => {
     if (invalidHistoryCursor) {
@@ -324,9 +325,10 @@ export function useConversationData(conversationId: string | undefined) {
     }
   }, [historyQueryKey, invalidHistoryCursor, queryClient]);
 
+  const fetchNextHistoryPage = history.fetchNextPage;
   useEffect(() => {
-    if (historyNeedsReconciliation) void history.fetchNextPage();
-  }, [history.fetchNextPage, historyNeedsReconciliation]);
+    if (historyNeedsReconciliation) void fetchNextHistoryPage();
+  }, [fetchNextHistoryPage, historyNeedsReconciliation]);
 
   return {
     data,

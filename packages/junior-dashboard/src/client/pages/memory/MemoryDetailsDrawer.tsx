@@ -38,7 +38,7 @@ export function MemoryDetailsDrawer(props: {
     // Forget leaves the shared mutation in success/error until the next open.
     // Clear it here so the new drawer does not inherit stale action UI state.
     if (openRecordId) props.action.reset();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset only on open id change
+    // oxlint-disable-next-line react/exhaustive-deps -- reset only on open id change
   }, [openRecordId]);
 
   useEffect(() => {

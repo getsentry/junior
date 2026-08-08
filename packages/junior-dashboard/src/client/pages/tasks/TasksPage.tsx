@@ -55,6 +55,8 @@ function formatRunDate(value: string): string {
   });
 }
 
+const EMPTY_TASKS: TaskSummary[] = [];
+
 function taskMatches(task: TaskSummary, search: string): boolean {
   const haystack = [
     task.createdBy,
@@ -86,7 +88,7 @@ export function TasksPage(props: { enabled: boolean }) {
   const search = searchQuery.toLowerCase();
   const tasksPath = (pathname: string) =>
     pathWithSearch(pathname, location.search);
-  const tasks = query.data?.tasks ?? [];
+  const tasks = query.data?.tasks ?? EMPTY_TASKS;
   const mineCount = tasks.filter((task) => task.ownedByViewer).length;
   const publicCount = tasks.filter(
     (task) => task.destination.visibility === "public",
