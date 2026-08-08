@@ -42,25 +42,25 @@ export function isAgentInvocationResultSlackMessage(message: {
   return raw?.event_type === "agent_invocation_result";
 }
 
-/** Read the durable agent-invocation id stamped on a synthetic result message. */
-export function getAgentInvocationIdFromSlackMessage(message: {
+function invocationIdFromResultMessage(args: {
+  messageId?: string;
   raw?: unknown;
 }): string | undefined {
   const raw =
-    message.raw && typeof message.raw === "object"
-      ? (message.raw as Record<string, unknown>)
+    args.raw && typeof args.raw === "object"
+      ? (args.raw as Record<string, unknown>)
       : undefined;
-  return typeof raw?.agent_invocation_id === "string" &&
+  if (
+    typeof raw?.agent_invocation_id === "string" &&
     raw.agent_invocation_id.trim().length > 0
-    ? raw.agent_invocation_id
-    : undefined;
-}
-
-/** Parse the durable parent-result message id back to an invocation id. */
-export function getAgentInvocationIdFromParentResultMessageId(
-  messageId: string | undefined,
-): string | undefined {
-  if (!messageId?.startsWith("agent-invocation:") || !messageId.endsWith(":result")) {
+  ) {
+    return raw.agent_invocation_id;
+  }
+  const messageId = args.messageId;
+  if (
+    !messageId?.startsWith("agent-invocation:") ||
+    !messageId.endsWith(":result")
+  ) {
     return undefined;
   }
   const invocationId = messageId.slice(
@@ -75,9 +75,7 @@ export async function resolveAgentInvocationResultAuthority(args: {
   messageId?: string;
   raw?: unknown;
 }): Promise<{ actor: Actor; credentialContext: CredentialContext } | undefined> {
-  const invocationId =
-    getAgentInvocationIdFromSlackMessage(args) ??
-    getAgentInvocationIdFromParentResultMessageId(args.messageId);
+  const invocationId = invocationIdFromResultMessage(args);
   if (!invocationId) {
     return undefined;
   }

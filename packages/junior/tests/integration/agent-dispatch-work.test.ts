@@ -17,6 +17,7 @@ import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
+import { createAgentInvocationResultInboundMessage } from "@/chat/task-execution/synthetic-inbound";
 import {
   listAgentTurnSessionSummariesForConversation,
   recordAgentTurnSessionSummary,
@@ -422,6 +423,118 @@ describe("agent dispatch conversation work", () => {
     expect(ack).toHaveBeenCalledOnce();
     await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
       resultMessageTs: "1700000000.000012",
+      status: "completed",
+    });
+  });
+
+  it("keeps parent-result wakes on the dispatch worker without starting pending work", async () => {
+    const dispatch = await createDispatch("parent-result-pending");
+    const conversationId = getDispatchConversationId(dispatch);
+    const resultMessage = createAgentInvocationResultInboundMessage({
+      createdAtMs: 2_000,
+      destination,
+      inboundMessageId: "agent-invocation:inv-dispatch-pending:result",
+      invocationId: "inv-dispatch-pending",
+      parentConversationId: conversationId,
+      receivedAtMs: 2_000,
+      text: "[agent invocation result]\n\nA delegated child agent finished.",
+    });
+    const ack = vi.fn(async () => {});
+    const { context } = createContext(dispatch, {
+      attempt: {
+        ack,
+        conversationId,
+        destination,
+        drain: vi.fn(async () => []),
+        isFinalAttempt: false,
+        messages: [resultMessage],
+      },
+    });
+    const runTurn = vi.fn(async () => ({ outcome: "completed" as const }));
+    const resumeTurn = vi.fn();
+    const slackWorker = vi.fn(async () => ({ status: "completed" as const }));
+    const route = createAgentDispatchWorkRouter({
+      dispatchWorker: createAgentDispatchConversationWorker({
+        resumeTurn,
+        runTurn,
+      }),
+      fallbackWorker: slackWorker,
+    });
+
+    await expect(route(context)).resolves.toEqual({ status: "completed" });
+    expect(slackWorker).not.toHaveBeenCalled();
+    expect(runTurn).not.toHaveBeenCalled();
+    expect(resumeTurn).not.toHaveBeenCalled();
+    expect(ack).toHaveBeenCalledOnce();
+    await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
+      status: "pending",
+    });
+  });
+
+  it("resumes an already-started dispatch from a parent-result wake", async () => {
+    const dispatch = await createDispatch("parent-result-resume");
+    const conversationId = getDispatchConversationId(dispatch);
+    const sessionId = getDispatchTurnId(dispatch.id);
+    await recordAgentTurnSessionSummary({
+      actor: dispatch.actor,
+      conversationId,
+      destination: dispatch.destination,
+      destinationVisibility: dispatch.destinationVisibility,
+      dispatchId: dispatch.id,
+      sessionId,
+      sliceId: 1,
+      source: dispatch.source,
+      state: "awaiting_resume",
+      surface: "api",
+    });
+    const resultMessage = createAgentInvocationResultInboundMessage({
+      createdAtMs: 2_000,
+      destination,
+      inboundMessageId: "agent-invocation:inv-dispatch-resume:result",
+      invocationId: "inv-dispatch-resume",
+      parentConversationId: conversationId,
+      receivedAtMs: 2_000,
+      text: "[agent invocation result]\n\nA delegated child agent finished.",
+    });
+    const ack = vi.fn(async () => {});
+    const { context } = createContext(dispatch, {
+      attempt: {
+        ack,
+        conversationId,
+        destination,
+        drain: vi.fn(async () => []),
+        isFinalAttempt: false,
+        messages: [resultMessage],
+      },
+    });
+    const runTurn = vi.fn();
+    const resumeTurn = vi.fn(async () => {
+      await recordAgentTurnSessionSummary({
+        actor: dispatch.actor,
+        conversationId,
+        destination: dispatch.destination,
+        destinationVisibility: dispatch.destinationVisibility,
+        dispatchId: dispatch.id,
+        dispatchOutcome: "completed",
+        sessionId,
+        sliceId: 1,
+        source: dispatch.source,
+        state: "completed",
+        surface: "api",
+      });
+    });
+    const worker = createAgentDispatchConversationWorker({
+      resumeTurn,
+      runTurn,
+    });
+
+    await expect(worker(context, dispatch.id)).resolves.toEqual({
+      status: "completed",
+    });
+    expect(runTurn).not.toHaveBeenCalled();
+    expect(resumeTurn).toHaveBeenCalledOnce();
+    expect(ack).toHaveBeenCalledOnce();
+    await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
       status: "completed",
     });
   });

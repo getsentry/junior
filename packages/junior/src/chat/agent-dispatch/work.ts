@@ -476,14 +476,16 @@ export function createAgentDispatchConversationWorker(
       acknowledged = true;
     };
     // Child results wake the parent mailbox. The durable result lives on the
-    // invocation; this wake is queue ownership only. Ack it, then advance any
-    // still-open dispatch the same way an empty resume wake would.
-    if (onlyAgentInvocationResultMessages(context.attempt.messages)) {
+    // invocation; this wake is queue ownership only. Never start a pending
+    // dispatch from a child-result wake alone — only resume an already-started
+    // turn through the shared path below.
+    const parentResultOnly = onlyAgentInvocationResultMessages(
+      context.attempt.messages,
+    );
+    if (parentResultOnly) {
       await acknowledge();
-      if (isTerminalDispatchStatus(dispatch.status)) {
-        return { status: "completed" };
-      }
-    } else if (isTerminalDispatchStatus(dispatch.status)) {
+    }
+    if (isTerminalDispatchStatus(dispatch.status)) {
       await acknowledge();
       return { status: "completed" };
     }
@@ -495,6 +497,9 @@ export function createAgentDispatchConversationWorker(
     ) {
       await projectDispatchTurnResult(dispatch.id, durableResult);
       await acknowledge();
+      return { status: "completed" };
+    }
+    if (parentResultOnly && durableResult.hasResumableRun !== true) {
       return { status: "completed" };
     }
     if (Date.now() - dispatch.createdAtMs > AGENT_DISPATCH_MAX_AGE_MS) {

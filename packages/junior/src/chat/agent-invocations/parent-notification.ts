@@ -9,10 +9,7 @@ import {
 } from "@/chat/agent-invocations/store";
 import type { AgentInvocation } from "@/chat/agent-invocations/types";
 import { createAgentInvocationResultInboundMessage } from "@/chat/task-execution/synthetic-inbound";
-import {
-  appendAndEnqueueInboundMessage,
-  type InboundMessage,
-} from "@/chat/task-execution/store";
+import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { logException } from "@/chat/logging";
 
@@ -23,18 +20,8 @@ type NotifyOptions = {
   state?: StateAdapter;
 };
 
-/** Permanent parent-delivery failures that should not keep retrying. */
-export class PermanentAgentInvocationParentNotificationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "PermanentAgentInvocationParentNotificationError";
-  }
-}
-
 /** Render the parent-facing terminal result text for one agent invocation. */
-export function renderAgentInvocationParentResultText(
-  invocation: AgentInvocation,
-): string {
+function renderParentResultText(invocation: AgentInvocation): string {
   const name = invocation.agentName
     ? `named agent "${invocation.agentName}"`
     : "child agent";
@@ -61,47 +48,6 @@ export function renderAgentInvocationParentResultText(
     lines.push("", "Error:", invocation.errorMessage);
   }
   return lines.join("\n");
-}
-
-/**
- * Build the stable parent mailbox entry for one terminal agent invocation.
- *
- * Shape matches other internal wakes (dispatch / child invocation): kind +
- * durable reference id + rendered text. Slack parents also carry the synthetic
- * envelope resource events use so the shared Slack worker can restore the turn.
- */
-export function buildAgentInvocationParentResultInboundMessage(
-  invocation: AgentInvocation,
-  nowMs = Date.now(),
-): InboundMessage {
-  if (!isTerminalAgentInvocation(invocation)) {
-    throw new PermanentAgentInvocationParentNotificationError(
-      `Agent invocation ${invocation.invocationId} is not terminal`,
-    );
-  }
-  const text = renderAgentInvocationParentResultText(invocation);
-  const createdAtMs =
-    "terminalAtMs" in invocation ? invocation.terminalAtMs : nowMs;
-  const inboundMessageId = getAgentInvocationParentResultMessageId(
-    invocation.invocationId,
-  );
-  try {
-    return createAgentInvocationResultInboundMessage({
-      createdAtMs,
-      destination: invocation.destination,
-      inboundMessageId,
-      invocationId: invocation.invocationId,
-      parentConversationId: invocation.parentConversationId,
-      receivedAtMs: nowMs,
-      text,
-    });
-  } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : "Agent invocation parent delivery could not build mailbox input";
-    throw new PermanentAgentInvocationParentNotificationError(message);
-  }
 }
 
 /**
@@ -135,26 +81,41 @@ export async function notifyParentOfAgentInvocationResult(
   ) {
     return;
   }
+
+  // Builder failures are permanent destination/identity mismatches. Append and
+  // queue failures stay pending for heartbeat repair.
+  let message;
   try {
-    await appendAndEnqueueInboundMessage({
-      message: buildAgentInvocationParentResultInboundMessage(latest, nowMs),
-      conversationStore: options.conversationStore,
-      nowMs,
-      queue: options.queue,
-      state: options.state,
-    });
-    await markAgentInvocationParentNotified(latest.invocationId, nowMs);
-  } catch (error) {
-    if (error instanceof PermanentAgentInvocationParentNotificationError) {
-      await markAgentInvocationParentNotificationFailed(
+    const createdAtMs =
+      "terminalAtMs" in latest ? latest.terminalAtMs : nowMs;
+    message = createAgentInvocationResultInboundMessage({
+      createdAtMs,
+      destination: latest.destination,
+      inboundMessageId: getAgentInvocationParentResultMessageId(
         latest.invocationId,
-        nowMs,
-      );
-      logException(error, "agent.invocation.parent_notification.failed", {
-        "app.agent.invocation_id": latest.invocationId,
-      });
-      return;
-    }
-    throw error;
+      ),
+      invocationId: latest.invocationId,
+      parentConversationId: latest.parentConversationId,
+      receivedAtMs: nowMs,
+      text: renderParentResultText(latest),
+    });
+  } catch (error) {
+    await markAgentInvocationParentNotificationFailed(
+      latest.invocationId,
+      nowMs,
+    );
+    logException(error, "agent.invocation.parent_notification.failed", {
+      "app.agent.invocation_id": latest.invocationId,
+    });
+    return;
   }
+
+  await appendAndEnqueueInboundMessage({
+    message,
+    conversationStore: options.conversationStore,
+    nowMs,
+    queue: options.queue,
+    state: options.state,
+  });
+  await markAgentInvocationParentNotified(latest.invocationId, nowMs);
 }

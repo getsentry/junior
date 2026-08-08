@@ -149,11 +149,6 @@ export function createAgentInvocationResultInboundMessage(input: {
       "Agent invocation destination does not match Slack parent conversation",
     );
   }
-  if (!slackParent && !input.parentConversationId.includes(":")) {
-    throw new Error(
-      "Agent invocation parent conversation id is not a durable conversation identity",
-    );
-  }
 
   const channelId = destination.channelId;
   const threadTs = slackParent?.threadTs;

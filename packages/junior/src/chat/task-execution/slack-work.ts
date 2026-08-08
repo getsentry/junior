@@ -36,10 +36,7 @@ import { lookupSlackUser } from "@/chat/slack/user";
 import { parseActorUserId, type SlackActorProfile } from "@/chat/actor";
 import { isResourceEventSlackMessage } from "@/chat/resource-events/actor";
 import { isAgentInvocationResultSlackMessage } from "@/chat/agent-invocations/actor";
-export {
-  createAgentInvocationResultInboundMessage as createSlackAgentInvocationResultInboundMessage,
-  createResourceEventInboundMessage as createSlackResourceEventInboundMessage,
-} from "@/chat/task-execution/synthetic-inbound";
+export { createResourceEventInboundMessage as createSlackResourceEventInboundMessage } from "@/chat/task-execution/synthetic-inbound";
 import {
   createSlackDestination,
   requireSlackDestination,
