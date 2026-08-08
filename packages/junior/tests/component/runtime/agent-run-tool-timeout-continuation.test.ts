@@ -285,12 +285,12 @@ describe("tool timeout continuation composition", () => {
       role: "toolResult",
       isError: true,
     });
-    expect(JSON.stringify(suspendedRecord?.piMessages.at(-1))).toContain(
-      '"cause":"turn_deadline"',
+    const suspendedToolResult = JSON.stringify(
+      suspendedRecord?.piMessages.at(-1),
     );
-    expect(JSON.stringify(suspendedRecord?.piMessages.at(-1))).toContain(
-      '"cause":"turn_deadline"',
-    );
+    expect(suspendedToolResult).toContain('"cause":"turn_deadline"');
+    expect(suspendedToolResult).toMatch(/still active/i);
+    expect(suspendedToolResult).not.toMatch(/cancelled/i);
 
     const resumed = await executeAgentRun(request);
 
