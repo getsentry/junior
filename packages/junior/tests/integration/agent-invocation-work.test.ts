@@ -892,7 +892,7 @@ describe("agent invocation conversation work", () => {
   });
 
   it("repairs pending parent notification delivery once", async () => {
-    const { conversationStore, fixture } = await prepareParentConversation();
+    const { fixture } = await prepareParentConversation();
     const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();
     await state.connect();
