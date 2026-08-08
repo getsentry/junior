@@ -44,6 +44,15 @@ import {
 const AGENT_TURN_SESSION_RESUME_TTL_MS = 24 * 60 * 60 * 1000;
 const AGENT_TURN_SESSION_TERMINAL_TTL_MS = 60 * 60 * 1000;
 
+function executionMetricsForSession(
+  conversation: Awaited<ReturnType<ConversationStore["get"]>>,
+  sessionId: string,
+): { durationMs: number; usage?: AgentTurnUsage } | undefined {
+  return conversation?.execution.runId === sessionId
+    ? conversation.executionMetrics
+    : undefined;
+}
+
 /** Keep only keys whose value is defined. */
 function definedProps<T extends Record<string, unknown>>(
   values: T,
@@ -519,6 +528,7 @@ async function materializeStoredAgentTurnSessionRecord(
       : piProjection.seqs.filter((seq) => seq <= parsed.turnStartSeq!).length;
 
   const conversation = await getConversationStore().get({ conversationId });
+  const executionMetrics = executionMetricsForSession(conversation, sessionId);
   return materializeAgentTurnSessionRecord(
     parsed,
     piProjection,
@@ -528,8 +538,8 @@ async function materializeStoredAgentTurnSessionRecord(
         parsed.historyVersion === currentHistoryVersion),
     {
       channelName: conversation?.channelName,
-      cumulativeDurationMs: conversation?.executionMetrics?.durationMs,
-      cumulativeUsage: conversation?.executionMetrics?.usage,
+      cumulativeDurationMs: executionMetrics?.durationMs,
+      cumulativeUsage: executionMetrics?.usage,
     },
   );
 }
@@ -772,6 +782,10 @@ export async function upsertAgentTurnSessionRecord(args: {
   ).get({
     conversationId: args.conversationId,
   });
+  const executionMetrics = executionMetricsForSession(
+    conversation,
+    args.sessionId,
+  );
   const existingDispatchId =
     existingRecord?.dispatchId ??
     (
@@ -853,11 +867,8 @@ export async function upsertAgentTurnSessionRecord(args: {
     runtimeMetadata: {
       channelName: args.channelName ?? conversation?.channelName,
       cumulativeDurationMs:
-        args.cumulativeDurationMs ??
-        conversation?.executionMetrics?.durationMs ??
-        0,
-      cumulativeUsage:
-        args.cumulativeUsage ?? conversation?.executionMetrics?.usage,
+        args.cumulativeDurationMs ?? executionMetrics?.durationMs ?? 0,
+      cumulativeUsage: args.cumulativeUsage ?? executionMetrics?.usage,
       loadedSkillNames: args.loadedSkillNames,
       modelId: args.modelId,
       reasoningLevel: args.reasoningLevel,
@@ -933,6 +944,10 @@ export async function recordAgentTurnSessionSummary(args: {
   const conversation = await conversationStore.get({
     conversationId: args.conversationId,
   });
+  const executionMetrics = executionMetricsForSession(
+    conversation,
+    args.sessionId,
+  );
   const priorSummary = (
     await listAgentTurnSessionSummariesForConversation(args.conversationId)
   ).find((summary) => summary.sessionId === args.sessionId);
@@ -980,11 +995,8 @@ export async function recordAgentTurnSessionSummary(args: {
       ...summary,
       channelName: args.channelName ?? conversation?.channelName,
       cumulativeDurationMs:
-        args.cumulativeDurationMs ??
-        conversation?.executionMetrics?.durationMs ??
-        0,
-      cumulativeUsage:
-        args.cumulativeUsage ?? conversation?.executionMetrics?.usage,
+        args.cumulativeDurationMs ?? executionMetrics?.durationMs ?? 0,
+      cumulativeUsage: args.cumulativeUsage ?? executionMetrics?.usage,
       startedAtMs: stored?.startedAtMs ?? args.startedAtMs ?? nowMs,
     },
   });

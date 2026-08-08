@@ -265,6 +265,38 @@ describe("persistAuthPauseSessionRecord", () => {
     });
   });
 
+  it("does not inherit metrics from a prior session", async () => {
+    const { getConversationStore } = await import("@/chat/db");
+    const { recordAgentTurnSessionSummary, upsertAgentTurnSessionRecord } =
+      await import("@/chat/state/turn-session");
+    const conversationStore = getConversationStore();
+    const conversationId = "local:metrics-session-scope";
+
+    await recordAgentTurnSessionSummary({
+      conversationId,
+      cumulativeDurationMs: 1_500,
+      cumulativeUsage: { inputTokens: 7 },
+      sessionId: "turn-first",
+      sliceId: 1,
+      state: "completed",
+    });
+    await upsertAgentTurnSessionRecord({
+      conversationId,
+      modelId: "test/model",
+      piMessages: [userMessage("second")],
+      sessionId: "turn-second",
+      sliceId: 1,
+      state: "running",
+    });
+
+    await expect(
+      conversationStore.get({ conversationId }),
+    ).resolves.toMatchObject({
+      execution: { runId: "turn-second" },
+      executionMetrics: { durationMs: 0 },
+    });
+  });
+
   it("records Slack turn activity without replacing confirmed visibility", async () => {
     vi.useFakeTimers({ now: 10_000 });
     const { upsertAgentTurnSessionRecord } =
