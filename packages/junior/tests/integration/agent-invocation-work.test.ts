@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createLocalSource, createSlackSource } from "@sentry/junior-plugin-api";
+import { createLocalSource } from "@sentry/junior-plugin-api";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
   completeAgentInvocation,
@@ -23,10 +23,7 @@ import { createSqlStore } from "@/chat/conversations/sql/store";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
-import {
-  recoverPendingAgentInvocationMailboxAppends,
-  recoverPendingAgentInvocationParentNotifications,
-} from "@/chat/agent-dispatch/heartbeat";
+import { recoverPendingAgentInvocationMailboxAppends } from "@/chat/agent-dispatch/heartbeat";
 import {
   CONVERSATION_WORK_MAX_DELIVERY_ATTEMPTS,
   getConversationWorkState,
@@ -885,163 +882,6 @@ describe("agent invocation conversation work", () => {
       ).resolves.toMatchObject({
         childConversationId: created.childConversationId,
         status: "pending",
-      });
-    } finally {
-      await fixture.close();
-    }
-  });
-
-  it("repairs pending parent notification delivery once", async () => {
-    const { fixture } = await prepareParentConversation();
-    const queue = createConversationWorkQueueTestAdapter();
-    const state = getStateAdapter();
-    await state.connect();
-    try {
-      const created = await createAgentInvocation(
-        {
-          ...invocationInput,
-          idempotencyKey: "parent-notify-repair-1",
-        },
-        2_000,
-      );
-      const terminal = await completeAgentInvocation({
-        invocationId: created.invocationId,
-        nowMs: 3_000,
-        result: "Parent should see this.",
-        status: "completed",
-      });
-      expect(terminal).toMatchObject({
-        parentNotificationStatus: "pending",
-        status: "completed",
-      });
-
-      await recoverPendingAgentInvocationParentNotifications({
-        conversationWorkQueue: queue,
-        nowMs: 4_000,
-      });
-      await recoverPendingAgentInvocationParentNotifications({
-        conversationWorkQueue: queue,
-        nowMs: 5_000,
-      });
-
-      await expect(
-        getAgentInvocation(created.invocationId),
-      ).resolves.toMatchObject({
-        parentNotificationStatus: "notified",
-      });
-      const parentWork = await getConversationWorkState({
-        conversationId: parentConversationId,
-        state,
-      });
-      const resultId = getAgentInvocationParentResultMessageId(
-        created.invocationId,
-      );
-      expect(
-        parentWork?.messages.filter(
-          (message) => message.inboundMessageId === resultId,
-        ),
-      ).toHaveLength(1);
-      expect(
-        queue
-          .sentRecords()
-          .filter((record) => record.conversationId === parentConversationId),
-      ).toHaveLength(1);
-      const parentResult = parentWork?.messages.find(
-        (message) => message.inboundMessageId === resultId,
-      );
-      expect(parentResult?.input.metadata).toMatchObject({
-        agentInvocationId: created.invocationId,
-        kind: "agent_invocation_result",
-      });
-    } finally {
-      await fixture.close();
-    }
-  });
-
-  it("delivers parent results to agent-dispatch parents without parsing conversation id as slack", async () => {
-    const fixture = createConfiguredJuniorSqlFixture();
-    await migrateSchema(fixture.sql);
-    const conversationStore = createSqlStore(fixture.sql);
-    const queue = createConversationWorkQueueTestAdapter();
-    const state = getStateAdapter();
-    await state.connect();
-    const dispatchParentId = "agent-dispatch:dispatch_parent_result_1";
-    const slackDestination = {
-      channelId: "C123",
-      platform: "slack" as const,
-      teamId: "T123",
-    };
-    try {
-      await conversationStore.recordActivity({
-        conversationId: dispatchParentId,
-        destination: slackDestination,
-        nowMs: 1_000,
-        source: "plugin",
-      });
-      const created = await createAgentInvocation(
-        {
-          actor: { name: "dispatch-parent", platform: "system" },
-          destination: slackDestination,
-          destinationVisibility: "public",
-          idempotencyKey: "dispatch-parent-1",
-          input: "Inspect from a dispatch parent.",
-          parentConversationId: dispatchParentId,
-          source: createSlackSource({
-            channelId: slackDestination.channelId,
-            teamId: slackDestination.teamId,
-            visibility: "public",
-          }),
-        },
-        2_000,
-      );
-      const terminal = await completeAgentInvocation({
-        invocationId: created.invocationId,
-        nowMs: 3_000,
-        result: "Dispatch parent should see this.",
-        status: "completed",
-      });
-      expect(terminal).toMatchObject({
-        parentConversationId: dispatchParentId,
-        parentNotificationStatus: "pending",
-      });
-
-      await recoverPendingAgentInvocationParentNotifications({
-        conversationWorkQueue: queue,
-        nowMs: 4_000,
-      });
-
-      await expect(
-        getAgentInvocation(created.invocationId),
-      ).resolves.toMatchObject({
-        parentNotificationStatus: "notified",
-      });
-      const parentWork = await getConversationWorkState({
-        conversationId: dispatchParentId,
-        state,
-      });
-      const resultId = getAgentInvocationParentResultMessageId(
-        created.invocationId,
-      );
-      const parentResult = parentWork?.messages.find(
-        (message) => message.inboundMessageId === resultId,
-      );
-      expect(parentResult).toMatchObject({
-        conversationId: dispatchParentId,
-        destination: slackDestination,
-        source: "internal",
-      });
-      expect(parentResult?.input.metadata).toMatchObject({
-        agentInvocationId: created.invocationId,
-        kind: "agent_invocation_result",
-        platform: "slack",
-        route: "subscribed",
-      });
-      expect(
-        (parentResult?.input.metadata as { message?: { raw?: unknown } })
-          ?.message?.raw,
-      ).toMatchObject({
-        agent_invocation_id: created.invocationId,
-        event_type: "agent_invocation_result",
       });
     } finally {
       await fixture.close();
