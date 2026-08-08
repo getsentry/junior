@@ -28,6 +28,10 @@ import {
   type InboundMessage,
 } from "@/chat/task-execution/store";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import {
+  deliverReplyTo,
+  requireReplyDestination,
+} from "@/chat/task-execution/reply-delivery";
 import type {
   ConversationWorkerContext,
   ConversationWorkerResult,
@@ -135,6 +139,7 @@ export function buildAgentDispatchInboundMessage(
       },
     },
     receivedAtMs: nowMs,
+    replyDelivery: deliverReplyTo(dispatch.destination),
     source: "plugin",
   };
 }
@@ -426,14 +431,17 @@ export function createAgentDispatchConversationWorker(
         `Dispatch ${dispatch.id} belongs to ${expectedConversationId}, not ${context.conversationId}`,
       );
     }
+    const replyDestination = requireReplyDestination(
+      context.replyDelivery,
+      "Agent dispatch",
+    );
     if (
-      !context.destination ||
-      context.destination.platform !== dispatch.destination.platform ||
-      context.destination.teamId !== dispatch.destination.teamId ||
-      context.destination.channelId !== dispatch.destination.channelId
+      replyDestination.platform !== dispatch.destination.platform ||
+      replyDestination.teamId !== dispatch.destination.teamId ||
+      replyDestination.channelId !== dispatch.destination.channelId
     ) {
       throw new Error(
-        `Dispatch ${dispatch.id} destination does not match its conversation lease`,
+        `Dispatch ${dispatch.id} reply delivery does not match its conversation lease`,
       );
     }
 

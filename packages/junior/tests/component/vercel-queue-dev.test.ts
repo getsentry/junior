@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
+import { deliverReplyTo } from "@/chat/task-execution/reply-delivery";
 
 const originalNodeEnv = process.env.NODE_ENV;
 const originalQueueTopic = process.env.JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC;
@@ -289,6 +290,11 @@ describe("registerVercelConversationWorkDevConsumer", () => {
           platform: "slack",
           teamId: "T123",
         },
+        replyDelivery: deliverReplyTo({
+          channelId: "C123",
+          platform: "slack",
+          teamId: "T123",
+        }),
         source: "slack",
         createdAtMs: 1_000,
         receivedAtMs: 1_100,
@@ -310,10 +316,13 @@ describe("registerVercelConversationWorkDevConsumer", () => {
     expect(run).toHaveBeenCalledOnce();
     expect(run).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        destination: {
-          channelId: "C123",
-          platform: "slack",
-          teamId: "T123",
+        replyDelivery: {
+          type: "destination",
+          destination: {
+            channelId: "C123",
+            platform: "slack",
+            teamId: "T123",
+          },
         },
       }),
     );

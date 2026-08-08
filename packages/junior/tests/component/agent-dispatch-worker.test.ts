@@ -15,6 +15,7 @@ import {
 } from "@/chat/agent-dispatch/work";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
+import { deliverReplyTo } from "@/chat/task-execution/reply-delivery";
 
 vi.hoisted(() => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
@@ -59,10 +60,12 @@ function createContext(
       drain: vi.fn(async () => []),
       isFinalAttempt: false,
       messages: [message],
+      replyDelivery: deliverReplyTo(destination),
     },
     checkIn: vi.fn(async () => true),
     conversationId: message.conversationId,
     destination,
+    replyDelivery: deliverReplyTo(destination),
     shouldYield: () => false,
     ...overrides,
   };
@@ -87,11 +90,11 @@ describe("agent dispatch worker contract", () => {
     {
       label: "destination",
       overrides: {
-        destination: {
-          platform: "slack" as const,
+        replyDelivery: deliverReplyTo({
+          platform: "slack",
           teamId: "T123",
           channelId: "C999",
-        },
+        }),
       },
     },
   ])("rejects a mismatched $label lease", async ({ overrides }) => {
@@ -106,7 +109,7 @@ describe("agent dispatch worker contract", () => {
     const { context } = createContext(dispatch, overrides);
 
     await expect(worker(context, dispatch.id)).rejects.toThrow(
-      /belongs to|destination does not match/,
+      /belongs to|reply delivery does not match/,
     );
     expect(runTurn).not.toHaveBeenCalled();
   });

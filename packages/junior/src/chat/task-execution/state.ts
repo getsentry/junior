@@ -16,6 +16,12 @@ import { getChatConfig } from "@/chat/config";
 import { parseDestination, sameDestination } from "@/chat/destination";
 import { parseStoredSlackActor, type StoredSlackActor } from "@/chat/actor";
 import {
+  deliverReplyTo,
+  replyDeliverySchema,
+  sameReplyDelivery,
+  type ReplyDelivery,
+} from "@/chat/task-execution/reply-delivery";
+import {
   getDefaultRedisStateAdapterFor,
   getStateAdapter,
 } from "@/chat/state/adapter";
@@ -114,6 +120,7 @@ export const inboundMessageSchema = z
     injectedAtMs: z.number().finite().optional(),
     input: agentInputSchema,
     receivedAtMs: z.number().finite(),
+    replyDelivery: replyDeliverySchema,
     source: inboundMessageSourceSchema,
   })
   .strict();
@@ -136,6 +143,7 @@ export interface ConversationExecution {
   lease?: Lease;
   pendingCount: number;
   pendingMessages: InboundMessage[];
+  replyDelivery?: ReplyDelivery;
   runId?: string;
   status: ExecutionStatus;
   updatedAtMs?: number;
@@ -330,13 +338,26 @@ function normalizeMessage(
   schemaVersion: 1 | 2,
 ): InboundMessage | undefined {
   // TODO(v0.110.0): Remove schema-v1 mailbox migration after old records expire.
-  const candidate =
-    schemaVersion === 1 && isRecord(value) && value.delivery === undefined
-      ? {
-          ...value,
-          delivery: "defer",
-        }
-      : value;
+  let candidate = value;
+  if (isRecord(candidate) && candidate.replyDelivery === undefined) {
+    const destination = parseDestination(candidate.destination);
+    if (destination) {
+      candidate = {
+        ...candidate,
+        replyDelivery: deliverReplyTo(destination),
+      };
+    }
+  }
+  if (
+    schemaVersion === 1 &&
+    isRecord(candidate) &&
+    candidate.delivery === undefined
+  ) {
+    candidate = {
+      ...candidate,
+      delivery: "defer",
+    };
+  }
   const parsed = inboundMessageSchema.safeParse(candidate);
   return parsed.success ? parsed.data : undefined;
 }
@@ -419,6 +440,13 @@ function normalizeExecution(
     : [];
 
   const lease = normalizeLease(value.lease);
+  const replyDelivery =
+    value.replyDelivery === undefined
+      ? undefined
+      : replyDeliverySchema.safeParse(value.replyDelivery);
+  if (replyDelivery && !replyDelivery.success) {
+    return undefined;
+  }
   const normalizedStatus =
     status === "idle" && lease
       ? "running"
@@ -434,6 +462,7 @@ function normalizeExecution(
     ]),
     pendingCount: pendingMessages.length,
     pendingMessages,
+    ...(replyDelivery?.success ? { replyDelivery: replyDelivery.data } : {}),
     lease,
     lastCheckpointAtMs: toOptionalNumber(value.lastCheckpointAtMs),
     lastEnqueuedAtMs: toOptionalNumber(value.lastEnqueuedAtMs),
@@ -1029,6 +1058,19 @@ function assertSameOptionalConversationDestination(args: {
   );
 }
 
+function assertSameReplyDelivery(args: {
+  conversationId: string;
+  current: ReplyDelivery | undefined;
+  next: ReplyDelivery;
+}): void {
+  if (!args.current || sameReplyDelivery(args.current, args.next)) {
+    return;
+  }
+  throw new Error(
+    `Conversation reply delivery changed for ${args.conversationId}`,
+  );
+}
+
 function conversationWorkState(
   conversation: Conversation,
 ): ConversationWorkState {
@@ -1148,11 +1190,13 @@ export async function appendInboundMessage(args: {
       }
 
       const status =
-        current.execution.lease && current.execution.status === "running"
-          ? "running"
-          : current.execution.lease
-            ? "awaiting_resume"
-            : "pending";
+        current.execution.status === "awaiting_resume"
+          ? "awaiting_resume"
+          : current.execution.lease && current.execution.status === "running"
+            ? "running"
+            : current.execution.lease
+              ? "awaiting_resume"
+              : "pending";
       const next: Conversation = {
         ...current,
         destination: current.destination ?? args.message.destination,
@@ -1642,6 +1686,7 @@ export async function requestConversationContinuation(args: {
   destination?: Destination;
   leaseToken: string;
   nowMs?: number;
+  replyDelivery: ReplyDelivery;
   state?: StateAdapter;
 }): Promise<boolean> {
   const nowMs = args.nowMs ?? now();
@@ -1655,6 +1700,15 @@ export async function requestConversationContinuation(args: {
       current: current.destination,
       next: args.destination,
     });
+    // A paused turn keeps its delivery until it finishes. After resume starts
+    // (status is running again), a later pause may choose different delivery.
+    if (current.execution.status === "awaiting_resume") {
+      assertSameReplyDelivery({
+        conversationId: args.conversationId,
+        current: current.execution.replyDelivery,
+        next: args.replyDelivery,
+      });
+    }
     await writeConversation(
       state,
       lock,
@@ -1662,6 +1716,7 @@ export async function requestConversationContinuation(args: {
         current,
         {
           ...current.execution,
+          replyDelivery: args.replyDelivery,
           status: "awaiting_resume",
         },
         nowMs,
@@ -1688,6 +1743,8 @@ export async function beginConversationResume(args: {
     ) {
       return false;
     }
+    // Keep replyDelivery until the resumed turn completes or dead-letters. If
+    // the worker dies after this write, lease recovery still knows how to reply.
     await writeConversation(
       state,
       lock,
@@ -1811,7 +1868,7 @@ export async function completeConversationWork(args: {
             runnable || args.madeProgress === false
               ? current.execution.retryCount
               : 0,
-          runId: runnable ? current.execution.runId : undefined,
+          replyDelivery: needsRun ? current.execution.replyDelivery : undefined,          runId: runnable ? current.execution.runId : undefined,
         },
         nowMs,
       ),
@@ -1944,6 +2001,7 @@ export async function deadLetterAttempt(args: {
         {
           ...current.execution,
           lease: undefined,
+          replyDelivery: undefined,
           status: runnable ? "pending" : "failed",
           runId: runnable ? current.execution.runId : undefined,
         },

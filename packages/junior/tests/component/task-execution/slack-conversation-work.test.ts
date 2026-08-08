@@ -19,6 +19,7 @@ import {
   startConversationWork,
 } from "@/chat/task-execution/store";
 import { processConversationWork } from "@/chat/task-execution/worker";
+import { deliverReplyTo } from "@/chat/task-execution/reply-delivery";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import {
   buildSlackInboundMessage,
@@ -275,6 +276,7 @@ describe("Slack conversation work execution", () => {
       destination: SLACK_DESTINATION,
       inboundMessageId: "malformed-slack-metadata",
       delivery: "defer" as const,
+      replyDelivery: deliverReplyTo(SLACK_DESTINATION),
       source: "slack" as const,
       createdAtMs: 1_000,
       receivedAtMs: 1_100,
@@ -346,14 +348,14 @@ describe("Slack conversation work execution", () => {
         attempt: {
           ack: async () => {},
           conversationId: CONVERSATION_ID,
-          destination: SLACK_DESTINATION,
           drain: async () => [],
           isFinalAttempt: false,
           messages: [malformed],
+          replyDelivery: deliverReplyTo(SLACK_DESTINATION),
         },
         checkIn: async () => true,
         conversationId: CONVERSATION_ID,
-        destination: SLACK_DESTINATION,
+        replyDelivery: deliverReplyTo(SLACK_DESTINATION),
         shouldYield: () => false,
       }),
     ).rejects.toThrow(

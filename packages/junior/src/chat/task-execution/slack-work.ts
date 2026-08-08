@@ -42,6 +42,10 @@ import {
   createSlackDestination,
   requireSlackDestination,
 } from "@/chat/destination";
+import {
+  deliverReplyTo,
+  requireReplyDestination,
+} from "@/chat/task-execution/reply-delivery";
 import { stripLeadingSteeringOverride } from "@/chat/slack/message-control";
 import { botConfig, type CrossActorMidRunMode } from "@/chat/config";
 
@@ -581,6 +585,7 @@ export function createSlackResourceEventInboundMessage(
     destination,
     inboundMessageId: `resource-event:${input.subscription.id}:${input.event.eventKey}`,
     delivery: "defer",
+    replyDelivery: deliverReplyTo(destination),
     source: "resource_event",
     receivedAtMs: Date.now(),
     input: {
@@ -756,7 +761,10 @@ export function createSlackConversationWorker(
     });
     if (records.length === 0) {
       const destination = requireSlackDestination(
-        context.destination,
+        requireReplyDestination(
+          context.replyDelivery,
+          "Slack continuation recovery",
+        ),
         "Slack continuation recovery",
       );
       await runWithSlackInstallation({
@@ -797,7 +805,10 @@ export function createSlackConversationWorker(
           restoreMessage({ adapter, record }),
         );
         const destination = requireSlackDestination(
-          context.destination,
+          requireReplyDestination(
+            context.replyDelivery,
+            "Slack conversation work",
+          ),
           "Slack conversation work",
         );
         await bindSlackActorIdentities({
@@ -955,5 +966,6 @@ export function buildSlackInboundMessage(args: {
         message: args.message.toJSON(),
       } satisfies SlackConversationMessageMetadata,
     },
+    replyDelivery: deliverReplyTo(destination),
   };
 }

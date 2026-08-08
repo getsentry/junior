@@ -3,6 +3,11 @@ import type { Destination } from "@sentry/junior-plugin-api";
 import { getChatConfig } from "@/chat/config";
 import { logException, logInfo, logWarn, withLogContext } from "@/chat/logging";
 import type { ConversationStore } from "@/chat/conversations/store";
+import {
+  deliverReplyTo,
+  sameReplyDelivery,
+  type ReplyDelivery,
+} from "@/chat/task-execution/reply-delivery";
 import { isProviderRetryError } from "@/chat/services/provider-error";
 import {
   ConversationQueueMessageRejectedError,
@@ -41,6 +46,7 @@ export interface ConversationWorkerContext {
   checkIn(): Promise<boolean>;
   conversationId: string;
   destination?: Destination;
+  replyDelivery: ReplyDelivery;
   shouldYield(): boolean;
 }
 
@@ -53,6 +59,7 @@ export interface InboxAttempt {
   ): Promise<InboundMessage[]>;
   isFinalAttempt: boolean;
   messages: InboundMessage[];
+  replyDelivery: ReplyDelivery;
 }
 
 export interface ConversationWorkerResult {
@@ -92,7 +99,9 @@ function selectContiguousActorBatch(
     return [];
   }
   const nextActorIndex = messages.findIndex(
-    (message) => message.input.authorId !== first.input.authorId,
+    (message) =>
+      message.input.authorId !== first.input.authorId ||
+      !sameReplyDelivery(message.replyDelivery, first.replyDelivery),
   );
   return messages.slice(
     0,
@@ -100,11 +109,27 @@ function selectContiguousActorBatch(
   );
 }
 
+function activeReplyDelivery(
+  work: ConversationWorkState,
+): ReplyDelivery | undefined {
+  if (work.execution.replyDelivery) {
+    return work.execution.replyDelivery;
+  }
+  return work.destination ? deliverReplyTo(work.destination) : undefined;
+}
+
 /** Prioritize interrupts while keeping each attempt scoped to one actor. */
 function selectAttemptMessages(work: ConversationWorkState): InboundMessage[] {
   const messages = work.messages;
+  const activeDelivery =
+    work.execution.status === "awaiting_resume"
+      ? activeReplyDelivery(work)
+      : undefined;
   const interrupts = messages.filter(
-    (message) => message.delivery === "interrupt",
+    (message) =>
+      message.delivery === "interrupt" &&
+      (!activeDelivery ||
+        sameReplyDelivery(message.replyDelivery, activeDelivery)),
   );
   if (interrupts.length > 0) {
     return selectContiguousActorBatch(interrupts);
@@ -128,6 +153,7 @@ async function requestLostLeaseRecovery(args: {
   leaseToken: string;
   nowMs: number;
   options: ProcessConversationWorkOptions;
+  replyDelivery: ReplyDelivery;
 }): Promise<void> {
   const before = await getConversationWorkState({
     conversationId: args.conversationId,
@@ -163,6 +189,7 @@ async function requestLostLeaseRecovery(args: {
     leaseToken: args.leaseToken,
     conversationStore: args.options.conversationStore,
     nowMs: args.nowMs,
+    replyDelivery: args.replyDelivery,
     state: args.options.state,
   });
   if (!resumeRequested) {
@@ -327,6 +354,17 @@ async function processConversationWorkInContext(
     return { status: "no_work" };
   }
   const destination = initial.destination;
+  let replyDelivery =
+    selectAttemptMessages(initial)[0]?.replyDelivery ??
+    activeReplyDelivery(initial) ??
+    (destination ? deliverReplyTo(destination) : undefined);
+  if (!replyDelivery) {
+    throw new ConversationQueueMessageRejectedError(
+      "invalid_record",
+      `Conversation work is missing reply delivery for ${conversationId}`,
+      { conversationId },
+    );
+  }
 
   const lease = await startConversationWork({
     conversationId,
@@ -399,6 +437,7 @@ async function processConversationWorkInContext(
         const candidates = messages.filter(
           (message) =>
             message.delivery === "interrupt" &&
+            sameReplyDelivery(message.replyDelivery, replyDelivery) &&
             (attemptSelectedMessageIds.has(message.inboundMessageId) ||
               !attemptStartMessageIds.has(message.inboundMessageId)),
         );
@@ -477,12 +516,17 @@ async function processConversationWorkInContext(
           leaseToken: lease.leaseToken,
           nowMs: now(options),
           options,
+          replyDelivery,
         });
         return { status: "lost_lease" };
       }
 
       const resumePending = leasedWork.execution.status === "awaiting_resume";
       const attemptMessages = selectAttemptMessages(leasedWork);
+      replyDelivery =
+        attemptMessages[0]?.replyDelivery ??
+        leasedWork.execution.replyDelivery ??
+        replyDelivery;
       attemptStartMessageIds = new Set(
         leasedWork.messages.map((message) => message.inboundMessageId),
       );
@@ -506,10 +550,11 @@ async function processConversationWorkInContext(
           markLeaseLost();
           await requestLostLeaseRecovery({
             conversationId,
-            destination,
+          destination,
             leaseToken: lease.leaseToken,
             nowMs: now(options),
             options,
+            replyDelivery,
           });
           return { status: "lost_lease" };
         }
@@ -545,9 +590,11 @@ async function processConversationWorkInContext(
             isFinalAttempt(message),
           ),
           messages: attemptMessages,
+          replyDelivery,
         },
         conversationId,
         destination,
+        replyDelivery,
         shouldYield,
         checkIn,
       };
@@ -561,6 +608,7 @@ async function processConversationWorkInContext(
           leaseToken: lease.leaseToken,
           nowMs: now(options),
           options,
+          replyDelivery,
         });
         return { status: "lost_lease" };
       }
@@ -571,6 +619,7 @@ async function processConversationWorkInContext(
           leaseToken: lease.leaseToken,
           nowMs: now(options),
           options,
+          replyDelivery,
         });
         return { status: "lost_lease" };
       }
@@ -581,6 +630,7 @@ async function processConversationWorkInContext(
           leaseToken: lease.leaseToken,
           conversationStore: options.conversationStore,
           nowMs: now(options),
+          replyDelivery,
           state: options.state,
         });
         if (!resumeRequested) {
@@ -786,6 +836,7 @@ async function processConversationWorkInContext(
           leaseToken: lease.leaseToken,
           conversationStore: options.conversationStore,
           nowMs: errorNowMs,
+          replyDelivery,
           state: options.state,
         });
         if (resumeRequested) {

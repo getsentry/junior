@@ -7,6 +7,7 @@ import {
 import { createOrGetDispatch } from "@/chat/agent-dispatch/store";
 import { buildAgentDispatchInboundMessage } from "@/chat/agent-dispatch/work";
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
+import { deliverReplyTo } from "@/chat/task-execution/reply-delivery";
 import { createSlackRuntime } from "@/chat/app/factory";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import type { CredentialSubject } from "@/chat/credentials/context";
@@ -99,10 +100,12 @@ export function createAgentDispatchWorkerContext(
       drain: vi.fn(async () => []),
       isFinalAttempt: false,
       messages: [message],
+      replyDelivery: deliverReplyTo(agentDispatchTestDestination),
     },
     checkIn: vi.fn(async () => true),
     conversationId: message.conversationId,
     destination: agentDispatchTestDestination,
+    replyDelivery: deliverReplyTo(agentDispatchTestDestination),
     shouldYield: () => false,
     ...overrides,
   };

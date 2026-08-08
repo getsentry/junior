@@ -525,9 +525,11 @@ describe("agent invocation conversation work", () => {
           drain: vi.fn(),
           isFinalAttempt: false,
           messages: [],
+          replyDelivery: { type: "conversation" as const },
         },
         checkIn: vi.fn(),
         conversationId: created.childConversationId,
+        replyDelivery: { type: "conversation" as const },
         shouldYield: () => false,
       } satisfies ConversationWorkerContext;
 
@@ -807,10 +809,12 @@ describe("agent invocation conversation work", () => {
           drain: vi.fn(),
           isFinalAttempt: true,
           messages: [buildAgentInvocationInboundMessage(created)],
+          replyDelivery: { type: "conversation" as const },
         },
         checkIn: vi.fn(),
         conversationId: created.childConversationId,
         destination,
+        replyDelivery: { type: "conversation" as const },
         shouldYield: () => false,
       } satisfies ConversationWorkerContext;
 

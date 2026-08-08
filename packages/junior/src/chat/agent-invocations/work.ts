@@ -89,6 +89,8 @@ export function buildAgentInvocationInboundMessage(
       },
     },
     receivedAtMs: nowMs,
+    // Destinationless child work stays in the conversation transcript.
+    replyDelivery: { type: "conversation" },
     source: "internal",
   };
 }

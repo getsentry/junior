@@ -412,10 +412,11 @@ export async function ackMessages(args: {
 /** Mark the leased conversation as needing another queue-delivered slice. */
 export async function requestConversationContinuation(args: {
   conversationId: string;
-  destination: InboundMessage["destination"];
+  destination?: InboundMessage["destination"];
   leaseToken: string;
   conversationStore?: ConversationStore;
   nowMs?: number;
+  replyDelivery: InboundMessage["replyDelivery"];
   state?: StateAdapter;
 }) {
   const result = await workState.requestConversationContinuation(args);

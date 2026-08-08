@@ -10,10 +10,17 @@ the completed result.
 
 - A conversation mailbox contains normalized pending work with a durable
   delivery mode: `interrupt` or `defer`.
+- Each mailbox entry carries explicit reply delivery. Current Slack work
+  delivers to a provider destination; dashboard work may later keep delivery
+  in the conversation without changing the conversation's Location.
+- A paused turn stores reply delivery on execution until the turn completes or
+  dead-letters. Resume and lease-expiry recovery keep that choice so a later
+  worker can finish the same reply path.
 - A queue payload identifies the conversation to wake; persisted conversation
-  work owns delivery. Provider conversations own their destination, while
-  destinationless child work resolves bounded execution authority from its
-  durable agent invocation.
+  work owns Location association and reply delivery separately.
+  Provider conversations own their destination, while destinationless
+  child work resolves bounded execution authority from its durable
+  agent invocation.
 - A lease grants one worker temporary execution ownership.
 - Dispatch projection updates take a short dispatch lock only while the
   conversation lease is already held. They never wait for conversation work,
@@ -22,8 +29,9 @@ the completed result.
   slow work from abandoned work.
 - Delivery state prevents a completed turn from being posted twice.
 
-Schema-v1 mailbox entries migrate to deferred delivery. Schema-v2 entries
-require a valid delivery value and reject invalid pending work.
+Schema-v1 mailbox entries migrate to deferred delivery. Older mailbox entries
+without explicit reply delivery inherit destination delivery. Current entries
+require valid mailbox and reply delivery values and reject invalid pending work.
 
 `state.ts`, `store.ts`, and their runtime schemas define the persisted shapes.
 

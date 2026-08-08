@@ -7,7 +7,9 @@ import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
 import {
   appendAndEnqueueInboundMessage,
   appendInboundMessage,
+  beginConversationResume,
   checkInConversationWork,
+  clearExpiredConversationLease,
   CONVERSATION_ACTIVE_INDEX_KEY,
   CONVERSATION_BY_ACTIVITY_INDEX_KEY,
   completeConversationWork,
@@ -15,6 +17,7 @@ import {
   CONVERSATION_WORK_MAX_DELIVERY_ATTEMPTS,
   CONVERSATION_WORK_MAX_RETRIES,
   countPendingConversationMessages,
+  deadLetterAttempt,
   drainConversationMailbox,
   getConversationWorkState,
   listActiveConversationIds,
@@ -36,6 +39,10 @@ import {
   processConversationWork,
 } from "@/chat/task-execution/worker";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
+import {
+  deliverReplyTo,
+  requireReplyDestination,
+} from "@/chat/task-execution/reply-delivery";
 import { createVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { closeDb } from "@/chat/db";
 import type { ConversationStore } from "@/chat/conversations/store";
@@ -822,7 +829,9 @@ describe("conversation work execution", () => {
     const records: EmittedLogRecord[] = [];
     const unregister = registerLogRecordSink((record) => records.push(record));
     const run = vi.fn(async (context) => {
-      expect(context.destination).toEqual(SLACK_DESTINATION);
+      expect(
+        requireReplyDestination(context.replyDelivery, "test worker"),
+      ).toEqual(SLACK_DESTINATION);
       await context.attempt.ack();
       return { status: "completed" as const };
     });
@@ -872,6 +881,7 @@ describe("conversation work execution", () => {
         destination: OTHER_SLACK_DESTINATION,
         leaseToken: lease.leaseToken,
         nowMs: 3_000,
+        replyDelivery: deliverReplyTo(SLACK_DESTINATION),
       }),
     ).rejects.toThrow("Conversation destination changed");
     await expect(
@@ -880,6 +890,7 @@ describe("conversation work execution", () => {
         destination: undefined,
         leaseToken: lease.leaseToken,
         nowMs: 3_000,
+        replyDelivery: deliverReplyTo(SLACK_DESTINATION),
       }),
     ).rejects.toThrow("Conversation destination changed");
     await expect(
@@ -887,6 +898,291 @@ describe("conversation work execution", () => {
     ).resolves.toMatchObject({
       destination: SLACK_DESTINATION,
     });
+  });
+
+  it("rejects continuation requests that change reply delivery", async () => {
+    await requestConversationWork({
+      conversationId: CONVERSATION_ID,
+      destination: SLACK_DESTINATION,
+      nowMs: 1_000,
+    });
+    const lease = await startConversationWork({
+      conversationId: CONVERSATION_ID,
+      nowMs: 2_000,
+    });
+    expect(lease.status).toBe("acquired");
+    if (lease.status !== "acquired") {
+      return;
+    }
+
+    await expect(
+      requestConversationContinuation({
+        conversationId: CONVERSATION_ID,
+        destination: SLACK_DESTINATION,
+        leaseToken: lease.leaseToken,
+        nowMs: 3_000,
+        replyDelivery: deliverReplyTo(SLACK_DESTINATION),
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      requestConversationContinuation({
+        conversationId: CONVERSATION_ID,
+        destination: SLACK_DESTINATION,
+        leaseToken: lease.leaseToken,
+        nowMs: 4_000,
+        replyDelivery: deliverReplyTo(OTHER_SLACK_DESTINATION),
+      }),
+    ).rejects.toThrow("Conversation reply delivery changed");
+    await expect(
+      requestConversationContinuation({
+        conversationId: CONVERSATION_ID,
+        destination: undefined,
+        leaseToken: lease.leaseToken,
+        nowMs: 3_000,
+        replyDelivery: deliverReplyTo(SLACK_DESTINATION),
+      }),
+    ).rejects.toThrow("Conversation destination changed");
+    await expect(
+      getConversationWorkState({ conversationId: CONVERSATION_ID }),
+    ).resolves.toMatchObject({
+      destination: SLACK_DESTINATION,
+      execution: {
+        replyDelivery: deliverReplyTo(SLACK_DESTINATION),
+      },
+    });
+  });
+
+  it("allows new reply delivery after a paused turn resumes", async () => {
+    await requestConversationWork({
+      conversationId: CONVERSATION_ID,
+      destination: SLACK_DESTINATION,
+      nowMs: 1_000,
+    });
+    const lease = await startConversationWork({
+      conversationId: CONVERSATION_ID,
+      nowMs: 2_000,
+    });
+    expect(lease.status).toBe("acquired");
+    if (lease.status !== "acquired") {
+      return;
+    }
+    await requestConversationContinuation({
+      conversationId: CONVERSATION_ID,
+        destination: SLACK_DESTINATION,
+      leaseToken: lease.leaseToken,
+      nowMs: 3_000,
+      replyDelivery: deliverReplyTo(SLACK_DESTINATION),
+    });
+
+    await expect(
+      beginConversationResume({
+        conversationId: CONVERSATION_ID,
+        leaseToken: lease.leaseToken,
+        nowMs: 4_000,
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      getConversationWorkState({ conversationId: CONVERSATION_ID }),
+    ).resolves.toMatchObject({
+      execution: {
+        replyDelivery: deliverReplyTo(SLACK_DESTINATION),
+        status: "running",
+      },
+    });
+    await expect(
+      requestConversationContinuation({
+        conversationId: CONVERSATION_ID,
+        destination: SLACK_DESTINATION,
+        leaseToken: lease.leaseToken,
+        nowMs: 5_000,
+        replyDelivery: { type: "conversation" },
+      }),
+    ).resolves.toBe(true);
+  });
+
+  it("keeps paused reply delivery across lease expiry recovery", async () => {
+    await requestConversationWork({
+      conversationId: CONVERSATION_ID,
+      destination: SLACK_DESTINATION,
+      nowMs: 1_000,
+    });
+    const lease = await startConversationWork({
+      conversationId: CONVERSATION_ID,
+      nowMs: 2_000,
+    });
+    expect(lease.status).toBe("acquired");
+    if (lease.status !== "acquired") {
+      return;
+    }
+    await requestConversationContinuation({
+      conversationId: CONVERSATION_ID,
+        destination: SLACK_DESTINATION,
+      leaseToken: lease.leaseToken,
+      nowMs: 3_000,
+      replyDelivery: { type: "conversation" },
+    });
+    await expect(
+      beginConversationResume({
+        conversationId: CONVERSATION_ID,
+        leaseToken: lease.leaseToken,
+        nowMs: 4_000,
+      }),
+    ).resolves.toBe(true);
+
+    await expect(
+      clearExpiredConversationLease({
+        conversationId: CONVERSATION_ID,
+        nowMs: 4_000 + CONVERSATION_WORK_LEASE_TTL_MS,
+      }),
+    ).resolves.toBe("requeued");
+
+    const work = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+    });
+    expect(work?.lease).toBeUndefined();
+    expect(work).toMatchObject({
+      execution: {
+        replyDelivery: { type: "conversation" },
+        status: "awaiting_resume",
+      },
+    });
+
+    const attempts: string[] = [];
+    await expect(
+      processConversationWork(conversationQueueMessage(), {
+        queue: createConversationWorkQueueTestAdapter(),
+        run: async (context) => {
+          attempts.push(context.replyDelivery.type);
+          await context.attempt.ack();
+          return { status: "completed" };
+        },
+      }),
+    ).resolves.toEqual({ status: "completed" });
+    expect(attempts).toEqual(["conversation"]);
+  });
+
+  it("clears reply delivery when a paused turn is dead-lettered", async () => {
+    await requestConversationWork({
+      conversationId: CONVERSATION_ID,
+      destination: SLACK_DESTINATION,
+      nowMs: 1_000,
+    });
+    const lease = await startConversationWork({
+      conversationId: CONVERSATION_ID,
+      nowMs: 2_000,
+    });
+    expect(lease.status).toBe("acquired");
+    if (lease.status !== "acquired") {
+      return;
+    }
+    await requestConversationContinuation({
+      conversationId: CONVERSATION_ID,
+        destination: SLACK_DESTINATION,
+      leaseToken: lease.leaseToken,
+      nowMs: 3_000,
+      replyDelivery: deliverReplyTo(SLACK_DESTINATION),
+    });
+    await appendInboundMessage({
+      message: inboundMessage("m1", {
+        replyDelivery: { type: "conversation" },
+      }),
+      nowMs: 4_000,
+    });
+
+    await expect(
+      deadLetterAttempt({
+        conversationId: CONVERSATION_ID,
+        leaseToken: lease.leaseToken,
+        nowMs: 5_000,
+      }),
+    ).resolves.toBe("pending");
+    const work = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+    });
+    expect(work?.execution.status).toBe("pending");
+    expect(work?.execution.replyDelivery).toBeUndefined();
+  });
+
+  it("runs different reply delivery in separate attempts", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const deliveries: string[] = [];
+    const drained: string[] = [];
+    await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
+
+    await expect(
+      processConversationWork(conversationQueueMessage(), {
+        queue,
+        run: async (context) => {
+          deliveries.push(context.replyDelivery.type);
+          if (deliveries.length === 1) {
+            await appendInboundMessage({
+              message: inboundMessage("m2", {
+                createdAtMs: 2_000,
+                receivedAtMs: 2_100,
+                replyDelivery: { type: "conversation" },
+              }),
+              nowMs: 2_100,
+            });
+            await context.attempt.drain(async (messages) => {
+              drained.push(
+                ...messages.map((message) => message.inboundMessageId),
+              );
+            });
+          }
+          await context.attempt.ack();
+          return { status: "completed" };
+        },
+      }),
+    ).resolves.toEqual({ status: "completed" });
+
+    expect(deliveries).toEqual(["destination", "conversation"]);
+    expect(drained).toEqual(["m1"]);
+  });
+
+  it("resumes a turn before work with different reply delivery", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
+
+    await expect(
+      processConversationWork(conversationQueueMessage(), {
+        queue,
+        run: async (context) => {
+          await context.attempt.ack();
+          return { status: "yielded" };
+        },
+      }),
+    ).resolves.toEqual({ status: "yielded" });
+
+    await appendInboundMessage({
+      message: inboundMessage("m2", {
+        createdAtMs: 2_000,
+        receivedAtMs: 2_100,
+        replyDelivery: { type: "conversation" },
+      }),
+      nowMs: 2_100,
+    });
+
+    const attempts: Array<{ messages: string[]; replyDelivery: string }> = [];
+    await expect(
+      processConversationWork(conversationQueueMessage(), {
+        queue,
+        run: async (context) => {
+          attempts.push({
+            messages: context.attempt.messages.map(
+              (message) => message.inboundMessageId,
+            ),
+            replyDelivery: context.replyDelivery.type,
+          });
+          await context.attempt.ack();
+          return { status: "completed" };
+        },
+      }),
+    ).resolves.toEqual({ status: "completed" });
+
+    expect(attempts).toEqual([
+      { messages: [], replyDelivery: "destination" },
+      { messages: ["m2"], replyDelivery: "conversation" },
+    ]);
   });
 
   it("preserves a requested turn resume when completion races with new work", async () => {
@@ -905,9 +1201,10 @@ describe("conversation work execution", () => {
     }
     await requestConversationContinuation({
       conversationId: CONVERSATION_ID,
-      destination: SLACK_DESTINATION,
+        destination: SLACK_DESTINATION,
       leaseToken: lease.leaseToken,
       nowMs: 3_000,
+      replyDelivery: deliverReplyTo(SLACK_DESTINATION),
     });
 
     await expect(
@@ -945,7 +1242,10 @@ describe("conversation work execution", () => {
             currentNowMs = 2_000;
             await requestConversationWork({
               conversationId: context.conversationId,
-              destination: context.destination,
+              destination: requireReplyDestination(
+                context.replyDelivery,
+                "test worker",
+              ),
               nowMs: currentNowMs,
             });
           }
@@ -982,8 +1282,10 @@ describe("conversation work execution", () => {
             await scheduleAgentContinue(
               {
                 conversationId: context.conversationId,
-                destination: context.destination ?? SLACK_DESTINATION,
-                expectedVersion: 2,
+                destination: requireReplyDestination(
+                  context.replyDelivery,
+                  "test worker",
+                ),                expectedVersion: 2,
                 sessionId: "turn-1",
               },
               { queue, nowMs: currentNowMs },
@@ -1022,8 +1324,10 @@ describe("conversation work execution", () => {
             await scheduleAgentContinue(
               {
                 conversationId: context.conversationId,
-                destination: context.destination ?? SLACK_DESTINATION,
-                expectedVersion: 2,
+                destination: requireReplyDestination(
+                  context.replyDelivery,
+                  "test worker",
+                ),                expectedVersion: 2,
                 sessionId: "turn-1",
               },
               { queue, nowMs: currentNowMs },
@@ -1071,8 +1375,10 @@ describe("conversation work execution", () => {
           await scheduleAgentContinue(
             {
               conversationId: context.conversationId,
-              destination: context.destination ?? SLACK_DESTINATION,
-              expectedVersion: 2,
+              destination: requireReplyDestination(
+                context.replyDelivery,
+                "test worker",
+              ),              expectedVersion: 2,
               sessionId: "turn-1",
             },
             { queue, nowMs: currentNowMs },
@@ -1186,8 +1492,10 @@ describe("conversation work execution", () => {
           await scheduleAgentContinue(
             {
               conversationId: context.conversationId,
-              destination: context.destination ?? SLACK_DESTINATION,
-              expectedVersion: 2,
+              destination: requireReplyDestination(
+                context.replyDelivery,
+                "test worker",
+              ),              expectedVersion: 2,
               sessionId: "turn-1",
             },
             { queue, nowMs: currentNowMs },
@@ -2093,8 +2401,10 @@ describe("conversation work execution", () => {
           await scheduleAgentContinue(
             {
               conversationId: context.conversationId,
-              destination: context.destination ?? SLACK_DESTINATION,
-              expectedVersion: 2,
+              destination: requireReplyDestination(
+                context.replyDelivery,
+                "test worker",
+              ),              expectedVersion: 2,
               sessionId: "turn-1",
             },
             { queue, nowMs: currentNowMs },

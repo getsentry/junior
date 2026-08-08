@@ -8,6 +8,7 @@ import type { ConversationStore } from "@/chat/conversations/store";
 import type { PiMessage } from "@/chat/pi/messages";
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 import { buildAgentsInstructionsMessage } from "@/chat/repository-instructions";
+import { deliverReplyTo } from "@/chat/task-execution/reply-delivery";
 
 const ORIGINAL_ENV = { ...process.env };
 const SLACK_DESTINATION = {
@@ -388,6 +389,7 @@ describe("persistAuthPauseSessionRecord", () => {
           },
           receivedAtMs: 9_000,
           delivery: "defer",
+          replyDelivery: deliverReplyTo(SLACK_DESTINATION),
           source: "slack",
         },
         nowMs: 9_000,

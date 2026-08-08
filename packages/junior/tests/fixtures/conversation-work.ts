@@ -9,6 +9,7 @@ import {
   CONVERSATION_BY_ACTIVITY_INDEX_KEY,
   type InboundMessage,
 } from "@/chat/task-execution/store";
+import { deliverReplyTo } from "@/chat/task-execution/reply-delivery";
 import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import { createSlackWebhookTestClient } from "./slack/webhook-client";
@@ -198,6 +199,7 @@ export function inboundMessage(
     inboundMessageId,
     destination: SLACK_DESTINATION,
     delivery: "interrupt",
+    replyDelivery: deliverReplyTo(SLACK_DESTINATION),
     source: "slack",
     createdAtMs: 1_000,
     receivedAtMs: 1_100,
