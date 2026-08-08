@@ -249,7 +249,6 @@ describe("plugin heartbeat", () => {
     const staleNowMs = TEST_NOW_MS - 3 * 60 * 1000;
     vi.setSystemTime(staleNowMs);
     await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
       conversationId,
       sessionId,
       sliceId: 2,
@@ -309,7 +308,6 @@ describe("plugin heartbeat", () => {
     const staleNowMs = TEST_NOW_MS - 3 * 60 * 1000;
     vi.setSystemTime(staleNowMs);
     await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
       conversationId,
       sessionId,
       sliceId: 1,
@@ -369,7 +367,6 @@ describe("plugin heartbeat", () => {
     const staleNowMs = TEST_NOW_MS - 3 * 60 * 1000;
     vi.setSystemTime(staleNowMs);
     await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
       conversationId,
       sessionId,
       sliceId: 2,
@@ -411,7 +408,6 @@ describe("plugin heartbeat", () => {
     const staleNowMs = TEST_NOW_MS - 3 * 60 * 1000;
     vi.setSystemTime(staleNowMs);
     await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
       conversationId,
       sessionId,
       sliceId: 2,

@@ -172,7 +172,6 @@ describe("agent continuation scheduling", () => {
     const conversationId = "slack:C123:1712345.0003";
 
     await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
       conversationId,
       sessionId: "turn_msg_3",
       sliceId: 1,
@@ -204,7 +203,6 @@ describe("agent continuation scheduling", () => {
     const resumeTurn = vi.fn(async () => true);
 
     await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
       conversationId,
       sessionId: "turn_msg_5",
       sliceId: 2,
@@ -234,7 +232,6 @@ describe("agent continuation scheduling", () => {
     const sessionId = "turn_1712345_0004";
 
     await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
       conversationId,
       sessionId,
       sliceId: 2,

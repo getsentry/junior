@@ -795,7 +795,6 @@ describe("agent run continuation", () => {
     ]);
 
     await persistCompletedSessionRecord({
-      modelId: "test-model",
       conversationId: "conversation-1",
       sessionId: "turn-1",
       allMessages: reply.piMessages ?? [],
@@ -940,7 +939,6 @@ describe("agent run continuation", () => {
     // Simulate the destination boundary committing completion after
     // acceptance; generation itself does not commit provider delivery.
     await persistCompletedSessionRecord({
-      modelId: "test-model",
       conversationId: "slack:C123:1712345.0001",
       sessionId: "turn-steering",
       allMessages: reply.piMessages ?? [],
@@ -1181,7 +1179,6 @@ describe("agent run continuation", () => {
       },
     ] as PiMessage[];
     await turnSessionState.upsertAgentTurnSessionRecord({
-      modelId: "test/model",
       conversationId,
       sessionId: turnId,
       sliceId: 1,
@@ -1342,7 +1339,6 @@ describe("agent run continuation", () => {
       timestamp: 5,
     } satisfies PiMessage;
     await turnSessionState.upsertAgentTurnSessionRecord({
-      modelId: "test/model",
       conversationId,
       sessionId,
       sliceId: 1,

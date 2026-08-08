@@ -68,7 +68,6 @@ describe("agent continuation runner callbacks", () => {
     const conversationId = "slack:C123:1712345.0005";
     const sessionId = "turn_msg_5";
     const sessionRecord = await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
       conversationId,
       sessionId,
       sliceId: 2,
@@ -166,7 +165,6 @@ describe("agent continuation runner callbacks", () => {
     // Destination-only upsert leaves sessionSource unset so resume hard-fails
     // at the SQL routing boundary instead of rebuilding from redis/source.
     const sessionRecord = await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
       conversationId,
       sessionId,
       sliceId: 2,
@@ -251,7 +249,6 @@ describe("agent continuation runner callbacks", () => {
       visibility: "private",
     });
     const sessionRecord = await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
       conversationId,
       sessionId,
       sliceId: 2,
@@ -341,7 +338,6 @@ describe("agent continuation runner callbacks", () => {
     const conversationId = "slack:C123:1712345.0006";
     const sessionId = "turn_msg_6";
     const sessionRecord = await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
       conversationId,
       sessionId,
       sliceId: 2,

@@ -2,8 +2,6 @@ import type { StateAdapter } from "chat";
 import { z } from "zod";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { openConversationProjection } from "@/chat/conversations/projection";
-import { botConfig } from "@/chat/config";
-import { modelIdForProfile } from "@/chat/model-profile";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import { getConversationEventStore } from "@/chat/db";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
@@ -254,9 +252,6 @@ async function recoverRunningSession(
   if (!session || session.state !== "running") {
     return;
   }
-  const projection = await openConversationProjection({
-    conversationId: invocation.childConversationId,
-  });
   // Child invocation conversations are destinationless; routing lives on the
   // parent invocation record, not the turn-session projection.
   const parked = await persistYieldSessionRecord({
@@ -264,10 +259,8 @@ async function recoverRunningSession(
     currentSliceId: session.sliceId,
     errorMessage: "Recovered running agent invocation after worker loss",
     messages: session.piMessages,
-    modelId: modelIdForProfile(botConfig, projection.modelProfile),
-    // Execution actor and reasoning live on the parent invocation, not Redis.
+    // Execution actor lives on the parent invocation, not Redis.
     actor: invocation.actor,
-    reasoningLevel: invocation.reasoningLevel,
     sessionId: session.sessionId,
     surface: session.surface,
   });
@@ -521,9 +514,7 @@ export function createAgentInvocationWorker(options: {
           : {}),
         sessionId: turnId,
         allMessages: result.piMessages,
-        modelId: result.diagnostics.modelId,
         actor: invocation.actor,
-        reasoningLevel: result.diagnostics.reasoningLevel,
         source: invocation.source,
         surface: "internal",
       });

@@ -564,7 +564,6 @@ describe("bot handlers (integration)", () => {
               // Simulate agent-run durable input checkpoint: the session record
               // is running at the prompt boundary when generation finishes.
               await upsertAgentTurnSessionRecord({
-                modelId: "test/model",
                 conversationId,
                 sessionId,
                 sliceId: 1,
@@ -1257,7 +1256,6 @@ describe("bot handlers (integration)", () => {
       });
     });
     await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
       conversationId,
       sessionId: activeSessionId,
       sliceId: 1,
@@ -1319,7 +1317,6 @@ describe("bot handlers (integration)", () => {
     const activeSessionId = "turn_msg-original";
     const storedSource = createSlackSourceForTest("C9PARKEDLOG");
     await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
       conversationId,
       sessionId: activeSessionId,
       sliceId: 1,
@@ -1406,7 +1403,6 @@ describe("bot handlers (integration)", () => {
     const destination = slackDestination("C9PARKEDPART");
     const activeSessionId = "turn_msg-original";
     await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
       conversationId,
       sessionId: activeSessionId,
       sliceId: 1,
@@ -1463,7 +1459,6 @@ describe("bot handlers (integration)", () => {
     const destination = slackDestination("C9PARKEDAUTH");
     const activeSessionId = "turn_msg-original";
     await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
       conversationId,
       sessionId: activeSessionId,
       sliceId: 1,
@@ -1625,7 +1620,6 @@ describe("bot handlers (integration)", () => {
     const destination = slackDestination("C9PARKEDLOCK");
     const activeSessionId = "turn_msg-original";
     await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
       conversationId,
       sessionId: activeSessionId,
       sliceId: 1,
@@ -1875,7 +1869,6 @@ describe("bot handlers (integration)", () => {
       });
     });
     await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
       conversationId,
       sessionId: activeSessionId,
       sliceId: 1,

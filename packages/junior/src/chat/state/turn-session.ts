@@ -91,9 +91,6 @@ export interface AgentTurnSessionRecord {
   resultMessageId?: string;
   errorMessage?: string;
   lastProgressAtMs: number;
-  loadedSkillNames?: string[];
-  modelId?: string;
-  reasoningLevel?: string;
   piMessages: PiMessage[];
   /** Per-message provenance aligned one-to-one with `piMessages`. */
   piMessageProvenance: ConversationMessageProvenance[];
@@ -137,11 +134,8 @@ interface StoredAgentTurnSessionRecord extends Omit<
   | "channelName"
   | "cumulativeDurationMs"
   | "cumulativeUsage"
-  | "loadedSkillNames"
-  | "modelId"
   | "piMessages"
   | "piMessageProvenance"
-  | "reasoningLevel"
   | "turnStartMessageIndex"
 > {
   /**
@@ -370,19 +364,19 @@ async function recordConversationActivityMetadata(args: {
   });
 }
 
+/** SQL-backed conversation metrics attached when materializing a turn session. */
+interface ConversationRuntimeMetrics {
+  channelName?: string;
+  cumulativeDurationMs?: number;
+  cumulativeUsage?: AgentTurnUsage;
+}
+
 function materializeAgentTurnSessionRecord(
   stored: StoredAgentTurnSessionRecord,
   piProjection: ConversationMessageProjection,
   turnStartMessageIndex?: number,
   restoreVolatileContext = true,
-  runtimeMetadata?: {
-    channelName?: string;
-    cumulativeDurationMs?: number;
-    cumulativeUsage?: AgentTurnUsage;
-    loadedSkillNames?: string[];
-    modelId?: string;
-    reasoningLevel?: string;
-  },
+  runtimeMetrics?: ConversationRuntimeMetrics,
 ): AgentTurnSessionRecord {
   const restoredProjection =
     restoreVolatileContext &&
@@ -401,13 +395,10 @@ function materializeAgentTurnSessionRecord(
     piMessages: restoredProjection.messages,
     piMessageProvenance: restoredProjection.provenance,
     actors: instructionActors(piProjection.provenance),
-    cumulativeDurationMs: runtimeMetadata?.cumulativeDurationMs ?? 0,
+    cumulativeDurationMs: runtimeMetrics?.cumulativeDurationMs ?? 0,
     ...definedProps({
-      channelName: runtimeMetadata?.channelName,
-      cumulativeUsage: runtimeMetadata?.cumulativeUsage,
-      loadedSkillNames: runtimeMetadata?.loadedSkillNames,
-      modelId: runtimeMetadata?.modelId,
-      reasoningLevel: runtimeMetadata?.reasoningLevel,
+      channelName: runtimeMetrics?.channelName,
+      cumulativeUsage: runtimeMetrics?.cumulativeUsage,
       dispatchId: stored.dispatchId,
       dispatchOutcome: stored.dispatchOutcome,
       errorMessage: stored.errorMessage,
@@ -629,13 +620,11 @@ async function setStoredRecord(args: {
   piMessages: PiMessage[];
   piMessageProvenance: ConversationMessageProvenance[];
   record: StoredAgentTurnSessionRecord;
-  runtimeMetadata: {
+  /** SQL-backed channel/metrics written beside the Redis resume lease. */
+  runtimeMetrics: {
     channelName?: string;
     cumulativeDurationMs: number;
     cumulativeUsage?: AgentTurnUsage;
-    loadedSkillNames?: string[];
-    modelId?: string;
-    reasoningLevel?: string;
   };
   source?: Source;
   /** Per-record TTL (state-split). */
@@ -655,7 +644,7 @@ async function setStoredRecord(args: {
     destinationVisibility: args.destinationVisibility,
     nowMs: Date.now(),
     source: args.source,
-    summary: { ...storedRecord, ...args.runtimeMetadata },
+    summary: { ...storedRecord, ...args.runtimeMetrics },
   });
   await stateAdapter.set(
     agentTurnSessionKey(storedRecord.conversationId, storedRecord.sessionId),
@@ -676,7 +665,7 @@ async function setStoredRecord(args: {
     },
     args.turnStartMessageIndex,
     true,
-    args.runtimeMetadata,
+    args.runtimeMetrics,
   );
 }
 
@@ -701,14 +690,11 @@ async function updateAgentTurnSessionState(args: {
     piMessages: args.existing.piMessages,
     piMessageProvenance: args.existing.piMessageProvenance,
     ttlMs: agentTurnSessionRecordTtlMs(args.state),
-    runtimeMetadata: {
+    runtimeMetrics: {
       cumulativeDurationMs: args.existing.cumulativeDurationMs,
       ...definedProps({
         channelName: args.existing.channelName,
         cumulativeUsage: args.existing.cumulativeUsage,
-        loadedSkillNames: args.existing.loadedSkillNames,
-        modelId: args.existing.modelId,
-        reasoningLevel: args.existing.reasoningLevel,
       }),
     },
     ...definedProps({
@@ -753,8 +739,6 @@ export async function upsertAgentTurnSessionRecord(args: {
   destinationVisibility?: ConversationPrivacy;
   source?: Source;
   lastProgressAtMs?: number;
-  loadedSkillNames?: string[];
-  modelId: string;
   conversationStore?: ConversationStore;
   sessionId: string;
   sliceId: number;
@@ -765,7 +749,6 @@ export async function upsertAgentTurnSessionRecord(args: {
   trailingMessageProvenance?: ConversationMessageProvenance[];
   actor?: Actor;
   resumeReason?: AgentTurnResumeReason;
-  reasoningLevel?: string;
   errorMessage?: string;
   resumedFromSliceId?: number;
   traceId?: string;
@@ -862,16 +845,14 @@ export async function upsertAgentTurnSessionRecord(args: {
     piMessages: commit.messages,
     piMessageProvenance: commit.provenance,
     ttlMs,
-    // TODO(#1267): remove the temporary caller-to-SQL metadata write once the
-    // SQL-only turn-session readers have completed rollout.
-    runtimeMetadata: {
+    // Channel name and execution metrics are SQL conversation metadata, not
+    // Redis resume-lease fields. Write them here so dashboard/resume readers
+    // rebuild from the conversation row.
+    runtimeMetrics: {
       channelName: args.channelName ?? conversation?.channelName,
       cumulativeDurationMs:
         args.cumulativeDurationMs ?? executionMetrics?.durationMs ?? 0,
       cumulativeUsage: args.cumulativeUsage ?? executionMetrics?.usage,
-      loadedSkillNames: args.loadedSkillNames,
-      modelId: args.modelId,
-      reasoningLevel: args.reasoningLevel,
     },
     // Pass through only an explicit override so indexes stay on the resume window
     // by default even when the record takes a short terminal TTL.
@@ -922,12 +903,9 @@ export async function recordAgentTurnSessionSummary(args: {
   destinationVisibility?: ConversationPrivacy;
   source?: Source;
   lastProgressAtMs?: number;
-  loadedSkillNames?: string[];
-  modelId?: string;
   conversationStore?: ConversationStore;
   actor?: Actor;
   resumeReason?: AgentTurnResumeReason;
-  reasoningLevel?: string;
   sessionId: string;
   sliceId: number;
   startedAtMs?: number;

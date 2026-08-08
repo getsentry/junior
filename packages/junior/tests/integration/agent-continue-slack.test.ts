@@ -209,7 +209,6 @@ describe("agent continuation Slack integration", () => {
     });
     const sessionRecord =
       await turnSessionStoreModule.upsertAgentTurnSessionRecord({
-        modelId: "test/model",
         conversationId,
         sessionId,
         sliceId: 2,
@@ -378,7 +377,6 @@ describe("agent continuation Slack integration", () => {
     const sessionId = "turn_msg_8";
     const sessionRecord =
       await turnSessionStoreModule.upsertAgentTurnSessionRecord({
-        modelId: "test/model",
         conversationId,
         sessionId,
         sliceId: 2,
@@ -464,7 +462,6 @@ describe("agent continuation Slack integration", () => {
     const sessionId = "turn_msg_9";
     const sessionRecord =
       await turnSessionStoreModule.upsertAgentTurnSessionRecord({
-        modelId: "test/model",
         conversationId,
         sessionId,
         sliceId: 2,
@@ -635,7 +632,6 @@ describe("agent continuation Slack integration", () => {
     const sessionId = "turn_msg_2";
     const sessionRecord =
       await turnSessionStoreModule.upsertAgentTurnSessionRecord({
-        modelId: "test/model",
         conversationId,
         sessionId,
         sliceId: 5,
@@ -725,7 +721,6 @@ describe("agent continuation Slack integration", () => {
     const sessionId = "turn_msg_7";
     const sessionRecord =
       await turnSessionStoreModule.upsertAgentTurnSessionRecord({
-        modelId: "test/model",
         conversationId,
         sessionId,
         sliceId: 2,
@@ -806,7 +801,6 @@ describe("agent continuation Slack integration", () => {
     const storedSource = slackSource("1712345.0012");
     const sessionRecord =
       await turnSessionStoreModule.upsertAgentTurnSessionRecord({
-        modelId: "test/model",
         conversationId,
         sessionId,
         sliceId: 2,
@@ -883,7 +877,6 @@ describe("agent continuation Slack integration", () => {
     const sessionId = "turn_msg_10";
     const sessionRecord =
       await turnSessionStoreModule.upsertAgentTurnSessionRecord({
-        modelId: "test/model",
         conversationId,
         sessionId,
         sliceId: 2,
@@ -957,7 +950,6 @@ describe("agent continuation Slack integration", () => {
     const sessionId = "turn_msg_11";
     const sessionRecord =
       await turnSessionStoreModule.upsertAgentTurnSessionRecord({
-        modelId: "test/model",
         conversationId,
         sessionId,
         sliceId: 2,
@@ -1051,7 +1043,6 @@ describe("agent continuation Slack integration", () => {
     const sessionId = "turn_msg_6";
     const sessionRecord =
       await turnSessionStoreModule.upsertAgentTurnSessionRecord({
-        modelId: "test/model",
         conversationId,
         sessionId,
         sliceId: 2,
@@ -1159,7 +1150,6 @@ describe("agent continuation Slack integration", () => {
       });
     });
     await turnSessionStoreModule.upsertAgentTurnSessionRecord({
-      modelId: "test/model",
       conversationId,
       sessionId,
       sliceId: 1,
@@ -1277,7 +1267,6 @@ describe("agent continuation Slack integration", () => {
       state: "running",
       destination: SLACK_DESTINATION,
       source: slackSource("1712345.00081"),
-      modelId: "openai/gpt-5.5",
       piMessages: [
         {
           role: "user",
@@ -1302,8 +1291,8 @@ describe("agent continuation Slack integration", () => {
       createdAtMs: 1_000,
       data: {
         type: "handoff",
-        modelId: "test/model",
         modelProfile: "handoff",
+        modelId: "openai/gpt-5.6-sol",
         triggeringToolCallId: "recovered-handoff-call",
         replacementHistory: [
           {
@@ -1417,7 +1406,6 @@ describe("agent continuation Slack integration", () => {
     const conversationId = "slack:C123:1712345.0009";
     const sessionId = "turn_msg_9";
     await turnSessionStoreModule.upsertAgentTurnSessionRecord({
-      modelId: "test/model",
       conversationId,
       sessionId,
       sliceId: 1,
@@ -1517,7 +1505,6 @@ describe("agent continuation Slack integration", () => {
     const sessionId = "turn_msg_3";
     const sessionRecord =
       await turnSessionStoreModule.upsertAgentTurnSessionRecord({
-        modelId: "test/model",
         conversationId,
         sessionId,
         sliceId: 2,

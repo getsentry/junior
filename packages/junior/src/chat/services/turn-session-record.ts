@@ -47,9 +47,9 @@ function definedProps<T extends Record<string, unknown>>(
 
 /**
  * Shared optional fields carried across turn-session writes.
- * Callers resolve inheritance for skill/reasoning fields before calling.
  * Routing/identity fields are live-only for SQL dual-write — Redis no longer
  * stores destination/source/actor on the turn-session projection.
+ * Model/skills/reasoning stay on live turn route and diagnostics, not here.
  */
 interface TurnSessionWriteContext {
   actor?: Actor;
@@ -58,9 +58,6 @@ interface TurnSessionWriteContext {
   destination?: Destination;
   destinationVisibility?: ConversationPrivacy;
   dispatchId?: string;
-  loadedSkillNames?: string[];
-  modelId: string;
-  reasoningLevel?: string;
   sessionId: string;
   source?: Source;
   surface?: AgentTurnSurface;
@@ -78,9 +75,6 @@ function sessionWriteContext(
   | "destination"
   | "destinationVisibility"
   | "dispatchId"
-  | "loadedSkillNames"
-  | "modelId"
-  | "reasoningLevel"
   | "sessionId"
   | "source"
   | "surface"
@@ -89,7 +83,6 @@ function sessionWriteContext(
 > {
   return {
     conversationId: args.conversationId,
-    modelId: args.modelId,
     sessionId: args.sessionId,
     ...definedProps({
       // Live only: Redis no longer stores execution actor across resumes.
@@ -98,9 +91,6 @@ function sessionWriteContext(
       destination: args.destination,
       destinationVisibility: args.destinationVisibility,
       dispatchId: args.dispatchId ?? latest?.dispatchId,
-      // Caller-resolved: some paths inherit these, others stay caller-only.
-      loadedSkillNames: args.loadedSkillNames,
-      reasoningLevel: args.reasoningLevel,
       source: args.source,
       surface: args.surface ?? latest?.surface,
       traceId: getActiveTraceId() ?? latest?.traceId,
@@ -188,10 +178,7 @@ export async function persistRunningSessionRecord(args: {
   messages: PiMessage[];
   /** Provenance for trailing newly committed messages, such as steering. */
   trailingMessageProvenance?: ConversationMessageProvenance[];
-  loadedSkillNames?: string[];
-  modelId: string;
   actor?: Actor;
-  reasoningLevel?: string;
   surface?: AgentTurnSurface;
   turnContexts?: PluginTurnContext[];
   turnStartMessageIndex?: number;
@@ -205,7 +192,6 @@ export async function persistRunningSessionRecord(args: {
       args.conversationId,
       args.sessionId,
     );
-    // Running checkpoints keep caller-owned skill/reasoning values only.
     await upsertAgentTurnSessionRecord({
       ...sessionWriteContext(
         {
@@ -215,9 +201,6 @@ export async function persistRunningSessionRecord(args: {
           destination: args.destination,
           destinationVisibility: args.destinationVisibility,
           dispatchId: args.dispatchId,
-          loadedSkillNames: args.loadedSkillNames,
-          modelId: args.modelId,
-          reasoningLevel: args.reasoningLevel,
           sessionId: args.sessionId,
           source: args.source,
           surface: args.surface,
@@ -276,10 +259,7 @@ export async function persistCompletedSessionRecord(args: {
   /** Defaults to the latest stored slice when the deliverer does not know it. */
   sliceId?: number;
   allMessages: PiMessage[];
-  loadedSkillNames?: string[];
-  modelId: string;
   actor?: Actor;
-  reasoningLevel?: string;
   surface?: AgentTurnSurface;
   turnStartMessageIndex?: number;
 }): Promise<void> {
@@ -307,9 +287,6 @@ export async function persistCompletedSessionRecord(args: {
         destination: args.destination,
         destinationVisibility: args.destinationVisibility,
         dispatchId: args.dispatchId,
-        loadedSkillNames: args.loadedSkillNames,
-        modelId: args.modelId,
-        reasoningLevel: args.reasoningLevel,
         sessionId: args.sessionId,
         source: args.source,
         surface: args.surface,
@@ -351,11 +328,8 @@ export async function completeDeliveredTurn(args: {
   dispatchOutcome?: AgentDispatchOutcome;
   errorMessage?: string;
   durationMs?: number;
-  loadedSkillNames?: string[];
   messages: PiMessage[];
-  modelId: string;
   actor?: Actor;
-  reasoningLevel?: string;
   resultMessageId?: string;
   sessionId: string;
   sliceId: number;
@@ -379,10 +353,7 @@ export async function completeDeliveredTurn(args: {
     sessionId: args.sessionId,
     sliceId: args.sliceId,
     allMessages: args.messages,
-    loadedSkillNames: args.loadedSkillNames,
-    modelId: args.modelId,
     actor: args.actor,
-    reasoningLevel: args.reasoningLevel,
     surface: args.surface,
     turnStartMessageIndex: args.turnStartMessageIndex,
   });
@@ -404,11 +375,8 @@ export async function persistAuthPauseSessionRecord(args: {
   dispatchId?: string;
   source?: Source;
   messages: PiMessage[];
-  loadedSkillNames?: string[];
-  modelId: string;
   errorMessage: string;
   actor?: Actor;
-  reasoningLevel?: string;
   surface?: AgentTurnSurface;
 }): Promise<AgentTurnSessionRecord | undefined> {
   const nextSliceId = args.currentSliceId + 1;
@@ -433,10 +401,6 @@ export async function persistAuthPauseSessionRecord(args: {
           destination: args.destination,
           destinationVisibility: args.destinationVisibility,
           dispatchId: args.dispatchId,
-          // Auth-pause keeps caller-owned skill names only.
-          loadedSkillNames: args.loadedSkillNames,
-          modelId: args.modelId,
-          reasoningLevel: args.reasoningLevel,
           sessionId: args.sessionId,
           source: args.source,
           surface: args.surface,
@@ -486,11 +450,8 @@ interface ContinuationRecordInput {
   dispatchId?: string;
   source?: Source;
   messages: PiMessage[];
-  loadedSkillNames?: string[];
-  modelId: string;
   errorMessage: string;
   actor?: Actor;
-  reasoningLevel?: string;
   surface?: AgentTurnSurface;
 }
 
@@ -531,10 +492,6 @@ export async function persistContinuationSessionRecord(
           destination: args.destination,
           destinationVisibility: args.destinationVisibility,
           dispatchId: args.dispatchId,
-          // Continuation keeps caller-owned skill names only.
-          loadedSkillNames: args.loadedSkillNames,
-          modelId: args.modelId,
-          reasoningLevel: args.reasoningLevel,
           sessionId: args.sessionId,
           source: args.source,
           surface: args.surface,
@@ -597,11 +554,8 @@ export async function persistYieldSessionRecord(args: {
   dispatchId?: string;
   source?: Source;
   messages: PiMessage[];
-  loadedSkillNames?: string[];
-  modelId: string;
   errorMessage: string;
   actor?: Actor;
-  reasoningLevel?: string;
   surface?: AgentTurnSurface;
 }): Promise<AgentTurnSessionRecord | undefined> {
   try {
@@ -623,10 +577,6 @@ export async function persistYieldSessionRecord(args: {
           conversationId: args.conversationId,
           destination: args.destination,
           dispatchId: args.dispatchId,
-          // Yield keeps caller-owned skill names only.
-          loadedSkillNames: args.loadedSkillNames,
-          modelId: args.modelId,
-          reasoningLevel: args.reasoningLevel,
           sessionId: args.sessionId,
           source: args.source,
           surface: args.surface,

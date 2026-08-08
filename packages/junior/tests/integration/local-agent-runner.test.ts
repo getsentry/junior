@@ -151,7 +151,6 @@ async function persistRunningSessionForFakeReply(
   const conversationId = context.conversationId;
   const sessionId = context.turnId;
   await persistRunningSessionRecord({
-    modelId: "fake-local-agent",
     conversationId,
     destination: context.destination,
     actor:

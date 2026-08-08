@@ -5,7 +5,6 @@
  * drop stale callbacks before generation, while any started continuation must
  * durably record success, failure, auth pause, or another safe pause boundary.
  */
-import { botConfig } from "@/chat/config";
 import {
   buildTurnFailureResponse,
   logException,
@@ -18,10 +17,7 @@ import {
 } from "@/chat/runtime/slack-resume";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
-import {
-  loadProjection,
-  loadConversationProjection,
-} from "@/chat/conversations/projection";
+import { loadProjection } from "@/chat/conversations/projection";
 import {
   failAgentTurnSessionRecord,
   getAgentTurnSessionRecord,
@@ -86,7 +82,6 @@ import {
   type CredentialContext,
 } from "@/chat/credentials/context";
 import { sleep } from "@/chat/sleep";
-import { modelIdForProfile } from "@/chat/model-profile";
 import { latestReportedProgress } from "@/chat/runtime/report-progress";
 
 const AGENT_CONTINUE_LOCK_RETRY_DELAYS_MS = [250, 1_000, 2_000] as const;
@@ -736,12 +731,6 @@ async function recoverStrandedRunningSession(args: {
     return false;
   }
 
-  const recoveryProjection = await loadConversationProjection({
-    conversationId: args.conversationId,
-  });
-  const modelProfile = recoveryProjection.modelProfile;
-  const modelId = modelIdForProfile(botConfig, modelProfile);
-
   let routing: TurnSessionRouting;
   try {
     routing = await resolveTurnSessionRouting({
@@ -764,7 +753,6 @@ async function recoverStrandedRunningSession(args: {
     source: routing.source,
     messages: sessionRecord.piMessages,
     errorMessage: "Recovered running session after hard worker death",
-    modelId,
     surface: sessionRecord.surface,
   });
   if (!parked) {

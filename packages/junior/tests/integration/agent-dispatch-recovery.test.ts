@@ -73,7 +73,6 @@ describe("agent dispatch recovery", () => {
       conversationId,
       destination: dispatch.destination,
       dispatchId: dispatch.id,
-      modelId: "test/model",
       piMessages: [
         {
           role: "assistant",
@@ -327,7 +326,6 @@ describe("agent dispatch recovery", () => {
                 timestamp: dispatch.createdAtMs,
               },
             ],
-            modelId: "test-model",
             sessionId: request.turnId,
             source: dispatch.source,
             surface: "api",

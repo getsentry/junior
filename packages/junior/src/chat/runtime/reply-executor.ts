@@ -1576,7 +1576,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 conversationId,
                 durationMs: reply.diagnostics.durationMs,
                 usage: reply.diagnostics.usage,
-                reasoningLevel: reply.diagnostics.reasoningLevel,
                 destination,
                 destinationVisibility,
                 source,
@@ -1593,7 +1592,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   ? { resultMessageId: acceptedDeliveryId }
                   : {}),
                 messages: reply.piMessages,
-                modelId: reply.diagnostics.modelId,
                 actor: executionActor,
                 surface: options.execution?.surface ?? "slack",
                 dispatchId: options.execution?.dispatch?.id,

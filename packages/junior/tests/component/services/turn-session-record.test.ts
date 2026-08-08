@@ -102,7 +102,6 @@ describe("persistAuthPauseSessionRecord", () => {
     });
     await upsertAgentTurnSessionRecord({
       conversationId: "local:ttl-split:turn",
-      modelId: "test/model",
       piMessages: [runtimeContext],
       sessionId: "turn-ttl-split",
       sliceId: 1,
@@ -125,7 +124,6 @@ describe("persistAuthPauseSessionRecord", () => {
     appendToList.mockClear();
     await upsertAgentTurnSessionRecord({
       conversationId: "local:ttl-split:turn",
-      modelId: "test/model",
       piMessages: [runtimeContext],
       sessionId: "turn-ttl-split",
       sliceId: 1,
@@ -174,7 +172,6 @@ describe("persistAuthPauseSessionRecord", () => {
     ];
 
     await upsertAgentTurnSessionRecord({
-      modelId: "test-model",
       conversationId: "conversation-1",
       sessionId: "turn-1",
       sliceId: 1,
@@ -186,7 +183,6 @@ describe("persistAuthPauseSessionRecord", () => {
     });
 
     const authSessionRecord = await persistAuthPauseSessionRecord({
-      modelId: "test-model",
       conversationId: "conversation-1",
       sessionId: "turn-1",
       currentSliceId: 1,
@@ -235,10 +231,7 @@ describe("persistAuthPauseSessionRecord", () => {
       cumulativeDurationMs: 1_500,
       cumulativeUsage: usage,
       destination: SLACK_DESTINATION,
-      loadedSkillNames: ["github-code"],
-      modelId: "openai/gpt-5.6",
       piMessages: [userMessage("ship it")],
-      reasoningLevel: "high",
       sessionId: "turn-ops-bag",
       sliceId: 1,
       source: SLACK_SOURCE,
@@ -277,7 +270,6 @@ describe("persistAuthPauseSessionRecord", () => {
       conversationId,
       cumulativeDurationMs: 1_500,
       cumulativeUsage: { inputTokens: 7 },
-      modelId: "test/model",
       piMessages: [userMessage("metered turn")],
       sessionId,
       sliceId: 1,
@@ -308,7 +300,6 @@ describe("persistAuthPauseSessionRecord", () => {
     });
     await upsertAgentTurnSessionRecord({
       conversationId,
-      modelId: "test/model",
       piMessages: recovered!.piMessages,
       sessionId,
       sliceId: 2,
@@ -342,7 +333,6 @@ describe("persistAuthPauseSessionRecord", () => {
     });
     await upsertAgentTurnSessionRecord({
       conversationId,
-      modelId: "test/model",
       piMessages: [userMessage("second")],
       sessionId: "turn-second",
       sliceId: 1,
@@ -393,7 +383,6 @@ describe("persistAuthPauseSessionRecord", () => {
         nowMs: 9_000,
       });
       await upsertAgentTurnSessionRecord({
-        modelId: "test/model",
         channelName: "runtime-team",
         conversationId: "slack:C123:turn-activity",
         destination: SLACK_DESTINATION,
@@ -449,7 +438,6 @@ describe("persistAuthPauseSessionRecord", () => {
     };
 
     await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
       conversationId,
       conversationStore,
       destination: SLACK_DESTINATION,
@@ -562,7 +550,6 @@ describe("persistAuthPauseSessionRecord", () => {
 
     await expect(
       upsertAgentTurnSessionRecord({
-        modelId: "test/model",
         conversationId: "slack:C123:metadata-failure",
         conversationStore: failingConversationStore(),
         destination: SLACK_DESTINATION,
@@ -684,7 +671,6 @@ describe("persistAuthPauseSessionRecord", () => {
     } as PiMessage;
 
     await upsertAgentTurnSessionRecord({
-      modelId: "test-model",
       conversationId: "conversation-auth-complete",
       sessionId: "turn-auth-complete",
       sliceId: 1,
@@ -748,7 +734,6 @@ describe("persistAuthPauseSessionRecord", () => {
     };
 
     await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
       conversationId,
       sessionId,
       sliceId: 1,
@@ -810,7 +795,6 @@ describe("persistAuthPauseSessionRecord", () => {
     } as PiMessage;
 
     await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
       conversationId: "conversation-turn-scope",
       sessionId: "turn-scope",
       sliceId: 1,
@@ -825,7 +809,6 @@ describe("persistAuthPauseSessionRecord", () => {
       turnStartMessageIndex: 1,
     });
     await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
       conversationId: "conversation-turn-scope",
       sessionId: "turn-scope",
       sliceId: 2,
@@ -878,7 +861,6 @@ describe("persistAuthPauseSessionRecord", () => {
     const answer = assistantMessage("answer", 3);
 
     await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
       conversationId: "conversation-provenance",
       sessionId: "turn-provenance",
       sliceId: 1,
@@ -944,7 +926,6 @@ describe("persistAuthPauseSessionRecord", () => {
     } as PiMessage;
 
     await persistRunningSessionRecord({
-      modelId: "test/model",
       conversationId: "conversation-multi-actor",
       sessionId: "turn-multi-actor",
       sliceId: 1,
@@ -954,7 +935,6 @@ describe("persistAuthPauseSessionRecord", () => {
     // A second human steers the same run; their message commits as an
     // instruction attributed to bob, while Alice remains the bound run actor.
     await persistRunningSessionRecord({
-      modelId: "test/model",
       conversationId: "conversation-multi-actor",
       sessionId: "turn-multi-actor",
       sliceId: 2,
@@ -983,7 +963,6 @@ describe("persistAuthPauseSessionRecord", () => {
       await import("@/chat/state/turn-session");
 
     await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
       conversationId: "conversation-system-actor",
       sessionId: "turn-system-actor",
       sliceId: 1,
@@ -1006,7 +985,6 @@ describe("persistAuthPauseSessionRecord", () => {
       await import("@/chat/state/turn-session");
 
     await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
       conversationId: "conversation-1",
       sessionId: "turn-1",
       sliceId: 1,
@@ -1030,7 +1008,6 @@ describe("persistAuthPauseSessionRecord", () => {
 
     await persistContinuationSessionRecord({
       resumeReason: "timeout",
-      modelId: "test/model",
       conversationId: "conversation-1",
       sessionId: "turn-1",
       currentSliceId: 1,
@@ -1087,7 +1064,6 @@ describe("persistAuthPauseSessionRecord", () => {
     ];
 
     await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
       conversationId: "conversation-timeout-cap",
       sessionId: "turn-timeout-cap",
       sliceId: botConfig.maxSlicesPerTurn,
@@ -1100,7 +1076,6 @@ describe("persistAuthPauseSessionRecord", () => {
     await expect(
       persistContinuationSessionRecord({
         resumeReason: "timeout",
-        modelId: "test-model",
         conversationId: "conversation-timeout-cap",
         sessionId: "turn-timeout-cap",
         currentSliceId: botConfig.maxSlicesPerTurn,
@@ -1142,7 +1117,6 @@ describe("persistAuthPauseSessionRecord", () => {
     ];
 
     await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
       conversationId: "conversation-auth-tail",
       sessionId: "turn-auth-tail",
       sliceId: 1,
@@ -1151,7 +1125,6 @@ describe("persistAuthPauseSessionRecord", () => {
     });
 
     const authSessionRecord = await persistAuthPauseSessionRecord({
-      modelId: "test/model",
       conversationId: "conversation-auth-tail",
       sessionId: "turn-auth-tail",
       currentSliceId: 1,
@@ -1212,8 +1185,6 @@ describe("persistAuthPauseSessionRecord", () => {
       sessionId: "turn-auth-empty",
       currentSliceId: 1,
       messages: [],
-      modelId: "openai/gpt-5.5",
-      reasoningLevel: "high",
       errorMessage: "auth pause",
     });
 
@@ -1222,8 +1193,6 @@ describe("persistAuthPauseSessionRecord", () => {
       sessionId: "turn-auth-empty",
       state: "awaiting_resume",
       piMessages: [],
-      modelId: "openai/gpt-5.5",
-      reasoningLevel: "high",
       resumeReason: "auth",
     });
     await expect(
@@ -1239,7 +1208,6 @@ describe("persistAuthPauseSessionRecord", () => {
     await expect(
       persistContinuationSessionRecord({
         resumeReason: "timeout",
-        modelId: "test-model",
         conversationId: "conversation-timeout-empty",
         sessionId: "turn-timeout-empty",
         currentSliceId: 1,
@@ -1269,7 +1237,6 @@ describe("persistAuthPauseSessionRecord", () => {
 
     await expect(
       persistCompletedSessionRecord({
-        modelId: "test-model",
         conversationId: "conversation-1",
         sessionId: "turn-1",
         sliceId: 1,
@@ -1309,7 +1276,6 @@ describe("persistAuthPauseSessionRecord", () => {
       await import("@/chat/services/turn-session-record");
 
     await persistCompletedSessionRecord({
-      modelId: "test-model",
       conversationId: "conversation-1",
       sessionId: "turn-1",
       currentDurationMs: 500,
@@ -1334,7 +1300,6 @@ describe("persistAuthPauseSessionRecord", () => {
       await import("@/chat/state/turn-session");
 
     await persistCompletedSessionRecord({
-      modelId: "test-model",
       conversationId: "conversation-completed",
       sessionId: "turn-completed",
       sliceId: 1,
@@ -1352,7 +1317,6 @@ describe("persistAuthPauseSessionRecord", () => {
         } as PiMessage,
         assistantMessage("done", 2),
       ],
-      reasoningLevel: "high",
     });
 
     await expect(
@@ -1379,7 +1343,6 @@ describe("persistAuthPauseSessionRecord", () => {
       await import("@/chat/state/turn-session");
 
     await persistCompletedSessionRecord({
-      modelId: "test-model",
       conversationId: "agent-dispatch:dispatch_atomic",
       sessionId: "dispatch:dispatch_atomic",
       sliceId: 4,
@@ -1436,7 +1399,6 @@ describe("persistAuthPauseSessionRecord", () => {
 
     await expect(
       persistRunningSessionRecord({
-        modelId: "test-model",
         conversationId: "conversation-1",
         sessionId: "turn-1",
         sliceId: 1,
@@ -1446,7 +1408,6 @@ describe("persistAuthPauseSessionRecord", () => {
 
     await expect(
       persistRunningSessionRecord({
-        modelId: "test-model",
         conversationId: "conversation-1",
         sessionId: "turn-1",
         sliceId: 1,
@@ -1465,7 +1426,6 @@ describe("persistAuthPauseSessionRecord", () => {
 
     await expect(
       persistRunningSessionRecord({
-        modelId: "test-model",
         conversationId: "conversation-1",
         sessionId: "turn-1",
         sliceId: 1,
@@ -1496,7 +1456,6 @@ describe("persistAuthPauseSessionRecord", () => {
 
     await expect(
       persistRunningSessionRecord({
-        modelId: "test-model",
         conversationId: "conversation-storage-failure",
         sessionId: "turn-storage-failure",
         sliceId: 1,
@@ -1525,7 +1484,6 @@ describe("persistAuthPauseSessionRecord", () => {
     ];
 
     await persistRunningSessionRecord({
-      modelId: "test-model",
       conversationId: "conversation-1",
       sessionId: "turn-1",
       sliceId: 1,
@@ -1534,7 +1492,6 @@ describe("persistAuthPauseSessionRecord", () => {
 
     await persistContinuationSessionRecord({
       resumeReason: "timeout",
-      modelId: "test-model",
       conversationId: "conversation-1",
       sessionId: "turn-1",
       currentSliceId: 1,
@@ -1564,7 +1521,6 @@ describe("persistAuthPauseSessionRecord", () => {
     };
     const unsafeAssistant = assistantMessage("not committed", 2);
     await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
       conversationId: "conversation-branch",
       sessionId: "turn-branch",
       sliceId: 1,
@@ -1573,7 +1529,6 @@ describe("persistAuthPauseSessionRecord", () => {
     });
     await expect(
       upsertAgentTurnSessionRecord({
-        modelId: "test/model",
         conversationId: "conversation-branch",
         sessionId: "turn-branch",
         sliceId: 2,
@@ -1605,7 +1560,6 @@ describe("persistAuthPauseSessionRecord", () => {
     const newFollowup = assistantMessage("new followup", 3);
 
     const oldRecord = await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
       conversationId: "conversation-projection-pin",
       sessionId: "turn-old",
       sliceId: 1,
@@ -1632,7 +1586,6 @@ describe("persistAuthPauseSessionRecord", () => {
       },
     );
     await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
       conversationId: "conversation-projection-pin",
       sessionId: "turn-new",
       sliceId: 1,
@@ -1685,7 +1638,6 @@ describe("persistAuthPauseSessionRecord", () => {
     };
 
     await upsertAgentTurnSessionRecord({
-      modelId: "openai/gpt-5.5",
       conversationId,
       sessionId,
       sliceId: 1,
@@ -1748,7 +1700,6 @@ describe("persistAuthPauseSessionRecord", () => {
     };
 
     await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
       conversationId: "conversation-active-compaction-resume",
       sessionId: "turn-active-compaction-resume",
       sliceId: 1,
@@ -1788,7 +1739,6 @@ describe("persistAuthPauseSessionRecord", () => {
     const assistant = assistantMessage("continued after instructions", 4);
 
     await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
       conversationId: "conversation-agents-order-resume",
       sessionId: "turn-agents-order-resume",
       sliceId: 1,

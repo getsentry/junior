@@ -54,7 +54,6 @@ async function successfulRun(
     conversationId: request.conversationId,
     destination: request.routing.destination,
     messages: runningMessages,
-    modelId: "integration-agent",
     actor: request.routing.actor,
     sessionId: request.turnId,
     sliceId: 1,

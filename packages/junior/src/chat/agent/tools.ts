@@ -111,7 +111,6 @@ interface ToolWiringArgs {
   state: AgentRunState;
   supportsImageInput: () => boolean;
   surface: AgentTurnSurface;
-  syncLoadedSkillNamesForResume: () => void;
   toolCalls: string[];
   userInput: string;
 }
@@ -391,7 +390,6 @@ export async function wireAgentTools(
         );
         const effective = resolvedSkill ?? loadedSkill;
         upsertActiveSkill(args.activeSkills, effective);
-        args.syncLoadedSkillNamesForResume();
         if (await mcpToolManager.activateForSkill(effective)) {
           await args.recordConnectedMcpProvider(effective.pluginProvider!);
         }

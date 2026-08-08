@@ -200,7 +200,6 @@ describe("oauth callback integration", () => {
             destination: request.routing.destination,
             errorMessage: "eval-oauth authorization required",
             messages: [],
-            modelId: "fake-local-oauth",
             sessionId: request.turnId,
             source: request.routing.source,
             surface: request.routing.surface,
@@ -315,7 +314,6 @@ describe("oauth callback integration", () => {
     });
 
     await turnSessionStoreModule.upsertAgentTurnSessionRecord({
-      modelId: "test/model",
       conversationId,
       sessionId,
       sliceId: 2,
@@ -640,7 +638,6 @@ describe("oauth callback integration", () => {
     };
 
     await turnSessionStoreModule.upsertAgentTurnSessionRecord({
-      modelId: "test/model",
       conversationId,
       sessionId,
       sliceId: 2,
@@ -738,7 +735,6 @@ describe("oauth callback integration", () => {
     const newSessionId = "turn_msg_new_12";
 
     await turnSessionStoreModule.upsertAgentTurnSessionRecord({
-      modelId: "test/model",
       conversationId,
       sessionId: oldSessionId,
       sliceId: 2,
@@ -756,7 +752,6 @@ describe("oauth callback integration", () => {
       },
     });
     await turnSessionStoreModule.upsertAgentTurnSessionRecord({
-      modelId: "test/model",
       conversationId,
       sessionId: newSessionId,
       sliceId: 2,
@@ -865,7 +860,6 @@ describe("oauth callback integration", () => {
     const sessionId = "turn_msg_10";
 
     await turnSessionStoreModule.upsertAgentTurnSessionRecord({
-      modelId: "test/model",
       conversationId,
       sessionId,
       sliceId: 2,

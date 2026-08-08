@@ -30,9 +30,6 @@ describe("agent resume", () => {
     const resume = createResumeState({
       destination,
       durability: {},
-      getLoadedSkillNames: () => [],
-      getModelId: () => "test/model",
-      getReasoningLevel: () => undefined,
       recordActiveMcpProviders: async () => {
         throw new Error("provider metadata unavailable");
       },
