@@ -75,11 +75,9 @@ export async function withConversationMutationLock<T>(
 function now(): number {
   return Date.now();
 }
-
 function dateFromMs(ms: number): Date {
   return new Date(ms);
 }
-
 function msFromDate(
   value: Date | string | null | undefined,
 ): number | undefined {
@@ -229,12 +227,8 @@ function destinationUpsertFromDestination(args: {
   };
 }
 
-/** Map durable SQL free-text status into the runtime status. */
 function executionStatusFromValue(value: unknown): ConversationStatus {
-  // SQL still stores the historical label; runtime uses "paused".
-  if (value === "awaiting_resume" || value === "paused") {
-    return "paused";
-  }
+  if (value === "awaiting_resume" || value === "paused") return "paused";
   if (
     value === "failed" ||
     value === "idle" ||
@@ -245,11 +239,7 @@ function executionStatusFromValue(value: unknown): ConversationStatus {
   }
   throw new Error("Conversation record execution status is invalid");
 }
-
-/** Map runtime status into the durable SQL free-text value. */
 function executionStatusToSql(status: ConversationStatus): ConversationStatus {
-  // Durable free-text keeps the historical label. Cast is intentional: the
-  // column is text, and readers accept both labels.
   return (
     status === "paused" ? "awaiting_resume" : status
   ) as ConversationStatus;
@@ -260,10 +250,7 @@ function actorFromIdentityRow(
   identity: IdentityRow | null,
   userDisplayName: string | null,
 ): StoredSlackActor | undefined {
-  if (!identity) {
-    return undefined;
-  }
-  if (identity.provider !== "slack") {
+  if (!identity || identity.provider !== "slack") {
     return undefined;
   }
   const fullName = userDisplayName?.trim()

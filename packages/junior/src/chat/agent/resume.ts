@@ -190,7 +190,14 @@ export function createResumeState(args: ResumeStateArgs) {
         return false;
       }
       latestSafeBoundaryMessages = [...messages];
-      advancedPastResume = true;
+      // Same-boundary running writes must not disable no-progress fail-closed.
+      const persistedKey = boundaryKey(continuableMessages(messages, messages));
+      if (
+        resumedBoundaryKey.length === 0 ||
+        persistedKey !== resumedBoundaryKey
+      ) {
+        advancedPastResume = true;
+      }
       return true;
     },
     async requireDurableInputCheckpoint(

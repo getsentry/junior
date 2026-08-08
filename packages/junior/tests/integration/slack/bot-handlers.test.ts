@@ -452,7 +452,9 @@ describe("bot handlers (integration)", () => {
       },
     });
 
-    const thread = await createTestThread({ id: "slack:C0SKIP:1700000000.000" });
+    const thread = await createTestThread({
+      id: "slack:C0SKIP:1700000000.000",
+    });
 
     await slackRuntime.handleSubscribedMessage(
       thread,
@@ -898,7 +900,9 @@ describe("bot handlers (integration)", () => {
       },
     });
 
-    const thread = await createTestThread({ id: "slack:C0AUTH:1700000000.000" });
+    const thread = await createTestThread({
+      id: "slack:C0AUTH:1700000000.000",
+    });
     await expect(
       slackRuntime.handleNewMention(
         thread,
@@ -1059,7 +1063,7 @@ describe("bot handlers (integration)", () => {
     expect(scheduleAgentContinue).toHaveBeenCalledWith({
       conversationId,
       destination,
-      sessionId,
+      turnId: sessionId,
       expectedVersion: 3,
     });
     expect(thread.posts).toEqual([]);
@@ -1114,7 +1118,7 @@ describe("bot handlers (integration)", () => {
     expect(scheduleAgentContinue).toHaveBeenCalledWith({
       conversationId,
       destination,
-      sessionId,
+      turnId: sessionId,
       expectedVersion: 4,
     });
   });
@@ -1158,7 +1162,7 @@ describe("bot handlers (integration)", () => {
     expect(scheduleAgentContinue).toHaveBeenCalledWith({
       conversationId,
       destination,
-      sessionId,
+      turnId: sessionId,
       expectedVersion: 3,
     });
     expect(thread.posts).toEqual([]);
@@ -1213,7 +1217,7 @@ describe("bot handlers (integration)", () => {
 
     expect(getAwaitingAgentContinueRequest).toHaveBeenCalledWith({
       conversationId,
-      sessionId: activeSessionId,
+      turnId: activeSessionId,
     });
     expect(scheduleAgentContinue).toHaveBeenCalledWith({
       conversationId,
@@ -2228,7 +2232,9 @@ describe("bot handlers (integration)", () => {
       },
     });
 
-    const thread = await createTestThread({ id: "slack:C0STATUS:1700000000.000" });
+    const thread = await createTestThread({
+      id: "slack:C0STATUS:1700000000.000",
+    });
 
     await slackRuntime.handleNewMention(
       thread,
@@ -2453,7 +2459,9 @@ describe("bot handlers (integration)", () => {
       },
     });
 
-    const thread = await createTestThread({ id: "slack:D0TITLE:1700000000.000" });
+    const thread = await createTestThread({
+      id: "slack:D0TITLE:1700000000.000",
+    });
 
     await slackRuntime.handleNewMention(
       thread,
@@ -2516,7 +2524,9 @@ describe("bot handlers (integration)", () => {
       },
     });
 
-    const thread = await createTestThread({ id: "slack:D0TITLE4:1700000000.000" });
+    const thread = await createTestThread({
+      id: "slack:D0TITLE4:1700000000.000",
+    });
     const earlierMessage = createTestMessage({
       id: "msg-title4-earlier",
       threadId: "slack:D0TITLE4:1700000000.000",
@@ -2659,7 +2669,9 @@ describe("bot handlers (integration)", () => {
       },
     });
 
-    const thread = await createTestThread({ id: "slack:D0TITLE6:1700000000.000" });
+    const thread = await createTestThread({
+      id: "slack:D0TITLE6:1700000000.000",
+    });
     let settled = false;
     const turnPromise = slackRuntime
       .handleNewMention(
@@ -2743,7 +2755,9 @@ describe("bot handlers (integration)", () => {
       },
     });
 
-    const thread = await createTestThread({ id: "slack:D0TITLE7:1700000000.000" });
+    const thread = await createTestThread({
+      id: "slack:D0TITLE7:1700000000.000",
+    });
 
     await slackRuntime.handleNewMention(
       thread,
@@ -2799,7 +2813,9 @@ describe("bot handlers (integration)", () => {
       },
     });
 
-    const thread = await createTestThread({ id: "slack:D0TITLE2:1700000000.000" });
+    const thread = await createTestThread({
+      id: "slack:D0TITLE2:1700000000.000",
+    });
 
     await slackRuntime.handleNewMention(
       thread,
@@ -2881,7 +2897,9 @@ describe("bot handlers (integration)", () => {
       },
     });
 
-    const thread = await createTestThread({ id: "slack:D0TITLE3:1700000000.000" });
+    const thread = await createTestThread({
+      id: "slack:D0TITLE3:1700000000.000",
+    });
 
     await expect(
       slackRuntime.handleNewMention(
@@ -2944,7 +2962,9 @@ describe("bot handlers (integration)", () => {
       },
     });
 
-    const thread = await createTestThread({ id: "slack:D0TITLE7:1700000000.000" });
+    const thread = await createTestThread({
+      id: "slack:D0TITLE7:1700000000.000",
+    });
 
     await slackRuntime.handleNewMention(
       thread,
@@ -3186,7 +3206,9 @@ describe("bot handlers (integration)", () => {
       },
     });
 
-    const thread = await createTestThread({ id: "slack:C0MULTI:1700000000.000" });
+    const thread = await createTestThread({
+      id: "slack:C0MULTI:1700000000.000",
+    });
 
     await slackRuntime.handleNewMention(
       thread,

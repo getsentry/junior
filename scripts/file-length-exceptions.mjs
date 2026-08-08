@@ -50,8 +50,8 @@ export const fileLengthExceptions = {
     "Existing broad plugin registry suite; split by package behavior.",
   "packages/junior/tests/component/runtime/agent-run-mcp-progressive-loading.test.ts":
     "Existing broad MCP loading suite; split by behavior.",
-  "packages/junior/tests/component/services/turn-session-record.test.ts":
-    "Existing broad turn session record suite; split by behavior.",
+  "packages/junior/tests/component/task-execution/checkpoint.test.ts":
+    "Existing broad turn checkpoint suite; split by behavior.",
   "packages/junior/tests/component/task-execution/conversation-work.test.ts":
     "Existing broad conversation work suite; split by behavior.",
   "packages/junior/tests/component/task-execution/slack-conversation-work.test.ts":

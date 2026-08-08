@@ -4,11 +4,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { vi } from "vitest";
 import type { SlackAdapter } from "@chat-adapter/slack";
-import {
-  Message as ChatMessage,
-  ThreadImpl,
-  type Message,
-} from "chat";
+import { Message as ChatMessage, ThreadImpl, type Message } from "chat";
 import type {
   Destination,
   PluginRegistration,
@@ -61,7 +57,7 @@ import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { addAgentTurnUsage, type AgentTurnUsage } from "@/chat/usage";
 import { resumeAwaitingSlackContinuation } from "@/chat/runtime/agent-continue-runner";
-import { scheduleAgentContinue } from "@/chat/services/agent-continue";
+import { scheduleAgentContinue } from "@/chat/task-execution/continue";
 import { ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX } from "@/chat/services/context-compaction-marker";
 import { TURN_CONTEXT_TAG } from "@/chat/turn-context-tag";
 import {
@@ -1801,7 +1797,7 @@ function buildRuntimeServices(
               conversationId: runRequest.conversationId,
               sessionId: runRequest.turnId,
               sliceId: 1,
-              state: "awaiting_resume",
+              state: "paused",
               piMessages,
               modelId: standardModelId(botConfig),
               resumeReason: "yield",
@@ -1879,7 +1875,7 @@ function buildRuntimeServices(
               conversationId: runRequest.conversationId,
               sessionId: runRequest.turnId,
               sliceId: 2,
-              state: "awaiting_resume",
+              state: "paused",
               piMessages,
               modelId: "xai/grok-4.5",
               resumeReason: "timeout",
@@ -2064,7 +2060,9 @@ async function processEvents(args: {
   getSlackAdapter: () => FakeSlackAdapter;
   conversationWorkQueue: ConversationWorkQueueTestAdapter;
   slackRuntime: ReturnType<typeof createSlackRuntime>;
-  getThreadRecord: (fixture: EvalEventThreadFixture) => Promise<EvalThreadRecord>;
+  getThreadRecord: (
+    fixture: EvalEventThreadFixture,
+  ) => Promise<EvalThreadRecord>;
   findEvalThread: (threadId: string) => TestThread | undefined;
   observations: RuntimeObservations;
   readyQueueDeliveries: QueueDelivery[];
@@ -2229,11 +2227,7 @@ async function processEvents(args: {
         (event.message.is_mention ?? event.type === "new_mention")
           ? ("mention" as const)
           : ("subscribed" as const);
-      const message = toSlackMessage(
-        event,
-        thread.id,
-        Date.now() + index,
-      );
+      const message = toSlackMessage(event, thread.id, Date.now() + index);
       upsertThreadTranscriptMessage(transcript, message);
       const ingressThread = new ThreadImpl({
         adapter: getSlackAdapter() as unknown as SlackAdapter,

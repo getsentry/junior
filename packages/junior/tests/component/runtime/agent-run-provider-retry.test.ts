@@ -1122,7 +1122,7 @@ describe("agent run continuation", () => {
     ).resolves.toMatchObject({
       conversationId: "conversation-yield",
       destination: TEST_DESTINATION,
-      sessionId: "turn-yield",
+      turnId: "turn-yield",
       expectedVersion: sessionRecord?.version,
     });
   });
@@ -1301,7 +1301,7 @@ describe("agent run continuation", () => {
 
     expect(error).toBeInstanceOf(Error);
     expect((error as Error).message).toContain(
-      "Failed to persist cooperative yield continuation",
+      "Failed to persist cooperative yield",
     );
     await expect(
       turnSessionState.getAgentTurnSessionRecord(
