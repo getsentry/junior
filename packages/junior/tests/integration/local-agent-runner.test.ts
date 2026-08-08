@@ -954,7 +954,6 @@ describe("local agent runner", () => {
       "second question",
       "reply to second question",
     ]);
-    expect(conversation.stats.totalMessageCount).toBe(4);
   });
 
   it("requires local delivery before running a turn", async () => {

@@ -1393,7 +1393,6 @@ describe("Slack conversation work execution", () => {
       },
       conversation: {
         schemaVersion: 1,
-        backfill: {},
         compactions: [],
         messages: [
           {
@@ -1408,12 +1407,6 @@ describe("Slack conversation work execution", () => {
         ],
         processing: {
           activeTurnId: "turn-newer",
-        },
-        stats: {
-          compactedMessageCount: 0,
-          estimatedContextTokens: 0,
-          totalMessageCount: 1,
-          updatedAtMs: 1_000,
         },
         vision: {
           byFileId: {},

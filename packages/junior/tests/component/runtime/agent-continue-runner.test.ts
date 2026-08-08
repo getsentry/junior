@@ -94,7 +94,6 @@ describe("agent continuation runner callbacks", () => {
       },
       conversation: {
         schemaVersion: 1,
-        backfill: {},
         compactions: [],
         messages: [
           {
@@ -109,12 +108,6 @@ describe("agent continuation runner callbacks", () => {
         ],
         processing: {
           activeTurnId: sessionId,
-        },
-        stats: {
-          compactedMessageCount: 0,
-          estimatedContextTokens: 0,
-          totalMessageCount: 1,
-          updatedAtMs: 1,
         },
         vision: {
           byFileId: {},
@@ -197,7 +190,6 @@ describe("agent continuation runner callbacks", () => {
     await persistThreadStateById(conversationId, {
       conversation: {
         schemaVersion: 1,
-        backfill: {},
         compactions: [],
         messages: [
           {
@@ -212,12 +204,6 @@ describe("agent continuation runner callbacks", () => {
         ],
         processing: {
           activeTurnId: sessionId,
-        },
-        stats: {
-          compactedMessageCount: 0,
-          estimatedContextTokens: 0,
-          totalMessageCount: 1,
-          updatedAtMs: 1,
         },
         vision: {
           byFileId: {},
@@ -296,7 +282,6 @@ describe("agent continuation runner callbacks", () => {
     await persistThreadStateById(conversationId, {
       conversation: {
         schemaVersion: 1,
-        backfill: {},
         compactions: [],
         messages: [
           {
@@ -311,12 +296,6 @@ describe("agent continuation runner callbacks", () => {
         ],
         processing: {
           activeTurnId: sessionId,
-        },
-        stats: {
-          compactedMessageCount: 0,
-          estimatedContextTokens: 0,
-          totalMessageCount: 1,
-          updatedAtMs: 1,
         },
         vision: {
           byFileId: {},
@@ -384,7 +363,6 @@ describe("agent continuation runner callbacks", () => {
     await persistThreadStateById(conversationId, {
       conversation: {
         schemaVersion: 1,
-        backfill: {},
         compactions: [],
         messages: [
           {
@@ -397,12 +375,6 @@ describe("agent continuation runner callbacks", () => {
         ],
         processing: {
           activeTurnId: sessionId,
-        },
-        stats: {
-          compactedMessageCount: 0,
-          estimatedContextTokens: 0,
-          totalMessageCount: 1,
-          updatedAtMs: 1,
         },
         vision: {
           byFileId: {},

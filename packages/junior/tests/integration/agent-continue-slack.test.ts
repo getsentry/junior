@@ -235,7 +235,6 @@ describe("agent continuation Slack integration", () => {
       },
       conversation: {
         schemaVersion: 1,
-        backfill: {},
         compactions: [],
         messages: [
           {
@@ -256,12 +255,6 @@ describe("agent continuation Slack integration", () => {
         ],
         processing: {
           activeTurnId: sessionId,
-        },
-        stats: {
-          compactedMessageCount: 0,
-          estimatedContextTokens: 0,
-          totalMessageCount: 1,
-          updatedAtMs: 1,
         },
         vision: {
           byFileId: {},
@@ -415,7 +408,6 @@ describe("agent continuation Slack integration", () => {
       },
       conversation: {
         schemaVersion: 1,
-        backfill: {},
         compactions: [],
         messages: [
           {
@@ -430,12 +422,6 @@ describe("agent continuation Slack integration", () => {
         ],
         processing: {
           activeTurnId: sessionId,
-        },
-        stats: {
-          compactedMessageCount: 0,
-          estimatedContextTokens: 0,
-          totalMessageCount: 1,
-          updatedAtMs: 1,
         },
         vision: {
           byFileId: {},
@@ -612,7 +598,6 @@ describe("agent continuation Slack integration", () => {
       artifacts: { listColumnMap: {} },
       conversation: {
         schemaVersion: 1,
-        backfill: {},
         compactions: [],
         messages: [
           {
@@ -624,12 +609,6 @@ describe("agent continuation Slack integration", () => {
           },
         ],
         processing: { activeTurnId: sessionId },
-        stats: {
-          compactedMessageCount: 0,
-          estimatedContextTokens: 0,
-          totalMessageCount: 1,
-          updatedAtMs: 1,
-        },
         vision: { byFileId: {} },
       },
     });
@@ -689,7 +668,6 @@ describe("agent continuation Slack integration", () => {
       },
       conversation: {
         schemaVersion: 1,
-        backfill: {},
         compactions: [],
         messages: [
           {
@@ -704,12 +682,6 @@ describe("agent continuation Slack integration", () => {
         ],
         processing: {
           activeTurnId: sessionId,
-        },
-        stats: {
-          compactedMessageCount: 0,
-          estimatedContextTokens: 0,
-          totalMessageCount: 1,
-          updatedAtMs: 1,
         },
         vision: {
           byFileId: {},
@@ -778,7 +750,6 @@ describe("agent continuation Slack integration", () => {
       },
       conversation: {
         schemaVersion: 1,
-        backfill: {},
         compactions: [],
         messages: [
           {
@@ -791,12 +762,6 @@ describe("agent continuation Slack integration", () => {
         ],
         processing: {
           activeTurnId: sessionId,
-        },
-        stats: {
-          compactedMessageCount: 0,
-          estimatedContextTokens: 0,
-          totalMessageCount: 1,
-          updatedAtMs: 1,
         },
         vision: {
           byFileId: {},
@@ -866,7 +831,6 @@ describe("agent continuation Slack integration", () => {
       },
       conversation: {
         schemaVersion: 1,
-        backfill: {},
         compactions: [],
         messages: [
           {
@@ -883,12 +847,6 @@ describe("agent continuation Slack integration", () => {
         ],
         processing: {
           activeTurnId: sessionId,
-        },
-        stats: {
-          compactedMessageCount: 0,
-          estimatedContextTokens: 0,
-          totalMessageCount: 1,
-          updatedAtMs: 1,
         },
         vision: {
           byFileId: {},
@@ -950,7 +908,6 @@ describe("agent continuation Slack integration", () => {
       },
       conversation: {
         schemaVersion: 1,
-        backfill: {},
         compactions: [],
         messages: [
           {
@@ -965,12 +922,6 @@ describe("agent continuation Slack integration", () => {
         ],
         processing: {
           activeTurnId: sessionId,
-        },
-        stats: {
-          compactedMessageCount: 0,
-          estimatedContextTokens: 0,
-          totalMessageCount: 1,
-          updatedAtMs: 1,
         },
         vision: {
           byFileId: {},
@@ -1043,7 +994,6 @@ describe("agent continuation Slack integration", () => {
       },
       conversation: {
         schemaVersion: 1,
-        backfill: {},
         compactions: [],
         messages: [
           {
@@ -1058,12 +1008,6 @@ describe("agent continuation Slack integration", () => {
         ],
         processing: {
           activeTurnId: sessionId,
-        },
-        stats: {
-          compactedMessageCount: 0,
-          estimatedContextTokens: 0,
-          totalMessageCount: 1,
-          updatedAtMs: 1,
         },
         vision: {
           byFileId: {},
@@ -1140,7 +1084,6 @@ describe("agent continuation Slack integration", () => {
       },
       conversation: {
         schemaVersion: 1,
-        backfill: {},
         compactions: [],
         messages: [
           {
@@ -1155,12 +1098,6 @@ describe("agent continuation Slack integration", () => {
         ],
         processing: {
           activeTurnId: sessionId,
-        },
-        stats: {
-          compactedMessageCount: 0,
-          estimatedContextTokens: 0,
-          totalMessageCount: 1,
-          updatedAtMs: 1,
         },
         vision: {
           byFileId: {},
@@ -1252,7 +1189,6 @@ describe("agent continuation Slack integration", () => {
       },
       conversation: {
         schemaVersion: 1,
-        backfill: {},
         compactions: [],
         messages: [
           {
@@ -1267,12 +1203,6 @@ describe("agent continuation Slack integration", () => {
         ],
         processing: {
           activeTurnId: sessionId,
-        },
-        stats: {
-          compactedMessageCount: 0,
-          estimatedContextTokens: 0,
-          totalMessageCount: 1,
-          updatedAtMs: 1,
         },
         vision: {
           byFileId: {},
@@ -1401,7 +1331,6 @@ describe("agent continuation Slack integration", () => {
       artifacts: { listColumnMap: {} },
       conversation: {
         schemaVersion: 1,
-        backfill: {},
         compactions: [],
         messages: [
           {
@@ -1413,12 +1342,6 @@ describe("agent continuation Slack integration", () => {
           },
         ],
         processing: { activeTurnId: sessionId },
-        stats: {
-          compactedMessageCount: 0,
-          estimatedContextTokens: 0,
-          totalMessageCount: 1,
-          updatedAtMs: 1,
-        },
         vision: { byFileId: {} },
       },
     });
@@ -1535,7 +1458,6 @@ describe("agent continuation Slack integration", () => {
       },
       conversation: {
         schemaVersion: 1,
-        backfill: {},
         compactions: [],
         messages: [
           {
@@ -1550,12 +1472,6 @@ describe("agent continuation Slack integration", () => {
         ],
         processing: {
           activeTurnId: sessionId,
-        },
-        stats: {
-          compactedMessageCount: 0,
-          estimatedContextTokens: 0,
-          totalMessageCount: 1,
-          updatedAtMs: 1,
         },
         vision: {
           byFileId: {},
@@ -1666,7 +1582,6 @@ describe("agent continuation Slack integration", () => {
       },
       conversation: {
         schemaVersion: 1,
-        backfill: {},
         compactions: [],
         messages: [
           {
@@ -1682,12 +1597,6 @@ describe("agent continuation Slack integration", () => {
         ],
         processing: {
           activeTurnId: sessionId,
-        },
-        stats: {
-          compactedMessageCount: 0,
-          estimatedContextTokens: 0,
-          totalMessageCount: 1,
-          updatedAtMs: 1,
         },
         vision: {
           byFileId: {},

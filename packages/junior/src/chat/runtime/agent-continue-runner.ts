@@ -46,7 +46,6 @@ import {
 import {
   buildConversationContext,
   markConversationMessage,
-  updateConversationStats,
 } from "@/chat/services/conversation-memory";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import { markTurnFailed } from "@/chat/runtime/turn";
@@ -195,7 +194,6 @@ async function persistFailedReplyState(
     userMessageId: getTurnUserMessage(conversation, sessionRecord.sessionId)
       ?.id,
     markConversationMessage,
-    updateConversationStats,
   });
 
   await failSessionRecordBestEffort({
@@ -659,7 +657,6 @@ async function failStrandedSessionWithFallback(args: {
       args.sessionRecord.sessionId,
     )?.id,
     markConversationMessage,
-    updateConversationStats,
   });
   await persistThreadStateById(args.conversationId, { conversation });
 

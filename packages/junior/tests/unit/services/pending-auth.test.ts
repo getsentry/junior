@@ -53,14 +53,7 @@ function conversationWithMessages(
     schemaVersion: 1,
     messages,
     compactions: [],
-    backfill: {},
     processing: {},
-    stats: {
-      compactedMessageCount: 0,
-      estimatedContextTokens: 0,
-      totalMessageCount: messages.length,
-      updatedAtMs: NOW,
-    },
     vision: {
       byFileId: {},
     },

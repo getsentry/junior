@@ -37,7 +37,6 @@ import {
 import {
   buildConversationContext,
   markConversationMessage,
-  updateConversationStats,
 } from "@/chat/services/conversation-memory";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import { resumeSlackTurn } from "@/chat/runtime/slack-resume";
@@ -213,7 +212,6 @@ async function persistFailedReplyState(
     sessionId,
     userMessageId: getTurnUserMessageId(conversation, sessionId),
     markConversationMessage,
-    updateConversationStats,
   });
 
   await failSessionRecordBestEffort({

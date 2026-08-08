@@ -73,30 +73,6 @@ describe("conversation state", () => {
     expect(conversation.processing.pendingAuth).toBeUndefined();
   });
 
-  it("ignores legacy rebuildable stats and backfill state", () => {
-    const conversation = coerceThreadConversationState({
-      conversation: {
-        backfill: {
-          completedAtMs: 7,
-          source: "thread_fetch",
-        },
-        stats: {
-          estimatedContextTokens: 999,
-          totalMessageCount: 99,
-          compactedMessageCount: 9,
-          updatedAtMs: 1,
-        },
-      },
-    });
-
-    expect(conversation.backfill).toEqual({});
-    expect(conversation.stats).toMatchObject({
-      estimatedContextTokens: 0,
-      totalMessageCount: 0,
-      compactedMessageCount: 0,
-    });
-  });
-
   it("coerces message image file ids and vision summaries", () => {
     const conversation = coerceThreadConversationState({
       conversation: {
@@ -194,22 +170,12 @@ describe("conversation state", () => {
       coveredMessageCount: 1,
       createdAtMs: 2,
     });
-    conversation.backfill = {
-      completedAtMs: 3,
-      source: "thread_fetch",
-    };
-    conversation.stats = {
-      estimatedContextTokens: 99,
-      totalMessageCount: 1,
-      compactedMessageCount: 1,
-      updatedAtMs: 4,
-    };
     const patch = buildConversationStatePatch(conversation);
     expect(patch.conversation).not.toHaveProperty("messages");
     expect(patch.conversation).not.toHaveProperty("compactions");
     // Model history lives in the SQL ConversationEventStore; thread-state carries no mirror.
     expect(patch.conversation).not.toHaveProperty("piMessages");
-    // Token/backfill stats rebuild after SQL hydrate; do not keep a Redis copy.
+    // Rebuildable working data does not belong in Redis scratch.
     expect(patch.conversation).not.toHaveProperty("stats");
     expect(patch.conversation).not.toHaveProperty("backfill");
   });

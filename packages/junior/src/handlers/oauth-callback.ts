@@ -11,7 +11,6 @@ import {
 import { buildConversationContext } from "@/chat/services/conversation-memory";
 import {
   markConversationMessage,
-  updateConversationStats,
 } from "@/chat/services/conversation-memory";
 import { postSlackMessage } from "@/chat/slack/outbound";
 import {
@@ -183,7 +182,6 @@ async function persistFailedOAuthReplyState(args: {
     sessionId: args.sessionId,
     userMessageId: getTurnUserMessage(conversation, args.sessionId)?.id,
     markConversationMessage,
-    updateConversationStats,
   });
 
   await failSessionRecordBestEffort({

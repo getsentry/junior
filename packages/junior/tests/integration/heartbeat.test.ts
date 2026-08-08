@@ -164,17 +164,10 @@ async function persistActiveTurn(
   await persistThreadStateById(conversationId, {
     conversation: {
       schemaVersion: 1,
-      backfill: {},
       compactions: [],
       messages: [],
       processing: {
         activeTurnId,
-      },
-      stats: {
-        compactedMessageCount: 0,
-        estimatedContextTokens: 0,
-        totalMessageCount: 0,
-        updatedAtMs: TEST_NOW_MS,
       },
       vision: {
         byFileId: {},

@@ -256,7 +256,6 @@ describe("agent continuation scheduling", () => {
       },
       conversation: {
         schemaVersion: 1,
-        backfill: {},
         compactions: [],
         messages: [
           {
@@ -271,12 +270,6 @@ describe("agent continuation scheduling", () => {
         ],
         processing: {
           activeTurnId: "turn-newer",
-        },
-        stats: {
-          compactedMessageCount: 0,
-          estimatedContextTokens: 0,
-          totalMessageCount: 1,
-          updatedAtMs: 1_000,
         },
         vision: {
           byFileId: {},

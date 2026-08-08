@@ -6,7 +6,6 @@ import { isDeepStrictEqual } from "node:util";
 import { getConversationEventStore } from "@/chat/db";
 import { projectConversationMessageSummaries } from "./message-summaries";
 import { projectConversationMessages } from "./message-projection";
-import { updateConversationStats } from "@/chat/services/conversation-memory";
 import type {
   ConversationMessage,
   ThreadConversationState,
@@ -78,14 +77,6 @@ export async function hydrateConversationMessages(args: {
     ? projectConversationMessageSummaries([history.compaction])
     : [];
   args.conversation.messages = projectConversationMessages(history);
-  // Stats are working-set metrics, not Redis authority. Rebuild them from the
-  // SQL projection so thread-state no longer needs to mirror counts/tokens.
-  args.conversation.stats.compactedMessageCount =
-    args.conversation.compactions.reduce(
-      (count, compaction) => count + compaction.coveredMessageCount,
-      0,
-    );
-  updateConversationStats(args.conversation);
 }
 
 /** Append new messages and handled markers idempotently. */

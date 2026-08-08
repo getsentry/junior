@@ -21,9 +21,9 @@ import {
 } from "@/chat/state/artifacts";
 import {
   buildConversationContext,
+  estimateConversationContextTokens,
   isHumanConversationMessage,
   normalizeConversationText,
-  updateConversationStats,
   upsertConversationMessage,
 } from "@/chat/services/conversation-memory";
 import {
@@ -99,17 +99,9 @@ async function seedConversationBackfill(
     messageId: string;
     messageCreatedAtMs: number;
   },
-): Promise<void> {
-  if (conversation.backfill.completedAtMs) {
-    return;
-  }
+): Promise<"recent_messages" | "thread_fetch"> {
   if (conversation.messages.length > 0 || conversation.compactions.length > 0) {
-    conversation.backfill = {
-      completedAtMs: Date.now(),
-      source: "recent_messages",
-    };
-    updateConversationStats(conversation);
-    return;
+    return "recent_messages";
   }
 
   const seeded: ConversationMessage[] = [];
@@ -167,11 +159,7 @@ async function seedConversationBackfill(
     upsertConversationMessage(conversation, message);
   }
 
-  conversation.backfill = {
-    completedAtMs: Date.now(),
-    source,
-  };
-  updateConversationStats(conversation);
+  return source;
 }
 
 /** Build the turn-state preparer from injected conversation services. */
@@ -189,12 +177,12 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
       args.channelConfiguration ?? getChannelConfigurationService(args.thread);
     const configuration = await channelConfiguration.resolveValues();
 
-    if (!args.skipBackfill) {
-      await seedConversationBackfill(args.thread, conversation, {
-        messageId: args.message.id,
-        messageCreatedAtMs: args.message.metadata.dateSent.getTime(),
-      });
-    }
+    const backfillSource = args.skipBackfill
+      ? undefined
+      : await seedConversationBackfill(args.thread, conversation, {
+          messageId: args.message.id,
+          messageCreatedAtMs: args.message.metadata.dateSent.getTime(),
+        });
     for (const queued of args.queuedMessages ?? []) {
       const queuedMessage = toConversationMessage({
         entry: queued.message,
@@ -262,8 +250,9 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
     });
 
     setSpanAttributes({
-      "app.backfill_source": conversation.backfill.source ?? "none",
-      "app.context_tokens_estimated": conversation.stats.estimatedContextTokens,
+      "app.backfill_source": backfillSource ?? "none",
+      "app.context_tokens_estimated":
+        estimateConversationContextTokens(conversation),
     });
 
     return {

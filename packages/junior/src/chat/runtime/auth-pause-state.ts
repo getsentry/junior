@@ -6,7 +6,6 @@ import { markTurnClosed } from "@/chat/runtime/turn";
 import { getTurnUserMessageId } from "@/chat/runtime/turn-user-message";
 import {
   markConversationMessage,
-  updateConversationStats,
 } from "@/chat/services/conversation-memory";
 import {
   coerceThreadConversationState,
@@ -31,7 +30,6 @@ export function completeAuthPauseTurn(args: {
     conversation: args.conversation,
     nowMs: Date.now(),
     sessionId: args.sessionId,
-    updateConversationStats,
   });
 }
 

@@ -15,7 +15,6 @@ function makeConversation(
   override?: Partial<ThreadConversationState>,
 ): ThreadConversationState {
   return {
-    backfill: {},
     compactions: [],
     messages: [
       {
@@ -27,12 +26,6 @@ function makeConversation(
     ],
     processing: {},
     schemaVersion: 1,
-    stats: {
-      compactedMessageCount: 0,
-      estimatedContextTokens: 0,
-      totalMessageCount: 1,
-      updatedAtMs: 1700000000000,
-    },
     vision: { byFileId: {} },
     ...override,
   };

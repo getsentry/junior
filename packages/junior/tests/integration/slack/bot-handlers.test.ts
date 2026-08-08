@@ -171,10 +171,6 @@ function createAwaitingContinuationState(args: {
   return {
     conversation: {
       schemaVersion: 1,
-      backfill: {
-        completedAtMs: 1,
-        source: "recent_messages",
-      },
       compactions: [],
       piMessages: [],
       messages: [
@@ -193,12 +189,6 @@ function createAwaitingContinuationState(args: {
       ],
       processing: {
         activeTurnId: args.activeSessionId,
-      },
-      stats: {
-        compactedMessageCount: 0,
-        estimatedContextTokens: 0,
-        totalMessageCount: 1,
-        updatedAtMs: 1,
       },
       vision: {
         byFileId: {},
@@ -311,10 +301,6 @@ describe("bot handlers (integration)", () => {
       state: {
         conversation: {
           schemaVersion: 1,
-          backfill: {
-            completedAtMs: 1,
-            source: "recent_messages",
-          },
           compactions: [],
           piMessages: [],
           messages: [
@@ -346,12 +332,6 @@ describe("bot handlers (integration)", () => {
             },
           ],
           processing: {},
-          stats: {
-            compactedMessageCount: 0,
-            estimatedContextTokens: 0,
-            totalMessageCount: 2,
-            updatedAtMs: 2,
-          },
           vision: {
             byFileId: {},
           },

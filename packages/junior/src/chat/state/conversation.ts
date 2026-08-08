@@ -37,11 +37,6 @@ export interface ConversationCompaction {
   summary: string;
 }
 
-export interface ConversationBackfillState {
-  completedAtMs?: number;
-  source?: "recent_messages" | "thread_fetch";
-}
-
 export interface ConversationProcessingState {
   activeTurnId?: string;
   lastCompletedAtMs?: number;
@@ -65,13 +60,6 @@ export type ConversationPendingAuthState =
       kind: "plugin";
     });
 
-export interface ConversationStats {
-  compactedMessageCount: number;
-  estimatedContextTokens: number;
-  totalMessageCount: number;
-  updatedAtMs: number;
-}
-
 export interface ConversationVisionSummary {
   analyzedAtMs: number;
   summary: string;
@@ -83,29 +71,19 @@ export interface ConversationVisionState {
 }
 
 export interface ThreadConversationState {
-  backfill: ConversationBackfillState;
   compactions: ConversationCompaction[];
   messages: ConversationMessage[];
   processing: ConversationProcessingState;
   schemaVersion: 1;
-  stats: ConversationStats;
   vision: ConversationVisionState;
 }
 
 function defaultConversationState(): ThreadConversationState {
-  const nowMs = Date.now();
   return {
     schemaVersion: 1,
     messages: [],
     compactions: [],
-    backfill: {},
     processing: {},
-    stats: {
-      estimatedContextTokens: 0,
-      totalMessageCount: 0,
-      compactedMessageCount: 0,
-      updatedAtMs: nowMs,
-    },
     vision: {
       byFileId: {},
     },
@@ -161,14 +139,10 @@ export function coerceThreadConversationState(
     conversation?: unknown;
   };
   const rawConversation = isRecord(root.conversation) ? root.conversation : {};
-  const base = defaultConversationState();
-
   // Conversation history lives in SQL. The operator upgrade reads any old
   // thread-state history; live code starts empty and hydrates canonical events.
   const messages: ConversationMessage[] = [];
   const compactions: ConversationCompaction[] = [];
-
-  const backfill: ConversationBackfillState = {};
 
   const rawProcessing = isRecord(rawConversation.processing)
     ? rawConversation.processing
@@ -179,7 +153,6 @@ export function coerceThreadConversationState(
     pendingAuth: coercePendingAuthState(rawProcessing.pendingAuth),
   };
 
-  const stats = base.stats;
   const rawVision = isRecord(rawConversation.vision)
     ? rawConversation.vision
     : {};
@@ -203,9 +176,7 @@ export function coerceThreadConversationState(
     schemaVersion: 1,
     messages,
     compactions,
-    backfill,
     processing,
-    stats,
     vision: {
       backfillCompletedAtMs: toOptionalNumber(rawVision.backfillCompletedAtMs),
       byFileId,
@@ -216,11 +187,9 @@ export function coerceThreadConversationState(
 /**
  * Wrap conversation runtime scratch into the storage envelope.
  *
- * Visible transcript and model history live in SQL. Token/backfill stats are
- * rebuilt after hydrate, so Redis only keeps short-lived processing control and
- * the vision cache that has no other authority yet.
- *
- * TODO(#1267): move vision off Redis once summaries have a durable home.
+ * Visible transcript and model history live in SQL. Redis only keeps
+ * short-lived processing control and the vision cache, which has no other
+ * authority yet.
  */
 export function buildConversationStatePatch(
   conversation: ThreadConversationState,

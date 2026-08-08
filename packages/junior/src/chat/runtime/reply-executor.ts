@@ -79,7 +79,6 @@ import {
   normalizeConversationText,
   recordDeliveredAssistantMessage,
   upsertConversationMessage,
-  updateConversationStats,
 } from "@/chat/services/conversation-memory";
 import type { ContextCompactor } from "@/chat/services/context-compaction";
 import {
@@ -853,7 +852,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 conversation: preparedState.conversation,
                 nowMs: Date.now(),
                 sessionId: activeTurnId,
-                updateConversationStats,
               });
               activeTurnId = undefined;
             } else {
@@ -869,7 +867,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 nowMs: Date.now(),
                 sessionId: activeTurnId,
                 markConversationMessage,
-                updateConversationStats,
               });
               activeTurnId = undefined;
             }
@@ -916,7 +913,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         startActiveTurn({
           conversation: preparedState.conversation,
           nextTurnId: turnId,
-          updateConversationStats,
         });
         if (conversationId && preparedState.userMessageId) {
           await deps.services.turnLifecycle.start({
@@ -1456,7 +1452,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 conversation: preparedState.conversation,
                 nowMs: Date.now(),
                 sessionId: turnId,
-                updateConversationStats,
               });
               await persistThreadState(thread, {
                 conversation: preparedState.conversation,
@@ -1800,7 +1795,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               conversation: preparedState.conversation,
               nowMs: Date.now(),
               sessionId: turnId,
-              updateConversationStats,
             });
             await persistThreadState(thread, {
               artifacts: latestArtifacts,
@@ -1835,7 +1829,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               markConversationMessage: (conversation, messageId, patch) => {
                 markConversationMessage(conversation, messageId, patch);
               },
-              updateConversationStats,
             });
             if (conversationId) {
               try {

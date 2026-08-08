@@ -116,15 +116,11 @@ function authorDisplayField(
   return value;
 }
 
-export function updateConversationStats(
+/** Estimate the token cost of the current visible conversation context. */
+export function estimateConversationContextTokens(
   conversation: ThreadConversationState,
-): void {
-  const contextText = buildConversationContext(conversation);
-  conversation.stats.estimatedContextTokens = estimateTextTokens(
-    contextText ?? "",
-  );
-  conversation.stats.totalMessageCount = conversation.messages.length;
-  conversation.stats.updatedAtMs = Date.now();
+): number {
+  return estimateTextTokens(buildConversationContext(conversation) ?? "");
 }
 
 export function upsertConversationMessage(
@@ -143,12 +139,10 @@ export function upsertConversationMessage(
         ...message.meta,
       },
     };
-    updateConversationStats(conversation);
     return message.id;
   }
 
   conversation.messages.push(message);
-  updateConversationStats(conversation);
   return message.id;
 }
 
@@ -217,7 +211,6 @@ export function markConversationMessage(
       ...patch,
     },
   };
-  updateConversationStats(conversation);
 }
 
 /**
@@ -434,8 +427,7 @@ async function compactConversationIfNeededWithDeps(
   },
   deps: ConversationMemoryDeps,
 ): Promise<void> {
-  updateConversationStats(conversation);
-  let estimatedTokens = conversation.stats.estimatedContextTokens;
+  let estimatedTokens = estimateConversationContextTokens(conversation);
   setSpanAttributes({
     "app.context_tokens_estimated": estimatedTokens,
   });
@@ -469,10 +461,8 @@ async function compactConversationIfNeededWithDeps(
     });
     conversation.compactions = pruneCompactions(conversation.compactions);
     conversation.messages = conversation.messages.slice(compactCount);
-    conversation.stats.compactedMessageCount += compactCount;
-    updateConversationStats(conversation);
 
-    estimatedTokens = conversation.stats.estimatedContextTokens;
+    estimatedTokens = estimateConversationContextTokens(conversation);
     setSpanAttributes({
       "app.compaction_messages_covered": compactCount,
       "app.compaction.trigger_tokens": triggerTokens,

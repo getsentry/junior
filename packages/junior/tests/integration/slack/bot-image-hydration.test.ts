@@ -118,17 +118,7 @@ describe("bot image hydration", () => {
             },
           ],
           compactions: [],
-          backfill: {
-            completedAtMs: 1700000000000,
-            source: "recent_messages",
-          },
           processing: {},
-          stats: {
-            estimatedContextTokens: 0,
-            totalMessageCount: 1,
-            compactedMessageCount: 0,
-            updatedAtMs: 1700000000000,
-          },
           vision: {
             byFileId: {},
           },
@@ -215,17 +205,7 @@ describe("bot image hydration", () => {
           schemaVersion: 1,
           messages: [],
           compactions: [],
-          backfill: {
-            completedAtMs: 1700000000000,
-            source: "recent_messages",
-          },
           processing: {},
-          stats: {
-            estimatedContextTokens: 0,
-            totalMessageCount: 0,
-            compactedMessageCount: 0,
-            updatedAtMs: 1700000000000,
-          },
           vision: {
             byFileId: {},
           },
@@ -322,17 +302,7 @@ describe("bot image hydration", () => {
           schemaVersion: 1,
           messages: [],
           compactions: [],
-          backfill: {
-            completedAtMs: 1700000000000,
-            source: "recent_messages",
-          },
           processing: {},
-          stats: {
-            estimatedContextTokens: 0,
-            totalMessageCount: 0,
-            compactedMessageCount: 0,
-            updatedAtMs: 1700000000000,
-          },
           vision: {
             byFileId: {},
           },
@@ -524,17 +494,7 @@ describe("bot image hydration", () => {
           schemaVersion: 1,
           messages: [],
           compactions: [],
-          backfill: {
-            completedAtMs: 1700000000000,
-            source: "recent_messages",
-          },
           processing: {},
-          stats: {
-            estimatedContextTokens: 0,
-            totalMessageCount: 0,
-            compactedMessageCount: 0,
-            updatedAtMs: 1700000000000,
-          },
           vision: {
             byFileId: {},
           },
@@ -684,17 +644,7 @@ describe("bot image hydration", () => {
             schemaVersion: 1,
             messages: [],
             compactions: [],
-            backfill: {
-              completedAtMs: 1700000000000,
-              source: "recent_messages",
-            },
             processing: {},
-            stats: {
-              estimatedContextTokens: 0,
-              totalMessageCount: 0,
-              compactedMessageCount: 0,
-              updatedAtMs: 1700000000000,
-            },
             vision: {
               byFileId: {},
             },
@@ -731,17 +681,7 @@ describe("bot image hydration", () => {
                 schemaVersion: 1,
                 messages: [],
                 compactions: [],
-                backfill: {
-                  completedAtMs: 1700000000000,
-                  source: "recent_messages",
-                },
                 processing: {},
-                stats: {
-                  estimatedContextTokens: 0,
-                  totalMessageCount: 0,
-                  compactedMessageCount: 0,
-                  updatedAtMs: 1700000000000,
-                },
                 vision: {
                   byFileId: {},
                 },
@@ -842,17 +782,7 @@ describe("bot image hydration", () => {
             schemaVersion: 1,
             messages: [],
             compactions: [],
-            backfill: {
-              completedAtMs: 1700000000000,
-              source: "recent_messages",
-            },
             processing: {},
-            stats: {
-              estimatedContextTokens: 0,
-              totalMessageCount: 0,
-              compactedMessageCount: 0,
-              updatedAtMs: 1700000000000,
-            },
             vision: {
               byFileId: {},
             },
@@ -895,17 +825,7 @@ describe("bot image hydration", () => {
                 schemaVersion: 1,
                 messages: [],
                 compactions: [],
-                backfill: {
-                  completedAtMs: 1700000000000,
-                  source: "recent_messages",
-                },
                 processing: {},
-                stats: {
-                  estimatedContextTokens: 0,
-                  totalMessageCount: 0,
-                  compactedMessageCount: 0,
-                  updatedAtMs: 1700000000000,
-                },
                 vision: {
                   byFileId: {},
                 },
@@ -964,17 +884,7 @@ describe("bot image hydration", () => {
             schemaVersion: 1,
             messages: [],
             compactions: [],
-            backfill: {
-              completedAtMs: 1700000000000,
-              source: "recent_messages",
-            },
             processing: {},
-            stats: {
-              estimatedContextTokens: 0,
-              totalMessageCount: 0,
-              compactedMessageCount: 0,
-              updatedAtMs: 1700000000000,
-            },
             vision: {
               byFileId: {},
             },
@@ -1011,17 +921,7 @@ describe("bot image hydration", () => {
                 schemaVersion: 1,
                 messages: [],
                 compactions: [],
-                backfill: {
-                  completedAtMs: 1700000000000,
-                  source: "recent_messages",
-                },
                 processing: {},
-                stats: {
-                  estimatedContextTokens: 0,
-                  totalMessageCount: 0,
-                  compactedMessageCount: 0,
-                  updatedAtMs: 1700000000000,
-                },
                 vision: {
                   byFileId: {},
                 },

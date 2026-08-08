@@ -41,7 +41,6 @@ import {
   markConversationMessage,
   normalizeConversationText,
   recordDeliveredAssistantMessage,
-  updateConversationStats,
   upsertConversationMessage,
 } from "@/chat/services/conversation-memory";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
@@ -259,7 +258,6 @@ async function runLocalAgentTurnInContext(
   startActiveTurn({
     conversation,
     nextTurnId: turnId,
-    updateConversationStats,
   });
 
   let reply: AgentRunResult | undefined;
@@ -483,7 +481,6 @@ async function runLocalAgentTurnInContext(
         sessionId: turnId,
         userMessageId,
         markConversationMessage,
-        updateConversationStats,
       });
       await persistThreadStateById(input.conversationId, {
         artifacts: initialArtifacts,

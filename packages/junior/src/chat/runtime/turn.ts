@@ -98,10 +98,8 @@ export function isTurnInputDeferredError(
 export function startActiveTurn(args: {
   conversation: ThreadConversationState;
   nextTurnId: string;
-  updateConversationStats: (conversation: ThreadConversationState) => void;
 }): void {
   args.conversation.processing.activeTurnId = args.nextTurnId;
-  args.updateConversationStats(args.conversation);
 }
 
 function clearActiveTurn(
@@ -122,11 +120,9 @@ export function markTurnClosed(args: {
   conversation: ThreadConversationState;
   nowMs: number;
   sessionId?: string;
-  updateConversationStats: (conversation: ThreadConversationState) => void;
 }): void {
   clearActiveTurn(args.conversation, args.sessionId);
   args.conversation.processing.lastCompletedAtMs = args.nowMs;
-  args.updateConversationStats(args.conversation);
 }
 
 /**
@@ -136,11 +132,9 @@ export function markTurnCompleted(args: {
   conversation: ThreadConversationState;
   nowMs: number;
   sessionId: string;
-  updateConversationStats: (conversation: ThreadConversationState) => void;
 }): void {
   clearActiveTurn(args.conversation, args.sessionId);
   args.conversation.processing.lastCompletedAtMs = args.nowMs;
-  args.updateConversationStats(args.conversation);
 }
 
 /**
@@ -158,7 +152,6 @@ export function markTurnFailed(args: {
     messageId: string | undefined,
     patch: { replied?: boolean; skippedReason?: string },
   ) => void;
-  updateConversationStats: (conversation: ThreadConversationState) => void;
 }): void {
   clearActiveTurn(args.conversation, args.sessionId);
   args.conversation.processing.lastCompletedAtMs = args.nowMs;
@@ -166,5 +159,4 @@ export function markTurnFailed(args: {
     replied: false,
     skippedReason: "reply failed",
   });
-  args.updateConversationStats(args.conversation);
 }
