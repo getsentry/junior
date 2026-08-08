@@ -12,10 +12,7 @@ import {
   logWarn,
   withLogContext,
 } from "@/chat/logging";
-import {
-  ResumeTurnBusyError,
-  resumeSlackTurn,
-} from "@/chat/runtime/slack-resume";
+import { resumeSlackTurn } from "@/chat/runtime/slack-resume";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import {
@@ -24,13 +21,16 @@ import {
 } from "@/chat/conversations/projection";
 import {
   failAgentTurnSessionRecord,
-  getAgentTurnSessionRecord,
   getAgentTurnSessionRecordForResume,
   listAgentTurnSessionSummariesForConversation,
   recordAgentTurnSessionSummary,
   type AgentTurnSessionRecord,
   type AgentTurnSessionSummary,
 } from "@/chat/state/turn-session";
+import {
+  loadTurnCheckpoint,
+  saveTurnCheckpoint,
+} from "@/chat/task-execution/checkpoint";
 import {
   getPersistedThreadState,
   getPersistedSandboxState,
@@ -62,7 +62,6 @@ import { parseSlackThreadId } from "@/chat/slack/context";
 import { postSlackMessage } from "@/chat/slack/outbound";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { acquireActiveLock } from "@/chat/state/locks";
-import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import { requireTurnFailureEventId } from "@/chat/services/turn-failure-response";
 import {
   createSlackActor,
@@ -85,11 +84,8 @@ import {
   credentialContextForActor,
   type CredentialContext,
 } from "@/chat/credentials/context";
-import { sleep } from "@/chat/sleep";
 import { modelIdForProfile } from "@/chat/model-profile";
 import { latestReportedProgress } from "@/chat/runtime/report-progress";
-
-const AGENT_CONTINUE_LOCK_RETRY_DELAYS_MS = [250, 1_000, 2_000] as const;
 
 /** Runtime ports for agent continuation scheduling. */
 export interface AgentContinueRunnerOptions {
@@ -412,16 +408,19 @@ async function continueSlackAgentRunInContext(
     channelId: thread?.channelId ?? destination.channelId,
     ...(thread?.threadTs ? { threadTs: thread.threadTs } : {}),
     lockKey: payload.conversationId,
+    // Queue continue runs under the conversation work lease already.
+    ownsConversationLease: true,
     agentRunner: options.agentRunner,
     scheduleSessionCompletedPluginTasks:
       options.scheduleSessionCompletedPluginTasks,
     beforeStart: async () => {
       let sessionRecord: AgentTurnSessionRecord | undefined;
       try {
-        sessionRecord = await getAgentTurnSessionRecord(
-          payload.conversationId,
-          payload.turnId,
-        );
+        const checkpoint = await loadTurnCheckpoint({
+          conversationId: payload.conversationId,
+          turnId: payload.turnId,
+        });
+        sessionRecord = checkpoint.record;
         if (
           !sessionRecord ||
           sessionRecord.state !== "paused" ||
@@ -886,58 +885,15 @@ async function resumeAwaitingSlackContinuationInContext(
 }
 
 /**
- * Retry agent continuation when the normal Slack thread lock is briefly busy.
+ * Continue one paused Slack agent run under the conversation work lease.
  *
- * Returns false when the session became stale before generation began. A busy
- * lock that is rescheduled still returns true because runnable work remains
- * durable.
+ * Name kept for callers; there is no second resume-lock retry loop. Queue
+ * continue owns the worker lease only (`ownsConversationLease`).
  */
 export async function continueSlackAgentRunWithLockRetry(
   payload: AgentContinueRequest,
   options: AgentContinueRunnerOptions,
   runOptions: AgentContinueRunOptions = {},
 ): Promise<boolean> {
-  return withLogContext({ conversationId: payload.conversationId }, () =>
-    continueSlackAgentRunWithLockRetryInContext(payload, options, runOptions),
-  );
-}
-
-async function continueSlackAgentRunWithLockRetryInContext(
-  payload: AgentContinueRequest,
-  options: AgentContinueRunnerOptions,
-  runOptions: AgentContinueRunOptions,
-): Promise<boolean> {
-  const scheduleAgentContinue =
-    options.scheduleAgentContinue ?? defaultScheduleAgentContinue;
-  for (const [attempt, delayMs] of [
-    ...AGENT_CONTINUE_LOCK_RETRY_DELAYS_MS,
-    undefined,
-  ].entries()) {
-    try {
-      return await continueSlackAgentRun(payload, options, runOptions);
-    } catch (error) {
-      if (!(error instanceof ResumeTurnBusyError)) {
-        throw error;
-      }
-      if (typeof delayMs !== "number") {
-        logWarn("agent.continue.lock.busy", {
-          "app.ai.conversation_id": payload.conversationId,
-          "app.ai.session_id": payload.turnId,
-          "app.ai.resume_lock_retry_count": attempt,
-        });
-        await scheduleAgentContinue(payload);
-        return true;
-      }
-
-      logWarn("agent.continue.lock.retrying", {
-        "app.ai.conversation_id": payload.conversationId,
-        "app.ai.session_id": payload.turnId,
-        "app.ai.resume_lock_retry_attempt": attempt + 1,
-        "app.ai.resume_lock_retry_delay_ms": delayMs,
-      });
-      await sleep(delayMs);
-    }
-  }
-
-  return true;
+  return await continueSlackAgentRun(payload, options, runOptions);
 }

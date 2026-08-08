@@ -12,6 +12,9 @@ Turn progress (running / paused / done) goes through one write API:
 the Redis turn cursor is only resume metadata. A continue that parks again
 at the same boundary fails closed (no spin loops).
 
+Queue continue runs under the conversation work lease. It does **not** take a
+second resume lock. OAuth and other out-of-band resumes still lock the thread.
+
 Runtime status is `paused`. SQL free-text / enum rows may still say
 `awaiting_resume`; readers normalize, writers dual-write the historical
 label where durable SQL requires it.

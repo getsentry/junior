@@ -10,10 +10,8 @@ import {
   resolveTurnSessionRouting,
   type TurnSessionRouting,
 } from "@/chat/services/turn-session-routing";
-import {
-  failAgentTurnSessionRecord,
-  getAgentTurnSessionRecord,
-} from "@/chat/state/turn-session";
+import { failAgentTurnSessionRecord } from "@/chat/state/turn-session";
+import { loadTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   ensureConversationWake,
@@ -40,10 +38,11 @@ export async function getAwaitingAgentContinueRequest(args: {
   conversationStore?: ConversationStore;
   turnId: string;
 }): Promise<AgentContinueRequest | undefined> {
-  const sessionRecord = await getAgentTurnSessionRecord(
-    args.conversationId,
-    args.turnId,
-  );
+  const checkpoint = await loadTurnCheckpoint({
+    conversationId: args.conversationId,
+    turnId: args.turnId,
+  });
+  const sessionRecord = checkpoint.record;
   if (
     !sessionRecord ||
     sessionRecord.state !== "paused" ||

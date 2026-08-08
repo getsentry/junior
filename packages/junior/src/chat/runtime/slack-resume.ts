@@ -164,6 +164,12 @@ interface ResumeSlackTurnArgs {
   messageTs?: SlackMessageTs;
   replyContext?: ResumeReplyContext;
   lockKey?: string;
+  /**
+   * When true, the caller already holds the conversation work lease.
+   * Skip the second resume lock so queue continue is one owner, not two.
+   * OAuth and other out-of-band resumes leave this false.
+   */
+  ownsConversationLease?: boolean;
   initialText?: string;
   initialStatus?: AssistantStatusSpec;
   agentRunner: AgentRunner;
@@ -400,11 +406,13 @@ function createResumeReplyContext(
 }
 
 /**
- * Resume a paused Slack turn under the normal thread lock.
+ * Resume a paused Slack turn.
  *
- * Started resumes own their completion side effects: assistant-message
- * delivery, pause persistence, or failure response. Returns false only when
- * `beforeStart` proves the resume is stale before generation begins.
+ * Queue continues pass `ownsConversationLease` and skip the second lock
+ * (worker lease is already held). OAuth and other out-of-band resumes still
+ * take the thread lock. Started resumes own their completion side effects.
+ * Returns false only when `beforeStart` proves the resume is stale before
+ * generation begins.
  */
 export async function resumeSlackTurn(
   args: ResumeSlackTurnArgs,
@@ -423,8 +431,12 @@ async function resumeSlackTurnInContext(
   await stateAdapter.connect();
   const lockKey =
     args.lockKey ?? getDefaultLockKey(args.channelId, args.threadTs);
-  const lock = await acquireActiveLock(stateAdapter, lockKey);
-  if (!lock) {
+  // Worker continue already holds the conversation lease. Taking a second
+  // active lock here was a dual-machine leftover (lease + resume lock).
+  const lock = args.ownsConversationLease
+    ? undefined
+    : await acquireActiveLock(stateAdapter, lockKey);
+  if (!args.ownsConversationLease && !lock) {
     throw new ResumeTurnBusyError(lockKey);
   }
 
@@ -854,7 +866,9 @@ async function resumeSlackTurnInContext(
     } else {
       await processingReaction?.stop();
     }
-    await stateAdapter.releaseLock(lock);
+    if (lock) {
+      await stateAdapter.releaseLock(lock);
+    }
   }
 
   if (postDeliveryCommitError) {

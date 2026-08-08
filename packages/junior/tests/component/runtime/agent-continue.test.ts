@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { scheduleAgentContinue } from "@/chat/task-execution/continue";
-import { registerLogRecordSink, type EmittedLogRecord } from "@/chat/logging";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import {
@@ -120,47 +119,40 @@ describe("agent continuation scheduling", () => {
     });
   });
 
-  it("reschedules continuation when the Slack resume lock stays busy", async () => {
-    vi.useFakeTimers();
+  it("queue continue does not take a second resume lock", async () => {
     const conversationId = "slack:C123:1712345.0002";
     const state = getStateAdapter();
     await state.connect();
+    // Hold the old thread lock. Queue continue must still run — it owns the
+    // conversation work lease only, not a second resume lock.
     const lock = await state.acquireLock(conversationId, 90_000);
     expect(lock).toBeTruthy();
-    const records: EmittedLogRecord[] = [];
-    const unregister = registerLogRecordSink((record) => records.push(record));
-    const scheduleAgentContinue = vi.fn().mockResolvedValue(undefined);
+    const resumeTurn = vi.fn().mockResolvedValue(false);
     const { continueSlackAgentRunWithLockRetry } =
       await import("@/chat/runtime/agent-continue-runner");
 
-    const continued = continueSlackAgentRunWithLockRetry(
-      {
-        conversationId,
-        destination: SLACK_DESTINATION,
-        turnId: "turn_msg_2",
-        expectedVersion: 1,
-      },
-      { agentRunner: agentRunnerShouldNotRun, scheduleAgentContinue },
-    );
+    await expect(
+      continueSlackAgentRunWithLockRetry(
+        {
+          conversationId,
+          destination: SLACK_DESTINATION,
+          turnId: "turn_msg_2",
+          expectedVersion: 1,
+        },
+        {
+          agentRunner: agentRunnerShouldNotRun,
+          resumeTurn,
+        },
+      ),
+    ).resolves.toBe(false);
 
-    try {
-      await vi.advanceTimersByTimeAsync(4_000);
-      await expect(continued).resolves.toBe(true);
-    } finally {
-      unregister();
-    }
-    expect(scheduleAgentContinue).toHaveBeenCalledWith({
-      conversationId,
-      destination: SLACK_DESTINATION,
-      turnId: "turn_msg_2",
-      expectedVersion: 1,
-    });
-    expect(
-      records.find((record) => record.eventName === "agent.continue.lock.busy")
-        ?.attributes,
-    ).toMatchObject({
-      "gen_ai.conversation.id": conversationId,
-    });
+    expect(resumeTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId,
+        turnId: "turn_msg_2",
+        ownsConversationLease: true,
+      }),
+    );
     if (lock) {
       await state.releaseLock(lock);
     }
