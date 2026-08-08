@@ -280,10 +280,11 @@ function projectAgentTurnSessionSummary(
 }
 
 /**
- * Lifecycle rank for recovery-index collapse.
+ * Lifecycle rank used only when two recovery-index entries share a version.
  *
- * Append-only summaries can finish out of order: a fire-and-forget `running`
- * write may land after a durable pause/terminal boundary. Higher rank wins.
+ * Fire-and-forget start writes keep `version: 0` / copy existing without
+ * advancing. Real pause/resume/terminal upserts increment version, so the
+ * primary collapse key is version — rank only breaks same-version races.
  */
 function agentTurnSessionStatusRank(state: AgentTurnSessionStatus): number {
   switch (state) {
@@ -296,6 +297,20 @@ function agentTurnSessionStatusRank(state: AgentTurnSessionStatus): number {
     case "abandoned":
       return 2;
   }
+}
+
+/** Prefer the authoritative recovery summary for one session id. */
+function shouldPreferAgentTurnSessionSummary(
+  candidate: AgentTurnSessionSummary,
+  existing: AgentTurnSessionSummary,
+): boolean {
+  if (candidate.version !== existing.version) {
+    return candidate.version > existing.version;
+  }
+  return (
+    agentTurnSessionStatusRank(candidate.state) >
+    agentTurnSessionStatusRank(existing.state)
+  );
 }
 
 async function appendAgentTurnSessionSummary(
@@ -1017,13 +1032,9 @@ async function readAgentTurnSessionSummariesFromIndex(
     }
     const summaryKey = `${summary.conversationId}:${summary.sessionId}`;
     const existing = summaries.get(summaryKey);
-    // Newest wins when ranks tie. A lagging lower-rank write (usually
-    // fire-and-forget `running`) must not outrank a durable pause/terminal.
-    if (
-      !existing ||
-      agentTurnSessionStatusRank(summary.state) >
-        agentTurnSessionStatusRank(existing.state)
-    ) {
+    // Newest wins when version+rank tie. Higher version always wins so a live
+    // post-resume `running` upsert is not hidden by a stale pause summary.
+    if (!existing || shouldPreferAgentTurnSessionSummary(summary, existing)) {
       summaries.set(summaryKey, summary);
     }
   }

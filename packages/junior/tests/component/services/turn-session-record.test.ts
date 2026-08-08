@@ -658,84 +658,101 @@ describe("persistAuthPauseSessionRecord", () => {
     expect(summaries[0]).not.toHaveProperty("requester");
   });
 
-  it("keeps durable pause/terminal summaries when a newer running entry lands later", async () => {
+  it("collapses recovery summaries by version, then lifecycle rank", async () => {
     const { getStateAdapter } = await import("@/chat/state/adapter");
     const { listAgentTurnSessionSummariesForConversation } =
       await import("@/chat/state/turn-session");
     const stateAdapter = getStateAdapter();
     await stateAdapter.connect();
 
-    async function seedAndRead(args: {
-      conversationId: string;
-      sessionId: string;
-      durable: Record<string, unknown>;
-    }) {
-      const indexKey = `junior:agent_turn_session:conversation:${args.conversationId}:index`;
-      await stateAdapter.appendToList(
-        indexKey,
-        {
-          version: 0,
-          conversationId: args.conversationId,
-          sessionId: args.sessionId,
-          sliceId: 1,
-          surface: "api",
-          updatedAtMs: 10,
-          ...args.durable,
-        },
-        { ttlMs: 60_000 },
-      );
-      await stateAdapter.appendToList(
-        indexKey,
-        {
-          version: 0,
-          conversationId: args.conversationId,
-          sessionId: args.sessionId,
-          sliceId: 1,
-          state: "running",
-          surface: "api",
-          updatedAtMs: 20,
-        },
-        { ttlMs: 60_000 },
-      );
-      return listAgentTurnSessionSummariesForConversation(args.conversationId);
+    async function seedAndRead(
+      conversationId: string,
+      sessionId: string,
+      entries: Array<Record<string, unknown>>,
+    ) {
+      const indexKey = `junior:agent_turn_session:conversation:${conversationId}:index`;
+      for (const [index, entry] of entries.entries()) {
+        await stateAdapter.appendToList(
+          indexKey,
+          {
+            conversationId,
+            sessionId,
+            sliceId: 1,
+            surface: "api",
+            updatedAtMs: (index + 1) * 10,
+            ...entry,
+          },
+          { ttlMs: 60_000 },
+        );
+      }
+      return listAgentTurnSessionSummariesForConversation(conversationId);
     }
 
+    // Same-version lagging start write loses to a durable pause/terminal.
     await expect(
-      seedAndRead({
-        conversationId: "slack:C123:terminal-index-race",
-        sessionId: "turn-terminal-index-race",
-        durable: {
+      seedAndRead("slack:C123:terminal-index-race", "turn-terminal-index-race", [
+        {
+          version: 1,
           dispatchId: "dispatch_index_race",
           dispatchOutcome: "blocked",
           resultMessageId: "1700000000.000200",
           state: "failed",
         },
-      }),
+        {
+          version: 0,
+          state: "running",
+        },
+      ]),
     ).resolves.toEqual([
       expect.objectContaining({
         dispatchOutcome: "blocked",
         resultMessageId: "1700000000.000200",
         sessionId: "turn-terminal-index-race",
         state: "failed",
+        version: 1,
       }),
     ]);
 
-    // Resume discovery treats newest `running` as stranded recovery. A lagging
-    // start write must not hide an awaiting timeout/yield boundary.
     await expect(
-      seedAndRead({
-        conversationId: "slack:C123:awaiting-index-race",
-        sessionId: "turn-awaiting-index-race",
-        durable: {
+      seedAndRead("slack:C123:awaiting-index-race", "turn-awaiting-index-race", [
+        {
+          version: 1,
           resumeReason: "timeout",
           state: "awaiting_resume",
         },
-      }),
+        {
+          version: 0,
+          state: "running",
+        },
+      ]),
     ).resolves.toEqual([
       expect.objectContaining({
         resumeReason: "timeout",
         sessionId: "turn-awaiting-index-race",
         state: "awaiting_resume",
+        version: 1,
+      }),
+    ]);
+
+    // A live post-resume running upsert advances version and must win over the
+    // stale pause summary, or stranded mid-resume recovery never runs.
+    await expect(
+      seedAndRead("slack:C123:resume-running-race", "turn-resume-running-race", [
+        {
+          version: 1,
+          resumeReason: "timeout",
+          state: "awaiting_resume",
+        },
+        {
+          version: 2,
+          state: "running",
+        },
+      ]),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        sessionId: "turn-resume-running-race",
+        state: "running",
+        version: 2,
       }),
     ]);
   });
