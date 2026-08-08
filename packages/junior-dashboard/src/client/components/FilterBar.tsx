@@ -16,17 +16,12 @@ export function FilterBar(props: {
   };
 }) {
   return (
-    <Card
-      className={cn(
-        "grid gap-4 p-4 lg:grid-cols-[repeat(auto-fit,minmax(10rem,max-content))_minmax(16rem,1fr)] lg:items-end",
-        props.className,
-      )}
-    >
+    <Card className={cn("flex flex-wrap items-end gap-4 p-4", props.className)}>
       {props.children}
       {props.search ? (
-        <FilterGroup label="Search">
+        <FilterGroup className="min-w-[16rem] flex-1" label="Search">
           <SearchInput
-            className="w-full lg:max-w-sm"
+            className="w-full max-w-md"
             label={props.search.label}
             onChange={props.search.onChange}
             placeholder={props.search.placeholder}
@@ -39,9 +34,13 @@ export function FilterBar(props: {
 }
 
 /** Render one labeled control group inside a filter bar. */
-export function FilterGroup(props: { children: ReactNode; label: string }) {
+export function FilterGroup(props: {
+  children: ReactNode;
+  className?: string;
+  label: string;
+}) {
   return (
-    <div>
+    <div className={cn("min-w-0", props.className)}>
       <div className="mb-2 font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted">
         {props.label}
       </div>
