@@ -42,7 +42,6 @@ import { McpToolManager } from "@/chat/mcp/tool-manager";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import {
   loadConnectedMcpProviders,
-  loadLatestAgentsInstructionsState,
   loadTurnRoute,
   openConversationProjection,
   recordAgentsInstructionsUpdated,
@@ -800,62 +799,23 @@ async function executeAgentRunInPrivacyContext(
     const initialRepositoryInstructions = wiring.getSandboxRef()
       ? await wiring.captureRepositoryInstructions()
       : undefined;
-    const recordAgentsTransition = async (transition: {
-      action: "loaded" | "replaced" | "cleared";
-      directory?: string;
-      fingerprint: string;
-      sources: Array<{ content: string; path: string }>;
-      textBytes?: number;
-    }) => {
+    const recordAgentsTransition = async (
+      instructions: typeof initialRepositoryInstructions,
+    ) => {
       try {
         await recordAgentsInstructionsUpdated({
-          action: transition.action,
           conversationId,
-          fingerprint: transition.fingerprint,
-          sources: transition.sources,
+          instructions,
           turnId,
-          ...(transition.directory ? { directory: transition.directory } : {}),
-          ...(typeof transition.textBytes === "number"
-            ? { textBytes: transition.textBytes }
-            : {}),
         });
       } catch (error) {
         // Host-only transcript markers are best-effort reporting writes; a
         // failed append must not abort the in-flight model turn.
-        logException(error, "agent.agents_instructions_event.append.failed", {
-          "app.agents.action": transition.action,
-        });
+        logException(error, "agent.agents_instructions_event.append.failed");
       }
     };
     if (initialRepositoryInstructions) {
-      // Durable Pi history strips AGENTS bootstrap messages, so gate emission
-      // against the last durable structured marker instead of prior Pi text.
-      const priorState = await loadLatestAgentsInstructionsState({
-        conversationId,
-      });
-      const alreadyActive =
-        priorState !== undefined &&
-        priorState.action !== "cleared" &&
-        priorState.fingerprint === initialRepositoryInstructions.fingerprint &&
-        priorState.directory === initialRepositoryInstructions.directory;
-      if (!alreadyActive) {
-        await recordAgentsTransition({
-          action:
-            priorState !== undefined && priorState.action !== "cleared"
-              ? "replaced"
-              : "loaded",
-          directory: initialRepositoryInstructions.directory,
-          fingerprint: initialRepositoryInstructions.fingerprint,
-          sources: initialRepositoryInstructions.sources.map((source) => ({
-            content: source.content,
-            path: source.path,
-          })),
-          textBytes: Buffer.byteLength(
-            initialRepositoryInstructions.text,
-            "utf8",
-          ),
-        });
-      }
+      await recordAgentsTransition(initialRepositoryInstructions);
     }
     const getPendingAuthPause = wiring.getPendingAuthPause;
     const toolsWithoutHandoff = wiring.agentTools.filter(

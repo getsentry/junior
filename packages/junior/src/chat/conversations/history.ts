@@ -542,6 +542,12 @@ export interface ConversationEventStore {
     conversationId: string,
     idempotencyKey: string,
   ): Promise<ConversationEvent | undefined>;
+  /** Latest matching structured event across history versions. */
+  loadLatestStructuredEvent(
+    conversationId: string,
+    namespace: string,
+    name: string,
+  ): Promise<ConversationEvent | undefined>;
   /** Latest durable instruction across history versions. */
   loadLatestInstruction(
     conversationId: string,

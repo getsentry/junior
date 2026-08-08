@@ -15,6 +15,7 @@ import type {
   AuthorizationKind,
   ConversationEvent,
 } from "@/chat/conversations/history";
+import type { RepositoryInstructions } from "@/chat/repository-instructions";
 import {
   agentsInstructionsUpdatedEvent,
   authenticationLinkedEvent,
@@ -558,77 +559,36 @@ export async function recordAuthenticationUnlinked(
 }
 
 type AgentsInstructionsTransitionArgs = {
-  action: "loaded" | "replaced" | "cleared";
   conversationId: string;
-  directory?: string;
-  fingerprint: string;
-  sources: Array<{ content: string; path: string }>;
-  textBytes?: number;
+  instructions?: RepositoryInstructions;
   turnId: string;
 };
 
-export type AgentsInstructionsActiveState = {
+type AgentsEventContent = {
   action: "loaded" | "replaced" | "cleared";
   directory?: string;
   fingerprint: string;
-  seq: number;
 };
 
-function agentsInstructionsStateFromEvent(
-  event: ConversationEvent | undefined,
-): AgentsInstructionsActiveState | undefined {
-  if (
-    !event ||
-    event.data.type !== "structured_event" ||
-    event.data.namespace !== JUNIOR_NATIVE_EVENT_NAMESPACE ||
-    event.data.name !== agentsInstructionsUpdatedEvent.eventName
-  ) {
-    return undefined;
-  }
-  let content: {
-    action: "loaded" | "replaced" | "cleared";
-    directory?: string;
-    fingerprint: string;
-  };
-  try {
-    content = agentsInstructionsUpdatedEvent.parse(event.data.content) as {
-      action: "loaded" | "replaced" | "cleared";
-      directory?: string;
-      fingerprint: string;
-    };
-  } catch {
-    return undefined;
-  }
+async function loadAgentsEvent(conversationId: string): Promise<
+  | {
+      content: AgentsEventContent;
+      seq: number;
+    }
+  | undefined
+> {
+  const event = await getConversationEventStore().loadLatestStructuredEvent(
+    conversationId,
+    JUNIOR_NATIVE_EVENT_NAMESPACE,
+    agentsInstructionsUpdatedEvent.eventName,
+  );
+  if (!event || event.data.type !== "structured_event") return undefined;
   return {
-    action: content.action,
-    fingerprint: content.fingerprint,
+    content: agentsInstructionsUpdatedEvent.parse(
+      event.data.content,
+    ) as AgentsEventContent,
     seq: event.seq,
-    ...(content.directory ? { directory: content.directory } : {}),
   };
-}
-
-/** Latest durable AGENTS.md visibility state for one conversation. */
-export async function loadLatestAgentsInstructionsState(args: {
-  conversationId: string;
-}): Promise<AgentsInstructionsActiveState | undefined> {
-  // Walk newest structured events first, then older pages, until we hit the
-  // most recent AGENTS marker. Auth/plugin structured events can bury it.
-  let beforeSeq: number | undefined;
-  for (;;) {
-    const page = await getConversationEventStore().query(args.conversationId, {
-      limit: 50,
-      types: ["structured_event"],
-      ...(beforeSeq === undefined ? {} : { beforeSeq }),
-    });
-    for (let index = page.events.length - 1; index >= 0; index -= 1) {
-      const state = agentsInstructionsStateFromEvent(page.events[index]);
-      if (state) return state;
-    }
-    if (!page.hasOlder || page.events.length === 0) {
-      return undefined;
-    }
-    beforeSeq = page.events[0]!.seq;
-  }
 }
 
 function agentsInstructionsIdempotencyKey(args: {
@@ -648,34 +608,39 @@ function agentsInstructionsIdempotencyKey(args: {
 export async function recordAgentsInstructionsUpdated(
   args: AgentsInstructionsTransitionArgs,
 ): Promise<void> {
-  const content = agentsInstructionsUpdatedEvent.parse({
-    action: args.action,
-    fingerprint: args.fingerprint,
-    sources: args.sources,
-    ...(args.directory ? { directory: args.directory } : {}),
-    ...(typeof args.textBytes === "number"
-      ? { textBytes: args.textBytes }
-      : {}),
-  });
-  const previous = await loadLatestAgentsInstructionsState({
-    conversationId: args.conversationId,
-  });
+  const previous = await loadAgentsEvent(args.conversationId);
+  const instructions = args.instructions;
   if (
     previous &&
-    ((args.action === "cleared" && previous.action === "cleared") ||
-      (args.action !== "cleared" &&
-        previous.action !== "cleared" &&
-        previous.fingerprint === args.fingerprint &&
-        previous.directory === args.directory))
+    ((!instructions && previous.content.action === "cleared") ||
+      (instructions &&
+        previous.content.action !== "cleared" &&
+        previous.content.fingerprint === instructions.fingerprint &&
+        previous.content.directory === instructions.directory))
   ) {
     return;
   }
+  const action = !instructions
+    ? "cleared"
+    : previous && previous.content.action !== "cleared"
+      ? "replaced"
+      : "loaded";
+  const fingerprint = instructions?.fingerprint ?? "cleared";
+  const content = agentsInstructionsUpdatedEvent.parse({
+    action,
+    fingerprint,
+    sources: instructions?.sources ?? [],
+    ...(instructions ? { directory: instructions.directory } : {}),
+    ...(instructions
+      ? { textBytes: Buffer.byteLength(instructions.text, "utf8") }
+      : {}),
+  });
   await getConversationEventStore().append(args.conversationId, [
     {
       createdAtMs: Date.now(),
       idempotencyKey: agentsInstructionsIdempotencyKey({
-        action: args.action,
-        fingerprint: args.fingerprint,
+        action,
+        fingerprint,
         previousSeq: previous?.seq,
         turnId: args.turnId,
       }),

@@ -418,6 +418,61 @@ describe("SQL conversation storage", () => {
     }
   });
 
+  it("loads the latest matching structured event directly", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await migrateSchema(fixture.sql);
+      await seedConversation(fixture, CONVERSATION_ID);
+      const store = createSqlConversationEventStore(fixture.sql);
+      const structured = (
+        namespace: string,
+        name: string,
+        fingerprint: string,
+      ) => ({
+        type: "structured_event" as const,
+        namespace,
+        name,
+        version: 1,
+        content: { fingerprint },
+      });
+
+      await store.append(CONVERSATION_ID, [
+        {
+          data: structured("junior", "agents_instructions_updated", "first"),
+          createdAtMs: 1_000,
+        },
+        {
+          data: structured("github", "pull_request_updated", "noise"),
+          createdAtMs: 2_000,
+        },
+        {
+          data: structured("junior", "agents_instructions_updated", "latest"),
+          createdAtMs: 3_000,
+        },
+        {
+          data: structured("junior", "authentication_linked", "newer-noise"),
+          createdAtMs: 4_000,
+        },
+      ]);
+
+      const event = await store.loadLatestStructuredEvent(
+        CONVERSATION_ID,
+        "junior",
+        "agents_instructions_updated",
+      );
+      expect(event?.seq).toBe(2);
+      expect(event?.data).toMatchObject({
+        type: "structured_event",
+        namespace: "junior",
+        name: "agents_instructions_updated",
+        content: { fingerprint: "latest" },
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("loads the latest user instruction", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 
