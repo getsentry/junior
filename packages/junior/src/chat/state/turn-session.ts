@@ -279,11 +279,23 @@ function projectAgentTurnSessionSummary(
   return agentTurnSessionSummarySchema.parse(record);
 }
 
-/** Terminal recovery states that must outrank lagging non-terminal index entries. */
-function isTerminalAgentTurnSessionStatus(
-  state: AgentTurnSessionStatus,
-): boolean {
-  return state === "completed" || state === "failed" || state === "abandoned";
+/**
+ * Lifecycle rank for recovery-index collapse.
+ *
+ * Append-only summaries can finish out of order: a fire-and-forget `running`
+ * write may land after a durable pause/terminal boundary. Higher rank wins.
+ */
+function agentTurnSessionStatusRank(state: AgentTurnSessionStatus): number {
+  switch (state) {
+    case "running":
+      return 0;
+    case "awaiting_resume":
+      return 1;
+    case "completed":
+    case "failed":
+    case "abandoned":
+      return 2;
+  }
 }
 
 async function appendAgentTurnSessionSummary(
@@ -1005,11 +1017,12 @@ async function readAgentTurnSessionSummariesFromIndex(
     }
     const summaryKey = `${summary.conversationId}:${summary.sessionId}`;
     const existing = summaries.get(summaryKey);
-    // Newest wins, except a terminal entry outranks a lagging non-terminal one.
+    // Newest wins when ranks tie. A lagging lower-rank write (usually
+    // fire-and-forget `running`) must not outrank a durable pause/terminal.
     if (
       !existing ||
-      (!isTerminalAgentTurnSessionStatus(existing.state) &&
-        isTerminalAgentTurnSessionStatus(summary.state))
+      agentTurnSessionStatusRank(summary.state) >
+        agentTurnSessionStatusRank(existing.state)
     ) {
       summaries.set(summaryKey, summary);
     }

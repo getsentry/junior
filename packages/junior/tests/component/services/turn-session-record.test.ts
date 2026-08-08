@@ -658,56 +658,84 @@ describe("persistAuthPauseSessionRecord", () => {
     expect(summaries[0]).not.toHaveProperty("requester");
   });
 
-  it("keeps a terminal recovery summary when a newer running entry lands later", async () => {
+  it("keeps durable pause/terminal summaries when a newer running entry lands later", async () => {
     const { getStateAdapter } = await import("@/chat/state/adapter");
     const { listAgentTurnSessionSummariesForConversation } =
       await import("@/chat/state/turn-session");
     const stateAdapter = getStateAdapter();
     await stateAdapter.connect();
-    const conversationId = "slack:C123:terminal-index-race";
-    const sessionId = "turn-terminal-index-race";
-    const indexKey = `junior:agent_turn_session:conversation:${conversationId}:index`;
 
-    // Older terminal write, then a lagging fire-and-forget running write.
-    await stateAdapter.appendToList(
-      indexKey,
-      {
-        version: 0,
-        conversationId,
-        dispatchId: "dispatch_index_race",
-        dispatchOutcome: "blocked",
-        resultMessageId: "1700000000.000200",
-        sessionId,
-        sliceId: 1,
-        state: "failed",
-        surface: "api",
-        updatedAtMs: 10,
-      },
-      { ttlMs: 60_000 },
-    );
-    await stateAdapter.appendToList(
-      indexKey,
-      {
-        version: 0,
-        conversationId,
-        dispatchId: "dispatch_index_race",
-        sessionId,
-        sliceId: 1,
-        state: "running",
-        surface: "api",
-        updatedAtMs: 20,
-      },
-      { ttlMs: 60_000 },
-    );
+    async function seedAndRead(args: {
+      conversationId: string;
+      sessionId: string;
+      durable: Record<string, unknown>;
+    }) {
+      const indexKey = `junior:agent_turn_session:conversation:${args.conversationId}:index`;
+      await stateAdapter.appendToList(
+        indexKey,
+        {
+          version: 0,
+          conversationId: args.conversationId,
+          sessionId: args.sessionId,
+          sliceId: 1,
+          surface: "api",
+          updatedAtMs: 10,
+          ...args.durable,
+        },
+        { ttlMs: 60_000 },
+      );
+      await stateAdapter.appendToList(
+        indexKey,
+        {
+          version: 0,
+          conversationId: args.conversationId,
+          sessionId: args.sessionId,
+          sliceId: 1,
+          state: "running",
+          surface: "api",
+          updatedAtMs: 20,
+        },
+        { ttlMs: 60_000 },
+      );
+      return listAgentTurnSessionSummariesForConversation(args.conversationId);
+    }
 
     await expect(
-      listAgentTurnSessionSummariesForConversation(conversationId),
+      seedAndRead({
+        conversationId: "slack:C123:terminal-index-race",
+        sessionId: "turn-terminal-index-race",
+        durable: {
+          dispatchId: "dispatch_index_race",
+          dispatchOutcome: "blocked",
+          resultMessageId: "1700000000.000200",
+          state: "failed",
+        },
+      }),
     ).resolves.toEqual([
       expect.objectContaining({
         dispatchOutcome: "blocked",
         resultMessageId: "1700000000.000200",
-        sessionId,
+        sessionId: "turn-terminal-index-race",
         state: "failed",
+      }),
+    ]);
+
+    // Resume discovery treats newest `running` as stranded recovery. A lagging
+    // start write must not hide an awaiting timeout/yield boundary.
+    await expect(
+      seedAndRead({
+        conversationId: "slack:C123:awaiting-index-race",
+        sessionId: "turn-awaiting-index-race",
+        durable: {
+          resumeReason: "timeout",
+          state: "awaiting_resume",
+        },
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        resumeReason: "timeout",
+        sessionId: "turn-awaiting-index-race",
+        state: "awaiting_resume",
       }),
     ]);
   });
