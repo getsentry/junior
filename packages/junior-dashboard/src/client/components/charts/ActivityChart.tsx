@@ -252,11 +252,15 @@ export function activityChartAverage(values: readonly number[]): number {
 
 /** Shared visual style for average-line labels. */
 export const chartAverageLabelClassName =
-  "fill-white/70 font-mono leading-none";
+  "fill-white font-mono leading-none";
+
+/** Solid chip behind average labels so series colors never wash out the text. */
+const chartAverageLabelChip = "rgba(9, 12, 14, 0.92)";
 
 /**
  * Opt-in horizontal average across the plotted buckets.
  * Renders a dashed guide plus a compact "value / day" label on the right.
+ * Label sits on a dark chip so series-colored bars and guides stay off the text.
  */
 export function ActivityChartAverageLine(props: {
   average: number;
@@ -277,9 +281,19 @@ export function ActivityChartAverageLine(props: {
   const x1 = props.layout.left;
   const x2 = props.layout.width - props.layout.right;
   const label = `${props.format(props.average)} / ${unit}`;
-  // Keep the label inside the plot; flip below the line near the top edge.
-  const labelAbove = y - props.layout.top > 14;
   const fontSize = chartAxisFontSizePx / scale;
+  // Mono width estimate for the chip and dashed-guide stop.
+  const labelWidth = Math.max(52, label.length * fontSize * 0.68);
+  const chipPadX = 5;
+  const chipPadY = 3;
+  const chipHeight = fontSize + chipPadY * 2;
+  const chipWidth = labelWidth + chipPadX * 2;
+  const chipX = x2 - chipWidth;
+  // Keep the chip inside the plot; flip below the line near the top edge.
+  const labelAbove = y - props.layout.top > chipHeight + 4;
+  const chipY = labelAbove ? y - chipHeight - 3 : y + 4;
+  const textY = chipY + chipHeight / 2 + fontSize * 0.35;
+  const lineEnd = Math.max(x1, chipX - 6);
 
   return (
     <g aria-label={`average ${label}`} pointerEvents="none">
@@ -289,16 +303,25 @@ export function ActivityChartAverageLine(props: {
         strokeOpacity={0.85}
         strokeWidth={1.25}
         x1={x1}
-        x2={x2}
+        x2={lineEnd}
         y1={y}
         y2={y}
       />
+      <rect
+        fill={chartAverageLabelChip}
+        height={chipHeight}
+        rx={3}
+        width={chipWidth}
+        x={chipX}
+        y={chipY}
+      />
       <text
         className={chartAverageLabelClassName}
+        fill="#ffffff"
         fontSize={fontSize}
-        textAnchor="end"
-        x={x2}
-        y={labelAbove ? y - 6 : y + 12}
+        textAnchor="middle"
+        x={chipX + chipWidth / 2}
+        y={textY}
       >
         {label}
       </text>
