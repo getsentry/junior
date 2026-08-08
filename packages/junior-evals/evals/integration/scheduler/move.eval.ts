@@ -74,9 +74,10 @@ describeEval("Schedule Destination Updates", slackEvals, (it) => {
     const listCalls = scheduledTaskListCalls(result.session);
     expect(listCalls.length).toBeGreaterThan(0);
     for (const call of listCalls) {
-      expect(call.arguments?.channel_id == null || call.arguments?.channel_id === here.channel_id).toBe(
-        true,
-      );
+      expect(
+        call.arguments?.channel_id == null ||
+          call.arguments?.channel_id === here.channel_id,
+      ).toBe(true);
     }
     expect(scheduledTaskUpdateCalls(result.session)).toEqual([]);
   });

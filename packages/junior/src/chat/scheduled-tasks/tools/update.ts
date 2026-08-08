@@ -38,41 +38,37 @@ export function createSlackScheduleUpdateTaskTool(
       readOnlyHint: false,
     },
     description:
-      "Edit, reschedule, unblock, change credential use, or move an existing Junior scheduled task. Same-channel edits stay in the active conversation. To rehome a task into this conversation, set destination to \"here\" (creator only). Do not pass arbitrary destination channel IDs.",
+      'Update a scheduled task. To move the requester\'s task into this Slack conversation, set destination to "here".',
     executionMode: "sequential",
     inputSchema: z
       .object({
         task_id: z
           .string()
           .min(1)
-          .describe(
-            "ID of the task to update. Same-channel edits use a task from this conversation; destination moves may use a requester-owned task found via slackScheduleListTasks.",
-          ),
+          .describe("Scheduled task ID returned by slackScheduleListTasks."),
         task: z.string().min(1).max(4000).optional(),
         schedule: scheduleIntentSchema
-          .describe(
-            "Complete replacement schedule when rescheduling. Omit for task, status, destination, or credential-only changes; the scheduler computes the next run.",
-          )
+          .describe("Complete replacement schedule. Omit to keep it unchanged.")
           .nullable()
           .optional(),
         status: z
           .enum(["active", "blocked"])
           .describe(
-            "Set to active to clear a blocked task, or blocked when dispatch cannot continue.",
+            "Set active to resume a blocked task, or blocked to stop dispatch.",
           )
           .optional(),
         destination: z
           .literal("here")
           .nullable()
           .describe(
-            'Move the task into the active Slack conversation. Only the creator may move a task, and only "here" is allowed. Omit or use null to leave the destination unchanged.',
+            'Set to "here" to move the creator\'s task into this Slack conversation. Omit to keep its destination.',
           )
           .optional(),
         credential_mode: z
           .enum(["system", "creator"])
           .nullable()
           .describe(
-            "Set creator to make the task's original creator credentials available, or system to disable them. Creator always means the task's created_by actor, never the current requester. Only that original creator may enable creator mode. Omit or use null to leave unchanged.",
+            "Use creator credentials or system credentials. Only the task creator may enable creator mode. Omit to keep unchanged.",
           )
           .optional(),
       })
@@ -106,7 +102,7 @@ export function createSlackScheduleUpdateTaskTool(
 
       if (!alreadyHere && !moveHere) {
         throwToolInputError(
-          "Scheduled task can only be managed from the Slack destination where it currently delivers. Set destination to \"here\" to move it into this conversation.",
+          'Scheduled task can only be managed from the Slack destination where it currently delivers. Set destination to "here" to move it into this conversation.',
         );
       }
       if (moveHere && !isCreator) {

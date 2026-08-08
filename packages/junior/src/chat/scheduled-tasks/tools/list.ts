@@ -35,7 +35,7 @@ export function createSlackScheduleListTasksTool(
 ) {
   return zodTool({
     description:
-      "List scheduled Junior tasks. With no filters, lists the active Slack conversation. Pass channel_id and/or query to find the requester's tasks elsewhere in the workspace before editing or moving one here. Do not invent channel IDs.",
+      "List scheduled tasks in this Slack conversation. To find one of the requester's tasks elsewhere in the workspace, pass channel_id and/or query.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -45,7 +45,7 @@ export function createSlackScheduleListTasksTool(
     inputSchema: z
       .object({
         channel_id: slackChannelIdParam(
-          "Optional Slack channel/conversation ID to filter by current task destination (for example C123). Prefer a channel mention from the user request.",
+          "Current destination channel ID to filter by. Use the ID from a channel mention; do not guess.",
         )
           .nullable()
           .optional(),
@@ -55,9 +55,7 @@ export function createSlackScheduleListTasksTool(
           .min(1)
           .max(200)
           .nullable()
-          .describe(
-            "Optional natural-language filter matched against task title, instruction, schedule, timezone, or status.",
-          )
+          .describe("Text to match in the requester's scheduled tasks.")
           .optional(),
       })
       .strict(),

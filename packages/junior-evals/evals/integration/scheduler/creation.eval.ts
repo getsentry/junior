@@ -1,5 +1,10 @@
 import { describeEval } from "vitest-evals";
 import { expect } from "vitest";
+import { getDb } from "@/chat/db";
+import {
+  createSchedulerSqlStore,
+  type SchedulerDb,
+} from "@/chat/scheduled-tasks";
 import { mention, rubric, slackEvals } from "../../../src/helpers";
 import { scheduledTaskCreateCalls } from "./helpers";
 
@@ -84,13 +89,20 @@ describeEval("Schedule Creation", slackEvals, (it) => {
     expect(createCall.arguments?.task).not.toMatch(/\bschedul(?:e|ing)\b/i);
   });
 
-  it("when asked to schedule clear recurring work, create it without confirmation", async ({
+  it("when asked to schedule clear recurring work, create it in the active channel", async ({
     run,
   }) => {
+    const thread = {
+      channel_type: "channel" as const,
+      channel_id: "CSCHEDCREATE",
+      id: "thread-scheduler-create-here",
+      thread_ts: "1700000000.903000",
+    };
     const result = await run({
       initialEvents: [
         mention(
           "@bot schedule this every Monday at 9am Pacific: check open GitHub issues about the scheduler and post a short digest here.",
+          { thread },
         ),
       ],
       criteria: rubric({
@@ -113,6 +125,18 @@ describeEval("Schedule Creation", slackEvals, (it) => {
         frequency: "weekly",
         time: "09:00",
         weekdays: ["monday"],
+      },
+    });
+    const stored = (
+      await createSchedulerSqlStore(
+        getDb() as unknown as SchedulerDb,
+      ).listTasksForTeam("TEVAL")
+    ).find((task) => task.task.text.toLowerCase().includes("scheduler"));
+    expect(stored).toMatchObject({
+      destination: {
+        platform: "slack",
+        teamId: "TEVAL",
+        channelId: thread.channel_id,
       },
     });
   });
