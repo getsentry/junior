@@ -3,6 +3,7 @@ import {
   ActivityChartDateLabels,
   ActivityChartGrid,
   ActivityTooltipRows,
+  ChartSvg,
   createActivityChartLayout,
   formatActivityDate,
 } from "../../components/charts/ActivityChart";
@@ -61,11 +62,10 @@ export function TaskExecutionStatusChart(props: {
       </div>
 
       <div className="relative mt-3 overflow-hidden">
-        <svg
+        <ChartSvg
           aria-label={`Task executions during the last ${props.range} days`}
-          className="block h-auto min-h-40 w-full"
-          role="img"
-          viewBox={`0 0 ${layout.width} ${layout.height}`}
+          className="min-h-40"
+          layout={layout}
         >
           <ActivityChartGrid layout={layout} maximum={maximum} />
           {days.map((day, dayIndex) => {
@@ -124,7 +124,7 @@ export function TaskExecutionStatusChart(props: {
             layout={layout}
             xPosition={(index) => layout.left + index * step + step / 2}
           />
-        </svg>
+        </ChartSvg>
         {!hasExecutions ? (
           <div className="pointer-events-none absolute inset-0 grid place-items-center pt-12 font-mono text-xs text-dashboard-text-muted">
             No task executions in this period.

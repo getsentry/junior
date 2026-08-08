@@ -17,7 +17,7 @@ import {
 } from "../src/client/components/charts/ChartHeader";
 
 describe("ChartAxisLabel", () => {
-  it("uses shared CSS class so labels stay screen-pixel sized across viewBoxes", () => {
+  it("uses the shared visual class and 12px default screen-size contract", () => {
     const html = renderToStaticMarkup(
       <svg>
         <ChartAxisLabel x={0} y={0}>
@@ -26,9 +26,8 @@ describe("ChartAxisLabel", () => {
       </svg>,
     );
 
-    expect(chartAxisLabelClassName).toContain("text-2xs");
     expect(html).toContain(chartAxisLabelClassName);
-    expect(html).not.toContain("font-size=");
+    expect(html).toContain('font-size="12"');
   });
 
   it("renders y-axis and date labels through the shared text component", () => {

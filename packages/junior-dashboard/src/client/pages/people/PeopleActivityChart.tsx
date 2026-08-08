@@ -4,6 +4,7 @@ import {
   ActivityChartDateLabels,
   ActivityChartGrid,
   ActivityTooltipRows,
+  ChartSvg,
   createActivityChartLayout,
   formatActivityDate,
   type ActivityChartLayout,
@@ -57,11 +58,10 @@ export function PeopleActivityChart(props: {
         }
       />
       <div className="px-2 py-3 sm:px-4 sm:py-4">
-        <svg
+        <ChartSvg
           aria-label="Active people per day"
-          className="block h-auto min-h-56 w-full overflow-visible"
-          role="img"
-          viewBox={`0 0 ${layout.width} ${layout.height}`}
+          className="min-h-56 w-full overflow-visible"
+          layout={layout}
         >
           <defs>
             <linearGradient id="people-area" x1="0" x2="0" y1="0" y2="1">
@@ -118,7 +118,7 @@ export function PeopleActivityChart(props: {
             layout={layout}
             xPosition={(index) => points[index]?.x ?? layout.left}
           />
-        </svg>
+        </ChartSvg>
       </div>
     </Card>
   );

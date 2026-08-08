@@ -2,6 +2,7 @@ import {
   ActivityChartDateLabels,
   ActivityChartGrid,
   ActivityTooltipRows,
+  ChartSvg,
   createActivityChartLayout,
   formatActivityDate,
 } from "../../components/charts/ActivityChart";
@@ -76,11 +77,10 @@ export function MemoryCostChart(props: {
       </div>
 
       <div className="relative mt-4 overflow-hidden">
-        <svg
+        <ChartSvg
           aria-label={`Memory extraction and recall cost during the last ${props.range} days`}
-          className="block h-auto min-h-40 w-full"
-          role="img"
-          viewBox={`0 0 ${layout.width} ${layout.height}`}
+          className="min-h-40"
+          layout={layout}
         >
           <ActivityChartGrid
             format={(value) => formatCostSummary({ total: value })}
@@ -157,7 +157,7 @@ export function MemoryCostChart(props: {
             layout={layout}
             xPosition={(index) => layout.left + index * step + step / 2}
           />
-        </svg>
+        </ChartSvg>
         {runs === 0 ? (
           <div className="pointer-events-none absolute inset-0 grid place-items-center pt-12 font-mono text-xs text-dashboard-text-muted">
             No memory extraction or recall ran in this period.

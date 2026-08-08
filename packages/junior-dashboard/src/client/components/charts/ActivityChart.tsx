@@ -1,4 +1,13 @@
-import type { CSSProperties, ReactNode, SVGProps } from "react";
+import {
+  createContext,
+  type CSSProperties,
+  type ReactNode,
+  type SVGProps,
+  useContext,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 
 import { cn } from "../../styles";
 
@@ -60,13 +69,12 @@ export function activityLabelIndexes(count: number): number[] {
   );
 }
 
-/**
- * Shared CSS class for chart axis labels.
- * Uses CSS font-size (not SVG user units) so labels stay the same
- * on-screen size across different viewBox widths.
- */
+const chartAxisFontSizePx = 12;
+const ChartSvgScaleContext = createContext(1);
+
+/** Shared visual style for SVG chart axis labels. */
 export const chartAxisLabelClassName =
-  "fill-white/50 font-mono text-2xs leading-none text-dashboard-text-muted";
+  "fill-white/50 font-mono leading-none text-dashboard-text-muted";
 
 type ChartAxisLabelProps = Omit<
   SVGProps<SVGTextElement>,
@@ -75,11 +83,16 @@ type ChartAxisLabelProps = Omit<
   children: ReactNode;
 };
 
-/** Shared SVG axis tick label used by every dashboard chart. */
+/** Render an SVG axis label at the shared on-screen size. */
 export function ChartAxisLabel(props: ChartAxisLabelProps) {
   const { children, ...textProps } = props;
+  const scale = useContext(ChartSvgScaleContext);
   return (
-    <text className={chartAxisLabelClassName} {...textProps}>
+    <text
+      className={chartAxisLabelClassName}
+      fontSize={chartAxisFontSizePx / scale}
+      {...textProps}
+    >
       {children}
     </text>
   );
@@ -104,22 +117,45 @@ export function ChartAxisHtmlLabel(props: {
   );
 }
 
-/** Shared SVG shell for activity charts. */
+/**
+ * Render the shared SVG chart shell and provide its live screen scale to labels.
+ * SVG text uses user units, so labels invert this scale to remain 12px on screen.
+ */
 export function ChartSvg(props: {
   "aria-label": string;
   children: ReactNode;
   className?: string;
   layout: ActivityChartLayout;
 }) {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [scale, setScale] = useState(1);
+
+  useLayoutEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const updateScale = () => {
+      const matrix = svg.getScreenCTM();
+      const nextScale = matrix ? Math.hypot(matrix.a, matrix.b) : 1;
+      setScale(nextScale > 0 ? nextScale : 1);
+    };
+    updateScale();
+    const observer = new ResizeObserver(updateScale);
+    observer.observe(svg);
+    return () => observer.disconnect();
+  }, []);
+
   return (
-    <svg
-      aria-label={props["aria-label"]}
-      className={cn("block h-auto w-full", props.className)}
-      role="img"
-      viewBox={`0 0 ${props.layout.width} ${props.layout.height}`}
-    >
-      {props.children}
-    </svg>
+    <ChartSvgScaleContext value={scale}>
+      <svg
+        aria-label={props["aria-label"]}
+        className={cn("block h-auto w-full", props.className)}
+        ref={svgRef}
+        role="img"
+        viewBox={`0 0 ${props.layout.width} ${props.layout.height}`}
+      >
+        {props.children}
+      </svg>
+    </ChartSvgScaleContext>
   );
 }
 

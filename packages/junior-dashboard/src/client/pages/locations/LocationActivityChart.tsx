@@ -4,6 +4,7 @@ import {
   ActivityChartDateLabels,
   ActivityChartGrid,
   ActivityTooltipRows,
+  ChartSvg,
   createActivityChartLayout,
   formatActivityDate,
 } from "../../components/charts/ActivityChart";
@@ -33,11 +34,10 @@ export function LocationActivityChart(props: {
         }
       />
       <div className="px-2 py-3 sm:px-4 sm:py-4">
-        <svg
+        <ChartSvg
           aria-label="Daily conversations for this location"
-          className="block h-auto min-h-52 w-full overflow-visible"
-          role="img"
-          viewBox={`0 0 ${layout.width} ${layout.height}`}
+          className="min-h-52 w-full overflow-visible"
+          layout={layout}
         >
           <defs>
             <linearGradient id="location-bars" x1="0" x2="0" y1="0" y2="1">
@@ -83,7 +83,7 @@ export function LocationActivityChart(props: {
             layout={layout}
             xPosition={(index) => layout.left + index * step + step / 2}
           />
-        </svg>
+        </ChartSvg>
       </div>
     </Card>
   );
