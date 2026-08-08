@@ -23,10 +23,7 @@ import type { PluginUserPageLink } from "@sentry/junior-plugin-api";
 import { Button } from "../../components/Button";
 import { LoadingView } from "../../components/LoadingView";
 import { SelectableRow } from "../../components/SelectableRow";
-import {
-  TimeRangeSelector,
-  type TimeRangeDays,
-} from "../../components/controls/TimeRangeSelector";
+import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import {
@@ -72,12 +69,8 @@ export function MemoryPage(props: { page: PluginUserPageLink }) {
       )}
     >
       <PageHeader
-        actions={
-          overview ? (
-            <TimeRangeSelector onChange={setRange} value={range} />
-          ) : undefined
-        }
         description={props.page.description}
+        {...(overview ? { onRangeChange: setRange, range } : {})}
         title={props.page.label}
       />
       <nav

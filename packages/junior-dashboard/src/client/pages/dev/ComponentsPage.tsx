@@ -232,6 +232,8 @@ export function ComponentsPage() {
     >
       <PageHeader
         description="Reusable dashboard fixtures for visual and interaction checks."
+        onRangeChange={setRange}
+        range={range}
         title="Component gallery"
       />
 

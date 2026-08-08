@@ -9,10 +9,7 @@ import type {
 import { useLocationDirectoryData } from "../../api";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { LoadingView } from "../../components/LoadingView";
-import {
-  TimeRangeSelector,
-  type TimeRangeDays,
-} from "../../components/controls/TimeRangeSelector";
+import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { getDashboardAgentName } from "../../agentName";
@@ -77,12 +74,13 @@ export function LocationsPageContent(props: {
   return (
     <SystemPageLayout>
       <PageHeader
-        actions={<TimeRangeSelector onChange={setRange} value={range} />}
         description={
           props.error && !props.data
             ? "Locations failed to load."
             : `See the public channels where ${getDashboardAgentName()} has been working and how busy they've been.`
         }
+        onRangeChange={setRange}
+        range={range}
         title="Locations"
       />
       {props.error ? (

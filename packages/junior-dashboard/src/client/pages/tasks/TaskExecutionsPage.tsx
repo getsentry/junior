@@ -14,10 +14,7 @@ import type {
 
 import { useTaskExecutionsData } from "../../api";
 import { LoadingView } from "../../components/LoadingView";
-import {
-  TimeRangeSelector,
-  type TimeRangeDays,
-} from "../../components/controls/TimeRangeSelector";
+import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { conversationPath, formatTime } from "../../format";
@@ -107,12 +104,10 @@ function TaskExecutionsView(props: {
             Back to task
           </Link>
           <PageHeader
-            actions={
-              data.executionDays.length > 0 ? (
-                <TimeRangeSelector onChange={setRange} value={range} />
-              ) : undefined
-            }
             description={`${data.task.kind} task · ${data.task.destination.label} · ${statusSummary}`}
+            {...(data.executionDays.length > 0
+              ? { onRangeChange: setRange, range }
+              : {})}
             title={data.task.title}
           />
         </div>

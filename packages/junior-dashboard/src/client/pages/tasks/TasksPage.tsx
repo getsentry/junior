@@ -14,10 +14,7 @@ import { Button, ToggleButton } from "../../components/Button";
 import { LoadingView } from "../../components/LoadingView";
 import { SearchInput } from "../../components/SearchInput";
 import { SelectableRow } from "../../components/SelectableRow";
-import {
-  TimeRangeSelector,
-  type TimeRangeDays,
-} from "../../components/controls/TimeRangeSelector";
+import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { deleteDashboardResource } from "../../http";
@@ -138,12 +135,10 @@ export function TasksPage(props: { enabled: boolean }) {
     <div className={`${dashboardContainerClass} px-4 py-8 md:px-8`}>
       <section className="mx-auto grid w-full max-w-6xl gap-5">
         <PageHeader
-          actions={
-            query.data?.executionDays?.length ? (
-              <TimeRangeSelector onChange={setRange} value={range} />
-            ) : undefined
-          }
           description="Scheduled and event-driven work created by users."
+          {...(query.data?.executionDays?.length
+            ? { onRangeChange: setRange, range }
+            : {})}
           title="Tasks"
         />
         {query.data?.executionDays?.length ? (
