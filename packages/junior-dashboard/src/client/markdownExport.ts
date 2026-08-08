@@ -164,7 +164,7 @@ function appendTranscriptMessages(
       for (const detail of entry.part.presentation.details ?? []) {
         lines.push("", `- ${detail.title}`);
         if (detail.description) lines.push(`  ${detail.description}`);
-        if (detail.content) lines.push("", "```md", detail.content, "```");
+        if (detail.content) lines.push("", fencedBlock(detail.content, "md"));
         if (detail.metadata?.length) {
           lines.push(`  ${detail.metadata.join(" · ")}`);
         }
