@@ -1,5 +1,10 @@
 import type { PluginOperationalReport } from "@sentry/junior/api/schema";
 
+import {
+  ActivityChartAxisText,
+  ActivityChartDateLabels,
+  type ActivityChartLayout,
+} from "../../components/charts/ActivityChart";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { Tooltip } from "../../components/Tooltip";
 import { formatCostSummary } from "../../format";
@@ -27,12 +32,24 @@ export function PluginBarChart(props: {
   const width = 520;
   const height = 250;
   const left = seriesFormat === "usd" ? 72 : 56;
+  const right = 12;
   const top = 16;
   const bottom = 36;
   const plotHeight = height - top - bottom;
-  const step = (width - left - 12) / categories.length;
+  const plotWidth = width - left - right;
+  const layout: ActivityChartLayout = {
+    bottom,
+    height,
+    left,
+    plotHeight,
+    plotWidth,
+    right,
+    top,
+    width,
+  };
+  const step = plotWidth / Math.max(1, categories.length);
   const groupWidth = Math.min(72, step * 0.72);
-  const barWidth = groupWidth / widget.series.length;
+  const barWidth = groupWidth / Math.max(1, widget.series.length);
   const values = categories.flatMap((category) =>
     widget.series.map((series) => category.values[series.key] ?? 0),
   );
@@ -95,20 +112,18 @@ export function PluginBarChart(props: {
                   stroke="rgba(255,255,255,0.07)"
                   strokeDasharray="3 5"
                   x1={left}
-                  x2={width - 12}
+                  x2={width - right}
                   y1={y}
                   y2={y}
                 />
-                <text
-                  fill="rgba(255,255,255,0.35)"
-                  fontFamily="ui-monospace, monospace"
-                  fontSize="12"
+                <ActivityChartAxisText
                   textAnchor="end"
+                  viewBoxWidth={width}
                   x={left - 6}
                   y={y + 3}
                 >
                   {formatChartValue(tickValue, seriesFormat)}
-                </text>
+                </ActivityChartAxisText>
               </g>
             );
           })}
@@ -150,22 +165,12 @@ export function PluginBarChart(props: {
               );
             }),
           )}
-          {chartLabelIndexes(categories.length).map((index) => {
-            const category = categories[index]!;
-            return (
-              <text
-                fill="rgba(255,255,255,0.4)"
-                fontFamily="ui-monospace, monospace"
-                fontSize="12"
-                key={category.id}
-                textAnchor="middle"
-                x={left + index * step + step / 2}
-                y={height - 9}
-              >
-                {formatCategoryLabel(category.label)}
-              </text>
-            );
-          })}
+          <ActivityChartDateLabels
+            dates={categories.map((category) => category.label)}
+            formatDate={formatCategoryLabel}
+            layout={layout}
+            xPosition={(index) => left + index * step + step / 2}
+          />
         </svg>
       )}
     </div>
@@ -176,13 +181,6 @@ function supportedRange(widget: Widget, range: TimeRangeDays | undefined) {
   const availableRanges = widget.timeRangeDays ?? [];
   if (range && availableRanges.includes(range)) return range;
   return availableRanges.includes(30) ? 30 : (availableRanges[0] ?? 30);
-}
-
-function chartLabelIndexes(length: number): number[] {
-  return [0, Math.floor((length - 1) / 2), length - 1].filter(
-    (index, position, indexes) =>
-      index >= 0 && indexes.indexOf(index) === position,
-  );
 }
 
 function formatCategoryLabel(label: string): string {

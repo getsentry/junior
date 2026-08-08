@@ -37,7 +37,7 @@ export function ConversationActivityChart(props: {
             <div className="font-display text-xl font-light text-dashboard-text">
               {formatCompactNumber(total)}
             </div>
-            <div className="font-mono text-sm leading-relaxed text-dashboard-text-muted">
+            <div className="font-mono text-xs leading-relaxed text-dashboard-text-muted">
               period total
             </div>
           </div>

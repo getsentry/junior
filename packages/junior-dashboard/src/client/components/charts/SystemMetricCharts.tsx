@@ -4,6 +4,12 @@ import { formatDuration } from "../Duration";
 import { Card } from "../layout/Card";
 import { Tooltip } from "../Tooltip";
 import { formatCompactNumber, formatCostSummary } from "../../format";
+import {
+  ActivityChartDateLabels,
+  ActivityChartGrid,
+  formatActivityDate,
+  type ActivityChartLayout,
+} from "./ActivityChart";
 
 type Metric = "costUsd" | "durationMs" | "tokens";
 
@@ -59,14 +65,6 @@ const charts: ChartConfig[] = [
   },
 ];
 
-function shortDate(date: string): string {
-  return new Date(`${date}T00:00:00.000Z`).toLocaleDateString(undefined, {
-    day: "numeric",
-    month: "short",
-    timeZone: "UTC",
-  });
-}
-
 function metricValue(day: ConversationMetricDay, metric: Metric): number {
   return day[metric] ?? 0;
 }
@@ -95,6 +93,16 @@ function MetricChart(props: {
   const bottom = 34;
   const plotWidth = width - left - right;
   const plotHeight = height - top - bottom;
+  const layout: ActivityChartLayout = {
+    bottom,
+    height,
+    left,
+    plotHeight,
+    plotWidth,
+    right,
+    top,
+    width,
+  };
   const values = days.map((day) => metricValue(day, chart.metric));
   const maximum = Math.max(Number.EPSILON, ...values);
   const step = plotWidth / Math.max(1, days.length);
@@ -107,10 +115,6 @@ function MetricChart(props: {
         .map((point) => `${point.x} ${point.y}`)
         .join(" L ")} L ${points.at(-1)!.x} ${top + plotHeight} Z`
     : "";
-  const labels = [0, Math.floor((days.length - 1) / 2), days.length - 1].filter(
-    (index, position, indexes) =>
-      index >= 0 && indexes.indexOf(index) === position,
-  );
   const total = values.reduce((sum, value) => sum + value, 0);
   const barWidth = Math.max(1.5, Math.min(8, step * 0.65));
 
@@ -130,7 +134,7 @@ function MetricChart(props: {
             <div className="font-display text-xl font-light text-dashboard-text">
               {chart.format(total)}
             </div>
-            <div className="font-mono text-sm leading-relaxed text-dashboard-text-muted">
+            <div className="font-mono text-xs leading-relaxed text-dashboard-text-muted">
               period total
             </div>
           </div>
@@ -155,31 +159,11 @@ function MetricChart(props: {
               <stop offset="100%" stopColor={chart.color} stopOpacity="0" />
             </linearGradient>
           </defs>
-          {[0, 0.5, 1].map((ratio) => {
-            const y = top + ratio * plotHeight;
-            return (
-              <g key={ratio}>
-                <line
-                  stroke="rgba(255,255,255,0.07)"
-                  strokeDasharray="3 5"
-                  x1={left}
-                  x2={width - right}
-                  y1={y}
-                  y2={y}
-                />
-                <text
-                  fill="rgba(255,255,255,0.35)"
-                  fontFamily="ui-monospace, monospace"
-                  fontSize="12"
-                  textAnchor="end"
-                  x={left - 7}
-                  y={y + 3}
-                >
-                  {chart.axisFormat(maximum * (1 - ratio))}
-                </text>
-              </g>
-            );
-          })}
+          <ActivityChartGrid
+            format={chart.axisFormat}
+            layout={layout}
+            maximum={maximum}
+          />
           {chart.type === "area" && area ? (
             <>
               <path d={area} fill={`url(#${chart.metric}-area)`} />
@@ -204,11 +188,11 @@ function MetricChart(props: {
               <Tooltip
                 content={chart.format(value)}
                 key={day.date}
-                label={shortDate(day.date)}
+                label={formatActivityDate(day.date)}
               >
                 {chart.type === "bar" ? (
                   <rect
-                    aria-label={`${shortDate(day.date)}: ${chart.format(value)}`}
+                    aria-label={`${formatActivityDate(day.date)}: ${chart.format(value)}`}
                     fill={chart.color}
                     height={renderedBarHeight}
                     opacity={value ? 0.8 : 0.1}
@@ -220,7 +204,7 @@ function MetricChart(props: {
                   />
                 ) : (
                   <circle
-                    aria-label={`${shortDate(day.date)}: ${chart.format(value)}`}
+                    aria-label={`${formatActivityDate(day.date)}: ${chart.format(value)}`}
                     cx={point.x}
                     cy={point.y}
                     fill={chart.color}
@@ -232,30 +216,11 @@ function MetricChart(props: {
               </Tooltip>
             );
           })}
-          {labels.map((index) => {
-            const day = days[index];
-            const point = points[index];
-            if (!day || !point) return null;
-            return (
-              <text
-                fill="rgba(255,255,255,0.35)"
-                fontFamily="ui-monospace, monospace"
-                fontSize="12"
-                key={day.date}
-                textAnchor={
-                  index === 0
-                    ? "start"
-                    : index === days.length - 1
-                      ? "end"
-                      : "middle"
-                }
-                x={point.x}
-                y={height - 8}
-              >
-                {shortDate(day.date)}
-              </text>
-            );
-          })}
+          <ActivityChartDateLabels
+            dates={days.map((day) => day.date)}
+            layout={layout}
+            xPosition={(index) => points[index]?.x ?? left}
+          />
         </svg>
       </div>
     </Card>

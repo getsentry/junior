@@ -1,5 +1,12 @@
 import type { TaskExecutionDay } from "@sentry/junior/api/schema";
-import { ActivityTooltipRows } from "../../components/charts/ActivityChart";
+import {
+  ActivityChartDateLabels,
+  ActivityChartGrid,
+  ActivityTooltipRows,
+  ChartSvg,
+  createActivityChartLayout,
+  formatActivityDate,
+} from "../../components/charts/ActivityChart";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { Tooltip } from "../../components/Tooltip";
@@ -15,15 +22,9 @@ export function TaskExecutionChart(props: {
   range: TimeRangeDays;
 }) {
   const days = props.days.slice(-props.range);
-  const width = 720;
-  const height = 200;
-  const left = 56;
-  const right = 12;
-  const top = 14;
-  const bottom = 34;
-  const plotHeight = height - top - bottom;
-  const plotWidth = width - left - right;
-  const step = days.length > 0 ? plotWidth / days.length : plotWidth;
+  const layout = createActivityChartLayout(200);
+  const step =
+    days.length > 0 ? layout.plotWidth / days.length : layout.plotWidth;
   const barWidth = Math.max(2, Math.min(13, step * 0.68));
   const totals = days.map((day) => day.scheduled + day.event);
   const maximum = Math.max(1, ...totals);
@@ -59,40 +60,15 @@ export function TaskExecutionChart(props: {
       </div>
 
       <div className="relative mt-3 overflow-hidden">
-        <svg
+        <ChartSvg
           aria-label={`Task executions during the last ${props.range} days`}
-          className="block h-auto min-h-40 w-full"
-          role="img"
-          viewBox={`0 0 ${width} ${height}`}
+          className="min-h-40"
+          layout={layout}
         >
-          {[maximum, maximum / 2, 0].map((value, index) => {
-            const y = top + index * (plotHeight / 2);
-            return (
-              <g key={index}>
-                <line
-                  stroke="rgba(255,255,255,0.07)"
-                  strokeDasharray="3 5"
-                  x1={left}
-                  x2={width - right}
-                  y1={y}
-                  y2={y}
-                />
-                <text
-                  fill="rgba(255,255,255,0.34)"
-                  fontFamily="ui-monospace, monospace"
-                  fontSize="12"
-                  textAnchor="end"
-                  x={left - 7}
-                  y={y + 3}
-                >
-                  {Math.round(value)}
-                </text>
-              </g>
-            );
-          })}
+          <ActivityChartGrid layout={layout} maximum={maximum} />
           {days.map((day, dayIndex) => {
             let stackedHeight = 0;
-            const x = left + dayIndex * step + (step - barWidth) / 2;
+            const x = layout.left + dayIndex * step + (step - barWidth) / 2;
             const total = totals[dayIndex] ?? 0;
             return (
               <Tooltip
@@ -106,15 +82,16 @@ export function TaskExecutionChart(props: {
                   />
                 }
                 key={day.date}
-                label={formatDate(day.date)}
+                label={formatActivityDate(day.date)}
               >
                 <g
-                  aria-label={`${formatDate(day.date)}: ${day.scheduled} scheduled, ${day.event} event, ${total} total executions`}
+                  aria-label={`${formatActivityDate(day.date)}: ${day.scheduled} scheduled, ${day.event} event, ${total} total executions`}
                   tabIndex={0}
                 >
                   {series.map((item) => {
                     const value = day[item.key];
-                    const segmentHeight = (value / maximum) * plotHeight;
+                    const segmentHeight =
+                      (value / maximum) * layout.plotHeight;
                     stackedHeight += segmentHeight;
                     return (
                       <rect
@@ -125,53 +102,27 @@ export function TaskExecutionChart(props: {
                         rx="1"
                         width={barWidth}
                         x={x}
-                        y={top + plotHeight - stackedHeight}
+                        y={layout.top + layout.plotHeight - stackedHeight}
                       />
                     );
                   })}
                   <rect
                     fill="transparent"
-                    height={plotHeight}
+                    height={layout.plotHeight}
                     width={Math.max(barWidth, 8)}
                     x={x - (Math.max(barWidth, 8) - barWidth) / 2}
-                    y={top}
+                    y={layout.top}
                   />
                 </g>
               </Tooltip>
             );
           })}
-          {[0, Math.floor((days.length - 1) / 2), days.length - 1].map(
-            (index) => {
-              const day = days[index];
-              if (!day) return null;
-              return (
-                <text
-                  fill="rgba(255,255,255,0.34)"
-                  fontFamily="ui-monospace, monospace"
-                  fontSize="12"
-                  key={day.date}
-                  textAnchor={
-                    index === 0
-                      ? "start"
-                      : index === days.length - 1
-                        ? "end"
-                        : "middle"
-                  }
-                  x={
-                    index === 0
-                      ? left
-                      : index === days.length - 1
-                        ? width - right
-                        : left + index * step + step / 2
-                  }
-                  y={height - 9}
-                >
-                  {formatDate(day.date)}
-                </text>
-              );
-            },
-          )}
-        </svg>
+          <ActivityChartDateLabels
+            dates={days.map((day) => day.date)}
+            layout={layout}
+            xPosition={(index) => layout.left + index * step + step / 2}
+          />
+        </ChartSvg>
         {!hasExecutions ? (
           <div className="pointer-events-none absolute inset-0 grid place-items-center pt-12 font-mono text-xs text-dashboard-text-muted">
             No task executions in this period.
@@ -180,12 +131,4 @@ export function TaskExecutionChart(props: {
       </div>
     </Card>
   );
-}
-
-function formatDate(date: string): string {
-  return new Intl.DateTimeFormat("en-US", {
-    day: "numeric",
-    month: "short",
-    timeZone: "UTC",
-  }).format(new Date(`${date}T00:00:00.000Z`));
 }

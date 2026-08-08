@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ReactNode, SVGProps } from "react";
 
 /** Shared SVG dimensions and derived plot bounds for activity charts. */
 export type ActivityChartLayout = {
@@ -13,9 +13,12 @@ export type ActivityChartLayout = {
 };
 
 /** Create the shared plot dimensions used by dashboard activity charts. */
-export function createActivityChartLayout(height: number): ActivityChartLayout {
+export function createActivityChartLayout(
+  height: number,
+  options?: { left?: number },
+): ActivityChartLayout {
   const width = 960;
-  const left = 56;
+  const left = options?.left ?? 56;
   const right = 18;
   const top = 24;
   const bottom = 36;
@@ -47,11 +50,44 @@ export function activityLabelIndexes(count: number): number[] {
   );
 }
 
+/**
+ * SVG user-unit font size for axis labels.
+ * Scales with viewBox width so full-width charts keep a consistent on-screen size.
+ */
+export function activityChartAxisFontSize(viewBoxWidth: number): number {
+  return (10 * viewBoxWidth) / 960;
+}
+
+type ActivityChartAxisTextProps = Omit<
+  SVGProps<SVGTextElement>,
+  "children" | "fontFamily" | "fontSize"
+> & {
+  children: ReactNode;
+  viewBoxWidth: number;
+};
+
+/** Shared mono axis tick label used by every dashboard chart. */
+export function ActivityChartAxisText(props: ActivityChartAxisTextProps) {
+  const { children, viewBoxWidth, fill, ...textProps } = props;
+  return (
+    <text
+      fill={fill ?? "rgba(255,255,255,0.5)"}
+      fontFamily="ui-monospace, monospace"
+      fontSize={activityChartAxisFontSize(viewBoxWidth)}
+      {...textProps}
+    >
+      {children}
+    </text>
+  );
+}
+
 /** Render the shared horizontal guide lines and values for activity charts. */
 export function ActivityChartGrid(props: {
+  format?(value: number): string;
   layout: ActivityChartLayout;
   maximum: number;
 }) {
+  const format = props.format ?? ((value: number) => String(Math.round(value)));
   return [0, 0.5, 1].map((ratio) => {
     const yPosition = props.layout.top + ratio * props.layout.plotHeight;
     return (
@@ -64,16 +100,14 @@ export function ActivityChartGrid(props: {
           y1={yPosition}
           y2={yPosition}
         />
-        <text
-          fill="rgba(255,255,255,0.5)"
-          fontFamily="ui-monospace, monospace"
-          fontSize="12"
+        <ActivityChartAxisText
           textAnchor="end"
+          viewBoxWidth={props.layout.width}
           x={props.layout.left - 8}
           y={yPosition + 3}
         >
-          {Math.round(props.maximum * (1 - ratio))}
-        </text>
+          {format(props.maximum * (1 - ratio))}
+        </ActivityChartAxisText>
       </g>
     );
   });
@@ -82,17 +116,16 @@ export function ActivityChartGrid(props: {
 /** Render the shared first, middle, and last date labels for activity charts. */
 export function ActivityChartDateLabels(props: {
   dates: readonly string[];
+  formatDate?(date: string): string;
   layout: ActivityChartLayout;
   xPosition(index: number): number;
 }) {
+  const formatDate = props.formatDate ?? formatActivityDate;
   return activityLabelIndexes(props.dates.length).map((index) => {
     const date = props.dates[index];
     if (!date) return null;
     return (
-      <text
-        fill="rgba(255,255,255,0.5)"
-        fontFamily="ui-monospace, monospace"
-        fontSize="12"
+      <ActivityChartAxisText
         key={date}
         textAnchor={
           index === 0
@@ -101,11 +134,12 @@ export function ActivityChartDateLabels(props: {
               ? "end"
               : "middle"
         }
+        viewBoxWidth={props.layout.width}
         x={props.xPosition(index)}
         y={props.layout.height - 8}
       >
-        {formatActivityDate(date)}
-      </text>
+        {formatDate(date)}
+      </ActivityChartAxisText>
     );
   });
 }
