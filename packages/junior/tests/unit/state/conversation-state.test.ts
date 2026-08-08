@@ -111,7 +111,7 @@ describe("conversation state", () => {
     });
   });
 
-  it("includes vision cache in state patch payload", () => {
+  it("includes vision cache and processing control in state patch payload", () => {
     const state: ThreadConversationState = coerceThreadConversationState({
       conversation: {
         messages: [
@@ -122,6 +122,16 @@ describe("conversation state", () => {
             createdAtMs: 1,
           },
         ],
+        processing: {
+          activeTurnId: "turn-1",
+          pendingAuth: {
+            kind: "plugin",
+            provider: "github",
+            actorId: "U123",
+            sessionId: "turn-1",
+            linkSentAtMs: 10,
+          },
+        },
         vision: {
           byFileId: {
             F321: {
@@ -137,9 +147,14 @@ describe("conversation state", () => {
     expect(patch.conversation.vision.byFileId.F321?.summary).toContain(
       "staff engineer",
     );
+    expect(patch.conversation.processing.activeTurnId).toBe("turn-1");
+    expect(patch.conversation.processing.pendingAuth).toMatchObject({
+      kind: "plugin",
+      provider: "github",
+    });
   });
 
-  it("omits the visible transcript mirror from the persisted patch", () => {
+  it("omits rebuildable transcript and stats mirrors from the persisted patch", () => {
     const conversation = coerceThreadConversationState({
       conversation: { messages: [] },
     });
@@ -155,12 +170,23 @@ describe("conversation state", () => {
       coveredMessageCount: 1,
       createdAtMs: 2,
     });
+    conversation.backfill = {
+      completedAtMs: 3,
+      source: "thread_fetch",
+    };
+    conversation.stats = {
+      estimatedContextTokens: 99,
+      totalMessageCount: 1,
+      compactedMessageCount: 1,
+      updatedAtMs: 4,
+    };
     const patch = buildConversationStatePatch(conversation);
     expect(patch.conversation).not.toHaveProperty("messages");
     expect(patch.conversation).not.toHaveProperty("compactions");
     // Model history lives in the SQL ConversationEventStore; thread-state carries no mirror.
     expect(patch.conversation).not.toHaveProperty("piMessages");
-    // The count stat is still derived from the working set for reporting.
-    expect(patch.conversation.stats.totalMessageCount).toBe(1);
+    // Token/backfill stats rebuild after SQL hydrate; do not keep a Redis copy.
+    expect(patch.conversation).not.toHaveProperty("stats");
+    expect(patch.conversation).not.toHaveProperty("backfill");
   });
 });

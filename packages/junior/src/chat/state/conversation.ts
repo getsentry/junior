@@ -168,6 +168,8 @@ export function coerceThreadConversationState(
   const messages: ConversationMessage[] = [];
   const compactions: ConversationCompaction[] = [];
 
+  // TODO(#1267): stop reading legacy Redis stats/backfill once old records age out.
+  // Writers no longer persist them; hydrate rebuilds both from SQL.
   const rawBackfill = isRecord(rawConversation.backfill)
     ? rawConversation.backfill
     : {};
@@ -235,29 +237,29 @@ export function coerceThreadConversationState(
 }
 
 /**
- * Wrap a conversation state into the storage envelope for persistence. The
- * visible transcript (`messages`) is not written to `thread-state`; visible and
- * model history live in the SQL `ConversationEventStore`. Only runtime scratch
- * is persisted here.
+ * Wrap conversation runtime scratch into the storage envelope.
+ *
+ * Visible transcript and model history live in SQL. Token/backfill stats are
+ * rebuilt after hydrate, so Redis only keeps short-lived processing control and
+ * the vision cache that has no other authority yet.
+ *
+ * TODO(#1267): move vision off Redis once summaries have a durable home.
  */
 export function buildConversationStatePatch(
   conversation: ThreadConversationState,
 ): {
-  conversation: Omit<ThreadConversationState, "compactions" | "messages">;
+  conversation: Pick<
+    ThreadConversationState,
+    "schemaVersion" | "processing" | "vision"
+  >;
 } {
-  const {
-    compactions: _compactions,
-    messages: _messages,
-    ...scratch
-  } = conversation;
   return {
     conversation: {
-      ...scratch,
       schemaVersion: 1,
-      stats: {
-        ...conversation.stats,
-        totalMessageCount: conversation.messages.length,
-        updatedAtMs: Date.now(),
+      processing: { ...conversation.processing },
+      vision: {
+        backfillCompletedAtMs: conversation.vision.backfillCompletedAtMs,
+        byFileId: { ...conversation.vision.byFileId },
       },
     },
   };

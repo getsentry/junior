@@ -78,7 +78,25 @@ export async function hydrateConversationMessages(args: {
     ? projectConversationMessageSummaries([history.compaction])
     : [];
   args.conversation.messages = projectConversationMessages(history);
+  // Stats are working-set metrics, not Redis authority. Rebuild them from the
+  // SQL projection so thread-state no longer needs to mirror counts/tokens.
+  args.conversation.stats.compactedMessageCount =
+    args.conversation.compactions.reduce(
+      (count, compaction) => count + compaction.coveredMessageCount,
+      0,
+    );
   updateConversationStats(args.conversation);
+  if (
+    args.conversation.messages.length > 0 ||
+    args.conversation.compactions.length > 0
+  ) {
+    // SQL already has history, so Slack backfill must not run again even when
+    // Redis no longer stores the backfill marker.
+    args.conversation.backfill = {
+      completedAtMs: args.conversation.backfill.completedAtMs ?? Date.now(),
+      source: args.conversation.backfill.source ?? "recent_messages",
+    };
+  }
 }
 
 /** Append new messages and handled markers idempotently. */

@@ -9,6 +9,7 @@ import {
   persistThreadStateById,
 } from "@/chat/runtime/thread-state";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
+import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 
 const originalStateAdapter = process.env.JUNIOR_STATE_ADAPTER;
@@ -126,5 +127,54 @@ describe("thread sandbox state", () => {
         },
       },
     });
+  });
+
+  it("persists conversation processing/vision without rebuildable stats mirrors", async () => {
+    const conversationId = "local:test:thread-scratch-thin-conversation";
+    const conversation = coerceThreadConversationState({
+      conversation: {
+        processing: {
+          activeTurnId: "turn-thin",
+          lastCompletedAtMs: 42,
+        },
+        vision: {
+          backfillCompletedAtMs: 99,
+          byFileId: {
+            F1: { summary: "diagram of auth flow", analyzedAtMs: 100 },
+          },
+        },
+        backfill: {
+          completedAtMs: 7,
+          source: "thread_fetch",
+        },
+        stats: {
+          estimatedContextTokens: 1234,
+          totalMessageCount: 9,
+          compactedMessageCount: 3,
+          updatedAtMs: 8,
+        },
+      },
+    });
+
+    await persistThreadStateById(conversationId, { conversation });
+
+    const state = await getPersistedThreadState(conversationId);
+    expect(state.conversation).toMatchObject({
+      schemaVersion: 1,
+      processing: {
+        activeTurnId: "turn-thin",
+        lastCompletedAtMs: 42,
+      },
+      vision: {
+        backfillCompletedAtMs: 99,
+        byFileId: {
+          F1: { summary: "diagram of auth flow", analyzedAtMs: 100 },
+        },
+      },
+    });
+    expect(state.conversation).not.toHaveProperty("stats");
+    expect(state.conversation).not.toHaveProperty("backfill");
+    expect(state.conversation).not.toHaveProperty("messages");
+    expect(state.conversation).not.toHaveProperty("compactions");
   });
 });
