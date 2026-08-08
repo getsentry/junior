@@ -27,6 +27,12 @@ export const AGENT_INVOCATION_MAILBOX_STATUSES = [
   "appended",
 ] as const;
 
+/** Parent-mailbox delivery for one terminal agent invocation result. */
+export const AGENT_INVOCATION_PARENT_NOTIFICATION_STATUSES = [
+  "pending",
+  "notified",
+] as const;
+
 export const juniorAgentBindings = pgTable(
   "junior_agent_bindings",
   {
@@ -76,6 +82,9 @@ export const juniorAgentInvocations = pgTable(
     mailboxStatus: text("mailbox_status")
       .$type<(typeof AGENT_INVOCATION_MAILBOX_STATUSES)[number]>()
       .notNull(),
+    parentNotificationStatus: text("parent_notification_status").$type<
+      (typeof AGENT_INVOCATION_PARENT_NOTIFICATION_STATUSES)[number]
+    >(),
     result: text("result"),
     errorMessage: text("error_message"),
     createdAt: timestamptz("created_at").notNull(),
@@ -87,6 +96,10 @@ export const juniorAgentInvocations = pgTable(
     index("junior_agent_invocations_mailbox_idx").on(
       table.mailboxStatus,
       table.createdAt,
+    ),
+    index("junior_agent_invocations_parent_notification_idx").on(
+      table.parentNotificationStatus,
+      table.terminalAt,
     ),
   ],
 );

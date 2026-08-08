@@ -69,6 +69,13 @@ export function getAgentInvocationMessageId(invocationId: string): string {
   return `agent-invocation:${invocationId}:input`;
 }
 
+/** Return the stable parent-mailbox identity for one terminal agent invocation. */
+export function getAgentInvocationParentResultMessageId(
+  invocationId: string,
+): string {
+  return `agent-invocation:${invocationId}:result`;
+}
+
 function bindingFromRow(
   row: typeof juniorAgentBindings.$inferSelect,
 ): AgentBinding {
@@ -99,6 +106,9 @@ function invocationFromRow(
     invocationId: row.invocationId,
     mailboxStatus: row.mailboxStatus,
     parentConversationId: row.parentConversationId,
+    ...(row.parentNotificationStatus
+      ? { parentNotificationStatus: row.parentNotificationStatus }
+      : {}),
     ...(row.reasoningLevel ? { reasoningLevel: row.reasoningLevel } : {}),
     ...(row.result !== null ? { result: row.result } : {}),
     source: row.source,
@@ -414,6 +424,7 @@ export async function completeAgentInvocation(
       status: args.status,
       result: args.status === "completed" ? args.result : null,
       errorMessage: args.status === "completed" ? null : args.errorMessage,
+      parentNotificationStatus: "pending",
       terminalAt: new Date(nowMs),
       updatedAt: new Date(nowMs),
     })
@@ -427,6 +438,40 @@ export async function completeAgentInvocation(
       ),
     );
   return await getAgentInvocation(args.invocationId);
+}
+
+/** List terminal invocations whose parent-mailbox delivery still needs repair. */
+export async function listPendingAgentInvocationParentNotifications(
+  limit = 100,
+): Promise<AgentInvocation[]> {
+  const rows = await getSqlExecutor()
+    .db()
+    .select()
+    .from(juniorAgentInvocations)
+    .where(eq(juniorAgentInvocations.parentNotificationStatus, "pending"))
+    .orderBy(asc(juniorAgentInvocations.terminalAt))
+    .limit(limit);
+  return rows.map(invocationFromRow);
+}
+
+/** Record that the parent mailbox accepted the terminal result once. */
+export async function markAgentInvocationParentNotified(
+  invocationId: string,
+  nowMs = Date.now(),
+): Promise<void> {
+  await getSqlExecutor()
+    .db()
+    .update(juniorAgentInvocations)
+    .set({
+      parentNotificationStatus: "notified",
+      updatedAt: new Date(nowMs),
+    })
+    .where(
+      and(
+        eq(juniorAgentInvocations.invocationId, invocationId),
+        eq(juniorAgentInvocations.parentNotificationStatus, "pending"),
+      ),
+    );
 }
 
 /** Return whether an invocation already owns its immutable terminal result. */

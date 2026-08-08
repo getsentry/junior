@@ -167,6 +167,8 @@ export function createProductionConversationWorkOptions(options: {
     run: routeAgentInvocationWork({
       invocationWorker: createAgentInvocationWorker({
         agentRunner,
+        conversationStore,
+        queue,
       }),
       fallbackWorker: providerWorker,
     }),

@@ -36,6 +36,8 @@ export const fileLengthExceptions = {
     "Existing Slack runtime; split by runtime phase.",
   "packages/junior/src/chat/state/turn-session.ts":
     "Existing turn session persistence; split by persistence concern.",
+  "packages/junior/src/chat/task-execution/slack-work.ts":
+    "Existing Slack mailbox adapter; split synthetic ingress builders next.",
   "packages/junior/src/chat/task-execution/state.ts":
     "Existing mailbox and lease store; split without separating shared locks.",
   "packages/junior/src/cli/check.ts":

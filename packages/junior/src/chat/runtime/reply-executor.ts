@@ -109,6 +109,10 @@ import {
   isResourceEventSlackMessage,
   RESOURCE_EVENT_SYSTEM_ACTOR,
 } from "@/chat/resource-events/actor";
+import {
+  AGENT_INVOCATION_RESULT_SYSTEM_ACTOR,
+  isAgentInvocationResultSlackMessage,
+} from "@/chat/agent-invocations/actor";
 import type { AgentContinueRequest } from "@/chat/services/agent-continue";
 import {
   ConversationTurnBoundaryError,
@@ -282,7 +286,10 @@ function queuedInstructionProvenance(
   queued: QueuedTurnMessage,
   teamId: string,
 ): ConversationMessageProvenance {
-  if (isResourceEventSlackMessage(queued.message)) {
+  if (
+    isResourceEventSlackMessage(queued.message) ||
+    isAgentInvocationResultSlackMessage(queued.message)
+  ) {
     return contextProvenance;
   }
   const identity = getMessageActorIdentity(queued.message);
@@ -536,7 +543,11 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         };
         await Promise.all(
           (options.queuedMessages ?? [])
-            .filter((queued) => !isResourceEventSlackMessage(queued.message))
+            .filter(
+              (queued) =>
+                !isResourceEventSlackMessage(queued.message) &&
+                !isAgentInvocationResultSlackMessage(queued.message),
+            )
             .map((queued) =>
               ensureSlackMessageActorIdentity(
                 queued.message,
@@ -556,6 +567,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           credentialContext = options.execution.credentialContext;
         } else if (isResourceEventSlackMessage(message)) {
           executionActor = RESOURCE_EVENT_SYSTEM_ACTOR;
+          credentialContext = credentialContextForActor(executionActor);
+        } else if (isAgentInvocationResultSlackMessage(message)) {
+          executionActor = AGENT_INVOCATION_RESULT_SYSTEM_ACTOR;
           credentialContext = credentialContextForActor(executionActor);
         } else {
           executionActor = await ensureSlackMessageActorIdentity(
@@ -658,9 +672,11 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   attachments,
                   {
                     threadId,
-                    actorId: isResourceEventSlackMessage(queued.message)
-                      ? undefined
-                      : queued.message.author.userId,
+                    actorId:
+                      isResourceEventSlackMessage(queued.message) ||
+                      isAgentInvocationResultSlackMessage(queued.message)
+                        ? undefined
+                        : queued.message.author.userId,
                     channelId,
                     runId,
                     conversation: preparedState.conversation,

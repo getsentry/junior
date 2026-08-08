@@ -47,6 +47,7 @@ import {
 } from "@/chat/runtime/turn-input";
 import { getMessageActorIdentity } from "@/chat/services/message-actor-identity";
 import { isResourceEventSlackMessage } from "@/chat/resource-events/actor";
+import { isAgentInvocationResultSlackMessage } from "@/chat/agent-invocations/actor";
 import type { FailConversationTurnInput } from "@/chat/conversations/turn-lifecycle";
 
 export interface AssistantLifecycleEvent {
@@ -901,7 +902,11 @@ export function createSlackTurnRuntime<
         const runId = deps.getRunId(thread, message);
         const isResourceEventNotification =
           isResourceEventSlackMessage(message);
-        const actorId = isResourceEventNotification
+        const isAgentInvocationResultNotification =
+          isAgentInvocationResultSlackMessage(message);
+        const isSystemNotification =
+          isResourceEventNotification || isAgentInvocationResultNotification;
+        const actorId = isSystemNotification
           ? undefined
           : message.author.userId;
         const turnContext = logContext({
@@ -945,7 +950,7 @@ export function createSlackTurnRuntime<
           const turnIsExplicitMention =
             Boolean(message.isMention) ||
             queuedMessages.some((queued) => queued.explicitMention);
-          const preflightDecision = isResourceEventNotification
+          const preflightDecision = isSystemNotification
             ? undefined
             : getSubscribedReplyPreflightDecision({
                 botUserName: deps.assistantUserName,
@@ -985,7 +990,9 @@ export function createSlackTurnRuntime<
 
           const decision: SubscribedReplyDecision = isResourceEventNotification
             ? { shouldReply: true, reason: "resource_event" }
-            : await deps.decideSubscribedReply({
+            : isAgentInvocationResultNotification
+              ? { shouldReply: true, reason: "agent_invocation_result" }
+              : await deps.decideSubscribedReply({
                 rawText: combinedText.rawText,
                 text: combinedText.userText,
                 conversationContext:

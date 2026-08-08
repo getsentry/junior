@@ -8,6 +8,7 @@ import { credentialContextSchema } from "@/chat/credentials/context";
 import { TURN_REASONING_LEVELS } from "@/chat/reasoning-level";
 import {
   AGENT_INVOCATION_MAILBOX_STATUSES,
+  AGENT_INVOCATION_PARENT_NOTIFICATION_STATUSES,
   AGENT_INVOCATION_STATUSES,
 } from "@/db/schema/agent-invocations";
 
@@ -20,6 +21,10 @@ export const agentNameSchema = exactStringSchema.max(64);
 
 const agentInvocationMailboxStatusSchema = z.enum(
   AGENT_INVOCATION_MAILBOX_STATUSES,
+);
+
+const agentInvocationParentNotificationStatusSchema = z.enum(
+  AGENT_INVOCATION_PARENT_NOTIFICATION_STATUSES,
 );
 
 export const agentBindingSchema = z
@@ -49,19 +54,22 @@ const agentInvocationBaseSchema = z
   })
   .strict();
 
+const terminalAgentInvocationBaseSchema = agentInvocationBaseSchema.extend({
+  parentNotificationStatus: agentInvocationParentNotificationStatusSchema,
+  terminalAtMs: z.number().finite(),
+});
+
 export const agentInvocationSchema = z.discriminatedUnion("status", [
   agentInvocationBaseSchema.extend({
     status: z.enum(["pending", "running", "awaiting_resume"]),
   }),
-  agentInvocationBaseSchema.extend({
+  terminalAgentInvocationBaseSchema.extend({
     result: z.string(),
     status: z.literal("completed"),
-    terminalAtMs: z.number().finite(),
   }),
-  agentInvocationBaseSchema.extend({
+  terminalAgentInvocationBaseSchema.extend({
     errorMessage: z.string(),
     status: z.enum(["blocked", "failed"]),
-    terminalAtMs: z.number().finite(),
   }),
 ]);
 

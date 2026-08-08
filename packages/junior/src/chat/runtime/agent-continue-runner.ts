@@ -76,6 +76,10 @@ import {
   isResourceEventConversationMessage,
   RESOURCE_EVENT_SYSTEM_ACTOR,
 } from "@/chat/resource-events/actor";
+import {
+  AGENT_INVOCATION_RESULT_SYSTEM_ACTOR,
+  isAgentInvocationResultConversationMessage,
+} from "@/chat/agent-invocations/actor";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import type { AgentRunRouting } from "@/chat/agent/request";
@@ -313,6 +317,9 @@ async function resolveResumeExecutionIdentity(args: {
   let actor: Actor | undefined = routing?.actor;
   if (!actor && isResourceEventConversationMessage(args.userMessage)) {
     actor = RESOURCE_EVENT_SYSTEM_ACTOR;
+  }
+  if (!actor && isAgentInvocationResultConversationMessage(args.userMessage)) {
+    actor = AGENT_INVOCATION_RESULT_SYSTEM_ACTOR;
   }
   if (!actor && args.userMessage.author?.userId) {
     actor = await resolveSlackResumeUserActor({

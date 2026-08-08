@@ -39,6 +39,10 @@ import {
   RESOURCE_EVENT_SLACK_AUTHOR_ID,
 } from "@/chat/resource-events/actor";
 import {
+  AGENT_INVOCATION_RESULT_SLACK_AUTHOR_ID,
+  isAgentInvocationResultSlackMessage,
+} from "@/chat/agent-invocations/actor";
+import {
   createSlackDestination,
   requireSlackDestination,
 } from "@/chat/destination";
@@ -410,6 +414,12 @@ const slackConversationMessageMetadataSchema = z.union([
         .strict(),
     })
     .strict(),
+  slackConversationMessageMetadataBaseSchema
+    .extend({
+      agentInvocationId: z.string().min(1),
+      kind: z.literal("agent_invocation_result"),
+    })
+    .strict(),
 ]);
 
 export type SlackConversationMessageMetadata = z.output<
@@ -544,6 +554,113 @@ function slackSerializedResourceEventMessage(input: {
   };
 }
 
+interface SlackAgentInvocationResultInboundInput {
+  createdAtMs: number;
+  destination: {
+    channelId: string;
+    platform: "slack";
+    teamId: string;
+  };
+  inboundMessageId: string;
+  invocationId: string;
+  parentConversationId: string;
+  receivedAtMs: number;
+  text: string;
+}
+
+/**
+ * Serialize a synthetic agent-invocation result without a native Slack message
+ * timestamp so Slack Web API calls cannot target the internal id.
+ */
+function slackSerializedAgentInvocationResultMessage(input: {
+  channelId: string;
+  id: string;
+  text: string;
+  threadTs: string;
+  timestampIso: string;
+}): SerializedMessage {
+  return {
+    _type: "chat:Message",
+    attachments: [],
+    author: {
+      userId: AGENT_INVOCATION_RESULT_SLACK_AUTHOR_ID,
+      userName: "junior-agent",
+      fullName: "Junior agent",
+      isBot: true,
+      isMe: false,
+    },
+    formatted: { type: "root", children: [] },
+    id: input.id,
+    metadata: {
+      dateSent: input.timestampIso,
+      edited: false,
+    },
+    raw: {
+      channel: input.channelId,
+      event_type: "agent_invocation_result",
+      thread_ts: input.threadTs,
+      type: "message",
+      user: AGENT_INVOCATION_RESULT_SLACK_AUTHOR_ID,
+    },
+    text: input.text,
+    threadId: `slack:${input.channelId}:${input.threadTs}`,
+  };
+}
+
+/** Create a Slack mailbox record for one terminal agent-invocation result. */
+export function createSlackAgentInvocationResultInboundMessage(
+  input: SlackAgentInvocationResultInboundInput,
+): InboundMessage {
+  const slack = parseSlackConversationId(input.parentConversationId);
+  if (!slack) {
+    throw new Error(
+      "Agent invocation result delivery currently requires a Slack conversation",
+    );
+  }
+  if (input.destination.channelId !== slack.channelId) {
+    throw new Error(
+      "Agent invocation destination does not match Slack parent conversation",
+    );
+  }
+  const timestampIso = new Date(input.createdAtMs).toISOString();
+  const message = slackSerializedAgentInvocationResultMessage({
+    channelId: slack.channelId,
+    id: input.inboundMessageId,
+    text: input.text,
+    threadTs: slack.threadTs,
+    timestampIso,
+  });
+  const thread = slackSerializedThread({
+    channelId: slack.channelId,
+    message,
+    threadTs: slack.threadTs,
+  });
+  return {
+    conversationId: input.parentConversationId,
+    createdAtMs: input.createdAtMs,
+    destination: input.destination,
+    inboundMessageId: input.inboundMessageId,
+    delivery: "defer",
+    source: "internal",
+    receivedAtMs: input.receivedAtMs,
+    input: {
+      text: input.text,
+      authorId: AGENT_INVOCATION_RESULT_SLACK_AUTHOR_ID,
+      metadata: {
+        agentInvocationId: input.invocationId,
+        installation: {
+          teamId: input.destination.teamId,
+        },
+        kind: "agent_invocation_result",
+        platform: "slack",
+        route: "subscribed",
+        thread,
+        message,
+      } satisfies SlackConversationMessageMetadata,
+    },
+  };
+}
+
 /** Create a Slack mailbox record for a subscribed resource-event notification. */
 export function createSlackResourceEventInboundMessage(
   input: SlackResourceEventInboundInput,
@@ -670,7 +787,10 @@ async function bindSlackActorIdentities(args: {
 }): Promise<void> {
   const byAuthorId = new Map<string, Message[]>();
   for (const message of args.messages) {
-    if (isResourceEventSlackMessage(message)) {
+    if (
+      isResourceEventSlackMessage(message) ||
+      isAgentInvocationResultSlackMessage(message)
+    ) {
       continue;
     }
     const authorId = requireSlackAuthorId(message);
