@@ -1829,7 +1829,6 @@ function buildRuntimeServices(
             const unknownOutcome = {
               target: timeoutResume.tool_name,
               aborted: true,
-              message: "Command outcome was not confirmed.",
             };
             const deadlineResult = annotateTurnDeadlineToolResult({
               content: [{ type: "text", text: JSON.stringify(unknownOutcome) }],
@@ -1837,8 +1836,7 @@ function buildRuntimeServices(
             });
             if (
               !deadlineResult?.content ||
-              deadlineResult.details === undefined ||
-              deadlineResult.isError !== true
+              deadlineResult.details === undefined
             ) {
               throw new Error("Failed to build timeout continuation fixture");
             }

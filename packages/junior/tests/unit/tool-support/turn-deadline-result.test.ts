@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { annotateTurnDeadlineToolResult } from "@/chat/tool-support/turn-deadline-result";
 
 describe("annotateTurnDeadlineToolResult", () => {
-  it("rewrites cancelled abort text into a recoverable active-task boundary", () => {
+  it("projects aborted tool results as unconfirmed outcomes without runtime jargon", () => {
     const result = annotateTurnDeadlineToolResult({
       content: [
         {
@@ -23,28 +23,24 @@ describe("annotateTurnDeadlineToolResult", () => {
       },
     });
 
-    expect(result).toMatchObject({
-      isError: true,
-      details: {
-        aborted: true,
-        interruption: {
-          cause: "turn_deadline",
-          scope: "execution_slice",
-          task_status: "active",
+    expect(result).toEqual({
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            outcome: "unconfirmed",
+            target: "pnpm test",
+          }),
         },
-        message: expect.stringMatching(/still active/i),
-        stderr: expect.stringMatching(/still active/i),
+      ],
+      details: {
+        outcome: "unconfirmed",
+        target: "pnpm test",
       },
+      isError: false,
     });
-    expect(result?.details).not.toEqual(
-      expect.objectContaining({
-        stderr: expect.stringMatching(/cancelled/i),
-      }),
-    );
-    expect(JSON.stringify(result?.content)).not.toMatch(/cancelled/i);
-    expect(JSON.stringify(result?.content)).toMatch(/still active/i);
-    expect(JSON.stringify(result?.content)).toMatch(
-      /without reporting the deadline/i,
+    expect(JSON.stringify(result)).not.toMatch(
+      /cancelled|turn_deadline|execution_slice|deadline/i,
     );
   });
 
