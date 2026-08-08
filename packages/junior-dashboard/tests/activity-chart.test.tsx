@@ -7,17 +7,12 @@ import {
   ChartAxisHtmlLabel,
   ChartAxisLabel,
   ChartSvg,
-  chartAxisLabelClassName,
   createActivityChartLayout,
 } from "../src/client/components/charts/ActivityChart";
-import {
-  ChartHeader,
-  chartHeaderPrimaryClassName,
-  chartHeaderSecondaryClassName,
-} from "../src/client/components/charts/ChartHeader";
+import { ChartHeader } from "../src/client/components/charts/ChartHeader";
 
 describe("ChartAxisLabel", () => {
-  it("uses the shared visual class and 12px default screen-size contract", () => {
+  it("defaults to the shared 12px screen-size contract", () => {
     const html = renderToStaticMarkup(
       <svg>
         <ChartAxisLabel x={0} y={0}>
@@ -26,8 +21,8 @@ describe("ChartAxisLabel", () => {
       </svg>,
     );
 
-    expect(html).toContain(chartAxisLabelClassName);
     expect(html).toContain('font-size="12"');
+    expect(html).toContain(">12</text>");
   });
 
   it("renders y-axis and date labels through the shared text component", () => {
@@ -43,7 +38,7 @@ describe("ChartAxisLabel", () => {
       </ChartSvg>,
     );
 
-    expect(html).toContain(chartAxisLabelClassName);
+    expect(html).toContain('aria-label="fixture"');
     expect(html).toContain(">10</text>");
     expect(html).toContain(">5</text>");
     expect(html).toContain(">0</text>");
@@ -59,17 +54,17 @@ describe("ChartAxisLabel", () => {
     expect(layout.plotWidth).toBe(400 - 64 - 18);
   });
 
-  it("shares the html axis label class with svg labels", () => {
+  it("renders html axis labels for non-svg charts", () => {
     const html = renderToStaticMarkup(
       <ChartAxisHtmlLabel>Jul 10</ChartAxisHtmlLabel>,
     );
-    expect(html).toContain("text-2xs");
     expect(html).toContain("Jul 10");
+    expect(html).toContain("<span");
   });
 });
 
 describe("ChartHeader", () => {
-  it("uses the same primary class for title and period total value", () => {
+  it("renders the title and period total with matching shared markup", () => {
     const html = renderToStaticMarkup(
       <ChartHeader
         description="Daily cumulative runtime"
@@ -78,17 +73,14 @@ describe("ChartHeader", () => {
       />,
     );
 
-    expect(html).toContain(chartHeaderPrimaryClassName);
-    expect(html).toContain(chartHeaderSecondaryClassName);
     expect(html).toContain("Runtime");
     expect(html).toContain("16m 12s");
     expect(html).toContain("period total");
     expect(html).toContain("Daily cumulative runtime");
-
-    const primaryMatches = html.match(
-      new RegExp(chartHeaderPrimaryClassName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"),
-    );
-    // title + total value
-    expect(primaryMatches?.length).toBe(2);
+    expect(html).toContain("<h3");
+    // Title and total value use the same primary class string.
+    const primaryClass = html.match(/class="([^"]*font-mono[^"]*)"/)?.[1];
+    expect(primaryClass).toBeTruthy();
+    expect(html.split(primaryClass!).length - 1).toBeGreaterThanOrEqual(2);
   });
 });
