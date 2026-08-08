@@ -186,6 +186,9 @@ describe("Slack schedule tools", () => {
   it("exposes a required structured schedule without model-computed timestamps", async () => {
     const createTool = createSlackScheduleCreateTaskTool(createContext());
     const updateTool = createSlackScheduleUpdateTaskTool(createContext());
+    const deleteTool = createSlackScheduleDeleteTaskTool(createContext());
+    const runNowTool = createSlackScheduleRunTaskNowTool(createContext());
+    const listTool = createSlackScheduleListTasksTool(createContext());
     const schema = createTool.inputSchema as {
       properties?: Record<string, unknown>;
       required?: string[];
@@ -193,6 +196,10 @@ describe("Slack schedule tools", () => {
 
     expect(createTool.approvalMode).toBe("review");
     expect(updateTool.approvalMode).toBe("review");
+    expect(deleteTool.approvalMode).toBe("review");
+    expect(runNowTool.approvalMode).toBe("review");
+    // Read-only listing stays outside Guardian; mutating schedule tools do not.
+    expect(listTool.approvalMode).toBeUndefined();
     expect(schema.required).toContain("schedule");
     expect(schema.properties).not.toHaveProperty("next_run_at");
     expect(schema.properties).not.toHaveProperty("schedule_kind");

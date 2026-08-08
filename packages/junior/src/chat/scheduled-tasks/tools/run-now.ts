@@ -16,6 +16,7 @@ export function createSlackScheduleRunTaskNowTool(
   context: SchedulerToolContext,
 ) {
   return zodTool({
+    approvalMode: "review",
     annotations: {
       destructiveHint: false,
       idempotentHint: false,
