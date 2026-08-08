@@ -324,6 +324,23 @@ vi.mock("@/chat/services/turn-session-record", () => ({
           }
         : undefined,
   }),
+  saveTurnCheckpoint: async (args: { mode: string; sliceId?: number }) => {
+    if (args.mode === "running") {
+      return undefined;
+    }
+    if (args.mode === "paused") {
+      return {
+        version: 1,
+        conversationId: "conversation-1",
+        piMessages: [],
+        sessionId: "turn-1",
+        sliceId: (args.sliceId ?? 1) + 1,
+        state: "awaiting_resume",
+        updatedAtMs: 1,
+      };
+    }
+    return undefined;
+  },
   persistRunningSessionRecord: async () => false,
   persistCompletedSessionRecord: async () => undefined,
   persistAuthPauseSessionRecord: async () => ({
