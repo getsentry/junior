@@ -32,7 +32,9 @@ export interface TurnSessionState {
   existingSessionRecord?: AgentTurnSessionRecord;
 }
 
-type UpsertTurnSessionRecord = Parameters<typeof upsertAgentTurnSessionRecord>[0];
+type UpsertTurnSessionRecord = Parameters<
+  typeof upsertAgentTurnSessionRecord
+>[0];
 
 /** Keep only keys whose value is defined. */
 function definedProps<T extends Record<string, unknown>>(
@@ -305,11 +307,9 @@ export async function persistCompletedSessionRecord(args: {
         destination: args.destination,
         destinationVisibility: args.destinationVisibility,
         dispatchId: args.dispatchId,
-        loadedSkillNames:
-          args.loadedSkillNames ?? latestSessionRecord?.loadedSkillNames,
+        loadedSkillNames: args.loadedSkillNames,
         modelId: args.modelId,
-        reasoningLevel:
-          args.reasoningLevel ?? latestSessionRecord?.reasoningLevel,
+        reasoningLevel: args.reasoningLevel,
         sessionId: args.sessionId,
         source: args.source,
         surface: args.surface,
@@ -436,8 +436,7 @@ export async function persistAuthPauseSessionRecord(args: {
           // Auth-pause keeps caller-owned skill names only.
           loadedSkillNames: args.loadedSkillNames,
           modelId: args.modelId,
-          reasoningLevel:
-            args.reasoningLevel ?? latestSessionRecord?.reasoningLevel,
+          reasoningLevel: args.reasoningLevel,
           sessionId: args.sessionId,
           source: args.source,
           surface: args.surface,
@@ -535,8 +534,7 @@ export async function persistContinuationSessionRecord(
           // Continuation keeps caller-owned skill names only.
           loadedSkillNames: args.loadedSkillNames,
           modelId: args.modelId,
-          reasoningLevel:
-            args.reasoningLevel ?? latestSessionRecord?.reasoningLevel,
+          reasoningLevel: args.reasoningLevel,
           sessionId: args.sessionId,
           source: args.source,
           surface: args.surface,
@@ -628,8 +626,7 @@ export async function persistYieldSessionRecord(args: {
           // Yield keeps caller-owned skill names only.
           loadedSkillNames: args.loadedSkillNames,
           modelId: args.modelId,
-          reasoningLevel:
-            args.reasoningLevel ?? latestSessionRecord?.reasoningLevel,
+          reasoningLevel: args.reasoningLevel,
           sessionId: args.sessionId,
           source: args.source,
           surface: args.surface,

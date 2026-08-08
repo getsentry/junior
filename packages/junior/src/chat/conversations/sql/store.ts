@@ -347,6 +347,10 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
     lastActivityAtMs: requiredMsFromDate(row.lastActivityAt),
     updatedAtMs: requiredMsFromDate(row.updatedAt),
     execution,
+    executionMetrics: {
+      durationMs: row.executionDurationMs,
+      ...(row.executionUsage ? { usage: row.executionUsage } : {}),
+    },
     ...(row.parentConversationId
       ? {
           lineage: {
