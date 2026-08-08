@@ -873,7 +873,7 @@ describe("Slack schedule tools", () => {
         { task_id: created.task.id },
       ),
     ).rejects.toThrow(
-      "Scheduled task can only be managed from the Slack destination where it was created.",
+      "Scheduled task can only be managed from the Slack destination where it currently delivers.",
     );
   });
 
