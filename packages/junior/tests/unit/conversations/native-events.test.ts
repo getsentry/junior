@@ -109,25 +109,28 @@ describe("junior native authentication events", () => {
     ).toBeUndefined();
   });
 
-  it("renders AGENTS.md load presentation without the instruction body", () => {
+  it("renders AGENTS.md load presentation with filename, size, and content", () => {
     expect(
       agentsInstructionsUpdatedEvent.renderEvent({
         action: "loaded",
         directory: "/vercel/sandbox/junior",
         fingerprint: "abc123",
-        sources: [{ path: "/vercel/sandbox/junior/AGENTS.md" }],
+        sources: [
+          {
+            content: "# Agent Instructions\n\nUse pnpm.",
+            path: "/vercel/sandbox/junior/AGENTS.md",
+          },
+        ],
         textBytes: 2048,
       }),
     ).toEqual({
       icon: "brain",
       title: "Loaded AGENTS.md",
-      preview: "`/vercel/sandbox/junior`",
+      preview: "AGENTS.md · 2 KB",
       details: [
         {
-          title: "Loaded AGENTS.md",
-          description:
-            "Directory: `/vercel/sandbox/junior` · Sources: `/vercel/sandbox/junior/AGENTS.md` · 2048 bytes",
-          metadata: ["loaded", "/vercel/sandbox/junior/AGENTS.md"],
+          title: "AGENTS.md",
+          content: "# Agent Instructions\n\nUse pnpm.",
         },
       ],
     });
@@ -142,7 +145,12 @@ describe("junior native authentication events", () => {
         action: "loaded",
         directory: "/vercel/sandbox/junior",
         fingerprint: "abc123",
-        sources: [{ path: "/vercel/sandbox/junior/AGENTS.md" }],
+        sources: [
+          {
+            content: "# Agent Instructions\n\nUse pnpm.",
+            path: "/vercel/sandbox/junior/AGENTS.md",
+          },
+        ],
         textBytes: 2048,
       },
     };

@@ -562,7 +562,7 @@ type AgentsInstructionsTransitionArgs = {
   conversationId: string;
   directory?: string;
   fingerprint: string;
-  sources: Array<{ path: string }>;
+  sources: Array<{ content: string; path: string }>;
   textBytes?: number;
   turnId: string;
 };

@@ -47,7 +47,12 @@ describe("createRepositoryInstructionsContext", () => {
       action: "loaded",
       directory: "/vercel/sandbox/repo",
       fingerprint: "v1",
-      sources: [{ path: "/vercel/sandbox/repo/AGENTS.md" }],
+      sources: [
+        {
+          content: "Use pnpm.",
+          path: "/vercel/sandbox/repo/AGENTS.md",
+        },
+      ],
     });
     expect(transitions[1]).toMatchObject({
       action: "replaced",

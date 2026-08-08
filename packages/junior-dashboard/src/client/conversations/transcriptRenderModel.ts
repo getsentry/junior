@@ -165,6 +165,7 @@ export function messageRawText(message: TranscriptViewMessage): string {
           ...(part.presentation.details ?? []).flatMap((detail) => [
             detail.title,
             detail.description,
+            detail.content,
             ...(detail.metadata ?? []),
           ]),
         ]

@@ -443,13 +443,22 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         presentation: {
           icon: "brain",
           title: "Loaded AGENTS.md",
-          preview: "`/vercel/sandbox/junior`",
+          preview: "AGENTS.md · 2 KB",
           details: [
             {
-              title: "Loaded AGENTS.md",
-              description:
-                "Directory: `/vercel/sandbox/junior` · Sources: `/vercel/sandbox/junior/AGENTS.md` · 2048 bytes",
-              metadata: ["loaded", "/vercel/sandbox/junior/AGENTS.md"],
+              title: "AGENTS.md",
+              content: `# Agent Instructions
+
+## Core principles
+
+- Use the words in \`TERMINOLOGY.md\`.
+- Prefer functions, plain objects, simple types, and small modules.
+- Optimize for the next maintainer.
+- Use **pnpm** for repository commands.
+
+## Testing
+
+Run targeted tests before broad suites, and keep durable explanations beside the owning code.`,
             },
           ],
         },
@@ -1646,7 +1655,9 @@ export function readMockTaskExecutions(
             title: titles[index % titles.length],
           }
         : {}),
-      executedAt: new Date(nowMs - index * 86_400_000 - 3_600_000).toISOString(),
+      executedAt: new Date(
+        nowMs - index * 86_400_000 - 3_600_000,
+      ).toISOString(),
       executionId: `${id}-run-${index + 1}`,
       status,
     };

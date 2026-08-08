@@ -31,6 +31,11 @@ export function TranscriptStructuredEventView(props: {
                 <HighlightText text={detail.description} />
               </div>
             ) : null}
+            {detail.content ? (
+              <pre className="mt-2 max-h-[32rem] overflow-auto whitespace-pre-wrap break-words rounded bg-black/20 p-3 font-mono text-xs leading-relaxed text-dashboard-text-muted">
+                <HighlightText text={detail.content} />
+              </pre>
+            ) : null}
             {detail.metadata?.length ? (
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {detail.metadata.map((value) => (

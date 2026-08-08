@@ -533,7 +533,10 @@ async function executeAgentRunInPrivacyContext(
           source: storedTurnRoute.source,
         };
       }
-    } else if (activeModelProfile === STANDARD_MODEL_PROFILE && handoffEnabled) {
+    } else if (
+      activeModelProfile === STANDARD_MODEL_PROFILE &&
+      handoffEnabled
+    ) {
       turnRoute = await selectTurnRoute({
         completeObject,
         conversationContext: input.conversationContext,
@@ -803,7 +806,7 @@ async function executeAgentRunInPrivacyContext(
       action: "loaded" | "replaced" | "cleared";
       directory?: string;
       fingerprint: string;
-      sources: Array<{ path: string }>;
+      sources: Array<{ content: string; path: string }>;
       textBytes?: number;
     }) => {
       try {
@@ -813,9 +816,7 @@ async function executeAgentRunInPrivacyContext(
           fingerprint: transition.fingerprint,
           sources: transition.sources,
           turnId,
-          ...(transition.directory
-            ? { directory: transition.directory }
-            : {}),
+          ...(transition.directory ? { directory: transition.directory } : {}),
           ...(typeof transition.textBytes === "number"
             ? { textBytes: transition.textBytes }
             : {}),
@@ -839,11 +840,11 @@ async function executeAgentRunInPrivacyContext(
         priorVisibleAgents.text === initialRepositoryInstructions.text;
       if (!alreadyActive) {
         await recordAgentsTransition({
-          action:
-            priorVisibleAgents?.active === true ? "replaced" : "loaded",
+          action: priorVisibleAgents?.active === true ? "replaced" : "loaded",
           directory: initialRepositoryInstructions.directory,
           fingerprint: initialRepositoryInstructions.fingerprint,
           sources: initialRepositoryInstructions.sources.map((source) => ({
+            content: source.content,
             path: source.path,
           })),
           textBytes: Buffer.byteLength(

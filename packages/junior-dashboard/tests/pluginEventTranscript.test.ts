@@ -144,7 +144,13 @@ describe("plugin event transcript projection", () => {
           presentation: {
             icon: "brain",
             title: "Loaded AGENTS.md",
-            preview: "`/vercel/sandbox/junior`",
+            preview: "AGENTS.md · 2 KB",
+            details: [
+              {
+                title: "AGENTS.md",
+                content: "# Agent Instructions\n\nUse pnpm.",
+              },
+            ],
           },
         }),
       ]),
@@ -160,7 +166,8 @@ describe("plugin event transcript projection", () => {
         }),
       }),
     ]);
-    expect(entryMatchesSearch(entries[0]!, "agents.md")).toBe(true);
+    expect(entryMatchesSearch(entries[0]!, "use pnpm")).toBe(true);
     expect(messageRawText(messages[0]!)).toContain("Loaded AGENTS.md");
+    expect(messageRawText(messages[0]!)).toContain("Use pnpm.");
   });
 });

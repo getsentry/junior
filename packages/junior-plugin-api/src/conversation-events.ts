@@ -22,6 +22,11 @@ export const conversationEventIconSchema = z.enum([
 
 const conversationEventDetailSchema = z
   .object({
+    content: z
+      .string()
+      .min(1)
+      .max(32 * 1024)
+      .optional(),
     description: z.string().trim().min(1).max(2_000).optional(),
     metadata: z.array(z.string().trim().min(1).max(120)).max(8).optional(),
     title: z.string().trim().min(1).max(4_000),

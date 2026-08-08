@@ -28,6 +28,10 @@ const agentsInstructionsUpdatedContentSchema = z
       .array(
         z
           .object({
+            content: z
+              .string()
+              .min(1)
+              .max(32 * 1024),
             path: z.string().trim().min(1).max(500),
           })
           .strict(),
@@ -52,19 +56,30 @@ function agentsInstructionsTitle(
   return "Cleared AGENTS.md";
 }
 
-function wrapCode(value: string): string {
-  return "`" + value + "`";
+function sourceFilename(sourcePath: string): string {
+  return sourcePath.split("/").at(-1) || sourcePath;
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} bytes`;
+  const kilobytes = bytes / 1024;
+  return `${Number.isInteger(kilobytes) ? kilobytes : kilobytes.toFixed(1)} KB`;
 }
 
 function agentsInstructionsPreview(content: {
-  directory?: string;
-  sources: Array<{ path: string }>;
+  sources: Array<{ content: string; path: string }>;
+  textBytes?: number;
 }): string | undefined {
-  if (content.directory?.trim()) {
-    return wrapCode(content.directory.trim());
-  }
-  const path = content.sources[0]?.path.trim();
-  return path ? wrapCode(path) : undefined;
+  const source = content.sources[0];
+  if (!source) return undefined;
+  const filename = sourceFilename(source.path);
+  const label =
+    content.sources.length === 1
+      ? filename
+      : `${content.sources.length} AGENTS.md files`;
+  return typeof content.textBytes === "number"
+    ? `${label} · ${formatBytes(content.textBytes)}`
+    : label;
 }
 
 /** Junior-owned account-link transcript event. */
@@ -121,33 +136,18 @@ export const agentsInstructionsUpdatedEvent = defineConversationEvent({
   renderEvent(event) {
     const title = agentsInstructionsTitle(event.action);
     const preview = agentsInstructionsPreview(event);
-    const sourcePaths = event.sources.map((source) => source.path);
-    const descriptionParts = [
-      ...(event.directory
-        ? [`Directory: ${wrapCode(event.directory)}`]
-        : []),
-      ...(sourcePaths.length > 0
-        ? [
-            `Sources: ${sourcePaths.map((path) => wrapCode(path)).join(", ")}`,
-          ]
-        : []),
-      ...(typeof event.textBytes === "number"
-        ? [`${event.textBytes} bytes`]
-        : []),
-    ];
     return {
       icon: "brain",
       title,
       ...(preview ? { preview } : {}),
-      details: [
-        {
-          title,
-          ...(descriptionParts.length > 0
-            ? { description: descriptionParts.join(" · ") }
-            : {}),
-          metadata: [event.action, ...sourcePaths.slice(0, 6)],
-        },
-      ],
+      ...(event.sources.length > 0
+        ? {
+            details: event.sources.map((source) => ({
+              title: sourceFilename(source.path),
+              content: source.content,
+            })),
+          }
+        : {}),
     };
   },
 });

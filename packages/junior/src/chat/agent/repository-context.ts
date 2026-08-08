@@ -17,7 +17,7 @@ export type AgentsInstructionsTransition = {
   action: "loaded" | "replaced" | "cleared";
   directory?: string;
   fingerprint: string;
-  sources: Array<{ path: string }>;
+  sources: Array<{ content: string; path: string }>;
   textBytes?: number;
 };
 
@@ -61,6 +61,7 @@ function transitionFromInstructions(args: {
     directory: args.instructions.directory,
     fingerprint: args.instructions.fingerprint,
     sources: args.instructions.sources.map((source) => ({
+      content: source.content,
       path: source.path,
     })),
     textBytes: Buffer.byteLength(args.instructions.text, "utf8"),
