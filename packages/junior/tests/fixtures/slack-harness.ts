@@ -264,15 +264,15 @@ export async function createTestThread(args: {
     return stateData;
   };
 
+  // Channel ids are shared across threads. Only apply constructor channel state
+  // when the fixture explicitly seeded it. Never wipe adapter channel scratch
+  // from an empty default ref — production config writes may already live there.
   const seedChannelState = async (): Promise<void> => {
     if (seededChannelState) {
       return;
     }
-    const key = channelStateKey(channelId);
-    if (Object.keys(channelRef.value).length === 0) {
-      await deleteAdapterState(key);
-    } else {
-      await writeAdapterState(key, channelRef.value);
+    if (Object.keys(channelRef.value).length > 0) {
+      await writeAdapterState(channelStateKey(channelId), channelRef.value);
     }
     seededChannelState = true;
   };

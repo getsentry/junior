@@ -59,4 +59,37 @@ describe("slack harness fixture", () => {
     const second = await createTestThread({ id: threadId });
     await expect(second.getState()).resolves.toEqual({});
   });
+
+  it("preserves adapter channel config when another thread joins the same channel", async () => {
+    const channelId = "C0SHARED";
+    const first = await createTestThread({
+      id: "slack:C0SHARED:1700000000.000",
+      channelId,
+    });
+    await first.channel.setState({
+      configuration: {
+        entries: {
+          "github.repo": {
+            key: "github.repo",
+            value: "getsentry/junior",
+          },
+        },
+      },
+    });
+
+    const second = await createTestThread({
+      id: "slack:C0SHARED:1700000001.000",
+      channelId,
+    });
+    await expect(second.channel.state).resolves.toMatchObject({
+      configuration: {
+        entries: {
+          "github.repo": {
+            key: "github.repo",
+            value: "getsentry/junior",
+          },
+        },
+      },
+    });
+  });
 });
