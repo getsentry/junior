@@ -24,7 +24,7 @@ import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { resumeAwaitingSlackContinuation } from "@/chat/runtime/agent-continue-runner";
 import { scheduleAgentContinue } from "@/chat/services/agent-continue";
-import { persistYieldSessionRecord } from "@/chat/services/turn-session-record";
+import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import {
   getAgentTurnSessionRecord,
   listAgentTurnSessionSummariesForConversation,
@@ -313,10 +313,12 @@ describe("agent dispatch recovery", () => {
         runCount += 1;
         if (runCount === 1) {
           await request.durability.onInputCommitted?.();
-          const session = await persistYieldSessionRecord({
+          const session = await saveTurnCheckpoint({
+            mode: "paused",
+            reason: "yield",
             actor: dispatch.actor,
             conversationId: request.conversationId,
-            currentSliceId: 3,
+            sliceId: 3,
             destination: dispatch.destination,
             dispatchId: dispatch.id,
             errorMessage: "Conversation worker yielded",
@@ -328,7 +330,7 @@ describe("agent dispatch recovery", () => {
               },
             ],
             modelId: "test-model",
-            sessionId: request.turnId,
+            turnId: request.turnId,
             source: dispatch.source,
             surface: "api",
           });

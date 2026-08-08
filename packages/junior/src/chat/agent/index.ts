@@ -121,7 +121,7 @@ import {
   type AgentRunRequest,
 } from "@/chat/agent/request";
 import { actionConfirmationRetryMessages } from "@/chat/agent/action-confirmation-retry";
-import { restoreSessionRecord } from "@/chat/agent/session";
+import { loadTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import { discoverRunSkills, restoreSkillRuntime } from "@/chat/agent/skills";
 import {
   assemblePrompt,
@@ -372,16 +372,11 @@ async function executeAgentRunInPrivacyContext(
     };
     const skillSandbox = new SkillSandbox(availableSkills, activeSkills);
 
-    // ── Turn session record ──────────────────────────────────────────
-    const {
-      sessionRecordState,
-      resumedFromSessionRecord,
-      currentSliceId,
-      existingSessionRecord,
-    } = await restoreSessionRecord({
-      conversationId,
-      turnId,
-    });
+    // ── Turn checkpoint (resume cursor) ──────────────────────────────
+    const checkpoint = await loadTurnCheckpoint({ conversationId, turnId });
+    const resumedFromSessionRecord = checkpoint.resumed;
+    const currentSliceId = checkpoint.sliceId;
+    const existingSessionRecord = checkpoint.record;
     // Mirror the committed provenance prefix the turn session record owns. A
     // fresh run may already include batched parked input committed before the
     // agent starts, then adds the current actor's turn-start instruction.
@@ -437,7 +432,7 @@ async function executeAgentRunInPrivacyContext(
       runSource,
       conversationId,
       turnId,
-      sessionRecordState,
+      checkpoint,
       startedAtMs: replyStartedAtMs,
       surface,
     });

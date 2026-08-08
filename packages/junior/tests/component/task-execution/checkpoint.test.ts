@@ -71,7 +71,7 @@ function failingConversationStore(): ConversationStore {
   };
 }
 
-describe("persistAuthPauseSessionRecord", () => {
+describe("turn checkpoint", () => {
   beforeEach(async () => {
     process.env = {
       ...ORIGINAL_ENV,
@@ -160,8 +160,8 @@ describe("persistAuthPauseSessionRecord", () => {
   });
 
   it("reuses the latest stored transcript when the auth pause captured no messages", async () => {
-    const { persistAuthPauseSessionRecord } =
-      await import("@/chat/services/turn-session-record");
+    const { saveTurnCheckpoint } =
+      await import("@/chat/task-execution/checkpoint");
     const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
 
@@ -185,11 +185,13 @@ describe("persistAuthPauseSessionRecord", () => {
       errorMessage: "initial auth pause",
     });
 
-    const authSessionRecord = await persistAuthPauseSessionRecord({
+    const authSessionRecord = await saveTurnCheckpoint({
+      mode: "paused",
+      reason: "auth",
       modelId: "test-model",
       conversationId: "conversation-1",
-      sessionId: "turn-1",
-      currentSliceId: 1,
+      turnId: "turn-1",
+      sliceId: 1,
       messages: [],
       errorMessage: "plugin auth pause",
     });
@@ -915,8 +917,8 @@ describe("persistAuthPauseSessionRecord", () => {
   });
 
   it("derives run actors from steered message provenance while preserving the run actor", async () => {
-    const { persistRunningSessionRecord } =
-      await import("@/chat/services/turn-session-record");
+    const { saveTurnCheckpoint } =
+      await import("@/chat/task-execution/checkpoint");
     const { getAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
 
@@ -943,20 +945,22 @@ describe("persistAuthPauseSessionRecord", () => {
       timestamp: 2,
     } as PiMessage;
 
-    await persistRunningSessionRecord({
+    await saveTurnCheckpoint({
+      mode: "running",
       modelId: "test/model",
       conversationId: "conversation-multi-actor",
-      sessionId: "turn-multi-actor",
+      turnId: "turn-multi-actor",
       sliceId: 1,
       messages: [aliceMessage],
       actor: alice,
     });
     // A second human steers the same run; their message commits as an
     // instruction attributed to bob, while Alice remains the bound run actor.
-    await persistRunningSessionRecord({
+    await saveTurnCheckpoint({
+      mode: "running",
       modelId: "test/model",
       conversationId: "conversation-multi-actor",
-      sessionId: "turn-multi-actor",
+      turnId: "turn-multi-actor",
       sliceId: 2,
       messages: [aliceMessage, bobMessage],
       actor: alice,
@@ -1000,8 +1004,8 @@ describe("persistAuthPauseSessionRecord", () => {
   });
 
   it("carries cumulative diagnostics across pause records", async () => {
-    const { persistContinuationSessionRecord } =
-      await import("@/chat/services/turn-session-record");
+    const { saveTurnCheckpoint } =
+      await import("@/chat/task-execution/checkpoint");
     const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
 
@@ -1028,14 +1032,15 @@ describe("persistAuthPauseSessionRecord", () => {
       },
     });
 
-    await persistContinuationSessionRecord({
-      resumeReason: "timeout",
+    await saveTurnCheckpoint({
+      mode: "paused",
+      reason: "timeout",
       modelId: "test/model",
       conversationId: "conversation-1",
-      sessionId: "turn-1",
-      currentSliceId: 1,
-      currentDurationMs: 2_250,
-      currentUsage: {
+      turnId: "turn-1",
+      sliceId: 1,
+      durationMs: 2_250,
+      usage: {
         outputTokens: 7,
         cachedInputTokens: 2,
         reasoningTokens: 4,
@@ -1072,8 +1077,8 @@ describe("persistAuthPauseSessionRecord", () => {
   });
 
   it("fails timeout sessions instead of scheduling beyond the execution limit", async () => {
-    const { persistContinuationSessionRecord } =
-      await import("@/chat/services/turn-session-record");
+    const { saveTurnCheckpoint } =
+      await import("@/chat/task-execution/checkpoint");
     const { botConfig } = await import("@/chat/config");
     const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
@@ -1098,13 +1103,14 @@ describe("persistAuthPauseSessionRecord", () => {
     });
 
     await expect(
-      persistContinuationSessionRecord({
-        resumeReason: "timeout",
+      saveTurnCheckpoint({
+        mode: "paused",
+        reason: "timeout",
         modelId: "test-model",
         conversationId: "conversation-timeout-cap",
-        sessionId: "turn-timeout-cap",
-        currentSliceId: botConfig.maxSlicesPerTurn,
-        currentDurationMs: 3_000,
+        turnId: "turn-timeout-cap",
+        sliceId: botConfig.maxSlicesPerTurn,
+        durationMs: 3_000,
         messages: piMessages,
         errorMessage: "timed out again",
       }),
@@ -1128,8 +1134,8 @@ describe("persistAuthPauseSessionRecord", () => {
   });
 
   it("falls back to the last stored safe boundary when auth pause captures a non-continuable tail", async () => {
-    const { persistAuthPauseSessionRecord } =
-      await import("@/chat/services/turn-session-record");
+    const { saveTurnCheckpoint } =
+      await import("@/chat/task-execution/checkpoint");
     const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
 
@@ -1150,11 +1156,13 @@ describe("persistAuthPauseSessionRecord", () => {
       piMessages: safeBoundary,
     });
 
-    const authSessionRecord = await persistAuthPauseSessionRecord({
+    const authSessionRecord = await saveTurnCheckpoint({
+      mode: "paused",
+      reason: "auth",
       modelId: "test/model",
       conversationId: "conversation-auth-tail",
-      sessionId: "turn-auth-tail",
-      currentSliceId: 1,
+      turnId: "turn-auth-tail",
+      sliceId: 1,
       messages: [
         {
           role: "assistant",
@@ -1199,18 +1207,17 @@ describe("persistAuthPauseSessionRecord", () => {
   });
 
   it("creates auth-pause records before a prompt checkpoint", async () => {
-    const {
-      loadTurnSessionRecord,
-      persistAuthPauseSessionRecord,
-      persistContinuationSessionRecord,
-    } = await import("@/chat/services/turn-session-record");
+    const { loadTurnCheckpoint, saveTurnCheckpoint } =
+      await import("@/chat/task-execution/checkpoint");
     const { getAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
 
-    const authRecord = await persistAuthPauseSessionRecord({
+    const authRecord = await saveTurnCheckpoint({
+      mode: "paused",
+      reason: "auth",
       conversationId: "conversation-auth-empty",
-      sessionId: "turn-auth-empty",
-      currentSliceId: 1,
+      turnId: "turn-auth-empty",
+      sliceId: 1,
       messages: [],
       modelId: "openai/gpt-5.5",
       reasoningLevel: "high",
@@ -1227,22 +1234,23 @@ describe("persistAuthPauseSessionRecord", () => {
       resumeReason: "auth",
     });
     await expect(
-      loadTurnSessionRecord({
+      loadTurnCheckpoint({
         conversationId: "conversation-auth-empty",
-        sessionId: "turn-auth-empty",
+        turnId: "turn-auth-empty",
       }),
     ).resolves.toMatchObject({
-      resumedFromSessionRecord: true,
-      currentSliceId: 2,
+      resumed: true,
+      sliceId: 2,
     });
 
     await expect(
-      persistContinuationSessionRecord({
-        resumeReason: "timeout",
+      saveTurnCheckpoint({
+        mode: "paused",
+        reason: "timeout",
         modelId: "test-model",
         conversationId: "conversation-timeout-empty",
-        sessionId: "turn-timeout-empty",
-        currentSliceId: 1,
+        turnId: "turn-timeout-empty",
+        sliceId: 1,
         messages: [],
         errorMessage: "timeout",
       }),
@@ -1264,16 +1272,17 @@ describe("persistAuthPauseSessionRecord", () => {
       getAgentTurnSessionRecord,
       upsertAgentTurnSessionRecord: vi.fn(),
     }));
-    const { persistCompletedSessionRecord } =
-      await import("@/chat/services/turn-session-record");
+    const { saveTurnCheckpoint } =
+      await import("@/chat/task-execution/checkpoint");
 
     await expect(
-      persistCompletedSessionRecord({
+      saveTurnCheckpoint({
+        mode: "completed",
         modelId: "test-model",
         conversationId: "conversation-1",
-        sessionId: "turn-1",
+        turnId: "turn-1",
         sliceId: 1,
-        allMessages: [
+        messages: [
           {
             role: "user",
             content: [{ type: "text", text: "help me" }],
@@ -1305,16 +1314,17 @@ describe("persistAuthPauseSessionRecord", () => {
       getAgentTurnSessionRecord,
       upsertAgentTurnSessionRecord,
     }));
-    const { persistCompletedSessionRecord } =
-      await import("@/chat/services/turn-session-record");
+    const { saveTurnCheckpoint } =
+      await import("@/chat/task-execution/checkpoint");
 
-    await persistCompletedSessionRecord({
+    await saveTurnCheckpoint({
+      mode: "completed",
       modelId: "test-model",
       conversationId: "conversation-1",
-      sessionId: "turn-1",
-      currentDurationMs: 500,
-      currentUsage: { inputTokens: 5 },
-      allMessages: [userMessage("done")],
+      turnId: "turn-1",
+      durationMs: 500,
+      usage: { inputTokens: 5 },
+      messages: [userMessage("done")],
     });
 
     expect(getAgentTurnSessionRecord).toHaveBeenCalledTimes(1);
@@ -1328,17 +1338,18 @@ describe("persistAuthPauseSessionRecord", () => {
   });
 
   it("keeps runtime bootstrap out of durable completed history", async () => {
-    const { persistCompletedSessionRecord } =
-      await import("@/chat/services/turn-session-record");
+    const { saveTurnCheckpoint } =
+      await import("@/chat/task-execution/checkpoint");
     const { getAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
 
-    await persistCompletedSessionRecord({
+    await saveTurnCheckpoint({
+      mode: "completed",
       modelId: "test-model",
       conversationId: "conversation-completed",
-      sessionId: "turn-completed",
+      turnId: "turn-completed",
       sliceId: 1,
-      allMessages: [
+      messages: [
         {
           role: "user",
           content: [
@@ -1373,17 +1384,18 @@ describe("persistAuthPauseSessionRecord", () => {
   });
 
   it("commits dispatch outcome and delivery receipt with terminal state", async () => {
-    const { persistCompletedSessionRecord } =
-      await import("@/chat/services/turn-session-record");
+    const { saveTurnCheckpoint } =
+      await import("@/chat/task-execution/checkpoint");
     const { getAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
 
-    await persistCompletedSessionRecord({
+    await saveTurnCheckpoint({
+      mode: "completed",
       modelId: "test-model",
       conversationId: "agent-dispatch:dispatch_atomic",
-      sessionId: "dispatch:dispatch_atomic",
+      turnId: "dispatch:dispatch_atomic",
       sliceId: 4,
-      allMessages: [userMessage("done")],
+      messages: [userMessage("done")],
       destination: SLACK_DESTINATION,
       dispatchId: "dispatch_atomic",
       dispatchOutcome: "failed",
@@ -1407,8 +1419,8 @@ describe("persistAuthPauseSessionRecord", () => {
   });
 
   it("stores running records only at continuable message boundaries", async () => {
-    const { persistRunningSessionRecord } =
-      await import("@/chat/services/turn-session-record");
+    const { saveTurnCheckpoint } =
+      await import("@/chat/task-execution/checkpoint");
     const { getAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
     const userBoundary: PiMessage[] = [
@@ -1435,24 +1447,26 @@ describe("persistAuthPauseSessionRecord", () => {
     ];
 
     await expect(
-      persistRunningSessionRecord({
+      saveTurnCheckpoint({
+        mode: "running",
         modelId: "test-model",
         conversationId: "conversation-1",
-        sessionId: "turn-1",
+        turnId: "turn-1",
         sliceId: 1,
         messages: userBoundary,
       }),
-    ).resolves.toBe(true);
+    ).resolves.toBeTruthy();
 
     await expect(
-      persistRunningSessionRecord({
+      saveTurnCheckpoint({
+        mode: "running",
         modelId: "test-model",
         conversationId: "conversation-1",
-        sessionId: "turn-1",
+        turnId: "turn-1",
         sliceId: 1,
         messages: unsafeAssistantBoundary,
       }),
-    ).resolves.toBe(false);
+    ).resolves.toBeUndefined();
 
     let sessionRecord = await getAgentTurnSessionRecord(
       "conversation-1",
@@ -1464,14 +1478,15 @@ describe("persistAuthPauseSessionRecord", () => {
     });
 
     await expect(
-      persistRunningSessionRecord({
+      saveTurnCheckpoint({
+        mode: "running",
         modelId: "test-model",
         conversationId: "conversation-1",
-        sessionId: "turn-1",
+        turnId: "turn-1",
         sliceId: 1,
         messages: toolResultBoundary,
       }),
-    ).resolves.toBe(true);
+    ).resolves.toBeTruthy();
 
     sessionRecord = await getAgentTurnSessionRecord("conversation-1", "turn-1");
     expect(sessionRecord).toMatchObject({
@@ -1491,14 +1506,15 @@ describe("persistAuthPauseSessionRecord", () => {
         }),
       };
     });
-    const { persistRunningSessionRecord } =
-      await import("@/chat/services/turn-session-record");
+    const { saveTurnCheckpoint } =
+      await import("@/chat/task-execution/checkpoint");
 
     await expect(
-      persistRunningSessionRecord({
+      saveTurnCheckpoint({
+        mode: "running",
         modelId: "test-model",
         conversationId: "conversation-storage-failure",
-        sessionId: "turn-storage-failure",
+        turnId: "turn-storage-failure",
         sliceId: 1,
         messages: [
           {
@@ -1508,7 +1524,7 @@ describe("persistAuthPauseSessionRecord", () => {
           },
         ],
       }),
-    ).resolves.toBe(false);
+    ).resolves.toBeUndefined();
   });
 
   it("rejects true history branches without reporting a running-session exception", async () => {
@@ -1517,36 +1533,38 @@ describe("persistAuthPauseSessionRecord", () => {
       const actual = await importOriginal<typeof import("@/chat/logging")>();
       return { ...actual, logException };
     });
-    const { persistRunningSessionRecord } =
-      await import("@/chat/services/turn-session-record");
+    const { saveTurnCheckpoint } =
+      await import("@/chat/task-execution/checkpoint");
     const committedUser = userMessage("committed");
     const staleUser = userMessage("stale");
 
     await expect(
-      persistRunningSessionRecord({
+      saveTurnCheckpoint({
+        mode: "running",
         modelId: "test-model",
         conversationId: "conversation-stale-checkpoint",
-        sessionId: "turn-stale-checkpoint",
+        turnId: "turn-stale-checkpoint",
         sliceId: 1,
         messages: [committedUser],
       }),
-    ).resolves.toBe(true);
+    ).resolves.toBeTruthy();
     await expect(
-      persistRunningSessionRecord({
+      saveTurnCheckpoint({
+        mode: "running",
         modelId: "test-model",
         conversationId: "conversation-stale-checkpoint",
-        sessionId: "turn-stale-checkpoint",
+        turnId: "turn-stale-checkpoint",
         sliceId: 1,
         messages: [staleUser],
       }),
-    ).resolves.toBe(false);
+    ).resolves.toBeUndefined();
 
     expect(logException).not.toHaveBeenCalled();
   });
 
   it("appends after in-place assistant envelope mutations on committed messages", async () => {
-    const { persistRunningSessionRecord } =
-      await import("@/chat/services/turn-session-record");
+    const { saveTurnCheckpoint } =
+      await import("@/chat/task-execution/checkpoint");
     const { getAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
     const user = userMessage("help me");
@@ -1576,14 +1594,15 @@ describe("persistAuthPauseSessionRecord", () => {
     nextUser.timestamp = 4;
 
     await expect(
-      persistRunningSessionRecord({
+      saveTurnCheckpoint({
+        mode: "running",
         modelId: "test-model",
         conversationId: "conversation-mutated-prefix",
-        sessionId: "turn-mutated-prefix",
+        turnId: "turn-mutated-prefix",
         sliceId: 1,
         messages: [user, assistantWithTools, toolResult],
       }),
-    ).resolves.toBe(true);
+    ).resolves.toBeTruthy();
 
     const mutatedAssistant = {
       ...assistantWithTools,
@@ -1595,14 +1614,15 @@ describe("persistAuthPauseSessionRecord", () => {
     } as PiMessage;
 
     await expect(
-      persistRunningSessionRecord({
+      saveTurnCheckpoint({
+        mode: "running",
         modelId: "test-model",
         conversationId: "conversation-mutated-prefix",
-        sessionId: "turn-mutated-prefix",
+        turnId: "turn-mutated-prefix",
         sliceId: 1,
         messages: [user, mutatedAssistant, toolResult, nextUser],
       }),
-    ).resolves.toBe(true);
+    ).resolves.toBeTruthy();
 
     // Append-only: durable identity lets the suffix commit, but the already
     // committed assistant envelope is not rewritten when Pi mutates usage.
@@ -1618,8 +1638,8 @@ describe("persistAuthPauseSessionRecord", () => {
   });
 
   it("promotes the latest running record when timeout capture has no messages", async () => {
-    const { persistContinuationSessionRecord, persistRunningSessionRecord } =
-      await import("@/chat/services/turn-session-record");
+    const { saveTurnCheckpoint } =
+      await import("@/chat/task-execution/checkpoint");
     const { getAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
     const messages: PiMessage[] = [
@@ -1630,20 +1650,22 @@ describe("persistAuthPauseSessionRecord", () => {
       },
     ];
 
-    await persistRunningSessionRecord({
+    await saveTurnCheckpoint({
+      mode: "running",
       modelId: "test-model",
       conversationId: "conversation-1",
-      sessionId: "turn-1",
+      turnId: "turn-1",
       sliceId: 1,
       messages,
     });
 
-    await persistContinuationSessionRecord({
-      resumeReason: "timeout",
+    await saveTurnCheckpoint({
+      mode: "paused",
+      reason: "timeout",
       modelId: "test-model",
       conversationId: "conversation-1",
-      sessionId: "turn-1",
-      currentSliceId: 1,
+      turnId: "turn-1",
+      sliceId: 1,
       messages: [],
       errorMessage: "provider stream interrupted",
     });
@@ -1767,13 +1789,13 @@ describe("persistAuthPauseSessionRecord", () => {
   });
 
   it("resumes an unfinished turn from a committed handoff replacement", async () => {
-    const { loadTurnSessionRecord } =
-      await import("@/chat/services/turn-session-record");
+    const { loadTurnCheckpoint } =
+      await import("@/chat/task-execution/checkpoint");
     const { upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
     const { getConversationEventStore } = await import("@/chat/db");
     const conversationId = "conversation-handoff-resume";
-    const sessionId = "turn-handoff-resume";
+    const turnId = "turn-handoff-resume";
     const staleRuntimeContext =
       "<runtime-turn-context>stale runtime context</runtime-turn-context>";
     const oldRequest: PiMessage = {
@@ -1793,7 +1815,7 @@ describe("persistAuthPauseSessionRecord", () => {
     await upsertAgentTurnSessionRecord({
       modelId: "openai/gpt-5.5",
       conversationId,
-      sessionId,
+      sessionId: turnId,
       sliceId: 1,
       state: "awaiting_resume",
       resumeReason: "yield",
@@ -1817,10 +1839,10 @@ describe("persistAuthPauseSessionRecord", () => {
     });
 
     await expect(
-      loadTurnSessionRecord({ conversationId, sessionId }),
+      loadTurnCheckpoint({ conversationId, turnId }),
     ).resolves.toMatchObject({
-      resumedFromSessionRecord: true,
-      existingSessionRecord: {
+      resumed: true,
+      record: {
         piMessages: [handoffSummary],
         turnStartMessageIndex: 0,
       },
@@ -1828,8 +1850,8 @@ describe("persistAuthPauseSessionRecord", () => {
   });
 
   it("restores unmatched runtime context before an active-turn replacement", async () => {
-    const { loadTurnSessionRecord } =
-      await import("@/chat/services/turn-session-record");
+    const { loadTurnCheckpoint } =
+      await import("@/chat/task-execution/checkpoint");
     const { upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
     const runtimeContext: PiMessage = {
@@ -1863,13 +1885,13 @@ describe("persistAuthPauseSessionRecord", () => {
       piMessages: [runtimeContext, instruction, summary],
     });
 
-    const resumed = await loadTurnSessionRecord({
+    const resumed = await loadTurnCheckpoint({
       conversationId: "conversation-active-compaction-resume",
-      sessionId: "turn-active-compaction-resume",
+      turnId: "turn-active-compaction-resume",
     });
 
-    expect(resumed.resumedFromSessionRecord).toBe(true);
-    expect(resumed.existingSessionRecord?.piMessages).toEqual([
+    expect(resumed.resumed).toBe(true);
+    expect(resumed.record?.piMessages).toEqual([
       runtimeContext,
       instruction,
       summary,
@@ -1877,8 +1899,8 @@ describe("persistAuthPauseSessionRecord", () => {
   });
 
   it("restores mid-run AGENTS context at its causal position", async () => {
-    const { loadTurnSessionRecord } =
-      await import("@/chat/services/turn-session-record");
+    const { loadTurnCheckpoint } =
+      await import("@/chat/task-execution/checkpoint");
     const { upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
     const instruction: PiMessage = {
@@ -1903,12 +1925,12 @@ describe("persistAuthPauseSessionRecord", () => {
       piMessages: [instruction, agents, assistant],
     });
 
-    const resumed = await loadTurnSessionRecord({
+    const resumed = await loadTurnCheckpoint({
       conversationId: "conversation-agents-order-resume",
-      sessionId: "turn-agents-order-resume",
+      turnId: "turn-agents-order-resume",
     });
 
-    expect(resumed.existingSessionRecord?.piMessages).toEqual([
+    expect(resumed.record?.piMessages).toEqual([
       instruction,
       agents,
       assistant,

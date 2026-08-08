@@ -35,7 +35,7 @@ import {
 } from "@/chat/runtime/thread-state";
 import { startActiveTurn, markTurnFailed } from "@/chat/runtime/turn";
 import { finalizeFailedTurnReplyWithEvent } from "@/chat/services/turn-failure-response";
-import { completeDeliveredTurn } from "@/chat/services/turn-session-record";
+import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import {
   buildConversationContext,
   markConversationMessage,
@@ -99,8 +99,8 @@ export interface LocalAgentTurnDeps {
     cancel: () => void;
     wait: () => Promise<void>;
   };
-  /** Post-delivery Pi/session persistence boundary. */
-  completeDeliveredTurn?: typeof completeDeliveredTurn;
+  /** Post-delivery checkpoint write. */
+  saveTurnCheckpoint?: typeof saveTurnCheckpoint;
   deliverReply: (reply: LocalAgentReply) => Promise<void>;
   sandboxEgressSignals?: SandboxEgressSignalTransport;
   /** Pre-agent durable Pi projection boundary. */
@@ -528,9 +528,10 @@ async function runLocalAgentTurnInContext(
       // Destination acceptance is the completion boundary: this first commits
       // the final assistant messages to the event log and marks the session
       // record completed only after the CLI sink accepted the reply.
-      await (deps.completeDeliveredTurn ?? completeDeliveredTurn)({
+      await (deps.saveTurnCheckpoint ?? saveTurnCheckpoint)({
+        mode: "completed",
         conversationId: input.conversationId,
-        sessionId: turnId,
+        turnId,
         sliceId: completionSliceId,
         messages: reply.piMessages,
         modelId: reply.diagnostics.modelId,

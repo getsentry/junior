@@ -7,7 +7,7 @@ their adapters only prepare input, restore task-specific authority, and accept
 the completed result.
 
 Turn progress (running / paused / done) goes through one write API:
-`saveTurnCheckpoint` in `services/turn-session-record.ts`. History itself lives
+`saveTurnCheckpoint` in `task-execution/checkpoint.ts`. History itself lives
 in SQL conversation events; the Redis turn cursor is only resume metadata.
 A continue that parks again at the same boundary fails closed (no spin loops).
 

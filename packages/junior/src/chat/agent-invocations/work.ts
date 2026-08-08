@@ -23,10 +23,7 @@ import {
   isTurnInputCommitLostError,
   TurnInputCommitLostError,
 } from "@/chat/runtime/turn";
-import {
-  persistCompletedSessionRecord,
-  persistYieldSessionRecord,
-} from "@/chat/services/turn-session-record";
+import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
 import { getAssistantReplyText } from "@/chat/services/assistant-reply";
@@ -259,16 +256,18 @@ async function recoverRunningSession(
   });
   // Child invocation conversations are destinationless; routing lives on the
   // parent invocation record, not the turn-session projection.
-  const parked = await persistYieldSessionRecord({
+  const parked = await saveTurnCheckpoint({
+    mode: "paused",
+    reason: "yield",
     conversationId: invocation.childConversationId,
-    currentSliceId: session.sliceId,
+    turnId: session.sessionId,
+    sliceId: session.sliceId,
     errorMessage: "Recovered running agent invocation after worker loss",
     messages: session.piMessages,
     modelId: modelIdForProfile(botConfig, projection.modelProfile),
     // Execution actor and reasoning live on the parent invocation, not Redis.
     actor: invocation.actor,
     reasoningLevel: invocation.reasoningLevel,
-    sessionId: session.sessionId,
     surface: session.surface,
   });
   if (!parked) {
@@ -507,10 +506,12 @@ export function createAgentInvocationWorker(options: {
       sandboxRef: result.sandboxRef ?? sandboxRef,
     });
     if (result.piMessages?.length) {
-      await persistCompletedSessionRecord({
+      await saveTurnCheckpoint({
+        mode: "completed",
         conversationId: invocation.childConversationId,
-        currentDurationMs: result.diagnostics.durationMs,
-        currentUsage: result.diagnostics.usage,
+        turnId,
+        durationMs: result.diagnostics.durationMs,
+        usage: result.diagnostics.usage,
         destination: invocation.destination,
         destinationVisibility: invocation.destinationVisibility,
         ...(failed
@@ -519,8 +520,7 @@ export function createAgentInvocationWorker(options: {
                 result.diagnostics.errorMessage ?? "Agent invocation failed",
             }
           : {}),
-        sessionId: turnId,
-        allMessages: result.piMessages,
+        messages: result.piMessages,
         modelId: result.diagnostics.modelId,
         actor: invocation.actor,
         reasoningLevel: result.diagnostics.reasoningLevel,

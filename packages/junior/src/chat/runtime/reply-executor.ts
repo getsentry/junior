@@ -136,7 +136,7 @@ import {
   getAgentTurnSessionRecord,
   recordAgentTurnSessionSummary,
 } from "@/chat/state/turn-session";
-import { completeDeliveredTurn } from "@/chat/services/turn-session-record";
+import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import { resolveDestinationVisibility } from "@/chat/conversations/destination-visibility";
 import { getConversationStore } from "@/chat/db";
 import {
@@ -298,8 +298,6 @@ function queuedInstructionProvenance(
         );
   return instructionProvenanceFor(author);
 }
-
-
 
 async function resolveChannelName(thread: Thread): Promise<string | undefined> {
   const existingName = thread.channel.name?.trim();
@@ -569,8 +567,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         if (!executionActor || !credentialContext) {
           throw new Error("Slack reply execution requires an actor");
         }
-        const actor =
-          "userId" in executionActor ? executionActor : undefined;
+        const actor = "userId" in executionActor ? executionActor : undefined;
         const slackActorId = actor?.userId;
 
         const preparedState =
@@ -1571,16 +1568,17 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             // regenerate an accepted reply. Persist canonical message
             // facts next, then update Redis runtime scratch independently.
             if (conversationId && reply.piMessages?.length) {
-              await completeDeliveredTurn({
+              await saveTurnCheckpoint({
+                mode: "completed",
                 channelName,
                 conversationId,
+                turnId,
                 durationMs: reply.diagnostics.durationMs,
                 usage: reply.diagnostics.usage,
                 reasoningLevel: reply.diagnostics.reasoningLevel,
                 destination,
                 destinationVisibility,
                 source,
-                sessionId: turnId,
                 sliceId: 1,
                 dispatchOutcome:
                   reply.diagnostics.outcome === "success"

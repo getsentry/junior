@@ -35,7 +35,7 @@ import {
 } from "@/chat/conversations/turn-lifecycle";
 import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
 import { getConversationEventStore } from "@/chat/db";
-import { persistCompletedSessionRecord } from "@/chat/services/turn-session-record";
+import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import { recordAgentTurnSessionSummary } from "@/chat/state/turn-session";
 import {
   createSlackWebApiAssistantStatusSession,
@@ -743,13 +743,14 @@ async function resumeSlackTurnInContext(
       // failure reaches this runtime boundary instead of being mistaken for a
       // completed durable turn.
       if (reply.piMessages?.length) {
-        await persistCompletedSessionRecord({
+        await saveTurnCheckpoint({
+          mode: "completed",
           conversationId: runArgs.conversationId,
-          sessionId: runArgs.turnId,
-          allMessages: reply.piMessages,
+          turnId: runArgs.turnId,
+          messages: reply.piMessages,
           modelId: reply.diagnostics.modelId,
-          currentDurationMs: reply.diagnostics.durationMs,
-          currentUsage: reply.diagnostics.usage,
+          durationMs: reply.diagnostics.durationMs,
+          usage: reply.diagnostics.usage,
           destination: replyContext.routing.destination,
           destinationVisibility: replyContext.routing.destinationVisibility,
           dispatchId: replyContext.routing.dispatch?.id,

@@ -1,12 +1,7 @@
 /**
- * Run resumability.
+ * In-memory resume helpers for one execution slice.
  *
- * Keeps the in-memory baseline for one slice and translates stop reasons into
- * durable checkpoints:
- * - running checkpoint after each safe tool boundary
- * - paused checkpoint for auth / timeout / yield / retry
- *
- * One write API: `saveTurnCheckpoint`.
+ * Durable writes go through `saveTurnCheckpoint` only.
  */
 import type { Destination, Source } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
@@ -20,9 +15,10 @@ import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import type { AgentTurnSurface } from "@/chat/state/turn-session";
 import type { Actor } from "@/chat/actor";
 import {
-  loadTurnSessionRecord,
+  continuableMessages,
   saveTurnCheckpoint,
-} from "@/chat/services/turn-session-record";
+  type TurnCheckpoint,
+} from "@/chat/task-execution/checkpoint";
 import {
   AuthPausePersistenceError,
   type AuthorizationPauseError,
@@ -41,10 +37,6 @@ import { TurnSliceLimitExceededError } from "@/chat/services/turn-limit";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 
-type LoadedSessionRecordState = Awaited<
-  ReturnType<typeof loadTurnSessionRecord>
->;
-
 interface ResumeStateArgs {
   channelName?: string;
   destination: Destination;
@@ -59,7 +51,7 @@ interface ResumeStateArgs {
   runSource: Source;
   conversationId: string;
   turnId: string;
-  sessionRecordState: LoadedSessionRecordState;
+  checkpoint: TurnCheckpoint;
   startedAtMs: number;
   surface: AgentTurnSurface;
 }
@@ -76,7 +68,7 @@ function extractSliceUsage(
   return hasAgentTurnUsage(usage) ? usage : undefined;
 }
 
-/** Fingerprint a boundary so identical parks can be detected. */
+/** Stable fingerprint of a parked boundary. */
 function boundaryKey(messages: PiMessage[]): string {
   return messages
     .map((message) => {
@@ -100,56 +92,44 @@ function boundaryKey(messages: PiMessage[]): string {
     .join("\u0002");
 }
 
-/** Create the run's resume state: checkpoints, snapshots, and ending translation. */
+/** Create resume state for one slice. */
 export function createResumeState(args: ResumeStateArgs) {
   let beforeMessageCount = 0;
   let inputCommitted = false;
   let latestSafeBoundaryMessages: PiMessage[] = [];
-  let latestSafeBoundaryKey = "";
   let timedOut = false;
   let resumeMessages: PiMessage[] = [];
   let turnContexts: PluginTurnContext[] = [];
   let turnStartMessageIndex: number | undefined;
-  // Only fail closed when we resume from a parked boundary and park there
-  // again without a newer running checkpoint in this slice.
+  let advancedPastResume = !args.checkpoint.resumed;
   let resumedBoundaryKey = "";
-  let advancedPastResume = !args.sessionRecordState.resumedFromSessionRecord;
-  const prior = args.sessionRecordState.existingSessionRecord;
-  if (
-    args.sessionRecordState.resumedFromSessionRecord &&
-    prior?.piMessages?.length
-  ) {
+
+  const prior = args.checkpoint.record;
+  if (args.checkpoint.resumed && prior?.piMessages?.length) {
     latestSafeBoundaryMessages = [...prior.piMessages];
-    latestSafeBoundaryKey = boundaryKey(prior.piMessages);
-    resumedBoundaryKey = latestSafeBoundaryKey;
+    resumeMessages = [...prior.piMessages];
+    resumedBoundaryKey = boundaryKey(
+      continuableMessages(prior.piMessages, prior.piMessages),
+    );
   }
 
-  const currentSliceId = args.sessionRecordState.currentSliceId;
-  const currentDurationMs = () => Date.now() - args.startedAtMs;
+  const currentSliceId = args.checkpoint.sliceId;
+  const durationMs = () => Date.now() - args.startedAtMs;
 
-  const baseFields = () => ({
-    channelName: args.channelName,
+  const writeBase = () => ({
     conversationId: args.conversationId,
-    destination: args.destination,
-    ...(args.destinationVisibility
-      ? { destinationVisibility: args.destinationVisibility }
-      : {}),
-    ...(args.dispatchId ? { dispatchId: args.dispatchId } : {}),
-    source: args.runSource,
-    sessionId: args.turnId,
-    loadedSkillNames: args.getLoadedSkillNames(),
+    turnId: args.turnId,
     modelId: args.getModelId(),
-    ...(args.getReasoningLevel()
-      ? { reasoningLevel: args.getReasoningLevel() }
-      : {}),
+    channelName: args.channelName,
+    destination: args.destination,
+    destinationVisibility: args.destinationVisibility,
+    dispatchId: args.dispatchId,
+    source: args.runSource,
+    loadedSkillNames: args.getLoadedSkillNames(),
+    reasoningLevel: args.getReasoningLevel(),
     actor: args.actor,
     surface: args.surface,
   });
-
-  const rememberBoundary = (messages: PiMessage[]): void => {
-    latestSafeBoundaryMessages = [...messages];
-    latestSafeBoundaryKey = boundaryKey(messages);
-  };
 
   return {
     get inputCommitted(): boolean {
@@ -170,9 +150,9 @@ export function createResumeState(args: ResumeStateArgs) {
     setTurnContexts(contexts: PluginTurnContext[]): void {
       turnContexts = contexts;
     },
-    /** Adopt an already committed boundary as every resume baseline. */
+    /** Use an already committed boundary as the resume baseline. */
     adoptCommittedBoundary(messages: PiMessage[]): void {
-      rememberBoundary(messages);
+      latestSafeBoundaryMessages = [...messages];
       resumeMessages = [...messages];
     },
     captureResumeSnapshot(messages: PiMessage[]): void {
@@ -199,19 +179,17 @@ export function createResumeState(args: ResumeStateArgs) {
     ): Promise<boolean> {
       const saved = await saveTurnCheckpoint({
         mode: "running",
-        ...baseFields(),
+        ...writeBase(),
         sliceId: currentSliceId,
         messages,
-        ...(trailingMessageProvenance ? { trailingMessageProvenance } : {}),
-        ...(turnContexts.length > 0 ? { turnContexts } : {}),
-        ...(turnStartMessageIndex !== undefined
-          ? { turnStartMessageIndex }
-          : {}),
+        trailingMessageProvenance,
+        turnContexts: turnContexts.length > 0 ? turnContexts : undefined,
+        turnStartMessageIndex,
       });
       if (!saved) {
         return false;
       }
-      rememberBoundary(messages);
+      latestSafeBoundaryMessages = [...messages];
       advancedPastResume = true;
       return true;
     },
@@ -230,24 +208,21 @@ export function createResumeState(args: ResumeStateArgs) {
       }
       return persisted;
     },
-    /** Prepare a cooperative yield at the current durable boundary. */
     prepareYieldIfDue(
       currentMessages: PiMessage[],
     ): CooperativeTurnYieldError | undefined {
       if (!args.durability.shouldYield?.()) {
         return undefined;
       }
-
-      const nextResumeMessages = this.getResumeSnapshot(currentMessages);
-      if (!isContinuablePiBoundary(nextResumeMessages)) {
+      const next = this.getResumeSnapshot(currentMessages);
+      if (!isContinuablePiBoundary(next)) {
         return undefined;
       }
-      resumeMessages = nextResumeMessages;
+      resumeMessages = next;
       return new CooperativeTurnYieldError(
-        `Agent turn yielded at a safe boundary after ${currentDurationMs()}ms`,
+        `Agent turn yielded at a safe boundary after ${durationMs()}ms`,
       );
     },
-    /** Persist an auth pause; only a durable pause may return `awaiting_auth`. */
     async parkForAuth(
       pause: AuthorizationPauseError,
       currentUsage?: AgentTurnUsage,
@@ -259,17 +234,17 @@ export function createResumeState(args: ResumeStateArgs) {
           : undefined);
       try {
         await args.recordActiveMcpProviders();
-        const sessionRecord = await saveTurnCheckpoint({
+        const record = await saveTurnCheckpoint({
           mode: "paused",
           reason: "auth",
-          ...baseFields(),
+          ...writeBase(),
           sliceId: currentSliceId,
-          currentDurationMs: currentDurationMs(),
-          currentUsage: usage,
+          durationMs: durationMs(),
+          usage,
           messages: resumeMessages,
           errorMessage: pause.message,
         });
-        if (!sessionRecord) {
+        if (!record) {
           throw new AuthPausePersistenceError(args.conversationId, args.turnId);
         }
         return {
@@ -289,7 +264,6 @@ export function createResumeState(args: ResumeStateArgs) {
         );
       }
     },
-    /** Persist a yield, retry, or timeout as a suspended run. */
     async translateSuspension(ending: {
       currentUsage?: AgentTurnUsage;
       error: unknown;
@@ -300,101 +274,101 @@ export function createResumeState(args: ResumeStateArgs) {
           ending.currentUsage ??
           extractSliceUsage(resumeMessages, beforeMessageCount);
         await args.recordActiveMcpProviders();
-        const sessionRecord = await saveTurnCheckpoint({
+        const record = await saveTurnCheckpoint({
           mode: "paused",
           reason: "yield",
-          keepSlice: true,
-          ...baseFields(),
+          ...writeBase(),
           sliceId: currentSliceId,
-          currentDurationMs: currentDurationMs(),
-          currentUsage: usage,
+          durationMs: durationMs(),
+          usage,
           messages: resumeMessages,
           errorMessage: error.message,
         });
-        if (!sessionRecord) {
+        if (!record) {
           throw new Error(
-            `Failed to persist cooperative yield continuation for conversation=${args.conversationId} turn=${args.turnId}`,
+            `Failed to persist cooperative yield for conversation=${args.conversationId} turn=${args.turnId}`,
           );
         }
         return {
           status: "suspended",
-          resumeVersion: sessionRecord.version,
+          resumeVersion: record.version,
           ...(usage ? { usage } : {}),
         };
       }
 
-      const resumeReason =
+      const reason =
         error instanceof RetryableDeliveryError
           ? "retry"
           : timedOut
             ? "timeout"
             : undefined;
-      if (resumeReason) {
-        if (resumeReason === "retry") {
-          // The failed assistant message was never saved. Regenerate it from
-          // the latest saved agent history; an ambiguous provider write may
-          // therefore produce a duplicate reply.
-          resumeMessages = [...latestSafeBoundaryMessages];
-        }
-
-        const parkMessages = [...resumeMessages];
-        const parkKey = boundaryKey(parkMessages);
-        const stuckAtResumedBoundary =
-          !advancedPastResume &&
-          resumedBoundaryKey.length > 0 &&
-          parkKey === resumedBoundaryKey;
-
-        if (stuckAtResumedBoundary) {
-          logWarn("agent.turn.no_progress_fail", {
-            "app.ai.resume_conversation_id": args.conversationId,
-            "app.ai.resume_session_id": args.turnId,
-            "app.ai.resume_slice_id": currentSliceId,
-            "app.ai.resume_reason": resumeReason,
-          });
-          await saveTurnCheckpoint({
-            mode: "failed",
-            ...baseFields(),
-            sliceId: currentSliceId,
-            currentDurationMs: currentDurationMs(),
-            messages: parkMessages,
-            errorMessage:
-              "Turn made no progress: continue parked at the same boundary",
-          });
-          throw new Error(
-            `Turn made no progress for conversation=${args.conversationId} turn=${args.turnId}`,
-          );
-        }
-
-        const usage =
-          ending.currentUsage ??
-          extractSliceUsage(parkMessages, beforeMessageCount);
-        await args.recordActiveMcpProviders();
-        const sessionRecord = await saveTurnCheckpoint({
-          mode: "paused",
-          reason: resumeReason,
-          ...baseFields(),
-          sliceId: currentSliceId,
-          currentDurationMs: currentDurationMs(),
-          currentUsage: usage,
-          messages: parkMessages,
-          errorMessage: error instanceof Error ? error.message : String(error),
-        });
-        if (!sessionRecord) {
-          throw new Error(
-            `Failed to persist continuation for conversation=${args.conversationId} turn=${args.turnId}`,
-          );
-        }
-        if (sessionRecord.state === "awaiting_resume") {
-          return {
-            status: "suspended",
-            resumeVersion: sessionRecord.version,
-            ...(usage ? { usage } : {}),
-          };
-        }
-        throw new TurnSliceLimitExceededError(botConfig.maxSlicesPerTurn);
+      if (!reason) {
+        return undefined;
       }
 
-      return undefined;
+      if (reason === "retry") {
+        // Failed assistant message was never saved; regenerate from last safe boundary.
+        resumeMessages = [...latestSafeBoundaryMessages];
+      }
+
+      // Compare the boundary we would actually persist (after trim/fallback).
+      const parkMessages = continuableMessages(
+        resumeMessages,
+        latestSafeBoundaryMessages,
+      );
+      const parkKey = boundaryKey(parkMessages);
+      if (
+        !advancedPastResume &&
+        resumedBoundaryKey.length > 0 &&
+        parkKey === resumedBoundaryKey
+      ) {
+        logWarn("agent.turn.no_progress_fail", {
+          "app.ai.resume_conversation_id": args.conversationId,
+          "app.ai.resume_session_id": args.turnId,
+          "app.ai.resume_slice_id": currentSliceId,
+          "app.ai.resume_reason": reason,
+        });
+        await saveTurnCheckpoint({
+          mode: "failed",
+          ...writeBase(),
+          sliceId: currentSliceId,
+          durationMs: durationMs(),
+          messages: parkMessages,
+          errorMessage:
+            "Turn made no progress: continue parked at the same boundary",
+        });
+        throw new Error(
+          `Turn made no progress for conversation=${args.conversationId} turn=${args.turnId}`,
+        );
+      }
+
+      const usage =
+        ending.currentUsage ??
+        extractSliceUsage(parkMessages, beforeMessageCount);
+      await args.recordActiveMcpProviders();
+      const record = await saveTurnCheckpoint({
+        mode: "paused",
+        reason,
+        ...writeBase(),
+        sliceId: currentSliceId,
+        durationMs: durationMs(),
+        usage,
+        messages: parkMessages,
+        errorMessage: error instanceof Error ? error.message : String(error),
+      });
+      if (!record) {
+        throw new Error(
+          `Failed to persist continuation for conversation=${args.conversationId} turn=${args.turnId}`,
+        );
+      }
+      if (record.state === "awaiting_resume") {
+        return {
+          status: "suspended",
+          resumeVersion: record.version,
+          ...(usage ? { usage } : {}),
+        };
+      }
+      throw new TurnSliceLimitExceededError(botConfig.maxSlicesPerTurn);
     },
   };
 }

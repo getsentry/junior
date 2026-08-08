@@ -306,11 +306,12 @@ vi.mock("@/chat/oauth-flow", () => ({
   extractOAuthStartedMessageFromToolResults: () => undefined,
 }));
 
-vi.mock("@/chat/services/turn-session-record", () => ({
-  loadTurnSessionRecord: async () => ({
-    resumedFromSessionRecord: sessionRecordResumed.value,
-    currentSliceId: 1,
-    existingSessionRecord:
+vi.mock("@/chat/task-execution/checkpoint", () => ({
+  continuableMessages: (messages: unknown[]) => messages,
+  loadTurnCheckpoint: async () => ({
+    resumed: sessionRecordResumed.value,
+    sliceId: 1,
+    record:
       sessionRecordPiMessages.value.length > 0
         ? {
             piMessages: [...sessionRecordPiMessages.value],
@@ -341,17 +342,6 @@ vi.mock("@/chat/services/turn-session-record", () => ({
     }
     return undefined;
   },
-  persistRunningSessionRecord: async () => false,
-  persistCompletedSessionRecord: async () => undefined,
-  persistAuthPauseSessionRecord: async () => ({
-    version: 1,
-    conversationId: "conversation-1",
-    piMessages: [],
-    sessionId: "turn-1",
-    sliceId: 2,
-    state: "awaiting_resume",
-    updatedAtMs: 1,
-  }),
 }));
 
 vi.mock("@/chat/services/mcp-auth-orchestration", () => {

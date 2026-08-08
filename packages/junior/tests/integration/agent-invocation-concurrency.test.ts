@@ -16,7 +16,7 @@ import type { CreateAgentInvocationInput } from "@/chat/agent-invocations/types"
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
-import { persistRunningSessionRecord } from "@/chat/services/turn-session-record";
+import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { CONVERSATION_WORK_MAX_DELIVERY_ATTEMPTS } from "@/chat/task-execution/store";
@@ -50,13 +50,14 @@ async function successfulRun(
       timestamp,
     },
   ] as PiMessage[];
-  const persisted = await persistRunningSessionRecord({
+  const persisted = await saveTurnCheckpoint({
+    mode: "running",
     conversationId: request.conversationId,
     destination: request.routing.destination,
     messages: runningMessages,
     modelId: "integration-agent",
     actor: request.routing.actor,
-    sessionId: request.turnId,
+    turnId: request.turnId,
     sliceId: 1,
     source: request.routing.source,
     surface: "internal",
@@ -395,7 +396,10 @@ describe("agent invocation identity and concurrency", () => {
   it("rejects new children once the parent concurrent active limit is reached", async () => {
     const harness = await createHarness(async (request) => {
       await request.durability?.onInputCommitted?.();
-      return await successfulRun(request, `result:${request.input.messageText}`);
+      return await successfulRun(
+        request,
+        `result:${request.input.messageText}`,
+      );
     });
     try {
       const active = await Promise.all(

@@ -178,8 +178,8 @@ describe("oauth callback integration", () => {
       await import("@/chat/local/oauth-callback-server");
     const { createLocalOAuthState } = await import("@/chat/local/oauth-relay");
     const { runLocalAgentTurn } = await import("@/chat/local/runner");
-    const { persistAuthPauseSessionRecord } =
-      await import("@/chat/services/turn-session-record");
+    const { saveTurnCheckpoint } =
+      await import("@/chat/task-execution/checkpoint");
     const conversationId = "local:oauth:loopback";
     const requests: Parameters<typeof testAgentRunner.run>[0][] = [];
     const localAgentRunner = {
@@ -193,15 +193,17 @@ describe("oauth callback integration", () => {
             provider: "eval-oauth",
             sessionId: request.turnId,
           });
-          await persistAuthPauseSessionRecord({
+          await saveTurnCheckpoint({
+            mode: "paused",
+            reason: "auth",
             actor: request.routing.actor,
             conversationId,
-            currentSliceId: 1,
+            sliceId: 1,
             destination: request.routing.destination,
             errorMessage: "eval-oauth authorization required",
             messages: [],
             modelId: "fake-local-oauth",
-            sessionId: request.turnId,
+            turnId: request.turnId,
             source: request.routing.source,
             surface: request.routing.surface,
           });
@@ -549,7 +551,6 @@ describe("oauth callback integration", () => {
       }),
     ]);
   });
-
 
   it("rebuilds session-recorded OAuth resume context from state loaded under the thread lock", async () => {
     const conversationId = "slack:C123:1700000000.011";

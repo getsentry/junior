@@ -597,7 +597,7 @@ vi.mock("@/chat/skills", async (importOriginal) => ({
 import { executeAgentRun } from "@/chat/agent";
 import { getConversationStore } from "@/chat/db";
 import { getAwaitingAgentContinueRequest } from "@/chat/services/agent-continue";
-import { persistCompletedSessionRecord } from "@/chat/services/turn-session-record";
+import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import * as turnSessionState from "@/chat/state/turn-session";
 
@@ -794,12 +794,13 @@ describe("agent run continuation", () => {
       "toolResult",
     ]);
 
-    await persistCompletedSessionRecord({
+    await saveTurnCheckpoint({
+      mode: "completed",
       modelId: "test-model",
       conversationId: "conversation-1",
-      sessionId: "turn-1",
-      allMessages: reply.piMessages ?? [],
-      currentUsage: reply.diagnostics.usage,
+      turnId: "turn-1",
+      messages: reply.piMessages ?? [],
+      usage: reply.diagnostics.usage,
     });
     const completedSessionRecord =
       await turnSessionState.getAgentTurnSessionRecord(
@@ -939,11 +940,12 @@ describe("agent run continuation", () => {
 
     // Simulate the destination boundary committing completion after
     // acceptance; generation itself does not commit provider delivery.
-    await persistCompletedSessionRecord({
+    await saveTurnCheckpoint({
+      mode: "completed",
       modelId: "test-model",
       conversationId: "slack:C123:1712345.0001",
-      sessionId: "turn-steering",
-      allMessages: reply.piMessages ?? [],
+      turnId: "turn-steering",
+      messages: reply.piMessages ?? [],
       destination: TEST_DESTINATION,
       source: TEST_SOURCE,
     });

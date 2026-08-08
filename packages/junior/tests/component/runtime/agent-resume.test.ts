@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createLocalSource } from "@sentry/junior-plugin-api";
 import { createResumeState } from "@/chat/agent/resume";
 import { AuthorizationPauseError } from "@/chat/services/auth-pause";
-import { loadTurnSessionRecord } from "@/chat/services/turn-session-record";
+import { loadTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getAgentTurnSessionRecord } from "@/chat/state/turn-session";
 
@@ -39,9 +39,9 @@ describe("agent resume", () => {
       runSource: createLocalSource(conversationId),
       conversationId,
       turnId,
-      sessionRecordState: await loadTurnSessionRecord({
+      checkpoint: await loadTurnCheckpoint({
         conversationId,
-        sessionId: turnId,
+        turnId,
       }),
       startedAtMs: Date.now(),
       surface: "internal",

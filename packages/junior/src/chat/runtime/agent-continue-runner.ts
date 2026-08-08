@@ -62,7 +62,7 @@ import { parseSlackThreadId } from "@/chat/slack/context";
 import { postSlackMessage } from "@/chat/slack/outbound";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { acquireActiveLock } from "@/chat/state/locks";
-import { persistYieldSessionRecord } from "@/chat/services/turn-session-record";
+import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import { requireTurnFailureEventId } from "@/chat/services/turn-failure-response";
 import {
   createSlackActor,
@@ -292,7 +292,9 @@ async function resolveResumeExecutionIdentity(args: {
     author?: { userId?: string };
     meta?: { eventType?: string };
   };
-}): Promise<{ actor: Actor; credentialContext: CredentialContext } | undefined> {
+}): Promise<
+  { actor: Actor; credentialContext: CredentialContext } | undefined
+> {
   const routing = args.routingContext;
 
   // Dispatch / OAuth ports already own the full binding (including subject).
@@ -755,11 +757,13 @@ async function recoverStrandedRunningSession(args: {
     });
     return false;
   }
-  const parked = await persistYieldSessionRecord({
+  const parked = await saveTurnCheckpoint({
+    mode: "paused",
+    reason: "yield",
     channelName: sessionRecord.channelName,
     conversationId: args.conversationId,
-    sessionId: sessionRecord.sessionId,
-    currentSliceId: sessionRecord.sliceId,
+    turnId: sessionRecord.sessionId,
+    sliceId: sessionRecord.sliceId,
     destination: routing.destination,
     source: routing.source,
     messages: sessionRecord.piMessages,
