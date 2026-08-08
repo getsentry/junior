@@ -5,8 +5,10 @@ import { Card } from "../layout/Card";
 import { Tooltip } from "../Tooltip";
 import { formatCompactNumber, formatCostSummary } from "../../format";
 import {
+  ActivityChartAverageLine,
   ActivityChartDateLabels,
   ActivityChartGrid,
+  activityChartAverage,
   ChartSvg,
   createActivityChartLayout,
   formatActivityDate,
@@ -107,6 +109,7 @@ function MetricChart(props: {
         .join(" L ")} L ${points.at(-1)!.x} ${layout.top + layout.plotHeight} Z`
     : "";
   const total = values.reduce((sum, value) => sum + value, 0);
+  const average = activityChartAverage(values);
   const barWidth = Math.max(1.5, Math.min(8, step * 0.65));
 
   return (
@@ -191,6 +194,13 @@ function MetricChart(props: {
               </Tooltip>
             );
           })}
+          <ActivityChartAverageLine
+            average={average}
+            format={chart.format}
+            layout={layout}
+            maximum={maximum}
+            stroke={chart.color}
+          />
           <ActivityChartDateLabels
             dates={days.map((day) => day.date)}
             layout={layout}

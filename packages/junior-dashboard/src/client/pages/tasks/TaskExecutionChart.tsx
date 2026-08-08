@@ -1,7 +1,9 @@
 import type { TaskExecutionDay } from "@sentry/junior/api/schema";
 import {
+  ActivityChartAverageLine,
   ActivityChartDateLabels,
   ActivityChartGrid,
+  activityChartAverage,
   ActivityTooltipRows,
   ChartSvg,
   createActivityChartLayout,
@@ -10,6 +12,7 @@ import {
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { Tooltip } from "../../components/Tooltip";
+import { formatCompactNumber } from "../../format";
 
 const series = [
   { color: "#6ee7b7", key: "scheduled", label: "Scheduled" },
@@ -28,6 +31,7 @@ export function TaskExecutionChart(props: {
   const barWidth = Math.max(2, Math.min(13, step * 0.68));
   const totals = days.map((day) => day.scheduled + day.event);
   const maximum = Math.max(1, ...totals);
+  const average = activityChartAverage(totals);
   const hasExecutions = totals.some((total) => total > 0);
 
   return (
@@ -117,6 +121,13 @@ export function TaskExecutionChart(props: {
               </Tooltip>
             );
           })}
+          <ActivityChartAverageLine
+            average={average}
+            format={formatCompactNumber}
+            layout={layout}
+            maximum={maximum}
+            stroke="#e2e8f0"
+          />
           <ActivityChartDateLabels
             dates={days.map((day) => day.date)}
             layout={layout}

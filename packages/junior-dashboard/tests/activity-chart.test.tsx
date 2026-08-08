@@ -2,8 +2,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import {
+  ActivityChartAverageLine,
   ActivityChartDateLabels,
   ActivityChartGrid,
+  activityChartAverage,
   ChartAxisHtmlLabel,
   ChartAxisLabel,
   ChartCategoryLabels,
@@ -11,6 +13,7 @@ import {
   createActivityChartLayout,
 } from "../src/client/components/charts/ActivityChart";
 import { ChartHeader } from "../src/client/components/charts/ChartHeader";
+import { SystemMetricCharts } from "../src/client/components/charts/SystemMetricCharts";
 
 describe("ChartAxisLabel", () => {
   it("defaults to the shared 12px screen-size contract", () => {
@@ -103,5 +106,80 @@ describe("ChartHeader", () => {
     const primaryClass = html.match(/class="([^"]*font-mono[^"]*)"/)?.[1];
     expect(primaryClass).toBeTruthy();
     expect(html.split(primaryClass!).length - 1).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe("ActivityChartAverageLine", () => {
+  it("averages bucket values across the plotted window", () => {
+    expect(activityChartAverage([])).toBe(0);
+    expect(activityChartAverage([10, 20, 30])).toBe(20);
+  });
+
+  it("renders a dashed guide with a compact / day label", () => {
+    const layout = createActivityChartLayout(200, { left: 64, width: 400 });
+    const html = renderToStaticMarkup(
+      <ChartSvg aria-label="average fixture" layout={layout}>
+        <ActivityChartAverageLine
+          average={40}
+          format={(value) => `${value}`}
+          layout={layout}
+          maximum={100}
+          stroke="#22d3ee"
+        />
+      </ChartSvg>,
+    );
+
+    expect(html).toContain('aria-label="average 40 / day"');
+    expect(html).toContain('stroke-dasharray="4 4"');
+    expect(html).toContain(">40 / day</text>");
+    expect(html).toContain('stroke="#22d3ee"');
+  });
+
+  it("hides when the average is zero", () => {
+    const layout = createActivityChartLayout(200);
+    const html = renderToStaticMarkup(
+      <ChartSvg aria-label="empty average" layout={layout}>
+        <ActivityChartAverageLine
+          average={0}
+          format={(value) => String(value)}
+          layout={layout}
+          maximum={10}
+        />
+      </ChartSvg>,
+    );
+
+    expect(html).not.toContain("/ day");
+    expect(html).not.toContain("stroke-dasharray");
+  });
+});
+
+describe("SystemMetricCharts average line", () => {
+  it("opts token usage into the shared average line", () => {
+    const html = renderToStaticMarkup(
+      <SystemMetricCharts
+        days={[
+          {
+            conversations: 2,
+            costUsd: 1.5,
+            date: "2026-05-01",
+            durationMs: 120_000,
+            tokens: 1_000_000_000,
+          },
+          {
+            conversations: 4,
+            costUsd: 2.5,
+            date: "2026-05-02",
+            durationMs: 180_000,
+            tokens: 1_400_000_000,
+          },
+        ]}
+      />,
+    );
+
+    expect(html).toContain("Token usage");
+    expect(html).toContain('aria-label="average 1.2b / day"');
+    expect(html).toContain(">1.2b / day</text>");
+    expect(html).toContain("Model spend");
+    expect(html).toContain("Runtime");
   });
 });

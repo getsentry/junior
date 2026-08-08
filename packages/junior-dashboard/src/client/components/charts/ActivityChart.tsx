@@ -244,6 +244,68 @@ export function ChartCategoryLabels(props: {
   });
 }
 
+/** Mean of chart bucket values; empty input is 0. */
+export function activityChartAverage(values: readonly number[]): number {
+  if (values.length === 0) return 0;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+/** Shared visual style for average-line labels. */
+export const chartAverageLabelClassName =
+  "fill-white/70 font-mono leading-none";
+
+/**
+ * Opt-in horizontal average across the plotted buckets.
+ * Renders a dashed guide plus a compact "value / day" label on the right.
+ */
+export function ActivityChartAverageLine(props: {
+  average: number;
+  format(value: number): string;
+  layout: ActivityChartLayout;
+  maximum: number;
+  stroke?: string;
+  unit?: string;
+}) {
+  if (!(props.average > 0) || !(props.maximum > 0)) return null;
+
+  const unit = props.unit ?? "day";
+  const y =
+    props.layout.top +
+    props.layout.plotHeight -
+    (props.average / props.maximum) * props.layout.plotHeight;
+  const x1 = props.layout.left;
+  const x2 = props.layout.width - props.layout.right;
+  const label = `${props.format(props.average)} / ${unit}`;
+  // Keep the label inside the plot; flip below the line near the top edge.
+  const labelAbove = y - props.layout.top > 14;
+  const scale = useContext(ChartSvgScaleContext);
+  const fontSize = chartAxisFontSizePx / scale;
+
+  return (
+    <g aria-label={`average ${label}`} pointerEvents="none">
+      <line
+        stroke={props.stroke ?? "rgba(255,255,255,0.55)"}
+        strokeDasharray="4 4"
+        strokeOpacity={0.85}
+        strokeWidth={1.25}
+        x1={x1}
+        x2={x2}
+        y1={y}
+        y2={y}
+      />
+      <text
+        className={chartAverageLabelClassName}
+        fontSize={fontSize}
+        textAnchor="end"
+        x={x2}
+        y={labelAbove ? y - 6 : y + 12}
+      >
+        {label}
+      </text>
+    </g>
+  );
+}
+
 /** Render label and value rows inside an activity-chart tooltip. */
 export function ActivityTooltipRows(props: {
   rows: ReadonlyArray<readonly [label: ReactNode, value: ReactNode]>;

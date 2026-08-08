@@ -1,6 +1,8 @@
 import {
+  ActivityChartAverageLine,
   ActivityChartDateLabels,
   ActivityChartGrid,
+  activityChartAverage,
   ActivityTooltipRows,
   ChartSvg,
   createActivityChartLayout,
@@ -38,10 +40,11 @@ export function MemoryCostChart(props: {
     (sum, day) => sum + day.extraction.events + day.recall.events,
     0,
   );
-  const maximum = Math.max(
-    0.01,
-    ...days.map((day) => day.extraction.costUsd + day.recall.costUsd),
+  const dayTotals = days.map(
+    (day) => day.extraction.costUsd + day.recall.costUsd,
   );
+  const maximum = Math.max(0.01, ...dayTotals);
+  const average = activityChartAverage(dayTotals);
   // Cost charts need a wider left gutter for currency tick labels.
   const layout = createActivityChartLayout(200, { left: 64 });
   const step =
@@ -152,6 +155,13 @@ export function MemoryCostChart(props: {
               </Tooltip>
             );
           })}
+          <ActivityChartAverageLine
+            average={average}
+            format={(value) => formatCostSummary({ total: value })}
+            layout={layout}
+            maximum={maximum}
+            stroke="#e2e8f0"
+          />
           <ActivityChartDateLabels
             dates={days.map((day) => day.date)}
             layout={layout}

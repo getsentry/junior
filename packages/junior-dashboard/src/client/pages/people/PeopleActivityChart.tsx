@@ -1,8 +1,10 @@
 import type { PeopleActivityDayReport } from "@sentry/junior/api/schema";
 
 import {
+  ActivityChartAverageLine,
   ActivityChartDateLabels,
   ActivityChartGrid,
+  activityChartAverage,
   ActivityTooltipRows,
   ChartSvg,
   createActivityChartLayout,
@@ -12,6 +14,7 @@ import {
 import { Card } from "../../components/layout/Card";
 import { CardHeader } from "../../components/layout/CardHeader";
 import { Tooltip } from "../../components/Tooltip";
+import { formatCompactNumber } from "../../format";
 
 function chartPoint(
   day: PeopleActivityDayReport,
@@ -34,7 +37,9 @@ export function PeopleActivityChart(props: {
   days: PeopleActivityDayReport[];
 }) {
   const layout = createActivityChartLayout(260);
-  const maximum = Math.max(1, ...props.days.map((day) => day.activePeople));
+  const values = props.days.map((day) => day.activePeople);
+  const maximum = Math.max(1, ...values);
+  const average = activityChartAverage(values);
   const points = props.days.map((day, index) =>
     chartPoint(day, index, props.days.length, maximum, layout),
   );
@@ -113,6 +118,13 @@ export function PeopleActivityChart(props: {
               </Tooltip>
             );
           })}
+          <ActivityChartAverageLine
+            average={average}
+            format={formatCompactNumber}
+            layout={layout}
+            maximum={maximum}
+            stroke="#fbbf24"
+          />
           <ActivityChartDateLabels
             dates={props.days.map((day) => day.date)}
             layout={layout}

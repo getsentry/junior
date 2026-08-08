@@ -1,8 +1,10 @@
 import type { DailyConversationActivity } from "@sentry/junior/api/schema";
 
 import {
+  ActivityChartAverageLine,
   ActivityChartDateLabels,
   ActivityChartGrid,
+  activityChartAverage,
   ActivityTooltipRows,
   ChartSvg,
   createActivityChartLayout,
@@ -11,13 +13,16 @@ import {
 import { Card } from "../../components/layout/Card";
 import { CardHeader } from "../../components/layout/CardHeader";
 import { Tooltip } from "../../components/Tooltip";
+import { formatCompactNumber } from "../../format";
 
 /** Plot daily conversation volume across one public location. */
 export function LocationActivityChart(props: {
   days: DailyConversationActivity[];
 }) {
   const layout = createActivityChartLayout(240);
-  const maximum = Math.max(1, ...props.days.map((day) => day.conversations));
+  const values = props.days.map((day) => day.conversations);
+  const maximum = Math.max(1, ...values);
+  const average = activityChartAverage(values);
   const step = layout.plotWidth / Math.max(1, props.days.length);
   const barWidth = Math.max(4, Math.min(20, step * 0.55));
 
@@ -78,6 +83,13 @@ export function LocationActivityChart(props: {
               </Tooltip>
             );
           })}
+          <ActivityChartAverageLine
+            average={average}
+            format={formatCompactNumber}
+            layout={layout}
+            maximum={maximum}
+            stroke="#22d3ee"
+          />
           <ActivityChartDateLabels
             dates={props.days.map((day) => day.date)}
             layout={layout}
