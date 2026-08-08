@@ -99,7 +99,7 @@ describe("Slack behavior: attachment handling", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700004000.000" });
+    const thread = await createTestThread({ id: "slack:C0BEHAVIOR:1700004000.000" });
     const message = createTestMessage({
       id: "m-attachment-1",
       text: "<@U0APP> summarize this chart",
@@ -176,7 +176,7 @@ describe("Slack behavior: attachment handling", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700004001.000" });
+    const thread = await createTestThread({ id: "slack:C0BEHAVIOR:1700004001.000" });
     const message = createTestMessage({
       id: "m-attachment-2",
       text: "<@U0APP> what does this screenshot mean?",

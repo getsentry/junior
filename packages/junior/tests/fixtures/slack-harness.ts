@@ -7,6 +7,8 @@ import type {
   Thread,
 } from "chat";
 import type { Destination } from "@sentry/junior-plugin-api";
+import { getStateAdapter } from "@/chat/state/adapter";
+import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -171,28 +173,100 @@ export interface TestThread extends Thread {
   subscribeCalls: number;
   subscribed: boolean;
   threadTs?: string;
-  getState: () => Record<string, unknown>;
+  /** Load scratch from the same Junior adapter path production uses. */
+  getState: () => Promise<Record<string, unknown>>;
 }
 
-export function createTestThread(args: {
+function threadStateKey(threadId: string): string {
+  return `thread-state:${threadId}`;
+}
+
+function channelStateKey(channelId: string): string {
+  return `channel-state:${channelId}`;
+}
+
+async function readAdapterState(
+  key: string,
+): Promise<Record<string, unknown> | undefined> {
+  const stateAdapter = getStateAdapter();
+  await stateAdapter.connect();
+  return await stateAdapter.get<Record<string, unknown>>(key);
+}
+
+async function writeAdapterState(
+  key: string,
+  value: Record<string, unknown>,
+): Promise<void> {
+  const stateAdapter = getStateAdapter();
+  await stateAdapter.connect();
+  await stateAdapter.set(key, value, JUNIOR_THREAD_STATE_TTL_MS);
+}
+
+export async function createTestThread(args: {
   id?: string;
   channelId?: string;
   state?: Record<string, unknown>;
   channelStateRef?: { value: Record<string, unknown> };
   runId?: string;
   threadTs?: string;
-}): TestThread {
+}): Promise<TestThread> {
   const id = args.id ?? "slack:C0TEST:1700000000.000";
   const channelId = args.channelId ?? toAdapterChannelId(id) ?? id;
+  // Local cache for fixture seeding before the first adapter round-trip. Reads
+  // prefer the Junior adapter so production writes are visible to tests.
   let stateData: Record<string, unknown> = { ...(args.state ?? {}) };
   const posts: unknown[] = [];
   const postKinds: Array<"stream" | "value"> = [];
   const postIds: symbol[] = [];
   let subscribeCalls = 0;
   let subscribed = false;
+  let seededThreadState = false;
+  let seededChannelState = false;
 
   const stubAdapter = { name: "test" } as Adapter;
   const channelRef = args.channelStateRef ?? { value: {} };
+
+  const seedThreadState = async (): Promise<void> => {
+    if (seededThreadState || Object.keys(stateData).length === 0) {
+      return;
+    }
+    const existing = await readAdapterState(threadStateKey(id));
+    if (!existing) {
+      await writeAdapterState(threadStateKey(id), stateData);
+    }
+    seededThreadState = true;
+  };
+
+  const loadThreadState = async (): Promise<Record<string, unknown>> => {
+    await seedThreadState();
+    const stored = await readAdapterState(threadStateKey(id));
+    if (stored) {
+      stateData = stored;
+      return stored;
+    }
+    return stateData;
+  };
+
+  const seedChannelState = async (): Promise<void> => {
+    if (seededChannelState || Object.keys(channelRef.value).length === 0) {
+      return;
+    }
+    const existing = await readAdapterState(channelStateKey(channelId));
+    if (!existing) {
+      await writeAdapterState(channelStateKey(channelId), channelRef.value);
+    }
+    seededChannelState = true;
+  };
+
+  const loadChannelState = async (): Promise<Record<string, unknown>> => {
+    await seedChannelState();
+    const stored = await readAdapterState(channelStateKey(channelId));
+    if (stored) {
+      channelRef.value = stored;
+      return stored;
+    }
+    return channelRef.value;
+  };
 
   const channel: Channel = {
     adapter: stubAdapter,
@@ -215,20 +289,19 @@ export function createTestThread(args: {
       cancel: async () => undefined,
     })) as unknown as Channel["schedule"],
     get state(): Promise<Record<string, unknown>> {
-      return Promise.resolve(channelRef.value);
+      return loadChannelState();
     },
     async setState(
       next: Partial<Record<string, unknown>>,
       options?: { replace?: boolean },
     ): Promise<void> {
-      if (options?.replace) {
-        channelRef.value = { ...(next as Record<string, unknown>) };
-        return;
-      }
+      const current = options?.replace ? {} : await loadChannelState();
       channelRef.value = {
-        ...channelRef.value,
+        ...current,
         ...(next as Record<string, unknown>),
       };
+      seededChannelState = true;
+      await writeAdapterState(channelStateKey(channelId), channelRef.value);
     },
     async startTyping(): Promise<void> {},
     fetchMetadata: (async () => ({
@@ -265,7 +338,7 @@ export function createTestThread(args: {
     },
     recentMessages: [],
     get state(): Promise<Record<string, unknown>> {
-      return Promise.resolve(stateData);
+      return loadThreadState();
     },
     async post(message: unknown): Promise<SentMessage> {
       let entry: unknown;
@@ -326,11 +399,13 @@ export function createTestThread(args: {
       next: Partial<Record<string, unknown>>,
       options?: { replace?: boolean },
     ): Promise<void> {
-      if (options?.replace) {
-        stateData = { ...(next as Record<string, unknown>) };
-        return;
-      }
-      stateData = { ...stateData, ...(next as Record<string, unknown>) };
+      const current = options?.replace ? {} : await loadThreadState();
+      stateData = {
+        ...current,
+        ...(next as Record<string, unknown>),
+      };
+      seededThreadState = true;
+      await writeAdapterState(threadStateKey(id), stateData);
     },
     createSentMessageFromMessage(message: Message): SentMessage {
       return message as unknown as SentMessage;
@@ -351,7 +426,7 @@ export function createTestThread(args: {
       return subscribed;
     },
     getState() {
-      return stateData;
+      return loadThreadState();
     },
     toJSON() {
       return {
@@ -363,6 +438,11 @@ export function createTestThread(args: {
       };
     },
   };
+
+  // Production reads scratch via the Junior adapter, not thread.state. Await the
+  // seed so the first prepareTurnState sees constructor-provided state.
+  await seedThreadState();
+  await seedChannelState();
 
   return thread;
 }

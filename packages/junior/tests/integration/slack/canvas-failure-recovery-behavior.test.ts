@@ -50,7 +50,7 @@ describe("Slack behavior: canvas failure recovery", () => {
         },
       },
     });
-    const thread = createTestThread({
+    const thread = await createTestThread({
       id: "slack:C0CANVAS:1700008008.000",
     });
 
@@ -91,7 +91,7 @@ describe("Slack behavior: canvas failure recovery", () => {
         text: expect.stringContaining("https://slack.example/docs/T/F_CANVAS"),
       },
     ]);
-    expect(thread.getState()).toMatchObject({
+    expect(await thread.getState()).toMatchObject({
       artifacts: {
         lastCanvasId: "F_CANVAS",
         lastCanvasUrl: "https://slack.example/docs/T/F_CANVAS",
@@ -110,7 +110,7 @@ describe("Slack behavior: canvas failure recovery", () => {
         },
       },
     });
-    const thread = createTestThread({
+    const thread = await createTestThread({
       id: "slack:C0CANVAS:1700008009.000",
       state: {
         artifacts: {
@@ -143,7 +143,7 @@ describe("Slack behavior: canvas failure recovery", () => {
     const postedText = toPostedText(thread.posts[0]);
     expect(postedText).toContain("I ran into an internal error");
     expect(postedText).not.toContain("https://slack.example/docs/T/F_OLD");
-    expect(thread.getState()).toMatchObject({
+    expect(await thread.getState()).toMatchObject({
       artifacts: {
         lastCanvasUrl: "https://slack.example/docs/T/F_OLD",
       },

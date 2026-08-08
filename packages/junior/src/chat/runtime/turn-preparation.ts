@@ -33,6 +33,7 @@ import {
 import {
   getChannelConfigurationService,
   getPersistedSandboxState,
+  getPersistedThreadState,
 } from "@/chat/runtime/thread-state";
 import {
   hydrateConversationMessages,
@@ -179,11 +180,16 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
   return async function prepareTurnState(
     args: PrepareTurnStateInput,
   ): Promise<PreparedTurnState> {
-    const existingState = await args.thread.state;
-    const sandboxRef = getPersistedSandboxState(existingState ?? {});
+    const conversationId = args.context.threadId ?? args.context.runId;
+    // Scratch lives on the Junior adapter under thread-state:{id}. Do not read
+    // chat-sdk thread.state here: production Chat shares that adapter, but tests
+    // and any future custom Thread handle may not.
+    const existingState = conversationId
+      ? await getPersistedThreadState(conversationId)
+      : {};
+    const sandboxRef = getPersistedSandboxState(existingState);
     const artifacts = coerceThreadArtifactsState(existingState);
     const conversation = coerceThreadConversationState(existingState);
-    const conversationId = args.context.threadId ?? args.context.runId;
     await hydrateConversationMessages({ conversation, conversationId });
     const channelConfiguration =
       args.channelConfiguration ?? getChannelConfigurationService(args.thread);

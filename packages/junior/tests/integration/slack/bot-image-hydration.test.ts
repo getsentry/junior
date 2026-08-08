@@ -97,7 +97,7 @@ describe("bot image hydration", () => {
         AI_VISION_MODEL: "openai/gpt-5.4",
       },
     );
-    const firstThread = createTestThread({
+    const firstThread = await createTestThread({
       id: "slack:C0IMAGE:1700000000.000",
       state: {
         conversation: {
@@ -170,8 +170,8 @@ describe("bot image hydration", () => {
       { destination: createTestDestination(firstThread) },
     );
 
-    const persisted = firstThread.getState();
-    const secondThread = createTestThread({
+    const persisted = await firstThread.getState();
+    const secondThread = await createTestThread({
       id: "slack:C0IMAGE:1700000000.000",
       state: persisted,
     });
@@ -208,7 +208,7 @@ describe("bot image hydration", () => {
         },
       },
     });
-    const thread = createTestThread({
+    const thread = await createTestThread({
       id: "slack:C0IMAGE:1700000001.000",
       state: {
         conversation: {
@@ -260,7 +260,7 @@ describe("bot image hydration", () => {
     );
 
     expect(listThreadRepliesMock).not.toHaveBeenCalled();
-    const persistedState = thread.getState() as {
+    const persistedState = (await thread.getState()) as {
       conversation: {
         messages: Array<{
           author?: {
@@ -282,7 +282,7 @@ describe("bot image hydration", () => {
     expect(
       persistedState.conversation.vision.backfillCompletedAtMs,
     ).toBeUndefined();
-    const conversation = coerceThreadConversationState(thread.getState());
+    const conversation = coerceThreadConversationState(await thread.getState());
     await hydrateConversationMessages({
       conversation,
       conversationId: thread.id,
@@ -315,7 +315,7 @@ describe("bot image hydration", () => {
         },
       },
     });
-    const firstThread = createTestThread({
+    const firstThread = await createTestThread({
       id: "slack:C0IMAGE:1700000002.000",
       state: {
         conversation: {
@@ -401,9 +401,9 @@ describe("bot image hydration", () => {
         AI_VISION_MODEL: "openai/gpt-5.4",
       },
     );
-    const secondThread = createTestThread({
+    const secondThread = await createTestThread({
       id: "slack:C0IMAGE:1700000002.000",
-      state: firstThread.getState(),
+      state: await firstThread.getState(),
     });
 
     await secondRuntime.slackRuntime.handleNewMention(
@@ -427,7 +427,7 @@ describe("bot image hydration", () => {
     expect(listThreadRepliesMock).toHaveBeenCalledTimes(1);
     expect(downloadFileMock).toHaveBeenCalledTimes(1);
     expect(completeTextMock).toHaveBeenCalledTimes(1);
-    const persistedState = secondThread.getState() as {
+    const persistedState = (await secondThread.getState()) as {
       conversation: {
         messages: Array<{
           id: string;
@@ -442,7 +442,7 @@ describe("bot image hydration", () => {
         };
       };
     };
-    const conversation = coerceThreadConversationState(secondThread.getState());
+    const conversation = coerceThreadConversationState(await secondThread.getState());
     await hydrateConversationMessages({
       conversation,
       conversationId: secondThread.id,
@@ -514,7 +514,7 @@ describe("bot image hydration", () => {
         AI_VISION_MODEL: "openai/gpt-5.4",
       },
     );
-    const thread = createTestThread({
+    const thread = await createTestThread({
       id: "slack:C0IMAGE:1700000006.000",
       state: {
         conversation: {
@@ -591,7 +591,7 @@ describe("bot image hydration", () => {
     expect(completeTextMock).toHaveBeenCalledTimes(1);
     expect(executeAgentRun).toHaveBeenCalledTimes(1);
 
-    const persistedState = thread.getState() as {
+    const persistedState = (await thread.getState()) as {
       conversation: {
         messages: Array<{
           id: string;
@@ -605,7 +605,7 @@ describe("bot image hydration", () => {
         };
       };
     };
-    const conversation = coerceThreadConversationState(thread.getState());
+    const conversation = coerceThreadConversationState(await thread.getState());
     await hydrateConversationMessages({
       conversation,
       conversationId: thread.id,
@@ -674,7 +674,7 @@ describe("bot image hydration", () => {
     );
 
     await slackRuntime.handleNewMention(
-      createTestThread({
+      await createTestThread({
         id: "slack:C0IMAGE:1700000003.000",
         state: {
           conversation: {
@@ -721,7 +721,7 @@ describe("bot image hydration", () => {
       }),
       {
         destination: createTestDestination(
-          createTestThread({
+          await createTestThread({
             id: "slack:C0IMAGE:1700000003.000",
             state: {
               conversation: {
@@ -832,7 +832,7 @@ describe("bot image hydration", () => {
     );
 
     await slackRuntime.handleNewMention(
-      createTestThread({
+      await createTestThread({
         id: "slack:C0IMAGE:1700000004.000",
         state: {
           conversation: {
@@ -885,7 +885,7 @@ describe("bot image hydration", () => {
       }),
       {
         destination: createTestDestination(
-          createTestThread({
+          await createTestThread({
             id: "slack:C0IMAGE:1700000004.000",
             state: {
               conversation: {
@@ -954,7 +954,7 @@ describe("bot image hydration", () => {
     );
 
     await slackRuntime.handleNewMention(
-      createTestThread({
+      await createTestThread({
         id: "slack:C0IMAGE:1700000005.000",
         state: {
           conversation: {
@@ -1001,7 +1001,7 @@ describe("bot image hydration", () => {
       }),
       {
         destination: createTestDestination(
-          createTestThread({
+          await createTestThread({
             id: "slack:C0IMAGE:1700000005.000",
             state: {
               conversation: {

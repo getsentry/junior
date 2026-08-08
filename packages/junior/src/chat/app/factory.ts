@@ -151,7 +151,9 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
       decision,
       text,
     }) => {
-      const conversation = coerceThreadConversationState(await thread.state);
+      const conversation = coerceThreadConversationState(
+        await getPersistedThreadState(getThreadId(thread, message)),
+      );
       upsertSkippedConversationMessage(conversation, {
         decision,
         message,
@@ -169,7 +171,9 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
       completedAtMs,
       text,
     }) => {
-      const conversation = coerceThreadConversationState(await thread.state);
+      const conversation = coerceThreadConversationState(
+        await getPersistedThreadState(getThreadId(thread, message)),
+      );
       upsertSkippedConversationMessage(conversation, {
         decision,
         message,

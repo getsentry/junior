@@ -358,16 +358,16 @@ async function mirrorThreadStateToAdapter(thread: TestThread): Promise<void> {
     // and the memory adapter in sync during the first parked turn.
     await stateAdapterModule
       .getStateAdapter()
-      .set(`thread-state:${thread.id}`, thread.getState());
+      .set(`thread-state:${thread.id}`, await thread.getState());
   };
 
   await stateAdapterModule
     .getStateAdapter()
-    .set(`thread-state:${thread.id}`, thread.getState());
+    .set(`thread-state:${thread.id}`, await thread.getState());
   // The prior visible transcript is the durable SQL authority now; seed any
   // pre-existing messages so resume reads them the way the runtime would.
   const seeded = (
-    thread.getState() as {
+    (await thread.getState()) as {
       conversation?: { messages?: ConversationMessage[] };
     }
   )?.conversation?.messages;
@@ -458,7 +458,7 @@ describe("mcp auth runtime slack integration", () => {
       teamId: "T123",
       channelId: "C123",
     };
-    const thread = createTestThread({
+    const thread = await createTestThread({
       id: threadId,
       state: {
         conversation: {
@@ -723,7 +723,7 @@ describe("mcp auth runtime slack integration", () => {
       teamId: "T123",
       channelId: "C124",
     };
-    const thread = createTestThread({
+    const thread = await createTestThread({
       id: threadId,
       state: {
         conversation: {
@@ -840,7 +840,7 @@ describe("mcp auth runtime slack integration", () => {
       teamId: "T123",
       channelId: "C129",
     };
-    const thread = createTestThread({
+    const thread = await createTestThread({
       id: threadId,
       state: {
         conversation: {
@@ -929,7 +929,7 @@ describe("mcp auth runtime slack integration", () => {
       teamId: "T123",
       channelId: "C130",
     };
-    const thread = createTestThread({ id: threadId });
+    const thread = await createTestThread({ id: threadId });
     await mirrorThreadStateToAdapter(thread);
     await getConversationEventStore().append(threadId, [
       {
@@ -997,7 +997,7 @@ describe("mcp auth runtime slack integration", () => {
       teamId: "T123",
       channelId: "C125",
     };
-    const thread = createTestThread({
+    const thread = await createTestThread({
       id: threadId,
       state: {
         conversation: {
@@ -1133,7 +1133,7 @@ describe("mcp auth runtime slack integration", () => {
         channelId: "C126",
       };
 
-      const thread = createTestThread({
+      const thread = await createTestThread({
         id: threadId,
         state: {
           conversation: {

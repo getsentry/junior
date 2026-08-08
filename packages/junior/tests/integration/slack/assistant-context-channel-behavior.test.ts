@@ -41,7 +41,7 @@ describe("Slack behavior: assistant context channel routing", () => {
       },
     });
 
-    const thread = createTestThread({
+    const thread = await createTestThread({
       id: "slack:D0DMTHREAD:1700007000.000",
       state: {
         artifacts: {
