@@ -1,10 +1,15 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { Thread } from "chat";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  getChannelConfigurationService,
+  getPersistedChannelState,
   getPersistedSandboxState,
   getPersistedThreadState,
+  persistThreadRuntimeState,
   persistThreadStateById,
 } from "@/chat/runtime/thread-state";
-import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
+import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 
 const originalStateAdapter = process.env.JUNIOR_STATE_ADAPTER;
 
@@ -55,5 +60,71 @@ describe("thread sandbox state", () => {
       app_sandbox_dependency_profile_hash: "",
     });
     expect(getPersistedSandboxState(state)).toBeUndefined();
+  });
+
+  it("writes thread and channel scratch with Junior's 7-day TTL", async () => {
+    const stateAdapter = getStateAdapter();
+    const set = vi.spyOn(stateAdapter, "set");
+    const conversationId = "local:test:thread-scratch-ttl";
+    const channelId = "C-scratch-ttl";
+
+    await persistThreadStateById(conversationId, {
+      sandboxRef: { id: "sandbox-ttl" },
+    });
+    expect(set).toHaveBeenCalledWith(
+      `thread-state:${conversationId}`,
+      expect.objectContaining({ app_sandbox_id: "sandbox-ttl" }),
+      JUNIOR_THREAD_STATE_TTL_MS,
+    );
+
+    set.mockClear();
+    const thread = {
+      id: conversationId,
+      channelId,
+      channel: { id: channelId },
+    } as Thread;
+    await persistThreadRuntimeState(thread, {
+      artifacts: { lastCanvasId: "Fcanvas" },
+    });
+    expect(set).toHaveBeenCalledWith(
+      `thread-state:${conversationId}`,
+      expect.objectContaining({
+        app_sandbox_id: "sandbox-ttl",
+        artifacts: expect.objectContaining({ lastCanvasId: "Fcanvas" }),
+      }),
+      JUNIOR_THREAD_STATE_TTL_MS,
+    );
+
+    set.mockClear();
+    await getChannelConfigurationService(thread).set({
+      key: "github.repo",
+      value: "getsentry/junior",
+      updatedBy: "U123",
+    });
+    expect(set).toHaveBeenCalledWith(
+      `channel-state:${channelId}`,
+      expect.objectContaining({
+        configuration: expect.objectContaining({
+          entries: expect.objectContaining({
+            "github.repo": expect.objectContaining({
+              key: "github.repo",
+              value: "getsentry/junior",
+            }),
+          }),
+        }),
+      }),
+      JUNIOR_THREAD_STATE_TTL_MS,
+    );
+
+    await expect(getPersistedChannelState(channelId)).resolves.toMatchObject({
+      configuration: {
+        entries: {
+          "github.repo": {
+            key: "github.repo",
+            value: "getsentry/junior",
+          },
+        },
+      },
+    });
   });
 });
