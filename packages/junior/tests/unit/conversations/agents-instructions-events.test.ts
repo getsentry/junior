@@ -230,4 +230,43 @@ describe("agents instructions durable events", () => {
       seq: 2,
     });
   });
+
+  it("pages past newer non-AGENTS structured events to find the marker", async () => {
+    await recordAgentsInstructionsUpdated({
+      action: "loaded",
+      conversationId: "conv-1",
+      directory: "/vercel/sandbox/junior",
+      fingerprint: "buried",
+      sources: [source],
+      turnId: "turn-1",
+    });
+    // Fill a full newest page with unrelated structured events so the AGENTS
+    // marker is only reachable via hasOlder pagination.
+    for (let index = 0; index < 50; index += 1) {
+      await memoryStore.append("conv-1", [
+        {
+          createdAtMs: Date.now() + index,
+          data: {
+            type: "structured_event",
+            namespace: "junior",
+            name: "authentication_linked",
+            version: 1,
+            content: {
+              actorId: `U${index}`,
+              provider: "github",
+            },
+          },
+        },
+      ]);
+    }
+
+    await expect(
+      loadLatestAgentsInstructionsState({ conversationId: "conv-1" }),
+    ).resolves.toEqual({
+      action: "loaded",
+      directory: "/vercel/sandbox/junior",
+      fingerprint: "buried",
+      seq: 1,
+    });
+  });
 });

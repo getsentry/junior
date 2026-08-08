@@ -611,15 +611,24 @@ function agentsInstructionsStateFromEvent(
 export async function loadLatestAgentsInstructionsState(args: {
   conversationId: string;
 }): Promise<AgentsInstructionsActiveState | undefined> {
-  const page = await getConversationEventStore().query(args.conversationId, {
-    limit: 50,
-    types: ["structured_event"],
-  });
-  for (let index = page.events.length - 1; index >= 0; index -= 1) {
-    const state = agentsInstructionsStateFromEvent(page.events[index]);
-    if (state) return state;
+  // Walk newest structured events first, then older pages, until we hit the
+  // most recent AGENTS marker. Auth/plugin structured events can bury it.
+  let beforeSeq: number | undefined;
+  for (;;) {
+    const page = await getConversationEventStore().query(args.conversationId, {
+      limit: 50,
+      types: ["structured_event"],
+      ...(beforeSeq === undefined ? {} : { beforeSeq }),
+    });
+    for (let index = page.events.length - 1; index >= 0; index -= 1) {
+      const state = agentsInstructionsStateFromEvent(page.events[index]);
+      if (state) return state;
+    }
+    if (!page.hasOlder || page.events.length === 0) {
+      return undefined;
+    }
+    beforeSeq = page.events[0]!.seq;
   }
-  return undefined;
 }
 
 function agentsInstructionsIdempotencyKey(args: {
