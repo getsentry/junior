@@ -279,40 +279,6 @@ function projectAgentTurnSessionSummary(
   return agentTurnSessionSummarySchema.parse(record);
 }
 
-/**
- * Lifecycle rank used only when two recovery-index entries share a version.
- *
- * Fire-and-forget start writes keep `version: 0` / copy existing without
- * advancing. Real pause/resume/terminal upserts increment version, so the
- * primary collapse key is version — rank only breaks same-version races.
- */
-function agentTurnSessionStatusRank(state: AgentTurnSessionStatus): number {
-  switch (state) {
-    case "running":
-      return 0;
-    case "awaiting_resume":
-      return 1;
-    case "completed":
-    case "failed":
-    case "abandoned":
-      return 2;
-  }
-}
-
-/** Prefer the authoritative recovery summary for one session id. */
-function shouldPreferAgentTurnSessionSummary(
-  candidate: AgentTurnSessionSummary,
-  existing: AgentTurnSessionSummary,
-): boolean {
-  if (candidate.version !== existing.version) {
-    return candidate.version > existing.version;
-  }
-  return (
-    agentTurnSessionStatusRank(candidate.state) >
-    agentTurnSessionStatusRank(existing.state)
-  );
-}
-
 async function appendAgentTurnSessionSummary(
   summary: AgentTurnSessionSummary,
   ttlMs: number,
@@ -1031,10 +997,7 @@ async function readAgentTurnSessionSummariesFromIndex(
       continue;
     }
     const summaryKey = `${summary.conversationId}:${summary.sessionId}`;
-    const existing = summaries.get(summaryKey);
-    // Newest wins when version+rank tie. Higher version always wins so a live
-    // post-resume `running` upsert is not hidden by a stale pause summary.
-    if (!existing || shouldPreferAgentTurnSessionSummary(summary, existing)) {
+    if (!summaries.has(summaryKey)) {
       summaries.set(summaryKey, summary);
     }
   }
