@@ -14,6 +14,7 @@ const focusableSelector = [
 export function Drawer(props: {
   actions?: ReactNode;
   children: ReactNode;
+  closeLabel: string;
   dismissLabel: string;
   header: ReactNode;
   onClose(): void;
@@ -110,7 +111,7 @@ export function Drawer(props: {
           <div className="flex items-start gap-1.5">
             {props.actions}
             <Button
-              aria-label={props.dismissLabel}
+              aria-label={props.closeLabel}
               data-drawer-close
               onClick={props.onClose}
               size="icon"

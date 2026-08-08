@@ -50,7 +50,8 @@ export function TaskDetailsDrawer(props: {
 
   return (
     <Drawer
-      dismissLabel="Close task details"
+      closeLabel="Close task details"
+      dismissLabel="Dismiss task details"
       header={
         <>
           <h2

@@ -49,7 +49,8 @@ export function SubagentTranscriptDrawer(props: {
           }
         />
       }
-      dismissLabel="Close subagent transcript"
+      closeLabel="Close subagent transcript"
+      dismissLabel="Dismiss subagent transcript"
       header={
         <>
           <div className="flex min-w-0 items-center gap-2">
