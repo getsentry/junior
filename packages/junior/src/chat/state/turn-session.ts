@@ -279,6 +279,13 @@ function projectAgentTurnSessionSummary(
   return agentTurnSessionSummarySchema.parse(record);
 }
 
+/** Terminal recovery states that must outrank lagging non-terminal index entries. */
+function isTerminalAgentTurnSessionStatus(
+  state: AgentTurnSessionStatus,
+): boolean {
+  return state === "completed" || state === "failed" || state === "abandoned";
+}
+
 async function appendAgentTurnSessionSummary(
   summary: AgentTurnSessionSummary,
   ttlMs: number,
@@ -997,7 +1004,13 @@ async function readAgentTurnSessionSummariesFromIndex(
       continue;
     }
     const summaryKey = `${summary.conversationId}:${summary.sessionId}`;
-    if (!summaries.has(summaryKey)) {
+    const existing = summaries.get(summaryKey);
+    // Newest wins, except a terminal entry outranks a lagging non-terminal one.
+    if (
+      !existing ||
+      (!isTerminalAgentTurnSessionStatus(existing.state) &&
+        isTerminalAgentTurnSessionStatus(summary.state))
+    ) {
       summaries.set(summaryKey, summary);
     }
   }

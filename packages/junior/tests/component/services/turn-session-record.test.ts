@@ -658,6 +658,60 @@ describe("persistAuthPauseSessionRecord", () => {
     expect(summaries[0]).not.toHaveProperty("requester");
   });
 
+  it("keeps a terminal recovery summary when a newer running entry lands later", async () => {
+    const { getStateAdapter } = await import("@/chat/state/adapter");
+    const { listAgentTurnSessionSummariesForConversation } =
+      await import("@/chat/state/turn-session");
+    const stateAdapter = getStateAdapter();
+    await stateAdapter.connect();
+    const conversationId = "slack:C123:terminal-index-race";
+    const sessionId = "turn-terminal-index-race";
+    const indexKey = `junior:agent_turn_session:conversation:${conversationId}:index`;
+
+    // Older terminal write, then a lagging fire-and-forget running write.
+    await stateAdapter.appendToList(
+      indexKey,
+      {
+        version: 0,
+        conversationId,
+        dispatchId: "dispatch_index_race",
+        dispatchOutcome: "blocked",
+        resultMessageId: "1700000000.000200",
+        sessionId,
+        sliceId: 1,
+        state: "failed",
+        surface: "api",
+        updatedAtMs: 10,
+      },
+      { ttlMs: 60_000 },
+    );
+    await stateAdapter.appendToList(
+      indexKey,
+      {
+        version: 0,
+        conversationId,
+        dispatchId: "dispatch_index_race",
+        sessionId,
+        sliceId: 1,
+        state: "running",
+        surface: "api",
+        updatedAtMs: 20,
+      },
+      { ttlMs: 60_000 },
+    );
+
+    await expect(
+      listAgentTurnSessionSummariesForConversation(conversationId),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        dispatchOutcome: "blocked",
+        resultMessageId: "1700000000.000200",
+        sessionId,
+        state: "failed",
+      }),
+    ]);
+  });
+
   it("materializes auth completion events appended after the pause record", async () => {
     const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
