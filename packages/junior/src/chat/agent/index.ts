@@ -42,6 +42,7 @@ import { McpToolManager } from "@/chat/mcp/tool-manager";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import {
   loadConnectedMcpProviders,
+  loadLatestAgentsInstructionsState,
   loadTurnRoute,
   openConversationProjection,
   recordAgentsInstructionsUpdated,
@@ -64,10 +65,7 @@ import {
   resolveGatewayModel,
 } from "@/chat/pi/client";
 import type { PiMessage } from "@/chat/pi/messages";
-import {
-  findVisibleAgentsInstructions,
-  renderAgentsInstructions,
-} from "@/chat/repository-instructions";
+import { renderAgentsInstructions } from "@/chat/repository-instructions";
 import { createRepositoryInstructionsContext } from "@/chat/agent/repository-context";
 import {
   extractAssistantText,
@@ -830,17 +828,22 @@ async function executeAgentRunInPrivacyContext(
       }
     };
     if (initialRepositoryInstructions) {
-      const priorVisibleAgents = findVisibleAgentsInstructions(
-        priorPiMessages ?? [],
-      );
+      // Durable Pi history strips AGENTS bootstrap messages, so gate emission
+      // against the last durable structured marker instead of prior Pi text.
+      const priorState = await loadLatestAgentsInstructionsState({
+        conversationId,
+      });
       const alreadyActive =
-        priorVisibleAgents?.active === true &&
-        priorVisibleAgents.directory ===
-          initialRepositoryInstructions.directory &&
-        priorVisibleAgents.text === initialRepositoryInstructions.text;
+        priorState !== undefined &&
+        priorState.action !== "cleared" &&
+        priorState.fingerprint === initialRepositoryInstructions.fingerprint &&
+        priorState.directory === initialRepositoryInstructions.directory;
       if (!alreadyActive) {
         await recordAgentsTransition({
-          action: priorVisibleAgents?.active === true ? "replaced" : "loaded",
+          action:
+            priorState !== undefined && priorState.action !== "cleared"
+              ? "replaced"
+              : "loaded",
           directory: initialRepositoryInstructions.directory,
           fingerprint: initialRepositoryInstructions.fingerprint,
           sources: initialRepositoryInstructions.sources.map((source) => ({

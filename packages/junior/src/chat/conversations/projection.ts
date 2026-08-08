@@ -567,6 +567,74 @@ type AgentsInstructionsTransitionArgs = {
   turnId: string;
 };
 
+export type AgentsInstructionsActiveState = {
+  action: "loaded" | "replaced" | "cleared";
+  directory?: string;
+  fingerprint: string;
+  seq: number;
+};
+
+function agentsInstructionsStateFromEvent(
+  event: ConversationEvent | undefined,
+): AgentsInstructionsActiveState | undefined {
+  if (
+    !event ||
+    event.data.type !== "structured_event" ||
+    event.data.namespace !== JUNIOR_NATIVE_EVENT_NAMESPACE ||
+    event.data.name !== agentsInstructionsUpdatedEvent.eventName
+  ) {
+    return undefined;
+  }
+  let content: {
+    action: "loaded" | "replaced" | "cleared";
+    directory?: string;
+    fingerprint: string;
+  };
+  try {
+    content = agentsInstructionsUpdatedEvent.parse(event.data.content) as {
+      action: "loaded" | "replaced" | "cleared";
+      directory?: string;
+      fingerprint: string;
+    };
+  } catch {
+    return undefined;
+  }
+  return {
+    action: content.action,
+    fingerprint: content.fingerprint,
+    seq: event.seq,
+    ...(content.directory ? { directory: content.directory } : {}),
+  };
+}
+
+/** Latest durable AGENTS.md visibility state for one conversation. */
+export async function loadLatestAgentsInstructionsState(args: {
+  conversationId: string;
+}): Promise<AgentsInstructionsActiveState | undefined> {
+  const page = await getConversationEventStore().query(args.conversationId, {
+    limit: 50,
+    types: ["structured_event"],
+  });
+  for (let index = page.events.length - 1; index >= 0; index -= 1) {
+    const state = agentsInstructionsStateFromEvent(page.events[index]);
+    if (state) return state;
+  }
+  return undefined;
+}
+
+function agentsInstructionsIdempotencyKey(args: {
+  action: "loaded" | "replaced" | "cleared";
+  fingerprint: string;
+  previousSeq?: number;
+  turnId: string;
+}): string {
+  const previous = args.previousSeq ?? "none";
+  return (
+    `native:${JUNIOR_NATIVE_EVENT_NAMESPACE}:agents_instructions_updated:` +
+    `${args.turnId}:${args.action}:${previous}->${args.fingerprint}`
+  );
+}
+
 /** Record one AGENTS.md bootstrap transition as host transcript metadata. */
 export async function recordAgentsInstructionsUpdated(
   args: AgentsInstructionsTransitionArgs,
@@ -580,12 +648,28 @@ export async function recordAgentsInstructionsUpdated(
       ? { textBytes: args.textBytes }
       : {}),
   });
+  const previous = await loadLatestAgentsInstructionsState({
+    conversationId: args.conversationId,
+  });
+  if (
+    previous &&
+    ((args.action === "cleared" && previous.action === "cleared") ||
+      (args.action !== "cleared" &&
+        previous.action !== "cleared" &&
+        previous.fingerprint === args.fingerprint &&
+        previous.directory === args.directory))
+  ) {
+    return;
+  }
   await getConversationEventStore().append(args.conversationId, [
     {
       createdAtMs: Date.now(),
-      idempotencyKey:
-        `native:${JUNIOR_NATIVE_EVENT_NAMESPACE}:agents_instructions_updated:` +
-        `${args.turnId}:${args.action}:${args.fingerprint}`,
+      idempotencyKey: agentsInstructionsIdempotencyKey({
+        action: args.action,
+        fingerprint: args.fingerprint,
+        previousSeq: previous?.seq,
+        turnId: args.turnId,
+      }),
       data: {
         type: "structured_event",
         namespace: JUNIOR_NATIVE_EVENT_NAMESPACE,
