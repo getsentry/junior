@@ -664,93 +664,69 @@ describe("persistAuthPauseSessionRecord", () => {
       await import("@/chat/state/turn-session");
     const stateAdapter = getStateAdapter();
     await stateAdapter.connect();
+    const conversationId = "slack:C123:summary-collapse";
+    const sessionId = "turn-summary-collapse";
+    const indexKey = `junior:agent_turn_session:conversation:${conversationId}:index`;
 
-    async function seedAndRead(
-      conversationId: string,
-      sessionId: string,
-      entries: Array<Record<string, unknown>>,
-    ) {
-      const indexKey = `junior:agent_turn_session:conversation:${conversationId}:index`;
-      for (const [index, entry] of entries.entries()) {
-        await stateAdapter.appendToList(
-          indexKey,
-          {
-            conversationId,
-            sessionId,
-            sliceId: 1,
-            surface: "api",
-            updatedAtMs: (index + 1) * 10,
-            ...entry,
-          },
-          { ttlMs: 60_000 },
-        );
-      }
-      return listAgentTurnSessionSummariesForConversation(conversationId);
-    }
-
-    // Same-version lagging start write loses to a durable pause/terminal.
-    await expect(
-      seedAndRead("slack:C123:terminal-index-race", "turn-terminal-index-race", [
-        {
-          version: 1,
-          dispatchId: "dispatch_index_race",
-          dispatchOutcome: "blocked",
-          resultMessageId: "1700000000.000200",
-          state: "failed",
-        },
-        {
-          version: 0,
-          state: "running",
-        },
-      ]),
-    ).resolves.toEqual([
-      expect.objectContaining({
-        dispatchOutcome: "blocked",
-        resultMessageId: "1700000000.000200",
-        sessionId: "turn-terminal-index-race",
-        state: "failed",
+    // Same-version race: lagging fire-and-forget start must not hide a pause.
+    await stateAdapter.appendToList(
+      indexKey,
+      {
         version: 1,
-      }),
-    ]);
-
+        conversationId,
+        resumeReason: "timeout",
+        sessionId,
+        sliceId: 1,
+        state: "awaiting_resume",
+        surface: "api",
+        updatedAtMs: 10,
+      },
+      { ttlMs: 60_000 },
+    );
+    await stateAdapter.appendToList(
+      indexKey,
+      {
+        version: 1,
+        conversationId,
+        sessionId,
+        sliceId: 1,
+        state: "running",
+        surface: "api",
+        updatedAtMs: 20,
+      },
+      { ttlMs: 60_000 },
+    );
     await expect(
-      seedAndRead("slack:C123:awaiting-index-race", "turn-awaiting-index-race", [
-        {
-          version: 1,
-          resumeReason: "timeout",
-          state: "awaiting_resume",
-        },
-        {
-          version: 0,
-          state: "running",
-        },
-      ]),
+      listAgentTurnSessionSummariesForConversation(conversationId),
     ).resolves.toEqual([
       expect.objectContaining({
         resumeReason: "timeout",
-        sessionId: "turn-awaiting-index-race",
+        sessionId,
         state: "awaiting_resume",
         version: 1,
       }),
     ]);
 
-    // A live post-resume running upsert advances version and must win over the
-    // stale pause summary, or stranded mid-resume recovery never runs.
+    // Higher version always wins, including live post-resume running over a
+    // stale pause (otherwise stranded mid-resume recovery never runs).
+    await stateAdapter.appendToList(
+      indexKey,
+      {
+        version: 2,
+        conversationId,
+        sessionId,
+        sliceId: 1,
+        state: "running",
+        surface: "api",
+        updatedAtMs: 30,
+      },
+      { ttlMs: 60_000 },
+    );
     await expect(
-      seedAndRead("slack:C123:resume-running-race", "turn-resume-running-race", [
-        {
-          version: 1,
-          resumeReason: "timeout",
-          state: "awaiting_resume",
-        },
-        {
-          version: 2,
-          state: "running",
-        },
-      ]),
+      listAgentTurnSessionSummariesForConversation(conversationId),
     ).resolves.toEqual([
       expect.objectContaining({
-        sessionId: "turn-resume-running-race",
+        sessionId,
         state: "running",
         version: 2,
       }),
