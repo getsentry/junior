@@ -151,8 +151,13 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
       decision,
       text,
     }) => {
+      const conversationId =
+        getThreadId(thread, message) ?? getRunId(thread, message);
+      if (!conversationId) {
+        throw new Error("thread id is required to load runtime scratch");
+      }
       const conversation = coerceThreadConversationState(
-        await getPersistedThreadState(getThreadId(thread, message)),
+        await getPersistedThreadState(conversationId),
       );
       upsertSkippedConversationMessage(conversation, {
         decision,
@@ -171,8 +176,13 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
       completedAtMs,
       text,
     }) => {
+      const conversationId =
+        getThreadId(thread, message) ?? getRunId(thread, message);
+      if (!conversationId) {
+        throw new Error("thread id is required to load runtime scratch");
+      }
       const conversation = coerceThreadConversationState(
-        await getPersistedThreadState(getThreadId(thread, message)),
+        await getPersistedThreadState(conversationId),
       );
       upsertSkippedConversationMessage(conversation, {
         decision,
