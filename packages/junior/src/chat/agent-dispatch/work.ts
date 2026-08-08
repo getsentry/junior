@@ -222,7 +222,7 @@ export async function resolveAgentDispatchId(
     summaries
       .filter(
         (summary) =>
-          (summary.state === "awaiting_resume" ||
+          (summary.state === "paused" ||
             summary.state === "running") &&
           Boolean(summary.dispatchId),
       )
@@ -327,7 +327,7 @@ async function readDispatchTurnResult(
   if (!session) {
     return {};
   }
-  if (session.state === "awaiting_resume") {
+  if (session.state === "paused") {
     return { hasResumableRun: true, outcome: "awaiting_resume" };
   }
   if (session.state === "running") {

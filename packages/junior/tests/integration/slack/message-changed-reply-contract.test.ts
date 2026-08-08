@@ -14,7 +14,7 @@ import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { deliverAssistantMessagesForTest } from "../../fixtures/agent-runner";
 import { queueSlackApiError } from "../../msw/handlers/slack-api";
 import { RetryableDeliveryError } from "@/chat/agent/request";
-import type { AgentContinueRequest } from "@/chat/services/agent-continue";
+import type { AgentContinueRequest } from "@/chat/task-execution/continue";
 
 const SIGNING_SECRET = "test-signing-secret";
 const BOT_USER_ID = "U0BOT";

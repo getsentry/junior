@@ -212,7 +212,7 @@ async function projectTerminalSession(
   if (!session) {
     return undefined;
   }
-  if (session.state === "awaiting_resume" || session.state === "running") {
+  if (session.state === "paused" || session.state === "running") {
     return undefined;
   }
   const result = getTerminalAssistantMessages(session.piMessages)

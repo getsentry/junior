@@ -108,7 +108,7 @@ import {
   isResourceEventSlackMessage,
   RESOURCE_EVENT_SYSTEM_ACTOR,
 } from "@/chat/resource-events/actor";
-import type { AgentContinueRequest } from "@/chat/services/agent-continue";
+import type { AgentContinueRequest } from "@/chat/task-execution/continue";
 import {
   ConversationTurnBoundaryError,
   CooperativeTurnYieldError,
@@ -394,7 +394,7 @@ export interface ReplyExecutorServices {
   generateThreadTitle: ConversationMemoryService["generateThreadTitle"];
   getAwaitingAgentContinueRequest: (args: {
     conversationId: string;
-    sessionId: string;
+    turnId: string;
   }) => Promise<AgentContinueRequest | undefined>;
   lookupSlackUser: typeof lookupSlackUser;
   turnLifecycle: ConversationTurnLifecycle;
@@ -795,13 +795,13 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           const resumeRequest =
             await deps.services.getAwaitingAgentContinueRequest({
               conversationId,
-              sessionId: activeTurnId,
+              turnId: activeTurnId,
             });
           if (resumeRequest) {
             // Durable event-log append first: rescheduling a continuation
             // does not consume the message, and `ack` may only
             // fire after the input is model-visible.
-            if (!(await appendParkedTurnInput(resumeRequest.sessionId))) {
+            if (!(await appendParkedTurnInput(resumeRequest.turnId))) {
               // A live resume holds the thread lock; leave the mailbox
               // message pending so the next drain re-delivers it after the
               // resume completes.
@@ -812,7 +812,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             } catch (error) {
               logException(error, "agent.continue.schedule.failed", {
                 "app.ai.resume_session_version": resumeRequest.expectedVersion,
-                "app.ai.resume_session_id": resumeRequest.sessionId,
+                "app.ai.resume_session_id": resumeRequest.turnId,
                 ...(messageTs ? { "messaging.message.id": messageTs } : {}),
               });
               throw error;
@@ -830,7 +830,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             conversationId,
             activeTurnId,
           );
-          if (sessionRecord?.state === "awaiting_resume") {
+          if (sessionRecord?.state === "paused") {
             if (sessionRecord.resumeReason === "auth") {
               // A user follow-up supersedes the auth-parked run: answer it
               // now as a fresh turn instead of consuming it into a pause that
@@ -1503,7 +1503,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               await deps.services.scheduleAgentContinue({
                 conversationId,
                 destination,
-                sessionId: turnId,
+                turnId: turnId,
                 expectedVersion: outcome.resumeVersion,
               });
               shouldPersistFailureState = false;

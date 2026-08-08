@@ -21,7 +21,7 @@ import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import { getConversationWorkState } from "@/chat/task-execution/store";
-import { scheduleAgentContinue } from "@/chat/services/agent-continue";
+import { scheduleAgentContinue } from "@/chat/task-execution/continue";
 import type { PiMessage } from "@/chat/pi/messages";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { GET as heartbeat } from "@/handlers/heartbeat";
@@ -254,7 +254,7 @@ describe("plugin heartbeat", () => {
       sessionId,
       sliceId: 2,
       destination: SLACK_DESTINATION,
-      state: "awaiting_resume",
+      state: "paused",
       resumeReason: "timeout",
       piMessages: [
         {
@@ -269,7 +269,7 @@ describe("plugin heartbeat", () => {
       {
         conversationId,
         destination: SLACK_DESTINATION,
-        sessionId,
+        turnId: sessionId,
         expectedVersion: 1,
       },
       { queue, nowMs: staleNowMs },
@@ -314,7 +314,7 @@ describe("plugin heartbeat", () => {
       sessionId,
       sliceId: 1,
       destination: SLACK_DESTINATION,
-      state: "awaiting_resume",
+      state: "paused",
       resumeReason: "yield",
       piMessages: [
         {
@@ -329,7 +329,7 @@ describe("plugin heartbeat", () => {
       {
         conversationId,
         destination: SLACK_DESTINATION,
-        sessionId,
+        turnId: sessionId,
         expectedVersion: 1,
       },
       { queue, nowMs: staleNowMs },
@@ -374,7 +374,7 @@ describe("plugin heartbeat", () => {
       sessionId,
       sliceId: 2,
       destination: SLACK_DESTINATION,
-      state: "awaiting_resume",
+      state: "paused",
       resumeReason: "timeout",
       piMessages: [
         {
@@ -416,7 +416,7 @@ describe("plugin heartbeat", () => {
       sessionId,
       sliceId: 2,
       destination: SLACK_DESTINATION,
-      state: "awaiting_resume",
+      state: "paused",
       resumeReason: "timeout",
       piMessages: [
         {

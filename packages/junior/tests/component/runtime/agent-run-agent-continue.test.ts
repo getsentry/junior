@@ -349,7 +349,7 @@ describe("agent continuation composition", () => {
       "turn-1",
     );
     expect(sessionRecord).toMatchObject({
-      state: "awaiting_resume",
+      state: "paused",
       resumeReason: "timeout",
       resumedFromSliceId: 1,
       sliceId: 2,
@@ -378,7 +378,7 @@ describe("agent continuation composition", () => {
       conversationId: "conversation-timeout-cap",
       sessionId: "turn-timeout-cap",
       sliceId: botConfig.maxSlicesPerTurn,
-      state: "awaiting_resume",
+      state: "paused",
       piMessages,
       resumeReason: "timeout",
     });
@@ -519,7 +519,7 @@ describe("agent continuation composition", () => {
       "turn-hung",
     );
     expect(sessionRecord).toMatchObject({
-      state: "awaiting_resume",
+      state: "paused",
       resumeReason: "timeout",
       resumedFromSliceId: 1,
       sliceId: 2,
@@ -577,7 +577,7 @@ describe("agent continuation composition", () => {
       "turn-retry",
     );
     expect(sessionRecord).toMatchObject({
-      state: "awaiting_resume",
+      state: "paused",
       resumeReason: "timeout",
       resumedFromSliceId: 1,
       sliceId: 2,

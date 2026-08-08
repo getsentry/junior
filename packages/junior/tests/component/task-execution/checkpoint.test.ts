@@ -178,7 +178,7 @@ describe("turn checkpoint", () => {
       conversationId: "conversation-1",
       sessionId: "turn-1",
       sliceId: 1,
-      state: "awaiting_resume",
+      state: "paused",
       source: SLACK_SOURCE,
       piMessages: priorMessages,
       resumeReason: "auth",
@@ -203,7 +203,7 @@ describe("turn checkpoint", () => {
       "turn-1",
     );
     expect(sessionRecord).toMatchObject({
-      state: "awaiting_resume",
+      state: "paused",
       sliceId: 2,
       resumedFromSliceId: 1,
       resumeReason: "auth",
@@ -314,7 +314,7 @@ describe("turn checkpoint", () => {
       piMessages: recovered!.piMessages,
       sessionId,
       sliceId: 2,
-      state: "awaiting_resume",
+      state: "paused",
     });
     await expect(
       conversationStore.get({ conversationId }),
@@ -531,7 +531,7 @@ describe("turn checkpoint", () => {
         conversationId,
         sessionId,
         sliceId: 1,
-        state: "awaiting_resume",
+        state: "paused",
         startedAtMs: 1_000,
         lastProgressAtMs: 1_000,
         updatedAtMs: 1_000,
@@ -551,7 +551,7 @@ describe("turn checkpoint", () => {
     );
 
     const record = await getAgentTurnSessionRecord(conversationId, sessionId);
-    expect(record).toMatchObject({ state: "awaiting_resume" });
+    expect(record).toMatchObject({ state: "paused" });
     expect(record).not.toHaveProperty("destination");
     expect(record).not.toHaveProperty("source");
     expect(record).not.toHaveProperty("actor");
@@ -656,7 +656,7 @@ describe("turn checkpoint", () => {
         sessionId: "turn-legacy-summary",
         sliceId: 1,
         startedAtMs: 1,
-        state: "awaiting_resume",
+        state: "paused",
         updatedAtMs: 3,
       },
       { ttlMs: 60_000 },
@@ -668,7 +668,7 @@ describe("turn checkpoint", () => {
     expect(summaries[0]).toMatchObject({
       conversationId,
       sessionId: "turn-legacy-summary",
-      state: "awaiting_resume",
+      state: "paused",
     });
     expect(summaries[0]).not.toHaveProperty("requester");
   });
@@ -690,7 +690,7 @@ describe("turn checkpoint", () => {
       conversationId: "conversation-auth-complete",
       sessionId: "turn-auth-complete",
       sliceId: 1,
-      state: "awaiting_resume",
+      state: "paused",
       piMessages: [userMessage],
       resumeReason: "auth",
       errorMessage: "plugin auth pause",
@@ -709,7 +709,7 @@ describe("turn checkpoint", () => {
         "turn-auth-complete",
       ),
     ).resolves.toMatchObject({
-      state: "awaiting_resume",
+      state: "paused",
       piMessages: [
         userMessage,
         {
@@ -754,7 +754,7 @@ describe("turn checkpoint", () => {
       conversationId,
       sessionId,
       sliceId: 1,
-      state: "awaiting_resume",
+      state: "paused",
       destination: SLACK_DESTINATION,
       source: SLACK_SOURCE,
       piMessages: [userMessage],
@@ -766,7 +766,7 @@ describe("turn checkpoint", () => {
     const record = await getAgentTurnSessionRecord(conversationId, sessionId);
     expect(record).toMatchObject({
       piMessages: [userMessage],
-      state: "awaiting_resume",
+      state: "paused",
     });
     expect(record).not.toHaveProperty("actor");
 
@@ -1014,7 +1014,7 @@ describe("turn checkpoint", () => {
       conversationId: "conversation-1",
       sessionId: "turn-1",
       sliceId: 1,
-      state: "awaiting_resume",
+      state: "paused",
       piMessages: [
         {
           role: "user",
@@ -1096,7 +1096,7 @@ describe("turn checkpoint", () => {
       conversationId: "conversation-timeout-cap",
       sessionId: "turn-timeout-cap",
       sliceId: botConfig.maxSlicesPerTurn,
-      state: "awaiting_resume",
+      state: "paused",
       piMessages,
       resumeReason: "timeout",
       cumulativeDurationMs: 12_000,
@@ -1192,7 +1192,7 @@ describe("turn checkpoint", () => {
     });
 
     expect(authSessionRecord).toMatchObject({
-      state: "awaiting_resume",
+      state: "paused",
       sliceId: 2,
       resumeReason: "auth",
       piMessages: safeBoundary,
@@ -1201,7 +1201,7 @@ describe("turn checkpoint", () => {
     await expect(
       getAgentTurnSessionRecord("conversation-auth-tail", "turn-auth-tail"),
     ).resolves.toMatchObject({
-      state: "awaiting_resume",
+      state: "paused",
       piMessages: safeBoundary,
     });
   });
@@ -1227,7 +1227,7 @@ describe("turn checkpoint", () => {
     expect(authRecord).toMatchObject({
       conversationId: "conversation-auth-empty",
       sessionId: "turn-auth-empty",
-      state: "awaiting_resume",
+      state: "paused",
       piMessages: [],
       modelId: "openai/gpt-5.5",
       reasoningLevel: "high",
@@ -1299,7 +1299,7 @@ describe("turn checkpoint", () => {
       conversationId: "conversation-1",
       sessionId: "turn-1",
       sliceId: 2,
-      state: "awaiting_resume",
+      state: "paused",
       piMessages: [],
       piMessageProvenance: [],
       cumulativeDurationMs: 1_000,
@@ -1675,7 +1675,7 @@ describe("turn checkpoint", () => {
       "turn-1",
     );
     expect(sessionRecord).toMatchObject({
-      state: "awaiting_resume",
+      state: "paused",
       resumeReason: "timeout",
       sliceId: 2,
       piMessages: messages,
@@ -1705,7 +1705,7 @@ describe("turn checkpoint", () => {
         conversationId: "conversation-branch",
         sessionId: "turn-branch",
         sliceId: 2,
-        state: "awaiting_resume",
+        state: "paused",
         piMessages: [user],
         resumeReason: "timeout",
       }),
@@ -1737,7 +1737,7 @@ describe("turn checkpoint", () => {
       conversationId: "conversation-projection-pin",
       sessionId: "turn-old",
       sliceId: 1,
-      state: "awaiting_resume",
+      state: "paused",
       resumeReason: "timeout",
       piMessages: [oldRequest],
     });
@@ -1817,7 +1817,7 @@ describe("turn checkpoint", () => {
       conversationId,
       sessionId: turnId,
       sliceId: 1,
-      state: "awaiting_resume",
+      state: "paused",
       resumeReason: "yield",
       piMessages: [oldRequest],
     });
@@ -1880,7 +1880,7 @@ describe("turn checkpoint", () => {
       conversationId: "conversation-active-compaction-resume",
       sessionId: "turn-active-compaction-resume",
       sliceId: 1,
-      state: "awaiting_resume",
+      state: "paused",
       resumeReason: "yield",
       piMessages: [runtimeContext, instruction, summary],
     });
@@ -1920,7 +1920,7 @@ describe("turn checkpoint", () => {
       conversationId: "conversation-agents-order-resume",
       sessionId: "turn-agents-order-resume",
       sliceId: 1,
-      state: "awaiting_resume",
+      state: "paused",
       resumeReason: "yield",
       piMessages: [instruction, agents, assistant],
     });

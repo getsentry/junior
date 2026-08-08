@@ -336,7 +336,7 @@ vi.mock("@/chat/task-execution/checkpoint", () => ({
         piMessages: [],
         sessionId: "turn-1",
         sliceId: (args.sliceId ?? 1) + 1,
-        state: "awaiting_resume",
+        state: "paused",
         updatedAtMs: 1,
       };
     }

@@ -176,7 +176,7 @@ async function createAwaitingMcpTurnRecord(args: {
     conversationId: args.conversationId,
     sessionId: args.sessionId,
     sliceId: 2,
-    state: "awaiting_resume",
+    state: "paused",
     destination: SLACK_DESTINATION,
     destinationVisibility: "public",
     ...(args.includeSource === false
@@ -818,7 +818,7 @@ describe("mcp oauth callback integration", () => {
       conversationId: "conversation-4",
       sessionId,
       sliceId: 2,
-      state: "awaiting_resume",
+      state: "paused",
       destination: SLACK_DESTINATION,
       source: slackSource("1700000000.004"),
       piMessages: [],

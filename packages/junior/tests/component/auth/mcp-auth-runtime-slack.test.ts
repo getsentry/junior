@@ -561,7 +561,7 @@ describe("mcp auth runtime slack integration", () => {
       conversationId: threadId,
       sessionId: turnId,
       sliceId: 2,
-      state: "awaiting_resume",
+      state: "paused",
       resumeReason: "auth",
       resumedFromSliceId: 1,
     });
@@ -788,7 +788,7 @@ describe("mcp auth runtime slack integration", () => {
       conversationId: threadId,
       sessionId: turnId,
       sliceId: 2,
-      state: "awaiting_resume",
+      state: "paused",
       resumeReason: "auth",
       resumedFromSliceId: 1,
     });
@@ -1045,7 +1045,7 @@ describe("mcp auth runtime slack integration", () => {
       conversationId: threadId,
       sessionId: turnId,
       sliceId: 2,
-      state: "awaiting_resume",
+      state: "paused",
       resumeReason: "auth",
     });
 

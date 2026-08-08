@@ -75,7 +75,7 @@ const inboundMessageSourceSchema = z.enum([
 export type Source = z.output<typeof inboundMessageSourceSchema>;
 
 export type ExecutionStatus =
-  | "awaiting_resume"
+  | "paused"
   | "failed"
   | "idle"
   | "pending"
@@ -313,8 +313,11 @@ function normalizeSource(value: unknown): Source | undefined {
 }
 
 function normalizeExecutionStatus(value: unknown): ExecutionStatus | undefined {
+  // Legacy redis rows used awaiting_resume; runtime status is paused.
+  if (value === "awaiting_resume" || value === "paused") {
+    return "paused";
+  }
   if (
-    value === "awaiting_resume" ||
     value === "failed" ||
     value === "idle" ||
     value === "pending" ||
@@ -1151,7 +1154,7 @@ export async function appendInboundMessage(args: {
         current.execution.lease && current.execution.status === "running"
           ? "running"
           : current.execution.lease
-            ? "awaiting_resume"
+            ? "paused"
             : "pending";
       const next: Conversation = {
         ...current,
@@ -1208,7 +1211,7 @@ export async function requestConversationWork(args: {
         destination: args.destination,
         nowMs,
       });
-    const status = current.execution.lease ? "awaiting_resume" : "pending";
+    const status = current.execution.lease ? "paused" : "pending";
     await writeConversation(
       state,
       lock,
@@ -1457,10 +1460,7 @@ export async function startConversationWork(args: {
         {
           ...current.execution,
           lease,
-          status:
-            current.execution.status === "awaiting_resume"
-              ? "awaiting_resume"
-              : "running",
+          status: current.execution.status === "paused" ? "paused" : "running",
           runId: current.execution.runId ?? randomUUID(),
           lastEnqueuedAtMs: undefined,
           retryCount: startsNewRun ? 0 : current.execution.retryCount,
@@ -1662,7 +1662,7 @@ export async function requestConversationContinuation(args: {
         current,
         {
           ...current.execution,
-          status: "awaiting_resume",
+          status: "paused",
         },
         nowMs,
       ),
@@ -1684,7 +1684,7 @@ export async function beginConversationResume(args: {
     if (
       !current ||
       current.execution.lease?.token !== args.leaseToken ||
-      current.execution.status !== "awaiting_resume"
+      current.execution.status !== "paused"
     ) {
       return false;
     }
@@ -1764,7 +1764,7 @@ export async function recordConversationRetry(args: {
           retryCount: count,
           pendingMessages: stopped ? [] : current.execution.pendingMessages,
           runId: stopped ? undefined : current.execution.runId,
-          status: stopped ? "failed" : "awaiting_resume",
+          status: stopped ? "failed" : "paused",
         },
         nowMs,
       ),
@@ -1788,7 +1788,7 @@ export async function completeConversationWork(args: {
       return "lost_lease";
     }
     const hasPending = pendingMessages(current).length > 0;
-    const needsRun = current.execution.status === "awaiting_resume";
+    const needsRun = current.execution.status === "paused";
     const runnable = needsRun || hasPending;
     await writeConversation(
       state,
@@ -1798,11 +1798,7 @@ export async function completeConversationWork(args: {
         {
           ...current.execution,
           lease: undefined,
-          status: needsRun
-            ? "awaiting_resume"
-            : hasPending
-              ? "pending"
-              : "idle",
+          status: needsRun ? "paused" : hasPending ? "pending" : "idle",
           lastProgressAtMs:
             args.madeProgress === false
               ? current.execution.lastProgressAtMs
@@ -1983,7 +1979,7 @@ export async function clearExpiredConversationLease(args: {
           retryCount,
           pendingMessages: stopped ? [] : current.execution.pendingMessages,
           runId: stopped ? undefined : current.execution.runId,
-          status: stopped ? "failed" : "awaiting_resume",
+          status: stopped ? "failed" : "paused",
         },
         nowMs,
       ),

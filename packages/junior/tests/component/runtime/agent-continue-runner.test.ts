@@ -72,7 +72,7 @@ describe("agent continuation runner callbacks", () => {
       conversationId,
       sessionId,
       sliceId: 2,
-      state: "awaiting_resume",
+      state: "paused",
       destination: SLACK_DESTINATION,
       source: SLACK_SOURCE,
       resumeReason: "timeout",
@@ -123,7 +123,7 @@ describe("agent continuation runner callbacks", () => {
         {
           conversationId,
           destination: SLACK_DESTINATION,
-          sessionId,
+          turnId: sessionId,
           expectedVersion: sessionRecord.version,
         },
         {
@@ -170,7 +170,7 @@ describe("agent continuation runner callbacks", () => {
       conversationId,
       sessionId,
       sliceId: 2,
-      state: "awaiting_resume",
+      state: "paused",
       destination: SLACK_DESTINATION,
       resumeReason: "timeout",
       actor: {
@@ -219,7 +219,7 @@ describe("agent continuation runner callbacks", () => {
         {
           conversationId,
           destination: SLACK_DESTINATION,
-          sessionId,
+          turnId: sessionId,
           expectedVersion: sessionRecord.version,
         },
         {
@@ -255,7 +255,7 @@ describe("agent continuation runner callbacks", () => {
       conversationId,
       sessionId,
       sliceId: 2,
-      state: "awaiting_resume",
+      state: "paused",
       resumeReason: "timeout",
       actor: {
         platform: "slack",
@@ -311,7 +311,7 @@ describe("agent continuation runner callbacks", () => {
         {
           conversationId,
           destination: SLACK_DESTINATION,
-          sessionId,
+          turnId: sessionId,
           expectedVersion: sessionRecord.version,
         },
         {
@@ -333,7 +333,7 @@ describe("agent continuation runner callbacks", () => {
     await expect(
       getAgentTurnSessionRecord(conversationId, sessionId),
     ).resolves.toMatchObject({
-      state: "awaiting_resume",
+      state: "paused",
     });
   });
 
@@ -345,7 +345,7 @@ describe("agent continuation runner callbacks", () => {
       conversationId,
       sessionId,
       sliceId: 2,
-      state: "awaiting_resume",
+      state: "paused",
       destination: SLACK_DESTINATION,
       resumeReason: "timeout",
       piMessages: [
@@ -393,7 +393,7 @@ describe("agent continuation runner callbacks", () => {
         {
           conversationId,
           destination: SLACK_DESTINATION,
-          sessionId,
+          turnId: sessionId,
           expectedVersion: sessionRecord.version,
         },
         {

@@ -7,9 +7,14 @@ their adapters only prepare input, restore task-specific authority, and accept
 the completed result.
 
 Turn progress (running / paused / done) goes through one write API:
-`saveTurnCheckpoint` in `task-execution/checkpoint.ts`. History itself lives
-in SQL conversation events; the Redis turn cursor is only resume metadata.
-A continue that parks again at the same boundary fails closed (no spin loops).
+`saveTurnCheckpoint` in `checkpoint.ts`. Paused turns rewake via
+`continue.ts` (queue nudge only). History lives in SQL conversation events;
+the Redis turn cursor is only resume metadata. A continue that parks again
+at the same boundary fails closed (no spin loops).
+
+Runtime status is `paused`. SQL free-text / enum rows may still say
+`awaiting_resume`; readers normalize, writers dual-write the historical
+label where durable SQL requires it.
 
 ## State Model
 
@@ -30,7 +35,7 @@ A continue that parks again at the same boundary fails closed (no spin loops).
 Schema-v1 mailbox entries migrate to deferred delivery. Schema-v2 entries
 require a valid delivery value and reject invalid pending work.
 
-`state.ts`, `store.ts`, and their runtime schemas define the persisted shapes.
+`checkpoint.ts`, `continue.ts`, `state.ts`, `store.ts` define the execution surface.
 
 ## Execution
 

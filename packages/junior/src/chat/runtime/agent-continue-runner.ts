@@ -53,7 +53,7 @@ import {
   getAwaitingAgentContinueRequest,
   scheduleAgentContinue as defaultScheduleAgentContinue,
   type AgentContinueRequest,
-} from "@/chat/services/agent-continue";
+} from "@/chat/task-execution/continue";
 import {
   resolveTurnSessionRouting,
   type TurnSessionRouting,
@@ -332,7 +332,7 @@ async function resolveResumeExecutionIdentity(args: {
 
 function isContinuationResume(summary: AgentTurnSessionSummary): boolean {
   return (
-    summary.state === "awaiting_resume" &&
+    summary.state === "paused" &&
     (summary.resumeReason === "timeout" ||
       summary.resumeReason === "yield" ||
       summary.resumeReason === "retry")
@@ -408,7 +408,7 @@ async function continueSlackAgentRunInContext(
   return await resumeTurn({
     messageText: "",
     conversationId: payload.conversationId,
-    turnId: payload.sessionId,
+    turnId: payload.turnId,
     channelId: thread?.channelId ?? destination.channelId,
     ...(thread?.threadTs ? { threadTs: thread.threadTs } : {}),
     lockKey: payload.conversationId,
@@ -420,11 +420,11 @@ async function continueSlackAgentRunInContext(
       try {
         sessionRecord = await getAgentTurnSessionRecord(
           payload.conversationId,
-          payload.sessionId,
+          payload.turnId,
         );
         if (
           !sessionRecord ||
-          sessionRecord.state !== "awaiting_resume" ||
+          sessionRecord.state !== "paused" ||
           (sessionRecord.resumeReason !== "timeout" &&
             sessionRecord.resumeReason !== "yield" &&
             sessionRecord.resumeReason !== "retry") ||
@@ -454,18 +454,18 @@ async function continueSlackAgentRunInContext(
             )
           : undefined;
         const userMessage =
-          getTurnUserMessage(conversation, payload.sessionId) ??
+          getTurnUserMessage(conversation, payload.turnId) ??
           dispatchUserMessage;
         if (!userMessage) {
           // Never throw out of beforeStart (issue #727); fail the session visibly.
           await failStrandedSessionWithFallback({
             conversationId: payload.conversationId,
-            errorMessage: `Unable to locate the persisted user message for agent continuation session "${payload.sessionId}"`,
+            errorMessage: `Unable to locate the persisted user message for agent continuation session "${payload.turnId}"`,
             sessionRecord: activeSessionRecord,
           });
           return false;
         }
-        if (conversation.processing.activeTurnId !== payload.sessionId) {
+        if (conversation.processing.activeTurnId !== payload.turnId) {
           return false;
         }
 
@@ -520,7 +520,7 @@ async function continueSlackAgentRunInContext(
               options.routingContext?.destinationVisibility,
             dispatchId,
             dispatchOutcome,
-            sessionId: payload.sessionId,
+            sessionId: payload.turnId,
             sliceId: activeSessionRecord.sliceId,
             source,
             state: "failed",
@@ -600,20 +600,20 @@ async function continueSlackAgentRunInContext(
           },
           onAuthPause: async () => {
             await persistAuthPauseTurnState({
-              sessionId: payload.sessionId,
+              sessionId: payload.turnId,
               threadStateId: payload.conversationId,
             });
             await recordDispatchOutcome("blocked");
             logWarn("agent.continue.reparked_for_auth", {
               "app.ai.conversation_id": payload.conversationId,
-              "app.ai.session_id": payload.sessionId,
+              "app.ai.session_id": payload.turnId,
             });
           },
           onSuspend: async (resumeVersion) => {
             await scheduleAgentContinue({
               conversationId: payload.conversationId,
               destination: payload.destination,
-              sessionId: payload.sessionId,
+              turnId: payload.turnId,
               expectedVersion: resumeVersion,
             });
           },
@@ -783,7 +783,7 @@ async function recoverStrandedRunningSession(args: {
 
   const request = await getAwaitingAgentContinueRequest({
     conversationId: args.conversationId,
-    sessionId: sessionRecord.sessionId,
+    turnId: sessionRecord.sessionId,
   });
   if (!request) {
     await failStrandedSessionWithFallback({
@@ -856,7 +856,7 @@ async function resumeAwaitingSlackContinuationInContext(
 
     const request = await getAwaitingAgentContinueRequest({
       conversationId,
-      sessionId: summary.sessionId,
+      turnId: summary.sessionId,
     });
     if (!request) {
       await failUnresumableContinuation({
@@ -922,7 +922,7 @@ async function continueSlackAgentRunWithLockRetryInContext(
       if (typeof delayMs !== "number") {
         logWarn("agent.continue.lock.busy", {
           "app.ai.conversation_id": payload.conversationId,
-          "app.ai.session_id": payload.sessionId,
+          "app.ai.session_id": payload.turnId,
           "app.ai.resume_lock_retry_count": attempt,
         });
         await scheduleAgentContinue(payload);
@@ -931,7 +931,7 @@ async function continueSlackAgentRunWithLockRetryInContext(
 
       logWarn("agent.continue.lock.retrying", {
         "app.ai.conversation_id": payload.conversationId,
-        "app.ai.session_id": payload.sessionId,
+        "app.ai.session_id": payload.turnId,
         "app.ai.resume_lock_retry_attempt": attempt + 1,
         "app.ai.resume_lock_retry_delay_ms": delayMs,
       });

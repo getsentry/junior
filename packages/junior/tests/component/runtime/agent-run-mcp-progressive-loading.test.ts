@@ -832,7 +832,7 @@ describe("executeAgentRun progressive MCP loading", () => {
       "turn-1",
     );
     expect(pausedSessionRecord).toMatchObject({
-      state: "awaiting_resume",
+      state: "paused",
       resumeReason: "auth",
     });
     expect(pausedSessionRecord?.piMessages.at(-1)).toMatchObject({
@@ -893,7 +893,7 @@ describe("executeAgentRun progressive MCP loading", () => {
       "turn-1",
     );
     expect(resumedSessionRecord).toMatchObject({
-      state: "awaiting_resume",
+      state: "paused",
     });
   });
 
@@ -1220,7 +1220,7 @@ describe("executeAgentRun progressive MCP loading", () => {
       "turn-restore-auth",
     );
     expect(pausedSessionRecord).toMatchObject({
-      state: "awaiting_resume",
+      state: "paused",
       resumeReason: "auth",
     });
     expect(pausedSessionRecord?.turnStartMessageIndex).toBeUndefined();
@@ -1360,7 +1360,7 @@ describe("executeAgentRun progressive MCP loading", () => {
       conversationId: "conversation-current-resume",
       sessionId: "turn-current-resume",
       sliceId: 2,
-      state: "awaiting_resume",
+      state: "paused",
       piMessages: storedMessages,
       resumeReason: "auth",
       errorMessage: "authorization required",
@@ -1525,7 +1525,7 @@ describe("executeAgentRun progressive MCP loading", () => {
       "turn-4",
     );
     expect(pausedSessionRecord).toMatchObject({
-      state: "awaiting_resume",
+      state: "paused",
       resumeReason: "auth",
     });
 
@@ -1540,7 +1540,7 @@ describe("executeAgentRun progressive MCP loading", () => {
       "turn-4",
     );
     expect(resumedSessionRecord).toMatchObject({
-      state: "awaiting_resume",
+      state: "paused",
     });
   });
 
@@ -1595,7 +1595,7 @@ describe("executeAgentRun progressive MCP loading", () => {
       conversationId: "conversation-5",
       sessionId: "turn-5",
       sliceId: 1,
-      state: "awaiting_resume",
+      state: "paused",
       piMessages: expectedResumeMessages,
       resumeReason: "auth",
     });
@@ -1624,7 +1624,7 @@ describe("executeAgentRun progressive MCP loading", () => {
       "turn-5",
     );
     expect(resumedSessionRecord).toMatchObject({
-      state: "awaiting_resume",
+      state: "paused",
       sliceId: 2,
       resumedFromSliceId: 1,
       piMessages: expectedResumeMessages,
@@ -1650,7 +1650,7 @@ describe("executeAgentRun progressive MCP loading", () => {
       "turn-6",
     );
     expect(pausedSessionRecord).toMatchObject({
-      state: "awaiting_resume",
+      state: "paused",
       resumeReason: "auth",
     });
     expect(pausedSessionRecord?.piMessages.at(-1)).toMatchObject({

@@ -51,6 +51,7 @@ export const juniorConversations = pgTable(
     updatedAt: timestamptz("updated_at").notNull(),
     executionUpdatedAt: timestamptz("execution_updated_at"),
     executionStatus: text("execution_status")
+      // Free-text: durable rows may still say awaiting_resume; readers normalize.
       .$type<ConversationStatus>()
       .notNull(),
     runId: text("run_id"),

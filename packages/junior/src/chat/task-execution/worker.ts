@@ -109,7 +109,7 @@ function selectAttemptMessages(work: ConversationWorkState): InboundMessage[] {
   if (interrupts.length > 0) {
     return selectContiguousActorBatch(interrupts);
   }
-  return work.execution.status === "awaiting_resume"
+  return work.execution.status === "paused"
     ? []
     : selectContiguousActorBatch(messages);
 }
@@ -151,8 +151,7 @@ async function requestLostLeaseRecovery(args: {
         "app.run.id": before?.execution.runId ?? "unknown",
         "app.worker.last_progress_at_ms":
           before?.execution.lastProgressAtMs ?? before?.createdAtMs ?? 0,
-        "app.worker.retry_count":
-          (before?.execution.retryCount ?? 0) + 1,
+        "app.worker.retry_count": (before?.execution.retryCount ?? 0) + 1,
       },
     );
     return;
@@ -481,7 +480,7 @@ async function processConversationWorkInContext(
         return { status: "lost_lease" };
       }
 
-      const resumePending = leasedWork.execution.status === "awaiting_resume";
+      const resumePending = leasedWork.execution.status === "paused";
       const attemptMessages = selectAttemptMessages(leasedWork);
       attemptStartMessageIds = new Set(
         leasedWork.messages.map((message) => message.inboundMessageId),
@@ -664,7 +663,7 @@ async function processConversationWorkInContext(
         return { status: "lost_lease" };
       }
       if (
-        next.execution.status !== "awaiting_resume" &&
+        next.execution.status !== "paused" &&
         countPendingConversationMessages(next) === 0
       ) {
         break;

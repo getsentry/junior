@@ -64,7 +64,7 @@ function definedProps<T extends Record<string, unknown>>(
 
 export type AgentTurnSessionStatus =
   | "running"
-  | "awaiting_resume"
+  | "paused"
   | "completed"
   | "failed"
   | "abandoned";
@@ -160,13 +160,19 @@ interface StoredAgentTurnSessionRecord extends Omit<
   runtimeContext?: PiMessage[];
 }
 
-const agentTurnSessionStatusSchema = z.enum([
-  "running",
-  "awaiting_resume",
-  "completed",
-  "failed",
-  "abandoned",
-]) satisfies z.ZodType<AgentTurnSessionStatus>;
+const agentTurnSessionStatusSchema = z
+  .enum([
+    "running",
+    "paused",
+    "awaiting_resume", // legacy redis label; normalized to paused on read
+    "completed",
+    "failed",
+    "abandoned",
+  ])
+  .transform(
+    (state): AgentTurnSessionStatus =>
+      state === "awaiting_resume" ? "paused" : state,
+  );
 
 const agentTurnSurfaceSchema = z.enum([
   "slack",
@@ -265,7 +271,7 @@ function agentTurnSessionRecordTtlMs(
   if (ttlMs !== undefined) {
     return Math.max(1, ttlMs);
   }
-  return state === "running" || state === "awaiting_resume"
+  return state === "running" || state === "paused"
     ? AGENT_TURN_SESSION_RESUME_TTL_MS
     : AGENT_TURN_SESSION_TERMINAL_TTL_MS;
 }
@@ -386,7 +392,7 @@ function materializeAgentTurnSessionRecord(
 ): AgentTurnSessionRecord {
   const restoredProjection =
     restoreVolatileContext &&
-    (stored.state === "running" || stored.state === "awaiting_resume")
+    (stored.state === "running" || stored.state === "paused")
       ? restoreRuntimeContext(piProjection, stored.runtimeContext)
       : piProjection;
   return {
@@ -503,8 +509,7 @@ async function materializeStoredAgentTurnSessionRecord(
     committedSeq: parsed.committedSeq,
     // Unfinished records include the current-epoch tail so parked input
     // appended after the last safe boundary stays model-visible on resume.
-    includeTail:
-      parsed.state === "running" || parsed.state === "awaiting_resume",
+    includeTail: parsed.state === "running" || parsed.state === "paused",
   });
   if (!pinnedProjection) {
     return undefined;
@@ -515,7 +520,7 @@ async function materializeStoredAgentTurnSessionRecord(
     currentHistory.at(-1)?.historyVersion ?? parsed.historyVersion ?? 0;
   const followsReplacement =
     followCurrentReplacement &&
-    (parsed.state === "running" || parsed.state === "awaiting_resume") &&
+    (parsed.state === "running" || parsed.state === "paused") &&
     parsed.historyVersion !== undefined &&
     parsed.historyVersion !== currentHistoryVersion;
   const piProjection = followsReplacement
@@ -896,7 +901,7 @@ export async function upsertAgentTurnSessionRecord(args: {
           args.resultMessageId ?? existingRecord?.resultMessageId,
         resumedFromSliceId: args.resumedFromSliceId,
         runtimeContext:
-          args.state === "running" || args.state === "awaiting_resume"
+          args.state === "running" || args.state === "paused"
             ? retainedRuntimeContext
             : undefined,
         startedAtMs: existingRecord?.startedAtMs,

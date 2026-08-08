@@ -601,7 +601,7 @@ describe("agent invocation conversation work", () => {
       const run = vi.fn(async (request) => {
         await expect(
           getAgentTurnSessionRecord(created.childConversationId, turnId),
-        ).resolves.toMatchObject({ state: "awaiting_resume" });
+        ).resolves.toMatchObject({ state: "paused" });
         await request.durability.onInputCommitted?.();
         return completedAgentRun({
           diagnostics: {

@@ -361,7 +361,7 @@ export function createResumeState(args: ResumeStateArgs) {
           `Failed to persist continuation for conversation=${args.conversationId} turn=${args.turnId}`,
         );
       }
-      if (record.state === "awaiting_resume") {
+      if (record.state === "paused") {
         return {
           status: "suspended",
           resumeVersion: record.version,

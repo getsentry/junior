@@ -31,7 +31,7 @@ function conversation(args: {
     lastActivityAtMs: 1,
     updatedAtMs: 1,
     schemaVersion: 1,
-    execution: { status: "awaiting_resume" },
+    execution: { status: "paused" },
     ...(args.destination ? { destination: args.destination } : {}),
     ...(args.sessionSource ? { sessionSource: args.sessionSource } : {}),
   };

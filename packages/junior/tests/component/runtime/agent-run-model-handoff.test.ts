@@ -223,7 +223,7 @@ vi.mock("@/chat/skills", async (importOriginal) => ({
 
 import { executeAgentRun } from "@/chat/agent";
 import { RetryableDeliveryError } from "@/chat/agent/request";
-import { getAwaitingAgentContinueRequest } from "@/chat/services/agent-continue";
+import { getAwaitingAgentContinueRequest } from "@/chat/task-execution/continue";
 import {
   loadConversationProjection,
   loadProjection,
@@ -742,7 +742,7 @@ describe("model handoff composition", () => {
       turnId,
     );
     expect(suspendedRecord).toMatchObject({
-      state: "awaiting_resume",
+      state: "paused",
       resumeReason: "retry",
       sliceId: 2,
     });
@@ -750,10 +750,10 @@ describe("model handoff composition", () => {
       "Handoff model completed it.",
     );
     await expect(
-      getAwaitingAgentContinueRequest({ conversationId, sessionId: turnId }),
+      getAwaitingAgentContinueRequest({ conversationId, turnId: turnId }),
     ).resolves.toMatchObject({
       conversationId,
-      sessionId: turnId,
+      turnId: turnId,
       expectedVersion: suspendedRecord?.version,
     });
 
@@ -964,7 +964,7 @@ describe("model handoff composition", () => {
 
     expect(outcome.status).toBe("suspended");
     const record = await getAgentTurnSessionRecord(conversationId, sessionId);
-    expect(record).toMatchObject({ state: "awaiting_resume" });
+    expect(record).toMatchObject({ state: "paused" });
     expect(JSON.stringify(record?.piMessages)).toContain(
       "Implement the requested change and verify it.",
     );

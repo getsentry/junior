@@ -4,7 +4,7 @@ import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/
 import {
   getAwaitingAgentContinueRequest,
   scheduleAgentContinue,
-} from "@/chat/services/agent-continue";
+} from "@/chat/task-execution/continue";
 import { scheduleSessionCompletedPluginTasks } from "@/chat/plugins/task-runner";
 import {
   createConversationMemoryService,

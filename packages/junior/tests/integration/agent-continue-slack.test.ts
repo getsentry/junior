@@ -118,7 +118,7 @@ type AgentContinueRunnerModule =
 type RequestDeadlineModule = typeof import("@/chat/runtime/request-deadline");
 type TurnSessionStoreModule = typeof import("@/chat/state/turn-session");
 type AgentContinueServiceModule =
-  typeof import("@/chat/services/agent-continue");
+  typeof import("@/chat/task-execution/continue");
 type TaskExecutionStoreModule = typeof import("@/chat/task-execution/store");
 
 let stateAdapterModule: StateAdapterModule;
@@ -141,7 +141,7 @@ function continueAgentRun(args: {
         conversationId: args.conversationId,
         destination: SLACK_DESTINATION,
         expectedVersion: args.expectedVersion,
-        sessionId: args.sessionId,
+        turnId: args.sessionId,
       },
       {
         agentRunner: { run: executeAgentRunMock },
@@ -183,7 +183,7 @@ describe("agent continuation Slack integration", () => {
       await import("@/chat/runtime/agent-continue-runner");
     requestDeadlineModule = await import("@/chat/runtime/request-deadline");
     turnSessionStoreModule = await import("@/chat/state/turn-session");
-    agentContinueServiceModule = await import("@/chat/services/agent-continue");
+    agentContinueServiceModule = await import("@/chat/task-execution/continue");
     taskExecutionStoreModule = await import("@/chat/task-execution/store");
 
     await stateAdapterModule.disconnectStateAdapter();
@@ -213,7 +213,7 @@ describe("agent continuation Slack integration", () => {
         conversationId,
         sessionId,
         sliceId: 2,
-        state: "awaiting_resume",
+        state: "paused",
         destination: SLACK_DESTINATION,
         source: storedSource,
         piMessages: [
@@ -382,7 +382,7 @@ describe("agent continuation Slack integration", () => {
         conversationId,
         sessionId,
         sliceId: 2,
-        state: "awaiting_resume",
+        state: "paused",
         destination: SLACK_DESTINATION,
         source: slackSource("1712345.0008"),
         piMessages: [
@@ -468,7 +468,7 @@ describe("agent continuation Slack integration", () => {
         conversationId,
         sessionId,
         sliceId: 2,
-        state: "awaiting_resume",
+        state: "paused",
         destination: SLACK_DESTINATION,
         source: slackSource("1712345.0009"),
         turnStartMessageIndex: 3,
@@ -639,7 +639,7 @@ describe("agent continuation Slack integration", () => {
         conversationId,
         sessionId,
         sliceId: 5,
-        state: "awaiting_resume",
+        state: "paused",
         destination: SLACK_DESTINATION,
         source: slackSource("1712345.0002"),
         piMessages: [
@@ -729,7 +729,7 @@ describe("agent continuation Slack integration", () => {
         conversationId,
         sessionId,
         sliceId: 2,
-        state: "awaiting_resume",
+        state: "paused",
         destination: SLACK_DESTINATION,
         source: slackSource("1712345.0007"),
         piMessages: [
@@ -810,7 +810,7 @@ describe("agent continuation Slack integration", () => {
         conversationId,
         sessionId,
         sliceId: 2,
-        state: "awaiting_resume",
+        state: "paused",
         destination: SLACK_DESTINATION,
         source: storedSource,
         piMessages: [
@@ -887,7 +887,7 @@ describe("agent continuation Slack integration", () => {
         conversationId,
         sessionId,
         sliceId: 2,
-        state: "awaiting_resume",
+        state: "paused",
         destination: SLACK_DESTINATION,
         source: slackSource("1712345.0010"),
         piMessages: [
@@ -961,7 +961,7 @@ describe("agent continuation Slack integration", () => {
         conversationId,
         sessionId,
         sliceId: 2,
-        state: "awaiting_resume",
+        state: "paused",
         destination: SLACK_DESTINATION,
         source: slackSource("1712345.0011"),
         piMessages: [
@@ -1055,7 +1055,7 @@ describe("agent continuation Slack integration", () => {
         conversationId,
         sessionId,
         sliceId: 2,
-        state: "awaiting_resume",
+        state: "paused",
         destination: SLACK_DESTINATION,
         source: slackSource("1712345.0006"),
         piMessages: [
@@ -1521,7 +1521,7 @@ describe("agent continuation Slack integration", () => {
         conversationId,
         sessionId,
         sliceId: 2,
-        state: "awaiting_resume",
+        state: "paused",
         destination: SLACK_DESTINATION,
         source: slackSource("1712345.0003"),
         piMessages: [

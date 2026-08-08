@@ -419,7 +419,7 @@ describe("plugin prompt hook composition", () => {
       conversationId: LOCAL_DESTINATION.conversationId,
       sessionId: "turn-plugin-prompt-resume-before-prompt",
       sliceId: 1,
-      state: "awaiting_resume",
+      state: "paused",
       piMessages: [],
       resumeReason: "auth",
       errorMessage: "authorization required",
@@ -447,7 +447,7 @@ describe("plugin prompt hook composition", () => {
       conversationId: LOCAL_DESTINATION.conversationId,
       sessionId: "turn-plugin-prompt-resume-after-prompt",
       sliceId: 1,
-      state: "awaiting_resume",
+      state: "paused",
       piMessages: [
         {
           role: "user",

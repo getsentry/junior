@@ -294,7 +294,8 @@ describe("agent dispatch conversation work", () => {
         sessionId,
         sliceId: 2,
         source: dispatch.source,
-        state: sessionState,
+        // Turn checkpoint status (dispatch status above stays SQL-bound).
+        state: sessionState === "awaiting_resume" ? "paused" : sessionState,
         surface: "api",
       });
       const runTurn = vi.fn();

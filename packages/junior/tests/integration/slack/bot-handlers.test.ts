@@ -1173,7 +1173,7 @@ describe("bot handlers (integration)", () => {
     const getAwaitingAgentContinueRequest = vi.fn().mockResolvedValue({
       conversationId,
       destination,
-      sessionId: activeSessionId,
+      turnId: activeSessionId,
       expectedVersion: 4,
     });
     const executeAgentRun = vi.fn();
@@ -1218,7 +1218,7 @@ describe("bot handlers (integration)", () => {
     expect(scheduleAgentContinue).toHaveBeenCalledWith({
       conversationId,
       destination,
-      sessionId: activeSessionId,
+      turnId: activeSessionId,
       expectedVersion: 4,
     });
     expect(executeAgentRun).not.toHaveBeenCalled();
@@ -1261,7 +1261,7 @@ describe("bot handlers (integration)", () => {
       conversationId,
       sessionId: activeSessionId,
       sliceId: 1,
-      state: "awaiting_resume",
+      state: "paused",
       resumeReason: "auth",
       piMessages: turnPiMessages("please use notion"),
     });
@@ -1323,7 +1323,7 @@ describe("bot handlers (integration)", () => {
       conversationId,
       sessionId: activeSessionId,
       sliceId: 1,
-      state: "awaiting_resume",
+      state: "paused",
       resumeReason: "yield",
       destination,
       source: storedSource,
@@ -1381,7 +1381,7 @@ describe("bot handlers (integration)", () => {
       conversationId,
       activeSessionId,
     );
-    expect(record?.state).toBe("awaiting_resume");
+    expect(record?.state).toBe("paused");
     const lastMessage = record?.piMessages.at(-1) as
       | { content?: Array<{ text?: string }>; role?: string }
       | undefined;
@@ -1410,7 +1410,7 @@ describe("bot handlers (integration)", () => {
       conversationId,
       sessionId: activeSessionId,
       sliceId: 1,
-      state: "awaiting_resume",
+      state: "paused",
       resumeReason: "yield",
       destination,
       source: createSlackSourceForTest("C9PARKEDPART"),
@@ -1467,7 +1467,7 @@ describe("bot handlers (integration)", () => {
       conversationId,
       sessionId: activeSessionId,
       sliceId: 1,
-      state: "awaiting_resume",
+      state: "paused",
       resumeReason: "yield",
       destination,
       source: createSlackSourceForTest("C9PARKEDAUTH"),
@@ -1629,7 +1629,7 @@ describe("bot handlers (integration)", () => {
       conversationId,
       sessionId: activeSessionId,
       sliceId: 1,
-      state: "awaiting_resume",
+      state: "paused",
       resumeReason: "yield",
       destination,
       source: createSlackSourceForTest("C9PARKEDLOCK"),
@@ -1879,7 +1879,7 @@ describe("bot handlers (integration)", () => {
       conversationId,
       sessionId: activeSessionId,
       sliceId: 1,
-      state: "awaiting_resume",
+      state: "paused",
       resumeReason: "timeout",
       piMessages: turnPiMessages("please keep working"),
     });
@@ -1934,7 +1934,7 @@ describe("bot handlers (integration)", () => {
     const getAwaitingAgentContinueRequest = vi.fn().mockResolvedValue({
       conversationId,
       destination,
-      sessionId: activeSessionId,
+      turnId: activeSessionId,
       expectedVersion: 4,
     });
     const executeAgentRun = vi.fn();
@@ -1970,7 +1970,7 @@ describe("bot handlers (integration)", () => {
     expect(scheduleAgentContinue).toHaveBeenCalledWith({
       conversationId,
       destination,
-      sessionId: activeSessionId,
+      turnId: activeSessionId,
       expectedVersion: 4,
     });
     expect(executeAgentRun).not.toHaveBeenCalled();
@@ -1984,7 +1984,7 @@ describe("bot handlers (integration)", () => {
     const getAwaitingAgentContinueRequest = vi.fn().mockResolvedValue({
       conversationId,
       destination,
-      sessionId: activeSessionId,
+      turnId: activeSessionId,
       expectedVersion: 4,
     });
     const executeAgentRun = vi.fn();
@@ -2047,7 +2047,7 @@ describe("bot handlers (integration)", () => {
     const getAwaitingAgentContinueRequest = vi.fn().mockResolvedValue({
       conversationId,
       destination,
-      sessionId: activeSessionId,
+      turnId: activeSessionId,
       expectedVersion: 4,
     });
     const executeAgentRun = vi.fn();
@@ -2080,7 +2080,7 @@ describe("bot handlers (integration)", () => {
     expect(scheduleAgentContinue).toHaveBeenCalledWith({
       conversationId,
       destination,
-      sessionId: activeSessionId,
+      turnId: activeSessionId,
       expectedVersion: 4,
     });
     expect(executeAgentRun).not.toHaveBeenCalled();
@@ -2107,7 +2107,7 @@ describe("bot handlers (integration)", () => {
     const getAwaitingAgentContinueRequest = vi.fn().mockResolvedValue({
       conversationId,
       destination,
-      sessionId: activeSessionId,
+      turnId: activeSessionId,
       expectedVersion: 4,
     });
     const executeAgentRun = vi.fn();

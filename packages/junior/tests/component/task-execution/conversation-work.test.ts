@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { StateAdapter } from "chat";
-import { scheduleAgentContinue } from "@/chat/services/agent-continue";
+import { scheduleAgentContinue } from "@/chat/task-execution/continue";
 import { registerLogRecordSink, type EmittedLogRecord } from "@/chat/logging";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
 import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
@@ -922,7 +922,7 @@ describe("conversation work execution", () => {
     });
     expect(work).toMatchObject({
       execution: {
-        status: "awaiting_resume",
+        status: "paused",
       },
     });
     expect(work?.lease).toBeUndefined();
@@ -984,7 +984,7 @@ describe("conversation work execution", () => {
                 conversationId: context.conversationId,
                 destination: context.destination ?? SLACK_DESTINATION,
                 expectedVersion: 2,
-                sessionId: "turn-1",
+                turnId: "turn-1",
               },
               { queue, nowMs: currentNowMs },
             );
@@ -1024,7 +1024,7 @@ describe("conversation work execution", () => {
                 conversationId: context.conversationId,
                 destination: context.destination ?? SLACK_DESTINATION,
                 expectedVersion: 2,
-                sessionId: "turn-1",
+                turnId: "turn-1",
               },
               { queue, nowMs: currentNowMs },
             );
@@ -1073,7 +1073,7 @@ describe("conversation work execution", () => {
               conversationId: context.conversationId,
               destination: context.destination ?? SLACK_DESTINATION,
               expectedVersion: 2,
-              sessionId: "turn-1",
+              turnId: "turn-1",
             },
             { queue, nowMs: currentNowMs },
           );
@@ -1188,7 +1188,7 @@ describe("conversation work execution", () => {
               conversationId: context.conversationId,
               destination: context.destination ?? SLACK_DESTINATION,
               expectedVersion: 2,
-              sessionId: "turn-1",
+              turnId: "turn-1",
             },
             { queue, nowMs: currentNowMs },
           );
@@ -1791,7 +1791,7 @@ describe("conversation work execution", () => {
       getConversationWorkState({ conversationId: CONVERSATION_ID }),
     ).resolves.toMatchObject({
       execution: {
-        status: "awaiting_resume",
+        status: "paused",
       },
     });
     await expect(
@@ -2095,7 +2095,7 @@ describe("conversation work execution", () => {
               conversationId: context.conversationId,
               destination: context.destination ?? SLACK_DESTINATION,
               expectedVersion: 2,
-              sessionId: "turn-1",
+              turnId: "turn-1",
             },
             { queue, nowMs: currentNowMs },
           );

@@ -596,7 +596,7 @@ vi.mock("@/chat/skills", async (importOriginal) => ({
 
 import { executeAgentRun } from "@/chat/agent";
 import { getConversationStore } from "@/chat/db";
-import { getAwaitingAgentContinueRequest } from "@/chat/services/agent-continue";
+import { getAwaitingAgentContinueRequest } from "@/chat/task-execution/continue";
 import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import * as turnSessionState from "@/chat/state/turn-session";
@@ -1103,7 +1103,7 @@ describe("agent run continuation", () => {
       "turn-yield",
     );
     expect(sessionRecord).toMatchObject({
-      state: "awaiting_resume",
+      state: "paused",
       resumeReason: "yield",
       errorMessage: expect.stringContaining(
         "Agent turn yielded at a safe boundary",
@@ -1117,7 +1117,7 @@ describe("agent run continuation", () => {
     await expect(
       getAwaitingAgentContinueRequest({
         conversationId: "conversation-yield",
-        sessionId: "turn-yield",
+        turnId: "turn-yield",
       }),
     ).resolves.toMatchObject({
       conversationId: "conversation-yield",
@@ -1187,7 +1187,7 @@ describe("agent run continuation", () => {
       conversationId,
       sessionId: turnId,
       sliceId: 1,
-      state: "awaiting_resume",
+      state: "paused",
       destination: TEST_DESTINATION,
       source: TEST_SOURCE,
       piMessages: messages,
@@ -1259,7 +1259,7 @@ describe("agent run continuation", () => {
       "turn-yield-steering",
     );
     expect(sessionRecord).toMatchObject({
-      state: "awaiting_resume",
+      state: "paused",
       resumeReason: "yield",
       errorMessage: expect.stringContaining(
         "Agent turn yielded at a safe boundary",

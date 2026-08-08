@@ -1,8 +1,7 @@
 /**
- * Durable agent continuation scheduling.
+ * Continue a paused turn via the conversation work queue.
  *
- * This module owns the queue handoff used when an agent run pauses at a safe
- * Pi continuation boundary and needs another execution slice.
+ * Wake-only: mailbox/lease own liveness; this just nudges the worker.
  */
 import type { StateAdapter } from "chat";
 import type { Destination } from "@sentry/junior-plugin-api";
@@ -26,7 +25,7 @@ export interface AgentContinueRequest {
   conversationId: string;
   destination: Destination;
   expectedVersion: number;
-  sessionId: string;
+  turnId: string;
 }
 
 export interface ScheduleAgentContinueOptions {
@@ -39,15 +38,15 @@ export interface ScheduleAgentContinueOptions {
 export async function getAwaitingAgentContinueRequest(args: {
   conversationId: string;
   conversationStore?: ConversationStore;
-  sessionId: string;
+  turnId: string;
 }): Promise<AgentContinueRequest | undefined> {
   const sessionRecord = await getAgentTurnSessionRecord(
     args.conversationId,
-    args.sessionId,
+    args.turnId,
   );
   if (
     !sessionRecord ||
-    sessionRecord.state !== "awaiting_resume" ||
+    sessionRecord.state !== "paused" ||
     (sessionRecord.resumeReason !== "timeout" &&
       sessionRecord.resumeReason !== "yield" &&
       sessionRecord.resumeReason !== "retry") ||
@@ -65,7 +64,7 @@ export async function getAwaitingAgentContinueRequest(args: {
     await failAgentTurnSessionRecord({
       conversationId: args.conversationId,
       expectedVersion: sessionRecord.version,
-      sessionId: args.sessionId,
+      sessionId: args.turnId,
       errorMessage: error instanceof Error ? error.message : String(error),
     });
     return undefined;
@@ -74,7 +73,7 @@ export async function getAwaitingAgentContinueRequest(args: {
   return {
     conversationId: args.conversationId,
     destination: routing.destination,
-    sessionId: args.sessionId,
+    turnId: args.turnId,
     expectedVersion: sessionRecord.version,
   };
 }
@@ -97,7 +96,7 @@ export async function scheduleAgentContinue(
     idempotencyKey: [
       "agent-continue",
       request.conversationId,
-      request.sessionId,
+      request.turnId,
       request.expectedVersion,
       nowMs,
     ].join(":"),

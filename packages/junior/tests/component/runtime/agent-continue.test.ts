@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { scheduleAgentContinue } from "@/chat/services/agent-continue";
+import { scheduleAgentContinue } from "@/chat/task-execution/continue";
 import { registerLogRecordSink, type EmittedLogRecord } from "@/chat/logging";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
@@ -63,7 +63,7 @@ describe("agent continuation scheduling", () => {
       {
         conversationId,
         destination: SLACK_DESTINATION,
-        sessionId: "turn_msg_1",
+        turnId: "turn_msg_1",
         expectedVersion: 3,
       },
       { queue, nowMs: 1_000 },
@@ -93,7 +93,7 @@ describe("agent continuation scheduling", () => {
       {
         conversationId,
         destination: SLACK_DESTINATION,
-        sessionId: "turn_msg_1",
+        turnId: "turn_msg_1",
         expectedVersion: 3,
       },
       { queue, nowMs: 1_000 },
@@ -104,7 +104,7 @@ describe("agent continuation scheduling", () => {
       {
         conversationId,
         destination: SLACK_DESTINATION,
-        sessionId: "turn_msg_1",
+        turnId: "turn_msg_1",
         expectedVersion: 4,
       },
       { queue, nowMs: 2_000 },
@@ -137,7 +137,7 @@ describe("agent continuation scheduling", () => {
       {
         conversationId,
         destination: SLACK_DESTINATION,
-        sessionId: "turn_msg_2",
+        turnId: "turn_msg_2",
         expectedVersion: 1,
       },
       { agentRunner: agentRunnerShouldNotRun, scheduleAgentContinue },
@@ -152,7 +152,7 @@ describe("agent continuation scheduling", () => {
     expect(scheduleAgentContinue).toHaveBeenCalledWith({
       conversationId,
       destination: SLACK_DESTINATION,
-      sessionId: "turn_msg_2",
+      turnId: "turn_msg_2",
       expectedVersion: 1,
     });
     expect(
@@ -176,7 +176,7 @@ describe("agent continuation scheduling", () => {
       conversationId,
       sessionId: "turn_msg_3",
       sliceId: 1,
-      state: "awaiting_resume",
+      state: "paused",
       destination: SLACK_DESTINATION,
       resumeReason: "timeout",
       piMessages: [],
@@ -208,7 +208,7 @@ describe("agent continuation scheduling", () => {
       conversationId,
       sessionId: "turn_msg_5",
       sliceId: 2,
-      state: "awaiting_resume",
+      state: "paused",
       destination: SLACK_DESTINATION,
       source: slackSessionSource("1712345.0005"),
       resumeReason: "retry",
@@ -238,7 +238,7 @@ describe("agent continuation scheduling", () => {
       conversationId,
       sessionId,
       sliceId: 2,
-      state: "awaiting_resume",
+      state: "paused",
       destination: SLACK_DESTINATION,
       source: slackSessionSource("1712345.0004"),
       resumeReason: "timeout",

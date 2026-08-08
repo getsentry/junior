@@ -1246,7 +1246,7 @@ describe("Slack conversation work execution", () => {
       conversationId: CONVERSATION_ID,
       sessionId: "turn-invalid-timeout",
       sliceId: 1,
-      state: "awaiting_resume",
+      state: "paused",
       destination: SLACK_DESTINATION,
       resumeReason: "timeout",
       piMessages: [],
@@ -1376,7 +1376,7 @@ describe("Slack conversation work execution", () => {
       conversationId: CONVERSATION_ID,
       sessionId,
       sliceId: 2,
-      state: "awaiting_resume",
+      state: "paused",
       destination: SLACK_DESTINATION,
       resumeReason: "timeout",
       piMessages: [

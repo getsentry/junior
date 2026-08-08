@@ -57,7 +57,7 @@ Canonical words used across Junior's code and documentation.
   message, stored as a `message_updated` event without creating another message.
 - **Transcript**: a reporting view rendered from stored messages and agent
   history items. It is not the stored data itself.
-- **Session record**: the persisted read model for one resumable turn.
+- **Turn checkpoint**: the Redis resume cursor for one turn (status + boundary into SQL history).
 - **Conversation execution**: mutable operational state for a conversation,
   such as mailbox state, worker lease, checkpoints, and activity status.
 - **Agent binding**: a named reference, scoped to one parent agent

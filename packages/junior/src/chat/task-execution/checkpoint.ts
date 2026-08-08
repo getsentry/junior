@@ -126,7 +126,7 @@ export async function loadTurnCheckpoint(args: {
     args.conversationId,
     args.turnId,
   );
-  const resumed = Boolean(record && record.state === "awaiting_resume");
+  const resumed = Boolean(record && record.state === "paused");
   return {
     resumed,
     sliceId: resumed ? record!.sliceId : 1,
@@ -274,7 +274,7 @@ async function savePaused(
       }),
       sliceId: nextSliceId,
       // Stored name is historical; means "paused, may continue".
-      state: "awaiting_resume",
+      state: "paused",
     });
   } catch (error) {
     logException(error, "agent.turn.checkpoint.paused.failed", {

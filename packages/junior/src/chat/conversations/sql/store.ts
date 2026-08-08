@@ -229,9 +229,13 @@ function destinationUpsertFromDestination(args: {
   };
 }
 
+/** Map durable SQL free-text status into the runtime status. */
 function executionStatusFromValue(value: unknown): ConversationStatus {
+  // SQL still stores the historical label; runtime uses "paused".
+  if (value === "awaiting_resume" || value === "paused") {
+    return "paused";
+  }
   if (
-    value === "awaiting_resume" ||
     value === "failed" ||
     value === "idle" ||
     value === "pending" ||
@@ -240,6 +244,15 @@ function executionStatusFromValue(value: unknown): ConversationStatus {
     return value;
   }
   throw new Error("Conversation record execution status is invalid");
+}
+
+/** Map runtime status into the durable SQL free-text value. */
+function executionStatusToSql(status: ConversationStatus): ConversationStatus {
+  // Durable free-text keeps the historical label. Cast is intentional: the
+  // column is text, and readers accept both labels.
+  return (
+    status === "paused" ? "awaiting_resume" : status
+  ) as ConversationStatus;
 }
 
 /** Reconstruct a Slack actor with the linked user name and identity-scoped provider fields. */
@@ -899,7 +912,7 @@ export class SqlStore implements ConversationStore {
           conversation.execution.updatedAtMs === undefined
             ? null
             : dateFromMs(conversation.execution.updatedAtMs),
-        executionStatus: conversation.execution.status,
+        executionStatus: executionStatusToSql(conversation.execution.status),
         runId: conversation.execution.runId ?? null,
         lastCheckpointAt:
           conversation.execution.lastCheckpointAtMs === undefined

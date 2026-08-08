@@ -58,7 +58,7 @@ import {
 } from "@/chat/conversations/projection";
 import { formatProviderLabel } from "@/chat/oauth-flow";
 import { markTurnFailed } from "@/chat/runtime/turn";
-import { scheduleAgentContinue } from "@/chat/services/agent-continue";
+import { scheduleAgentContinue } from "@/chat/task-execution/continue";
 import {
   resolveTurnSessionRouting,
   type TurnSessionRouting,
@@ -331,7 +331,7 @@ async function resumeAuthorizedMcpTurn(args: {
       );
       if (
         !lockedSessionRecord ||
-        lockedSessionRecord.state !== "awaiting_resume" ||
+        lockedSessionRecord.state !== "paused" ||
         lockedSessionRecord.resumeReason !== "auth"
       ) {
         return false;
@@ -477,7 +477,7 @@ async function resumeAuthorizedMcpTurn(args: {
           await scheduleAgentContinue({
             conversationId: authSession.conversationId,
             destination,
-            sessionId: lockedSessionId,
+            turnId: lockedSessionId,
             expectedVersion: resumeVersion,
           });
         },

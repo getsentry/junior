@@ -278,7 +278,7 @@ describe("tool timeout continuation composition", () => {
       turnId,
     );
     expect(suspendedRecord).toMatchObject({
-      state: "awaiting_resume",
+      state: "paused",
       resumeReason: "timeout",
     });
     expect(suspendedRecord?.piMessages.at(-1)).toMatchObject({

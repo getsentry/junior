@@ -23,7 +23,7 @@ import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { resumeAwaitingSlackContinuation } from "@/chat/runtime/agent-continue-runner";
-import { scheduleAgentContinue } from "@/chat/services/agent-continue";
+import { scheduleAgentContinue } from "@/chat/task-execution/continue";
 import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import {
   getAgentTurnSessionRecord,

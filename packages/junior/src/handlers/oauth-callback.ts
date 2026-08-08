@@ -9,9 +9,7 @@ import {
   resolveBaseUrl,
 } from "@/chat/oauth-flow";
 import { buildConversationContext } from "@/chat/services/conversation-memory";
-import {
-  markConversationMessage,
-} from "@/chat/services/conversation-memory";
+import { markConversationMessage } from "@/chat/services/conversation-memory";
 import { postSlackMessage } from "@/chat/slack/outbound";
 import {
   ResumeTurnBusyError,
@@ -61,7 +59,7 @@ import {
 } from "@/chat/services/pending-auth";
 import { escapeXml } from "@/chat/xml";
 import type { WaitUntilFn } from "@/handlers/types";
-import { scheduleAgentContinue } from "@/chat/services/agent-continue";
+import { scheduleAgentContinue } from "@/chat/task-execution/continue";
 import {
   resolveTurnSessionRouting,
   type TurnSessionRouting,
@@ -266,7 +264,7 @@ async function resumeOAuthSessionRecordTurn(
     return;
   }
   if (
-    sessionRecord.state !== "awaiting_resume" ||
+    sessionRecord.state !== "paused" ||
     sessionRecord.resumeReason !== "auth"
   ) {
     return;
@@ -319,7 +317,7 @@ async function resumeOAuthSessionRecordTurn(
       );
       if (
         !lockedSessionRecord ||
-        lockedSessionRecord.state !== "awaiting_resume" ||
+        lockedSessionRecord.state !== "paused" ||
         lockedSessionRecord.resumeReason !== "auth"
       ) {
         return false;
@@ -488,7 +486,7 @@ async function resumeOAuthSessionRecordTurn(
           await scheduleAgentContinue({
             conversationId: stored.resumeConversationId!,
             destination,
-            sessionId: lockedSessionId,
+            turnId: lockedSessionId,
             expectedVersion: resumeVersion,
           });
         },
