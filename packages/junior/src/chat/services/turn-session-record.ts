@@ -1,9 +1,22 @@
+/**
+ * Turn checkpoints.
+ *
+ * One write path for progress during a turn:
+ * - `running`: mid-turn safe boundary (best-effort)
+ * - `paused`: stop and wait (auth / timeout / yield / retry)
+ * - `completed` / `failed`: turn finished
+ *
+ * History lives in SQL via `commitMessages`. This module only stores the thin
+ * resume cursor + status in Redis.
+ */
 import {
   getAgentTurnSessionRecord,
   getAgentTurnSessionRecordForResume,
   upsertAgentTurnSessionRecord,
   type AgentDispatchOutcome,
+  type AgentTurnResumeReason,
   type AgentTurnSessionRecord,
+  type AgentTurnSessionStatus,
   type AgentTurnSurface,
 } from "@/chat/state/turn-session";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
@@ -20,6 +33,7 @@ import { persistWithRetry } from "@/chat/services/persist-retry";
 import { TurnSliceLimitExceededError } from "@/chat/services/turn-limit";
 import { botConfig } from "@/chat/config";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
+import { AgentHistoryBranchError } from "@/chat/conversations/projection";
 
 export interface TurnSessionContext {
   conversationId: string;
@@ -31,6 +45,49 @@ export interface TurnSessionState {
   currentSliceId: number;
   existingSessionRecord?: AgentTurnSessionRecord;
 }
+
+/** Shared fields for every checkpoint write. */
+export interface TurnCheckpointBase {
+  channelName?: string;
+  conversationId: string;
+  destination?: Destination;
+  destinationVisibility?: ConversationPrivacy;
+  dispatchId?: string;
+  source?: Source;
+  sessionId: string;
+  messages: PiMessage[];
+  modelId: string;
+  actor?: Actor;
+  loadedSkillNames?: string[];
+  reasoningLevel?: string;
+  surface?: AgentTurnSurface;
+  turnStartMessageIndex?: number;
+  trailingMessageProvenance?: ConversationMessageProvenance[];
+  turnContexts?: PluginTurnContext[];
+  currentDurationMs?: number;
+  currentUsage?: AgentTurnUsage;
+  errorMessage?: string;
+  dispatchOutcome?: AgentDispatchOutcome;
+  resultMessageId?: string;
+}
+
+export type TurnCheckpointInput =
+  | (TurnCheckpointBase & {
+      mode: "running";
+      sliceId: number;
+    })
+  | (TurnCheckpointBase & {
+      mode: "paused";
+      reason: AgentTurnResumeReason;
+      sliceId: number;
+      /** When true, keep the current slice id (cooperative yield). */
+      keepSlice?: boolean;
+    })
+  | (TurnCheckpointBase & {
+      mode: "completed" | "failed";
+      /** Defaults to the latest stored slice when omitted. */
+      sliceId?: number;
+    });
 
 type UpsertTurnSessionRecord = Parameters<
   typeof upsertAgentTurnSessionRecord
@@ -45,30 +102,49 @@ function definedProps<T extends Record<string, unknown>>(
   ) as Partial<T>;
 }
 
-/**
- * Shared optional fields carried across turn-session writes.
- * Callers resolve inheritance for skill/reasoning fields before calling.
- * Routing/identity fields are live-only for SQL dual-write — Redis no longer
- * stores destination/source/actor on the turn-session projection.
- */
-interface TurnSessionWriteContext {
-  actor?: Actor;
-  channelName?: string;
-  conversationId: string;
-  destination?: Destination;
-  destinationVisibility?: ConversationPrivacy;
-  dispatchId?: string;
-  loadedSkillNames?: string[];
-  modelId: string;
-  reasoningLevel?: string;
-  sessionId: string;
-  source?: Source;
-  surface?: AgentTurnSurface;
-  turnStartMessageIndex?: number;
+function addDurationMs(
+  prior: number | undefined,
+  current: number | undefined,
+): number | undefined {
+  const total = [prior, current].reduce<number | undefined>((sum, value) => {
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      return sum;
+    }
+    return (sum ?? 0) + Math.max(0, Math.floor(value));
+  }, undefined);
+  return total;
 }
 
-function sessionWriteContext(
-  args: TurnSessionWriteContext,
+/**
+ * Choose the latest boundary that can be continued after auth/timeout.
+ * Falls back to the last durable record when the current slice ended mid-assistant.
+ */
+function resumableBoundary(
+  messages: PiMessage[],
+  fallbackMessages: PiMessage[] | undefined,
+): PiMessage[] {
+  const current = trimTrailingAssistantMessages(messages);
+  if (current.length > 0 && isContinuablePiBoundary(current)) {
+    return current;
+  }
+  return trimTrailingAssistantMessages(fallbackMessages ?? []);
+}
+
+function logCheckpointError(
+  error: unknown,
+  eventName: string,
+  args: { conversationId: string; sessionId: string },
+  attributes: Record<string, string | number> = {},
+): void {
+  logException(error, eventName, {
+    "app.ai.resume_conversation_id": args.conversationId,
+    "app.ai.resume_session_id": args.sessionId,
+    ...attributes,
+  });
+}
+
+function writeFields(
+  args: TurnCheckpointBase,
   latest?: AgentTurnSessionRecord,
 ): Pick<
   UpsertTurnSessionRecord,
@@ -92,13 +168,11 @@ function sessionWriteContext(
     modelId: args.modelId,
     sessionId: args.sessionId,
     ...definedProps({
-      // Live only: Redis no longer stores execution actor across resumes.
       actor: args.actor,
       channelName: args.channelName ?? latest?.channelName,
       destination: args.destination,
       destinationVisibility: args.destinationVisibility,
       dispatchId: args.dispatchId ?? latest?.dispatchId,
-      // Caller-resolved: some paths inherit these, others stay caller-only.
       loadedSkillNames: args.loadedSkillNames,
       reasoningLevel: args.reasoningLevel,
       source: args.source,
@@ -110,52 +184,7 @@ function sessionWriteContext(
   };
 }
 
-function logSessionRecordError(
-  error: unknown,
-  eventName: string,
-  args: {
-    conversationId: string;
-    sessionId: string;
-  },
-  attributes: Record<string, string | number>,
-): void {
-  logException(error, eventName, {
-    "app.ai.resume_conversation_id": args.conversationId,
-    "app.ai.resume_session_id": args.sessionId,
-    ...attributes,
-  });
-}
-
-function addDurationMs(
-  prior: number | undefined,
-  current: number | undefined,
-): number | undefined {
-  const total = [prior, current].reduce<number | undefined>((sum, value) => {
-    if (typeof value !== "number" || !Number.isFinite(value)) {
-      return sum;
-    }
-    return (sum ?? 0) + Math.max(0, Math.floor(value));
-  }, undefined);
-  return total;
-}
-
-/**
- * Choose the latest Pi boundary that can be continued safely after auth pause
- * or timeout, falling back to the last durable record when the current slice
- * ended mid-assistant response.
- */
-function resumableBoundary(
-  messages: PiMessage[],
-  fallbackMessages: PiMessage[] | undefined,
-): PiMessage[] {
-  const current = trimTrailingAssistantMessages(messages);
-  if (current.length > 0 && isContinuablePiBoundary(current)) {
-    return current;
-  }
-  return trimTrailingAssistantMessages(fallbackMessages ?? []);
-}
-
-/** Load turn session record state for a conversation/session pair. */
+/** Load turn checkpoint state for a conversation/session pair. */
 export async function loadTurnSessionRecord(
   ctx: TurnSessionContext,
 ): Promise<TurnSessionState> {
@@ -175,7 +204,192 @@ export async function loadTurnSessionRecord(
   };
 }
 
-/** Persist the latest safe in-progress boundary without scheduling continuation. */
+/**
+ * Save turn progress.
+ *
+ * Returns the stored record, or `undefined` when a best-effort running/paused
+ * write could not land a continuable boundary. Completed/failed writes throw.
+ */
+export async function saveTurnCheckpoint(
+  args: TurnCheckpointInput,
+): Promise<AgentTurnSessionRecord | undefined> {
+  if (args.mode === "running") {
+    return await saveRunningCheckpoint(args);
+  }
+  if (args.mode === "paused") {
+    return await savePausedCheckpoint(args);
+  }
+  return await saveTerminalCheckpoint(args);
+}
+
+async function saveRunningCheckpoint(
+  args: Extract<TurnCheckpointInput, { mode: "running" }>,
+): Promise<AgentTurnSessionRecord | undefined> {
+  if (args.messages.length === 0 || !isContinuablePiBoundary(args.messages)) {
+    return undefined;
+  }
+
+  try {
+    const latest = await getAgentTurnSessionRecord(
+      args.conversationId,
+      args.sessionId,
+    );
+    return await upsertAgentTurnSessionRecord({
+      ...writeFields(args, latest),
+      ...definedProps({
+        trailingMessageProvenance: args.trailingMessageProvenance,
+        turnContexts: args.turnContexts,
+      }),
+      cumulativeDurationMs: latest?.cumulativeDurationMs,
+      cumulativeUsage: latest?.cumulativeUsage,
+      piMessages: args.messages,
+      sliceId: args.sliceId,
+      state: "running",
+    });
+  } catch (error) {
+    // A stale async checkpoint can lose a race to a later committed boundary.
+    // Quiet only that case — durable history remains authoritative.
+    if (!(error instanceof AgentHistoryBranchError)) {
+      logCheckpointError(error, "agent.turn.checkpoint.running.failed", args, {
+        "app.ai.resume_slice_id": args.sliceId,
+      });
+    }
+    return undefined;
+  }
+}
+
+async function savePausedCheckpoint(
+  args: Extract<TurnCheckpointInput, { mode: "paused" }>,
+): Promise<AgentTurnSessionRecord | undefined> {
+  const keepSlice = args.keepSlice === true || args.reason === "yield";
+  const nextSliceId = keepSlice ? args.sliceId : args.sliceId + 1;
+
+  try {
+    const latest = await getAgentTurnSessionRecord(
+      args.conversationId,
+      args.sessionId,
+    );
+
+    // Cooperative yield must keep the exact boundary (including delivered
+    // assistant text). Auth/timeout may trim a mid-assistant tail.
+    const piMessages =
+      args.reason === "yield"
+        ? [...args.messages]
+        : resumableBoundary(args.messages, latest?.piMessages);
+
+    if (args.reason === "auth") {
+      if (piMessages.length > 0 && !isContinuablePiBoundary(piMessages)) {
+        return undefined;
+      }
+    } else if (
+      piMessages.length === 0 ||
+      !isContinuablePiBoundary(piMessages)
+    ) {
+      return undefined;
+    }
+
+    const shared = {
+      ...writeFields(args, latest),
+      ...definedProps({
+        cumulativeDurationMs: addDurationMs(
+          latest?.cumulativeDurationMs,
+          args.currentDurationMs,
+        ),
+        cumulativeUsage: addAgentTurnUsage(
+          latest?.cumulativeUsage,
+          args.currentUsage,
+        ),
+        errorMessage: args.errorMessage,
+      }),
+      piMessages,
+      resumeReason: args.reason,
+    } satisfies Partial<UpsertTurnSessionRecord>;
+
+    if (!keepSlice && nextSliceId > botConfig.maxSlicesPerTurn) {
+      return await upsertAgentTurnSessionRecord({
+        ...shared,
+        ...definedProps({
+          resumedFromSliceId: latest?.resumedFromSliceId,
+        }),
+        errorMessage: new TurnSliceLimitExceededError(
+          botConfig.maxSlicesPerTurn,
+        ).message,
+        sliceId: args.sliceId,
+        state: "failed",
+      });
+    }
+
+    return await upsertAgentTurnSessionRecord({
+      ...shared,
+      ...definedProps({
+        resumedFromSliceId: keepSlice
+          ? latest?.resumedFromSliceId
+          : args.sliceId,
+      }),
+      sliceId: nextSliceId,
+      state: "awaiting_resume",
+    });
+  } catch (error) {
+    logCheckpointError(error, "agent.turn.checkpoint.paused.failed", args, {
+      "app.ai.resume_from_slice_id": args.sliceId,
+      "app.ai.resume_next_slice_id": nextSliceId,
+      "app.ai.resume_reason": args.reason,
+    });
+    return undefined;
+  }
+}
+
+async function saveTerminalCheckpoint(
+  args: Extract<TurnCheckpointInput, { mode: "completed" | "failed" }>,
+): Promise<AgentTurnSessionRecord | undefined> {
+  let latest: AgentTurnSessionRecord | undefined;
+  await persistWithRetry(async () => {
+    latest = await getAgentTurnSessionRecord(
+      args.conversationId,
+      args.sessionId,
+    );
+  });
+  const sliceId = args.sliceId ?? latest?.sliceId;
+  if (sliceId === undefined) {
+    throw new Error(
+      "Completed turn checkpoint requires a slice id from the caller or the latest stored record",
+    );
+  }
+
+  const target: UpsertTurnSessionRecord = {
+    ...writeFields(args, latest),
+    ...definedProps({
+      cumulativeDurationMs: addDurationMs(
+        latest?.cumulativeDurationMs,
+        args.currentDurationMs,
+      ),
+      cumulativeUsage: addAgentTurnUsage(
+        latest?.cumulativeUsage,
+        args.currentUsage,
+      ),
+      dispatchOutcome: args.dispatchOutcome ?? latest?.dispatchOutcome,
+      errorMessage: args.errorMessage,
+      resultMessageId: args.resultMessageId ?? latest?.resultMessageId,
+    }),
+    piMessages: args.messages,
+    sliceId,
+    state: args.mode satisfies AgentTurnSessionStatus,
+  };
+
+  // Retry until the write accepts; callers care that terminal state landed,
+  // not that the upsert echo is present.
+  await persistWithRetry(async () => {
+    await upsertAgentTurnSessionRecord(target);
+  });
+  return undefined;
+}
+
+// ---------------------------------------------------------------------------
+// Compatibility shims — thin wrappers over saveTurnCheckpoint.
+// Callers should migrate to saveTurnCheckpoint; these stay until that lands.
+// ---------------------------------------------------------------------------
+
+/** @deprecated Prefer `saveTurnCheckpoint({ mode: "running", ... })`. */
 export async function persistRunningSessionRecord(args: {
   channelName?: string;
   conversationId: string;
@@ -186,7 +400,6 @@ export async function persistRunningSessionRecord(args: {
   sessionId: string;
   sliceId: number;
   messages: PiMessage[];
-  /** Provenance for trailing newly committed messages, such as steering. */
   trailingMessageProvenance?: ConversationMessageProvenance[];
   loadedSkillNames?: string[];
   modelId: string;
@@ -196,68 +409,14 @@ export async function persistRunningSessionRecord(args: {
   turnContexts?: PluginTurnContext[];
   turnStartMessageIndex?: number;
 }): Promise<boolean> {
-  if (args.messages.length === 0 || !isContinuablePiBoundary(args.messages)) {
-    return false;
-  }
-
-  try {
-    const latestSessionRecord = await getAgentTurnSessionRecord(
-      args.conversationId,
-      args.sessionId,
-    );
-    // Running checkpoints keep caller-owned skill/reasoning values only.
-    await upsertAgentTurnSessionRecord({
-      ...sessionWriteContext(
-        {
-          actor: args.actor,
-          channelName: args.channelName,
-          conversationId: args.conversationId,
-          destination: args.destination,
-          destinationVisibility: args.destinationVisibility,
-          dispatchId: args.dispatchId,
-          loadedSkillNames: args.loadedSkillNames,
-          modelId: args.modelId,
-          reasoningLevel: args.reasoningLevel,
-          sessionId: args.sessionId,
-          source: args.source,
-          surface: args.surface,
-          turnStartMessageIndex: args.turnStartMessageIndex,
-        },
-        latestSessionRecord,
-      ),
-      ...definedProps({
-        trailingMessageProvenance: args.trailingMessageProvenance,
-        turnContexts: args.turnContexts,
-      }),
-      cumulativeDurationMs: latestSessionRecord?.cumulativeDurationMs,
-      cumulativeUsage: latestSessionRecord?.cumulativeUsage,
-      piMessages: args.messages,
-      sliceId: args.sliceId,
-      state: "running",
-    });
-    return true;
-  } catch (recordError) {
-    logSessionRecordError(
-      recordError,
-      "agent.turn.running_session_record.failed",
-      args,
-      {
-        "app.ai.resume_slice_id": args.sliceId,
-      },
-    );
-    return false;
-  }
+  const saved = await saveTurnCheckpoint({
+    mode: "running",
+    ...args,
+  });
+  return Boolean(saved);
 }
 
-/**
- * Commit a run after assistant output handling has settled.
- *
- * Generation completing is not durable completion: call this only after the
- * destination accepted each visible message or intentional silence was
- * resolved. The write is retried because output may already be user-visible;
- * any remaining failure surfaces to the post-output boundary for one
- * authoritative error.
- */
+/** @deprecated Prefer `saveTurnCheckpoint({ mode: "completed", ... })`. */
 export async function persistCompletedSessionRecord(args: {
   channelName?: string;
   conversationId: string;
@@ -267,13 +426,10 @@ export async function persistCompletedSessionRecord(args: {
   dispatchId?: string;
   dispatchOutcome?: AgentDispatchOutcome;
   errorMessage?: string;
-  /** Confirmed visibility; omit when unavailable to preserve canonical metadata. */
   destinationVisibility?: ConversationPrivacy;
-  /** Provider-owned identifier returned after visible delivery is accepted. */
   resultMessageId?: string;
   source?: Source;
   sessionId: string;
-  /** Defaults to the latest stored slice when the deliverer does not know it. */
   sliceId?: number;
   allMessages: PiMessage[];
   loadedSkillNames?: string[];
@@ -283,65 +439,34 @@ export async function persistCompletedSessionRecord(args: {
   surface?: AgentTurnSurface;
   turnStartMessageIndex?: number;
 }): Promise<void> {
-  let latestSessionRecord: AgentTurnSessionRecord | undefined;
-  await persistWithRetry(async () => {
-    latestSessionRecord = await getAgentTurnSessionRecord(
-      args.conversationId,
-      args.sessionId,
-    );
-  });
-  const sliceId = args.sliceId ?? latestSessionRecord?.sliceId;
-  if (sliceId === undefined) {
-    // Never fabricate a slice-1 completion: a completion without a known
-    // slice is a caller bug and must surface as the standard failure path.
-    throw new Error(
-      "Completed session record requires a slice id from the caller or the latest stored record",
-    );
-  }
-  const target: UpsertTurnSessionRecord = {
-    ...sessionWriteContext(
-      {
-        actor: args.actor,
-        channelName: args.channelName,
-        conversationId: args.conversationId,
-        destination: args.destination,
-        destinationVisibility: args.destinationVisibility,
-        dispatchId: args.dispatchId,
-        loadedSkillNames: args.loadedSkillNames,
-        modelId: args.modelId,
-        reasoningLevel: args.reasoningLevel,
-        sessionId: args.sessionId,
-        source: args.source,
-        surface: args.surface,
-        turnStartMessageIndex: args.turnStartMessageIndex,
-      },
-      latestSessionRecord,
-    ),
-    ...definedProps({
-      cumulativeDurationMs: addDurationMs(
-        latestSessionRecord?.cumulativeDurationMs,
-        args.currentDurationMs,
-      ),
-      cumulativeUsage: addAgentTurnUsage(
-        latestSessionRecord?.cumulativeUsage,
-        args.currentUsage,
-      ),
-      dispatchOutcome:
-        args.dispatchOutcome ?? latestSessionRecord?.dispatchOutcome,
-      errorMessage: args.errorMessage,
-      resultMessageId:
-        args.resultMessageId ?? latestSessionRecord?.resultMessageId,
-    }),
-    piMessages: args.allMessages,
-    sliceId,
-    state: "completed",
-  };
-  await persistWithRetry(async () => {
-    await upsertAgentTurnSessionRecord(target);
+  // Terminal deliveries stay `completed` even when diagnostics carry an error
+  // message — failure vs success is owned by dispatchOutcome/diagnostics.
+  await saveTurnCheckpoint({
+    mode: "completed",
+    channelName: args.channelName,
+    conversationId: args.conversationId,
+    currentDurationMs: args.currentDurationMs,
+    currentUsage: args.currentUsage,
+    destination: args.destination,
+    destinationVisibility: args.destinationVisibility,
+    dispatchId: args.dispatchId,
+    dispatchOutcome: args.dispatchOutcome,
+    errorMessage: args.errorMessage,
+    resultMessageId: args.resultMessageId,
+    source: args.source,
+    sessionId: args.sessionId,
+    sliceId: args.sliceId,
+    messages: args.allMessages,
+    loadedSkillNames: args.loadedSkillNames,
+    modelId: args.modelId,
+    actor: args.actor,
+    reasoningLevel: args.reasoningLevel,
+    surface: args.surface,
+    turnStartMessageIndex: args.turnStartMessageIndex,
   });
 }
 
-/** Complete a delivered single-slice run with an explicit session boundary. */
+/** @deprecated Prefer `saveTurnCheckpoint({ mode: "completed", ... })`. */
 export async function completeDeliveredTurn(args: {
   channelName?: string;
   conversationId: string;
@@ -364,7 +489,8 @@ export async function completeDeliveredTurn(args: {
   turnStartMessageIndex?: number;
   usage?: AgentTurnUsage;
 }): Promise<void> {
-  await persistCompletedSessionRecord({
+  await saveTurnCheckpoint({
+    mode: "completed",
     channelName: args.channelName,
     conversationId: args.conversationId,
     currentDurationMs: args.durationMs,
@@ -378,7 +504,7 @@ export async function completeDeliveredTurn(args: {
     source: args.source,
     sessionId: args.sessionId,
     sliceId: args.sliceId,
-    allMessages: args.messages,
+    messages: args.messages,
     loadedSkillNames: args.loadedSkillNames,
     modelId: args.modelId,
     actor: args.actor,
@@ -388,10 +514,7 @@ export async function completeDeliveredTurn(args: {
   });
 }
 
-/**
- * Persist an auth-pause session record. Returns the durable record only when
- * the caller can safely hand the user to an authorization resume flow.
- */
+/** @deprecated Prefer `saveTurnCheckpoint({ mode: "paused", reason: "auth", ... })`. */
 export async function persistAuthPauseSessionRecord(args: {
   channelName?: string;
   conversationId: string;
@@ -411,70 +534,31 @@ export async function persistAuthPauseSessionRecord(args: {
   reasoningLevel?: string;
   surface?: AgentTurnSurface;
 }): Promise<AgentTurnSessionRecord | undefined> {
-  const nextSliceId = args.currentSliceId + 1;
-  try {
-    const latestSessionRecord = await getAgentTurnSessionRecord(
-      args.conversationId,
-      args.sessionId,
-    );
-    const piMessages = resumableBoundary(
-      args.messages,
-      latestSessionRecord?.piMessages,
-    );
-    if (piMessages.length > 0 && !isContinuablePiBoundary(piMessages)) {
-      return undefined;
-    }
-    return await upsertAgentTurnSessionRecord({
-      ...sessionWriteContext(
-        {
-          actor: args.actor,
-          channelName: args.channelName,
-          conversationId: args.conversationId,
-          destination: args.destination,
-          destinationVisibility: args.destinationVisibility,
-          dispatchId: args.dispatchId,
-          // Auth-pause keeps caller-owned skill names only.
-          loadedSkillNames: args.loadedSkillNames,
-          modelId: args.modelId,
-          reasoningLevel: args.reasoningLevel,
-          sessionId: args.sessionId,
-          source: args.source,
-          surface: args.surface,
-        },
-        latestSessionRecord,
-      ),
-      ...definedProps({
-        cumulativeDurationMs: addDurationMs(
-          latestSessionRecord?.cumulativeDurationMs,
-          args.currentDurationMs,
-        ),
-        cumulativeUsage: addAgentTurnUsage(
-          latestSessionRecord?.cumulativeUsage,
-          args.currentUsage,
-        ),
-      }),
-      errorMessage: args.errorMessage,
-      piMessages,
-      resumeReason: "auth",
-      resumedFromSliceId: args.currentSliceId,
-      sliceId: nextSliceId,
-      state: "awaiting_resume",
-    });
-  } catch (recordError) {
-    logSessionRecordError(
-      recordError,
-      "agent.turn.auth_resume_session_record.failed",
-      args,
-      {
-        "app.ai.resume_from_slice_id": args.currentSliceId,
-        "app.ai.resume_next_slice_id": nextSliceId,
-      },
-    );
-  }
-  return undefined;
+  return await saveTurnCheckpoint({
+    mode: "paused",
+    reason: "auth",
+    sliceId: args.currentSliceId,
+    channelName: args.channelName,
+    conversationId: args.conversationId,
+    sessionId: args.sessionId,
+    currentDurationMs: args.currentDurationMs,
+    currentUsage: args.currentUsage,
+    destination: args.destination,
+    destinationVisibility: args.destinationVisibility,
+    dispatchId: args.dispatchId,
+    source: args.source,
+    messages: args.messages,
+    loadedSkillNames: args.loadedSkillNames,
+    modelId: args.modelId,
+    errorMessage: args.errorMessage,
+    actor: args.actor,
+    reasoningLevel: args.reasoningLevel,
+    surface: args.surface,
+  });
 }
 
-interface ContinuationRecordInput {
+/** @deprecated Prefer `saveTurnCheckpoint({ mode: "paused", reason: "timeout"|"retry", ... })`. */
+export async function persistContinuationSessionRecord(args: {
   channelName?: string;
   conversationId: string;
   sessionId: string;
@@ -492,100 +576,32 @@ interface ContinuationRecordInput {
   actor?: Actor;
   reasoningLevel?: string;
   surface?: AgentTurnSurface;
+  resumeReason: "retry" | "timeout";
+}): Promise<AgentTurnSessionRecord | undefined> {
+  return await saveTurnCheckpoint({
+    mode: "paused",
+    reason: args.resumeReason,
+    sliceId: args.currentSliceId,
+    channelName: args.channelName,
+    conversationId: args.conversationId,
+    sessionId: args.sessionId,
+    currentDurationMs: args.currentDurationMs,
+    currentUsage: args.currentUsage,
+    destination: args.destination,
+    destinationVisibility: args.destinationVisibility,
+    dispatchId: args.dispatchId,
+    source: args.source,
+    messages: args.messages,
+    loadedSkillNames: args.loadedSkillNames,
+    modelId: args.modelId,
+    errorMessage: args.errorMessage,
+    actor: args.actor,
+    reasoningLevel: args.reasoningLevel,
+    surface: args.surface,
+  });
 }
 
-/** Persist a timeout or delivery retry under the turn's shared slice limit. */
-export async function persistContinuationSessionRecord(
-  args: ContinuationRecordInput & {
-    resumeReason: "retry" | "timeout";
-  },
-): Promise<AgentTurnSessionRecord | undefined> {
-  const nextSliceId = args.currentSliceId + 1;
-
-  try {
-    const latestSessionRecord = await getAgentTurnSessionRecord(
-      args.conversationId,
-      args.sessionId,
-    );
-    const piMessages = resumableBoundary(
-      args.messages,
-      latestSessionRecord?.piMessages,
-    );
-    if (piMessages.length === 0 || !isContinuablePiBoundary(piMessages)) {
-      return undefined;
-    }
-    const cumulativeDurationMs = addDurationMs(
-      latestSessionRecord?.cumulativeDurationMs,
-      args.currentDurationMs,
-    );
-    const cumulativeUsage = addAgentTurnUsage(
-      latestSessionRecord?.cumulativeUsage,
-      args.currentUsage,
-    );
-    const shared = {
-      ...sessionWriteContext(
-        {
-          actor: args.actor,
-          channelName: args.channelName,
-          conversationId: args.conversationId,
-          destination: args.destination,
-          destinationVisibility: args.destinationVisibility,
-          dispatchId: args.dispatchId,
-          // Continuation keeps caller-owned skill names only.
-          loadedSkillNames: args.loadedSkillNames,
-          modelId: args.modelId,
-          reasoningLevel: args.reasoningLevel,
-          sessionId: args.sessionId,
-          source: args.source,
-          surface: args.surface,
-        },
-        latestSessionRecord,
-      ),
-      ...definedProps({
-        cumulativeDurationMs,
-        cumulativeUsage,
-      }),
-      piMessages,
-      resumeReason: args.resumeReason,
-    } satisfies Partial<UpsertTurnSessionRecord>;
-
-    if (nextSliceId > botConfig.maxSlicesPerTurn) {
-      return await upsertAgentTurnSessionRecord({
-        ...shared,
-        ...definedProps({
-          resumedFromSliceId: latestSessionRecord?.resumedFromSliceId,
-        }),
-        errorMessage: new TurnSliceLimitExceededError(
-          botConfig.maxSlicesPerTurn,
-        ).message,
-        sliceId: args.currentSliceId,
-        state: "failed",
-      });
-    }
-    return await upsertAgentTurnSessionRecord({
-      ...shared,
-      errorMessage: args.errorMessage,
-      resumedFromSliceId: args.currentSliceId,
-      sliceId: nextSliceId,
-      state: "awaiting_resume",
-    });
-  } catch (recordError) {
-    logSessionRecordError(
-      recordError,
-      "agent.continue.session_record.failed",
-      args,
-      {
-        "app.ai.resume_from_slice_id": args.currentSliceId,
-        "app.ai.resume_next_slice_id": nextSliceId,
-      },
-    );
-    return undefined;
-  }
-}
-
-/**
- * Persist a cooperative-yield boundary without advancing timeout slice counts.
- */
+/** @deprecated Prefer `saveTurnCheckpoint({ mode: "paused", reason: "yield", keepSlice: true, ... })`. */
 export async function persistYieldSessionRecord(args: {
   channelName?: string;
   conversationId: string;
@@ -604,61 +620,25 @@ export async function persistYieldSessionRecord(args: {
   reasoningLevel?: string;
   surface?: AgentTurnSurface;
 }): Promise<AgentTurnSessionRecord | undefined> {
-  try {
-    // Cooperative yield must preserve the exact history boundary. Trimming a
-    // delivered assistant message would regenerate and redeliver that reply.
-    const piMessages = [...args.messages];
-    if (piMessages.length === 0 || !isContinuablePiBoundary(piMessages)) {
-      return undefined;
-    }
-    const latestSessionRecord = await getAgentTurnSessionRecord(
-      args.conversationId,
-      args.sessionId,
-    );
-    return await upsertAgentTurnSessionRecord({
-      ...sessionWriteContext(
-        {
-          actor: args.actor,
-          channelName: args.channelName,
-          conversationId: args.conversationId,
-          destination: args.destination,
-          dispatchId: args.dispatchId,
-          // Yield keeps caller-owned skill names only.
-          loadedSkillNames: args.loadedSkillNames,
-          modelId: args.modelId,
-          reasoningLevel: args.reasoningLevel,
-          sessionId: args.sessionId,
-          source: args.source,
-          surface: args.surface,
-        },
-        latestSessionRecord,
-      ),
-      ...definedProps({
-        cumulativeDurationMs: addDurationMs(
-          latestSessionRecord?.cumulativeDurationMs,
-          args.currentDurationMs,
-        ),
-        cumulativeUsage: addAgentTurnUsage(
-          latestSessionRecord?.cumulativeUsage,
-          args.currentUsage,
-        ),
-        resumedFromSliceId: latestSessionRecord?.resumedFromSliceId,
-      }),
-      errorMessage: args.errorMessage,
-      piMessages,
-      resumeReason: "yield",
-      sliceId: args.currentSliceId,
-      state: "awaiting_resume",
-    });
-  } catch (recordError) {
-    logSessionRecordError(
-      recordError,
-      "agent.turn.yield_session_record.failed",
-      args,
-      {
-        "app.ai.resume_slice_id": args.currentSliceId,
-      },
-    );
-    return undefined;
-  }
+  return await saveTurnCheckpoint({
+    mode: "paused",
+    reason: "yield",
+    keepSlice: true,
+    sliceId: args.currentSliceId,
+    channelName: args.channelName,
+    conversationId: args.conversationId,
+    sessionId: args.sessionId,
+    currentDurationMs: args.currentDurationMs,
+    currentUsage: args.currentUsage,
+    destination: args.destination,
+    dispatchId: args.dispatchId,
+    source: args.source,
+    messages: args.messages,
+    loadedSkillNames: args.loadedSkillNames,
+    modelId: args.modelId,
+    errorMessage: args.errorMessage,
+    actor: args.actor,
+    reasoningLevel: args.reasoningLevel,
+    surface: args.surface,
+  });
 }

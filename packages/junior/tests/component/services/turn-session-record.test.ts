@@ -1511,6 +1511,112 @@ describe("persistAuthPauseSessionRecord", () => {
     ).resolves.toBe(false);
   });
 
+  it("rejects true history branches without reporting a running-session exception", async () => {
+    const logException = vi.fn();
+    vi.doMock("@/chat/logging", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("@/chat/logging")>();
+      return { ...actual, logException };
+    });
+    const { persistRunningSessionRecord } =
+      await import("@/chat/services/turn-session-record");
+    const committedUser = userMessage("committed");
+    const staleUser = userMessage("stale");
+
+    await expect(
+      persistRunningSessionRecord({
+        modelId: "test-model",
+        conversationId: "conversation-stale-checkpoint",
+        sessionId: "turn-stale-checkpoint",
+        sliceId: 1,
+        messages: [committedUser],
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      persistRunningSessionRecord({
+        modelId: "test-model",
+        conversationId: "conversation-stale-checkpoint",
+        sessionId: "turn-stale-checkpoint",
+        sliceId: 1,
+        messages: [staleUser],
+      }),
+    ).resolves.toBe(false);
+
+    expect(logException).not.toHaveBeenCalled();
+  });
+
+  it("appends after in-place assistant envelope mutations on committed messages", async () => {
+    const { persistRunningSessionRecord } =
+      await import("@/chat/services/turn-session-record");
+    const { getAgentTurnSessionRecord } =
+      await import("@/chat/state/turn-session");
+    const user = userMessage("help me");
+    user.timestamp = 1;
+    const assistantWithTools = {
+      ...assistantMessage("working", 2),
+      content: [
+        { type: "text", text: "working" },
+        {
+          type: "toolCall",
+          id: "call-1",
+          name: "bash",
+          arguments: { command: "echo ok" },
+        },
+      ],
+      stopReason: "toolUse",
+    } as PiMessage;
+    const toolResult = {
+      role: "toolResult",
+      toolCallId: "call-1",
+      toolName: "bash",
+      content: [{ type: "text", text: "ok" }],
+      isError: false,
+      timestamp: 3,
+    } as PiMessage;
+    const nextUser = userMessage("thanks");
+    nextUser.timestamp = 4;
+
+    await expect(
+      persistRunningSessionRecord({
+        modelId: "test-model",
+        conversationId: "conversation-mutated-prefix",
+        sessionId: "turn-mutated-prefix",
+        sliceId: 1,
+        messages: [user, assistantWithTools, toolResult],
+      }),
+    ).resolves.toBe(true);
+
+    const mutatedAssistant = {
+      ...assistantWithTools,
+      usage: {
+        ...(assistantWithTools as { usage?: Record<string, number> }).usage,
+        output: 42,
+        totalTokens: 42,
+      },
+    } as PiMessage;
+
+    await expect(
+      persistRunningSessionRecord({
+        modelId: "test-model",
+        conversationId: "conversation-mutated-prefix",
+        sessionId: "turn-mutated-prefix",
+        sliceId: 1,
+        messages: [user, mutatedAssistant, toolResult, nextUser],
+      }),
+    ).resolves.toBe(true);
+
+    // Append-only: durable identity lets the suffix commit, but the already
+    // committed assistant envelope is not rewritten when Pi mutates usage.
+    await expect(
+      getAgentTurnSessionRecord(
+        "conversation-mutated-prefix",
+        "turn-mutated-prefix",
+      ),
+    ).resolves.toMatchObject({
+      state: "running",
+      piMessages: [user, assistantWithTools, toolResult, nextUser],
+    });
+  });
+
   it("promotes the latest running record when timeout capture has no messages", async () => {
     const { persistContinuationSessionRecord, persistRunningSessionRecord } =
       await import("@/chat/services/turn-session-record");
