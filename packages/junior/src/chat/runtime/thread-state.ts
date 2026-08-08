@@ -46,11 +46,10 @@ function buildThreadStatePayload(
 }
 
 /**
- * Merge a scratch payload into a thread/channel Redis key with Junior's TTL.
+ * Merge a payload into thread or channel scratch with Junior's TTL.
  *
- * Do not call chat-sdk `thread.setState` / `channel.setState` here: those hardcode
- * a 30-day TTL. Thread/channel scratch is short-lived runtime state and must use
- * `JUNIOR_THREAD_STATE_TTL_MS` so schema hangover matches the rest of chat Redis.
+ * Chat SDK state writes hardcode a 30-day TTL. This boundary owns Junior's
+ * shorter retention policy for the same scratch keys.
  */
 async function mergePersistedState(
   key: string,
@@ -70,6 +69,7 @@ async function mergePersistedState(
   );
 }
 
+/** Merge an artifact patch while preserving per-list column mappings. */
 export function mergeArtifactsState(
   artifacts: ThreadArtifactsState,
   patch: Partial<ThreadArtifactsState> | undefined,
@@ -191,16 +191,24 @@ export async function persistThreadStateById(
   );
 }
 
+/** Resolve channel configuration from a Chat thread and persist it with Junior's TTL. */
 export function getChannelConfigurationService(
   thread: Thread,
 ): ChannelConfigurationService {
+  const channel = thread.channel;
   const channelId =
-    toOptionalString(thread.channelId) ??
-    toOptionalString(thread.channel?.id);
+    toOptionalString(thread.channelId) ?? toOptionalString(channel.id);
   if (!channelId) {
     throw new Error("channel id is required to load channel configuration");
   }
-  return getChannelConfigurationServiceById(channelId);
+  return createChannelConfigurationService({
+    load: async () => await channel.state,
+    save: async (state) => {
+      await mergePersistedState(channelStateKey(channelId), {
+        configuration: state,
+      });
+    },
+  });
 }
 
 /** Resolve a channel configuration service by channel id without a Chat thread. */
