@@ -20,6 +20,7 @@ import { persistWithRetry } from "@/chat/services/persist-retry";
 import { TurnSliceLimitExceededError } from "@/chat/services/turn-limit";
 import { botConfig } from "@/chat/config";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
+import { AgentHistoryBranchError } from "@/chat/conversations/projection";
 
 export interface TurnSessionContext {
   conversationId: string;
@@ -237,14 +238,18 @@ export async function persistRunningSessionRecord(args: {
     });
     return true;
   } catch (recordError) {
-    logSessionRecordError(
-      recordError,
-      "agent.turn.running_session_record.failed",
-      args,
-      {
-        "app.ai.resume_slice_id": args.sliceId,
-      },
-    );
+    // A stale asynchronous checkpoint can lose a race to a later committed
+    // boundary. Reject it quietly: the durable history remains authoritative.
+    if (!(recordError instanceof AgentHistoryBranchError)) {
+      logSessionRecordError(
+        recordError,
+        "agent.turn.running_session_record.failed",
+        args,
+        {
+          "app.ai.resume_slice_id": args.sliceId,
+        },
+      );
+    }
     return false;
   }
 }

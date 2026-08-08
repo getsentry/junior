@@ -1207,6 +1207,10 @@ async function executeAgentRunInPrivacyContext(
         runResume.setTurnStartMessageIndex(
           existingSessionRecord!.turnStartMessageIndex,
         );
+        // Timeout/retry parking needs a durable baseline even when the first
+        // mid-run checkpoint fails. Without this, an empty safe boundary can
+        // re-park the same stuck slice forever.
+        runResume.adoptCommittedBoundary([...agent.state.messages]);
       } else if (promptHistoryMessages.length > 0) {
         agent.state.messages = [...promptHistoryMessages];
       }
