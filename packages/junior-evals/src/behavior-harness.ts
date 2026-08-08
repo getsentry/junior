@@ -637,7 +637,6 @@ const EVAL_PACKAGE_ROOT = path.resolve(
 );
 type HarnessStateAdapter = ReturnType<typeof getStateAdapter>;
 
-const THREAD_STATE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const EVAL_SLACK_TEAM_ID = "TEVAL";
 
 function resolveEvalRelativePath(entry: string): string {
@@ -828,28 +827,21 @@ async function cleanupHarnessThreadState(
   }
 }
 
-function createEvalThread(args: {
+async function createEvalThread(args: {
   fixture: EvalEventThreadFixture;
   channelStateRef?: { value: Record<string, unknown> };
   observations: RuntimeObservations;
   stateAdapter: HarnessStateAdapter;
-}): TestThread {
-  const thread = createTestThread({
+}): Promise<TestThread> {
+  // createTestThread already seeds Junior adapter scratch; keep subscribe state
+  // mirrored onto the shared adapter for mailbox-backed ingress.
+  const thread = await createTestThread({
     id: buildRuntimeThreadId(args.fixture),
     channelId: args.fixture.channel_id,
     runId: args.fixture.run_id,
     threadTs: args.fixture.thread_ts,
     channelStateRef: args.channelStateRef,
   });
-  const originalSetState = thread.setState.bind(thread);
-  thread.setState = async (next, options) => {
-    await originalSetState(next, options);
-    await args.stateAdapter.set(
-      `thread-state:${thread.id}`,
-      thread.getState(),
-      THREAD_STATE_TTL_MS,
-    );
-  };
   const originalSubscribe = thread.subscribe.bind(thread);
   thread.subscribe = async () => {
     await originalSubscribe();
@@ -2072,7 +2064,7 @@ async function processEvents(args: {
   getSlackAdapter: () => FakeSlackAdapter;
   conversationWorkQueue: ConversationWorkQueueTestAdapter;
   slackRuntime: ReturnType<typeof createSlackRuntime>;
-  getThreadRecord: (fixture: EvalEventThreadFixture) => EvalThreadRecord;
+  getThreadRecord: (fixture: EvalEventThreadFixture) => Promise<EvalThreadRecord>;
   findEvalThread: (threadId: string) => TestThread | undefined;
   observations: RuntimeObservations;
   readyQueueDeliveries: QueueDelivery[];
@@ -2232,7 +2224,7 @@ async function processEvents(args: {
   ): Promise<void> => {
     for (const [index, event] of events.entries()) {
       recordUserMessage(args.observations, event);
-      const { thread, transcript } = getThreadRecord(event.thread);
+      const { thread, transcript } = await getThreadRecord(event.thread);
       const route =
         (event.message.is_mention ?? event.type === "new_mention")
           ? ("mention" as const)
@@ -2268,9 +2260,11 @@ async function processEvents(args: {
     }
   };
 
-  const enqueueEvent = (event: MentionEvent | SubscribedMessageEvent): void => {
+  const enqueueEvent = async (
+    event: MentionEvent | SubscribedMessageEvent,
+  ): Promise<void> => {
     recordUserMessage(args.observations, event);
-    const { thread, transcript } = getThreadRecord(event.thread);
+    const { thread, transcript } = await getThreadRecord(event.thread);
     const message = toSlackMessage(event, thread.id);
     upsertThreadTranscriptMessage(transcript, message);
     const kind = determineThreadMessageKind({
@@ -2303,7 +2297,7 @@ async function processEvents(args: {
   const runScheduledTaskDue = async (
     event: ScheduledTaskDueEvent,
   ): Promise<void> => {
-    const { thread } = getThreadRecord(event.thread);
+    const { thread } = await getThreadRecord(event.thread);
     const nowMs = event.now_ms ?? Date.now();
     const scheduleKind = event.schedule_kind ?? "one_off";
     const taskId = `eval_schedule_${thread.channelId}_${nowMs}`;
@@ -2392,7 +2386,7 @@ async function processEvents(args: {
   };
 
   const runGitHubWebhook = async (event: GitHubWebhookEvent): Promise<void> => {
-    const { thread } = getThreadRecord(event.thread);
+    const { thread } = await getThreadRecord(event.thread);
     const nowMs = Date.now();
     await createResourceEventSubscription(
       {
@@ -2430,7 +2424,7 @@ async function processEvents(args: {
   const runEventTaskMatched = async (
     event: EventTaskMatchedEvent,
   ): Promise<void> => {
-    const { thread } = getThreadRecord(event.thread);
+    const { thread } = await getThreadRecord(event.thread);
     const nowMs = Date.now();
     const taskId = `eval_event_task_${thread.channelId}_${nowMs}`;
     const task: EventTask = {
@@ -2478,7 +2472,7 @@ async function processEvents(args: {
 
   const processSettledEvent = async (event: EvalEvent): Promise<void> => {
     if (event.type === "new_mention" || event.type === "subscribed_message") {
-      enqueueEvent(event);
+      await enqueueEvent(event);
     } else if (event.type === "scheduled_task_due") {
       await runScheduledTaskDue(event);
     } else if (event.type === "event_task_matched") {
@@ -2691,13 +2685,13 @@ export async function runEvalScenario(
       return created;
     };
 
-    const getThreadRecord = (
+    const getThreadRecord = async (
       fixture: EvalEventThreadFixture,
-    ): EvalThreadRecord => {
+    ): Promise<EvalThreadRecord> => {
       const runtimeThreadId = buildRuntimeThreadId(fixture);
       const existing = threadRecordsById.get(runtimeThreadId);
       if (existing) return existing;
-      const thread = createEvalThread({
+      const thread = await createEvalThread({
         fixture,
         channelStateRef: getChannelStateRef(fixture.channel_id),
         observations,
