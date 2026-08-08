@@ -13,7 +13,6 @@ import {
 import { useEffect, useState } from "react";
 import {
   Navigate,
-  NavLink,
   useLocation,
   useNavigate,
   useParams,
@@ -26,12 +25,14 @@ import { SelectableRow } from "../../components/SelectableRow";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
+import { PageLayout } from "../../components/layout/PageLayout";
+import { SecondaryNavigation } from "../../components/layout/SecondaryNavigation";
 import {
   type PluginUserPageRecord,
   usePluginUserPageData,
 } from "../user/pluginUserPageData";
 import { pathWithSearch } from "../../searchParams";
-import { cn, dashboardContainerClass } from "../../styles";
+import { cn } from "../../styles";
 import {
   type MemoryDashboardData,
   useMemoryDashboardData,
@@ -53,42 +54,27 @@ export function MemoryPage(props: { page: PluginUserPageLink }) {
   if (!overview && !library) return <Navigate replace to={basePath} />;
   const libraryHref = pathWithSearch(libraryPath, location.search);
 
-  const navigationClass = ({ isActive }: { isActive: boolean }) =>
-    cn(
-      "relative px-1 py-3 font-mono text-xs uppercase tracking-[0.12em] no-underline after:absolute after:inset-x-0 after:bottom-0 after:h-px",
-      isActive
-        ? "text-cyan-100 after:bg-cyan-300"
-        : "text-dashboard-text-muted after:bg-transparent hover:text-dashboard-text",
-    );
-
   return (
-    <div
-      className={cn(
-        dashboardContainerClass,
-        "grid content-start gap-6 px-4 py-6 sm:gap-8 sm:px-6 sm:py-8 md:px-8",
-      )}
-    >
-      <PageHeader
-        description={props.page.description}
-        {...(overview ? { onRangeChange: setRange, range } : {})}
-        title={props.page.label}
+    <div className="min-w-0">
+      <SecondaryNavigation
+        ariaLabel="Memory navigation"
+        items={[
+          { end: true, label: "Overview", to: basePath },
+          { label: "Memories", to: libraryHref },
+        ]}
       />
-      <nav
-        aria-label="Memory navigation"
-        className="flex gap-6 border-b border-white/[0.06]"
-      >
-        <NavLink className={navigationClass} end to={basePath}>
-          Overview
-        </NavLink>
-        <NavLink className={navigationClass} to={libraryHref}>
-          Memories
-        </NavLink>
-      </nav>
-      {overview ? (
-        <MemoryOverview range={range} />
-      ) : (
-        <MemoryLibrary libraryPath={libraryPath} page={props.page} />
-      )}
+      <PageLayout className="gap-6 sm:gap-8">
+        <PageHeader
+          description={props.page.description}
+          {...(overview ? { onRangeChange: setRange, range } : {})}
+          title={props.page.label}
+        />
+        {overview ? (
+          <MemoryOverview range={range} />
+        ) : (
+          <MemoryLibrary libraryPath={libraryPath} page={props.page} />
+        )}
+      </PageLayout>
     </div>
   );
 }
