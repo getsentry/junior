@@ -73,6 +73,30 @@ describe("conversation state", () => {
     expect(conversation.processing.pendingAuth).toBeUndefined();
   });
 
+  it("ignores legacy rebuildable stats and backfill state", () => {
+    const conversation = coerceThreadConversationState({
+      conversation: {
+        backfill: {
+          completedAtMs: 7,
+          source: "thread_fetch",
+        },
+        stats: {
+          estimatedContextTokens: 999,
+          totalMessageCount: 99,
+          compactedMessageCount: 9,
+          updatedAtMs: 1,
+        },
+      },
+    });
+
+    expect(conversation.backfill).toEqual({});
+    expect(conversation.stats).toMatchObject({
+      estimatedContextTokens: 0,
+      totalMessageCount: 0,
+      compactedMessageCount: 0,
+    });
+  });
+
   it("coerces message image file ids and vision summaries", () => {
     const conversation = coerceThreadConversationState({
       conversation: {

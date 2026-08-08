@@ -168,19 +168,7 @@ export function coerceThreadConversationState(
   const messages: ConversationMessage[] = [];
   const compactions: ConversationCompaction[] = [];
 
-  // TODO(#1267): stop reading legacy Redis stats/backfill once old records age out.
-  // Writers no longer persist them; hydrate rebuilds both from SQL.
-  const rawBackfill = isRecord(rawConversation.backfill)
-    ? rawConversation.backfill
-    : {};
-  const backfill: ConversationBackfillState = {
-    completedAtMs: toOptionalNumber(rawBackfill.completedAtMs),
-    source:
-      rawBackfill.source === "recent_messages" ||
-      rawBackfill.source === "thread_fetch"
-        ? rawBackfill.source
-        : undefined,
-  };
+  const backfill: ConversationBackfillState = {};
 
   const rawProcessing = isRecord(rawConversation.processing)
     ? rawConversation.processing
@@ -191,18 +179,7 @@ export function coerceThreadConversationState(
     pendingAuth: coercePendingAuthState(rawProcessing.pendingAuth),
   };
 
-  const rawStats = isRecord(rawConversation.stats) ? rawConversation.stats : {};
-  const stats: ConversationStats = {
-    estimatedContextTokens:
-      toOptionalNumber(rawStats.estimatedContextTokens) ??
-      base.stats.estimatedContextTokens,
-    totalMessageCount:
-      toOptionalNumber(rawStats.totalMessageCount) ?? messages.length,
-    compactedMessageCount:
-      toOptionalNumber(rawStats.compactedMessageCount) ?? 0,
-    updatedAtMs:
-      toOptionalNumber(rawStats.updatedAtMs) ?? base.stats.updatedAtMs,
-  };
+  const stats = base.stats;
   const rawVision = isRecord(rawConversation.vision)
     ? rawConversation.vision
     : {};

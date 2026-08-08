@@ -941,6 +941,8 @@ describe("local agent runner", () => {
     );
 
     const state = await getPersistedThreadState(conversationId!);
+    expect(state.conversation).not.toHaveProperty("stats");
+    expect(state.conversation).not.toHaveProperty("backfill");
     const conversation = coerceThreadConversationState(state);
     await hydrateConversationMessages({
       conversation,
@@ -952,6 +954,7 @@ describe("local agent runner", () => {
       "second question",
       "reply to second question",
     ]);
+    expect(conversation.stats.totalMessageCount).toBe(4);
   });
 
   it("requires local delivery before running a turn", async () => {

@@ -86,17 +86,6 @@ export async function hydrateConversationMessages(args: {
       0,
     );
   updateConversationStats(args.conversation);
-  if (
-    args.conversation.messages.length > 0 ||
-    args.conversation.compactions.length > 0
-  ) {
-    // SQL already has history, so Slack backfill must not run again even when
-    // Redis no longer stores the backfill marker.
-    args.conversation.backfill = {
-      completedAtMs: args.conversation.backfill.completedAtMs ?? Date.now(),
-      source: args.conversation.backfill.source ?? "recent_messages",
-    };
-  }
 }
 
 /** Append new messages and handled markers idempotently. */
