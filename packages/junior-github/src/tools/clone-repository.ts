@@ -88,13 +88,25 @@ export function createGitHubCloneRepositoryTool(
 ) {
   return definePluginTool({
     annotations: {
+      // Remote GitHub effect is contents-read only. Sandbox checkout creation is
+      // the same class of ephemeral local materialization as webFetch artifacts,
+      // so this stays a read-only inspection tool rather than a mutating write.
       destructiveHint: false,
       idempotentHint: false,
       openWorldHint: true,
-      readOnlyHint: false,
+      readOnlyHint: true,
     },
     description:
       "Clone a GitHub repository into the sandbox workspace. The destination must not already exist.",
+    describeProposal(input) {
+      const directory =
+        typeof input.directory === "string" && input.directory.length > 0
+          ? input.directory
+          : undefined;
+      return directory
+        ? `Shallow-clone ${input.repo} into the local sandbox at ${directory} for inspection (no GitHub mutation).`
+        : `Shallow-clone ${input.repo} into the local sandbox for inspection (no GitHub mutation).`;
+    },
     executionMode: "sequential",
     inputSchema,
     outputSchema,
