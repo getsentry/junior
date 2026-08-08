@@ -19,7 +19,7 @@ describeEval("Event Task Credentials", slackEvals, (it) => {
       },
       initialEvents: [
         mention(
-          "$eval-resource-events Create a pull request titled 'Credentialed review handling'. When review changes are requested, create an event task that inspects the feedback and posts a fix plan in this channel.",
+          "$eval-resource-events Create a pull request titled 'Credentialed review handling'. When review changes are requested, create an event task that looks at the feedback and posts a fix plan in this channel.",
         ),
       ],
       criteria: rubric({

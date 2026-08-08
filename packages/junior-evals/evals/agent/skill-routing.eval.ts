@@ -85,7 +85,7 @@ describeEval("Skill Invocation Control", slackEvals, (it) => {
       overrides: { skill_dirs: browserSkillDirs },
       initialEvents: [
         mention(
-          "I changed the docs site's responsive navigation and dark theme. Before I send the preview URL, choose the relevant workflow and outline the browser evidence you will collect. Do not start the browser yet.",
+          "I changed the docs site's responsive navigation and dark theme. How would you verify it in the browser? Don't start yet—I'll send the preview URL next.",
         ),
       ],
     });

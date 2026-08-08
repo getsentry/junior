@@ -58,7 +58,7 @@ describeEval("Scheduled Credentials", slackEvals, (it) => {
       ],
       events: [
         threadMessage(
-          "Yes, register that task now. Keep it system-only as requested.",
+          "Yes, register that task now. Still without my credentials.",
           { thread, is_mention: true },
         ),
       ],

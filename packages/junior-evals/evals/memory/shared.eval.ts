@@ -52,7 +52,7 @@ describeEval("Shared Memory", slackEvals, (it) => {
       overrides: memoryPluginOverrides,
       initialEvents: [
         mention(
-          "What do you remember about how CI works in getsentry/junior? Reply with a textual answer using only existing conversation context; do not inspect files or use tools.",
+          "What do you remember about how CI works in getsentry/junior?",
           {
             thread: recallRelevanceThread,
           },

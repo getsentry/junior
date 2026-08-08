@@ -81,7 +81,7 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
       },
       initialEvents: [
         mention(
-          "$eval-resource-events Use the provider to create a pull request titled 'Prefer event subscriptions', then check it every five minutes and tell this thread if checks fail, review feedback arrives, it merges, or it closes.",
+          "$eval-resource-events Create a pull request titled 'Prefer event subscriptions', then check it every five minutes and tell this thread if checks fail, review feedback arrives, it merges, or it closes.",
         ),
       ],
       criteria: rubric({

@@ -279,7 +279,7 @@ describeEval("Guardian Action Review Snapshots", guardianEvals, (it) => {
             kind: "one_off",
             timing: { type: "after", unit: "minute", value: 2 },
           },
-          task: "Post “standup moved” to the active channel.",
+          task: "Tell the channel standup moved.",
         },
         tool: {
           annotations: {
