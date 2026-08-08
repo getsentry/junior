@@ -96,7 +96,7 @@ import { getStateAdapter } from "@/chat/state/adapter";
 import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
 import { resetSkillDiscoveryCache } from "@/chat/skills";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
-import { annotateTurnDeadlineToolResult } from "@/chat/tool-support/turn-deadline-result";
+import { projectUnconfirmedToolResult } from "@/chat/tool-support/unconfirmed-tool-result";
 import { DEFAULT_MAX_CHARS, MAX_FETCH_CHARS } from "@/chat/tools/web/constants";
 import { truncateWebFetchContent } from "@/chat/tools/web/fetch-content";
 import { createWebFetchTool } from "@/chat/tools/web/fetch-tool";
@@ -1830,13 +1830,13 @@ function buildRuntimeServices(
               target: timeoutResume.tool_name,
               aborted: true,
             };
-            const deadlineResult = annotateTurnDeadlineToolResult({
+            const unconfirmedResult = projectUnconfirmedToolResult({
               content: [{ type: "text", text: JSON.stringify(unknownOutcome) }],
               details: unknownOutcome,
             });
             if (
-              !deadlineResult?.content ||
-              deadlineResult.details === undefined
+              !unconfirmedResult?.content ||
+              unconfirmedResult.details === undefined
             ) {
               throw new Error("Failed to build timeout continuation fixture");
             }
@@ -1867,9 +1867,9 @@ function buildRuntimeServices(
                 role: "toolResult",
                 toolCallId,
                 toolName: timeoutResume.tool_name,
-                content: deadlineResult.content,
-                details: deadlineResult.details,
-                isError: deadlineResult.isError,
+                content: unconfirmedResult.content,
+                details: unconfirmedResult.details,
+                isError: unconfirmedResult.isError,
                 timestamp: nowMs,
               },
             ] as PiMessage[];

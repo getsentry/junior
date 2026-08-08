@@ -86,7 +86,7 @@ import {
 import { nextProviderRetry } from "@/chat/services/provider-retry";
 import { nextEmptyOutputContinuation } from "@/chat/services/empty-output-continuation";
 import { getDiscardedRetryUsage } from "@/chat/agent/retry-usage";
-import { annotateTurnDeadlineToolResult } from "@/chat/tool-support/turn-deadline-result";
+import { projectUnconfirmedToolResult } from "@/chat/tool-support/unconfirmed-tool-result";
 import {
   configuredTurnRoute,
   selectTurnRoute,
@@ -1114,18 +1114,17 @@ async function executeAgentRunInPrivacyContext(
         return undefined;
       },
       afterToolCall: async ({ result, toolCall }, signal) => {
-        const deadlineResult =
+        // Timeout recovery is session-owned. If this slice aborted a tool, only
+        // leave an unconfirmed outcome for the model — not cancelled/deadline text.
+        const sourceResult =
           runResume.timedOut && signal?.aborted
-            ? annotateTurnDeadlineToolResult(result)
-            : undefined;
-        const sourceResult = deadlineResult ?? result;
+            ? (projectUnconfirmedToolResult(result) ?? result)
+            : result;
         const projectedResult = wiring.projectActionReviewResult(
           toolCall.id,
           sourceResult,
         );
-        return deadlineResult || projectedResult !== result
-          ? projectedResult
-          : undefined;
+        return projectedResult !== result ? projectedResult : undefined;
       },
       prepareNextTurnWithContext: async (nextTurn, hookSignal) => {
         try {

@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { annotateTurnDeadlineToolResult } from "@/chat/tool-support/turn-deadline-result";
+import { projectUnconfirmedToolResult } from "@/chat/tool-support/unconfirmed-tool-result";
 
-describe("annotateTurnDeadlineToolResult", () => {
-  it("projects aborted tool results as unconfirmed outcomes without runtime jargon", () => {
-    const result = annotateTurnDeadlineToolResult({
+describe("projectUnconfirmedToolResult", () => {
+  it("replaces aborted tool results with an unconfirmed outcome", () => {
+    const result = projectUnconfirmedToolResult({
       content: [
         {
           type: "text",
@@ -44,9 +44,9 @@ describe("annotateTurnDeadlineToolResult", () => {
     );
   });
 
-  it("ignores non-aborted tool outcomes", () => {
+  it("leaves non-aborted tool outcomes unchanged", () => {
     expect(
-      annotateTurnDeadlineToolResult({
+      projectUnconfirmedToolResult({
         content: [{ type: "text", text: "ok" }],
         details: { target: "pnpm test", aborted: false, exit_code: 0 },
       }),
