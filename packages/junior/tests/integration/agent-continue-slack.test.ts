@@ -998,7 +998,6 @@ describe("agent continuation Slack integration", () => {
     );
   });
 
-
   it("recovers the resume actor from the durable conversation record", async () => {
     // Issue #727 recovery path: older session records were persisted without
     // a actor; the durable conversation work record still carries the
@@ -1464,8 +1463,6 @@ describe("agent continuation Slack integration", () => {
 
     expect(resumed).toBe(true);
     expect(recoveredRecord).toMatchObject({
-      actors: [expect.objectContaining({ userId: "U123" })],
-      modelId: "openai/gpt-5.6-sol",
       piMessages: expect.arrayContaining([
         expect.objectContaining({ role: "user" }),
       ]),

@@ -37,11 +37,9 @@ import {
   type ProviderConversationReference,
 } from "./bindings";
 import { locationFromRow, privacyFromLocationRow } from "./location";
-
 type ConversationRow = typeof juniorConversations.$inferSelect;
 type DestinationRow = typeof juniorDestinations.$inferSelect;
 type IdentityRow = typeof juniorIdentities.$inferSelect;
-
 interface ConversationReadRow {
   conversation: ConversationRow;
   destination: DestinationRow | null;
@@ -347,10 +345,9 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
     lastActivityAtMs: requiredMsFromDate(row.lastActivityAt),
     updatedAtMs: requiredMsFromDate(row.updatedAt),
     execution,
-    executionMetrics: {
-      durationMs: row.executionDurationMs,
-      ...(row.executionUsage ? { usage: row.executionUsage } : {}),
-    },
+    executionMetrics: row.executionUsage
+      ? { durationMs: row.executionDurationMs, usage: row.executionUsage }
+      : { durationMs: row.executionDurationMs },
     ...(row.parentConversationId
       ? {
           lineage: {

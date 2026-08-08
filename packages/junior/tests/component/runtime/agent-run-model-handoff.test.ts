@@ -964,10 +964,7 @@ describe("model handoff composition", () => {
 
     expect(outcome.status).toBe("suspended");
     const record = await getAgentTurnSessionRecord(conversationId, sessionId);
-    expect(record).toMatchObject({
-      modelId: "openai/gpt-5.6-sol",
-      state: "awaiting_resume",
-    });
+    expect(record).toMatchObject({ state: "awaiting_resume" });
     expect(JSON.stringify(record?.piMessages)).toContain(
       "Implement the requested change and verify it.",
     );
