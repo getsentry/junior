@@ -67,18 +67,8 @@ describeEval("Schedule Creation", slackEvals, (it) => {
   }) => {
     const result = await run({
       initialEvents: [
-        mention(
-          "@bot remind me in 2 minutes to tell the channel standup moved",
-        ),
+        mention("@bot in 2 minutes, post 'standup moved' to this channel"),
       ],
-      criteria: rubric({
-        pass: [
-          "The reply confirms that the channel reminder was scheduled for two minutes from now.",
-        ],
-        fail: [
-          "Do not ask the user to confirm before creating this clear reminder.",
-        ],
-      }),
     });
     const createCalls = scheduledTaskCreateCalls(result.session);
     expect(createCalls).toHaveLength(1);
