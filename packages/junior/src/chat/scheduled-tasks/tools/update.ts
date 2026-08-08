@@ -1,3 +1,5 @@
+import { completeText } from "@/chat/pi/client";
+import { generateShortTitle } from "@/chat/services/short-title";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { z } from "zod";
 import {
@@ -120,6 +122,9 @@ export function createSlackScheduleUpdateTaskTool(
           ? "system"
           : (input.credential_mode ?? lookup.credentialMode);
 
+      const nextInstruction =
+        input.task !== undefined ? input.task : lookup.task.text;
+      const instructionChanged = nextInstruction !== lookup.task.text;
       const next: ScheduledTask = {
         ...lookup,
         credentialMode,
@@ -131,8 +136,17 @@ export function createSlackScheduleUpdateTaskTool(
         statusReason:
           nextStatus === "blocked" ? lookup.statusReason : undefined,
         schedule: compiled?.schedule ?? lookup.schedule,
-        task: input.task ? { text: input.task } : lookup.task,
+        task: { text: nextInstruction },
       };
+      if (instructionChanged) {
+        const title = await generateShortTitle({
+          completeText,
+          kind: "task",
+          sourceText: nextInstruction,
+        });
+        if (title) next.title = title;
+        else delete next.title;
+      }
 
       await schedulerStore(context).saveTask(next);
       return scheduleTaskToolResult(

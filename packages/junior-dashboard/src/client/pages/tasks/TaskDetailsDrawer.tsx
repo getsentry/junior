@@ -138,13 +138,13 @@ export function TaskDetailsDrawer(props: {
         <header className="relative border-b border-white/10 bg-dashboard-surface-raised px-4 py-3 md:px-5">
           <div className="min-w-0 pr-12">
             <h2
-              className="m-0 font-display text-lg font-medium tracking-normal text-dashboard-text capitalize"
+              className="m-0 font-display text-lg font-medium tracking-normal text-dashboard-text"
               id={titleId}
             >
-              {task.kind} task
+              {task.title}
             </h2>
-            <div className="mt-1 break-words font-mono text-xs leading-snug text-dashboard-text-muted">
-              {statusLabel} · {formatDate(task.createdAt)}
+            <div className="mt-1 break-words font-mono text-xs leading-snug text-dashboard-text-muted capitalize">
+              {task.kind} task · {statusLabel} · {formatDate(task.createdAt)}
             </div>
           </div>
           <div className="absolute top-3 right-4 md:right-5">

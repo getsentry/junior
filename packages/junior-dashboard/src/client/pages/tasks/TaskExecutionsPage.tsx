@@ -103,7 +103,7 @@ function TaskExecutionsView(props: {
           </Link>
           <PageHeader
             description={`${data.task.kind} task · ${data.task.destination.label} · ${statusSummary}`}
-            title={data.task.instruction}
+            title={data.task.title}
           />
         </div>
 
@@ -140,7 +140,7 @@ function TaskExecutionsView(props: {
               {data.executions.map((execution) => (
                 <ExecutionRow
                   execution={execution}
-                  fallbackTitle={data.task.instruction}
+                  fallbackTitle={data.task.title}
                   key={execution.executionId}
                 />
               ))}

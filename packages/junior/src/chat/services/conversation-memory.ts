@@ -12,6 +12,10 @@ import {
   getConversationContextCompactionTriggerTokens,
 } from "@/chat/services/context-budget";
 import {
+  fallbackShortTitle,
+  generateShortTitle,
+} from "@/chat/services/short-title";
+import {
   parseSlackMessageTs,
   type SlackMessageTs,
 } from "@/chat/slack/timestamp";
@@ -369,27 +373,13 @@ async function generateThreadTitleWithDeps(
   sourceText: string,
   deps: ConversationMemoryDeps,
 ): Promise<string> {
-  const result = await deps.completeText({
-    modelId: botConfig.fastModelId,
-    temperature: 0,
-    messages: [
-      {
-        role: "user",
-        content: [
-          "Generate a concise 5-8 word Slack conversation title from the first user message below.",
-          "Capture the user's main request.",
-          "Reply with ONLY the title, with no quotes or trailing punctuation.",
-          "",
-          `First user message: ${sourceText.slice(0, 500)}`,
-        ].join("\n"),
-        timestamp: Date.now(),
-      },
-    ],
-    metadata: {
-      modelId: botConfig.fastModelId,
-    },
+  const title = await generateShortTitle({
+    completeText: deps.completeText,
+    kind: "conversation",
+    sourceText,
   });
-  return result.text.trim().slice(0, 60);
+  // Keep the historical non-empty contract for conversation title callers.
+  return title ?? fallbackShortTitle(sourceText, "Conversation");
 }
 
 /** Return the earliest human-authored message known for a thread. */

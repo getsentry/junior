@@ -105,18 +105,18 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
     page.getByLabel("Task executions during the last 30 days"),
   ).toBeVisible();
   await expect(page.getByText("2 tasks")).toBeVisible();
-  await expect(page.getByText("Send the weekly project summary")).toBeVisible();
-  await expect(page.getByText("Summarize the closed issue")).toBeVisible();
+  await expect(page.getByText("Weekly project summary")).toBeVisible();
+  await expect(page.getByText("Closed issue summary")).toBeVisible();
   await expect(page.getByLabel("Scheduled task")).toBeVisible();
   await expect(page.getByLabel("GitHub event task")).toBeVisible();
   await expect(page.getByText("#project-updates").last()).toBeVisible();
   await expect(page.getByText("Assigned to")).toHaveCount(0);
   await expect(page.getByRole("dialog")).toHaveCount(0);
   const taskDetailsTrigger = page.getByRole("button", {
-    name: "View task details: Send the weekly project summary",
+    name: "View task details: Weekly project summary",
   });
   await taskDetailsTrigger.click();
-  const details = page.getByRole("dialog", { name: "scheduled task" });
+  const details = page.getByRole("dialog", { name: "Weekly project summary" });
   await expect(details).toBeVisible();
   await expect
     .poll(() => page.evaluate(() => document.body.style.overflow))
@@ -143,22 +143,16 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
     .poll(() => page.evaluate(() => document.body.style.overflow))
     .toBe("");
   await expect(taskDetailsTrigger).toBeFocused();
-  await expect(
-    page.getByText("Notify responders when the incident changes"),
-  ).not.toBeVisible();
+  await expect(page.getByText("Incident change alerts")).not.toBeVisible();
   await page.getByRole("button", { name: "event", exact: true }).click();
-  await expect(
-    page.getByText("Send the weekly project summary"),
-  ).not.toBeVisible();
-  await expect(page.getByText("Summarize the closed issue")).toBeVisible();
+  await expect(page.getByText("Weekly project summary")).not.toBeVisible();
+  await expect(page.getByText("Closed issue summary")).toBeVisible();
   await page.getByRole("button", { name: /^Public/ }).click();
-  await expect(
-    page.getByText("Notify responders when the incident changes"),
-  ).toBeVisible();
+  await expect(page.getByText("Incident change alerts")).toBeVisible();
   await expect(page.getByText("#incident-response").last()).toBeVisible();
   await page
     .getByRole("button", {
-      name: "View task details: Notify responders when the incident changes",
+      name: "View task details: Incident change alerts",
     })
     .click();
   const publicDetails = page.getByRole("dialog");
@@ -183,7 +177,7 @@ test("opens one task's execution history", async ({ page }) => {
   );
 
   await expect(
-    page.getByRole("heading", { name: "Send the weekly project summary" }),
+    page.getByRole("heading", { name: "Weekly project summary" }),
   ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Executions over time" }),

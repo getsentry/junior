@@ -39,6 +39,8 @@ export const eventTaskSchema = z
     destination: slackDestinationSchema,
     destinationVisibility: destinationVisibilitySchema,
     task: z.object({ text: z.string().min(1) }).strict(),
+    /** Short display title generated from the task instruction. */
+    title: z.string().min(1).max(60).optional(),
     trigger: eventTaskTriggerSchema,
   })
   .strict();

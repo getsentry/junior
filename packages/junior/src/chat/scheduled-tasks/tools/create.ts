@@ -1,4 +1,6 @@
 import { logInfo } from "@/chat/logging";
+import { completeText } from "@/chat/pi/client";
+import { generateShortTitle } from "@/chat/services/short-title";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { z } from "zod";
 import {
@@ -124,6 +126,11 @@ export function createSlackScheduleCreateTaskTool(
         destination,
         context.source,
       );
+      const title = await generateShortTitle({
+        completeText,
+        kind: "task",
+        sourceText: input.task,
+      });
 
       const task: ScheduledTask = {
         id,
@@ -142,6 +149,7 @@ export function createSlackScheduleCreateTaskTool(
         task: {
           text: input.task,
         },
+        ...(title ? { title } : {}),
       };
 
       const committed = await store.createTask(task);

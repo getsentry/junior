@@ -10,10 +10,12 @@ import {
   writableEventTask,
 } from "@/chat/event-tasks/tool-support";
 import type { EventTask } from "@/chat/event-tasks/types";
+import { completeText } from "@/chat/pi/client";
 import {
   normalizeEventIdentifier,
   type ResourceEventCatalog,
 } from "@/chat/resource-events/catalog";
+import { generateShortTitle } from "@/chat/services/short-title";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
@@ -115,8 +117,11 @@ export function createUpdateEventTaskTool(
             events: [...new Set(input.trigger.events)],
           }
         : current.trigger;
+      const nextInstruction =
+        input.task != null ? input.task : current.task.text;
+      const instructionChanged = nextInstruction !== current.task.text;
       const changesExecution =
-        (input.task !== undefined && input.task !== current.task.text) ||
+        instructionChanged ||
         changesEventTaskTrigger(current.trigger, nextTrigger);
       const next: EventTask = {
         ...current,
@@ -124,9 +129,18 @@ export function createUpdateEventTaskTool(
           changesExecution && !isCreator
             ? "system"
             : (input.credentialMode ?? current.credentialMode),
-        task: input.task ? { text: input.task } : current.task,
+        task: { text: nextInstruction },
         trigger: nextTrigger,
       };
+      if (instructionChanged) {
+        const title = await generateShortTitle({
+          completeText,
+          kind: "task",
+          sourceText: nextInstruction,
+        });
+        if (title) next.title = title;
+        else delete next.title;
+      }
       const saved = await saveEventTask(getDb(), next);
       if (!saved) {
         throw new ToolInputError(

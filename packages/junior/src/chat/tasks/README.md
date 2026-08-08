@@ -15,3 +15,8 @@ resource-event ingestion. The dashboard API may delete only a task that belongs
 to the resolved viewer; visibility grants read access, not mutation authority.
 Empty legacy scheduled-task text is projected with stable display placeholders
 so one malformed record cannot fail the entire list.
+
+Tasks store an optional short `title` generated from the instruction the same
+way conversation titles are generated. The Tasks API always projects a `title`
+for display, falling back to a truncated first line of the instruction when no
+generated title is stored yet.

@@ -11,10 +11,12 @@ import {
   requireSupportedEventTaskTrigger,
 } from "@/chat/event-tasks/tool-support";
 import type { EventTask } from "@/chat/event-tasks/types";
+import { completeText } from "@/chat/pi/client";
 import {
   normalizeEventIdentifier,
   type ResourceEventCatalog,
 } from "@/chat/resource-events/catalog";
+import { generateShortTitle } from "@/chat/services/short-title";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
@@ -112,6 +114,11 @@ export function createEventTaskTool(
         }
         return eventTaskSuccess(existing, catalog);
       }
+      const title = await generateShortTitle({
+        completeText,
+        kind: "task",
+        sourceText: input.task,
+      });
       const task: EventTask = {
         id,
         destinationVisibility: source.visibility,
@@ -124,6 +131,7 @@ export function createEventTaskTool(
         credentialMode: input.credentialMode ?? "creator",
         destination,
         task: { text: input.task },
+        ...(title ? { title } : {}),
         trigger: {
           namespace: input.trigger.namespace,
           identifier: normalizeEventIdentifier(

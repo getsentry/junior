@@ -121,6 +121,7 @@ const taskRecordFields = {
   status: z.enum(["active", "blocked", "completed", "deleted", "paused"]),
   statusReason: z.string().optional(),
   task: taskSpecSchema,
+  title: z.string().min(1).max(60).optional(),
   updatedAtMs: z.number(),
   version: z.number().optional(),
 };
@@ -230,11 +231,12 @@ function listedAfter(
 
 function taskMatchesQuery(task: ScheduledTask, query: string): boolean {
   return [
+    task.title,
     task.task.text,
     task.schedule.description,
     task.schedule.timezone,
     task.status,
-  ].some((value) => value.toLowerCase().includes(query));
+  ].some((value) => value?.toLowerCase().includes(query));
 }
 
 function listCreatedTasks(
@@ -1359,6 +1361,7 @@ async function listTasksCreatedByFromSql(
       : undefined;
     const search = query
       ? or(
+          sql<boolean>`strpos(lower(${juniorSchedulerTasks.record}->>'title'), ${query}) > 0`,
           sql<boolean>`strpos(lower(${juniorSchedulerTasks.record}->'task'->>'text'), ${query}) > 0`,
           sql<boolean>`strpos(lower(${juniorSchedulerTasks.record}->'schedule'->>'description'), ${query}) > 0`,
           sql<boolean>`strpos(lower(${juniorSchedulerTasks.record}->'schedule'->>'timezone'), ${query}) > 0`,

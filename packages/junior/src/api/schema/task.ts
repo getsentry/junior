@@ -20,6 +20,8 @@ const taskSummaryBaseSchema = z.object({
   lastRunAt: z.string().datetime().optional(),
   ownedByViewer: z.boolean(),
   runsLast7Days: z.number().int().nonnegative(),
+  /** Short display title; falls back from instruction when unset. */
+  title: z.string().min(1),
   totalRuns: z.number().int().nonnegative(),
 });
 

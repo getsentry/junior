@@ -307,6 +307,7 @@ describe("Tasks API", () => {
             runsLast7Days: 2,
             schedule: "Schedule unavailable",
             status: "active",
+            title: "Untitled scheduled task",
             totalRuns: 2,
           }),
         ],

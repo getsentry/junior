@@ -63,6 +63,7 @@ function taskMatches(task: TaskSummary, search: string): boolean {
     task.destination.teamId,
     task.instruction,
     task.kind,
+    task.title,
     task.kind === "scheduled" ? task.schedule : task.resource,
     ...(task.kind === "event" ? [task.source] : []),
     ...(task.kind === "event" ? task.events : []),
@@ -176,7 +177,7 @@ export function TasksPage(props: { enabled: boolean }) {
               className="w-full lg:max-w-sm"
               label="Search tasks"
               onChange={setSearchText}
-              placeholder="Instruction, location, or creator"
+              placeholder="Title, instruction, location, or creator"
               value={searchText}
             />
           </TaskFilterGroup>
@@ -331,7 +332,7 @@ function TaskRow(props: {
           <TaskSourceMark task={task} />
           <span className="min-w-0">
             <span className="block truncate font-display text-base font-medium text-dashboard-text">
-              {task.instruction}
+              {task.title}
             </span>
             <span className="mt-1 block truncate font-mono text-xs uppercase tracking-[0.08em] text-dashboard-text-muted">
               <span className="md:hidden">{task.destination.label}</span>
@@ -363,7 +364,7 @@ function TaskRow(props: {
         </div>
         <button
           aria-expanded={props.selected}
-          aria-label={`View task details: ${task.instruction}`}
+          aria-label={`View task details: ${task.title}`}
           className="grid size-8 cursor-pointer place-items-center rounded border border-transparent bg-transparent text-dashboard-text-muted transition-colors hover:border-white/10 hover:bg-white/[0.04] hover:text-dashboard-text"
           onClick={props.onSelect}
           type="button"
@@ -379,7 +380,7 @@ function TaskRow(props: {
         </button>
         {task.ownedByViewer ? (
           <Button
-            aria-label={`Delete: ${task.instruction}`}
+            aria-label={`Delete: ${task.title}`}
             disabled={props.deleting}
             onClick={props.onDelete}
             size="icon"

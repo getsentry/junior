@@ -5,6 +5,7 @@ import type {
   TaskList,
   TaskSummary,
 } from "@/api/schema/task";
+import { fallbackShortTitle } from "@/chat/services/short-title";
 import {
   readTaskExecutionDays,
   readTaskExecutions,
@@ -123,6 +124,16 @@ function displayText(value: string, fallback: string): string {
   return value.trim() || fallback;
 }
 
+function taskDisplayTitle(
+  title: string | undefined,
+  instruction: string,
+  fallback: string,
+): string {
+  const stored = title?.trim();
+  if (stored) return stored;
+  return fallbackShortTitle(instruction, fallback);
+}
+
 async function destinationDetails(
   destinations: SlackDestination[],
 ): Promise<Map<string, DestinationDetails>> {
@@ -200,6 +211,7 @@ function scheduledTaskSummary(
     throw new Error("Deleted scheduled tasks cannot enter the Tasks view");
   }
   const nextRunAtMs = task.runNowAtMs ?? task.nextRunAtMs;
+  const instruction = displayText(task.task.text, "Untitled scheduled task");
   return {
     createdAt: new Date(task.createdAtMs).toISOString(),
     createdBy: creatorLabel(task.createdBy),
@@ -211,7 +223,7 @@ function scheduledTaskSummary(
       visibility: destination.visibility,
     },
     id: task.id,
-    instruction: displayText(task.task.text, "Untitled scheduled task"),
+    instruction,
     kind: "scheduled",
     ...executionSummaryFields(stats),
     ...(nextRunAtMs !== undefined
@@ -220,6 +232,7 @@ function scheduledTaskSummary(
     ownedByViewer,
     schedule: displayText(task.schedule.description, "Schedule unavailable"),
     status: task.status,
+    title: taskDisplayTitle(task.title, instruction, "Untitled scheduled task"),
   };
 }
 
@@ -230,6 +243,7 @@ function eventTaskSummary(
   stats: TaskExecutionSummary | undefined,
   createdByEmail?: string,
 ): TaskSummary {
+  const instruction = task.task.text;
   return {
     createdAt: new Date(task.createdAtMs).toISOString(),
     createdBy: creatorLabel(task.createdBy),
@@ -242,12 +256,13 @@ function eventTaskSummary(
     },
     events: task.trigger.events,
     id: task.id,
-    instruction: task.task.text,
+    instruction,
     kind: "event",
     ...executionSummaryFields(stats),
     ownedByViewer,
     resource: `${task.trigger.label} · ${task.trigger.identifier}`,
     source: task.trigger.namespace,
+    title: taskDisplayTitle(task.title, instruction, "Untitled event task"),
     triggerAvailable: eventTaskTriggerAvailable(
       task,
       getResourceEventCatalog(),

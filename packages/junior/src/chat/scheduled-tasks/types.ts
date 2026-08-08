@@ -89,6 +89,8 @@ export interface ScheduledTask {
   status: ScheduledTaskStatus;
   statusReason?: string;
   task: ScheduledTaskSpec;
+  /** Short display title generated from the task instruction. */
+  title?: string;
   updatedAtMs: number;
 }
 
