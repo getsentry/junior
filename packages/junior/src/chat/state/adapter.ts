@@ -6,19 +6,6 @@ import { getChatConfig } from "@/chat/config";
 import { ACTIVE_LOCK_TTL_MS } from "@/chat/state/locks";
 
 const ACTIVE_LOCK_HEARTBEAT_MS = 30_000;
-/**
- * Memory adapters are process-local fixtures. Pin them on globalThis so
- * `vi.resetModules()` (common in integration tests that reload env/config)
- * cannot fork a second empty store while an older module graph still holds
- * thread handles that must observe the same scratch keys.
- */
-const MEMORY_STATE_ADAPTER_GLOBAL_KEY = Symbol.for(
-  "junior.memoryStateAdapter",
-);
-
-type JuniorGlobal = typeof globalThis & {
-  [MEMORY_STATE_ADAPTER_GLOBAL_KEY]?: StateAdapter;
-};
 
 let stateAdapter: StateAdapter | undefined;
 let redisStateAdapter: RedisStateAdapter | undefined;
@@ -274,19 +261,12 @@ function createStateAdapter(): StateAdapter {
 
   if (config.state.adapter === "memory") {
     redisStateAdapter = undefined;
-    const globalState = globalThis as JuniorGlobal;
-    const existing = globalState[MEMORY_STATE_ADAPTER_GLOBAL_KEY];
-    if (existing) {
-      return existing;
-    }
-    const created = createQueuedStateAdapter(
+    return createQueuedStateAdapter(
       createConnectingStateAdapter(
         withOptionalPrefix(createMemoryState(), config.state.keyPrefix),
       ),
       { activeLockMaxAgeMs },
     );
-    globalState[MEMORY_STATE_ADAPTER_GLOBAL_KEY] = created;
-    return created;
   }
 
   if (!config.state.redisUrl) {
@@ -343,17 +323,14 @@ export function getStateAdapter(): StateAdapter {
 }
 
 export async function disconnectStateAdapter(): Promise<void> {
-  const globalState = globalThis as JuniorGlobal;
-  const adapter = stateAdapter ?? globalState[MEMORY_STATE_ADAPTER_GLOBAL_KEY];
-  if (!adapter) {
+  if (!stateAdapter) {
     return;
   }
 
   try {
-    await adapter.disconnect();
+    await stateAdapter.disconnect();
   } finally {
     stateAdapter = undefined;
     redisStateAdapter = undefined;
-    delete globalState[MEMORY_STATE_ADAPTER_GLOBAL_KEY];
   }
 }

@@ -7,8 +7,6 @@ import type {
   Thread,
 } from "chat";
 import type { Destination } from "@sentry/junior-plugin-api";
-import { getStateAdapter } from "@/chat/state/adapter";
-import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -185,19 +183,27 @@ function channelStateKey(channelId: string): string {
   return `channel-state:${channelId}`;
 }
 
+async function getJuniorStateAdapter() {
+  // Dynamic import so harness reads survive vi.resetModules() in integration
+  // fixtures that reload env/config between agent instances.
+  const { getStateAdapter } = await import("@/chat/state/adapter");
+  return getStateAdapter();
+}
+
 async function readAdapterState(
   key: string,
 ): Promise<Record<string, unknown> | undefined> {
-  const stateAdapter = getStateAdapter();
+  const stateAdapter = await getJuniorStateAdapter();
   await stateAdapter.connect();
-  return await stateAdapter.get<Record<string, unknown>>(key);
+  return (await stateAdapter.get<Record<string, unknown>>(key)) ?? undefined;
 }
 
 async function writeAdapterState(
   key: string,
   value: Record<string, unknown>,
 ): Promise<void> {
-  const stateAdapter = getStateAdapter();
+  const { JUNIOR_THREAD_STATE_TTL_MS } = await import("@/chat/state/ttl");
+  const stateAdapter = await getJuniorStateAdapter();
   await stateAdapter.connect();
   await stateAdapter.set(key, value, JUNIOR_THREAD_STATE_TTL_MS);
 }

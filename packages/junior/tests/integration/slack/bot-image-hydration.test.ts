@@ -384,6 +384,9 @@ describe("bot image hydration", () => {
       message: {} as never,
     }));
 
+    // Capture scratch before createRuntime reloads modules and forks a fresh
+    // memory adapter; seed it into the second instance below.
+    const firstScratch = await firstThread.getState();
     const secondRuntime = await createRuntime(
       {
         services: {
@@ -403,7 +406,7 @@ describe("bot image hydration", () => {
     );
     const secondThread = await createTestThread({
       id: "slack:C0IMAGE:1700000002.000",
-      state: await firstThread.getState(),
+      state: firstScratch,
     });
 
     await secondRuntime.slackRuntime.handleNewMention(
