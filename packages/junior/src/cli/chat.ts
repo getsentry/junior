@@ -259,11 +259,25 @@ async function prepareLocalChatRun(
       throw new Error("Local agent runner is not ready");
     }
     const run = routeAgentInvocationWork({
-      fallbackWorker: async () => {
+      fallbackWorker: async (context) => {
+        // Local parents are not mailbox-driven. Parent result delivery still
+        // appends an idempotent mailbox entry and may wake this queue; ack it
+        // without starting another local turn.
+        if (context.attempt.messages.length > 0) {
+          const onlyParentResults = context.attempt.messages.every(
+            (entry) =>
+              entry.input.metadata?.kind === "agent_invocation_result",
+          );
+          if (onlyParentResults) {
+            await context.attempt.ack();
+            return { status: "completed" as const };
+          }
+        }
         throw new Error("Local child queue received non-invocation work");
       },
       invocationWorker: createAgentInvocationWorker({
         agentRunner,
+        queue: localConversationWork.queue,
       }),
     });
     await processConversationWork(message, {

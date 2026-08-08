@@ -108,6 +108,9 @@ async function createHarness(
     fallbackWorker: vi.fn(async () => ({ status: "completed" as const })),
     invocationWorker: createAgentInvocationWorker({
       agentRunner: { run },
+      conversationStore,
+      queue,
+      state,
     }),
   });
 

@@ -1,0 +1,2 @@
+ALTER TABLE "junior_agent_invocations" ADD COLUMN "parent_notification_status" text;--> statement-breakpoint
+CREATE INDEX "junior_agent_invocations_parent_notification_idx" ON "junior_agent_invocations" USING btree ("parent_notification_status","terminal_at");

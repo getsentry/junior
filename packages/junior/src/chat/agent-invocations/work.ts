@@ -54,6 +54,7 @@ import {
   markAgentInvocationMailboxAppended,
   markAgentInvocationRunning,
 } from "./store";
+import { notifyParentOfAgentInvocationResult } from "./parent-notification";
 import type { AgentInvocation, CreateAgentInvocationInput } from "./types";
 
 const agentInvocationMailboxMetadataSchema = z
@@ -302,7 +303,23 @@ function isInvocationInputCommitLost(error: unknown): boolean {
 /** Build the invocation consumer that advances work through the shared runner. */
 export function createAgentInvocationWorker(options: {
   agentRunner: AgentRunner;
+  conversationStore?: ConversationStore;
+  queue?: ConversationWorkQueue;
+  state?: StateAdapter;
 }) {
+  const deliverParentResult = async (
+    invocation: AgentInvocation,
+  ): Promise<void> => {
+    if (!options.queue) {
+      return;
+    }
+    await notifyParentOfAgentInvocationResult(invocation, {
+      conversationStore: options.conversationStore,
+      queue: options.queue,
+      state: options.state,
+    });
+  };
+
   return async (
     context: ConversationWorkerContext,
     invocationId: string,
@@ -347,6 +364,7 @@ export function createAgentInvocationWorker(options: {
       }
       if (isTerminalAgentInvocation(invocation)) {
         await persistTerminalLifecycle(invocation);
+        await deliverParentResult(invocation);
         await acknowledge();
         return { status: "completed" };
       }
@@ -357,6 +375,7 @@ export function createAgentInvocationWorker(options: {
       const projected = await projectTerminalSession(invocation);
       if (projected && isTerminalAgentInvocation(projected)) {
         await persistTerminalLifecycle(projected);
+        await deliverParentResult(projected);
         await acknowledge();
         return { status: "completed" };
       }
@@ -394,6 +413,7 @@ export function createAgentInvocationWorker(options: {
       });
       if (terminal) {
         await persistTerminalLifecycle(terminal);
+        await deliverParentResult(terminal);
       }
       await acknowledge();
       return { status: "completed" };
@@ -461,6 +481,7 @@ export function createAgentInvocationWorker(options: {
         });
         if (terminal) {
           await persistTerminalLifecycle(terminal);
+          await deliverParentResult(terminal);
         }
         await acknowledge();
         return { status: "completed" };
@@ -476,6 +497,7 @@ export function createAgentInvocationWorker(options: {
       });
       if (terminal) {
         await persistTerminalLifecycle(terminal);
+        await deliverParentResult(terminal);
       }
       await acknowledge();
       return { status: "completed" };
@@ -493,6 +515,7 @@ export function createAgentInvocationWorker(options: {
       });
       if (terminal) {
         await persistTerminalLifecycle(terminal);
+        await deliverParentResult(terminal);
       }
       await acknowledge();
       return { status: "completed" };
@@ -547,6 +570,7 @@ export function createAgentInvocationWorker(options: {
       );
     }
     await persistTerminalLifecycle(terminal);
+    await deliverParentResult(terminal);
     await acknowledge();
     return { status: "completed" };
   };

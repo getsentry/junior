@@ -109,6 +109,10 @@ import {
   isResourceEventSlackMessage,
   RESOURCE_EVENT_SYSTEM_ACTOR,
 } from "@/chat/resource-events/actor";
+import {
+  isAgentInvocationResultSlackMessage,
+  resolveAgentInvocationResultAuthority,
+} from "@/chat/agent-invocations/actor";
 import type { AgentContinueRequest } from "@/chat/services/agent-continue";
 import {
   ConversationTurnBoundaryError,
@@ -282,7 +286,10 @@ function queuedInstructionProvenance(
   queued: QueuedTurnMessage,
   teamId: string,
 ): ConversationMessageProvenance {
-  if (isResourceEventSlackMessage(queued.message)) {
+  if (
+    isResourceEventSlackMessage(queued.message) ||
+    isAgentInvocationResultSlackMessage(queued.message)
+  ) {
     return contextProvenance;
   }
   const identity = getMessageActorIdentity(queued.message);
@@ -536,7 +543,11 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         };
         await Promise.all(
           (options.queuedMessages ?? [])
-            .filter((queued) => !isResourceEventSlackMessage(queued.message))
+            .filter(
+              (queued) =>
+                !isResourceEventSlackMessage(queued.message) &&
+                !isAgentInvocationResultSlackMessage(queued.message),
+            )
             .map((queued) =>
               ensureSlackMessageActorIdentity(
                 queued.message,
@@ -557,6 +568,18 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         } else if (isResourceEventSlackMessage(message)) {
           executionActor = RESOURCE_EVENT_SYSTEM_ACTOR;
           credentialContext = credentialContextForActor(executionActor);
+        } else if (isAgentInvocationResultSlackMessage(message)) {
+          const restored = await resolveAgentInvocationResultAuthority({
+            messageId: message.id,
+            raw: message.raw,
+          });
+          if (!restored) {
+            throw new Error(
+              "Agent invocation result turn requires durable parent authority",
+            );
+          }
+          executionActor = restored.actor;
+          credentialContext = restored.credentialContext;
         } else {
           executionActor = await ensureSlackMessageActorIdentity(
             message,
@@ -658,9 +681,11 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   attachments,
                   {
                     threadId,
-                    actorId: isResourceEventSlackMessage(queued.message)
-                      ? undefined
-                      : queued.message.author.userId,
+                    actorId:
+                      isResourceEventSlackMessage(queued.message) ||
+                      isAgentInvocationResultSlackMessage(queued.message)
+                        ? undefined
+                        : queued.message.author.userId,
                     channelId,
                     runId,
                     conversation: preparedState.conversation,
@@ -1398,9 +1423,11 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               channelConfiguration: preparedState.channelConfiguration,
               disabledFeatures:
                 options.execution?.disabledFeatures ??
-                (message.author.isBot === true
-                  ? (["interactive-auth"] as const)
-                  : undefined),
+                (isAgentInvocationResultSlackMessage(message)
+                  ? undefined
+                  : message.author.isBot === true
+                    ? (["interactive-auth"] as const)
+                    : undefined),
               turnDeadlineAtMs: getTurnRequestDeadline()?.deadlineAtMs,
             },
             state: {

@@ -5,6 +5,7 @@ import {
   completeAgentInvocation,
   createAgentInvocation,
   getAgentInvocation,
+  getAgentInvocationParentResultMessageId,
   getAgentInvocationTurnId,
   markAgentInvocationRunning,
 } from "@/chat/agent-invocations/store";
@@ -23,7 +24,10 @@ import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { recoverPendingAgentInvocationMailboxAppends } from "@/chat/agent-dispatch/heartbeat";
-import { CONVERSATION_WORK_MAX_DELIVERY_ATTEMPTS } from "@/chat/task-execution/store";
+import {
+  CONVERSATION_WORK_MAX_DELIVERY_ATTEMPTS,
+  getConversationWorkState,
+} from "@/chat/task-execution/store";
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
 import {
   getAgentTurnSessionRecord,
@@ -300,6 +304,9 @@ describe("agent invocation conversation work", () => {
         fallbackWorker,
         invocationWorker: createAgentInvocationWorker({
           agentRunner: { run },
+          conversationStore,
+          queue,
+          state,
         }),
       });
       const queueMessage = queue.takeMessage();
@@ -327,10 +334,30 @@ describe("agent invocation conversation work", () => {
         getAgentInvocation(created.invocationId),
       ).resolves.toMatchObject({
         mailboxStatus: "appended",
+        parentNotificationStatus: "notified",
         result: "Durable child result",
         status: "completed",
         terminalAtMs: expect.any(Number),
       });
+      const parentWork = await getConversationWorkState({
+        conversationId: parentConversationId,
+        state,
+      });
+      expect(parentWork?.messages).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            inboundMessageId: getAgentInvocationParentResultMessageId(
+              created.invocationId,
+            ),
+            source: "internal",
+          }),
+        ]),
+      );
+      expect(
+        queue.sentRecords().some(
+          (record) => record.conversationId === parentConversationId,
+        ),
+      ).toBe(true);
       const completed = await getAgentInvocation(created.invocationId);
       await completeAgentInvocation({
         errorMessage: "late conflicting failure",
@@ -387,6 +414,9 @@ describe("agent invocation conversation work", () => {
             });
           }),
         },
+        conversationStore,
+        queue,
+        state,
       });
       const route = routeAgentInvocationWork({
         fallbackWorker: vi.fn(async () => ({ status: "completed" as const })),
@@ -417,6 +447,7 @@ describe("agent invocation conversation work", () => {
       await expect(
         getAgentInvocation(created.invocationId),
       ).resolves.toMatchObject({
+        parentNotificationStatus: "notified",
         result: "Resumed child result",
         status: "completed",
       });
@@ -515,6 +546,7 @@ describe("agent invocation conversation work", () => {
       });
       const worker = createAgentInvocationWorker({
         agentRunner: { run },
+        // No queue: this path only asserts child terminalization, not parent delivery.
       });
       // Empty resume wakes set isFinalAttempt false, so unrecoverable stranded
       // recovery must terminalize without relying on final-attempt handling.
@@ -620,6 +652,9 @@ describe("agent invocation conversation work", () => {
         fallbackWorker: vi.fn(async () => ({ status: "completed" as const })),
         invocationWorker: createAgentInvocationWorker({
           agentRunner: { run },
+          conversationStore,
+          queue,
+          state,
         }),
       });
 
@@ -701,6 +736,9 @@ describe("agent invocation conversation work", () => {
         fallbackWorker: vi.fn(async () => ({ status: "completed" as const })),
         invocationWorker: createAgentInvocationWorker({
           agentRunner: { run },
+          conversationStore,
+          queue,
+          state,
         }),
       });
 
@@ -744,6 +782,9 @@ describe("agent invocation conversation work", () => {
       const deliveryAttempts: Array<number | undefined> = [];
       const invocationWorker = createAgentInvocationWorker({
         agentRunner: { run },
+        conversationStore,
+        queue,
+        state,
       });
       const route = routeAgentInvocationWork({
         fallbackWorker: vi.fn(async () => ({ status: "completed" as const })),
@@ -781,6 +822,7 @@ describe("agent invocation conversation work", () => {
         getAgentInvocation(created.invocationId),
       ).resolves.toMatchObject({
         errorMessage: "model unavailable",
+        parentNotificationStatus: "notified",
         status: "failed",
       });
     } finally {
@@ -798,7 +840,10 @@ describe("agent invocation conversation work", () => {
       });
       const run = vi.fn();
       const ack = vi.fn();
-      const worker = createAgentInvocationWorker({ agentRunner: { run } });
+      const worker = createAgentInvocationWorker({
+        agentRunner: { run },
+        // No queue: invariant failure path only needs child terminalization.
+      });
       const context = {
         attempt: {
           ack,

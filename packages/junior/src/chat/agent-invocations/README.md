@@ -43,13 +43,30 @@ conversation tree.
    projects onto the invocation. Empty resume wakes never become final delivery
    attempts, so unrecoverable stranded work must not throw and requeue forever.
 6. Completion writes the session record first, then projects the immutable
-   result or error onto the invocation.
-7. The heartbeat repairs invocations left in `mailboxStatus: "pending"`.
+   result or error onto the invocation with
+   `parentNotificationStatus: "pending"`.
+7. The worker appends one idempotent parent-mailbox result message and marks
+   `parentNotificationStatus: "notified"`. Queue delivery is only a wake-up
+   hint; parent delivery remains discoverable from the invocation while pending.
+   Permanent builder/destination failures move to
+   `parentNotificationStatus: "failed"` so they stay queryable without infinite
+   retries.
+8. The heartbeat repairs child mailbox appends left in
+   `mailboxStatus: "pending"` and parent notifications left in
+   `parentNotificationStatus: "pending"`.
+
+Parent-result delivery shares the synthetic inbound shape with resource events
+(`task-execution/synthetic-inbound.ts`): stable inbound id, kind + durable
+reference metadata, rendered text, and a Slack envelope only when the parent
+destination is Slack. It does **not** use resource-event subscriptions. The
+parent conversation id is always the mailbox identity; authority for the parent
+turn is restored from the invocation's actor + credentialContext rather than a
+synthetic system principal.
 
 The child conversation has no provider destination. Each invocation carries
 the actor, credential context, source, and destination that bound its tool
-execution. Child output is an internal result; provider delivery remains owned
-by the parent-facing runtime.
+execution. Child output is an internal result delivered into the parent mailbox;
+provider-visible replies remain owned by the parent-facing runtime.
 
 ## Current Boundary
 
@@ -67,7 +84,7 @@ hand off models, start interactive OAuth pauses, or spawn further children.
 TODO(#881, #883): children may still need a way to force interactive auth when a
 delegated tool requires credentials the parent can already request.
 
-This slice does not yet expose result recovery, inject child results into a
-parent turn, support recursive children, or implement cancellation. Those
+Parent result delivery is automatic and durable. This slice does not yet expose
+`getAgentResult`, support recursive children, or implement cancellation. Those
 behaviors should build on the invocation record rather than introducing another
 scheduler or execution loop.

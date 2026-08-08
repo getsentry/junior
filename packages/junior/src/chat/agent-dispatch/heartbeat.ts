@@ -5,7 +5,11 @@ import { runScheduledTaskHeartbeat } from "@/chat/scheduled-tasks/heartbeat";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { createHeartbeatContext } from "./context";
-import { listPendingAgentInvocationMailboxAppends } from "@/chat/agent-invocations/store";
+import {
+  listPendingAgentInvocationMailboxAppends,
+  listPendingAgentInvocationParentNotifications,
+} from "@/chat/agent-invocations/store";
+import { notifyParentOfAgentInvocationResult } from "@/chat/agent-invocations/parent-notification";
 import { enqueueAgentInvocation } from "@/chat/agent-invocations/work";
 import {
   confirmDispatchMailboxAppend,
@@ -20,6 +24,7 @@ const DEFAULT_PLUGIN_LIMIT = 25;
 const PLUGIN_HEARTBEAT_TIMEOUT_MS = 25_000;
 const DISPATCH_MAILBOX_APPEND_LIMIT = 100;
 const AGENT_INVOCATION_MAILBOX_APPEND_LIMIT = 100;
+const AGENT_INVOCATION_PARENT_NOTIFICATION_LIMIT = 100;
 async function runWithTimeout<T>(
   promise: Promise<T>,
   timeoutMs: number,
@@ -151,6 +156,32 @@ export async function recoverPendingAgentInvocationMailboxAppends(args: {
   }
 }
 
+/** Repair terminal child results that stopped before parent-mailbox delivery. */
+export async function recoverPendingAgentInvocationParentNotifications(args: {
+  conversationWorkQueue: ConversationWorkQueue;
+  nowMs: number;
+}): Promise<void> {
+  const invocations = await listPendingAgentInvocationParentNotifications(
+    AGENT_INVOCATION_PARENT_NOTIFICATION_LIMIT,
+  );
+  for (const invocation of invocations) {
+    try {
+      await notifyParentOfAgentInvocationResult(invocation, {
+        nowMs: args.nowMs,
+        queue: args.conversationWorkQueue,
+      });
+    } catch (error) {
+      logException(
+        error,
+        "agent.invocation.parent_notification.recovery.failed",
+        {
+          "app.agent.invocation_id": invocation.invocationId,
+        },
+      );
+    }
+  }
+}
+
 /** Run the core heartbeat phases. */
 export async function runHeartbeat(args: {
   conversationWorkQueue?: ConversationWorkQueue;
@@ -166,6 +197,10 @@ export async function runHeartbeat(args: {
     nowMs: args.nowMs,
   });
   await recoverPendingAgentInvocationMailboxAppends({
+    conversationWorkQueue: queue,
+    nowMs: args.nowMs,
+  });
+  await recoverPendingAgentInvocationParentNotifications({
     conversationWorkQueue: queue,
     nowMs: args.nowMs,
   });

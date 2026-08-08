@@ -263,6 +263,7 @@ describe("retention purge job", () => {
         invocationId: "agent-invocation:retained",
         mailboxStatus: "appended",
         parentConversationId: "root",
+        parentNotificationStatus: "notified",
         result: "private delegated result",
         source: {
           conversationId: "root",

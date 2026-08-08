@@ -76,6 +76,10 @@ import {
   isResourceEventConversationMessage,
   RESOURCE_EVENT_SYSTEM_ACTOR,
 } from "@/chat/resource-events/actor";
+import {
+  isAgentInvocationResultConversationMessage,
+  resolveAgentInvocationResultAuthority,
+} from "@/chat/agent-invocations/actor";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import type { AgentRunRouting } from "@/chat/agent/request";
@@ -280,8 +284,9 @@ async function resolveSlackResumeUserActor(args: {
  *
  * Sources, in order:
  * 1. Caller routingContext (dispatch / OAuth already set actor + credentials)
- * 2. Resource-event markers → system actor
- * 3. Slack author + destination team
+ * 2. Agent-invocation result markers → parent authority from the invocation
+ * 3. Resource-event markers → system actor
+ * 4. Slack author + destination team
  *
  * Never reads Redis turn-session actor. Prefer setting actor first; credentials
  * come from the caller when already bound, else credentialContextForActor.
@@ -292,6 +297,7 @@ async function resolveResumeExecutionIdentity(args: {
   teamId: string;
   userMessage: {
     author?: { userId?: string };
+    id?: string;
     meta?: { eventType?: string };
   };
 }): Promise<{ actor: Actor; credentialContext: CredentialContext } | undefined> {
@@ -308,6 +314,15 @@ async function resolveResumeExecutionIdentity(args: {
     return actor
       ? { actor, credentialContext: routing.credentialContext }
       : undefined;
+  }
+
+  if (isAgentInvocationResultConversationMessage(args.userMessage)) {
+    const restored = await resolveAgentInvocationResultAuthority({
+      messageId: args.userMessage.id,
+    });
+    if (restored) {
+      return restored;
+    }
   }
 
   let actor: Actor | undefined = routing?.actor;

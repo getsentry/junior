@@ -36,9 +36,12 @@ conversation.
 - Normalized events contain a stable namespace and identifier plus a bounded,
   safe notification summary rather than a raw webhook payload.
 - Ingestion appends a system-authored conversation message and sends a normal
-  task-execution wake-up. Resource-event identity constants and detection live
-  in `actor.ts` (`RESOURCE_EVENT_SYSTEM_ACTOR`, synthetic Slack author id, and
-  message markers). Live and resume paths both execute as that system actor.
+  task-execution wake-up through the shared synthetic inbound builder in
+  `task-execution/synthetic-inbound.ts` (same durable mailbox shape agent-
+  invocation parent results use). Resource-event identity constants and
+  detection live in `actor.ts` (`RESOURCE_EVENT_SYSTEM_ACTOR`, synthetic Slack
+  author id, and message markers). Live and resume paths both execute as that
+  system actor.
 - A subscription selector is one Slack workspace, one namespace, one
   identifier, and one or more event types. `resourceType` and `label` are
   presentation metadata, not match keys.
