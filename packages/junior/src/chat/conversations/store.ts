@@ -43,6 +43,7 @@ export interface Conversation {
   execution: ConversationExecution;
   executionMetrics?: {
     durationMs: number;
+    runId?: string;
     usage?: AgentTurnUsage;
   };
   lastActivityAtMs: number;

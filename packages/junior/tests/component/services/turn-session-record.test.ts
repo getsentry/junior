@@ -265,6 +265,66 @@ describe("persistAuthPauseSessionRecord", () => {
     });
   });
 
+  it("keeps session metrics when a work-lease mirror advances the execution run", async () => {
+    const { getConversationStore } = await import("@/chat/db");
+    const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
+      await import("@/chat/state/turn-session");
+    const conversationStore = getConversationStore();
+    const conversationId = "local:metrics-work-lease";
+    const sessionId = "turn-metrics-work-lease";
+
+    await upsertAgentTurnSessionRecord({
+      conversationId,
+      cumulativeDurationMs: 1_500,
+      cumulativeUsage: { inputTokens: 7 },
+      modelId: "test/model",
+      piMessages: [userMessage("metered turn")],
+      sessionId,
+      sliceId: 1,
+      state: "running",
+    });
+    const conversation = await conversationStore.get({ conversationId });
+    expect(conversation).toBeDefined();
+    await conversationStore.recordExecution({
+      conversationId,
+      createdAtMs: conversation!.createdAtMs,
+      execution: {
+        runId: "work-lease-mirror",
+        status: "running",
+        updatedAtMs: conversation!.execution.updatedAtMs! + 1,
+      },
+      lastActivityAtMs: conversation!.lastActivityAtMs,
+      metrics: null,
+      updatedAtMs: conversation!.updatedAtMs + 1,
+    });
+
+    const recovered = await getAgentTurnSessionRecord(
+      conversationId,
+      sessionId,
+    );
+    expect(recovered).toMatchObject({
+      cumulativeDurationMs: 1_500,
+      cumulativeUsage: { inputTokens: 7 },
+    });
+    await upsertAgentTurnSessionRecord({
+      conversationId,
+      modelId: "test/model",
+      piMessages: recovered!.piMessages,
+      sessionId,
+      sliceId: 2,
+      state: "awaiting_resume",
+    });
+    await expect(
+      conversationStore.get({ conversationId }),
+    ).resolves.toMatchObject({
+      executionMetrics: {
+        durationMs: 1_500,
+        runId: sessionId,
+        usage: { inputTokens: 7 },
+      },
+    });
+  });
+
   it("does not inherit metrics from a prior session", async () => {
     const { getConversationStore } = await import("@/chat/db");
     const { recordAgentTurnSessionSummary, upsertAgentTurnSessionRecord } =

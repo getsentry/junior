@@ -48,7 +48,7 @@ function executionMetricsForSession(
   conversation: Awaited<ReturnType<ConversationStore["get"]>>,
   sessionId: string,
 ): { durationMs: number; usage?: AgentTurnUsage } | undefined {
-  return conversation?.execution.runId === sessionId
+  return conversation?.executionMetrics?.runId === sessionId
     ? conversation.executionMetrics
     : undefined;
 }

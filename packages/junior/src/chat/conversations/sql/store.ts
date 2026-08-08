@@ -345,9 +345,11 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
     lastActivityAtMs: requiredMsFromDate(row.lastActivityAt),
     updatedAtMs: requiredMsFromDate(row.updatedAt),
     execution,
-    executionMetrics: row.executionUsage
-      ? { durationMs: row.executionDurationMs, usage: row.executionUsage }
-      : { durationMs: row.executionDurationMs },
+    executionMetrics: {
+      durationMs: row.executionDurationMs,
+      ...(row.metricRunId ? { runId: row.metricRunId } : {}),
+      ...(row.executionUsage ? { usage: row.executionUsage } : {}),
+    },
     ...(row.parentConversationId
       ? {
           lineage: {
@@ -647,7 +649,6 @@ export class SqlStore implements ConversationStore {
       });
     });
   }
-
   async recordExecution(args: {
     channelName?: string;
     conversationId: string;
@@ -727,7 +728,6 @@ export class SqlStore implements ConversationStore {
       }
     });
   }
-
   async listByActivity(
     args: {
       limit?: number;
