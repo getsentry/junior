@@ -55,7 +55,6 @@ import { deleteConversationState } from "@/chat/task-execution/state";
 import { executeAgentRun } from "@/chat/agent";
 import { actorFromRouting } from "@/chat/agent/request";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
-import { standardModelId } from "@/chat/model-profile";
 import type { PiMessage } from "@/chat/pi/messages";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
@@ -1803,7 +1802,6 @@ function buildRuntimeServices(
               sliceId: 1,
               state: "awaiting_resume",
               piMessages,
-              modelId: standardModelId(botConfig),
               resumeReason: "yield",
               destination: runRequest.routing.destination,
               destinationVisibility: runRequest.routing.destinationVisibility,
@@ -1881,7 +1879,6 @@ function buildRuntimeServices(
               sliceId: 2,
               state: "awaiting_resume",
               piMessages,
-              modelId: "xai/grok-4.5",
               resumeReason: "timeout",
               resumedFromSliceId: 1,
               destination: runRequest.routing.destination,
