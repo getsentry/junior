@@ -15,20 +15,18 @@ export function projectUnconfirmedToolResult(
   result: AgentToolResult<unknown>,
 ): AfterToolCallResult | undefined {
   const details = result.details;
-  if (
-    !details ||
-    typeof details !== "object" ||
-    Array.isArray(details) ||
-    details.aborted !== true
-  ) {
+  if (!details || typeof details !== "object" || Array.isArray(details)) {
+    return undefined;
+  }
+
+  const record = details as Record<string, unknown>;
+  if (record.aborted !== true) {
     return undefined;
   }
 
   const target =
-    "target" in details &&
-    typeof details.target === "string" &&
-    details.target.length > 0
-      ? details.target
+    typeof record.target === "string" && record.target.length > 0
+      ? record.target
       : undefined;
   const envelope = makeStructuredToolOutput({
     ...(target ? { target } : {}),
