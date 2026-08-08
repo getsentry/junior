@@ -68,8 +68,6 @@ export const fileLengthExceptions = {
     "Existing broad sandbox egress suite; split by behavior.",
   "packages/junior/tests/integration/slack/bot-handlers.test.ts":
     "Existing broad Slack handler suite; split by handler.",
-  "packages/junior/tests/integration/slack/bot-image-hydration.test.ts":
-    "Existing broad image hydration suite; split by behavior.",
   "packages/junior/tests/integration/slack-schedule-tools.test.ts":
     "Existing broad Slack scheduler suite; split by tool.",
   "packages/junior/tests/integration/slack/subscribed-message-behavior.test.ts":
