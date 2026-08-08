@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import {
   Link,
@@ -14,6 +14,10 @@ import type {
 
 import { useTaskExecutionsData } from "../../api";
 import { LoadingView } from "../../components/LoadingView";
+import {
+  TimeRangeSelector,
+  type TimeRangeDays,
+} from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { conversationPath, formatTime } from "../../format";
@@ -81,6 +85,7 @@ function TaskExecutionsView(props: {
   data: TaskExecutionList;
 }) {
   const { data } = props;
+  const [range, setRange] = useState<TimeRangeDays>(30);
   const counts = useMemo(
     () => countByStatus(data.executions),
     [data.executions],
@@ -102,13 +107,18 @@ function TaskExecutionsView(props: {
             Back to task
           </Link>
           <PageHeader
+            actions={
+              data.executionDays.length > 0 ? (
+                <TimeRangeSelector onChange={setRange} value={range} />
+              ) : undefined
+            }
             description={`${data.task.kind} task · ${data.task.destination.label} · ${statusSummary}`}
             title={data.task.title}
           />
         </div>
 
         {data.executionDays.length > 0 ? (
-          <TaskExecutionStatusChart days={data.executionDays} />
+          <TaskExecutionStatusChart days={data.executionDays} range={range} />
         ) : null}
 
         <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1 border-b border-white/[0.07] pb-3">

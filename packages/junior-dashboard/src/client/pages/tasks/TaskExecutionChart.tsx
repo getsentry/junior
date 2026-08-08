@@ -1,11 +1,8 @@
-import { useState } from "react";
 import type { TaskExecutionDay } from "@sentry/junior/api/schema";
 import { ActivityTooltipRows } from "../../components/charts/ActivityChart";
+import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { Tooltip } from "../../components/Tooltip";
-import { cn } from "../../styles";
-
-type ChartRange = 7 | 30 | 90;
 
 const series = [
   { color: "#6ee7b7", key: "scheduled", label: "Scheduled" },
@@ -13,9 +10,11 @@ const series = [
 ] as const;
 
 /** Render completed task executions stacked by type over a trailing window. */
-export function TaskExecutionChart(props: { days: TaskExecutionDay[] }) {
-  const [range, setRange] = useState<ChartRange>(30);
-  const days = props.days.slice(-range);
+export function TaskExecutionChart(props: {
+  days: TaskExecutionDay[];
+  range: TimeRangeDays;
+}) {
+  const days = props.days.slice(-props.range);
   const width = 720;
   const height = 200;
   const left = 56;
@@ -32,36 +31,13 @@ export function TaskExecutionChart(props: { days: TaskExecutionDay[] }) {
 
   return (
     <Card className="min-h-[17rem] p-4 sm:p-5">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h2 className="m-0 font-display text-xl font-medium text-dashboard-text">
-            Activity over time
-          </h2>
-          <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
-            Completed scheduled and event task runs each day.
-          </p>
-        </div>
-        <div
-          aria-label="Task execution range"
-          className="inline-flex rounded border border-white/[0.08] bg-black/20 p-0.5"
-        >
-          {([7, 30, 90] as const).map((days) => (
-            <button
-              aria-pressed={range === days}
-              className={cn(
-                "cursor-pointer rounded-sm border-0 px-2.5 py-1.5 font-mono text-xs uppercase tracking-[0.1em] transition-colors",
-                range === days
-                  ? "bg-cyan-300/10 text-cyan-100"
-                  : "bg-transparent text-dashboard-text-muted hover:text-dashboard-text",
-              )}
-              key={days}
-              onClick={() => setRange(days)}
-              type="button"
-            >
-              {days}d
-            </button>
-          ))}
-        </div>
+      <div>
+        <h2 className="m-0 font-display text-xl font-medium text-dashboard-text">
+          Activity over time
+        </h2>
+        <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
+          Completed scheduled and event task runs each day.
+        </p>
       </div>
 
       <div
@@ -84,7 +60,7 @@ export function TaskExecutionChart(props: { days: TaskExecutionDay[] }) {
 
       <div className="relative mt-3 overflow-hidden">
         <svg
-          aria-label={`Task executions during the last ${range} days`}
+          aria-label={`Task executions during the last ${props.range} days`}
           className="block h-auto min-h-40 w-full"
           role="img"
           viewBox={`0 0 ${width} ${height}`}
