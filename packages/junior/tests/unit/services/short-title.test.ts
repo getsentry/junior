@@ -3,6 +3,7 @@ import {
   fallbackShortTitle,
   generateShortTitle,
   normalizeShortTitle,
+  resolveTaskTitle,
 } from "@/chat/services/short-title";
 
 describe("normalizeShortTitle", () => {
@@ -58,5 +59,36 @@ describe("generateShortTitle", () => {
         sourceText: "Help me debug this incident",
       }),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe("resolveTaskTitle", () => {
+  it("prefers an explicit title over model generation", async () => {
+    const completeText = vi.fn(async () => ({
+      text: "Generated title",
+    }));
+
+    await expect(
+      resolveTaskTitle({
+        completeText: completeText as never,
+        instruction: "Send the weekly project summary",
+        title: "  Weekly ops digest  ",
+      }),
+    ).resolves.toBe("Weekly ops digest");
+    expect(completeText).not.toHaveBeenCalled();
+  });
+
+  it("falls back to generation when no title is provided", async () => {
+    const completeText = vi.fn(async () => ({
+      text: "Weekly project summary",
+    }));
+
+    await expect(
+      resolveTaskTitle({
+        completeText: completeText as never,
+        instruction: "Send the weekly project summary",
+      }),
+    ).resolves.toBe("Weekly project summary");
+    expect(completeText).toHaveBeenCalledOnce();
   });
 });

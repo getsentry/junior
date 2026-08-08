@@ -80,3 +80,21 @@ export async function generateShortTitle(args: {
     return undefined;
   }
 }
+
+/**
+ * Prefer an explicit task title when provided; otherwise generate one from the
+ * instruction with the fast model.
+ */
+export async function resolveTaskTitle(args: {
+  completeText: typeof completeText;
+  instruction: string;
+  title?: string | null;
+}): Promise<string | undefined> {
+  const explicit = normalizeShortTitle(args.title ?? "");
+  if (explicit) return explicit;
+  return generateShortTitle({
+    completeText: args.completeText,
+    kind: "task",
+    sourceText: args.instruction,
+  });
+}

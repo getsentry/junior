@@ -775,7 +775,7 @@ class PluginStateSchedulerStore implements SchedulerStore {
     ) {
       await this.state.delete(claimKey(task.id, task.nextRunAtMs));
     }
-    // Plugin-state keeps title inside the JSON blob; SQL uses a dedicated column.
+    // Plugin-state has no title column, so the full task record stays intact.
     await this.state.set(taskKey(task.id), task, SCHEDULER_RECORD_TTL_MS);
 
     if (task.status === "deleted") {

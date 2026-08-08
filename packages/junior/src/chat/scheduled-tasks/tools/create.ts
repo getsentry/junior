@@ -1,6 +1,9 @@
 import { logInfo } from "@/chat/logging";
 import { completeText } from "@/chat/pi/client";
-import { generateShortTitle } from "@/chat/services/short-title";
+import {
+  resolveTaskTitle,
+  SHORT_TITLE_MAX_LENGTH,
+} from "@/chat/services/short-title";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { z } from "zod";
 import {
@@ -44,6 +47,16 @@ export function createSlackScheduleCreateTaskTool(
     inputSchema: z
       .object({
         task: z.string().min(1).max(4000),
+        title: z
+          .string()
+          .trim()
+          .min(1)
+          .max(SHORT_TITLE_MAX_LENGTH)
+          .nullable()
+          .describe(
+            "Optional short display title. Omit or use null to generate one from the task instruction.",
+          )
+          .optional(),
         schedule: scheduleIntentSchema.describe(
           "When the task runs. The scheduler computes the exact next run from this intent and the server clock.",
         ),
@@ -59,17 +72,20 @@ export function createSlackScheduleCreateTaskTool(
     prepareArguments(args) {
       const input = args as {
         task: string;
+        title?: string | null;
         schedule: z.input<typeof scheduleIntentSchema>;
         credential_mode?: "creator" | "system" | null;
       };
-      if (
-        input?.credential_mode !== "creator" &&
-        input?.credential_mode !== null
-      ) {
-        return input;
-      }
       const prepared = { ...input };
-      delete prepared.credential_mode;
+      if (prepared.title == null) {
+        delete prepared.title;
+      }
+      if (
+        prepared.credential_mode === "creator" ||
+        prepared.credential_mode === null
+      ) {
+        delete prepared.credential_mode;
+      }
       return prepared;
     },
     outputSchema: scheduleTaskToolResultSchema,
@@ -126,10 +142,10 @@ export function createSlackScheduleCreateTaskTool(
         destination,
         context.source,
       );
-      const title = await generateShortTitle({
+      const title = await resolveTaskTitle({
         completeText,
-        kind: "task",
-        sourceText: input.task,
+        instruction: input.task,
+        title: input.title,
       });
 
       const task: ScheduledTask = {
