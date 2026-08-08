@@ -76,7 +76,7 @@ const recurringScheduleIntentSchema = z
   .object({
     kind: z.literal("recurring").describe("A repeating calendar schedule."),
     frequency: z
-      .enum(["daily", "weekly", "monthly", "yearly"])
+      .enum(["daily", "weekly", "monthly", "quarterly", "yearly"])
       .describe("Recurring tasks can run at most once per day."),
     interval: z
       .number()
@@ -101,7 +101,7 @@ const recurringScheduleIntentSchema = z
       .int()
       .min(1)
       .max(31)
-      .describe("Required for monthly and yearly schedules.")
+      .describe("Required for monthly, quarterly, and yearly schedules.")
       .nullable()
       .optional(),
     month: z
@@ -130,7 +130,9 @@ const recurringScheduleIntentSchema = z
       });
     }
     if (
-      (schedule.frequency === "monthly" || schedule.frequency === "yearly") &&
+      (schedule.frequency === "monthly" ||
+        schedule.frequency === "quarterly" ||
+        schedule.frequency === "yearly") &&
       schedule.day_of_month == null
     ) {
       context.addIssue({
@@ -155,12 +157,14 @@ const recurringScheduleIntentSchema = z
     }
     if (
       schedule.frequency !== "monthly" &&
+      schedule.frequency !== "quarterly" &&
       schedule.frequency !== "yearly" &&
       schedule.day_of_month != null
     ) {
       context.addIssue({
         code: "custom",
-        message: "day_of_month applies only to monthly or yearly schedules.",
+        message:
+          "day_of_month applies only to monthly, quarterly, or yearly schedules.",
         path: ["day_of_month"],
       });
     }
@@ -245,13 +249,17 @@ function recurringDescription(
     daily: "day",
     weekly: "week",
     monthly: "month",
+    quarterly: "quarter",
     yearly: "year",
   }[schedule.frequency];
   const cadence = interval === 1 ? cadenceUnit : `${interval} ${cadenceUnit}s`;
   let detail = "";
   if (schedule.frequency === "weekly") {
     detail = ` on ${formatWeekdays(schedule.weekdays!)}`;
-  } else if (schedule.frequency === "monthly") {
+  } else if (
+    schedule.frequency === "monthly" ||
+    schedule.frequency === "quarterly"
+  ) {
     detail = ` on day ${schedule.day_of_month}`;
   } else if (schedule.frequency === "yearly") {
     detail = ` on ${String(schedule.month).padStart(2, "0")}-${String(
@@ -337,6 +345,7 @@ export function compileScheduleIntent(args: {
         }
       : {}),
     ...(args.intent.frequency === "monthly" ||
+    args.intent.frequency === "quarterly" ||
     args.intent.frequency === "yearly"
       ? { dayOfMonth: args.intent.day_of_month ?? undefined }
       : {}),

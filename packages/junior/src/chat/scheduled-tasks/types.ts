@@ -42,6 +42,7 @@ export type ScheduledCalendarFrequency =
   | "daily"
   | "weekly"
   | "monthly"
+  | "quarterly"
   | "yearly";
 
 export interface ScheduledLocalTime {

@@ -27,6 +27,7 @@ const SCHEDULE_FREQUENCY_COPY = {
   daily: { label: "Daily", unit: "day" },
   weekly: { label: "Weekly", unit: "week" },
   monthly: { label: "Monthly", unit: "month" },
+  quarterly: { label: "Quarterly", unit: "quarter" },
   yearly: { label: "Yearly", unit: "year" },
 } as const;
 

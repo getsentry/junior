@@ -66,7 +66,7 @@ const taskPrincipalSchema = z
 const recurrenceSchema = z
   .object({
     dayOfMonth: z.number().optional(),
-    frequency: z.enum(["daily", "weekly", "monthly", "yearly"]),
+    frequency: z.enum(["daily", "weekly", "monthly", "quarterly", "yearly"]),
     interval: z.number(),
     month: z.number().optional(),
     startDate: z.string(),

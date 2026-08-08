@@ -254,15 +254,21 @@ function findNextRunAtMs(args: {
     return undefined;
   }
 
-  if (args.recurrence.frequency === "monthly") {
+  if (
+    args.recurrence.frequency === "monthly" ||
+    args.recurrence.frequency === "quarterly"
+  ) {
     const startMonth = start.year * 12 + start.month - 1;
     const searchMonth = searchFrom.year * 12 + searchFrom.month - 1;
+    const intervalMonths =
+      args.recurrence.frequency === "quarterly" ? interval * 3 : interval;
     let candidateMonth =
-      startMonth + Math.ceil((searchMonth - startMonth) / interval) * interval;
+      startMonth +
+      Math.ceil((searchMonth - startMonth) / intervalMonths) * intervalMonths;
     const gregorianCycleMonths = 4_800;
     const candidateCount =
       gregorianCycleMonths /
-      greatestCommonDivisor(gregorianCycleMonths, interval);
+      greatestCommonDivisor(gregorianCycleMonths, intervalMonths);
     for (let attempts = 0; attempts < candidateCount; attempts += 1) {
       const candidateDate = {
         year: Math.floor(candidateMonth / 12),
@@ -279,7 +285,7 @@ function findNextRunAtMs(args: {
           return candidate;
         }
       }
-      candidateMonth += interval;
+      candidateMonth += intervalMonths;
     }
     return undefined;
   }

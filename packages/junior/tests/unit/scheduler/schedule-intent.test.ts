@@ -136,6 +136,36 @@ describe("schedule intent compiler", () => {
     expect(yearly.nextRunAtMs).toBe(Date.parse("2028-02-29T17:00:00.000Z"));
   });
 
+  it("compiles quarterly schedules as three-month calendar cadences", () => {
+    const compiled = compileScheduleIntent({
+      defaultTimezone: DEFAULT_TIMEZONE,
+      intent: {
+        kind: "recurring",
+        frequency: "quarterly",
+        day_of_month: 31,
+        start_date: "2026-01-31",
+        time: "09:00",
+      },
+      nowMs: Date.parse("2026-04-30T12:00:00.000Z"),
+    });
+
+    expect(compiled).toEqual({
+      nextRunAtMs: Date.parse("2026-07-31T16:00:00.000Z"),
+      schedule: {
+        description: "Every quarter on day 31 at 09:00 (America/Los_Angeles)",
+        kind: "recurring",
+        recurrence: {
+          dayOfMonth: 31,
+          frequency: "quarterly",
+          interval: 1,
+          startDate: "2026-01-31",
+          time: { hour: 9, minute: 0 },
+        },
+        timezone: "America/Los_Angeles",
+      },
+    });
+  });
+
   it("supports yearly intervals beyond the old search horizon", () => {
     const compiled = compileScheduleIntent({
       defaultTimezone: DEFAULT_TIMEZONE,
