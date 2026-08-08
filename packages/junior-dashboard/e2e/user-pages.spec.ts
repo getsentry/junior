@@ -54,20 +54,32 @@ test("opens a registered plugin page from primary navigation", async ({
   await expect(
     page.getByRole("heading", { name: "What Junior remembers" }),
   ).toBeVisible();
-  const activityRange = page.getByLabel("Memory timeline range");
-  const sevenDays = activityRange.getByRole("button", { name: "7d" });
-  const thirtyDays = activityRange.getByRole("button", { name: "30d" });
-  const ninetyDays = activityRange.getByRole("button", { name: "90d" });
+  const reportingPeriod = page.getByLabel("Reporting period");
+  await expect(reportingPeriod).toHaveCount(1);
+  const sevenDays = reportingPeriod.getByRole("button", { name: "7d" });
+  const thirtyDays = reportingPeriod.getByRole("button", { name: "30d" });
+  const ninetyDays = reportingPeriod.getByRole("button", { name: "90d" });
   await expect(thirtyDays).toHaveAttribute("aria-pressed", "true");
   await sevenDays.click();
   await expect(sevenDays).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    page.getByRole("img", { name: "Memories learned during the last 7 days" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("img", {
+      name: "Memory extraction and recall cost during the last 7 days",
+    }),
+  ).toBeVisible();
   await ninetyDays.click();
   await expect(ninetyDays).toHaveAttribute("aria-pressed", "true");
-  const costRange = page.getByLabel("Memory cost range");
-  await expect(costRange.getByRole("button", { name: "30d" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
+  await expect(
+    page.getByRole("img", { name: "Memories learned during the last 90 days" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("img", {
+      name: "Memory extraction and recall cost during the last 90 days",
+    }),
+  ).toBeVisible();
   await page
     .getByRole("navigation", { name: "Memory navigation" })
     .getByRole("link", { name: "Memories" })
@@ -103,6 +115,12 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
   ).toBeVisible();
   await expect(
     page.getByLabel("Task executions during the last 30 days"),
+  ).toBeVisible();
+  const reportingPeriod = page.getByLabel("Reporting period");
+  await expect(reportingPeriod).toHaveCount(1);
+  await reportingPeriod.getByRole("button", { name: "7d" }).click();
+  await expect(
+    page.getByLabel("Task executions during the last 7 days"),
   ).toBeVisible();
   await expect(page.getByText("2 tasks")).toBeVisible();
   await expect(page.getByText("Weekly project summary")).toBeVisible();
@@ -181,6 +199,12 @@ test("opens one task's execution history", async ({ page }) => {
   ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Executions over time" }),
+  ).toBeVisible();
+  const reportingPeriod = page.getByLabel("Reporting period");
+  await expect(reportingPeriod).toHaveCount(1);
+  await reportingPeriod.getByRole("button", { name: "90d" }).click();
+  await expect(
+    page.getByLabel("Task executions during the last 90 days"),
   ).toBeVisible();
   await expect(
     page.getByRole("link", { name: /Weekly project summary/ }),
