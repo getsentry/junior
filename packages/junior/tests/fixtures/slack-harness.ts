@@ -208,6 +208,12 @@ async function writeAdapterState(
   await stateAdapter.set(key, value, JUNIOR_THREAD_STATE_TTL_MS);
 }
 
+async function deleteAdapterState(key: string): Promise<void> {
+  const stateAdapter = await getJuniorStateAdapter();
+  await stateAdapter.connect();
+  await stateAdapter.delete(key);
+}
+
 export async function createTestThread(args: {
   id?: string;
   channelId?: string;
@@ -232,13 +238,18 @@ export async function createTestThread(args: {
   const stubAdapter = { name: "test" } as Adapter;
   const channelRef = args.channelStateRef ?? { value: {} };
 
+  // Constructor args own the fixture snapshot for this id. Always apply them so
+  // reused thread ids do not inherit leftover adapter scratch from a prior case.
+  // Empty constructor state means start clean.
   const seedThreadState = async (): Promise<void> => {
-    if (seededThreadState || Object.keys(stateData).length === 0) {
+    if (seededThreadState) {
       return;
     }
-    const existing = await readAdapterState(threadStateKey(id));
-    if (!existing) {
-      await writeAdapterState(threadStateKey(id), stateData);
+    const key = threadStateKey(id);
+    if (Object.keys(stateData).length === 0) {
+      await deleteAdapterState(key);
+    } else {
+      await writeAdapterState(key, stateData);
     }
     seededThreadState = true;
   };
@@ -254,12 +265,14 @@ export async function createTestThread(args: {
   };
 
   const seedChannelState = async (): Promise<void> => {
-    if (seededChannelState || Object.keys(channelRef.value).length === 0) {
+    if (seededChannelState) {
       return;
     }
-    const existing = await readAdapterState(channelStateKey(channelId));
-    if (!existing) {
-      await writeAdapterState(channelStateKey(channelId), channelRef.value);
+    const key = channelStateKey(channelId);
+    if (Object.keys(channelRef.value).length === 0) {
+      await deleteAdapterState(key);
+    } else {
+      await writeAdapterState(key, channelRef.value);
     }
     seededChannelState = true;
   };
