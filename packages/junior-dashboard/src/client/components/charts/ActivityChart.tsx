@@ -274,13 +274,17 @@ export function ActivityChartAverageLine(props: {
   if (!(props.average > 0) || !(props.maximum > 0)) return null;
 
   const unit = props.unit ?? "day";
+  const formatted = props.format(props.average).trim();
+  // Flooring formatters can turn a real sub-1 mean into "0"; hide that case.
+  if (!formatted || /^\$?0(?:\.0+)?(?:ms)?$/i.test(formatted)) return null;
+
   const y =
     props.layout.top +
     props.layout.plotHeight -
     (props.average / props.maximum) * props.layout.plotHeight;
   const x1 = props.layout.left;
   const x2 = props.layout.width - props.layout.right;
-  const label = `${props.format(props.average)} / ${unit}`;
+  const label = `${formatted} / ${unit}`;
   const fontSize = chartAxisFontSizePx / scale;
   // Mono width estimate for the chip and dashed-guide stop.
   const labelWidth = Math.max(52, label.length * fontSize * 0.68);

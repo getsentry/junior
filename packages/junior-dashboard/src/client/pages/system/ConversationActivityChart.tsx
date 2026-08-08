@@ -13,7 +13,10 @@ import {
 import { ChartHeader } from "../../components/charts/ChartHeader";
 import { Card } from "../../components/layout/Card";
 import { Tooltip } from "../../components/Tooltip";
-import { formatCompactNumber } from "../../format";
+import {
+  formatActivityChartAverage,
+  formatCompactNumber,
+} from "../../format";
 
 /** Plot root conversations with recorded activity each day. */
 export function ConversationActivityChart(props: {
@@ -84,7 +87,7 @@ export function ConversationActivityChart(props: {
           })}
           <ActivityChartAverageLine
             average={average}
-            format={formatCompactNumber}
+            format={formatActivityChartAverage}
             layout={layout}
             maximum={maximum}
             stroke="#22d3ee"

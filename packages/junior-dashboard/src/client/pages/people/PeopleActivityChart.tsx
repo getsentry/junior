@@ -14,7 +14,7 @@ import {
 import { Card } from "../../components/layout/Card";
 import { CardHeader } from "../../components/layout/CardHeader";
 import { Tooltip } from "../../components/Tooltip";
-import { formatCompactNumber } from "../../format";
+import { formatActivityChartAverage } from "../../format";
 
 function chartPoint(
   day: PeopleActivityDayReport,
@@ -120,7 +120,7 @@ export function PeopleActivityChart(props: {
           })}
           <ActivityChartAverageLine
             average={average}
-            format={formatCompactNumber}
+            format={formatActivityChartAverage}
             layout={layout}
             maximum={maximum}
             stroke="#fbbf24"

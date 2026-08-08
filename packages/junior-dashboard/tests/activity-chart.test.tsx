@@ -154,6 +154,23 @@ describe("ActivityChartAverageLine", () => {
     expect(html).not.toContain("/ day");
     expect(html).not.toContain("stroke-dasharray");
   });
+
+  it("hides when the formatter collapses a real mean to zero", () => {
+    const layout = createActivityChartLayout(200);
+    const html = renderToStaticMarkup(
+      <ChartSvg aria-label="floored average" layout={layout}>
+        <ActivityChartAverageLine
+          average={0.4}
+          format={() => "0"}
+          layout={layout}
+          maximum={10}
+        />
+      </ChartSvg>,
+    );
+
+    expect(html).not.toContain("/ day");
+    expect(html).not.toContain("stroke-dasharray");
+  });
 });
 
 describe("SystemMetricCharts average line", () => {

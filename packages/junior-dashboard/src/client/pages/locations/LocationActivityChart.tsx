@@ -13,7 +13,7 @@ import {
 import { Card } from "../../components/layout/Card";
 import { CardHeader } from "../../components/layout/CardHeader";
 import { Tooltip } from "../../components/Tooltip";
-import { formatCompactNumber } from "../../format";
+import { formatActivityChartAverage } from "../../format";
 
 /** Plot daily conversation volume across one public location. */
 export function LocationActivityChart(props: {
@@ -85,7 +85,7 @@ export function LocationActivityChart(props: {
           })}
           <ActivityChartAverageLine
             average={average}
-            format={formatCompactNumber}
+            format={formatActivityChartAverage}
             layout={layout}
             maximum={maximum}
             stroke="#22d3ee"

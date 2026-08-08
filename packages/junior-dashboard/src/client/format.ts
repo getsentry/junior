@@ -367,6 +367,20 @@ export function formatCompactNumber(value: number | undefined): string {
   return formatNumber(value);
 }
 
+/**
+ * Format a chart-bucket average for the dashed average guide.
+ * Keeps one decimal below 10 so fractional daily means do not collapse to "0".
+ */
+export function formatActivityChartAverage(value: number | undefined): string {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return "0";
+  }
+  if (value < 10) {
+    return (Math.round(value * 10) / 10).toFixed(1).replace(/\.0$/, "");
+  }
+  return formatCompactNumber(value);
+}
+
 export type TokenUsageSummary = {
   cachedInputTokens?: number;
   cacheCreationTokens?: number;

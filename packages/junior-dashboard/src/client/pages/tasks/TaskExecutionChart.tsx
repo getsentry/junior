@@ -12,7 +12,7 @@ import {
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { Tooltip } from "../../components/Tooltip";
-import { formatCompactNumber } from "../../format";
+import { formatActivityChartAverage } from "../../format";
 
 const series = [
   { color: "#6ee7b7", key: "scheduled", label: "Scheduled" },
@@ -123,7 +123,7 @@ export function TaskExecutionChart(props: {
           })}
           <ActivityChartAverageLine
             average={average}
-            format={formatCompactNumber}
+            format={formatActivityChartAverage}
             layout={layout}
             maximum={maximum}
             stroke="#e2e8f0"

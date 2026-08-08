@@ -3,7 +3,11 @@ import type { ConversationMetricDay } from "@sentry/junior/api/schema";
 import { formatDuration } from "../Duration";
 import { Card } from "../layout/Card";
 import { Tooltip } from "../Tooltip";
-import { formatCompactNumber, formatCostSummary } from "../../format";
+import {
+  formatActivityChartAverage,
+  formatCompactNumber,
+  formatCostSummary,
+} from "../../format";
 import {
   ActivityChartAverageLine,
   ActivityChartDateLabels,
@@ -196,7 +200,11 @@ function MetricChart(props: {
           })}
           <ActivityChartAverageLine
             average={average}
-            format={chart.format}
+            format={
+              chart.metric === "tokens"
+                ? formatActivityChartAverage
+                : chart.format
+            }
             layout={layout}
             maximum={maximum}
             stroke={chart.color}
