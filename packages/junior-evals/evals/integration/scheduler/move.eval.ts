@@ -9,14 +9,12 @@ import { mention, rubric, slackEvals } from "../../../src/helpers";
 import {
   scheduledTaskCreateCalls,
   scheduledTaskDeleteCalls,
-  scheduledTaskFindCalls,
   scheduledTaskListCalls,
-  scheduledTaskMoveCalls,
   scheduledTaskUpdateCalls,
   seedScheduledTask,
 } from "./helpers";
 
-describeEval("Schedule Move", slackEvals, (it) => {
+describeEval("Schedule Destination Updates", slackEvals, (it) => {
   it("when asked what is scheduled here, list only the active channel", async ({
     run,
   }) => {
@@ -73,12 +71,17 @@ describeEval("Schedule Move", slackEvals, (it) => {
       }),
     });
 
-    expect(scheduledTaskListCalls(result.session).length).toBeGreaterThan(0);
-    expect(scheduledTaskFindCalls(result.session)).toEqual([]);
-    expect(scheduledTaskMoveCalls(result.session)).toEqual([]);
+    const listCalls = scheduledTaskListCalls(result.session);
+    expect(listCalls.length).toBeGreaterThan(0);
+    for (const call of listCalls) {
+      expect(call.arguments?.channel_id == null || call.arguments?.channel_id === here.channel_id).toBe(
+        true,
+      );
+    }
+    expect(scheduledTaskUpdateCalls(result.session)).toEqual([]);
   });
 
-  it("when asked once in the destination channel, move the requester task here", async ({
+  it("when asked once in the destination channel, update the requester task to deliver here", async ({
     run,
   }) => {
     const author = {
@@ -130,13 +133,15 @@ describeEval("Schedule Move", slackEvals, (it) => {
       }),
     });
 
-    expect(scheduledTaskFindCalls(result.session).length).toBeGreaterThan(0);
-    const moveCalls = scheduledTaskMoveCalls(result.session);
-    expect(moveCalls).toHaveLength(1);
-    expect(moveCalls[0]!.arguments).toMatchObject({ task_id: taskId });
+    expect(scheduledTaskListCalls(result.session).length).toBeGreaterThan(0);
+    const updateCalls = scheduledTaskUpdateCalls(result.session);
+    expect(updateCalls).toHaveLength(1);
+    expect(updateCalls[0]!.arguments).toMatchObject({
+      task_id: taskId,
+      destination: "here",
+    });
     expect(scheduledTaskCreateCalls(result.session)).toEqual([]);
     expect(scheduledTaskDeleteCalls(result.session)).toEqual([]);
-    expect(scheduledTaskUpdateCalls(result.session)).toEqual([]);
 
     const stored = await createSchedulerSqlStore(
       getDb() as unknown as SchedulerDb,

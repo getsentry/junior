@@ -1,3 +1,4 @@
+import { logInfo } from "@/chat/logging";
 import { completeText } from "@/chat/pi/client";
 import { generateShortTitle } from "@/chat/services/short-title";
 import { zodTool } from "@/chat/tool-support/zod-tool";
@@ -7,13 +8,16 @@ import {
   ScheduleIntentError,
   scheduleIntentSchema,
 } from "../schedule-intent";
+import { scheduledTaskAttributes } from "../telemetry";
 import type { ScheduledTask } from "../types";
 import {
   compactTask,
+  getConversationAccess,
   getDefaultScheduleTimezone,
-  getWritableTask,
   normalizeStatus,
+  requireActiveConversation,
   requireActor,
+  sameDestination,
   scheduleTaskToolResult,
   scheduleTaskToolResultSchema,
   schedulerStore,
@@ -21,7 +25,7 @@ import {
   type SchedulerToolContext,
 } from "../tool-support";
 
-/** Create a tool that edits a scheduled task in the active Slack conversation. */
+/** Create a tool that edits a scheduled task, including moving it here. */
 export function createSlackScheduleUpdateTaskTool(
   context: SchedulerToolContext,
 ) {
@@ -34,7 +38,7 @@ export function createSlackScheduleUpdateTaskTool(
       readOnlyHint: false,
     },
     description:
-      "Edit, reschedule, unblock, or change credential use for an existing Junior scheduled task in the active Slack conversation.",
+      "Edit, reschedule, unblock, change credential use, or move an existing Junior scheduled task. Same-channel edits stay in the active conversation. To rehome a task into this conversation, set destination to \"here\" (creator only). Do not pass arbitrary destination channel IDs.",
     executionMode: "sequential",
     inputSchema: z
       .object({
@@ -42,12 +46,12 @@ export function createSlackScheduleUpdateTaskTool(
           .string()
           .min(1)
           .describe(
-            "ID of the task to update. Must be from this active Slack conversation.",
+            "ID of the task to update. Same-channel edits use a task from this conversation; destination moves may use a requester-owned task found via slackScheduleListTasks.",
           ),
         task: z.string().min(1).max(4000).optional(),
         schedule: scheduleIntentSchema
           .describe(
-            "Complete replacement schedule when rescheduling. Omit for task, status, or credential-only changes; the scheduler computes the next run.",
+            "Complete replacement schedule when rescheduling. Omit for task, status, destination, or credential-only changes; the scheduler computes the next run.",
           )
           .nullable()
           .optional(),
@@ -55,6 +59,13 @@ export function createSlackScheduleUpdateTaskTool(
           .enum(["active", "blocked"])
           .describe(
             "Set to active to clear a blocked task, or blocked when dispatch cannot continue.",
+          )
+          .optional(),
+        destination: z
+          .literal("here")
+          .nullable()
+          .describe(
+            'Move the task into the active Slack conversation. Only the creator may move a task, and only "here" is allowed. Omit or use null to leave the destination unchanged.',
           )
           .optional(),
         credential_mode: z
@@ -68,21 +79,55 @@ export function createSlackScheduleUpdateTaskTool(
       .strict(),
     outputSchema: scheduleTaskToolResultSchema,
     execute: async (input) => {
-      const lookup = await getWritableTask({
-        context,
-        taskId: input.task_id,
-      });
+      const activeDestination = requireActiveConversation(context);
+      const actor = requireActor(context, activeDestination);
+      const store = schedulerStore(context);
+      const lookup = await store.getTask(input.task_id);
+      if (!lookup || lookup.status === "deleted") {
+        throwToolInputError("Scheduled task was not found.");
+      }
       if (lookup.status === "completed") {
         throwToolInputError(
           "Completed scheduled tasks cannot be updated. Create a new task instead.",
         );
       }
-      const actor = requireActor(context, lookup.destination);
+      if (lookup.destination.platform !== "slack") {
+        throwToolInputError("Scheduled task destination is invalid.");
+      }
+      if (lookup.destination.teamId !== activeDestination.teamId) {
+        throwToolInputError(
+          "Scheduled tasks can only be managed within the same Slack workspace.",
+        );
+      }
+
+      const moveHere = input.destination === "here";
+      const alreadyHere = sameDestination(lookup, activeDestination);
       const isCreator = actor.slackUserId === lookup.createdBy.slackUserId;
+
+      if (!alreadyHere && !moveHere) {
+        throwToolInputError(
+          "Scheduled task can only be managed from the Slack destination where it currently delivers. Set destination to \"here\" to move it into this conversation.",
+        );
+      }
+      if (moveHere && !isCreator) {
+        throwToolInputError(
+          "Only the scheduled task creator can move this task.",
+        );
+      }
       if (input.credential_mode === "creator" && !isCreator) {
         throwToolInputError(
           "Only the scheduled task creator can enable creator credential use.",
         );
+      }
+
+      const changingDestination = moveHere && !alreadyHere;
+      if (changingDestination) {
+        const incompleteRuns = await store.listIncompleteRunsForTasks([lookup]);
+        if (incompleteRuns.length > 0) {
+          throwToolInputError(
+            "Scheduled task cannot be moved while an occurrence is already running. Try again after the current run finishes.",
+          );
+        }
       }
 
       const nowMs = context.now?.() ?? Date.now();
@@ -125,9 +170,16 @@ export function createSlackScheduleUpdateTaskTool(
       const nextInstruction =
         input.task !== undefined ? input.task : lookup.task.text;
       const instructionChanged = nextInstruction !== lookup.task.text;
+      const nextDestination = changingDestination
+        ? activeDestination
+        : lookup.destination;
       const next: ScheduledTask = {
         ...lookup,
+        conversationAccess: changingDestination
+          ? getConversationAccess(activeDestination, context.source)
+          : lookup.conversationAccess,
         credentialMode,
+        destination: nextDestination,
         updatedAtMs: nowMs,
         nextRunAtMs,
         runNowAtMs:
@@ -148,10 +200,40 @@ export function createSlackScheduleUpdateTaskTool(
         else delete next.title;
       }
 
-      await schedulerStore(context).saveTask(next);
+      // Destination already here with only destination:"here" is a no-op success.
+      if (
+        !changingDestination &&
+        !instructionChanged &&
+        !compiled &&
+        status === undefined &&
+        (input.credential_mode === undefined ||
+          input.credential_mode === null ||
+          input.credential_mode === lookup.credentialMode) &&
+        moveHere
+      ) {
+        return scheduleTaskToolResult(
+          "slackScheduleUpdateTask",
+          compactTask(lookup),
+        );
+      }
+
+      await store.saveTask(next);
+      const committed = await store.getTask(input.task_id);
+      if (!committed) {
+        throwToolInputError("Scheduled task update did not complete.");
+      }
+      if (changingDestination) {
+        if (!sameDestination(committed, activeDestination)) {
+          throwToolInputError("Scheduled task move did not complete.");
+        }
+        logInfo(
+          "scheduled_task.move.completed",
+          scheduledTaskAttributes(committed),
+        );
+      }
       return scheduleTaskToolResult(
         "slackScheduleUpdateTask",
-        compactTask(next),
+        compactTask(committed),
       );
     },
   });

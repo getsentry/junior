@@ -3,9 +3,7 @@ import { createSchedulerSqlStore } from "@/chat/scheduled-tasks/store";
 import {
   createSlackScheduleCreateTaskTool,
   createSlackScheduleDeleteTaskTool,
-  createSlackScheduleFindTasksTool,
   createSlackScheduleListTasksTool,
-  createSlackScheduleMoveTaskTool,
   createSlackScheduleRunTaskNowTool,
   createSlackScheduleUpdateTaskTool,
   type SchedulerToolContext,
@@ -41,9 +39,7 @@ export function createScheduledTaskTools(
   if (!taskContext) return {};
   return {
     slackScheduleCreateTask: createSlackScheduleCreateTaskTool(taskContext),
-    slackScheduleFindTasks: createSlackScheduleFindTasksTool(taskContext),
     slackScheduleListTasks: createSlackScheduleListTasksTool(taskContext),
-    slackScheduleMoveTask: createSlackScheduleMoveTaskTool(taskContext),
     slackScheduleUpdateTask: createSlackScheduleUpdateTaskTool(taskContext),
     slackScheduleDeleteTask: createSlackScheduleDeleteTaskTool(taskContext),
     slackScheduleRunTaskNow: createSlackScheduleRunTaskNowTool(taskContext),

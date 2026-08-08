@@ -1,40 +1,116 @@
+import {
+  parseRequiredSlackChannelIdParam,
+  slackChannelIdParam,
+} from "@/chat/slack/id-param";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { z } from "zod";
+import type { ScheduledTask } from "../types";
 import {
   compactTask,
   MAX_LISTED_TASKS,
   requireActiveConversation,
+  requireActor,
   sameDestination,
   scheduleListToolResult,
   scheduleListToolResultSchema,
   schedulerStore,
+  throwToolInputError,
   type SchedulerToolContext,
 } from "../tool-support";
 
-/** Create a tool that lists scheduled tasks for the active Slack conversation. */
+function taskMatchesQuery(task: ScheduledTask, query: string): boolean {
+  const normalized = query.toLowerCase();
+  return [
+    task.title,
+    task.task.text,
+    task.schedule.description,
+    task.schedule.timezone,
+    task.status,
+  ].some((value) => value?.toLowerCase().includes(normalized));
+}
+
+/** Create a tool that lists scheduled tasks for the active conversation or the requester. */
 export function createSlackScheduleListTasksTool(
   context: SchedulerToolContext,
 ) {
   return zodTool({
     description:
-      "List scheduled Junior tasks for the active Slack conversation. Use when the user asks what is scheduled here, or when task IDs are needed before editing, deleting, or running schedules. Only manages tasks for the active Slack DM or channel.",
+      "List scheduled Junior tasks. With no filters, lists the active Slack conversation. Pass channel_id and/or query to find the requester's tasks elsewhere in the workspace before editing or moving one here. Do not invent channel IDs.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
       openWorldHint: false,
       readOnlyHint: true,
     },
-    inputSchema: z.object({}),
+    inputSchema: z
+      .object({
+        channel_id: slackChannelIdParam(
+          "Optional Slack channel/conversation ID to filter by current task destination (for example C123). Prefer a channel mention from the user request.",
+        )
+          .nullable()
+          .optional(),
+        query: z
+          .string()
+          .trim()
+          .min(1)
+          .max(200)
+          .nullable()
+          .describe(
+            "Optional natural-language filter matched against task title, instruction, schedule, timezone, or status.",
+          )
+          .optional(),
+      })
+      .strict(),
     outputSchema: scheduleListToolResultSchema,
-    execute: async () => {
+    execute: async (input) => {
       const destination = requireActiveConversation(context);
+      const actor = requireActor(context, destination);
 
-      const tasks = await schedulerStore(context).listTasksForTeam(
-        destination.teamId,
-      );
-      const matching = tasks.filter((task) =>
-        sameDestination(task, destination),
-      );
+      let channelId: string | undefined;
+      if (input.channel_id != null) {
+        const parsed = parseRequiredSlackChannelIdParam(
+          "channel_id",
+          input.channel_id,
+        );
+        if (!parsed.ok) {
+          throwToolInputError(parsed.error);
+        }
+        channelId = parsed.value;
+      }
+      const query = input.query?.trim() || undefined;
+      const crossConversation =
+        Boolean(query) ||
+        (channelId !== undefined && channelId !== destination.channelId);
+
+      const matching = (
+        await schedulerStore(context).listTasksForTeam(destination.teamId)
+      )
+        .filter((task) => {
+          if (task.destination.platform !== "slack") return false;
+          if (task.destination.teamId !== destination.teamId) return false;
+          if (task.status === "completed") return false;
+          if (channelId && task.destination.channelId !== channelId) {
+            return false;
+          }
+          if (!crossConversation && !sameDestination(task, destination)) {
+            return false;
+          }
+          // Outside the active conversation, only the creator can discover tasks.
+          if (
+            crossConversation &&
+            !sameDestination(task, destination) &&
+            task.createdBy.slackUserId !== actor.slackUserId
+          ) {
+            return false;
+          }
+          if (query && !taskMatchesQuery(task, query)) return false;
+          return true;
+        })
+        .sort(
+          (left, right) =>
+            right.createdAtMs - left.createdAtMs ||
+            right.id.localeCompare(left.id),
+        );
       const visible = matching.slice(0, MAX_LISTED_TASKS).map(compactTask);
 
       return scheduleListToolResult({

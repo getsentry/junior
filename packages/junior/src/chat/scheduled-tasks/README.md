@@ -21,12 +21,12 @@ Task status is `active`, `blocked`, `completed`, or `deleted`. There is no pause
 
 ## Destination moves
 
-Same-channel create/list/update/delete stay bound to the active Slack conversation.
+Same-channel create/list/update/delete stay bound to the active Slack conversation by default.
 
-Cross-channel moves are destination-first:
+Cross-channel rehomes stay destination-first and reuse the existing tools:
 
 1. ask in the conversation where the task should deliver next;
-2. `slackScheduleFindTasks` searches only the requester's tasks in the current workspace;
-3. `slackScheduleMoveTask` rehomes that existing task row into the active conversation.
+2. `slackScheduleListTasks` with optional `channel_id` / `query` finds the requester's matching task elsewhere in the workspace;
+3. `slackScheduleUpdateTask` with `destination: "here"` rehomes that existing task row into the active conversation.
 
-Only the creator may move a task. Move preserves task id, instruction, schedule, creator identity, credential mode, and next run. It reclassifies conversation access from the active Slack source and refuses while an incomplete occurrence is already pending or running. Do not emulate a move with create+delete.
+Only the creator may change destination. Move preserves task id, instruction, schedule, creator identity, credential mode, and next run. It reclassifies conversation access from the active Slack source and refuses while an incomplete occurrence is already pending or running. Do not emulate a move with create+delete.
