@@ -14,6 +14,7 @@ export function createSlackMessageAddReactionTool(
   state: ToolState,
 ) {
   return zodTool({
+    approvalMode: "approve",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,

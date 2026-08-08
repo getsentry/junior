@@ -56,6 +56,15 @@ function createState() {
 }
 
 describe("addReaction tool", () => {
+  it("always bypasses action review", () => {
+    const tool = createSlackMessageAddReactionTool(
+      TEST_SLACK_CONTEXT,
+      createState() as any,
+    );
+
+    expect(tool.approvalMode).toBe("approve");
+  });
+
   it("rejects non-alias emoji input", async () => {
     addReactionToMessage.mockReset();
     const tool = createSlackMessageAddReactionTool(
