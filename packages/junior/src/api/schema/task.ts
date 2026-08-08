@@ -108,11 +108,28 @@ export const taskExecutionListSchema = z
   })
   .strict();
 
+export const taskRunSchema = taskExecutionSchema
+  .extend({
+    kind: z.enum(["scheduled", "event"]),
+    taskId: z.string().min(1),
+    taskTitle: z.string().min(1),
+  })
+  .strict();
+
+export const taskRunListSchema = z
+  .object({
+    runs: z.array(taskRunSchema),
+    truncated: z.boolean(),
+  })
+  .strict();
+
 export type TaskExecutionDay = z.output<typeof taskExecutionDaySchema>;
 export type TaskExecutionStatusDay = z.output<
   typeof taskExecutionStatusDaySchema
 >;
 export type TaskExecution = z.output<typeof taskExecutionSchema>;
 export type TaskExecutionList = z.output<typeof taskExecutionListSchema>;
+export type TaskRun = z.output<typeof taskRunSchema>;
+export type TaskRunList = z.output<typeof taskRunListSchema>;
 export type TaskSummary = z.output<typeof taskSummarySchema>;
 export type TaskList = z.output<typeof taskListSchema>;

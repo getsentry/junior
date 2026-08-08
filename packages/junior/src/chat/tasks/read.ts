@@ -3,6 +3,7 @@ import { and, eq, or } from "drizzle-orm";
 import type {
   TaskExecutionList,
   TaskList,
+  TaskRunList,
   TaskSummary,
 } from "@/api/schema/task";
 import { fallbackShortTitle } from "@/chat/services/short-title";
@@ -11,6 +12,7 @@ import {
   readTaskExecutions,
   readTaskExecutionStatusDays,
   readTaskExecutionSummaries,
+  readTaskRuns,
   type TaskExecutionSummary,
 } from "@/chat/tasks/execution-stats";
 import { getDb } from "@/chat/db";
@@ -464,6 +466,28 @@ export async function readViewerTasks(user: User): Promise<TaskList> {
     truncated:
       ownedCandidates.length > TASK_LIST_LIMIT ||
       publicCandidates.length > TASK_LIST_LIMIT,
+  };
+}
+
+/** Read newest runs across the viewer-visible scheduled and event tasks. */
+export async function readViewerTaskRuns(user: User): Promise<TaskRunList> {
+  const taskList = await readViewerTasks(user);
+  const taskTitles = new Map(
+    taskList.tasks.map((task) => [`${task.kind}:${task.id}`, task.title]),
+  );
+  const runs = await readTaskRuns({
+    limit: TASK_EXECUTION_LIST_LIMIT + 1,
+    tasks: taskList.tasks.map((task) => ({
+      kind: task.kind,
+      taskId: task.id,
+    })),
+  });
+  return {
+    runs: runs.slice(0, TASK_EXECUTION_LIST_LIMIT).map((run) => ({
+      ...run,
+      taskTitle: taskTitles.get(`${run.kind}:${run.taskId}`) ?? "Untitled task",
+    })),
+    truncated: runs.length > TASK_EXECUTION_LIST_LIMIT,
   };
 }
 

@@ -109,6 +109,7 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
   await page.getByRole("link", { name: "Tasks" }).click();
 
   await expect(page).toHaveURL(`${server.baseURL}/tasks`);
+  await expect(page.getByLabel("Tasks navigation")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Tasks" })).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Activity over time" }),
@@ -123,6 +124,13 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
     page.getByLabel("Task executions during the last 7 days"),
   ).toBeVisible();
   await expect(page.getByText("2 tasks")).toBeVisible();
+  await page
+    .getByLabel("Tasks navigation")
+    .getByRole("link", { name: "Tasks" })
+    .click();
+  await expect(page).toHaveURL(`${server.baseURL}/tasks/list`);
+  await expect(page.getByRole("heading", { name: "All tasks" })).toBeVisible();
+  await expect(page.getByLabel("Search tasks")).toBeVisible();
   await expect(page.getByText("Weekly project summary")).toBeVisible();
   await expect(page.getByText("Closed issue summary")).toBeVisible();
   await expect(page.getByLabel("Scheduled task")).toBeVisible();
@@ -188,11 +196,24 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
   expect(browserErrors).toEqual([]);
 });
 
+test("lists runs across tasks", async ({ page }) => {
+  const browserErrors = collectBrowserErrors(page);
+  await page.goto(`${server.baseURL}/tasks/runs`);
+
+  await expect(page.getByRole("heading", { name: "Runs" })).toBeVisible();
+  await expect(page.getByText("Weekly project summary").first()).toBeVisible();
+  await expect(
+    page.getByText("scheduled", { exact: true }).first(),
+  ).toBeVisible();
+  await expect(
+    page.getByText("completed", { exact: true }).first(),
+  ).toBeVisible();
+  expect(browserErrors).toEqual([]);
+});
+
 test("opens one task's execution history", async ({ page }) => {
   const browserErrors = collectBrowserErrors(page);
-  await page.goto(
-    `${server.baseURL}/tasks/scheduled/scheduled-1/executions`,
-  );
+  await page.goto(`${server.baseURL}/tasks/scheduled/scheduled-1/executions`);
 
   await expect(
     page.getByRole("heading", { name: "Weekly project summary" }),
@@ -209,8 +230,12 @@ test("opens one task's execution history", async ({ page }) => {
   await expect(
     page.getByRole("link", { name: /Weekly project summary/ }),
   ).toBeVisible();
-  await expect(page.getByText("completed", { exact: true }).first()).toBeVisible();
-  await expect(page.getByText("No conversation", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("completed", { exact: true }).first(),
+  ).toBeVisible();
+  await expect(
+    page.getByText("No conversation", { exact: true }),
+  ).toBeVisible();
   expect(browserErrors).toEqual([]);
 });
 

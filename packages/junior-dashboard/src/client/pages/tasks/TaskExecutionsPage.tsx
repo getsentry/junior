@@ -27,15 +27,14 @@ import { TaskExecutionStatusChart } from "./TaskExecutionStatusChart";
 export function TaskExecutionsPage(props: { enabled: boolean }) {
   const { taskId, kind } = useParams();
   const [searchParams] = useSearchParams();
-  const taskKind =
-    kind === "scheduled" || kind === "event" ? kind : undefined;
+  const taskKind = kind === "scheduled" || kind === "event" ? kind : undefined;
   const query = useTaskExecutionsData(
     props.enabled && Boolean(taskId && taskKind),
     taskKind,
     taskId,
   );
   const backTo = pathWithSearch(
-    taskId ? `/tasks/${encodeURIComponent(taskId)}` : "/tasks",
+    taskId ? `/tasks/list/${encodeURIComponent(taskId)}` : "/tasks/list",
     searchParams,
   );
 
@@ -55,13 +54,14 @@ export function TaskExecutionsPage(props: { enabled: boolean }) {
           />
           <Card padding="md">
             <p className="m-0 text-sm text-rose-300">
-              {query.error instanceof DashboardApiError && query.error.status === 404
+              {query.error instanceof DashboardApiError &&
+              query.error.status === 404
                 ? "This task was not found or is not visible to you."
                 : "Task executions could not be loaded. Try again."}
             </p>
             <Link
               className="mt-3 inline-flex items-center gap-2 font-mono text-xs text-dashboard-text-muted no-underline hover:text-dashboard-text"
-              to="/tasks"
+              to="/tasks/list"
             >
               <ArrowLeft aria-hidden="true" size={14} />
               Back to tasks
@@ -72,9 +72,7 @@ export function TaskExecutionsPage(props: { enabled: boolean }) {
     );
   }
 
-  return (
-    <TaskExecutionsView backTo={backTo} data={query.data} />
-  );
+  return <TaskExecutionsView backTo={backTo} data={query.data} />;
 }
 
 function TaskExecutionsView(props: {

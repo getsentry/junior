@@ -77,7 +77,10 @@ function taskMatches(task: TaskSummary, search: string): boolean {
 }
 
 /** Render viewer-owned and public-workspace tasks in one native view. */
-export function TasksPage(props: { enabled: boolean }) {
+export function TasksPage(props: {
+  enabled: boolean;
+  view: "list" | "overview";
+}) {
   const [range, setRange] = useState<TimeRangeDays>(30);
   const query = useTasksData(props.enabled);
   const queryClient = useQueryClient();
@@ -88,6 +91,7 @@ export function TasksPage(props: { enabled: boolean }) {
   const [scope, setScope] = useSearchParamEnum("scope", "mine", TASK_SCOPES);
   const [searchText, setSearchText, searchQuery] = useDebouncedSearchParam();
   const search = searchQuery.toLowerCase();
+  const listPath = "/tasks/list";
   const tasksPath = (pathname: string) =>
     pathWithSearch(pathname, location.search);
   const tasks = query.data?.tasks ?? EMPTY_TASKS;
@@ -137,58 +141,64 @@ export function TasksPage(props: { enabled: boolean }) {
     <div className={`${dashboardContainerClass} px-4 py-8 md:px-8`}>
       <section className="mx-auto grid w-full max-w-6xl gap-5">
         <PageHeader
-          description="Scheduled and event-driven work created by users."
-          {...(query.data?.executionDays?.length
+          description={
+            props.view === "overview"
+              ? "Scheduled and event-driven work created by users."
+              : "Find and manage tasks across your linked workspaces."
+          }
+          {...(props.view === "overview" && query.data?.executionDays?.length
             ? { onRangeChange: setRange, range }
             : {})}
-          title="Tasks"
+          title={props.view === "overview" ? "Tasks" : "All tasks"}
         />
-        {query.data?.executionDays?.length ? (
+        {props.view === "overview" && query.data?.executionDays?.length ? (
           <TaskExecutionChart days={query.data.executionDays} range={range} />
         ) : null}
-        <Card className="grid gap-4 p-4 lg:grid-cols-[auto_auto_minmax(16rem,1fr)] lg:items-end">
-          <TaskFilterGroup label="Scope">
-            <ToggleButton
-              className="inline-flex items-center gap-1.5"
-              onClick={() => setScope("mine")}
-              pressed={scope === "mine"}
-              variant="pill"
-            >
-              <UserRound aria-hidden="true" size={13} />
-              Mine <span className="opacity-65">{mineCount}</span>
-            </ToggleButton>
-            <ToggleButton
-              className="inline-flex items-center gap-1.5"
-              onClick={() => setScope("public")}
-              pressed={scope === "public"}
-              variant="pill"
-            >
-              <Globe2 aria-hidden="true" size={13} />
-              Public <span className="opacity-65">{publicCount}</span>
-            </ToggleButton>
-          </TaskFilterGroup>
-          <TaskFilterGroup label="Type">
-            {(["all", "scheduled", "event"] as const).map((kind) => (
+        {props.view === "list" ? (
+          <Card className="grid gap-4 p-4 lg:grid-cols-[auto_auto_minmax(16rem,1fr)] lg:items-end">
+            <TaskFilterGroup label="Scope">
               <ToggleButton
-                key={kind}
-                onClick={() => setFilter(kind)}
-                pressed={filter === kind}
+                className="inline-flex items-center gap-1.5"
+                onClick={() => setScope("mine")}
+                pressed={scope === "mine"}
                 variant="pill"
               >
-                {kind}
+                <UserRound aria-hidden="true" size={13} />
+                Mine <span className="opacity-65">{mineCount}</span>
               </ToggleButton>
-            ))}
-          </TaskFilterGroup>
-          <TaskFilterGroup label="Search">
-            <SearchInput
-              className="w-full lg:max-w-sm"
-              label="Search tasks"
-              onChange={setSearchText}
-              placeholder="Title, instruction, location, or creator"
-              value={searchText}
-            />
-          </TaskFilterGroup>
-        </Card>
+              <ToggleButton
+                className="inline-flex items-center gap-1.5"
+                onClick={() => setScope("public")}
+                pressed={scope === "public"}
+                variant="pill"
+              >
+                <Globe2 aria-hidden="true" size={13} />
+                Public <span className="opacity-65">{publicCount}</span>
+              </ToggleButton>
+            </TaskFilterGroup>
+            <TaskFilterGroup label="Type">
+              {(["all", "scheduled", "event"] as const).map((kind) => (
+                <ToggleButton
+                  key={kind}
+                  onClick={() => setFilter(kind)}
+                  pressed={filter === kind}
+                  variant="pill"
+                >
+                  {kind}
+                </ToggleButton>
+              ))}
+            </TaskFilterGroup>
+            <TaskFilterGroup label="Search">
+              <SearchInput
+                className="w-full lg:max-w-sm"
+                label="Search tasks"
+                onChange={setSearchText}
+                placeholder="Title, instruction, location, or creator"
+                value={searchText}
+              />
+            </TaskFilterGroup>
+          </Card>
+        ) : null}
         <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1 border-b border-white/[0.07] pb-3">
           <p className="m-0 font-display text-lg text-dashboard-text">
             {visibleTaskCount} {visibleTaskCount === 1 ? "task" : "tasks"}
@@ -232,8 +242,8 @@ export function TasksPage(props: { enabled: boolean }) {
                       navigate(
                         tasksPath(
                           taskId === task.id
-                            ? "/tasks"
-                            : `/tasks/${encodeURIComponent(task.id)}`,
+                            ? listPath
+                            : `${listPath}/${encodeURIComponent(task.id)}`,
                         ),
                       )
                     }
@@ -257,7 +267,7 @@ export function TasksPage(props: { enabled: boolean }) {
         ) : null}
       </section>
       <TaskDetailsDrawer
-        onClose={() => navigate(tasksPath("/tasks"))}
+        onClose={() => navigate(tasksPath(listPath))}
         task={selectedTask}
       />
     </div>
