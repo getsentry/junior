@@ -1,9 +1,10 @@
 import type { PluginOperationalReport } from "@sentry/junior/api/schema";
 
 import {
-  ActivityChartAxisText,
   ActivityChartDateLabels,
-  type ActivityChartLayout,
+  ChartAxisLabel,
+  ChartSvg,
+  createActivityChartLayout,
 } from "../../components/charts/ActivityChart";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { Tooltip } from "../../components/Tooltip";
@@ -29,25 +30,14 @@ export function PluginBarChart(props: {
     ? widget.categories.slice(-supportedRange(widget, props.range))
     : widget.categories;
   const seriesFormat = commonSeriesFormat(widget);
-  const width = 520;
-  const height = 250;
-  const left = seriesFormat === "usd" ? 72 : 56;
-  const right = 12;
-  const top = 16;
-  const bottom = 36;
-  const plotHeight = height - top - bottom;
-  const plotWidth = width - left - right;
-  const layout: ActivityChartLayout = {
-    bottom,
-    height,
-    left,
-    plotHeight,
-    plotWidth,
-    right,
-    top,
-    width,
-  };
-  const step = plotWidth / Math.max(1, categories.length);
+  const layout = createActivityChartLayout(250, {
+    bottom: 36,
+    left: seriesFormat === "usd" ? 72 : 56,
+    right: 12,
+    top: 16,
+    width: 520,
+  });
+  const step = layout.plotWidth / Math.max(1, categories.length);
   const groupWidth = Math.min(72, step * 0.72);
   const barWidth = groupWidth / Math.max(1, widget.series.length);
   const values = categories.flatMap((category) =>
@@ -57,7 +47,7 @@ export function PluginBarChart(props: {
   const dataMaximum = Math.max(0, ...values);
   const maximum = dataMaximum === minimum ? minimum + 1 : dataMaximum;
   const span = maximum - minimum;
-  const zeroY = top + (maximum / span) * plotHeight;
+  const zeroY = layout.top + (maximum / span) * layout.plotHeight;
 
   return (
     <div className="overflow-hidden rounded border border-white/[0.07] bg-dashboard-surface-panel">
@@ -98,32 +88,30 @@ export function PluginBarChart(props: {
           {widget.emptyText ?? "No chart data."}
         </p>
       ) : (
-        <svg
+        <ChartSvg
           aria-label={widget.title}
-          className="block h-auto min-h-48 w-full"
-          role="img"
-          viewBox={`0 0 ${width} ${height}`}
+          className="min-h-48"
+          layout={layout}
         >
           {[maximum, maximum - span / 2, minimum].map((tickValue, index) => {
-            const y = top + index * (plotHeight / 2);
+            const y = layout.top + index * (layout.plotHeight / 2);
             return (
               <g key={index}>
                 <line
                   stroke="rgba(255,255,255,0.07)"
                   strokeDasharray="3 5"
-                  x1={left}
-                  x2={width - right}
+                  x1={layout.left}
+                  x2={layout.width - layout.right}
                   y1={y}
                   y2={y}
                 />
-                <ActivityChartAxisText
+                <ChartAxisLabel
                   textAnchor="end"
-                  viewBoxWidth={width}
-                  x={left - 6}
+                  x={layout.left - 6}
                   y={y + 3}
                 >
                   {formatChartValue(tickValue, seriesFormat)}
-                </ActivityChartAxisText>
+                </ChartAxisLabel>
               </g>
             );
           })}
@@ -132,7 +120,7 @@ export function PluginBarChart(props: {
               const value = category.values[series.key] ?? 0;
               const renderedHeight = Math.max(
                 value ? 2 : 0,
-                (Math.abs(value) / span) * plotHeight,
+                (Math.abs(value) / span) * layout.plotHeight,
               );
               const formatted = formatChartValue(value, series.format);
               return (
@@ -154,7 +142,7 @@ export function PluginBarChart(props: {
                     tabIndex={value ? 0 : -1}
                     width={barWidth * 0.75}
                     x={
-                      left +
+                      layout.left +
                       categoryIndex * step +
                       (step - groupWidth) / 2 +
                       seriesIndex * barWidth
@@ -169,9 +157,9 @@ export function PluginBarChart(props: {
             dates={categories.map((category) => category.label)}
             formatDate={formatCategoryLabel}
             layout={layout}
-            xPosition={(index) => left + index * step + step / 2}
+            xPosition={(index) => layout.left + index * step + step / 2}
           />
-        </svg>
+        </ChartSvg>
       )}
     </div>
   );

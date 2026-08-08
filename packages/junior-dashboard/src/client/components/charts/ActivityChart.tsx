@@ -1,4 +1,6 @@
-import type { ReactNode, SVGProps } from "react";
+import type { CSSProperties, ReactNode, SVGProps } from "react";
+
+import { cn } from "../../styles";
 
 /** Shared SVG dimensions and derived plot bounds for activity charts. */
 export type ActivityChartLayout = {
@@ -12,16 +14,24 @@ export type ActivityChartLayout = {
   width: number;
 };
 
+type LayoutOptions = {
+  bottom?: number;
+  left?: number;
+  right?: number;
+  top?: number;
+  width?: number;
+};
+
 /** Create the shared plot dimensions used by dashboard activity charts. */
 export function createActivityChartLayout(
   height: number,
-  options?: { left?: number },
+  options?: LayoutOptions,
 ): ActivityChartLayout {
-  const width = 960;
+  const width = options?.width ?? 960;
   const left = options?.left ?? 56;
-  const right = 18;
-  const top = 24;
-  const bottom = 36;
+  const right = options?.right ?? 18;
+  const top = options?.top ?? 24;
+  const bottom = options?.bottom ?? 36;
   return {
     bottom,
     height,
@@ -51,33 +61,65 @@ export function activityLabelIndexes(count: number): number[] {
 }
 
 /**
- * SVG user-unit font size for axis labels.
- * Scales with viewBox width so full-width charts keep a consistent on-screen size.
+ * Shared CSS class for chart axis labels.
+ * Uses CSS font-size (not SVG user units) so labels stay the same
+ * on-screen size across different viewBox widths.
  */
-export function activityChartAxisFontSize(viewBoxWidth: number): number {
-  return (10 * viewBoxWidth) / 960;
-}
+export const chartAxisLabelClassName =
+  "fill-white/50 font-mono text-2xs leading-none text-dashboard-text-muted";
 
-type ActivityChartAxisTextProps = Omit<
+type ChartAxisLabelProps = Omit<
   SVGProps<SVGTextElement>,
-  "children" | "fontFamily" | "fontSize"
+  "children" | "className" | "fill" | "fontFamily" | "fontSize"
 > & {
   children: ReactNode;
-  viewBoxWidth: number;
 };
 
-/** Shared mono axis tick label used by every dashboard chart. */
-export function ActivityChartAxisText(props: ActivityChartAxisTextProps) {
-  const { children, viewBoxWidth, fill, ...textProps } = props;
+/** Shared SVG axis tick label used by every dashboard chart. */
+export function ChartAxisLabel(props: ChartAxisLabelProps) {
+  const { children, ...textProps } = props;
   return (
-    <text
-      fill={fill ?? "rgba(255,255,255,0.5)"}
-      fontFamily="ui-monospace, monospace"
-      fontSize={activityChartAxisFontSize(viewBoxWidth)}
-      {...textProps}
-    >
+    <text className={chartAxisLabelClassName} {...textProps}>
       {children}
     </text>
+  );
+}
+
+/** Shared HTML axis label for non-SVG chart axes. */
+export function ChartAxisHtmlLabel(props: {
+  children: ReactNode;
+  className?: string;
+  style?: CSSProperties;
+}) {
+  return (
+    <span
+      className={cn(
+        "font-mono text-2xs leading-none text-dashboard-text-muted",
+        props.className,
+      )}
+      style={props.style}
+    >
+      {props.children}
+    </span>
+  );
+}
+
+/** Shared SVG shell for activity charts. */
+export function ChartSvg(props: {
+  "aria-label": string;
+  children: ReactNode;
+  className?: string;
+  layout: ActivityChartLayout;
+}) {
+  return (
+    <svg
+      aria-label={props["aria-label"]}
+      className={cn("block h-auto w-full", props.className)}
+      role="img"
+      viewBox={`0 0 ${props.layout.width} ${props.layout.height}`}
+    >
+      {props.children}
+    </svg>
   );
 }
 
@@ -100,14 +142,13 @@ export function ActivityChartGrid(props: {
           y1={yPosition}
           y2={yPosition}
         />
-        <ActivityChartAxisText
+        <ChartAxisLabel
           textAnchor="end"
-          viewBoxWidth={props.layout.width}
           x={props.layout.left - 8}
           y={yPosition + 3}
         >
           {format(props.maximum * (1 - ratio))}
-        </ActivityChartAxisText>
+        </ChartAxisLabel>
       </g>
     );
   });
@@ -125,7 +166,7 @@ export function ActivityChartDateLabels(props: {
     const date = props.dates[index];
     if (!date) return null;
     return (
-      <ActivityChartAxisText
+      <ChartAxisLabel
         key={date}
         textAnchor={
           index === 0
@@ -134,12 +175,11 @@ export function ActivityChartDateLabels(props: {
               ? "end"
               : "middle"
         }
-        viewBoxWidth={props.layout.width}
         x={props.xPosition(index)}
         y={props.layout.height - 8}
       >
         {formatDate(date)}
-      </ActivityChartAxisText>
+      </ChartAxisLabel>
     );
   });
 }

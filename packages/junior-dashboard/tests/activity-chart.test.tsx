@@ -4,34 +4,47 @@ import { describe, expect, it } from "vitest";
 import {
   ActivityChartDateLabels,
   ActivityChartGrid,
-  activityChartAxisFontSize,
+  ChartAxisHtmlLabel,
+  ChartAxisLabel,
+  ChartSvg,
+  chartAxisLabelClassName,
   createActivityChartLayout,
 } from "../src/client/components/charts/ActivityChart";
+import {
+  ChartHeader,
+  chartHeaderPrimaryClassName,
+  chartHeaderSecondaryClassName,
+} from "../src/client/components/charts/ChartHeader";
 
-describe("activityChartAxisFontSize", () => {
-  it("scales SVG user units with viewBox width for a stable on-screen size", () => {
-    expect(activityChartAxisFontSize(960)).toBe(10);
-    expect(activityChartAxisFontSize(480)).toBe(5);
-    expect(activityChartAxisFontSize(400)).toBeCloseTo(4.1667, 3);
+describe("ChartAxisLabel", () => {
+  it("uses shared CSS class so labels stay screen-pixel sized across viewBoxes", () => {
+    const html = renderToStaticMarkup(
+      <svg>
+        <ChartAxisLabel x={0} y={0}>
+          12
+        </ChartAxisLabel>
+      </svg>,
+    );
+
+    expect(chartAxisLabelClassName).toContain("text-2xs");
+    expect(html).toContain(chartAxisLabelClassName);
+    expect(html).not.toContain("font-size=");
   });
-});
 
-describe("ActivityChart axis labels", () => {
   it("renders y-axis and date labels through the shared text component", () => {
     const layout = createActivityChartLayout(200);
     const html = renderToStaticMarkup(
-      <svg>
+      <ChartSvg aria-label="fixture" layout={layout}>
         <ActivityChartGrid layout={layout} maximum={10} />
         <ActivityChartDateLabels
           dates={["2026-05-01", "2026-05-15", "2026-05-30"]}
           layout={layout}
           xPosition={(index) => layout.left + index * 100}
         />
-      </svg>,
+      </ChartSvg>,
     );
 
-    expect(html).toContain('font-size="10"');
-    expect(html).toContain("font-family=\"ui-monospace, monospace\"");
+    expect(html).toContain(chartAxisLabelClassName);
     expect(html).toContain(">10</text>");
     expect(html).toContain(">5</text>");
     expect(html).toContain(">0</text>");
@@ -40,9 +53,43 @@ describe("ActivityChart axis labels", () => {
     expect(html).toContain("May 30");
   });
 
-  it("supports a wider left gutter for currency-style charts", () => {
-    const layout = createActivityChartLayout(200, { left: 64 });
+  it("supports a wider left gutter and custom viewBox width", () => {
+    const layout = createActivityChartLayout(200, { left: 64, width: 400 });
     expect(layout.left).toBe(64);
-    expect(layout.plotWidth).toBe(960 - 64 - 18);
+    expect(layout.width).toBe(400);
+    expect(layout.plotWidth).toBe(400 - 64 - 18);
+  });
+
+  it("shares the html axis label class with svg labels", () => {
+    const html = renderToStaticMarkup(
+      <ChartAxisHtmlLabel>Jul 10</ChartAxisHtmlLabel>,
+    );
+    expect(html).toContain("text-2xs");
+    expect(html).toContain("Jul 10");
+  });
+});
+
+describe("ChartHeader", () => {
+  it("uses the same primary class for title and period total value", () => {
+    const html = renderToStaticMarkup(
+      <ChartHeader
+        description="Daily cumulative runtime"
+        title="Runtime"
+        total="16m 12s"
+      />,
+    );
+
+    expect(html).toContain(chartHeaderPrimaryClassName);
+    expect(html).toContain(chartHeaderSecondaryClassName);
+    expect(html).toContain("Runtime");
+    expect(html).toContain("16m 12s");
+    expect(html).toContain("period total");
+    expect(html).toContain("Daily cumulative runtime");
+
+    const primaryMatches = html.match(
+      new RegExp(chartHeaderPrimaryClassName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"),
+    );
+    // title + total value
+    expect(primaryMatches?.length).toBe(2);
   });
 });

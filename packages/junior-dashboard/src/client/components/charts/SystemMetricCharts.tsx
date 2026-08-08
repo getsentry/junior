@@ -7,9 +7,11 @@ import { formatCompactNumber, formatCostSummary } from "../../format";
 import {
   ActivityChartDateLabels,
   ActivityChartGrid,
+  ChartSvg,
+  createActivityChartLayout,
   formatActivityDate,
-  type ActivityChartLayout,
 } from "./ActivityChart";
+import { ChartHeader } from "./ChartHeader";
 
 type Metric = "costUsd" | "durationMs" | "tokens";
 
@@ -85,67 +87,40 @@ function MetricChart(props: {
   days: ConversationMetricDay[];
 }) {
   const { chart, days } = props;
-  const width = 400;
-  const height = 250;
-  const left = 64;
-  const right = 14;
-  const top = 22;
-  const bottom = 34;
-  const plotWidth = width - left - right;
-  const plotHeight = height - top - bottom;
-  const layout: ActivityChartLayout = {
-    bottom,
-    height,
-    left,
-    plotHeight,
-    plotWidth,
-    right,
-    top,
-    width,
-  };
+  const layout = createActivityChartLayout(250, {
+    bottom: 34,
+    left: 64,
+    right: 14,
+    top: 22,
+    width: 400,
+  });
   const values = days.map((day) => metricValue(day, chart.metric));
   const maximum = Math.max(Number.EPSILON, ...values);
-  const step = plotWidth / Math.max(1, days.length);
+  const step = layout.plotWidth / Math.max(1, days.length);
   const points = values.map((value, index) => ({
-    x: left + step * index + step / 2,
-    y: top + plotHeight - (value / maximum) * plotHeight,
+    x: layout.left + step * index + step / 2,
+    y: layout.top + layout.plotHeight - (value / maximum) * layout.plotHeight,
   }));
   const area = points.length
-    ? `M ${points[0]!.x} ${top + plotHeight} L ${points
+    ? `M ${points[0]!.x} ${layout.top + layout.plotHeight} L ${points
         .map((point) => `${point.x} ${point.y}`)
-        .join(" L ")} L ${points.at(-1)!.x} ${top + plotHeight} Z`
+        .join(" L ")} L ${points.at(-1)!.x} ${layout.top + layout.plotHeight} Z`
     : "";
   const total = values.reduce((sum, value) => sum + value, 0);
   const barWidth = Math.max(1.5, Math.min(8, step * 0.65));
 
   return (
     <Card>
-      <div className="border-b border-white/[0.06] px-4 py-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h3 className="m-0 font-mono text-xs font-medium uppercase tracking-[0.14em] text-dashboard-text-muted">
-              {chart.title}
-            </h3>
-            <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
-              {chart.description}
-            </p>
-          </div>
-          <div className="shrink-0 text-right">
-            <div className="font-display text-xl font-light text-dashboard-text">
-              {chart.format(total)}
-            </div>
-            <div className="font-mono text-xs leading-relaxed text-dashboard-text-muted">
-              period total
-            </div>
-          </div>
-        </div>
-      </div>
+      <ChartHeader
+        description={chart.description}
+        title={chart.title}
+        total={chart.format(total)}
+      />
       <div className="px-2 py-3">
-        <svg
+        <ChartSvg
           aria-label={`${chart.title} per day`}
-          className="block h-auto min-h-52 w-full overflow-hidden"
-          role="img"
-          viewBox={`0 0 ${width} ${height}`}
+          className="min-h-52 overflow-hidden"
+          layout={layout}
         >
           <defs>
             <linearGradient
@@ -182,7 +157,7 @@ function MetricChart(props: {
           {days.map((day, index) => {
             const value = values[index]!;
             const point = points[index]!;
-            const barHeight = (value / maximum) * plotHeight;
+            const barHeight = (value / maximum) * layout.plotHeight;
             const renderedBarHeight = Math.max(value ? 2 : 0, barHeight);
             return (
               <Tooltip
@@ -200,7 +175,7 @@ function MetricChart(props: {
                     tabIndex={0}
                     width={barWidth}
                     x={point.x - barWidth / 2}
-                    y={top + plotHeight - renderedBarHeight}
+                    y={layout.top + layout.plotHeight - renderedBarHeight}
                   />
                 ) : (
                   <circle
@@ -219,9 +194,9 @@ function MetricChart(props: {
           <ActivityChartDateLabels
             dates={days.map((day) => day.date)}
             layout={layout}
-            xPosition={(index) => points[index]?.x ?? left}
+            xPosition={(index) => points[index]?.x ?? layout.left}
           />
-        </svg>
+        </ChartSvg>
       </div>
     </Card>
   );
