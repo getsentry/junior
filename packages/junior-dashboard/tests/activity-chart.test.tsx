@@ -6,6 +6,7 @@ import {
   ActivityChartGrid,
   ChartAxisHtmlLabel,
   ChartAxisLabel,
+  ChartCategoryLabels,
   ChartSvg,
   createActivityChartLayout,
 } from "../src/client/components/charts/ActivityChart";
@@ -45,6 +46,26 @@ describe("ChartAxisLabel", () => {
     expect(html).toContain("May 1");
     expect(html).toContain("May 15");
     expect(html).toContain("May 30");
+  });
+
+  it("keeps categorical labels centered when labels repeat", () => {
+    const layout = createActivityChartLayout(200);
+    const html = renderToStaticMarkup(
+      <ChartSvg aria-label="categories" layout={layout}>
+        <ChartCategoryLabels
+          categories={[
+            { id: "first", label: "30d" },
+            { id: "middle", label: "7d" },
+            { id: "last", label: "30d" },
+          ]}
+          layout={layout}
+          xPosition={(index) => layout.left + index * 100}
+        />
+      </ChartSvg>,
+    );
+
+    expect(html.match(/text-anchor="middle"/g)).toHaveLength(3);
+    expect(html.match(/>30d<\/text>/g)).toHaveLength(2);
   });
 
   it("supports a wider left gutter and custom viewBox width", () => {

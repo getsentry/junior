@@ -220,6 +220,30 @@ export function ActivityChartDateLabels(props: {
   });
 }
 
+/** Render centered categorical labels using stable category keys. */
+export function ChartCategoryLabels(props: {
+  categories: ReadonlyArray<{ id: string; label: string }>;
+  formatLabel?(label: string): string;
+  layout: ActivityChartLayout;
+  xPosition(index: number): number;
+}) {
+  const formatLabel = props.formatLabel ?? ((label: string) => label);
+  return activityLabelIndexes(props.categories.length).map((index) => {
+    const category = props.categories[index];
+    if (!category) return null;
+    return (
+      <ChartAxisLabel
+        key={category.id}
+        textAnchor="middle"
+        x={props.xPosition(index)}
+        y={props.layout.height - 8}
+      >
+        {formatLabel(category.label)}
+      </ChartAxisLabel>
+    );
+  });
+}
+
 /** Render label and value rows inside an activity-chart tooltip. */
 export function ActivityTooltipRows(props: {
   rows: ReadonlyArray<readonly [label: ReactNode, value: ReactNode]>;

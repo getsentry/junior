@@ -1,8 +1,8 @@
 import type { PluginOperationalReport } from "@sentry/junior/api/schema";
 
 import {
-  ActivityChartDateLabels,
   ChartAxisLabel,
+  ChartCategoryLabels,
   ChartSvg,
   createActivityChartLayout,
 } from "../../components/charts/ActivityChart";
@@ -153,9 +153,9 @@ export function PluginBarChart(props: {
               );
             }),
           )}
-          <ActivityChartDateLabels
-            dates={categories.map((category) => category.label)}
-            formatDate={formatCategoryLabel}
+          <ChartCategoryLabels
+            categories={categories}
+            formatLabel={formatCategoryLabel}
             layout={layout}
             xPosition={(index) => layout.left + index * step + step / 2}
           />
