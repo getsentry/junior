@@ -266,6 +266,7 @@ export function ActivityChartAverageLine(props: {
   stroke?: string;
   unit?: string;
 }) {
+  const scale = useContext(ChartSvgScaleContext);
   if (!(props.average > 0) || !(props.maximum > 0)) return null;
 
   const unit = props.unit ?? "day";
@@ -278,7 +279,6 @@ export function ActivityChartAverageLine(props: {
   const label = `${props.format(props.average)} / ${unit}`;
   // Keep the label inside the plot; flip below the line near the top edge.
   const labelAbove = y - props.layout.top > 14;
-  const scale = useContext(ChartSvgScaleContext);
   const fontSize = chartAxisFontSizePx / scale;
 
   return (
