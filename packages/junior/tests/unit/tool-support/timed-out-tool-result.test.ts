@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { projectUnconfirmedToolResult } from "@/chat/tool-support/unconfirmed-tool-result";
+import { projectTimedOutToolResult } from "@/chat/tool-support/timed-out-tool-result";
 
-describe("projectUnconfirmedToolResult", () => {
-  it("replaces aborted tool results with an unconfirmed outcome", () => {
-    const result = projectUnconfirmedToolResult({
+describe("projectTimedOutToolResult", () => {
+  it("replaces aborted tool results with a timed_out outcome", () => {
+    const result = projectTimedOutToolResult({
       content: [
         {
           type: "text",
@@ -28,25 +28,25 @@ describe("projectUnconfirmedToolResult", () => {
         {
           type: "text",
           text: JSON.stringify({
-            outcome: "unconfirmed",
+            outcome: "timed_out",
             target: "pnpm test",
           }),
         },
       ],
       details: {
-        outcome: "unconfirmed",
+        outcome: "timed_out",
         target: "pnpm test",
       },
       isError: false,
     });
     expect(JSON.stringify(result)).not.toMatch(
-      /cancelled|turn_deadline|execution_slice|deadline/i,
+      /cancelled|turn_deadline|execution_slice|unconfirmed|deadline/i,
     );
   });
 
   it("leaves non-aborted tool outcomes unchanged", () => {
     expect(
-      projectUnconfirmedToolResult({
+      projectTimedOutToolResult({
         content: [{ type: "text", text: "ok" }],
         details: { target: "pnpm test", aborted: false, exit_code: 0 },
       }),

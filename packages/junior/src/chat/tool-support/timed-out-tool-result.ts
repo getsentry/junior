@@ -5,13 +5,13 @@ import type {
 import { makeStructuredToolOutput } from "@/chat/tool-support/structured-result";
 
 /**
- * Replace an aborted tool result with a model-safe unconfirmed outcome.
+ * Replace a host-aborted tool result with a model-facing timed-out outcome.
  *
- * Timeout recovery is owned by session state (`resumeReason: "timeout"`). The
- * tool result only needs to say the prior attempt is unconfirmed — not that a
- * host slice deadline cancelled the command.
+ * Host continuity is owned by session state (`resumeReason: "timeout"`) and
+ * automatic continuation. The tool result only records that this attempt did
+ * not finish — not cancelled/deadline jargon.
  */
-export function projectUnconfirmedToolResult(
+export function projectTimedOutToolResult(
   result: AgentToolResult<unknown>,
 ): AfterToolCallResult | undefined {
   const details = result.details;
@@ -30,7 +30,7 @@ export function projectUnconfirmedToolResult(
       : undefined;
   const envelope = makeStructuredToolOutput({
     ...(target ? { target } : {}),
-    outcome: "unconfirmed" as const,
+    outcome: "timed_out" as const,
   });
   return {
     content: envelope.content,

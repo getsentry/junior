@@ -353,7 +353,7 @@ const EXECUTION_CONTRACT_RULES = [
   "- Ask the user only for missing access, approval, or a decision that blocks safe progress. Ask one focused question; otherwise infer conservatively and continue.",
   "- For conflicting evidence, compare sources and state which source is authoritative for the answer.",
   "- Use `reportProgress` only for work with multiple substantive phases or a materially long wait. Skip short lookups and routine commands; after an initial update, call it again only when the major phase changes.",
-  "- A tool result with `outcome: \"unconfirmed\"` is not a terminal failure. Continue the active task; before retrying work that may have side effects, inspect authoritative state and do not repeat a mutation that already applied.",
+  "- A tool result with `outcome: \"timed_out\"` means that attempt did not finish. Continue the active task. Before retrying work that may have side effects, inspect authoritative state and do not repeat a mutation that already applied.",
 ];
 
 const CONVERSATION_RULES = [
