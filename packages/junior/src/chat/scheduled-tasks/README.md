@@ -18,3 +18,15 @@ Scheduled runs use the core conversation work queue. They preserve `scheduler` a
 The heartbeat bounds claims per invocation, reconciles incomplete dispatches before claiming new work, and advances recurring tasks only after their current run reaches a terminal outcome.
 
 Task status is `active`, `blocked`, `completed`, or `deleted`. There is no pause state: stop a task by deleting it, or leave it blocked when authorization/config prevents dispatch. A successful terminal run with no future occurrence becomes `completed` so creators can still find one-off reminders. Failed/skipped terminal work without a future occurrence is tombstoned as `deleted`. Listings and tool lookups hide `deleted` rows while retaining the record as a tombstone. Public workspace listings also omit `completed` rows; the creator-owned Tasks view keeps them.
+
+## Destination moves
+
+Same-channel create/list/update/delete stay bound to the active Slack conversation.
+
+Cross-channel moves are destination-first:
+
+1. ask in the conversation where the task should deliver next;
+2. `slackScheduleFindTasks` searches only the requester's tasks in the current workspace;
+3. `slackScheduleMoveTask` rehomes that existing task row into the active conversation.
+
+Only the creator may move a task. Move preserves task id, instruction, schedule, creator identity, credential mode, and next run. It reclassifies conversation access from the active Slack source and refuses while an incomplete occurrence is already pending or running. Do not emulate a move with create+delete.

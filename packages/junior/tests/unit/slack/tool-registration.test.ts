@@ -234,7 +234,9 @@ describe("Slack tool registration", () => {
     expect(incomplete).toHaveProperty("searchResourceEventTypes");
     expect(incomplete).toHaveProperty("watchResourceEvents");
     expect(complete).toHaveProperty("slackScheduleCreateTask");
+    expect(complete).toHaveProperty("slackScheduleFindTasks");
     expect(complete).toHaveProperty("slackScheduleListTasks");
+    expect(complete).toHaveProperty("slackScheduleMoveTask");
     expect(complete).toHaveProperty("slackScheduleUpdateTask");
     expect(complete).toHaveProperty("slackScheduleDeleteTask");
     expect(complete).toHaveProperty("slackScheduleRunTaskNow");
@@ -279,7 +281,9 @@ describe("Slack tool registration", () => {
     );
 
     expect(tools).not.toHaveProperty("slackScheduleCreateTask");
+    expect(tools).not.toHaveProperty("slackScheduleFindTasks");
     expect(tools).not.toHaveProperty("slackScheduleListTasks");
+    expect(tools).not.toHaveProperty("slackScheduleMoveTask");
     expect(tools).not.toHaveProperty("slackScheduleUpdateTask");
     expect(tools).not.toHaveProperty("slackScheduleDeleteTask");
     expect(tools).not.toHaveProperty("slackScheduleRunTaskNow");

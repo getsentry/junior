@@ -4,7 +4,9 @@ import {
   createSchedulerSqlStore,
   createSlackScheduleCreateTaskTool,
   createSlackScheduleDeleteTaskTool,
+  createSlackScheduleFindTasksTool,
   createSlackScheduleListTasksTool,
+  createSlackScheduleMoveTaskTool,
   createSlackScheduleRunTaskNowTool,
   createSlackScheduleUpdateTaskTool,
   type ScheduledTask,
@@ -1432,6 +1434,193 @@ describe("Slack schedule tools", () => {
     });
     expect(second).toBeUndefined();
   });
+
+  it("finds only the requester's tasks and can filter by source channel", async () => {
+    const creator = createContext({ channelId: "CSOURCE" });
+    const otherChannel = createContext({ channelId: "COTHER" });
+    const otherActor = createContext({
+      channelId: "CSOURCE",
+      actor: {
+        platform: "slack",
+        teamId: TEST_TEAM_ID,
+        userId: "U999",
+        userName: "bob",
+        fullName: "Bob Example",
+      },
+    });
+
+    const mine = (await createTask(creator, {
+      task: "Weekly planning reminder: post the agenda here.",
+    })) as { task: { id: string } };
+    await createTask(otherChannel, {
+      task: "Weekly planning reminder: post the agenda here.",
+    });
+    await createTask(otherActor, {
+      task: "Someone else's planning reminder.",
+    });
+
+    const found = await executeTool(
+      createSlackScheduleFindTasksTool(createContext({ channelId: "CTARGET" })),
+      {
+        channel_id: "CSOURCE",
+        query: "planning reminder",
+      },
+    );
+
+    expect(found).toMatchObject({
+      tasks: [
+        {
+          id: mine.task.id,
+          destination: {
+            platform: "slack",
+            team_id: TEST_TEAM_ID,
+            channel_id: "CSOURCE",
+          },
+          task: "Weekly planning reminder: post the agenda here.",
+        },
+      ],
+      truncated: false,
+    });
+  });
+
+  it("moves a creator-owned task into the active public or private destination", async () => {
+    const source = createContext({ channelId: "CSOURCE" });
+    const created = (await createTask(source, {
+      task: "Weekly planning reminder: post the agenda here.",
+    })) as {
+      task: {
+        id: string;
+        next_run_at: string | null;
+        schedule: string;
+        credential_mode: string;
+      };
+    };
+
+    const publicTarget = createContext({ channelId: "CTARGET" });
+    const movedPublic = await executeTool(
+      createSlackScheduleMoveTaskTool(publicTarget),
+      { task_id: created.task.id },
+    );
+    expect(movedPublic).toMatchObject({
+      task: {
+        id: created.task.id,
+        task: "Weekly planning reminder: post the agenda here.",
+        schedule: created.task.schedule,
+        next_run_at: created.task.next_run_at,
+        credential_mode: "creator",
+        destination: {
+          platform: "slack",
+          team_id: TEST_TEAM_ID,
+          channel_id: "CTARGET",
+        },
+        conversation_access: {
+          audience: "channel",
+          visibility: "public",
+        },
+      },
+    });
+
+    await expect(
+      executeTool(createSlackScheduleListTasksTool(source), {}),
+    ).resolves.toMatchObject({ tasks: [] });
+    await expect(
+      executeTool(createSlackScheduleListTasksTool(publicTarget), {}),
+    ).resolves.toMatchObject({
+      tasks: [{ id: created.task.id }],
+    });
+
+    const privateTarget = createContext({ channelId: "GPRIVATE" });
+    const movedPrivate = await executeTool(
+      createSlackScheduleMoveTaskTool(privateTarget),
+      { task_id: created.task.id },
+    );
+    expect(movedPrivate).toMatchObject({
+      task: {
+        id: created.task.id,
+        destination: {
+          channel_id: "GPRIVATE",
+          team_id: TEST_TEAM_ID,
+        },
+        conversation_access: {
+          audience: "group",
+          visibility: "private",
+        },
+        credential_mode: "creator",
+        next_run_at: created.task.next_run_at,
+      },
+    });
+
+    // Replaying a move that already landed is a no-op success.
+    await expect(
+      executeTool(createSlackScheduleMoveTaskTool(privateTarget), {
+        task_id: created.task.id,
+      }),
+    ).resolves.toMatchObject({
+      task: {
+        id: created.task.id,
+        destination: { channel_id: "GPRIVATE" },
+      },
+    });
+  });
+
+  it("rejects unauthorized, cross-workspace, and in-flight moves", async () => {
+    const source = createContext({ channelId: "CSOURCE" });
+    const created = (await createTask(source)) as { task: { id: string } };
+    const otherActor = createContext({
+      channelId: "CTARGET",
+      actor: {
+        platform: "slack",
+        teamId: TEST_TEAM_ID,
+        userId: "U999",
+        userName: "bob",
+        fullName: "Bob Example",
+      },
+    });
+
+    await expect(
+      executeTool(createSlackScheduleMoveTaskTool(otherActor), {
+        task_id: created.task.id,
+      }),
+    ).rejects.toThrow("Only the scheduled task creator can move this task.");
+
+    await expect(
+      executeTool(
+        createSlackScheduleMoveTaskTool(
+          createContext({ channelId: "CTARGET", teamId: "TOTHER" }),
+        ),
+        { task_id: created.task.id },
+      ),
+    ).rejects.toThrow(
+      "Scheduled tasks can only be moved within the same Slack workspace.",
+    );
+
+    const store = schedulerStore();
+    const task = await store.getTask(created.task.id);
+    expect(task).toBeDefined();
+    await store.saveTask({
+      ...task!,
+      nextRunAtMs: 1000,
+      updatedAtMs: 1000,
+    });
+    await expect(store.claimDueRun({ nowMs: 2000 })).resolves.toMatchObject({
+      taskId: created.task.id,
+      status: "pending",
+    });
+
+    await expect(
+      executeTool(createSlackScheduleMoveTaskTool(createContext({ channelId: "CTARGET" })), {
+        task_id: created.task.id,
+      }),
+    ).rejects.toThrow(
+      "Scheduled task cannot be moved while an occurrence is already running",
+    );
+
+    await expect(
+      store.getTask(created.task.id),
+    ).resolves.toMatchObject({
+      destination: { channelId: "CSOURCE" },
+    });
+  });
 });
 
 describe("Slack schedule tool wiring via createTools", () => {
@@ -1544,22 +1733,26 @@ describe("Slack schedule tool execution modes", () => {
     const context = createContext();
 
     const createTool = createSlackScheduleCreateTaskTool(context);
+    const findTool = createSlackScheduleFindTasksTool(context);
     const listTool = createSlackScheduleListTasksTool(context);
+    const moveTool = createSlackScheduleMoveTaskTool(context);
     const updateTool = createSlackScheduleUpdateTaskTool(context);
     const deleteTool = createSlackScheduleDeleteTaskTool(context);
     const runNowTool = createSlackScheduleRunTaskNowTool(context);
 
     // Write tools must force sequential execution so a same-turn
     // slackScheduleListTasks cannot race ahead of a preceding scheduled-task
-    // create, update, or delete write.
+    // create, update, delete, or move write.
     expect(createTool.executionMode).toBe("sequential");
+    expect(moveTool.executionMode).toBe("sequential");
     expect(updateTool.executionMode).toBe("sequential");
     expect(deleteTool.executionMode).toBe("sequential");
     expect(runNowTool.executionMode).toBe("sequential");
 
-    // List is read-only; it inherits the sequential batch gate from any
-    // write tool it shares a turn with (pi-agent-core makes the whole
+    // Find/list are read-only; they inherit the sequential batch gate from any
+    // write tool they share a turn with (pi-agent-core makes the whole
     // batch sequential when any tool in it is sequential).
+    expect(findTool.executionMode).not.toBe("sequential");
     expect(listTool.executionMode).not.toBe("sequential");
   });
 });

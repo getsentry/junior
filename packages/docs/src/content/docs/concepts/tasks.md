@@ -31,13 +31,16 @@ remind me in 10 minutes to stretch
 every Monday at 9am, post a project recap in this channel
 ```
 
-Junior can list, update, delete, or run a scheduled task immediately:
+Junior can list, update, delete, run, or move a scheduled task immediately:
 
 ```text
 what scheduled tasks do I have?
 move my weekly recap to Friday at 3pm
 run the weekly recap now
+move my weekly planning reminder from #ops here
 ```
+
+Ask in the destination conversation when moving a task across channels. Junior finds the requester's matching task and rehomes that existing schedule; it does not require listing the source channel first.
 
 ## Event Tasks
 
@@ -51,9 +54,10 @@ If the plugin is disabled, the task remains visible but cannot receive events un
 
 ## Access and Delivery
 
-- Tasks run as Junior and deliver to the Slack channel or DM where they were created.
+- Tasks run as Junior and deliver to the Slack channel or DM currently set as the task destination.
+- New tasks start in the conversation where they were created; creators can later move their own task into another conversation they are currently talking in.
 - A task may use its creator's connected account when access was delegated to that task.
-- Only the creator can enable creator credential access.
+- Only the creator can enable creator credential access or move a task.
 - Event content is treated as data, not as a user instruction.
 - Action review still applies when required.
 

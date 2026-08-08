@@ -1,7 +1,9 @@
 export {
   createSlackScheduleCreateTaskTool,
   createSlackScheduleDeleteTaskTool,
+  createSlackScheduleFindTasksTool,
   createSlackScheduleListTasksTool,
+  createSlackScheduleMoveTaskTool,
   createSlackScheduleRunTaskNowTool,
   createSlackScheduleUpdateTaskTool,
   type SchedulerToolContext,

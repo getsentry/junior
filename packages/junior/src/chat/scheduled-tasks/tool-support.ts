@@ -44,6 +44,13 @@ const compactTaskResultSchema = z
     timezone: z.string(),
     recurrence: z.unknown().nullable(),
     next_run_at: z.string().nullable(),
+    destination: z
+      .object({
+        platform: z.literal("slack"),
+        team_id: z.string().min(1),
+        channel_id: z.string().min(1),
+      })
+      .strict(),
     conversation_access: z
       .object({
         audience: z.enum(["direct", "group", "channel"]),
@@ -220,6 +227,11 @@ export function compactTask(task: ScheduledTask): CompactTaskResult {
     next_run_at: task.nextRunAtMs
       ? new Date(task.nextRunAtMs).toISOString()
       : null,
+    destination: {
+      platform: "slack" as const,
+      team_id: task.destination.teamId,
+      channel_id: task.destination.channelId,
+    },
     conversation_access: task.conversationAccess,
     credential_mode: task.credentialMode,
     dashboard_url: getDashboardTaskLink(task.id) ?? null,

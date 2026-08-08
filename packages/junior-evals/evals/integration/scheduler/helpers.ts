@@ -72,12 +72,56 @@ export function scheduledTaskCreateCalls(
   );
 }
 
+export function scheduledTaskFindCalls(
+  session: Parameters<typeof toolCalls>[0],
+) {
+  return toolCalls(session).filter(
+    (call) =>
+      call.name === "slackScheduleFindTasks" &&
+      call.status === "ok" &&
+      call.result !== undefined,
+  );
+}
+
+export function scheduledTaskMoveCalls(
+  session: Parameters<typeof toolCalls>[0],
+) {
+  return toolCalls(session).filter(
+    (call) =>
+      call.name === "slackScheduleMoveTask" &&
+      call.status === "ok" &&
+      call.result !== undefined,
+  );
+}
+
 export function scheduledTaskUpdateCalls(
   session: Parameters<typeof toolCalls>[0],
 ) {
   return toolCalls(session).filter(
     (call) =>
       call.name === "slackScheduleUpdateTask" &&
+      call.status === "ok" &&
+      call.result !== undefined,
+  );
+}
+
+export function scheduledTaskDeleteCalls(
+  session: Parameters<typeof toolCalls>[0],
+) {
+  return toolCalls(session).filter(
+    (call) =>
+      call.name === "slackScheduleDeleteTask" &&
+      call.status === "ok" &&
+      call.result !== undefined,
+  );
+}
+
+export function scheduledTaskListCalls(
+  session: Parameters<typeof toolCalls>[0],
+) {
+  return toolCalls(session).filter(
+    (call) =>
+      call.name === "slackScheduleListTasks" &&
       call.status === "ok" &&
       call.result !== undefined,
   );
