@@ -5,16 +5,18 @@ import {
 } from "@earendil-works/pi-ai/providers/faux";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createConversationWork } from "@/chat/app/conversation-work";
-import {
-  commitAcceptedReply,
-  loadProjection,
-} from "@/chat/conversations/projection";
+import { commitAcceptedReply } from "@/chat/conversations/projection";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import type { AgentRunSteeringMessage } from "@/chat/agent/request";
-import { persistThreadStateById } from "@/chat/runtime/thread-state";
+import {
+  getPersistedThreadState,
+  persistThreadStateById,
+} from "@/chat/runtime/thread-state";
 import { executeAgentRun } from "@/chat/agent";
 import type { PiMessage } from "@/chat/pi/messages";
+import { coerceThreadConversationState } from "@/chat/state/conversation";
+import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { getConversationStore } from "@/chat/db";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
@@ -133,6 +135,84 @@ async function slack(
   };
 }
 
+type QueueTest = Awaited<ReturnType<typeof slack>>;
+
+/** Assert the durable state left by a turn that cannot run again. */
+async function expectTerminalTurn(
+  q: QueueTest,
+  expected: {
+    turnId: string;
+    state: "completed" | "failed";
+    replies: string[] | number;
+    error?: string;
+  },
+): Promise<void> {
+  const record = await getTurnRecord(CONVERSATION_ID, expected.turnId);
+  expect(record?.errorMessage ?? "").toContain(expected.error ?? "");
+  await expect(listTurnSummaries(CONVERSATION_ID)).resolves.toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        state: expected.state,
+        turnId: expected.turnId,
+      }),
+    ]),
+  );
+
+  const conversation = coerceThreadConversationState(
+    await getPersistedThreadState(CONVERSATION_ID),
+  );
+  await hydrateConversationMessages({
+    conversation,
+    conversationId: CONVERSATION_ID,
+  });
+  expect(conversation.processing.activeTurnId).toBeUndefined();
+  expect(conversation.processing.pendingAuth).toBeUndefined();
+  await expect(
+    getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+      state: q.state,
+    }),
+  ).resolves.toMatchObject({ needsRun: false, messages: [] });
+  expect(q.wakes.hasQueuedMessages()).toBe(false);
+
+  const replies = q.replies();
+  expect(replies).toHaveLength(
+    typeof expected.replies === "number"
+      ? expected.replies
+      : expected.replies.length,
+  );
+  expect(replies.join("\n")).toContain(
+    typeof expected.replies === "number" ? "" : expected.replies.join("\n"),
+  );
+}
+
+/** Assert the durable state left by a turn that waits for an external event. */
+async function expectPausedTurn(
+  q: QueueTest,
+  expected: { turnId: string; reason: "auth"; replies: number },
+): Promise<void> {
+  await expect(
+    getTurnRecord(CONVERSATION_ID, expected.turnId),
+  ).resolves.toMatchObject({
+    state: "paused",
+    resumeReason: expected.reason,
+  });
+  const conversation = coerceThreadConversationState(
+    await getPersistedThreadState(CONVERSATION_ID),
+  );
+  expect(conversation.processing.pendingAuth).toMatchObject({
+    sessionId: expected.turnId,
+  });
+  await expect(
+    getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+      state: q.state,
+    }),
+  ).resolves.toMatchObject({ needsRun: false, messages: [] });
+  expect(q.wakes.hasQueuedMessages()).toBe(false);
+  expect(q.replies()).toHaveLength(expected.replies);
+}
+
 function history(): PiMessage[] {
   const assistant = fauxAssistantMessage("checking");
   assistant.timestamp = 2;
@@ -219,24 +299,11 @@ describe("durable queue contract", () => {
       await expect(q.send()).resolves.toMatchObject({ status: 200 });
       await expect(q.next()).resolves.toEqual({ status: "completed" });
 
-      expect(q.replies()).toEqual(["Deploy checked."]);
-      expect(
-        JSON.stringify(
-          await loadProjection({ conversationId: CONVERSATION_ID }),
-        ),
-      ).toContain("Deploy checked.");
-      await expect(
-        getTurnRecord(CONVERSATION_ID, "turn_1712345_0001"),
-      ).resolves.toMatchObject({ state: "completed" });
-      await expect(q.next()).rejects.toThrow(
-        "Expected queued conversation work",
-      );
-      await expect(
-        getConversationWorkState({
-          conversationId: CONVERSATION_ID,
-          state: q.state,
-        }),
-      ).resolves.toMatchObject({ needsRun: false, messages: [] });
+      await expectTerminalTurn(q, {
+        turnId: "turn_1712345_0001",
+        state: "completed",
+        replies: ["Deploy checked."],
+      });
     });
   });
 
@@ -275,13 +342,11 @@ describe("durable queue contract", () => {
       expect(steering.map((message) => message.text)).toEqual([
         "include the rollback owner",
       ]);
-      expect(q.replies()).toEqual(["Deploy checked."]);
-      await expect(
-        getConversationWorkState({
-          conversationId: CONVERSATION_ID,
-          state: q.state,
-        }),
-      ).resolves.toMatchObject({ needsRun: false, messages: [] });
+      await expectTerminalTurn(q, {
+        turnId: "turn_1712345_0001",
+        state: "completed",
+        replies: ["Deploy checked."],
+      });
     });
 
     it("parks a turn that needs authorization without retrying it", async () => {
@@ -319,11 +384,11 @@ describe("durable queue contract", () => {
       await q.send();
 
       await expect(q.next()).resolves.toEqual({ status: "completed" });
-      await expect(
-        getTurnRecord(CONVERSATION_ID, "turn_1712345_0001"),
-      ).resolves.toMatchObject({ state: "paused", resumeReason: "auth" });
-      expect(q.wakes.hasQueuedMessages()).toBe(false);
-      expect(slackApiOutbox.messages()).toHaveLength(1);
+      await expectPausedTurn(q, {
+        turnId: "turn_1712345_0001",
+        reason: "auth",
+        replies: 1,
+      });
     });
   });
 
@@ -344,7 +409,11 @@ describe("durable queue contract", () => {
       await expect(q.next()).resolves.toEqual({ status: "pending_requeued" });
       await expect(q.next()).resolves.toEqual({ status: "completed" });
       expect(attempts).toBe(2);
-      expect(q.replies()).toEqual(["Deploy checked."]);
+      await expectTerminalTurn(q, {
+        turnId: "turn_1712345_0001",
+        state: "completed",
+        replies: ["Deploy checked."],
+      });
     });
 
     it("continues a paused turn on the same queue, then stops when progress stalls", async () => {
@@ -418,18 +487,11 @@ describe("durable queue contract", () => {
 
       await expect(q.next()).resolves.toEqual({ status: "completed" });
       expect(resumes).toBeGreaterThan(1);
-      expect(q.wakes.hasQueuedMessages()).toBe(false);
-      expect(slackApiOutbox.messages()).toHaveLength(1);
-      expect(
-        JSON.stringify(
-          await loadProjection({ conversationId: CONVERSATION_ID }),
-        ),
-      ).toContain("inspect the deploy");
-      await expect(
-        getTurnRecord(CONVERSATION_ID, turnId),
-      ).resolves.toMatchObject({
+      await expectTerminalTurn(q, {
+        turnId,
         state: "failed",
-        errorMessage: expect.stringContaining("made no progress"),
+        replies: 1,
+        error: "made no progress",
       });
     });
 
@@ -464,25 +526,35 @@ describe("durable queue contract", () => {
         },
       });
       const q = await slack();
+      expect(
+        coerceThreadConversationState(
+          await getPersistedThreadState(CONVERSATION_ID),
+        ).processing.activeTurnId,
+      ).toBe(turnId);
       await requestConversationWork({
         conversationId: CONVERSATION_ID,
         destination: SLACK_DESTINATION,
+        nowMs: 1_000,
         state: q.state,
       });
-      await ensureConversationWake({
+      await startConversationWork({
         conversationId: CONVERSATION_ID,
-        idempotencyKey: "accepted-reply-recovery",
+        nowMs: 1_000,
+        state: q.state,
+      });
+      await recoverConversationWork({
+        nowMs: 1_000 + CONVERSATION_WORK_LEASE_TTL_MS,
         queue: q.wakes,
+        state: q.state,
       });
 
       await expect(q.next()).resolves.toEqual({ status: "completed" });
 
-      expect(q.replies()).toEqual([]);
-      await expect(listTurnSummaries(CONVERSATION_ID)).resolves.toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ state: "completed", turnId }),
-        ]),
-      );
+      await expectTerminalTurn(q, {
+        turnId,
+        state: "completed",
+        replies: [],
+      });
     });
 
     it("stops a running turn after its worker disappears", async () => {
@@ -509,18 +581,12 @@ describe("durable queue contract", () => {
       ).resolves.toEqual({ expiredLeaseCount: 1, pendingCount: 0 });
       await expect(q.next()).resolves.toEqual({ status: "completed" });
       expect(q.wakes.sentRecords()).toHaveLength(1);
-      await expect(
-        getTurnRecord(CONVERSATION_ID, turnId),
-      ).resolves.toMatchObject({
+      await expectTerminalTurn(q, {
+        turnId,
         state: "failed",
-        errorMessage: expect.stringContaining("lost its worker"),
+        replies: 1,
+        error: "lost its worker",
       });
-      expect(
-        JSON.stringify(
-          await loadProjection({ conversationId: CONVERSATION_ID }),
-        ),
-      ).toContain("inspect the deploy");
-      expect(slackApiOutbox.messages()).toHaveLength(1);
     });
 
     it("stops at the retry limit without duplicate delivery", async () => {
@@ -540,13 +606,14 @@ describe("durable queue contract", () => {
 
       expect(results.at(-1)).toBe("failed");
       expect(attempts).toBe(CONVERSATION_WORK_MAX_RETRIES);
-      expect(slackApiOutbox.messages()).toHaveLength(1);
+      expect(q.replies()).toHaveLength(1);
       await expect(
         getConversationWorkState({
           conversationId: CONVERSATION_ID,
           state: q.state,
         }),
       ).resolves.toMatchObject({ needsRun: false, messages: [] });
+      expect(q.wakes.hasQueuedMessages()).toBe(false);
     });
   });
 });

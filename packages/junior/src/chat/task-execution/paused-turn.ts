@@ -18,6 +18,7 @@ import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import { loadProjection } from "@/chat/conversations/projection";
 import {
   failTurnRecord,
+  getTurnRecord,
   getTurnRecordForResume,
   listTurnSummaries,
   recordTurnSummary,
@@ -46,7 +47,7 @@ import {
   turnHasReply,
 } from "@/chat/services/conversation-memory";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
-import { markTurnFailed } from "@/chat/runtime/turn";
+import { markTurnCompleted, markTurnFailed } from "@/chat/runtime/turn";
 import {
   getPausedTurnRequest,
   wakePausedTurn as defaultWakePausedTurn,
@@ -709,53 +710,63 @@ async function runNextPausedTurnInContext(
   runOptions: PausedTurnRunOptions,
 ): Promise<boolean> {
   const summaries = await listTurnSummaries(conversationId);
-
-  // In-flight turns may be abandoned across process death. Do not rebuild a
-  // second recovery lifecycle beside the conversation lease.
+  const persisted = await getPersistedThreadState(conversationId);
+  const conversation = coerceThreadConversationState(persisted);
+  await hydrateConversationMessages({ conversation, conversationId });
   const newest = summaries[0];
-  if (newest?.state === "running") {
+
+  // SQL can already report completion while Redis still contains a running
+  // cursor for the same turn. Inspect both before deciding recovery is done.
+  const running = newest
+    ? await getTurnRecord(conversationId, newest.turnId)
+    : undefined;
+  if (running?.state === "running") {
+    if (turnHasReply(conversation, running.turnId)) {
+      const acceptedReply = [...conversation.messages]
+        .reverse()
+        .find(
+          (message) =>
+            message.role === "assistant" &&
+            message.id.startsWith(`${running.turnId}:assistant:`),
+        );
+      if (running.modelId) {
+        await saveTurnCheckpoint({
+          conversationId,
+          messages: running.piMessages,
+          mode: "completed",
+          modelId: running.modelId,
+          resultMessageId: acceptedReply?.meta?.slackTs,
+          sliceId: running.sliceId,
+          surface: running.surface,
+          turnId: running.turnId,
+        });
+      } else {
+        await recordTurnSummary({
+          conversationId,
+          resultMessageId: acceptedReply?.meta?.slackTs,
+          sliceId: running.sliceId,
+          state: "completed",
+          surface: running.surface,
+          turnId: running.turnId,
+        });
+      }
+      markTurnCompleted({
+        conversation,
+        nowMs: Date.now(),
+        sessionId: running.turnId,
+      });
+      await persistThreadStateById(conversationId, { conversation });
+      return false;
+    }
+
     const state = getStateAdapter();
     await state.connect();
     await withActiveLock(state, conversationId, async () => {
       const record = await getTurnRecordForResume(
         conversationId,
-        newest.turnId,
+        running.turnId,
       );
       if (!record || record.state !== "running") return;
-      const currentState = await getPersistedThreadState(conversationId);
-      const conversation = coerceThreadConversationState(currentState);
-      await hydrateConversationMessages({ conversation, conversationId });
-      if (turnHasReply(conversation, record.turnId)) {
-        const acceptedReply = [...conversation.messages]
-          .reverse()
-          .find(
-            (message) =>
-              message.role === "assistant" &&
-              message.id.startsWith(`${record.turnId}:assistant:`),
-          );
-        if (record.modelId) {
-          await saveTurnCheckpoint({
-            conversationId,
-            messages: record.piMessages,
-            mode: "completed",
-            modelId: record.modelId,
-            resultMessageId: acceptedReply?.meta?.slackTs,
-            sliceId: record.sliceId,
-            surface: record.surface,
-            turnId: record.turnId,
-          });
-        } else {
-          await recordTurnSummary({
-            conversationId,
-            resultMessageId: acceptedReply?.meta?.slackTs,
-            sliceId: record.sliceId,
-            state: "completed",
-            surface: record.surface,
-            turnId: record.turnId,
-          });
-        }
-        return;
-      }
       await failStrandedTurnWithFallback({
         conversationId,
         errorMessage: "Turn lost its worker before reaching a safe boundary",
