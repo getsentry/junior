@@ -10,7 +10,7 @@ related:
   - /contribute/releasing/
 ---
 
-Junior public docs should help readers choose the right setup path, copy a working configuration, and verify behavior without reading internal implementation docs first.
+Junior public docs must help readers choose a setup path, copy a working configuration, and check the result. Readers should not need to read internal design docs first.
 
 ## Page contract
 
@@ -32,15 +32,17 @@ Choose one primary job per page:
 | Type              | Use it for                                              |
 | ----------------- | ------------------------------------------------------- |
 | `tutorial`        | Step-by-step setup with verification.                   |
-| `conceptual`      | Mental model, tradeoff, or reading path.                |
+| `conceptual`      | Core idea, choice, or reading path.                     |
 | `reference`       | Fast lookup for config, commands, APIs, or contracts.   |
 | `troubleshooting` | Symptom, first check, recovery order, and verification. |
 
 Avoid pages that mix tutorial, concept, and reference material unless the page is intentionally a short overview.
 
-## Writing defaults
+## Writing rules
 
-Lead with what the reader should do or decide. Keep examples minimal but runnable, and label code fences with the target file when the snippet belongs in a file.
+Use ASD-STE100 English. Use common words, active voice, short sentences, and one idea per sentence. Keep required Junior terms from the root `TERMINOLOGY.md`. Explain a required term the first time a new reader may see it. Remove other jargon.
+
+Lead with what the reader must do or decide. Keep examples small and runnable. Add the target file name to a code block when the code belongs in a file.
 
 Prefer:
 
@@ -52,8 +54,8 @@ Prefer:
 
 Avoid:
 
-- internal implementation chatter before the user-facing outcome
-- stale migration details unless a redirect or compatibility note needs them
+- internal design details before the user-facing result
+- old migration details unless a redirect or support note needs them
 - multiple pages competing to explain the same setup step
 - long inline commands that wrap poorly
 
@@ -64,7 +66,8 @@ When adding or moving a page:
 1. Add it to `packages/docs/astro.config.mjs` if it should be discoverable.
 2. Add redirects for old public routes.
 3. Update related pages and package README links.
-4. Run `pnpm docs:check`.
+4. Check each changed sentence against the writing rules above.
+5. Run `pnpm docs:check`.
 
 Docs that describe plugins must keep package lists aligned with the real `@sentry/junior-*` packages and release docs.
 

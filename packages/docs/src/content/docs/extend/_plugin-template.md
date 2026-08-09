@@ -1,6 +1,6 @@
 ---
 title: Plugin Page Template
-description: Canonical structure for plugin setup pages.
+description: Required structure for plugin setup pages.
 type: tutorial
 prerequisites:
   - /extend/
@@ -10,7 +10,7 @@ related:
   - /reference/config-and-env/
 ---
 
-Use this template for plugin setup pages so every plugin guide follows the same reader path.
+Use this template for plugin setup pages. Follow the writing rules in [Documentation Guidelines](/contribute/documentation-guidelines/). Give every plugin guide the same reader path.
 
 ## Install
 
@@ -30,7 +30,7 @@ import { defineJuniorPlugins } from "@sentry/junior";
 export const plugins = defineJuniorPlugins(["@sentry/junior-example"]);
 ```
 
-Plugins that require runtime hooks — tool registration, session processing, Git hooks, or other host-side behavior — use a JavaScript factory that returns a `defineJuniorPlugin(...)` registration. Register those with an explicit factory call:
+Some plugins need runtime hooks. These hooks can register tools, process sessions, or run Git actions. Such plugins use a JavaScript factory that returns a `defineJuniorPlugin(...)` registration. Register them with an explicit factory call:
 
 ```ts title="plugins.ts"
 import { defineJuniorPlugins } from "@sentry/junior";
@@ -43,7 +43,7 @@ Name a runtime plugin factory `<domain>Plugin`, export it as a function, and
 call it even when it has no options. Do not document a `create<Domain>Plugin`
 alias or a prebuilt plugin registration.
 
-Do not register a factory-based plugin as a bare package-name string. A bare string does not run runtime hooks, so the plugin will not activate its runtime behavior. Check the plugin package's README or setup page to confirm which registration style it requires.
+Do not register a factory-based plugin as a bare package-name string. A bare string does not run runtime hooks. Check the plugin README or setup page to find the required registration style.
 
 ## Config
 

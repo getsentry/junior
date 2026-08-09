@@ -9,7 +9,7 @@ error handling, provider boundaries, interface design, and serverless work.
 
 Do not use policies for:
 
-- one feature's architecture or lifecycle
+- one feature's design or state changes
 - plans, status notes, TODOs, or rollout tracking
 - copied schemas, commands, or test inventories
 - public product docs

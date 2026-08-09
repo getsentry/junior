@@ -2,7 +2,7 @@
 
 ## Intent
 
-Tests should protect product contracts without freezing implementation details.
+Tests should protect product contracts. They should not prevent safe changes to internal code.
 Prefer higher-fidelity behavior coverage when it is stable enough. Routine
 refactors should not churn brittle unit tests.
 

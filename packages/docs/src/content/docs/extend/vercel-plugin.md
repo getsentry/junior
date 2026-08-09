@@ -119,10 +119,10 @@ Set `VERCEL_WEBHOOK_SECRET` to enable resource subscriptions. See
 [Resource Subscriptions](/concepts/resource-subscriptions/) for the difference
 between temporary subscriptions and durable event tasks.
 
-Deployment watches match Vercel's canonical `prj_...` project ID. Users can name
-a project or supply its ID; Junior resolves the canonical ID through Vercel's
-authenticated project API. Include the team slug or ID when projects with the
-same name may exist in more than one account.
+Deployment watches use Vercel's `prj_...` project ID. Users can give a project
+name or ID. Junior gets the project ID from Vercel's authenticated project API.
+Include the team slug or ID when projects with the same name may exist in more
+than one account.
 
 ### `deployment`
 

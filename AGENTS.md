@@ -5,7 +5,7 @@
 - Use the words in `TERMINOLOGY.md`. Do not invent synonyms, overloaded terms, or long compound names when an existing term fits.
 - This is TypeScript/JavaScript, not Java. Prefer functions, plain objects, simple types, and small modules. Avoid class hierarchies, manager/factory names, and interface layers unless they solve a real problem; follow `policies/interface-design.md`.
 - Optimize for the next maintainer. Choose the smallest design that solves the proven problem, keep complexity local, and avoid speculative abstractions, configuration, extension points, and wrappers; follow `policies/correctness-complexity.md`.
-- Write for normal humans. Code, names, docs, plans, and explanations should make sense without a PhD or an architecture lecture. If they do not, simplify them.
+- Write docs, policies, plans, and explanations in ASD-STE100 English. Use common words, active voice, short sentences, and one idea per sentence. Keep required terms from `TERMINOLOGY.md` and explain them when needed. Remove other jargon.
 
 Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`, `pnpm skills:check`.
 

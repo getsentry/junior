@@ -178,23 +178,23 @@ export const plugins = defineJuniorPlugins([myProviderPlugin()]);
 Use `ctx.decision.replaceInput(...)` only with object-shaped tool input. Junior
 rejects non-object replacements before the tool runs.
 
-### Runtime surfaces
+### Runtime hooks
 
 Use the smallest surface that matches the deterministic boundary your plugin needs:
 
-| Surface                  | Purpose                                                                                                                                                                                            |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `sandboxPrepare(ctx)`    | Prepare files or runtime state inside a sandbox before agent tools run.                                                                                                                            |
-| `beforeToolExecute(ctx)` | Deny or rewrite object-shaped tool input and set non-secret env values before a tool runs.                                                                                                         |
-| `afterMcpTool(ctx)`      | Run junior-owned side effects after a successful hosted MCP tool call. Prefer this for conversation annotations instead of inventing a parallel tool contract.                                     |
-| `tools(ctx)`             | Return host-registered tool definitions for the current turn. Tool names must be plugin-local camelCase names.                                                                                     |
-| `heartbeat(ctx)`         | Run bounded periodic work from Junior's internal heartbeat route.                                                                                                                                  |
-| `apiRoutes(ctx)`         | Return a Hono or fetch-compatible app mounted under `/api/plugins/:pluginName/*` with auth already applied. Use `ctx.users.resolve(email)` only when the route needs canonical personal ownership. |
-| `tasks`                  | Register plugin-owned background tasks. V1 tasks run after completed sessions and load bounded run context with `ctx.run.load()`.                                                                  |
+| Surface                  | Purpose                                                                                                                                                                                      |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sandboxPrepare(ctx)`    | Prepare files or runtime state inside a sandbox before agent tools run.                                                                                                                      |
+| `beforeToolExecute(ctx)` | Deny or rewrite object-shaped tool input and set non-secret env values before a tool runs.                                                                                                   |
+| `afterMcpTool(ctx)`      | Run junior-owned side effects after a successful hosted MCP tool call. Prefer this for conversation annotations instead of inventing a parallel tool contract.                               |
+| `tools(ctx)`             | Return host-registered tool definitions for the current turn. Tool names must be plugin-local camelCase names.                                                                               |
+| `heartbeat(ctx)`         | Run bounded periodic work from Junior's internal heartbeat route.                                                                                                                            |
+| `apiRoutes(ctx)`         | Return a Hono or fetch-compatible app mounted under `/api/plugins/:pluginName/*` with auth already applied. Use `ctx.users.resolve(email)` only when the route must link work to one person. |
+| `tasks`                  | Register plugin-owned background tasks. V1 tasks run after completed sessions and load bounded run context with `ctx.run.load()`.                                                            |
 
 `tools(ctx)` receives the active turn context, `ctx.state`, and `ctx.log`. Call
-`ctx.users.resolveActor()` only when a tool needs the active actor's canonical
-identity or linked user. Return tool definitions keyed by the plugin-local tool
+`ctx.users.resolveActor()` only when a tool needs the active actor's linked
+identity or user. Return tool definitions keyed by the plugin-local tool
 names your plugin owns.
 Junior exposes them to the agent as `<pluginNamespace>_<toolName>`, where
 `pluginNamespace` is derived from the plugin manifest name. For example,
@@ -253,8 +253,8 @@ model-repairable failures; Junior projects successful values and thrown errors
 onto the agent runtime's separate result channels.
 
 Use `approvalMode: "auto"` when Junior should review an action according to its
-annotations and source. Use `review` when every invocation requires review, or
-`approve` only when the tool is safe to execute without review. Omitting the
+annotations and source. Use `review` when every tool call requires review. Use
+`approve` only when the tool is safe to run without review. Omitting the
 field leaves the tool outside action review.
 
 Annotations describe side effects; they do not authorize an action. Junior
