@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
-import { upsertIdentity } from "@/chat/identities/sql";
+import {
+  upsertIdentity,
+  upsertLinkedIdentity,
+} from "@/chat/identities/sql";
 import {
   appendInboundMessage,
   drainConversationMailbox,
@@ -446,6 +449,50 @@ describe("conversation SQL store", () => {
           slackUserName: "alice-other",
         },
       });
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("rejects a provider account already linked to another user", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await migrateSchema(fixture.sql);
+      const first = await upsertIdentity(fixture.sql, {
+        kind: "user",
+        provider: "slack",
+        providerTenantId: "T123",
+        providerSubjectId: "U123",
+        email: "first@example.com",
+        emailVerified: true,
+      });
+      const second = await upsertIdentity(fixture.sql, {
+        kind: "user",
+        provider: "slack",
+        providerTenantId: "T123",
+        providerSubjectId: "U456",
+        email: "second@example.com",
+        emailVerified: true,
+      });
+      if (!first.userId || !second.userId) {
+        throw new Error("test users were not linked");
+      }
+      await upsertLinkedIdentity(fixture.sql, first.userId, {
+        kind: "user",
+        provider: "github",
+        providerSubjectId: "12345",
+        handle: "first",
+      });
+
+      await expect(
+        upsertLinkedIdentity(fixture.sql, second.userId, {
+          kind: "user",
+          provider: "github",
+          providerSubjectId: "12345",
+          handle: "second",
+        }),
+      ).rejects.toThrow("Identity conflicts with linked user");
     } finally {
       await fixture.close();
     }

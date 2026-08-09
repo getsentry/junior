@@ -46,7 +46,7 @@ import type {
 } from "@/chat/tools/types";
 import type { PluginSandbox } from "@sentry/junior-plugin-api";
 import { getPluginTools } from "@/chat/plugins/agent-hooks";
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { getOAuthAccountProviders } from "@/chat/plugins/credential-hooks";
 import { createWebFetchTool } from "@/chat/tools/web/fetch-tool";
 import { createWebSearchTool } from "@/chat/tools/web/search";
 import { createWriteFileTool } from "@/chat/tools/sandbox/write-file";
@@ -198,10 +198,7 @@ export function createTools(
     }
     const identityProviders = [
       "slack",
-      ...pluginCatalogRuntime
-        .getProviders()
-        .map((plugin) => plugin.manifest.name)
-        .filter((provider) => provider !== "slack"),
+      ...getOAuthAccountProviders().filter((provider) => provider !== "slack"),
     ] as [string, ...string[]];
     tools.userLookup = createUserLookupTool(
       slackContext.teamId,

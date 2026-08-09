@@ -85,6 +85,29 @@ describe("Slack tool registration", () => {
     vi.restoreAllMocks();
   });
 
+  it("lists only plugins that can verify identity accounts", () => {
+    setPlugins([
+      resourceEventPlugin(),
+      defineJuniorPlugin({
+        manifest: {
+          name: "identity-test",
+          displayName: "Identity test",
+          description: "Verifies test accounts",
+        },
+        hooks: {
+          resolveOAuthAccount: () => ({ id: "account-1" }),
+        },
+      }),
+    ]);
+
+    const tools = createTools([], {}, ctx("D12345"));
+    expect(tools.userLookup?.inputSchema).toMatchObject({
+      properties: {
+        provider: { enum: ["slack", "identity-test"] },
+      },
+    });
+  });
+
   it("omits loadSkill when an explicit skill is already loaded", () => {
     const tools = createTools([], {}, ctx("D12345"), {
       includeLoadSkill: false,

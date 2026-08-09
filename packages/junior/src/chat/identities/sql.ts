@@ -157,8 +157,12 @@ async function upsertIdentityRecord(
       set: {
         kind: sql`excluded.kind`,
         userId: sql`coalesce(${juniorIdentities.userId}, excluded.user_id)`,
-        displayName: sql`coalesce(${juniorIdentities.displayName}, excluded.display_name)`,
-        handle: sql`coalesce(${juniorIdentities.handle}, excluded.handle)`,
+        displayName: linkedUserId
+          ? sql`coalesce(excluded.display_name, ${juniorIdentities.displayName})`
+          : sql`coalesce(${juniorIdentities.displayName}, excluded.display_name)`,
+        handle: linkedUserId
+          ? sql`coalesce(excluded.handle, ${juniorIdentities.handle})`
+          : sql`coalesce(${juniorIdentities.handle}, excluded.handle)`,
         email: sql`case when ${juniorIdentities.emailVerified} then coalesce(${juniorIdentities.email}, excluded.email) when excluded.email_verified then excluded.email else coalesce(${juniorIdentities.email}, excluded.email) end`,
         emailNormalized: sql`case when ${juniorIdentities.emailVerified} then coalesce(${juniorIdentities.emailNormalized}, excluded.email_normalized) when excluded.email_verified then excluded.email_normalized else coalesce(${juniorIdentities.emailNormalized}, excluded.email_normalized) end`,
         emailVerified: sql`${juniorIdentities.emailVerified} OR excluded.email_verified`,
@@ -166,6 +170,11 @@ async function upsertIdentityRecord(
         metadata: sql`coalesce(${juniorIdentities.metadata}, excluded.metadata_json)`,
         updatedAt: sql`excluded.updated_at`,
       },
+      ...(linkedUserId
+        ? {
+            setWhere: sql`${juniorIdentities.userId} IS NULL OR ${juniorIdentities.userId} = excluded.user_id`,
+          }
+        : {}),
     })
     .returning({
       id: juniorIdentities.id,
@@ -173,6 +182,9 @@ async function upsertIdentityRecord(
     });
   const row = rows[0];
   if (!row) {
+    if (linkedUserId) {
+      throw new Error("Identity conflicts with linked user");
+    }
     throw new Error("Identity upsert returned no row");
   }
   return {

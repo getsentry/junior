@@ -481,6 +481,41 @@ describe("userLookup", () => {
       expect(getCapturedSlackApiCalls("users.list")).toHaveLength(0);
     });
 
+    it("uses the latest trusted provider handle", async () => {
+      const slackIdentity = await upsertIdentity(getSqlExecutor(), {
+        kind: "user",
+        provider: "slack",
+        providerTenantId: "T0TEST",
+        providerSubjectId: "U039RR91S",
+        email: "dcramer@sentry.io",
+        emailVerified: true,
+        handle: "dcramer",
+      });
+      if (!slackIdentity.userId) throw new Error("missing linked user");
+      await upsertLinkedIdentity(getSqlExecutor(), slackIdentity.userId, {
+        kind: "user",
+        provider: "github",
+        providerSubjectId: "12345",
+        handle: "old-login",
+      });
+      await upsertLinkedIdentity(getSqlExecutor(), slackIdentity.userId, {
+        kind: "user",
+        provider: "github",
+        providerSubjectId: "12345",
+        handle: "new-login",
+      });
+
+      await expect(
+        executeTool(lookupTool(), { provider: "github", query: "old-login" }),
+      ).resolves.toMatchObject({ count: 0, users: [] });
+      await expect(
+        executeTool(lookupTool(), { provider: "github", query: "new-login" }),
+      ).resolves.toMatchObject({
+        count: 1,
+        mention: "<@U039RR91S>",
+      });
+    });
+
     it("accepts the provider subject id", async () => {
       await seedLinkedIdentities({
         githubId: "12345",
