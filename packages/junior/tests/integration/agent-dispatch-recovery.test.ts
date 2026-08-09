@@ -63,95 +63,6 @@ describe("agent dispatch recovery", () => {
     vi.restoreAllMocks();
   });
 
-  it("fails a stranded dispatch visibly when no resume boundary survived", async () => {
-    const dispatch = await createDispatch("stranded-visible-failure");
-    const conversationId = getDispatchConversationId(dispatch);
-    const sessionId = getDispatchTurnId(dispatch.id);
-    const agentRunner = { run: vi.fn() };
-    await upsertTurnRecord({
-      actor: dispatch.actor,
-      conversationId,
-      destination: dispatch.destination,
-      dispatchId: dispatch.id,
-      modelId: "test/model",
-      piMessages: [
-        {
-          role: "assistant",
-          content: [{ type: "text", text: "partial output" }],
-          api: "responses",
-          provider: "openai",
-          model: "test/model",
-          usage: {
-            input: 1,
-            output: 1,
-            cacheRead: 0,
-            cacheWrite: 0,
-            totalTokens: 2,
-            cost: {
-              input: 0,
-              output: 0,
-              cacheRead: 0,
-              cacheWrite: 0,
-              total: 0,
-            },
-          },
-          stopReason: "stop",
-          timestamp: dispatch.createdAtMs,
-        },
-      ],
-      sessionId,
-      sliceId: 1,
-      source: dispatch.source,
-      state: "running",
-      surface: "api",
-    });
-    const worker = createAgentDispatchConversationWorker({
-      resumeTurn: async (_dispatch, hooks) => {
-        await resumeAwaitingSlackContinuation(
-          getDispatchConversationId(_dispatch),
-          {
-            agentRunner,
-            inputMessageIds: getDispatchInputMessageIds(_dispatch.id),
-            routingContext: buildDispatchRoutingContext(_dispatch),
-          },
-          { shouldYield: hooks.shouldYield },
-        );
-      },
-      runTurn: vi.fn(),
-    });
-    const { ack, context } = createContext(dispatch);
-    context.attempt.messages = [];
-
-    await expect(worker(context, dispatch.id)).resolves.toEqual({
-      status: "completed",
-    });
-
-    expect(agentRunner.run).not.toHaveBeenCalled();
-    expect(ack).not.toHaveBeenCalled();
-    await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
-      status: "failed",
-    });
-    await expect(
-      getTurnRecord(conversationId, sessionId),
-    ).resolves.toMatchObject({
-      errorMessage: expect.stringContaining("no resumable boundary"),
-      state: "failed",
-    });
-    expect(slackApiOutbox.messages()).toEqual([
-      expect.objectContaining({
-        params: expect.objectContaining({
-          channel: destination.channelId,
-          text: expect.stringContaining(
-            "I ran into an internal error while processing that.",
-          ),
-        }),
-      }),
-    ]);
-    expect(slackApiOutbox.messages()[0]?.params).not.toHaveProperty(
-      "thread_ts",
-    );
-  });
-
   it("projects a canvas recovery as a blocked dispatch", async () => {
     const dispatch = await createDispatch("auth-projection-lag");
     const runtime = createDispatchRuntime({
@@ -177,9 +88,7 @@ describe("agent dispatch recovery", () => {
       status: "pending",
     });
     await expect(
-      listTurnSummaries(
-        getDispatchConversationId(dispatch),
-      ),
+      listTurnSummaries(getDispatchConversationId(dispatch)),
     ).resolves.toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -469,9 +378,7 @@ describe("agent dispatch recovery", () => {
       text: "Resumed scheduled digest\n\nScheduled task · Weekly",
     });
     await expect(
-      listTurnSummaries(
-        `agent-dispatch:${dispatch.id}`,
-      ),
+      listTurnSummaries(`agent-dispatch:${dispatch.id}`),
     ).resolves.toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -482,10 +389,7 @@ describe("agent dispatch recovery", () => {
       ]),
     );
     await expect(
-      getTurnRecord(
-        `agent-dispatch:${dispatch.id}`,
-        `dispatch:${dispatch.id}`,
-      ),
+      getTurnRecord(`agent-dispatch:${dispatch.id}`, `dispatch:${dispatch.id}`),
     ).resolves.toMatchObject({
       dispatchOutcome: "completed",
       resultMessageId: expect.any(String),

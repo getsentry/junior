@@ -116,7 +116,8 @@ type ThreadStateModule = typeof import("@/chat/runtime/thread-state");
 type AgentContinueRunnerModule =
   typeof import("@/chat/task-execution/continue-run");
 type RequestDeadlineModule = typeof import("@/chat/runtime/request-deadline");
-type TurnSessionStoreModule = typeof import("@/chat/task-execution/turn-cursor");
+type TurnSessionStoreModule =
+  typeof import("@/chat/task-execution/turn-cursor");
 type AgentContinueServiceModule =
   typeof import("@/chat/task-execution/continue");
 type TaskExecutionStoreModule = typeof import("@/chat/task-execution/store");
@@ -207,26 +208,25 @@ describe("agent continuation Slack integration", () => {
       threadTs: "1712345.0001",
       visibility: "private",
     });
-    const sessionRecord =
-      await turnSessionStoreModule.upsertTurnRecord({
-        modelId: "test/model",
-        conversationId,
-        sessionId,
-        sliceId: 2,
-        state: "paused",
-        destination: SLACK_DESTINATION,
-        source: storedSource,
-        piMessages: [
-          {
-            role: "user",
-            content: [{ type: "text", text: "hello" }],
-            timestamp: 1,
-          },
-        ],
-        resumeReason: "timeout",
-        resumedFromSliceId: 1,
-        errorMessage: "Agent turn timed out",
-      });
+    const sessionRecord = await turnSessionStoreModule.upsertTurnRecord({
+      modelId: "test/model",
+      conversationId,
+      sessionId,
+      sliceId: 2,
+      state: "paused",
+      destination: SLACK_DESTINATION,
+      source: storedSource,
+      piMessages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "hello" }],
+          timestamp: 1,
+        },
+      ],
+      resumeReason: "timeout",
+      resumedFromSliceId: 1,
+      errorMessage: "Agent turn timed out",
+    });
 
     await threadStateModule.persistThreadStateById(conversationId, {
       artifacts: {
@@ -376,31 +376,30 @@ describe("agent continuation Slack integration", () => {
   it("resumes and delivers when the continuation record is missing stored actor profile data", async () => {
     const conversationId = "slack:C123:1712345.0008";
     const sessionId = "turn_msg_8";
-    const sessionRecord =
-      await turnSessionStoreModule.upsertTurnRecord({
-        modelId: "test/model",
-        conversationId,
-        sessionId,
-        sliceId: 2,
-        state: "paused",
-        destination: SLACK_DESTINATION,
-        source: slackSource("1712345.0008"),
-        piMessages: [
-          {
-            role: "user",
-            content: [{ type: "text", text: "hello" }],
-            timestamp: 1,
-          },
-        ],
-        resumeReason: "timeout",
-        resumedFromSliceId: 1,
-        errorMessage: "Agent turn timed out",
-        actor: {
-          platform: "slack",
-          teamId: SLACK_DESTINATION.teamId,
-          userId: "U123",
+    const sessionRecord = await turnSessionStoreModule.upsertTurnRecord({
+      modelId: "test/model",
+      conversationId,
+      sessionId,
+      sliceId: 2,
+      state: "paused",
+      destination: SLACK_DESTINATION,
+      source: slackSource("1712345.0008"),
+      piMessages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "hello" }],
+          timestamp: 1,
         },
-      });
+      ],
+      resumeReason: "timeout",
+      resumedFromSliceId: 1,
+      errorMessage: "Agent turn timed out",
+      actor: {
+        platform: "slack",
+        teamId: SLACK_DESTINATION.teamId,
+        userId: "U123",
+      },
+    });
 
     await threadStateModule.persistThreadStateById(conversationId, {
       artifacts: {
@@ -462,137 +461,136 @@ describe("agent continuation Slack integration", () => {
   it("restores explicit progress from the active turn", async () => {
     const conversationId = "slack:C123:1712345.0009";
     const sessionId = "turn_msg_9";
-    const sessionRecord =
-      await turnSessionStoreModule.upsertTurnRecord({
-        modelId: "test/model",
-        conversationId,
-        sessionId,
-        sliceId: 2,
-        state: "paused",
-        destination: SLACK_DESTINATION,
-        source: slackSource("1712345.0009"),
-        turnStartMessageIndex: 3,
-        piMessages: [
-          {
-            role: "user",
-            content: [{ type: "text", text: "prior turn" }],
-            timestamp: 1,
-          },
-          {
-            role: "assistant",
-            api: "test",
-            provider: "test",
-            model: "test/model",
-            usage: TEST_USAGE,
-            stopReason: "toolUse",
-            content: [
-              {
-                type: "toolCall",
-                id: "prior-progress-call",
-                name: "reportProgress",
-                arguments: { message: "Searching old results" },
-              },
-            ],
-            timestamp: 2,
-          },
-          {
-            role: "toolResult",
-            toolCallId: "prior-progress-call",
-            toolName: "reportProgress",
-            content: [{ type: "text", text: "ok" }],
-            isError: false,
-            timestamp: 3,
-          },
-          {
-            role: "user",
-            content: [{ type: "text", text: "review this" }],
-            timestamp: 4,
-          },
-          {
-            role: "assistant",
-            api: "test",
-            provider: "test",
-            model: "test/model",
-            usage: TEST_USAGE,
-            stopReason: "toolUse",
-            content: [
-              {
-                type: "toolCall",
-                id: "progress-call-1",
-                name: "reportProgress",
-                arguments: { message: "Reading current results" },
-              },
-            ],
-            timestamp: 5,
-          },
-          {
-            role: "toolResult",
-            toolCallId: "progress-call-1",
-            toolName: "reportProgress",
-            content: [{ type: "text", text: "ok" }],
-            isError: false,
-            timestamp: 6,
-          },
-          {
-            role: "assistant",
-            api: "test",
-            provider: "test",
-            model: "test/model",
-            usage: TEST_USAGE,
-            stopReason: "toolUse",
-            content: [
-              {
-                type: "toolCall",
-                id: "progress-call-2",
-                name: "reportProgress",
-                arguments: { message: "Reviewing results" },
-              },
-            ],
-            timestamp: 7,
-          },
-          {
-            role: "toolResult",
-            toolCallId: "progress-call-2",
-            toolName: "reportProgress",
-            content: [{ type: "text", text: "ok" }],
-            isError: false,
-            timestamp: 8,
-          },
-          {
-            role: "assistant",
-            api: "test",
-            provider: "test",
-            model: "test/model",
-            usage: TEST_USAGE,
-            stopReason: "toolUse",
-            content: [
-              {
-                type: "toolCall",
-                id: "invalid-progress-call",
-                name: "reportProgress",
-                arguments: { message: "   " },
-              },
-            ],
-            timestamp: 9,
-          },
-          {
-            role: "toolResult",
-            toolCallId: "invalid-progress-call",
-            toolName: "reportProgress",
-            content: [{ type: "text", text: "ok" }],
-            isError: false,
-            timestamp: 10,
-          },
-        ],
-        resumeReason: "timeout",
-        resumedFromSliceId: 1,
-        errorMessage: "Agent turn timed out",
-        actor: {
-          platform: "slack",
-          teamId: SLACK_DESTINATION.teamId,
-          userId: "U123",
+    const sessionRecord = await turnSessionStoreModule.upsertTurnRecord({
+      modelId: "test/model",
+      conversationId,
+      sessionId,
+      sliceId: 2,
+      state: "paused",
+      destination: SLACK_DESTINATION,
+      source: slackSource("1712345.0009"),
+      turnStartMessageIndex: 3,
+      piMessages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "prior turn" }],
+          timestamp: 1,
         },
-      });
+        {
+          role: "assistant",
+          api: "test",
+          provider: "test",
+          model: "test/model",
+          usage: TEST_USAGE,
+          stopReason: "toolUse",
+          content: [
+            {
+              type: "toolCall",
+              id: "prior-progress-call",
+              name: "reportProgress",
+              arguments: { message: "Searching old results" },
+            },
+          ],
+          timestamp: 2,
+        },
+        {
+          role: "toolResult",
+          toolCallId: "prior-progress-call",
+          toolName: "reportProgress",
+          content: [{ type: "text", text: "ok" }],
+          isError: false,
+          timestamp: 3,
+        },
+        {
+          role: "user",
+          content: [{ type: "text", text: "review this" }],
+          timestamp: 4,
+        },
+        {
+          role: "assistant",
+          api: "test",
+          provider: "test",
+          model: "test/model",
+          usage: TEST_USAGE,
+          stopReason: "toolUse",
+          content: [
+            {
+              type: "toolCall",
+              id: "progress-call-1",
+              name: "reportProgress",
+              arguments: { message: "Reading current results" },
+            },
+          ],
+          timestamp: 5,
+        },
+        {
+          role: "toolResult",
+          toolCallId: "progress-call-1",
+          toolName: "reportProgress",
+          content: [{ type: "text", text: "ok" }],
+          isError: false,
+          timestamp: 6,
+        },
+        {
+          role: "assistant",
+          api: "test",
+          provider: "test",
+          model: "test/model",
+          usage: TEST_USAGE,
+          stopReason: "toolUse",
+          content: [
+            {
+              type: "toolCall",
+              id: "progress-call-2",
+              name: "reportProgress",
+              arguments: { message: "Reviewing results" },
+            },
+          ],
+          timestamp: 7,
+        },
+        {
+          role: "toolResult",
+          toolCallId: "progress-call-2",
+          toolName: "reportProgress",
+          content: [{ type: "text", text: "ok" }],
+          isError: false,
+          timestamp: 8,
+        },
+        {
+          role: "assistant",
+          api: "test",
+          provider: "test",
+          model: "test/model",
+          usage: TEST_USAGE,
+          stopReason: "toolUse",
+          content: [
+            {
+              type: "toolCall",
+              id: "invalid-progress-call",
+              name: "reportProgress",
+              arguments: { message: "   " },
+            },
+          ],
+          timestamp: 9,
+        },
+        {
+          role: "toolResult",
+          toolCallId: "invalid-progress-call",
+          toolName: "reportProgress",
+          content: [{ type: "text", text: "ok" }],
+          isError: false,
+          timestamp: 10,
+        },
+      ],
+      resumeReason: "timeout",
+      resumedFromSliceId: 1,
+      errorMessage: "Agent turn timed out",
+      actor: {
+        platform: "slack",
+        teamId: SLACK_DESTINATION.teamId,
+        userId: "U123",
+      },
+    });
 
     await threadStateModule.persistThreadStateById(conversationId, {
       artifacts: { listColumnMap: {} },
@@ -633,34 +631,33 @@ describe("agent continuation Slack integration", () => {
   it("schedules another continuation for high slice ids", async () => {
     const conversationId = "slack:C123:1712345.0002";
     const sessionId = "turn_msg_2";
-    const sessionRecord =
-      await turnSessionStoreModule.upsertTurnRecord({
-        modelId: "test/model",
-        conversationId,
-        sessionId,
-        sliceId: 5,
-        state: "paused",
-        destination: SLACK_DESTINATION,
-        source: slackSource("1712345.0002"),
-        piMessages: [
-          {
-            role: "user",
-            content: [{ type: "text", text: "hello" }],
-            timestamp: 1,
-          },
-        ],
-        resumeReason: "timeout",
-        resumedFromSliceId: 4,
-        errorMessage: "Agent turn timed out",
-        actor: {
-          platform: "slack",
-          teamId: SLACK_DESTINATION.teamId,
-          userId: "U123",
-          userName: "testuser",
-          fullName: "Test User",
-          email: "testuser@example.com",
+    const sessionRecord = await turnSessionStoreModule.upsertTurnRecord({
+      modelId: "test/model",
+      conversationId,
+      sessionId,
+      sliceId: 5,
+      state: "paused",
+      destination: SLACK_DESTINATION,
+      source: slackSource("1712345.0002"),
+      piMessages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "hello" }],
+          timestamp: 1,
         },
-      });
+      ],
+      resumeReason: "timeout",
+      resumedFromSliceId: 4,
+      errorMessage: "Agent turn timed out",
+      actor: {
+        platform: "slack",
+        teamId: SLACK_DESTINATION.teamId,
+        userId: "U123",
+        userName: "testuser",
+        fullName: "Test User",
+        email: "testuser@example.com",
+      },
+    });
 
     await threadStateModule.persistThreadStateById(conversationId, {
       artifacts: {
@@ -723,26 +720,25 @@ describe("agent continuation Slack integration", () => {
   it("terminalizes startup failures before the visible failure path runs", async () => {
     const conversationId = "slack:C123:1712345.0007";
     const sessionId = "turn_msg_7";
-    const sessionRecord =
-      await turnSessionStoreModule.upsertTurnRecord({
-        modelId: "test/model",
-        conversationId,
-        sessionId,
-        sliceId: 2,
-        state: "paused",
-        destination: SLACK_DESTINATION,
-        source: slackSource("1712345.0007"),
-        piMessages: [
-          {
-            role: "user",
-            content: [{ type: "text", text: "hello" }],
-            timestamp: 1,
-          },
-        ],
-        resumeReason: "timeout",
-        resumedFromSliceId: 1,
-        errorMessage: "Agent turn timed out",
-      });
+    const sessionRecord = await turnSessionStoreModule.upsertTurnRecord({
+      modelId: "test/model",
+      conversationId,
+      sessionId,
+      sliceId: 2,
+      state: "paused",
+      destination: SLACK_DESTINATION,
+      source: slackSource("1712345.0007"),
+      piMessages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "hello" }],
+          timestamp: 1,
+        },
+      ],
+      resumeReason: "timeout",
+      resumedFromSliceId: 1,
+      errorMessage: "Agent turn timed out",
+    });
 
     await threadStateModule.persistThreadStateById(conversationId, {
       artifacts: {
@@ -779,10 +775,7 @@ describe("agent continuation Slack integration", () => {
     expect(continued).toBe(false);
     expect(executeAgentRunMock).not.toHaveBeenCalled();
     await expect(
-      turnSessionStoreModule.getTurnRecord(
-        conversationId,
-        sessionId,
-      ),
+      turnSessionStoreModule.getTurnRecord(conversationId, sessionId),
     ).resolves.toMatchObject({
       state: "failed",
       errorMessage: "Unable to rebuild Slack actor for continuation",
@@ -804,26 +797,25 @@ describe("agent continuation Slack integration", () => {
     const conversationId = "slack:C123:1712345.0012";
     const sessionId = "turn_resource-event-msg_12";
     const storedSource = slackSource("1712345.0012");
-    const sessionRecord =
-      await turnSessionStoreModule.upsertTurnRecord({
-        modelId: "test/model",
-        conversationId,
-        sessionId,
-        sliceId: 2,
-        state: "paused",
-        destination: SLACK_DESTINATION,
-        source: storedSource,
-        piMessages: [
-          {
-            role: "user",
-            content: [{ type: "text", text: "subscribed PR checks failed" }],
-            timestamp: 1,
-          },
-        ],
-        resumeReason: "timeout",
-        resumedFromSliceId: 1,
-        errorMessage: "Agent turn timed out",
-      });
+    const sessionRecord = await turnSessionStoreModule.upsertTurnRecord({
+      modelId: "test/model",
+      conversationId,
+      sessionId,
+      sliceId: 2,
+      state: "paused",
+      destination: SLACK_DESTINATION,
+      source: storedSource,
+      piMessages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "subscribed PR checks failed" }],
+          timestamp: 1,
+        },
+      ],
+      resumeReason: "timeout",
+      resumedFromSliceId: 1,
+      errorMessage: "Agent turn timed out",
+    });
 
     await threadStateModule.persistThreadStateById(conversationId, {
       artifacts: {
@@ -881,26 +873,25 @@ describe("agent continuation Slack integration", () => {
     // enough to rebuild a Slack resume actor.
     const conversationId = "slack:C123:1712345.0010";
     const sessionId = "turn_msg_10";
-    const sessionRecord =
-      await turnSessionStoreModule.upsertTurnRecord({
-        modelId: "test/model",
-        conversationId,
-        sessionId,
-        sliceId: 2,
-        state: "paused",
-        destination: SLACK_DESTINATION,
-        source: slackSource("1712345.0010"),
-        piMessages: [
-          {
-            role: "user",
-            content: [{ type: "text", text: "hello" }],
-            timestamp: 1,
-          },
-        ],
-        resumeReason: "timeout",
-        resumedFromSliceId: 1,
-        errorMessage: "Agent turn timed out",
-      });
+    const sessionRecord = await turnSessionStoreModule.upsertTurnRecord({
+      modelId: "test/model",
+      conversationId,
+      sessionId,
+      sliceId: 2,
+      state: "paused",
+      destination: SLACK_DESTINATION,
+      source: slackSource("1712345.0010"),
+      piMessages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "hello" }],
+          timestamp: 1,
+        },
+      ],
+      resumeReason: "timeout",
+      resumedFromSliceId: 1,
+      errorMessage: "Agent turn timed out",
+    });
 
     await threadStateModule.persistThreadStateById(conversationId, {
       artifacts: {
@@ -955,26 +946,25 @@ describe("agent continuation Slack integration", () => {
     // matching identity, so the resume completes instead of failing.
     const conversationId = "slack:C123:1712345.0011";
     const sessionId = "turn_msg_11";
-    const sessionRecord =
-      await turnSessionStoreModule.upsertTurnRecord({
-        modelId: "test/model",
-        conversationId,
-        sessionId,
-        sliceId: 2,
-        state: "paused",
-        destination: SLACK_DESTINATION,
-        source: slackSource("1712345.0011"),
-        piMessages: [
-          {
-            role: "user",
-            content: [{ type: "text", text: "hello" }],
-            timestamp: 1,
-          },
-        ],
-        resumeReason: "timeout",
-        resumedFromSliceId: 1,
-        errorMessage: "Agent turn timed out",
-      });
+    const sessionRecord = await turnSessionStoreModule.upsertTurnRecord({
+      modelId: "test/model",
+      conversationId,
+      sessionId,
+      sliceId: 2,
+      state: "paused",
+      destination: SLACK_DESTINATION,
+      source: slackSource("1712345.0011"),
+      piMessages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "hello" }],
+          timestamp: 1,
+        },
+      ],
+      resumeReason: "timeout",
+      resumedFromSliceId: 1,
+      errorMessage: "Agent turn timed out",
+    });
     await taskExecutionStoreModule.recordConversationActivity({
       conversationId,
       destination: SLACK_DESTINATION,
@@ -1049,34 +1039,33 @@ describe("agent continuation Slack integration", () => {
   it("schedules a durable continuation without posting a notice when a resumed slice times out again", async () => {
     const conversationId = "slack:C123:1712345.0006";
     const sessionId = "turn_msg_6";
-    const sessionRecord =
-      await turnSessionStoreModule.upsertTurnRecord({
-        modelId: "test/model",
-        conversationId,
-        sessionId,
-        sliceId: 2,
-        state: "paused",
-        destination: SLACK_DESTINATION,
-        source: slackSource("1712345.0006"),
-        piMessages: [
-          {
-            role: "user",
-            content: [{ type: "text", text: "hello" }],
-            timestamp: 1,
-          },
-        ],
-        resumeReason: "timeout",
-        resumedFromSliceId: 1,
-        errorMessage: "Agent turn timed out",
-        actor: {
-          platform: "slack",
-          teamId: SLACK_DESTINATION.teamId,
-          userId: "U123",
-          userName: "testuser",
-          fullName: "Test User",
-          email: "testuser@example.com",
+    const sessionRecord = await turnSessionStoreModule.upsertTurnRecord({
+      modelId: "test/model",
+      conversationId,
+      sessionId,
+      sliceId: 2,
+      state: "paused",
+      destination: SLACK_DESTINATION,
+      source: slackSource("1712345.0006"),
+      piMessages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "hello" }],
+          timestamp: 1,
         },
-      });
+      ],
+      resumeReason: "timeout",
+      resumedFromSliceId: 1,
+      errorMessage: "Agent turn timed out",
+      actor: {
+        platform: "slack",
+        teamId: SLACK_DESTINATION.teamId,
+        userId: "U123",
+        userName: "testuser",
+        fullName: "Test User",
+        email: "testuser@example.com",
+      },
+    });
 
     await threadStateModule.persistThreadStateById(conversationId, {
       artifacts: {
@@ -1130,419 +1119,36 @@ describe("agent continuation Slack integration", () => {
     ]);
   });
 
-  it("resumes a lease-expired running session from its latest durable boundary", async () => {
-    // Process death between generation and the final post leaves a running
-    // record at its last durable safe boundary; queue redelivery must produce
-    // exactly one visible reply and only then a delivered/completed session.
-    const conversationId = "slack:C123:1712345.0008";
-    const sessionId = "turn_msg_8";
-    executeAgentRunMock.mockImplementationOnce(async (request) => {
-      const history = [
-        {
-          role: "user",
-          content: [{ type: "text", text: "hello" }],
-          timestamp: 1,
-        },
-        {
-          ...assistantPiMessage("Final resumed answer", 2),
-        },
-      ] as any;
-      await deliverAssistantMessagesForTest(
-        request,
-        [{ text: "Final resumed answer" }],
-        history,
-      );
-      return completedAgentRun({
-        text: "Final resumed answer",
-        piMessages: history,
-        diagnostics: makeDiagnostics(),
-      });
-    });
-    await turnSessionStoreModule.upsertTurnRecord({
-      modelId: "test/model",
-      conversationId,
-      sessionId,
-      sliceId: 1,
-      state: "running",
-      destination: SLACK_DESTINATION,
-      source: slackSource("1712345.0008"),
-      piMessages: [
-        {
-          role: "user",
-          content: [{ type: "text", text: "hello" }],
-          timestamp: 1,
-        },
-      ],
-      actor: {
-        platform: "slack",
-        teamId: SLACK_DESTINATION.teamId,
-        userId: "U123",
-        userName: "testuser",
-        fullName: "Test User",
-        email: "testuser@example.com",
-      },
-    });
-
-    await threadStateModule.persistThreadStateById(conversationId, {
-      artifacts: {
-        listColumnMap: {},
-      },
-      conversation: {
-        schemaVersion: 1,
-        compactions: [],
-        messages: [
-          {
-            id: "msg.8",
-            role: "user",
-            text: "resume this request",
-            createdAtMs: 1,
-            author: {
-              userId: "U123",
-            },
-          },
-        ],
-        processing: {
-          activeTurnId: sessionId,
-        },
-        vision: {
-          byFileId: {},
-        },
-      },
-    });
-
-    const shouldYield = vi.fn(() => false);
-    const resumed = await requestDeadlineModule.runWithTurnRequestDeadline(() =>
-      agentContinueRunnerModule.resumeAwaitingSlackContinuation(
-        conversationId,
-        {
-          agentRunner: { run: executeAgentRunMock },
-          scheduleAgentContinue: (request) =>
-            agentContinueServiceModule.scheduleAgentContinue(request, {
-              queue,
-            }),
-        },
-        { shouldYield },
-      ),
-    );
-
-    expect(resumed).toBe(true);
-    expect(executeAgentRunMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        input: expect.objectContaining({ messageText: "resume this request" }),
-        routing: expect.objectContaining({
-          destination: SLACK_DESTINATION,
-        }),
-        durability: expect.objectContaining({ shouldYield }),
-      }),
-    );
-    // Exactly one visible reply for the interrupted request.
-    expect(slackApiOutbox.messages()).toEqual([
-      expect.objectContaining({
-        params: expect.objectContaining({
-          channel: "C123",
-          thread_ts: "1712345.0008",
-          text: "Final resumed answer",
-        }),
-      }),
-    ]);
-    // Completion is committed only after Slack accepted the reply.
-    await expect(
-      turnSessionStoreModule.getTurnRecord(
-        conversationId,
-        sessionId,
-      ),
-    ).resolves.toMatchObject({
-      state: "completed",
-    });
-  });
-
-  it("recovers a post-handoff worker death from the replacement summary epoch", async () => {
-    const conversationId = "slack:C123:1712345.00081";
-    const sessionId = "turn_msg_8_handoff";
-    const staleText = "raw standard context must not return";
-    const runtimeContext =
-      "<runtime-turn-context>\nKeep the active skills and workspace configuration.\n</runtime-turn-context>";
-    const previousRuntimeContext =
-      "<runtime-turn-context>\nOutdated runtime bootstrap.\n</runtime-turn-context>";
-    const summaryText = "Continue the implementation from the handoff summary.";
-    const summaryMessage = {
-      role: "user",
-      content: [{ type: "text", text: summaryText }],
-      timestamp: 5,
-    } as any;
-    await turnSessionStoreModule.upsertTurnRecord({
-      conversationId,
-      sessionId,
-      sliceId: 1,
-      state: "running",
-      destination: SLACK_DESTINATION,
-      source: slackSource("1712345.00081"),
-      modelId: "openai/gpt-5.5",
-      piMessages: [
-        {
-          role: "user",
-          content: [
-            { type: "text", text: runtimeContext },
-            { type: "text", text: staleText },
-          ],
-          timestamp: 1,
-        },
-      ],
-      actor: {
-        platform: "slack",
-        teamId: SLACK_DESTINATION.teamId,
-        userId: "U123",
-        userName: "testuser",
-        fullName: "Test User",
-        email: "testuser@example.com",
-      },
-    });
-    const { getConversationEventStore } = await import("@/chat/db");
-    await getConversationEventStore().replaceHistory(conversationId, {
-      createdAtMs: 1_000,
-      data: {
-        type: "handoff",
-        modelId: "test/model",
-        modelProfile: "handoff",
-        triggeringToolCallId: "recovered-handoff-call",
-        replacementHistory: [
-          {
-            item: historyItemFromPiMessage(summaryMessage, {
-              authority: "context",
-            }),
-          },
-        ],
-      },
-    });
-    // A prior recovery can park runtime context in the handoff epoch before
-    // another worker dies; the next recovery must replace rather than copy it.
-    await getConversationEventStore().append(conversationId, [
-      {
-        data: {
-          type: "user_message",
-          content: [{ type: "text", text: previousRuntimeContext }],
-          timestamp: 1,
-          provenance: { authority: "context" },
-        },
-        createdAtMs: 1,
-      },
-    ]);
-    await threadStateModule.persistThreadStateById(conversationId, {
-      artifacts: { listColumnMap: {} },
-      conversation: {
-        schemaVersion: 1,
-        compactions: [],
-        messages: [
-          {
-            id: "msg.8.handoff",
-            role: "user",
-            text: "resume this request",
-            createdAtMs: 1,
-            author: { userId: "U123" },
-          },
-        ],
-        processing: { activeTurnId: sessionId },
-        vision: { byFileId: {} },
-      },
-    });
-
-    let recoveredRecord:
-      | Awaited<
-          ReturnType<typeof turnSessionStoreModule.getTurnRecord>
-        >
-      | undefined;
-    executeAgentRunMock.mockImplementationOnce(async (request) => {
-      recoveredRecord = await turnSessionStoreModule.getTurnRecord(
-        conversationId,
-        sessionId,
-      );
-      const history = [
-        summaryMessage,
-        assistantPiMessage("Handoff recovery completed.", 6),
-      ] as any;
-      await deliverAssistantMessagesForTest(
-        request,
-        [{ text: "Handoff recovery completed." }],
-        history,
-      );
-      return completedAgentRun({
-        text: "Handoff recovery completed.",
-        piMessages: history,
-        diagnostics: {
-          ...makeDiagnostics(),
-          modelId: "openai/gpt-5.6-sol",
-        },
-      });
-    });
-
-    const resumed = await requestDeadlineModule.runWithTurnRequestDeadline(() =>
-      agentContinueRunnerModule.resumeAwaitingSlackContinuation(
-        conversationId,
-        {
-          agentRunner: { run: executeAgentRunMock },
-        },
-      ),
-    );
-
-    expect(resumed).toBe(true);
-    expect(recoveredRecord).toMatchObject({
-      piMessages: expect.arrayContaining([
-        expect.objectContaining({ role: "user" }),
-      ]),
-    });
-    expect(recoveredRecord?.piMessages).toHaveLength(1);
-    expect(JSON.stringify(recoveredRecord?.piMessages)).toContain(summaryText);
-    expect(JSON.stringify(recoveredRecord?.piMessages)).not.toContain(
-      runtimeContext,
-    );
-    expect(JSON.stringify(recoveredRecord?.piMessages)).not.toContain(
-      staleText,
-    );
-    expect(JSON.stringify(recoveredRecord?.piMessages)).not.toContain(
-      "Outdated runtime bootstrap.",
-    );
-    const { loadConversationProjection, loadProjection } =
-      await import("@/chat/conversations/projection");
-    expect(
-      (await loadConversationProjection({ conversationId })).modelProfile,
-    ).toBe("handoff");
-    const projection = await loadProjection({ conversationId });
-    expect(projection[0]).toEqual(summaryMessage);
-    expect(JSON.stringify(projection)).toContain("Handoff recovery completed.");
-    expect(JSON.stringify(projection)).not.toContain(staleText);
-    expect(JSON.stringify(projection)).not.toContain("<runtime-turn-context>");
-  });
-
-  it("terminally fails a stranded running session with no resumable boundary", async () => {
-    const conversationId = "slack:C123:1712345.0009";
-    const sessionId = "turn_msg_9";
-    await turnSessionStoreModule.upsertTurnRecord({
-      modelId: "test/model",
-      conversationId,
-      sessionId,
-      sliceId: 1,
-      state: "running",
-      destination: SLACK_DESTINATION,
-      source: slackSource("1712345.0009"),
-      // Only uncommitted trailing assistant output survived the crash: there
-      // is no continuable user/toolResult boundary to resume from.
-      piMessages: [
-        {
-          role: "assistant",
-          content: [{ type: "text", text: "partial output" }],
-          api: "responses",
-          provider: "openai",
-          model: "gpt-5.3",
-          usage: {
-            input: 1,
-            output: 1,
-            cacheRead: 0,
-            cacheWrite: 0,
-            totalTokens: 2,
-            cost: {
-              input: 0,
-              output: 0,
-              cacheRead: 0,
-              cacheWrite: 0,
-              total: 0,
-            },
-          },
-          stopReason: "stop",
-          timestamp: 2,
-        },
-      ],
-    });
-    await threadStateModule.persistThreadStateById(conversationId, {
-      artifacts: {
-        listColumnMap: {},
-      },
-      conversation: {
-        schemaVersion: 1,
-        compactions: [],
-        messages: [
-          {
-            id: "msg.9",
-            role: "user",
-            text: "resume this request",
-            createdAtMs: 1,
-            author: {
-              userId: "U123",
-            },
-          },
-        ],
-        processing: {
-          activeTurnId: sessionId,
-        },
-        vision: {
-          byFileId: {},
-        },
-      },
-    });
-
-    const resumed = await requestDeadlineModule.runWithTurnRequestDeadline(() =>
-      agentContinueRunnerModule.resumeAwaitingSlackContinuation(
-        conversationId,
-        {
-          agentRunner: { run: executeAgentRunMock },
-        },
-      ),
-    );
-
-    expect(resumed).toBe(false);
-    expect(executeAgentRunMock).not.toHaveBeenCalled();
-    await expect(
-      turnSessionStoreModule.getTurnRecord(
-        conversationId,
-        sessionId,
-      ),
-    ).resolves.toMatchObject({
-      state: "failed",
-      errorMessage: expect.stringContaining("no resumable boundary"),
-    });
-    expect(slackApiOutbox.messages()).toEqual([
-      expect.objectContaining({
-        params: expect.objectContaining({
-          channel: "C123",
-          thread_ts: "1712345.0009",
-          text: expect.stringContaining(
-            "I ran into an internal error while processing that.",
-          ),
-        }),
-      }),
-    ]);
-  });
-
   it("posts resumed replies through the shared delivery path", async () => {
     const conversationId = "slack:C123:1712345.0003";
     const sessionId = "turn_msg_3";
-    const sessionRecord =
-      await turnSessionStoreModule.upsertTurnRecord({
-        modelId: "test/model",
-        conversationId,
-        sessionId,
-        sliceId: 2,
-        state: "paused",
-        destination: SLACK_DESTINATION,
-        source: slackSource("1712345.0003"),
-        piMessages: [
-          {
-            role: "user",
-            content: [{ type: "text", text: "hello" }],
-            timestamp: 1,
-          },
-        ],
-        resumeReason: "timeout",
-        resumedFromSliceId: 1,
-        errorMessage: "Agent turn timed out",
-        actor: {
-          platform: "slack",
-          teamId: SLACK_DESTINATION.teamId,
-          userId: "U123",
-          userName: "testuser",
-          fullName: "Test User",
-          email: "testuser@example.com",
+    const sessionRecord = await turnSessionStoreModule.upsertTurnRecord({
+      modelId: "test/model",
+      conversationId,
+      sessionId,
+      sliceId: 2,
+      state: "paused",
+      destination: SLACK_DESTINATION,
+      source: slackSource("1712345.0003"),
+      piMessages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "hello" }],
+          timestamp: 1,
         },
-      });
+      ],
+      resumeReason: "timeout",
+      resumedFromSliceId: 1,
+      errorMessage: "Agent turn timed out",
+      actor: {
+        platform: "slack",
+        teamId: SLACK_DESTINATION.teamId,
+        userId: "U123",
+        userName: "testuser",
+        fullName: "Test User",
+        email: "testuser@example.com",
+      },
+    });
 
     executeAgentRunMock.mockImplementationOnce(async (request) => {
       const tools = createTools(

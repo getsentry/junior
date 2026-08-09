@@ -802,11 +802,10 @@ describe("agent run continuation", () => {
       messages: reply.piMessages ?? [],
       usage: reply.diagnostics.usage,
     });
-    const completedSessionRecord =
-      await turnSessionState.getTurnRecord(
-        "conversation-1",
-        "turn-1",
-      );
+    const completedSessionRecord = await turnSessionState.getTurnRecord(
+      "conversation-1",
+      "turn-1",
+    );
     expect(completedSessionRecord).toMatchObject({
       state: "completed",
       cumulativeUsage: {
@@ -1301,7 +1300,7 @@ describe("agent run continuation", () => {
 
     expect(error).toBeInstanceOf(Error);
     expect((error as Error).message).toContain(
-      "Failed to persist cooperative yield",
+      "Failed to persist continuation",
     );
     await expect(
       turnSessionState.getTurnRecord(
