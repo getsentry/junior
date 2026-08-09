@@ -65,7 +65,7 @@ async function storedUserByEmail(
 ): Promise<SlackUserProfile | undefined> {
   const emailNormalized = normalizeIdentityEmail(email);
   if (!emailNormalized) return undefined;
-  const [identity] = await getSqlExecutor()
+  const identities = await getSqlExecutor()
     .db()
     .select()
     .from(juniorIdentities)
@@ -73,19 +73,22 @@ async function storedUserByEmail(
       and(
         eq(juniorIdentities.provider, "slack"),
         eq(juniorIdentities.providerTenantId, teamId),
+        eq(juniorIdentities.kind, "user"),
         eq(juniorIdentities.emailVerified, true),
         eq(juniorIdentities.emailNormalized, emailNormalized),
       ),
     )
-    .limit(1);
-  if (!identity) return undefined;
+    .limit(2);
+  // Only reuse a stored identity when the email maps to exactly one person.
+  if (identities.length !== 1) return undefined;
+  const identity = identities[0]!;
   return {
     id: identity.providerSubjectId,
     ...(identity.handle ? { name: identity.handle } : {}),
     ...(identity.displayName ? { real_name: identity.displayName } : {}),
     ...(identity.displayName ? { display_name: identity.displayName } : {}),
     ...(identity.email ? { email: identity.email } : {}),
-    is_bot: identity.kind === "service",
+    is_bot: false,
     is_deleted: false,
   };
 }

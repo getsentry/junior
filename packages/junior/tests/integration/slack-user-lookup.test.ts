@@ -189,6 +189,48 @@ describe("slackUserLookup", () => {
       expect(getCapturedSlackApiCalls("users.lookupByEmail")).toHaveLength(0);
     });
 
+    it("asks Slack when several stored identities share an email", async () => {
+      await upsertIdentity(getSqlExecutor(), {
+        kind: "user",
+        provider: "slack",
+        providerTenantId: "T0TEST",
+        providerSubjectId: "U0ONE",
+        email: "shared@sentry.io",
+        emailVerified: true,
+        displayName: "One",
+        handle: "one",
+      });
+      await upsertIdentity(getSqlExecutor(), {
+        kind: "user",
+        provider: "slack",
+        providerTenantId: "T0TEST",
+        providerSubjectId: "U0TWO",
+        email: "shared@sentry.io",
+        emailVerified: true,
+        displayName: "Two",
+        handle: "two",
+      });
+      queueSlackApiResponse("users.lookupByEmail", {
+        body: usersInfoOk({
+          userId: "U0LIVE",
+          userName: "live",
+          realName: "Live User",
+          email: "shared@sentry.io",
+        }),
+      });
+
+      const result = await executeTool(lookupTool(), {
+        mode: "email",
+        value: "shared@sentry.io",
+      });
+
+      expect(result).toMatchObject({
+        mention: "<@U0LIVE>",
+        user: { id: "U0LIVE", name: "live" },
+      });
+      expect(getCapturedSlackApiCalls("users.lookupByEmail")).toHaveLength(1);
+    });
+
     it("returns error when email not found", async () => {
       queueSlackApiError("users.lookupByEmail", {
         error: "users_not_found",
