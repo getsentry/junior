@@ -2,34 +2,29 @@
 
 ## Intent
 
-Provider integrations should keep platform SDKs, payload shapes, formatting
-rules, and transport details inside the provider-owned module. Cross-provider
-runtime, service, state, plugin, and reporting code should depend on small
-Junior contracts instead of Slack, Vercel, GitHub, or other provider primitives.
+Keep each provider SDK and its data inside the module that owns the provider.
+Shared Junior code must use small Junior-owned types. It must not depend on
+Slack, Vercel, GitHub, or another provider SDK.
 
 ## Policy
 
-- Provider SDK clients, SDK response types, SDK errors, raw webhook payloads,
-  and provider-specific formatting primitives belong in the provider-owned
-  module or feature folder.
-- Cross-provider code should accept Junior-owned contracts such as
-  `Destination`, `Source`, actor identity, local ports, or feature-owned
-  projections instead of provider SDK types.
-- Provider-specific side effects must be exposed through narrow capability
-  ports or provider-owned services. Do not import provider infrastructure to
-  "just call the client" from runtime, service, state, reporting, or generic
-  tool code.
-- Provider-owned tests and fixtures may use provider primitives directly.
-  Product behavior tests outside the provider should exercise provider behavior
-  through the public adapter or runtime boundary.
-- If provider-specific behavior must cross a boundary, name the boundary by the
-  product role and keep the provider type private to the implementation.
+- Keep SDK clients, response types, errors, webhook data, and formatting rules
+  in the module or feature that owns the provider.
+- Shared code must use Junior-owned types. Examples include `Destination`,
+  `Source`, actor identity, a local interface, or a feature-owned view.
+- Put provider actions behind a small local interface or a provider-owned
+  service. Do not import a provider client into shared runtime, service, state,
+  reporting, or tool code.
+- Tests for one provider may use its SDK types. Tests outside that provider
+  must use its public adapter or a Junior runtime interface.
+- When provider behavior must enter shared code, name the interface for its
+  product role. Keep the SDK type private to the provider module.
 
 ## Exceptions
 
-- Provider modules, provider feature tools, and ingress adapters may parse raw
-  provider payloads and call provider SDKs.
-- Composition roots may wire provider implementations to provider-neutral
-  interfaces, but they should not perform provider behavior themselves.
-- Existing legacy runtime code may keep provider imports while it is being
-  simplified, but new code should not add more provider primitives there.
+- Provider modules, provider tools, and inbound adapters may read raw provider
+  data and call provider SDKs.
+- App setup code may connect a provider implementation to a Junior interface.
+  It must not perform the provider action itself.
+- Existing runtime code may keep old provider imports while maintainers remove
+  them. New code must not add more provider SDK types there.

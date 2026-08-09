@@ -21,8 +21,11 @@ module `README.md`. Code, runtime schemas, exported types, and tests define the
 implemented contract. Temporary implementation plans live under
 `../openspec/changes/` and cannot override policy.
 
-Keep policies short: explain the intent, state the default, and name only
-meaningful exceptions. Update the policy directly when the repo intends to
-change the default; silence elsewhere never creates an exception.
+Keep policies short. Use ASD-STE100 English: common words, active voice, short
+sentences, and one idea per sentence. Keep required domain terms from
+`../TERMINOLOGY.md`, but explain them when the reader may not know them. Remove
+other jargon. State the intent, the default, and only real exceptions. Update
+the policy when the repo changes the default. Silence elsewhere does not create
+an exception.
 
 Use `policy-template.md` for new policies.
