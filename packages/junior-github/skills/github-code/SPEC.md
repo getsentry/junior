@@ -11,7 +11,8 @@ Guide evidence-first GitHub repository work from inspection through a reviewable
 - Treat shallow clones as inspection checkouts; fetch/deepen before history-dependent operations and never force-push around missing ancestry.
 - Install repository dependencies with the detected package manager's locked/frozen mode before verification when dependencies are absent.
 - For every completed repository edit, create or update a pushed PR unless the user explicitly opts out; default new PRs to draft while honoring explicit ready-for-review instructions.
-- Write adaptive reviewer-facing PR bodies in ASD-STE100 English instead of forcing a fixed template; include context the diff cannot show and omit empty ceremony.
+- Write conventional PR titles that match the current dominant change.
+- Write short reviewer-facing PR bodies in ASD-STE100 English; explain what changed and why, add only context the diff cannot show, and omit empty ceremony or fixed templates.
 - Treat existing PR metadata and commit messages as fallible context, and refresh the title/body against the current diff after material changes.
 - Report exact validation and permission failures without claiming partial work is complete.
 
@@ -37,8 +38,7 @@ After material edits:
 2. Run formatting or package checks applicable to changed Markdown.
 3. Confirm all referenced files exist.
 4. Confirm code-edit completion defaults to a draft PR.
-5. Confirm PR body guidance adapts to change complexity, uses plain ASD-STE100 English, and does not require empty or `N/A` sections.
-6. Confirm dependency installation and shallow-history recovery do not permit lockfile mutation or force-push shortcuts.
+5. Confirm dependency installation and shallow-history recovery do not permit lockfile mutation or force-push shortcuts.
 
 ## Maintenance
 
