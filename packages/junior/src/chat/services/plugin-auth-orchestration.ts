@@ -10,7 +10,7 @@
  * signal emitted by the egress proxy — never inferred from bash command text,
  * stdout patterns, or exit codes.
  */
-import type { Destination, Source } from "@sentry/junior-plugin-api";
+import type { Actor, Destination, Source } from "@sentry/junior-plugin-api";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { formatProviderLabel, startOAuthFlow } from "@/chat/oauth-flow";
 import {
@@ -56,6 +56,7 @@ export interface PluginAuthOrchestrationInput {
   conversationId?: string;
   sessionId?: string;
   actorId?: string;
+  actor?: Actor;
   channelId?: string;
   destination?: Destination;
   source?: Source;
@@ -166,6 +167,7 @@ export function createPluginAuthOrchestration(
     if (!reusingPendingLink) {
       const oauthResult = await startOAuthFlow(provider, {
         actorId: input.actorId,
+        ...(input.actor ? { actor: input.actor } : {}),
         channelId: input.channelId,
         destination: input.destination,
         source: input.source,

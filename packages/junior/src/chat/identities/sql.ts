@@ -74,11 +74,11 @@ async function existingIdentity(
   return rows[0];
 }
 
-/** Persist one provider identity observation and link verified emails to users. */
-export async function upsertIdentity(
+async function upsertIdentityRecord(
   executor: JuniorSqlDatabase,
   identity: IdentityUpsert,
-  nowMs: number = Date.now(),
+  linkedUserId: string | undefined,
+  nowMs: number,
 ): Promise<StoredIdentity> {
   const emailNormalized = normalizeIdentityEmail(identity.email);
   const email = emailNormalized
@@ -113,7 +113,21 @@ export async function upsertIdentity(
   ) {
     throw new Error("Identity verified email conflicts with linked user");
   }
-  const userId = existing?.userId ?? verifiedUserId;
+  if (
+    linkedUserId &&
+    verifiedUserId &&
+    linkedUserId !== verifiedUserId
+  ) {
+    throw new Error("Linked identity conflicts with verified email user");
+  }
+  if (
+    existing?.userId &&
+    linkedUserId &&
+    existing.userId !== linkedUserId
+  ) {
+    throw new Error("Identity conflicts with linked user");
+  }
+  const userId = existing?.userId ?? linkedUserId ?? verifiedUserId;
   const rows = await executor
     .db()
     .insert(juniorIdentities)
@@ -165,4 +179,27 @@ export async function upsertIdentity(
     id: row.id,
     ...(row.userId ? { userId: row.userId } : {}),
   };
+}
+
+/** Persist one provider identity observation and link verified emails to users. */
+export async function upsertIdentity(
+  executor: JuniorSqlDatabase,
+  identity: IdentityUpsert,
+  nowMs: number = Date.now(),
+): Promise<StoredIdentity> {
+  return await upsertIdentityRecord(executor, identity, undefined, nowMs);
+}
+
+/**
+ * Persist one provider identity after a trusted account-linking flow.
+ * Callers must use provider-verified account data, such as GitHub's authenticated
+ * user response, never identity claims inferred from content such as Git commits.
+ */
+export async function upsertLinkedIdentity(
+  executor: JuniorSqlDatabase,
+  userId: string,
+  identity: IdentityUpsert,
+  nowMs: number = Date.now(),
+): Promise<StoredIdentity> {
+  return await upsertIdentityRecord(executor, identity, userId, nowMs);
 }

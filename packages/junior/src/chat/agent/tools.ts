@@ -230,6 +230,7 @@ export async function wireAgentTools(
     conversationId: args.conversationId,
     sessionId: args.turnId,
     actorId: credentialUserId,
+    actor: args.currentActor,
     channelId: slackChannelId,
     destination: args.routing.destination,
     source: runSource,

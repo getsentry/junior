@@ -136,76 +136,6 @@ export interface SlackUserSearchResult {
   truncated: boolean;
 }
 
-const GITHUB_USERNAME_RE =
-  /^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/;
-
-/** Normalize a GitHub username, @handle, or github.com profile URL to a login. */
-export function normalizeGithubUsername(
-  value: string,
-): string | undefined {
-  let candidate = value.trim();
-  if (!candidate) return undefined;
-  if (candidate.startsWith("@")) {
-    candidate = candidate.slice(1).trim();
-  }
-
-  const looksLikeUrl =
-    /^https?:\/\//i.test(candidate) || /^github\.com\//i.test(candidate);
-  if (looksLikeUrl) {
-    try {
-      const url = new URL(
-        /^https?:\/\//i.test(candidate) ? candidate : `https://${candidate}`,
-      );
-      if (!/^(www\.)?github\.com$/i.test(url.hostname)) {
-        return undefined;
-      }
-      const part = url.pathname.split("/").filter(Boolean)[0];
-      if (!part) return undefined;
-      candidate = part;
-    } catch {
-      return undefined;
-    }
-  }
-
-  if (!GITHUB_USERNAME_RE.test(candidate)) {
-    return undefined;
-  }
-  return candidate.toLowerCase();
-}
-
-function githubUsernameFromProfileField(field: {
-  id?: string;
-  label?: string;
-  value?: string;
-  alt?: string;
-}): string | undefined {
-  const labeledGithub = `${field.label ?? ""} ${field.id ?? ""}`
-    .toLowerCase()
-    .includes("github");
-  for (const raw of [field.value, field.alt]) {
-    if (!raw) continue;
-    if (!labeledGithub && !/github\.com/i.test(raw)) continue;
-    const normalized = normalizeGithubUsername(raw);
-    if (normalized) return normalized;
-  }
-  return undefined;
-}
-
-function userHasGithubUsername(
-  user: SlackUserRaw,
-  githubUsername: string,
-): boolean {
-  const fields = user.profile?.fields;
-  if (!fields || typeof fields !== "object") return false;
-  for (const [id, field] of Object.entries(fields)) {
-    if (!field) continue;
-    if (githubUsernameFromProfileField({ id, ...field }) === githubUsername) {
-      return true;
-    }
-  }
-  return false;
-}
-
 /** Rank match quality: exact > prefix > word-boundary > substring > miss. */
 function scoreMatch(user: SlackUserRaw, queryLower: string): number {
   const name = (user.name ?? "").toLowerCase();
@@ -319,41 +249,6 @@ export async function searchSlackUsers(options: {
     if (b.score !== a.score) return b.score - a.score;
     return (a.user.name ?? "").localeCompare(b.user.name ?? "");
   });
-
-  return {
-    users: listed.matches.slice(0, limit).map((m) => normalizeUser(m.user)),
-    searched_pages: listed.searched_pages,
-    searched_user_count: listed.searched_user_count,
-    truncated: listed.truncated,
-  };
-}
-
-/** Find workspace users whose Slack profile GitHub field matches a login. */
-export async function searchSlackUsersByGithubUsername(options: {
-  githubUsername: string;
-  limit?: number;
-  maxPages?: number;
-  includeDeleted?: boolean;
-  includeBots?: boolean;
-}): Promise<SlackUserSearchResult> {
-  const {
-    githubUsername,
-    limit = 10,
-    maxPages = 3,
-    includeDeleted = false,
-    includeBots = false,
-  } = options;
-
-  const listed = await listWorkspaceUsers({
-    maxPages,
-    includeDeleted,
-    includeBots,
-    score: (member) => (userHasGithubUsername(member, githubUsername) ? 1 : 0),
-  });
-
-  listed.matches.sort((a, b) =>
-    (a.user.name ?? "").localeCompare(b.user.name ?? ""),
-  );
 
   return {
     users: listed.matches.slice(0, limit).map((m) => normalizeUser(m.user)),

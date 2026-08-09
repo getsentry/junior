@@ -68,6 +68,13 @@ import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { requireSlackDestination } from "@/chat/destination";
 import { relayLocalOAuthCallback } from "@/chat/local/oauth-relay";
+import { getSqlExecutor } from "@/chat/db";
+import {
+  upsertIdentity,
+  upsertLinkedIdentity,
+} from "@/chat/identities/sql";
+import { lookupSlackUserProfile } from "@/chat/slack/users";
+import { parseSlackUserId } from "@/chat/slack/ids";
 
 interface OAuthCallbackOptions {
   agentRunner: AgentRunner;
@@ -680,6 +687,42 @@ export async function GET(
       `Junior could not verify the connected ${providerLabel} account. Please try again.`,
       500,
     );
+  }
+  if (account && stored.actor?.platform === "slack") {
+    try {
+      const slackUserId = parseSlackUserId(stored.actor.userId);
+      if (!slackUserId) {
+        throw new Error("OAuth Slack actor user id is invalid");
+      }
+      const profile = await lookupSlackUserProfile(slackUserId);
+      const slackIdentity = await upsertIdentity(getSqlExecutor(), {
+        kind: "user",
+        provider: "slack",
+        providerTenantId: stored.actor.teamId,
+        providerSubjectId: profile.id,
+        displayName: profile.real_name || profile.display_name,
+        handle: profile.name,
+        ...(profile.email
+          ? { email: profile.email, emailVerified: true }
+          : {}),
+      });
+      if (!slackIdentity.userId) {
+        throw new Error("OAuth Slack identity is not linked to a user");
+      }
+      await upsertLinkedIdentity(getSqlExecutor(), slackIdentity.userId, {
+        kind: "user",
+        provider,
+        providerSubjectId: account.id,
+        displayName: account.displayName,
+        handle: account.handle ?? account.label,
+      });
+    } catch {
+      return htmlErrorResponse(
+        "Connection failed",
+        `Junior could not link the connected ${providerLabel} account to your user. Please try again.`,
+        500,
+      );
+    }
   }
   await userTokenStore.set(stored.userId, provider, {
     ...parsedTokenResponse,

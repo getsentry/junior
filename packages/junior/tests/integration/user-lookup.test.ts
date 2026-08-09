@@ -2,7 +2,10 @@ import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { getSqlExecutor } from "@/chat/db";
-import { upsertIdentity } from "@/chat/identities/sql";
+import {
+  upsertIdentity,
+  upsertLinkedIdentity,
+} from "@/chat/identities/sql";
 import { parseSlackTeamId } from "@/chat/slack/ids";
 import { createUserLookupTool } from "@/chat/tools/user-lookup";
 import { juniorIdentities } from "@/db/schema";
@@ -24,7 +27,7 @@ async function executeTool<TInput>(tool: any, input: TInput) {
 function lookupTool() {
   const teamId = parseSlackTeamId("T0TEST");
   if (!teamId) throw new Error("invalid test team id");
-  return createUserLookupTool(teamId);
+  return createUserLookupTool(teamId, ["slack", "github"]);
 }
 
 describe("userLookup", () => {
@@ -430,40 +433,42 @@ describe("userLookup", () => {
   });
 
   describe("provider github", () => {
-    it("returns one mention for an exact GitHub profile field match", async () => {
-      queueSlackApiResponse("users.list", {
-        body: usersListPage({
-          members: [
-            {
-              id: "U039RR91S",
-              name: "dcramer",
-              realName: "David Cramer",
-              fields: {
-                Xf0123GITHUB: {
-                  value: "https://github.com/dcramer",
-                  alt: "dcramer",
-                  label: "GitHub",
-                },
-              },
-            },
-            {
-              id: "U0OTHER",
-              name: "other",
-              realName: "Other Person",
-              fields: {
-                Xf042GITHUB: {
-                  value: "https://github.com/untitaker",
-                  label: "GitHub",
-                },
-              },
-            },
-          ],
-        }),
+    async function seedLinkedIdentities(input: {
+      githubId: string;
+      githubHandle: string;
+      slackUserId: string;
+      slackHandle: string;
+    }) {
+      const slackIdentity = await upsertIdentity(getSqlExecutor(), {
+        kind: "user",
+        provider: "slack",
+        providerTenantId: "T0TEST",
+        providerSubjectId: input.slackUserId,
+        email: `${input.slackHandle}@sentry.io`,
+        emailVerified: true,
+        displayName: input.slackHandle,
+        handle: input.slackHandle,
+      });
+      if (!slackIdentity.userId) throw new Error("missing linked user");
+      await upsertLinkedIdentity(getSqlExecutor(), slackIdentity.userId, {
+        kind: "user",
+        provider: "github",
+        providerSubjectId: input.githubId,
+        handle: input.githubHandle,
+      });
+    }
+
+    it("returns the linked Slack mention for a provider handle", async () => {
+      await seedLinkedIdentities({
+        githubId: "12345",
+        githubHandle: "dcramer",
+        slackUserId: "U039RR91S",
+        slackHandle: "dcramer",
       });
 
       const result = await executeTool(lookupTool(), {
         provider: "github",
-        query: "@dcramer",
+        query: "dcramer",
       });
 
       expect(result).toMatchObject({
@@ -473,76 +478,40 @@ describe("userLookup", () => {
         mention: "<@U039RR91S>",
         user: { id: "U039RR91S", name: "dcramer" },
       });
-      expect(result.users).toBeUndefined();
-      await expect(
-        getSqlExecutor()
-          .db()
-          .select({ id: juniorIdentities.providerSubjectId })
-          .from(juniorIdentities)
-          .where(eq(juniorIdentities.providerSubjectId, "U039RR91S")),
-      ).resolves.toEqual([{ id: "U039RR91S" }]);
+      expect(getCapturedSlackApiCalls("users.list")).toHaveLength(0);
     });
 
-    it("accepts github.com profile URLs", async () => {
-      queueSlackApiResponse("users.list", {
-        body: usersListPage({
-          members: [
-            {
-              id: "U0GH",
-              name: "untitaker",
-              realName: "Markus Unterwaditzer",
-              fields: {
-                Xf042GITHUB: {
-                  value: "https://github.com/untitaker",
-                  label: "GitHub",
-                },
-              },
-            },
-          ],
-        }),
+    it("accepts the provider subject id", async () => {
+      await seedLinkedIdentities({
+        githubId: "12345",
+        githubHandle: "dcramer",
+        slackUserId: "U039RR91S",
+        slackHandle: "dcramer",
       });
 
       const result = await executeTool(lookupTool(), {
         provider: "github",
-        query: "https://github.com/untitaker",
+        query: "12345",
       });
 
       expect(result).toMatchObject({
-        provider: "github",
-        query: "untitaker",
-        mention: "<@U0GH>",
-        user: { id: "U0GH" },
+        mention: "<@U039RR91S>",
+        user: { id: "U039RR91S" },
       });
     });
 
-    it("returns candidates when several people share a GitHub username field", async () => {
-      queueSlackApiResponse("users.list", {
-        body: usersListPage({
-          members: [
-            {
-              id: "U1",
-              name: "alice",
-              realName: "Alice",
-              fields: {
-                Xf1: {
-                  value: "shared-login",
-                  label: "GitHub",
-                },
-              },
-            },
-            {
-              id: "U2",
-              name: "bob",
-              realName: "Bob",
-              fields: {
-                Xf2: {
-                  value: "https://github.com/shared-login",
-                  label: "GitHub",
-                },
-              },
-            },
-          ],
-        }),
+    it("returns candidates when several provider identities share a handle", async () => {
+      await seedLinkedIdentities({
+        githubId: "1",
+        githubHandle: "shared-login",
+        slackUserId: "U1",
+        slackHandle: "alice",
+      });
+      await seedLinkedIdentities({
+        githubId: "2",
+        githubHandle: "shared-login",
+        slackUserId: "U2",
+        slackHandle: "bob",
       });
 
       const result = await executeTool(lookupTool(), {
@@ -564,25 +533,7 @@ describe("userLookup", () => {
       );
     });
 
-    it("returns empty candidates when no GitHub field matches", async () => {
-      queueSlackApiResponse("users.list", {
-        body: usersListPage({
-          members: [
-            {
-              id: "U1",
-              name: "alice",
-              realName: "Alice",
-              fields: {
-                Xf1: {
-                  value: "https://github.com/alice",
-                  label: "GitHub",
-                },
-              },
-            },
-          ],
-        }),
-      });
-
+    it("returns empty candidates when no stored provider identity matches", async () => {
       const result = await executeTool(lookupTool(), {
         provider: "github",
         query: "nobody",
@@ -596,59 +547,20 @@ describe("userLookup", () => {
       });
     });
 
-    it("skips deleted users", async () => {
-      queueSlackApiResponse("users.list", {
-        body: usersListPage({
-          members: [
-            {
-              id: "U1",
-              name: "gone",
-              realName: "Gone User",
-              deleted: true,
-              fields: {
-                Xf1: {
-                  value: "gone-user",
-                  label: "GitHub",
-                },
-              },
-            },
-            {
-              id: "U2",
-              name: "active",
-              realName: "Active User",
-              fields: {
-                Xf2: {
-                  value: "gone-user",
-                  label: "GitHub",
-                },
-              },
-            },
-          ],
-        }),
+    it("does not return provider identities without a linked Slack identity", async () => {
+      await upsertIdentity(getSqlExecutor(), {
+        kind: "user",
+        provider: "github",
+        providerSubjectId: "orphan",
+        handle: "orphan",
       });
 
       const result = await executeTool(lookupTool(), {
         provider: "github",
-        query: "gone-user",
+        query: "orphan",
       });
 
-      expect(result).toMatchObject({
-        mention: "<@U2>",
-        user: { id: "U2" },
-      });
-    });
-
-    it("rejects invalid GitHub usernames", async () => {
-      await expect(
-        executeTool(lookupTool(), {
-          provider: "github",
-          query: "not a login!!",
-        }),
-      ).rejects.toMatchObject({
-        name: "ToolInputError",
-        message: expect.stringContaining("Invalid GitHub username"),
-      });
-      expect(getCapturedSlackApiCalls("users.list")).toHaveLength(0);
+      expect(result).toMatchObject({ count: 0, users: [] });
     });
   });
 
