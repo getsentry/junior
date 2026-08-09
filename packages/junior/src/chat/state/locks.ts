@@ -1,3 +1,4 @@
+import { setTimeout as sleep } from "node:timers/promises";
 import type { Lock, StateAdapter } from "chat";
 
 export const ACTIVE_LOCK_TTL_MS = 90_000;
@@ -15,13 +16,6 @@ export async function acquireActiveLock(
 
 export type LockAttempt<T> = { acquired: false } | { acquired: true; value: T };
 
-async function sleep(ms: number): Promise<void> {
-  await new Promise((resolve) => {
-    const timer = setTimeout(resolve, ms);
-    (timer as { unref?: () => void }).unref?.();
-  });
-}
-
 /** Run work under one lock, optionally waiting for the current owner. */
 export async function withLock<T>(
   state: StateAdapter,
@@ -37,7 +31,7 @@ export async function withLock<T>(
     if (Date.now() - startedAtMs >= (options.waitMs ?? 0)) {
       return { acquired: false };
     }
-    await sleep(options.retryMs ?? 25);
+    await sleep(options.retryMs ?? 25, undefined, { ref: false });
   }
   try {
     return { acquired: true, value: await run() };
