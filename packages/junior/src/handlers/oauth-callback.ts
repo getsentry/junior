@@ -59,7 +59,7 @@ import {
 } from "@/chat/services/pending-auth";
 import { escapeXml } from "@/chat/xml";
 import type { WaitUntilFn } from "@/handlers/types";
-import { scheduleAgentContinue } from "@/chat/task-execution/continue";
+import { wakePausedTurn } from "@/chat/task-execution/turn-wake";
 import {
   resolveTurnSessionRouting,
   type TurnSessionRouting,
@@ -483,7 +483,7 @@ async function resumeOAuthSessionRecordTurn(
           });
         },
         onSuspend: async (resumeVersion) => {
-          await scheduleAgentContinue({
+          await wakePausedTurn({
             conversationId: stored.resumeConversationId!,
             destination,
             turnId: lockedSessionId,

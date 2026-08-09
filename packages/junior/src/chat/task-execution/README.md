@@ -10,9 +10,9 @@ Turn progress (running / paused / done) goes through one public API:
 `checkpoint.ts` (`loadTurnCheckpoint` / `saveTurnCheckpoint`). Storage lives
 in internal `turn-cursor.ts`; outside this folder, import checkpoint only.
 
-Paused turns rewake via `continue.ts` (queue nudge) and `continue-run.ts`
-(worker continue under the conversation lease). History lives in SQL
-conversation events; the Redis turn cursor is resume metadata only.
+Paused turns rewake via `turn-wake.ts`; `paused-turn.ts` runs them under the
+conversation lease. History lives in SQL conversation events; the Redis turn
+cursor is resume metadata only.
 
 The reliability policy is deliberately small:
 
@@ -23,7 +23,7 @@ The reliability policy is deliberately small:
 - A hard process death may abandon an in-flight running turn. The next worker
   fails it closed rather than inventing a second recovery lifecycle; the user
   can trigger new work and committed SQL history remains intact.
-- Queue continuation does not take a second resume lock. OAuth is the one
+- Running a paused turn does not take a second lock. OAuth is the one
   out-of-band exception and keeps its thread lock.
 
 Runtime status is `paused`. SQL free-text / enum rows may still say
@@ -49,8 +49,8 @@ label where durable SQL requires it.
 Schema-v1 mailbox entries migrate to deferred delivery. Schema-v2 entries
 require a valid delivery value and reject invalid pending work.
 
-`checkpoint.ts`, `continue.ts`, `continue-run.ts`, `state.ts`, `store.ts`,
-and `worker.ts` define the execution surface.
+`checkpoint.ts`, `turn-wake.ts`, `paused-turn.ts`, `state.ts`, `store.ts`, and
+`worker.ts` define the execution surface.
 
 ## Execution
 

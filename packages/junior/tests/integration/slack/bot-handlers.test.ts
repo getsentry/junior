@@ -1025,14 +1025,14 @@ describe("bot handlers (integration)", () => {
   });
 
   it("schedules durable continuation without posting a notice", async () => {
-    const scheduleAgentContinue = vi.fn().mockResolvedValue(undefined);
+    const wakePausedTurn = vi.fn().mockResolvedValue(undefined);
     const conversationId = "slack:C9TIMEOUT:1700000000.000";
     const destination = slackDestination("C9TIMEOUT");
     const sessionId = "turn_msg-timeout";
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
-          scheduleAgentContinue,
+          wakePausedTurn,
           agentRunner: {
             run: async () => {
               return { status: "suspended", resumeVersion: 3 };
@@ -1057,7 +1057,7 @@ describe("bot handlers (integration)", () => {
       ),
     ).resolves.toBeUndefined();
 
-    expect(scheduleAgentContinue).toHaveBeenCalledWith({
+    expect(wakePausedTurn).toHaveBeenCalledWith({
       conversationId,
       destination,
       turnId: sessionId,
@@ -1076,15 +1076,15 @@ describe("bot handlers (integration)", () => {
     expect(conversation?.processing?.activeTurnId).toBe(sessionId);
   });
 
-  it("schedules agent continuations with the provided destination", async () => {
-    const scheduleAgentContinue = vi.fn().mockResolvedValue(undefined);
+  it("wakes paused turns with the provided destination", async () => {
+    const wakePausedTurn = vi.fn().mockResolvedValue(undefined);
     const conversationId = "slack:C9TIMECTX:1700000000.000";
     const destination = slackDestination("C9TIMECTX");
     const sessionId = "turn_msg-timeout-context";
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
-          scheduleAgentContinue,
+          wakePausedTurn,
           agentRunner: {
             run: async () => {
               return { status: "suspended", resumeVersion: 4 };
@@ -1112,7 +1112,7 @@ describe("bot handlers (integration)", () => {
       },
     );
 
-    expect(scheduleAgentContinue).toHaveBeenCalledWith({
+    expect(wakePausedTurn).toHaveBeenCalledWith({
       conversationId,
       destination,
       turnId: sessionId,
@@ -1122,14 +1122,14 @@ describe("bot handlers (integration)", () => {
 
   it("does not post a Slack continuation notice when a live turn times out", async () => {
     resetSlackApiMockState();
-    const scheduleAgentContinue = vi.fn().mockResolvedValue(undefined);
+    const wakePausedTurn = vi.fn().mockResolvedValue(undefined);
     const conversationId = "slack:C9TIMEAPI:1700000000.000";
     const destination = slackDestination("C9TIMEAPI");
     const sessionId = "turn_msg-timeout-api";
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
-          scheduleAgentContinue,
+          wakePausedTurn,
           agentRunner: {
             run: async () => {
               return { status: "suspended", resumeVersion: 3 };
@@ -1156,7 +1156,7 @@ describe("bot handlers (integration)", () => {
       ),
     ).resolves.toBeUndefined();
 
-    expect(scheduleAgentContinue).toHaveBeenCalledWith({
+    expect(wakePausedTurn).toHaveBeenCalledWith({
       conversationId,
       destination,
       turnId: sessionId,
@@ -1166,12 +1166,12 @@ describe("bot handlers (integration)", () => {
     expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([]);
   });
 
-  it("reschedules an awaiting agent continuation without replying to the follow-up", async () => {
+  it("reschedules an awaiting paused turn without replying to the follow-up", async () => {
     const conversationId = "slack:C9TIMERTY:1700000000.000";
     const destination = slackDestination("C9TIMERTY");
     const activeSessionId = "turn_msg-original";
-    const scheduleAgentContinue = vi.fn().mockResolvedValue(undefined);
-    const getAwaitingAgentContinueRequest = vi.fn().mockResolvedValue({
+    const wakePausedTurn = vi.fn().mockResolvedValue(undefined);
+    const getPausedTurnRequest = vi.fn().mockResolvedValue({
       conversationId,
       destination,
       turnId: activeSessionId,
@@ -1184,8 +1184,8 @@ describe("bot handlers (integration)", () => {
       services: {
         replyExecutor: {
           agentRunner: { run: executeAgentRun },
-          getAwaitingAgentContinueRequest,
-          scheduleAgentContinue,
+          getPausedTurnRequest,
+          wakePausedTurn,
         },
       },
     });
@@ -1212,11 +1212,11 @@ describe("bot handlers (integration)", () => {
       ),
     ).resolves.toBeUndefined();
 
-    expect(getAwaitingAgentContinueRequest).toHaveBeenCalledWith({
+    expect(getPausedTurnRequest).toHaveBeenCalledWith({
       conversationId,
       turnId: activeSessionId,
     });
-    expect(scheduleAgentContinue).toHaveBeenCalledWith({
+    expect(wakePausedTurn).toHaveBeenCalledWith({
       conversationId,
       destination,
       turnId: activeSessionId,
@@ -1332,7 +1332,7 @@ describe("bot handlers (integration)", () => {
       turnStartMessageIndex: 0,
     });
     const order: string[] = [];
-    const scheduleAgentContinue = vi.fn(async () => {
+    const wakePausedTurn = vi.fn(async () => {
       expect(
         JSON.stringify(await loadProjection({ conversationId })),
       ).toContain("also check the logs");
@@ -1346,7 +1346,7 @@ describe("bot handlers (integration)", () => {
       services: {
         replyExecutor: {
           agentRunner: { run: executeAgentRun },
-          scheduleAgentContinue,
+          wakePausedTurn,
         },
       },
     });
@@ -1371,7 +1371,7 @@ describe("bot handlers (integration)", () => {
     expect(thread.posts).toEqual([]);
     expect(ack).toHaveBeenCalledOnce();
     expect(order).toEqual(["schedule", "ack"]);
-    expect(scheduleAgentContinue).toHaveBeenCalledOnce();
+    expect(wakePausedTurn).toHaveBeenCalledOnce();
     expect(JSON.stringify(await loadProjection({ conversationId }))).toContain(
       "also check the logs",
     );
@@ -1415,12 +1415,12 @@ describe("bot handlers (integration)", () => {
       piMessages: turnPiMessages("please keep working"),
       turnStartMessageIndex: 0,
     });
-    const scheduleAgentContinue = vi.fn();
+    const wakePausedTurn = vi.fn();
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
           agentRunner: { run: vi.fn() },
-          scheduleAgentContinue,
+          wakePausedTurn,
         },
       },
     });
@@ -1476,7 +1476,7 @@ describe("bot handlers (integration)", () => {
       services: {
         replyExecutor: {
           agentRunner: { run: vi.fn() },
-          scheduleAgentContinue: vi.fn(),
+          wakePausedTurn: vi.fn(),
         },
       },
     });
@@ -1634,13 +1634,13 @@ describe("bot handlers (integration)", () => {
       piMessages: turnPiMessages("please keep working"),
       turnStartMessageIndex: 0,
     });
-    const scheduleAgentContinue = vi.fn();
+    const wakePausedTurn = vi.fn();
     const ack = vi.fn();
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
           agentRunner: { run: vi.fn() },
-          scheduleAgentContinue,
+          wakePausedTurn,
         },
       },
     });
@@ -1674,7 +1674,7 @@ describe("bot handlers (integration)", () => {
     // The message was not consumed and nothing was appended or scheduled: it
     // stays pending in the mailbox for the next drain.
     expect(ack).not.toHaveBeenCalled();
-    expect(scheduleAgentContinue).not.toHaveBeenCalled();
+    expect(wakePausedTurn).not.toHaveBeenCalled();
     expect(
       JSON.stringify(await loadProjection({ conversationId })),
     ).not.toContain("also check the logs");
@@ -1910,7 +1910,7 @@ describe("bot handlers (integration)", () => {
     const failedRecord = await getTurnRecord(conversationId, activeSessionId);
     expect(failedRecord?.state).toBe("failed");
     expect(failedRecord?.errorMessage).toBe(
-      "Awaiting agent continuation metadata could not be materialized",
+      "Awaiting paused-turn metadata could not be materialized",
     );
     const state = await thread.getState();
     const conversation = (
@@ -1925,8 +1925,8 @@ describe("bot handlers (integration)", () => {
     const conversationId = "slack:C9TIMEDUP:1700000000.000";
     const destination = slackDestination("C9TIMEDUP");
     const activeSessionId = "turn_msg-duplicate";
-    const scheduleAgentContinue = vi.fn().mockResolvedValue(undefined);
-    const getAwaitingAgentContinueRequest = vi.fn().mockResolvedValue({
+    const wakePausedTurn = vi.fn().mockResolvedValue(undefined);
+    const getPausedTurnRequest = vi.fn().mockResolvedValue({
       conversationId,
       destination,
       turnId: activeSessionId,
@@ -1937,8 +1937,8 @@ describe("bot handlers (integration)", () => {
       services: {
         replyExecutor: {
           agentRunner: { run: executeAgentRun },
-          getAwaitingAgentContinueRequest,
-          scheduleAgentContinue,
+          getPausedTurnRequest,
+          wakePausedTurn,
         },
       },
     });
@@ -1962,7 +1962,7 @@ describe("bot handlers (integration)", () => {
       { destination },
     );
 
-    expect(scheduleAgentContinue).toHaveBeenCalledWith({
+    expect(wakePausedTurn).toHaveBeenCalledWith({
       conversationId,
       destination,
       turnId: activeSessionId,
@@ -1975,8 +1975,8 @@ describe("bot handlers (integration)", () => {
     const conversationId = "slack:C9TIMEREPD:1700000000.000";
     const destination = slackDestination("C9TIMEREPD");
     const activeSessionId = "turn_msg-replied-duplicate";
-    const scheduleAgentContinue = vi.fn().mockResolvedValue(undefined);
-    const getAwaitingAgentContinueRequest = vi.fn().mockResolvedValue({
+    const wakePausedTurn = vi.fn().mockResolvedValue(undefined);
+    const getPausedTurnRequest = vi.fn().mockResolvedValue({
       conversationId,
       destination,
       turnId: activeSessionId,
@@ -1988,8 +1988,8 @@ describe("bot handlers (integration)", () => {
       services: {
         replyExecutor: {
           agentRunner: { run: executeAgentRun },
-          getAwaitingAgentContinueRequest,
-          scheduleAgentContinue,
+          getPausedTurnRequest,
+          wakePausedTurn,
         },
       },
     });
@@ -2027,8 +2027,8 @@ describe("bot handlers (integration)", () => {
       },
     );
 
-    expect(getAwaitingAgentContinueRequest).not.toHaveBeenCalled();
-    expect(scheduleAgentContinue).not.toHaveBeenCalled();
+    expect(getPausedTurnRequest).not.toHaveBeenCalled();
+    expect(wakePausedTurn).not.toHaveBeenCalled();
     expect(executeAgentRun).not.toHaveBeenCalled();
     expect(onTurnStatePersisted).toHaveBeenCalledOnce();
     expect(thread.posts).toEqual([]);
@@ -2038,8 +2038,8 @@ describe("bot handlers (integration)", () => {
     const conversationId = "slack:C9TIMENOTI:1700000000.000";
     const destination = slackDestination("C9TIMENOTI");
     const activeSessionId = "turn_msg-original";
-    const scheduleAgentContinue = vi.fn().mockResolvedValue(undefined);
-    const getAwaitingAgentContinueRequest = vi.fn().mockResolvedValue({
+    const wakePausedTurn = vi.fn().mockResolvedValue(undefined);
+    const getPausedTurnRequest = vi.fn().mockResolvedValue({
       conversationId,
       destination,
       turnId: activeSessionId,
@@ -2050,8 +2050,8 @@ describe("bot handlers (integration)", () => {
       services: {
         replyExecutor: {
           agentRunner: { run: executeAgentRun },
-          getAwaitingAgentContinueRequest,
-          scheduleAgentContinue,
+          getPausedTurnRequest,
+          wakePausedTurn,
         },
       },
     });
@@ -2072,7 +2072,7 @@ describe("bot handlers (integration)", () => {
       { destination },
     );
 
-    expect(scheduleAgentContinue).toHaveBeenCalledWith({
+    expect(wakePausedTurn).toHaveBeenCalledWith({
       conversationId,
       destination,
       turnId: activeSessionId,
@@ -2096,10 +2096,10 @@ describe("bot handlers (integration)", () => {
     const conversationId = "slack:C9TIMEFAIL:1700000000.000";
     const destination = slackDestination("C9TIMEFAIL");
     const activeSessionId = "turn_msg-original";
-    const scheduleAgentContinue = vi
+    const wakePausedTurn = vi
       .fn()
       .mockRejectedValue(new Error("resume callback unavailable"));
-    const getAwaitingAgentContinueRequest = vi.fn().mockResolvedValue({
+    const getPausedTurnRequest = vi.fn().mockResolvedValue({
       conversationId,
       destination,
       turnId: activeSessionId,
@@ -2110,8 +2110,8 @@ describe("bot handlers (integration)", () => {
       services: {
         replyExecutor: {
           agentRunner: { run: executeAgentRun },
-          getAwaitingAgentContinueRequest,
-          scheduleAgentContinue,
+          getPausedTurnRequest,
+          wakePausedTurn,
         },
       },
     });

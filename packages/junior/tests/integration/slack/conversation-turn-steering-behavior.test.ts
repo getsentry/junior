@@ -165,7 +165,7 @@ function createTurnHarness(args: {
       run: createSlackConversationWorker({
         crossActorMidRunMode: args.crossActorMidRunMode,
         getSlackAdapter: () => adapter,
-        resumeAwaitingContinuation: async () => false,
+        runNextPausedTurn: async () => false,
         runtime,
         state: args.state,
       }),

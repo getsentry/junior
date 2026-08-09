@@ -21,25 +21,25 @@ import {
 } from "@/chat/task-execution/store";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 
-export interface AgentContinueRequest {
+export interface PausedTurnRequest {
   conversationId: string;
   destination: Destination;
   expectedVersion: number;
   turnId: string;
 }
 
-export interface ScheduleAgentContinueOptions {
+export interface TurnWakeOptions {
   nowMs?: number;
   queue?: ConversationWorkQueue;
   state?: StateAdapter;
 }
 
-/** Build the queue request for an awaiting automatic agent continuation. */
-export async function getAwaitingAgentContinueRequest(args: {
+/** Build the worker input for a paused turn. */
+export async function getPausedTurnRequest(args: {
   conversationId: string;
   conversationStore?: ConversationStore;
   turnId: string;
-}): Promise<AgentContinueRequest | undefined> {
+}): Promise<PausedTurnRequest | undefined> {
   const checkpoint = await loadTurnCheckpoint({
     conversationId: args.conversationId,
     turnId: args.turnId,
@@ -79,10 +79,10 @@ export async function getAwaitingAgentContinueRequest(args: {
   };
 }
 
-/** Schedule durable conversation work to continue a paused agent run. */
-export async function scheduleAgentContinue(
-  request: AgentContinueRequest,
-  options: ScheduleAgentContinueOptions = {},
+/** Wake the conversation worker for a paused turn. */
+export async function wakePausedTurn(
+  request: PausedTurnRequest,
+  options: TurnWakeOptions = {},
 ): Promise<void> {
   const nowMs = options.nowMs ?? Date.now();
   await requestConversationWork({

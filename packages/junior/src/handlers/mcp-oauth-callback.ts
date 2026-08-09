@@ -58,7 +58,7 @@ import {
 } from "@/chat/conversations/projection";
 import { formatProviderLabel } from "@/chat/oauth-flow";
 import { markTurnFailed } from "@/chat/runtime/turn";
-import { scheduleAgentContinue } from "@/chat/task-execution/continue";
+import { wakePausedTurn } from "@/chat/task-execution/turn-wake";
 import {
   resolveTurnSessionRouting,
   type TurnSessionRouting,
@@ -474,7 +474,7 @@ async function resumeAuthorizedMcpTurn(args: {
           });
         },
         onSuspend: async (resumeVersion) => {
-          await scheduleAgentContinue({
+          await wakePausedTurn({
             conversationId: authSession.conversationId,
             destination,
             turnId: lockedSessionId,

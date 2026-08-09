@@ -596,7 +596,7 @@ vi.mock("@/chat/skills", async (importOriginal) => ({
 
 import { executeAgentRun } from "@/chat/agent";
 import { getConversationStore } from "@/chat/db";
-import { getAwaitingAgentContinueRequest } from "@/chat/task-execution/continue";
+import { getPausedTurnRequest } from "@/chat/task-execution/turn-wake";
 import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import * as turnSessionState from "@/chat/task-execution/turn-cursor";
@@ -1114,7 +1114,7 @@ describe("agent run continuation", () => {
       "user",
     ]);
     await expect(
-      getAwaitingAgentContinueRequest({
+      getPausedTurnRequest({
         conversationId: "conversation-yield",
         turnId: "turn-yield",
       }),

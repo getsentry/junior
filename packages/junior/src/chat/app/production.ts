@@ -14,7 +14,7 @@ import type { SlackWebhookServices } from "@/chat/ingress/slack-webhook";
 import { createSlackConversationWorker } from "@/chat/task-execution/slack-work";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import type { VercelConversationWorkCallbackOptions } from "@/chat/task-execution/vercel-callback";
-import { resumeAwaitingSlackContinuation } from "@/chat/task-execution/continue-run";
+import { runNextPausedTurn } from "@/chat/task-execution/paused-turn";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { getConversationStore } from "@/chat/db";
 import type { ConversationStore } from "@/chat/conversations/store";
@@ -129,8 +129,8 @@ export function createProductionConversationWorkOptions(options: {
   const slackWorker = createSlackConversationWorker({
     getSlackAdapter: getProductionSlackAdapter,
     conversationStore,
-    resumeAwaitingContinuation: async (conversationId, runOptions) =>
-      await resumeAwaitingSlackContinuation(
+    runNextPausedTurn: async (conversationId, runOptions) =>
+      await runNextPausedTurn(
         conversationId,
         {
           agentRunner,
@@ -143,7 +143,7 @@ export function createProductionConversationWorkOptions(options: {
   });
   const dispatchWorker = createAgentDispatchConversationWorker({
     resumeTurn: async (dispatch, hooks) => {
-      await resumeAwaitingSlackContinuation(
+      await runNextPausedTurn(
         getDispatchConversationId(dispatch),
         {
           agentRunner,

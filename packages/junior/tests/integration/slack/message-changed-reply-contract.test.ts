@@ -14,7 +14,7 @@ import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { deliverAssistantMessagesForTest } from "../../fixtures/agent-runner";
 import { queueSlackApiError } from "../../msw/handlers/slack-api";
 import { RetryableDeliveryError } from "@/chat/agent/request";
-import type { AgentContinueRequest } from "@/chat/task-execution/continue";
+import type { PausedTurnRequest } from "@/chat/task-execution/turn-wake";
 
 const SIGNING_SECRET = "test-signing-secret";
 const BOT_USER_ID = "U0BOT";
@@ -69,7 +69,7 @@ function createEditedMentionRequest(args: {
 
 async function createEditedDmBot(args: {
   agentRunner: AgentRunner;
-  scheduleAgentContinue?: (request: AgentContinueRequest) => Promise<void>;
+  wakePausedTurn?: (request: PausedTurnRequest) => Promise<void>;
 }) {
   const state = createMemoryState();
   await state.connect();
@@ -89,9 +89,7 @@ async function createEditedDmBot(args: {
     services: {
       replyExecutor: {
         agentRunner: args.agentRunner,
-        ...(args.scheduleAgentContinue
-          ? { scheduleAgentContinue: args.scheduleAgentContinue }
-          : {}),
+        ...(args.wakePausedTurn ? { wakePausedTurn: args.wakePausedTurn } : {}),
       },
     },
   });
@@ -197,7 +195,7 @@ describe("Slack contract: edited-message reply delivery", () => {
         status: 503,
       });
     }
-    const scheduleAgentContinue = vi.fn().mockResolvedValue(undefined);
+    const wakePausedTurn = vi.fn().mockResolvedValue(undefined);
     const bot = await createEditedDmBot({
       agentRunner: {
         run: async (request) => {
@@ -207,7 +205,7 @@ describe("Slack contract: edited-message reply delivery", () => {
           return { status: "suspended", resumeVersion: 2 };
         },
       },
-      scheduleAgentContinue,
+      wakePausedTurn,
     });
     const waitUntil = slackWebhookClient.waitUntil();
 
@@ -224,7 +222,7 @@ describe("Slack contract: edited-message reply delivery", () => {
     await waitUntil.flush();
 
     expect(response.status).toBe(200);
-    expect(scheduleAgentContinue).toHaveBeenCalledWith(
+    expect(wakePausedTurn).toHaveBeenCalledWith(
       expect.objectContaining({ expectedVersion: 2 }),
     );
   });

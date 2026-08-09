@@ -64,7 +64,7 @@ interface ProcessQueuedSlackWorkArgs {
   lookupSlackUser?: SlackWorkerOptions["lookupSlackUser"];
   nowMs?: () => number;
   queue: ConversationWorkQueueTestAdapter;
-  resumeAwaitingContinuation?: SlackWorkerOptions["resumeAwaitingContinuation"];
+  runNextPausedTurn?: SlackWorkerOptions["runNextPausedTurn"];
   softYieldAfterMs?: number;
   runtime: SlackWorkerOptions["runtime"];
   state: StateAdapter;
@@ -78,8 +78,7 @@ function processNextQueuedSlackWork(args: ProcessQueuedSlackWorkArgs) {
     run: createSlackConversationWorker({
       getSlackAdapter: args.getSlackAdapter,
       lookupSlackUser: args.lookupSlackUser,
-      resumeAwaitingContinuation:
-        args.resumeAwaitingContinuation ?? (async () => false),
+      runNextPausedTurn: args.runNextPausedTurn ?? (async () => false),
       runtime: args.runtime,
       state: args.state,
     }),
@@ -329,7 +328,7 @@ describe("Slack conversation work execution", () => {
     };
     const worker = createSlackConversationWorker({
       getSlackAdapter: () => slackAdapter,
-      resumeAwaitingContinuation: async () => false,
+      runNextPausedTurn: async () => false,
       runtime: {
         handleNewMention: async () => {
           throw new Error("malformed metadata must not reach the runtime");
@@ -775,7 +774,7 @@ describe("Slack conversation work execution", () => {
     const state = getStateAdapter();
     await state.connect();
     const slackAdapter = createSlackAdapterFixture();
-    const resumeAwaitingContinuation = vi.fn(async () => false);
+    const runNextPausedTurn = vi.fn(async () => false);
 
     await handleSlackWebhookAndFlush({
       request: slackWebhookRequest(
@@ -798,7 +797,7 @@ describe("Slack conversation work execution", () => {
       processNextQueuedSlackWork({
         getSlackAdapter: () => slackAdapter,
         queue,
-        resumeAwaitingContinuation,
+        runNextPausedTurn,
         runtime: {
           handleNewMention: async (_thread, message, hooks) => {
             await hooks.ack?.();
@@ -812,7 +811,7 @@ describe("Slack conversation work execution", () => {
       }),
     ).resolves.toEqual({ status: "completed" });
 
-    expect(resumeAwaitingContinuation).not.toHaveBeenCalled();
+    expect(runNextPausedTurn).not.toHaveBeenCalled();
     expect(calls).toEqual([expect.stringContaining("follow-up")]);
     const work = await getConversationWorkState({
       conversationId: CONVERSATION_ID,
@@ -827,7 +826,7 @@ describe("Slack conversation work execution", () => {
     await state.connect();
     const slackAdapter = createSlackAdapterFixture();
     const calls: string[] = [];
-    const resumeAwaitingContinuation = vi.fn(
+    const runNextPausedTurn = vi.fn(
       async (
         _conversationId: string,
         options: { shouldYield: () => boolean },
@@ -860,7 +859,7 @@ describe("Slack conversation work execution", () => {
         getSlackAdapter: () => slackAdapter,
         nowMs: () => 3_500,
         queue,
-        resumeAwaitingContinuation,
+        runNextPausedTurn,
         runtime: {
           handleNewMention: async (_thread, message, hooks) => {
             await hooks.ack?.();
@@ -881,8 +880,8 @@ describe("Slack conversation work execution", () => {
       }),
     ).resolves.toEqual({ status: "completed" });
 
-    expect(resumeAwaitingContinuation).toHaveBeenCalledOnce();
-    expect(resumeAwaitingContinuation).toHaveBeenCalledWith(CONVERSATION_ID, {
+    expect(runNextPausedTurn).toHaveBeenCalledOnce();
+    expect(runNextPausedTurn).toHaveBeenCalledWith(CONVERSATION_ID, {
       shouldYield: expect.any(Function),
     });
     expect(calls).toEqual([
@@ -1258,13 +1257,13 @@ describe("Slack conversation work execution", () => {
         state,
         run: createSlackConversationWorker({
           getSlackAdapter: () => slackAdapter,
-          resumeAwaitingContinuation: async () => {
+          runNextPausedTurn: async () => {
             await failTurnRecord({
               conversationId: CONVERSATION_ID,
               expectedVersion: sessionRecord.version,
               turnId: "turn-invalid-timeout",
               errorMessage:
-                "Awaiting agent continuation metadata could not be materialized",
+                "Awaiting paused-turn metadata could not be materialized",
             });
             return false;
           },
@@ -1292,8 +1291,7 @@ describe("Slack conversation work execution", () => {
       getTurnRecord(CONVERSATION_ID, "turn-invalid-timeout"),
     ).resolves.toMatchObject({
       state: "failed",
-      errorMessage:
-        "Awaiting agent continuation metadata could not be materialized",
+      errorMessage: "Awaiting paused-turn metadata could not be materialized",
     });
   });
 
@@ -1333,7 +1331,7 @@ describe("Slack conversation work execution", () => {
         state,
         run: createSlackConversationWorker({
           getSlackAdapter: () => slackAdapter,
-          resumeAwaitingContinuation: async () => {
+          runNextPausedTurn: async () => {
             observedToken = getSlackClient().token;
             return true;
           },
@@ -1420,13 +1418,13 @@ describe("Slack conversation work execution", () => {
         state,
         run: createSlackConversationWorker({
           getSlackAdapter: () => slackAdapter,
-          resumeAwaitingContinuation: async () => {
+          runNextPausedTurn: async () => {
             await failTurnRecord({
               conversationId: CONVERSATION_ID,
               expectedVersion: sessionRecord.version,
               turnId: sessionId,
               errorMessage:
-                "Awaiting agent continuation was stale before it could run",
+                "Awaiting paused turn was stale before it could run",
             });
             return false;
           },
@@ -1454,7 +1452,7 @@ describe("Slack conversation work execution", () => {
       getTurnRecord(CONVERSATION_ID, sessionId),
     ).resolves.toMatchObject({
       state: "failed",
-      errorMessage: "Awaiting agent continuation was stale before it could run",
+      errorMessage: "Awaiting paused turn was stale before it could run",
     });
   });
 

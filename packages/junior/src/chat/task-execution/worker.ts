@@ -27,7 +27,7 @@ import {
   recordAttemptFailure,
   recordConversationRetry,
   releaseConversationWork,
-  requestConversationContinuation,
+  requestAnotherSlice,
   startConversationWork,
   type AttemptFailure,
   type ConversationWorkState,
@@ -156,7 +156,7 @@ async function requestLostLeaseRecovery(args: {
     );
     return;
   }
-  const resumeRequested = await requestConversationContinuation({
+  const sliceRequested = await requestAnotherSlice({
     conversationId: args.conversationId,
     destination: args.destination,
     leaseToken: args.leaseToken,
@@ -164,7 +164,7 @@ async function requestLostLeaseRecovery(args: {
     nowMs: args.nowMs,
     state: args.options.state,
   });
-  if (!resumeRequested) {
+  if (!sliceRequested) {
     return;
   }
   const released = await releaseConversationWork({
@@ -574,7 +574,7 @@ async function processConversationWorkInContext(
         return { status: "lost_lease" };
       }
       if (result.status === "yielded") {
-        const resumeRequested = await requestConversationContinuation({
+        const sliceRequested = await requestAnotherSlice({
           conversationId,
           destination,
           leaseToken: lease.leaseToken,
@@ -582,7 +582,7 @@ async function processConversationWorkInContext(
           nowMs: now(options),
           state: options.state,
         });
-        if (!resumeRequested) {
+        if (!sliceRequested) {
           return { status: "lost_lease" };
         }
         return await yieldWork();
@@ -779,7 +779,7 @@ async function processConversationWorkInContext(
           recoveryRecorded = true;
           return { status: "failed" };
         }
-        const resumeRequested = await requestConversationContinuation({
+        const sliceRequested = await requestAnotherSlice({
           conversationId,
           destination,
           leaseToken: lease.leaseToken,
@@ -787,7 +787,7 @@ async function processConversationWorkInContext(
           nowMs: errorNowMs,
           state: options.state,
         });
-        if (resumeRequested) {
+        if (sliceRequested) {
           await ensureConversationWake({
             conversationId,
             conversationStore: options.conversationStore,

@@ -21,7 +21,7 @@ import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { upsertTurnRecord } from "@/chat/task-execution/turn-cursor";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import { getConversationWorkState } from "@/chat/task-execution/store";
-import { scheduleAgentContinue } from "@/chat/task-execution/continue";
+import { wakePausedTurn } from "@/chat/task-execution/turn-wake";
 import type { PiMessage } from "@/chat/pi/messages";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { GET as heartbeat } from "@/handlers/heartbeat";
@@ -242,7 +242,7 @@ describe("plugin heartbeat", () => {
     expect(seen).toHaveLength(1);
   });
 
-  it("reschedules stale agent continuation records", async () => {
+  it("reschedules stale paused turn records", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     const conversationId = "slack:C123:1712345.0001";
     const sessionId = "turn-timeout";
@@ -265,7 +265,7 @@ describe("plugin heartbeat", () => {
       ],
     });
     await persistActiveTurn(conversationId, sessionId);
-    await scheduleAgentContinue(
+    await wakePausedTurn(
       {
         conversationId,
         destination: SLACK_DESTINATION,
@@ -325,7 +325,7 @@ describe("plugin heartbeat", () => {
       ],
     });
     await persistActiveTurn(conversationId, sessionId);
-    await scheduleAgentContinue(
+    await wakePausedTurn(
       {
         conversationId,
         destination: SLACK_DESTINATION,
@@ -362,7 +362,7 @@ describe("plugin heartbeat", () => {
     });
   });
 
-  it("skips stale agent continuation records for inactive runs", async () => {
+  it("skips stale paused turn records for inactive runs", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     const conversationId = "slack:C123:1712345.0007";
     const sessionId = "turn-timeout-inactive";
@@ -404,7 +404,7 @@ describe("plugin heartbeat", () => {
     );
   });
 
-  it("does not scan stale agent continuation records outside active conversation work", async () => {
+  it("does not scan stale paused turn records outside active conversation work", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     const conversationId = "slack:C123:1712345.0009";
     const sessionId = "turn-timeout-no-active-work";

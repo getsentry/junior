@@ -1637,7 +1637,7 @@ export async function ackMessages(args: {
 }
 
 /** Mark the leased conversation as needing another queue-delivered slice. */
-export async function requestConversationContinuation(args: {
+export async function requestAnotherSlice(args: {
   conversationId: string;
   destination?: Destination;
   leaseToken: string;

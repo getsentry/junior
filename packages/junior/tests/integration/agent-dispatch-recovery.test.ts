@@ -22,8 +22,8 @@ import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
-import { resumeAwaitingSlackContinuation } from "@/chat/task-execution/continue-run";
-import { scheduleAgentContinue } from "@/chat/task-execution/continue";
+import { runNextPausedTurn } from "@/chat/task-execution/paused-turn";
+import { wakePausedTurn } from "@/chat/task-execution/turn-wake";
 import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import {
   getTurnRecord,
@@ -289,20 +289,20 @@ describe("agent dispatch recovery", () => {
     };
     const runtime = createDispatchRuntime({
       agentRunner,
-      scheduleAgentContinue: async (request) => {
-        await scheduleAgentContinue(request, { queue, state });
+      wakePausedTurn: async (request) => {
+        await wakePausedTurn(request, { queue, state });
       },
     });
     const dispatchWorker = createAgentDispatchConversationWorker({
       resumeTurn: async (_dispatch, hooks) => {
-        await resumeAwaitingSlackContinuation(
+        await runNextPausedTurn(
           `agent-dispatch:${_dispatch.id}`,
           {
             agentRunner,
             inputMessageIds: getDispatchInputMessageIds(_dispatch.id),
             routingContext: buildDispatchRoutingContext(_dispatch),
-            scheduleAgentContinue: async (request) => {
-              await scheduleAgentContinue(request, { queue, state });
+            wakePausedTurn: async (request) => {
+              await wakePausedTurn(request, { queue, state });
             },
           },
           { shouldYield: hooks.shouldYield },

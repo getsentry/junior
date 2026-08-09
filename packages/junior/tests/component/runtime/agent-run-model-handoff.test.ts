@@ -223,7 +223,7 @@ vi.mock("@/chat/skills", async (importOriginal) => ({
 
 import { executeAgentRun } from "@/chat/agent";
 import { RetryableDeliveryError } from "@/chat/agent/request";
-import { getAwaitingAgentContinueRequest } from "@/chat/task-execution/continue";
+import { getPausedTurnRequest } from "@/chat/task-execution/turn-wake";
 import {
   loadConversationProjection,
   loadProjection,
@@ -747,7 +747,7 @@ describe("model handoff composition", () => {
       "Handoff model completed it.",
     );
     await expect(
-      getAwaitingAgentContinueRequest({ conversationId, turnId: turnId }),
+      getPausedTurnRequest({ conversationId, turnId: turnId }),
     ).resolves.toMatchObject({
       conversationId,
       turnId: turnId,

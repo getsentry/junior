@@ -410,7 +410,7 @@ export async function ackMessages(args: {
 }
 
 /** Mark the leased conversation as needing another queue-delivered slice. */
-export async function requestConversationContinuation(args: {
+export async function requestAnotherSlice(args: {
   conversationId: string;
   destination: InboundMessage["destination"];
   leaseToken: string;
@@ -418,7 +418,7 @@ export async function requestConversationContinuation(args: {
   nowMs?: number;
   state?: StateAdapter;
 }) {
-  const result = await workState.requestConversationContinuation(args);
+  const result = await workState.requestAnotherSlice(args);
   await recordExecutionMetadata(args);
   return result;
 }

@@ -8,7 +8,7 @@ import { createSlackRuntime } from "@/chat/app/factory";
 import { loadProjection } from "@/chat/conversations/projection";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
-import { resumeAwaitingSlackContinuation } from "@/chat/task-execution/continue-run";
+import { runNextPausedTurn } from "@/chat/task-execution/paused-turn";
 import { createSlackConversationWorker } from "@/chat/task-execution/slack-work";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import { executeAgentRun } from "@/chat/agent";
@@ -78,8 +78,8 @@ async function slack(agentRunner: AgentRunner = { run: complete }) {
   });
   const run = createSlackConversationWorker({
     getSlackAdapter: () => adapter,
-    resumeAwaitingContinuation: async (conversationId, runOptions) =>
-      await resumeAwaitingSlackContinuation(
+    runNextPausedTurn: async (conversationId, runOptions) =>
+      await runNextPausedTurn(
         conversationId,
         {
           agentRunner: {
@@ -87,7 +87,7 @@ async function slack(agentRunner: AgentRunner = { run: complete }) {
               throw new Error("stranded running turns must not resume");
             },
           },
-          scheduleAgentContinue: async () => undefined,
+          wakePausedTurn: async () => undefined,
         },
         runOptions,
       ),
@@ -245,8 +245,8 @@ describe("durable queue", () => {
     const wakes = createConversationWorkQueueTestAdapter();
     const run = createSlackConversationWorker({
       getSlackAdapter: createSlackAdapterFixture,
-      resumeAwaitingContinuation: async (conversationId, runOptions) =>
-        await resumeAwaitingSlackContinuation(
+      runNextPausedTurn: async (conversationId, runOptions) =>
+        await runNextPausedTurn(
           conversationId,
           {
             agentRunner: {
@@ -287,7 +287,7 @@ describe("durable queue", () => {
                 );
               },
             },
-            scheduleAgentContinue: async (request) => {
+            wakePausedTurn: async (request) => {
               await ensureConversationWake({
                 conversationId: request.conversationId,
                 idempotencyKey: `continue:${request.turnId}:${request.expectedVersion}`,

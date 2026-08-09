@@ -461,7 +461,7 @@ export interface CreateSlackConversationWorkerOptions {
     teamId: string,
     userId: string,
   ) => Promise<SlackActorProfile | null | undefined>;
-  resumeAwaitingContinuation: (
+  runNextPausedTurn: (
     conversationId: string,
     options: { shouldYield: () => boolean },
   ) => Promise<boolean>;
@@ -757,14 +757,14 @@ export function createSlackConversationWorker(
     if (records.length === 0) {
       const destination = requireSlackDestination(
         context.destination,
-        "Slack continuation recovery",
+        "Slack paused-turn recovery",
       );
       await runWithSlackInstallation({
         adapter,
         installation: { teamId: destination.teamId },
         state,
         task: async () => {
-          await options.resumeAwaitingContinuation(context.conversationId, {
+          await options.runNextPausedTurn(context.conversationId, {
             shouldYield: context.shouldYield,
           });
         },

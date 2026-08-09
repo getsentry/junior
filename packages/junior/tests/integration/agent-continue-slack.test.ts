@@ -99,21 +99,19 @@ function createToolContext(
 
 type StateAdapterModule = typeof import("@/chat/state/adapter");
 type ThreadStateModule = typeof import("@/chat/runtime/thread-state");
-type AgentContinueRunnerModule =
-  typeof import("@/chat/task-execution/continue-run");
+type PausedTurnModule = typeof import("@/chat/task-execution/paused-turn");
 type RequestDeadlineModule = typeof import("@/chat/runtime/request-deadline");
 type TurnSessionStoreModule =
   typeof import("@/chat/task-execution/turn-cursor");
-type AgentContinueServiceModule =
-  typeof import("@/chat/task-execution/continue");
+type TurnWakeModule = typeof import("@/chat/task-execution/turn-wake");
 type TaskExecutionStoreModule = typeof import("@/chat/task-execution/store");
 
 let stateAdapterModule: StateAdapterModule;
 let threadStateModule: ThreadStateModule;
-let agentContinueRunnerModule: AgentContinueRunnerModule;
+let pausedTurnModule: PausedTurnModule;
 let requestDeadlineModule: RequestDeadlineModule;
 let turnSessionStoreModule: TurnSessionStoreModule;
-let agentContinueServiceModule: AgentContinueServiceModule;
+let turnWakeModule: TurnWakeModule;
 let taskExecutionStoreModule: TaskExecutionStoreModule;
 let queue: ConversationWorkQueueTestAdapter;
 
@@ -123,7 +121,7 @@ function continueAgentRun(args: {
   expectedVersion: number;
 }): Promise<boolean> {
   return requestDeadlineModule.runWithTurnRequestDeadline(() =>
-    agentContinueRunnerModule.continueSlackAgentRun(
+    pausedTurnModule.runPausedTurn(
       {
         conversationId: args.conversationId,
         destination: SLACK_DESTINATION,
@@ -132,8 +130,8 @@ function continueAgentRun(args: {
       },
       {
         agentRunner: { run: executeAgentRunMock },
-        scheduleAgentContinue: (request) =>
-          agentContinueServiceModule.scheduleAgentContinue(request, {
+        wakePausedTurn: (request) =>
+          turnWakeModule.wakePausedTurn(request, {
             queue,
           }),
       },
@@ -141,7 +139,7 @@ function continueAgentRun(args: {
   );
 }
 
-describe("agent continuation Slack integration", () => {
+describe("paused turn Slack integration", () => {
   beforeEach(async () => {
     queue = createConversationWorkQueueTestAdapter();
     executeAgentRunMock.mockReset();
@@ -166,11 +164,10 @@ describe("agent continuation Slack integration", () => {
     vi.resetModules();
     stateAdapterModule = await import("@/chat/state/adapter");
     threadStateModule = await import("@/chat/runtime/thread-state");
-    agentContinueRunnerModule =
-      await import("@/chat/task-execution/continue-run");
+    pausedTurnModule = await import("@/chat/task-execution/paused-turn");
     requestDeadlineModule = await import("@/chat/runtime/request-deadline");
     turnSessionStoreModule = await import("@/chat/task-execution/turn-cursor");
-    agentContinueServiceModule = await import("@/chat/task-execution/continue");
+    turnWakeModule = await import("@/chat/task-execution/turn-wake");
     taskExecutionStoreModule = await import("@/chat/task-execution/store");
 
     await stateAdapterModule.disconnectStateAdapter();

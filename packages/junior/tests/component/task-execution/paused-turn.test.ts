@@ -52,7 +52,7 @@ async function seedConversationRouting(args: {
   });
 }
 
-describe("agent continuation runner callbacks", () => {
+describe("paused turn runner callbacks", () => {
   beforeEach(async () => {
     process.env.JUNIOR_STATE_ADAPTER = "memory";
     await disconnectStateAdapter();
@@ -115,11 +115,10 @@ describe("agent continuation runner callbacks", () => {
       },
     });
 
-    const { continueSlackAgentRun } =
-      await import("@/chat/task-execution/continue-run");
+    const { runPausedTurn } = await import("@/chat/task-execution/paused-turn");
 
     await expect(
-      continueSlackAgentRun(
+      runPausedTurn(
         {
           conversationId,
           destination: SLACK_DESTINATION,
@@ -134,7 +133,7 @@ describe("agent continuation runner callbacks", () => {
               throw new Error("Expected the continuation to prepare");
             }
             if (!prepared.replyContext) {
-              throw new Error("Expected prepared continuation reply context");
+              throw new Error("Expected prepared paused-turn reply context");
             }
             // Redis no longer stores execution actor; bare author + team rebuild.
             expect(prepared.replyContext.routing.actor).toEqual({
@@ -211,11 +210,10 @@ describe("agent continuation runner callbacks", () => {
       },
     });
 
-    const { continueSlackAgentRun } =
-      await import("@/chat/task-execution/continue-run");
+    const { runPausedTurn } = await import("@/chat/task-execution/paused-turn");
 
     await expect(
-      continueSlackAgentRun(
+      runPausedTurn(
         {
           conversationId,
           destination: SLACK_DESTINATION,
@@ -303,11 +301,10 @@ describe("agent continuation runner callbacks", () => {
       },
     });
 
-    const { continueSlackAgentRun } =
-      await import("@/chat/task-execution/continue-run");
+    const { runPausedTurn } = await import("@/chat/task-execution/paused-turn");
 
     await expect(
-      continueSlackAgentRun(
+      runPausedTurn(
         {
           conversationId,
           destination: SLACK_DESTINATION,
@@ -322,7 +319,7 @@ describe("agent continuation runner callbacks", () => {
               throw new Error("Expected the continuation to prepare");
             }
             if (!prepared.replyContext) {
-              throw new Error("Expected prepared continuation reply context");
+              throw new Error("Expected prepared paused-turn reply context");
             }
             expect(prepared.replyContext.routing.source).toEqual(sessionSource);
             return true;
@@ -382,14 +379,13 @@ describe("agent continuation runner callbacks", () => {
       },
     });
 
-    const { continueSlackAgentRun } =
-      await import("@/chat/task-execution/continue-run");
+    const { runPausedTurn } = await import("@/chat/task-execution/paused-turn");
 
     // Missing author identity must never throw out of the continue callback
     // (issue #727: a throw NACKs the queue delivery and wedges the
     // conversation); it terminally fails the session instead.
     await expect(
-      continueSlackAgentRun(
+      runPausedTurn(
         {
           conversationId,
           destination: SLACK_DESTINATION,

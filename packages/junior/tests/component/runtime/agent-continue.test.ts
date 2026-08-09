@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { scheduleAgentContinue } from "@/chat/task-execution/continue";
+import { wakePausedTurn } from "@/chat/task-execution/turn-wake";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import {
@@ -41,7 +41,7 @@ function restoreEnv(name: string, value: string | undefined): void {
 
 const agentRunnerShouldNotRun = neverRunAgentRunner();
 
-describe("agent continuation scheduling", () => {
+describe("paused turn scheduling", () => {
   beforeEach(async () => {
     process.env.JUNIOR_STATE_ADAPTER = "memory";
     await disconnectStateAdapter();
@@ -54,11 +54,11 @@ describe("agent continuation scheduling", () => {
     vi.restoreAllMocks();
   });
 
-  it("marks agent continuations runnable and wakes the durable queue", async () => {
+  it("marks paused turns runnable and wakes the durable queue", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     const conversationId = "slack:C123:1712345.0001";
 
-    await scheduleAgentContinue(
+    await wakePausedTurn(
       {
         conversationId,
         destination: SLACK_DESTINATION,
@@ -88,7 +88,7 @@ describe("agent continuation scheduling", () => {
     const queue = createConversationWorkQueueTestAdapter();
     const conversationId = "slack:C123:1712345.0001";
 
-    await scheduleAgentContinue(
+    await wakePausedTurn(
       {
         conversationId,
         destination: SLACK_DESTINATION,
@@ -99,7 +99,7 @@ describe("agent continuation scheduling", () => {
     );
     queue.clearSentRecords();
 
-    await scheduleAgentContinue(
+    await wakePausedTurn(
       {
         conversationId,
         destination: SLACK_DESTINATION,
@@ -128,11 +128,10 @@ describe("agent continuation scheduling", () => {
     const lock = await state.acquireLock(conversationId, 90_000);
     expect(lock).toBeTruthy();
     const resumeTurn = vi.fn().mockResolvedValue(false);
-    const { continueSlackAgentRun } =
-      await import("@/chat/task-execution/continue-run");
+    const { runPausedTurn } = await import("@/chat/task-execution/paused-turn");
 
     await expect(
-      continueSlackAgentRun(
+      runPausedTurn(
         {
           conversationId,
           destination: SLACK_DESTINATION,
@@ -159,8 +158,8 @@ describe("agent continuation scheduling", () => {
   });
 
   it("fails a running turn only after exclusive ownership is available", async () => {
-    const { resumeAwaitingSlackContinuation } =
-      await import("@/chat/task-execution/continue-run");
+    const { runNextPausedTurn } =
+      await import("@/chat/task-execution/paused-turn");
     const conversationId = "slack:C123:1712345.0006";
     const turnId = "turn_msg_6";
     const state = getStateAdapter();
@@ -202,7 +201,7 @@ describe("agent continuation scheduling", () => {
 
     const owner = await state.acquireLock(conversationId, 90_000);
     expect(owner).toBeTruthy();
-    await resumeAwaitingSlackContinuation(conversationId, {
+    await runNextPausedTurn(conversationId, {
       agentRunner: agentRunnerShouldNotRun,
     });
     await expect(getTurnRecord(conversationId, turnId)).resolves.toMatchObject({
@@ -210,7 +209,7 @@ describe("agent continuation scheduling", () => {
     });
 
     await state.releaseLock(owner!);
-    await resumeAwaitingSlackContinuation(conversationId, {
+    await runNextPausedTurn(conversationId, {
       agentRunner: agentRunnerShouldNotRun,
     });
     await expect(getTurnRecord(conversationId, turnId)).resolves.toMatchObject({
@@ -220,8 +219,8 @@ describe("agent continuation scheduling", () => {
   });
 
   it("fails continuation summaries whose metadata cannot materialize", async () => {
-    const { resumeAwaitingSlackContinuation } =
-      await import("@/chat/task-execution/continue-run");
+    const { runNextPausedTurn } =
+      await import("@/chat/task-execution/paused-turn");
     const conversationId = "slack:C123:1712345.0003";
 
     await upsertTurnRecord({
@@ -236,7 +235,7 @@ describe("agent continuation scheduling", () => {
     });
 
     await expect(
-      resumeAwaitingSlackContinuation(conversationId, {
+      runNextPausedTurn(conversationId, {
         agentRunner: agentRunnerShouldNotRun,
       }),
     ).resolves.toBe(false);
@@ -244,14 +243,13 @@ describe("agent continuation scheduling", () => {
       getTurnRecord(conversationId, "turn_msg_3"),
     ).resolves.toMatchObject({
       state: "failed",
-      errorMessage:
-        "Awaiting agent continuation metadata could not be materialized",
+      errorMessage: "Awaiting paused-turn metadata could not be materialized",
     });
   });
 
   it("resumes delivery retries with the supplied runner", async () => {
-    const { resumeAwaitingSlackContinuation } =
-      await import("@/chat/task-execution/continue-run");
+    const { runNextPausedTurn } =
+      await import("@/chat/task-execution/paused-turn");
     const conversationId = "slack:C123:1712345.0005";
     const generateReply = vi.fn();
     const resumeTurn = vi.fn(async () => true);
@@ -269,7 +267,7 @@ describe("agent continuation scheduling", () => {
     });
 
     await expect(
-      resumeAwaitingSlackContinuation(conversationId, {
+      runNextPausedTurn(conversationId, {
         agentRunner: { run: generateReply },
         resumeTurn,
       }),
@@ -281,8 +279,8 @@ describe("agent continuation scheduling", () => {
   });
 
   it("fails stale continuations skipped during resume startup", async () => {
-    const { resumeAwaitingSlackContinuation } =
-      await import("@/chat/task-execution/continue-run");
+    const { runNextPausedTurn } =
+      await import("@/chat/task-execution/paused-turn");
     const conversationId = "slack:C123:1712345.0004";
     const sessionId = "turn_1712345_0004";
 
@@ -331,7 +329,7 @@ describe("agent continuation scheduling", () => {
     });
 
     await expect(
-      resumeAwaitingSlackContinuation(conversationId, {
+      runNextPausedTurn(conversationId, {
         agentRunner: agentRunnerShouldNotRun,
       }),
     ).resolves.toBe(false);
@@ -339,7 +337,7 @@ describe("agent continuation scheduling", () => {
       getTurnRecord(conversationId, sessionId),
     ).resolves.toMatchObject({
       state: "failed",
-      errorMessage: "Awaiting agent continuation was stale before it could run",
+      errorMessage: "Awaiting paused turn was stale before it could run",
     });
   });
 });

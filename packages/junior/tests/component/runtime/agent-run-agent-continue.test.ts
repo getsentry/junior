@@ -303,7 +303,7 @@ const TEST_ACTOR = {
   userId: "U123",
 } as const;
 
-describe("agent continuation composition", () => {
+describe("paused turn composition", () => {
   beforeEach(async () => {
     promptAborted.value = false;
     continueCalls.value = 0;
@@ -483,7 +483,7 @@ describe("agent continuation composition", () => {
     );
   });
 
-  it("persists agent continuation state when abort does not settle the agent run", async () => {
+  it("persists paused turn state when abort does not settle the agent run", async () => {
     promptMode.value = "hangsAfterAbort";
     const replyPromise = executeAgentRun({
       conversationId: "conversation-hung",

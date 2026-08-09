@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { StateAdapter } from "chat";
-import { scheduleAgentContinue } from "@/chat/task-execution/continue";
+import { wakePausedTurn } from "@/chat/task-execution/turn-wake";
 import { registerLogRecordSink, type EmittedLogRecord } from "@/chat/logging";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
 import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
@@ -21,7 +21,7 @@ import {
   listConversationsByActivity,
   ackMessages,
   recordConversationActivity,
-  requestConversationContinuation,
+  requestAnotherSlice,
   requestConversationWork,
   releaseConversationWork,
   startConversationWork,
@@ -867,7 +867,7 @@ describe("conversation work execution", () => {
     }
 
     await expect(
-      requestConversationContinuation({
+      requestAnotherSlice({
         conversationId: CONVERSATION_ID,
         destination: OTHER_SLACK_DESTINATION,
         leaseToken: lease.leaseToken,
@@ -875,7 +875,7 @@ describe("conversation work execution", () => {
       }),
     ).rejects.toThrow("Conversation destination changed");
     await expect(
-      requestConversationContinuation({
+      requestAnotherSlice({
         conversationId: CONVERSATION_ID,
         destination: undefined,
         leaseToken: lease.leaseToken,
@@ -903,7 +903,7 @@ describe("conversation work execution", () => {
     if (lease.status !== "acquired") {
       return;
     }
-    await requestConversationContinuation({
+    await requestAnotherSlice({
       conversationId: CONVERSATION_ID,
       destination: SLACK_DESTINATION,
       leaseToken: lease.leaseToken,
@@ -979,7 +979,7 @@ describe("conversation work execution", () => {
           await context.attempt.drain(async () => {});
           if (runs === 1) {
             currentNowMs = 2_000;
-            await scheduleAgentContinue(
+            await wakePausedTurn(
               {
                 conversationId: context.conversationId,
                 destination: context.destination ?? SLACK_DESTINATION,
@@ -1019,7 +1019,7 @@ describe("conversation work execution", () => {
           await context.attempt.drain(async () => {});
           if (runs === 1) {
             currentNowMs = 2_000;
-            await scheduleAgentContinue(
+            await wakePausedTurn(
               {
                 conversationId: context.conversationId,
                 destination: context.destination ?? SLACK_DESTINATION,
@@ -1068,7 +1068,7 @@ describe("conversation work execution", () => {
           );
           await context.attempt.ack();
           currentNowMs = 2_000;
-          await scheduleAgentContinue(
+          await wakePausedTurn(
             {
               conversationId: context.conversationId,
               destination: context.destination ?? SLACK_DESTINATION,
@@ -1183,7 +1183,7 @@ describe("conversation work execution", () => {
         run: async (context) => {
           await context.attempt.drain(async () => {});
           currentNowMs = 2_000;
-          await scheduleAgentContinue(
+          await wakePausedTurn(
             {
               conversationId: context.conversationId,
               destination: context.destination ?? SLACK_DESTINATION,
@@ -2090,7 +2090,7 @@ describe("conversation work execution", () => {
         softYieldAfterMs: 1_000,
         run: async (context) => {
           await context.attempt.ack();
-          await scheduleAgentContinue(
+          await wakePausedTurn(
             {
               conversationId: context.conversationId,
               destination: context.destination ?? SLACK_DESTINATION,

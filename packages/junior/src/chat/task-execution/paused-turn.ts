@@ -44,10 +44,10 @@ import {
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import { markTurnFailed } from "@/chat/runtime/turn";
 import {
-  getAwaitingAgentContinueRequest,
-  scheduleAgentContinue as defaultScheduleAgentContinue,
-  type AgentContinueRequest,
-} from "@/chat/task-execution/continue";
+  getPausedTurnRequest,
+  wakePausedTurn as defaultWakePausedTurn,
+  type PausedTurnRequest,
+} from "@/chat/task-execution/turn-wake";
 import {
   resolveTurnSessionRouting,
   type TurnSessionRouting,
@@ -80,10 +80,10 @@ import {
 } from "@/chat/credentials/context";
 import { latestReportedProgress } from "@/chat/runtime/report-progress";
 
-/** Runtime ports for agent continuation scheduling. */
-export interface AgentContinueRunnerOptions {
+/** Runtime ports for paused turn scheduling. */
+export interface PausedTurnOptions {
   agentRunner: AgentRunner;
-  /** Exact persisted input ids accepted for a non-interactive continuation. */
+  /** Exact persisted input ids accepted while running the paused turn. */
   inputMessageIds?: readonly string[];
   routingContext?: Pick<
     AgentRunRouting,
@@ -94,19 +94,19 @@ export interface AgentContinueRunnerOptions {
     | "surface"
   >;
   resumeTurn?: typeof resumeSlackTurn;
-  scheduleAgentContinue?: (request: AgentContinueRequest) => Promise<void>;
+  wakePausedTurn?: (request: PausedTurnRequest) => Promise<void>;
   scheduleSessionCompletedPluginTasks?: (params: {
     conversationId: string;
     sessionId: string;
   }) => Promise<void>;
 }
 
-/** Per-worker controls for one continued run. */
-export interface AgentContinueRunOptions {
+/** Per-worker controls for one paused turn. */
+export interface PausedTurnRunOptions {
   shouldYield?: () => boolean;
 }
 
-/** Persist a delivered continuation reply as the terminal thread state. */
+/** Persist a delivered paused-turn reply as the terminal thread state. */
 async function persistCompletedReplyState(args: {
   turn: TurnRecord;
   reply: AgentRunResult;
@@ -132,7 +132,7 @@ async function persistCompletedReplyState(args: {
   });
 }
 
-/** Mark the run record failed without masking the original continuation error. */
+/** Mark the run record failed without masking the original paused-turn error. */
 async function failTurnBestEffort(args: {
   turn: TurnRecord;
   errorMessage: string;
@@ -156,7 +156,7 @@ async function failTurnBestEffort(args: {
   }
 }
 
-/** Persist failed thread and session state after a continuation cannot finish. */
+/** Persist failed thread and turn state after a paused run cannot finish. */
 async function persistFailedReplyState(
   turn: TurnRecord,
   errorMessage = "Paused agent run failed while continuing",
@@ -187,7 +187,7 @@ async function persistFailedReplyState(
 }
 
 /** Convert startup failures into durable failed state before rethrowing. */
-async function failContinuationStartup(args: {
+async function failPausedTurnStart(args: {
   errorMessage: string;
   turn: TurnRecord;
 }): Promise<void> {
@@ -196,7 +196,7 @@ async function failContinuationStartup(args: {
   } catch (persistError) {
     await failTurnBestEffort({
       turn: args.turn,
-      errorMessage: "Paused agent run failed while preparing continuation",
+      errorMessage: "Paused turn failed before it could run",
     });
     logException(
       persistError,
@@ -267,7 +267,7 @@ async function resolveSlackResumeUserActor(args: {
  */
 async function resolveResumeExecutionIdentity(args: {
   conversationId: string;
-  routingContext?: AgentContinueRunnerOptions["routingContext"];
+  routingContext?: PausedTurnOptions["routingContext"];
   teamId: string;
   userMessage: {
     author?: { userId?: string };
@@ -311,7 +311,7 @@ async function resolveResumeExecutionIdentity(args: {
   };
 }
 
-function isContinuationResume(summary: TurnSummary): boolean {
+function isPausedTurn(summary: TurnSummary): boolean {
   return (
     summary.state === "paused" &&
     (summary.resumeReason === "timeout" ||
@@ -320,7 +320,7 @@ function isContinuationResume(summary: TurnSummary): boolean {
   );
 }
 
-async function failUnresumableContinuation(args: {
+async function failPausedTurn(args: {
   conversationId: string;
   errorMessage: string;
   expectedVersion?: number;
@@ -364,28 +364,27 @@ async function failUnresumableContinuation(args: {
  *
  * Returns false when the session became stale before generation began.
  */
-export async function continueSlackAgentRun(
-  payload: AgentContinueRequest,
-  options: AgentContinueRunnerOptions,
-  runOptions: AgentContinueRunOptions = {},
+export async function runPausedTurn(
+  payload: PausedTurnRequest,
+  options: PausedTurnOptions,
+  runOptions: PausedTurnRunOptions = {},
 ): Promise<boolean> {
   return withLogContext({ conversationId: payload.conversationId }, () =>
-    continueSlackAgentRunInContext(payload, options, runOptions),
+    runPausedTurnInContext(payload, options, runOptions),
   );
 }
 
-async function continueSlackAgentRunInContext(
-  payload: AgentContinueRequest,
-  options: AgentContinueRunnerOptions,
-  runOptions: AgentContinueRunOptions,
+async function runPausedTurnInContext(
+  payload: PausedTurnRequest,
+  options: PausedTurnOptions,
+  runOptions: PausedTurnRunOptions,
 ): Promise<boolean> {
   const thread = parseSlackThreadId(payload.conversationId);
   const destination = requireSlackDestination(
     payload.destination,
-    "Agent continuation",
+    "Paused turn",
   );
-  const scheduleAgentContinue =
-    options.scheduleAgentContinue ?? defaultScheduleAgentContinue;
+  const wakePausedTurn = options.wakePausedTurn ?? defaultWakePausedTurn;
 
   const resumeTurn = options.resumeTurn ?? resumeSlackTurn;
   return await resumeTurn({
@@ -445,7 +444,7 @@ async function continueSlackAgentRunInContext(
           // Never throw out of beforeStart (issue #727); fail the session visibly.
           await failStrandedTurnWithFallback({
             conversationId: payload.conversationId,
-            errorMessage: `Unable to locate the persisted user message for agent continuation session "${payload.turnId}"`,
+            errorMessage: `Unable to locate the persisted user message for paused turn "${payload.turnId}"`,
             turn: activeTurn,
           });
           return false;
@@ -463,7 +462,8 @@ async function continueSlackAgentRunInContext(
         if (!identity) {
           await failStrandedTurnWithFallback({
             conversationId: payload.conversationId,
-            errorMessage: "Unable to rebuild Slack actor for continuation",
+            errorMessage:
+              "Unable to rebuild the Slack actor for the paused turn",
             turn: activeTurn,
           });
           return false;
@@ -593,7 +593,7 @@ async function continueSlackAgentRunInContext(
             });
           },
           onSuspend: async (resumeVersion) => {
-            await scheduleAgentContinue({
+            await wakePausedTurn({
               conversationId: payload.conversationId,
               destination: payload.destination,
               turnId: payload.turnId,
@@ -603,7 +603,7 @@ async function continueSlackAgentRunInContext(
         };
       } catch (error) {
         if (turn) {
-          await failContinuationStartup({
+          await failPausedTurnStart({
             errorMessage:
               error instanceof Error ? error.message : String(error),
             turn,
@@ -676,7 +676,7 @@ async function failStrandedTurnWithFallback(args: {
   const thread = parseSlackThreadId(args.conversationId);
   const channelId =
     thread?.channelId ??
-    requireSlackDestination(routing.destination, "Stranded agent continuation")
+    requireSlackDestination(routing.destination, "Stranded paused turn")
       .channelId;
   await postSlackMessage({
     channelId,
@@ -689,24 +689,20 @@ async function failStrandedTurnWithFallback(args: {
 }
 
 /** Resume the first valid paused Slack session for an idle conversation. */
-export async function resumeAwaitingSlackContinuation(
+export async function runNextPausedTurn(
   conversationId: string,
-  options: AgentContinueRunnerOptions,
-  runOptions: AgentContinueRunOptions = {},
+  options: PausedTurnOptions,
+  runOptions: PausedTurnRunOptions = {},
 ): Promise<boolean> {
   return withLogContext({ conversationId }, () =>
-    resumeAwaitingSlackContinuationInContext(
-      conversationId,
-      options,
-      runOptions,
-    ),
+    runNextPausedTurnInContext(conversationId, options, runOptions),
   );
 }
 
-async function resumeAwaitingSlackContinuationInContext(
+async function runNextPausedTurnInContext(
   conversationId: string,
-  options: AgentContinueRunnerOptions,
-  runOptions: AgentContinueRunOptions,
+  options: PausedTurnOptions,
+  runOptions: PausedTurnRunOptions,
 ): Promise<boolean> {
   const summaries = await listTurnSummaries(conversationId);
 
@@ -732,33 +728,32 @@ async function resumeAwaitingSlackContinuationInContext(
   }
 
   for (const summary of summaries) {
-    if (!isContinuationResume(summary)) {
+    if (!isPausedTurn(summary)) {
       continue;
     }
 
-    const request = await getAwaitingAgentContinueRequest({
+    const request = await getPausedTurnRequest({
       conversationId,
       turnId: summary.turnId,
     });
     if (!request) {
-      await failUnresumableContinuation({
+      await failPausedTurn({
         conversationId,
         summary,
-        errorMessage:
-          "Awaiting agent continuation metadata could not be materialized",
+        errorMessage: "Awaiting paused-turn metadata could not be materialized",
       });
       continue;
     }
 
-    if (await continueSlackAgentRun(request, options, runOptions)) {
+    if (await runPausedTurn(request, options, runOptions)) {
       return true;
     }
 
-    await failUnresumableContinuation({
+    await failPausedTurn({
       conversationId,
       expectedVersion: request.expectedVersion,
       summary,
-      errorMessage: "Awaiting agent continuation was stale before it could run",
+      errorMessage: "Awaiting paused turn was stale before it could run",
     });
   }
 
