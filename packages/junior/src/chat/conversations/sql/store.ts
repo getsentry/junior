@@ -227,6 +227,8 @@ function destinationUpsertFromDestination(args: {
   };
 }
 
+// TODO(v0.145.0): Migrate SQL conversation execution_status values from
+// awaiting_resume to paused, then remove this mapping.
 function executionStatusFromValue(value: unknown): ConversationStatus {
   if (value === "awaiting_resume" || value === "paused") return "paused";
   if (

@@ -13,6 +13,8 @@ import type { TurnReasoningLevel } from "@/chat/reasoning-level";
 import { juniorConversations } from "./conversations";
 import { timestamptz } from "./timestamps";
 
+// TODO(v0.145.0): Migrate SQL agent invocation status from awaiting_resume to
+// paused, then remove awaiting_resume from this schema and its store queries.
 export const AGENT_INVOCATION_STATUSES = [
   "pending",
   "running",
