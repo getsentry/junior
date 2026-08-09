@@ -14,8 +14,9 @@ export interface LocationConfigState {
 }
 
 export interface LocationConfigurationStorage {
-  load: () => Promise<unknown | null>;
-  save: (state: LocationConfigState) => Promise<void>;
+  list: () => Promise<ConfigEntry[]>;
+  set: (entry: ConfigEntry) => Promise<void>;
+  unset: (key: string) => Promise<boolean>;
 }
 
 export interface LocationConfigurationService {

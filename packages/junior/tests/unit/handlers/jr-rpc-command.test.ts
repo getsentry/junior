@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
 import { createLocationConfigurationService } from "@/chat/configuration/service";
+import type { ConfigEntry } from "@/chat/configuration/types";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import type { Skill } from "@/chat/skills";
 
@@ -13,15 +14,13 @@ const activeSkill: Skill = {
 };
 
 function makeLocationConfiguration() {
-  let state: Record<string, unknown> | null = null;
+  const entries = new Map<string, ConfigEntry>();
   return createLocationConfigurationService({
-    load: async () => state,
-    save: async (next) => {
-      state = {
-        ...(state ?? {}),
-        configuration: next,
-      };
+    list: async () => [...entries.values()],
+    set: async (entry) => {
+      entries.set(entry.key, entry);
     },
+    unset: async (key) => entries.delete(key),
   });
 }
 

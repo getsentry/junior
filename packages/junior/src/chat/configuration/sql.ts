@@ -8,11 +8,10 @@ import {
   createLocationConfigurationService,
 } from "@/chat/configuration/service";
 import type {
-  LocationConfigState,
+  ConfigEntry,
   LocationConfigurationService,
 } from "@/chat/configuration/types";
 
-/** Resolve the canonical Location row for a supported provider destination. */
 async function resolveLocationId(
   db: JuniorDatabase,
   destination: SlackDestination,
@@ -50,88 +49,134 @@ async function resolveLocationId(
   return rows[0]!.id;
 }
 
-/** Create durable configuration storage for one Location. */
 function createSqlLocationConfigurationStorage(
   db: JuniorDatabase,
   destination: SlackDestination,
 ) {
-  const load = async () => {
+  const locationWhere = and(
+    eq(juniorDestinations.provider, "slack"),
+    eq(juniorDestinations.providerTenantId, destination.teamId),
+    eq(juniorDestinations.providerDestinationId, destination.channelId),
+  );
+
+  const list = async (): Promise<ConfigEntry[]> => {
     const rows = await db
-      .select({ configuration: juniorLocationConfigurations.configuration })
+      .select({
+        key: juniorLocationConfigurations.key,
+        value: juniorLocationConfigurations.value,
+        updatedAt: juniorLocationConfigurations.updatedAt,
+        updatedBy: juniorLocationConfigurations.updatedBy,
+        source: juniorLocationConfigurations.source,
+        expiresAt: juniorLocationConfigurations.expiresAt,
+      })
       .from(juniorLocationConfigurations)
       .innerJoin(
         juniorDestinations,
         eq(juniorDestinations.id, juniorLocationConfigurations.locationId),
       )
-      .where(
-        and(
-          eq(juniorDestinations.provider, "slack"),
-          eq(juniorDestinations.providerTenantId, destination.teamId),
-          eq(
-            juniorDestinations.providerDestinationId,
-            destination.channelId,
-          ),
-        ),
-      )
-      .limit(1);
-    const configuration = rows[0]?.configuration;
-    return configuration ? { configuration } : null;
+      .where(locationWhere);
+    return rows.map((row) => ({
+      key: row.key,
+      value: JSON.parse(row.value) as unknown,
+      scope: "location",
+      updatedAt: row.updatedAt.toISOString(),
+      updatedBy: row.updatedBy ?? undefined,
+      source: row.source ?? undefined,
+      expiresAt: row.expiresAt ?? undefined,
+    }));
+  };
+
+  const set = async (entry: ConfigEntry): Promise<void> => {
+    const locationId = await resolveLocationId(db, destination);
+    await db
+      .insert(juniorLocationConfigurations)
+      .values({
+        locationId,
+        key: entry.key,
+        value: JSON.stringify(entry.value),
+        updatedAt: new Date(entry.updatedAt),
+        updatedBy: entry.updatedBy,
+        source: entry.source,
+        expiresAt: entry.expiresAt,
+      })
+      .onConflictDoUpdate({
+        target: [
+          juniorLocationConfigurations.locationId,
+          juniorLocationConfigurations.key,
+        ],
+        set: {
+          value: JSON.stringify(entry.value),
+          updatedAt: new Date(entry.updatedAt),
+          updatedBy: entry.updatedBy,
+          source: entry.source,
+          expiresAt: entry.expiresAt,
+        },
+      });
   };
 
   return {
-    load,
-    save: async (configuration: LocationConfigState) => {
-      const locationId = await resolveLocationId(db, destination);
-      const updatedAt = new Date();
-      await db
-        .insert(juniorLocationConfigurations)
-        .values({ locationId, configuration, updatedAt })
-        .onConflictDoUpdate({
-          target: juniorLocationConfigurations.locationId,
-          set: { configuration, updatedAt },
-        });
-    },
-    // Cutover must never overwrite a concurrent SQL write.
-    insertLegacy: async (configuration: LocationConfigState) => {
+    list,
+    set,
+    unset: async (key: string): Promise<boolean> => {
       const locationId = await resolveLocationId(db, destination);
       const rows = await db
+        .delete(juniorLocationConfigurations)
+        .where(
+          and(
+            eq(juniorLocationConfigurations.locationId, locationId),
+            eq(juniorLocationConfigurations.key, key),
+          ),
+        )
+        .returning({ key: juniorLocationConfigurations.key });
+      return rows.length > 0;
+    },
+    insertLegacy: async (entries: ConfigEntry[]): Promise<void> => {
+      if (entries.length === 0) {
+        return;
+      }
+      const locationId = await resolveLocationId(db, destination);
+      await db
         .insert(juniorLocationConfigurations)
-        .values({ locationId, configuration, updatedAt: new Date() })
-        .onConflictDoUpdate({
-          target: juniorLocationConfigurations.locationId,
-          set: {
-            configuration: sql`${juniorLocationConfigurations.configuration}`,
-          },
-        })
-        .returning({ configuration: juniorLocationConfigurations.configuration });
-      return { configuration: rows[0]!.configuration };
+        .values(
+          entries.map((entry) => ({
+            locationId,
+            key: entry.key,
+            value: JSON.stringify(entry.value),
+            updatedAt: new Date(entry.updatedAt),
+            updatedBy: entry.updatedBy,
+            source: entry.source,
+            expiresAt: entry.expiresAt,
+          })),
+        )
+        .onConflictDoNothing();
     },
   };
 }
 
-/** Resolve SQL-owned Location configuration and copy a live legacy record once. */
+/** Resolve SQL-owned Location configuration and copy live legacy entries once. */
 export function createDurableLocationConfigurationService(args: {
   destination: SlackDestination;
   db: JuniorDatabase;
   loadLegacy: () => Promise<unknown>;
 }): LocationConfigurationService {
-  const sqlStorage = createSqlLocationConfigurationStorage(
-    args.db,
-    args.destination,
-  );
-  return createLocationConfigurationService({
-    load: async () => {
-      const durable = await sqlStorage.load();
-      if (durable) {
-        return durable;
+  const storage = createSqlLocationConfigurationStorage(args.db, args.destination);
+  let cutover: Promise<void> | undefined;
+  const ensureCutover = () =>
+    (cutover ??= (async () => {
+      if ((await storage.list()).length > 0) {
+        return;
       }
       // TODO(#1267, v0.147.0): Remove after SQL readers have copied all live 7-day Redis records.
-      const legacyState = coerceLocationConfigState(await args.loadLegacy());
-      if (Object.keys(legacyState.entries).length === 0) {
-        return null;
-      }
-      return await sqlStorage.insertLegacy(legacyState);
+      const legacy = coerceLocationConfigState(await args.loadLegacy());
+      await storage.insertLegacy(Object.values(legacy.entries));
+    })());
+
+  return createLocationConfigurationService({
+    list: async () => {
+      await ensureCutover();
+      return await storage.list();
     },
-    save: sqlStorage.save,
+    set: storage.set,
+    unset: storage.unset,
   });
 }

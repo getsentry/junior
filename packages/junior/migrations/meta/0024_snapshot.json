@@ -1,5 +1,5 @@
 {
-  "id": "b4046f37-2d26-431c-9cb8-ff5f4babce23",
+  "id": "5b615b01-1e96-4396-a09d-82c0a70f4a58",
   "prevId": "86dbef33-04cf-4e3d-b324-b321a3af4af8",
   "version": "7",
   "dialect": "postgresql",
@@ -1596,12 +1596,18 @@
         "location_id": {
           "name": "location_id",
           "type": "text",
-          "primaryKey": true,
+          "primaryKey": false,
           "notNull": true
         },
-        "configuration_json": {
-          "name": "configuration_json",
-          "type": "jsonb",
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "value": {
+          "name": "value",
+          "type": "text",
           "primaryKey": false,
           "notNull": true
         },
@@ -1610,6 +1616,24 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {},
@@ -1628,7 +1652,15 @@
           "onUpdate": "no action"
         }
       },
-      "compositePrimaryKeys": {},
+      "compositePrimaryKeys": {
+        "junior_location_configurations_location_id_key_pk": {
+          "name": "junior_location_configurations_location_id_key_pk",
+          "columns": [
+            "location_id",
+            "key"
+          ]
+        }
+      },
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},

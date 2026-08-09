@@ -1,8 +1,8 @@
 import type {
+  ConfigEntry,
   LocationConfigState,
   LocationConfigurationService,
   LocationConfigurationStorage,
-  ConfigEntry,
 } from "@/chat/configuration/types";
 import {
   validateConfigKey,
@@ -10,30 +10,18 @@ import {
 } from "@/chat/configuration/validation";
 import { isRecord, toOptionalString } from "@/chat/coerce";
 
-function defaultState(): LocationConfigState {
-  return {
-    schemaVersion: 1,
-    entries: {},
-  };
-}
-
 function sanitizeEntry(value: unknown): ConfigEntry | undefined {
   if (!isRecord(value)) {
     return undefined;
   }
   const key = toOptionalString(value.key);
-  if (!key) {
+  if (!key || validateConfigKey(key)) {
     return undefined;
   }
-  if (validateConfigKey(key)) {
-    return undefined;
-  }
-
   const updatedAt = toOptionalString(value.updatedAt);
   if (!updatedAt) {
     return undefined;
   }
-  // Accept legacy "channel" / "conversation" scopes from Redis.
   if (
     value.scope !== "channel" &&
     value.scope !== "conversation" &&
@@ -41,12 +29,10 @@ function sanitizeEntry(value: unknown): ConfigEntry | undefined {
   ) {
     return undefined;
   }
-  const scope = "location" as const;
-
   return {
     key,
     value: value.value,
-    scope,
+    scope: "location",
     updatedAt,
     updatedBy: toOptionalString(value.updatedBy),
     source: toOptionalString(value.source),
@@ -54,50 +40,29 @@ function sanitizeEntry(value: unknown): ConfigEntry | undefined {
   };
 }
 
-/** Coerce persisted location configuration into the current durable shape. */
-export function coerceLocationConfigState(
-  raw: unknown,
-): LocationConfigState {
-  if (!isRecord(raw)) {
-    return defaultState();
-  }
-
-  const rawConfig = isRecord(raw.configuration) ? raw.configuration : {};
+/** Coerce legacy persisted configuration into the current entry shape. */
+export function coerceLocationConfigState(raw: unknown): LocationConfigState {
+  const rawConfig = isRecord(raw) && isRecord(raw.configuration)
+    ? raw.configuration
+    : {};
   const rawEntries = isRecord(rawConfig.entries) ? rawConfig.entries : {};
   const entries: Record<string, ConfigEntry> = {};
-  for (const [key, value] of Object.entries(rawEntries)) {
+  for (const value of Object.values(rawEntries)) {
     const entry = sanitizeEntry(value);
-    if (!entry) {
-      continue;
+    if (entry) {
+      entries[entry.key] = entry;
     }
-    entries[key] = entry;
   }
-
-  return {
-    schemaVersion: 1,
-    entries,
-  };
+  return { schemaVersion: 1, entries };
 }
 
+/** Create a Location configuration service over entry-level storage. */
 export function createLocationConfigurationService(
   storage: LocationConfigurationStorage,
 ): LocationConfigurationService {
-  const getState = async (): Promise<LocationConfigState> => {
-    const loaded = await storage.load();
-    return coerceLocationConfigState(loaded);
-  };
-
-  const saveState = async (state: LocationConfigState): Promise<void> => {
-    await storage.save({
-      schemaVersion: 1,
-      entries: state.entries,
-    });
-  };
-
   const get = async (key: string): Promise<ConfigEntry | undefined> => {
     const normalizedKey = key.trim();
-    const state = await getState();
-    return state.entries[normalizedKey];
+    return (await storage.list()).find((entry) => entry.key === normalizedKey);
   };
 
   const set: LocationConfigurationService["set"] = async (input) => {
@@ -106,14 +71,11 @@ export function createLocationConfigurationService(
     if (keyError) {
       throw new Error(keyError);
     }
-
     const valueError = validateConfigValue(input.value);
     if (valueError) {
       throw new Error(valueError);
     }
-
-    const state = await getState();
-    const nextEntry: ConfigEntry = {
+    const entry: ConfigEntry = {
       key: normalizedKey,
       value: input.value,
       scope: "location",
@@ -122,65 +84,36 @@ export function createLocationConfigurationService(
       source: toOptionalString(input.source),
       expiresAt: toOptionalString(input.expiresAt),
     };
-    state.entries[normalizedKey] = nextEntry;
-    await saveState(state);
-    return nextEntry;
+    await storage.set(entry);
+    return entry;
   };
 
-  const unset = async (key: string): Promise<boolean> => {
-    const normalizedKey = key.trim();
-    const state = await getState();
-    if (!state.entries[normalizedKey]) {
-      return false;
-    }
-    delete state.entries[normalizedKey];
-    await saveState(state);
-    return true;
-  };
+  const unset = async (key: string): Promise<boolean> =>
+    await storage.unset(key.trim());
 
   const list = async (
     options: { prefix?: string } = {},
   ): Promise<ConfigEntry[]> => {
-    const state = await getState();
     const prefix = options.prefix?.trim();
-    return Object.values(state.entries)
+    return (await storage.list())
       .filter((entry) => (prefix ? entry.key.startsWith(prefix) : true))
       .sort((a, b) => a.key.localeCompare(b.key));
   };
 
-  const resolve = async (key: string): Promise<unknown | undefined> => {
-    const entry = await get(key);
-    return entry?.value;
-  };
+  const resolve = async (key: string): Promise<unknown | undefined> =>
+    (await get(key))?.value;
 
   const resolveValues = async (
     options: { keys?: string[]; prefix?: string } = {},
   ): Promise<Record<string, unknown>> => {
-    const keys = Array.isArray(options.keys)
-      ? options.keys
-          .map((entry) => entry.trim())
-          .filter((entry) => entry.length > 0)
-      : undefined;
-    const entries = options.prefix
-      ? await list({ prefix: options.prefix })
-      : await list({});
-
-    const filtered = keys
-      ? entries.filter((entry) => keys.includes(entry.key))
-      : entries;
-    const resolved: Record<string, unknown> = {};
-    for (const entry of filtered) {
-      resolved[entry.key] = entry.value;
-    }
-    return resolved;
+    const keys = options.keys?.map((key) => key.trim()).filter(Boolean);
+    const entries = await list(options.prefix ? { prefix: options.prefix } : {});
+    return Object.fromEntries(
+      entries
+        .filter((entry) => !keys || keys.includes(entry.key))
+        .map((entry) => [entry.key, entry.value]),
+    );
   };
 
-  return {
-    get,
-    set,
-    unset,
-    list,
-    resolve,
-    resolveValues,
-  };
+  return { get, set, unset, list, resolve, resolveValues };
 }
