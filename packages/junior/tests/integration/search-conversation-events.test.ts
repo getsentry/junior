@@ -144,6 +144,44 @@ describe("searchConversationEvents", () => {
 
     await expect(
       executeTool({
+        after_seq: 0,
+        limit: 2,
+      }),
+    ).resolves.toMatchObject({
+      conversation_id: CURRENT_CONVERSATION_ID,
+      events: [
+        { seq: 1, data: { type: "message", text: "second" } },
+        {
+          seq: 2,
+          data: {
+            type: "handoff",
+            replacement_history_count: 1,
+          },
+        },
+      ],
+    });
+    await expect(
+      executeTool({
+        conversation_id: null,
+        after_seq: 0,
+        limit: 2,
+      }),
+    ).resolves.toMatchObject({
+      conversation_id: CURRENT_CONVERSATION_ID,
+      events: [
+        { seq: 1, data: { type: "message", text: "second" } },
+        {
+          seq: 2,
+          data: {
+            type: "handoff",
+            replacement_history_count: 1,
+          },
+        },
+      ],
+    });
+
+    await expect(
+      executeTool({
         conversation_id: CURRENT_CONVERSATION_ID,
         before_seq: 2,
         limit: 1,
