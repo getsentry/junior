@@ -137,6 +137,30 @@ describe("turn checkpoint", () => {
     expect(appendToList.mock.calls[0]?.[2]?.ttlMs).toBe(24 * 60 * 60 * 1000);
   });
 
+  it("does not let a delayed running summary replace completion", async () => {
+    const { listTurnSummaries, recordTurnSummary } =
+      await import("@/chat/task-execution/turn-cursor");
+    const conversationId = "agent-dispatch:delayed-running";
+    const turnId = "dispatch:delayed-running";
+
+    await recordTurnSummary({
+      conversationId,
+      turnId,
+      sliceId: 1,
+      state: "completed",
+    });
+    await recordTurnSummary({
+      conversationId,
+      turnId,
+      sliceId: 1,
+      state: "running",
+    });
+
+    await expect(listTurnSummaries(conversationId)).resolves.toEqual([
+      expect.objectContaining({ state: "completed", turnId }),
+    ]);
+  });
+
   it("keeps dispatch correlation write-once across session summaries", async () => {
     const { recordTurnSummary } =
       await import("@/chat/task-execution/turn-cursor");

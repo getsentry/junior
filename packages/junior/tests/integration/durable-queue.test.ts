@@ -28,7 +28,6 @@ import {
   saveTurnCheckpoint,
 } from "@/chat/task-execution/checkpoint";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
-import { wakePausedTurn } from "@/chat/task-execution/turn-wake";
 import {
   CONVERSATION_ID,
   SLACK_DESTINATION,
@@ -64,6 +63,11 @@ async function complete(request: Parameters<AgentRunner["run"]>[0]) {
   });
 }
 
+/**
+ * Compose the same ingress, runtime, worker, resume, SQL, and delivery path used
+ * in production. Tests replace only external adapters: agent behavior, Slack
+ * HTTP, queue transport, state backend, and the soft-yield clock.
+ */
 async function slack(
   options: {
     agentRunner?: AgentRunner;
@@ -76,21 +80,12 @@ async function slack(
   const wakes = createConversationWorkQueueTestAdapter();
   const adapter = createSlackAdapterFixture();
   const agentRunner = options.agentRunner ?? { run: complete };
-  let pausedWakes = 0;
   const work = createConversationWork({
     agentRunner: options.pausedRunner ?? agentRunner,
     conversationStore: getConversationStore(),
     getSlackAdapter: () => adapter,
     queue: wakes,
-    services: {
-      replyExecutor: {
-        agentRunner,
-        wakePausedTurn: async (request) => {
-          pausedWakes += 1;
-          await wakePausedTurn(request, { queue: wakes, state });
-        },
-      },
-    },
+    services: { replyExecutor: { agentRunner } },
     state,
   });
   const run = async (context: Parameters<typeof work.run>[0]) =>
@@ -101,7 +96,7 @@ async function slack(
   return {
     state,
     wakes,
-    pausedWakes: () => pausedWakes,
+    replies: () => slackApiOutbox.messages().map((call) => call.params.text),
     next: async () =>
       await processConversationQueueMessage(wakes.takeMessage(), {
         queue: wakes,
@@ -160,6 +155,7 @@ function history(): PiMessage[] {
   ];
 }
 
+/** Seed only the persisted condition that a dead prior invocation leaves behind. */
 async function seedTurn(mode: "paused" | "running") {
   const turnId = "turn_1712345_0001";
   const checkpoint = {
@@ -218,9 +214,7 @@ describe("durable queue contract", () => {
       await expect(q.send()).resolves.toMatchObject({ status: 200 });
       await expect(q.next()).resolves.toEqual({ status: "completed" });
 
-      expect(slackApiOutbox.messages().map((call) => call.params.text)).toEqual(
-        ["Deploy checked."],
-      );
+      expect(q.replies()).toEqual(["Deploy checked."]);
       expect(
         JSON.stringify(
           await loadProjection({ conversationId: CONVERSATION_ID }),
@@ -276,9 +270,7 @@ describe("durable queue contract", () => {
       expect(steering.map((message) => message.text)).toEqual([
         "include the rollback owner",
       ]);
-      expect(slackApiOutbox.messages().map((call) => call.params.text)).toEqual(
-        ["Deploy checked."],
-      );
+      expect(q.replies()).toEqual(["Deploy checked."]);
       await expect(
         getConversationWorkState({
           conversationId: CONVERSATION_ID,
@@ -347,9 +339,7 @@ describe("durable queue contract", () => {
       await expect(q.next()).resolves.toEqual({ status: "pending_requeued" });
       await expect(q.next()).resolves.toEqual({ status: "completed" });
       expect(attempts).toBe(2);
-      expect(slackApiOutbox.messages().map((call) => call.params.text)).toEqual(
-        ["Deploy checked."],
-      );
+      expect(q.replies()).toEqual(["Deploy checked."]);
     });
 
     it("continues a paused turn on the same queue, then stops when progress stalls", async () => {
@@ -423,7 +413,6 @@ describe("durable queue contract", () => {
 
       await expect(q.next()).resolves.toEqual({ status: "completed" });
       expect(resumes).toBeGreaterThan(1);
-      expect(q.pausedWakes()).toBeGreaterThan(0);
       expect(q.wakes.hasQueuedMessages()).toBe(false);
       expect(slackApiOutbox.messages()).toHaveLength(1);
       expect(

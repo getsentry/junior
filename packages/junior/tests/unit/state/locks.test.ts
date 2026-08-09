@@ -7,6 +7,31 @@ describe("state locks", () => {
     vi.useRealTimers();
   });
 
+  it("keeps ownership for the full mutation, not only the first write", async () => {
+    vi.useFakeTimers({ now: 1_000 });
+    const state = createMemoryState();
+    await state.connect();
+    let finish: (() => void) | undefined;
+
+    const mutation = withLock(
+      state,
+      "turn",
+      async () =>
+        await new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+      { keepAlive: true, ttlMs: MUTATION_LOCK_TTL_MS },
+    );
+    await vi.advanceTimersByTimeAsync(MUTATION_LOCK_TTL_MS * 2);
+
+    await expect(
+      state.acquireLock("turn", MUTATION_LOCK_TTL_MS),
+    ).resolves.toBeNull();
+    finish?.();
+    await mutation;
+    await state.disconnect();
+  });
+
   it("stops a stale owner before it can overwrite newer state", async () => {
     vi.useFakeTimers({ now: 1_000 });
     const state = createMemoryState();

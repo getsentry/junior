@@ -59,6 +59,7 @@ async function withTurnCursorMutation<T>(
     turnCursorMutationKey(conversationId, turnId),
     async (lock) => await run(async () => await fenceLock(state, lock)),
     {
+      keepAlive: true,
       ttlMs: MUTATION_LOCK_TTL_MS,
       waitMs: TURN_CURSOR_MUTATION_LOCK_WAIT_MS,
     },
@@ -933,8 +934,7 @@ async function upsertTurnRecordLocked(
   });
 }
 
-/** Record turn metadata without storing conversation messages. */
-export async function recordTurnSummary(args: {
+type TurnSummaryWrite = {
   channelName?: string;
   conversationId: string;
   cumulativeDurationMs?: number;
@@ -943,7 +943,6 @@ export async function recordTurnSummary(args: {
   dispatchId?: string;
   dispatchOutcome?: AgentDispatchOutcome;
   resultMessageId?: string;
-  /** Confirmed destination visibility; omit when unavailable. */
   destinationVisibility?: ConversationPrivacy;
   source?: Source;
   lastProgressAtMs?: number;
@@ -960,7 +959,21 @@ export async function recordTurnSummary(args: {
   surface?: AgentTurnSurface;
   traceId?: string;
   ttlMs?: number;
-}): Promise<void> {
+};
+
+/** Record turn metadata without storing conversation messages. */
+export async function recordTurnSummary(args: TurnSummaryWrite): Promise<void> {
+  await withTurnCursorMutation(
+    args.conversationId,
+    args.turnId,
+    async (fence) => await recordTurnSummaryOwned(args, fence),
+  );
+}
+
+async function recordTurnSummaryOwned(
+  args: TurnSummaryWrite,
+  fence: () => Promise<void>,
+): Promise<void> {
   const stored = await getStoredTurnRecord(args.conversationId, args.turnId);
   const conversationStore = args.conversationStore ?? getConversationStore();
   const conversation = await conversationStore.get({
@@ -971,6 +984,15 @@ export async function recordTurnSummary(args: {
     (summary) => summary.turnId === args.turnId,
   );
   const existing = stored ?? priorSummary;
+  if (
+    existing &&
+    (existing.state === "completed" ||
+      existing.state === "failed" ||
+      existing.state === "abandoned") &&
+    (args.state === "running" || args.state === "paused")
+  ) {
+    return;
+  }
   const existingDispatchId = existing?.dispatchId;
   const existingDispatchOutcome =
     priorSummary?.dispatchOutcome ?? stored?.dispatchOutcome;
@@ -1001,6 +1023,7 @@ export async function recordTurnSummary(args: {
       surface: args.surface ?? existing?.surface,
     }),
   };
+  await fence();
   await recordConversationActivityMetadata({
     actor: args.actor,
     conversationStore,
@@ -1017,6 +1040,7 @@ export async function recordTurnSummary(args: {
       startedAtMs: stored?.startedAtMs ?? args.startedAtMs ?? nowMs,
     },
   });
+  await fence();
   await appendTurnSummary(summary, ttlMs);
 }
 

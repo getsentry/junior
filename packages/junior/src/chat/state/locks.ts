@@ -17,12 +17,21 @@ export async function acquireActiveLock(
 
 export type LockAttempt<T> = { acquired: false } | { acquired: true; value: T };
 
-/** Run work under one lock, optionally waiting for the current owner. */
+/**
+ * Run work under one lock, optionally waiting for the current owner.
+ * `keepAlive` is for multi-store mutations that must retain ownership until all
+ * side effects finish; callers should still fence each blind write.
+ */
 export async function withLock<T>(
   state: StateAdapter,
   key: string,
   run: (lock: Lock) => Promise<T>,
-  options: { retryMs?: number; ttlMs?: number; waitMs?: number } = {},
+  options: {
+    keepAlive?: boolean;
+    retryMs?: number;
+    ttlMs?: number;
+    waitMs?: number;
+  } = {},
 ): Promise<LockAttempt<T>> {
   const startedAtMs = Date.now();
   let lock: Lock | null;
@@ -34,9 +43,20 @@ export async function withLock<T>(
     }
     await sleep(options.retryMs ?? 25, undefined, { ref: false });
   }
+  const ttlMs = options.ttlMs ?? ACTIVE_LOCK_TTL_MS;
+  const heartbeat = options.keepAlive
+    ? setInterval(
+        () => {
+          void state.extendLock(lock, ttlMs);
+        },
+        Math.max(1, Math.floor(ttlMs / 3)),
+      )
+    : undefined;
+  heartbeat?.unref();
   try {
     return { acquired: true, value: await run(lock) };
   } finally {
+    if (heartbeat) clearInterval(heartbeat);
     await state.releaseLock(lock);
   }
 }
