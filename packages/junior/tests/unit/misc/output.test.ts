@@ -10,25 +10,7 @@ import {
 import {
   ensureBlockSpacing,
   normalizeSlackReplyMarkdown,
-  normalizeSlackUserMentions,
 } from "@/chat/slack/mrkdwn";
-
-describe("normalizeSlackUserMentions", () => {
-  it("rewrites bare Slack user ids and mention placeholders", () => {
-    expect(normalizeSlackUserMentions("ping @U039RR91S please")).toBe(
-      "ping <@U039RR91S> please",
-    );
-    expect(normalizeSlackUserMentions("see [[mention:U039RR91S]]")).toBe(
-      "see <@U039RR91S>",
-    );
-  });
-
-  it("leaves ordinary @names and existing mentions alone", () => {
-    expect(normalizeSlackUserMentions("cc @david and <@U039RR91S>")).toBe(
-      "cc @david and <@U039RR91S>",
-    );
-  });
-});
 
 describe("normalizeSlackReplyMarkdown", () => {
   it("normalizes line endings and block spacing for Slack replies", () => {
@@ -44,12 +26,6 @@ describe("normalizeSlackReplyMarkdown", () => {
       ),
     ).toBe(
       "**PR is up: <https://github.com/getsentry/sentry-docs/pull/18263>**",
-    );
-  });
-
-  it("normalizes bare Slack user ids during reply delivery", () => {
-    expect(normalizeSlackReplyMarkdown("ping @U039RR91S")).toBe(
-      "ping <@U039RR91S>",
     );
   });
 

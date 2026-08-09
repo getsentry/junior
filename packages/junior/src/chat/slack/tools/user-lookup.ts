@@ -1,24 +1,33 @@
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
-import {
-  resolveSlackUser,
-  type ResolvedSlackUser,
-} from "@/chat/identities/resolve";
+import { getSqlExecutor } from "@/chat/db";
+import { normalizeIdentityEmail } from "@/chat/identities/identity";
+import { upsertIdentity } from "@/chat/identities/sql";
 import { SlackActionError } from "@/chat/slack/client";
 import { parseRequiredSlackUserIdParam } from "@/chat/slack/id-param";
-import type { SlackToolContext } from "@/chat/slack/tools/context";
-import type { SlackUserProfile } from "@/chat/slack/users";
+import type { SlackTeamId } from "@/chat/slack/ids";
+import {
+  lookupSlackUserProfile,
+  lookupSlackUserByEmail,
+  searchSlackUsers,
+  type SlackUserProfile,
+} from "@/chat/slack/users";
+import { juniorIdentities } from "@/db/schema";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 function explicitUserLookupError(error: SlackActionError): string | undefined {
-  if (error.apiError === "user_not_found" || error.code === "not_found") {
+  if (error.apiError === "user_not_found") {
     return "No Slack user found for the supplied user ID.";
   }
   if (error.code === "missing_scope") {
     return error.needed
       ? `Slack user lookup is unavailable because this installation is missing the \`${error.needed}\` scope.`
       : "Slack user lookup is unavailable because this installation is missing a required Slack scope.";
+  }
+  if (error.code === "not_found") {
+    return "No Slack user found for the supplied user ID.";
   }
   if (error.code === "invalid_arguments") {
     return `Slack rejected the user lookup arguments (${error.apiError ?? error.code}).`;
@@ -29,46 +38,63 @@ function explicitUserLookupError(error: SlackActionError): string | undefined {
   return undefined;
 }
 
-function profileFromResolved(
-  resolved: ResolvedSlackUser,
-): SlackUserProfile & { mention: string } {
-  if (resolved.profile) {
-    return { ...resolved.profile, mention: resolved.mention };
-  }
+function slackMention(userId: string): string {
+  return `<@${userId}>`;
+}
+
+async function storeProfile(
+  teamId: SlackTeamId,
+  profile: SlackUserProfile,
+): Promise<void> {
+  await upsertIdentity(getSqlExecutor(), {
+    kind: profile.is_bot ? "service" : "user",
+    provider: "slack",
+    providerTenantId: teamId,
+    providerSubjectId: profile.id,
+    ...(profile.real_name || profile.display_name
+      ? { displayName: profile.real_name || profile.display_name }
+      : {}),
+    ...(profile.name ? { handle: profile.name } : {}),
+    ...(profile.email ? { email: profile.email, emailVerified: true } : {}),
+  });
+}
+
+async function storedUserByEmail(
+  teamId: SlackTeamId,
+  email: string,
+): Promise<SlackUserProfile | undefined> {
+  const emailNormalized = normalizeIdentityEmail(email);
+  if (!emailNormalized) return undefined;
+  const [identity] = await getSqlExecutor()
+    .db()
+    .select()
+    .from(juniorIdentities)
+    .where(
+      and(
+        eq(juniorIdentities.provider, "slack"),
+        eq(juniorIdentities.providerTenantId, teamId),
+        eq(juniorIdentities.emailVerified, true),
+        eq(juniorIdentities.emailNormalized, emailNormalized),
+      ),
+    )
+    .limit(1);
+  if (!identity) return undefined;
   return {
-    id: resolved.slackUserId,
-    ...(resolved.handle ? { name: resolved.handle } : {}),
-    ...(resolved.displayName ? { real_name: resolved.displayName } : {}),
-    ...(resolved.displayName ? { display_name: resolved.displayName } : {}),
-    ...(resolved.email ? { email: resolved.email } : {}),
-    is_bot: false,
+    id: identity.providerSubjectId,
+    ...(identity.handle ? { name: identity.handle } : {}),
+    ...(identity.displayName ? { real_name: identity.displayName } : {}),
+    ...(identity.displayName ? { display_name: identity.displayName } : {}),
+    ...(identity.email ? { email: identity.email } : {}),
+    is_bot: identity.kind === "service",
     is_deleted: false,
-    mention: resolved.mention,
   };
 }
 
-function ambiguousMessage(
-  value: string,
-  candidates: Array<{
-    slackUserId: string;
-    displayName?: string;
-    handle?: string;
-  }>,
-): string {
-  return `More than one Slack user matches ${JSON.stringify(value)}: ${candidates
-    .map((candidate) => {
-      const label =
-        candidate.handle || candidate.displayName || candidate.slackUserId;
-      return `${label} (${candidate.slackUserId})`;
-    })
-    .join(", ")}. Ask which person to use.`;
-}
-
-/** Create the tool that looks up workspace people and returns mention tokens. */
-export function createSlackUserLookupTool(context: SlackToolContext) {
+/** Create the tool that resolves Slack users by ID, handle, or email. */
+export function createSlackUserLookupTool(teamId: SlackTeamId) {
   return zodTool({
     description:
-      "Look up a Slack user by user ID, email, or name. Returns a `mention` token (`<@U…>`) when one user matches. If several users match, ask which person to use instead of guessing.",
+      "Look up Slack user profiles by user ID, email, or name search. Returns Slack `mention` values (`<@U…>`). Use a mention only when one person clearly matches; otherwise ask which person the user means.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -95,45 +121,67 @@ export function createSlackUserLookupTool(context: SlackToolContext) {
     execute: async ({ mode, value }) => {
       try {
         if (mode === "user_id") {
-          const parsed = parseRequiredSlackUserIdParam("value", value);
-          if (!parsed.ok) throw new ToolInputError(parsed.error);
+          const parsedUserId = parseRequiredSlackUserIdParam("value", value);
+          if (!parsedUserId.ok) {
+            throw new ToolInputError(parsedUserId.error);
+          }
+
+          const user = await lookupSlackUserProfile(parsedUserId.value);
+          await storeProfile(teamId, user);
+          return {
+            mode: "user_id",
+            mention: slackMention(user.id),
+            user,
+          };
         }
 
-        const result = await resolveSlackUser({
-          teamId: context.teamId,
-          mode,
-          value,
+        if (mode === "email") {
+          const stored = await storedUserByEmail(teamId, value);
+          if (stored) {
+            return {
+              mode: "email",
+              mention: slackMention(stored.id),
+              user: stored,
+            };
+          }
+
+          const profile = await lookupSlackUserByEmail(value);
+          if (!profile) {
+            throw new ToolInputError(
+              `No Slack user found with email address ${value}.`,
+            );
+          }
+          await storeProfile(teamId, profile);
+          return {
+            mode: "email",
+            mention: slackMention(profile.id),
+            user: profile,
+          };
+        }
+
+        const result = await searchSlackUsers({
+          query: value,
+          limit: 10,
+          maxPages: 3,
+          includeBots: false,
         });
-        if (result.status === "ambiguous") {
-          throw new ToolInputError(ambiguousMessage(value, result.candidates));
-        }
-        if (result.status === "not_found") {
-          throw new ToolInputError(
-            mode === "email"
-              ? `No Slack user found with email address ${value}.`
-              : mode === "user_id"
-                ? "No Slack user found for the supplied user ID."
-                : `No Slack user found for name ${JSON.stringify(value)}.`,
-          );
+        if (result.users.length === 1) {
+          await storeProfile(teamId, result.users[0]!);
         }
 
-        const user = profileFromResolved(result.user);
         return {
-          mode,
-          mention: result.user.mention,
-          user,
-          ...(mode === "query"
-            ? {
-                query: value,
-                count: 1,
-                users: [user],
-              }
-            : {}),
-          identity_id: result.user.identityId,
-          ...(result.user.userId ? { user_id: result.user.userId } : {}),
+          mode: "query",
+          query: value,
+          count: result.users.length,
+          searched_pages: result.searched_pages,
+          searched_user_count: result.searched_user_count,
+          truncated: result.truncated,
+          users: result.users.map((user) => ({
+            ...user,
+            mention: slackMention(user.id),
+          })),
         };
       } catch (error) {
-        if (error instanceof ToolInputError) throw error;
         if (error instanceof SlackActionError) {
           const message = explicitUserLookupError(error);
           if (message) {
