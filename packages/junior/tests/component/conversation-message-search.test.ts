@@ -7,7 +7,7 @@ import { createSqlStore } from "@/chat/conversations/sql/store";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { createLocalJuniorSqlFixture } from "../fixtures/sql";
 
-describe("conversation search", () => {
+describe("conversation message search", () => {
   it("returns only public user and assistant messages from the authorized workspace", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 

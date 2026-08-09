@@ -68,13 +68,13 @@ interface ConversationEventAccessScope {
   providerTenantId?: string;
 }
 
-/** Create a deferred tool that returns a bounded conversation event page. */
+/** Create a deferred tool that searches one conversation's durable event log. */
 export function createSearchConversationEventsTool(
   context: ToolRuntimeContext,
 ) {
   return zodTool({
     description:
-      "Search stored messages, agent history, tool results, handoffs, and compactions for one conversation. Cross-conversation access is limited to retained public conversations in the current Slack workspace.",
+      "Search the durable event log for one conversation, including messages, agent history, tool results, handoffs, and compactions. Outside the current conversation tree, only retained public conversations in the current Slack workspace are accessible.",
     exposure: "deferred",
     source: CONVERSATIONS_TOOL_SOURCE,
     annotations: {
@@ -89,9 +89,7 @@ export function createSearchConversationEventsTool(
           .string()
           .trim()
           .min(1)
-          .describe(
-            "Conversation ID returned by conversation search or context.",
-          ),
+          .describe("Conversation ID to search."),
         after_seq: z
           .number()
           .int()

@@ -50,7 +50,6 @@ class SqlConversationMessageSearchStore implements ConversationMessageSearchStor
       ne(juniorConversations.conversationId, args.currentConversationId),
       eq(juniorDestinations.provider, args.scope.provider),
       eq(juniorDestinations.providerTenantId, args.scope.providerTenantId),
-      // Public destination visibility is the only cross-thread search boundary.
       eq(juniorDestinations.visibility, "public"),
       eq(juniorConversationEvents.type, "message"),
       sql`${role} in ('user', 'assistant')`,
@@ -65,7 +64,6 @@ class SqlConversationMessageSearchStore implements ConversationMessageSearchStor
       );
     }
     if (args.filters.authorUserId) {
-      // Message author, not conversation actor / thread starter.
       conditions.push(eq(authorUserId, args.filters.authorUserId));
     }
 
@@ -125,7 +123,7 @@ class SqlConversationMessageSearchStore implements ConversationMessageSearchStor
   }
 }
 
-/** Create a SQL-backed public workspace conversation search store. */
+/** Create a SQL-backed public workspace message search store. */
 export function createSqlConversationMessageSearchStore(
   executor: JuniorSqlDatabase,
 ): ConversationMessageSearchStore {
