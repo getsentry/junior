@@ -8,6 +8,7 @@ import { createConversationWork } from "@/chat/app/conversation-work";
 import { loadProjection } from "@/chat/conversations/projection";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
+import type { AgentRunSteeringMessage } from "@/chat/agent/request";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import { executeAgentRun } from "@/chat/agent";
 import type { PiMessage } from "@/chat/pi/messages";
@@ -33,6 +34,7 @@ import {
   createConversationWorkQueueTestAdapter,
   SLACK_BOT_USER_ID,
   createSlackAdapterFixture,
+  deferred,
   handleSlackWebhookAndFlush,
   slackEnvelope,
   slackWebhookRequest,
@@ -95,11 +97,19 @@ async function slack(
         run,
         state,
       }),
-    send: async () =>
+    send: async (
+      input: {
+        eventType?: "app_mention" | "message";
+        text?: string;
+        threadTs?: string;
+        ts?: string;
+      } = {},
+    ) =>
       await handleSlackWebhookAndFlush({
         request: slackWebhookRequest(
           slackEnvelope({
             text: `<@${SLACK_BOT_USER_ID}> inspect the deploy`,
+            ...input,
           }),
         ),
         services: {
@@ -191,177 +201,281 @@ describe("durable queue contract", () => {
     await disconnectStateAdapter();
   });
 
-  it("commits and delivers accepted input exactly once", async () => {
-    const q = await slack();
-    await expect(q.send()).resolves.toMatchObject({ status: 200 });
-    await expect(q.next()).resolves.toEqual({ status: "completed" });
+  describe("success", () => {
+    it("commits and delivers one turn exactly once", async () => {
+      const q = await slack();
+      await expect(q.send()).resolves.toMatchObject({ status: 200 });
+      await expect(q.next()).resolves.toEqual({ status: "completed" });
 
-    expect(slackApiOutbox.messages().map((call) => call.params.text)).toEqual([
-      "Deploy checked.",
-    ]);
-    expect(
-      JSON.stringify(await loadProjection({ conversationId: CONVERSATION_ID })),
-    ).toContain("Deploy checked.");
-    await expect(
-      getTurnRecord(CONVERSATION_ID, "turn_1712345_0001"),
-    ).resolves.toMatchObject({ state: "completed" });
-    await expect(q.next()).rejects.toThrow("Expected queued conversation work");
-    await expect(
-      getConversationWorkState({
+      expect(slackApiOutbox.messages().map((call) => call.params.text)).toEqual(
+        ["Deploy checked."],
+      );
+      expect(
+        JSON.stringify(
+          await loadProjection({ conversationId: CONVERSATION_ID }),
+        ),
+      ).toContain("Deploy checked.");
+      await expect(
+        getTurnRecord(CONVERSATION_ID, "turn_1712345_0001"),
+      ).resolves.toMatchObject({ state: "completed" });
+      await expect(q.next()).rejects.toThrow(
+        "Expected queued conversation work",
+      );
+      await expect(
+        getConversationWorkState({
+          conversationId: CONVERSATION_ID,
+          state: q.state,
+        }),
+      ).resolves.toMatchObject({ needsRun: false, messages: [] });
+    });
+  });
+
+  describe("interrupts", () => {
+    it("steers an explicit mid-turn instruction into the active turn", async () => {
+      const entered = deferred();
+      const release = deferred();
+      const steering: AgentRunSteeringMessage[] = [];
+      const q = await slack({
+        agentRunner: {
+          run: async (request) => {
+            await request.durability?.onInputCommitted?.();
+            entered.resolve(undefined);
+            await release.promise;
+            await request.durability?.drainSteeringMessages?.(
+              async (messages) => {
+                steering.push(...messages);
+              },
+            );
+            return await complete(request);
+          },
+        },
+      });
+      await q.send({ text: `<@${SLACK_BOT_USER_ID}> inspect the deploy` });
+
+      const activeTurn = q.next();
+      await entered.promise;
+      await q.send({
+        text: `<@${SLACK_BOT_USER_ID}> include the rollback owner`,
+        threadTs: "1712345.0001",
+        ts: "1712345.0002",
+      });
+      release.resolve(undefined);
+
+      await expect(activeTurn).resolves.toEqual({ status: "completed" });
+      expect(steering.map((message) => message.text)).toEqual([
+        "include the rollback owner",
+      ]);
+      expect(slackApiOutbox.messages().map((call) => call.params.text)).toEqual(
+        ["Deploy checked."],
+      );
+      await expect(
+        getConversationWorkState({
+          conversationId: CONVERSATION_ID,
+          state: q.state,
+        }),
+      ).resolves.toMatchObject({ needsRun: false, messages: [] });
+    });
+
+    it("parks a turn that needs authorization without retrying it", async () => {
+      const q = await slack({
+        agentRunner: {
+          run: async (request) => {
+            await request.durability?.onInputCommitted?.();
+            await request.durability?.recordPendingAuth?.({
+              actorId: "U123",
+              kind: "plugin",
+              linkSentAtMs: Date.now(),
+              provider: "github",
+              sessionId: request.turnId,
+            });
+            await saveTurnCheckpoint({
+              mode: "paused",
+              reason: "auth",
+              actor: request.routing.actor,
+              conversationId: request.conversationId,
+              destination: request.routing.destination,
+              messages: request.input.piMessages ?? [],
+              modelId: "test-model",
+              sliceId: 1,
+              source: request.routing.source,
+              surface: request.routing.surface,
+              turnId: request.turnId,
+            });
+            return {
+              status: "awaiting_auth" as const,
+              providerDisplayName: "GitHub",
+            };
+          },
+        },
+      });
+      await q.send();
+
+      await expect(q.next()).resolves.toEqual({ status: "completed" });
+      await expect(
+        getTurnRecord(CONVERSATION_ID, "turn_1712345_0001"),
+      ).resolves.toMatchObject({ state: "paused", resumeReason: "auth" });
+      expect(q.wakes.hasQueuedMessages()).toBe(false);
+      expect(slackApiOutbox.messages()).toHaveLength(1);
+    });
+  });
+
+  describe("failures", () => {
+    it("retries a failure before input commit without duplicate delivery", async () => {
+      let attempts = 0;
+      const q = await slack({
+        agentRunner: {
+          run: async (request) => {
+            attempts += 1;
+            if (attempts === 1) throw new Error("agent unavailable");
+            return await complete(request);
+          },
+        },
+      });
+      await q.send();
+
+      await expect(q.next()).resolves.toEqual({ status: "pending_requeued" });
+      await expect(q.next()).resolves.toEqual({ status: "completed" });
+      expect(attempts).toBe(2);
+      expect(slackApiOutbox.messages().map((call) => call.params.text)).toEqual(
+        ["Deploy checked."],
+      );
+    });
+
+    it("stops a timed-out turn that repeats its committed boundary", async () => {
+      const turnId = await seedTurn("paused");
+      const q = await slack({
+        shouldYield: () => true,
+        pausedRunner: {
+          run: async (request) => {
+            const piMessages = request.input.piMessages?.map((message) =>
+              message.role === "assistant"
+                ? { ...message, usage: { ...message.usage, output: 99 } }
+                : message,
+            );
+            const faux = createFauxCore({ api: "test", provider: "test" });
+            faux.setResponses([
+              async () => {
+                await new Promise((resolve) => setTimeout(resolve, 50));
+                return fauxAssistantMessage("not delivered");
+              },
+            ]);
+            return await executeAgentRun(
+              {
+                ...request,
+                input: { ...request.input, piMessages },
+                policy: {
+                  ...request.policy,
+                  turnDeadlineAtMs: Date.now() + 10,
+                },
+              },
+              faux.stream,
+            );
+          },
+        },
+      });
+      await requestConversationWork({
         conversationId: CONVERSATION_ID,
+        destination: SLACK_DESTINATION,
         state: q.state,
-      }),
-    ).resolves.toMatchObject({ needsRun: false, messages: [] });
-  });
+      });
+      await ensureConversationWake({
+        conversationId: CONVERSATION_ID,
+        idempotencyKey: "stuck-turn",
+        queue: q.wakes,
+      });
 
-  it("retries uncommitted input without duplicate delivery", async () => {
-    let attempts = 0;
-    const q = await slack({
-      agentRunner: {
-        run: async (request) => {
-          attempts += 1;
-          if (attempts === 1) throw new Error("agent unavailable");
-          return await complete(request);
-        },
-      },
-    });
-    await q.send();
-
-    await expect(q.next()).resolves.toEqual({ status: "pending_requeued" });
-    await expect(q.next()).resolves.toEqual({ status: "completed" });
-    expect(attempts).toBe(2);
-    expect(slackApiOutbox.messages().map((call) => call.params.text)).toEqual([
-      "Deploy checked.",
-    ]);
-  });
-
-  it("stops a paused turn that repeats its committed boundary", async () => {
-    const turnId = await seedTurn("paused");
-    const q = await slack({
-      shouldYield: () => true,
-      pausedRunner: {
-        run: async (request) => {
-          const piMessages = request.input.piMessages?.map((message) =>
-            message.role === "assistant"
-              ? { ...message, usage: { ...message.usage, output: 99 } }
-              : message,
-          );
-          const faux = createFauxCore({ api: "test", provider: "test" });
-          faux.setResponses([
-            async () => {
-              await new Promise((resolve) => setTimeout(resolve, 50));
-              return fauxAssistantMessage("not delivered");
-            },
-          ]);
-          return await executeAgentRun(
-            {
-              ...request,
-              input: { ...request.input, piMessages },
-              policy: { ...request.policy, turnDeadlineAtMs: Date.now() + 10 },
-            },
-            faux.stream,
-          );
-        },
-      },
-    });
-    await requestConversationWork({
-      conversationId: CONVERSATION_ID,
-      destination: SLACK_DESTINATION,
-      state: q.state,
-    });
-    await ensureConversationWake({
-      conversationId: CONVERSATION_ID,
-      idempotencyKey: "stuck-turn",
-      queue: q.wakes,
-    });
-
-    await expect(q.next()).resolves.toEqual({ status: "completed" });
-    await requestConversationWork({
-      conversationId: CONVERSATION_ID,
-      destination: SLACK_DESTINATION,
-      nowMs: Date.now() + 60_000,
-      state: q.state,
-    });
-    await ensureConversationWake({
-      conversationId: CONVERSATION_ID,
-      idempotencyKey: "stuck-turn-redelivery",
-      nowMs: Date.now() + 60_000,
-      queue: q.wakes,
-      state: q.state,
-    });
-    await expect(q.next()).resolves.toEqual({ status: "completed" });
-    expect(q.wakes.hasQueuedMessages()).toBe(false);
-    expect(slackApiOutbox.messages()).toHaveLength(1);
-    expect(
-      JSON.stringify(await loadProjection({ conversationId: CONVERSATION_ID })),
-    ).toContain("inspect the deploy");
-    await expect(getTurnRecord(CONVERSATION_ID, turnId)).resolves.toMatchObject(
-      {
-        state: "failed",
-        errorMessage: expect.stringContaining("made no progress"),
-      },
-    );
-  });
-
-  it("stops a stranded turn while preserving committed history", async () => {
-    const turnId = await seedTurn("running");
-    const q = await slack();
-    await requestConversationWork({
-      conversationId: CONVERSATION_ID,
-      destination: SLACK_DESTINATION,
-      nowMs: 1_000,
-      state: q.state,
-    });
-    await startConversationWork({
-      conversationId: CONVERSATION_ID,
-      nowMs: 1_000,
-      state: q.state,
-    });
-
-    await expect(
-      recoverConversationWork({
-        nowMs: 1_000 + CONVERSATION_WORK_LEASE_TTL_MS,
+      await expect(q.next()).resolves.toEqual({ status: "completed" });
+      await requestConversationWork({
+        conversationId: CONVERSATION_ID,
+        destination: SLACK_DESTINATION,
+        nowMs: Date.now() + 60_000,
+        state: q.state,
+      });
+      await ensureConversationWake({
+        conversationId: CONVERSATION_ID,
+        idempotencyKey: "stuck-turn-redelivery",
+        nowMs: Date.now() + 60_000,
         queue: q.wakes,
         state: q.state,
-      }),
-    ).resolves.toEqual({ expiredLeaseCount: 1, pendingCount: 0 });
-    await expect(q.next()).resolves.toEqual({ status: "completed" });
-    expect(q.wakes.sentRecords()).toHaveLength(1);
-    await expect(getTurnRecord(CONVERSATION_ID, turnId)).resolves.toMatchObject(
-      {
+      });
+      await expect(q.next()).resolves.toEqual({ status: "completed" });
+      expect(q.wakes.hasQueuedMessages()).toBe(false);
+      expect(slackApiOutbox.messages()).toHaveLength(1);
+      expect(
+        JSON.stringify(
+          await loadProjection({ conversationId: CONVERSATION_ID }),
+        ),
+      ).toContain("inspect the deploy");
+      await expect(
+        getTurnRecord(CONVERSATION_ID, turnId),
+      ).resolves.toMatchObject({
+        state: "failed",
+        errorMessage: expect.stringContaining("made no progress"),
+      });
+    });
+
+    it("stops a running turn after its worker disappears", async () => {
+      const turnId = await seedTurn("running");
+      const q = await slack();
+      await requestConversationWork({
+        conversationId: CONVERSATION_ID,
+        destination: SLACK_DESTINATION,
+        nowMs: 1_000,
+        state: q.state,
+      });
+      await startConversationWork({
+        conversationId: CONVERSATION_ID,
+        nowMs: 1_000,
+        state: q.state,
+      });
+
+      await expect(
+        recoverConversationWork({
+          nowMs: 1_000 + CONVERSATION_WORK_LEASE_TTL_MS,
+          queue: q.wakes,
+          state: q.state,
+        }),
+      ).resolves.toEqual({ expiredLeaseCount: 1, pendingCount: 0 });
+      await expect(q.next()).resolves.toEqual({ status: "completed" });
+      expect(q.wakes.sentRecords()).toHaveLength(1);
+      await expect(
+        getTurnRecord(CONVERSATION_ID, turnId),
+      ).resolves.toMatchObject({
         state: "failed",
         errorMessage: expect.stringContaining("lost its worker"),
-      },
-    );
-    expect(
-      JSON.stringify(await loadProjection({ conversationId: CONVERSATION_ID })),
-    ).toContain("inspect the deploy");
-    expect(slackApiOutbox.messages()).toHaveLength(1);
-  });
-
-  it("stops at the retry limit without duplicate delivery", async () => {
-    let attempts = 0;
-    const q = await slack({
-      agentRunner: {
-        run: async () => {
-          attempts += 1;
-          throw new Error("agent unavailable");
-        },
-      },
+      });
+      expect(
+        JSON.stringify(
+          await loadProjection({ conversationId: CONVERSATION_ID }),
+        ),
+      ).toContain("inspect the deploy");
+      expect(slackApiOutbox.messages()).toHaveLength(1);
     });
-    await q.send();
 
-    const results: string[] = [];
-    while (q.wakes.hasQueuedMessages()) results.push((await q.next()).status);
+    it("stops at the retry limit without duplicate delivery", async () => {
+      let attempts = 0;
+      const q = await slack({
+        agentRunner: {
+          run: async () => {
+            attempts += 1;
+            throw new Error("agent unavailable");
+          },
+        },
+      });
+      await q.send();
 
-    expect(results.at(-1)).toBe("failed");
-    expect(attempts).toBe(CONVERSATION_WORK_MAX_RETRIES);
-    expect(slackApiOutbox.messages()).toHaveLength(1);
-    await expect(
-      getConversationWorkState({
-        conversationId: CONVERSATION_ID,
-        state: q.state,
-      }),
-    ).resolves.toMatchObject({ needsRun: false, messages: [] });
+      const results: string[] = [];
+      while (q.wakes.hasQueuedMessages()) results.push((await q.next()).status);
+
+      expect(results.at(-1)).toBe("failed");
+      expect(attempts).toBe(CONVERSATION_WORK_MAX_RETRIES);
+      expect(slackApiOutbox.messages()).toHaveLength(1);
+      await expect(
+        getConversationWorkState({
+          conversationId: CONVERSATION_ID,
+          state: q.state,
+        }),
+      ).resolves.toMatchObject({ needsRun: false, messages: [] });
+    });
   });
 });

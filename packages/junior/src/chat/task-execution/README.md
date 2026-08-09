@@ -114,17 +114,18 @@ new turn starts, `interrupt` delivery is handled before queued `defer` delivery.
 
 `packages/junior/tests/integration/durable-queue.test.ts` uses the same
 `createConversationWork` composition as production. It replaces only external
-adapters: the agent, Slack HTTP, queue transport, state backend, and clock. The
-suite protects five queue behaviors:
+adapters: the agent, Slack HTTP, queue transport, state backend, and clock. Its
+cases are organized around the behavior a maintainer should expect:
 
-- accepted input runs once, commits SQL history, delivers once, and drains;
-- failure before input commit retries without duplicate delivery;
-- a paused turn that returns to the same committed boundary stops instead of
-  scheduling an unbounded continuation loop;
-- an expired worker lease preserves committed SQL history and stops its
-  stranded running turn;
-- repeated agent failure stops at the retry limit, clears work, and emits at
-  most one visible fallback.
+- **Success:** accepted input runs once, commits SQL history, delivers once, and
+  drains.
+- **Interrupts:** an explicit instruction received during a run steers the active
+  turn; an authorization request parks the turn without retrying it.
+- **Failures:** failure before input commit retries without duplicate delivery;
+  a timed-out turn that repeats its committed boundary stops; an expired worker
+  lease stops its stranded running turn while preserving committed history; and
+  repeated agent failure stops at the retry limit with at most one visible
+  fallback.
 
 Broader heartbeat scheduling remains in
 `packages/junior/tests/integration/heartbeat.test.ts`. Component tests own
