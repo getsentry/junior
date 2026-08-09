@@ -8,7 +8,11 @@
 import type { ReplyAttribution } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
 import { standardModelId } from "@/chat/model-profile";
-import type { LocationConfigurationService } from "@/chat/configuration/types";
+import { configValueSchema } from "@/chat/configuration/types";
+import type {
+  ConfigValue,
+  LocationConfigurationService,
+} from "@/chat/configuration/types";
 import {
   RetryableDeliveryError,
   type AgentRunRequest,
@@ -117,8 +121,14 @@ async function postSlackMessageBestEffort(
 
 /** Create a read-only configuration service from persisted values. */
 function createReadOnlyConfigService(
-  values: Record<string, unknown>,
+  rawValues: Record<string, unknown>,
 ): LocationConfigurationService {
+  const values: Record<string, ConfigValue> = Object.fromEntries(
+    Object.entries(rawValues).map(([key, value]) => [
+      key,
+      configValueSchema.parse(value),
+    ]),
+  );
   const entries = Object.entries(values).map(([key, value]) => ({
     key,
     value,
@@ -136,7 +146,7 @@ function createReadOnlyConfigService(
       entries.filter((entry) => !prefix || entry.key.startsWith(prefix)),
     resolve: async (key) => values[key],
     resolveValues: async ({ keys, prefix } = {}) => {
-      const filtered: Record<string, unknown> = {};
+      const filtered: Record<string, ConfigValue> = {};
       for (const [key, value] of Object.entries(values)) {
         if (prefix && !key.startsWith(prefix)) continue;
         if (keys && !keys.includes(key)) continue;

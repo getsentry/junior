@@ -1,7 +1,13 @@
+import { z } from "zod";
+
+/** JSON value accepted by Location configuration. */
+export const configValueSchema = z.json();
+export type ConfigValue = z.output<typeof configValueSchema>;
+
 /** One user-authored configuration value scoped to a Location. */
 export interface ConfigEntry {
   key: string;
-  value: unknown;
+  value: ConfigValue;
   scope: "location";
   updatedAt: string;
   updatedBy?: string;
@@ -29,9 +35,9 @@ export interface LocationConfigurationService {
   }) => Promise<ConfigEntry>;
   unset: (key: string) => Promise<boolean>;
   list: (options?: { prefix?: string }) => Promise<ConfigEntry[]>;
-  resolve: (key: string) => Promise<unknown | undefined>;
+  resolve: (key: string) => Promise<ConfigValue | undefined>;
   resolveValues: (options?: {
     keys?: string[];
     prefix?: string;
-  }) => Promise<Record<string, unknown>>;
+  }) => Promise<Record<string, ConfigValue>>;
 }

@@ -1,3 +1,4 @@
+import { configValueSchema } from "@/chat/configuration/types";
 import type {
   ConfigEntry,
   LocationConfigurationService,
@@ -28,9 +29,13 @@ function sanitizeEntry(value: unknown): ConfigEntry | undefined {
   ) {
     return undefined;
   }
+  const parsedValue = configValueSchema.safeParse(value.value);
+  if (!parsedValue.success) {
+    return undefined;
+  }
   return {
     key,
-    value: value.value,
+    value: parsedValue.data,
     scope: "location",
     updatedAt,
     updatedBy: toOptionalString(value.updatedBy),
@@ -64,13 +69,14 @@ export function createLocationConfigurationService(
     if (keyError) {
       throw new Error(keyError);
     }
-    const valueError = validateConfigValue(input.value);
+    const value = configValueSchema.parse(input.value);
+    const valueError = validateConfigValue(value);
     if (valueError) {
       throw new Error(valueError);
     }
     const entry: ConfigEntry = {
       key: normalizedKey,
-      value: input.value,
+      value,
       scope: "location",
       updatedAt: new Date().toISOString(),
       updatedBy: toOptionalString(input.updatedBy),
@@ -93,12 +99,12 @@ export function createLocationConfigurationService(
       .sort((a, b) => a.key.localeCompare(b.key));
   };
 
-  const resolve = async (key: string): Promise<unknown | undefined> =>
+  const resolve: LocationConfigurationService["resolve"] = async (key) =>
     (await get(key))?.value;
 
   const resolveValues = async (
     options: { keys?: string[]; prefix?: string } = {},
-  ): Promise<Record<string, unknown>> => {
+  ): ReturnType<LocationConfigurationService["resolveValues"]> => {
     const keys = options.keys?.map((key) => key.trim()).filter(Boolean);
     const entries = await list(options.prefix ? { prefix: options.prefix } : {});
     return Object.fromEntries(

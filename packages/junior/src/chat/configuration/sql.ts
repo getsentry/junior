@@ -7,6 +7,7 @@ import {
   coerceLegacyLocationConfig,
   createLocationConfigurationService,
 } from "@/chat/configuration/service";
+import { configValueSchema } from "@/chat/configuration/types";
 import type {
   ConfigEntry,
   LocationConfigurationService,
@@ -47,7 +48,11 @@ async function resolveLocationId(
       set: { id: sql`${juniorDestinations.id}` },
     })
     .returning({ id: juniorDestinations.id });
-  return rows[0]!.id;
+  const location = rows[0];
+  if (!location) {
+    throw new Error("Location upsert returned no row");
+  }
+  return location.id;
 }
 
 /** Persist configuration rows for the Location addressed by a Slack Destination. */
@@ -80,7 +85,7 @@ function createSqlLocationConfigurationStorage(
     row: Awaited<ReturnType<typeof selectEntries>>[number],
   ): ConfigEntry => ({
     key: row.key,
-    value: JSON.parse(row.value) as unknown,
+    value: configValueSchema.parse(JSON.parse(row.value)),
     scope: "location",
     updatedAt: row.updatedAt.toISOString(),
     updatedBy: row.updatedBy ?? undefined,
