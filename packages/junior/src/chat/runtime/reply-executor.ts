@@ -16,7 +16,7 @@ import {
   standardModelId,
   type ModelProfile,
 } from "@/chat/model-profile";
-import { getSlackMessageTs } from "@/chat/slack/message";
+import { getMessageTimestamp } from "@/chat/slack/message/identity";
 import { readSlackActionToken } from "@/chat/slack/action-token";
 import {
   logException,
@@ -58,7 +58,10 @@ import {
   stripLeadingBotMention,
 } from "@/chat/runtime/thread-context";
 import { stripLeadingSteeringOverride } from "@/chat/slack/message-control";
-import { getSlackMessageText } from "@/chat/slack/message";
+import {
+  parseContent,
+  replaceTopLevelText,
+} from "@/chat/slack/message/content";
 import {
   persistThreadRuntimeState,
   persistThreadState,
@@ -96,7 +99,6 @@ import {
   resolveSlackChannelTypeFromMessage,
   resolveSlackConversationContext,
 } from "@/chat/slack/conversation-context";
-import { appendSlackLegacyAttachmentText } from "@/chat/slack/legacy-attachments";
 import { type ThreadArtifactsState } from "@/chat/state/artifacts";
 import { lookupSlackUser } from "@/chat/slack/user";
 import { createActor, parseActorUserId, type Actor } from "@/chat/actor";
@@ -264,7 +266,7 @@ function queuedInstructionActor(
   const authorId =
     actor?.userId ?? parseActorUserId(queued.message.author.userId);
   const authorName = actor?.fullName ?? actor?.userName;
-  const slackTs = getSlackMessageTs(queued.message);
+  const slackTs = getMessageTimestamp(queued.message);
   return {
     ...(authorId ? { authorId } : {}),
     ...(authorName ? { authorName } : {}),
@@ -515,9 +517,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         modelId: standardModelId(botConfig),
       },
       async () => {
-        const messageText = getSlackMessageText(message);
+        const content = parseContent(message);
         const strippedUserText = stripLeadingBotMention(
-          stripLeadingSteeringOverride(messageText),
+          stripLeadingSteeringOverride(content.topLevelText),
           {
             botUserId: deps.getSlackAdapter().botUserId,
             stripLeadingSlackMentionToken:
@@ -525,11 +527,8 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           },
         );
         const currentText: TurnMessageText = {
-          rawText: appendSlackLegacyAttachmentText(messageText, message.raw),
-          userText: appendSlackLegacyAttachmentText(
-            strippedUserText,
-            message.raw,
-          ),
+          rawText: content.text,
+          userText: replaceTopLevelText(content, strippedUserText),
         };
         await Promise.all(
           (options.queuedMessages ?? [])
@@ -590,7 +589,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             skipBackfill: options.skipBackfill,
           }));
 
-        const slackMessageTs = getSlackMessageTs(message);
+        const slackMessageTs = getMessageTimestamp(message);
         const turnId =
           options.execution?.turnId ?? buildDeterministicTurnId(message.id);
         let beforeFirstResponsePostCalled = false;
@@ -660,7 +659,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                     channelId,
                     runId,
                     conversation: preparedState.conversation,
-                    messageTs: getSlackMessageTs(queued.message),
+                    messageTs: getMessageTimestamp(queued.message),
                   },
                 ),
               };
