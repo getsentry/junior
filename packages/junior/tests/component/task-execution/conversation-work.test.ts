@@ -2172,9 +2172,9 @@ describe("conversation work execution", () => {
       signedAtMs,
     );
 
-    expect(verifySignedConversationQueueMessage(signed, signedAtMs)).toEqual({
-      conversationId: CONVERSATION_ID,
-    });
+    expect(verifySignedConversationQueueMessage(signed, signedAtMs)).toEqual(
+      conversationQueueMessage(),
+    );
     expect(
       verifySignedConversationQueueMessage(
         {
@@ -2211,9 +2211,7 @@ describe("conversation work execution", () => {
 
     expect(
       verifySignedConversationQueueMessage(signed, signedAtMs + 330_000),
-    ).toEqual({
-      conversationId: CONVERSATION_ID,
-    });
+    ).toEqual(conversationQueueMessage());
   });
 
   it("processes Vercel Queue payloads through the leased worker", async () => {

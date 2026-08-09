@@ -24,7 +24,10 @@ import {
   type TurnRecord,
   type TurnSummary,
 } from "./turn-cursor";
-import { loadTurnCheckpoint } from "@/chat/task-execution/checkpoint";
+import {
+  loadTurnCheckpoint,
+  saveTurnCheckpoint,
+} from "@/chat/task-execution/checkpoint";
 import {
   getPersistedThreadState,
   getPersistedSandboxState,
@@ -40,6 +43,7 @@ import {
 import {
   buildConversationContext,
   markConversationMessage,
+  turnHasReply,
 } from "@/chat/services/conversation-memory";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import { markTurnFailed } from "@/chat/runtime/turn";
@@ -718,6 +722,40 @@ async function runNextPausedTurnInContext(
         newest.turnId,
       );
       if (!record || record.state !== "running") return;
+      const currentState = await getPersistedThreadState(conversationId);
+      const conversation = coerceThreadConversationState(currentState);
+      await hydrateConversationMessages({ conversation, conversationId });
+      if (turnHasReply(conversation, record.turnId)) {
+        const acceptedReply = [...conversation.messages]
+          .reverse()
+          .find(
+            (message) =>
+              message.role === "assistant" &&
+              message.id.startsWith(`${record.turnId}:assistant:`),
+          );
+        if (record.modelId) {
+          await saveTurnCheckpoint({
+            conversationId,
+            messages: record.piMessages,
+            mode: "completed",
+            modelId: record.modelId,
+            resultMessageId: acceptedReply?.meta?.slackTs,
+            sliceId: record.sliceId,
+            surface: record.surface,
+            turnId: record.turnId,
+          });
+        } else {
+          await recordTurnSummary({
+            conversationId,
+            resultMessageId: acceptedReply?.meta?.slackTs,
+            sliceId: record.sliceId,
+            state: "completed",
+            surface: record.surface,
+            turnId: record.turnId,
+          });
+        }
+        return;
+      }
       await failStrandedTurnWithFallback({
         conversationId,
         errorMessage: "Turn lost its worker before reaching a safe boundary",

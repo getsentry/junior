@@ -5,7 +5,10 @@ import {
 } from "@earendil-works/pi-ai/providers/faux";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createConversationWork } from "@/chat/app/conversation-work";
-import { loadProjection } from "@/chat/conversations/projection";
+import {
+  commitAcceptedReply,
+  loadProjection,
+} from "@/chat/conversations/projection";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import type { AgentRunSteeringMessage } from "@/chat/agent/request";
@@ -25,6 +28,7 @@ import {
 } from "@/chat/task-execution/store";
 import {
   getTurnRecord,
+  listTurnSummaries,
   saveTurnCheckpoint,
 } from "@/chat/task-execution/checkpoint";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
@@ -427,6 +431,58 @@ describe("durable queue contract", () => {
         state: "failed",
         errorMessage: expect.stringContaining("made no progress"),
       });
+    });
+
+    it("does not report failure after SQL recorded an accepted reply", async () => {
+      const turnId = await seedTurn("running");
+      await commitAcceptedReply({
+        conversationId: CONVERSATION_ID,
+        conversationMessageId: `${turnId}:assistant:1`,
+        conversation: {
+          schemaVersion: 1,
+          compactions: [],
+          messages: [
+            {
+              id: "1712345.0001",
+              role: "user",
+              text: "inspect the deploy",
+              createdAtMs: 1,
+              author: { userId: "U123" },
+              meta: { replied: true },
+            },
+            {
+              id: `${turnId}:assistant:1`,
+              role: "assistant",
+              text: "Deploy checked.",
+              createdAtMs: 2,
+              author: { isBot: true },
+              meta: { replied: true, slackTs: "1712345.0002" },
+            },
+          ],
+          processing: { activeTurnId: turnId },
+          vision: { byFileId: {} },
+        },
+      });
+      const q = await slack();
+      await requestConversationWork({
+        conversationId: CONVERSATION_ID,
+        destination: SLACK_DESTINATION,
+        state: q.state,
+      });
+      await ensureConversationWake({
+        conversationId: CONVERSATION_ID,
+        idempotencyKey: "accepted-reply-recovery",
+        queue: q.wakes,
+      });
+
+      await expect(q.next()).resolves.toEqual({ status: "completed" });
+
+      expect(q.replies()).toEqual([]);
+      await expect(listTurnSummaries(CONVERSATION_ID)).resolves.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ state: "completed", turnId }),
+        ]),
+      );
     });
 
     it("stops a running turn after its worker disappears", async () => {
