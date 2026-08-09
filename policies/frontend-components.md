@@ -3,7 +3,7 @@
 ## Intent
 
 Frontend code should make layout and styling ownership obvious at the component
-that renders the UI, instead of hiding product-specific presentation in large
+that renders the UI. Do not hide product-specific presentation in large
 stylesheets or semantic class contracts.
 
 ## Policy
@@ -17,7 +17,7 @@ stylesheets or semantic class contracts.
   that owns the markup.
 - Use the named type scale from the dashboard Tailwind theme
   (`text-2xs` through `text-4xl`). Reserve `text-2xs` for compact badges and
-  chart annotations; use `text-xs` or larger for body copy, controls, subtext,
+  chart annotations. Use `text-xs` or larger for body copy, controls, subtext,
   and standalone metadata. Do not use arbitrary `text-[Nrem]` sizes.
 - Use stylesheets only for Tailwind entry files, minimal global resets, vendor
   integration constraints, or selectors that cannot reasonably be represented

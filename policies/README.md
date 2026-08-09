@@ -1,25 +1,23 @@
 # Policies
 
-Policies are durable repo-wide engineering rules and defaults. They are the
-highest-authority repository documentation below executable configuration and
-must remain consistent with code-enforced constraints.
+Policies are durable repo-wide engineering rules and defaults. They sit below
+executable configuration and must match code-enforced constraints.
 
-Use a policy when the repository needs to say "this is how we do this here"
-across multiple packages or features. Examples include testing, comments,
-security, privacy, error handling, provider boundaries, interface design, and
-serverless work.
+Use a policy when the repo must say "this is how we do this here" across
+packages or features. Examples include testing, comments, security, privacy,
+error handling, provider boundaries, interface design, and serverless work.
 
 Do not use policies for:
 
-- one feature's architecture or lifecycle;
-- implementation plans, status, TODOs, or rollout tracking;
-- copied schemas, commands, or test inventories;
-- public product documentation.
+- one feature's architecture or lifecycle
+- plans, status notes, TODOs, or rollout tracking
+- copied schemas, commands, or test inventories
+- public product docs
 
-Feature architecture and non-obvious invariants belong in the owning package or
-module `README.md`. Code, runtime schemas, exported types, and tests define the
-implemented contract. Temporary implementation plans live under
-`../openspec/changes/` and cannot override policy.
+Put feature architecture and non-obvious rules in the owning package or module
+`README.md`. Code, runtime schemas, exported types, and tests define the real
+contract. Temporary plans live under `../openspec/changes/` and cannot override
+policy.
 
 Keep policies short. Use ASD-STE100 English: common words, active voice, short
 sentences, and one idea per sentence. Keep required domain terms from
