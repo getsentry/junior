@@ -9,6 +9,48 @@ export const SEARCH_TOOLS_NAME = "searchTools";
 const DEFAULT_MAX_RESULTS = 5;
 const MAX_RESULTS = 20;
 const MODEL_VISIBLE_DESCRIPTION_CAP = 180;
+// Identity, descriptive guidance, and source/schema context respectively.
+const SEARCH_FIELD_WEIGHTS = [8, 4, 1] as const;
+const BM25_K1 = 1.2;
+const BM25_B = 0.75;
+
+const SEARCH_STOP_WORDS = new Set([
+  "a",
+  "an",
+  "and",
+  "are",
+  "as",
+  "at",
+  "be",
+  "by",
+  "do",
+  "for",
+  "from",
+  "how",
+  "i",
+  "in",
+  "is",
+  "it",
+  "me",
+  "my",
+  "of",
+  "on",
+  "or",
+  "please",
+  "that",
+  "the",
+  "this",
+  "to",
+  "use",
+  "we",
+  "what",
+  "when",
+  "where",
+  "which",
+  "with",
+  "you",
+  "your",
+]);
 
 const searchToolsSourceSchema = z
   .object({
@@ -48,11 +90,36 @@ interface SourceSummary {
   description: string;
 }
 
-function normalize(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9_]+/g, " ")
-    .trim();
+interface SearchDocument {
+  name: string;
+  fields: [string[], string[], string[]];
+}
+
+function terms(value: string): string[] {
+  const chunks = value.match(/[\p{L}\p{N}]+/gu) ?? [];
+  const result: string[] = [];
+  for (const chunk of chunks) {
+    result.push(chunk.toLowerCase());
+    const expanded = chunk
+      .replace(/([a-z\d])([A-Z])/g, "$1 $2")
+      .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+      .toLowerCase()
+      .split(/\s+/);
+    if (expanded.length > 1) {
+      result.push(...expanded);
+    }
+  }
+  return result;
+}
+
+function queryTerms(query: string): string[] {
+  return [
+    ...new Set(
+      terms(query).filter(
+        (term) => term.length >= 2 && !SEARCH_STOP_WORDS.has(term),
+      ),
+    ),
+  ];
 }
 
 /** Summarize catalog descriptions before rendering them into model-visible data. */
@@ -77,51 +144,162 @@ function schemaText(schema: unknown): string {
   }
 }
 
-function searchableToolText(
+function searchableToolFields(
   name: string,
   definition: AnyToolDefinition,
-): string {
-  return normalize(
-    [
+): SearchDocument["fields"] {
+  return [
+    terms(
+      [
+        name,
+        definition.identity?.id,
+        definition.identity?.name,
+        definition.identity?.plugin,
+      ]
+        .filter(Boolean)
+        .join(" "),
+    ),
+    terms(
+      [
+        definition.description,
+        definition.promptSnippet,
+        ...(definition.promptGuidelines ?? []),
+      ]
+        .filter(Boolean)
+        .join(" "),
+    ),
+    terms(
+      [
+        definition.source?.id,
+        definition.source?.description,
+        schemaText(definition.inputSchema),
+        schemaText(definition.annotations ?? {}),
+      ]
+        .filter(Boolean)
+        .join(" "),
+    ),
+  ];
+}
+
+function prepareSearchDocuments(
+  tools: Record<string, AnyToolDefinition>,
+  source: string | null,
+): SearchDocument[] {
+  return Object.entries(tools)
+    .filter(([, definition]) =>
+      source ? definition.source?.id === source : true,
+    )
+    .map(([name, definition]) => ({
       name,
-      definition.identity?.id,
-      definition.identity?.name,
-      definition.identity?.plugin,
-      definition.source?.id,
-      definition.source?.description,
-      definition.description,
-      definition.promptSnippet,
-      ...(definition.promptGuidelines ?? []),
-      schemaText(definition.inputSchema),
-      JSON.stringify(definition.annotations ?? {}),
-    ]
-      .filter(Boolean)
-      .join(" "),
+      fields: searchableToolFields(name, definition),
+    }));
+}
+
+function averageFieldLengths(documents: SearchDocument[]): number[] {
+  if (documents.length === 0) {
+    return SEARCH_FIELD_WEIGHTS.map(() => 0);
+  }
+  return SEARCH_FIELD_WEIGHTS.map(
+    (_, fieldIndex) =>
+      documents.reduce(
+        (total, document) => total + document.fields[fieldIndex]!.length,
+        0,
+      ) / documents.length,
   );
 }
 
+function documentFrequencies(documents: SearchDocument[]): Map<string, number> {
+  const frequencies = new Map<string, number>();
+  for (const document of documents) {
+    const uniqueTerms = new Set(document.fields.flat());
+    for (const term of uniqueTerms) {
+      frequencies.set(term, (frequencies.get(term) ?? 0) + 1);
+    }
+  }
+  return frequencies;
+}
+
+function scoreSearchDocument(
+  document: SearchDocument,
+  query: string[],
+  frequencies: Map<string, number>,
+  documentCount: number,
+  averageLengths: number[],
+): number {
+  return query.reduce((score, term) => {
+    const documentFrequency = frequencies.get(term) ?? 0;
+    if (documentFrequency === 0) {
+      return score;
+    }
+    const weightedTermFrequency = document.fields.reduce(
+      (weighted, field, fieldIndex) => {
+        const termFrequency = field.filter(
+          (candidate) => candidate === term,
+        ).length;
+        if (termFrequency === 0) {
+          return weighted;
+        }
+        const averageLength = averageLengths[fieldIndex] ?? 0;
+        const lengthRatio =
+          averageLength === 0 ? 1 : field.length / averageLength;
+        return (
+          weighted +
+          SEARCH_FIELD_WEIGHTS[fieldIndex]! *
+            (termFrequency / (1 - BM25_B + BM25_B * lengthRatio))
+        );
+      },
+      0,
+    );
+    if (weightedTermFrequency === 0) {
+      return score;
+    }
+    const inverseDocumentFrequency = Math.log(
+      1 + (documentCount - documentFrequency + 0.5) / (documentFrequency + 0.5),
+    );
+    return (
+      score +
+      (inverseDocumentFrequency * weightedTermFrequency * (BM25_K1 + 1)) /
+        (weightedTermFrequency + BM25_K1)
+    );
+  }, 0);
+}
+
+/** Rank matching catalog tools while keeping source filtering deterministic. */
 function searchCatalogTools(
   tools: Record<string, AnyToolDefinition>,
   query: string,
   source: string | null,
 ): string[] {
-  const entries = Object.entries(tools).sort(([left], [right]) =>
-    left.localeCompare(right),
-  );
-  const sourceEntries = source
-    ? entries.filter(([, definition]) => definition.source?.id === source)
-    : entries;
-  if (!normalize(query)) {
-    return sourceEntries.map(([name]) => name);
+  const documents = prepareSearchDocuments(tools, source);
+  if (!query.trim()) {
+    return documents
+      .map(({ name }) => name)
+      .sort((left, right) => left.localeCompare(right));
   }
 
-  const terms = normalize(query).split(/\s+/).filter(Boolean);
-  return sourceEntries
-    .filter(([name, definition]) => {
-      const text = searchableToolText(name, definition);
-      return terms.every((term) => text.includes(term));
-    })
-    .map(([name]) => name);
+  const searchTerms = queryTerms(query);
+  if (searchTerms.length === 0) {
+    return [];
+  }
+  const averageLengths = averageFieldLengths(documents);
+  const frequencies = documentFrequencies(documents);
+  return documents
+    .map((document) => ({
+      name: document.name,
+      score: scoreSearchDocument(
+        document,
+        searchTerms,
+        frequencies,
+        documents.length,
+        averageLengths,
+      ),
+    }))
+    .filter(({ score }) => score > 0)
+    .sort(
+      (left, right) =>
+        right.score - left.score || left.name.localeCompare(right.name),
+    )
+    .map(({ name }) => name);
 }
 
 function callNotes(definition: AnyToolDefinition): string[] {

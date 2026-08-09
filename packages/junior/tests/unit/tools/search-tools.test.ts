@@ -74,6 +74,79 @@ function catalog() {
   };
 }
 
+function rankedCatalog() {
+  const githubSource = {
+    id: "github",
+    description:
+      "GitHub deployment, issue, pull request, release, and repository workflows via GitHub App",
+  };
+  return {
+    github_cloneRepository: tool({
+      description:
+        "Clone a GitHub repository into the sandbox workspace. The destination must not already exist.",
+      source: githubSource,
+      exposure: "deferred",
+      inputSchema: Type.Object({
+        repo: Type.String({
+          description: 'Repository in "owner/name" format.',
+        }),
+        directory: Type.Optional(
+          Type.String({ description: "Destination directory." }),
+        ),
+      }),
+    }),
+    github_createIssue: tool({
+      description: "Create a GitHub issue with a conversation footer.",
+      source: githubSource,
+      exposure: "deferred",
+      inputSchema: Type.Object({
+        repo: Type.String(),
+        title: Type.String({ description: "Issue title." }),
+      }),
+    }),
+    github_createPullRequest: tool({
+      description: "Create a GitHub pull request with a conversation footer.",
+      source: githubSource,
+      exposure: "deferred",
+      inputSchema: Type.Object({
+        repo: Type.String(),
+        title: Type.String({ description: "Pull request title." }),
+      }),
+    }),
+    github_getPullRequest: tool({
+      description:
+        "Get a GitHub pull request and its current details for inspection.",
+      source: githubSource,
+      exposure: "deferred",
+      inputSchema: Type.Object({
+        repo: Type.String(),
+        number: Type.Integer({ description: "Pull request number." }),
+      }),
+    }),
+    github_getRepository: tool({
+      description: "Get a GitHub repository and its metadata.",
+      source: githubSource,
+      exposure: "deferred",
+      inputSchema: Type.Object({ repo: Type.String() }),
+    }),
+    github_updatePullRequest: tool({
+      description:
+        "Update an existing GitHub pull request's title, body, base branch, or state.",
+      source: githubSource,
+      exposure: "deferred",
+      inputSchema: Type.Object({
+        repo: Type.String(),
+        number: Type.Integer({ description: "Pull request number." }),
+      }),
+    }),
+    systemTime: tool({
+      description:
+        "Return current system time. Do not use for historical or timezone-conversion requests.",
+      inputSchema: Type.Object({}),
+    }),
+  };
+}
+
 describe("searchTools", () => {
   it("discovers catalog tools from metadata and returns their schemas", async () => {
     const searchTools = createSearchToolsTool(catalog());
@@ -209,6 +282,90 @@ describe("searchTools", () => {
       returned_tools: 0,
       tools: [],
     });
+  });
+
+  it("ranks production search variations by relevant catalog metadata", async () => {
+    const searchTools = createSearchToolsTool(rankedCatalog());
+    const cases = [
+      ["clone repository", "github_cloneRepository", "github"],
+      ["repository clone", "github_cloneRepository", "github"],
+      ["clone repository sandbox", "github_cloneRepository", "github"],
+      [
+        "clone repository inspect source code commits",
+        "github_cloneRepository",
+        "github",
+      ],
+      [
+        "clone repository inspect GitHub source code pull requests commits",
+        "github_cloneRepository",
+        "github",
+      ],
+      [
+        "clone repository list code contents",
+        "github_cloneRepository",
+        undefined,
+      ],
+      ["search code repository", "github_getRepository", "github"],
+      ["create issue", "github_createIssue", "github"],
+      ["create pull request", "github_createPullRequest", "github"],
+      ["GitHub create pull request", "github_createPullRequest", "github"],
+      ["update pull request", "github_updatePullRequest", "github"],
+    ] as const;
+
+    for (const [query, expectedTool, source] of cases) {
+      const result = await searchTools.execute!(
+        { query, source, max_results: 1 },
+        {},
+      );
+
+      expect({
+        query,
+        tools: result.tools.map(({ tool_name }) => tool_name),
+      }).toEqual({ query, tools: [expectedTool] });
+    }
+  });
+
+  it("returns related candidates for broad production queries", async () => {
+    const searchTools = createSearchToolsTool(rankedCatalog());
+    const cases = [
+      ["pull request checks details diff comments", "github_getPullRequest"],
+      ["search pull requests commits code github", "github_getPullRequest"],
+    ] as const;
+
+    for (const [query, expectedTool] of cases) {
+      const result = await searchTools.execute!(
+        { query, source: "github", max_results: 20 },
+        {},
+      );
+
+      expect({
+        query,
+        tools: result.tools.map(({ tool_name }) => tool_name),
+      }).toEqual({ query, tools: expect.arrayContaining([expectedTool]) });
+    }
+  });
+
+  it("does not match partial words or unrelated production queries", async () => {
+    const searchTools = createSearchToolsTool(rankedCatalog());
+
+    for (const [query, source] of [
+      ["version", undefined],
+      ["waterdog", "github"],
+    ] as const) {
+      const result = await searchTools.execute!(
+        { query, source, max_results: 20 },
+        {},
+      );
+
+      expect({ query, result }).toMatchObject({
+        query,
+        result: {
+          total_matches: 0,
+          returned_tools: 0,
+          tools: [],
+        },
+      });
+    }
   });
 
   it("returns known sources without throwing for an unknown source", async () => {
