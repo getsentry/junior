@@ -66,7 +66,11 @@ Unless the user explicitly says not to create a PR, every completed repository e
 4. Resolve the actual default branch.
 5. Reuse and update an existing PR for the branch; otherwise call `github_createPullRequest` with explicit repo, head, base, title, body, and `draft: true` unless the user or repo explicitly requires ready-for-review.
 
-The PR body should explain what changed and why, checks run, and remaining risks or unverified areas. Never include customer data, PII, secrets, or sensitive thread context, especially in public repositories. Re-evaluate its title/body after material follow-up commits. Resolve requested assignee/reviewer handles from evidence; skip unconfirmed identities.
+Write the PR body for a reviewer who knows the product but not the changed flow. Use ASD-STE100 English: short sentences, common words, active voice, and one idea per sentence. Avoid dense academic prose and unnecessary jargon.
+
+Choose the smallest body shape that gives the reviewer the missing context; do not enforce one template across all PRs. Start with a short stand-alone explanation of the most significant behavior change and why it matters. Add only the context this change needs, such as where it sits in the user or background flow, decisions the diff cannot show, moved ownership, preserved behavior or contracts, material tradeoffs, reviewer focus, checks run, and remaining risks or unverified areas. Use bullets, headings, diagrams, or before/after examples only when they make a complex change easier to scan. Omit empty, repeated, and `N/A` sections, file-by-file narration, copied commit logs, and redundant diff summaries.
+
+Treat the current title, body, and commit messages as fallible context. Re-evaluate the title and rewrite the body against the current diff after material follow-up commits. Never include customer data, PII, secrets, or sensitive thread context, especially in public repositories. Resolve requested assignee/reviewer handles from evidence; skip unconfirmed identities.
 
 If PR creation is blocked, report the exact failed command/tool call and leave the committed branch intact.
 
