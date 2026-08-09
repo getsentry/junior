@@ -206,8 +206,80 @@ describe("searchTools", () => {
       ],
       total_eligible_tools: 1,
       total_matches: 0,
-      returned_tools: 0,
-      tools: [],
+      returned_tools: 1,
+      tools: [
+        {
+          tool_name: "memory_createMemory",
+        },
+      ],
+    });
+  });
+
+  it("returns source tools when an overconstrained query has no matches", async () => {
+    const searchTools = createSearchToolsTool({
+      github_cloneRepository: tool({
+        description: "Clone a GitHub repository into the sandbox workspace.",
+        identity: {
+          id: "github.cloneRepository",
+          name: "cloneRepository",
+          plugin: "github",
+        },
+        source: {
+          id: "github",
+          description: "GitHub repository workflows via GitHub App",
+        },
+        exposure: "deferred",
+        inputSchema: Type.Object(
+          {
+            repo: Type.String(),
+          },
+          { additionalProperties: false },
+        ),
+      }),
+      github_createPullRequest: tool({
+        description: "Create a GitHub pull request.",
+        identity: {
+          id: "github.createPullRequest",
+          name: "createPullRequest",
+          plugin: "github",
+        },
+        source: {
+          id: "github",
+          description: "GitHub repository workflows via GitHub App",
+        },
+        exposure: "deferred",
+        inputSchema: Type.Object(
+          {
+            repo: Type.String(),
+          },
+          { additionalProperties: false },
+        ),
+      }),
+    });
+
+    const result = await searchTools.execute!(
+      {
+        source: "github",
+        query:
+          "clone repository inspect GitHub source code pull requests commits",
+        max_results: 10,
+      },
+      {},
+    );
+
+    expect(result).toMatchObject({
+      source: "github",
+      total_eligible_tools: 2,
+      total_matches: 0,
+      returned_tools: 2,
+      tools: [
+        {
+          tool_name: "github_cloneRepository",
+        },
+        {
+          tool_name: "github_createPullRequest",
+        },
+      ],
     });
   });
 

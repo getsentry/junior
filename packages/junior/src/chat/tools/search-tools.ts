@@ -174,7 +174,7 @@ function selectedSourceSummaries(
 
 function renderSearchToolsDescription(knownSources: SourceSummary[]): string {
   const intro =
-    "Search the executable tool catalog. Deferred tools are grouped by source; use searchTools with source to inspect one source, then executeTool with the exact returned tool_name.";
+    "Search the executable tool catalog. Deferred tools are grouped by source; use searchTools with source to inspect one source, then executeTool with the exact returned tool_name. A source-scoped query with no text matches returns that source's tools for recovery.";
   if (knownSources.length === 0) {
     return intro;
   }
@@ -257,10 +257,18 @@ export function createSearchToolsTool(
       const sourceExists =
         requestedSource === null ||
         knownSources.some((candidate) => candidate.id === requestedSource);
-      const allMatches = sourceExists
+      const queryMatches = sourceExists
         ? searchCatalogTools(catalogTools, query ?? "", requestedSource)
         : [];
-      const matches = allMatches.slice(0, maxResults);
+      const sourceFallback =
+        requestedSource !== null &&
+        sourceExists &&
+        (query ?? "").trim() &&
+        queryMatches.length === 0;
+      const resultTools = sourceFallback
+        ? searchCatalogTools(catalogTools, "", requestedSource)
+        : queryMatches;
+      const matches = resultTools.slice(0, maxResults);
       const sources = !sourceExists
         ? knownSources
         : (query ?? "").trim()
@@ -288,7 +296,7 @@ export function createSearchToolsTool(
         sources,
         total_catalog_tools: Object.keys(catalogTools).length,
         total_eligible_tools: totalEligibleTools,
-        total_matches: allMatches.length,
+        total_matches: queryMatches.length,
         returned_tools: renderedTools.length,
         execution_tool: "executeTool" as const,
         tools: renderedTools,
