@@ -1644,6 +1644,19 @@ export function logException(
   return log.exception(eventName, normalizedError, attributes);
 }
 
+/** Run an optional side effect without changing the successful primary outcome. */
+export async function runBestEffort(
+  operation: () => Promise<void>,
+  eventName: string,
+  attributes: Record<string, unknown> = {},
+): Promise<void> {
+  try {
+    await operation();
+  } catch (error) {
+    logException(error, eventName, attributes);
+  }
+}
+
 /** Add context to the current operation and Sentry scope. */
 export function setTags(context: LogContext = {}): void {
   updateLogContext(context, contextToAttributes(context));
