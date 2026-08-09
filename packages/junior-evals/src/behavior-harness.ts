@@ -90,6 +90,7 @@ import { createEventTask } from "@/chat/event-tasks/store";
 import type { EventTask } from "@/chat/event-tasks/types";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { upsertTurnRecord } from "@/chat/task-execution/turn-cursor";
+import { turnCursorKey } from "@/chat/task-execution/turn-cursor-keys";
 import { resetSkillDiscoveryCache } from "@/chat/skills";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { annotateTurnDeadlineToolResult } from "@/chat/tool-support/turn-deadline-result";
@@ -791,15 +792,15 @@ async function cleanupHarnessThreadState(
   const runtimeThreadIds = new Set(
     events.map((event) => buildRuntimeThreadId(event.thread)),
   );
-  const turnSessionKeys = events
+  const turnCursorKeys = events
     .filter(
       (event): event is MentionEvent | SubscribedMessageEvent =>
         "message" in event,
     )
     .map((event) => {
       const messageId = event.message.id ?? "";
-      const sessionId = `turn_${messageId.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
-      return `junior:agent_turn_session:${buildRuntimeThreadId(event.thread)}:${sessionId}`;
+      const turnId = `turn_${messageId.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+      return turnCursorKey(buildRuntimeThreadId(event.thread), turnId);
     });
   const channelIds = new Set(
     events
@@ -815,7 +816,7 @@ async function cleanupHarnessThreadState(
     await stateAdapter.delete(`thread-state:${threadId}`);
     await stateAdapter.unsubscribe(threadId);
   }
-  for (const key of turnSessionKeys) {
+  for (const key of turnCursorKeys) {
     await stateAdapter.delete(key);
   }
   for (const channelId of channelIds) {

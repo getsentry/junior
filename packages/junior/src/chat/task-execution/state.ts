@@ -21,7 +21,7 @@ import {
 } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 
-const CONVERSATION_PREFIX = "junior:conversation";
+const CONVERSATION_PREFIX = "junior:conversation:v2";
 const CONVERSATION_SCHEMA_VERSION = 2;
 const CONVERSATION_ACTIVITY_INDEX_MAX_LENGTH = 10_000;
 const CONVERSATION_INDEX_LOCK_TTL_MS = 10_000;
@@ -313,9 +313,8 @@ function normalizeSource(value: unknown): Source | undefined {
 }
 
 function normalizeExecutionStatus(value: unknown): ExecutionStatus | undefined {
-  // Legacy redis rows used awaiting_resume; runtime status is paused.
-  if (value === "awaiting_resume" || value === "paused") {
-    return "paused";
+  if (value === "paused") {
+    return value;
   }
   if (
     value === "failed" ||
@@ -328,19 +327,8 @@ function normalizeExecutionStatus(value: unknown): ExecutionStatus | undefined {
   return undefined;
 }
 
-function normalizeMessage(
-  value: unknown,
-  schemaVersion: 1 | 2,
-): InboundMessage | undefined {
-  // TODO(v0.110.0): Remove schema-v1 mailbox migration after old records expire.
-  const candidate =
-    schemaVersion === 1 && isRecord(value) && value.delivery === undefined
-      ? {
-          ...value,
-          delivery: "defer",
-        }
-      : value;
-  const parsed = inboundMessageSchema.safeParse(candidate);
+function normalizeMessage(value: unknown): InboundMessage | undefined {
+  const parsed = inboundMessageSchema.safeParse(value);
   return parsed.success ? parsed.data : undefined;
 }
 
@@ -381,16 +369,10 @@ function normalizeLease(value: unknown): Lease | undefined {
   };
 }
 
-/**
- * Decode schema-v1 execution state and repair idle records that still own work.
- *
- * Pending messages or leases must keep active-index membership so heartbeat can
- * recover them even if an older writer persisted an inconsistent status.
- */
+/** Decode execution state and repair idle records that still own work. */
 function normalizeExecution(
   conversationId: string,
   value: unknown,
-  schemaVersion: 1 | 2,
 ): ConversationExecution | undefined {
   if (!isRecord(value)) {
     return undefined;
@@ -402,7 +384,7 @@ function normalizeExecution(
   const pendingMessages: InboundMessage[] = [];
   if (Array.isArray(value.pendingMessages)) {
     for (const rawMessage of value.pendingMessages) {
-      const message = normalizeMessage(rawMessage, schemaVersion);
+      const message = normalizeMessage(rawMessage);
       if (!message || message.conversationId !== conversationId) {
         return undefined;
       }
@@ -447,30 +429,19 @@ function normalizeExecution(
   };
 }
 
-/**
- * Decode current conversation records and migrate schema-v1 mailbox delivery.
- */
+/** Decode current conversation records. */
 function normalizeConversation(
   conversationId: string,
   value: unknown,
 ): Conversation | undefined {
-  if (
-    !isRecord(value) ||
-    (value.schemaVersion !== 1 &&
-      value.schemaVersion !== CONVERSATION_SCHEMA_VERSION)
-  ) {
+  if (!isRecord(value) || value.schemaVersion !== CONVERSATION_SCHEMA_VERSION) {
     return undefined;
   }
-  const schemaVersion = value.schemaVersion;
   const storedConversationId = toOptionalString(value.conversationId);
   const createdAtMs = toOptionalNumber(value.createdAtMs);
   const lastActivityAtMs = toOptionalNumber(value.lastActivityAtMs);
   const updatedAtMs = toOptionalNumber(value.updatedAtMs);
-  const execution = normalizeExecution(
-    conversationId,
-    value.execution,
-    schemaVersion,
-  );
+  const execution = normalizeExecution(conversationId, value.execution);
   const destination =
     value.destination === undefined
       ? undefined

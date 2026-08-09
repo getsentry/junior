@@ -1,17 +1,12 @@
-/** Storage prefix for resumable turn-session state. */
-export const AGENT_TURN_SESSION_PREFIX = "junior:agent_turn_session";
+/** Redis namespace for the current turn cursor format. */
+export const TURN_CURSOR_PREFIX = "junior:turn_cursor:v2";
 
-/** Return the durable key for one resumable turn-session record. */
-export function agentTurnSessionKey(
-  conversationId: string,
-  sessionId: string,
-): string {
-  return `${AGENT_TURN_SESSION_PREFIX}:${conversationId}:${sessionId}`;
+/** Return the Redis key for one turn cursor. */
+export function turnCursorKey(conversationId: string, turnId: string): string {
+  return `${TURN_CURSOR_PREFIX}:${conversationId}:${turnId}`;
 }
 
-/** Return the recovery index key for turn sessions in one conversation. */
-export function agentTurnSessionConversationIndexKey(
-  conversationId: string,
-): string {
-  return `${AGENT_TURN_SESSION_PREFIX}:conversation:${conversationId}:index`;
+/** Return the Redis recovery-index key for one conversation. */
+export function turnCursorIndexKey(conversationId: string): string {
+  return `${TURN_CURSOR_PREFIX}:conversation:${conversationId}:index`;
 }

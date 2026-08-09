@@ -26,9 +26,8 @@ The reliability policy is deliberately small:
 - Running a paused turn does not take a second lock. OAuth is the one
   out-of-band exception and keeps its thread lock.
 
-Runtime status is `paused`. SQL free-text / enum rows may still say
-`awaiting_resume`; readers normalize, writers dual-write the historical
-label where durable SQL requires it.
+Runtime and Redis status is `paused`. SQL free-text / enum rows may still say
+`awaiting_resume`; that historical SQL label does not define execution state.
 
 ## State Model
 
@@ -46,8 +45,8 @@ label where durable SQL requires it.
   slow work from abandoned work.
 - Delivery state prevents a completed turn from being posted twice.
 
-Schema-v1 mailbox entries migrate to deferred delivery. Schema-v2 entries
-require a valid delivery value and reject invalid pending work.
+Redis execution state uses versioned v2 keys. Deploying this version abandons
+older in-flight mailbox and turn-cursor state; committed SQL history remains.
 
 `checkpoint.ts`, `turn-wake.ts`, `paused-turn.ts`, `state.ts`, `store.ts`, and
 `worker.ts` define the execution surface.

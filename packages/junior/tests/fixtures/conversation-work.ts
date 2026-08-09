@@ -141,7 +141,7 @@ export function observeConversationMutationLock(args: {
   conversationId: string;
   state: StateAdapter;
 }): { isHeld: () => boolean; state: StateAdapter } {
-  const mutationLockKey = `junior:conversation:mutation:${args.conversationId}`;
+  const mutationLockKey = `junior:conversation:v2:mutation:${args.conversationId}`;
   const locks = new WeakSet<Lock>();
   let held = false;
   return {
@@ -183,7 +183,7 @@ export async function acquireConversationMutationLock(args: {
   ttlMs?: number;
 }): Promise<Lock | null> {
   return await args.state.acquireLock(
-    `junior:conversation:mutation:${args.conversationId}`,
+    `junior:conversation:v2:mutation:${args.conversationId}`,
     args.ttlMs ?? 10_000,
   );
 }
@@ -246,7 +246,7 @@ export function delayMutationLockUntil(args: {
   readyAtMs: number;
   state: StateAdapter;
 }): StateAdapter {
-  const mutationLockKey = `junior:conversation:mutation:${args.conversationId}`;
+  const mutationLockKey = `junior:conversation:v2:mutation:${args.conversationId}`;
   return new Proxy(args.state, {
     get(target, prop, receiver) {
       if (prop === "acquireLock") {

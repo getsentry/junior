@@ -63,7 +63,7 @@ const OTHER_SLACK_DESTINATION = {
   teamId: "T123",
   channelId: "C456",
 } as const;
-const CONVERSATION_WORK_STATE_KEY = `junior:conversation:${CONVERSATION_ID}`;
+const CONVERSATION_WORK_STATE_KEY = `junior:conversation:v2:${CONVERSATION_ID}`;
 
 function failingMetadataStore(): ConversationStore {
   return {
@@ -214,7 +214,7 @@ describe("conversation work execution", () => {
     };
     delete legacyMessage.destination;
     const legacyWork = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       conversationId: CONVERSATION_ID,
       createdAtMs: 1_000,
       destination: SLACK_DESTINATION,
@@ -237,40 +237,6 @@ describe("conversation work execution", () => {
     await expect(state.get(CONVERSATION_WORK_STATE_KEY)).resolves.toEqual(
       legacyWork,
     );
-  });
-
-  it("migrates schema-v1 Slack mailbox messages for classification", async () => {
-    const state = getStateAdapter();
-    await state.connect();
-    await appendInboundMessage({
-      message: inboundMessage("legacy-delivery"),
-      nowMs: 1_000,
-      state,
-    });
-    const raw = (await state.get(CONVERSATION_WORK_STATE_KEY)) as {
-      execution: { pendingMessages: Array<Record<string, unknown>> };
-      schemaVersion: number;
-    };
-    raw.schemaVersion = 1;
-    delete raw.execution.pendingMessages[0]?.delivery;
-    await state.set(CONVERSATION_WORK_STATE_KEY, raw);
-    const observed: string[] = [];
-
-    await expect(
-      processConversationWork(conversationQueueMessage(), {
-        queue: createConversationWorkQueueTestAdapter(),
-        run: async (context) => {
-          observed.push(
-            ...context.attempt.messages.map((message) => message.delivery),
-          );
-          await context.attempt.ack();
-          return { status: "completed" };
-        },
-        state,
-      }),
-    ).resolves.toEqual({ status: "completed" });
-
-    expect(observed).toEqual(["defer"]);
   });
 
   it("rejects unknown mailbox delivery without dropping pending work", async () => {
@@ -601,7 +567,7 @@ describe("conversation work execution", () => {
     await state.connect();
     const pendingMessage = inboundMessage("m1");
     await state.set(CONVERSATION_WORK_STATE_KEY, {
-      schemaVersion: 1,
+      schemaVersion: 2,
       conversationId: CONVERSATION_ID,
       createdAtMs: 1_000,
       destination: SLACK_DESTINATION,
@@ -672,7 +638,7 @@ describe("conversation work execution", () => {
     const state = getStateAdapter();
     await state.connect();
     await state.set(CONVERSATION_WORK_STATE_KEY, {
-      schemaVersion: 1,
+      schemaVersion: 2,
       conversationId: CONVERSATION_ID,
       createdAtMs: 1_000,
       destination: SLACK_DESTINATION,
@@ -1276,7 +1242,7 @@ describe("conversation work execution", () => {
     const state = getStateAdapter();
     await state.connect();
     await state.set(CONVERSATION_WORK_STATE_KEY, {
-      schemaVersion: 1,
+      schemaVersion: 2,
       conversationId: CONVERSATION_ID,
       createdAtMs: 1_000,
       destination: SLACK_DESTINATION,
@@ -1850,8 +1816,8 @@ describe("conversation work execution", () => {
       nowMs: 500,
       state,
     });
-    await state.set(`junior:conversation:${unreadableConversationId}`, {
-      schemaVersion: 1,
+    await state.set(`junior:conversation:v2:${unreadableConversationId}`, {
+      schemaVersion: 2,
       conversationId: unreadableConversationId,
       createdAtMs: 500,
       destination: SLACK_DESTINATION,
@@ -1895,7 +1861,7 @@ describe("conversation work execution", () => {
             if (stealLockOnNextRead && key === CONVERSATION_WORK_STATE_KEY) {
               stealLockOnNextRead = false;
               await target.forceReleaseLock(
-                `junior:conversation:mutation:${CONVERSATION_ID}`,
+                `junior:conversation:v2:mutation:${CONVERSATION_ID}`,
               );
             }
             return value;

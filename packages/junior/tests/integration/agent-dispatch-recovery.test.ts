@@ -38,7 +38,7 @@ import { getPersistedThreadState } from "@/chat/runtime/thread-state";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { slackApiOutbox } from "../fixtures/slack-api-outbox";
 import { resetSlackApiMockState } from "../msw/handlers/slack-api";
-import { agentTurnSessionKey } from "@/chat/task-execution/turn-cursor-keys";
+import { turnCursorKey } from "@/chat/task-execution/turn-cursor-keys";
 import { deliverAssistantMessagesForTest } from "../fixtures/agent-runner";
 import {
   createAgentDispatchTestRecord as createDispatch,
@@ -351,7 +351,7 @@ describe("agent dispatch recovery", () => {
           conversation,
           conversationId,
         });
-        const sessionKey = agentTurnSessionKey(
+        const sessionKey = turnCursorKey(
           conversationId,
           getDispatchTurnId(dispatch.id),
         );

@@ -115,7 +115,7 @@ describe("turn checkpoint", () => {
     expect(set.mock.calls.at(-1)?.[2]).toBe(24 * 60 * 60 * 1000);
     expect(appendToList).toHaveBeenCalledTimes(1);
     expect(appendToList.mock.calls[0]?.[0]).toBe(
-      "junior:agent_turn_session:conversation:local:ttl-split:turn:index",
+      "junior:turn_cursor:v2:conversation:local:ttl-split:turn:index",
     );
     // Recovery index stays on the resume window so terminal writes cannot
     // expire unfinished sibling summaries.
@@ -426,10 +426,10 @@ describe("turn checkpoint", () => {
     const { getStateAdapter } = await import("@/chat/state/adapter");
     const { getTurnRecord, listTurnSummaries, upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
-    const { agentTurnSessionKey } =
+    const { turnCursorKey } =
       await import("@/chat/task-execution/turn-cursor-keys");
     const conversationId = "slack:C123:no-nested-routing";
-    const sessionId = "turn-no-nested-routing";
+    const turnId = "turn-no-nested-routing";
     const conversationStore: ConversationStore = {
       createChild: vi.fn(),
       get: vi.fn(),
@@ -447,7 +447,7 @@ describe("turn checkpoint", () => {
       conversationStore,
       destination: SLACK_DESTINATION,
       piMessages: [userMessage("keep routing in sql")],
-      turnId: sessionId,
+      turnId: turnId,
       sliceId: 1,
       source: SLACK_SOURCE,
       state: "running",
@@ -457,12 +457,12 @@ describe("turn checkpoint", () => {
     const stateAdapter = getStateAdapter();
     await stateAdapter.connect();
     const stored = await stateAdapter.get(
-      agentTurnSessionKey(conversationId, sessionId),
+      turnCursorKey(conversationId, turnId),
     );
     expect(stored).toEqual(
       expect.objectContaining({
         conversationId,
-        sessionId,
+        turnId,
         state: "running",
       }),
     );
@@ -477,10 +477,10 @@ describe("turn checkpoint", () => {
     expect(summaries[0]).not.toHaveProperty("actor");
 
     // Materialized reads no longer surface nested routing/identity from redis.
-    const record = await getTurnRecord(conversationId, sessionId);
+    const record = await getTurnRecord(conversationId, turnId);
     expect(record).toMatchObject({
       conversationId,
-      turnId: sessionId,
+      turnId: turnId,
       state: "running",
     });
     expect(record).not.toHaveProperty("destination");
@@ -504,21 +504,21 @@ describe("turn checkpoint", () => {
     );
   });
 
-  it("strips deprecated fields from legacy redis records", async () => {
+  it("ignores unknown fields in stored turn cursors", async () => {
     const { getStateAdapter } = await import("@/chat/state/adapter");
     const { getTurnRecord } = await import("@/chat/task-execution/turn-cursor");
-    const { agentTurnSessionKey } =
+    const { turnCursorKey } =
       await import("@/chat/task-execution/turn-cursor-keys");
-    const conversationId = "slack:C123:legacy-nested-routing";
-    const sessionId = "turn-legacy-nested-routing";
+    const conversationId = "slack:C123:cursor-unknown-fields";
+    const turnId = "turn-unknown-fields";
     const stateAdapter = getStateAdapter();
     await stateAdapter.connect();
     await stateAdapter.set(
-      agentTurnSessionKey(conversationId, sessionId),
+      turnCursorKey(conversationId, turnId),
       {
         version: 1,
         conversationId,
-        sessionId,
+        turnId,
         sliceId: 1,
         state: "paused",
         startedAtMs: 1_000,
@@ -539,7 +539,7 @@ describe("turn checkpoint", () => {
       60_000,
     );
 
-    const record = await getTurnRecord(conversationId, sessionId);
+    const record = await getTurnRecord(conversationId, turnId);
     expect(record).toMatchObject({ state: "paused" });
     expect(record).not.toHaveProperty("destination");
     expect(record).not.toHaveProperty("source");
@@ -601,18 +601,18 @@ describe("turn checkpoint", () => {
       listTurnSummaries("slack:C123:bounded-summary"),
     ).resolves.toEqual([]);
     expect(getList).toHaveBeenCalledExactlyOnceWith(
-      "junior:agent_turn_session:conversation:slack:C123:bounded-summary:index",
+      "junior:turn_cursor:v2:conversation:slack:C123:bounded-summary:index",
     );
   });
 
-  it("strips unknown fields from legacy summaries", async () => {
+  it("ignores unknown and invalid recovery-index entries", async () => {
     const { getStateAdapter } = await import("@/chat/state/adapter");
     const { listTurnSummaries } =
       await import("@/chat/task-execution/turn-cursor");
     const stateAdapter = getStateAdapter();
     await stateAdapter.connect();
-    const conversationId = "slack:C123:legacy-summary";
-    const indexKey = `junior:agent_turn_session:conversation:${conversationId}:index`;
+    const conversationId = "slack:C123:summary-unknown-fields";
+    const indexKey = `junior:turn_cursor:v2:conversation:${conversationId}:index`;
     const requester = {
       platform: "slack",
       teamId: "T123",
@@ -633,7 +633,7 @@ describe("turn checkpoint", () => {
         cumulativeDurationMs: 0,
         lastProgressAtMs: 2,
         requester,
-        sessionId: "turn-legacy-summary",
+        turnId: "turn-summary-unknown-fields",
         sliceId: 1,
         startedAtMs: 1,
         state: "paused",
@@ -646,7 +646,7 @@ describe("turn checkpoint", () => {
     expect(summaries).toHaveLength(1);
     expect(summaries[0]).toMatchObject({
       conversationId,
-      turnId: "turn-legacy-summary",
+      turnId: "turn-summary-unknown-fields",
       state: "paused",
     });
     expect(summaries[0]).not.toHaveProperty("requester");
@@ -705,7 +705,7 @@ describe("turn checkpoint", () => {
     const { getTurnRecord, upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
     const { getStateAdapter } = await import("@/chat/state/adapter");
-    const { agentTurnSessionKey } =
+    const { turnCursorKey } =
       await import("@/chat/task-execution/turn-cursor-keys");
     const { getConversationStore } = await import("@/chat/db");
 
@@ -749,7 +749,7 @@ describe("turn checkpoint", () => {
     const stateAdapter = getStateAdapter();
     await stateAdapter.connect();
     const stored = await stateAdapter.get(
-      agentTurnSessionKey(conversationId, sessionId),
+      turnCursorKey(conversationId, sessionId),
     );
     expect(stored).not.toHaveProperty("actor");
 
