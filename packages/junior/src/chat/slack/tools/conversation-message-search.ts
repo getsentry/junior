@@ -9,9 +9,7 @@ import { getConversationMessageSearchStore } from "@/chat/db";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import {
   parseRequiredSlackChannelIdParam,
-  parseRequiredSlackUserIdParam,
   slackChannelIdParam,
-  slackUserIdParam,
 } from "@/chat/slack/id-param";
 import { getSlackMessagePermalink } from "@/chat/slack/outbound";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
@@ -21,14 +19,12 @@ import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 const DEFAULT_LIMIT = 5;
 
 const conversationMessageSearchOutputSchema = juniorToolOutputSchema.extend({
-  author_user_id: z.string().min(1).optional(),
   channel_id: z.string().min(1).optional(),
   count: z.number().int().nonnegative(),
   query: z.string().optional(),
   matches: z.array(
     z
       .object({
-        author_user_id: z.string().min(1).optional(),
         channel_id: z.string().min(1),
         channel_name: z.string().min(1).optional(),
         conversation_id: z.string().min(1),
@@ -49,24 +45,11 @@ interface ConversationMessageSearchToolDeps {
 }
 
 function resolveSearchFilters(input: {
-  author_user_id?: string | null;
   channel_id?: string | null;
   query?: string | null;
 }): ConversationMessageSearchFilters {
   const query = input.query?.trim() || undefined;
-  let authorUserId: string | undefined;
   let channelId: string | undefined;
-
-  if (input.author_user_id != null) {
-    const parsed = parseRequiredSlackUserIdParam(
-      "author_user_id",
-      input.author_user_id,
-    );
-    if (!parsed.ok) {
-      throw new ToolInputError(parsed.error);
-    }
-    authorUserId = parsed.value;
-  }
 
   if (input.channel_id != null) {
     const parsed = parseRequiredSlackChannelIdParam(
@@ -79,14 +62,13 @@ function resolveSearchFilters(input: {
     channelId = parsed.value;
   }
 
-  if (!query && !authorUserId && !channelId) {
+  if (!query && !channelId) {
     throw new ToolInputError(
-      "Provide at least one of `query`, `author_user_id`, or `channel_id`.",
+      "Provide at least one of `query` or `channel_id`.",
     );
   }
 
   return {
-    ...(authorUserId ? { authorUserId } : {}),
     ...(channelId ? { channelId } : {}),
     ...(query ? { query } : {}),
   };
@@ -111,11 +93,6 @@ export function createSlackConversationMessageSearchTool(
     },
     inputSchema: z
       .object({
-        author_user_id: slackUserIdParam(
-          "Message author Slack user ID; not the conversation starter.",
-        )
-          .nullable()
-          .optional(),
         channel_id: slackChannelIdParam(
           "Destination Slack channel ID; no active-channel default.",
         )
@@ -173,9 +150,6 @@ export function createSlackConversationMessageSearchTool(
             message_timestamp: new Date(match.messageCreatedAtMs).toISOString(),
             excerpt: match.excerpt,
             channel_id: match.providerDestinationId,
-            ...(match.authorUserId
-              ? { author_user_id: match.authorUserId }
-              : {}),
             ...(match.channelName ? { channel_name: match.channelName } : {}),
             ...(permalink ? { permalink } : {}),
           };
@@ -184,9 +158,6 @@ export function createSlackConversationMessageSearchTool(
 
       return {
         ...(filters.query ? { query: filters.query } : {}),
-        ...(filters.authorUserId
-          ? { author_user_id: filters.authorUserId }
-          : {}),
         ...(filters.channelId ? { channel_id: filters.channelId } : {}),
         count: matchesOutput.length,
         matches: matchesOutput,

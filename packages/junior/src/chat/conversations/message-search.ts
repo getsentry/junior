@@ -1,6 +1,5 @@
 /** One relevant chat-message match from a prior conversation. */
 export interface ConversationMessageSearchResult {
-  authorUserId?: string;
   channelName?: string;
   conversationId: string;
   excerpt: string;
@@ -19,8 +18,6 @@ export interface ConversationMessageSearchScope {
 
 /** Optional filters that narrow retained public workspace search. */
 export interface ConversationMessageSearchFilters {
-  /** Slack user id of the visible message author. */
-  authorUserId?: string;
   /** Slack channel id of the conversation destination. */
   channelId?: string;
   /** Full-text query over retained visible message text. */

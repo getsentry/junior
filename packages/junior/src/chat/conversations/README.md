@@ -47,9 +47,8 @@ with agent history.
 
 Search queries `message` payloads directly through the partial GIN index on the
 event table. There is no message projection table. Cross-thread search stays
-inside one Slack workspace and only public destinations. Optional filters may
-narrow by message author (`payload.meta.author.userId`) and/or destination
-channel id. Message author is not the conversation actor or thread starter.
+inside one Slack workspace and only public destinations. An optional filter may
+narrow by destination channel id.
 
 ## Agent History Replacement
 

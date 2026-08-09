@@ -49,11 +49,6 @@ describe("searchConversationMessages", () => {
             messageId: "1700000000.100001",
             role: "user",
             text: "We decided the launch checklist needs a rollback owner.",
-            meta: {
-              author: {
-                userId: "UAUTHOR",
-              },
-            },
           },
           createdAtMs: Date.parse("2026-07-01T12:00:00.000Z"),
         },
@@ -74,7 +69,6 @@ describe("searchConversationMessages", () => {
 
       const result = await executeTool(tool, {
         query: "launch checklist",
-        author_user_id: null,
         channel_id: null,
         limit: null,
       });
@@ -94,7 +88,6 @@ describe("searchConversationMessages", () => {
             message_role: "user",
             message_timestamp: "2026-07-01T12:00:00.000Z",
             excerpt: expect.stringContaining("rollback owner"),
-            author_user_id: "UAUTHOR",
             channel_id: "CARCHIVE",
             channel_name: "archive",
             permalink:
@@ -104,18 +97,15 @@ describe("searchConversationMessages", () => {
       });
 
       const filtered = await executeTool(tool, {
-        author_user_id: "UAUTHOR",
         channel_id: "CARCHIVE",
         query: null,
         limit: null,
       });
       expect(filtered).toEqual({
-        author_user_id: "UAUTHOR",
         channel_id: "CARCHIVE",
         count: 1,
         matches: [
           expect.objectContaining({
-            author_user_id: "UAUTHOR",
             channel_id: "CARCHIVE",
             conversation_id: "slack:CARCHIVE:1700000000.100000",
           }),
@@ -124,7 +114,6 @@ describe("searchConversationMessages", () => {
 
       await expect(
         executeTool(tool, {
-          author_user_id: null,
           channel_id: null,
           query: null,
           limit: null,
@@ -133,8 +122,7 @@ describe("searchConversationMessages", () => {
 
       await expect(
         executeTool(tool, {
-          author_user_id: "not-a-user",
-          channel_id: null,
+          channel_id: "not-a-channel",
           query: null,
           limit: null,
         }),

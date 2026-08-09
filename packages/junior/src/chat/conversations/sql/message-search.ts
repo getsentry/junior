@@ -30,9 +30,6 @@ class SqlConversationMessageSearchStore implements ConversationMessageSearchStor
       ConversationMessageSearchResult["role"]
     >`${juniorConversationEvents.payload}->>'role'`;
     const messageId = sql<string>`${juniorConversationEvents.payload}->>'messageId'`;
-    const authorUserId = sql<
-      string | null
-    >`${juniorConversationEvents.payload}->'meta'->'author'->>'userId'`;
     const tsquery = query
       ? sql`websearch_to_tsquery('english', ${query})`
       : undefined;
@@ -63,13 +60,9 @@ class SqlConversationMessageSearchStore implements ConversationMessageSearchStor
         eq(juniorDestinations.providerDestinationId, args.filters.channelId),
       );
     }
-    if (args.filters.authorUserId) {
-      conditions.push(eq(authorUserId, args.filters.authorUserId));
-    }
 
     const bestPerConversation = db
       .selectDistinctOn([juniorConversations.conversationId], {
-        authorUserId: authorUserId.as("author_user_id"),
         channelName: juniorDestinations.displayName,
         conversationId: juniorConversations.conversationId,
         excerpt: excerpt.as("excerpt"),
@@ -117,7 +110,6 @@ class SqlConversationMessageSearchStore implements ConversationMessageSearchStor
       messageId: row.messageId,
       providerDestinationId: row.providerDestinationId,
       role: row.role,
-      ...(row.authorUserId ? { authorUserId: row.authorUserId } : {}),
       ...(row.channelName ? { channelName: row.channelName } : {}),
     }));
   }
