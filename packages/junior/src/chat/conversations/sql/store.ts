@@ -226,9 +226,7 @@ function destinationUpsertFromDestination(args: {
     metadata: { platform: "local" },
   };
 }
-
-// TODO(v0.145.0): Migrate SQL conversation execution_status values from
-// awaiting_resume to paused, then remove this mapping.
+// TODO(v0.145.0): Migrate SQL execution_status from awaiting_resume to paused, then remove this mapping.
 function executionStatusFromValue(value: unknown): ConversationStatus {
   if (value === "awaiting_resume" || value === "paused") return "paused";
   if (
