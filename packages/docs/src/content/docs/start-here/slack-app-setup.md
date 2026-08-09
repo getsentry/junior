@@ -43,6 +43,7 @@ Grant the smallest scopes that cover the Slack features you enable. A typical Ju
 | Slash command configured by `JUNIOR_SLASH_COMMAND` | `commands`                                                                   |
 | Thread context in public/private channels and DMs  | `channels:history`, `groups:history`, `im:history`, `mpim:history` as needed |
 | File/image context and generated files             | `files:read`, `files:write` when file workflows are enabled                  |
+| Direct links back to Slack conversations           | `team:read`                                                                  |
 | Slack assistant status/title surfaces              | Assistant scopes required by your Slack app configuration                    |
 
 Slack requires reinstalling the app after scope changes. Reinstall before debugging runtime behavior.
