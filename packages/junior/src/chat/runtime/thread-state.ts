@@ -1,7 +1,14 @@
 import type { Thread } from "chat";
 import { toOptionalString } from "@/chat/coerce";
 import { createChannelConfigurationService } from "@/chat/configuration/service";
-import type { ChannelConfigurationService } from "@/chat/configuration/types";
+import {
+  loadChannelConfiguration,
+  saveChannelConfiguration,
+} from "@/chat/configuration/store";
+import type {
+  ChannelConfigState,
+  ChannelConfigurationService,
+} from "@/chat/configuration/types";
 import { buildConversationStatePatch } from "@/chat/state/conversation";
 import type { ThreadConversationState } from "@/chat/state/conversation";
 import { persistConversationMessages } from "@/chat/conversations/messages";
@@ -12,6 +19,7 @@ import {
 import { getStateAdapter } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import type { SandboxRef } from "@/chat/sandbox/ref";
+import { logWarn } from "@/chat/logging";
 
 export interface ThreadStatePatch {
   artifacts?: ThreadArtifactsState;
@@ -46,7 +54,7 @@ function buildThreadStatePayload(
 }
 
 /**
- * Merge a payload into thread or channel scratch with Junior's TTL.
+ * Merge a payload into thread scratch with Junior's TTL.
  *
  * Chat SDK state writes hardcode a 30-day TTL. This boundary owns Junior's
  * shorter retention policy for the same scratch keys.
@@ -157,7 +165,12 @@ export async function getPersistedThreadState(
   );
 }
 
-/** Load the persisted state payload for a channel without constructing a Chat channel. */
+/**
+ * Load legacy Redis channel scratch.
+ *
+ * Channel configuration no longer lives here. Callers that still need the
+ * scratch bag for migration or harness seeding can use this helper.
+ */
 export async function getPersistedChannelState(
   channelId: string,
 ): Promise<Record<string, unknown>> {
@@ -191,7 +204,97 @@ export async function persistThreadStateById(
   );
 }
 
-/** Resolve channel configuration from a Chat thread and persist it with Junior's TTL. */
+/**
+ * One-shot adopt of legacy Redis channel configuration into SQL.
+ *
+ * SQL is the authority after cutover. If SQL is empty and Redis still has a
+ * configuration bag, copy it once and drop the Redis key so the 7-day TTL cannot
+ * keep a second source of truth alive.
+ */
+async function adoptLegacyChannelConfiguration(
+  channelId: string,
+): Promise<ChannelConfigState | null> {
+  const existing = await loadChannelConfiguration(channelId);
+  if (existing) {
+    return existing;
+  }
+
+  const stateAdapter = getStateAdapter();
+  await stateAdapter.connect();
+  const legacyKey = channelStateKey(channelId);
+  const legacy = await stateAdapter.get<Record<string, unknown>>(legacyKey);
+  if (!legacy || typeof legacy !== "object") {
+    return null;
+  }
+
+  const configuration = legacy.configuration;
+  if (!configuration || typeof configuration !== "object") {
+    return null;
+  }
+
+  // The service coercer owns entry validation; store the bag as-is under the
+  // shared ChannelConfigState envelope.
+  const state: ChannelConfigState = {
+    schemaVersion: 1,
+    entries:
+      "entries" in configuration &&
+      configuration.entries &&
+      typeof configuration.entries === "object" &&
+      !Array.isArray(configuration.entries)
+        ? (configuration.entries as ChannelConfigState["entries"])
+        : {},
+  };
+
+  try {
+    await saveChannelConfiguration(channelId, state);
+  } catch (error) {
+    logWarn("channel_configuration.legacy_adopt_failed", {
+      "app.channel.id": channelId,
+      "exception.message":
+        error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+
+  try {
+    // Drop only the configuration key from the scratch bag. Leave unrelated
+    // channel scratch alone if anything else still lives there.
+    const { configuration: _configuration, ...remainder } = legacy;
+    if (Object.keys(remainder).length === 0) {
+      await stateAdapter.delete(legacyKey);
+    } else {
+      await stateAdapter.set(legacyKey, remainder, JUNIOR_THREAD_STATE_TTL_MS);
+    }
+  } catch (error) {
+    logWarn("channel_configuration.legacy_cleanup_failed", {
+      "app.channel.id": channelId,
+      "exception.message":
+        error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  return state;
+}
+
+function createSqlChannelConfigurationService(
+  channelId: string,
+): ChannelConfigurationService {
+  return createChannelConfigurationService({
+    load: async () => {
+      const adopted = await adoptLegacyChannelConfiguration(channelId);
+      if (adopted) {
+        return { configuration: adopted };
+      }
+      const loaded = await loadChannelConfiguration(channelId);
+      return loaded ? { configuration: loaded } : null;
+    },
+    save: async (state) => {
+      await saveChannelConfiguration(channelId, state);
+    },
+  });
+}
+
+/** Resolve channel configuration from a Chat thread through durable SQL storage. */
 export function getChannelConfigurationService(
   thread: Thread,
 ): ChannelConfigurationService {
@@ -201,26 +304,12 @@ export function getChannelConfigurationService(
   if (!channelId) {
     throw new Error("channel id is required to load channel configuration");
   }
-  return createChannelConfigurationService({
-    load: async () => await channel.state,
-    save: async (state) => {
-      await mergePersistedState(channelStateKey(channelId), {
-        configuration: state,
-      });
-    },
-  });
+  return createSqlChannelConfigurationService(channelId);
 }
 
-/** Resolve a channel configuration service by channel id without a Chat thread. */
+/** Resolve channel configuration by channel id through durable SQL storage. */
 export function getChannelConfigurationServiceById(
   channelId: string,
 ): ChannelConfigurationService {
-  return createChannelConfigurationService({
-    load: async () => await getPersistedChannelState(channelId),
-    save: async (state) => {
-      await mergePersistedState(channelStateKey(channelId), {
-        configuration: state,
-      });
-    },
-  });
+  return createSqlChannelConfigurationService(channelId);
 }
