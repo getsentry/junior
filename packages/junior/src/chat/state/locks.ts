@@ -15,7 +15,7 @@ export async function acquireActiveLock(
   return await state.acquireLock(threadId, ACTIVE_LOCK_TTL_MS);
 }
 
-export type LockAttempt<T> = { acquired: false } | { acquired: true; value: T };
+type LockAttempt<T> = { acquired: false } | { acquired: true; value: T };
 
 /**
  * Run work under one lock, optionally waiting for the current owner.

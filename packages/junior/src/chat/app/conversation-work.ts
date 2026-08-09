@@ -26,7 +26,7 @@ import {
 import { createSlackRuntime } from "./factory";
 import type { JuniorRuntimeServiceOverrides } from "./services";
 
-export interface ConversationWorkOptions {
+interface ConversationWorkOptions {
   agentRunner: AgentRunner;
   conversationStore: ConversationStore;
   getSlackAdapter: () => SlackAdapter;

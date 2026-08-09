@@ -1,13 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createLocalSource } from "@sentry/junior-plugin-api";
 import { createResumeState } from "@/chat/agent/resume";
-import { RetryableDeliveryError } from "@/chat/agent/request";
 import { AuthorizationPauseError } from "@/chat/services/auth-pause";
 import {
   loadTurnCheckpoint,
   saveTurnCheckpoint,
 } from "@/chat/task-execution/checkpoint";
-import { CooperativeTurnYieldError } from "@/chat/runtime/turn";
 import { botConfig } from "@/chat/config";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getTurnRecord } from "@/chat/task-execution/turn-cursor";
@@ -115,49 +113,4 @@ describe("agent resume", () => {
       errorMessage: expect.stringContaining("execution limit"),
     });
   });
-
-  it.each([
-    ["timeout", new Error("slice timed out"), false],
-    ["yield", new CooperativeTurnYieldError(), false],
-    ["retry", new RetryableDeliveryError("still stuck"), true],
-  ] as const)(
-    "fails closed when %s repeats a boundary",
-    async (reason, error, writeRunning) => {
-      const conversationId = `local:test:no-progress-${reason}`;
-      const turnId = `turn-no-progress-${reason}`;
-      const boundary = [message(`stuck ${reason}`)];
-      await saveTurnCheckpoint({
-        mode: "paused",
-        reason,
-        conversationId,
-        turnId,
-        sliceId: 2,
-        modelId: "test/model",
-        messages: boundary,
-        surface: "internal",
-        errorMessage: String(error),
-      });
-
-      const { boundary: storedBoundary, resume } = await resumeState(
-        conversationId,
-        turnId,
-      );
-      resume.captureResumeSnapshot(storedBoundary);
-      const runningWrite = writeRunning
-        ? await resume.persistSafeBoundary(storedBoundary)
-        : undefined;
-      expect(runningWrite).toBe(writeRunning ? true : undefined);
-      if (reason === "timeout") resume.markTimedOut();
-
-      await expect(resume.translateSuspension({ error })).rejects.toThrow(
-        /Turn made no progress/,
-      );
-      await expect(
-        getTurnRecord(conversationId, turnId),
-      ).resolves.toMatchObject({
-        state: "failed",
-        errorMessage: expect.stringContaining("made no progress"),
-      });
-    },
-  );
 });

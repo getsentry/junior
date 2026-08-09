@@ -28,7 +28,7 @@ export interface PausedTurnRequest {
   turnId: string;
 }
 
-export interface TurnWakeOptions {
+interface TurnWakeOptions {
   nowMs?: number;
   queue?: ConversationWorkQueue;
   state?: StateAdapter;

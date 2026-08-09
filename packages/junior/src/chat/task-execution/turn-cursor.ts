@@ -88,12 +88,7 @@ function definedProps<T extends Record<string, unknown>>(
   ) as Partial<T>;
 }
 
-export type TurnStatus =
-  | "running"
-  | "paused"
-  | "completed"
-  | "failed"
-  | "abandoned";
+type TurnStatus = "running" | "paused" | "completed" | "failed" | "abandoned";
 
 export type AgentTurnSurface = "slack" | "api" | "scheduler" | "internal";
 
@@ -182,7 +177,7 @@ interface StoredTurnRecord extends Omit<
    * projected message before the prompt, or -1 when the turn starts the epoch.
    */
   turnStartSeq?: number;
-  /** Volatile bootstrap retained only in resumable session state, never SQL. */
+  /** Volatile bootstrap retained only in the resumable turn cursor, never SQL. */
   runtimeContext?: PiMessage[];
 }
 
@@ -505,7 +500,7 @@ async function getStoredTurnRecord(
   return value == null ? undefined : parseTurnRecord(value);
 }
 
-/** Read a materialized turn session record for resume and history loading. */
+/** Read a materialized turn cursor for resume and history loading. */
 async function materializeStoredTurnRecord(
   conversationId: string,
   turnId: string,
@@ -569,7 +564,7 @@ export async function getTurnRecord(
   return await materializeStoredTurnRecord(conversationId, turnId, false);
 }
 
-/** Read a turn session for resume, following a newer committed replacement while unfinished. */
+/** Read a turn cursor for resume, following a newer committed replacement while unfinished. */
 export async function getTurnRecordForResume(
   conversationId: string,
   turnId: string,
@@ -1086,7 +1081,7 @@ export async function listTurnSummaries(
   return readTurnSummaries(turnCursorIndexKey(conversationId));
 }
 
-/** Mark an unfinished turn session record as abandoned when a newer turn wins. */
+/** Mark an unfinished turn cursor as abandoned when a newer turn wins. */
 export async function abandonTurnRecord(args: {
   conversationId: string;
   turnId: string;
@@ -1116,7 +1111,7 @@ export async function abandonTurnRecord(args: {
   );
 }
 
-/** Mark an unfinished turn session record as failed so it cannot resume. */
+/** Mark an unfinished turn cursor as failed so it cannot resume. */
 export async function failTurnRecord(args: {
   conversationId: string;
   expectedVersion: number;

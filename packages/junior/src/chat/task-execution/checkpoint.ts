@@ -66,7 +66,7 @@ export type TurnCheckpoint =
  * Lifecycle fields for a checkpoint write.
  * Routing/metrics/provenance are only for SQL dual-write / resume restore.
  */
-export interface TurnCheckpointWrite {
+interface TurnCheckpointWrite {
   conversationId: string;
   turnId: string;
   messages: PiMessage[];
@@ -93,7 +93,7 @@ export interface TurnCheckpointWrite {
   resultMessageId?: string;
 }
 
-export type ProgressCheckpointArgs =
+type ProgressCheckpointArgs =
   | (TurnCheckpointWrite & { mode: "running"; sliceId: number })
   | (TurnCheckpointWrite & {
       mode: "paused";
@@ -101,13 +101,11 @@ export type ProgressCheckpointArgs =
       sliceId: number;
     });
 
-export type TerminalCheckpointArgs = TurnCheckpointWrite & {
+type TerminalCheckpointArgs = TurnCheckpointWrite & {
   mode: "completed" | "failed";
 };
 
-export type SaveTurnCheckpointArgs =
-  | ProgressCheckpointArgs
-  | TerminalCheckpointArgs;
+type SaveTurnCheckpointArgs = ProgressCheckpointArgs | TerminalCheckpointArgs;
 
 function definedProps<T extends Record<string, unknown>>(
   values: T,
