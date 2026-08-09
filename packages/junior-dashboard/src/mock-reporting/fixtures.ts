@@ -850,6 +850,7 @@ function mockConversations(nowMs: number): MockConversation[] {
         kind: "scheduled",
         label:
           "Send the weekly project summary with release blockers, owner follow-ups, and next-week risks for every tracked workstream",
+        title: "Weekly project summary",
       },
     }),
   ];
