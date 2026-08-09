@@ -94,4 +94,43 @@ describe("SQL location configuration", () => {
       await fixture.close();
     }
   });
+
+  it("keeps a concurrent SQL write over a stale legacy cutover", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+    await migrateSchema(fixture.sql);
+    const destination = {
+      platform: "slack" as const,
+      teamId: "T-race",
+      channelId: "C-race",
+    };
+
+    try {
+      const writer = createDurableLocationConfigurationService({
+        destination,
+        db: fixture.sql.db(),
+        loadLegacy: async () => null,
+      });
+      const reader = createDurableLocationConfigurationService({
+        destination,
+        db: fixture.sql.db(),
+        loadLegacy: async () => {
+          await writer.set({
+            key: "github.repo",
+            value: "getsentry/fresh",
+            updatedBy: "U-fresh",
+          });
+          return legacyConfiguration("getsentry/stale");
+        },
+      });
+
+      await expect(reader.resolve("github.repo")).resolves.toBe(
+        "getsentry/fresh",
+      );
+      await expect(writer.resolve("github.repo")).resolves.toBe(
+        "getsentry/fresh",
+      );
+    } finally {
+      await fixture.close();
+    }
+  });
 });

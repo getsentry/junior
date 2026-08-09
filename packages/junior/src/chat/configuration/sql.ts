@@ -77,22 +77,26 @@ async function resolveLocationId(
 function createSqlLocationConfigurationStorage(
   db: JuniorDatabase,
   destination: Destination,
-): LocationConfigurationStorage {
+): LocationConfigurationStorage & {
+  insertIfAbsent: (configuration: LocationConfigState) => Promise<void>;
+} {
   let locationIdPromise: Promise<string> | undefined;
   const getLocationId = () =>
     (locationIdPromise ??= resolveLocationId(db, destination));
 
+  const load = async () => {
+    const locationId = await getLocationId();
+    const rows = await db
+      .select({ configuration: juniorLocationConfigurations.configuration })
+      .from(juniorLocationConfigurations)
+      .where(eq(juniorLocationConfigurations.locationId, locationId))
+      .limit(1);
+    const configuration = rows[0]?.configuration;
+    return configuration ? { configuration } : null;
+  };
+
   return {
-    load: async () => {
-      const locationId = await getLocationId();
-      const rows = await db
-        .select({ configuration: juniorLocationConfigurations.configuration })
-        .from(juniorLocationConfigurations)
-        .where(eq(juniorLocationConfigurations.locationId, locationId))
-        .limit(1);
-      const configuration = rows[0]?.configuration;
-      return configuration ? { configuration } : null;
-    },
+    load,
     save: async (configuration: LocationConfigState) => {
       const locationId = await getLocationId();
       const updatedAt = new Date();
@@ -102,6 +106,17 @@ function createSqlLocationConfigurationStorage(
         .onConflictDoUpdate({
           target: juniorLocationConfigurations.locationId,
           set: { configuration, updatedAt },
+        });
+    },
+    // Cutover must never overwrite a concurrent SQL write.
+    insertIfAbsent: async (configuration: LocationConfigState) => {
+      const locationId = await getLocationId();
+      const updatedAt = new Date();
+      await db
+        .insert(juniorLocationConfigurations)
+        .values({ locationId, configuration, updatedAt })
+        .onConflictDoNothing({
+          target: juniorLocationConfigurations.locationId,
         });
     },
   };
@@ -128,8 +143,9 @@ export function createDurableLocationConfigurationService(args: {
       if (Object.keys(legacyState.entries).length === 0) {
         return null;
       }
-      await sqlStorage.save(legacyState);
-      return { configuration: legacyState };
+      await sqlStorage.insertIfAbsent(legacyState);
+      // Prefer any SQL row that landed during the cutover window.
+      return (await sqlStorage.load()) ?? { configuration: legacyState };
     },
     save: sqlStorage.save,
   });
