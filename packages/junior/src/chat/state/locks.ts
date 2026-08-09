@@ -12,3 +12,20 @@ export async function acquireActiveLock(
 ): Promise<Lock | null> {
   return await state.acquireLock(threadId, ACTIVE_LOCK_TTL_MS);
 }
+
+export type LockAttempt<T> = { acquired: false } | { acquired: true; value: T };
+
+/** Run work under the active lock, reporting contention without ambiguity. */
+export async function withActiveLock<T>(
+  state: StateAdapter,
+  key: string,
+  run: () => Promise<T>,
+): Promise<LockAttempt<T>> {
+  const lock = await acquireActiveLock(state, key);
+  if (!lock) return { acquired: false };
+  try {
+    return { acquired: true, value: await run() };
+  } finally {
+    await state.releaseLock(lock);
+  }
+}

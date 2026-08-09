@@ -54,6 +54,8 @@ import {
 } from "@/chat/services/turn-session-routing";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import { postSlackMessage } from "@/chat/slack/outbound";
+import { getStateAdapter } from "@/chat/state/adapter";
+import { withActiveLock } from "@/chat/state/locks";
 import { requireTurnFailureEventId } from "@/chat/services/turn-failure-response";
 import {
   createSlackActor,
@@ -439,7 +441,7 @@ async function continueSlackAgentRunInContext(
           dispatchUserMessage;
         if (!userMessage) {
           // Never throw out of beforeStart (issue #727); fail the session visibly.
-          await failStrandedSessionWithFallback({
+          await failStrandedTurnWithFallback({
             conversationId: payload.conversationId,
             errorMessage: `Unable to locate the persisted user message for agent continuation session "${payload.turnId}"`,
             turn: activeTurn,
@@ -457,7 +459,7 @@ async function continueSlackAgentRunInContext(
           userMessage,
         });
         if (!identity) {
-          await failStrandedSessionWithFallback({
+          await failStrandedTurnWithFallback({
             conversationId: payload.conversationId,
             errorMessage: "Unable to rebuild Slack actor for continuation",
             turn: activeTurn,
@@ -611,18 +613,19 @@ async function continueSlackAgentRunInContext(
   });
 }
 
-/** Terminally fail a stranded session and post the standard visible fallback. */
-async function failStrandedSessionWithFallback(args: {
+/** Terminally fail a stranded turn and post the standard visible fallback. */
+async function failStrandedTurnWithFallback(args: {
   conversationId: string;
   errorMessage: string;
   turn: TurnRecord;
-}): Promise<void> {
-  await failTurnRecord({
+}): Promise<boolean> {
+  const failed = await failTurnRecord({
     conversationId: args.conversationId,
     expectedVersion: args.turn.version,
     sessionId: args.turn.sessionId,
     errorMessage: args.errorMessage,
   });
+  if (!failed) return false;
   const currentState = await getPersistedThreadState(args.conversationId);
   const conversation = coerceThreadConversationState(currentState);
   await hydrateConversationMessages({
@@ -632,8 +635,8 @@ async function failStrandedSessionWithFallback(args: {
   markTurnFailed({
     conversation,
     nowMs: Date.now(),
-    sessionId: args.turn.sessionId,
-    userMessageId: getTurnUserMessage(conversation, args.turn.sessionId)?.id,
+    sessionId: failed.sessionId,
+    userMessageId: getTurnUserMessage(conversation, failed.sessionId)?.id,
     markConversationMessage,
   });
   await persistThreadStateById(args.conversationId, { conversation });
@@ -641,7 +644,7 @@ async function failStrandedSessionWithFallback(args: {
   const eventName = "agent.turn.stranded_session.failed";
   const eventId = logException(new Error(args.errorMessage), eventName, {
     "app.ai.conversation_id": args.conversationId,
-    "app.ai.session_id": args.turn.sessionId,
+    "app.ai.session_id": failed.sessionId,
   });
   let routing: TurnSessionRouting;
   try {
@@ -651,21 +654,21 @@ async function failStrandedSessionWithFallback(args: {
   } catch (error) {
     logException(error, "agent.turn.stranded_session.routing_unavailable", {
       "app.ai.conversation_id": args.conversationId,
-      "app.ai.session_id": args.turn.sessionId,
+      "app.ai.session_id": failed.sessionId,
     });
-    return;
+    return true;
   }
-  if (args.turn.dispatchId) {
+  if (failed.dispatchId) {
     await recordTurnSummary({
       conversationId: args.conversationId,
       destination: routing.destination,
-      dispatchId: args.turn.dispatchId,
+      dispatchId: failed.dispatchId,
       dispatchOutcome: "failed",
-      sessionId: args.turn.sessionId,
-      sliceId: args.turn.sliceId,
+      sessionId: failed.sessionId,
+      sliceId: failed.sliceId,
       source: routing.source,
       state: "failed",
-      surface: args.turn.surface,
+      surface: failed.surface,
     });
   }
   const thread = parseSlackThreadId(args.conversationId);
@@ -680,6 +683,7 @@ async function failStrandedSessionWithFallback(args: {
       requireTurnFailureEventId(eventId, eventName),
     ),
   });
+  return true;
 }
 
 /** Resume the first valid paused Slack session for an idle conversation. */
@@ -708,17 +712,20 @@ async function resumeAwaitingSlackContinuationInContext(
   // second recovery lifecycle beside the conversation lease.
   const newest = summaries[0];
   if (newest?.state === "running") {
-    const record = await getTurnRecordForResume(
-      conversationId,
-      newest.sessionId,
-    );
-    if (record) {
-      await failStrandedSessionWithFallback({
+    const state = getStateAdapter();
+    await state.connect();
+    await withActiveLock(state, conversationId, async () => {
+      const record = await getTurnRecordForResume(
+        conversationId,
+        newest.sessionId,
+      );
+      if (!record || record.state !== "running") return;
+      await failStrandedTurnWithFallback({
         conversationId,
         errorMessage: "Turn lost its worker before reaching a safe boundary",
         turn: record,
       });
-    }
+    });
     return false;
   }
 

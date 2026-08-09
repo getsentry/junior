@@ -158,6 +158,67 @@ describe("agent continuation scheduling", () => {
     }
   });
 
+  it("fails a running turn only after exclusive ownership is available", async () => {
+    const { resumeAwaitingSlackContinuation } =
+      await import("@/chat/task-execution/continue-run");
+    const conversationId = "slack:C123:1712345.0006";
+    const turnId = "turn_msg_6";
+    const state = getStateAdapter();
+    await state.connect();
+
+    await upsertTurnRecord({
+      modelId: "test/model",
+      conversationId,
+      sessionId: turnId,
+      sliceId: 1,
+      state: "running",
+      destination: SLACK_DESTINATION,
+      source: slackSessionSource("1712345.0006"),
+      piMessages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "original request" }],
+          timestamp: 1_000,
+        },
+      ],
+    });
+    await persistThreadStateById(conversationId, {
+      conversation: {
+        schemaVersion: 1,
+        compactions: [],
+        messages: [
+          {
+            id: "1712345.0006",
+            role: "user",
+            text: "original request",
+            createdAtMs: 1_000,
+            author: { userId: "U123" },
+          },
+        ],
+        processing: { activeTurnId: turnId },
+        vision: { byFileId: {} },
+      },
+    });
+
+    const owner = await state.acquireLock(conversationId, 90_000);
+    expect(owner).toBeTruthy();
+    await resumeAwaitingSlackContinuation(conversationId, {
+      agentRunner: agentRunnerShouldNotRun,
+    });
+    await expect(getTurnRecord(conversationId, turnId)).resolves.toMatchObject({
+      state: "running",
+    });
+
+    await state.releaseLock(owner!);
+    await resumeAwaitingSlackContinuation(conversationId, {
+      agentRunner: agentRunnerShouldNotRun,
+    });
+    await expect(getTurnRecord(conversationId, turnId)).resolves.toMatchObject({
+      state: "failed",
+      errorMessage: "Turn lost its worker before reaching a safe boundary",
+    });
+  });
+
   it("fails continuation summaries whose metadata cannot materialize", async () => {
     const { resumeAwaitingSlackContinuation } =
       await import("@/chat/task-execution/continue-run");
