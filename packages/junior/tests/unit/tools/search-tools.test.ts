@@ -74,11 +74,23 @@ function catalog() {
   };
 }
 
-function rankedCatalog() {
+function mixedCatalog() {
   const githubSource = {
     id: "github",
     description:
       "GitHub deployment, issue, pull request, release, and repository workflows via GitHub App",
+  };
+  const linearSource = {
+    id: "linear",
+    description: "Linear issue tracking via hosted MCP server",
+  };
+  const memorySource = {
+    id: "memory",
+    description: "Long-term Junior memory storage and recall",
+  };
+  const notionSource = {
+    id: "notion",
+    description: "Notion page search and summarization",
   };
   return {
     github_cloneRepository: tool({
@@ -137,6 +149,64 @@ function rankedCatalog() {
       inputSchema: Type.Object({
         repo: Type.String(),
         number: Type.Integer({ description: "Pull request number." }),
+      }),
+    }),
+    mcp__linear__create_issue: tool({
+      description: "Create a new Linear issue.",
+      source: linearSource,
+      exposure: "deferred",
+      inputSchema: Type.Object({
+        title: Type.String({ description: "Issue title." }),
+        team: Type.String({ description: "Team name or ID." }),
+      }),
+    }),
+    mcp__linear__create_issue_label: tool({
+      description: "Create a new Linear issue label.",
+      source: linearSource,
+      exposure: "deferred",
+      inputSchema: Type.Object({
+        name: Type.String({ description: "Label name." }),
+      }),
+    }),
+    mcp__linear__get_issue: tool({
+      description: "Retrieve detailed information about a Linear issue by ID.",
+      source: linearSource,
+      exposure: "deferred",
+      inputSchema: Type.Object({
+        id: Type.String({ description: "Issue ID or identifier." }),
+      }),
+    }),
+    memory_createMemory: tool({
+      description: "Store an explicit long-term memory.",
+      source: memorySource,
+      exposure: "deferred",
+      inputSchema: Type.Object({
+        content: Type.String({ description: "Memory content." }),
+      }),
+    }),
+    memory_searchMemories: tool({
+      description: "Search active memories visible in the current context.",
+      source: memorySource,
+      exposure: "deferred",
+      inputSchema: Type.Object({
+        query: Type.String({ description: "Targeted memory recall query." }),
+      }),
+    }),
+    "mcp__notion__notion-fetch": tool({
+      description:
+        "Retrieve a Notion page, database, or data source by URL or ID.",
+      source: notionSource,
+      exposure: "deferred",
+      inputSchema: Type.Object({
+        id: Type.String({ description: "Notion entity URL or ID." }),
+      }),
+    }),
+    "mcp__notion__notion-search": tool({
+      description: "Search the Notion workspace and connected sources.",
+      source: notionSource,
+      exposure: "deferred",
+      inputSchema: Type.Object({
+        query: Type.String({ description: "Semantic workspace search query." }),
       }),
     }),
     systemTime: tool({
@@ -285,7 +355,7 @@ describe("searchTools", () => {
   });
 
   it("ranks production search variations by relevant catalog metadata", async () => {
-    const searchTools = createSearchToolsTool(rankedCatalog());
+    const searchTools = createSearchToolsTool(mixedCatalog());
     const cases = [
       ["clone repository", "github_cloneRepository", "github"],
       ["repository clone", "github_cloneRepository", "github"],
@@ -307,6 +377,7 @@ describe("searchTools", () => {
       ],
       ["search code repository", "github_getRepository", "github"],
       ["create issue", "github_createIssue", "github"],
+      ["create issue", "mcp__linear__create_issue", "linear"],
       ["create pull request", "github_createPullRequest", "github"],
       ["GitHub create pull request", "github_createPullRequest", "github"],
       ["update pull request", "github_updatePullRequest", "github"],
@@ -326,15 +397,24 @@ describe("searchTools", () => {
   });
 
   it("returns related candidates for broad production queries", async () => {
-    const searchTools = createSearchToolsTool(rankedCatalog());
+    const searchTools = createSearchToolsTool(mixedCatalog());
     const cases = [
-      ["pull request checks details diff comments", "github_getPullRequest"],
-      ["search pull requests commits code github", "github_getPullRequest"],
+      [
+        "pull request checks details diff comments",
+        "github_getPullRequest",
+        "github",
+      ],
+      [
+        "search pull requests commits code github",
+        "github_getPullRequest",
+        "github",
+      ],
+      ["issue", "mcp__linear__get_issue", "linear"],
     ] as const;
 
-    for (const [query, expectedTool] of cases) {
+    for (const [query, expectedTool, source] of cases) {
       const result = await searchTools.execute!(
-        { query, source: "github", max_results: 20 },
+        { query, source, max_results: 20 },
         {},
       );
 
@@ -346,11 +426,11 @@ describe("searchTools", () => {
   });
 
   it("does not match partial words or unrelated production queries", async () => {
-    const searchTools = createSearchToolsTool(rankedCatalog());
+    const searchTools = createSearchToolsTool(mixedCatalog());
 
     for (const [query, source] of [
       ["version", undefined],
-      ["waterdog", "github"],
+      ["waterdog", "memory"],
     ] as const) {
       const result = await searchTools.execute!(
         { query, source, max_results: 20 },
@@ -366,6 +446,27 @@ describe("searchTools", () => {
         },
       });
     }
+  });
+
+  it("lists provider tools when a production search omits its query", async () => {
+    const searchTools = createSearchToolsTool(mixedCatalog());
+
+    const result = await searchTools.execute!(
+      { source: "notion", max_results: 20 },
+      {},
+    );
+
+    expect(result).toMatchObject({
+      query: null,
+      source: "notion",
+      total_eligible_tools: 2,
+      total_matches: 2,
+      returned_tools: 2,
+      tools: [
+        { tool_name: "mcp__notion__notion-fetch" },
+        { tool_name: "mcp__notion__notion-search" },
+      ],
+    });
   });
 
   it("returns known sources without throwing for an unknown source", async () => {
