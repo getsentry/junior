@@ -1,9 +1,7 @@
-export type ConfigScope = "location";
-
 export interface ConfigEntry {
   key: string;
   value: unknown;
-  scope: ConfigScope;
+  scope: "location";
   updatedAt: string;
   updatedBy?: string;
   source?: string;

@@ -201,14 +201,13 @@ async function getLegacyChannelState(
 export function getLocationConfigurationService(
   destination: Destination,
 ): LocationConfigurationService {
+  if (destination.platform !== "slack") {
+    throw new Error("Location configuration requires a Slack Location");
+  }
   return createDurableLocationConfigurationService({
     destination,
     db: getDb(),
-    loadLegacy: async () => {
-      if (destination.platform !== "slack") {
-        return null;
-      }
-      return await getLegacyChannelState(destination.channelId);
-    },
+    loadLegacy: async () =>
+      await getLegacyChannelState(destination.channelId),
   });
 }

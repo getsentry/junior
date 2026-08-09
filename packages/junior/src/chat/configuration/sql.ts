@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import type { Destination } from "@sentry/junior-plugin-api";
-import { and, eq } from "drizzle-orm";
+import type { SlackDestination } from "@sentry/junior-plugin-api";
+import { and, eq, sql } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorDestinations, juniorLocationConfigurations } from "@/db/schema";
 import {
@@ -10,18 +10,13 @@ import {
 import type {
   LocationConfigState,
   LocationConfigurationService,
-  LocationConfigurationStorage,
 } from "@/chat/configuration/types";
 
 /** Resolve the canonical Location row for a supported provider destination. */
 async function resolveLocationId(
   db: JuniorDatabase,
-  destination: Destination,
+  destination: SlackDestination,
 ): Promise<string> {
-  if (destination.platform !== "slack") {
-    throw new Error("Location configuration requires a provider Location");
-  }
-
   const channelId = destination.channelId;
   const now = new Date();
   const rows = await db
@@ -43,53 +38,41 @@ async function resolveLocationId(
       createdAt: now,
       updatedAt: now,
     })
-    .onConflictDoNothing({
+    .onConflictDoUpdate({
       target: [
         juniorDestinations.provider,
         juniorDestinations.providerTenantId,
         juniorDestinations.providerDestinationId,
       ],
+      set: { id: sql`${juniorDestinations.id}` },
     })
     .returning({ id: juniorDestinations.id });
-  const locationId = rows[0]?.id;
-  if (locationId) {
-    return locationId;
-  }
-
-  const existing = await db
-    .select({ id: juniorDestinations.id })
-    .from(juniorDestinations)
-    .where(
-      and(
-        eq(juniorDestinations.provider, "slack"),
-        eq(juniorDestinations.providerTenantId, destination.teamId),
-        eq(juniorDestinations.providerDestinationId, channelId),
-      ),
-    )
-    .limit(1);
-  if (!existing[0]?.id) {
-    throw new Error("Location could not be resolved");
-  }
-  return existing[0].id;
+  return rows[0]!.id;
 }
 
 /** Create durable configuration storage for one Location. */
 function createSqlLocationConfigurationStorage(
   db: JuniorDatabase,
-  destination: Destination,
-): LocationConfigurationStorage & {
-  insertIfAbsent: (configuration: LocationConfigState) => Promise<void>;
-} {
-  let locationIdPromise: Promise<string> | undefined;
-  const getLocationId = () =>
-    (locationIdPromise ??= resolveLocationId(db, destination));
-
+  destination: SlackDestination,
+) {
   const load = async () => {
-    const locationId = await getLocationId();
     const rows = await db
       .select({ configuration: juniorLocationConfigurations.configuration })
       .from(juniorLocationConfigurations)
-      .where(eq(juniorLocationConfigurations.locationId, locationId))
+      .innerJoin(
+        juniorDestinations,
+        eq(juniorDestinations.id, juniorLocationConfigurations.locationId),
+      )
+      .where(
+        and(
+          eq(juniorDestinations.provider, "slack"),
+          eq(juniorDestinations.providerTenantId, destination.teamId),
+          eq(
+            juniorDestinations.providerDestinationId,
+            destination.channelId,
+          ),
+        ),
+      )
       .limit(1);
     const configuration = rows[0]?.configuration;
     return configuration ? { configuration } : null;
@@ -98,7 +81,7 @@ function createSqlLocationConfigurationStorage(
   return {
     load,
     save: async (configuration: LocationConfigState) => {
-      const locationId = await getLocationId();
+      const locationId = await resolveLocationId(db, destination);
       const updatedAt = new Date();
       await db
         .insert(juniorLocationConfigurations)
@@ -109,22 +92,26 @@ function createSqlLocationConfigurationStorage(
         });
     },
     // Cutover must never overwrite a concurrent SQL write.
-    insertIfAbsent: async (configuration: LocationConfigState) => {
-      const locationId = await getLocationId();
-      const updatedAt = new Date();
-      await db
+    insertLegacy: async (configuration: LocationConfigState) => {
+      const locationId = await resolveLocationId(db, destination);
+      const rows = await db
         .insert(juniorLocationConfigurations)
-        .values({ locationId, configuration, updatedAt })
-        .onConflictDoNothing({
+        .values({ locationId, configuration, updatedAt: new Date() })
+        .onConflictDoUpdate({
           target: juniorLocationConfigurations.locationId,
-        });
+          set: {
+            configuration: sql`${juniorLocationConfigurations.configuration}`,
+          },
+        })
+        .returning({ configuration: juniorLocationConfigurations.configuration });
+      return { configuration: rows[0]!.configuration };
     },
   };
 }
 
 /** Resolve SQL-owned Location configuration and copy a live legacy record once. */
 export function createDurableLocationConfigurationService(args: {
-  destination: Destination;
+  destination: SlackDestination;
   db: JuniorDatabase;
   loadLegacy: () => Promise<unknown>;
 }): LocationConfigurationService {
@@ -143,9 +130,7 @@ export function createDurableLocationConfigurationService(args: {
       if (Object.keys(legacyState.entries).length === 0) {
         return null;
       }
-      await sqlStorage.insertIfAbsent(legacyState);
-      // Prefer any SQL row that landed during the cutover window.
-      return (await sqlStorage.load()) ?? { configuration: legacyState };
+      return await sqlStorage.insertLegacy(legacyState);
     },
     save: sqlStorage.save,
   });
