@@ -49,12 +49,18 @@ export {
   recordTurnSummary,
 };
 
-/** Loaded resume cursor. */
-export interface TurnCheckpoint {
-  resumed: boolean;
-  sliceId: number;
-  record?: TurnRecord;
-}
+/** Loaded resume cursor. A resumed checkpoint always has its record. */
+export type TurnCheckpoint =
+  | {
+      resumed: true;
+      sliceId: number;
+      record: TurnRecord;
+    }
+  | {
+      resumed: false;
+      sliceId: 1;
+      record?: TurnRecord;
+    };
 
 /**
  * Lifecycle fields for a checkpoint write.
@@ -87,14 +93,21 @@ export interface TurnCheckpointWrite {
   resultMessageId?: string;
 }
 
-export type SaveTurnCheckpointArgs =
+export type ProgressCheckpointArgs =
   | (TurnCheckpointWrite & { mode: "running"; sliceId: number })
   | (TurnCheckpointWrite & {
       mode: "paused";
       reason: TurnPauseReason;
       sliceId: number;
-    })
-  | (TurnCheckpointWrite & { mode: "completed" | "failed" });
+    });
+
+export type TerminalCheckpointArgs = TurnCheckpointWrite & {
+  mode: "completed" | "failed";
+};
+
+export type SaveTurnCheckpointArgs =
+  | ProgressCheckpointArgs
+  | TerminalCheckpointArgs;
 
 function definedProps<T extends Record<string, unknown>>(
   values: T,
@@ -135,12 +148,10 @@ export async function loadTurnCheckpoint(args: {
   turnId: string;
 }): Promise<TurnCheckpoint> {
   const record = await getTurnRecordForResume(args.conversationId, args.turnId);
-  const resumed = Boolean(record && record.state === "paused");
-  return {
-    resumed,
-    sliceId: resumed ? record!.sliceId : 1,
-    record,
-  };
+  if (record?.state === "paused") {
+    return { resumed: true, sliceId: record.sliceId, record };
+  }
+  return { resumed: false, sliceId: 1, record };
 }
 
 /**
@@ -149,9 +160,13 @@ export async function loadTurnCheckpoint(args: {
  * - `running` / `paused`: best-effort; returns the stored record or undefined
  * - `completed` / `failed`: retries until write accepts; throws on hard failure
  */
+export function saveTurnCheckpoint(
+  args: ProgressCheckpointArgs,
+): Promise<TurnRecord | undefined>;
+export function saveTurnCheckpoint(args: TerminalCheckpointArgs): Promise<void>;
 export async function saveTurnCheckpoint(
   args: SaveTurnCheckpointArgs,
-): Promise<TurnRecord | undefined> {
+): Promise<TurnRecord | undefined | void> {
   if (args.mode === "running") {
     return await saveRunning(args);
   }

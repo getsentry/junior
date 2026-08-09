@@ -104,8 +104,8 @@ export function createResumeState(args: ResumeStateArgs) {
   let advancedPastResume = !args.checkpoint.resumed;
   let resumedBoundaryKey = "";
 
-  const prior = args.checkpoint.record;
-  if (args.checkpoint.resumed && prior?.piMessages?.length) {
+  if (args.checkpoint.resumed && args.checkpoint.record.piMessages.length) {
+    const prior = args.checkpoint.record;
     latestSafeBoundaryMessages = [...prior.piMessages];
     resumeMessages = [...prior.piMessages];
     resumedBoundaryKey = boundaryKey(
