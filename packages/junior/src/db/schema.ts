@@ -1,3 +1,4 @@
+import { juniorChannelConfigurations } from "./schema/channel-configurations";
 import { juniorConversationAnnotations } from "./schema/conversation-annotations";
 import { juniorApiTokens } from "./schema/api-tokens";
 import { juniorConversationEvents } from "./schema/conversation-events";
@@ -19,6 +20,7 @@ import {
 import { juniorUsers } from "./schema/users";
 
 export {
+  juniorChannelConfigurations,
   juniorConversationAnnotations,
   juniorApiTokens,
   juniorAgentBindings,
@@ -37,6 +39,7 @@ export {
 };
 
 export const juniorSqlSchema = {
+  juniorChannelConfigurations,
   juniorConversationAnnotations,
   juniorApiTokens,
   juniorAgentBindings,

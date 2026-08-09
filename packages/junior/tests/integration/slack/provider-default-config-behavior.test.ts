@@ -6,7 +6,7 @@ import {
   createTestDestination,
 } from "../../fixtures/slack-harness";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
-import { getPersistedChannelState } from "@/chat/runtime/thread-state";
+import { getChannelConfigurationServiceById } from "@/chat/runtime/thread-state";
 import { deliverAssistantMessagesForTest } from "../../fixtures/agent-runner";
 
 function toPostedText(value: unknown): string {
@@ -50,16 +50,12 @@ describe("Slack behavior: provider default configuration", () => {
     expect(executeAgentRun).not.toHaveBeenCalled();
     expect(thread.posts).toHaveLength(1);
     expect(toPostedText(thread.posts[0])).toContain("getsentry/junior");
-    await expect(getPersistedChannelState(thread.channelId)).resolves.toMatchObject({
-      configuration: {
-        entries: {
-          "github.repo": {
-            key: "github.repo",
-            value: "getsentry/junior",
-            source: "provider-default-config",
-          },
-        },
-      },
+    await expect(
+      getChannelConfigurationServiceById(thread.channelId).get("github.repo"),
+    ).resolves.toMatchObject({
+      key: "github.repo",
+      value: "getsentry/junior",
+      source: "provider-default-config",
     });
   });
 
@@ -105,12 +101,8 @@ describe("Slack behavior: provider default configuration", () => {
 
     expect(executeAgentRun).toHaveBeenCalledOnce();
     expect(toPostedText(thread.posts[0])).toContain("Created the issue.");
-    await expect(getPersistedChannelState(thread.channelId)).resolves.not.toMatchObject({
-      configuration: {
-        entries: {
-          "github.repo": expect.anything(),
-        },
-      },
-    });
+    await expect(
+      getChannelConfigurationServiceById(thread.channelId).get("github.repo"),
+    ).resolves.toBeUndefined();
   });
 });

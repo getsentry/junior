@@ -1,8 +1,6 @@
 import type { Thread } from "chat";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  getChannelConfigurationService,
-  getPersistedChannelState,
   getPersistedSandboxState,
   getPersistedThreadState,
   persistThreadRuntimeState,
@@ -62,12 +60,10 @@ describe("thread sandbox state", () => {
     expect(getPersistedSandboxState(state)).toBeUndefined();
   });
 
-  it("writes thread and channel scratch with Junior's 7-day TTL", async () => {
+  it("writes thread scratch with Junior's 7-day TTL", async () => {
     const stateAdapter = getStateAdapter();
     const set = vi.spyOn(stateAdapter, "set");
     const conversationId = "local:test:thread-scratch-ttl";
-    const channelId = "C-scratch-ttl";
-
     await persistThreadStateById(conversationId, {
       sandboxRef: { id: "sandbox-ttl" },
     });
@@ -80,8 +76,8 @@ describe("thread sandbox state", () => {
     set.mockClear();
     const thread = {
       id: conversationId,
-      channelId,
-      channel: { id: channelId },
+      channelId: "C-scratch-ttl",
+      channel: { id: "C-scratch-ttl" },
     } as Thread;
     await persistThreadRuntimeState(thread, {
       artifacts: { lastCanvasId: "Fcanvas" },
@@ -94,38 +90,6 @@ describe("thread sandbox state", () => {
       }),
       JUNIOR_THREAD_STATE_TTL_MS,
     );
-
-    set.mockClear();
-    await getChannelConfigurationService(thread).set({
-      key: "github.repo",
-      value: "getsentry/junior",
-      updatedBy: "U123",
-    });
-    expect(set).toHaveBeenCalledWith(
-      `channel-state:${channelId}`,
-      expect.objectContaining({
-        configuration: expect.objectContaining({
-          entries: expect.objectContaining({
-            "github.repo": expect.objectContaining({
-              key: "github.repo",
-              value: "getsentry/junior",
-            }),
-          }),
-        }),
-      }),
-      JUNIOR_THREAD_STATE_TTL_MS,
-    );
-
-    await expect(getPersistedChannelState(channelId)).resolves.toMatchObject({
-      configuration: {
-        entries: {
-          "github.repo": {
-            key: "github.repo",
-            value: "getsentry/junior",
-          },
-        },
-      },
-    });
   });
 
 });

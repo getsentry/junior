@@ -50,7 +50,8 @@ function sanitizeEntry(value: unknown): ConfigEntry | undefined {
   };
 }
 
-function coerceState(raw: unknown): ChannelConfigState {
+/** Coerce persisted channel configuration into the current durable shape. */
+export function coerceChannelConfigState(raw: unknown): ChannelConfigState {
   if (!isRecord(raw)) {
     return defaultState();
   }
@@ -77,7 +78,7 @@ export function createChannelConfigurationService(
 ): ChannelConfigurationService {
   const getState = async (): Promise<ChannelConfigState> => {
     const loaded = await storage.load();
-    return coerceState(loaded);
+    return coerceChannelConfigState(loaded);
   };
 
   const saveState = async (state: ChannelConfigState): Promise<void> => {

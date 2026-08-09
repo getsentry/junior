@@ -169,6 +169,13 @@
       "when": 1786153663118,
       "tag": "0023_task_title_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1786309318147,
+      "tag": "0024_channel_configuration",
+      "breakpoints": true
     }
   ]
 }
