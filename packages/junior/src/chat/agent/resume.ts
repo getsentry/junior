@@ -261,7 +261,10 @@ export function createResumeState(args: ResumeStateArgs) {
           ...(usage ? { usage } : {}),
         };
       } catch (error) {
-        if (error instanceof AuthPausePersistenceError) {
+        if (
+          error instanceof AuthPausePersistenceError ||
+          error instanceof TurnSliceLimitExceededError
+        ) {
           throw error;
         }
         throw new AuthPausePersistenceError(

@@ -457,7 +457,7 @@ describe("agent invocation conversation work", () => {
     }
   });
 
-  it("terminally fails a stranded running child with no resumable boundary", async () => {
+  it("stops a stranded running child without rerunning it", async () => {
     const { fixture } = await prepareParentConversation();
     const state = getStateAdapter();
     await state.connect();
@@ -516,8 +516,7 @@ describe("agent invocation conversation work", () => {
       const worker = createAgentInvocationWorker({
         agentRunner: { run },
       });
-      // Empty resume wakes set isFinalAttempt false, so unrecoverable stranded
-      // recovery must terminalize without relying on final-attempt handling.
+      // Empty wakes are not final attempts, but a stranded running turn still stops.
       const emptyResumeContext = {
         attempt: {
           ack: vi.fn(),
@@ -540,17 +539,16 @@ describe("agent invocation conversation work", () => {
       await expect(
         getTurnRecord(created.childConversationId, turnId),
       ).resolves.toMatchObject({
-        errorMessage: expect.stringContaining("no resumable boundary"),
+        errorMessage: expect.stringContaining("lost its worker"),
         state: "failed",
       });
       await expect(
         getAgentInvocation(created.invocationId),
       ).resolves.toMatchObject({
-        errorMessage: expect.stringContaining("no resumable boundary"),
+        errorMessage: expect.stringContaining("lost its worker"),
         status: "failed",
       });
-      // Named agents must free after unrecoverable stranded recovery so a later
-      // spawn can reuse the binding instead of staying permanently busy.
+      // Named agents free after the stopped turn so a later spawn can reuse them.
       await expect(
         createAgentInvocation({
           ...invocationInput,
@@ -561,81 +559,6 @@ describe("agent invocation conversation work", () => {
         childConversationId: created.childConversationId,
         status: "pending",
       });
-    } finally {
-      await fixture.close();
-    }
-  });
-
-  it("re-parks a stranded running child session before resuming", async () => {
-    const { conversationStore, fixture } = await prepareParentConversation();
-    const queue = createConversationWorkQueueTestAdapter();
-    const state = getStateAdapter();
-    await state.connect();
-    try {
-      const created = await createAndEnqueueAgentInvocation(
-        {
-          ...invocationInput,
-          idempotencyKey: "running-recovery-1",
-        },
-        { conversationStore, queue, state },
-      );
-      const turnId = getAgentInvocationTurnId(created.invocationId);
-      await upsertTurnRecord({
-        actor: invocationInput.actor,
-        conversationId: created.childConversationId,
-        destination,
-        modelId: "test-model",
-        piMessages: [
-          {
-            role: "user",
-            content: [{ type: "text", text: invocationInput.input }],
-            timestamp: 1,
-          },
-        ],
-        turnId: turnId,
-        sliceId: 1,
-        source: invocationInput.source,
-        state: "running",
-        surface: "internal",
-      });
-      const run = vi.fn(async (request) => {
-        await expect(
-          getTurnRecord(created.childConversationId, turnId),
-        ).resolves.toMatchObject({ state: "paused" });
-        await request.durability.onInputCommitted?.();
-        return completedAgentRun({
-          diagnostics: {
-            assistantMessageCount: 1,
-            modelId: "test-model",
-            outcome: "success",
-            toolCalls: [],
-            toolErrorCount: 0,
-            toolResultCount: 0,
-            usedPrimaryText: true,
-          },
-          text: "Recovered answer",
-        });
-      });
-      const route = routeAgentInvocationWork({
-        fallbackWorker: vi.fn(async () => ({ status: "completed" as const })),
-        invocationWorker: createAgentInvocationWorker({
-          agentRunner: { run },
-        }),
-      });
-
-      await processConversationQueueMessage(queue.takeMessage(), {
-        conversationStore,
-        queue,
-        run: route,
-        state,
-      });
-
-      expect(run).toHaveBeenCalledOnce();
-      await expect(
-        conversationStore.get({
-          conversationId: created.childConversationId,
-        }),
-      ).resolves.not.toHaveProperty("destination");
     } finally {
       await fixture.close();
     }

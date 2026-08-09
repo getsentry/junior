@@ -8,9 +8,11 @@ import {
   saveTurnCheckpoint,
 } from "@/chat/task-execution/checkpoint";
 import { CooperativeTurnYieldError } from "@/chat/runtime/turn";
+import { botConfig } from "@/chat/config";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getTurnRecord } from "@/chat/task-execution/turn-cursor";
 import type { PiMessage } from "@/chat/pi/messages";
+import { TurnSliceLimitExceededError } from "@/chat/services/turn-limit";
 
 const originalStateAdapter = process.env.JUNIOR_STATE_ADAPTER;
 
@@ -86,6 +88,32 @@ describe("agent resume", () => {
     await expect(
       getTurnRecord(conversationId, turnId),
     ).resolves.toBeUndefined();
+  });
+
+  it("preserves the execution-limit error while parking for auth", async () => {
+    const conversationId = "local:test:auth-slice-limit";
+    const turnId = "turn-auth-slice-limit";
+    await saveTurnCheckpoint({
+      mode: "paused",
+      reason: "auth",
+      conversationId,
+      turnId,
+      sliceId: botConfig.maxSlicesPerTurn - 1,
+      modelId: "test/model",
+      messages: [message("authorize")],
+      surface: "internal",
+    });
+    const { resume } = await resumeState(conversationId, turnId);
+
+    await expect(
+      resume.parkForAuth(
+        new AuthorizationPauseError("mcp", "example", "Example", "link_sent"),
+      ),
+    ).rejects.toBeInstanceOf(TurnSliceLimitExceededError);
+    await expect(getTurnRecord(conversationId, turnId)).resolves.toMatchObject({
+      state: "failed",
+      errorMessage: expect.stringContaining("execution limit"),
+    });
   });
 
   it.each([
