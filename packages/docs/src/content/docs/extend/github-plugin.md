@@ -360,14 +360,14 @@ One pull request: `owner/repo#number`.
 <details class="resource-event">
 <summary><code>pull_request.checks.failed</code></summary>
 
-A check suite completed with failure or timeout. Trusted event data includes the PR, full head SHA, suite identity, and when enrichment succeeds the failing check-run names and URLs.
+A check suite finished with failure or timeout. Trusted data includes the PR, full head SHA, and suite id/url. If enrichment works, it also includes failed check names and urls.
 
 </details>
 
 <details class="resource-event">
 <summary><code>pull_request.checks.recovered</code></summary>
 
-A previously failing check suite completed successfully. Trusted event data includes the PR, full head SHA, and suite identity for the recovered suite. This is suite-scoped, not a full PR aggregate green signal.
+A check suite finished successfully after a failure. Trusted data includes the PR, full head SHA, and suite id/url. This is for one suite only. It does not mean the whole PR is green.
 
 </details>
 

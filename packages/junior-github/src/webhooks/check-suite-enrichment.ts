@@ -16,7 +16,7 @@ function checkRunsFromResponse(value: unknown): unknown[] {
   return Array.isArray(checkRuns) ? checkRuns : [];
 }
 
-/** Fetch failing check-run handles for a completed failed check suite. */
+/** Load failed check-run names and urls for a failed check suite. */
 export async function loadFailingChecksForSuite(args: {
   appIdEnv: string;
   body: unknown;

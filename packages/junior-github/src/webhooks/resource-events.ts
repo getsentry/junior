@@ -240,7 +240,7 @@ export type GitHubFailingCheck = {
   name: string;
 };
 
-/** Build the trusted data bag and summary for one check-suite PR event. */
+/** Build the trusted data and summary for one check-suite PR event. */
 export function buildCheckSuiteResourceEvent(args: {
   appName?: string;
   checkSuiteHtmlUrl?: string;
@@ -309,7 +309,7 @@ export function buildCheckSuiteResourceEvent(args: {
   };
 }
 
-/** Keep only the check-run facts Junior uses as action handles. */
+/** Keep only the failed check-run facts Junior needs next. */
 export function selectFailingChecks(checkRuns: unknown): GitHubFailingCheck[] {
   if (!Array.isArray(checkRuns)) return [];
   const failing: GitHubFailingCheck[] = [];
@@ -827,7 +827,7 @@ function normalizeReleaseEvent(
   );
 }
 
-/** Read the check-suite identity used to enrich failed check resource events. */
+/** Read the check suite target used to load failed check runs. */
 export function parseCheckSuiteEnrichmentTarget(body: unknown): {
   checkSuiteId: number;
   headSha: string;

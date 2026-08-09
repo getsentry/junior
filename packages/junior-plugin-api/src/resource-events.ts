@@ -5,7 +5,7 @@ export const RESOURCE_EVENT_TEXT_MAX_LENGTH = 8_000;
 export const RESOURCE_EVENT_DATA_MAX_KEYS = 32;
 export const RESOURCE_EVENT_DATA_MAX_JSON_BYTES = 4_000;
 
-/** Bounded plugin-authored structured facts the agent may trust without re-fetching. */
+/** Small trusted facts from the plugin. The agent should not look these up again. */
 export const resourceEventDataSchema = z
   .record(z.string(), z.unknown())
   .superRefine((value, context) => {
@@ -146,7 +146,7 @@ export const resourceEventInputSchema = z
       .string()
       .min(1)
       .transform((value) => value.slice(0, RESOURCE_EVENT_SUMMARY_MAX_LENGTH)),
-    /** Trusted structured facts. Prefer action handles over free-form prose. */
+    /** Trusted structured facts. Prefer ids and urls over long prose. */
     data: resourceEventDataSchema.optional(),
     untrustedText: z
       .string()

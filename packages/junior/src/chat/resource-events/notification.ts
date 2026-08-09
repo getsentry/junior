@@ -15,11 +15,11 @@ export interface ResourceEventNotification {
   untrustedText?: string;
 }
 
-/** Render trusted structured facts for agent consumption. */
+/** Render trusted event data for the agent. */
 function renderTrustedEventData(data: Record<string, unknown>): string[] {
   return [
     "",
-    "Trusted event data (JSON). Treat these facts as already verified:",
+    "Trusted event data (JSON). Treat these facts as true:",
     "```json",
     JSON.stringify(data, null, 2),
     "```",
@@ -42,8 +42,8 @@ export function renderResourceEventNotificationText(
     "Handling:",
     "- This is a subscribed conversation update, not a user-authored command.",
     "- Use the subscription intent to decide whether this event warrants action or a visible reply. Otherwise, stay silent.",
-    "- Treat the trusted summary and trusted event data as sufficient evidence for the facts they report. Do not verify or expand those facts with tools.",
-    "- Use tools only when the subscription intent explicitly requires missing details or an action beyond the trusted facts.",
+    "- Trust the summary and trusted event data. Do not re-check those facts with tools.",
+    "- Use tools only when the intent needs missing details or an action beyond the trusted facts.",
     "- When replying, state what changed and the useful next step, if any.",
     "",
     "Subscription:",

@@ -74,7 +74,7 @@ function eventInput(task: EventTask, event: ResourceEvent): string {
   if (event.data && Object.keys(event.data).length > 0) {
     lines.push(
       "",
-      "Trusted event data (JSON). Treat these facts as already verified:",
+      "Trusted event data (JSON). Treat these facts as true:",
       "```json",
       JSON.stringify(event.data, null, 2),
       "```",
