@@ -40,8 +40,7 @@ import {
 } from "@/chat/conversations/messages";
 import { persistConversationMessageSummaries } from "@/chat/conversations/message-summaries";
 import type { LocationConfigurationService } from "@/chat/configuration/types";
-import { appendSlackLegacyAttachmentText } from "@/chat/slack/legacy-attachments";
-import { getSlackMessageText } from "@/chat/slack/message";
+import { parseContent } from "@/chat/slack/message/content";
 import type {
   PrepareTurnStateInput,
   TurnContext,
@@ -82,9 +81,7 @@ function hasPendingImageHydration(
 }
 
 function getBackfillText(entry: Message): string | undefined {
-  const text = normalizeConversationText(
-    appendSlackLegacyAttachmentText(getSlackMessageText(entry), entry.raw),
-  );
+  const text = normalizeConversationText(parseContent(entry).text);
   return text || undefined;
 }
 

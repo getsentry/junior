@@ -20,14 +20,14 @@ import {
 import type { SlackChannelId } from "@/chat/slack/ids";
 import type { SlackMessageTs } from "@/chat/slack/timestamp";
 import type { SlackThreadReply } from "@/chat/slack/channel";
-import { renderSlackLegacyAttachmentText } from "@/chat/slack/legacy-attachments";
+import { renderAttachmentText } from "@/chat/slack/message/attachments";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 const MAX_THREAD_READ_CHARS = 40_000;
 
 /** Project a thread reply to safe output fields (strips url_private etc). */
 function sanitizeMessage(msg: SlackThreadReply) {
-  const attachmentText = renderSlackLegacyAttachmentText(msg.attachments);
+  const attachmentText = renderAttachmentText(msg.attachments);
 
   return {
     ts: msg.ts,

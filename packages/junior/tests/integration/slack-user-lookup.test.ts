@@ -45,6 +45,7 @@ describe("slackUserLookup", () => {
 
       expect(result).toMatchObject({
         mode: "user_id",
+        mention: "<@U039RR91S>",
         user: {
           id: "U039RR91S",
           name: "dcramer",
@@ -135,6 +136,7 @@ describe("slackUserLookup", () => {
 
       expect(result).toMatchObject({
         mode: "email",
+        mention: "<@U0EMAIL>",
         user: {
           id: "U0EMAIL",
           name: "emailuser",
@@ -192,7 +194,10 @@ describe("slackUserLookup", () => {
       // Should find Markus matches, ranked by relevance
       expect(result.users.length).toBeGreaterThanOrEqual(1);
       // Display name exact match should come first
-      expect(result.users[0].id).toBe("U3");
+      expect(result.users[0]).toMatchObject({
+        id: "U3",
+        mention: "<@U3>",
+      });
     });
 
     it("returns empty results when no match", async () => {

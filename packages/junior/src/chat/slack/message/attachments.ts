@@ -1,3 +1,5 @@
+import { renderBlockText } from "@/chat/slack/message/blocks";
+
 const MAX_ATTACHMENTS = 10;
 const MAX_FIELDS_PER_ATTACHMENT = 20;
 const MAX_FIELD_CHARS = 1000;
@@ -50,6 +52,7 @@ function renderAttachment(raw: unknown): string {
   const text = toStr(obj.text);
   const footer = toStr(obj.footer);
   const fields = Array.isArray(obj.fields) ? obj.fields : [];
+  const blockText = renderBlockText(obj.blocks);
 
   const add = (value: string | undefined) => {
     if (!value) return;
@@ -59,7 +62,7 @@ function renderAttachment(raw: unknown): string {
     parts.push(normalized);
   };
 
-  const hasRichContent = pretext || title || text;
+  const hasRichContent = pretext || title || text || blockText;
   if (!hasRichContent) {
     add(fallback);
   }
@@ -77,6 +80,7 @@ function renderAttachment(raw: unknown): string {
     add(renderField(field));
   }
 
+  add(blockText);
   add(footer);
 
   // Keep multi-line bodies readable. Compact single-line attachments still
@@ -84,8 +88,8 @@ function renderAttachment(raw: unknown): string {
   return parts.join("\n");
 }
 
-/** Render legacy Slack attachment fields so attachment-only messages still carry context. */
-export function renderSlackLegacyAttachmentText(input: unknown): string {
+/** Render legacy attachment fields so attachment-only messages still carry context. */
+export function renderAttachmentText(input: unknown): string {
   const rendered = getAttachmentPayload(input)
     .slice(0, MAX_ATTACHMENTS)
     .map(renderAttachment)
@@ -94,18 +98,4 @@ export function renderSlackLegacyAttachmentText(input: unknown): string {
     .join("\n");
 
   return rendered.slice(0, MAX_ATTACHMENT_TEXT_CHARS);
-}
-
-/** Append legacy Slack attachment text to the message text used by routing and replies. */
-export function appendSlackLegacyAttachmentText(
-  baseText: string | undefined,
-  rawMessageOrAttachments: unknown,
-): string {
-  const base = baseText?.trim() ?? "";
-  const attachmentText = renderSlackLegacyAttachmentText(
-    rawMessageOrAttachments,
-  );
-  if (!attachmentText) return base;
-  if (!base) return attachmentText;
-  return `${base}\n${attachmentText}`;
 }

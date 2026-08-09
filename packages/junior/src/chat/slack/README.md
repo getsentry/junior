@@ -13,6 +13,19 @@ runtime orchestration.
 - Duplicate Slack deliveries must converge on the same durable work rather than
   create duplicate turns.
 
+## Messages
+
+`message/` is the isolated Slack message projection module. It converts typed
+Chat SDK messages and tolerated raw Slack fields into small, plain values used
+by Junior. `content.ts` is the entry point for agent-visible text and attachment
+presence; `blocks.ts` and `attachments.ts` own the deterministic raw projections.
+
+Validate unknown event envelopes at ingress or persistence boundaries. Keep
+block and attachment projections tolerant of fields and element types Junior
+does not consume so Slack can add payload fields without breaking message text.
+Runtime modules should consume the `MessageContent` projection rather than
+inspect `message.raw` or assemble attachment text themselves.
+
 ## Delivery
 
 - Post each completed tool-free assistant message in the originating

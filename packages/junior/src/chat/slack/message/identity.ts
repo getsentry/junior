@@ -1,4 +1,4 @@
-import { stringifyMarkdown, type Message } from "chat";
+import type { Message } from "chat";
 import {
   parseSlackMessageTs,
   type SlackMessageTs,
@@ -8,7 +8,7 @@ import {
  * Preserve the native Slack message timestamp when a synthetic message ID is
  * used for routing or deduplication.
  */
-export function getSlackMessageTs(
+export function getMessageTimestamp(
   message: Pick<Message, "id" | "raw">,
 ): SlackMessageTs | undefined {
   const idTs = parseSlackMessageTs(message.id);
@@ -21,17 +21,4 @@ export function getSlackMessageTs(
   }
 
   return undefined;
-}
-
-/**
- * Return the Chat SDK's canonical formatted representation by default.
- * Fall back to plain text only when the message has no formatted content.
- */
-export function getSlackMessageText(
-  message: Pick<Message, "formatted" | "text">,
-): string {
-  if (message.formatted.children.length > 0) {
-    return stringifyMarkdown(message.formatted).trim();
-  }
-  return message.text.trim();
 }

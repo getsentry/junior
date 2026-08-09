@@ -31,11 +31,15 @@ function explicitUserLookupError(error: SlackActionError): string | undefined {
   return undefined;
 }
 
+function slackMention(userId: string): string {
+  return `<@${userId}>`;
+}
+
 /** Create the tool that resolves Slack users by ID, handle, or email. */
 export function createSlackUserLookupTool() {
   return zodTool({
     description:
-      "Look up Slack user profiles by user ID, email, or name search. Set mode to match the identifier in value. Returns profile fields including title, status, and custom fields.",
+      "Look up Slack user profiles by user ID, email, or name search. Set mode to match the identifier in value. Returns profile fields and the Slack `mention` format (`<@U…>`).",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -67,9 +71,11 @@ export function createSlackUserLookupTool() {
             throw new ToolInputError(parsedUserId.error);
           }
 
+          const user = await lookupSlackUserProfile(parsedUserId.value);
           return {
             mode: "user_id",
-            user: await lookupSlackUserProfile(parsedUserId.value),
+            mention: slackMention(user.id),
+            user,
           };
         }
 
@@ -82,6 +88,7 @@ export function createSlackUserLookupTool() {
           }
           return {
             mode: "email",
+            mention: slackMention(profile.id),
             user: profile,
           };
         }
@@ -100,7 +107,10 @@ export function createSlackUserLookupTool() {
           searched_pages: result.searched_pages,
           searched_user_count: result.searched_user_count,
           truncated: result.truncated,
-          users: result.users,
+          users: result.users.map((user) => ({
+            ...user,
+            mention: slackMention(user.id),
+          })),
         };
       } catch (error) {
         if (error instanceof SlackActionError) {
