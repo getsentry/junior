@@ -62,7 +62,7 @@ function definedProps<T extends Record<string, unknown>>(
   ) as Partial<T>;
 }
 
-export type AgentTurnSessionStatus =
+export type TurnStatus =
   | "running"
   | "paused"
   | "completed"
@@ -71,7 +71,7 @@ export type AgentTurnSessionStatus =
 
 export type AgentTurnSurface = "slack" | "api" | "scheduler" | "internal";
 
-export type AgentTurnResumeReason = "timeout" | "auth" | "yield" | "retry";
+export type TurnPauseReason = "timeout" | "auth" | "yield" | "retry";
 export type AgentDispatchOutcome = "blocked" | "completed" | "failed";
 
 interface ConversationMessageProjection {
@@ -79,7 +79,7 @@ interface ConversationMessageProjection {
   provenance: ConversationMessageProvenance[];
 }
 
-export interface AgentTurnSessionRecord {
+export interface TurnRecord {
   channelName?: string;
   version: number;
   conversationId: string;
@@ -104,35 +104,35 @@ export interface AgentTurnSessionRecord {
    * replaces the singular execution actor, which is rebuilt at resume.
    */
   actors: Actor[];
-  resumeReason?: AgentTurnResumeReason;
+  resumeReason?: TurnPauseReason;
   resumedFromSliceId?: number;
   sessionId: string;
   sliceId: number;
   startedAtMs: number;
-  state: AgentTurnSessionStatus;
+  state: TurnStatus;
   surface?: AgentTurnSurface;
   traceId?: string;
   turnStartMessageIndex?: number;
   updatedAtMs: number;
 }
 
-export interface AgentTurnSessionSummary {
+export interface TurnSummary {
   conversationId: string;
   dispatchId?: string;
   dispatchOutcome?: AgentDispatchOutcome;
   /** Provider-owned identifier returned after visible delivery is accepted. */
   resultMessageId?: string;
-  resumeReason?: AgentTurnResumeReason;
+  resumeReason?: TurnPauseReason;
   sessionId: string;
   sliceId: number;
-  state: AgentTurnSessionStatus;
+  state: TurnStatus;
   surface?: AgentTurnSurface;
   updatedAtMs: number;
   version: number;
 }
 
-interface StoredAgentTurnSessionRecord extends Omit<
-  AgentTurnSessionRecord,
+interface StoredTurnRecord extends Omit<
+  TurnRecord,
   | "actors"
   | "channelName"
   | "cumulativeDurationMs"
@@ -170,7 +170,7 @@ const agentTurnSessionStatusSchema = z
     "abandoned",
   ])
   .transform(
-    (state): AgentTurnSessionStatus =>
+    (state): TurnStatus =>
       state === "awaiting_resume" ? "paused" : state,
   );
 
@@ -186,7 +186,7 @@ const agentTurnResumeReasonSchema = z.enum([
   "auth",
   "yield",
   "retry",
-]) satisfies z.ZodType<AgentTurnResumeReason>;
+]) satisfies z.ZodType<TurnPauseReason>;
 
 const nonNegativeNumberSchema = z.number().finite().nonnegative();
 const seqCursorSchema = z.number().int().min(-1);
@@ -206,10 +206,10 @@ const agentTurnSessionSummarySchema = z
     surface: agentTurnSurfaceSchema.optional(),
     updatedAtMs: nonNegativeNumberSchema,
   })
-  .strip() satisfies z.ZodType<AgentTurnSessionSummary>;
+  .strip() satisfies z.ZodType<TurnSummary>;
 
 /** Full turn-session record stored under the session key. */
-const storedAgentTurnSessionRecordSchema = z
+const storedTurnRecordSchema = z
   .object({
     version: z.number().int().nonnegative(),
     conversationId: z.string().min(1),
@@ -232,10 +232,10 @@ const storedAgentTurnSessionRecordSchema = z
     turnStartSeq: seqCursorSchema.optional(),
     runtimeContext: z.array(piMessageSchema).optional(),
   })
-  .strip() satisfies z.ZodType<StoredAgentTurnSessionRecord>;
+  .strip() satisfies z.ZodType<StoredTurnRecord>;
 
 function conversationExecutionFromSummary(
-  summary: AgentTurnSessionSummary,
+  summary: TurnSummary,
 ): ConversationExecution {
   const status =
     summary.state === "completed" || summary.state === "abandoned"
@@ -254,18 +254,18 @@ function sessionLogActor(
   return actor?.platform === "slack" ? toStoredSlackActor(actor) : undefined;
 }
 
-function parseAgentTurnSessionRecord(
+function parseTurnRecord(
   value: unknown,
-): StoredAgentTurnSessionRecord {
-  return storedAgentTurnSessionRecordSchema.parse(value);
+): StoredTurnRecord {
+  return storedTurnRecordSchema.parse(value);
 }
 
-function parseAgentTurnSessionSummary(value: unknown): AgentTurnSessionSummary {
+function parseTurnSummary(value: unknown): TurnSummary {
   return agentTurnSessionSummarySchema.parse(value);
 }
 
 function agentTurnSessionRecordTtlMs(
-  state: AgentTurnSessionStatus,
+  state: TurnStatus,
   ttlMs?: number,
 ): number {
   if (ttlMs !== undefined) {
@@ -285,14 +285,14 @@ function agentTurnSessionIndexTtlMs(ttlMs?: number): number {
   return Math.max(1, ttlMs ?? AGENT_TURN_SESSION_RESUME_TTL_MS);
 }
 
-function projectAgentTurnSessionSummary(
-  record: StoredAgentTurnSessionRecord,
-): AgentTurnSessionSummary {
+function projectTurnSummary(
+  record: StoredTurnRecord,
+): TurnSummary {
   return agentTurnSessionSummarySchema.parse(record);
 }
 
-async function appendAgentTurnSessionSummary(
-  summary: AgentTurnSessionSummary,
+async function appendTurnSummary(
+  summary: TurnSummary,
   ttlMs: number,
 ): Promise<void> {
   const stateAdapter = getStateAdapter();
@@ -319,7 +319,7 @@ async function recordConversationActivityMetadata(args: {
    * has a separate coarse `source` enum (slack/api/scheduler/...).
    */
   source?: Source;
-  summary: AgentTurnSessionSummary & {
+  summary: TurnSummary & {
     channelName?: string;
     cumulativeDurationMs: number;
     cumulativeUsage?: AgentTurnUsage;
@@ -376,8 +376,8 @@ async function recordConversationActivityMetadata(args: {
   });
 }
 
-function materializeAgentTurnSessionRecord(
-  stored: StoredAgentTurnSessionRecord,
+function materializeTurnRecord(
+  stored: StoredTurnRecord,
   piProjection: ConversationMessageProjection,
   turnStartMessageIndex?: number,
   restoreVolatileContext = true,
@@ -389,7 +389,7 @@ function materializeAgentTurnSessionRecord(
     modelId?: string;
     reasoningLevel?: string;
   },
-): AgentTurnSessionRecord {
+): TurnRecord {
   const restoredProjection =
     restoreVolatileContext &&
     (stored.state === "running" || stored.state === "paused")
@@ -478,25 +478,25 @@ function restoreRuntimeContext(
 }
 
 /** Read only the stored metadata record without materializing transcript logs. */
-async function getStoredAgentTurnSessionRecord(
+async function getStoredTurnRecord(
   conversationId: string,
   sessionId: string,
-): Promise<StoredAgentTurnSessionRecord | undefined> {
+): Promise<StoredTurnRecord | undefined> {
   const stateAdapter = getStateAdapter();
   await stateAdapter.connect();
   const value = await stateAdapter.get(
     agentTurnSessionKey(conversationId, sessionId),
   );
-  return value == null ? undefined : parseAgentTurnSessionRecord(value);
+  return value == null ? undefined : parseTurnRecord(value);
 }
 
 /** Read a materialized turn session record for resume and history loading. */
-async function materializeStoredAgentTurnSessionRecord(
+async function materializeStoredTurnRecord(
   conversationId: string,
   sessionId: string,
   followCurrentReplacement: boolean,
-): Promise<AgentTurnSessionRecord | undefined> {
-  const parsed = await getStoredAgentTurnSessionRecord(
+): Promise<TurnRecord | undefined> {
+  const parsed = await getStoredTurnRecord(
     conversationId,
     sessionId,
   );
@@ -534,7 +534,7 @@ async function materializeStoredAgentTurnSessionRecord(
 
   const conversation = await getConversationStore().get({ conversationId });
   const executionMetrics = executionMetricsForSession(conversation, sessionId);
-  return materializeAgentTurnSessionRecord(
+  return materializeTurnRecord(
     parsed,
     piProjection,
     turnStartMessageIndex,
@@ -550,11 +550,11 @@ async function materializeStoredAgentTurnSessionRecord(
 }
 
 /** Read a turn record pinned to the history version containing its checkpoint. */
-export async function getAgentTurnSessionRecord(
+export async function getTurnRecord(
   conversationId: string,
   sessionId: string,
-): Promise<AgentTurnSessionRecord | undefined> {
-  return await materializeStoredAgentTurnSessionRecord(
+): Promise<TurnRecord | undefined> {
+  return await materializeStoredTurnRecord(
     conversationId,
     sessionId,
     false,
@@ -562,11 +562,11 @@ export async function getAgentTurnSessionRecord(
 }
 
 /** Read a turn session for resume, following a newer committed replacement while unfinished. */
-export async function getAgentTurnSessionRecordForResume(
+export async function getTurnRecordForResume(
   conversationId: string,
   sessionId: string,
-): Promise<AgentTurnSessionRecord | undefined> {
-  return await materializeStoredAgentTurnSessionRecord(
+): Promise<TurnRecord | undefined> {
+  return await materializeStoredTurnRecord(
     conversationId,
     sessionId,
     true,
@@ -586,15 +586,15 @@ function buildStoredRecord(args: {
   sessionId: string;
   sliceId: number;
   startedAtMs?: number;
-  state: AgentTurnSessionStatus;
+  state: TurnStatus;
   surface?: AgentTurnSurface;
-  resumeReason?: AgentTurnResumeReason;
+  resumeReason?: TurnPauseReason;
   errorMessage?: string;
   resumedFromSliceId?: number;
   traceId?: string;
   turnStartSeq?: number;
   runtimeContext?: PiMessage[];
-}): StoredAgentTurnSessionRecord {
+}): StoredTurnRecord {
   const nowMs = Date.now();
   return {
     version: (args.previousVersion ?? 0) + 1,
@@ -633,7 +633,7 @@ async function setStoredRecord(args: {
   destinationVisibility?: ConversationPrivacy;
   piMessages: PiMessage[];
   piMessageProvenance: ConversationMessageProvenance[];
-  record: StoredAgentTurnSessionRecord;
+  record: StoredTurnRecord;
   runtimeMetadata: {
     channelName?: string;
     cumulativeDurationMs: number;
@@ -648,11 +648,11 @@ async function setStoredRecord(args: {
   /** Recovery index TTL override; defaults to the resume window. */
   indexTtlMs?: number;
   turnStartMessageIndex?: number;
-}): Promise<AgentTurnSessionRecord> {
+}): Promise<TurnRecord> {
   const stateAdapter = getStateAdapter();
   await stateAdapter.connect();
 
-  const storedRecord = storedAgentTurnSessionRecordSchema.parse(args.record);
+  const storedRecord = storedTurnRecordSchema.parse(args.record);
   await recordConversationActivityMetadata({
     actor: args.actor,
     conversationStore: args.conversationStore,
@@ -669,11 +669,11 @@ async function setStoredRecord(args: {
   );
   // The per-conversation recovery index is multi-session; keep the resume
   // window so a terminal write cannot expire unfinished siblings.
-  await appendAgentTurnSessionSummary(
-    projectAgentTurnSessionSummary(storedRecord),
+  await appendTurnSummary(
+    projectTurnSummary(storedRecord),
     agentTurnSessionIndexTtlMs(args.indexTtlMs),
   );
-  return materializeAgentTurnSessionRecord(
+  return materializeTurnRecord(
     storedRecord,
     {
       messages: [...args.piMessages],
@@ -689,12 +689,12 @@ async function setStoredRecord(args: {
  * Transition an unfinished session record only if the caller still holds the
  * version it loaded, preventing stale resume callbacks from winning.
  */
-async function updateAgentTurnSessionState(args: {
-  existing: AgentTurnSessionRecord;
+async function updateTurnState(args: {
+  existing: TurnRecord;
   errorMessage?: string;
   state: "abandoned" | "failed";
-}): Promise<AgentTurnSessionRecord | undefined> {
-  const parsed = await getStoredAgentTurnSessionRecord(
+}): Promise<TurnRecord | undefined> {
+  const parsed = await getStoredTurnRecord(
     args.existing.conversationId,
     args.existing.sessionId,
   );
@@ -745,7 +745,7 @@ async function updateAgentTurnSessionState(args: {
 }
 
 /** Commit stable Pi session state and advance the turn session record. */
-export async function upsertAgentTurnSessionRecord(args: {
+export async function upsertTurnRecord(args: {
   channelName?: string;
   conversationId: string;
   cumulativeDurationMs?: number;
@@ -763,13 +763,13 @@ export async function upsertAgentTurnSessionRecord(args: {
   conversationStore?: ConversationStore;
   sessionId: string;
   sliceId: number;
-  state: AgentTurnSessionStatus;
+  state: TurnStatus;
   surface?: AgentTurnSurface;
   piMessages: PiMessage[];
   /** Provenance for trailing newly committed messages, such as steering. */
   trailingMessageProvenance?: ConversationMessageProvenance[];
   actor?: Actor;
-  resumeReason?: AgentTurnResumeReason;
+  resumeReason?: TurnPauseReason;
   reasoningLevel?: string;
   errorMessage?: string;
   resumedFromSliceId?: number;
@@ -777,8 +777,8 @@ export async function upsertAgentTurnSessionRecord(args: {
   turnContexts?: PluginTurnContext[];
   turnStartMessageIndex?: number;
   ttlMs?: number;
-}): Promise<AgentTurnSessionRecord> {
-  const existingRecord = await getStoredAgentTurnSessionRecord(
+}): Promise<TurnRecord> {
+  const existingRecord = await getStoredTurnRecord(
     args.conversationId,
     args.sessionId,
   );
@@ -794,7 +794,7 @@ export async function upsertAgentTurnSessionRecord(args: {
   const existingDispatchId =
     existingRecord?.dispatchId ??
     (
-      await listAgentTurnSessionSummariesForConversation(args.conversationId)
+      await listTurnSummaries(args.conversationId)
     ).find((summary) => summary.sessionId === args.sessionId)?.dispatchId;
   if (
     existingDispatchId &&
@@ -914,7 +914,7 @@ export async function upsertAgentTurnSessionRecord(args: {
 }
 
 /** Record turn-session metadata without storing conversation messages. */
-export async function recordAgentTurnSessionSummary(args: {
+export async function recordTurnSummary(args: {
   channelName?: string;
   conversationId: string;
   cumulativeDurationMs?: number;
@@ -931,17 +931,17 @@ export async function recordAgentTurnSessionSummary(args: {
   modelId?: string;
   conversationStore?: ConversationStore;
   actor?: Actor;
-  resumeReason?: AgentTurnResumeReason;
+  resumeReason?: TurnPauseReason;
   reasoningLevel?: string;
   sessionId: string;
   sliceId: number;
   startedAtMs?: number;
-  state: AgentTurnSessionStatus;
+  state: TurnStatus;
   surface?: AgentTurnSurface;
   traceId?: string;
   ttlMs?: number;
 }): Promise<void> {
-  const stored = await getStoredAgentTurnSessionRecord(
+  const stored = await getStoredTurnRecord(
     args.conversationId,
     args.sessionId,
   );
@@ -954,7 +954,7 @@ export async function recordAgentTurnSessionSummary(args: {
     args.sessionId,
   );
   const priorSummary = (
-    await listAgentTurnSessionSummariesForConversation(args.conversationId)
+    await listTurnSummaries(args.conversationId)
   ).find((summary) => summary.sessionId === args.sessionId);
   const existing = stored ?? priorSummary;
   const existingDispatchId = existing?.dispatchId;
@@ -974,7 +974,7 @@ export async function recordAgentTurnSessionSummary(args: {
   const nowMs = Date.now();
   // Summary-only path writes the recovery index, not the per-session record key.
   const ttlMs = agentTurnSessionIndexTtlMs(args.ttlMs);
-  const summary: AgentTurnSessionSummary = {
+  const summary: TurnSummary = {
     version: existing?.version ?? 0,
     conversationId: args.conversationId,
     sessionId: args.sessionId,
@@ -1005,21 +1005,21 @@ export async function recordAgentTurnSessionSummary(args: {
       startedAtMs: stored?.startedAtMs ?? args.startedAtMs ?? nowMs,
     },
   });
-  await appendAgentTurnSessionSummary(summary, ttlMs);
+  await appendTurnSummary(summary, ttlMs);
 }
 
-async function readAgentTurnSessionSummariesFromIndex(
+async function readTurnSummaries(
   key: string,
-): Promise<AgentTurnSessionSummary[]> {
+): Promise<TurnSummary[]> {
   const stateAdapter = getStateAdapter();
   await stateAdapter.connect();
   const values = await stateAdapter.getList(key);
-  const summaries = new Map<string, AgentTurnSessionSummary>();
+  const summaries = new Map<string, TurnSummary>();
 
   for (const value of [...values].reverse()) {
-    let summary: AgentTurnSessionSummary;
+    let summary: TurnSummary;
     try {
-      summary = parseAgentTurnSessionSummary(value);
+      summary = parseTurnSummary(value);
     } catch {
       continue;
     }
@@ -1035,21 +1035,21 @@ async function readAgentTurnSessionSummariesFromIndex(
 }
 
 /** List retained turn-session recovery projections for one conversation. */
-export async function listAgentTurnSessionSummariesForConversation(
+export async function listTurnSummaries(
   conversationId: string,
-): Promise<AgentTurnSessionSummary[]> {
-  return readAgentTurnSessionSummariesFromIndex(
+): Promise<TurnSummary[]> {
+  return readTurnSummaries(
     agentTurnSessionConversationIndexKey(conversationId),
   );
 }
 
 /** Mark an unfinished turn session record as abandoned when a newer turn wins. */
-export async function abandonAgentTurnSessionRecord(args: {
+export async function abandonTurnRecord(args: {
   conversationId: string;
   sessionId: string;
   errorMessage?: string;
-}): Promise<AgentTurnSessionRecord | undefined> {
-  const existing = await getAgentTurnSessionRecord(
+}): Promise<TurnRecord | undefined> {
+  const existing = await getTurnRecord(
     args.conversationId,
     args.sessionId,
   );
@@ -1062,7 +1062,7 @@ export async function abandonAgentTurnSessionRecord(args: {
     return undefined;
   }
 
-  return await updateAgentTurnSessionState({
+  return await updateTurnState({
     existing,
     state: "abandoned",
     errorMessage: args.errorMessage ?? existing.errorMessage,
@@ -1070,13 +1070,13 @@ export async function abandonAgentTurnSessionRecord(args: {
 }
 
 /** Mark an unfinished turn session record as failed so it cannot resume. */
-export async function failAgentTurnSessionRecord(args: {
+export async function failTurnRecord(args: {
   conversationId: string;
   expectedVersion: number;
   sessionId: string;
   errorMessage?: string;
-}): Promise<AgentTurnSessionRecord | undefined> {
-  const existing = await getAgentTurnSessionRecord(
+}): Promise<TurnRecord | undefined> {
+  const existing = await getTurnRecord(
     args.conversationId,
     args.sessionId,
   );
@@ -1090,7 +1090,7 @@ export async function failAgentTurnSessionRecord(args: {
     return undefined;
   }
 
-  return await updateAgentTurnSessionState({
+  return await updateTurnState({
     existing,
     state: "failed",
     errorMessage: args.errorMessage ?? existing.errorMessage,

@@ -171,7 +171,7 @@ async function createAwaitingMcpTurnRecord(args: {
   text: string;
   threadTs: string;
 }) {
-  await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+  await turnSessionStoreModule.upsertTurnRecord({
     modelId: "test/model",
     conversationId: args.conversationId,
     sessionId: args.sessionId,
@@ -813,7 +813,7 @@ describe("mcp oauth callback integration", () => {
 
   it("does not resume a stale MCP-blocked request after a newer thread message", async () => {
     const sessionId = "turn_user-4";
-    await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+    await turnSessionStoreModule.upsertTurnRecord({
       modelId: "test/model",
       conversationId: "conversation-4",
       sessionId,
@@ -895,7 +895,7 @@ describe("mcp oauth callback integration", () => {
     expect(conversation.processing.pendingAuth).toBeUndefined();
 
     const sessionRecord =
-      await turnSessionStoreModule.getAgentTurnSessionRecord(
+      await turnSessionStoreModule.getTurnRecord(
         "conversation-4",
         sessionId,
       );

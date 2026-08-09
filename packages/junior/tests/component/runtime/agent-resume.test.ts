@@ -8,7 +8,7 @@ import {
   saveTurnCheckpoint,
 } from "@/chat/task-execution/checkpoint";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { getAgentTurnSessionRecord } from "@/chat/task-execution/turn-cursor";
+import { getTurnRecord } from "@/chat/task-execution/turn-cursor";
 import type { PiMessage } from "@/chat/pi/messages";
 
 const originalStateAdapter = process.env.JUNIOR_STATE_ADAPTER;
@@ -66,7 +66,7 @@ describe("agent resume", () => {
       ),
     ).rejects.toEqual(expect.any(Error));
     await expect(
-      getAgentTurnSessionRecord(conversationId, turnId),
+      getTurnRecord(conversationId, turnId),
     ).resolves.toBeUndefined();
   });
 
@@ -117,7 +117,7 @@ describe("agent resume", () => {
     ).rejects.toThrow(/Turn made no progress/);
 
     await expect(
-      getAgentTurnSessionRecord(conversationId, turnId),
+      getTurnRecord(conversationId, turnId),
     ).resolves.toMatchObject({
       state: "failed",
       errorMessage:
@@ -171,7 +171,7 @@ describe("agent resume", () => {
     ).rejects.toThrow(/Turn made no progress/);
 
     await expect(
-      getAgentTurnSessionRecord(conversationId, turnId),
+      getTurnRecord(conversationId, turnId),
     ).resolves.toMatchObject({
       state: "failed",
       errorMessage:

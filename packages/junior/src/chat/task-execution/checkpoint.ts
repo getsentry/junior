@@ -26,41 +26,39 @@ import { botConfig } from "@/chat/config";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
 import { AgentHistoryBranchError } from "@/chat/conversations/projection";
 import {
-  abandonAgentTurnSessionRecord,
-  failAgentTurnSessionRecord,
-  getAgentTurnSessionRecord,
-  getAgentTurnSessionRecordForResume,
-  listAgentTurnSessionSummariesForConversation,
-  recordAgentTurnSessionSummary,
-  upsertAgentTurnSessionRecord,
+  abandonTurnRecord,
+  failTurnRecord,
+  getTurnRecord,
+  getTurnRecordForResume,
+  listTurnSummaries,
+  recordTurnSummary,
+  upsertTurnRecord,
   type AgentDispatchOutcome,
-  type AgentTurnResumeReason,
-  type AgentTurnSessionRecord,
-  type AgentTurnSessionSummary,
+  type TurnPauseReason,
+  type TurnRecord,
+  type TurnSummary,
   type AgentTurnSurface,
 } from "./turn-cursor";
 
 export type {
   AgentDispatchOutcome,
-  AgentTurnSessionRecord,
-  AgentTurnSessionSummary,
+  TurnRecord,
+  TurnSummary,
   AgentTurnSurface,
 };
 export {
-  abandonAgentTurnSessionRecord,
-  failAgentTurnSessionRecord,
-  getAgentTurnSessionRecord,
-  listAgentTurnSessionSummariesForConversation,
-  recordAgentTurnSessionSummary,
+  abandonTurnRecord,
+  failTurnRecord,
+  getTurnRecord,
+  listTurnSummaries,
+  recordTurnSummary,
 };
-
-export type TurnPauseReason = AgentTurnResumeReason;
 
 /** Loaded resume cursor. */
 export interface TurnCheckpoint {
   resumed: boolean;
   sliceId: number;
-  record?: AgentTurnSessionRecord;
+  record?: TurnRecord;
 }
 
 /**
@@ -141,7 +139,7 @@ export async function loadTurnCheckpoint(args: {
   conversationId: string;
   turnId: string;
 }): Promise<TurnCheckpoint> {
-  const record = await getAgentTurnSessionRecordForResume(
+  const record = await getTurnRecordForResume(
     args.conversationId,
     args.turnId,
   );
@@ -161,7 +159,7 @@ export async function loadTurnCheckpoint(args: {
  */
 export async function saveTurnCheckpoint(
   args: SaveTurnCheckpointArgs,
-): Promise<AgentTurnSessionRecord | undefined> {
+): Promise<TurnRecord | undefined> {
   if (args.mode === "running") {
     return await saveRunning(args);
   }
@@ -174,7 +172,7 @@ export async function saveTurnCheckpoint(
 
 function sharedWrite(
   args: TurnCheckpointWrite,
-  latest?: AgentTurnSessionRecord,
+  latest?: TurnRecord,
 ) {
   return {
     conversationId: args.conversationId,
@@ -200,16 +198,16 @@ function sharedWrite(
 
 async function saveRunning(
   args: Extract<SaveTurnCheckpointArgs, { mode: "running" }>,
-): Promise<AgentTurnSessionRecord | undefined> {
+): Promise<TurnRecord | undefined> {
   if (args.messages.length === 0 || !isContinuablePiBoundary(args.messages)) {
     return undefined;
   }
   try {
-    const latest = await getAgentTurnSessionRecord(
+    const latest = await getTurnRecord(
       args.conversationId,
       args.turnId,
     );
-    return await upsertAgentTurnSessionRecord({
+    return await upsertTurnRecord({
       ...sharedWrite(args, latest),
       ...definedProps({
         trailingMessageProvenance: args.trailingMessageProvenance,
@@ -236,12 +234,12 @@ async function saveRunning(
 
 async function savePaused(
   args: Extract<SaveTurnCheckpointArgs, { mode: "paused" }>,
-): Promise<AgentTurnSessionRecord | undefined> {
+): Promise<TurnRecord | undefined> {
   // Yield keeps the current slice; auth/timeout/retry advance it.
   const keepSlice = args.reason === "yield";
   const nextSliceId = keepSlice ? args.sliceId : args.sliceId + 1;
   try {
-    const latest = await getAgentTurnSessionRecord(
+    const latest = await getTurnRecord(
       args.conversationId,
       args.turnId,
     );
@@ -273,7 +271,7 @@ async function savePaused(
     };
 
     if (!keepSlice && nextSliceId > botConfig.maxSlicesPerTurn) {
-      return await upsertAgentTurnSessionRecord({
+      return await upsertTurnRecord({
         ...base,
         ...definedProps({ resumedFromSliceId: latest?.resumedFromSliceId }),
         errorMessage: new TurnSliceLimitExceededError(
@@ -284,7 +282,7 @@ async function savePaused(
       });
     }
 
-    return await upsertAgentTurnSessionRecord({
+    return await upsertTurnRecord({
       ...base,
       ...definedProps({
         resumedFromSliceId: keepSlice
@@ -310,9 +308,9 @@ async function savePaused(
 async function saveDone(
   args: Extract<SaveTurnCheckpointArgs, { mode: "completed" | "failed" }>,
 ): Promise<void> {
-  let latest: AgentTurnSessionRecord | undefined;
+  let latest: TurnRecord | undefined;
   await persistWithRetry(async () => {
-    latest = await getAgentTurnSessionRecord(args.conversationId, args.turnId);
+    latest = await getTurnRecord(args.conversationId, args.turnId);
   });
   const sliceId = args.sliceId ?? latest?.sliceId;
   if (sliceId === undefined) {
@@ -321,7 +319,7 @@ async function saveDone(
     );
   }
   await persistWithRetry(async () => {
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       ...sharedWrite(args, latest),
       ...definedProps({
         cumulativeDurationMs: addDurationMs(

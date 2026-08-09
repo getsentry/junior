@@ -43,9 +43,9 @@ import { createSlackResumeActor, type Actor } from "@/chat/actor";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import {
-  failAgentTurnSessionRecord,
-  getAgentTurnSessionRecord,
-  abandonAgentTurnSessionRecord,
+  failTurnRecord,
+  getTurnRecord,
+  abandonTurnRecord,
 } from "@/chat/task-execution/checkpoint";
 import {
   loadProjection,
@@ -143,7 +143,7 @@ async function failSessionRecordBestEffort(args: {
   sessionId: string;
 }): Promise<void> {
   try {
-    await failAgentTurnSessionRecord({
+    await failTurnRecord({
       conversationId: args.conversationId,
       expectedVersion: args.expectedVersion,
       sessionId: args.sessionId,
@@ -238,7 +238,7 @@ async function resumeOAuthSessionRecordTurn(
       await persistThreadStateById(stored.resumeConversationId, {
         conversation,
       });
-      await abandonAgentTurnSessionRecord({
+      await abandonTurnRecord({
         conversationId: stored.resumeConversationId,
         sessionId: pendingAuth.sessionId,
         errorMessage:
@@ -248,7 +248,7 @@ async function resumeOAuthSessionRecordTurn(
     }
   }
 
-  const sessionRecord = await getAgentTurnSessionRecord(
+  const sessionRecord = await getTurnRecord(
     stored.resumeConversationId,
     resolvedSessionId,
   );
@@ -311,7 +311,7 @@ async function resumeOAuthSessionRecordTurn(
       if (lockedSessionId !== resolvedSessionId) {
         return false;
       }
-      const lockedSessionRecord = await getAgentTurnSessionRecord(
+      const lockedSessionRecord = await getTurnRecord(
         stored.resumeConversationId!,
         lockedSessionId,
       );
@@ -330,7 +330,7 @@ async function resumeOAuthSessionRecordTurn(
           await persistThreadStateById(stored.resumeConversationId!, {
             conversation: lockedConversation,
           });
-          await abandonAgentTurnSessionRecord({
+          await abandonTurnRecord({
             conversationId: stored.resumeConversationId!,
             sessionId: lockedPendingAuth.sessionId,
             errorMessage:
@@ -368,7 +368,7 @@ async function resumeOAuthSessionRecordTurn(
           userId: lockedUserMessage.author.userId,
         });
       } catch {
-        await failAgentTurnSessionRecord({
+        await failTurnRecord({
           conversationId: stored.resumeConversationId!,
           expectedVersion: lockedSessionRecord.version,
           sessionId: lockedSessionId,
@@ -382,7 +382,7 @@ async function resumeOAuthSessionRecordTurn(
           conversationId: stored.resumeConversationId!,
         });
       } catch (error) {
-        await failAgentTurnSessionRecord({
+        await failTurnRecord({
           conversationId: stored.resumeConversationId!,
           expectedVersion: lockedSessionRecord.version,
           sessionId: lockedSessionId,
@@ -461,7 +461,7 @@ async function resumeOAuthSessionRecordTurn(
           });
         },
         onPostDeliveryCommitFailure: async () => {
-          await failAgentTurnSessionRecord({
+          await failTurnRecord({
             conversationId: stored.resumeConversationId!,
             expectedVersion: lockedSessionRecord.version,
             sessionId: lockedSessionId,

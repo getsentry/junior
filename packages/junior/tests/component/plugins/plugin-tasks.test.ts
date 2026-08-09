@@ -67,9 +67,9 @@ async function recordCompletedSession(args: {
   conversationId: string;
   sessionId: string;
 }): Promise<void> {
-  const { upsertAgentTurnSessionRecord } =
+  const { upsertTurnRecord } =
     await import("@/chat/task-execution/turn-cursor");
-  await upsertAgentTurnSessionRecord({
+  await upsertTurnRecord({
     modelId: "test/model",
     conversationId: args.conversationId,
     destination: {
@@ -151,7 +151,7 @@ describe("plugin background tasks", () => {
     const { setPlugins } = await import("@/chat/plugins/agent-hooks");
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
-    const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
+    const { getTurnRecord, upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
     setPlugins([
       defineJuniorPlugin({
@@ -169,7 +169,7 @@ describe("plugin background tasks", () => {
         },
       }),
     ]);
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       modelId: "test/model",
       conversationId: runConversationId,
       destination: runDestination,
@@ -222,7 +222,7 @@ describe("plugin background tasks", () => {
       turnStartMessageIndex: 2,
     });
     expect(
-      await getAgentTurnSessionRecord(runConversationId, runSessionId),
+      await getTurnRecord(runConversationId, runSessionId),
     ).toBeDefined();
 
     await scheduleSessionCompletedPluginTasks(
@@ -297,7 +297,7 @@ describe("plugin background tasks", () => {
     const { setPlugins } = await import("@/chat/plugins/agent-hooks");
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
-    const { upsertAgentTurnSessionRecord } =
+    const { upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
     setPlugins([
       defineJuniorPlugin({
@@ -332,7 +332,7 @@ describe("plugin background tasks", () => {
       "</current-instruction>",
     ].join("\n");
 
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       modelId: "test/model",
       conversationId: runConversationId,
       destination: { ...destination, conversationId: runConversationId },
@@ -421,7 +421,7 @@ describe("plugin background tasks", () => {
     const { setPlugins } = await import("@/chat/plugins/agent-hooks");
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
-    const { upsertAgentTurnSessionRecord } =
+    const { upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
     setPlugins([
       defineJuniorPlugin({
@@ -457,7 +457,7 @@ describe("plugin background tasks", () => {
       },
     ]);
 
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       modelId: "test/model",
       conversationId: slackConversationId,
       destination: { platform: "slack", teamId, channelId },
@@ -533,7 +533,7 @@ describe("plugin background tasks", () => {
     const { setPlugins } = await import("@/chat/plugins/agent-hooks");
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
-    const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
+    const { getTurnRecord, upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
     setPlugins([
       defineJuniorPlugin({
@@ -553,7 +553,7 @@ describe("plugin background tasks", () => {
     ]);
 
     vi.useFakeTimers({ now: completionMs });
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       modelId: "test/model",
       conversationId: slackConversationId,
       destination: { platform: "slack", teamId, channelId },
@@ -570,7 +570,7 @@ describe("plugin background tasks", () => {
       turnStartMessageIndex: 0,
     });
     expect(
-      await getAgentTurnSessionRecord(slackConversationId, slackSessionId),
+      await getTurnRecord(slackConversationId, slackSessionId),
     ).toMatchObject({ updatedAtMs: completionMs });
 
     vi.setSystemTime(completionMs + 10_000);
@@ -629,7 +629,7 @@ describe("plugin background tasks", () => {
     const { setPlugins } = await import("@/chat/plugins/agent-hooks");
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
-    const { upsertAgentTurnSessionRecord } =
+    const { upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
     setPlugins([
       defineJuniorPlugin({
@@ -648,7 +648,7 @@ describe("plugin background tasks", () => {
       }),
     ]);
 
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       modelId: "test/model",
       conversationId: runConversationId,
       destination: { ...destination, conversationId: runConversationId },
@@ -716,7 +716,7 @@ describe("plugin background tasks", () => {
     const { setPlugins } = await import("@/chat/plugins/agent-hooks");
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
-    const { upsertAgentTurnSessionRecord } =
+    const { upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
     const { persistThreadStateById } =
       await import("@/chat/runtime/thread-state");
@@ -755,7 +755,7 @@ describe("plugin background tasks", () => {
       }),
     });
 
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       modelId: "test/model",
       conversationId: slackConversationId,
       destination: { platform: "slack", teamId, channelId },

@@ -131,10 +131,10 @@ import type { PiMessage } from "@/chat/pi/messages";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import {
-  abandonAgentTurnSessionRecord,
-  failAgentTurnSessionRecord,
-  getAgentTurnSessionRecord,
-  recordAgentTurnSessionSummary,
+  abandonTurnRecord,
+  failTurnRecord,
+  getTurnRecord,
+  recordTurnSummary,
   saveTurnCheckpoint,
 } from "@/chat/task-execution/checkpoint";
 import { resolveDestinationVisibility } from "@/chat/conversations/destination-visibility";
@@ -361,7 +361,7 @@ async function loadPiMessagesForTurn(args: {
   }
 
   if (args.activeTurnId) {
-    const sessionRecord = await getAgentTurnSessionRecord(
+    const sessionRecord = await getTurnRecord(
       args.conversationId,
       args.activeTurnId,
     );
@@ -826,7 +826,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             return;
           }
 
-          const sessionRecord = await getAgentTurnSessionRecord(
+          const sessionRecord = await getTurnRecord(
             conversationId,
             activeTurnId,
           );
@@ -839,7 +839,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               // authorization link reusable, and the abandoned record turns a
               // late OAuth callback into a stale no-op instead of a competing
               // run.
-              await abandonAgentTurnSessionRecord({
+              await abandonTurnRecord({
                 conversationId,
                 sessionId: activeTurnId,
                 errorMessage:
@@ -852,7 +852,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               });
               activeTurnId = undefined;
             } else {
-              await failAgentTurnSessionRecord({
+              await failTurnRecord({
                 conversationId,
                 expectedVersion: sessionRecord.version,
                 sessionId: activeTurnId,
@@ -932,7 +932,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           // Fire-and-forget: both calls are best-effort and must not delay
           // reply generation. Keep them independent so a failure in one does
           // not suppress observability of the other.
-          void recordAgentTurnSessionSummary({
+          void recordTurnSummary({
             channelName,
             conversationId,
             sessionId: turnId,
@@ -1020,7 +1020,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           if (!dispatchId) {
             return;
           }
-          await recordAgentTurnSessionSummary({
+          await recordTurnSummary({
             channelName,
             conversationId,
             destination,
@@ -1158,7 +1158,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           if (slackTs && options.execution?.dispatch?.id) {
             try {
               await persistWithRetry(() =>
-                recordAgentTurnSessionSummary({
+                recordTurnSummary({
                   channelName,
                   conversationId,
                   destination,
@@ -1597,7 +1597,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 dispatchId: options.execution?.dispatch?.id,
               });
             } else if (conversationId) {
-              await recordAgentTurnSessionSummary({
+              await recordTurnSummary({
                 channelName,
                 conversationId,
                 cumulativeDurationMs: reply.diagnostics.durationMs,
@@ -1772,12 +1772,12 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             const recoveryText = buildCanvasRecoveryReply(createdCanvasUrl);
             await deliverAssistantMessage(recoveryText, dispatchOutcome);
             if (conversationId) {
-              const sessionRecord = await getAgentTurnSessionRecord(
+              const sessionRecord = await getTurnRecord(
                 conversationId,
                 turnId,
               );
               if (sessionRecord) {
-                await failAgentTurnSessionRecord({
+                await failTurnRecord({
                   conversationId,
                   expectedVersion: sessionRecord.version,
                   sessionId: turnId,
@@ -1830,7 +1830,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             });
             if (conversationId) {
               try {
-                await recordAgentTurnSessionSummary({
+                await recordTurnSummary({
                   channelName,
                   conversationId,
                   sessionId: turnId,
@@ -1851,12 +1851,12 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                     : {}),
                   traceId: getActiveTraceId(),
                 });
-                const sessionRecord = await getAgentTurnSessionRecord(
+                const sessionRecord = await getTurnRecord(
                   conversationId,
                   turnId,
                 );
                 if (sessionRecord) {
-                  await failAgentTurnSessionRecord({
+                  await failTurnRecord({
                     conversationId,
                     expectedVersion: sessionRecord.version,
                     sessionId: turnId,

@@ -4,8 +4,8 @@ import { getConversationStore } from "@/chat/db";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import {
-  getAgentTurnSessionRecord,
-  upsertAgentTurnSessionRecord,
+  getTurnRecord,
+  upsertTurnRecord,
 } from "@/chat/task-execution/turn-cursor";
 import { neverRunAgentRunner } from "../../fixtures/agent-runner";
 import { SLACK_DESTINATION } from "../../fixtures/conversation-work";
@@ -67,7 +67,7 @@ describe("agent continuation runner callbacks", () => {
   it("fails the session when delivery succeeded but completion state did not persist", async () => {
     const conversationId = "slack:C123:1712345.0005";
     const sessionId = "turn_msg_5";
-    const sessionRecord = await upsertAgentTurnSessionRecord({
+    const sessionRecord = await upsertTurnRecord({
       modelId: "test/model",
       conversationId,
       sessionId,
@@ -152,7 +152,7 @@ describe("agent continuation runner callbacks", () => {
       ),
     ).resolves.toBe(true);
     await expect(
-      getAgentTurnSessionRecord(conversationId, sessionId),
+      getTurnRecord(conversationId, sessionId),
     ).resolves.toMatchObject({
       state: "failed",
       errorMessage:
@@ -165,7 +165,7 @@ describe("agent continuation runner callbacks", () => {
     const sessionId = "turn_msg_7";
     // Destination-only upsert leaves sessionSource unset so resume hard-fails
     // at the SQL routing boundary instead of rebuilding from redis/source.
-    const sessionRecord = await upsertAgentTurnSessionRecord({
+    const sessionRecord = await upsertTurnRecord({
       modelId: "test/model",
       conversationId,
       sessionId,
@@ -234,7 +234,7 @@ describe("agent continuation runner callbacks", () => {
       `Conversation ${conversationId} is missing durable routing metadata`,
     );
     await expect(
-      getAgentTurnSessionRecord(conversationId, sessionId),
+      getTurnRecord(conversationId, sessionId),
     ).resolves.toMatchObject({
       state: "failed",
       errorMessage: `Conversation ${conversationId} is missing durable routing metadata`,
@@ -250,7 +250,7 @@ describe("agent continuation runner callbacks", () => {
       threadTs: "1712345.0008",
       visibility: "private",
     });
-    const sessionRecord = await upsertAgentTurnSessionRecord({
+    const sessionRecord = await upsertTurnRecord({
       modelId: "test/model",
       conversationId,
       sessionId,
@@ -331,7 +331,7 @@ describe("agent continuation runner callbacks", () => {
       ),
     ).resolves.toBe(true);
     await expect(
-      getAgentTurnSessionRecord(conversationId, sessionId),
+      getTurnRecord(conversationId, sessionId),
     ).resolves.toMatchObject({
       state: "paused",
     });
@@ -340,7 +340,7 @@ describe("agent continuation runner callbacks", () => {
   it("fails before continuing when the turn user message has no author id", async () => {
     const conversationId = "slack:C123:1712345.0006";
     const sessionId = "turn_msg_6";
-    const sessionRecord = await upsertAgentTurnSessionRecord({
+    const sessionRecord = await upsertTurnRecord({
       modelId: "test/model",
       conversationId,
       sessionId,
@@ -409,7 +409,7 @@ describe("agent continuation runner callbacks", () => {
       ),
     ).resolves.toBe(true);
     await expect(
-      getAgentTurnSessionRecord(conversationId, sessionId),
+      getTurnRecord(conversationId, sessionId),
     ).resolves.toMatchObject({
       state: "failed",
     });

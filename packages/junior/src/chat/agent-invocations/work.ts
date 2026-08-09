@@ -15,8 +15,8 @@ import {
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import {
-  failAgentTurnSessionRecord,
-  getAgentTurnSessionRecord,
+  failTurnRecord,
+  getTurnRecord,
   saveTurnCheckpoint,
 } from "@/chat/task-execution/checkpoint";
 import {
@@ -205,7 +205,7 @@ async function persistTerminalLifecycle(
 async function projectTerminalSession(
   invocation: AgentInvocation,
 ): Promise<AgentInvocation | undefined> {
-  const session = await getAgentTurnSessionRecord(
+  const session = await getTurnRecord(
     invocation.childConversationId,
     getAgentInvocationTurnId(invocation.invocationId),
   );
@@ -244,7 +244,7 @@ async function projectTerminalSession(
 async function recoverRunningSession(
   invocation: AgentInvocation,
 ): Promise<void> {
-  const session = await getAgentTurnSessionRecord(
+  const session = await getTurnRecord(
     invocation.childConversationId,
     getAgentInvocationTurnId(invocation.invocationId),
   );
@@ -271,7 +271,7 @@ async function recoverRunningSession(
     surface: session.surface,
   });
   if (!parked) {
-    await failAgentTurnSessionRecord({
+    await failTurnRecord({
       conversationId: invocation.childConversationId,
       expectedVersion: session.version,
       sessionId: session.sessionId,

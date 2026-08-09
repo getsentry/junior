@@ -26,9 +26,9 @@ import { resumeAwaitingSlackContinuation } from "@/chat/task-execution/continue-
 import { scheduleAgentContinue } from "@/chat/task-execution/continue";
 import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import {
-  getAgentTurnSessionRecord,
-  listAgentTurnSessionSummariesForConversation,
-  upsertAgentTurnSessionRecord,
+  getTurnRecord,
+  listTurnSummaries,
+  upsertTurnRecord,
 } from "@/chat/task-execution/turn-cursor";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import {
@@ -68,7 +68,7 @@ describe("agent dispatch recovery", () => {
     const conversationId = getDispatchConversationId(dispatch);
     const sessionId = getDispatchTurnId(dispatch.id);
     const agentRunner = { run: vi.fn() };
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       actor: dispatch.actor,
       conversationId,
       destination: dispatch.destination,
@@ -132,7 +132,7 @@ describe("agent dispatch recovery", () => {
       status: "failed",
     });
     await expect(
-      getAgentTurnSessionRecord(conversationId, sessionId),
+      getTurnRecord(conversationId, sessionId),
     ).resolves.toMatchObject({
       errorMessage: expect.stringContaining("no resumable boundary"),
       state: "failed",
@@ -177,7 +177,7 @@ describe("agent dispatch recovery", () => {
       status: "pending",
     });
     await expect(
-      listAgentTurnSessionSummariesForConversation(
+      listTurnSummaries(
         getDispatchConversationId(dispatch),
       ),
     ).resolves.toEqual(
@@ -257,7 +257,7 @@ describe("agent dispatch recovery", () => {
       status: "pending",
     });
     await expect(
-      getAgentTurnSessionRecord(
+      getTurnRecord(
         getDispatchConversationId(dispatch),
         getDispatchTurnId(dispatch.id),
       ),
@@ -469,7 +469,7 @@ describe("agent dispatch recovery", () => {
       text: "Resumed scheduled digest\n\nScheduled task · Weekly",
     });
     await expect(
-      listAgentTurnSessionSummariesForConversation(
+      listTurnSummaries(
         `agent-dispatch:${dispatch.id}`,
       ),
     ).resolves.toEqual(
@@ -482,7 +482,7 @@ describe("agent dispatch recovery", () => {
       ]),
     );
     await expect(
-      getAgentTurnSessionRecord(
+      getTurnRecord(
         `agent-dispatch:${dispatch.id}`,
         `dispatch:${dispatch.id}`,
       ),

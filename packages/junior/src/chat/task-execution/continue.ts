@@ -11,7 +11,7 @@ import {
   type TurnSessionRouting,
 } from "@/chat/services/turn-session-routing";
 import {
-  failAgentTurnSessionRecord,
+  failTurnRecord,
   loadTurnCheckpoint,
 } from "@/chat/task-execution/checkpoint";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
@@ -62,7 +62,7 @@ export async function getAwaitingAgentContinueRequest(args: {
       conversationStore: args.conversationStore,
     });
   } catch (error) {
-    await failAgentTurnSessionRecord({
+    await failTurnRecord({
       conversationId: args.conversationId,
       expectedVersion: sessionRecord.version,
       sessionId: args.turnId,

@@ -91,7 +91,7 @@ describe("turn checkpoint", () => {
 
   it("keeps unfinished turn sessions for one day and terminal sessions for one hour", async () => {
     const { getStateAdapter } = await import("@/chat/state/adapter");
-    const { upsertAgentTurnSessionRecord } =
+    const { upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
     const stateAdapter = getStateAdapter();
     const set = vi.spyOn(stateAdapter, "set");
@@ -100,7 +100,7 @@ describe("turn checkpoint", () => {
     const runtimeContext = buildAgentsInstructionsMessage({
       text: "repo instructions",
     });
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       conversationId: "local:ttl-split:turn",
       modelId: "test/model",
       piMessages: [runtimeContext],
@@ -123,7 +123,7 @@ describe("turn checkpoint", () => {
 
     set.mockClear();
     appendToList.mockClear();
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       conversationId: "local:ttl-split:turn",
       modelId: "test/model",
       piMessages: [runtimeContext],
@@ -138,9 +138,9 @@ describe("turn checkpoint", () => {
   });
 
   it("keeps dispatch correlation write-once across session summaries", async () => {
-    const { recordAgentTurnSessionSummary } =
+    const { recordTurnSummary } =
       await import("@/chat/task-execution/turn-cursor");
-    await recordAgentTurnSessionSummary({
+    await recordTurnSummary({
       conversationId: "agent-dispatch:dispatch_one",
       dispatchId: "dispatch_one",
       sessionId: "dispatch:dispatch_one",
@@ -149,7 +149,7 @@ describe("turn checkpoint", () => {
     });
 
     await expect(
-      recordAgentTurnSessionSummary({
+      recordTurnSummary({
         conversationId: "agent-dispatch:dispatch_one",
         dispatchId: "dispatch_other",
         sessionId: "dispatch:dispatch_one",
@@ -162,7 +162,7 @@ describe("turn checkpoint", () => {
   it("reuses the latest stored transcript when the auth pause captured no messages", async () => {
     const { saveTurnCheckpoint } =
       await import("@/chat/task-execution/checkpoint");
-    const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
+    const { getTurnRecord, upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
 
     const priorMessages: PiMessage[] = [
@@ -173,7 +173,7 @@ describe("turn checkpoint", () => {
       },
     ];
 
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       modelId: "test-model",
       conversationId: "conversation-1",
       sessionId: "turn-1",
@@ -198,7 +198,7 @@ describe("turn checkpoint", () => {
 
     expect(authSessionRecord?.sliceId).toBe(2);
 
-    const sessionRecord = await getAgentTurnSessionRecord(
+    const sessionRecord = await getTurnRecord(
       "conversation-1",
       "turn-1",
     );
@@ -218,7 +218,7 @@ describe("turn checkpoint", () => {
 
   it("keeps ops metadata in SQL and out of Redis turn-session records", async () => {
     const { getStateAdapter } = await import("@/chat/state/adapter");
-    const { upsertAgentTurnSessionRecord } =
+    const { upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
     const { getConversationStore } = await import("@/chat/db");
     const stateAdapter = getStateAdapter();
@@ -230,7 +230,7 @@ describe("turn checkpoint", () => {
     } as const;
     const usage = { inputTokens: 7, outputTokens: 3 };
 
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       actor,
       channelName: "runtime-team",
       conversationId: "slack:C123:ops-bag",
@@ -269,13 +269,13 @@ describe("turn checkpoint", () => {
 
   it("keeps session metrics when a work-lease mirror advances the execution run", async () => {
     const { getConversationStore } = await import("@/chat/db");
-    const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
+    const { getTurnRecord, upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
     const conversationStore = getConversationStore();
     const conversationId = "local:metrics-work-lease";
     const sessionId = "turn-metrics-work-lease";
 
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       conversationId,
       cumulativeDurationMs: 1_500,
       cumulativeUsage: { inputTokens: 7 },
@@ -300,7 +300,7 @@ describe("turn checkpoint", () => {
       updatedAtMs: conversation!.updatedAtMs + 1,
     });
 
-    const recovered = await getAgentTurnSessionRecord(
+    const recovered = await getTurnRecord(
       conversationId,
       sessionId,
     );
@@ -308,7 +308,7 @@ describe("turn checkpoint", () => {
       cumulativeDurationMs: 1_500,
       cumulativeUsage: { inputTokens: 7 },
     });
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       conversationId,
       modelId: "test/model",
       piMessages: recovered!.piMessages,
@@ -329,12 +329,12 @@ describe("turn checkpoint", () => {
 
   it("does not inherit metrics from a prior session", async () => {
     const { getConversationStore } = await import("@/chat/db");
-    const { recordAgentTurnSessionSummary, upsertAgentTurnSessionRecord } =
+    const { recordTurnSummary, upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
     const conversationStore = getConversationStore();
     const conversationId = "local:metrics-session-scope";
 
-    await recordAgentTurnSessionSummary({
+    await recordTurnSummary({
       conversationId,
       cumulativeDurationMs: 1_500,
       cumulativeUsage: { inputTokens: 7 },
@@ -342,7 +342,7 @@ describe("turn checkpoint", () => {
       sliceId: 1,
       state: "completed",
     });
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       conversationId,
       modelId: "test/model",
       piMessages: [userMessage("second")],
@@ -361,7 +361,7 @@ describe("turn checkpoint", () => {
 
   it("records Slack turn activity without replacing confirmed visibility", async () => {
     vi.useFakeTimers({ now: 10_000 });
-    const { upsertAgentTurnSessionRecord } =
+    const { upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
     const { getConversationStore } = await import("@/chat/db");
     const { resolveDestinationVisibility } =
@@ -394,7 +394,7 @@ describe("turn checkpoint", () => {
         },
         nowMs: 9_000,
       });
-      await upsertAgentTurnSessionRecord({
+      await upsertTurnRecord({
         modelId: "test/model",
         channelName: "runtime-team",
         conversationId: "slack:C123:turn-activity",
@@ -431,9 +431,9 @@ describe("turn checkpoint", () => {
   it("keeps nested destination/source out of redis while dual-writing sql", async () => {
     const { getStateAdapter } = await import("@/chat/state/adapter");
     const {
-      getAgentTurnSessionRecord,
-      listAgentTurnSessionSummariesForConversation,
-      upsertAgentTurnSessionRecord,
+      getTurnRecord,
+      listTurnSummaries,
+      upsertTurnRecord,
     } = await import("@/chat/task-execution/turn-cursor");
     const { agentTurnSessionKey } =
       await import("@/chat/task-execution/turn-cursor-keys");
@@ -450,7 +450,7 @@ describe("turn checkpoint", () => {
       listByActivity: vi.fn(),
     };
 
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       modelId: "test/model",
       conversationId,
       conversationStore,
@@ -480,14 +480,14 @@ describe("turn checkpoint", () => {
     expect(stored).not.toHaveProperty("actor");
 
     const summaries =
-      await listAgentTurnSessionSummariesForConversation(conversationId);
+      await listTurnSummaries(conversationId);
     expect(summaries).toHaveLength(1);
     expect(summaries[0]).not.toHaveProperty("destination");
     expect(summaries[0]).not.toHaveProperty("source");
     expect(summaries[0]).not.toHaveProperty("actor");
 
     // Materialized reads no longer surface nested routing/identity from redis.
-    const record = await getAgentTurnSessionRecord(conversationId, sessionId);
+    const record = await getTurnRecord(conversationId, sessionId);
     expect(record).toMatchObject({
       conversationId,
       sessionId,
@@ -516,7 +516,7 @@ describe("turn checkpoint", () => {
 
   it("strips deprecated fields from legacy redis records", async () => {
     const { getStateAdapter } = await import("@/chat/state/adapter");
-    const { getAgentTurnSessionRecord } =
+    const { getTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
     const { agentTurnSessionKey } =
       await import("@/chat/task-execution/turn-cursor-keys");
@@ -550,7 +550,7 @@ describe("turn checkpoint", () => {
       60_000,
     );
 
-    const record = await getAgentTurnSessionRecord(conversationId, sessionId);
+    const record = await getTurnRecord(conversationId, sessionId);
     expect(record).toMatchObject({ state: "paused" });
     expect(record).not.toHaveProperty("destination");
     expect(record).not.toHaveProperty("source");
@@ -559,11 +559,11 @@ describe("turn checkpoint", () => {
   });
 
   it("fails before storing a turn-session record when SQL metadata fails", async () => {
-    const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
+    const { getTurnRecord, upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
 
     await expect(
-      upsertAgentTurnSessionRecord({
+      upsertTurnRecord({
         modelId: "test/model",
         conversationId: "slack:C123:metadata-failure",
         conversationStore: failingConversationStore(),
@@ -577,7 +577,7 @@ describe("turn checkpoint", () => {
     ).rejects.toThrow("conversation metadata unavailable");
 
     await expect(
-      getAgentTurnSessionRecord(
+      getTurnRecord(
         "slack:C123:metadata-failure",
         "turn-metadata-failure",
       ),
@@ -586,12 +586,12 @@ describe("turn checkpoint", () => {
 
   it("fails before storing a turn-session summary when SQL metadata fails", async () => {
     const {
-      listAgentTurnSessionSummariesForConversation,
-      recordAgentTurnSessionSummary,
+      listTurnSummaries,
+      recordTurnSummary,
     } = await import("@/chat/task-execution/turn-cursor");
 
     await expect(
-      recordAgentTurnSessionSummary({
+      recordTurnSummary({
         conversationId: "slack:C123:summary-metadata-failure",
         conversationStore: failingConversationStore(),
         destination: SLACK_DESTINATION,
@@ -603,7 +603,7 @@ describe("turn checkpoint", () => {
     ).rejects.toThrow("conversation metadata unavailable");
 
     await expect(
-      listAgentTurnSessionSummariesForConversation(
+      listTurnSummaries(
         "slack:C123:summary-metadata-failure",
       ),
     ).resolves.toEqual([]);
@@ -611,12 +611,12 @@ describe("turn checkpoint", () => {
 
   it("reads the conversation recovery index only", async () => {
     const { getStateAdapter } = await import("@/chat/state/adapter");
-    const { listAgentTurnSessionSummariesForConversation } =
+    const { listTurnSummaries } =
       await import("@/chat/task-execution/turn-cursor");
     const getList = vi.spyOn(getStateAdapter(), "getList");
 
     await expect(
-      listAgentTurnSessionSummariesForConversation(
+      listTurnSummaries(
         "slack:C123:bounded-summary",
       ),
     ).resolves.toEqual([]);
@@ -627,7 +627,7 @@ describe("turn checkpoint", () => {
 
   it("strips unknown fields from legacy summaries", async () => {
     const { getStateAdapter } = await import("@/chat/state/adapter");
-    const { listAgentTurnSessionSummariesForConversation } =
+    const { listTurnSummaries } =
       await import("@/chat/task-execution/turn-cursor");
     const stateAdapter = getStateAdapter();
     await stateAdapter.connect();
@@ -663,7 +663,7 @@ describe("turn checkpoint", () => {
     );
 
     const summaries =
-      await listAgentTurnSessionSummariesForConversation(conversationId);
+      await listTurnSummaries(conversationId);
     expect(summaries).toHaveLength(1);
     expect(summaries[0]).toMatchObject({
       conversationId,
@@ -674,7 +674,7 @@ describe("turn checkpoint", () => {
   });
 
   it("materializes auth completion events appended after the pause record", async () => {
-    const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
+    const { getTurnRecord, upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
     const { recordAuthorizationCompleted } =
       await import("@/chat/conversations/projection");
@@ -685,7 +685,7 @@ describe("turn checkpoint", () => {
       timestamp: 1,
     } as PiMessage;
 
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       modelId: "test-model",
       conversationId: "conversation-auth-complete",
       sessionId: "turn-auth-complete",
@@ -704,7 +704,7 @@ describe("turn checkpoint", () => {
     });
 
     await expect(
-      getAgentTurnSessionRecord(
+      getTurnRecord(
         "conversation-auth-complete",
         "turn-auth-complete",
       ),
@@ -726,7 +726,7 @@ describe("turn checkpoint", () => {
   });
 
   it("dual-writes actor identity to SQL without storing it in redis", async () => {
-    const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
+    const { getTurnRecord, upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
     const { getStateAdapter } = await import("@/chat/state/adapter");
     const { agentTurnSessionKey } =
@@ -749,7 +749,7 @@ describe("turn checkpoint", () => {
       email: "alice@sentry.io",
     };
 
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       modelId: "test/model",
       conversationId,
       sessionId,
@@ -763,7 +763,7 @@ describe("turn checkpoint", () => {
       surface: "slack",
     });
 
-    const record = await getAgentTurnSessionRecord(conversationId, sessionId);
+    const record = await getTurnRecord(conversationId, sessionId);
     expect(record).toMatchObject({
       piMessages: [userMessage],
       state: "paused",
@@ -793,9 +793,9 @@ describe("turn checkpoint", () => {
 
   it("persists turn transcript scope and actor in the event log", async () => {
     const {
-      getAgentTurnSessionRecord,
-      listAgentTurnSessionSummariesForConversation,
-      upsertAgentTurnSessionRecord,
+      getTurnRecord,
+      listTurnSummaries,
+      upsertTurnRecord,
     } = await import("@/chat/task-execution/turn-cursor");
     const { loadConversationProjection } =
       await import("@/chat/conversations/projection");
@@ -811,7 +811,7 @@ describe("turn checkpoint", () => {
       timestamp: 2,
     } as PiMessage;
 
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       modelId: "test/model",
       conversationId: "conversation-turn-scope",
       sessionId: "turn-scope",
@@ -826,7 +826,7 @@ describe("turn checkpoint", () => {
       },
       turnStartMessageIndex: 1,
     });
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       modelId: "test/model",
       conversationId: "conversation-turn-scope",
       sessionId: "turn-scope",
@@ -835,7 +835,7 @@ describe("turn checkpoint", () => {
       piMessages: [previousQuestion, currentQuestion],
     });
 
-    const scoped = await getAgentTurnSessionRecord(
+    const scoped = await getTurnRecord(
       "conversation-turn-scope",
       "turn-scope",
     );
@@ -857,14 +857,14 @@ describe("turn checkpoint", () => {
       userId: "U123",
       userName: "alice",
     });
-    const summaries = await listAgentTurnSessionSummariesForConversation(
+    const summaries = await listTurnSummaries(
       "conversation-turn-scope",
     );
     expect(summaries[0]).not.toHaveProperty("turnStartMessageIndex");
   });
 
   it("persists and materializes per-message provenance aligned to piMessages", async () => {
-    const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
+    const { getTurnRecord, upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
 
     const priorContext: PiMessage = {
@@ -879,7 +879,7 @@ describe("turn checkpoint", () => {
     } as PiMessage;
     const answer = assistantMessage("answer", 3);
 
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       modelId: "test/model",
       conversationId: "conversation-provenance",
       sessionId: "turn-provenance",
@@ -894,7 +894,7 @@ describe("turn checkpoint", () => {
       },
     });
 
-    const record = await getAgentTurnSessionRecord(
+    const record = await getTurnRecord(
       "conversation-provenance",
       "turn-provenance",
     );
@@ -919,7 +919,7 @@ describe("turn checkpoint", () => {
   it("derives run actors from steered message provenance while preserving the run actor", async () => {
     const { saveTurnCheckpoint } =
       await import("@/chat/task-execution/checkpoint");
-    const { getAgentTurnSessionRecord } =
+    const { getTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
 
     const alice = {
@@ -967,10 +967,10 @@ describe("turn checkpoint", () => {
       trailingMessageProvenance: [{ authority: "instruction", actor: bob }],
     });
 
-    // getAgentTurnSessionRecord re-materializes from the stored record and the
+    // getTurnRecord re-materializes from the stored record and the
     // committed provenance, so this is also the continuation/materialization
     // path — it must reproduce the same first-seen-ordered set.
-    const record = await getAgentTurnSessionRecord(
+    const record = await getTurnRecord(
       "conversation-multi-actor",
       "turn-multi-actor",
     );
@@ -983,10 +983,10 @@ describe("turn checkpoint", () => {
   });
 
   it("has an empty run-actors set for a system-actor run with no human instructions", async () => {
-    const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
+    const { getTurnRecord, upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
 
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       modelId: "test/model",
       conversationId: "conversation-system-actor",
       sessionId: "turn-system-actor",
@@ -996,7 +996,7 @@ describe("turn checkpoint", () => {
       piMessages: [userMessage("system dispatch input")],
     });
 
-    const record = await getAgentTurnSessionRecord(
+    const record = await getTurnRecord(
       "conversation-system-actor",
       "turn-system-actor",
     );
@@ -1006,10 +1006,10 @@ describe("turn checkpoint", () => {
   it("carries cumulative diagnostics across pause records", async () => {
     const { saveTurnCheckpoint } =
       await import("@/chat/task-execution/checkpoint");
-    const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
+    const { getTurnRecord, upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
 
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       modelId: "test/model",
       conversationId: "conversation-1",
       sessionId: "turn-1",
@@ -1055,7 +1055,7 @@ describe("turn checkpoint", () => {
       errorMessage: "timed out again",
     });
 
-    const sessionRecord = await getAgentTurnSessionRecord(
+    const sessionRecord = await getTurnRecord(
       "conversation-1",
       "turn-1",
     );
@@ -1080,7 +1080,7 @@ describe("turn checkpoint", () => {
     const { saveTurnCheckpoint } =
       await import("@/chat/task-execution/checkpoint");
     const { botConfig } = await import("@/chat/config");
-    const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
+    const { getTurnRecord, upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
 
     const piMessages: PiMessage[] = [
@@ -1091,7 +1091,7 @@ describe("turn checkpoint", () => {
       },
     ];
 
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       modelId: "test/model",
       conversationId: "conversation-timeout-cap",
       sessionId: "turn-timeout-cap",
@@ -1123,7 +1123,7 @@ describe("turn checkpoint", () => {
     });
 
     await expect(
-      getAgentTurnSessionRecord("conversation-timeout-cap", "turn-timeout-cap"),
+      getTurnRecord("conversation-timeout-cap", "turn-timeout-cap"),
     ).resolves.toMatchObject({
       state: "failed",
       sliceId: botConfig.maxSlicesPerTurn,
@@ -1136,7 +1136,7 @@ describe("turn checkpoint", () => {
   it("falls back to the last stored safe boundary when auth pause captures a non-continuable tail", async () => {
     const { saveTurnCheckpoint } =
       await import("@/chat/task-execution/checkpoint");
-    const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
+    const { getTurnRecord, upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
 
     const safeBoundary: PiMessage[] = [
@@ -1147,7 +1147,7 @@ describe("turn checkpoint", () => {
       },
     ];
 
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       modelId: "test/model",
       conversationId: "conversation-auth-tail",
       sessionId: "turn-auth-tail",
@@ -1199,7 +1199,7 @@ describe("turn checkpoint", () => {
     });
 
     await expect(
-      getAgentTurnSessionRecord("conversation-auth-tail", "turn-auth-tail"),
+      getTurnRecord("conversation-auth-tail", "turn-auth-tail"),
     ).resolves.toMatchObject({
       state: "paused",
       piMessages: safeBoundary,
@@ -1209,7 +1209,7 @@ describe("turn checkpoint", () => {
   it("creates auth-pause records before a prompt checkpoint", async () => {
     const { loadTurnCheckpoint, saveTurnCheckpoint } =
       await import("@/chat/task-execution/checkpoint");
-    const { getAgentTurnSessionRecord } =
+    const { getTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
 
     const authRecord = await saveTurnCheckpoint({
@@ -1257,7 +1257,7 @@ describe("turn checkpoint", () => {
     ).resolves.toBeUndefined();
 
     await expect(
-      getAgentTurnSessionRecord(
+      getTurnRecord(
         "conversation-timeout-empty",
         "turn-timeout-empty",
       ),
@@ -1265,12 +1265,12 @@ describe("turn checkpoint", () => {
   });
 
   it("retries and surfaces completed session persistence failures", async () => {
-    const getAgentTurnSessionRecord = vi.fn(async () => {
+    const getTurnRecord = vi.fn(async () => {
       throw new Error("state adapter unavailable");
     });
     vi.doMock("@/chat/task-execution/turn-cursor", () => ({
-      getAgentTurnSessionRecord,
-      upsertAgentTurnSessionRecord: vi.fn(),
+      getTurnRecord,
+      upsertTurnRecord: vi.fn(),
     }));
     const { saveTurnCheckpoint } =
       await import("@/chat/task-execution/checkpoint");
@@ -1291,11 +1291,11 @@ describe("turn checkpoint", () => {
         ],
       }),
     ).rejects.toThrow("state adapter unavailable");
-    expect(getAgentTurnSessionRecord).toHaveBeenCalledTimes(3);
+    expect(getTurnRecord).toHaveBeenCalledTimes(3);
   });
 
   it("retries the same completed totals without double-counting", async () => {
-    const getAgentTurnSessionRecord = vi.fn(async () => ({
+    const getTurnRecord = vi.fn(async () => ({
       conversationId: "conversation-1",
       sessionId: "turn-1",
       sliceId: 2,
@@ -1305,14 +1305,14 @@ describe("turn checkpoint", () => {
       cumulativeDurationMs: 1_000,
       cumulativeUsage: { inputTokens: 10 },
     }));
-    const upsertAgentTurnSessionRecord = vi
+    const upsertTurnRecord = vi
       .fn()
       .mockRejectedValueOnce(new Error("summary append failed"))
       .mockRejectedValueOnce(new Error("summary append failed"))
       .mockResolvedValue(undefined);
     vi.doMock("@/chat/task-execution/turn-cursor", () => ({
-      getAgentTurnSessionRecord,
-      upsertAgentTurnSessionRecord,
+      getTurnRecord,
+      upsertTurnRecord,
     }));
     const { saveTurnCheckpoint } =
       await import("@/chat/task-execution/checkpoint");
@@ -1327,9 +1327,9 @@ describe("turn checkpoint", () => {
       messages: [userMessage("done")],
     });
 
-    expect(getAgentTurnSessionRecord).toHaveBeenCalledTimes(1);
-    expect(upsertAgentTurnSessionRecord).toHaveBeenCalledTimes(3);
-    for (const [target] of upsertAgentTurnSessionRecord.mock.calls) {
+    expect(getTurnRecord).toHaveBeenCalledTimes(1);
+    expect(upsertTurnRecord).toHaveBeenCalledTimes(3);
+    for (const [target] of upsertTurnRecord.mock.calls) {
       expect(target).toMatchObject({
         cumulativeDurationMs: 1_500,
         cumulativeUsage: { inputTokens: 15 },
@@ -1340,7 +1340,7 @@ describe("turn checkpoint", () => {
   it("keeps runtime bootstrap out of durable completed history", async () => {
     const { saveTurnCheckpoint } =
       await import("@/chat/task-execution/checkpoint");
-    const { getAgentTurnSessionRecord } =
+    const { getTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
 
     await saveTurnCheckpoint({
@@ -1367,7 +1367,7 @@ describe("turn checkpoint", () => {
     });
 
     await expect(
-      getAgentTurnSessionRecord("conversation-completed", "turn-completed"),
+      getTurnRecord("conversation-completed", "turn-completed"),
     ).resolves.toMatchObject({
       state: "completed",
       piMessages: [
@@ -1386,7 +1386,7 @@ describe("turn checkpoint", () => {
   it("commits dispatch outcome and delivery receipt with terminal state", async () => {
     const { saveTurnCheckpoint } =
       await import("@/chat/task-execution/checkpoint");
-    const { getAgentTurnSessionRecord } =
+    const { getTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
 
     await saveTurnCheckpoint({
@@ -1405,7 +1405,7 @@ describe("turn checkpoint", () => {
     });
 
     await expect(
-      getAgentTurnSessionRecord(
+      getTurnRecord(
         "agent-dispatch:dispatch_atomic",
         "dispatch:dispatch_atomic",
       ),
@@ -1421,7 +1421,7 @@ describe("turn checkpoint", () => {
   it("stores running records only at continuable message boundaries", async () => {
     const { saveTurnCheckpoint } =
       await import("@/chat/task-execution/checkpoint");
-    const { getAgentTurnSessionRecord } =
+    const { getTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
     const userBoundary: PiMessage[] = [
       {
@@ -1468,7 +1468,7 @@ describe("turn checkpoint", () => {
       }),
     ).resolves.toBeUndefined();
 
-    let sessionRecord = await getAgentTurnSessionRecord(
+    let sessionRecord = await getTurnRecord(
       "conversation-1",
       "turn-1",
     );
@@ -1488,7 +1488,7 @@ describe("turn checkpoint", () => {
       }),
     ).resolves.toBeTruthy();
 
-    sessionRecord = await getAgentTurnSessionRecord("conversation-1", "turn-1");
+    sessionRecord = await getTurnRecord("conversation-1", "turn-1");
     expect(sessionRecord).toMatchObject({
       state: "running",
       piMessages: toolResultBoundary,
@@ -1501,7 +1501,7 @@ describe("turn checkpoint", () => {
         await importOriginal<typeof import("@/chat/task-execution/turn-cursor")>();
       return {
         ...actual,
-        upsertAgentTurnSessionRecord: vi.fn(async () => {
+        upsertTurnRecord: vi.fn(async () => {
           throw new Error("storage unavailable");
         }),
       };
@@ -1565,7 +1565,7 @@ describe("turn checkpoint", () => {
   it("appends after in-place assistant envelope mutations on committed messages", async () => {
     const { saveTurnCheckpoint } =
       await import("@/chat/task-execution/checkpoint");
-    const { getAgentTurnSessionRecord } =
+    const { getTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
     const user = userMessage("help me");
     user.timestamp = 1;
@@ -1627,7 +1627,7 @@ describe("turn checkpoint", () => {
     // Append-only: durable identity lets the suffix commit, but the already
     // committed assistant envelope is not rewritten when Pi mutates usage.
     await expect(
-      getAgentTurnSessionRecord(
+      getTurnRecord(
         "conversation-mutated-prefix",
         "turn-mutated-prefix",
       ),
@@ -1640,7 +1640,7 @@ describe("turn checkpoint", () => {
   it("promotes the latest running record when timeout capture has no messages", async () => {
     const { saveTurnCheckpoint } =
       await import("@/chat/task-execution/checkpoint");
-    const { getAgentTurnSessionRecord } =
+    const { getTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
     const messages: PiMessage[] = [
       {
@@ -1670,7 +1670,7 @@ describe("turn checkpoint", () => {
       errorMessage: "provider stream interrupted",
     });
 
-    const sessionRecord = await getAgentTurnSessionRecord(
+    const sessionRecord = await getTurnRecord(
       "conversation-1",
       "turn-1",
     );
@@ -1683,7 +1683,7 @@ describe("turn checkpoint", () => {
   });
 
   it("rejects an implicit branch from committed agent history", async () => {
-    const { upsertAgentTurnSessionRecord } =
+    const { upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
     const user: PiMessage = {
       role: "user",
@@ -1691,7 +1691,7 @@ describe("turn checkpoint", () => {
       timestamp: 1,
     };
     const unsafeAssistant = assistantMessage("not committed", 2);
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       modelId: "test/model",
       conversationId: "conversation-branch",
       sessionId: "turn-branch",
@@ -1700,7 +1700,7 @@ describe("turn checkpoint", () => {
       piMessages: [user, unsafeAssistant],
     });
     await expect(
-      upsertAgentTurnSessionRecord({
+      upsertTurnRecord({
         modelId: "test/model",
         conversationId: "conversation-branch",
         sessionId: "turn-branch",
@@ -1714,9 +1714,9 @@ describe("turn checkpoint", () => {
 
   it("keeps older turn records pinned to their committed projection after reset", async () => {
     const {
-      failAgentTurnSessionRecord,
-      getAgentTurnSessionRecord,
-      upsertAgentTurnSessionRecord,
+      failTurnRecord,
+      getTurnRecord,
+      upsertTurnRecord,
     } = await import("@/chat/task-execution/turn-cursor");
     const { loadProjection } = await import("@/chat/conversations/projection");
     const { getConversationEventStore } = await import("@/chat/db");
@@ -1732,7 +1732,7 @@ describe("turn checkpoint", () => {
     };
     const newFollowup = assistantMessage("new followup", 3);
 
-    const oldRecord = await upsertAgentTurnSessionRecord({
+    const oldRecord = await upsertTurnRecord({
       modelId: "test/model",
       conversationId: "conversation-projection-pin",
       sessionId: "turn-old",
@@ -1759,7 +1759,7 @@ describe("turn checkpoint", () => {
         },
       },
     );
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       modelId: "test/model",
       conversationId: "conversation-projection-pin",
       sessionId: "turn-new",
@@ -1769,12 +1769,12 @@ describe("turn checkpoint", () => {
     });
 
     await expect(
-      getAgentTurnSessionRecord("conversation-projection-pin", "turn-old"),
+      getTurnRecord("conversation-projection-pin", "turn-old"),
     ).resolves.toMatchObject({
       piMessages: [oldRequest],
     });
 
-    await failAgentTurnSessionRecord({
+    await failTurnRecord({
       conversationId: "conversation-projection-pin",
       sessionId: "turn-old",
       expectedVersion: oldRecord.version,
@@ -1791,7 +1791,7 @@ describe("turn checkpoint", () => {
   it("resumes an unfinished turn from a committed handoff replacement", async () => {
     const { loadTurnCheckpoint } =
       await import("@/chat/task-execution/checkpoint");
-    const { upsertAgentTurnSessionRecord } =
+    const { upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
     const { getConversationEventStore } = await import("@/chat/db");
     const conversationId = "conversation-handoff-resume";
@@ -1812,7 +1812,7 @@ describe("turn checkpoint", () => {
       timestamp: 2,
     };
 
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       modelId: "openai/gpt-5.5",
       conversationId,
       sessionId: turnId,
@@ -1852,7 +1852,7 @@ describe("turn checkpoint", () => {
   it("restores unmatched runtime context before an active-turn replacement", async () => {
     const { loadTurnCheckpoint } =
       await import("@/chat/task-execution/checkpoint");
-    const { upsertAgentTurnSessionRecord } =
+    const { upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
     const runtimeContext: PiMessage = {
       role: "user",
@@ -1875,7 +1875,7 @@ describe("turn checkpoint", () => {
       timestamp: 3,
     };
 
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       modelId: "test/model",
       conversationId: "conversation-active-compaction-resume",
       sessionId: "turn-active-compaction-resume",
@@ -1901,7 +1901,7 @@ describe("turn checkpoint", () => {
   it("restores mid-run AGENTS context at its causal position", async () => {
     const { loadTurnCheckpoint } =
       await import("@/chat/task-execution/checkpoint");
-    const { upsertAgentTurnSessionRecord } =
+    const { upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
     const instruction: PiMessage = {
       role: "user",
@@ -1915,7 +1915,7 @@ describe("turn checkpoint", () => {
     });
     const assistant = assistantMessage("continued after instructions", 4);
 
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       modelId: "test/model",
       conversationId: "conversation-agents-order-resume",
       sessionId: "turn-agents-order-resume",

@@ -782,7 +782,7 @@ describe("agent run continuation", () => {
     // Generation completing is not delivery: the record stays running at the
     // last safe boundary (no trailing assistant text) until the destination
     // boundary commits completion after acceptance.
-    const sessionRecord = await turnSessionState.getAgentTurnSessionRecord(
+    const sessionRecord = await turnSessionState.getTurnRecord(
       "conversation-1",
       "turn-1",
     );
@@ -803,7 +803,7 @@ describe("agent run continuation", () => {
       usage: reply.diagnostics.usage,
     });
     const completedSessionRecord =
-      await turnSessionState.getAgentTurnSessionRecord(
+      await turnSessionState.getTurnRecord(
         "conversation-1",
         "turn-1",
       );
@@ -950,7 +950,7 @@ describe("agent run continuation", () => {
       source: TEST_SOURCE,
     });
 
-    const sessionRecord = await turnSessionState.getAgentTurnSessionRecord(
+    const sessionRecord = await turnSessionState.getTurnRecord(
       "slack:C123:1712345.0001",
       "turn-steering",
     );
@@ -1066,7 +1066,7 @@ describe("agent run continuation", () => {
 
     expect(outcome.status).toBe("suspended");
     expect(delivered).toEqual([{ text: "Initial answer." }]);
-    const sessionRecord = await turnSessionState.getAgentTurnSessionRecord(
+    const sessionRecord = await turnSessionState.getTurnRecord(
       "conversation-delivery-steering-yield",
       "turn-delivery-steering-yield",
     );
@@ -1098,7 +1098,7 @@ describe("agent run continuation", () => {
       status: "suspended",
       resumeVersion: expect.any(Number),
     });
-    const sessionRecord = await turnSessionState.getAgentTurnSessionRecord(
+    const sessionRecord = await turnSessionState.getTurnRecord(
       "conversation-yield",
       "turn-yield",
     );
@@ -1182,7 +1182,7 @@ describe("agent run continuation", () => {
         },
       },
     ] as PiMessage[];
-    await turnSessionState.upsertAgentTurnSessionRecord({
+    await turnSessionState.upsertTurnRecord({
       modelId: "test/model",
       conversationId,
       sessionId: turnId,
@@ -1254,7 +1254,7 @@ describe("agent run continuation", () => {
       status: "suspended",
       resumeVersion: expect.any(Number),
     });
-    const sessionRecord = await turnSessionState.getAgentTurnSessionRecord(
+    const sessionRecord = await turnSessionState.getTurnRecord(
       "conversation-yield-steering",
       "turn-yield-steering",
     );
@@ -1279,7 +1279,7 @@ describe("agent run continuation", () => {
   it("throws when a cooperative yield cannot persist its resumable boundary", async () => {
     agentMode.value = "cooperativeYield";
     const upsertSpy = vi
-      .spyOn(turnSessionState, "upsertAgentTurnSessionRecord")
+      .spyOn(turnSessionState, "upsertTurnRecord")
       .mockRejectedValue(new Error("storage unavailable"));
 
     const error = await executeAgentRun({
@@ -1304,7 +1304,7 @@ describe("agent run continuation", () => {
       "Failed to persist cooperative yield",
     );
     await expect(
-      turnSessionState.getAgentTurnSessionRecord(
+      turnSessionState.getTurnRecord(
         "conversation-yield-persist-failure",
         "turn-yield-persist-failure",
       ),
@@ -1343,7 +1343,7 @@ describe("agent run continuation", () => {
       content: [{ type: "text", text: renderCurrentInstruction("help me") }],
       timestamp: 5,
     } satisfies PiMessage;
-    await turnSessionState.upsertAgentTurnSessionRecord({
+    await turnSessionState.upsertTurnRecord({
       modelId: "test/model",
       conversationId,
       sessionId,
@@ -1370,7 +1370,7 @@ describe("agent run continuation", () => {
     );
 
     expect(reply.diagnostics.outcome).toBe("success");
-    const sessionRecord = await turnSessionState.getAgentTurnSessionRecord(
+    const sessionRecord = await turnSessionState.getTurnRecord(
       conversationId,
       sessionId,
     );

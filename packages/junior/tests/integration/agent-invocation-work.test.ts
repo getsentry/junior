@@ -26,8 +26,8 @@ import { recoverPendingAgentInvocationMailboxAppends } from "@/chat/agent-dispat
 import { CONVERSATION_WORK_MAX_DELIVERY_ATTEMPTS } from "@/chat/task-execution/store";
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
 import {
-  getAgentTurnSessionRecord,
-  upsertAgentTurnSessionRecord,
+  getTurnRecord,
+  upsertTurnRecord,
 } from "@/chat/task-execution/turn-cursor";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import { createConfiguredJuniorSqlFixture } from "../fixtures/sql";
@@ -472,7 +472,7 @@ describe("agent invocation conversation work", () => {
       );
       const turnId = getAgentInvocationTurnId(created.invocationId);
       await markAgentInvocationRunning(created.invocationId);
-      await upsertAgentTurnSessionRecord({
+      await upsertTurnRecord({
         actor: invocationInput.actor,
         conversationId: created.childConversationId,
         destination,
@@ -538,7 +538,7 @@ describe("agent invocation conversation work", () => {
       expect(run).not.toHaveBeenCalled();
       expect(emptyResumeContext.attempt.ack).not.toHaveBeenCalled();
       await expect(
-        getAgentTurnSessionRecord(created.childConversationId, turnId),
+        getTurnRecord(created.childConversationId, turnId),
       ).resolves.toMatchObject({
         errorMessage: expect.stringContaining("no resumable boundary"),
         state: "failed",
@@ -580,7 +580,7 @@ describe("agent invocation conversation work", () => {
         { conversationStore, queue, state },
       );
       const turnId = getAgentInvocationTurnId(created.invocationId);
-      await upsertAgentTurnSessionRecord({
+      await upsertTurnRecord({
         actor: invocationInput.actor,
         conversationId: created.childConversationId,
         destination,
@@ -600,7 +600,7 @@ describe("agent invocation conversation work", () => {
       });
       const run = vi.fn(async (request) => {
         await expect(
-          getAgentTurnSessionRecord(created.childConversationId, turnId),
+          getTurnRecord(created.childConversationId, turnId),
         ).resolves.toMatchObject({ state: "paused" });
         await request.durability.onInputCommitted?.();
         return completedAgentRun({
@@ -654,7 +654,7 @@ describe("agent invocation conversation work", () => {
         },
         { conversationStore, queue, state },
       );
-      await upsertAgentTurnSessionRecord({
+      await upsertTurnRecord({
         actor: invocationInput.actor,
         conversationId: created.childConversationId,
         destination,

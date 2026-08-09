@@ -281,8 +281,8 @@ import { executeAgentRun } from "@/chat/agent";
 import { botConfig } from "@/chat/config";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
-  getAgentTurnSessionRecord,
-  upsertAgentTurnSessionRecord,
+  getTurnRecord,
+  upsertTurnRecord,
 } from "@/chat/task-execution/turn-cursor";
 
 const TEST_DESTINATION = {
@@ -344,7 +344,7 @@ describe("agent continuation composition", () => {
       resumeVersion: expect.any(Number),
     });
 
-    const sessionRecord = await getAgentTurnSessionRecord(
+    const sessionRecord = await getTurnRecord(
       "conversation-1",
       "turn-1",
     );
@@ -373,7 +373,7 @@ describe("agent continuation composition", () => {
         timestamp: 1,
       } as PiMessage,
     ];
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       modelId: "test/model",
       conversationId: "conversation-timeout-cap",
       sessionId: "turn-timeout-cap",
@@ -404,7 +404,7 @@ describe("agent continuation composition", () => {
     expect(error).not.toHaveProperty("text");
     expect(error.message).toContain("execution limit");
 
-    const sessionRecord = await getAgentTurnSessionRecord(
+    const sessionRecord = await getTurnRecord(
       "conversation-timeout-cap",
       "turn-timeout-cap",
     );
@@ -437,7 +437,7 @@ describe("agent continuation composition", () => {
 
     expect(promptAborted.value).toBe(true);
     expect(outcome.status).toBe("suspended");
-    const sessionRecord = await getAgentTurnSessionRecord(
+    const sessionRecord = await getTurnRecord(
       "conversation-short-deadline",
       "turn-short-deadline",
     );
@@ -465,7 +465,7 @@ describe("agent continuation composition", () => {
     await vi.advanceTimersByTimeAsync(10_000);
     await replyPromise;
 
-    const sessionRecord = await getAgentTurnSessionRecord(
+    const sessionRecord = await getTurnRecord(
       "conversation-2",
       "turn-2",
     );
@@ -514,7 +514,7 @@ describe("agent continuation composition", () => {
       resumeVersion: expect.any(Number),
     });
 
-    const sessionRecord = await getAgentTurnSessionRecord(
+    const sessionRecord = await getTurnRecord(
       "conversation-hung",
       "turn-hung",
     );
@@ -572,7 +572,7 @@ describe("agent continuation composition", () => {
 
     expect(promptAborted.value).toBe(true);
     expect(outcome.status).toBe("suspended");
-    const sessionRecord = await getAgentTurnSessionRecord(
+    const sessionRecord = await getTurnRecord(
       "conversation-retry",
       "turn-retry",
     );

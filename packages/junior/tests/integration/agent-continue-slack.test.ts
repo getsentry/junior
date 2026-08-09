@@ -136,7 +136,7 @@ function continueAgentRun(args: {
   expectedVersion: number;
 }): Promise<boolean> {
   return requestDeadlineModule.runWithTurnRequestDeadline(() =>
-    agentContinueRunnerModule.continueSlackAgentRunWithLockRetry(
+    agentContinueRunnerModule.continueSlackAgentRun(
       {
         conversationId: args.conversationId,
         destination: SLACK_DESTINATION,
@@ -208,7 +208,7 @@ describe("agent continuation Slack integration", () => {
       visibility: "private",
     });
     const sessionRecord =
-      await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+      await turnSessionStoreModule.upsertTurnRecord({
         modelId: "test/model",
         conversationId,
         sessionId,
@@ -377,7 +377,7 @@ describe("agent continuation Slack integration", () => {
     const conversationId = "slack:C123:1712345.0008";
     const sessionId = "turn_msg_8";
     const sessionRecord =
-      await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+      await turnSessionStoreModule.upsertTurnRecord({
         modelId: "test/model",
         conversationId,
         sessionId,
@@ -463,7 +463,7 @@ describe("agent continuation Slack integration", () => {
     const conversationId = "slack:C123:1712345.0009";
     const sessionId = "turn_msg_9";
     const sessionRecord =
-      await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+      await turnSessionStoreModule.upsertTurnRecord({
         modelId: "test/model",
         conversationId,
         sessionId,
@@ -634,7 +634,7 @@ describe("agent continuation Slack integration", () => {
     const conversationId = "slack:C123:1712345.0002";
     const sessionId = "turn_msg_2";
     const sessionRecord =
-      await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+      await turnSessionStoreModule.upsertTurnRecord({
         modelId: "test/model",
         conversationId,
         sessionId,
@@ -724,7 +724,7 @@ describe("agent continuation Slack integration", () => {
     const conversationId = "slack:C123:1712345.0007";
     const sessionId = "turn_msg_7";
     const sessionRecord =
-      await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+      await turnSessionStoreModule.upsertTurnRecord({
         modelId: "test/model",
         conversationId,
         sessionId,
@@ -779,7 +779,7 @@ describe("agent continuation Slack integration", () => {
     expect(continued).toBe(false);
     expect(executeAgentRunMock).not.toHaveBeenCalled();
     await expect(
-      turnSessionStoreModule.getAgentTurnSessionRecord(
+      turnSessionStoreModule.getTurnRecord(
         conversationId,
         sessionId,
       ),
@@ -805,7 +805,7 @@ describe("agent continuation Slack integration", () => {
     const sessionId = "turn_resource-event-msg_12";
     const storedSource = slackSource("1712345.0012");
     const sessionRecord =
-      await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+      await turnSessionStoreModule.upsertTurnRecord({
         modelId: "test/model",
         conversationId,
         sessionId,
@@ -882,7 +882,7 @@ describe("agent continuation Slack integration", () => {
     const conversationId = "slack:C123:1712345.0010";
     const sessionId = "turn_msg_10";
     const sessionRecord =
-      await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+      await turnSessionStoreModule.upsertTurnRecord({
         modelId: "test/model",
         conversationId,
         sessionId,
@@ -956,7 +956,7 @@ describe("agent continuation Slack integration", () => {
     const conversationId = "slack:C123:1712345.0011";
     const sessionId = "turn_msg_11";
     const sessionRecord =
-      await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+      await turnSessionStoreModule.upsertTurnRecord({
         modelId: "test/model",
         conversationId,
         sessionId,
@@ -1050,7 +1050,7 @@ describe("agent continuation Slack integration", () => {
     const conversationId = "slack:C123:1712345.0006";
     const sessionId = "turn_msg_6";
     const sessionRecord =
-      await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+      await turnSessionStoreModule.upsertTurnRecord({
         modelId: "test/model",
         conversationId,
         sessionId,
@@ -1158,7 +1158,7 @@ describe("agent continuation Slack integration", () => {
         diagnostics: makeDiagnostics(),
       });
     });
-    await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+    await turnSessionStoreModule.upsertTurnRecord({
       modelId: "test/model",
       conversationId,
       sessionId,
@@ -1247,7 +1247,7 @@ describe("agent continuation Slack integration", () => {
     ]);
     // Completion is committed only after Slack accepted the reply.
     await expect(
-      turnSessionStoreModule.getAgentTurnSessionRecord(
+      turnSessionStoreModule.getTurnRecord(
         conversationId,
         sessionId,
       ),
@@ -1270,7 +1270,7 @@ describe("agent continuation Slack integration", () => {
       content: [{ type: "text", text: summaryText }],
       timestamp: 5,
     } as any;
-    await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+    await turnSessionStoreModule.upsertTurnRecord({
       conversationId,
       sessionId,
       sliceId: 1,
@@ -1348,11 +1348,11 @@ describe("agent continuation Slack integration", () => {
 
     let recoveredRecord:
       | Awaited<
-          ReturnType<typeof turnSessionStoreModule.getAgentTurnSessionRecord>
+          ReturnType<typeof turnSessionStoreModule.getTurnRecord>
         >
       | undefined;
     executeAgentRunMock.mockImplementationOnce(async (request) => {
-      recoveredRecord = await turnSessionStoreModule.getAgentTurnSessionRecord(
+      recoveredRecord = await turnSessionStoreModule.getTurnRecord(
         conversationId,
         sessionId,
       );
@@ -1416,7 +1416,7 @@ describe("agent continuation Slack integration", () => {
   it("terminally fails a stranded running session with no resumable boundary", async () => {
     const conversationId = "slack:C123:1712345.0009";
     const sessionId = "turn_msg_9";
-    await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+    await turnSessionStoreModule.upsertTurnRecord({
       modelId: "test/model",
       conversationId,
       sessionId,
@@ -1491,7 +1491,7 @@ describe("agent continuation Slack integration", () => {
     expect(resumed).toBe(false);
     expect(executeAgentRunMock).not.toHaveBeenCalled();
     await expect(
-      turnSessionStoreModule.getAgentTurnSessionRecord(
+      turnSessionStoreModule.getTurnRecord(
         conversationId,
         sessionId,
       ),
@@ -1516,7 +1516,7 @@ describe("agent continuation Slack integration", () => {
     const conversationId = "slack:C123:1712345.0003";
     const sessionId = "turn_msg_3";
     const sessionRecord =
-      await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+      await turnSessionStoreModule.upsertTurnRecord({
         modelId: "test/model",
         conversationId,
         sessionId,

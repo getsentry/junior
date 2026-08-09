@@ -18,7 +18,7 @@ import {
   markDispatchCompleted,
 } from "@/chat/agent-dispatch/store";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
-import { upsertAgentTurnSessionRecord } from "@/chat/task-execution/turn-cursor";
+import { upsertTurnRecord } from "@/chat/task-execution/turn-cursor";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { scheduleAgentContinue } from "@/chat/task-execution/continue";
@@ -248,7 +248,7 @@ describe("plugin heartbeat", () => {
     const sessionId = "turn-timeout";
     const staleNowMs = TEST_NOW_MS - 3 * 60 * 1000;
     vi.setSystemTime(staleNowMs);
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       modelId: "test/model",
       conversationId,
       sessionId,
@@ -308,7 +308,7 @@ describe("plugin heartbeat", () => {
     const sessionId = "turn-yield";
     const staleNowMs = TEST_NOW_MS - 3 * 60 * 1000;
     vi.setSystemTime(staleNowMs);
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       modelId: "test/model",
       conversationId,
       sessionId,
@@ -368,7 +368,7 @@ describe("plugin heartbeat", () => {
     const sessionId = "turn-timeout-inactive";
     const staleNowMs = TEST_NOW_MS - 3 * 60 * 1000;
     vi.setSystemTime(staleNowMs);
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       modelId: "test/model",
       conversationId,
       sessionId,
@@ -410,7 +410,7 @@ describe("plugin heartbeat", () => {
     const sessionId = "turn-timeout-no-active-work";
     const staleNowMs = TEST_NOW_MS - 3 * 60 * 1000;
     vi.setSystemTime(staleNowMs);
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       modelId: "test/model",
       conversationId,
       sessionId,

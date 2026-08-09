@@ -18,8 +18,8 @@ import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import {
-  listAgentTurnSessionSummariesForConversation,
-  recordAgentTurnSessionSummary,
+  listTurnSummaries,
+  recordTurnSummary,
 } from "@/chat/task-execution/turn-cursor";
 import { persistConversationMessages } from "@/chat/conversations/messages";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
@@ -233,7 +233,7 @@ describe("agent dispatch conversation work", () => {
       status: "running",
     });
     await expect(
-      listAgentTurnSessionSummariesForConversation(
+      listTurnSummaries(
         getDispatchConversationId(dispatch),
       ),
     ).resolves.toEqual([
@@ -285,7 +285,7 @@ describe("agent dispatch conversation work", () => {
         },
         JUNIOR_THREAD_STATE_TTL_MS,
       );
-      await recordAgentTurnSessionSummary({
+      await recordTurnSummary({
         actor: dispatch.actor,
         conversationId,
         destination: dispatch.destination,
@@ -300,7 +300,7 @@ describe("agent dispatch conversation work", () => {
       });
       const runTurn = vi.fn();
       const resumeTurn = vi.fn(async () => {
-        await recordAgentTurnSessionSummary({
+        await recordTurnSummary({
           actor: dispatch.actor,
           conversationId,
           destination: dispatch.destination,
@@ -393,7 +393,7 @@ describe("agent dispatch conversation work", () => {
 
   it("uses a durable delivery receipt when the worker died before outcome persistence", async () => {
     const dispatch = await createDispatch("delivery-receipt-fence");
-    await recordAgentTurnSessionSummary({
+    await recordTurnSummary({
       actor: dispatch.actor,
       conversationId: getDispatchConversationId(dispatch),
       destination: dispatch.destination,

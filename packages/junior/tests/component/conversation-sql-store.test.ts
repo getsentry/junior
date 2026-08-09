@@ -9,7 +9,7 @@ import {
 } from "@/chat/task-execution/store";
 import { processConversationWork } from "@/chat/task-execution/worker";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
-import { upsertAgentTurnSessionRecord } from "@/chat/task-execution/turn-cursor";
+import { upsertTurnRecord } from "@/chat/task-execution/turn-cursor";
 import {
   juniorConversations,
   juniorDestinations,
@@ -1169,7 +1169,7 @@ WHERE conversation_id = $1
         lastActivityAtMs: 600_000,
         updatedAtMs: 600_000,
       });
-      await upsertAgentTurnSessionRecord({
+      await upsertTurnRecord({
         modelId: "test/model",
         conversationStore: store,
         conversationId: CONVERSATION_ID,

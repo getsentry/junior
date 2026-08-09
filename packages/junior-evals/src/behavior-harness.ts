@@ -89,7 +89,7 @@ import { ingestEventTasks } from "@/chat/event-tasks/ingest";
 import { createEventTask } from "@/chat/event-tasks/store";
 import type { EventTask } from "@/chat/event-tasks/types";
 import { getStateAdapter } from "@/chat/state/adapter";
-import { upsertAgentTurnSessionRecord } from "@/chat/task-execution/turn-cursor";
+import { upsertTurnRecord } from "@/chat/task-execution/turn-cursor";
 import { resetSkillDiscoveryCache } from "@/chat/skills";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { annotateTurnDeadlineToolResult } from "@/chat/tool-support/turn-deadline-result";
@@ -1793,7 +1793,7 @@ function buildRuntimeServices(
                 timestamp: nowMs + 2,
               },
             ] as PiMessage[];
-            const sessionRecord = await upsertAgentTurnSessionRecord({
+            const sessionRecord = await upsertTurnRecord({
               conversationId: runRequest.conversationId,
               sessionId: runRequest.turnId,
               sliceId: 1,
@@ -1871,7 +1871,7 @@ function buildRuntimeServices(
                 timestamp: nowMs,
               },
             ] as PiMessage[];
-            const sessionRecord = await upsertAgentTurnSessionRecord({
+            const sessionRecord = await upsertTurnRecord({
               conversationId: runRequest.conversationId,
               sessionId: runRequest.turnId,
               sliceId: 2,

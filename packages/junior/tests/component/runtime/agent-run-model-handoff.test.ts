@@ -229,7 +229,7 @@ import {
   loadProjection,
 } from "@/chat/conversations/projection";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { getAgentTurnSessionRecord } from "@/chat/task-execution/turn-cursor";
+import { getTurnRecord } from "@/chat/task-execution/turn-cursor";
 import { getConversationEventStore } from "@/chat/db";
 import { ContextInputLimitExceededError } from "@/chat/services/context-compaction";
 
@@ -737,7 +737,7 @@ describe("model handoff composition", () => {
       status: "suspended",
       resumeVersion: expect.any(Number),
     });
-    const suspendedRecord = await getAgentTurnSessionRecord(
+    const suspendedRecord = await getTurnRecord(
       conversationId,
       turnId,
     );
@@ -963,7 +963,7 @@ describe("model handoff composition", () => {
     });
 
     expect(outcome.status).toBe("suspended");
-    const record = await getAgentTurnSessionRecord(conversationId, sessionId);
+    const record = await getTurnRecord(conversationId, sessionId);
     expect(record).toMatchObject({ state: "paused" });
     expect(JSON.stringify(record?.piMessages)).toContain(
       "Implement the requested change and verify it.",

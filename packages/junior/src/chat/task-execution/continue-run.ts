@@ -21,12 +21,12 @@ import {
   loadConversationProjection,
 } from "@/chat/conversations/projection";
 import {
-  failAgentTurnSessionRecord,
-  getAgentTurnSessionRecordForResume,
-  listAgentTurnSessionSummariesForConversation,
-  recordAgentTurnSessionSummary,
-  type AgentTurnSessionRecord,
-  type AgentTurnSessionSummary,
+  failTurnRecord,
+  getTurnRecordForResume,
+  listTurnSummaries,
+  recordTurnSummary,
+  type TurnRecord,
+  type TurnSummary,
 } from "./turn-cursor";
 import {
   loadTurnCheckpoint,
@@ -116,7 +116,7 @@ export interface AgentContinueRunOptions {
 
 /** Persist a delivered continuation reply as the terminal thread state. */
 async function persistCompletedReplyState(args: {
-  sessionRecord: AgentTurnSessionRecord;
+  sessionRecord: TurnRecord;
   reply: AgentRunResult;
 }): Promise<void> {
   const currentState = await getPersistedThreadState(
@@ -147,11 +147,11 @@ async function persistCompletedReplyState(args: {
 
 /** Mark the run record failed without masking the original continuation error. */
 async function failSessionRecordBestEffort(args: {
-  sessionRecord: AgentTurnSessionRecord;
+  sessionRecord: TurnRecord;
   errorMessage: string;
 }): Promise<void> {
   try {
-    await failAgentTurnSessionRecord({
+    await failTurnRecord({
       conversationId: args.sessionRecord.conversationId,
       expectedVersion: args.sessionRecord.version,
       sessionId: args.sessionRecord.sessionId,
@@ -171,7 +171,7 @@ async function failSessionRecordBestEffort(args: {
 
 /** Persist failed thread and session state after a continuation cannot finish. */
 async function persistFailedReplyState(
-  sessionRecord: AgentTurnSessionRecord,
+  sessionRecord: TurnRecord,
   errorMessage = "Paused agent run failed while continuing",
 ): Promise<void> {
   const currentState = await getPersistedThreadState(
@@ -205,7 +205,7 @@ async function persistFailedReplyState(
 /** Convert startup failures into durable failed state before rethrowing. */
 async function failContinuationStartup(args: {
   errorMessage: string;
-  sessionRecord: AgentTurnSessionRecord;
+  sessionRecord: TurnRecord;
 }): Promise<void> {
   try {
     await persistFailedReplyState(args.sessionRecord, args.errorMessage);
@@ -327,7 +327,7 @@ async function resolveResumeExecutionIdentity(args: {
   };
 }
 
-function isContinuationResume(summary: AgentTurnSessionSummary): boolean {
+function isContinuationResume(summary: TurnSummary): boolean {
   return (
     summary.state === "paused" &&
     (summary.resumeReason === "timeout" ||
@@ -340,9 +340,9 @@ async function failUnresumableContinuation(args: {
   conversationId: string;
   errorMessage: string;
   expectedVersion?: number;
-  summary: AgentTurnSessionSummary;
+  summary: TurnSummary;
 }): Promise<void> {
-  await failAgentTurnSessionRecord({
+  await failTurnRecord({
     conversationId: args.conversationId,
     expectedVersion: args.expectedVersion ?? args.summary.version,
     sessionId: args.summary.sessionId,
@@ -353,7 +353,7 @@ async function failUnresumableContinuation(args: {
       const routing = await resolveTurnSessionRouting({
         conversationId: args.conversationId,
       });
-      await recordAgentTurnSessionSummary({
+      await recordTurnSummary({
         conversationId: args.conversationId,
         destination: routing.destination,
         dispatchId: args.summary.dispatchId,
@@ -415,7 +415,7 @@ async function continueSlackAgentRunInContext(
     scheduleSessionCompletedPluginTasks:
       options.scheduleSessionCompletedPluginTasks,
     beforeStart: async () => {
-      let sessionRecord: AgentTurnSessionRecord | undefined;
+      let sessionRecord: TurnRecord | undefined;
       try {
         const checkpoint = await loadTurnCheckpoint({
           conversationId: payload.conversationId,
@@ -513,7 +513,7 @@ async function continueSlackAgentRunInContext(
           if (!dispatchId) {
             return;
           }
-          await recordAgentTurnSessionSummary({
+          await recordTurnSummary({
             conversationId: payload.conversationId,
             destination: routingDestination,
             destinationVisibility:
@@ -589,7 +589,7 @@ async function continueSlackAgentRunInContext(
             await recordDispatchOutcome("failed");
           },
           onPostDeliveryCommitFailure: async () => {
-            await failAgentTurnSessionRecord({
+            await failTurnRecord({
               conversationId: activeSessionRecord.conversationId,
               expectedVersion: activeSessionRecord.version,
               sessionId: activeSessionRecord.sessionId,
@@ -636,9 +636,9 @@ async function continueSlackAgentRunInContext(
 async function failStrandedSessionWithFallback(args: {
   conversationId: string;
   errorMessage: string;
-  sessionRecord: AgentTurnSessionRecord;
+  sessionRecord: TurnRecord;
 }): Promise<void> {
-  await failAgentTurnSessionRecord({
+  await failTurnRecord({
     conversationId: args.conversationId,
     expectedVersion: args.sessionRecord.version,
     sessionId: args.sessionRecord.sessionId,
@@ -680,7 +680,7 @@ async function failStrandedSessionWithFallback(args: {
     return;
   }
   if (args.sessionRecord.dispatchId) {
-    await recordAgentTurnSessionSummary({
+    await recordTurnSummary({
       conversationId: args.conversationId,
       destination: routing.destination,
       dispatchId: args.sessionRecord.dispatchId,
@@ -717,7 +717,7 @@ async function recoverStrandedRunningSession(args: {
   conversationId: string;
   options: AgentContinueRunnerOptions;
   runOptions: AgentContinueRunOptions;
-  summary: AgentTurnSessionSummary;
+  summary: TurnSummary;
 }): Promise<boolean> {
   // A live resume outside the mailbox lease (OAuth/timeout continuation)
   // holds the thread resume lock for its whole run; only a dead slice leaves
@@ -730,7 +730,7 @@ async function recoverStrandedRunningSession(args: {
   }
   await stateAdapter.releaseLock(probe);
 
-  const sessionRecord = await getAgentTurnSessionRecordForResume(
+  const sessionRecord = await getTurnRecordForResume(
     args.conversationId,
     args.summary.sessionId,
   );
@@ -796,7 +796,7 @@ async function recoverStrandedRunningSession(args: {
   }
 
   if (
-    await continueSlackAgentRunWithLockRetry(
+    await continueSlackAgentRun(
       request,
       args.options,
       args.runOptions,
@@ -834,7 +834,7 @@ async function resumeAwaitingSlackContinuationInContext(
   runOptions: AgentContinueRunOptions,
 ): Promise<boolean> {
   const summaries =
-    await listAgentTurnSessionSummariesForConversation(conversationId);
+    await listTurnSummaries(conversationId);
 
   // Recovery must cover every non-terminal session: a newest `running` record
   // under the (already re-acquired) conversation lease means the previous
@@ -869,7 +869,7 @@ async function resumeAwaitingSlackContinuationInContext(
     }
 
     if (
-      await continueSlackAgentRunWithLockRetry(request, options, runOptions)
+      await continueSlackAgentRun(request, options, runOptions)
     ) {
       return true;
     }
@@ -883,18 +883,4 @@ async function resumeAwaitingSlackContinuationInContext(
   }
 
   return false;
-}
-
-/**
- * Continue one paused Slack agent run under the conversation work lease.
- *
- * Name kept for callers; there is no second resume-lock retry loop. Queue
- * continue owns the worker lease only (`ownsConversationLease`).
- */
-export async function continueSlackAgentRunWithLockRetry(
-  payload: AgentContinueRequest,
-  options: AgentContinueRunnerOptions,
-  runOptions: AgentContinueRunOptions = {},
-): Promise<boolean> {
-  return await continueSlackAgentRun(payload, options, runOptions);
 }

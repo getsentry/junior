@@ -30,8 +30,8 @@ import {
   type ConversationMessage,
 } from "@/chat/state/conversation";
 import {
-  getAgentTurnSessionRecord,
-  upsertAgentTurnSessionRecord,
+  getTurnRecord,
+  upsertTurnRecord,
 } from "@/chat/task-execution/turn-cursor";
 import {
   getCapturedSlackApiCalls,
@@ -565,7 +565,7 @@ describe("bot handlers (integration)", () => {
             run: async (request) => {
               // Simulate agent-run durable input checkpoint: the session record
               // is running at the prompt boundary when generation finishes.
-              await upsertAgentTurnSessionRecord({
+              await upsertTurnRecord({
                 modelId: "test/model",
                 conversationId,
                 sessionId,
@@ -665,7 +665,7 @@ describe("bot handlers (integration)", () => {
 
     // The session must not be recorded as delivered, and the undelivered
     // assistant reply must not surface to later turns as durable history.
-    const sessionRecord = await getAgentTurnSessionRecord(
+    const sessionRecord = await getTurnRecord(
       conversationId,
       sessionId,
     );
@@ -782,7 +782,7 @@ describe("bot handlers (integration)", () => {
       ]),
     );
     await expect(
-      getAgentTurnSessionRecord(conversationId, sessionId),
+      getTurnRecord(conversationId, sessionId),
     ).resolves.toMatchObject({ state: "completed" });
     await expect(loadProjection({ conversationId })).resolves.toEqual(
       expect.arrayContaining([expect.objectContaining({ role: "assistant" })]),
@@ -1260,7 +1260,7 @@ describe("bot handlers (integration)", () => {
         },
       });
     });
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       modelId: "test/model",
       conversationId,
       sessionId: activeSessionId,
@@ -1303,7 +1303,7 @@ describe("bot handlers (integration)", () => {
       true,
     );
     await expect(
-      getAgentTurnSessionRecord(conversationId, activeSessionId),
+      getTurnRecord(conversationId, activeSessionId),
     ).resolves.toMatchObject({
       state: "abandoned",
       errorMessage: "Auth-parked session superseded by a new user message",
@@ -1322,7 +1322,7 @@ describe("bot handlers (integration)", () => {
     const destination = slackDestination("C9PARKEDLOG");
     const activeSessionId = "turn_msg-original";
     const storedSource = createSlackSourceForTest("C9PARKEDLOG");
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       modelId: "test/model",
       conversationId,
       sessionId: activeSessionId,
@@ -1381,7 +1381,7 @@ describe("bot handlers (integration)", () => {
 
     // The resumed continue() replays the record's Pi history, which must now
     // end with the follow-up at a continuable user boundary.
-    const record = await getAgentTurnSessionRecord(
+    const record = await getTurnRecord(
       conversationId,
       activeSessionId,
     );
@@ -1409,7 +1409,7 @@ describe("bot handlers (integration)", () => {
     const conversationId = "slack:C9PARKEDPART:1700000000.000";
     const destination = slackDestination("C9PARKEDPART");
     const activeSessionId = "turn_msg-original";
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       modelId: "test/model",
       conversationId,
       sessionId: activeSessionId,
@@ -1466,7 +1466,7 @@ describe("bot handlers (integration)", () => {
     const conversationId = "slack:C9PARKEDAUTH:1700000000.000";
     const destination = slackDestination("C9PARKEDAUTH");
     const activeSessionId = "turn_msg-original";
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       modelId: "test/model",
       conversationId,
       sessionId: activeSessionId,
@@ -1628,7 +1628,7 @@ describe("bot handlers (integration)", () => {
     const conversationId = "slack:C9PARKEDLOCK:1700000000.000";
     const destination = slackDestination("C9PARKEDLOCK");
     const activeSessionId = "turn_msg-original";
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       modelId: "test/model",
       conversationId,
       sessionId: activeSessionId,
@@ -1878,7 +1878,7 @@ describe("bot handlers (integration)", () => {
         },
       });
     });
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       modelId: "test/model",
       conversationId,
       sessionId: activeSessionId,
@@ -1913,7 +1913,7 @@ describe("bot handlers (integration)", () => {
 
     expect(executeAgentRun).toHaveBeenCalledOnce();
     expect(postIncludes(thread, "Recovered.")).toBe(true);
-    const failedRecord = await getAgentTurnSessionRecord(
+    const failedRecord = await getTurnRecord(
       conversationId,
       activeSessionId,
     );

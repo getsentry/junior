@@ -29,9 +29,9 @@ import { getMessageActorIdentity } from "@/chat/services/message-actor-identity"
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import {
-  failAgentTurnSessionRecord,
-  getAgentTurnSessionRecord,
-  upsertAgentTurnSessionRecord,
+  failTurnRecord,
+  getTurnRecord,
+  upsertTurnRecord,
 } from "@/chat/task-execution/turn-cursor";
 import {
   getPersistedThreadState,
@@ -1241,7 +1241,7 @@ describe("Slack conversation work execution", () => {
       nowMs: 1_000,
       state,
     });
-    const sessionRecord = await upsertAgentTurnSessionRecord({
+    const sessionRecord = await upsertTurnRecord({
       modelId: "test/model",
       conversationId: CONVERSATION_ID,
       sessionId: "turn-invalid-timeout",
@@ -1259,7 +1259,7 @@ describe("Slack conversation work execution", () => {
         run: createSlackConversationWorker({
           getSlackAdapter: () => slackAdapter,
           resumeAwaitingContinuation: async () => {
-            await failAgentTurnSessionRecord({
+            await failTurnRecord({
               conversationId: CONVERSATION_ID,
               expectedVersion: sessionRecord.version,
               sessionId: "turn-invalid-timeout",
@@ -1289,7 +1289,7 @@ describe("Slack conversation work execution", () => {
     expect(recovered?.needsRun).toBe(false);
     expect(recovered?.messages).toEqual([]);
     await expect(
-      getAgentTurnSessionRecord(CONVERSATION_ID, "turn-invalid-timeout"),
+      getTurnRecord(CONVERSATION_ID, "turn-invalid-timeout"),
     ).resolves.toMatchObject({
       state: "failed",
       errorMessage:
@@ -1371,7 +1371,7 @@ describe("Slack conversation work execution", () => {
       nowMs: 1_000,
       state,
     });
-    const sessionRecord = await upsertAgentTurnSessionRecord({
+    const sessionRecord = await upsertTurnRecord({
       modelId: "test/model",
       conversationId: CONVERSATION_ID,
       sessionId,
@@ -1421,7 +1421,7 @@ describe("Slack conversation work execution", () => {
         run: createSlackConversationWorker({
           getSlackAdapter: () => slackAdapter,
           resumeAwaitingContinuation: async () => {
-            await failAgentTurnSessionRecord({
+            await failTurnRecord({
               conversationId: CONVERSATION_ID,
               expectedVersion: sessionRecord.version,
               sessionId,
@@ -1451,7 +1451,7 @@ describe("Slack conversation work execution", () => {
     expect(recovered?.needsRun).toBe(false);
     expect(recovered?.messages).toEqual([]);
     await expect(
-      getAgentTurnSessionRecord(CONVERSATION_ID, sessionId),
+      getTurnRecord(CONVERSATION_ID, sessionId),
     ).resolves.toMatchObject({
       state: "failed",
       errorMessage: "Awaiting agent continuation was stale before it could run",
@@ -1995,7 +1995,7 @@ describe("Slack conversation work execution", () => {
     const persistedState = await getPersistedThreadState(CONVERSATION_ID);
     const conversation = coerceThreadConversationState(persistedState);
     expect(conversation.processing.activeTurnId).toBe(yieldedSessionId);
-    const sessionRecord = await getAgentTurnSessionRecord(
+    const sessionRecord = await getTurnRecord(
       CONVERSATION_ID,
       yieldedSessionId ?? "",
     );

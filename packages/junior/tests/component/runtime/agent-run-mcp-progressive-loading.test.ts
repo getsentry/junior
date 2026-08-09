@@ -664,8 +664,8 @@ vi.mock("@/chat/mcp/client", () => {
 import { executeAgentRun } from "@/chat/agent";
 import type { AgentRunRequest } from "@/chat/agent/request";
 import {
-  getAgentTurnSessionRecord,
-  upsertAgentTurnSessionRecord,
+  getTurnRecord,
+  upsertTurnRecord,
 } from "@/chat/task-execution/turn-cursor";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 
@@ -827,7 +827,7 @@ describe("executeAgentRun progressive MCP loading", () => {
     expect(agentInitialToolNames[0]).toContain("executeTool");
     expect(agentInitialToolNames[0]).not.toContain("mcp__demo__ping");
 
-    const pausedSessionRecord = await getAgentTurnSessionRecord(
+    const pausedSessionRecord = await getTurnRecord(
       "conversation-1",
       "turn-1",
     );
@@ -888,7 +888,7 @@ describe("executeAgentRun progressive MCP loading", () => {
 
     // Generation completing is not delivery: the record stays resumable until
     // the destination boundary commits completion after Slack acceptance.
-    const resumedSessionRecord = await getAgentTurnSessionRecord(
+    const resumedSessionRecord = await getTurnRecord(
       "conversation-1",
       "turn-1",
     );
@@ -933,7 +933,7 @@ describe("executeAgentRun progressive MCP loading", () => {
 
     // Generation completing is not delivery: the record stays at its running
     // safe boundary until the destination boundary commits completion.
-    const sessionRecord = await getAgentTurnSessionRecord(
+    const sessionRecord = await getTurnRecord(
       "conversation-2",
       "turn-2",
     );
@@ -1215,7 +1215,7 @@ describe("executeAgentRun progressive MCP loading", () => {
 
     expect(firstError.status).toBe("awaiting_auth");
 
-    const pausedSessionRecord = await getAgentTurnSessionRecord(
+    const pausedSessionRecord = await getTurnRecord(
       "conversation-restore-auth",
       "turn-restore-auth",
     );
@@ -1355,7 +1355,7 @@ describe("executeAgentRun progressive MCP loading", () => {
       currentContext,
       currentPrompt,
     ] as PiMessage[];
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       modelId: "test/model",
       conversationId: "conversation-current-resume",
       sessionId: "turn-current-resume",
@@ -1408,7 +1408,7 @@ describe("executeAgentRun progressive MCP loading", () => {
         timestamp: 1,
       },
     ] as PiMessage[];
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       modelId: "test/model",
       conversationId: "conversation-crash-retry",
       sessionId: "turn-crash-retry",
@@ -1520,7 +1520,7 @@ describe("executeAgentRun progressive MCP loading", () => {
     expect(firstError.status).toBe("awaiting_auth");
     expect(deliverPrivateMessageMock).toHaveBeenCalledTimes(1);
 
-    const pausedSessionRecord = await getAgentTurnSessionRecord(
+    const pausedSessionRecord = await getTurnRecord(
       "conversation-4",
       "turn-4",
     );
@@ -1535,7 +1535,7 @@ describe("executeAgentRun progressive MCP loading", () => {
 
     // Generation completing is not delivery: the record stays resumable until
     // the destination boundary commits completion after Slack acceptance.
-    const resumedSessionRecord = await getAgentTurnSessionRecord(
+    const resumedSessionRecord = await getTurnRecord(
       "conversation-4",
       "turn-4",
     );
@@ -1590,7 +1590,7 @@ describe("executeAgentRun progressive MCP loading", () => {
       },
     ];
     const expectedResumeMessages = priorMessages.slice(0, 2);
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       modelId: "test/model",
       conversationId: "conversation-5",
       sessionId: "turn-5",
@@ -1619,7 +1619,7 @@ describe("executeAgentRun progressive MCP loading", () => {
 
     expect(firstError.status).toBe("awaiting_auth");
 
-    const resumedSessionRecord = await getAgentTurnSessionRecord(
+    const resumedSessionRecord = await getTurnRecord(
       "conversation-5",
       "turn-5",
     );
@@ -1645,7 +1645,7 @@ describe("executeAgentRun progressive MCP loading", () => {
 
     expect(firstError.status).toBe("awaiting_auth");
 
-    const pausedSessionRecord = await getAgentTurnSessionRecord(
+    const pausedSessionRecord = await getTurnRecord(
       "conversation-6",
       "turn-6",
     );

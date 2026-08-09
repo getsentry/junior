@@ -121,7 +121,7 @@ vi.mock("@/chat/plugins/agent-hooks", async (importOriginal) => {
 
 import { executeAgentRun } from "@/chat/agent";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { upsertAgentTurnSessionRecord } from "@/chat/task-execution/turn-cursor";
+import { upsertTurnRecord } from "@/chat/task-execution/turn-cursor";
 
 const LOCAL_DESTINATION = {
   platform: "local",
@@ -191,7 +191,7 @@ describe("run actor composition", () => {
     const conversationId = LOCAL_DESTINATION.conversationId;
     const sessionId = "turn-run-actors-batched";
 
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       modelId: "test/model",
       actor: RUN_ACTOR,
       conversationId,

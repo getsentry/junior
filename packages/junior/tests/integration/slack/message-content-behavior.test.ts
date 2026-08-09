@@ -11,7 +11,7 @@ import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import { commitMessages } from "@/chat/conversations/projection";
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
-import { upsertAgentTurnSessionRecord } from "@/chat/task-execution/turn-cursor";
+import { upsertTurnRecord } from "@/chat/task-execution/turn-cursor";
 import { getConversationEventStore } from "@/chat/db";
 import { botConfig } from "@/chat/config";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
@@ -346,7 +346,7 @@ describe("Slack behavior: message content", () => {
                 context?.conversationId &&
                 context.turnId
               ) {
-                await upsertAgentTurnSessionRecord({
+                await upsertTurnRecord({
                   modelId: "test/model",
                   conversationId: context.conversationId,
                   sessionId: context.turnId,
@@ -582,7 +582,7 @@ describe("Slack behavior: message content", () => {
       conversationId: thread.id,
       messages: activeMessages,
     });
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       modelId: "test/model",
       conversationId: thread.id,
       sessionId: "turn-active-crashed",

@@ -11,7 +11,7 @@ const {
   formatProviderLabel,
   getMcpAuthSession,
   patchMcpAuthSession,
-  abandonAgentTurnSessionRecord,
+  abandonTurnRecord,
 } = vi.hoisted(() => ({
   createMcpOAuthClientProvider: vi.fn(),
   deleteMcpAuthSession: vi.fn(),
@@ -19,7 +19,7 @@ const {
   formatProviderLabel: vi.fn((provider: string) => provider),
   getMcpAuthSession: vi.fn(),
   patchMcpAuthSession: vi.fn(),
-  abandonAgentTurnSessionRecord: vi.fn(),
+  abandonTurnRecord: vi.fn(),
 }));
 
 vi.mock("@/chat/mcp/oauth", () => ({
@@ -42,7 +42,7 @@ vi.mock("@/chat/oauth-flow", () => ({
 }));
 
 vi.mock("@/chat/task-execution/turn-cursor", () => ({
-  abandonAgentTurnSessionRecord,
+  abandonTurnRecord,
 }));
 
 function plugin(name: string): PluginDefinition {
@@ -76,7 +76,7 @@ describe("createMcpAuthOrchestration", () => {
     formatProviderLabel.mockClear();
     getMcpAuthSession.mockReset();
     patchMcpAuthSession.mockReset();
-    abandonAgentTurnSessionRecord.mockReset();
+    abandonTurnRecord.mockReset();
   });
 
   it("returns a deterministic error instead of delivering auth links when authorization is disabled", async () => {
@@ -206,7 +206,7 @@ describe("createMcpAuthOrchestration", () => {
       }),
     );
     expect(recordPendingAuth).toHaveBeenCalledTimes(1);
-    expect(abandonAgentTurnSessionRecord).toHaveBeenCalledWith({
+    expect(abandonTurnRecord).toHaveBeenCalledWith({
       conversationId: "slack:C123:1700000000.000000",
       sessionId: "run_old",
       errorMessage:
@@ -222,7 +222,7 @@ describe("createMcpAuthOrchestration", () => {
       recordPendingAuth.mock.invocationCallOrder[0]!,
     );
     expect(deliverPrivateMessage.mock.invocationCallOrder[0]).toBeLessThan(
-      abandonAgentTurnSessionRecord.mock.invocationCallOrder[0]!,
+      abandonTurnRecord.mock.invocationCallOrder[0]!,
     );
     expect(abortAgent).toHaveBeenCalledTimes(1);
   });
@@ -271,7 +271,7 @@ describe("createMcpAuthOrchestration", () => {
     expect(getMcpAuthSession).not.toHaveBeenCalled();
     expect(deliverPrivateMessage).not.toHaveBeenCalled();
     expect(recordPendingAuth).toHaveBeenCalledWith(pendingAuth);
-    expect(abandonAgentTurnSessionRecord).not.toHaveBeenCalled();
+    expect(abandonTurnRecord).not.toHaveBeenCalled();
     expect(abortAgent).toHaveBeenCalledTimes(1);
   });
 
@@ -323,7 +323,7 @@ describe("createMcpAuthOrchestration", () => {
     );
     expect(deleteMcpAuthSession).toHaveBeenCalledWith("auth_1");
     expect(recordPendingAuth).toHaveBeenNthCalledWith(2, previousPendingAuth);
-    expect(abandonAgentTurnSessionRecord).not.toHaveBeenCalled();
+    expect(abandonTurnRecord).not.toHaveBeenCalled();
     expect(abortAgent).not.toHaveBeenCalled();
   });
 });

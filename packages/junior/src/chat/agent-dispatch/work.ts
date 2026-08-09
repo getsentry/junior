@@ -17,9 +17,9 @@ import {
   TurnInputCommitLostError,
 } from "@/chat/runtime/turn";
 import {
-  getAgentTurnSessionRecord,
-  listAgentTurnSessionSummariesForConversation,
-  recordAgentTurnSessionSummary,
+  getTurnRecord,
+  listTurnSummaries,
+  recordTurnSummary,
 } from "@/chat/task-execution/checkpoint";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
@@ -215,7 +215,7 @@ export async function resolveAgentDispatchId(
     return undefined;
   }
 
-  const summaries = await listAgentTurnSessionSummariesForConversation(
+  const summaries = await listTurnSummaries(
     context.conversationId,
   );
   const activeDispatchIds = new Set(
@@ -299,9 +299,9 @@ async function readDispatchTurnResult(
 ): Promise<DurableDispatchTurnResult> {
   const conversationId = getDispatchConversationId(dispatch);
   const turnId = getDispatchTurnId(dispatch.id);
-  const storedSession = await getAgentTurnSessionRecord(conversationId, turnId);
+  const storedSession = await getTurnRecord(conversationId, turnId);
   const summary = (
-    await listAgentTurnSessionSummariesForConversation(conversationId)
+    await listTurnSummaries(conversationId)
   ).find((candidate) => candidate.sessionId === turnId);
   const session = storedSession ?? summary;
   const dispatchOutcome =
@@ -386,8 +386,8 @@ async function persistBlockedDispatchTurn(
 ): Promise<void> {
   const conversationId = getDispatchConversationId(dispatch);
   const sessionId = getDispatchTurnId(dispatch.id);
-  const session = await getAgentTurnSessionRecord(conversationId, sessionId);
-  await recordAgentTurnSessionSummary({
+  const session = await getTurnRecord(conversationId, sessionId);
+  await recordTurnSummary({
     actor: dispatch.actor,
     conversationId,
     destination: dispatch.destination,

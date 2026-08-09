@@ -292,7 +292,7 @@ describe("oauth callback integration", () => {
         expect.objectContaining({ accessToken: "eval-oauth-access-token" }),
       );
       await expect(
-        turnSessionStoreModule.getAgentTurnSessionRecord(
+        turnSessionStoreModule.getTurnRecord(
           conversationId,
           requests[0]!.turnId,
         ),
@@ -316,7 +316,7 @@ describe("oauth callback integration", () => {
       visibility: "private",
     });
 
-    await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+    await turnSessionStoreModule.upsertTurnRecord({
       modelId: "test/model",
       conversationId,
       sessionId,
@@ -448,7 +448,7 @@ describe("oauth callback integration", () => {
 
     expect(response.status).toBe(200);
     const sessionRecordAfterAuth =
-      await turnSessionStoreModule.getAgentTurnSessionRecord(
+      await turnSessionStoreModule.getTurnRecord(
         conversationId,
         sessionId,
       );
@@ -640,7 +640,7 @@ describe("oauth callback integration", () => {
       },
     };
 
-    await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+    await turnSessionStoreModule.upsertTurnRecord({
       modelId: "test/model",
       conversationId,
       sessionId,
@@ -738,7 +738,7 @@ describe("oauth callback integration", () => {
     const oldSessionId = "turn_msg_old_12";
     const newSessionId = "turn_msg_new_12";
 
-    await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+    await turnSessionStoreModule.upsertTurnRecord({
       modelId: "test/model",
       conversationId,
       sessionId: oldSessionId,
@@ -756,7 +756,7 @@ describe("oauth callback integration", () => {
         userName: "dcramer",
       },
     });
-    await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+    await turnSessionStoreModule.upsertTurnRecord({
       modelId: "test/model",
       conversationId,
       sessionId: newSessionId,
@@ -865,7 +865,7 @@ describe("oauth callback integration", () => {
     const conversationId = "slack:C123:1700000000.010";
     const sessionId = "turn_msg_10";
 
-    await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+    await turnSessionStoreModule.upsertTurnRecord({
       modelId: "test/model",
       conversationId,
       sessionId,

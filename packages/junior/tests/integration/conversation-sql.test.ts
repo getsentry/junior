@@ -11,7 +11,7 @@ import {
 } from "@/db/schema";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { recordAgentTurnSessionSummary } from "@/chat/task-execution/turn-cursor";
+import { recordTurnSummary } from "@/chat/task-execution/turn-cursor";
 import {
   buildJuniorSqlConversation,
   createLocalJuniorSqlFixture,
@@ -807,7 +807,7 @@ CREATE TABLE junior_conversations (
       await migrateSchema(fixture.sql);
       const store = createSqlStore(fixture.sql);
 
-      await recordAgentTurnSessionSummary({
+      await recordTurnSummary({
         conversationId: "agent-dispatch:dispatch_scheduler_run",
         cumulativeDurationMs: 2400,
         cumulativeUsage: {
@@ -827,7 +827,7 @@ CREATE TABLE junior_conversations (
         conversationStore: store,
         surface: "scheduler",
       });
-      await recordAgentTurnSessionSummary({
+      await recordTurnSummary({
         conversationId: "agent-dispatch:dispatch_scheduler_run",
         cumulativeDurationMs: 2_600,
         sessionId: "dispatch:scheduler-run",
@@ -836,7 +836,7 @@ CREATE TABLE junior_conversations (
         conversationStore: store,
         surface: "scheduler",
       });
-      await recordAgentTurnSessionSummary({
+      await recordTurnSummary({
         conversationId: "agent-dispatch:dispatch_scheduler_run",
         cumulativeDurationMs: 3_000,
         cumulativeUsage: {
@@ -867,7 +867,7 @@ CREATE TABLE junior_conversations (
         source: "scheduler",
         updatedAtMs: Date.now(),
       });
-      await recordAgentTurnSessionSummary({
+      await recordTurnSummary({
         conversationId: "agent-dispatch:dispatch_scheduler_run",
         cumulativeDurationMs: 500,
         cumulativeUsage: {

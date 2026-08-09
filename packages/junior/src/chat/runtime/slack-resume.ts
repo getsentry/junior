@@ -36,7 +36,7 @@ import {
 import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
 import { getConversationEventStore } from "@/chat/db";
 import {
-  recordAgentTurnSessionSummary,
+  recordTurnSummary,
   saveTurnCheckpoint,
 } from "@/chat/task-execution/checkpoint";
 import {
@@ -641,7 +641,7 @@ async function resumeSlackTurnInContext(
       if (messageTs && dispatchId && routing) {
         try {
           await persistWithRetry(() =>
-            recordAgentTurnSessionSummary({
+            recordTurnSummary({
               conversationId: runArgs.conversationId,
               destination: routing.destination,
               destinationVisibility: routing.destinationVisibility,
@@ -782,7 +782,7 @@ async function resumeSlackTurnInContext(
           sliceId: runArgs.sliceId,
         });
       } else if (replyContext.routing.dispatch?.id) {
-        await recordAgentTurnSessionSummary({
+        await recordTurnSummary({
           conversationId: runArgs.conversationId,
           destination: replyContext.routing.destination,
           destinationVisibility: replyContext.routing.destinationVisibility,

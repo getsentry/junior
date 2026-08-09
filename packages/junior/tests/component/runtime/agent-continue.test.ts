@@ -3,8 +3,8 @@ import { scheduleAgentContinue } from "@/chat/task-execution/continue";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import {
-  getAgentTurnSessionRecord,
-  upsertAgentTurnSessionRecord,
+  getTurnRecord,
+  upsertTurnRecord,
 } from "@/chat/task-execution/turn-cursor";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import { createSlackSource } from "@sentry/junior-plugin-api";
@@ -128,11 +128,11 @@ describe("agent continuation scheduling", () => {
     const lock = await state.acquireLock(conversationId, 90_000);
     expect(lock).toBeTruthy();
     const resumeTurn = vi.fn().mockResolvedValue(false);
-    const { continueSlackAgentRunWithLockRetry } =
+    const { continueSlackAgentRun } =
       await import("@/chat/task-execution/continue-run");
 
     await expect(
-      continueSlackAgentRunWithLockRetry(
+      continueSlackAgentRun(
         {
           conversationId,
           destination: SLACK_DESTINATION,
@@ -163,7 +163,7 @@ describe("agent continuation scheduling", () => {
       await import("@/chat/task-execution/continue-run");
     const conversationId = "slack:C123:1712345.0003";
 
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       modelId: "test/model",
       conversationId,
       sessionId: "turn_msg_3",
@@ -180,7 +180,7 @@ describe("agent continuation scheduling", () => {
       }),
     ).resolves.toBe(false);
     await expect(
-      getAgentTurnSessionRecord(conversationId, "turn_msg_3"),
+      getTurnRecord(conversationId, "turn_msg_3"),
     ).resolves.toMatchObject({
       state: "failed",
       errorMessage:
@@ -195,7 +195,7 @@ describe("agent continuation scheduling", () => {
     const generateReply = vi.fn();
     const resumeTurn = vi.fn(async () => true);
 
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       modelId: "test/model",
       conversationId,
       sessionId: "turn_msg_5",
@@ -225,7 +225,7 @@ describe("agent continuation scheduling", () => {
     const conversationId = "slack:C123:1712345.0004";
     const sessionId = "turn_1712345_0004";
 
-    await upsertAgentTurnSessionRecord({
+    await upsertTurnRecord({
       modelId: "test/model",
       conversationId,
       sessionId,
@@ -275,7 +275,7 @@ describe("agent continuation scheduling", () => {
       }),
     ).resolves.toBe(false);
     await expect(
-      getAgentTurnSessionRecord(conversationId, sessionId),
+      getTurnRecord(conversationId, sessionId),
     ).resolves.toMatchObject({
       state: "failed",
       errorMessage: "Awaiting agent continuation was stale before it could run",

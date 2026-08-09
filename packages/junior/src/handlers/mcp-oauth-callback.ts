@@ -47,9 +47,9 @@ import {
   isPendingAuthLatestRequest,
 } from "@/chat/services/pending-auth";
 import {
-  failAgentTurnSessionRecord,
-  abandonAgentTurnSessionRecord,
-  getAgentTurnSessionRecord,
+  failTurnRecord,
+  abandonTurnRecord,
+  getTurnRecord,
 } from "@/chat/task-execution/checkpoint";
 import {
   loadProjection,
@@ -176,7 +176,7 @@ async function failSessionRecordBestEffort(args: {
   sessionId: string;
 }): Promise<void> {
   try {
-    await failAgentTurnSessionRecord({
+    await failTurnRecord({
       conversationId: args.conversationId,
       sessionId: args.sessionId,
       errorMessage: args.errorMessage,
@@ -261,7 +261,7 @@ async function resumeAuthorizedMcpTurn(args: {
   if (!isPendingAuthLatestRequest(conversation, pendingAuth)) {
     clearPendingAuth(conversation, pendingAuth.sessionId);
     await persistThreadStateById(threadId, { conversation });
-    await abandonAgentTurnSessionRecord({
+    await abandonTurnRecord({
       conversationId: authSession.conversationId,
       sessionId: pendingAuth.sessionId,
       errorMessage:
@@ -309,7 +309,7 @@ async function resumeAuthorizedMcpTurn(args: {
         await persistThreadStateById(threadId, {
           conversation: lockedConversation,
         });
-        await abandonAgentTurnSessionRecord({
+        await abandonTurnRecord({
           conversationId: authSession.conversationId,
           sessionId: lockedPendingAuth.sessionId,
           errorMessage:
@@ -325,7 +325,7 @@ async function resumeAuthorizedMcpTurn(args: {
       if (!lockedUserMessage) {
         return false;
       }
-      const lockedSessionRecord = await getAgentTurnSessionRecord(
+      const lockedSessionRecord = await getTurnRecord(
         authSession.conversationId,
         lockedSessionId,
       );
@@ -353,7 +353,7 @@ async function resumeAuthorizedMcpTurn(args: {
           userId: authSession.userId,
         });
       } catch {
-        await failAgentTurnSessionRecord({
+        await failTurnRecord({
           conversationId: authSession.conversationId,
           expectedVersion: lockedSessionRecord.version,
           sessionId: lockedSessionId,
@@ -367,7 +367,7 @@ async function resumeAuthorizedMcpTurn(args: {
           conversationId: authSession.conversationId,
         });
       } catch (error) {
-        await failAgentTurnSessionRecord({
+        await failTurnRecord({
           conversationId: authSession.conversationId,
           expectedVersion: lockedSessionRecord.version,
           sessionId: lockedSessionId,
@@ -440,7 +440,7 @@ async function resumeAuthorizedMcpTurn(args: {
           );
         },
         onPostDeliveryCommitFailure: async () => {
-          await failAgentTurnSessionRecord({
+          await failTurnRecord({
             conversationId: authSession.conversationId,
             expectedVersion: lockedSessionRecord.version,
             sessionId: lockedSessionId,
