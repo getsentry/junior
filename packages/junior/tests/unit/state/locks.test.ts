@@ -10,6 +10,7 @@ describe("state locks", () => {
   it("stops a stale owner before it can overwrite newer state", async () => {
     vi.useFakeTimers({ now: 1_000 });
     const state = createMemoryState();
+    const writeSql = vi.fn();
     await state.connect();
 
     const mutation = withLock(
@@ -22,6 +23,7 @@ describe("state locks", () => {
         await state.set("record", "newer", 60_000);
 
         await fenceLock(state, lock);
+        await writeSql();
         await state.set("record", "stale", 60_000);
       },
       { ttlMs: MUTATION_LOCK_TTL_MS },
@@ -31,6 +33,7 @@ describe("state locks", () => {
       "Lock ownership was lost before write",
     );
     await expect(state.get("record")).resolves.toBe("newer");
+    expect(writeSql).not.toHaveBeenCalled();
     await state.disconnect();
   });
 });

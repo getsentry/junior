@@ -657,6 +657,7 @@ async function setStoredRecord(args: {
   await stateAdapter.connect();
 
   const storedRecord = storedTurnRecordSchema.parse(args.record);
+  await args.fence();
   await recordConversationActivityMetadata({
     actor: args.actor,
     conversationStore: args.conversationStore,
