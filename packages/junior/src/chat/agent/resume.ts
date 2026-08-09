@@ -190,7 +190,7 @@ export function createResumeState(args: ResumeStateArgs) {
         return false;
       }
       latestSafeBoundaryMessages = [...messages];
-      // Same-boundary running writes must not disable no-progress fail-closed.
+      // Writing the same boundary does not count as progress.
       const persistedKey = boundaryKey(continuableMessages(messages, messages));
       if (
         resumedBoundaryKey.length === 0 ||
