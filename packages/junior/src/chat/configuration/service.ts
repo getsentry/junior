@@ -1,7 +1,7 @@
 import type {
-  DestinationConfigState,
-  DestinationConfigurationService,
-  DestinationConfigurationStorage,
+  LocationConfigState,
+  LocationConfigurationService,
+  LocationConfigurationStorage,
   ConfigEntry,
 } from "@/chat/configuration/types";
 import {
@@ -10,7 +10,7 @@ import {
 } from "@/chat/configuration/validation";
 import { isRecord, toOptionalString } from "@/chat/coerce";
 
-function defaultState(): DestinationConfigState {
+function defaultState(): LocationConfigState {
   return {
     schemaVersion: 1,
     entries: {},
@@ -33,15 +33,15 @@ function sanitizeEntry(value: unknown): ConfigEntry | undefined {
   if (!updatedAt) {
     return undefined;
   }
-  // Accept legacy "channel" / "conversation" scopes from Redis and early SQL rows.
+  // Accept legacy "channel" / "conversation" scopes from Redis.
   if (
     value.scope !== "channel" &&
     value.scope !== "conversation" &&
-    value.scope !== "destination"
+    value.scope !== "location"
   ) {
     return undefined;
   }
-  const scope = "destination" as const;
+  const scope = "location" as const;
 
   return {
     key,
@@ -54,10 +54,10 @@ function sanitizeEntry(value: unknown): ConfigEntry | undefined {
   };
 }
 
-/** Coerce persisted destination configuration into the current durable shape. */
-export function coerceDestinationConfigState(
+/** Coerce persisted location configuration into the current durable shape. */
+export function coerceLocationConfigState(
   raw: unknown,
-): DestinationConfigState {
+): LocationConfigState {
   if (!isRecord(raw)) {
     return defaultState();
   }
@@ -79,15 +79,15 @@ export function coerceDestinationConfigState(
   };
 }
 
-export function createDestinationConfigurationService(
-  storage: DestinationConfigurationStorage,
-): DestinationConfigurationService {
-  const getState = async (): Promise<DestinationConfigState> => {
+export function createLocationConfigurationService(
+  storage: LocationConfigurationStorage,
+): LocationConfigurationService {
+  const getState = async (): Promise<LocationConfigState> => {
     const loaded = await storage.load();
-    return coerceDestinationConfigState(loaded);
+    return coerceLocationConfigState(loaded);
   };
 
-  const saveState = async (state: DestinationConfigState): Promise<void> => {
+  const saveState = async (state: LocationConfigState): Promise<void> => {
     await storage.save({
       schemaVersion: 1,
       entries: state.entries,
@@ -100,7 +100,7 @@ export function createDestinationConfigurationService(
     return state.entries[normalizedKey];
   };
 
-  const set: DestinationConfigurationService["set"] = async (input) => {
+  const set: LocationConfigurationService["set"] = async (input) => {
     const normalizedKey = input.key.trim();
     const keyError = validateConfigKey(normalizedKey);
     if (keyError) {
@@ -116,7 +116,7 @@ export function createDestinationConfigurationService(
     const nextEntry: ConfigEntry = {
       key: normalizedKey,
       value: input.value,
-      scope: "destination",
+      scope: "location",
       updatedAt: new Date().toISOString(),
       updatedBy: toOptionalString(input.updatedBy),
       source: toOptionalString(input.source),

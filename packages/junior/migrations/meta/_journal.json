@@ -173,8 +173,8 @@
     {
       "idx": 24,
       "version": "7",
-      "when": 1786310479611,
-      "tag": "0024_destination_configuration",
+      "when": 1786310988956,
+      "tag": "0024_location_configuration",
       "breakpoints": true
     }
   ]

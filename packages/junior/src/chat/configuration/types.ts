@@ -1,4 +1,4 @@
-export type ConfigScope = "destination";
+export type ConfigScope = "location";
 
 export interface ConfigEntry {
   key: string;
@@ -10,17 +10,17 @@ export interface ConfigEntry {
   expiresAt?: string;
 }
 
-export interface DestinationConfigState {
+export interface LocationConfigState {
   schemaVersion: 1;
   entries: Record<string, ConfigEntry>;
 }
 
-export interface DestinationConfigurationStorage {
+export interface LocationConfigurationStorage {
   load: () => Promise<unknown | null>;
-  save: (state: DestinationConfigState) => Promise<void>;
+  save: (state: LocationConfigState) => Promise<void>;
 }
 
-export interface DestinationConfigurationService {
+export interface LocationConfigurationService {
   get: (key: string) => Promise<ConfigEntry | undefined>;
   set: (input: {
     key: string;

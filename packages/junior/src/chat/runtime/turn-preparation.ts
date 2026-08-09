@@ -31,7 +31,7 @@ import {
   isVisionEnabled,
 } from "@/chat/slack/vision-context";
 import {
-  getDestinationConfigurationService,
+  getLocationConfigurationService,
   getPersistedSandboxState,
 } from "@/chat/runtime/thread-state";
 import {
@@ -39,7 +39,7 @@ import {
   persistConversationMessages,
 } from "@/chat/conversations/messages";
 import { persistConversationMessageSummaries } from "@/chat/conversations/message-summaries";
-import type { DestinationConfigurationService } from "@/chat/configuration/types";
+import type { LocationConfigurationService } from "@/chat/configuration/types";
 import { appendSlackLegacyAttachmentText } from "@/chat/slack/legacy-attachments";
 import { getSlackMessageText } from "@/chat/slack/message";
 import type {
@@ -53,7 +53,7 @@ const BACKFILL_MESSAGE_LIMIT = 80;
 export interface PreparedTurnState {
   artifacts: ThreadArtifactsState;
   configuration?: Record<string, unknown>;
-  destinationConfiguration?: DestinationConfigurationService;
+  locationConfiguration?: LocationConfigurationService;
   conversation: ThreadConversationState;
   conversationContext?: string;
   sandboxRef?: SandboxRef;
@@ -173,10 +173,10 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
     const conversation = coerceThreadConversationState(existingState);
     const conversationId = args.context.threadId ?? args.context.runId;
     await hydrateConversationMessages({ conversation, conversationId });
-    const destinationConfiguration =
-      args.destinationConfiguration ??
-      getDestinationConfigurationService(args.destination);
-    const configuration = await destinationConfiguration.resolveValues();
+    const locationConfiguration =
+      args.locationConfiguration ??
+      getLocationConfigurationService(args.destination);
+    const configuration = await locationConfiguration.resolveValues();
 
     const backfillSource = args.skipBackfill
       ? undefined
@@ -259,7 +259,7 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
     return {
       artifacts,
       configuration,
-      destinationConfiguration,
+      locationConfiguration,
       conversation,
       sandboxRef,
       conversationContext,

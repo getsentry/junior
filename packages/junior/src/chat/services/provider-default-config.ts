@@ -1,4 +1,4 @@
-import type { DestinationConfigurationService } from "@/chat/configuration/types";
+import type { LocationConfigurationService } from "@/chat/configuration/types";
 
 const GITHUB_REPO_PART = String.raw`[A-Za-z0-9_.-]*[A-Za-z0-9_-]`;
 const GITHUB_REPO_RE = new RegExp(
@@ -8,17 +8,17 @@ const GITHUB_REPO_RE = new RegExp(
 
 /** Apply explicit provider-default config requests that do not need agent reasoning. */
 export async function maybeApplyProviderDefaultConfigRequest(args: {
-  destinationConfiguration?: DestinationConfigurationService;
+  locationConfiguration?: LocationConfigurationService;
   actorId?: string;
   text: string;
 }): Promise<{ text: string } | null> {
   const match = GITHUB_REPO_RE.exec(args.text);
   const repo = match?.[1];
-  if (!repo || !args.destinationConfiguration) {
+  if (!repo || !args.locationConfiguration) {
     return null;
   }
 
-  await args.destinationConfiguration.set({
+  await args.locationConfiguration.set({
     key: "github.repo",
     value: repo,
     updatedBy: args.actorId,

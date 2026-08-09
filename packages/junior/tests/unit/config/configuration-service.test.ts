@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { createDestinationConfigurationService } from "@/chat/configuration/service";
+import { createLocationConfigurationService } from "@/chat/configuration/service";
 
 function createInMemoryService() {
   let state: Record<string, unknown> | null = null;
-  const service = createDestinationConfigurationService({
+  const service = createLocationConfigurationService({
     load: async () => state,
     save: async (next) => {
       state = {
@@ -18,7 +18,7 @@ function createInMemoryService() {
   };
 }
 
-describe("destination configuration service", () => {
+describe("location configuration service", () => {
   it("sets, gets, lists, resolves, and unsets entries", async () => {
     const { service, getState } = createInMemoryService();
 
@@ -29,7 +29,7 @@ describe("destination configuration service", () => {
       source: "test",
     });
     expect(created.key).toBe("github.repo");
-    expect(created.scope).toBe("destination");
+    expect(created.scope).toBe("location");
     expect(created.updatedBy).toBe("U123");
     expect(created.source).toBe("test");
 
@@ -72,7 +72,7 @@ describe("destination configuration service", () => {
           "jira.project": expect.objectContaining({
             key: "jira.project",
             value: "PLAT",
-            scope: "destination",
+            scope: "location",
           }),
         },
       },

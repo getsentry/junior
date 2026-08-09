@@ -1,5 +1,5 @@
 {
-  "id": "12898d5c-be75-48cf-a404-b8ce24dc69a7",
+  "id": "b4046f37-2d26-431c-9cb8-ff5f4babce23",
   "prevId": "86dbef33-04cf-4e3d-b324-b321a3af4af8",
   "version": "7",
   "dialect": "postgresql",
@@ -1144,37 +1144,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.junior_destination_configurations": {
-      "name": "junior_destination_configurations",
-      "schema": "",
-      "columns": {
-        "destination_key": {
-          "name": "destination_key",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "configuration_json": {
-          "name": "configuration_json",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.junior_destinations": {
       "name": "junior_destinations",
       "schema": "",
@@ -1611,6 +1580,51 @@
             "id"
           ],
           "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.junior_location_configurations": {
+      "name": "junior_location_configurations",
+      "schema": "",
+      "columns": {
+        "location_id": {
+          "name": "location_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "configuration_json": {
+          "name": "configuration_json",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "junior_location_configurations_location_id_junior_destinations_id_fk": {
+          "name": "junior_location_configurations_location_id_junior_destinations_id_fk",
+          "tableFrom": "junior_location_configurations",
+          "tableTo": "junior_destinations",
+          "columnsFrom": [
+            "location_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },

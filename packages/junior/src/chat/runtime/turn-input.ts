@@ -1,6 +1,6 @@
 import type { Message, Thread } from "chat";
 import type { Destination } from "@sentry/junior-plugin-api";
-import type { DestinationConfigurationService } from "@/chat/configuration/types";
+import type { LocationConfigurationService } from "@/chat/configuration/types";
 
 export interface TurnContext {
   channelId?: string;
@@ -26,7 +26,7 @@ export interface QueuedTurnMessage extends TurnMessageText {
 
 export interface PrepareTurnStateInput {
   destination: Destination;
-  destinationConfiguration?: DestinationConfigurationService;
+  locationConfiguration?: LocationConfigurationService;
   context: TurnContext;
   explicitMention: boolean;
   message: Message;

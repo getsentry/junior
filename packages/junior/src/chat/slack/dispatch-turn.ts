@@ -32,9 +32,9 @@ interface DispatchReplyToThread {
 
 /** Build the Slack provider adapter for agent-dispatched conversation turns. */
 export function createSlackDispatchTurnRunner(options: {
-  getDestinationConfiguration: (
+  getLocationConfiguration: (
     destination: DispatchRecord["destination"],
-  ) => DispatchTurnContext["destinationConfiguration"];
+  ) => DispatchTurnContext["locationConfiguration"];
   getSlackAdapter: () => SlackAdapter;
   replyToThread: DispatchReplyToThread;
 }) {
@@ -95,7 +95,7 @@ export function createSlackDispatchTurnRunner(options: {
       destination: dispatch.destination,
       execution: {
         disabledFeatures: ["interactive-auth"],
-        destinationConfiguration: options.getDestinationConfiguration(
+        locationConfiguration: options.getLocationConfiguration(
           dispatch.destination,
         ),
         credentialContext: routing.credentialContext,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createDurableDestinationConfigurationService } from "@/chat/configuration/sql";
+import { createDurableLocationConfigurationService } from "@/chat/configuration/sql";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createLocalJuniorSqlFixture } from "../../fixtures/sql";
 
@@ -25,13 +25,13 @@ function legacyConfiguration(value: string) {
   };
 }
 
-describe("SQL destination configuration", () => {
+describe("SQL location configuration", () => {
   it("persists configuration independently of the legacy cache", async () => {
     const fixture = await createLocalJuniorSqlFixture();
     await migrateSchema(fixture.sql);
 
     try {
-      const service = createDurableDestinationConfigurationService({
+      const service = createDurableLocationConfigurationService({
         destination: DESTINATION,
         db: fixture.sql.db(),
         loadLegacy: async () => null,
@@ -42,7 +42,7 @@ describe("SQL destination configuration", () => {
         updatedBy: "U123",
       });
 
-      const reloaded = createDurableDestinationConfigurationService({
+      const reloaded = createDurableLocationConfigurationService({
         destination: DESTINATION,
         db: fixture.sql.db(),
         loadLegacy: async () => {
@@ -53,7 +53,7 @@ describe("SQL destination configuration", () => {
         "getsentry/junior",
       );
       await expect(reloaded.get("github.repo")).resolves.toMatchObject({
-        scope: "destination",
+        scope: "location",
       });
     } finally {
       await fixture.close();
@@ -65,7 +65,7 @@ describe("SQL destination configuration", () => {
     await migrateSchema(fixture.sql);
 
     try {
-      const service = createDurableDestinationConfigurationService({
+      const service = createDurableLocationConfigurationService({
         destination: {
           platform: "slack",
           teamId: "T-cutover",
@@ -78,7 +78,7 @@ describe("SQL destination configuration", () => {
         "getsentry/legacy",
       );
 
-      const reloaded = createDurableDestinationConfigurationService({
+      const reloaded = createDurableLocationConfigurationService({
         destination: {
           platform: "slack",
           teamId: "T-cutover",

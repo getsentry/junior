@@ -182,7 +182,7 @@ export async function wireAgentTools(
     egressSignals: args.policy.sandboxEgressSignals,
     credentialEgress: args.routing.credentialContext,
     actor: args.currentActor,
-    destinationConfiguration: args.policy.destinationConfiguration,
+    locationConfiguration: args.policy.locationConfiguration,
     configurationValues: args.configurationValues,
     getActiveSkill: () => args.skillSandbox.getActiveSkill(),
     prepareSandbox: pluginHooks.prepareSandbox,

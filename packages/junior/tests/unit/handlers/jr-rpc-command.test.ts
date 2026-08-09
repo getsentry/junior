@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
-import { createDestinationConfigurationService } from "@/chat/configuration/service";
+import { createLocationConfigurationService } from "@/chat/configuration/service";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import type { Skill } from "@/chat/skills";
 
@@ -12,9 +12,9 @@ const activeSkill: Skill = {
   pluginProvider: "github",
 };
 
-function makeDestinationConfiguration() {
+function makeLocationConfiguration() {
   let state: Record<string, unknown> | null = null;
-  return createDestinationConfigurationService({
+  return createLocationConfigurationService({
     load: async () => state,
     save: async (next) => {
       state = {
@@ -64,14 +64,14 @@ describe("jr-rpc custom command", () => {
   });
 
   it("sets and gets configuration values", async () => {
-    const configuration = makeDestinationConfiguration();
+    const configuration = makeLocationConfiguration();
     const onConfigurationValueChanged = vi.fn();
 
     const setResult = await maybeExecuteJrRpcCustomCommand(
       "jr-rpc config set github.repo getsentry/junior",
       {
         activeSkill,
-        destinationConfiguration: configuration,
+        locationConfiguration: configuration,
         actorId: "U123",
         onConfigurationValueChanged,
       },
@@ -86,7 +86,7 @@ describe("jr-rpc custom command", () => {
       "jr-rpc config get github.repo",
       {
         activeSkill,
-        destinationConfiguration: configuration,
+        locationConfiguration: configuration,
         actorId: "U123",
       },
     );
@@ -100,7 +100,7 @@ describe("jr-rpc custom command", () => {
   });
 
   it("supports config list with a prefix filter", async () => {
-    const configuration = makeDestinationConfiguration();
+    const configuration = makeLocationConfiguration();
     await configuration.set({
       key: "github.repo",
       value: "getsentry/junior",
@@ -118,7 +118,7 @@ describe("jr-rpc custom command", () => {
       "jr-rpc config list --prefix github.",
       {
         activeSkill,
-        destinationConfiguration: configuration,
+        locationConfiguration: configuration,
         actorId: "U123",
       },
     );
@@ -175,7 +175,7 @@ describe("jr-rpc custom command", () => {
   });
 
   it("unsets configuration values", async () => {
-    const configuration = makeDestinationConfiguration();
+    const configuration = makeLocationConfiguration();
     const onConfigurationValueChanged = vi.fn();
 
     await configuration.set({
@@ -189,7 +189,7 @@ describe("jr-rpc custom command", () => {
       "jr-rpc config unset github.repo",
       {
         activeSkill,
-        destinationConfiguration: configuration,
+        locationConfiguration: configuration,
         actorId: "U123",
         onConfigurationValueChanged,
       },
@@ -225,12 +225,12 @@ describe("jr-rpc custom command", () => {
       ],
     });
     try {
-      const configuration = makeDestinationConfiguration();
+      const configuration = makeLocationConfiguration();
       const result = await maybeExecuteJrRpcCustomCommand(
         "jr-rpc config set cloudflare.worker-id sentry-mcp",
         {
           activeSkill,
-          destinationConfiguration: configuration,
+          locationConfiguration: configuration,
           actorId: "U123",
         },
       );
@@ -265,12 +265,12 @@ describe("jr-rpc custom command", () => {
       ],
     });
     try {
-      const configuration = makeDestinationConfiguration();
+      const configuration = makeLocationConfiguration();
       const result = await maybeExecuteJrRpcCustomCommand(
         "jr-rpc config set cloudflare.worker.name sentry-mcp",
         {
           activeSkill,
-          destinationConfiguration: configuration,
+          locationConfiguration: configuration,
           actorId: "U123",
         },
       );

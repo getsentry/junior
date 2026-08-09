@@ -1,8 +1,8 @@
 import type { Thread } from "chat";
 import type { Destination } from "@sentry/junior-plugin-api";
 import { toOptionalString } from "@/chat/coerce";
-import { createDurableDestinationConfigurationService } from "@/chat/configuration/sql";
-import type { DestinationConfigurationService } from "@/chat/configuration/types";
+import { createDurableLocationConfigurationService } from "@/chat/configuration/sql";
+import type { LocationConfigurationService } from "@/chat/configuration/types";
 import { getDb } from "@/chat/db";
 import { buildConversationStatePatch } from "@/chat/state/conversation";
 import type { ThreadConversationState } from "@/chat/state/conversation";
@@ -194,14 +194,14 @@ async function getLegacyChannelState(
 }
 
 /**
- * Resolve durable destination configuration.
+ * Resolve durable location configuration.
  *
  * Slack still reads the old channel-id Redis bag once during cutover.
  */
-export function getDestinationConfigurationService(
+export function getLocationConfigurationService(
   destination: Destination,
-): DestinationConfigurationService {
-  return createDurableDestinationConfigurationService({
+): LocationConfigurationService {
+  return createDurableLocationConfigurationService({
     destination,
     db: getDb(),
     loadLegacy: async () => {

@@ -9,7 +9,7 @@ import type { FileUpload } from "chat";
 import type { PluginSandbox } from "@sentry/junior-plugin-api";
 import { isUserActor, type Actor } from "@/chat/actor";
 import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
-import type { DestinationConfigurationService } from "@/chat/configuration/types";
+import type { LocationConfigurationService } from "@/chat/configuration/types";
 import type { CredentialContext } from "@/chat/credentials/context";
 import { listReferenceFiles } from "@/chat/discovery";
 import type { LogContext } from "@/chat/logging";
@@ -35,7 +35,7 @@ export interface AgentSandboxOptions {
   egressSignals?: SandboxEgressSignalTransport;
   credentialEgress?: CredentialContext;
   actor?: Actor;
-  destinationConfiguration?: DestinationConfigurationService;
+  locationConfiguration?: LocationConfigurationService;
   configurationValues: Record<string, unknown>;
   getActiveSkill(): Skill | null;
   prepareSandbox(workspace: SandboxWorkspace): void | Promise<void>;
@@ -165,7 +165,7 @@ export function createAgentSandbox(options: AgentSandboxOptions): AgentSandbox {
         if (command) {
           const result = await maybeExecuteJrRpcCustomCommand(command, {
             activeSkill: options.getActiveSkill(),
-            destinationConfiguration: options.destinationConfiguration,
+            locationConfiguration: options.locationConfiguration,
             actorId: isUserActor(options.actor)
               ? options.actor.userId
               : undefined,
