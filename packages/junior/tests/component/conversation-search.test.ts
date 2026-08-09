@@ -18,7 +18,9 @@ describe("conversation search", () => {
       const search = createSqlConversationSearchStore(fixture.sql);
 
       const seed = async (args: {
+        authorUserId?: string;
         channelId: string;
+        channelName?: string;
         conversationId: string;
         message: string;
         role?: ConversationMessageRole;
@@ -35,6 +37,7 @@ describe("conversation search", () => {
           nowMs: 1_750_000_000_000,
           source: "slack",
           visibility: args.visibility,
+          ...(args.channelName ? { channelName: args.channelName } : {}),
         });
         await events.append(args.conversationId, [
           {
@@ -43,6 +46,15 @@ describe("conversation search", () => {
               messageId: `${args.conversationId}:message`,
               role: args.role ?? "user",
               text: args.message,
+              ...(args.authorUserId
+                ? {
+                    meta: {
+                      author: {
+                        userId: args.authorUserId,
+                      },
+                    },
+                  }
+                : {}),
             },
             createdAtMs: 1_750_000_000_000,
           },
@@ -56,16 +68,26 @@ describe("conversation search", () => {
         visibility: "public",
       });
       await seed({
+        authorUserId: "UAUTHOR",
         channelId: "CREQUEST",
+        channelName: "launch",
         conversationId: "slack:CREQUEST:1700000000.200000",
         message: "The launch checklist needs a rollback owner.",
         visibility: "public",
       });
       await seed({
         channelId: "CARCHIVE",
+        channelName: "archive",
         conversationId: "slack:CARCHIVE:1700000000.300000",
         message: "The launch checklist also needs a database backup step.",
         role: "assistant",
+        visibility: "public",
+      });
+      await seed({
+        authorUserId: "UAUTHOR",
+        channelId: "CREQUEST",
+        conversationId: "slack:CREQUEST:1700000000.250000",
+        message: "An authored note without the checklist phrase.",
         visibility: "public",
       });
       await seed({
@@ -91,8 +113,8 @@ describe("conversation search", () => {
 
       const results = await search.search({
         currentConversationId: "slack:CREQUEST:1700000000.100000",
+        filters: { query: "launch checklist" },
         limit: 10,
-        query: "launch checklist",
         scope: {
           kind: "public_provider_tenant",
           provider: "slack",
@@ -104,11 +126,14 @@ describe("conversation search", () => {
       expect(results).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
+            authorUserId: "UAUTHOR",
+            channelName: "launch",
             conversationId: "slack:CREQUEST:1700000000.200000",
             providerDestinationId: "CREQUEST",
             role: "user",
           }),
           expect.objectContaining({
+            channelName: "archive",
             conversationId: "slack:CARCHIVE:1700000000.300000",
             providerDestinationId: "CARCHIVE",
             role: "assistant",
@@ -118,6 +143,59 @@ describe("conversation search", () => {
       expect(results.map((result) => result.excerpt).join(" ")).not.toMatch(
         /private|system|other workspace/i,
       );
+
+      const authored = await search.search({
+        currentConversationId: "slack:CREQUEST:1700000000.100000",
+        filters: { authorUserId: "UAUTHOR" },
+        limit: 10,
+        scope: {
+          kind: "public_provider_tenant",
+          provider: "slack",
+          providerTenantId: "T123",
+        },
+      });
+      expect(authored.map((result) => result.conversationId).sort()).toEqual([
+        "slack:CREQUEST:1700000000.200000",
+        "slack:CREQUEST:1700000000.250000",
+      ]);
+
+      const channelOnly = await search.search({
+        currentConversationId: "slack:CREQUEST:1700000000.100000",
+        filters: { channelId: "CARCHIVE" },
+        limit: 10,
+        scope: {
+          kind: "public_provider_tenant",
+          provider: "slack",
+          providerTenantId: "T123",
+        },
+      });
+      expect(channelOnly).toEqual([
+        expect.objectContaining({
+          conversationId: "slack:CARCHIVE:1700000000.300000",
+          providerDestinationId: "CARCHIVE",
+        }),
+      ]);
+
+      const combined = await search.search({
+        currentConversationId: "slack:CREQUEST:1700000000.100000",
+        filters: {
+          authorUserId: "UAUTHOR",
+          channelId: "CREQUEST",
+          query: "rollback",
+        },
+        limit: 10,
+        scope: {
+          kind: "public_provider_tenant",
+          provider: "slack",
+          providerTenantId: "T123",
+        },
+      });
+      expect(combined).toEqual([
+        expect.objectContaining({
+          authorUserId: "UAUTHOR",
+          conversationId: "slack:CREQUEST:1700000000.200000",
+        }),
+      ]);
     } finally {
       await fixture.close();
     }

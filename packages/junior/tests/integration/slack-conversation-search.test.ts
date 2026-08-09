@@ -5,6 +5,7 @@ import { createSqlConversationEventStore } from "@/chat/conversations/sql/histor
 import { createSqlConversationSearchStore } from "@/chat/conversations/sql/search";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { createSlackConversationSearchTool } from "@/chat/slack/tools/conversation-search";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { createLocalJuniorSqlFixture } from "../fixtures/sql";
 
 const scope: ConversationSearchScope = {
@@ -31,6 +32,7 @@ describe("searchConversationHistory", () => {
       const search = createSqlConversationSearchStore(fixture.sql);
       await conversations.recordActivity({
         conversationId: "slack:CARCHIVE:1700000000.100000",
+        channelName: "archive",
         destination: {
           platform: "slack",
           teamId: "T123",
@@ -47,6 +49,11 @@ describe("searchConversationHistory", () => {
             messageId: "1700000000.100001",
             role: "user",
             text: "We decided the launch checklist needs a rollback owner.",
+            meta: {
+              author: {
+                userId: "UAUTHOR",
+              },
+            },
           },
           createdAtMs: Date.parse("2026-07-01T12:00:00.000Z"),
         },
@@ -67,6 +74,8 @@ describe("searchConversationHistory", () => {
 
       const result = await executeTool(tool, {
         query: "launch checklist",
+        author_user_id: null,
+        channel_id: null,
         limit: null,
       });
 
@@ -85,11 +94,51 @@ describe("searchConversationHistory", () => {
             message_role: "user",
             message_timestamp: "2026-07-01T12:00:00.000Z",
             excerpt: expect.stringContaining("rollback owner"),
+            author_user_id: "UAUTHOR",
+            channel_id: "CARCHIVE",
+            channel_name: "archive",
             permalink:
               "https://example.slack.com/archives/CARCHIVE/p1700000000100000",
           },
         ],
       });
+
+      const filtered = await executeTool(tool, {
+        author_user_id: "UAUTHOR",
+        channel_id: "CARCHIVE",
+        query: null,
+        limit: null,
+      });
+      expect(filtered).toEqual({
+        author_user_id: "UAUTHOR",
+        channel_id: "CARCHIVE",
+        count: 1,
+        threads: [
+          expect.objectContaining({
+            author_user_id: "UAUTHOR",
+            channel_id: "CARCHIVE",
+            conversation_id: "slack:CARCHIVE:1700000000.100000",
+          }),
+        ],
+      });
+
+      await expect(
+        executeTool(tool, {
+          author_user_id: null,
+          channel_id: null,
+          query: null,
+          limit: null,
+        }),
+      ).rejects.toBeInstanceOf(ToolInputError);
+
+      await expect(
+        executeTool(tool, {
+          author_user_id: "not-a-user",
+          channel_id: null,
+          query: null,
+          limit: null,
+        }),
+      ).rejects.toBeInstanceOf(ToolInputError);
     } finally {
       await fixture.close();
     }

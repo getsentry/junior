@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, ne, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, ne, sql, type SQL } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import {
   juniorConversationEvents,
@@ -6,32 +6,73 @@ import {
   juniorDestinations,
 } from "@/db/schema";
 import type {
+  ConversationSearchFilters,
   ConversationSearchResult,
   ConversationSearchScope,
   ConversationSearchStore,
 } from "../search";
+
+const EXCERPT_WITHOUT_QUERY_CHARS = 240;
 
 class SqlConversationSearchStore implements ConversationSearchStore {
   constructor(private readonly executor: JuniorSqlDatabase) {}
 
   async search(args: {
     currentConversationId: string;
+    filters: ConversationSearchFilters;
     limit: number;
-    query: string;
     scope: ConversationSearchScope;
   }): Promise<ConversationSearchResult[]> {
     const db = this.executor.db();
-    const tsquery = sql`websearch_to_tsquery('english', ${args.query})`;
+    const query = args.filters.query?.trim() || undefined;
     const text = sql<string>`${juniorConversationEvents.payload}->>'text'`;
-    const rank = sql<number>`ts_rank_cd(to_tsvector('english', ${text}), ${tsquery})`;
-    const excerpt = sql<string>`ts_headline('english', ${text}, ${tsquery}, 'MaxFragments=2, MinWords=8, MaxWords=40, FragmentDelimiter=" … ", StartSel=**, StopSel=**')`;
     const role = sql<
       ConversationSearchResult["role"]
     >`${juniorConversationEvents.payload}->>'role'`;
     const messageId = sql<string>`${juniorConversationEvents.payload}->>'messageId'`;
+    const authorUserId = sql<
+      string | null
+    >`${juniorConversationEvents.payload}->'meta'->'author'->>'userId'`;
+    const tsquery = query
+      ? sql`websearch_to_tsquery('english', ${query})`
+      : undefined;
+    const rank = tsquery
+      ? sql<number>`ts_rank_cd(to_tsvector('english', ${text}), ${tsquery})`
+      : sql<number>`1`;
+    const excerpt = tsquery
+      ? sql<string>`ts_headline('english', ${text}, ${tsquery}, 'MaxFragments=2, MinWords=8, MaxWords=40, FragmentDelimiter=" … ", StartSel=**, StopSel=**')`
+      : sql<string>`left(${text}, ${EXCERPT_WITHOUT_QUERY_CHARS})`;
+
+    const conditions: SQL[] = [
+      eq(juniorConversations.source, "slack"),
+      isNull(juniorConversations.parentConversationId),
+      isNull(juniorConversations.transcriptPurgedAt),
+      ne(juniorConversations.conversationId, args.currentConversationId),
+      eq(juniorDestinations.provider, args.scope.provider),
+      eq(juniorDestinations.providerTenantId, args.scope.providerTenantId),
+      // Public destination visibility is the only cross-thread search boundary.
+      eq(juniorDestinations.visibility, "public"),
+      eq(juniorConversationEvents.type, "message"),
+      sql`${role} in ('user', 'assistant')`,
+    ];
+
+    if (tsquery) {
+      conditions.push(sql`to_tsvector('english', ${text}) @@ ${tsquery}`);
+    }
+    if (args.filters.channelId) {
+      conditions.push(
+        eq(juniorDestinations.providerDestinationId, args.filters.channelId),
+      );
+    }
+    if (args.filters.authorUserId) {
+      // Message author, not conversation actor / thread starter.
+      conditions.push(eq(authorUserId, args.filters.authorUserId));
+    }
 
     const bestPerConversation = db
       .selectDistinctOn([juniorConversations.conversationId], {
+        authorUserId: authorUserId.as("author_user_id"),
+        channelName: juniorDestinations.displayName,
         conversationId: juniorConversations.conversationId,
         excerpt: excerpt.as("excerpt"),
         lastActivityAt: juniorConversations.lastActivityAt,
@@ -53,20 +94,7 @@ class SqlConversationSearchStore implements ConversationSearchStore {
         juniorDestinations,
         eq(juniorDestinations.id, juniorConversations.destinationId),
       )
-      .where(
-        and(
-          eq(juniorConversations.source, "slack"),
-          isNull(juniorConversations.parentConversationId),
-          isNull(juniorConversations.transcriptPurgedAt),
-          ne(juniorConversations.conversationId, args.currentConversationId),
-          eq(juniorDestinations.provider, args.scope.provider),
-          eq(juniorDestinations.providerTenantId, args.scope.providerTenantId),
-          eq(juniorDestinations.visibility, "public"),
-          eq(juniorConversationEvents.type, "message"),
-          sql`${role} in ('user', 'assistant')`,
-          sql`to_tsvector('english', ${text}) @@ ${tsquery}`,
-        ),
-      )
+      .where(and(...conditions))
       .orderBy(
         juniorConversations.conversationId,
         desc(rank),
@@ -80,6 +108,7 @@ class SqlConversationSearchStore implements ConversationSearchStore {
       .orderBy(
         desc(bestPerConversation.rank),
         desc(bestPerConversation.lastActivityAt),
+        desc(bestPerConversation.messageCreatedAt),
       )
       .limit(args.limit);
 
@@ -90,6 +119,8 @@ class SqlConversationSearchStore implements ConversationSearchStore {
       messageId: row.messageId,
       providerDestinationId: row.providerDestinationId,
       role: row.role,
+      ...(row.authorUserId ? { authorUserId: row.authorUserId } : {}),
+      ...(row.channelName ? { channelName: row.channelName } : {}),
     }));
   }
 }
