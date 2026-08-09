@@ -707,7 +707,8 @@ async function updateTurnState(args: {
   existing: TurnRecord;
   errorMessage?: string;
   fence: () => Promise<void>;
-  state: "abandoned" | "failed";
+  resultMessageId?: string;
+  state: "abandoned" | "completed" | "failed";
 }): Promise<TurnRecord | undefined> {
   const parsed = await getStoredTurnRecord(
     args.existing.conversationId,
@@ -750,7 +751,7 @@ async function updateTurnState(args: {
         errorMessage: args.errorMessage ?? args.existing.errorMessage,
         historyVersion: parsed.historyVersion,
         resumeReason: args.existing.resumeReason,
-        resultMessageId: args.existing.resultMessageId,
+        resultMessageId: args.resultMessageId ?? args.existing.resultMessageId,
         resumedFromSliceId: args.existing.resumedFromSliceId,
         surface: args.existing.surface,
         traceId: args.existing.traceId,
@@ -1114,6 +1115,38 @@ export async function abandonTurnRecord(args: {
         fence,
         state: "abandoned",
         errorMessage: args.errorMessage ?? existing.errorMessage,
+      });
+    },
+  );
+}
+
+/** Mark an unfinished turn cursor as completed after delivery was accepted. */
+export async function completeTurnRecord(args: {
+  conversationId: string;
+  expectedVersion: number;
+  resultMessageId?: string;
+  turnId: string;
+}): Promise<TurnRecord | undefined> {
+  return await withTurnCursorMutation(
+    args.conversationId,
+    args.turnId,
+    async (fence) => {
+      const existing = await getTurnRecord(args.conversationId, args.turnId);
+      if (
+        !existing ||
+        existing.state === "completed" ||
+        existing.state === "failed" ||
+        existing.state === "abandoned" ||
+        existing.version !== args.expectedVersion
+      ) {
+        return undefined;
+      }
+
+      return await updateTurnState({
+        existing,
+        fence,
+        resultMessageId: args.resultMessageId,
+        state: "completed",
       });
     },
   );

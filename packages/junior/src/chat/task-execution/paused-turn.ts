@@ -17,6 +17,7 @@ import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import { loadProjection } from "@/chat/conversations/projection";
 import {
+  completeTurnRecord,
   failTurnRecord,
   getTurnRecord,
   getTurnRecordForResume,
@@ -25,10 +26,7 @@ import {
   type TurnRecord,
   type TurnSummary,
 } from "./turn-cursor";
-import {
-  loadTurnCheckpoint,
-  saveTurnCheckpoint,
-} from "@/chat/task-execution/checkpoint";
+import { loadTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import {
   getPersistedThreadState,
   getPersistedSandboxState,
@@ -729,27 +727,13 @@ async function runNextPausedTurnInContext(
             message.role === "assistant" &&
             message.id.startsWith(`${running.turnId}:assistant:`),
         );
-      if (running.modelId) {
-        await saveTurnCheckpoint({
-          conversationId,
-          messages: running.piMessages,
-          mode: "completed",
-          modelId: running.modelId,
-          resultMessageId: acceptedReply?.meta?.slackTs,
-          sliceId: running.sliceId,
-          surface: running.surface,
-          turnId: running.turnId,
-        });
-      } else {
-        await recordTurnSummary({
-          conversationId,
-          resultMessageId: acceptedReply?.meta?.slackTs,
-          sliceId: running.sliceId,
-          state: "completed",
-          surface: running.surface,
-          turnId: running.turnId,
-        });
-      }
+      const completed = await completeTurnRecord({
+        conversationId,
+        expectedVersion: running.version,
+        resultMessageId: acceptedReply?.meta?.slackTs,
+        turnId: running.turnId,
+      });
+      if (!completed) return false;
       markTurnCompleted({
         conversation,
         nowMs: Date.now(),

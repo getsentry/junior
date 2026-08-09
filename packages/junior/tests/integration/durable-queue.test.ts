@@ -148,6 +148,10 @@ async function expectTerminalTurn(
   },
 ): Promise<void> {
   const record = await getTurnRecord(CONVERSATION_ID, expected.turnId);
+  expect(record).toMatchObject({
+    state: expected.state,
+    turnId: expected.turnId,
+  });
   expect(record?.errorMessage ?? "").toContain(expected.error ?? "");
   await expect(listTurnSummaries(CONVERSATION_ID)).resolves.toEqual(
     expect.arrayContaining([
@@ -555,6 +559,14 @@ describe("durable queue contract", () => {
         state: "completed",
         replies: [],
       });
+
+      await q.send({
+        text: `<@${SLACK_BOT_USER_ID}> check the next deploy`,
+        threadTs: "1712345.0001",
+        ts: "1712345.0003",
+      });
+      await expect(q.next()).resolves.toEqual({ status: "completed" });
+      expect(q.replies()).toEqual(["Deploy checked."]);
     });
 
     it("stops a running turn after its worker disappears", async () => {
