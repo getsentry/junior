@@ -1,3 +1,4 @@
+import { parseSlackUserId } from "@/chat/slack/ids";
 import { truncateStatusText } from "@/chat/slack/status-format";
 
 /** Escape dynamic text for Slack mrkdwn without changing intended formatting. */
@@ -6,6 +7,32 @@ export function escapeSlackMrkdwnText(text: string): string {
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;");
+}
+
+/** Build a Slack user mention from a validated user id. */
+export function formatSlackUserMention(userId: string): string | undefined {
+  const parsed = parseSlackUserId(userId);
+  return parsed ? `<@${parsed}>` : undefined;
+}
+
+/**
+ * Normalize model-authored person mentions before Slack delivery.
+ *
+ * Accepts already-correct `<@U…>` tokens, bare `@U…` / `@W…` ids, and explicit
+ * `[[mention:U…]]` placeholders from tools. Leaves ordinary `@name` text alone.
+ */
+export function normalizeSlackUserMentions(text: string): string {
+  return text
+    .replace(/\[\[mention:([UW][A-Z0-9]+)\]\]/g, (match, userId: string) => {
+      return formatSlackUserMention(userId) ?? match;
+    })
+    .replace(
+      /(^|[^<A-Za-z0-9/])@([UW][A-Z0-9]{5,})(?![A-Za-z0-9])/g,
+      (match, prefix: string, userId: string) => {
+        const mention = formatSlackUserMention(userId);
+        return mention ? `${prefix}${mention}` : match;
+      },
+    );
 }
 
 /** Escape a URL for Slack explicit link syntax while preserving query semantics. */
@@ -288,6 +315,7 @@ export function ensureBlockSpacing(text: string): string {
  */
 export function normalizeSlackReplyMarkdown(text: string): string {
   let normalized = text.replace(/\r\n?/g, "\n").replace(/[ \t]+$/gm, "");
+  normalized = normalizeSlackUserMentions(normalized);
   normalized = wrapBareUrls(normalized);
   normalized = ensureBlockSpacing(normalized);
   return normalized.replace(/\n{3,}/g, "\n\n").trim();
