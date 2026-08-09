@@ -193,11 +193,15 @@ export function coerceThreadConversationState(
 export function buildConversationStatePatch(
   conversation: ThreadConversationState,
 ): {
-  conversation: Pick<ThreadConversationState, "schemaVersion" | "vision">;
+  conversation: Pick<ThreadConversationState, "schemaVersion" | "vision"> & {
+    processing: null;
+  };
 } {
   return {
     conversation: {
       schemaVersion: 1,
+      // TODO(v0.147.0): Remove the legacy shared processing field mask.
+      processing: null,
       vision: {
         backfillCompletedAtMs: conversation.vision.backfillCompletedAtMs,
         byFileId: { ...conversation.vision.byFileId },

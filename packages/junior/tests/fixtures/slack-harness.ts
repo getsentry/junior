@@ -246,6 +246,10 @@ export async function createTestThread(args: {
       return;
     }
     const key = threadStateKey(id);
+    await Promise.all([
+      deleteAdapterState(`thread-processing-state:${id}`),
+      deleteAdapterState(`thread-sandbox-ref:${id}`),
+    ]);
     if (Object.keys(stateData).length === 0) {
       await deleteAdapterState(key);
     } else {
@@ -256,8 +260,11 @@ export async function createTestThread(args: {
 
   const loadThreadState = async (): Promise<Record<string, unknown>> => {
     await seedThreadState();
-    const stored = await readAdapterState(threadStateKey(id));
-    if (stored) {
+    const { getPersistedThreadState } = await import(
+      "@/chat/runtime/thread-state"
+    );
+    const stored = await getPersistedThreadState(id);
+    if (Object.keys(stored).length > 0) {
       stateData = stored;
       return stored;
     }

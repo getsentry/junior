@@ -147,7 +147,7 @@ describe("conversation state", () => {
     expect(patch.conversation.vision.byFileId.F321?.summary).toContain(
       "staff engineer",
     );
-    expect(patch.conversation).not.toHaveProperty("processing");
+    expect(patch.conversation.processing).toBeNull();
   });
 
   it("omits rebuildable transcript and stats mirrors from the persisted patch", () => {

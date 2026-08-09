@@ -53,7 +53,7 @@ function buildThreadStatePayload(
     Object.assign(payload, buildConversationStatePatch(patch.conversation));
   }
   if (patch.sandboxRef !== undefined) {
-    // Mask pre-cutover fields after the sandbox reference moves to its own key.
+    // TODO(v0.147.0): Remove the legacy app_sandbox_* field masks.
     payload.app_sandbox_id = "";
     payload.app_sandbox_dependency_profile_hash = "";
   }
@@ -84,6 +84,7 @@ async function mergePersistedState(
   );
 }
 
+/** Store active processing for 24h and terminal rollout markers for 1h. */
 async function persistProcessingState(
   threadId: string,
   processing: ThreadConversationState["processing"],
@@ -93,6 +94,7 @@ async function persistProcessingState(
   const terminal = Object.values(processing).every(
     (value) => value === undefined,
   );
+  // TODO(v0.147.0): Delete terminal markers once legacy processing has aged out.
   await stateAdapter.set(
     processingStateKey(threadId),
     processing,
@@ -102,6 +104,7 @@ async function persistProcessingState(
   );
 }
 
+/** Store a resumable sandbox reference only for its 30-minute lifetime. */
 async function persistSandboxRef(
   threadId: string,
   sandboxRef: SandboxRef | null,
@@ -188,6 +191,7 @@ export async function persistThreadRuntimeState(
   await persistThreadRuntimeStateById(threadId, patch);
 }
 
+/** Split one runtime patch across cache, processing, and sandbox records. */
 async function persistThreadRuntimeStateById(
   threadId: string,
   patch: ThreadStatePatch,
@@ -217,6 +221,7 @@ export async function getPersistedThreadState(
     stateAdapter.get<SandboxRef>(sandboxRefKey(threadId)),
   ]);
   const state = threadState ?? {};
+  // TODO(v0.147.0): Remove fallback reads of legacy processing and app_sandbox_* fields.
   const conversation =
     state.conversation && typeof state.conversation === "object"
       ? (state.conversation as Record<string, unknown>)
