@@ -42,7 +42,6 @@ jobs:
               - 'packages/junior-evals/src/slack-link.ts'
               - 'packages/junior-evals/src/snapshot-warmup.ts'
               - 'packages/junior-evals/vitest.evals.integration.config.ts'
-              - 'packages/junior/src/**'
       - id: decision
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
@@ -51,8 +50,7 @@ jobs:
           VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
           RELEVANT: ${{ steps.changes.outputs.relevant }}
-          ACTION: ${{ github.event.action }}
-          LABEL: ${{ github.event.label.name }}
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
         run: |
           set -euo pipefail
           gateway_ready=false
@@ -60,7 +58,12 @@ jobs:
           requested=false
           [[ -n "${AI_GATEWAY_API_KEY:-}" || -n "${VERCEL_OIDC_TOKEN:-}" ]] && gateway_ready=true
           [[ -n "${VERCEL_OIDC_TOKEN:-}" || ( -n "${VERCEL_TOKEN:-}" && -n "${VERCEL_TEAM_ID:-}" && -n "${VERCEL_PROJECT_ID:-}" ) ]] && sandbox_ready=true
-          [[ "$ACTION" == "labeled" && ( "$LABEL" == "trigger-evals" || "$LABEL" == "trigger-evals-integration" ) ]] && requested=true
+          IFS=',' read -r -a labels <<< "${PR_LABELS:-}"
+          for label in "${labels[@]}"; do
+            if [[ "$label" == "trigger-evals" || "$label" == "trigger-evals-integration" ]]; then
+              requested=true
+            fi
+          done
           should_run=false
           [[ "$gateway_ready" == "true" && "$sandbox_ready" == "true" && ( "$RELEVANT" == "true" || "$requested" == "true" ) ]] && should_run=true
           echo "should_run=$should_run" >> "$GITHUB_OUTPUT"
