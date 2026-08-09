@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import type { ConversationMessageRole } from "@/chat/conversations/messages";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
-import { createSqlConversationSearchStore } from "@/chat/conversations/sql/search";
+import { createSqlConversationMessageSearchStore } from "@/chat/conversations/sql/message-search";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { createLocalJuniorSqlFixture } from "../fixtures/sql";
@@ -15,7 +15,7 @@ describe("conversation search", () => {
       await migrateSchema(fixture.sql);
       const conversations = createSqlStore(fixture.sql);
       const events = createSqlConversationEventStore(fixture.sql);
-      const search = createSqlConversationSearchStore(fixture.sql);
+      const search = createSqlConversationMessageSearchStore(fixture.sql);
 
       const seed = async (args: {
         authorUserId?: string;

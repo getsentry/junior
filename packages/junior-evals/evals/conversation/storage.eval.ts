@@ -51,11 +51,11 @@ describeEval("Conversation Storage", slackEvals, (it) => {
         expect.objectContaining({
           name: "searchTools",
           arguments: expect.objectContaining({
-            source: "conversation-history",
+            source: "conversations",
           }),
         }),
         expect.objectContaining({
-          name: "searchConversationHistory",
+          name: "searchConversationMessages",
         }),
       ]),
     );

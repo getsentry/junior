@@ -1,5 +1,5 @@
 /** One relevant chat-message match from a prior conversation. */
-export interface ConversationSearchResult {
+export interface ConversationMessageSearchResult {
   authorUserId?: string;
   channelName?: string;
   conversationId: string;
@@ -11,14 +11,14 @@ export interface ConversationSearchResult {
 }
 
 /** Runtime-derived public workspace scope for cross-conversation search. */
-export interface ConversationSearchScope {
+export interface ConversationMessageSearchScope {
   kind: "public_provider_tenant";
   provider: "slack";
   providerTenantId: string;
 }
 
 /** Optional filters that narrow retained public workspace search. */
-export interface ConversationSearchFilters {
+export interface ConversationMessageSearchFilters {
   /** Slack user id of the visible message author. */
   authorUserId?: string;
   /** Slack channel id of the conversation destination. */
@@ -28,11 +28,11 @@ export interface ConversationSearchFilters {
 }
 
 /** Search retained public messages within an authorized workspace. */
-export interface ConversationSearchStore {
+export interface ConversationMessageSearchStore {
   search(args: {
     currentConversationId: string;
-    filters: ConversationSearchFilters;
+    filters: ConversationMessageSearchFilters;
     limit: number;
-    scope: ConversationSearchScope;
-  }): Promise<ConversationSearchResult[]>;
+    scope: ConversationMessageSearchScope;
+  }): Promise<ConversationMessageSearchResult[]>;
 }

@@ -6,28 +6,28 @@ import {
   juniorDestinations,
 } from "@/db/schema";
 import type {
-  ConversationSearchFilters,
-  ConversationSearchResult,
-  ConversationSearchScope,
-  ConversationSearchStore,
-} from "../search";
+  ConversationMessageSearchFilters,
+  ConversationMessageSearchResult,
+  ConversationMessageSearchScope,
+  ConversationMessageSearchStore,
+} from "../message-search";
 
 const EXCERPT_WITHOUT_QUERY_CHARS = 240;
 
-class SqlConversationSearchStore implements ConversationSearchStore {
+class SqlConversationMessageSearchStore implements ConversationMessageSearchStore {
   constructor(private readonly executor: JuniorSqlDatabase) {}
 
   async search(args: {
     currentConversationId: string;
-    filters: ConversationSearchFilters;
+    filters: ConversationMessageSearchFilters;
     limit: number;
-    scope: ConversationSearchScope;
-  }): Promise<ConversationSearchResult[]> {
+    scope: ConversationMessageSearchScope;
+  }): Promise<ConversationMessageSearchResult[]> {
     const db = this.executor.db();
     const query = args.filters.query?.trim() || undefined;
     const text = sql<string>`${juniorConversationEvents.payload}->>'text'`;
     const role = sql<
-      ConversationSearchResult["role"]
+      ConversationMessageSearchResult["role"]
     >`${juniorConversationEvents.payload}->>'role'`;
     const messageId = sql<string>`${juniorConversationEvents.payload}->>'messageId'`;
     const authorUserId = sql<
@@ -126,8 +126,8 @@ class SqlConversationSearchStore implements ConversationSearchStore {
 }
 
 /** Create a SQL-backed public workspace conversation search store. */
-export function createSqlConversationSearchStore(
+export function createSqlConversationMessageSearchStore(
   executor: JuniorSqlDatabase,
-): ConversationSearchStore {
-  return new SqlConversationSearchStore(executor);
+): ConversationMessageSearchStore {
+  return new SqlConversationMessageSearchStore(executor);
 }

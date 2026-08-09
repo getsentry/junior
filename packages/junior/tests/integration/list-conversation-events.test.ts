@@ -6,7 +6,7 @@ import {
   getConversationStore,
   getDb,
 } from "@/chat/db";
-import { createQueryConversationEventsTool } from "@/chat/tools/query-conversation-events";
+import { createListConversationEventsTool } from "@/chat/tools/list-conversation-events";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { juniorConversationEvents } from "@/db/schema";
 
@@ -41,7 +41,7 @@ function context(): SlackToolRuntimeContext {
 }
 
 async function executeTool(input: Record<string, unknown>) {
-  const tool = createQueryConversationEventsTool(context());
+  const tool = createListConversationEventsTool(context());
   if (!tool.execute) throw new Error("tool execute function missing");
   return await tool.execute(input, {});
 }
@@ -65,7 +65,7 @@ async function recordSlackConversation(args: {
   });
 }
 
-describe("queryConversationEvents", () => {
+describe("listConversationEvents", () => {
   afterEach(async () => {
     await closeDb();
   });

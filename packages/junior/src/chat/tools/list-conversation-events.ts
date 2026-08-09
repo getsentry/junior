@@ -10,6 +10,7 @@ import {
   type KnownConversationEventType,
 } from "@/chat/conversations/history";
 import type { ConversationStore } from "@/chat/conversations/store";
+import { CONVERSATIONS_TOOL_SOURCE } from "@/chat/conversations/tool-source";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
@@ -22,11 +23,6 @@ const MAX_EVENT_DATA_BYTES = 4_000;
 const MAX_EVENTS_JSON_BYTES = 20_000;
 const MAX_IDENTITY_CHARS = 256;
 const textEncoder = new TextEncoder();
-const CONVERSATION_EVENTS_TOOL_SOURCE = {
-  id: "conversation-events",
-  description:
-    "Inspect Junior's durable conversation event log for debugging runtime behavior.",
-};
 
 const knownEventTypeSchema = z.enum(KNOWN_CONVERSATION_EVENT_TYPES);
 
@@ -36,52 +32,36 @@ const projectedEventSchema = z
       .number()
       .int()
       .nonnegative()
-      .describe("Stable event position; use it for pagination bounds."),
+      .describe("Stable event position for pagination."),
     history_version: z
       .number()
       .int()
       .nonnegative()
-      .describe(
-        "Model-history generation. It increments when handoff or compaction replaces active model context.",
-      ),
+      .describe("Agent history generation after replacement."),
     created_at: z.iso.datetime().describe("When the event was recorded."),
     idempotency_key: z
       .string()
       .min(1)
       .optional()
-      .describe("Retry-stable event identity, when one was assigned."),
-    data: z
-      .record(z.string(), z.unknown())
-      .describe(
-        "Event data. Oversized payloads are replaced by identifying fields, payload_omitted, and payload_json_bytes.",
-      ),
+      .describe("Retry-stable event identity, when assigned."),
+    data: z.record(z.string(), z.unknown()).describe("Bounded event data."),
   })
   .strict();
 
-const queryConversationEventsOutputSchema = juniorToolOutputSchema.extend({
+const listConversationEventsOutputSchema = juniorToolOutputSchema.extend({
   conversation_id: z.string().min(1),
   events: z.array(projectedEventSchema),
-  has_older: z
-    .boolean()
-    .describe(
-      "Whether matching events exist before this page; request them with before_seq set to the first returned seq.",
-    ),
-  has_newer: z
-    .boolean()
-    .describe(
-      "Whether matching events exist after this page; request them with after_seq set to the last returned seq.",
-    ),
+  has_older: z.boolean().describe("Whether matching older events exist."),
+  has_newer: z.boolean().describe("Whether matching newer events exist."),
   omitted_event_count: z
     .number()
     .int()
     .nonnegative()
     .optional()
-    .describe(
-      "Fetched events omitted to keep this response bounded. Continue with the pagination cursor for the omitted direction.",
-    ),
+    .describe("Events omitted by the response byte limit."),
 });
 
-interface QueryAccessScope {
+interface ConversationEventAccessScope {
   currentConversationId: string;
   currentRootConversationId?: string;
   provider?: string;
@@ -89,12 +69,12 @@ interface QueryAccessScope {
 }
 
 /** Create a deferred tool that returns a bounded conversation event page. */
-export function createQueryConversationEventsTool(context: ToolRuntimeContext) {
+export function createListConversationEventsTool(context: ToolRuntimeContext) {
   return zodTool({
     description:
-      "Inspect Junior's stored turns, tool calls, handoffs, and compaction events when debugging its behavior. Returns events from the current conversation tree or another retained public conversation in the same Slack workspace, newest first by default.",
+      "List stored messages, agent history, tool results, handoffs, and compactions for one conversation. Cross-conversation access is limited to retained public conversations in the current Slack workspace.",
     exposure: "deferred",
-    source: CONVERSATION_EVENTS_TOOL_SOURCE,
+    source: CONVERSATIONS_TOOL_SOURCE,
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -108,25 +88,21 @@ export function createQueryConversationEventsTool(context: ToolRuntimeContext) {
           .trim()
           .min(1)
           .describe(
-            "Conversation ID to inspect, such as slack:{channelId}:{threadTs} or a child conversation id.",
+            "Conversation ID returned by conversation search or context.",
           ),
         after_seq: z
           .number()
           .int()
           .nonnegative()
           .nullable()
-          .describe(
-            "Exclusive lower bound on event seq. When set, returns the next newer page in ascending order.",
-          )
+          .describe("Exclusive event sequence lower bound; returns ascending.")
           .optional(),
         before_seq: z
           .number()
           .int()
           .nonnegative()
           .nullable()
-          .describe(
-            "Exclusive upper bound on event seq. Combine with defaults or after_seq to page older or bounded ranges.",
-          )
+          .describe("Exclusive event sequence upper bound.")
           .optional(),
         limit: z
           .number()
@@ -135,25 +111,23 @@ export function createQueryConversationEventsTool(context: ToolRuntimeContext) {
           .max(MAX_LIMIT)
           .nullable()
           .describe(
-            `Maximum events to return. Defaults to ${DEFAULT_LIMIT}; max ${MAX_LIMIT}.`,
+            `Maximum events. Default ${DEFAULT_LIMIT}; max ${MAX_LIMIT}.`,
           )
           .optional(),
         types: z
           .array(knownEventTypeSchema)
           .min(1)
           .nullable()
-          .describe(
-            "Optional event-type filter. Omit to return every durable event type.",
-          )
+          .describe("Event types to include; omit for all types.")
           .optional(),
       })
       .strict(),
-    outputSchema: queryConversationEventsOutputSchema,
+    outputSchema: listConversationEventsOutputSchema,
     execute: async (input) => {
       const currentConversationId = context.conversationId?.trim();
       if (!currentConversationId) {
         throw new ToolInputError(
-          "queryConversationEvents requires an active conversation",
+          "listConversationEvents requires an active conversation",
         );
       }
 
@@ -200,7 +174,7 @@ export function createQueryConversationEventsTool(context: ToolRuntimeContext) {
           : await conversationStore.get({
               conversationId: targetRootConversationId,
             });
-      assertCanQueryConversationEvents({
+      assertCanListConversationEvents({
         accessScope,
         targetConversationId: conversationId,
         targetRootConversationId,
@@ -237,7 +211,7 @@ async function resolveAccessScope(
   conversationStore: ConversationStore,
   context: ToolRuntimeContext,
   currentConversationId: string,
-): Promise<QueryAccessScope> {
+): Promise<ConversationEventAccessScope> {
   const current = await conversationStore.get({
     conversationId: currentConversationId,
   });
@@ -305,8 +279,8 @@ async function resolveRootConversationId(
   return conversationId;
 }
 
-function assertCanQueryConversationEvents(args: {
-  accessScope: QueryAccessScope;
+function assertCanListConversationEvents(args: {
+  accessScope: ConversationEventAccessScope;
   targetConversationId: string;
   targetRootConversationId?: string;
   targetVisibility?: ConversationPrivacy;

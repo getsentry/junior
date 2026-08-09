@@ -1,10 +1,11 @@
 import { z } from "zod";
 import type {
-  ConversationSearchFilters,
-  ConversationSearchScope,
-  ConversationSearchStore,
-} from "@/chat/conversations/search";
-import { getConversationSearchStore } from "@/chat/db";
+  ConversationMessageSearchFilters,
+  ConversationMessageSearchScope,
+  ConversationMessageSearchStore,
+} from "@/chat/conversations/message-search";
+import { CONVERSATIONS_TOOL_SOURCE } from "@/chat/conversations/tool-source";
+import { getConversationMessageSearchStore } from "@/chat/db";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import {
   parseRequiredSlackChannelIdParam,
@@ -19,12 +20,12 @@ import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 const DEFAULT_LIMIT = 5;
 
-const conversationSearchOutputSchema = juniorToolOutputSchema.extend({
+const conversationMessageSearchOutputSchema = juniorToolOutputSchema.extend({
   author_user_id: z.string().min(1).optional(),
   channel_id: z.string().min(1).optional(),
   count: z.number().int().nonnegative(),
   query: z.string().optional(),
-  threads: z.array(
+  matches: z.array(
     z
       .object({
         author_user_id: z.string().min(1).optional(),
@@ -42,16 +43,16 @@ const conversationSearchOutputSchema = juniorToolOutputSchema.extend({
   ),
 });
 
-interface ConversationSearchToolDeps {
+interface ConversationMessageSearchToolDeps {
   getPermalink?: typeof getSlackMessagePermalink;
-  store?: ConversationSearchStore;
+  store?: ConversationMessageSearchStore;
 }
 
 function resolveSearchFilters(input: {
   author_user_id?: string | null;
   channel_id?: string | null;
   query?: string | null;
-}): ConversationSearchFilters {
+}): ConversationMessageSearchFilters {
   const query = input.query?.trim() || undefined;
   let authorUserId: string | undefined;
   let channelId: string | undefined;
@@ -91,21 +92,17 @@ function resolveSearchFilters(input: {
   };
 }
 
-/** Create a tool that searches retained public Junior threads across an authorized Slack workspace. */
-export function createSlackConversationSearchTool(
-  scope: ConversationSearchScope,
+/** Create a tool that searches retained public messages in an authorized Slack workspace. */
+export function createSlackConversationMessageSearchTool(
+  scope: ConversationMessageSearchScope,
   currentConversationId: string,
-  deps: ConversationSearchToolDeps = {},
+  deps: ConversationMessageSearchToolDeps = {},
 ) {
   return zodTool({
     description:
-      "Search prior public Junior conversation threads across the current Slack workspace. Use when the user refers to an earlier public discussion, decision, or answer that is not in the current thread. Searches retained visible user and assistant messages only. Public destination visibility is always required. Narrow with author_user_id and/or channel_id; do not assume the active channel unless the user asks for it.",
+      "Search retained user and assistant messages in public Junior conversations across the current Slack workspace. Excludes the current conversation.",
     exposure: "deferred",
-    source: {
-      id: "conversation-history",
-      description:
-        "Search retained public Junior conversation threads in the current Slack workspace.",
-    },
+    source: CONVERSATIONS_TOOL_SOURCE,
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -115,12 +112,12 @@ export function createSlackConversationSearchTool(
     inputSchema: z
       .object({
         author_user_id: slackUserIdParam(
-          "Optional Slack user ID of the visible message author to filter by. Matches message authors, not thread starters. Use a Slack user ID like U123; do not guess.",
+          "Message author Slack user ID; not the conversation starter.",
         )
           .nullable()
           .optional(),
         channel_id: slackChannelIdParam(
-          "Optional Slack channel ID to filter by. Use the ID from a channel mention; do not guess. Does not default to the active channel.",
+          "Destination Slack channel ID; no active-channel default.",
         )
           .nullable()
           .optional(),
@@ -130,24 +127,22 @@ export function createSlackConversationSearchTool(
           .min(1)
           .max(200)
           .nullable()
-          .describe(
-            "Optional words or a short phrase to find in prior conversations. Required when author_user_id and channel_id are both omitted.",
-          )
+          .describe("Words or phrase to match in message text.")
           .optional(),
         limit: z
           .number()
           .int()
           .min(1)
           .max(10)
-          .describe("Maximum number of prior conversation threads to return.")
+          .describe(`Maximum matches. Default ${DEFAULT_LIMIT}; max 10.`)
           .nullable()
           .optional(),
       })
       .strict(),
-    outputSchema: conversationSearchOutputSchema,
+    outputSchema: conversationMessageSearchOutputSchema,
     execute: async (input) => {
       const filters = resolveSearchFilters(input);
-      const store = deps.store ?? getConversationSearchStore();
+      const store = deps.store ?? getConversationMessageSearchStore();
       const matches = await store.search({
         currentConversationId,
         filters,
@@ -155,7 +150,7 @@ export function createSlackConversationSearchTool(
         scope,
       });
       const getPermalink = deps.getPermalink ?? getSlackMessagePermalink;
-      const threads = await Promise.all(
+      const matchesOutput = await Promise.all(
         matches.map(async (match) => {
           const reference = parseSlackThreadId(match.conversationId);
           if (
@@ -193,8 +188,8 @@ export function createSlackConversationSearchTool(
           ? { author_user_id: filters.authorUserId }
           : {}),
         ...(filters.channelId ? { channel_id: filters.channelId } : {}),
-        count: threads.length,
-        threads,
+        count: matchesOutput.length,
+        matches: matchesOutput,
       };
     },
   });

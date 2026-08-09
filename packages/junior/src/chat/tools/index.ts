@@ -20,7 +20,7 @@ import { getResourceEventCatalog } from "@/chat/resource-events/runtime-catalog"
 import { createEventTaskTools } from "@/chat/tools/event-tasks";
 import { createScheduledTaskTools } from "@/chat/tools/scheduled-tasks";
 import { createSlackChannelListMessagesTool } from "@/chat/slack/tools/channel-list-messages";
-import { createSlackConversationSearchTool } from "@/chat/slack/tools/conversation-search";
+import { createSlackConversationMessageSearchTool } from "@/chat/slack/tools/conversation-message-search";
 import { createSlackPublicSearchTool } from "@/chat/slack/tools/public-search";
 import { getSlackToolContext } from "@/chat/slack/tools/context";
 import { createSlackMessageAddReactionTool } from "@/chat/slack/tools/message-add-reaction";
@@ -36,7 +36,7 @@ import { createSlackListUpdateItemTool } from "@/chat/slack/tools/list/update-it
 import { createSlackThreadReadTool } from "@/chat/slack/tools/thread-read";
 import { createSlackUserLookupTool } from "@/chat/slack/tools/user-lookup";
 import { createSystemTimeTool } from "@/chat/tools/system-time";
-import { createQueryConversationEventsTool } from "@/chat/tools/query-conversation-events";
+import { createListConversationEventsTool } from "@/chat/tools/list-conversation-events";
 import { createHandoffTool } from "@/chat/tools/handoff/tool";
 import type { ToolRegistry } from "@/chat/tools/definition";
 import type {
@@ -138,7 +138,7 @@ export function createTools(
     ...createScheduledTaskTools(context),
   };
   if (context.conversationId) {
-    tools.queryConversationEvents = createQueryConversationEventsTool(context);
+    tools.listConversationEvents = createListConversationEventsTool(context);
   }
   if (context.supportsImageInput) {
     tools.viewImage = createViewImageTool(
@@ -179,14 +179,15 @@ export function createTools(
     tools.slackCanvasWrite = createSlackCanvasWriteTool(state);
     tools.slackThreadRead = createSlackThreadReadTool(slackContext);
     if (context.conversationId && slackContext.source.visibility === "public") {
-      tools.searchConversationHistory = createSlackConversationSearchTool(
-        {
-          kind: "public_provider_tenant",
-          provider: "slack",
-          providerTenantId: slackContext.teamId,
-        },
-        context.conversationId,
-      );
+      tools.searchConversationMessages =
+        createSlackConversationMessageSearchTool(
+          {
+            kind: "public_provider_tenant",
+            provider: "slack",
+            providerTenantId: slackContext.teamId,
+          },
+          context.conversationId,
+        );
     }
     if (context.source.platform === "slack" && context.slackActionToken) {
       tools.slackPublicSearch = createSlackPublicSearchTool(
