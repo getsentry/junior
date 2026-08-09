@@ -178,6 +178,7 @@ describe("turn checkpoint", () => {
         await stateAdapter.appendToList(
           indexKey,
           {
+            schemaVersion: 2,
             version: 1,
             conversationId,
             turnId,
@@ -622,7 +623,9 @@ describe("turn checkpoint", () => {
       { ...(stored as Record<string, unknown>), schemaVersion: undefined },
       60_000,
     );
-    await expect(getTurnRecord(conversationId, turnId)).rejects.toThrow();
+    await expect(getTurnRecord(conversationId, turnId)).rejects.toThrow(
+      "Invalid input: expected 2",
+    );
     await stateAdapter.set(
       turnCursorKey(conversationId, turnId),
       stored,
@@ -718,6 +721,7 @@ describe("turn checkpoint", () => {
     await stateAdapter.appendToList(
       indexKey,
       {
+        schemaVersion: 2,
         version: 1,
         conversationId,
         cumulativeDurationMs: 0,

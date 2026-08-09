@@ -156,6 +156,7 @@ describe("Slack webhook: App Home events", () => {
     expect(responseSettled).toBe(false);
     expect(queue.queuedMessages()).toEqual([
       {
+        schemaVersion: 2,
         conversationId: "slack:C123:1712345.0001",
       },
     ]);
@@ -203,6 +204,7 @@ describe("Slack webhook: App Home events", () => {
     expect(waitUntil.pendingCount()).toBe(0);
     expect(queue.queuedMessages()).toEqual([
       {
+        schemaVersion: 2,
         conversationId: "slack:C123:1712345.0002",
       },
     ]);
