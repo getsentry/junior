@@ -990,9 +990,16 @@ async function recordTurnSummaryOwned(
       priorSummary.state === "abandoned")
       ? priorSummary
       : undefined;
-  const existing = terminalSummary ?? stored ?? priorSummary;
+  const terminalRecord =
+    stored &&
+    (stored.state === "completed" ||
+      stored.state === "failed" ||
+      stored.state === "abandoned")
+      ? stored
+      : undefined;
+  const existing = terminalSummary ?? terminalRecord ?? stored ?? priorSummary;
   if (
-    terminalSummary &&
+    (terminalSummary || terminalRecord) &&
     (args.state === "running" || args.state === "paused")
   ) {
     return;

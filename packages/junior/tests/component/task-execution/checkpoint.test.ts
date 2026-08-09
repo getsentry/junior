@@ -137,39 +137,79 @@ describe("turn checkpoint", () => {
     expect(appendToList.mock.calls[0]?.[2]?.ttlMs).toBe(24 * 60 * 60 * 1000);
   });
 
-  it("does not let a delayed running summary replace completion", async () => {
-    const { listTurnSummaries, recordTurnSummary, upsertTurnRecord } =
-      await import("@/chat/task-execution/turn-cursor");
-    const conversationId = "agent-dispatch:delayed-running";
-    const turnId = "dispatch:delayed-running";
+  it.each([
+    {
+      name: "the summary is terminal",
+      cursorState: "running",
+      summaryState: "completed",
+    },
+    {
+      name: "the cursor is terminal",
+      cursorState: "completed",
+      summaryState: "running",
+    },
+  ] as const)(
+    "does not let delayed progress replace completion when $name",
+    async ({ cursorState, summaryState }) => {
+      const {
+        getTurnRecord,
+        listTurnSummaries,
+        recordTurnSummary,
+        upsertTurnRecord,
+      } = await import("@/chat/task-execution/turn-cursor");
+      const conversationId = `agent-dispatch:delayed-${cursorState}`;
+      const turnId = `dispatch:delayed-${cursorState}`;
 
-    // A summary-only terminal write can race a still-running cursor written by
-    // another path. The terminal recovery projection wins in that split state.
-    await upsertTurnRecord({
-      conversationId,
-      turnId,
-      sliceId: 1,
-      state: "running",
-      modelId: "test/model",
-      piMessages: [],
-    });
-    await recordTurnSummary({
-      conversationId,
-      turnId,
-      sliceId: 1,
-      state: "completed",
-    });
-    await recordTurnSummary({
-      conversationId,
-      turnId,
-      sliceId: 1,
-      state: "running",
-    });
+      // Cursor and summary writes can finish in either order. A terminal state
+      // in either store must prevent delayed progress from changing the result.
+      await upsertTurnRecord({
+        conversationId,
+        turnId,
+        sliceId: 1,
+        state: cursorState,
+        modelId: "test/model",
+        piMessages: [],
+      });
+      if (cursorState === "completed") {
+        const { getStateAdapter } = await import("@/chat/state/adapter");
+        const indexKey = `junior:turn_cursor:v2:conversation:${conversationId}:index`;
+        const stateAdapter = getStateAdapter();
+        await stateAdapter.delete(indexKey);
+        await stateAdapter.appendToList(
+          indexKey,
+          {
+            version: 1,
+            conversationId,
+            turnId,
+            sliceId: 1,
+            state: summaryState,
+            updatedAtMs: Date.now(),
+          },
+          { ttlMs: 60_000 },
+        );
+      } else {
+        await recordTurnSummary({
+          conversationId,
+          turnId,
+          sliceId: 1,
+          state: summaryState,
+        });
+      }
+      await recordTurnSummary({
+        conversationId,
+        turnId,
+        sliceId: 1,
+        state: "running",
+      });
 
-    await expect(listTurnSummaries(conversationId)).resolves.toEqual([
-      expect.objectContaining({ state: "completed", turnId }),
-    ]);
-  });
+      await expect(listTurnSummaries(conversationId)).resolves.toEqual([
+        expect.objectContaining({ state: summaryState, turnId }),
+      ]);
+      await expect(getTurnRecord(conversationId, turnId)).resolves.toEqual(
+        expect.objectContaining({ state: cursorState, turnId }),
+      );
+    },
+  );
 
   it("keeps dispatch correlation write-once across session summaries", async () => {
     const { recordTurnSummary } =
