@@ -91,6 +91,7 @@ export const conversationSourceTaskSchema = z
     id: z.string().min(1).optional(),
     kind: z.enum(["scheduled", "event"]),
     label: z.string().min(1).optional(),
+    title: z.string().min(1).optional(),
   })
   .strict()
   .superRefine((value, context) => {

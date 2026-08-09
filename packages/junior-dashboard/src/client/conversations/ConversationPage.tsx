@@ -34,6 +34,7 @@ import {
   visualStatusForConversation,
 } from "../format";
 import { Button } from "../components/Button";
+import { Tooltip } from "../components/Tooltip";
 import { Card } from "../components/layout/Card";
 import { MetricList, type MetricListItem } from "../components/Metric";
 import {
@@ -360,27 +361,49 @@ function SourceTask(props: {
   sourceTask: NonNullable<ConversationDetailReport["sourceTask"]>;
 }) {
   const kindLabel =
-    props.sourceTask.kind === "scheduled" ? "scheduled task" : "event task";
+    props.sourceTask.kind === "scheduled" ? "Scheduled Task" : "Event Task";
   const label = props.sourceTask.label?.trim();
   const taskId = props.sourceTask.id?.trim();
+  const title = props.sourceTask.title?.trim();
+  const link = taskId ? (
+    <Link
+      className="text-dashboard-text underline decoration-white/20 underline-offset-2 transition-colors hover:decoration-white/60"
+      to={taskPath(taskId)}
+    >
+      Triggered by {kindLabel}
+    </Link>
+  ) : (
+    <span>Triggered by {kindLabel}</span>
+  );
+  if (!label && !title) return link;
   return (
-    <span className="inline-flex min-w-0 max-w-full items-center gap-x-1.5">
-      <span className="shrink-0">Triggered by {kindLabel}</span>
-      {label && taskId ? (
-        <>
-          <span aria-hidden="true" className="shrink-0 text-dashboard-text-muted">
-            ·
-          </span>
-          <Link
-            className="min-w-0 max-w-[14rem] truncate text-dashboard-text underline decoration-white/20 underline-offset-2 transition-colors hover:decoration-white/60 sm:max-w-[20rem]"
-            title={label}
-            to={taskPath(taskId)}
-          >
-            {label}
-          </Link>
-        </>
-      ) : null}
-    </span>
+    <Tooltip
+      align="left"
+      content={
+        <span className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
+          {title ? (
+            <>
+              <span>Title</span>
+              <span className="text-dashboard-text">{title}</span>
+            </>
+          ) : null}
+          {label ? (
+            <>
+              <span>Instruction</span>
+              <span className="text-dashboard-text">{label}</span>
+            </>
+          ) : null}
+          {taskId ? (
+            <>
+              <span>ID</span>
+              <span className="break-all text-dashboard-text">{taskId}</span>
+            </>
+          ) : null}
+        </span>
+      }
+    >
+      {link}
+    </Tooltip>
   );
 }
 

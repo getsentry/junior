@@ -549,16 +549,34 @@ export async function readConversationSourceTask(args: {
   );
   if (!candidate) return { kind: execution.kind };
   if (candidate.kind === "scheduled") {
+    const instruction = displayText(
+      candidate.task.task.text,
+      "Untitled scheduled task",
+    );
     return {
       id: candidate.task.id,
       kind: "scheduled",
-      label: displayText(candidate.task.task.text, "Untitled scheduled task"),
+      label: instruction,
+      title: taskDisplayTitle(
+        candidate.task.title,
+        instruction,
+        "Untitled scheduled task",
+      ),
     };
   }
+  const instruction = displayText(
+    candidate.task.task.text,
+    "Untitled event task",
+  );
   return {
     id: candidate.task.id,
     kind: "event",
-    label: displayText(candidate.task.task.text, "Untitled event task"),
+    label: instruction,
+    title: taskDisplayTitle(
+      candidate.task.title,
+      instruction,
+      "Untitled event task",
+    ),
   };
 }
 

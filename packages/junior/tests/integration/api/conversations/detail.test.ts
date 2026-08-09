@@ -210,6 +210,7 @@ describe("conversation detail API", () => {
         },
         status: "active",
         task: { text: "Send the weekly project summary" },
+        title: "Weekly project summary",
         updatedAtMs: nowMs,
       });
       await recordTaskExecution("scheduled", "sched_source_task", {
@@ -228,6 +229,7 @@ describe("conversation detail API", () => {
           id: "sched_source_task",
           kind: "scheduled",
           label: "Send the weekly project summary",
+          title: "Weekly project summary",
         },
       });
       await expect(
