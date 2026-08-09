@@ -103,7 +103,11 @@ async function slack(
   return {
     state,
     wakes,
-    replies: () => slackApiOutbox.messages().map((call) => call.params.text),
+    replies: () =>
+      slackApiOutbox
+        .messages()
+        .map((call) => call.params.text)
+        .filter((text): text is string => typeof text === "string"),
     next: async () =>
       await processConversationQueueMessage(wakes.takeMessage(), {
         queue: wakes,

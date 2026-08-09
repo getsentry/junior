@@ -225,7 +225,7 @@ const storedTurnSummarySchema = z
     surface: turnSurfaceSchema.optional(),
     updatedAtMs: nonNegativeNumberSchema,
   })
-  .strip();
+  .strip() satisfies z.ZodType<TurnSummary>;
 
 /** Full resume cursor stored for one turn. */
 const storedTurnRecordSchema = z
