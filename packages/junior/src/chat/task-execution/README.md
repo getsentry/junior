@@ -110,5 +110,23 @@ new turn starts, `interrupt` delivery is handled before queued `defer` delivery.
 - Delivery failures leave enough durable state for safe retry and must not mark
   the turn delivered.
 
-Representative tests live in `packages/junior/tests/integration/heartbeat.test.ts`
-and the task-execution integration suites.
+## Integration Contract
+
+`packages/junior/tests/integration/durable-queue.test.ts` uses the same
+`createConversationWork` composition as production. It replaces only external
+adapters: the agent, Slack HTTP, queue transport, state backend, and clock. The
+suite protects five queue behaviors:
+
+- accepted input runs once, commits SQL history, delivers once, and drains;
+- failure before input commit retries without duplicate delivery;
+- a paused turn that returns to the same committed boundary stops instead of
+  scheduling an unbounded continuation loop;
+- an expired worker lease preserves committed SQL history and stops its
+  stranded running turn;
+- repeated agent failure stops at the retry limit, clears work, and emits at
+  most one visible fallback.
+
+Broader heartbeat scheduling remains in
+`packages/junior/tests/integration/heartbeat.test.ts`. Component tests own
+isolated transition details; they should not duplicate these end-to-end
+contracts.

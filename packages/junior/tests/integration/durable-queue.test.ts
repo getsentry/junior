@@ -4,16 +4,15 @@ import {
   fauxAssistantMessage,
 } from "@earendil-works/pi-ai/providers/faux";
 import { createSlackSource } from "@sentry/junior-plugin-api";
-import { createSlackRuntime } from "@/chat/app/factory";
+import { createConversationWork } from "@/chat/app/conversation-work";
 import { loadProjection } from "@/chat/conversations/projection";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
-import { runNextPausedTurn } from "@/chat/task-execution/paused-turn";
-import { createSlackConversationWorker } from "@/chat/task-execution/slack-work";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import { executeAgentRun } from "@/chat/agent";
 import type { PiMessage } from "@/chat/pi/messages";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
+import { getConversationStore } from "@/chat/db";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
 import {
   CONVERSATION_WORK_LEASE_TTL_MS,
@@ -25,7 +24,6 @@ import {
 } from "@/chat/task-execution/store";
 import {
   getTurnRecord,
-  loadTurnCheckpoint,
   saveTurnCheckpoint,
 } from "@/chat/task-execution/checkpoint";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
@@ -74,42 +72,20 @@ async function slack(
   await state.connect();
   const wakes = createConversationWorkQueueTestAdapter();
   const adapter = createSlackAdapterFixture();
-  const runtime = createSlackRuntime({
+  const agentRunner = options.agentRunner ?? { run: complete };
+  const work = createConversationWork({
+    agentRunner: options.pausedRunner ?? agentRunner,
+    conversationStore: getConversationStore(),
     getSlackAdapter: () => adapter,
-    services: {
-      replyExecutor: { agentRunner: options.agentRunner ?? { run: complete } },
-      visionContext: { listThreadReplies: async () => [] },
-    },
-  });
-  const run = createSlackConversationWorker({
-    getSlackAdapter: () => adapter,
-    runNextPausedTurn: async (conversationId, runOptions) =>
-      await runNextPausedTurn(
-        conversationId,
-        {
-          agentRunner:
-            options.pausedRunner ??
-            ({
-              run: async () => {
-                throw new Error("stranded running turns must not resume");
-              },
-            } satisfies AgentRunner),
-          wakePausedTurn: async (request) => {
-            await ensureConversationWake({
-              conversationId: request.conversationId,
-              idempotencyKey: `turn:${request.turnId}:${request.expectedVersion}`,
-              queue: wakes,
-            });
-          },
-        },
-        {
-          ...runOptions,
-          shouldYield: options.shouldYield ?? runOptions.shouldYield,
-        },
-      ),
-    runtime,
+    queue: wakes,
+    services: { replyExecutor: { agentRunner } },
     state,
   });
+  const run = async (context: Parameters<typeof work.run>[0]) =>
+    await work.run({
+      ...context,
+      shouldYield: options.shouldYield ?? context.shouldYield,
+    });
   return {
     state,
     wakes,
@@ -129,7 +105,7 @@ async function slack(
         services: {
           getSlackAdapter: () => adapter,
           queue: wakes,
-          runtime,
+          runtime: work.runtime,
           state,
         },
       }),
@@ -205,7 +181,7 @@ async function seedTurn(mode: "paused" | "running") {
   return turnId;
 }
 
-describe("durable queue", () => {
+describe("durable queue contract", () => {
   beforeEach(async () => {
     resetSlackApiMockState();
     await disconnectStateAdapter();
@@ -215,7 +191,7 @@ describe("durable queue", () => {
     await disconnectStateAdapter();
   });
 
-  it("runs Slack work once", async () => {
+  it("commits and delivers accepted input exactly once", async () => {
     const q = await slack();
     await expect(q.send()).resolves.toMatchObject({ status: 200 });
     await expect(q.next()).resolves.toEqual({ status: "completed" });
@@ -238,7 +214,7 @@ describe("durable queue", () => {
     ).resolves.toMatchObject({ needsRun: false, messages: [] });
   });
 
-  it("retries Slack work that fails before input commit", async () => {
+  it("retries uncommitted input without duplicate delivery", async () => {
     let attempts = 0;
     const q = await slack({
       agentRunner: {
@@ -259,17 +235,13 @@ describe("durable queue", () => {
     ]);
   });
 
-  it("stops the checkpoint loop from JUNIOR-62", async () => {
+  it("stops a paused turn that repeats its committed boundary", async () => {
     const turnId = await seedTurn("paused");
     const q = await slack({
       shouldYield: () => true,
       pausedRunner: {
         run: async (request) => {
-          const checkpoint = await loadTurnCheckpoint({
-            conversationId: request.conversationId,
-            turnId: request.turnId,
-          });
-          const changed = checkpoint.record!.piMessages.map((message) =>
+          const piMessages = request.input.piMessages?.map((message) =>
             message.role === "assistant"
               ? { ...message, usage: { ...message.usage, output: 99 } }
               : message,
@@ -277,14 +249,6 @@ describe("durable queue", () => {
           const faux = createFauxCore({ api: "test", provider: "test" });
           faux.setResponses([
             async () => {
-              await saveTurnCheckpoint({
-                mode: "running",
-                conversationId: request.conversationId,
-                turnId: request.turnId,
-                sliceId: checkpoint.sliceId,
-                modelId: "test-model",
-                messages: changed,
-              });
               await new Promise((resolve) => setTimeout(resolve, 50));
               return fauxAssistantMessage("not delivered");
             },
@@ -292,6 +256,7 @@ describe("durable queue", () => {
           return await executeAgentRun(
             {
               ...request,
+              input: { ...request.input, piMessages },
               policy: { ...request.policy, turnDeadlineAtMs: Date.now() + 10 },
             },
             faux.stream,
@@ -338,7 +303,7 @@ describe("durable queue", () => {
     );
   });
 
-  it("fails a turn whose worker died after checkpointing", async () => {
+  it("stops a stranded turn while preserving committed history", async () => {
     const turnId = await seedTurn("running");
     const q = await slack();
     await requestConversationWork({
@@ -374,7 +339,7 @@ describe("durable queue", () => {
     expect(slackApiOutbox.messages()).toHaveLength(1);
   });
 
-  it("stops retrying failed Slack work", async () => {
+  it("stops at the retry limit without duplicate delivery", async () => {
     let attempts = 0;
     const q = await slack({
       agentRunner: {

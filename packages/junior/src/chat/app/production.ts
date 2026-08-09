@@ -11,26 +11,12 @@ import {
 import { createChatSdkLogger } from "@/chat/logging";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import type { SlackWebhookServices } from "@/chat/ingress/slack-webhook";
-import { createSlackConversationWorker } from "@/chat/task-execution/slack-work";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import type { VercelConversationWorkCallbackOptions } from "@/chat/task-execution/vercel-callback";
-import { runNextPausedTurn } from "@/chat/task-execution/paused-turn";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { getConversationStore } from "@/chat/db";
 import type { ConversationStore } from "@/chat/conversations/store";
-import {
-  buildDispatchRoutingContext,
-  createAgentDispatchWorkRouter,
-  createAgentDispatchConversationWorker,
-} from "@/chat/agent-dispatch/work";
-import {
-  createAgentInvocationWorker,
-  routeAgentInvocationWork,
-} from "@/chat/agent-invocations/work";
-import {
-  getDispatchConversationId,
-  getDispatchInputMessageIds,
-} from "@/chat/agent-dispatch/store";
+import { createConversationWork } from "@/chat/app/conversation-work";
 
 let productionSlackAdapter: SlackAdapter | undefined;
 let productionSlackRuntime: ReturnType<typeof createSlackRuntime> | undefined;
@@ -111,64 +97,11 @@ export function createProductionConversationWorkOptions(options: {
   services?: JuniorRuntimeServiceOverrides;
 }): VercelConversationWorkCallbackOptions {
   const conversationStore = getProductionConversationStore();
-  const { agentRunner } = options;
-  // The explicit runner is authoritative for both the reply runtime and the
-  // resume path, so a caller cannot run them on divergent runners.
-  const services: JuniorRuntimeServiceOverrides = {
-    ...options.services,
-    replyExecutor: {
-      ...options.services?.replyExecutor,
-      agentRunner,
-    },
-  };
-  const runtime = createSlackRuntime({
-    getSlackAdapter: getProductionSlackAdapter,
-    services,
-  });
-  const queue = getVercelConversationWorkQueue();
-  const slackWorker = createSlackConversationWorker({
-    getSlackAdapter: getProductionSlackAdapter,
+  return createConversationWork({
+    agentRunner: options.agentRunner,
     conversationStore,
-    runNextPausedTurn: async (conversationId, runOptions) =>
-      await runNextPausedTurn(
-        conversationId,
-        {
-          agentRunner,
-          scheduleSessionCompletedPluginTasks:
-            services.replyExecutor?.scheduleSessionCompletedPluginTasks,
-        },
-        runOptions,
-      ),
-    runtime,
+    getSlackAdapter: getProductionSlackAdapter,
+    queue: getVercelConversationWorkQueue(),
+    services: options.services,
   });
-  const dispatchWorker = createAgentDispatchConversationWorker({
-    resumeTurn: async (dispatch, hooks) => {
-      await runNextPausedTurn(
-        getDispatchConversationId(dispatch),
-        {
-          agentRunner,
-          inputMessageIds: getDispatchInputMessageIds(dispatch.id),
-          routingContext: buildDispatchRoutingContext(dispatch),
-          scheduleSessionCompletedPluginTasks:
-            services.replyExecutor?.scheduleSessionCompletedPluginTasks,
-        },
-        { shouldYield: hooks.shouldYield },
-      );
-    },
-    runTurn: runtime.runDispatchTurn,
-  });
-  const providerWorker = createAgentDispatchWorkRouter({
-    dispatchWorker,
-    fallbackWorker: slackWorker,
-  });
-  return {
-    conversationStore,
-    queue,
-    run: routeAgentInvocationWork({
-      invocationWorker: createAgentInvocationWorker({
-        agentRunner,
-      }),
-      fallbackWorker: providerWorker,
-    }),
-  };
 }
