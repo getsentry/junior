@@ -6,7 +6,6 @@
  * generation; started continues must durably record success, failure, auth
  * pause, or another safe pause boundary.
  */
-import { botConfig } from "@/chat/config";
 import {
   buildTurnFailureResponse,
   logException,
@@ -16,10 +15,7 @@ import {
 import { resumeSlackTurn } from "@/chat/runtime/slack-resume";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
-import {
-  loadProjection,
-  loadConversationProjection,
-} from "@/chat/conversations/projection";
+import { loadProjection } from "@/chat/conversations/projection";
 import {
   failTurnRecord,
   getTurnRecordForResume,
@@ -28,10 +24,7 @@ import {
   type TurnRecord,
   type TurnSummary,
 } from "./turn-cursor";
-import {
-  loadTurnCheckpoint,
-  saveTurnCheckpoint,
-} from "@/chat/task-execution/checkpoint";
+import { loadTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import {
   getPersistedThreadState,
   getPersistedSandboxState,
@@ -61,8 +54,6 @@ import {
 } from "@/chat/services/turn-session-routing";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import { postSlackMessage } from "@/chat/slack/outbound";
-import { getStateAdapter } from "@/chat/state/adapter";
-import { acquireActiveLock } from "@/chat/state/locks";
 import { requireTurnFailureEventId } from "@/chat/services/turn-failure-response";
 import {
   createSlackActor,
@@ -85,7 +76,6 @@ import {
   credentialContextForActor,
   type CredentialContext,
 } from "@/chat/credentials/context";
-import { modelIdForProfile } from "@/chat/model-profile";
 import { latestReportedProgress } from "@/chat/runtime/report-progress";
 
 /** Runtime ports for agent continuation scheduling. */
@@ -116,45 +106,40 @@ export interface AgentContinueRunOptions {
 
 /** Persist a delivered continuation reply as the terminal thread state. */
 async function persistCompletedReplyState(args: {
-  sessionRecord: TurnRecord;
+  turn: TurnRecord;
   reply: AgentRunResult;
 }): Promise<void> {
-  const currentState = await getPersistedThreadState(
-    args.sessionRecord.conversationId,
-  );
+  const currentState = await getPersistedThreadState(args.turn.conversationId);
   const conversation = coerceThreadConversationState(currentState);
   await hydrateConversationMessages({
     conversation,
-    conversationId: args.sessionRecord.conversationId,
+    conversationId: args.turn.conversationId,
   });
   const artifacts = coerceThreadArtifactsState(currentState);
-  const userMessage = getTurnUserMessage(
-    conversation,
-    args.sessionRecord.sessionId,
-  );
+  const userMessage = getTurnUserMessage(conversation, args.turn.sessionId);
   const statePatch = buildDeliveredTurnStatePatch({
     artifacts,
     conversation,
     reply: args.reply,
-    sessionId: args.sessionRecord.sessionId,
+    sessionId: args.turn.sessionId,
     userMessageId: userMessage?.id,
   });
 
-  await persistThreadStateById(args.sessionRecord.conversationId, {
+  await persistThreadStateById(args.turn.conversationId, {
     ...statePatch,
   });
 }
 
 /** Mark the run record failed without masking the original continuation error. */
-async function failSessionRecordBestEffort(args: {
-  sessionRecord: TurnRecord;
+async function failTurnBestEffort(args: {
+  turn: TurnRecord;
   errorMessage: string;
 }): Promise<void> {
   try {
     await failTurnRecord({
-      conversationId: args.sessionRecord.conversationId,
-      expectedVersion: args.sessionRecord.version,
-      sessionId: args.sessionRecord.sessionId,
+      conversationId: args.turn.conversationId,
+      expectedVersion: args.turn.version,
+      sessionId: args.turn.sessionId,
       errorMessage: args.errorMessage,
     });
   } catch (error) {
@@ -162,8 +147,8 @@ async function failSessionRecordBestEffort(args: {
       error,
       "agent.continue.session_record.failure_persistence.failed",
       {
-        "app.ai.conversation_id": args.sessionRecord.conversationId,
-        "app.ai.session_id": args.sessionRecord.sessionId,
+        "app.ai.conversation_id": args.turn.conversationId,
+        "app.ai.session_id": args.turn.sessionId,
       },
     );
   }
@@ -171,33 +156,30 @@ async function failSessionRecordBestEffort(args: {
 
 /** Persist failed thread and session state after a continuation cannot finish. */
 async function persistFailedReplyState(
-  sessionRecord: TurnRecord,
+  turn: TurnRecord,
   errorMessage = "Paused agent run failed while continuing",
 ): Promise<void> {
-  const currentState = await getPersistedThreadState(
-    sessionRecord.conversationId,
-  );
+  const currentState = await getPersistedThreadState(turn.conversationId);
   const conversation = coerceThreadConversationState(currentState);
   await hydrateConversationMessages({
     conversation,
-    conversationId: sessionRecord.conversationId,
+    conversationId: turn.conversationId,
   });
-  clearPendingAuth(conversation, sessionRecord.sessionId);
+  clearPendingAuth(conversation, turn.sessionId);
 
   markTurnFailed({
     conversation,
     nowMs: Date.now(),
-    sessionId: sessionRecord.sessionId,
-    userMessageId: getTurnUserMessage(conversation, sessionRecord.sessionId)
-      ?.id,
+    sessionId: turn.sessionId,
+    userMessageId: getTurnUserMessage(conversation, turn.sessionId)?.id,
     markConversationMessage,
   });
 
-  await failSessionRecordBestEffort({
-    sessionRecord,
+  await failTurnBestEffort({
+    turn,
     errorMessage,
   });
-  await persistThreadStateById(sessionRecord.conversationId, {
+  await persistThreadStateById(turn.conversationId, {
     conversation,
   });
 }
@@ -205,21 +187,21 @@ async function persistFailedReplyState(
 /** Convert startup failures into durable failed state before rethrowing. */
 async function failContinuationStartup(args: {
   errorMessage: string;
-  sessionRecord: TurnRecord;
+  turn: TurnRecord;
 }): Promise<void> {
   try {
-    await persistFailedReplyState(args.sessionRecord, args.errorMessage);
+    await persistFailedReplyState(args.turn, args.errorMessage);
   } catch (persistError) {
-    await failSessionRecordBestEffort({
-      sessionRecord: args.sessionRecord,
+    await failTurnBestEffort({
+      turn: args.turn,
       errorMessage: "Paused agent run failed while preparing continuation",
     });
     logException(
       persistError,
       "agent.continue.startup_failure_persist.failed",
       {
-        "app.ai.conversation_id": args.sessionRecord.conversationId,
-        "app.ai.session_id": args.sessionRecord.sessionId,
+        "app.ai.conversation_id": args.turn.conversationId,
+        "app.ai.session_id": args.turn.sessionId,
       },
     );
   }
@@ -415,24 +397,24 @@ async function continueSlackAgentRunInContext(
     scheduleSessionCompletedPluginTasks:
       options.scheduleSessionCompletedPluginTasks,
     beforeStart: async () => {
-      let sessionRecord: TurnRecord | undefined;
+      let turn: TurnRecord | undefined;
       try {
         const checkpoint = await loadTurnCheckpoint({
           conversationId: payload.conversationId,
           turnId: payload.turnId,
         });
-        sessionRecord = checkpoint.record;
+        turn = checkpoint.record;
         if (
-          !sessionRecord ||
-          sessionRecord.state !== "paused" ||
-          (sessionRecord.resumeReason !== "timeout" &&
-            sessionRecord.resumeReason !== "yield" &&
-            sessionRecord.resumeReason !== "retry") ||
-          sessionRecord.version !== payload.expectedVersion
+          !turn ||
+          turn.state !== "paused" ||
+          (turn.resumeReason !== "timeout" &&
+            turn.resumeReason !== "yield" &&
+            turn.resumeReason !== "retry") ||
+          turn.version !== payload.expectedVersion
         ) {
           return false;
         }
-        const activeSessionRecord = sessionRecord;
+        const activeTurn = turn;
 
         const currentState = await getPersistedThreadState(
           payload.conversationId,
@@ -444,8 +426,7 @@ async function continueSlackAgentRunInContext(
         });
         const artifacts = coerceThreadArtifactsState(currentState);
         const dispatchId =
-          activeSessionRecord.dispatchId ??
-          options.routingContext?.dispatch?.id;
+          activeTurn.dispatchId ?? options.routingContext?.dispatch?.id;
         const dispatchUserMessage = dispatchId
           ? conversation.messages.find(
               (message) =>
@@ -461,7 +442,7 @@ async function continueSlackAgentRunInContext(
           await failStrandedSessionWithFallback({
             conversationId: payload.conversationId,
             errorMessage: `Unable to locate the persisted user message for agent continuation session "${payload.turnId}"`,
-            sessionRecord: activeSessionRecord,
+            turn: activeTurn,
           });
           return false;
         }
@@ -479,7 +460,7 @@ async function continueSlackAgentRunInContext(
           await failStrandedSessionWithFallback({
             conversationId: payload.conversationId,
             errorMessage: "Unable to rebuild Slack actor for continuation",
-            sessionRecord: activeSessionRecord,
+            turn: activeTurn,
           });
           return false;
         }
@@ -501,11 +482,9 @@ async function continueSlackAgentRunInContext(
         const routingDestination = routing.destination;
 
         const turnMessages =
-          activeSessionRecord.turnStartMessageIndex === undefined
+          activeTurn.turnStartMessageIndex === undefined
             ? []
-            : activeSessionRecord.piMessages.slice(
-                activeSessionRecord.turnStartMessageIndex,
-              );
+            : activeTurn.piMessages.slice(activeTurn.turnStartMessageIndex);
         const recordDispatchOutcome = async (
           dispatchOutcome: "blocked" | "failed",
         ): Promise<void> => {
@@ -521,7 +500,7 @@ async function continueSlackAgentRunInContext(
             dispatchId,
             dispatchOutcome,
             sessionId: payload.turnId,
-            sliceId: activeSessionRecord.sliceId,
+            sliceId: activeTurn.sliceId,
             source,
             state: "failed",
             surface: options.routingContext?.surface ?? "slack",
@@ -530,7 +509,7 @@ async function continueSlackAgentRunInContext(
 
         return {
           messageText: userMessage.text,
-          sliceId: activeSessionRecord.sliceId,
+          sliceId: activeTurn.sliceId,
           messageTs: getTurnUserSlackMessageTs(userMessage),
           inputMessageIds: [userMessage.id],
           initialStatus: latestReportedProgress(turnMessages),
@@ -542,7 +521,7 @@ async function continueSlackAgentRunInContext(
               // gain system authority. Interactive turns retain their merged
               // projection so queued steering remains visible.
               piMessages: dispatchId
-                ? activeSessionRecord.piMessages
+                ? activeTurn.piMessages
                 : await loadProjection({
                     conversationId: payload.conversationId,
                   }),
@@ -577,22 +556,22 @@ async function continueSlackAgentRunInContext(
           },
           commitResult: async (reply: AgentRunResult) => {
             await persistCompletedReplyState({
-              sessionRecord: activeSessionRecord,
+              turn: activeTurn,
               reply,
             });
           },
           onFailure: async (error) => {
             await persistFailedReplyState(
-              activeSessionRecord,
+              activeTurn,
               error instanceof Error ? error.message : String(error),
             );
             await recordDispatchOutcome("failed");
           },
           onPostDeliveryCommitFailure: async () => {
             await failTurnRecord({
-              conversationId: activeSessionRecord.conversationId,
-              expectedVersion: activeSessionRecord.version,
-              sessionId: activeSessionRecord.sessionId,
+              conversationId: activeTurn.conversationId,
+              expectedVersion: activeTurn.version,
+              sessionId: activeTurn.sessionId,
               errorMessage:
                 "Continued agent reply was delivered but completion state did not persist",
             });
@@ -619,11 +598,11 @@ async function continueSlackAgentRunInContext(
           },
         };
       } catch (error) {
-        if (sessionRecord) {
+        if (turn) {
           await failContinuationStartup({
             errorMessage:
               error instanceof Error ? error.message : String(error),
-            sessionRecord,
+            turn,
           });
         }
         throw error;
@@ -636,12 +615,12 @@ async function continueSlackAgentRunInContext(
 async function failStrandedSessionWithFallback(args: {
   conversationId: string;
   errorMessage: string;
-  sessionRecord: TurnRecord;
+  turn: TurnRecord;
 }): Promise<void> {
   await failTurnRecord({
     conversationId: args.conversationId,
-    expectedVersion: args.sessionRecord.version,
-    sessionId: args.sessionRecord.sessionId,
+    expectedVersion: args.turn.version,
+    sessionId: args.turn.sessionId,
     errorMessage: args.errorMessage,
   });
   const currentState = await getPersistedThreadState(args.conversationId);
@@ -653,11 +632,8 @@ async function failStrandedSessionWithFallback(args: {
   markTurnFailed({
     conversation,
     nowMs: Date.now(),
-    sessionId: args.sessionRecord.sessionId,
-    userMessageId: getTurnUserMessage(
-      conversation,
-      args.sessionRecord.sessionId,
-    )?.id,
+    sessionId: args.turn.sessionId,
+    userMessageId: getTurnUserMessage(conversation, args.turn.sessionId)?.id,
     markConversationMessage,
   });
   await persistThreadStateById(args.conversationId, { conversation });
@@ -665,7 +641,7 @@ async function failStrandedSessionWithFallback(args: {
   const eventName = "agent.turn.stranded_session.failed";
   const eventId = logException(new Error(args.errorMessage), eventName, {
     "app.ai.conversation_id": args.conversationId,
-    "app.ai.session_id": args.sessionRecord.sessionId,
+    "app.ai.session_id": args.turn.sessionId,
   });
   let routing: TurnSessionRouting;
   try {
@@ -675,21 +651,21 @@ async function failStrandedSessionWithFallback(args: {
   } catch (error) {
     logException(error, "agent.turn.stranded_session.routing_unavailable", {
       "app.ai.conversation_id": args.conversationId,
-      "app.ai.session_id": args.sessionRecord.sessionId,
+      "app.ai.session_id": args.turn.sessionId,
     });
     return;
   }
-  if (args.sessionRecord.dispatchId) {
+  if (args.turn.dispatchId) {
     await recordTurnSummary({
       conversationId: args.conversationId,
       destination: routing.destination,
-      dispatchId: args.sessionRecord.dispatchId,
+      dispatchId: args.turn.dispatchId,
       dispatchOutcome: "failed",
-      sessionId: args.sessionRecord.sessionId,
-      sliceId: args.sessionRecord.sliceId,
+      sessionId: args.turn.sessionId,
+      sliceId: args.turn.sliceId,
       source: routing.source,
       state: "failed",
-      surface: args.sessionRecord.surface,
+      surface: args.turn.surface,
     });
   }
   const thread = parseSlackThreadId(args.conversationId);
@@ -704,113 +680,6 @@ async function failStrandedSessionWithFallback(args: {
       requireTurnFailureEventId(eventId, eventName),
     ),
   });
-}
-
-/**
- * Recover a conversation whose newest session is still `running` with no live
- * owner (hard worker death mid-slice). The session is re-parked at its latest
- * durable safe boundary and continued; when no resumable boundary remains it
- * is terminally failed with the standard visible fallback so the interrupted
- * request never dies silently.
- */
-async function recoverStrandedRunningSession(args: {
-  conversationId: string;
-  options: AgentContinueRunnerOptions;
-  runOptions: AgentContinueRunOptions;
-  summary: TurnSummary;
-}): Promise<boolean> {
-  // A live resume outside the mailbox lease (OAuth/timeout continuation)
-  // holds the thread resume lock for its whole run; only a dead slice leaves
-  // a running record unlocked.
-  const stateAdapter = getStateAdapter();
-  await stateAdapter.connect();
-  const probe = await acquireActiveLock(stateAdapter, args.conversationId);
-  if (!probe) {
-    return false;
-  }
-  await stateAdapter.releaseLock(probe);
-
-  const sessionRecord = await getTurnRecordForResume(
-    args.conversationId,
-    args.summary.sessionId,
-  );
-  if (!sessionRecord || sessionRecord.state !== "running") {
-    return false;
-  }
-
-  const recoveryProjection = await loadConversationProjection({
-    conversationId: args.conversationId,
-  });
-  const modelProfile = recoveryProjection.modelProfile;
-  const modelId = modelIdForProfile(botConfig, modelProfile);
-
-  let routing: TurnSessionRouting;
-  try {
-    routing = await resolveTurnSessionRouting({
-      conversationId: args.conversationId,
-    });
-  } catch (error) {
-    await failStrandedSessionWithFallback({
-      conversationId: args.conversationId,
-      errorMessage: error instanceof Error ? error.message : String(error),
-      sessionRecord,
-    });
-    return false;
-  }
-  const parked = await saveTurnCheckpoint({
-    mode: "paused",
-    reason: "yield",
-    channelName: sessionRecord.channelName,
-    conversationId: args.conversationId,
-    turnId: sessionRecord.sessionId,
-    sliceId: sessionRecord.sliceId,
-    destination: routing.destination,
-    source: routing.source,
-    messages: sessionRecord.piMessages,
-    errorMessage: "Recovered running session after hard worker death",
-    modelId,
-    surface: sessionRecord.surface,
-  });
-  if (!parked) {
-    await failStrandedSessionWithFallback({
-      conversationId: args.conversationId,
-      errorMessage:
-        "Stranded running session had no resumable boundary after worker death",
-      sessionRecord,
-    });
-    return false;
-  }
-
-  const request = await getAwaitingAgentContinueRequest({
-    conversationId: args.conversationId,
-    turnId: sessionRecord.sessionId,
-  });
-  if (!request) {
-    await failStrandedSessionWithFallback({
-      conversationId: args.conversationId,
-      errorMessage:
-        "Stranded running session could not materialize continuation metadata",
-      sessionRecord: parked,
-    });
-    return false;
-  }
-
-  if (
-    await continueSlackAgentRun(
-      request,
-      args.options,
-      args.runOptions,
-    )
-  ) {
-    return true;
-  }
-  await failUnresumableContinuation({
-    conversationId: args.conversationId,
-    expectedVersion: request.expectedVersion,
-    summary: args.summary,
-    errorMessage: "Awaiting agent continuation was stale before it could run",
-  });
-  return false;
 }
 
 /** Resume the first valid paused Slack session for an idle conversation. */
@@ -833,20 +702,24 @@ async function resumeAwaitingSlackContinuationInContext(
   options: AgentContinueRunnerOptions,
   runOptions: AgentContinueRunOptions,
 ): Promise<boolean> {
-  const summaries =
-    await listTurnSummaries(conversationId);
+  const summaries = await listTurnSummaries(conversationId);
 
-  // Recovery must cover every non-terminal session: a newest `running` record
-  // under the (already re-acquired) conversation lease means the previous
-  // worker died mid-slice without persisting a pause boundary.
+  // In-flight turns may be abandoned across process death. Do not rebuild a
+  // second recovery lifecycle beside the conversation lease.
   const newest = summaries[0];
   if (newest?.state === "running") {
-    return await recoverStrandedRunningSession({
+    const record = await getTurnRecordForResume(
       conversationId,
-      options,
-      runOptions,
-      summary: newest,
-    });
+      newest.sessionId,
+    );
+    if (record) {
+      await failStrandedSessionWithFallback({
+        conversationId,
+        errorMessage: "Turn lost its worker before reaching a safe boundary",
+        turn: record,
+      });
+    }
+    return false;
   }
 
   for (const summary of summaries) {
@@ -868,9 +741,7 @@ async function resumeAwaitingSlackContinuationInContext(
       continue;
     }
 
-    if (
-      await continueSlackAgentRun(request, options, runOptions)
-    ) {
+    if (await continueSlackAgentRun(request, options, runOptions)) {
       return true;
     }
 

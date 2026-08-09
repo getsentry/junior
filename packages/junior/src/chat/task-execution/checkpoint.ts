@@ -40,12 +40,7 @@ import {
   type AgentTurnSurface,
 } from "./turn-cursor";
 
-export type {
-  AgentDispatchOutcome,
-  TurnRecord,
-  TurnSummary,
-  AgentTurnSurface,
-};
+export type { AgentDispatchOutcome, TurnRecord, TurnSummary, AgentTurnSurface };
 export {
   abandonTurnRecord,
   failTurnRecord,
@@ -139,10 +134,7 @@ export async function loadTurnCheckpoint(args: {
   conversationId: string;
   turnId: string;
 }): Promise<TurnCheckpoint> {
-  const record = await getTurnRecordForResume(
-    args.conversationId,
-    args.turnId,
-  );
+  const record = await getTurnRecordForResume(args.conversationId, args.turnId);
   const resumed = Boolean(record && record.state === "paused");
   return {
     resumed,
@@ -170,14 +162,11 @@ export async function saveTurnCheckpoint(
   return undefined;
 }
 
-function sharedWrite(
-  args: TurnCheckpointWrite,
-  latest?: TurnRecord,
-) {
+function sharedWrite(args: TurnCheckpointWrite, latest?: TurnRecord) {
   return {
     conversationId: args.conversationId,
     modelId: args.modelId,
-    // Storage key is still sessionId until the Redis schema is renamed.
+    // Redis wire storage still calls this field sessionId.
     sessionId: args.turnId,
     ...definedProps({
       actor: args.actor,
@@ -203,10 +192,7 @@ async function saveRunning(
     return undefined;
   }
   try {
-    const latest = await getTurnRecord(
-      args.conversationId,
-      args.turnId,
-    );
+    const latest = await getTurnRecord(args.conversationId, args.turnId);
     return await upsertTurnRecord({
       ...sharedWrite(args, latest),
       ...definedProps({
@@ -239,10 +225,7 @@ async function savePaused(
   const keepSlice = args.reason === "yield";
   const nextSliceId = keepSlice ? args.sliceId : args.sliceId + 1;
   try {
-    const latest = await getTurnRecord(
-      args.conversationId,
-      args.turnId,
-    );
+    const latest = await getTurnRecord(args.conversationId, args.turnId);
     const messages =
       args.reason === "yield"
         ? [...args.messages]
@@ -271,15 +254,15 @@ async function savePaused(
     };
 
     if (!keepSlice && nextSliceId > botConfig.maxSlicesPerTurn) {
-      return await upsertTurnRecord({
+      const error = new TurnSliceLimitExceededError(botConfig.maxSlicesPerTurn);
+      await upsertTurnRecord({
         ...base,
         ...definedProps({ resumedFromSliceId: latest?.resumedFromSliceId }),
-        errorMessage: new TurnSliceLimitExceededError(
-          botConfig.maxSlicesPerTurn,
-        ).message,
+        errorMessage: error.message,
         sliceId: args.sliceId,
         state: "failed",
       });
+      throw error;
     }
 
     return await upsertTurnRecord({
@@ -294,6 +277,9 @@ async function savePaused(
       state: "paused",
     });
   } catch (error) {
+    if (error instanceof TurnSliceLimitExceededError) {
+      throw error;
+    }
     logException(error, "agent.turn.checkpoint.paused.failed", {
       "app.ai.resume_conversation_id": args.conversationId,
       "app.ai.resume_session_id": args.turnId,

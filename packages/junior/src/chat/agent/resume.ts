@@ -276,39 +276,14 @@ export function createResumeState(args: ResumeStateArgs) {
       error: unknown;
     }): Promise<AgentRunOutcome | undefined> {
       const { error } = ending;
-      if (error instanceof CooperativeTurnYieldError) {
-        const usage =
-          ending.currentUsage ??
-          extractSliceUsage(resumeMessages, beforeMessageCount);
-        await args.recordActiveMcpProviders();
-        const record = await saveTurnCheckpoint({
-          mode: "paused",
-          reason: "yield",
-          ...writeBase(),
-          sliceId: currentSliceId,
-          durationMs: durationMs(),
-          usage,
-          messages: resumeMessages,
-          errorMessage: error.message,
-        });
-        if (!record) {
-          throw new Error(
-            `Failed to persist cooperative yield for conversation=${args.conversationId} turn=${args.turnId}`,
-          );
-        }
-        return {
-          status: "suspended",
-          resumeVersion: record.version,
-          ...(usage ? { usage } : {}),
-        };
-      }
-
       const reason =
-        error instanceof RetryableDeliveryError
-          ? "retry"
-          : timedOut
-            ? "timeout"
-            : undefined;
+        error instanceof CooperativeTurnYieldError
+          ? "yield"
+          : error instanceof RetryableDeliveryError
+            ? "retry"
+            : timedOut
+              ? "timeout"
+              : undefined;
       if (!reason) {
         return undefined;
       }
@@ -319,10 +294,10 @@ export function createResumeState(args: ResumeStateArgs) {
       }
 
       // Compare the boundary we would actually persist (after trim/fallback).
-      const parkMessages = continuableMessages(
-        resumeMessages,
-        latestSafeBoundaryMessages,
-      );
+      const parkMessages =
+        reason === "yield"
+          ? [...resumeMessages]
+          : continuableMessages(resumeMessages, latestSafeBoundaryMessages);
       const parkKey = boundaryKey(parkMessages);
       if (
         !advancedPastResume &&

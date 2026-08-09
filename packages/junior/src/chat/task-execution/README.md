@@ -12,11 +12,19 @@ in internal `turn-cursor.ts`; outside this folder, import checkpoint only.
 
 Paused turns rewake via `continue.ts` (queue nudge) and `continue-run.ts`
 (worker continue under the conversation lease). History lives in SQL
-conversation events; the Redis turn cursor is resume metadata only. A continue
-that parks again at the same boundary fails closed (no spin loops).
+conversation events; the Redis turn cursor is resume metadata only.
 
-Queue continue does **not** take a second resume lock. OAuth and other
-out-of-band resumes still lock the thread.
+The reliability policy is deliberately small:
+
+- The conversation lease is the only owner for queue-driven execution.
+- A turn may run, pause at a committed boundary, complete, or fail.
+- Timeout, retry, and yield may continue only after the boundary advances;
+  parking the same boundary twice fails the turn.
+- A hard process death may abandon an in-flight running turn. The next worker
+  fails it closed rather than inventing a second recovery lifecycle; the user
+  can trigger new work and committed SQL history remains intact.
+- Queue continuation does not take a second resume lock. OAuth is the one
+  out-of-band exception and keeps its thread lock.
 
 Runtime status is `paused`. SQL free-text / enum rows may still say
 `awaiting_resume`; readers normalize, writers dual-write the historical
@@ -52,7 +60,7 @@ and `worker.ts` define the execution surface.
    work: `interrupt` mailbox delivery first, then a paused turn, then `defer`
    mailbox delivery. Each iteration gets a fresh mailbox delivery attempt.
    New dispatch input identifies its dispatch in mailbox metadata; later slices
-   restore that identifier from the turn session rather than queue payloads,
+   restore that identifier from the turn checkpoint rather than queue payloads,
    conversation source, or conversation-id conventions.
    Agent invocation input follows the same rule: the mailbox carries its
    invocation ID, and an empty resume attempt resolves the active invocation

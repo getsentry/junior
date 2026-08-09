@@ -7,6 +7,7 @@ import {
   loadTurnCheckpoint,
   saveTurnCheckpoint,
 } from "@/chat/task-execution/checkpoint";
+import { CooperativeTurnYieldError } from "@/chat/runtime/turn";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getTurnRecord } from "@/chat/task-execution/turn-cursor";
 import type { PiMessage } from "@/chat/pi/messages";
@@ -116,12 +117,54 @@ describe("agent resume", () => {
       }),
     ).rejects.toThrow(/Turn made no progress/);
 
-    await expect(
-      getTurnRecord(conversationId, turnId),
-    ).resolves.toMatchObject({
+    await expect(getTurnRecord(conversationId, turnId)).resolves.toMatchObject({
       state: "failed",
       errorMessage:
         "Turn made no progress: continue parked at the same boundary",
+    });
+  });
+
+  it("fails closed when yield parks again at the resumed boundary", async () => {
+    const conversationId = "local:test:no-progress-yield";
+    const turnId = "turn-no-progress-yield";
+    const destination = { platform: "local" as const, conversationId };
+
+    await saveTurnCheckpoint({
+      mode: "paused",
+      reason: "yield",
+      conversationId,
+      turnId,
+      sliceId: 2,
+      modelId: "test/model",
+      messages: [userMessage("keep yielding", 2)],
+      surface: "internal",
+      errorMessage: "yielded",
+    });
+
+    const checkpoint = await loadTurnCheckpoint({ conversationId, turnId });
+    const boundary = checkpoint.record?.piMessages ?? [];
+    const resume = createResumeState({
+      destination,
+      durability: {},
+      getLoadedSkillNames: () => [],
+      getModelId: () => "test/model",
+      getReasoningLevel: () => undefined,
+      recordActiveMcpProviders: async () => undefined,
+      runSource: createLocalSource(conversationId),
+      conversationId,
+      turnId,
+      checkpoint,
+      startedAtMs: Date.now(),
+      surface: "internal",
+    });
+    resume.captureResumeSnapshot(boundary);
+
+    await expect(
+      resume.translateSuspension({ error: new CooperativeTurnYieldError() }),
+    ).rejects.toThrow(/Turn made no progress/);
+    await expect(getTurnRecord(conversationId, turnId)).resolves.toMatchObject({
+      state: "failed",
+      errorMessage: expect.stringContaining("made no progress"),
     });
   });
 
@@ -170,9 +213,7 @@ describe("agent resume", () => {
       }),
     ).rejects.toThrow(/Turn made no progress/);
 
-    await expect(
-      getTurnRecord(conversationId, turnId),
-    ).resolves.toMatchObject({
+    await expect(getTurnRecord(conversationId, turnId)).resolves.toMatchObject({
       state: "failed",
       errorMessage:
         "Turn made no progress: continue parked at the same boundary",

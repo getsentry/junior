@@ -44,14 +44,14 @@ export async function getAwaitingAgentContinueRequest(args: {
     conversationId: args.conversationId,
     turnId: args.turnId,
   });
-  const sessionRecord = checkpoint.record;
+  const turn = checkpoint.record;
   if (
-    !sessionRecord ||
-    sessionRecord.state !== "paused" ||
-    (sessionRecord.resumeReason !== "timeout" &&
-      sessionRecord.resumeReason !== "yield" &&
-      sessionRecord.resumeReason !== "retry") ||
-    (sessionRecord.resumeReason === "timeout" && sessionRecord.sliceId < 2)
+    !turn ||
+    turn.state !== "paused" ||
+    (turn.resumeReason !== "timeout" &&
+      turn.resumeReason !== "yield" &&
+      turn.resumeReason !== "retry") ||
+    (turn.resumeReason === "timeout" && turn.sliceId < 2)
   ) {
     return undefined;
   }
@@ -64,7 +64,7 @@ export async function getAwaitingAgentContinueRequest(args: {
   } catch (error) {
     await failTurnRecord({
       conversationId: args.conversationId,
-      expectedVersion: sessionRecord.version,
+      expectedVersion: turn.version,
       sessionId: args.turnId,
       errorMessage: error instanceof Error ? error.message : String(error),
     });
@@ -75,7 +75,7 @@ export async function getAwaitingAgentContinueRequest(args: {
     conversationId: args.conversationId,
     destination: routing.destination,
     turnId: args.turnId,
-    expectedVersion: sessionRecord.version,
+    expectedVersion: turn.version,
   };
 }
 

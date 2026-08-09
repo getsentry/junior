@@ -198,10 +198,7 @@ describe("turn checkpoint", () => {
 
     expect(authSessionRecord?.sliceId).toBe(2);
 
-    const sessionRecord = await getTurnRecord(
-      "conversation-1",
-      "turn-1",
-    );
+    const sessionRecord = await getTurnRecord("conversation-1", "turn-1");
     expect(sessionRecord).toMatchObject({
       state: "paused",
       sliceId: 2,
@@ -300,10 +297,7 @@ describe("turn checkpoint", () => {
       updatedAtMs: conversation!.updatedAtMs + 1,
     });
 
-    const recovered = await getTurnRecord(
-      conversationId,
-      sessionId,
-    );
+    const recovered = await getTurnRecord(conversationId, sessionId);
     expect(recovered).toMatchObject({
       cumulativeDurationMs: 1_500,
       cumulativeUsage: { inputTokens: 7 },
@@ -430,11 +424,8 @@ describe("turn checkpoint", () => {
 
   it("keeps nested destination/source out of redis while dual-writing sql", async () => {
     const { getStateAdapter } = await import("@/chat/state/adapter");
-    const {
-      getTurnRecord,
-      listTurnSummaries,
-      upsertTurnRecord,
-    } = await import("@/chat/task-execution/turn-cursor");
+    const { getTurnRecord, listTurnSummaries, upsertTurnRecord } =
+      await import("@/chat/task-execution/turn-cursor");
     const { agentTurnSessionKey } =
       await import("@/chat/task-execution/turn-cursor-keys");
     const conversationId = "slack:C123:no-nested-routing";
@@ -479,8 +470,7 @@ describe("turn checkpoint", () => {
     expect(stored).not.toHaveProperty("source");
     expect(stored).not.toHaveProperty("actor");
 
-    const summaries =
-      await listTurnSummaries(conversationId);
+    const summaries = await listTurnSummaries(conversationId);
     expect(summaries).toHaveLength(1);
     expect(summaries[0]).not.toHaveProperty("destination");
     expect(summaries[0]).not.toHaveProperty("source");
@@ -516,8 +506,7 @@ describe("turn checkpoint", () => {
 
   it("strips deprecated fields from legacy redis records", async () => {
     const { getStateAdapter } = await import("@/chat/state/adapter");
-    const { getTurnRecord } =
-      await import("@/chat/task-execution/turn-cursor");
+    const { getTurnRecord } = await import("@/chat/task-execution/turn-cursor");
     const { agentTurnSessionKey } =
       await import("@/chat/task-execution/turn-cursor-keys");
     const conversationId = "slack:C123:legacy-nested-routing";
@@ -577,18 +566,13 @@ describe("turn checkpoint", () => {
     ).rejects.toThrow("conversation metadata unavailable");
 
     await expect(
-      getTurnRecord(
-        "slack:C123:metadata-failure",
-        "turn-metadata-failure",
-      ),
+      getTurnRecord("slack:C123:metadata-failure", "turn-metadata-failure"),
     ).resolves.toBeUndefined();
   });
 
   it("fails before storing a turn-session summary when SQL metadata fails", async () => {
-    const {
-      listTurnSummaries,
-      recordTurnSummary,
-    } = await import("@/chat/task-execution/turn-cursor");
+    const { listTurnSummaries, recordTurnSummary } =
+      await import("@/chat/task-execution/turn-cursor");
 
     await expect(
       recordTurnSummary({
@@ -603,9 +587,7 @@ describe("turn checkpoint", () => {
     ).rejects.toThrow("conversation metadata unavailable");
 
     await expect(
-      listTurnSummaries(
-        "slack:C123:summary-metadata-failure",
-      ),
+      listTurnSummaries("slack:C123:summary-metadata-failure"),
     ).resolves.toEqual([]);
   });
 
@@ -616,9 +598,7 @@ describe("turn checkpoint", () => {
     const getList = vi.spyOn(getStateAdapter(), "getList");
 
     await expect(
-      listTurnSummaries(
-        "slack:C123:bounded-summary",
-      ),
+      listTurnSummaries("slack:C123:bounded-summary"),
     ).resolves.toEqual([]);
     expect(getList).toHaveBeenCalledExactlyOnceWith(
       "junior:agent_turn_session:conversation:slack:C123:bounded-summary:index",
@@ -662,8 +642,7 @@ describe("turn checkpoint", () => {
       { ttlMs: 60_000 },
     );
 
-    const summaries =
-      await listTurnSummaries(conversationId);
+    const summaries = await listTurnSummaries(conversationId);
     expect(summaries).toHaveLength(1);
     expect(summaries[0]).toMatchObject({
       conversationId,
@@ -704,10 +683,7 @@ describe("turn checkpoint", () => {
     });
 
     await expect(
-      getTurnRecord(
-        "conversation-auth-complete",
-        "turn-auth-complete",
-      ),
+      getTurnRecord("conversation-auth-complete", "turn-auth-complete"),
     ).resolves.toMatchObject({
       state: "paused",
       piMessages: [
@@ -792,11 +768,8 @@ describe("turn checkpoint", () => {
   });
 
   it("persists turn transcript scope and actor in the event log", async () => {
-    const {
-      getTurnRecord,
-      listTurnSummaries,
-      upsertTurnRecord,
-    } = await import("@/chat/task-execution/turn-cursor");
+    const { getTurnRecord, listTurnSummaries, upsertTurnRecord } =
+      await import("@/chat/task-execution/turn-cursor");
     const { loadConversationProjection } =
       await import("@/chat/conversations/projection");
 
@@ -835,10 +808,7 @@ describe("turn checkpoint", () => {
       piMessages: [previousQuestion, currentQuestion],
     });
 
-    const scoped = await getTurnRecord(
-      "conversation-turn-scope",
-      "turn-scope",
-    );
+    const scoped = await getTurnRecord("conversation-turn-scope", "turn-scope");
     expect(scoped).toMatchObject({
       turnStartMessageIndex: 1,
       piMessages: [previousQuestion, currentQuestion],
@@ -857,9 +827,7 @@ describe("turn checkpoint", () => {
       userId: "U123",
       userName: "alice",
     });
-    const summaries = await listTurnSummaries(
-      "conversation-turn-scope",
-    );
+    const summaries = await listTurnSummaries("conversation-turn-scope");
     expect(summaries[0]).not.toHaveProperty("turnStartMessageIndex");
   });
 
@@ -919,8 +887,7 @@ describe("turn checkpoint", () => {
   it("derives run actors from steered message provenance while preserving the run actor", async () => {
     const { saveTurnCheckpoint } =
       await import("@/chat/task-execution/checkpoint");
-    const { getTurnRecord } =
-      await import("@/chat/task-execution/turn-cursor");
+    const { getTurnRecord } = await import("@/chat/task-execution/turn-cursor");
 
     const alice = {
       platform: "slack" as const,
@@ -1055,10 +1022,7 @@ describe("turn checkpoint", () => {
       errorMessage: "timed out again",
     });
 
-    const sessionRecord = await getTurnRecord(
-      "conversation-1",
-      "turn-1",
-    );
+    const sessionRecord = await getTurnRecord("conversation-1", "turn-1");
     expect(sessionRecord).toMatchObject({
       cumulativeDurationMs: 3_750,
       cumulativeUsage: {
@@ -1114,13 +1078,7 @@ describe("turn checkpoint", () => {
         messages: piMessages,
         errorMessage: "timed out again",
       }),
-    ).resolves.toMatchObject({
-      state: "failed",
-      sliceId: botConfig.maxSlicesPerTurn,
-      cumulativeDurationMs: 15_000,
-      errorMessage: expect.stringContaining("execution limit"),
-      piMessages,
-    });
+    ).rejects.toThrow(/execution limit/);
 
     await expect(
       getTurnRecord("conversation-timeout-cap", "turn-timeout-cap"),
@@ -1209,8 +1167,7 @@ describe("turn checkpoint", () => {
   it("creates auth-pause records before a prompt checkpoint", async () => {
     const { loadTurnCheckpoint, saveTurnCheckpoint } =
       await import("@/chat/task-execution/checkpoint");
-    const { getTurnRecord } =
-      await import("@/chat/task-execution/turn-cursor");
+    const { getTurnRecord } = await import("@/chat/task-execution/turn-cursor");
 
     const authRecord = await saveTurnCheckpoint({
       mode: "paused",
@@ -1257,10 +1214,7 @@ describe("turn checkpoint", () => {
     ).resolves.toBeUndefined();
 
     await expect(
-      getTurnRecord(
-        "conversation-timeout-empty",
-        "turn-timeout-empty",
-      ),
+      getTurnRecord("conversation-timeout-empty", "turn-timeout-empty"),
     ).resolves.toBeUndefined();
   });
 
@@ -1340,8 +1294,7 @@ describe("turn checkpoint", () => {
   it("keeps runtime bootstrap out of durable completed history", async () => {
     const { saveTurnCheckpoint } =
       await import("@/chat/task-execution/checkpoint");
-    const { getTurnRecord } =
-      await import("@/chat/task-execution/turn-cursor");
+    const { getTurnRecord } = await import("@/chat/task-execution/turn-cursor");
 
     await saveTurnCheckpoint({
       mode: "completed",
@@ -1386,8 +1339,7 @@ describe("turn checkpoint", () => {
   it("commits dispatch outcome and delivery receipt with terminal state", async () => {
     const { saveTurnCheckpoint } =
       await import("@/chat/task-execution/checkpoint");
-    const { getTurnRecord } =
-      await import("@/chat/task-execution/turn-cursor");
+    const { getTurnRecord } = await import("@/chat/task-execution/turn-cursor");
 
     await saveTurnCheckpoint({
       mode: "completed",
@@ -1421,8 +1373,7 @@ describe("turn checkpoint", () => {
   it("stores running records only at continuable message boundaries", async () => {
     const { saveTurnCheckpoint } =
       await import("@/chat/task-execution/checkpoint");
-    const { getTurnRecord } =
-      await import("@/chat/task-execution/turn-cursor");
+    const { getTurnRecord } = await import("@/chat/task-execution/turn-cursor");
     const userBoundary: PiMessage[] = [
       {
         role: "user",
@@ -1468,10 +1419,7 @@ describe("turn checkpoint", () => {
       }),
     ).resolves.toBeUndefined();
 
-    let sessionRecord = await getTurnRecord(
-      "conversation-1",
-      "turn-1",
-    );
+    let sessionRecord = await getTurnRecord("conversation-1", "turn-1");
     expect(sessionRecord).toMatchObject({
       state: "running",
       piMessages: userBoundary,
@@ -1498,7 +1446,9 @@ describe("turn checkpoint", () => {
   it("reports running record storage failures", async () => {
     vi.doMock("@/chat/task-execution/turn-cursor", async (importOriginal) => {
       const actual =
-        await importOriginal<typeof import("@/chat/task-execution/turn-cursor")>();
+        await importOriginal<
+          typeof import("@/chat/task-execution/turn-cursor")
+        >();
       return {
         ...actual,
         upsertTurnRecord: vi.fn(async () => {
@@ -1565,8 +1515,7 @@ describe("turn checkpoint", () => {
   it("appends after in-place assistant envelope mutations on committed messages", async () => {
     const { saveTurnCheckpoint } =
       await import("@/chat/task-execution/checkpoint");
-    const { getTurnRecord } =
-      await import("@/chat/task-execution/turn-cursor");
+    const { getTurnRecord } = await import("@/chat/task-execution/turn-cursor");
     const user = userMessage("help me");
     user.timestamp = 1;
     const assistantWithTools = {
@@ -1627,10 +1576,7 @@ describe("turn checkpoint", () => {
     // Append-only: durable identity lets the suffix commit, but the already
     // committed assistant envelope is not rewritten when Pi mutates usage.
     await expect(
-      getTurnRecord(
-        "conversation-mutated-prefix",
-        "turn-mutated-prefix",
-      ),
+      getTurnRecord("conversation-mutated-prefix", "turn-mutated-prefix"),
     ).resolves.toMatchObject({
       state: "running",
       piMessages: [user, assistantWithTools, toolResult, nextUser],
@@ -1640,8 +1586,7 @@ describe("turn checkpoint", () => {
   it("promotes the latest running record when timeout capture has no messages", async () => {
     const { saveTurnCheckpoint } =
       await import("@/chat/task-execution/checkpoint");
-    const { getTurnRecord } =
-      await import("@/chat/task-execution/turn-cursor");
+    const { getTurnRecord } = await import("@/chat/task-execution/turn-cursor");
     const messages: PiMessage[] = [
       {
         role: "user",
@@ -1670,10 +1615,7 @@ describe("turn checkpoint", () => {
       errorMessage: "provider stream interrupted",
     });
 
-    const sessionRecord = await getTurnRecord(
-      "conversation-1",
-      "turn-1",
-    );
+    const sessionRecord = await getTurnRecord("conversation-1", "turn-1");
     expect(sessionRecord).toMatchObject({
       state: "paused",
       resumeReason: "timeout",
@@ -1713,11 +1655,8 @@ describe("turn checkpoint", () => {
   });
 
   it("keeps older turn records pinned to their committed projection after reset", async () => {
-    const {
-      failTurnRecord,
-      getTurnRecord,
-      upsertTurnRecord,
-    } = await import("@/chat/task-execution/turn-cursor");
+    const { failTurnRecord, getTurnRecord, upsertTurnRecord } =
+      await import("@/chat/task-execution/turn-cursor");
     const { loadProjection } = await import("@/chat/conversations/projection");
     const { getConversationEventStore } = await import("@/chat/db");
     const oldRequest: PiMessage = {
