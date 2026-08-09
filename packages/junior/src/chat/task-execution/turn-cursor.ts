@@ -25,6 +25,7 @@ import type { PluginTurnContext } from "@/chat/plugins/prompt";
 import { projectConversationEvents } from "@/chat/pi/conversation-events";
 import type { AgentTurnUsage } from "@/chat/usage";
 import { getStateAdapter } from "@/chat/state/adapter";
+import { withLock } from "@/chat/state/locks";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import { isAgentsInstructionsMessage } from "@/chat/repository-instructions";
 import {
@@ -36,10 +37,34 @@ import type {
   ConversationExecution,
   ConversationStore,
 } from "@/chat/conversations/store";
-import { turnCursorIndexKey, turnCursorKey } from "./turn-cursor-keys";
+import {
+  turnCursorIndexKey,
+  turnCursorKey,
+  turnCursorMutationKey,
+} from "./turn-cursor-keys";
 
 const TURN_CURSOR_RESUME_TTL_MS = 24 * 60 * 60 * 1000;
 const TURN_CURSOR_TERMINAL_TTL_MS = 60 * 60 * 1000;
+const TURN_CURSOR_MUTATION_LOCK_WAIT_MS = 10_000;
+
+async function withTurnCursorMutation<T>(
+  conversationId: string,
+  turnId: string,
+  run: () => Promise<T>,
+): Promise<T> {
+  const state = getStateAdapter();
+  await state.connect();
+  const result = await withLock(
+    state,
+    turnCursorMutationKey(conversationId, turnId),
+    run,
+    { waitMs: TURN_CURSOR_MUTATION_LOCK_WAIT_MS },
+  );
+  if (!result.acquired) {
+    throw new Error(`Could not acquire turn cursor lock for ${turnId}`);
+  }
+  return result.value;
+}
 
 function executionMetricsForTurn(
   conversation: Awaited<ReturnType<ConversationStore["get"]>>,
@@ -757,6 +782,16 @@ export async function upsertTurnRecord(args: {
   turnStartMessageIndex?: number;
   ttlMs?: number;
 }): Promise<TurnRecord> {
+  return await withTurnCursorMutation(
+    args.conversationId,
+    args.turnId,
+    async () => await upsertTurnRecordLocked(args),
+  );
+}
+
+async function upsertTurnRecordLocked(
+  args: Parameters<typeof upsertTurnRecord>[0],
+): Promise<TurnRecord> {
   const existingRecord = await getStoredTurnRecord(
     args.conversationId,
     args.turnId,
@@ -1011,21 +1046,27 @@ export async function abandonTurnRecord(args: {
   turnId: string;
   errorMessage?: string;
 }): Promise<TurnRecord | undefined> {
-  const existing = await getTurnRecord(args.conversationId, args.turnId);
-  if (
-    !existing ||
-    existing.state === "completed" ||
-    existing.state === "failed" ||
-    existing.state === "abandoned"
-  ) {
-    return undefined;
-  }
+  return await withTurnCursorMutation(
+    args.conversationId,
+    args.turnId,
+    async () => {
+      const existing = await getTurnRecord(args.conversationId, args.turnId);
+      if (
+        !existing ||
+        existing.state === "completed" ||
+        existing.state === "failed" ||
+        existing.state === "abandoned"
+      ) {
+        return undefined;
+      }
 
-  return await updateTurnState({
-    existing,
-    state: "abandoned",
-    errorMessage: args.errorMessage ?? existing.errorMessage,
-  });
+      return await updateTurnState({
+        existing,
+        state: "abandoned",
+        errorMessage: args.errorMessage ?? existing.errorMessage,
+      });
+    },
+  );
 }
 
 /** Mark an unfinished turn session record as failed so it cannot resume. */
@@ -1035,20 +1076,26 @@ export async function failTurnRecord(args: {
   turnId: string;
   errorMessage?: string;
 }): Promise<TurnRecord | undefined> {
-  const existing = await getTurnRecord(args.conversationId, args.turnId);
-  if (
-    !existing ||
-    existing.state === "completed" ||
-    existing.state === "failed" ||
-    existing.state === "abandoned" ||
-    existing.version !== args.expectedVersion
-  ) {
-    return undefined;
-  }
+  return await withTurnCursorMutation(
+    args.conversationId,
+    args.turnId,
+    async () => {
+      const existing = await getTurnRecord(args.conversationId, args.turnId);
+      if (
+        !existing ||
+        existing.state === "completed" ||
+        existing.state === "failed" ||
+        existing.state === "abandoned" ||
+        existing.version !== args.expectedVersion
+      ) {
+        return undefined;
+      }
 
-  return await updateTurnState({
-    existing,
-    state: "failed",
-    errorMessage: args.errorMessage ?? existing.errorMessage,
-  });
+      return await updateTurnState({
+        existing,
+        state: "failed",
+        errorMessage: args.errorMessage ?? existing.errorMessage,
+      });
+    },
+  );
 }

@@ -21,8 +21,8 @@ The reliability policy is deliberately small:
 - Timeout, retry, and yield may continue only after the boundary advances;
   parking the same boundary twice fails the turn.
 - A hard process death may abandon an in-flight running turn. The next worker
-  fails it closed rather than inventing a second recovery lifecycle; the user
-  can trigger new work and committed SQL history remains intact.
+  stops that turn and records the error rather than inventing a second recovery
+  lifecycle; the user can trigger new work and committed SQL history remains.
 - Running a paused turn does not take a second lock. OAuth is the one
   out-of-band exception and keeps its thread lock.
 
@@ -45,8 +45,10 @@ Runtime and Redis status is `paused`. SQL free-text / enum rows may still say
   slow work from abandoned work.
 - Delivery state prevents a completed turn from being posted twice.
 
-Redis execution state uses versioned v2 keys. Deploying this version abandons
-older in-flight mailbox and turn-cursor state; committed SQL history remains.
+Redis execution state uses a new v2 namespace as a hard cut. This release never
+reads or migrates the old namespace. Old mailbox, lease, and turn-cursor state
+may be abandoned; committed SQL history remains. There are no compatibility
+readers, dual writes, or rollback contract.
 
 `checkpoint.ts`, `turn-wake.ts`, `paused-turn.ts`, `state.ts`, `store.ts`, and
 `worker.ts` define the execution surface.

@@ -326,6 +326,10 @@ describe("durable queue", () => {
     });
     await expect(q.next()).resolves.toEqual({ status: "completed" });
     expect(q.wakes.hasQueuedMessages()).toBe(false);
+    expect(slackApiOutbox.messages()).toHaveLength(1);
+    expect(
+      JSON.stringify(await loadProjection({ conversationId: CONVERSATION_ID })),
+    ).toContain("inspect the deploy");
     await expect(getTurnRecord(CONVERSATION_ID, turnId)).resolves.toMatchObject(
       {
         state: "failed",
