@@ -184,18 +184,21 @@ async function expectTerminalTurn(
   expect(q.wakes.hasQueuedMessages()).toBe(false);
 
   const replies = q.replies();
-  expect(replies).toHaveLength(
+  const replyCount =
     typeof expected.replies === "number"
       ? expected.replies
-      : expected.replies.length,
-  );
-  expect(replies.join("\n")).toContain(
-    typeof expected.replies === "number" ? "" : expected.replies.join("\n"),
-  );
+      : expected.replies.length;
+  const expectedReplies =
+    typeof expected.replies === "number" ? replies : expected.replies;
+  expect(replies).toHaveLength(replyCount);
+  expect(replies).toEqual(expectedReplies);
 }
 
 /** Prove that a terminal turn does not block a later user request. */
 async function expectNextTurn(q: QueueTest, ts: string): Promise<void> {
+  const priorTurns = new Set(
+    (await listTurnSummaries(CONVERSATION_ID)).map((turn) => turn.turnId),
+  );
   const priorReplies = q.replies();
   await q.send({
     text: `<@${SLACK_BOT_USER_ID}> check the next deploy`,
@@ -203,8 +206,14 @@ async function expectNextTurn(q: QueueTest, ts: string): Promise<void> {
     ts,
   });
   await expect(q.next()).resolves.toEqual({ status: "completed" });
+
+  const nextTurn = (await listTurnSummaries(CONVERSATION_ID)).find(
+    (turn) => !priorTurns.has(turn.turnId),
+  );
+  if (!nextTurn) throw new Error("Expected a new turn");
+  expect(nextTurn).toMatchObject({ state: "completed" });
   await expectTerminalTurn(q, {
-    turnId: `turn_${ts.replace(".", "_")}`,
+    turnId: nextTurn.turnId,
     state: "completed",
     replies: [...priorReplies, "Deploy checked."],
   });
@@ -221,6 +230,14 @@ async function expectPausedTurn(
     state: "paused",
     resumeReason: expected.reason,
   });
+  await expect(listTurnSummaries(CONVERSATION_ID)).resolves.toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        state: "paused",
+        turnId: expected.turnId,
+      }),
+    ]),
+  );
   const conversation = coerceThreadConversationState(
     await getPersistedThreadState(CONVERSATION_ID),
   );
