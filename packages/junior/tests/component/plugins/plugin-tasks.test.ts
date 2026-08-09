@@ -68,7 +68,7 @@ async function recordCompletedSession(args: {
   sessionId: string;
 }): Promise<void> {
   const { upsertAgentTurnSessionRecord } =
-    await import("@/chat/state/turn-session");
+    await import("@/chat/task-execution/turn-cursor");
   await upsertAgentTurnSessionRecord({
     modelId: "test/model",
     conversationId: args.conversationId,
@@ -152,7 +152,7 @@ describe("plugin background tasks", () => {
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
     const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
-      await import("@/chat/state/turn-session");
+      await import("@/chat/task-execution/turn-cursor");
     setPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -298,7 +298,7 @@ describe("plugin background tasks", () => {
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
     const { upsertAgentTurnSessionRecord } =
-      await import("@/chat/state/turn-session");
+      await import("@/chat/task-execution/turn-cursor");
     setPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -422,7 +422,7 @@ describe("plugin background tasks", () => {
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
     const { upsertAgentTurnSessionRecord } =
-      await import("@/chat/state/turn-session");
+      await import("@/chat/task-execution/turn-cursor");
     setPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -534,7 +534,7 @@ describe("plugin background tasks", () => {
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
     const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
-      await import("@/chat/state/turn-session");
+      await import("@/chat/task-execution/turn-cursor");
     setPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -630,7 +630,7 @@ describe("plugin background tasks", () => {
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
     const { upsertAgentTurnSessionRecord } =
-      await import("@/chat/state/turn-session");
+      await import("@/chat/task-execution/turn-cursor");
     setPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -717,7 +717,7 @@ describe("plugin background tasks", () => {
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
     const { upsertAgentTurnSessionRecord } =
-      await import("@/chat/state/turn-session");
+      await import("@/chat/task-execution/turn-cursor");
     const { persistThreadStateById } =
       await import("@/chat/runtime/thread-state");
     const { coerceThreadConversationState } =

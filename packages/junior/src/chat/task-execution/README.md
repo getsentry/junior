@@ -6,14 +6,17 @@ source of truth. Slack input and plugin dispatches use the same worker loop;
 their adapters only prepare input, restore task-specific authority, and accept
 the completed result.
 
-Turn progress (running / paused / done) goes through one write API:
-`saveTurnCheckpoint` in `checkpoint.ts`. Paused turns rewake via
-`continue.ts` (queue nudge only). History lives in SQL conversation events;
-the Redis turn cursor is only resume metadata. A continue that parks again
-at the same boundary fails closed (no spin loops).
+Turn progress (running / paused / done) goes through one public API:
+`checkpoint.ts` (`loadTurnCheckpoint` / `saveTurnCheckpoint`). Storage lives
+in internal `turn-cursor.ts`; outside this folder, import checkpoint only.
 
-Queue continue runs under the conversation work lease. It does **not** take a
-second resume lock. OAuth and other out-of-band resumes still lock the thread.
+Paused turns rewake via `continue.ts` (queue nudge) and `continue-run.ts`
+(worker continue under the conversation lease). History lives in SQL
+conversation events; the Redis turn cursor is resume metadata only. A continue
+that parks again at the same boundary fails closed (no spin loops).
+
+Queue continue does **not** take a second resume lock. OAuth and other
+out-of-band resumes still lock the thread.
 
 Runtime status is `paused`. SQL free-text / enum rows may still say
 `awaiting_resume`; readers normalize, writers dual-write the historical
@@ -38,7 +41,8 @@ label where durable SQL requires it.
 Schema-v1 mailbox entries migrate to deferred delivery. Schema-v2 entries
 require a valid delivery value and reject invalid pending work.
 
-`checkpoint.ts`, `continue.ts`, `state.ts`, `store.ts` define the execution surface.
+`checkpoint.ts`, `continue.ts`, `continue-run.ts`, `state.ts`, `store.ts`,
+and `worker.ts` define the execution surface.
 
 ## Execution
 

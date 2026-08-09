@@ -37,7 +37,7 @@ vi.mock("@/chat/credentials/unlink-provider", () => ({
   unlinkProvider,
 }));
 
-vi.mock("@/chat/state/turn-session", () => ({
+vi.mock("@/chat/task-execution/turn-cursor", () => ({
   abandonAgentTurnSessionRecord,
 }));
 

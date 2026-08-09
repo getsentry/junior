@@ -41,7 +41,7 @@ vi.mock("@/chat/oauth-flow", () => ({
   formatProviderLabel,
 }));
 
-vi.mock("@/chat/state/turn-session", () => ({
+vi.mock("@/chat/task-execution/turn-cursor", () => ({
   abandonAgentTurnSessionRecord,
 }));
 

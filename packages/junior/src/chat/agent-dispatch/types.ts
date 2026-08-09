@@ -11,7 +11,7 @@ import type {
   CredentialSystemActor,
 } from "@/chat/credentials/context";
 import type { AgentRunRouting } from "@/chat/agent/request";
-import type { AgentTurnSurface } from "@/chat/state/turn-session";
+import type { AgentTurnSurface } from "@/chat/task-execution/checkpoint";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 
 export type DispatchStatus =

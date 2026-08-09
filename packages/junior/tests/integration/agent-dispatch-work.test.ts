@@ -20,7 +20,7 @@ import { processConversationQueueMessage } from "@/chat/task-execution/vercel-ca
 import {
   listAgentTurnSessionSummariesForConversation,
   recordAgentTurnSessionSummary,
-} from "@/chat/state/turn-session";
+} from "@/chat/task-execution/turn-cursor";
 import { persistConversationMessages } from "@/chat/conversations/messages";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { slackApiOutbox } from "../fixtures/slack-api-outbox";

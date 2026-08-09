@@ -119,7 +119,7 @@ import { z } from "zod";
 import { executeAgentRun } from "@/chat/agent";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
+import { upsertAgentTurnSessionRecord } from "@/chat/task-execution/turn-cursor";
 import { getConversationEventStore } from "@/chat/db";
 import { TurnInputCommitLostError } from "@/chat/runtime/turn";
 

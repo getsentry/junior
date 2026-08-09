@@ -5,7 +5,7 @@ import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import {
   getAgentTurnSessionRecord,
   upsertAgentTurnSessionRecord,
-} from "@/chat/state/turn-session";
+} from "@/chat/task-execution/turn-cursor";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import {
@@ -129,7 +129,7 @@ describe("agent continuation scheduling", () => {
     expect(lock).toBeTruthy();
     const resumeTurn = vi.fn().mockResolvedValue(false);
     const { continueSlackAgentRunWithLockRetry } =
-      await import("@/chat/runtime/agent-continue-runner");
+      await import("@/chat/task-execution/continue-run");
 
     await expect(
       continueSlackAgentRunWithLockRetry(
@@ -160,7 +160,7 @@ describe("agent continuation scheduling", () => {
 
   it("fails continuation summaries whose metadata cannot materialize", async () => {
     const { resumeAwaitingSlackContinuation } =
-      await import("@/chat/runtime/agent-continue-runner");
+      await import("@/chat/task-execution/continue-run");
     const conversationId = "slack:C123:1712345.0003";
 
     await upsertAgentTurnSessionRecord({
@@ -190,7 +190,7 @@ describe("agent continuation scheduling", () => {
 
   it("resumes delivery retries with the supplied runner", async () => {
     const { resumeAwaitingSlackContinuation } =
-      await import("@/chat/runtime/agent-continue-runner");
+      await import("@/chat/task-execution/continue-run");
     const conversationId = "slack:C123:1712345.0005";
     const generateReply = vi.fn();
     const resumeTurn = vi.fn(async () => true);
@@ -221,7 +221,7 @@ describe("agent continuation scheduling", () => {
 
   it("fails stale continuations skipped during resume startup", async () => {
     const { resumeAwaitingSlackContinuation } =
-      await import("@/chat/runtime/agent-continue-runner");
+      await import("@/chat/task-execution/continue-run");
     const conversationId = "slack:C123:1712345.0004";
     const sessionId = "turn_1712345_0004";
 

@@ -18,7 +18,7 @@ import {
   markDispatchCompleted,
 } from "@/chat/agent-dispatch/store";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
-import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
+import { upsertAgentTurnSessionRecord } from "@/chat/task-execution/turn-cursor";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { scheduleAgentContinue } from "@/chat/task-execution/continue";

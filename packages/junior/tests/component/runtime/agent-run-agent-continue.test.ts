@@ -283,7 +283,7 @@ import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
   getAgentTurnSessionRecord,
   upsertAgentTurnSessionRecord,
-} from "@/chat/state/turn-session";
+} from "@/chat/task-execution/turn-cursor";
 
 const TEST_DESTINATION = {
   platform: "slack",

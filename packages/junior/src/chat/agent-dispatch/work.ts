@@ -20,7 +20,7 @@ import {
   getAgentTurnSessionRecord,
   listAgentTurnSessionSummariesForConversation,
   recordAgentTurnSessionSummary,
-} from "@/chat/state/turn-session";
+} from "@/chat/task-execution/checkpoint";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
 import {

@@ -50,7 +50,7 @@ import { mergeArtifactsState } from "@/chat/runtime/thread-state";
 import type { Actor } from "@/chat/actor";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { AuthorizationPauseError } from "@/chat/services/auth-pause";
-import type { AgentTurnSurface } from "@/chat/state/turn-session";
+import type { AgentTurnSurface } from "@/chat/task-execution/checkpoint";
 import {
   isAgentRunFeatureDisabled,
   toolInvocationDestination,

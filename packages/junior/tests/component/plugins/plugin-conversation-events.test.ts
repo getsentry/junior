@@ -51,7 +51,7 @@ async function recordCompletedSession(args: {
   sessionId: string;
 }): Promise<void> {
   const { upsertAgentTurnSessionRecord } =
-    await import("@/chat/state/turn-session");
+    await import("@/chat/task-execution/turn-cursor");
   await upsertAgentTurnSessionRecord({
     actor: {
       fullName: "Local CLI",

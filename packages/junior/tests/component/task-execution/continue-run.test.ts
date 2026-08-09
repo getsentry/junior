@@ -6,7 +6,7 @@ import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import {
   getAgentTurnSessionRecord,
   upsertAgentTurnSessionRecord,
-} from "@/chat/state/turn-session";
+} from "@/chat/task-execution/turn-cursor";
 import { neverRunAgentRunner } from "../../fixtures/agent-runner";
 import { SLACK_DESTINATION } from "../../fixtures/conversation-work";
 
@@ -116,7 +116,7 @@ describe("agent continuation runner callbacks", () => {
     });
 
     const { continueSlackAgentRun } =
-      await import("@/chat/runtime/agent-continue-runner");
+      await import("@/chat/task-execution/continue-run");
 
     await expect(
       continueSlackAgentRun(
@@ -212,7 +212,7 @@ describe("agent continuation runner callbacks", () => {
     });
 
     const { continueSlackAgentRun } =
-      await import("@/chat/runtime/agent-continue-runner");
+      await import("@/chat/task-execution/continue-run");
 
     await expect(
       continueSlackAgentRun(
@@ -304,7 +304,7 @@ describe("agent continuation runner callbacks", () => {
     });
 
     const { continueSlackAgentRun } =
-      await import("@/chat/runtime/agent-continue-runner");
+      await import("@/chat/task-execution/continue-run");
 
     await expect(
       continueSlackAgentRun(
@@ -383,7 +383,7 @@ describe("agent continuation runner callbacks", () => {
     });
 
     const { continueSlackAgentRun } =
-      await import("@/chat/runtime/agent-continue-runner");
+      await import("@/chat/task-execution/continue-run");
 
     // Missing author identity must never throw out of the continue callback
     // (issue #727: a throw NACKs the queue delivery and wedges the

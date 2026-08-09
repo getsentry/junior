@@ -135,8 +135,8 @@ import {
   failAgentTurnSessionRecord,
   getAgentTurnSessionRecord,
   recordAgentTurnSessionSummary,
-} from "@/chat/state/turn-session";
-import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
+  saveTurnCheckpoint,
+} from "@/chat/task-execution/checkpoint";
 import { resolveDestinationVisibility } from "@/chat/conversations/destination-visibility";
 import { getConversationStore } from "@/chat/db";
 import {

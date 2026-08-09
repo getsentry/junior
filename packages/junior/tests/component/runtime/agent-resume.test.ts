@@ -8,7 +8,7 @@ import {
   saveTurnCheckpoint,
 } from "@/chat/task-execution/checkpoint";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { getAgentTurnSessionRecord } from "@/chat/state/turn-session";
+import { getAgentTurnSessionRecord } from "@/chat/task-execution/turn-cursor";
 import type { PiMessage } from "@/chat/pi/messages";
 
 const originalStateAdapter = process.env.JUNIOR_STATE_ADAPTER;

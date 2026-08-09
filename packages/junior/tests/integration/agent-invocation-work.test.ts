@@ -28,7 +28,7 @@ import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
 import {
   getAgentTurnSessionRecord,
   upsertAgentTurnSessionRecord,
-} from "@/chat/state/turn-session";
+} from "@/chat/task-execution/turn-cursor";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import { createConfiguredJuniorSqlFixture } from "../fixtures/sql";
 

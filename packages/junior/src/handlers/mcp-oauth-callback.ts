@@ -50,7 +50,7 @@ import {
   failAgentTurnSessionRecord,
   abandonAgentTurnSessionRecord,
   getAgentTurnSessionRecord,
-} from "@/chat/state/turn-session";
+} from "@/chat/task-execution/checkpoint";
 import {
   loadProjection,
   recordAuthenticationLinked,

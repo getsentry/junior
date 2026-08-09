@@ -11,7 +11,7 @@ import {
 } from "@/db/schema";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { recordAgentTurnSessionSummary } from "@/chat/state/turn-session";
+import { recordAgentTurnSessionSummary } from "@/chat/task-execution/turn-cursor";
 import {
   buildJuniorSqlConversation,
   createLocalJuniorSqlFixture,

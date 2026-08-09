@@ -121,7 +121,7 @@ vi.mock("@/chat/plugins/agent-hooks", async (importOriginal) => {
 
 import { executeAgentRun } from "@/chat/agent";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
+import { upsertAgentTurnSessionRecord } from "@/chat/task-execution/turn-cursor";
 
 const LOCAL_DESTINATION = {
   platform: "local",

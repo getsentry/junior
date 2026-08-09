@@ -1,9 +1,10 @@
 /**
- * Slack-only continuation runner for paused agent sessions.
+ * Worker continue for paused turns under the conversation lease.
  *
- * Queue workers reach this through app composition. Expected-version checks
- * drop stale callbacks before generation, while any started continuation must
- * durably record success, failure, auth pause, or another safe pause boundary.
+ * Lives with mailbox + lease + checkpoint. Queue workers reach this through
+ * app composition. Expected-version checks drop stale callbacks before
+ * generation; started continues must durably record success, failure, auth
+ * pause, or another safe pause boundary.
  */
 import { botConfig } from "@/chat/config";
 import {
@@ -26,7 +27,7 @@ import {
   recordAgentTurnSessionSummary,
   type AgentTurnSessionRecord,
   type AgentTurnSessionSummary,
-} from "@/chat/state/turn-session";
+} from "./turn-cursor";
 import {
   loadTurnCheckpoint,
   saveTurnCheckpoint,

@@ -17,13 +17,13 @@ import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import {
   failAgentTurnSessionRecord,
   getAgentTurnSessionRecord,
-} from "@/chat/state/turn-session";
+  saveTurnCheckpoint,
+} from "@/chat/task-execution/checkpoint";
 import {
   getConversationTurnBoundaryError,
   isTurnInputCommitLostError,
   TurnInputCommitLostError,
 } from "@/chat/runtime/turn";
-import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
 import { getAssistantReplyText } from "@/chat/services/assistant-reply";

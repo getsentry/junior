@@ -1,24 +1,15 @@
 /**
- * Turn checkpoint — Redis resume cursor for one turn.
+ * Turn checkpoint — public resume cursor for one turn.
  *
  * Part of conversation execution with mailbox + lease + worker.
- * History is SQL (`commitMessages`). This module only stores:
- * - resume boundary (messages / committed seq)
- * - status: running | paused | completed | failed
+ * History is SQL (`commitMessages`). This module is the only external gate
+ * for turn cursor storage (`turn-cursor.ts` is internal).
  *
  * Public API:
  * - `loadTurnCheckpoint({ conversationId, turnId })`
  * - `saveTurnCheckpoint({ mode, conversationId, turnId, messages, ... })`
+ * - fail / abandon / summary helpers for terminal and recovery edges
  */
-import {
-  getAgentTurnSessionRecord,
-  getAgentTurnSessionRecordForResume,
-  upsertAgentTurnSessionRecord,
-  type AgentDispatchOutcome,
-  type AgentTurnResumeReason,
-  type AgentTurnSessionRecord,
-  type AgentTurnSurface,
-} from "@/chat/state/turn-session";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { Destination, Actor, Source } from "@sentry/junior-plugin-api";
 import { getActiveTraceId, logException } from "@/chat/logging";
@@ -34,6 +25,34 @@ import { TurnSliceLimitExceededError } from "@/chat/services/turn-limit";
 import { botConfig } from "@/chat/config";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
 import { AgentHistoryBranchError } from "@/chat/conversations/projection";
+import {
+  abandonAgentTurnSessionRecord,
+  failAgentTurnSessionRecord,
+  getAgentTurnSessionRecord,
+  getAgentTurnSessionRecordForResume,
+  listAgentTurnSessionSummariesForConversation,
+  recordAgentTurnSessionSummary,
+  upsertAgentTurnSessionRecord,
+  type AgentDispatchOutcome,
+  type AgentTurnResumeReason,
+  type AgentTurnSessionRecord,
+  type AgentTurnSessionSummary,
+  type AgentTurnSurface,
+} from "./turn-cursor";
+
+export type {
+  AgentDispatchOutcome,
+  AgentTurnSessionRecord,
+  AgentTurnSessionSummary,
+  AgentTurnSurface,
+};
+export {
+  abandonAgentTurnSessionRecord,
+  failAgentTurnSessionRecord,
+  getAgentTurnSessionRecord,
+  listAgentTurnSessionSummariesForConversation,
+  recordAgentTurnSessionSummary,
+};
 
 export type TurnPauseReason = AgentTurnResumeReason;
 

@@ -89,7 +89,7 @@ type McpOauthCallbackHarnessModule =
 type PluginCatalogRuntimeModule =
   typeof import("@/chat/plugins/catalog-runtime");
 type StateAdapterModule = typeof import("@/chat/state/adapter");
-type TurnSessionStoreModule = typeof import("@/chat/state/turn-session");
+type TurnSessionStoreModule = typeof import("@/chat/task-execution/turn-cursor");
 
 let artifactStateModule: ArtifactStateModule;
 let conversationStateModule: ConversationStateModule;
@@ -235,7 +235,7 @@ describe("mcp oauth callback integration", () => {
       await import("../fixtures/mcp-oauth-callback-harness");
     pluginCatalogRuntimeModule = await import("@/chat/plugins/catalog-runtime");
     stateAdapterModule = await import("@/chat/state/adapter");
-    turnSessionStoreModule = await import("@/chat/state/turn-session");
+    turnSessionStoreModule = await import("@/chat/task-execution/turn-cursor");
 
     await stateAdapterModule.disconnectStateAdapter();
     await stateAdapterModule.getStateAdapter().connect();

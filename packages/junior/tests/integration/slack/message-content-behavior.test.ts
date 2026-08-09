@@ -11,7 +11,7 @@ import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import { commitMessages } from "@/chat/conversations/projection";
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
-import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
+import { upsertAgentTurnSessionRecord } from "@/chat/task-execution/turn-cursor";
 import { getConversationEventStore } from "@/chat/db";
 import { botConfig } from "@/chat/config";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";

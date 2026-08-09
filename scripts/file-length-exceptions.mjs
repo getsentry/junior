@@ -34,8 +34,8 @@ export const fileLengthExceptions = {
     "Existing reply lifecycle; split only at a clear lifecycle boundary.",
   "packages/junior/src/chat/runtime/slack-runtime.ts":
     "Existing Slack runtime; split by runtime phase.",
-  "packages/junior/src/chat/state/turn-session.ts":
-    "Existing turn session persistence; split by persistence concern.",
+  "packages/junior/src/chat/task-execution/turn-cursor.ts":
+    "Turn cursor storage behind checkpoint; split by persistence concern.",
   "packages/junior/src/chat/task-execution/state.ts":
     "Existing mailbox and lease store; split without separating shared locks.",
   "packages/junior/src/cli/check.ts":

@@ -3,7 +3,7 @@ const { abandonAgentTurnSessionRecord } = vi.hoisted(() => ({
   abandonAgentTurnSessionRecord: vi.fn(),
 }));
 
-vi.mock("@/chat/state/turn-session", () => ({
+vi.mock("@/chat/task-execution/turn-cursor", () => ({
   abandonAgentTurnSessionRecord,
 }));
 

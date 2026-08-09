@@ -666,7 +666,7 @@ import type { AgentRunRequest } from "@/chat/agent/request";
 import {
   getAgentTurnSessionRecord,
   upsertAgentTurnSessionRecord,
-} from "@/chat/state/turn-session";
+} from "@/chat/task-execution/turn-cursor";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 
 function finalReply(outcome: Awaited<ReturnType<typeof executeAgentRun>>) {

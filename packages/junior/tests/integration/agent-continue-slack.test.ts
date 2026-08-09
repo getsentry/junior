@@ -114,9 +114,9 @@ function createToolContext(
 type StateAdapterModule = typeof import("@/chat/state/adapter");
 type ThreadStateModule = typeof import("@/chat/runtime/thread-state");
 type AgentContinueRunnerModule =
-  typeof import("@/chat/runtime/agent-continue-runner");
+  typeof import("@/chat/task-execution/continue-run");
 type RequestDeadlineModule = typeof import("@/chat/runtime/request-deadline");
-type TurnSessionStoreModule = typeof import("@/chat/state/turn-session");
+type TurnSessionStoreModule = typeof import("@/chat/task-execution/turn-cursor");
 type AgentContinueServiceModule =
   typeof import("@/chat/task-execution/continue");
 type TaskExecutionStoreModule = typeof import("@/chat/task-execution/store");
@@ -180,9 +180,9 @@ describe("agent continuation Slack integration", () => {
     stateAdapterModule = await import("@/chat/state/adapter");
     threadStateModule = await import("@/chat/runtime/thread-state");
     agentContinueRunnerModule =
-      await import("@/chat/runtime/agent-continue-runner");
+      await import("@/chat/task-execution/continue-run");
     requestDeadlineModule = await import("@/chat/runtime/request-deadline");
-    turnSessionStoreModule = await import("@/chat/state/turn-session");
+    turnSessionStoreModule = await import("@/chat/task-execution/turn-cursor");
     agentContinueServiceModule = await import("@/chat/task-execution/continue");
     taskExecutionStoreModule = await import("@/chat/task-execution/store");
 

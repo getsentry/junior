@@ -211,7 +211,7 @@ vi.mock("@/chat/skills", async (importOriginal) => ({
 
 import { executeAgentRun } from "@/chat/agent";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { getAgentTurnSessionRecord } from "@/chat/state/turn-session";
+import { getAgentTurnSessionRecord } from "@/chat/task-execution/turn-cursor";
 
 const ORIGINAL_STATE_ADAPTER = process.env.JUNIOR_STATE_ADAPTER;
 

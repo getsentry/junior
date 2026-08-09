@@ -599,7 +599,7 @@ import { getConversationStore } from "@/chat/db";
 import { getAwaitingAgentContinueRequest } from "@/chat/task-execution/continue";
 import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import * as turnSessionState from "@/chat/state/turn-session";
+import * as turnSessionState from "@/chat/task-execution/turn-cursor";
 
 function finalReply(outcome: Awaited<ReturnType<typeof executeAgentRun>>) {
   if (outcome.status !== "completed") {

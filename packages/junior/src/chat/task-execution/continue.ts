@@ -10,8 +10,10 @@ import {
   resolveTurnSessionRouting,
   type TurnSessionRouting,
 } from "@/chat/services/turn-session-routing";
-import { failAgentTurnSessionRecord } from "@/chat/state/turn-session";
-import { loadTurnCheckpoint } from "@/chat/task-execution/checkpoint";
+import {
+  failAgentTurnSessionRecord,
+  loadTurnCheckpoint,
+} from "@/chat/task-execution/checkpoint";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   ensureConversationWake,

@@ -22,14 +22,14 @@ import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
-import { resumeAwaitingSlackContinuation } from "@/chat/runtime/agent-continue-runner";
+import { resumeAwaitingSlackContinuation } from "@/chat/task-execution/continue-run";
 import { scheduleAgentContinue } from "@/chat/task-execution/continue";
 import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import {
   getAgentTurnSessionRecord,
   listAgentTurnSessionSummariesForConversation,
   upsertAgentTurnSessionRecord,
-} from "@/chat/state/turn-session";
+} from "@/chat/task-execution/turn-cursor";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import {
   hydrateConversationMessages,
@@ -39,7 +39,7 @@ import { getPersistedThreadState } from "@/chat/runtime/thread-state";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { slackApiOutbox } from "../fixtures/slack-api-outbox";
 import { resetSlackApiMockState } from "../msw/handlers/slack-api";
-import { agentTurnSessionKey } from "@/chat/state/turn-session-keys";
+import { agentTurnSessionKey } from "@/chat/task-execution/turn-cursor-keys";
 import { deliverAssistantMessagesForTest } from "../fixtures/agent-runner";
 import {
   agentDispatchTestDestination as destination,

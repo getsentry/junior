@@ -61,7 +61,7 @@ describe("reporting support", () => {
 
   it("mirrors local turn sessions into the SQL conversation store", async () => {
     const { recordAgentTurnSessionSummary } =
-      await import("@/chat/state/turn-session");
+      await import("@/chat/task-execution/turn-cursor");
     const { getConversationStore } = await import("@/chat/db");
     const conversationId = "local:reporting-support:run";
 

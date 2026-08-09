@@ -32,7 +32,7 @@ import {
   failAgentTurnSessionRecord,
   getAgentTurnSessionRecord,
   upsertAgentTurnSessionRecord,
-} from "@/chat/state/turn-session";
+} from "@/chat/task-execution/turn-cursor";
 import {
   getPersistedThreadState,
   persistThreadStateById,

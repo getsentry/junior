@@ -1,11 +1,11 @@
 /**
- * Turn session records.
+ * Internal turn cursor storage for `checkpoint.ts`.
  *
- * These records track one user request across auth pauses, timeout slices, and
- * completion. Full Pi messages live in the durable conversation event store; this
- * record stores resumability metadata and a committed `seq` cursor into
- * `junior_conversation_events` so resumes can materialize the exact continuable
- * boundary without duplicating the event history.
+ * Callers outside `task-execution/` should use `checkpoint.ts` only.
+ * These records track one turn across auth pauses, timeout slices, and
+ * completion. Full Pi messages live in SQL conversation events; this store
+ * keeps resume metadata and a committed `seq` cursor into
+ * `junior_conversation_events`.
  */
 import type { Destination, Source } from "@sentry/junior-plugin-api";
 import { z } from "zod";
@@ -24,7 +24,7 @@ import {
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
 import { projectConversationEvents } from "@/chat/pi/conversation-events";
 import type { AgentTurnUsage } from "@/chat/usage";
-import { getStateAdapter } from "./adapter";
+import { getStateAdapter } from "@/chat/state/adapter";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import { isAgentsInstructionsMessage } from "@/chat/repository-instructions";
 import {
@@ -39,7 +39,7 @@ import type {
 import {
   agentTurnSessionConversationIndexKey,
   agentTurnSessionKey,
-} from "./turn-session-keys";
+} from "./turn-cursor-keys";
 
 const AGENT_TURN_SESSION_RESUME_TTL_MS = 24 * 60 * 60 * 1000;
 const AGENT_TURN_SESSION_TERMINAL_TTL_MS = 60 * 60 * 1000;

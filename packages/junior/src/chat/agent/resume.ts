@@ -12,11 +12,11 @@ import {
   TurnInputCommitLostError,
 } from "@/chat/runtime/turn";
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
-import type { AgentTurnSurface } from "@/chat/state/turn-session";
 import type { Actor } from "@/chat/actor";
 import {
   continuableMessages,
   saveTurnCheckpoint,
+  type AgentTurnSurface,
   type TurnCheckpoint,
 } from "@/chat/task-execution/checkpoint";
 import {

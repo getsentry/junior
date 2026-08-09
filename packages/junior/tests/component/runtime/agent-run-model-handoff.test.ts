@@ -229,7 +229,7 @@ import {
   loadProjection,
 } from "@/chat/conversations/projection";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { getAgentTurnSessionRecord } from "@/chat/state/turn-session";
+import { getAgentTurnSessionRecord } from "@/chat/task-execution/turn-cursor";
 import { getConversationEventStore } from "@/chat/db";
 import { ContextInputLimitExceededError } from "@/chat/services/context-compaction";
 

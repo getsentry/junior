@@ -45,7 +45,7 @@ import {
 import {
   getAgentTurnSessionRecord,
   type AgentTurnSessionRecord,
-} from "@/chat/state/turn-session";
+} from "@/chat/task-execution/checkpoint";
 import { getPlugins } from "./agent-hooks";
 import {
   pluginTaskId,

@@ -14,7 +14,7 @@ import type { SlackWebhookServices } from "@/chat/ingress/slack-webhook";
 import { createSlackConversationWorker } from "@/chat/task-execution/slack-work";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import type { VercelConversationWorkCallbackOptions } from "@/chat/task-execution/vercel-callback";
-import { resumeAwaitingSlackContinuation } from "@/chat/runtime/agent-continue-runner";
+import { resumeAwaitingSlackContinuation } from "@/chat/task-execution/continue-run";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { getConversationStore } from "@/chat/db";
 import type { ConversationStore } from "@/chat/conversations/store";

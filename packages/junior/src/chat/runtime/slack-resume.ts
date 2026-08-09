@@ -35,8 +35,10 @@ import {
 } from "@/chat/conversations/turn-lifecycle";
 import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
 import { getConversationEventStore } from "@/chat/db";
-import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
-import { recordAgentTurnSessionSummary } from "@/chat/state/turn-session";
+import {
+  recordAgentTurnSessionSummary,
+  saveTurnCheckpoint,
+} from "@/chat/task-execution/checkpoint";
 import {
   createSlackWebApiAssistantStatusSession,
   type AssistantStatusSession,

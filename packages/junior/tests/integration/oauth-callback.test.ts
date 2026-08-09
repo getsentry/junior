@@ -87,7 +87,7 @@ type StateAdapterModule = typeof import("@/chat/state/adapter");
 type CapabilitiesFactoryModule = typeof import("@/chat/capabilities/factory");
 type OAuthCallbackHarnessModule =
   typeof import("../fixtures/oauth-callback-harness");
-type TurnSessionStoreModule = typeof import("@/chat/state/turn-session");
+type TurnSessionStoreModule = typeof import("@/chat/task-execution/turn-cursor");
 
 let stateAdapterModule: StateAdapterModule;
 let capabilitiesFactoryModule: CapabilitiesFactoryModule;
@@ -120,7 +120,7 @@ describe("oauth callback integration", () => {
     capabilitiesFactoryModule = await import("@/chat/capabilities/factory");
     oauthCallbackHarnessModule =
       await import("../fixtures/oauth-callback-harness");
-    turnSessionStoreModule = await import("@/chat/state/turn-session");
+    turnSessionStoreModule = await import("@/chat/task-execution/turn-cursor");
     await stateAdapterModule.disconnectStateAdapter();
     await stateAdapterModule.getStateAdapter().connect();
   }, 45_000);

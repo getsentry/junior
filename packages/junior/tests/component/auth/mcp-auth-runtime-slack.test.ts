@@ -341,7 +341,7 @@ type McpOauthCallbackHarnessModule =
   typeof import("../../fixtures/mcp-oauth-callback-harness");
 type StateAdapterModule = typeof import("@/chat/state/adapter");
 type ThreadStateModule = typeof import("@/chat/runtime/thread-state");
-type TurnSessionStoreModule = typeof import("@/chat/state/turn-session");
+type TurnSessionStoreModule = typeof import("@/chat/task-execution/turn-cursor");
 
 let chatRuntimeModule: ChatRuntimeModule;
 let mcpAuthStoreModule: McpAuthStoreModule;
@@ -428,7 +428,7 @@ describe("mcp auth runtime slack integration", () => {
       await import("../../fixtures/mcp-oauth-callback-harness");
     stateAdapterModule = await import("@/chat/state/adapter");
     threadStateModule = await import("@/chat/runtime/thread-state");
-    turnSessionStoreModule = await import("@/chat/state/turn-session");
+    turnSessionStoreModule = await import("@/chat/task-execution/turn-cursor");
 
     await stateAdapterModule.disconnectStateAdapter();
     await stateAdapterModule.getStateAdapter().connect();
