@@ -28,8 +28,8 @@ function lookupTool() {
 }
 
 describe("userLookup", () => {
-  describe("user_id mode", () => {
-    it("returns a rich profile for a known user", async () => {
+  describe("provider slack", () => {
+    it("returns a rich profile for a known user id", async () => {
       queueSlackApiResponse("users.info", {
         body: usersInfoOk({
           userId: "U039RR91S",
@@ -48,14 +48,15 @@ describe("userLookup", () => {
         }),
       });
 
-      const tool = lookupTool();
-      const result = await executeTool(tool, {
-        mode: "user_id",
-        value: "U039RR91S",
+      const result = await executeTool(lookupTool(), {
+        provider: "slack",
+        query: "U039RR91S",
       });
 
       expect(result).toMatchObject({
-        mode: "user_id",
+        provider: "slack",
+        query: "U039RR91S",
+        count: 1,
         mention: "<@U039RR91S>",
         user: {
           id: "U039RR91S",
@@ -66,6 +67,7 @@ describe("userLookup", () => {
           email: "david@sentry.io",
           is_bot: false,
           is_deleted: false,
+          mention: "<@U039RR91S>",
         },
       });
 
@@ -95,14 +97,13 @@ describe("userLookup", () => {
         }),
       });
 
-      const tool = lookupTool();
-      const result = await executeTool(tool, {
-        mode: "user_id",
-        value: "U0BASIC",
+      const result = await executeTool(lookupTool(), {
+        provider: "slack",
+        query: "U0BASIC",
       });
 
       expect(result).toMatchObject({
-        mode: "user_id",
+        provider: "slack",
         user: {
           id: "U0BASIC",
           name: "basic",
@@ -118,11 +119,10 @@ describe("userLookup", () => {
     it("handles user not found", async () => {
       queueSlackApiError("users.info", { error: "user_not_found" });
 
-      const tool = lookupTool();
       await expect(
-        executeTool(tool, {
-          mode: "user_id",
-          value: "U0NONEXISTENT",
+        executeTool(lookupTool(), {
+          provider: "slack",
+          query: "U0NONEXISTENT",
         }),
       ).rejects.toMatchObject({
         name: "ToolInputError",
@@ -133,9 +133,7 @@ describe("userLookup", () => {
         },
       });
     });
-  });
 
-  describe("email mode", () => {
     it("finds a user by email", async () => {
       queueSlackApiResponse("users.lookupByEmail", {
         body: usersInfoOk({
@@ -146,14 +144,13 @@ describe("userLookup", () => {
         }),
       });
 
-      const tool = lookupTool();
-      const result = await executeTool(tool, {
-        mode: "email",
-        value: "emailuser@sentry.io",
+      const result = await executeTool(lookupTool(), {
+        provider: "slack",
+        query: "emailuser@sentry.io",
       });
 
       expect(result).toMatchObject({
-        mode: "email",
+        provider: "slack",
         mention: "<@U0EMAIL>",
         user: {
           id: "U0EMAIL",
@@ -178,8 +175,8 @@ describe("userLookup", () => {
       });
 
       const result = await executeTool(lookupTool(), {
-        mode: "email",
-        value: "stored@sentry.io",
+        provider: "slack",
+        query: "stored@sentry.io",
       });
 
       expect(result).toMatchObject({
@@ -213,8 +210,8 @@ describe("userLookup", () => {
 
       await expect(
         executeTool(lookupTool(), {
-          mode: "email",
-          value: "shared@sentry.io",
+          provider: "slack",
+          query: "shared@sentry.io",
         }),
       ).rejects.toThrow(
         "Multiple Slack users share verified email shared@sentry.io in workspace T0TEST",
@@ -227,17 +224,14 @@ describe("userLookup", () => {
         error: "users_not_found",
       });
 
-      const tool = lookupTool();
       await expect(
-        executeTool(tool, {
-          mode: "email",
-          value: "nobody@example.com",
+        executeTool(lookupTool(), {
+          provider: "slack",
+          query: "nobody@example.com",
         }),
       ).rejects.toThrow("No Slack user found");
     });
-  });
 
-  describe("query mode", () => {
     it("searches and ranks users by name", async () => {
       queueSlackApiResponse("users.list", {
         body: usersListPage({
@@ -255,20 +249,17 @@ describe("userLookup", () => {
         }),
       });
 
-      const tool = lookupTool();
-      const result = await executeTool(tool, {
-        mode: "query",
-        value: "markus",
-      });
-
-      expect(result).toMatchObject({
-        mode: "query",
+      const result = await executeTool(lookupTool(), {
+        provider: "slack",
         query: "markus",
       });
 
-      // Should find Markus matches, ranked by relevance
+      expect(result).toMatchObject({
+        provider: "slack",
+        query: "markus",
+      });
+
       expect(result.users.length).toBeGreaterThanOrEqual(1);
-      // Display name exact match should come first
       expect(result.users[0]).toMatchObject({
         id: "U3",
         mention: "<@U3>",
@@ -285,14 +276,13 @@ describe("userLookup", () => {
         }),
       });
 
-      const tool = lookupTool();
-      const result = await executeTool(tool, {
-        mode: "query",
-        value: "zzzzzz",
+      const result = await executeTool(lookupTool(), {
+        provider: "slack",
+        query: "zzzzzz",
       });
 
       expect(result).toMatchObject({
-        mode: "query",
+        provider: "slack",
         count: 0,
         users: [],
       });
@@ -308,14 +298,16 @@ describe("userLookup", () => {
         }),
       });
 
-      const tool = lookupTool();
-      const result = await executeTool(tool, {
-        mode: "query",
-        value: "junior",
+      const result = await executeTool(lookupTool(), {
+        provider: "slack",
+        query: "junior",
       });
 
-      expect(result.users).toHaveLength(1);
-      expect(result.users[0].id).toBe("U2");
+      expect(result).toMatchObject({
+        count: 1,
+        mention: "<@U2>",
+        user: { id: "U2" },
+      });
     });
 
     it("reports truncated when the default page cap is reached", async () => {
@@ -338,10 +330,9 @@ describe("userLookup", () => {
         }),
       });
 
-      const tool = lookupTool();
-      const result = await executeTool(tool, {
-        mode: "query",
-        value: "alice",
+      const result = await executeTool(lookupTool(), {
+        provider: "slack",
+        query: "alice",
       });
 
       expect(result).toMatchObject({
@@ -364,10 +355,9 @@ describe("userLookup", () => {
         }),
       });
 
-      const tool = lookupTool();
-      const result = await executeTool(tool, {
-        mode: "query",
-        value: "alice",
+      const result = await executeTool(lookupTool(), {
+        provider: "slack",
+        query: "alice",
       });
 
       expect(result).toMatchObject({
@@ -384,9 +374,8 @@ describe("userLookup", () => {
         provided: "chat:write",
       });
 
-      const tool = lookupTool();
       await expect(
-        executeTool(tool, { mode: "query", value: "alice" }),
+        executeTool(lookupTool(), { provider: "slack", query: "alice" }),
       ).rejects.toMatchObject({
         name: "ToolInputError",
         message:
@@ -403,9 +392,8 @@ describe("userLookup", () => {
     it("leaves internal Slack failures unexpected", async () => {
       queueSlackApiError("users.list", { error: "fatal_error" });
 
-      const tool = lookupTool();
       await expect(
-        executeTool(tool, { mode: "query", value: "alice" }),
+        executeTool(lookupTool(), { provider: "slack", query: "alice" }),
       ).rejects.toMatchObject({
         name: "SlackActionError",
         code: "internal_error",
@@ -428,108 +416,20 @@ describe("userLookup", () => {
         }),
       });
 
-      const tool = lookupTool();
-      const result = await executeTool(tool, {
-        mode: "query",
-        value: "user",
+      const result = await executeTool(lookupTool(), {
+        provider: "slack",
+        query: "user",
       });
 
-      expect(result.users).toHaveLength(1);
-      expect(result.users[0].id).toBe("U2");
-    });
-  });
-
-  describe("input validation", () => {
-    it("requires mode and value in the model-facing schema", async () => {
-      const tool = lookupTool();
-
-      expect(tool.inputSchema).toMatchObject({
-        type: "object",
-        additionalProperties: false,
-        required: ["mode", "value"],
-        properties: {
-          mode: { enum: ["user_id", "email", "query", "github_username"] },
-          value: { type: "string" },
-        },
-      });
-      expect(
-        Object.keys(tool.inputSchema.properties as Record<string, unknown>),
-      ).toEqual(["mode", "value"]);
-    });
-
-    it("rejects the previous identifier fields", async () => {
-      const tool = lookupTool();
-      await expect(executeTool(tool, { user_id: "U123" })).rejects.toThrow(
-        "Invalid tool arguments",
-      );
-    });
-  });
-
-  describe("registration", () => {
-    it("is registered in createTools", async () => {
-      const { createTools } = await import("@/chat/tools/index");
-      const tools = createTools(
-        [],
-        {},
-        {
-          source: createSlackSource({
-            teamId: "T0TEST",
-            channelId: "C0TEST",
-
-            visibility: "private",
-          }),
-          destination: {
-            platform: "slack",
-            teamId: "T0TEST",
-            channelId: "C0TEST",
-          },
-          egress: {
-            async fetch() {
-              return new Response("ok");
-            },
-          },
-          workspace: {} as any,
-        },
-      );
-
-      expect(tools).toHaveProperty("userLookup");
-      expect(tools.userLookup.description).toContain("GitHub username");
-    });
-  });
-
-  describe("custom profile fields", () => {
-    it("returns custom profile fields as-is", async () => {
-      queueSlackApiResponse("users.info", {
-        body: usersInfoOk({
-          userId: "U0GH",
-          userName: "untitaker",
-          realName: "Markus Unterwaditzer",
-          fields: {
-            Xf042GITHUB: {
-              value: "https://github.com/untitaker",
-              alt: "untitaker",
-              label: "GitHub",
-            },
-          },
-        }),
-      });
-
-      const tool = lookupTool();
-      const result = await executeTool(tool, {
-        mode: "user_id",
-        value: "U0GH",
-      });
-
-      expect(result.user.profile_fields).toHaveLength(1);
-      expect(result.user.profile_fields[0]).toMatchObject({
-        id: "Xf042GITHUB",
-        label: "GitHub",
-        value: "https://github.com/untitaker",
+      expect(result).toMatchObject({
+        count: 1,
+        mention: "<@U2>",
+        user: { id: "U2" },
       });
     });
   });
 
-  describe("github_username mode", () => {
+  describe("provider github", () => {
     it("returns one mention for an exact GitHub profile field match", async () => {
       queueSlackApiResponse("users.list", {
         body: usersListPage({
@@ -562,13 +462,14 @@ describe("userLookup", () => {
       });
 
       const result = await executeTool(lookupTool(), {
-        mode: "github_username",
-        value: "@dcramer",
+        provider: "github",
+        query: "@dcramer",
       });
 
       expect(result).toMatchObject({
-        mode: "github_username",
-        github_username: "dcramer",
+        provider: "github",
+        query: "dcramer",
+        count: 1,
         mention: "<@U039RR91S>",
         user: { id: "U039RR91S", name: "dcramer" },
       });
@@ -602,12 +503,13 @@ describe("userLookup", () => {
       });
 
       const result = await executeTool(lookupTool(), {
-        mode: "github_username",
-        value: "https://github.com/untitaker",
+        provider: "github",
+        query: "https://github.com/untitaker",
       });
 
       expect(result).toMatchObject({
-        github_username: "untitaker",
+        provider: "github",
+        query: "untitaker",
         mention: "<@U0GH>",
         user: { id: "U0GH" },
       });
@@ -644,13 +546,13 @@ describe("userLookup", () => {
       });
 
       const result = await executeTool(lookupTool(), {
-        mode: "github_username",
-        value: "shared-login",
+        provider: "github",
+        query: "shared-login",
       });
 
       expect(result).toMatchObject({
-        mode: "github_username",
-        github_username: "shared-login",
+        provider: "github",
+        query: "shared-login",
         count: 2,
       });
       expect(result.mention).toBeUndefined();
@@ -682,13 +584,13 @@ describe("userLookup", () => {
       });
 
       const result = await executeTool(lookupTool(), {
-        mode: "github_username",
-        value: "nobody",
+        provider: "github",
+        query: "nobody",
       });
 
       expect(result).toMatchObject({
-        mode: "github_username",
-        github_username: "nobody",
+        provider: "github",
+        query: "nobody",
         count: 0,
         users: [],
       });
@@ -726,8 +628,8 @@ describe("userLookup", () => {
       });
 
       const result = await executeTool(lookupTool(), {
-        mode: "github_username",
-        value: "gone-user",
+        provider: "github",
+        query: "gone-user",
       });
 
       expect(result).toMatchObject({
@@ -739,14 +641,71 @@ describe("userLookup", () => {
     it("rejects invalid GitHub usernames", async () => {
       await expect(
         executeTool(lookupTool(), {
-          mode: "github_username",
-          value: "not a login!!",
+          provider: "github",
+          query: "not a login!!",
         }),
       ).rejects.toMatchObject({
         name: "ToolInputError",
         message: expect.stringContaining("Invalid GitHub username"),
       });
       expect(getCapturedSlackApiCalls("users.list")).toHaveLength(0);
+    });
+  });
+
+  describe("input validation", () => {
+    it("requires provider and query in the model-facing schema", async () => {
+      const tool = lookupTool();
+
+      expect(tool.inputSchema).toMatchObject({
+        type: "object",
+        additionalProperties: false,
+        required: ["provider", "query"],
+        properties: {
+          provider: { enum: ["slack", "github"] },
+          query: { type: "string" },
+        },
+      });
+      expect(
+        Object.keys(tool.inputSchema.properties as Record<string, unknown>),
+      ).toEqual(["provider", "query"]);
+    });
+
+    it("rejects the previous mode/value fields", async () => {
+      await expect(
+        executeTool(lookupTool(), { mode: "user_id", value: "U123" }),
+      ).rejects.toThrow("Invalid tool arguments");
+    });
+  });
+
+  describe("registration", () => {
+    it("is registered in createTools", async () => {
+      const { createTools } = await import("@/chat/tools/index");
+      const tools = createTools(
+        [],
+        {},
+        {
+          source: createSlackSource({
+            teamId: "T0TEST",
+            channelId: "C0TEST",
+
+            visibility: "private",
+          }),
+          destination: {
+            platform: "slack",
+            teamId: "T0TEST",
+            channelId: "C0TEST",
+          },
+          egress: {
+            async fetch() {
+              return new Response("ok");
+            },
+          },
+          workspace: {} as any,
+        },
+      );
+
+      expect(tools).toHaveProperty("userLookup");
+      expect(tools.userLookup.description).toContain("identity provider");
     });
   });
 });

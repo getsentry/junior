@@ -22,7 +22,7 @@ describeEval("Slack User Status", slackEvals, (it) => {
     expect(toolCalls(result.session)).toEqual([
       expect.objectContaining({
         name: "userLookup",
-        arguments: { mode: "user_id", value: "U0TEST" },
+        arguments: { provider: "slack", query: "U0TEST" },
         status: "ok",
       }),
     ]);
