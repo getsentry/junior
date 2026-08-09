@@ -28,7 +28,6 @@ import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import {
   getTurnRecord,
   listTurnSummaries,
-  upsertTurnRecord,
 } from "@/chat/task-execution/turn-cursor";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import {
@@ -42,7 +41,6 @@ import { resetSlackApiMockState } from "../msw/handlers/slack-api";
 import { agentTurnSessionKey } from "@/chat/task-execution/turn-cursor-keys";
 import { deliverAssistantMessagesForTest } from "../fixtures/agent-runner";
 import {
-  agentDispatchTestDestination as destination,
   createAgentDispatchTestRecord as createDispatch,
   createAgentDispatchTestRuntime as createDispatchRuntime,
   createAgentDispatchWorkerContext as createContext,

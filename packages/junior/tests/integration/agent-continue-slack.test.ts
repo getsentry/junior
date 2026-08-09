@@ -15,7 +15,6 @@ import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { createTools } from "@/chat/tools";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { deliverAssistantMessagesForTest } from "../fixtures/agent-runner";
-import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 
 const executeAgentRunMock = vi.fn();
 
@@ -54,19 +53,6 @@ function makeDiagnostics() {
     toolErrorCount: 0,
     toolResultCount: 0,
     usedPrimaryText: true,
-  };
-}
-
-function assistantPiMessage(text: string, timestamp: number) {
-  return {
-    role: "assistant" as const,
-    content: [{ type: "text" as const, text }],
-    api: "openai-responses" as const,
-    provider: "openai",
-    model: "fake-agent-model",
-    usage: TEST_USAGE,
-    stopReason: "stop" as const,
-    timestamp,
   };
 }
 
