@@ -187,22 +187,17 @@ export function coerceThreadConversationState(
 /**
  * Wrap conversation runtime scratch into the storage envelope.
  *
- * Visible transcript and model history live in SQL. Redis only keeps
- * short-lived processing control and the vision cache, which has no other
- * authority yet.
+ * Visible transcript and model history live in SQL. This projection only
+ * keeps the vision cache; processing control has its own shorter-lived key.
  */
 export function buildConversationStatePatch(
   conversation: ThreadConversationState,
 ): {
-  conversation: Pick<
-    ThreadConversationState,
-    "schemaVersion" | "processing" | "vision"
-  >;
+  conversation: Pick<ThreadConversationState, "schemaVersion" | "vision">;
 } {
   return {
     conversation: {
       schemaVersion: 1,
-      processing: { ...conversation.processing },
       vision: {
         backfillCompletedAtMs: conversation.vision.backfillCompletedAtMs,
         byFileId: { ...conversation.vision.byFileId },

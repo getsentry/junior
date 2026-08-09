@@ -12,7 +12,12 @@ import {
   type ThreadArtifactsState,
 } from "@/chat/state/artifacts";
 import { getStateAdapter } from "@/chat/state/adapter";
-import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
+import {
+  JUNIOR_PROCESSING_STATE_TTL_MS,
+  JUNIOR_SANDBOX_REF_TTL_MS,
+  JUNIOR_TERMINAL_PROCESSING_STATE_TTL_MS,
+  JUNIOR_THREAD_STATE_TTL_MS,
+} from "@/chat/state/ttl";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 
 export interface ThreadStatePatch {
@@ -29,6 +34,14 @@ function channelStateKey(channelId: string): string {
   return `channel-state:${channelId}`;
 }
 
+function processingStateKey(threadId: string): string {
+  return `thread-processing-state:${threadId}`;
+}
+
+function sandboxRefKey(threadId: string): string {
+  return `thread-sandbox-ref:${threadId}`;
+}
+
 function buildThreadStatePayload(
   patch: ThreadStatePatch,
 ): Record<string, unknown> {
@@ -40,9 +53,9 @@ function buildThreadStatePayload(
     Object.assign(payload, buildConversationStatePatch(patch.conversation));
   }
   if (patch.sandboxRef !== undefined) {
-    payload.app_sandbox_id = patch.sandboxRef?.id ?? "";
-    payload.app_sandbox_dependency_profile_hash =
-      patch.sandboxRef?.profileHash ?? "";
+    // Mask pre-cutover fields after the sandbox reference moves to its own key.
+    payload.app_sandbox_id = "";
+    payload.app_sandbox_dependency_profile_hash = "";
   }
   return payload;
 }
@@ -71,6 +84,38 @@ async function mergePersistedState(
   );
 }
 
+async function persistProcessingState(
+  threadId: string,
+  processing: ThreadConversationState["processing"],
+): Promise<void> {
+  const stateAdapter = getStateAdapter();
+  await stateAdapter.connect();
+  const terminal = Object.values(processing).every(
+    (value) => value === undefined,
+  );
+  await stateAdapter.set(
+    processingStateKey(threadId),
+    processing,
+    terminal
+      ? JUNIOR_TERMINAL_PROCESSING_STATE_TTL_MS
+      : JUNIOR_PROCESSING_STATE_TTL_MS,
+  );
+}
+
+async function persistSandboxRef(
+  threadId: string,
+  sandboxRef: SandboxRef | null,
+): Promise<void> {
+  const stateAdapter = getStateAdapter();
+  await stateAdapter.connect();
+  const key = sandboxRefKey(threadId);
+  if (!sandboxRef) {
+    await stateAdapter.delete(key);
+    return;
+  }
+  await stateAdapter.set(key, sandboxRef, JUNIOR_SANDBOX_REF_TTL_MS);
+}
+
 /** Merge an artifact patch while preserving per-list column mappings. */
 export function mergeArtifactsState(
   artifacts: ThreadArtifactsState,
@@ -90,7 +135,7 @@ export function mergeArtifactsState(
   };
 }
 
-/** Extract persisted sandbox metadata from thread state payload. */
+/** Extract persisted sandbox metadata from a merged thread-state payload. */
 export function getPersistedSandboxState(
   state: Record<string, unknown>,
 ): SandboxRef | undefined {
@@ -140,23 +185,54 @@ export async function persistThreadRuntimeState(
   if (!threadId) {
     throw new Error("thread id is required to persist runtime scratch");
   }
-  await mergePersistedState(
-    threadStateKey(threadId),
-    buildThreadStatePayload(patch),
-  );
+  await persistThreadRuntimeStateById(threadId, patch);
 }
 
-/** Load the persisted state payload for a thread without requiring a Chat singleton. */
+async function persistThreadRuntimeStateById(
+  threadId: string,
+  patch: ThreadStatePatch,
+): Promise<void> {
+  await Promise.all([
+    mergePersistedState(threadStateKey(threadId), buildThreadStatePayload(patch)),
+    ...(patch.conversation
+      ? [persistProcessingState(threadId, patch.conversation.processing)]
+      : []),
+    ...(patch.sandboxRef !== undefined
+      ? [persistSandboxRef(threadId, patch.sandboxRef)]
+      : []),
+  ]);
+}
+
+/** Load cache and ephemeral state as one compatibility payload. */
 export async function getPersistedThreadState(
   threadId: string,
 ): Promise<Record<string, unknown>> {
   const stateAdapter = getStateAdapter();
   await stateAdapter.connect();
-  return (
-    (await stateAdapter.get<Record<string, unknown>>(
-      threadStateKey(threadId),
-    )) ?? {}
-  );
+  const [threadState, processing, sandboxRef] = await Promise.all([
+    stateAdapter.get<Record<string, unknown>>(threadStateKey(threadId)),
+    stateAdapter.get<ThreadConversationState["processing"]>(
+      processingStateKey(threadId),
+    ),
+    stateAdapter.get<SandboxRef>(sandboxRefKey(threadId)),
+  ]);
+  const state = threadState ?? {};
+  const conversation =
+    state.conversation && typeof state.conversation === "object"
+      ? (state.conversation as Record<string, unknown>)
+      : {};
+  return {
+    ...state,
+    ...(processing
+      ? { conversation: { ...conversation, processing } }
+      : {}),
+    ...(sandboxRef
+      ? {
+          app_sandbox_id: sandboxRef.id,
+          app_sandbox_dependency_profile_hash: sandboxRef.profileHash ?? "",
+        }
+      : {}),
+  };
 }
 
 /** Persist a thread-state patch by thread id without constructing a Chat thread. */
@@ -174,10 +250,7 @@ export async function persistThreadStateById(
     });
   }
 
-  await mergePersistedState(
-    threadStateKey(threadId),
-    buildThreadStatePayload(patch),
-  );
+  await persistThreadRuntimeStateById(threadId, patch);
 }
 
 /** Load legacy Redis-backed channel state during the SQL cutover. */
