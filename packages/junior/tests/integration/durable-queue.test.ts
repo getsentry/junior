@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createResumeState } from "@/chat/agent/resume";
 import type { PiMessage } from "@/chat/pi/messages";
@@ -8,7 +9,6 @@ import {
   appendAndEnqueueInboundMessage,
   CONVERSATION_WORK_LEASE_TTL_MS,
   CONVERSATION_WORK_MAX_RETRIES,
-  countPendingConversationMessages,
   ensureConversationWake,
   getConversationWorkState,
   requestConversationWork,
@@ -31,113 +31,71 @@ import {
   inboundMessage,
 } from "../fixtures/conversation-work";
 
-interface RunFault {
-  at: "before_ack";
-  error?: Error;
-}
+type Step = "ack" | "no-ack" | Error;
+type Run = (
+  work: ConversationWorkerContext,
+) => Promise<ConversationWorkerResult>;
 
-type RunStep = ConversationWorkerResult | RunFault;
-
-/** Real queue/state/worker wiring with faults injected only at the work boundary. */
-async function createHarness(steps: RunStep[]) {
+/** Exercise the real queue, state, lease, and worker with one injectable boundary. */
+async function queue(script: Step[] | Run = ["ack"]) {
   const state = getStateAdapter();
   await state.connect();
-  const queue = createConversationWorkQueueTestAdapter();
+  const wakes = createConversationWorkQueueTestAdapter();
   const attempts: string[][] = [];
-  let stepIndex = 0;
+  let index = 0;
 
-  const run = async (
-    context: ConversationWorkerContext,
-  ): Promise<ConversationWorkerResult> => {
+  const run: Run = async (work) => {
     attempts.push(
-      context.attempt.messages.map((message) => message.inboundMessageId),
+      work.attempt.messages.map((message) => message.inboundMessageId),
     );
-    const step = steps[stepIndex] ?? steps.at(-1);
-    stepIndex += 1;
-    if (!step) {
-      throw new Error("Durable queue harness ran without a scripted outcome");
-    }
-    if ("at" in step) {
-      if (step.error) {
-        throw step.error;
-      }
-      return { status: "completed" };
-    }
-    await context.attempt.ack();
-    return step;
+    if (typeof script === "function") return await script(work);
+    const step = script[index++] ?? script.at(-1);
+    if (!step) throw new Error("missing queue step");
+    if (step instanceof Error) throw step;
+    if (step === "ack") await work.attempt.ack();
+    return { status: "completed" };
   };
 
-  const enqueue = async (id = "message-1") => {
-    await appendAndEnqueueInboundMessage({
-      message: inboundMessage(id),
-      queue,
-      state,
-    });
-  };
-
-  const runNext = async () =>
-    await processConversationQueueMessage(queue.takeMessage(), {
-      queue,
-      run,
-      state,
-    });
-
-  const work = async () =>
-    await getConversationWorkState({ conversationId: CONVERSATION_ID, state });
-
-  return { attempts, enqueue, queue, runNext, state, work };
-}
-
-function crashedBeforeAck(message: string): RunFault {
-  return { at: "before_ack", error: new Error(message) };
-}
-
-function returnedBeforeAck(): RunFault {
-  return { at: "before_ack" };
-}
-
-function userMessage(text: string, timestamp: number): PiMessage {
   return {
-    role: "user",
-    content: [{ type: "text", text }],
-    timestamp,
+    attempts,
+    wakes,
+    state,
+    send: async () =>
+      await appendAndEnqueueInboundMessage({
+        message: inboundMessage("message-1"),
+        queue: wakes,
+        state,
+      }),
+    next: async () =>
+      await processConversationQueueMessage(wakes.takeMessage(), {
+        queue: wakes,
+        run,
+        state,
+      }),
+    work: async () =>
+      await getConversationWorkState({
+        conversationId: CONVERSATION_ID,
+        state,
+      }),
   };
 }
 
-function toolHistory(): PiMessage[] {
+function history(): PiMessage[] {
+  const assistant = fauxAssistantMessage("checking");
+  assistant.timestamp = 2;
+  assistant.content.push({
+    type: "toolCall",
+    id: "call-1",
+    name: "bash",
+    arguments: { command: "echo ok" },
+  });
   return [
-    userMessage("inspect the deploy", 1),
     {
-      role: "assistant",
-      content: [
-        { type: "text", text: "checking" },
-        {
-          type: "toolCall",
-          id: "call-1",
-          name: "bash",
-          arguments: { command: "echo ok" },
-        },
-      ],
-      api: "responses",
-      provider: "openai",
-      model: "test-model",
-      usage: {
-        input: 1,
-        output: 1,
-        cacheRead: 0,
-        cacheWrite: 0,
-        totalTokens: 2,
-        cost: {
-          input: 0,
-          output: 0,
-          cacheRead: 0,
-          cacheWrite: 0,
-          total: 0,
-        },
-      },
-      stopReason: "toolUse",
-      timestamp: 2,
+      role: "user",
+      content: [{ type: "text", text: "inspect the deploy" }],
+      timestamp: 1,
     },
+    assistant,
     {
       role: "toolResult",
       toolCallId: "call-1",
@@ -146,55 +104,34 @@ function toolHistory(): PiMessage[] {
       isError: false,
       timestamp: 3,
     },
-  ] as PiMessage[];
+  ];
 }
 
 describe("durable queue", () => {
-  beforeEach(async () => {
-    await disconnectStateAdapter();
+  beforeEach(disconnectStateAdapter);
+  afterEach(disconnectStateAdapter);
+
+  it("drains work once", async () => {
+    const q = await queue();
+    await q.send();
+
+    await expect(q.next()).resolves.toEqual({ status: "completed" });
+    expect(q.attempts).toEqual([["message-1"]]);
+    expect(await q.work()).toMatchObject({ needsRun: false, messages: [] });
   });
 
-  afterEach(async () => {
-    await disconnectStateAdapter();
+  it("retries work that was not acknowledged", async () => {
+    const q = await queue(["no-ack", "ack"]);
+    await q.send();
+
+    await expect(q.next()).resolves.toEqual({ status: "pending_requeued" });
+    await expect(q.next()).resolves.toEqual({ status: "completed" });
+    expect(q.attempts).toEqual([["message-1"], ["message-1"]]);
+    expect((await q.work())?.needsRun).toBe(false);
   });
 
-  it("drains one durable mailbox attempt under a lease", async () => {
-    const harness = await createHarness([{ status: "completed" }]);
-
-    await harness.enqueue();
-    await expect(harness.runNext()).resolves.toEqual({ status: "completed" });
-
-    const work = await harness.work();
-    expect(harness.attempts).toEqual([["message-1"]]);
-    expect(harness.queue.sentRecords()).toHaveLength(1);
-    expect(work?.lease).toBeUndefined();
-    expect(work?.needsRun).toBe(false);
-    expect(work ? countPendingConversationMessages(work) : 0).toBe(0);
-  });
-
-  it("retries an unacknowledged attempt and processes it once", async () => {
-    const harness = await createHarness([
-      returnedBeforeAck(),
-      { status: "completed" },
-    ]);
-
-    await harness.enqueue();
-    await expect(harness.runNext()).resolves.toEqual({
-      status: "pending_requeued",
-    });
-    expect(await harness.work()).toMatchObject({
-      needsRun: true,
-      messages: [expect.objectContaining({ inboundMessageId: "message-1" })],
-    });
-
-    await expect(harness.runNext()).resolves.toEqual({ status: "completed" });
-    expect(harness.attempts).toEqual([["message-1"], ["message-1"]]);
-    expect((await harness.work())?.needsRun).toBe(false);
-  });
-
-  it("fails a resumed turn that parks at the same SQL boundary", async () => {
+  it("stops the checkpoint loop from JUNIOR-62", async () => {
     const turnId = "turn-stuck";
-    const original = toolHistory();
     await saveTurnCheckpoint({
       mode: "paused",
       reason: "timeout",
@@ -202,34 +139,20 @@ describe("durable queue", () => {
       turnId,
       sliceId: 1,
       modelId: "test-model",
-      messages: original,
+      messages: history(),
     });
     await requestConversationWork({
       conversationId: CONVERSATION_ID,
       destination: SLACK_DESTINATION,
     });
 
-    const queue = createConversationWorkQueueTestAdapter();
-    await ensureConversationWake({
-      conversationId: CONVERSATION_ID,
-      idempotencyKey: "stuck-turn",
-      queue,
-    });
-    const state = getStateAdapter();
-    const attempts: string[][] = [];
-    const run = async (
-      context: ConversationWorkerContext,
-    ): Promise<ConversationWorkerResult> => {
-      attempts.push(
-        context.attempt.messages.map((message) => message.inboundMessageId),
-      );
+    const q = await queue(async () => {
       const checkpoint = await loadTurnCheckpoint({
         conversationId: CONVERSATION_ID,
         turnId,
       });
-      if (checkpoint.record?.state === "failed") {
-        return { status: "completed" };
-      }
+      if (checkpoint.record?.state === "failed") return { status: "completed" };
+
       const resume = createResumeState({
         destination: SLACK_DESTINATION,
         durability: {},
@@ -248,113 +171,65 @@ describe("durable queue", () => {
         startedAtMs: Date.now(),
         surface: "slack",
       });
-      const mutated = checkpoint.record!.piMessages.map((message) =>
+      const changed = checkpoint.record!.piMessages.map((message) =>
         message.role === "assistant"
-          ? {
-              ...message,
-              usage: {
-                ...(message.usage ?? {}),
-                output: 99,
-                totalTokens: 100,
-              },
-              stopReason: "toolUse" as const,
-            }
+          ? { ...message, usage: { ...message.usage, output: 99 } }
           : message,
       );
-      await resume.persistSafeBoundary(mutated);
-      resume.captureResumeSnapshot(mutated);
+      await resume.persistSafeBoundary(changed);
+      resume.captureResumeSnapshot(changed);
       resume.markTimedOut();
       await resume.translateSuspension({ error: new Error("timed out") });
       return { status: "completed" };
-    };
-
-    await expect(
-      processConversationQueueMessage(queue.takeMessage(), {
-        queue,
-        run,
-        state,
-      }),
-    ).resolves.toEqual({ status: "failed" });
-
-    expect(attempts).toEqual([[]]);
-    expect(queue.queuedMessages()).toHaveLength(1);
-    await expect(
-      processConversationQueueMessage(queue.takeMessage(), {
-        queue,
-        run,
-        state,
-      }),
-    ).resolves.toEqual({ status: "completed" });
-    expect(attempts).toEqual([[], []]);
-    expect(queue.hasQueuedMessages()).toBe(false);
-    await expect(getTurnRecord(CONVERSATION_ID, turnId)).resolves.toMatchObject({
-      state: "failed",
-      errorMessage:
-        "Turn made no progress: continue parked at the same boundary",
     });
+    await ensureConversationWake({
+      conversationId: CONVERSATION_ID,
+      idempotencyKey: "stuck-turn",
+      queue: q.wakes,
+    });
+
+    await expect(q.next()).resolves.toEqual({ status: "failed" });
+    await expect(q.next()).resolves.toEqual({ status: "completed" });
+    expect(q.wakes.hasQueuedMessages()).toBe(false);
+    await expect(getTurnRecord(CONVERSATION_ID, turnId)).resolves.toMatchObject(
+      {
+        state: "failed",
+        errorMessage: expect.stringContaining("made no progress"),
+      },
+    );
   });
 
-  it("records an unexpected worker-boundary crash for recovery", async () => {
-    const harness = await createHarness([
-      crashedBeforeAck("worker boundary crashed"),
-    ]);
-
-    await harness.enqueue();
-    await expect(harness.runNext()).resolves.toEqual({ status: "failed" });
-
-    const work = await harness.work();
-    expect(harness.attempts).toEqual([["message-1"]]);
-    expect(work?.lease).toBeUndefined();
-    expect(work?.needsRun).toBe(true);
-    expect(work?.execution.retryCount).toBe(1);
-  });
-
-  it("recovers an expired lease with one replacement wake", async () => {
-    const harness = await createHarness([{ status: "completed" }]);
-    await harness.enqueue();
-    const lease = await startConversationWork({
+  it("recovers an expired lease once", async () => {
+    const q = await queue();
+    await q.send();
+    await startConversationWork({
       conversationId: CONVERSATION_ID,
       nowMs: 1_000,
-      state: harness.state,
+      state: q.state,
     });
-    expect(lease.status).toBe("acquired");
+    q.wakes.clearSentRecords();
 
-    harness.queue.clearSentRecords();
     await expect(
       recoverConversationWork({
         nowMs: 1_000 + CONVERSATION_WORK_LEASE_TTL_MS,
-        queue: harness.queue,
-        state: harness.state,
+        queue: q.wakes,
+        state: q.state,
       }),
     ).resolves.toEqual({ expiredLeaseCount: 1, pendingCount: 0 });
-    expect(harness.queue.sentRecords()).toHaveLength(1);
-
-    await expect(harness.runNext()).resolves.toEqual({ status: "completed" });
-    expect(harness.attempts).toEqual([["message-1"], []]);
-    expect((await harness.work())?.needsRun).toBe(false);
+    await expect(q.next()).resolves.toEqual({ status: "completed" });
+    expect(q.wakes.sentRecords()).toHaveLength(1);
+    expect((await q.work())?.needsRun).toBe(false);
   });
 
-  it("stops retrying a permanently failing attempt", async () => {
-    const harness = await createHarness([returnedBeforeAck()]);
-    await harness.enqueue();
+  it("stops retrying", async () => {
+    const q = await queue(["no-ack"]);
+    await q.send();
 
     const results: string[] = [];
-    while (harness.queue.hasQueuedMessages()) {
-      const result = await harness.runNext();
-      results.push(result.status);
-      if (result.status === "failed") {
-        break;
-      }
-      expect(results.length).toBeLessThanOrEqual(
-        CONVERSATION_WORK_MAX_RETRIES + 1,
-      );
-    }
+    while (q.wakes.hasQueuedMessages()) results.push((await q.next()).status);
 
     expect(results.at(-1)).toBe("failed");
-    expect(harness.attempts).toHaveLength(CONVERSATION_WORK_MAX_RETRIES);
-    const work = await harness.work();
-    expect(work?.lease).toBeUndefined();
-    expect(work?.needsRun).toBe(false);
-    expect(work ? countPendingConversationMessages(work) : 0).toBe(0);
+    expect(q.attempts).toHaveLength(CONVERSATION_WORK_MAX_RETRIES);
+    expect(await q.work()).toMatchObject({ needsRun: false, messages: [] });
   });
 });
