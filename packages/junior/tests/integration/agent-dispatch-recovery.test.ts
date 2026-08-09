@@ -85,18 +85,6 @@ describe("agent dispatch recovery", () => {
     await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
       status: "pending",
     });
-    await expect(
-      listTurnSummaries(getDispatchConversationId(dispatch)),
-    ).resolves.toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          dispatchOutcome: "blocked",
-          resultMessageId: expect.any(String),
-          turnId: getDispatchTurnId(dispatch.id),
-        }),
-      ]),
-    );
-
     const runTurn = vi.fn();
     const resumeTurn = vi.fn();
     const worker = createAgentDispatchConversationWorker({
@@ -113,6 +101,17 @@ describe("agent dispatch recovery", () => {
       resultMessageTs: expect.any(String),
       status: "blocked",
     });
+    await expect(
+      listTurnSummaries(getDispatchConversationId(dispatch)),
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          dispatchOutcome: "blocked",
+          resultMessageId: expect.any(String),
+          turnId: getDispatchTurnId(dispatch.id),
+        }),
+      ]),
+    );
     expect(slackApiOutbox.messages()).toEqual([
       expect.objectContaining({
         params: expect.objectContaining({
