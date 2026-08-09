@@ -24,7 +24,9 @@ Suite policy:
   user messages, expected answers, or distinctive scenario phrases from eval
   files.
 - When an eval fails, first state the general product rule the failure exposed.
-  Then fix the product prompt or implementation at that rule level.
+  Then fix the product invariant, fixture, harness, or implementation at that
+  rule level. Do not stack prompt or tool text only to force the case green.
+  See `agent-steering.md`.
 - Product prompt examples must be neutral examples that are not reused from eval
   scenarios.
 - Treat the normalized `vitest-evals` session as the canonical eval surface for

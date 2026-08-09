@@ -23,7 +23,8 @@ unsafe requests.
   optional field may be valid for one mode and still rejected for a different
   mode that requires a real value.
 - Prefer schema and executor alignment over prompt wording when a provider or
-  model may serialize absent optional values differently.
+  model may serialize absent optional values differently. Do not restate the
+  same tool-selection rule in the system prompt; see `agent-steering.md`.
 - Author first-party model-facing tools through the local Zod tool helper for
   their runtime edge: `zodTool(...)` for host-owned Junior tools and the plugin
   API's Zod helper for first-party plugin package tools. Do not add new raw

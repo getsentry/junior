@@ -59,6 +59,7 @@ Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`, `pnpm s
 | Repo-wide policy index | `policies/README.md`                                                                                             |
 | Runtime vocabulary     | `TERMINOLOGY.md`                                                                                                 |
 | Design and failures    | `policies/interface-design.md`, `policies/correctness-complexity.md`, `policies/error-handling.md`               |
+| Agent steering         | `policies/agent-steering.md`                                                                                     |
 | Provider boundaries    | `policies/provider-boundaries.md`                                                                                |
 | Comments and telemetry | `policies/code-comments.md`, `policies/observability.md`, `TELEMETRY.md`                                         |
 | Chat architecture      | `packages/junior/src/chat/README.md`                                                                             |
