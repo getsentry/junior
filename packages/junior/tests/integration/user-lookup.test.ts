@@ -4,7 +4,7 @@ import { createSlackSource } from "@sentry/junior-plugin-api";
 import { getSqlExecutor } from "@/chat/db";
 import { upsertIdentity } from "@/chat/identities/sql";
 import { parseSlackTeamId } from "@/chat/slack/ids";
-import { createSlackUserLookupTool } from "@/chat/slack/tools/user-lookup";
+import { createUserLookupTool } from "@/chat/tools/user-lookup";
 import { juniorIdentities } from "@/db/schema";
 import { usersInfoOk, usersListPage } from "../fixtures/slack/factories/api";
 import {
@@ -24,10 +24,10 @@ async function executeTool<TInput>(tool: any, input: TInput) {
 function lookupTool() {
   const teamId = parseSlackTeamId("T0TEST");
   if (!teamId) throw new Error("invalid test team id");
-  return createSlackUserLookupTool(teamId);
+  return createUserLookupTool(teamId);
 }
 
-describe("slackUserLookup", () => {
+describe("userLookup", () => {
   describe("user_id mode", () => {
     it("returns a rich profile for a known user", async () => {
       queueSlackApiResponse("users.info", {
@@ -390,7 +390,7 @@ describe("slackUserLookup", () => {
       ).rejects.toMatchObject({
         name: "ToolInputError",
         message:
-          "Slack user lookup is unavailable because this installation is missing the `users:read` scope.",
+          "User lookup is unavailable because this installation is missing the `users:read` scope.",
         cause: {
           name: "SlackActionError",
           code: "missing_scope",
@@ -448,7 +448,7 @@ describe("slackUserLookup", () => {
         additionalProperties: false,
         required: ["mode", "value"],
         properties: {
-          mode: { enum: ["user_id", "email", "query"] },
+          mode: { enum: ["user_id", "email", "query", "github_username"] },
           value: { type: "string" },
         },
       });
@@ -492,8 +492,8 @@ describe("slackUserLookup", () => {
         },
       );
 
-      expect(tools).toHaveProperty("slackUserLookup");
-      expect(tools.slackUserLookup.description).toContain("Slack user");
+      expect(tools).toHaveProperty("userLookup");
+      expect(tools.userLookup.description).toContain("GitHub username");
     });
   });
 
@@ -526,6 +526,227 @@ describe("slackUserLookup", () => {
         label: "GitHub",
         value: "https://github.com/untitaker",
       });
+    });
+  });
+
+  describe("github_username mode", () => {
+    it("returns one mention for an exact GitHub profile field match", async () => {
+      queueSlackApiResponse("users.list", {
+        body: usersListPage({
+          members: [
+            {
+              id: "U039RR91S",
+              name: "dcramer",
+              realName: "David Cramer",
+              fields: {
+                Xf0123GITHUB: {
+                  value: "https://github.com/dcramer",
+                  alt: "dcramer",
+                  label: "GitHub",
+                },
+              },
+            },
+            {
+              id: "U0OTHER",
+              name: "other",
+              realName: "Other Person",
+              fields: {
+                Xf042GITHUB: {
+                  value: "https://github.com/untitaker",
+                  label: "GitHub",
+                },
+              },
+            },
+          ],
+        }),
+      });
+
+      const result = await executeTool(lookupTool(), {
+        mode: "github_username",
+        value: "@dcramer",
+      });
+
+      expect(result).toMatchObject({
+        mode: "github_username",
+        github_username: "dcramer",
+        mention: "<@U039RR91S>",
+        user: { id: "U039RR91S", name: "dcramer" },
+      });
+      expect(result.users).toBeUndefined();
+      await expect(
+        getSqlExecutor()
+          .db()
+          .select({ id: juniorIdentities.providerSubjectId })
+          .from(juniorIdentities)
+          .where(eq(juniorIdentities.providerSubjectId, "U039RR91S")),
+      ).resolves.toEqual([{ id: "U039RR91S" }]);
+    });
+
+    it("accepts github.com profile URLs", async () => {
+      queueSlackApiResponse("users.list", {
+        body: usersListPage({
+          members: [
+            {
+              id: "U0GH",
+              name: "untitaker",
+              realName: "Markus Unterwaditzer",
+              fields: {
+                Xf042GITHUB: {
+                  value: "https://github.com/untitaker",
+                  label: "GitHub",
+                },
+              },
+            },
+          ],
+        }),
+      });
+
+      const result = await executeTool(lookupTool(), {
+        mode: "github_username",
+        value: "https://github.com/untitaker",
+      });
+
+      expect(result).toMatchObject({
+        github_username: "untitaker",
+        mention: "<@U0GH>",
+        user: { id: "U0GH" },
+      });
+    });
+
+    it("returns candidates when several people share a GitHub username field", async () => {
+      queueSlackApiResponse("users.list", {
+        body: usersListPage({
+          members: [
+            {
+              id: "U1",
+              name: "alice",
+              realName: "Alice",
+              fields: {
+                Xf1: {
+                  value: "shared-login",
+                  label: "GitHub",
+                },
+              },
+            },
+            {
+              id: "U2",
+              name: "bob",
+              realName: "Bob",
+              fields: {
+                Xf2: {
+                  value: "https://github.com/shared-login",
+                  label: "GitHub",
+                },
+              },
+            },
+          ],
+        }),
+      });
+
+      const result = await executeTool(lookupTool(), {
+        mode: "github_username",
+        value: "shared-login",
+      });
+
+      expect(result).toMatchObject({
+        mode: "github_username",
+        github_username: "shared-login",
+        count: 2,
+      });
+      expect(result.mention).toBeUndefined();
+      expect(result.users).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: "U1", mention: "<@U1>" }),
+          expect.objectContaining({ id: "U2", mention: "<@U2>" }),
+        ]),
+      );
+    });
+
+    it("returns empty candidates when no GitHub field matches", async () => {
+      queueSlackApiResponse("users.list", {
+        body: usersListPage({
+          members: [
+            {
+              id: "U1",
+              name: "alice",
+              realName: "Alice",
+              fields: {
+                Xf1: {
+                  value: "https://github.com/alice",
+                  label: "GitHub",
+                },
+              },
+            },
+          ],
+        }),
+      });
+
+      const result = await executeTool(lookupTool(), {
+        mode: "github_username",
+        value: "nobody",
+      });
+
+      expect(result).toMatchObject({
+        mode: "github_username",
+        github_username: "nobody",
+        count: 0,
+        users: [],
+      });
+    });
+
+    it("skips deleted users", async () => {
+      queueSlackApiResponse("users.list", {
+        body: usersListPage({
+          members: [
+            {
+              id: "U1",
+              name: "gone",
+              realName: "Gone User",
+              deleted: true,
+              fields: {
+                Xf1: {
+                  value: "gone-user",
+                  label: "GitHub",
+                },
+              },
+            },
+            {
+              id: "U2",
+              name: "active",
+              realName: "Active User",
+              fields: {
+                Xf2: {
+                  value: "gone-user",
+                  label: "GitHub",
+                },
+              },
+            },
+          ],
+        }),
+      });
+
+      const result = await executeTool(lookupTool(), {
+        mode: "github_username",
+        value: "gone-user",
+      });
+
+      expect(result).toMatchObject({
+        mention: "<@U2>",
+        user: { id: "U2" },
+      });
+    });
+
+    it("rejects invalid GitHub usernames", async () => {
+      await expect(
+        executeTool(lookupTool(), {
+          mode: "github_username",
+          value: "not a login!!",
+        }),
+      ).rejects.toMatchObject({
+        name: "ToolInputError",
+        message: expect.stringContaining("Invalid GitHub username"),
+      });
+      expect(getCapturedSlackApiCalls("users.list")).toHaveLength(0);
     });
   });
 });

@@ -34,7 +34,7 @@ import { createSlackListCreateTool } from "@/chat/slack/tools/list/create";
 import { createSlackListGetItemsTool } from "@/chat/slack/tools/list/get-items";
 import { createSlackListUpdateItemTool } from "@/chat/slack/tools/list/update-item";
 import { createSlackThreadReadTool } from "@/chat/slack/tools/thread-read";
-import { createSlackUserLookupTool } from "@/chat/slack/tools/user-lookup";
+import { createUserLookupTool } from "@/chat/tools/user-lookup";
 import { createSystemTimeTool } from "@/chat/tools/system-time";
 import { createSearchConversationEventsTool } from "@/chat/tools/search-conversation-events";
 import { createHandoffTool } from "@/chat/tools/handoff/tool";
@@ -195,7 +195,7 @@ export function createTools(
         context.slackActionToken,
       );
     }
-    tools.slackUserLookup = createSlackUserLookupTool(slackContext.teamId);
+    tools.userLookup = createUserLookupTool(slackContext.teamId);
     tools.slackListCreate = createSlackListCreateTool(state);
     tools.slackListAddItems = createSlackListAddItemsTool(state);
     tools.slackListGetItems = createSlackListGetItemsTool(state);

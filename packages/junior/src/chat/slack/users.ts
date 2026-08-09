@@ -136,6 +136,74 @@ export interface SlackUserSearchResult {
   truncated: boolean;
 }
 
+const GITHUB_USERNAME_RE =
+  /^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/;
+
+/** Normalize a GitHub username, @handle, or github.com profile URL to a login. */
+export function normalizeGithubUsername(
+  value: string,
+): string | undefined {
+  let candidate = value.trim();
+  if (!candidate) return undefined;
+  if (candidate.startsWith("@")) {
+    candidate = candidate.slice(1).trim();
+  }
+
+  const looksLikeUrl =
+    /^https?:\/\//i.test(candidate) || /^github\.com\//i.test(candidate);
+  if (looksLikeUrl) {
+    try {
+      const url = new URL(
+        /^https?:\/\//i.test(candidate) ? candidate : `https://${candidate}`,
+      );
+      if (!/^(www\.)?github\.com$/i.test(url.hostname)) {
+        return undefined;
+      }
+      const part = url.pathname.split("/").filter(Boolean)[0];
+      if (!part) return undefined;
+      candidate = part;
+    } catch {
+      return undefined;
+    }
+  }
+
+  if (!GITHUB_USERNAME_RE.test(candidate)) {
+    return undefined;
+  }
+  return candidate.toLowerCase();
+}
+
+function githubUsernameFromProfileField(field: {
+  id?: string;
+  label?: string;
+  value?: string;
+  alt?: string;
+}): string | undefined {
+  const label = `${field.label ?? ""} ${field.id ?? ""}`.toLowerCase();
+  const labeledGithub = label.includes("github");
+  for (const raw of [field.value, field.alt]) {
+    if (!raw) continue;
+    const normalized = normalizeGithubUsername(raw);
+    if (!normalized) continue;
+    if (labeledGithub || /github\.com/i.test(raw)) {
+      return normalized;
+    }
+  }
+  return undefined;
+}
+
+function githubUsernamesForUser(user: SlackUserRaw): string[] {
+  const fields = user.profile?.fields;
+  if (!fields || typeof fields !== "object") return [];
+  const usernames = new Set<string>();
+  for (const [id, field] of Object.entries(fields)) {
+    if (!field) continue;
+    const username = githubUsernameFromProfileField({ id, ...field });
+    if (username) usernames.add(username);
+  }
+  return [...usernames];
+}
+
 /** Rank match quality: exact > prefix > word-boundary > substring > miss. */
 function scoreMatch(user: SlackUserRaw, queryLower: string): number {
   const name = (user.name ?? "").toLowerCase();
@@ -162,31 +230,24 @@ function scoreMatch(user: SlackUserRaw, queryLower: string): number {
   return 0;
 }
 
-/** Search workspace users by name with bounded pagination through `users.list`. */
-export async function searchSlackUsers(options: {
-  query: string;
-  limit?: number;
-  maxPages?: number;
-  includeDeleted?: boolean;
-  includeBots?: boolean;
-}): Promise<SlackUserSearchResult> {
-  const {
-    query,
-    limit = 10,
-    maxPages = 3,
-    includeDeleted = false,
-    includeBots = false,
-  } = options;
-  const queryLower = query.toLowerCase().trim();
-
+async function listWorkspaceUsers(options: {
+  maxPages: number;
+  includeDeleted: boolean;
+  includeBots: boolean;
+  match: (member: SlackUserRaw) => number | boolean;
+}): Promise<{
+  matches: Array<{ user: SlackUserRaw; score: number }>;
+  searched_pages: number;
+  searched_user_count: number;
+  truncated: boolean;
+}> {
   const client = getSlackClient();
   const matches: Array<{ user: SlackUserRaw; score: number }> = [];
   let cursor: string | undefined;
   let pages = 0;
   let totalScanned = 0;
-  let truncated = false;
 
-  while (pages < maxPages) {
+  while (pages < options.maxPages) {
     pages++;
 
     const result = await withSlackRetries(
@@ -203,37 +264,111 @@ export async function searchSlackUsers(options: {
     totalScanned += members.length;
 
     for (const member of members) {
-      if (!includeDeleted && member.deleted) continue;
-      if (!includeBots && member.is_bot) continue;
+      if (!options.includeDeleted && member.deleted) continue;
+      if (!options.includeBots && member.is_bot) continue;
       if (member.id === "USLACKBOT") continue;
 
-      const score = scoreMatch(member, queryLower);
-      if (score > 0) {
-        matches.push({ user: member, score });
-      }
+      const matched = options.match(member);
+      if (matched === false || matched === 0) continue;
+      matches.push({
+        user: member,
+        score: typeof matched === "number" ? matched : 1,
+      });
     }
 
     const nextCursor = result.response_metadata?.next_cursor;
     if (!nextCursor) {
+      cursor = undefined;
       break;
     }
     cursor = nextCursor;
   }
 
-  // True only when we hit the page cap with more data remaining.
-  if (pages >= maxPages && cursor) {
-    truncated = true;
-  }
+  return {
+    matches,
+    searched_pages: pages,
+    searched_user_count: totalScanned,
+    // True only when we hit the page cap with more data remaining.
+    truncated: pages >= options.maxPages && Boolean(cursor),
+  };
+}
 
-  matches.sort((a, b) => {
+/** Search workspace users by name with bounded pagination through `users.list`. */
+export async function searchSlackUsers(options: {
+  query: string;
+  limit?: number;
+  maxPages?: number;
+  includeDeleted?: boolean;
+  includeBots?: boolean;
+}): Promise<SlackUserSearchResult> {
+  const {
+    query,
+    limit = 10,
+    maxPages = 3,
+    includeDeleted = false,
+    includeBots = false,
+  } = options;
+  const queryLower = query.toLowerCase().trim();
+  const listed = await listWorkspaceUsers({
+    maxPages,
+    includeDeleted,
+    includeBots,
+    match: (member) => scoreMatch(member, queryLower),
+  });
+
+  listed.matches.sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;
     return (a.user.name ?? "").localeCompare(b.user.name ?? "");
   });
 
   return {
-    users: matches.slice(0, limit).map((m) => normalizeUser(m.user)),
-    searched_pages: pages,
-    searched_user_count: totalScanned,
-    truncated,
+    users: listed.matches.slice(0, limit).map((m) => normalizeUser(m.user)),
+    searched_pages: listed.searched_pages,
+    searched_user_count: listed.searched_user_count,
+    truncated: listed.truncated,
+  };
+}
+
+/** Find workspace users whose Slack profile GitHub field matches a username. */
+export async function searchSlackUsersByGithubUsername(options: {
+  username: string;
+  limit?: number;
+  maxPages?: number;
+  includeDeleted?: boolean;
+  includeBots?: boolean;
+}): Promise<SlackUserSearchResult> {
+  const {
+    username,
+    limit = 10,
+    maxPages = 3,
+    includeDeleted = false,
+    includeBots = false,
+  } = options;
+  const normalized = normalizeGithubUsername(username);
+  if (!normalized) {
+    return {
+      users: [],
+      searched_pages: 0,
+      searched_user_count: 0,
+      truncated: false,
+    };
+  }
+
+  const listed = await listWorkspaceUsers({
+    maxPages,
+    includeDeleted,
+    includeBots,
+    match: (member) => githubUsernamesForUser(member).includes(normalized),
+  });
+
+  listed.matches.sort((a, b) =>
+    (a.user.name ?? "").localeCompare(b.user.name ?? ""),
+  );
+
+  return {
+    users: listed.matches.slice(0, limit).map((m) => normalizeUser(m.user)),
+    searched_pages: listed.searched_pages,
+    searched_user_count: listed.searched_user_count,
+    truncated: listed.truncated,
   };
 }
