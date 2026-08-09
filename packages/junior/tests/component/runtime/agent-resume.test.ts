@@ -14,11 +14,32 @@ import type { PiMessage } from "@/chat/pi/messages";
 
 const originalStateAdapter = process.env.JUNIOR_STATE_ADAPTER;
 
-function userMessage(text: string, timestamp: number): PiMessage {
+function message(text: string): PiMessage {
   return {
     role: "user",
     content: [{ type: "text", text }],
-    timestamp,
+    timestamp: 1,
+  };
+}
+
+async function resumeState(conversationId: string, turnId: string) {
+  const checkpoint = await loadTurnCheckpoint({ conversationId, turnId });
+  return {
+    boundary: checkpoint.record?.piMessages ?? [],
+    resume: createResumeState({
+      destination: { platform: "local", conversationId },
+      durability: {},
+      getLoadedSkillNames: () => [],
+      getModelId: () => "test/model",
+      getReasoningLevel: () => undefined,
+      recordActiveMcpProviders: async () => undefined,
+      runSource: createLocalSource(conversationId),
+      conversationId,
+      turnId,
+      checkpoint,
+      startedAtMs: Date.now(),
+      surface: "internal",
+    }),
   };
 }
 
@@ -40,9 +61,8 @@ describe("agent resume", () => {
   it("keeps auth parking failures terminal", async () => {
     const conversationId = "local:test:auth-park-failure";
     const turnId = "turn-auth-park-failure";
-    const destination = { platform: "local" as const, conversationId };
     const resume = createResumeState({
-      destination,
+      destination: { platform: "local", conversationId },
       durability: {},
       getLoadedSkillNames: () => [],
       getModelId: () => "test/model",
@@ -53,10 +73,7 @@ describe("agent resume", () => {
       runSource: createLocalSource(conversationId),
       conversationId,
       turnId,
-      checkpoint: await loadTurnCheckpoint({
-        conversationId,
-        turnId,
-      }),
+      checkpoint: await loadTurnCheckpoint({ conversationId, turnId }),
       startedAtMs: Date.now(),
       surface: "internal",
     });
@@ -71,152 +88,49 @@ describe("agent resume", () => {
     ).resolves.toBeUndefined();
   });
 
-  it("fails closed when timeout parks again at the resumed boundary", async () => {
-    const conversationId = "local:test:no-progress-timeout";
-    const turnId = "turn-no-progress-timeout";
-    const destination = { platform: "local" as const, conversationId };
+  it.each([
+    ["timeout", new Error("slice timed out"), false],
+    ["yield", new CooperativeTurnYieldError(), false],
+    ["retry", new RetryableDeliveryError("still stuck"), true],
+  ] as const)(
+    "fails closed when %s repeats a boundary",
+    async (reason, error, writeRunning) => {
+      const conversationId = `local:test:no-progress-${reason}`;
+      const turnId = `turn-no-progress-${reason}`;
+      const boundary = [message(`stuck ${reason}`)];
+      await saveTurnCheckpoint({
+        mode: "paused",
+        reason,
+        conversationId,
+        turnId,
+        sliceId: 2,
+        modelId: "test/model",
+        messages: boundary,
+        surface: "internal",
+        errorMessage: String(error),
+      });
 
-    await saveTurnCheckpoint({
-      mode: "paused",
-      reason: "timeout",
-      conversationId,
-      turnId,
-      sliceId: 2,
-      modelId: "test/model",
-      messages: [userMessage("keep going", 1)],
-      surface: "internal",
-      errorMessage: "timed out",
-    });
+      const { boundary: storedBoundary, resume } = await resumeState(
+        conversationId,
+        turnId,
+      );
+      resume.captureResumeSnapshot(storedBoundary);
+      if (writeRunning) {
+        await expect(resume.persistSafeBoundary(storedBoundary)).resolves.toBe(
+          true,
+        );
+      }
+      if (reason === "timeout") resume.markTimedOut();
 
-    const checkpoint = await loadTurnCheckpoint({ conversationId, turnId });
-    const boundary = checkpoint.record?.piMessages ?? [];
-    expect(boundary.length).toBeGreaterThan(0);
-
-    const resume = createResumeState({
-      destination,
-      durability: {},
-      getLoadedSkillNames: () => [],
-      getModelId: () => "test/model",
-      getReasoningLevel: () => undefined,
-      recordActiveMcpProviders: async () => undefined,
-      runSource: createLocalSource(conversationId),
-      conversationId,
-      turnId,
-      checkpoint,
-      startedAtMs: Date.now(),
-      surface: "internal",
-    });
-
-    // Same parked boundary the continue slice resumed from.
-    resume.captureResumeSnapshot(boundary);
-    resume.markTimedOut();
-
-    await expect(
-      resume.translateSuspension({
-        error: new Error("slice timed out"),
-      }),
-    ).rejects.toThrow(/Turn made no progress/);
-
-    await expect(getTurnRecord(conversationId, turnId)).resolves.toMatchObject({
-      state: "failed",
-      errorMessage:
-        "Turn made no progress: continue parked at the same boundary",
-    });
-  });
-
-  it("fails closed when yield parks again at the resumed boundary", async () => {
-    const conversationId = "local:test:no-progress-yield";
-    const turnId = "turn-no-progress-yield";
-    const destination = { platform: "local" as const, conversationId };
-
-    await saveTurnCheckpoint({
-      mode: "paused",
-      reason: "yield",
-      conversationId,
-      turnId,
-      sliceId: 2,
-      modelId: "test/model",
-      messages: [userMessage("keep yielding", 2)],
-      surface: "internal",
-      errorMessage: "yielded",
-    });
-
-    const checkpoint = await loadTurnCheckpoint({ conversationId, turnId });
-    const boundary = checkpoint.record?.piMessages ?? [];
-    const resume = createResumeState({
-      destination,
-      durability: {},
-      getLoadedSkillNames: () => [],
-      getModelId: () => "test/model",
-      getReasoningLevel: () => undefined,
-      recordActiveMcpProviders: async () => undefined,
-      runSource: createLocalSource(conversationId),
-      conversationId,
-      turnId,
-      checkpoint,
-      startedAtMs: Date.now(),
-      surface: "internal",
-    });
-    resume.captureResumeSnapshot(boundary);
-
-    await expect(
-      resume.translateSuspension({ error: new CooperativeTurnYieldError() }),
-    ).rejects.toThrow(/Turn made no progress/);
-    await expect(getTurnRecord(conversationId, turnId)).resolves.toMatchObject({
-      state: "failed",
-      errorMessage: expect.stringContaining("made no progress"),
-    });
-  });
-
-  it("still fails closed after a same-boundary running write", async () => {
-    const conversationId = "local:test:no-progress-same-running";
-    const turnId = "turn-no-progress-same-running";
-    const destination = { platform: "local" as const, conversationId };
-
-    await saveTurnCheckpoint({
-      mode: "paused",
-      reason: "retry",
-      conversationId,
-      turnId,
-      sliceId: 3,
-      modelId: "test/model",
-      messages: [userMessage("retry me", 2)],
-      surface: "internal",
-      errorMessage: "delivery retry",
-    });
-
-    const checkpoint = await loadTurnCheckpoint({ conversationId, turnId });
-    const boundary = checkpoint.record?.piMessages ?? [];
-    expect(boundary.length).toBeGreaterThan(0);
-
-    const resume = createResumeState({
-      destination,
-      durability: {},
-      getLoadedSkillNames: () => [],
-      getModelId: () => "test/model",
-      getReasoningLevel: () => undefined,
-      recordActiveMcpProviders: async () => undefined,
-      runSource: createLocalSource(conversationId),
-      conversationId,
-      turnId,
-      checkpoint,
-      startedAtMs: Date.now(),
-      surface: "internal",
-    });
-
-    // Persist the exact resumed boundary again. That is not progress.
-    await expect(resume.persistSafeBoundary(boundary)).resolves.toBe(true);
-
-    await expect(
-      resume.translateSuspension({
-        error: new RetryableDeliveryError("still stuck"),
-      }),
-    ).rejects.toThrow(/Turn made no progress/);
-
-    await expect(getTurnRecord(conversationId, turnId)).resolves.toMatchObject({
-      state: "failed",
-      errorMessage:
-        "Turn made no progress: continue parked at the same boundary",
-    });
-  });
+      await expect(resume.translateSuspension({ error })).rejects.toThrow(
+        /Turn made no progress/,
+      );
+      await expect(
+        getTurnRecord(conversationId, turnId),
+      ).resolves.toMatchObject({
+        state: "failed",
+        errorMessage: expect.stringContaining("made no progress"),
+      });
+    },
+  );
 });

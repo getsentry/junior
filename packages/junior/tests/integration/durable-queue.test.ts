@@ -64,7 +64,13 @@ async function complete(request: Parameters<AgentRunner["run"]>[0]) {
   });
 }
 
-async function slack(agentRunner: AgentRunner = { run: complete }) {
+async function slack(
+  options: {
+    agentRunner?: AgentRunner;
+    pausedRunner?: AgentRunner;
+    shouldYield?: () => boolean;
+  } = {},
+) {
   const state = getStateAdapter();
   await state.connect();
   const wakes = createConversationWorkQueueTestAdapter();
@@ -72,7 +78,7 @@ async function slack(agentRunner: AgentRunner = { run: complete }) {
   const runtime = createSlackRuntime({
     getSlackAdapter: () => adapter,
     services: {
-      replyExecutor: { agentRunner },
+      replyExecutor: { agentRunner: options.agentRunner ?? { run: complete } },
       visionContext: { listThreadReplies: async () => [] },
     },
   });
@@ -82,14 +88,25 @@ async function slack(agentRunner: AgentRunner = { run: complete }) {
       await runNextPausedTurn(
         conversationId,
         {
-          agentRunner: {
-            run: async () => {
-              throw new Error("stranded running turns must not resume");
-            },
+          agentRunner:
+            options.pausedRunner ??
+            ({
+              run: async () => {
+                throw new Error("stranded running turns must not resume");
+              },
+            } satisfies AgentRunner),
+          wakePausedTurn: async (request) => {
+            await ensureConversationWake({
+              conversationId: request.conversationId,
+              idempotencyKey: `turn:${request.turnId}:${request.expectedVersion}`,
+              queue: wakes,
+            });
           },
-          wakePausedTurn: async () => undefined,
         },
-        runOptions,
+        {
+          ...runOptions,
+          shouldYield: options.shouldYield ?? runOptions.shouldYield,
+        },
       ),
     runtime,
     state,
@@ -147,6 +164,48 @@ function history(): PiMessage[] {
   ];
 }
 
+async function seedTurn(mode: "paused" | "running") {
+  const turnId = "turn_1712345_0001";
+  const checkpoint = {
+    conversationId: CONVERSATION_ID,
+    turnId,
+    sliceId: 1,
+    modelId: "test-model",
+    messages: history(),
+    destination: SLACK_DESTINATION,
+    source: createSlackSource({
+      teamId: SLACK_DESTINATION.teamId,
+      channelId: SLACK_DESTINATION.channelId,
+      threadTs: "1712345.0001",
+      visibility: "private",
+    }),
+    surface: "slack" as const,
+  };
+  if (mode === "paused") {
+    await saveTurnCheckpoint({ ...checkpoint, mode, reason: "timeout" });
+  } else {
+    await saveTurnCheckpoint({ ...checkpoint, mode });
+  }
+  await persistThreadStateById(CONVERSATION_ID, {
+    conversation: {
+      schemaVersion: 1,
+      compactions: [],
+      messages: [
+        {
+          id: "1712345.0001",
+          role: "user",
+          text: "inspect the deploy",
+          createdAtMs: 1,
+          author: { userId: "U123" },
+        },
+      ],
+      processing: { activeTurnId: turnId },
+      vision: { byFileId: {} },
+    },
+  });
+  return turnId;
+}
+
 describe("durable queue", () => {
   beforeEach(async () => {
     resetSlackApiMockState();
@@ -183,10 +242,12 @@ describe("durable queue", () => {
   it("retries Slack work that fails before input commit", async () => {
     let attempts = 0;
     const q = await slack({
-      run: async (request) => {
-        attempts += 1;
-        if (attempts === 1) throw new Error("agent unavailable");
-        return await complete(request);
+      agentRunner: {
+        run: async (request) => {
+          attempts += 1;
+          if (attempts === 1) throw new Error("agent unavailable");
+          return await complete(request);
+        },
       },
     });
     await q.send();
@@ -200,115 +261,50 @@ describe("durable queue", () => {
   });
 
   it("stops the checkpoint loop from JUNIOR-62", async () => {
-    const turnId = "turn_1712345_0001";
-    await saveTurnCheckpoint({
-      mode: "paused",
-      reason: "timeout",
-      conversationId: CONVERSATION_ID,
-      turnId,
-      sliceId: 1,
-      modelId: "test-model",
-      messages: history(),
-      destination: SLACK_DESTINATION,
-      source: createSlackSource({
-        teamId: SLACK_DESTINATION.teamId,
-        channelId: SLACK_DESTINATION.channelId,
-        threadTs: "1712345.0001",
-        visibility: "private",
-      }),
-      surface: "slack",
-    });
-    await persistThreadStateById(CONVERSATION_ID, {
-      conversation: {
-        schemaVersion: 1,
-        compactions: [],
-        messages: [
-          {
-            id: "1712345.0001",
-            role: "user",
-            text: "inspect the deploy",
-            createdAtMs: 1,
-            author: { userId: "U123" },
-          },
-        ],
-        processing: { activeTurnId: turnId },
-        vision: { byFileId: {} },
+    const turnId = await seedTurn("paused");
+    const q = await slack({
+      shouldYield: () => true,
+      pausedRunner: {
+        run: async (request) => {
+          const checkpoint = await loadTurnCheckpoint({
+            conversationId: request.conversationId,
+            turnId: request.turnId,
+          });
+          const changed = checkpoint.record!.piMessages.map((message) =>
+            message.role === "assistant"
+              ? { ...message, usage: { ...message.usage, output: 99 } }
+              : message,
+          );
+          const faux = createFauxCore({ api: "test", provider: "test" });
+          faux.setResponses([
+            async () => {
+              await saveTurnCheckpoint({
+                mode: "running",
+                conversationId: request.conversationId,
+                turnId: request.turnId,
+                sliceId: checkpoint.sliceId,
+                modelId: "test-model",
+                messages: changed,
+              });
+              await new Promise((resolve) => setTimeout(resolve, 50));
+              return fauxAssistantMessage("not delivered");
+            },
+          ]);
+          return await executeAgentRun(
+            {
+              ...request,
+              policy: { ...request.policy, turnDeadlineAtMs: Date.now() + 10 },
+            },
+            faux.stream,
+          );
+        },
       },
     });
     await requestConversationWork({
       conversationId: CONVERSATION_ID,
       destination: SLACK_DESTINATION,
+      state: q.state,
     });
-
-    const state = getStateAdapter();
-    await state.connect();
-    const wakes = createConversationWorkQueueTestAdapter();
-    const run = createSlackConversationWorker({
-      getSlackAdapter: createSlackAdapterFixture,
-      runNextPausedTurn: async (conversationId, runOptions) =>
-        await runNextPausedTurn(
-          conversationId,
-          {
-            agentRunner: {
-              run: async (request) => {
-                const checkpoint = await loadTurnCheckpoint({
-                  conversationId: request.conversationId,
-                  turnId: request.turnId,
-                });
-                const changed = checkpoint.record!.piMessages.map((message) =>
-                  message.role === "assistant"
-                    ? { ...message, usage: { ...message.usage, output: 99 } }
-                    : message,
-                );
-                const faux = createFauxCore({ api: "test", provider: "test" });
-                faux.setResponses([
-                  async () => {
-                    await saveTurnCheckpoint({
-                      mode: "running",
-                      conversationId: request.conversationId,
-                      turnId: request.turnId,
-                      sliceId: checkpoint.sliceId,
-                      modelId: "test-model",
-                      messages: changed,
-                    });
-                    await new Promise((resolve) => setTimeout(resolve, 50));
-                    return fauxAssistantMessage("not delivered");
-                  },
-                ]);
-                return await executeAgentRun(
-                  {
-                    ...request,
-                    policy: {
-                      ...request.policy,
-                      turnDeadlineAtMs: Date.now() + 10,
-                    },
-                  },
-                  faux.stream,
-                );
-              },
-            },
-            wakePausedTurn: async (request) => {
-              await ensureConversationWake({
-                conversationId: request.conversationId,
-                idempotencyKey: `continue:${request.turnId}:${request.expectedVersion}`,
-                queue: wakes,
-              });
-            },
-          },
-          { ...runOptions, shouldYield: () => true },
-        ),
-      runtime: createNoopSlackWebhookRuntime(),
-      state,
-    });
-    const q = {
-      wakes,
-      next: async () =>
-        await processConversationQueueMessage(wakes.takeMessage(), {
-          queue: wakes,
-          run,
-          state,
-        }),
-    };
     await ensureConversationWake({
       conversationId: CONVERSATION_ID,
       idempotencyKey: "stuck-turn",
@@ -320,14 +316,14 @@ describe("durable queue", () => {
       conversationId: CONVERSATION_ID,
       destination: SLACK_DESTINATION,
       nowMs: Date.now() + 60_000,
-      state,
+      state: q.state,
     });
     await ensureConversationWake({
       conversationId: CONVERSATION_ID,
       idempotencyKey: "stuck-turn-redelivery",
       nowMs: Date.now() + 60_000,
       queue: q.wakes,
-      state,
+      state: q.state,
     });
     await expect(q.next()).resolves.toEqual({ status: "completed" });
     expect(q.wakes.hasQueuedMessages()).toBe(false);
@@ -340,41 +336,7 @@ describe("durable queue", () => {
   });
 
   it("fails a turn whose worker died after checkpointing", async () => {
-    const turnId = "turn_1712345_0001";
-    const messages = history();
-    await saveTurnCheckpoint({
-      mode: "running",
-      conversationId: CONVERSATION_ID,
-      turnId,
-      sliceId: 1,
-      modelId: "test-model",
-      messages,
-      destination: SLACK_DESTINATION,
-      source: createSlackSource({
-        teamId: SLACK_DESTINATION.teamId,
-        channelId: SLACK_DESTINATION.channelId,
-        threadTs: "1712345.0001",
-        visibility: "private",
-      }),
-      surface: "slack",
-    });
-    await persistThreadStateById(CONVERSATION_ID, {
-      conversation: {
-        schemaVersion: 1,
-        compactions: [],
-        messages: [
-          {
-            id: "1712345.0001",
-            role: "user",
-            text: "inspect the deploy",
-            createdAtMs: 1,
-            author: { userId: "U123" },
-          },
-        ],
-        processing: { activeTurnId: turnId },
-        vision: { byFileId: {} },
-      },
-    });
+    const turnId = await seedTurn("running");
     const q = await slack();
     await requestConversationWork({
       conversationId: CONVERSATION_ID,
@@ -412,9 +374,11 @@ describe("durable queue", () => {
   it("stops retrying failed Slack work", async () => {
     let attempts = 0;
     const q = await slack({
-      run: async () => {
-        attempts += 1;
-        throw new Error("agent unavailable");
+      agentRunner: {
+        run: async () => {
+          attempts += 1;
+          throw new Error("agent unavailable");
+        },
       },
     });
     await q.send();
