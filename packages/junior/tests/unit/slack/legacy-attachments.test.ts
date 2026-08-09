@@ -85,6 +85,90 @@ describe("renderSlackLegacyAttachmentText", () => {
     expect(text).not.toContain("Deploy failed on prod");
   });
 
+  it("renders Block Kit content nested inside an attachment", () => {
+    const text = renderSlackLegacyAttachmentText([
+      {
+        fallback: "[no preview available]",
+        blocks: [
+          {
+            type: "section",
+            text: { type: "plain_text", text: "Taylor Example" },
+          },
+          {
+            type: "context",
+            elements: [
+              {
+                type: "image",
+                image_url: "https://example.com/full-star.png",
+                alt_text: "full star",
+              },
+              {
+                type: "image",
+                image_url: "https://example.com/empty-star.png",
+                alt_text: "empty star",
+              },
+            ],
+          },
+          {
+            type: "section",
+            text: { type: "plain_text", text: "The app never loaded" },
+          },
+          {
+            type: "context",
+            elements: [
+              {
+                type: "image",
+                image_url: "https://example.com/play-store.png",
+                alt_text: "Play Store",
+              },
+              {
+                type: "mrkdwn",
+                text: "Play Store • v.3.2.13",
+              },
+            ],
+          },
+          {
+            type: "actions",
+            elements: [
+              {
+                type: "static_select",
+                placeholder: { type: "plain_text", text: "Translate to" },
+                options: [
+                  {
+                    text: { type: "plain_text", text: "English" },
+                    value: "en-US",
+                  },
+                ],
+              },
+              {
+                type: "button",
+                text: { type: "plain_text", text: "Read full review" },
+                url: "https://example.com/review/123",
+                value: "private-action-value",
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    expect(text).toBe(
+      [
+        "[attachment] Taylor Example",
+        "full star",
+        "empty star",
+        "The app never loaded",
+        "Play Store",
+        "Play Store • v.3.2.13",
+        "Translate to",
+        "Read full review (https://example.com/review/123)",
+      ].join("\n"),
+    );
+    expect(text).not.toContain("[no preview available]");
+    expect(text).not.toContain("private-action-value");
+    expect(text).not.toContain("English");
+  });
+
   it("preserves multi-line attachment bodies and restores collapsed lists", () => {
     const text = renderSlackLegacyAttachmentText([
       {

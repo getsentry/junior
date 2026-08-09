@@ -1,5 +1,7 @@
 const MAX_ATTACHMENTS = 10;
 const MAX_FIELDS_PER_ATTACHMENT = 20;
+const MAX_BLOCKS_PER_ATTACHMENT = 50;
+const MAX_BLOCK_CHILDREN = 50;
 const MAX_FIELD_CHARS = 1000;
 const MAX_ATTACHMENT_TEXT_CHARS = 4000;
 
@@ -36,6 +38,100 @@ function normalizeAttachmentText(value: string): string {
     .trim();
 }
 
+function renderBlockText(raw: unknown): string | undefined {
+  if (typeof raw === "string") return toStr(raw);
+  if (!raw || typeof raw !== "object") return undefined;
+  return toStr((raw as Record<string, unknown>).text);
+}
+
+function renderBlockChildren(raw: unknown): string[] {
+  if (Array.isArray(raw)) {
+    return raw.slice(0, MAX_BLOCK_CHILDREN).flatMap(renderBlockChildren);
+  }
+  return renderBlockElement(raw);
+}
+
+function renderBlockElement(raw: unknown): string[] {
+  if (!raw || typeof raw !== "object") return [];
+  const obj = raw as Record<string, unknown>;
+  const type = toStr(obj.type);
+  const text = renderBlockText(obj.text);
+
+  if (type === "link") {
+    const url = toStr(obj.url);
+    return [
+      text && url && text !== url ? `${text} (${url})` : text || url,
+    ].filter((value): value is string => Boolean(value));
+  }
+
+  if (type === "button") {
+    const url = toStr(obj.url);
+    return [text && url ? `${text} (${url})` : text].filter(
+      (value): value is string => Boolean(value),
+    );
+  }
+
+  if (type === "emoji") {
+    const name = toStr(obj.name);
+    return name ? [`:${name}:`] : [];
+  }
+
+  if (type === "user") {
+    const userId = toStr(obj.user_id);
+    return userId ? [`<@${userId}>`] : [];
+  }
+
+  if (type === "channel") {
+    const channelId = toStr(obj.channel_id);
+    return channelId ? [`<#${channelId}>`] : [];
+  }
+
+  if (type === "usergroup") {
+    const usergroupId = toStr(obj.usergroup_id);
+    return usergroupId ? [`<!subteam^${usergroupId}>`] : [];
+  }
+
+  if (type === "broadcast") {
+    const range = toStr(obj.range);
+    return range ? [`<!${range}>`] : [];
+  }
+
+  const parts = [
+    text,
+    renderBlockText(obj.title),
+    renderBlockText(obj.description),
+    renderBlockText(obj.label),
+    renderBlockText(obj.hint),
+    renderBlockText(obj.placeholder),
+    toStr(obj.alt_text),
+    toStr(obj.provider_name),
+    toStr(obj.fallback),
+  ].filter((value): value is string => Boolean(value));
+
+  for (const key of [
+    "blocks",
+    "elements",
+    "fields",
+    "accessory",
+    "element",
+    "rows",
+    "cells",
+  ]) {
+    parts.push(...renderBlockChildren(obj[key]));
+  }
+
+  return parts;
+}
+
+function renderBlocks(raw: unknown): string {
+  if (!Array.isArray(raw)) return "";
+  return raw
+    .slice(0, MAX_BLOCKS_PER_ATTACHMENT)
+    .flatMap(renderBlockElement)
+    .filter(Boolean)
+    .join("\n");
+}
+
 function renderAttachment(raw: unknown): string {
   if (!raw || typeof raw !== "object") return "";
   const obj = raw as Record<string, unknown>;
@@ -50,6 +146,7 @@ function renderAttachment(raw: unknown): string {
   const text = toStr(obj.text);
   const footer = toStr(obj.footer);
   const fields = Array.isArray(obj.fields) ? obj.fields : [];
+  const blockText = renderBlocks(obj.blocks);
 
   const add = (value: string | undefined) => {
     if (!value) return;
@@ -59,7 +156,7 @@ function renderAttachment(raw: unknown): string {
     parts.push(normalized);
   };
 
-  const hasRichContent = pretext || title || text;
+  const hasRichContent = pretext || title || text || blockText;
   if (!hasRichContent) {
     add(fallback);
   }
@@ -77,6 +174,7 @@ function renderAttachment(raw: unknown): string {
     add(renderField(field));
   }
 
+  add(blockText);
   add(footer);
 
   // Keep multi-line bodies readable. Compact single-line attachments still

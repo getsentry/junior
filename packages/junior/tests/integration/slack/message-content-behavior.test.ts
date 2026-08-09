@@ -262,6 +262,94 @@ describe("Slack behavior: message content", () => {
     expect(calls[0]?.prompt).toContain("Service: checkout");
   });
 
+  it("includes nested attachment blocks from earlier thread messages", async () => {
+    const calls: CapturedCall[] = [];
+
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        replyExecutor: {
+          agentRunner: {
+            run: async (request) => {
+              const context = flattenAgentRunRequestForTest(request);
+              calls.push({
+                prompt: request.input.messageText,
+                contextConversation: context?.conversationContext,
+              });
+              return completedReply("Review found.");
+            },
+          },
+        },
+      },
+    });
+
+    const thread = await createTestThread({
+      id: "slack:C0BEHAVIOR:1700005002.750",
+    });
+    const reviewMessage = createTestMessage({
+      id: "m-content-nested-blocks",
+      text: "",
+      threadId: thread.id,
+      author: { userId: "U0REVIEWBOT", userName: "reviewbot", isBot: true },
+      raw: {
+        channel: "C0BEHAVIOR",
+        ts: "1700005002.750",
+        thread_ts: "1700005002.750",
+        attachments: [
+          {
+            fallback: "[no preview available]",
+            blocks: [
+              {
+                type: "section",
+                text: { type: "plain_text", text: "Taylor Example" },
+              },
+              {
+                type: "section",
+                text: { type: "plain_text", text: "The app never loaded" },
+              },
+              {
+                type: "actions",
+                elements: [
+                  {
+                    type: "button",
+                    text: { type: "plain_text", text: "Read full review" },
+                    url: "https://example.com/review/123",
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    });
+    reviewMessage.metadata.dateSent = new Date(1_700_005_002_750);
+    const currentMessage = createTestMessage({
+      id: "m-content-nested-blocks-request",
+      text: "<@U0APP> who left this review?",
+      isMention: true,
+      threadId: thread.id,
+      author: { userId: "U0TESTER" },
+    });
+    currentMessage.metadata.dateSent = new Date(1_700_005_003_000);
+    thread.recentMessages = [reviewMessage, currentMessage];
+
+    await slackRuntime.handleNewMention(thread, currentMessage, {
+      destination: createTestDestination(thread),
+    });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.contextConversation).toContain("Taylor Example");
+    expect(calls[0]?.contextConversation).toContain("The app never loaded");
+    expect(calls[0]?.contextConversation).toContain(
+      "Read full review (https://example.com/review/123)",
+    );
+    expect(calls[0]?.contextConversation).not.toContain(
+      "[no preview available]",
+    );
+    expect(calls[0]?.contextConversation).not.toContain(
+      "who left this review?",
+    );
+  });
+
   it("does not invoke the agent for self-authored mention messages", async () => {
     let replyCalled = false;
 
