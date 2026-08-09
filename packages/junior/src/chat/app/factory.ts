@@ -21,7 +21,7 @@ import {
   stripLeadingBotMention,
 } from "@/chat/runtime/thread-context";
 import {
-  getChannelConfigurationServiceById,
+  getDestinationConfigurationService,
   getPersistedThreadState,
   mergeArtifactsState,
   persistThreadState,
@@ -241,7 +241,7 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
   return {
     ...runtime,
     runDispatchTurn: createSlackDispatchTurnRunner({
-      getChannelConfiguration: getChannelConfigurationServiceById,
+      getDestinationConfiguration: getDestinationConfigurationService,
       getSlackAdapter: options.getSlackAdapter,
       replyToThread,
     }),

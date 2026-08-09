@@ -31,7 +31,7 @@ import {
   getPersistedThreadState,
   getPersistedSandboxState,
   persistThreadStateById,
-  getChannelConfigurationServiceById,
+  getDestinationConfigurationService,
 } from "@/chat/runtime/thread-state";
 import { buildDeliveredTurnStatePatch } from "@/chat/runtime/delivered-turn-state";
 import {
@@ -473,9 +473,8 @@ async function runPausedTurnInContext(
         }
         const { actor, credentialContext } = identity;
 
-        const channelConfiguration = getChannelConfigurationServiceById(
-          destination.channelId,
-        );
+        const destinationConfiguration =
+          getDestinationConfigurationService(destination);
         const conversationContext = dispatchId
           ? undefined
           : buildConversationContext(conversation, {
@@ -544,7 +543,7 @@ async function runPausedTurnInContext(
                 artifacts.assistantContextChannelId ?? destination.channelId,
             },
             policy: {
-              channelConfiguration,
+              destinationConfiguration,
             },
             state: {
               artifactState: artifacts,

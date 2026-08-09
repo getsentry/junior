@@ -13,7 +13,7 @@ import type {
   Source,
   SystemActor,
 } from "@sentry/junior-plugin-api";
-import type { ChannelConfigurationService } from "@/chat/configuration/types";
+import type { DestinationConfigurationService } from "@/chat/configuration/types";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { CredentialContext } from "@/chat/credentials/context";
 import type { PiMessage } from "@/chat/pi/messages";
@@ -164,7 +164,7 @@ export interface AgentRunPolicy {
   /** Explicit per-agent reasoning level. When set, adaptive routing is disabled. */
   reasoningLevel?: TurnReasoningLevel;
   configuration?: Record<string, unknown>;
-  channelConfiguration?: ChannelConfigurationService;
+  destinationConfiguration?: DestinationConfigurationService;
   skillDirs?: string[];
   /** Per-slice override for app-owned sandbox egress trace propagation. */
   sandboxTracePropagation?: SandboxEgressTracePropagationConfig;

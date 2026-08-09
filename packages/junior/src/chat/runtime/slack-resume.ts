@@ -8,7 +8,7 @@
 import type { ReplyAttribution } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
 import { standardModelId } from "@/chat/model-profile";
-import type { ChannelConfigurationService } from "@/chat/configuration/types";
+import type { DestinationConfigurationService } from "@/chat/configuration/types";
 import {
   RetryableDeliveryError,
   type AgentRunRequest,
@@ -118,11 +118,11 @@ async function postSlackMessageBestEffort(
 /** Create a read-only configuration service from persisted values. */
 function createReadOnlyConfigService(
   values: Record<string, unknown>,
-): ChannelConfigurationService {
+): DestinationConfigurationService {
   const entries = Object.entries(values).map(([key, value]) => ({
     key,
     value,
-    scope: "conversation" as const,
+    scope: "destination" as const,
     updatedAt: new Date().toISOString(),
   }));
 
@@ -352,8 +352,8 @@ function createResumeReplyContext(
   const requestDeadline = getTurnRequestDeadline();
   const threadId =
     args.lockKey ?? getDefaultLockKey(args.channelId, args.threadTs);
-  const persistedChannelConfiguration =
-    replyContext.policy?.channelConfiguration ??
+  const persistedDestinationConfiguration =
+    replyContext.policy?.destinationConfiguration ??
     (replyContext.policy?.configuration
       ? createReadOnlyConfigService(replyContext.policy.configuration)
       : undefined);
@@ -380,7 +380,7 @@ function createResumeReplyContext(
       ...replyContext.policy,
       turnDeadlineAtMs:
         replyContext.policy?.turnDeadlineAtMs ?? requestDeadline?.deadlineAtMs,
-      channelConfiguration: persistedChannelConfiguration,
+      destinationConfiguration: persistedDestinationConfiguration,
     },
     state: replyContext.state,
     observers: {

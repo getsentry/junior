@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { createDurableChannelConfigurationService } from "@/chat/configuration/sql";
+import { createDurableDestinationConfigurationService } from "@/chat/configuration/sql";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createLocalJuniorSqlFixture } from "../../fixtures/sql";
+
+const DESTINATION = {
+  platform: "slack" as const,
+  teamId: "T-durable",
+  channelId: "C-durable",
+};
 
 function legacyConfiguration(value: string) {
   return {
@@ -19,14 +25,14 @@ function legacyConfiguration(value: string) {
   };
 }
 
-describe("SQL channel configuration", () => {
+describe("SQL destination configuration", () => {
   it("persists configuration independently of the legacy cache", async () => {
     const fixture = await createLocalJuniorSqlFixture();
     await migrateSchema(fixture.sql);
 
     try {
-      const service = createDurableChannelConfigurationService({
-        channelId: "C-durable",
+      const service = createDurableDestinationConfigurationService({
+        destination: DESTINATION,
         db: fixture.sql.db(),
         loadLegacy: async () => null,
       });
@@ -36,8 +42,8 @@ describe("SQL channel configuration", () => {
         updatedBy: "U123",
       });
 
-      const reloaded = createDurableChannelConfigurationService({
-        channelId: "C-durable",
+      const reloaded = createDurableDestinationConfigurationService({
+        destination: DESTINATION,
         db: fixture.sql.db(),
         loadLegacy: async () => {
           throw new Error("legacy configuration should not be read");
@@ -46,6 +52,9 @@ describe("SQL channel configuration", () => {
       await expect(reloaded.resolve("github.repo")).resolves.toBe(
         "getsentry/junior",
       );
+      await expect(reloaded.get("github.repo")).resolves.toMatchObject({
+        scope: "destination",
+      });
     } finally {
       await fixture.close();
     }
@@ -56,8 +65,12 @@ describe("SQL channel configuration", () => {
     await migrateSchema(fixture.sql);
 
     try {
-      const service = createDurableChannelConfigurationService({
-        channelId: "C-cutover",
+      const service = createDurableDestinationConfigurationService({
+        destination: {
+          platform: "slack",
+          teamId: "T-cutover",
+          channelId: "C-cutover",
+        },
         db: fixture.sql.db(),
         loadLegacy: async () => legacyConfiguration("getsentry/legacy"),
       });
@@ -65,8 +78,12 @@ describe("SQL channel configuration", () => {
         "getsentry/legacy",
       );
 
-      const reloaded = createDurableChannelConfigurationService({
-        channelId: "C-cutover",
+      const reloaded = createDurableDestinationConfigurationService({
+        destination: {
+          platform: "slack",
+          teamId: "T-cutover",
+          channelId: "C-cutover",
+        },
         db: fixture.sql.db(),
         loadLegacy: async () => null,
       });

@@ -974,6 +974,7 @@ export function createSlackTurnRuntime<
             message,
             text: currentText,
             explicitMention: Boolean(message.isMention),
+            destination: hooks.destination,
             context: threadContext,
             queuedMessages,
           });

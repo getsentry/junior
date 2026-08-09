@@ -243,11 +243,13 @@ describe("paused turn Slack integration", () => {
         },
       },
     });
-    await threadStateModule.getChannelConfigurationServiceById("C123").set({
-      key: "demo.org",
-      value: "acme",
-      source: "test",
-    });
+    await threadStateModule
+      .getDestinationConfigurationService(SLACK_DESTINATION)
+      .set({
+        key: "demo.org",
+        value: "acme",
+        source: "test",
+      });
 
     const continued = await continueAgentRun({
       conversationId,
@@ -281,7 +283,7 @@ describe("paused turn Slack integration", () => {
     );
     const resumeContext = executeAgentRunMock.mock.calls[0]?.[0] as {
       policy?: {
-        channelConfiguration?: {
+        destinationConfiguration?: {
           resolve: (key: string) => Promise<unknown>;
         };
         turnDeadlineAtMs?: number;
@@ -290,7 +292,7 @@ describe("paused turn Slack integration", () => {
     expect(resumeContext.policy?.turnDeadlineAtMs).toEqual(expect.any(Number));
     expect(resumeContext.policy?.turnDeadlineAtMs).toBeGreaterThan(Date.now());
     expect(
-      await resumeContext.policy?.channelConfiguration?.resolve("demo.org"),
+      await resumeContext.policy?.destinationConfiguration?.resolve("demo.org"),
     ).toBe("acme");
 
     expect(slackApiOutbox.calls("assistant.threads.setStatus")).toEqual(

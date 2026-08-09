@@ -19,7 +19,7 @@ import { persistAuthPauseTurnState } from "@/chat/runtime/auth-pause-state";
 import { logException, logInfo, logWarn, withLogContext } from "@/chat/logging";
 import { htmlCallbackResponse } from "@/handlers/oauth-html";
 import {
-  getChannelConfigurationServiceById,
+  getDestinationConfigurationService,
   getPersistedSandboxState,
   getPersistedThreadState,
   persistThreadStateById,
@@ -358,9 +358,8 @@ async function resumeOAuthSessionRecordTurn(
           excludeMessageId: lockedUserMessage.id,
         },
       );
-      const lockedChannelConfiguration = getChannelConfigurationServiceById(
-        stored.channelId!,
-      );
+      const lockedDestinationConfiguration =
+        getDestinationConfigurationService(destination);
       let actor: Actor;
       try {
         actor = createSlackResumeActor({
@@ -432,7 +431,7 @@ async function resumeOAuthSessionRecordTurn(
               lockedArtifacts.assistantContextChannelId ?? stored.channelId!,
           },
           policy: {
-            channelConfiguration: lockedChannelConfiguration,
+            destinationConfiguration: lockedDestinationConfiguration,
           },
           state: {
             artifactState: lockedArtifacts,

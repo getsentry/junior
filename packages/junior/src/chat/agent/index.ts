@@ -449,8 +449,8 @@ async function executeAgentRunInPrivacyContext(
         });
       }
     };
-    const persistedConfigurationValues = policy.channelConfiguration
-      ? await policy.channelConfiguration.resolveValues()
+    const persistedConfigurationValues = policy.destinationConfiguration
+      ? await policy.destinationConfiguration.resolveValues()
       : {};
     const configurationValues: Record<string, unknown> = {
       ...getConfigDefaults(),

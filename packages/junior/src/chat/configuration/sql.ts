@@ -1,62 +1,62 @@
+import type { Destination } from "@sentry/junior-plugin-api";
 import { eq } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
-import { juniorChannelConfigurations } from "@/db/schema";
+import { juniorDestinationConfigurations } from "@/db/schema";
+import { destinationKey } from "@/chat/destination";
 import {
-  coerceChannelConfigState,
-  createChannelConfigurationService,
+  coerceDestinationConfigState,
+  createDestinationConfigurationService,
 } from "@/chat/configuration/service";
 import type {
-  ChannelConfigState,
-  ChannelConfigurationService,
-  ChannelConfigurationStorage,
+  DestinationConfigState,
+  DestinationConfigurationService,
+  DestinationConfigurationStorage,
 } from "@/chat/configuration/types";
 
-/** Create durable channel configuration storage for one provider channel. */
-function createSqlChannelConfigurationStorage(
+/** Create durable destination configuration storage for one destination key. */
+function createSqlDestinationConfigurationStorage(
   db: JuniorDatabase,
-  channelId: string,
-): ChannelConfigurationStorage {
+  key: string,
+): DestinationConfigurationStorage {
   return {
     load: async () => {
       const rows = await db
-        .select({ configuration: juniorChannelConfigurations.configuration })
-        .from(juniorChannelConfigurations)
-        .where(eq(juniorChannelConfigurations.channelId, channelId))
+        .select({ configuration: juniorDestinationConfigurations.configuration })
+        .from(juniorDestinationConfigurations)
+        .where(eq(juniorDestinationConfigurations.destinationKey, key))
         .limit(1);
       const configuration = rows[0]?.configuration;
       return configuration ? { configuration } : null;
     },
-    save: async (configuration: ChannelConfigState) => {
+    save: async (configuration: DestinationConfigState) => {
       const updatedAt = new Date();
       await db
-        .insert(juniorChannelConfigurations)
-        .values({ channelId, configuration, updatedAt })
+        .insert(juniorDestinationConfigurations)
+        .values({ destinationKey: key, configuration, updatedAt })
         .onConflictDoUpdate({
-          target: juniorChannelConfigurations.channelId,
+          target: juniorDestinationConfigurations.destinationKey,
           set: { configuration, updatedAt },
         });
     },
   };
 }
 
-/** Resolve SQL-owned channel configuration and copy a live legacy record once. */
-export function createDurableChannelConfigurationService(args: {
-  channelId: string;
+/** Resolve SQL-owned destination configuration and copy a live legacy record once. */
+export function createDurableDestinationConfigurationService(args: {
+  destination: Destination;
   db: JuniorDatabase;
   loadLegacy: () => Promise<unknown>;
-}): ChannelConfigurationService {
-  const sqlStorage = createSqlChannelConfigurationStorage(
-    args.db,
-    args.channelId,
-  );
-  return createChannelConfigurationService({
+}): DestinationConfigurationService {
+  const key = destinationKey(args.destination);
+  const sqlStorage = createSqlDestinationConfigurationStorage(args.db, key);
+  return createDestinationConfigurationService({
     load: async () => {
       const durable = await sqlStorage.load();
       if (durable) {
         return durable;
       }
       // TODO(#1267, v0.147.0): Remove after SQL readers have copied all live 7-day Redis records.
-      const legacyState = coerceChannelConfigState(await args.loadLegacy());
+      const legacyState = coerceDestinationConfigState(await args.loadLegacy());
       if (Object.keys(legacyState.entries).length === 0) {
         return null;
       }

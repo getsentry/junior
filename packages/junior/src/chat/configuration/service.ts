@@ -1,7 +1,7 @@
 import type {
-  ChannelConfigState,
-  ChannelConfigurationService,
-  ChannelConfigurationStorage,
+  DestinationConfigState,
+  DestinationConfigurationService,
+  DestinationConfigurationStorage,
   ConfigEntry,
 } from "@/chat/configuration/types";
 import {
@@ -10,7 +10,7 @@ import {
 } from "@/chat/configuration/validation";
 import { isRecord, toOptionalString } from "@/chat/coerce";
 
-function defaultState(): ChannelConfigState {
+function defaultState(): DestinationConfigState {
   return {
     schemaVersion: 1,
     entries: {},
@@ -33,11 +33,15 @@ function sanitizeEntry(value: unknown): ConfigEntry | undefined {
   if (!updatedAt) {
     return undefined;
   }
-  // Accept both legacy "channel" and current "conversation" scope from persisted data
-  if (value.scope !== "channel" && value.scope !== "conversation") {
+  // Accept legacy "channel" / "conversation" scopes from Redis and early SQL rows.
+  if (
+    value.scope !== "channel" &&
+    value.scope !== "conversation" &&
+    value.scope !== "destination"
+  ) {
     return undefined;
   }
-  const scope = "conversation" as const;
+  const scope = "destination" as const;
 
   return {
     key,
@@ -50,8 +54,10 @@ function sanitizeEntry(value: unknown): ConfigEntry | undefined {
   };
 }
 
-/** Coerce persisted channel configuration into the current durable shape. */
-export function coerceChannelConfigState(raw: unknown): ChannelConfigState {
+/** Coerce persisted destination configuration into the current durable shape. */
+export function coerceDestinationConfigState(
+  raw: unknown,
+): DestinationConfigState {
   if (!isRecord(raw)) {
     return defaultState();
   }
@@ -73,15 +79,15 @@ export function coerceChannelConfigState(raw: unknown): ChannelConfigState {
   };
 }
 
-export function createChannelConfigurationService(
-  storage: ChannelConfigurationStorage,
-): ChannelConfigurationService {
-  const getState = async (): Promise<ChannelConfigState> => {
+export function createDestinationConfigurationService(
+  storage: DestinationConfigurationStorage,
+): DestinationConfigurationService {
+  const getState = async (): Promise<DestinationConfigState> => {
     const loaded = await storage.load();
-    return coerceChannelConfigState(loaded);
+    return coerceDestinationConfigState(loaded);
   };
 
-  const saveState = async (state: ChannelConfigState): Promise<void> => {
+  const saveState = async (state: DestinationConfigState): Promise<void> => {
     await storage.save({
       schemaVersion: 1,
       entries: state.entries,
@@ -94,7 +100,7 @@ export function createChannelConfigurationService(
     return state.entries[normalizedKey];
   };
 
-  const set: ChannelConfigurationService["set"] = async (input) => {
+  const set: DestinationConfigurationService["set"] = async (input) => {
     const normalizedKey = input.key.trim();
     const keyError = validateConfigKey(normalizedKey);
     if (keyError) {
@@ -110,7 +116,7 @@ export function createChannelConfigurationService(
     const nextEntry: ConfigEntry = {
       key: normalizedKey,
       value: input.value,
-      scope: "conversation",
+      scope: "destination",
       updatedAt: new Date().toISOString(),
       updatedBy: toOptionalString(input.updatedBy),
       source: toOptionalString(input.source),

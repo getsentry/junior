@@ -1,4 +1,3 @@
-import { juniorChannelConfigurations } from "./schema/channel-configurations";
 import { juniorConversationAnnotations } from "./schema/conversation-annotations";
 import { juniorApiTokens } from "./schema/api-tokens";
 import { juniorConversationEvents } from "./schema/conversation-events";
@@ -8,6 +7,7 @@ import {
   juniorAgentBindings,
   juniorAgentInvocations,
 } from "./schema/agent-invocations";
+import { juniorDestinationConfigurations } from "./schema/destination-configurations";
 import { juniorDestinations } from "./schema/destinations";
 import { juniorEventTasks } from "./schema/event-tasks";
 import { juniorIdentities } from "./schema/identities";
@@ -20,7 +20,6 @@ import {
 import { juniorUsers } from "./schema/users";
 
 export {
-  juniorChannelConfigurations,
   juniorConversationAnnotations,
   juniorApiTokens,
   juniorAgentBindings,
@@ -28,6 +27,7 @@ export {
   juniorConversationEvents,
   juniorConversationBindings,
   juniorConversations,
+  juniorDestinationConfigurations,
   juniorDestinations,
   juniorEventTasks,
   juniorIdentities,
@@ -39,7 +39,6 @@ export {
 };
 
 export const juniorSqlSchema = {
-  juniorChannelConfigurations,
   juniorConversationAnnotations,
   juniorApiTokens,
   juniorAgentBindings,
@@ -47,6 +46,7 @@ export const juniorSqlSchema = {
   juniorConversationEvents,
   juniorConversationBindings,
   juniorConversations,
+  juniorDestinationConfigurations,
   juniorDestinations,
   juniorEventTasks,
   juniorIdentities,

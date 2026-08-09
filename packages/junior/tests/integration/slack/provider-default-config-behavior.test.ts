@@ -6,7 +6,7 @@ import {
   createTestDestination,
 } from "../../fixtures/slack-harness";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
-import { getChannelConfigurationServiceById } from "@/chat/runtime/thread-state";
+import { getDestinationConfigurationService } from "@/chat/runtime/thread-state";
 import { deliverAssistantMessagesForTest } from "../../fixtures/agent-runner";
 
 function toPostedText(value: unknown): string {
@@ -51,7 +51,9 @@ describe("Slack behavior: provider default configuration", () => {
     expect(thread.posts).toHaveLength(1);
     expect(toPostedText(thread.posts[0])).toContain("getsentry/junior");
     await expect(
-      getChannelConfigurationServiceById(thread.channelId).get("github.repo"),
+      getDestinationConfigurationService(createTestDestination(thread)).get(
+        "github.repo",
+      ),
     ).resolves.toMatchObject({
       key: "github.repo",
       value: "getsentry/junior",
@@ -102,7 +104,9 @@ describe("Slack behavior: provider default configuration", () => {
     expect(executeAgentRun).toHaveBeenCalledOnce();
     expect(toPostedText(thread.posts[0])).toContain("Created the issue.");
     await expect(
-      getChannelConfigurationServiceById(thread.channelId).get("github.repo"),
+      getDestinationConfigurationService(createTestDestination(thread)).get(
+        "github.repo",
+      ),
     ).resolves.toBeUndefined();
   });
 });

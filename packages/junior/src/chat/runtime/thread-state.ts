@@ -1,7 +1,8 @@
 import type { Thread } from "chat";
+import type { Destination } from "@sentry/junior-plugin-api";
 import { toOptionalString } from "@/chat/coerce";
-import { createDurableChannelConfigurationService } from "@/chat/configuration/sql";
-import type { ChannelConfigurationService } from "@/chat/configuration/types";
+import { createDurableDestinationConfigurationService } from "@/chat/configuration/sql";
+import type { DestinationConfigurationService } from "@/chat/configuration/types";
 import { getDb } from "@/chat/db";
 import { buildConversationStatePatch } from "@/chat/state/conversation";
 import type { ThreadConversationState } from "@/chat/state/conversation";
@@ -192,25 +193,22 @@ async function getLegacyChannelState(
   );
 }
 
-/** Resolve durable channel configuration from a Chat thread. */
-export function getChannelConfigurationService(
-  thread: Thread,
-): ChannelConfigurationService {
-  const channelId =
-    toOptionalString(thread.channelId) ?? toOptionalString(thread.channel.id);
-  if (!channelId) {
-    throw new Error("channel id is required to load channel configuration");
-  }
-  return getChannelConfigurationServiceById(channelId);
-}
-
-/** Resolve durable channel configuration by channel id without a Chat thread. */
-export function getChannelConfigurationServiceById(
-  channelId: string,
-): ChannelConfigurationService {
-  return createDurableChannelConfigurationService({
-    channelId,
+/**
+ * Resolve durable destination configuration.
+ *
+ * Slack still reads the old channel-id Redis bag once during cutover.
+ */
+export function getDestinationConfigurationService(
+  destination: Destination,
+): DestinationConfigurationService {
+  return createDurableDestinationConfigurationService({
+    destination,
     db: getDb(),
-    loadLegacy: async () => await getLegacyChannelState(channelId),
+    loadLegacy: async () => {
+      if (destination.platform !== "slack") {
+        return null;
+      }
+      return await getLegacyChannelState(destination.channelId);
+    },
   });
 }

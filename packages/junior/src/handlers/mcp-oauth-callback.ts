@@ -22,7 +22,7 @@ import { logException, logWarn } from "@/chat/logging";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import {
-  getChannelConfigurationServiceById,
+  getDestinationConfigurationService,
   getPersistedSandboxState,
   getPersistedThreadState,
   persistThreadStateById,
@@ -343,9 +343,8 @@ async function resumeAuthorizedMcpTurn(args: {
           excludeMessageId: lockedUserMessage.id,
         },
       );
-      const lockedChannelConfiguration = getChannelConfigurationServiceById(
-        authSession.channelId!,
-      );
+      const lockedDestinationConfiguration =
+        getDestinationConfigurationService(destination);
       let actor: Actor;
       try {
         actor = createSlackResumeActor({
@@ -415,7 +414,7 @@ async function resumeAuthorizedMcpTurn(args: {
           },
           policy: {
             configuration: authSession.configuration,
-            channelConfiguration: lockedChannelConfiguration,
+            destinationConfiguration: lockedDestinationConfiguration,
           },
           state: {
             artifactState: lockedArtifacts,

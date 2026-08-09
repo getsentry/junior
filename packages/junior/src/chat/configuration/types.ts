@@ -1,4 +1,4 @@
-export type ConfigScope = "conversation";
+export type ConfigScope = "destination";
 
 export interface ConfigEntry {
   key: string;
@@ -10,17 +10,17 @@ export interface ConfigEntry {
   expiresAt?: string;
 }
 
-export interface ChannelConfigState {
+export interface DestinationConfigState {
   schemaVersion: 1;
   entries: Record<string, ConfigEntry>;
 }
 
-export interface ChannelConfigurationStorage {
+export interface DestinationConfigurationStorage {
   load: () => Promise<unknown | null>;
-  save: (state: ChannelConfigState) => Promise<void>;
+  save: (state: DestinationConfigState) => Promise<void>;
 }
 
-export interface ChannelConfigurationService {
+export interface DestinationConfigurationService {
   get: (key: string) => Promise<ConfigEntry | undefined>;
   set: (input: {
     key: string;
