@@ -43,9 +43,6 @@ interface ResumeStateArgs {
   destinationVisibility?: ConversationPrivacy;
   dispatchId?: string;
   durability: AgentRunDurability;
-  getLoadedSkillNames: () => string[];
-  getModelId: () => string;
-  getReasoningLevel: () => string | undefined;
   recordActiveMcpProviders: () => Promise<void>;
   actor?: Actor;
   runSource: Source;
@@ -119,14 +116,11 @@ export function createResumeState(args: ResumeStateArgs) {
   const writeBase = () => ({
     conversationId: args.conversationId,
     turnId: args.turnId,
-    modelId: args.getModelId(),
     channelName: args.channelName,
     destination: args.destination,
     destinationVisibility: args.destinationVisibility,
     dispatchId: args.dispatchId,
     source: args.runSource,
-    loadedSkillNames: args.getLoadedSkillNames(),
-    reasoningLevel: args.getReasoningLevel(),
     actor: args.actor,
     surface: args.surface,
   });

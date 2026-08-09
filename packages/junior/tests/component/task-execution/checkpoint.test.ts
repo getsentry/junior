@@ -102,7 +102,6 @@ describe("turn checkpoint", () => {
     });
     await upsertTurnRecord({
       conversationId: "local:ttl-split:turn",
-      modelId: "test/model",
       piMessages: [runtimeContext],
       turnId: "turn-ttl-split",
       sliceId: 1,
@@ -125,7 +124,6 @@ describe("turn checkpoint", () => {
     appendToList.mockClear();
     await upsertTurnRecord({
       conversationId: "local:ttl-split:turn",
-      modelId: "test/model",
       piMessages: [runtimeContext],
       turnId: "turn-ttl-split",
       sliceId: 1,
@@ -167,7 +165,6 @@ describe("turn checkpoint", () => {
         turnId,
         sliceId: 1,
         state: cursorState,
-        modelId: "test/model",
         piMessages: [],
       });
       if (cursorState === "completed") {
@@ -249,7 +246,6 @@ describe("turn checkpoint", () => {
     ];
 
     await upsertTurnRecord({
-      modelId: "test-model",
       conversationId: "conversation-1",
       turnId: "turn-1",
       sliceId: 1,
@@ -263,7 +259,6 @@ describe("turn checkpoint", () => {
     const authSessionRecord = await saveTurnCheckpoint({
       mode: "paused",
       reason: "auth",
-      modelId: "test-model",
       conversationId: "conversation-1",
       turnId: "turn-1",
       sliceId: 1,
@@ -309,10 +304,7 @@ describe("turn checkpoint", () => {
       cumulativeDurationMs: 1_500,
       cumulativeUsage: usage,
       destination: SLACK_DESTINATION,
-      loadedSkillNames: ["github-code"],
-      modelId: "openai/gpt-5.6",
       piMessages: [userMessage("ship it")],
-      reasoningLevel: "high",
       turnId: "turn-ops-bag",
       sliceId: 1,
       source: SLACK_SOURCE,
@@ -351,7 +343,6 @@ describe("turn checkpoint", () => {
       conversationId,
       cumulativeDurationMs: 1_500,
       cumulativeUsage: { inputTokens: 7 },
-      modelId: "test/model",
       piMessages: [userMessage("metered turn")],
       turnId: sessionId,
       sliceId: 1,
@@ -379,7 +370,6 @@ describe("turn checkpoint", () => {
     });
     await upsertTurnRecord({
       conversationId,
-      modelId: "test/model",
       piMessages: recovered!.piMessages,
       turnId: sessionId,
       sliceId: 2,
@@ -413,7 +403,6 @@ describe("turn checkpoint", () => {
     });
     await upsertTurnRecord({
       conversationId,
-      modelId: "test/model",
       piMessages: [userMessage("second")],
       turnId: "turn-second",
       sliceId: 1,
@@ -464,7 +453,6 @@ describe("turn checkpoint", () => {
         nowMs: 9_000,
       });
       await upsertTurnRecord({
-        modelId: "test/model",
         channelName: "runtime-team",
         conversationId: "slack:C123:turn-activity",
         destination: SLACK_DESTINATION,
@@ -517,7 +505,6 @@ describe("turn checkpoint", () => {
     };
 
     await upsertTurnRecord({
-      modelId: "test/model",
       conversationId,
       conversationStore,
       destination: SLACK_DESTINATION,
@@ -646,7 +633,6 @@ describe("turn checkpoint", () => {
 
     await expect(
       upsertTurnRecord({
-        modelId: "test/model",
         conversationId: "slack:C123:metadata-failure",
         conversationStore: failingConversationStore(),
         destination: SLACK_DESTINATION,
@@ -759,7 +745,6 @@ describe("turn checkpoint", () => {
     } as PiMessage;
 
     await upsertTurnRecord({
-      modelId: "test-model",
       conversationId: "conversation-auth-complete",
       turnId: "turn-auth-complete",
       sliceId: 1,
@@ -820,7 +805,6 @@ describe("turn checkpoint", () => {
     };
 
     await upsertTurnRecord({
-      modelId: "test/model",
       conversationId,
       turnId: sessionId,
       sliceId: 1,
@@ -879,7 +863,6 @@ describe("turn checkpoint", () => {
     } as PiMessage;
 
     await upsertTurnRecord({
-      modelId: "test/model",
       conversationId: "conversation-turn-scope",
       turnId: "turn-scope",
       sliceId: 1,
@@ -894,7 +877,6 @@ describe("turn checkpoint", () => {
       turnStartMessageIndex: 1,
     });
     await upsertTurnRecord({
-      modelId: "test/model",
       conversationId: "conversation-turn-scope",
       turnId: "turn-scope",
       sliceId: 2,
@@ -942,7 +924,6 @@ describe("turn checkpoint", () => {
     const answer = assistantMessage("answer", 3);
 
     await upsertTurnRecord({
-      modelId: "test/model",
       conversationId: "conversation-provenance",
       turnId: "turn-provenance",
       sliceId: 1,
@@ -1008,7 +989,6 @@ describe("turn checkpoint", () => {
 
     await saveTurnCheckpoint({
       mode: "running",
-      modelId: "test/model",
       conversationId: "conversation-multi-actor",
       turnId: "turn-multi-actor",
       sliceId: 1,
@@ -1019,7 +999,6 @@ describe("turn checkpoint", () => {
     // instruction attributed to bob, while Alice remains the bound run actor.
     await saveTurnCheckpoint({
       mode: "running",
-      modelId: "test/model",
       conversationId: "conversation-multi-actor",
       turnId: "turn-multi-actor",
       sliceId: 2,
@@ -1048,7 +1027,6 @@ describe("turn checkpoint", () => {
       await import("@/chat/task-execution/turn-cursor");
 
     await upsertTurnRecord({
-      modelId: "test/model",
       conversationId: "conversation-system-actor",
       turnId: "turn-system-actor",
       sliceId: 1,
@@ -1071,7 +1049,6 @@ describe("turn checkpoint", () => {
       await import("@/chat/task-execution/turn-cursor");
 
     await upsertTurnRecord({
-      modelId: "test/model",
       conversationId: "conversation-1",
       turnId: "turn-1",
       sliceId: 1,
@@ -1096,7 +1073,6 @@ describe("turn checkpoint", () => {
     await saveTurnCheckpoint({
       mode: "paused",
       reason: "timeout",
-      modelId: "test/model",
       conversationId: "conversation-1",
       turnId: "turn-1",
       sliceId: 1,
@@ -1150,7 +1126,6 @@ describe("turn checkpoint", () => {
     ];
 
     await upsertTurnRecord({
-      modelId: "test/model",
       conversationId: "conversation-timeout-cap",
       turnId: "turn-timeout-cap",
       sliceId: botConfig.maxSlicesPerTurn,
@@ -1164,7 +1139,6 @@ describe("turn checkpoint", () => {
       saveTurnCheckpoint({
         mode: "paused",
         reason: "timeout",
-        modelId: "test-model",
         conversationId: "conversation-timeout-cap",
         turnId: "turn-timeout-cap",
         sliceId: botConfig.maxSlicesPerTurn,
@@ -1200,7 +1174,6 @@ describe("turn checkpoint", () => {
     ];
 
     await upsertTurnRecord({
-      modelId: "test/model",
       conversationId: "conversation-auth-tail",
       turnId: "turn-auth-tail",
       sliceId: 1,
@@ -1211,7 +1184,6 @@ describe("turn checkpoint", () => {
     const authSessionRecord = await saveTurnCheckpoint({
       mode: "paused",
       reason: "auth",
-      modelId: "test/model",
       conversationId: "conversation-auth-tail",
       turnId: "turn-auth-tail",
       sliceId: 1,
@@ -1270,8 +1242,6 @@ describe("turn checkpoint", () => {
       turnId: "turn-auth-empty",
       sliceId: 1,
       messages: [],
-      modelId: "openai/gpt-5.5",
-      reasoningLevel: "high",
       errorMessage: "auth pause",
     });
 
@@ -1280,8 +1250,6 @@ describe("turn checkpoint", () => {
       turnId: "turn-auth-empty",
       state: "paused",
       piMessages: [],
-      modelId: "openai/gpt-5.5",
-      reasoningLevel: "high",
       resumeReason: "auth",
     });
     await expect(
@@ -1298,7 +1266,6 @@ describe("turn checkpoint", () => {
       saveTurnCheckpoint({
         mode: "paused",
         reason: "timeout",
-        modelId: "test-model",
         conversationId: "conversation-timeout-empty",
         turnId: "turn-timeout-empty",
         sliceId: 1,
@@ -1326,7 +1293,6 @@ describe("turn checkpoint", () => {
     await expect(
       saveTurnCheckpoint({
         mode: "completed",
-        modelId: "test-model",
         conversationId: "conversation-1",
         turnId: "turn-1",
         sliceId: 1,
@@ -1367,7 +1333,6 @@ describe("turn checkpoint", () => {
 
     await saveTurnCheckpoint({
       mode: "completed",
-      modelId: "test-model",
       conversationId: "conversation-1",
       turnId: "turn-1",
       durationMs: 500,
@@ -1392,7 +1357,6 @@ describe("turn checkpoint", () => {
 
     await saveTurnCheckpoint({
       mode: "completed",
-      modelId: "test-model",
       conversationId: "conversation-completed",
       turnId: "turn-completed",
       sliceId: 1,
@@ -1410,7 +1374,6 @@ describe("turn checkpoint", () => {
         } as PiMessage,
         assistantMessage("done", 2),
       ],
-      reasoningLevel: "high",
     });
 
     await expect(
@@ -1437,7 +1400,6 @@ describe("turn checkpoint", () => {
 
     await saveTurnCheckpoint({
       mode: "completed",
-      modelId: "test-model",
       conversationId: "agent-dispatch:dispatch_atomic",
       turnId: "dispatch:dispatch_atomic",
       sliceId: 4,
@@ -1494,7 +1456,6 @@ describe("turn checkpoint", () => {
     await expect(
       saveTurnCheckpoint({
         mode: "running",
-        modelId: "test-model",
         conversationId: "conversation-1",
         turnId: "turn-1",
         sliceId: 1,
@@ -1505,7 +1466,6 @@ describe("turn checkpoint", () => {
     await expect(
       saveTurnCheckpoint({
         mode: "running",
-        modelId: "test-model",
         conversationId: "conversation-1",
         turnId: "turn-1",
         sliceId: 1,
@@ -1522,7 +1482,6 @@ describe("turn checkpoint", () => {
     await expect(
       saveTurnCheckpoint({
         mode: "running",
-        modelId: "test-model",
         conversationId: "conversation-1",
         turnId: "turn-1",
         sliceId: 1,
@@ -1556,7 +1515,6 @@ describe("turn checkpoint", () => {
     await expect(
       saveTurnCheckpoint({
         mode: "running",
-        modelId: "test-model",
         conversationId: "conversation-storage-failure",
         turnId: "turn-storage-failure",
         sliceId: 1,
@@ -1585,7 +1543,6 @@ describe("turn checkpoint", () => {
     await expect(
       saveTurnCheckpoint({
         mode: "running",
-        modelId: "test-model",
         conversationId: "conversation-stale-checkpoint",
         turnId: "turn-stale-checkpoint",
         sliceId: 1,
@@ -1595,7 +1552,6 @@ describe("turn checkpoint", () => {
     await expect(
       saveTurnCheckpoint({
         mode: "running",
-        modelId: "test-model",
         conversationId: "conversation-stale-checkpoint",
         turnId: "turn-stale-checkpoint",
         sliceId: 1,
@@ -1639,7 +1595,6 @@ describe("turn checkpoint", () => {
     await expect(
       saveTurnCheckpoint({
         mode: "running",
-        modelId: "test-model",
         conversationId: "conversation-mutated-prefix",
         turnId: "turn-mutated-prefix",
         sliceId: 1,
@@ -1659,7 +1614,6 @@ describe("turn checkpoint", () => {
     await expect(
       saveTurnCheckpoint({
         mode: "running",
-        modelId: "test-model",
         conversationId: "conversation-mutated-prefix",
         turnId: "turn-mutated-prefix",
         sliceId: 1,
@@ -1691,7 +1645,6 @@ describe("turn checkpoint", () => {
 
     await saveTurnCheckpoint({
       mode: "running",
-      modelId: "test-model",
       conversationId: "conversation-1",
       turnId: "turn-1",
       sliceId: 1,
@@ -1701,7 +1654,6 @@ describe("turn checkpoint", () => {
     await saveTurnCheckpoint({
       mode: "paused",
       reason: "timeout",
-      modelId: "test-model",
       conversationId: "conversation-1",
       turnId: "turn-1",
       sliceId: 1,
@@ -1728,7 +1680,6 @@ describe("turn checkpoint", () => {
     };
     const unsafeAssistant = assistantMessage("not committed", 2);
     await upsertTurnRecord({
-      modelId: "test/model",
       conversationId: "conversation-branch",
       turnId: "turn-branch",
       sliceId: 1,
@@ -1737,7 +1688,6 @@ describe("turn checkpoint", () => {
     });
     await expect(
       upsertTurnRecord({
-        modelId: "test/model",
         conversationId: "conversation-branch",
         turnId: "turn-branch",
         sliceId: 2,
@@ -1766,7 +1716,6 @@ describe("turn checkpoint", () => {
     const newFollowup = assistantMessage("new followup", 3);
 
     const oldRecord = await upsertTurnRecord({
-      modelId: "test/model",
       conversationId: "conversation-projection-pin",
       turnId: "turn-old",
       sliceId: 1,
@@ -1793,7 +1742,6 @@ describe("turn checkpoint", () => {
       },
     );
     await upsertTurnRecord({
-      modelId: "test/model",
       conversationId: "conversation-projection-pin",
       turnId: "turn-new",
       sliceId: 1,
@@ -1846,7 +1794,6 @@ describe("turn checkpoint", () => {
     };
 
     await upsertTurnRecord({
-      modelId: "openai/gpt-5.5",
       conversationId,
       turnId: turnId,
       sliceId: 1,
@@ -1909,7 +1856,6 @@ describe("turn checkpoint", () => {
     };
 
     await upsertTurnRecord({
-      modelId: "test/model",
       conversationId: "conversation-active-compaction-resume",
       turnId: "turn-active-compaction-resume",
       sliceId: 1,
@@ -1949,7 +1895,6 @@ describe("turn checkpoint", () => {
     const assistant = assistantMessage("continued after instructions", 4);
 
     await upsertTurnRecord({
-      modelId: "test/model",
       conversationId: "conversation-agents-order-resume",
       turnId: "turn-agents-order-resume",
       sliceId: 1,

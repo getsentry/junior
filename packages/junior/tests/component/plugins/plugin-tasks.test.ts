@@ -70,7 +70,6 @@ async function recordCompletedSession(args: {
   const { upsertTurnRecord } =
     await import("@/chat/task-execution/turn-cursor");
   await upsertTurnRecord({
-    modelId: "test/model",
     conversationId: args.conversationId,
     destination: {
       ...destination,
@@ -170,7 +169,6 @@ describe("plugin background tasks", () => {
       }),
     ]);
     await upsertTurnRecord({
-      modelId: "test/model",
       conversationId: runConversationId,
       destination: runDestination,
       piMessages: testPiMessages([
@@ -331,7 +329,6 @@ describe("plugin background tasks", () => {
     ].join("\n");
 
     await upsertTurnRecord({
-      modelId: "test/model",
       conversationId: runConversationId,
       destination: { ...destination, conversationId: runConversationId },
       piMessages: testPiMessages([
@@ -456,7 +453,6 @@ describe("plugin background tasks", () => {
     ]);
 
     await upsertTurnRecord({
-      modelId: "test/model",
       conversationId: slackConversationId,
       destination: { platform: "slack", teamId, channelId },
       piMessages: testPiMessages([
@@ -552,7 +548,6 @@ describe("plugin background tasks", () => {
 
     vi.useFakeTimers({ now: completionMs });
     await upsertTurnRecord({
-      modelId: "test/model",
       conversationId: slackConversationId,
       destination: { platform: "slack", teamId, channelId },
       piMessages: testPiMessages([
@@ -647,7 +642,6 @@ describe("plugin background tasks", () => {
     ]);
 
     await upsertTurnRecord({
-      modelId: "test/model",
       conversationId: runConversationId,
       destination: { ...destination, conversationId: runConversationId },
       piMessages: testPiMessages([
@@ -754,7 +748,6 @@ describe("plugin background tasks", () => {
     });
 
     await upsertTurnRecord({
-      modelId: "test/model",
       conversationId: slackConversationId,
       destination: { platform: "slack", teamId, channelId },
       piMessages: testPiMessages([

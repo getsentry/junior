@@ -235,7 +235,6 @@ describe("agent dispatch recovery", () => {
                 timestamp: dispatch.createdAtMs,
               },
             ],
-            modelId: "test-model",
             turnId: request.turnId,
             source: dispatch.source,
             surface: "api",

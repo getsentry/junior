@@ -65,12 +65,12 @@ export type TurnCheckpoint =
 /**
  * Lifecycle fields for a checkpoint write.
  * Routing/metrics/provenance are only for SQL dual-write / resume restore.
+ * Profile, reasoning, concrete model id, and skills are not checkpoint fields.
  */
 interface TurnCheckpointWrite {
   conversationId: string;
   turnId: string;
   messages: PiMessage[];
-  modelId: string;
   /** Required for running/paused; optional for completed/failed (falls back to stored). */
   sliceId?: number;
   // --- SQL dual-write / restore only ---
@@ -82,8 +82,6 @@ interface TurnCheckpointWrite {
   dispatchOutcome?: AgentDispatchOutcome;
   source?: Source;
   surface?: AgentTurnSurface;
-  loadedSkillNames?: string[];
-  reasoningLevel?: string;
   turnStartMessageIndex?: number;
   trailingMessageProvenance?: ConversationMessageProvenance[];
   turnContexts?: PluginTurnContext[];
@@ -178,7 +176,6 @@ export async function saveTurnCheckpoint(
 function sharedWrite(args: TurnCheckpointWrite, latest?: TurnRecord) {
   return {
     conversationId: args.conversationId,
-    modelId: args.modelId,
     turnId: args.turnId,
     ...definedProps({
       actor: args.actor,
@@ -186,8 +183,6 @@ function sharedWrite(args: TurnCheckpointWrite, latest?: TurnRecord) {
       destination: args.destination,
       destinationVisibility: args.destinationVisibility,
       dispatchId: args.dispatchId ?? latest?.dispatchId,
-      loadedSkillNames: args.loadedSkillNames,
-      reasoningLevel: args.reasoningLevel,
       source: args.source,
       surface: args.surface ?? latest?.surface,
       traceId: getActiveTraceId() ?? latest?.traceId,

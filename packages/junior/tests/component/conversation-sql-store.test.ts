@@ -1170,7 +1170,6 @@ WHERE conversation_id = $1
         updatedAtMs: 600_000,
       });
       await upsertTurnRecord({
-        modelId: "test/model",
         conversationStore: store,
         conversationId: CONVERSATION_ID,
         destination: inboundMessage("hung-target").destination,

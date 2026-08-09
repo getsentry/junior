@@ -371,7 +371,6 @@ describe("paused turn composition", () => {
       } as PiMessage,
     ];
     await upsertTurnRecord({
-      modelId: "test/model",
       conversationId: "conversation-timeout-cap",
       turnId: "turn-timeout-cap",
       sliceId: botConfig.maxSlicesPerTurn,

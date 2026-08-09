@@ -93,7 +93,6 @@ import {
   toPiReasoningLevel,
   type TurnRoute,
 } from "@/chat/services/turn-router";
-import { parseTurnReasoningLevel } from "@/chat/reasoning-level";
 import {
   addAgentTurnUsage,
   hasAgentTurnUsage,
@@ -367,10 +366,6 @@ async function executeAgentRunInPrivacyContext(
       ? findSkillByName(skillInvocation.skillName, availableSkills)
       : null;
     const activeSkills: Skill[] = [];
-    let loadedSkillNamesForResume: string[] = [];
-    const syncLoadedSkillNamesForResume = () => {
-      loadedSkillNamesForResume = activeSkills.map((skill) => skill.name);
-    };
     const skillSandbox = new SkillSandbox(availableSkills, activeSkills);
 
     // ── Turn checkpoint (resume cursor) ──────────────────────────────
@@ -425,9 +420,6 @@ async function executeAgentRunInPrivacyContext(
         : {}),
       ...(routing.dispatch?.id ? { dispatchId: routing.dispatch.id } : {}),
       durability,
-      getLoadedSkillNames: () => loadedSkillNamesForResume,
-      getReasoningLevel: () => turnRoute?.reasoningLevel,
-      getModelId: () => activeModelId,
       recordActiveMcpProviders,
       actor,
       runSource,
@@ -481,7 +473,6 @@ async function executeAgentRunInPrivacyContext(
       invokedSkill,
       priorPiMessages,
       skillSandbox,
-      syncLoadedSkillNamesForResume,
     });
     const explicitSkill = invokedSkill
       ? (activeSkills.find((skill) => skill.name === invokedSkill.name) ?? null)
@@ -504,14 +495,12 @@ async function executeAgentRunInPrivacyContext(
           botConfig,
           activeModelProfile,
         );
-        const resumedReasoningLevel = existingSessionRecord?.reasoningLevel
-          ? parseTurnReasoningLevel(existingSessionRecord.reasoningLevel)
-          : undefined;
+        // After handoff, profile config (else inherited old route) is authority.
+        // Handoff does not write a new turn_routed event.
         turnRoute = {
           profile: activeModelProfile,
           reasoningLevel:
             activeProfileConfig.reasoningLevel ??
-            resumedReasoningLevel ??
             storedTurnRoute.reasoningLevel,
           reason: `resumed_handoff:${storedTurnRoute.modelProfile}:${activeModelProfile}`,
         };
@@ -786,7 +775,6 @@ async function executeAgentRunInPrivacyContext(
       supportsImageInput: () =>
         resolveGatewayModel(activeModelId).input.includes("image"),
       surface,
-      syncLoadedSkillNamesForResume,
       toolCalls,
       userInput,
     });

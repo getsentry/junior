@@ -166,7 +166,6 @@ describe("paused turn scheduling", () => {
     await state.connect();
 
     await upsertTurnRecord({
-      modelId: "test/model",
       conversationId,
       turnId: turnId,
       sliceId: 1,
@@ -224,7 +223,6 @@ describe("paused turn scheduling", () => {
     const conversationId = "slack:C123:1712345.0003";
 
     await upsertTurnRecord({
-      modelId: "test/model",
       conversationId,
       turnId: "turn_msg_3",
       sliceId: 1,
@@ -255,7 +253,6 @@ describe("paused turn scheduling", () => {
     const resumeTurn = vi.fn(async () => true);
 
     await upsertTurnRecord({
-      modelId: "test/model",
       conversationId,
       turnId: "turn_msg_5",
       sliceId: 2,
@@ -285,7 +282,6 @@ describe("paused turn scheduling", () => {
     const sessionId = "turn_1712345_0004";
 
     await upsertTurnRecord({
-      modelId: "test/model",
       conversationId,
       turnId: sessionId,
       sliceId: 2,

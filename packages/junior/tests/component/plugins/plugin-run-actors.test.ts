@@ -192,7 +192,6 @@ describe("run actor composition", () => {
     const sessionId = "turn-run-actors-batched";
 
     await upsertTurnRecord({
-      modelId: "test/model",
       actor: RUN_ACTOR,
       conversationId,
       turnId: sessionId,

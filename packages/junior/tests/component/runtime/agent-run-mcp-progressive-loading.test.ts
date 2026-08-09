@@ -1193,7 +1193,6 @@ describe("executeAgentRun progressive MCP loading", () => {
     ] as unknown as PiMessage[];
     await upsertTurnRecord({
       conversationId,
-      modelId: "test/model",
       piMessages: priorMessages,
       resumeReason: "auth",
       sliceId: botConfig.maxSlicesPerTurn,
@@ -1394,7 +1393,6 @@ describe("executeAgentRun progressive MCP loading", () => {
       currentPrompt,
     ] as PiMessage[];
     await upsertTurnRecord({
-      modelId: "test/model",
       conversationId: "conversation-current-resume",
       turnId: "turn-current-resume",
       sliceId: 2,
@@ -1447,7 +1445,6 @@ describe("executeAgentRun progressive MCP loading", () => {
       },
     ] as PiMessage[];
     await upsertTurnRecord({
-      modelId: "test/model",
       conversationId: "conversation-crash-retry",
       turnId: "turn-crash-retry",
       sliceId: 1,
@@ -1626,7 +1623,6 @@ describe("executeAgentRun progressive MCP loading", () => {
     ];
     const expectedResumeMessages = priorMessages.slice(0, 2);
     await upsertTurnRecord({
-      modelId: "test/model",
       conversationId: "conversation-5",
       turnId: "turn-5",
       sliceId: 1,

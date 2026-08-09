@@ -192,7 +192,6 @@ describe("paused turn Slack integration", () => {
       visibility: "private",
     });
     const sessionRecord = await turnSessionStoreModule.upsertTurnRecord({
-      modelId: "test/model",
       conversationId,
       turnId: sessionId,
       sliceId: 2,
@@ -360,7 +359,6 @@ describe("paused turn Slack integration", () => {
     const conversationId = "slack:C123:1712345.0008";
     const sessionId = "turn_msg_8";
     const sessionRecord = await turnSessionStoreModule.upsertTurnRecord({
-      modelId: "test/model",
       conversationId,
       turnId: sessionId,
       sliceId: 2,
@@ -445,7 +443,6 @@ describe("paused turn Slack integration", () => {
     const conversationId = "slack:C123:1712345.0009";
     const sessionId = "turn_msg_9";
     const sessionRecord = await turnSessionStoreModule.upsertTurnRecord({
-      modelId: "test/model",
       conversationId,
       turnId: sessionId,
       sliceId: 2,
@@ -615,7 +612,6 @@ describe("paused turn Slack integration", () => {
     const conversationId = "slack:C123:1712345.0002";
     const sessionId = "turn_msg_2";
     const sessionRecord = await turnSessionStoreModule.upsertTurnRecord({
-      modelId: "test/model",
       conversationId,
       turnId: sessionId,
       sliceId: 5,
@@ -704,7 +700,6 @@ describe("paused turn Slack integration", () => {
     const conversationId = "slack:C123:1712345.0007";
     const sessionId = "turn_msg_7";
     const sessionRecord = await turnSessionStoreModule.upsertTurnRecord({
-      modelId: "test/model",
       conversationId,
       turnId: sessionId,
       sliceId: 2,
@@ -781,7 +776,6 @@ describe("paused turn Slack integration", () => {
     const sessionId = "turn_resource-event-msg_12";
     const storedSource = slackSource("1712345.0012");
     const sessionRecord = await turnSessionStoreModule.upsertTurnRecord({
-      modelId: "test/model",
       conversationId,
       turnId: sessionId,
       sliceId: 2,
@@ -857,7 +851,6 @@ describe("paused turn Slack integration", () => {
     const conversationId = "slack:C123:1712345.0010";
     const sessionId = "turn_msg_10";
     const sessionRecord = await turnSessionStoreModule.upsertTurnRecord({
-      modelId: "test/model",
       conversationId,
       turnId: sessionId,
       sliceId: 2,
@@ -930,7 +923,6 @@ describe("paused turn Slack integration", () => {
     const conversationId = "slack:C123:1712345.0011";
     const sessionId = "turn_msg_11";
     const sessionRecord = await turnSessionStoreModule.upsertTurnRecord({
-      modelId: "test/model",
       conversationId,
       turnId: sessionId,
       sliceId: 2,
@@ -1023,7 +1015,6 @@ describe("paused turn Slack integration", () => {
     const conversationId = "slack:C123:1712345.0003";
     const sessionId = "turn_msg_3";
     const sessionRecord = await turnSessionStoreModule.upsertTurnRecord({
-      modelId: "test/model",
       conversationId,
       turnId: sessionId,
       sliceId: 2,

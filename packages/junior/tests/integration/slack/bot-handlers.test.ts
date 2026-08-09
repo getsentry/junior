@@ -566,7 +566,6 @@ describe("bot handlers (integration)", () => {
               // Simulate agent-run durable input checkpoint: the session record
               // is running at the prompt boundary when generation finishes.
               await upsertTurnRecord({
-                modelId: "test/model",
                 conversationId,
                 turnId: sessionId,
                 sliceId: 1,
@@ -1258,7 +1257,6 @@ describe("bot handlers (integration)", () => {
       });
     });
     await upsertTurnRecord({
-      modelId: "test/model",
       conversationId,
       turnId: activeSessionId,
       sliceId: 1,
@@ -1320,7 +1318,6 @@ describe("bot handlers (integration)", () => {
     const activeSessionId = "turn_msg-original";
     const storedSource = createSlackSourceForTest("C9PARKEDLOG");
     await upsertTurnRecord({
-      modelId: "test/model",
       conversationId,
       turnId: activeSessionId,
       sliceId: 1,
@@ -1404,7 +1401,6 @@ describe("bot handlers (integration)", () => {
     const destination = slackDestination("C9PARKEDPART");
     const activeSessionId = "turn_msg-original";
     await upsertTurnRecord({
-      modelId: "test/model",
       conversationId,
       turnId: activeSessionId,
       sliceId: 1,
@@ -1461,7 +1457,6 @@ describe("bot handlers (integration)", () => {
     const destination = slackDestination("C9PARKEDAUTH");
     const activeSessionId = "turn_msg-original";
     await upsertTurnRecord({
-      modelId: "test/model",
       conversationId,
       turnId: activeSessionId,
       sliceId: 1,
@@ -1623,7 +1618,6 @@ describe("bot handlers (integration)", () => {
     const destination = slackDestination("C9PARKEDLOCK");
     const activeSessionId = "turn_msg-original";
     await upsertTurnRecord({
-      modelId: "test/model",
       conversationId,
       turnId: activeSessionId,
       sliceId: 1,
@@ -1873,7 +1867,6 @@ describe("bot handlers (integration)", () => {
       });
     });
     await upsertTurnRecord({
-      modelId: "test/model",
       conversationId,
       turnId: activeSessionId,
       sliceId: 1,

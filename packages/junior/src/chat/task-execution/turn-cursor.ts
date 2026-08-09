@@ -114,9 +114,6 @@ export interface TurnRecord {
   resultMessageId?: string;
   errorMessage?: string;
   lastProgressAtMs: number;
-  loadedSkillNames?: string[];
-  modelId?: string;
-  reasoningLevel?: string;
   piMessages: PiMessage[];
   /** Per-message provenance aligned one-to-one with `piMessages`. */
   piMessageProvenance: ConversationMessageProvenance[];
@@ -161,11 +158,8 @@ interface StoredTurnRecord extends Omit<
   | "channelName"
   | "cumulativeDurationMs"
   | "cumulativeUsage"
-  | "loadedSkillNames"
-  | "modelId"
   | "piMessages"
   | "piMessageProvenance"
-  | "reasoningLevel"
   | "turnStartMessageIndex"
 > {
   /**
@@ -393,19 +387,19 @@ async function recordConversationActivityMetadata(args: {
   });
 }
 
+/** SQL-backed conversation metrics attached when materializing a turn cursor. */
+interface ConversationRuntimeMetrics {
+  channelName?: string;
+  cumulativeDurationMs?: number;
+  cumulativeUsage?: AgentTurnUsage;
+}
+
 function materializeTurnRecord(
   stored: StoredTurnRecord,
   piProjection: ConversationMessageProjection,
   turnStartMessageIndex?: number,
   restoreVolatileContext = true,
-  runtimeMetadata?: {
-    channelName?: string;
-    cumulativeDurationMs?: number;
-    cumulativeUsage?: AgentTurnUsage;
-    loadedSkillNames?: string[];
-    modelId?: string;
-    reasoningLevel?: string;
-  },
+  runtimeMetrics?: ConversationRuntimeMetrics,
 ): TurnRecord {
   const restoredProjection =
     restoreVolatileContext &&
@@ -425,13 +419,10 @@ function materializeTurnRecord(
     piMessages: restoredProjection.messages,
     piMessageProvenance: restoredProjection.provenance,
     actors: instructionActors(piProjection.provenance),
-    cumulativeDurationMs: runtimeMetadata?.cumulativeDurationMs ?? 0,
+    cumulativeDurationMs: runtimeMetrics?.cumulativeDurationMs ?? 0,
     ...definedProps({
-      channelName: runtimeMetadata?.channelName,
-      cumulativeUsage: runtimeMetadata?.cumulativeUsage,
-      loadedSkillNames: runtimeMetadata?.loadedSkillNames,
-      modelId: runtimeMetadata?.modelId,
-      reasoningLevel: runtimeMetadata?.reasoningLevel,
+      channelName: runtimeMetrics?.channelName,
+      cumulativeUsage: runtimeMetrics?.cumulativeUsage,
       dispatchId: stored.dispatchId,
       dispatchOutcome: stored.dispatchOutcome,
       errorMessage: stored.errorMessage,
@@ -640,13 +631,11 @@ async function setStoredRecord(args: {
   piMessages: PiMessage[];
   piMessageProvenance: ConversationMessageProvenance[];
   record: StoredTurnRecord;
-  runtimeMetadata: {
+  /** Channel + execution metrics written beside the Redis resume cursor. */
+  runtimeMetrics: {
     channelName?: string;
     cumulativeDurationMs: number;
     cumulativeUsage?: AgentTurnUsage;
-    loadedSkillNames?: string[];
-    modelId?: string;
-    reasoningLevel?: string;
   };
   source?: Source;
   /** Per-record TTL (state-split). */
@@ -671,7 +660,7 @@ async function setStoredRecord(args: {
     summary: {
       ...projectTurnSummary(storedRecord),
       startedAtMs: storedRecord.startedAtMs,
-      ...args.runtimeMetadata,
+      ...args.runtimeMetrics,
     },
   });
   await args.fence();
@@ -695,7 +684,7 @@ async function setStoredRecord(args: {
     },
     args.turnStartMessageIndex,
     true,
-    args.runtimeMetadata,
+    args.runtimeMetrics,
   );
 }
 
@@ -723,14 +712,11 @@ async function updateTurnState(args: {
     piMessages: args.existing.piMessages,
     piMessageProvenance: args.existing.piMessageProvenance,
     ttlMs: turnCursorTtlMs(args.state),
-    runtimeMetadata: {
+    runtimeMetrics: {
       cumulativeDurationMs: args.existing.cumulativeDurationMs,
       ...definedProps({
         channelName: args.existing.channelName,
         cumulativeUsage: args.existing.cumulativeUsage,
-        loadedSkillNames: args.existing.loadedSkillNames,
-        modelId: args.existing.modelId,
-        reasoningLevel: args.existing.reasoningLevel,
       }),
     },
     ...definedProps({
@@ -775,8 +761,6 @@ export async function upsertTurnRecord(args: {
   destinationVisibility?: ConversationPrivacy;
   source?: Source;
   lastProgressAtMs?: number;
-  loadedSkillNames?: string[];
-  modelId: string;
   conversationStore?: ConversationStore;
   turnId: string;
   sliceId: number;
@@ -787,7 +771,6 @@ export async function upsertTurnRecord(args: {
   trailingMessageProvenance?: ConversationMessageProvenance[];
   actor?: Actor;
   resumeReason?: TurnPauseReason;
-  reasoningLevel?: string;
   errorMessage?: string;
   resumedFromSliceId?: number;
   traceId?: string;
@@ -891,16 +874,13 @@ async function upsertTurnRecordLocked(
     piMessages: commit.messages,
     piMessageProvenance: commit.provenance,
     ttlMs,
-    // TODO(#1267): remove the temporary caller-to-SQL metadata write once the
-    // SQL-only turn readers have completed rollout.
-    runtimeMetadata: {
+    // Checkpoint commit also updates conversation execution metrics in SQL.
+    // Channel/duration/usage are not Redis resume-cursor fields.
+    runtimeMetrics: {
       channelName: args.channelName ?? conversation?.channelName,
       cumulativeDurationMs:
         args.cumulativeDurationMs ?? executionMetrics?.durationMs ?? 0,
       cumulativeUsage: args.cumulativeUsage ?? executionMetrics?.usage,
-      loadedSkillNames: args.loadedSkillNames,
-      modelId: args.modelId,
-      reasoningLevel: args.reasoningLevel,
     },
     // Pass through only an explicit override so indexes stay on the resume window
     // by default even when the record takes a short terminal TTL.
@@ -949,12 +929,9 @@ type TurnSummaryWrite = {
   destinationVisibility?: ConversationPrivacy;
   source?: Source;
   lastProgressAtMs?: number;
-  loadedSkillNames?: string[];
-  modelId?: string;
   conversationStore?: ConversationStore;
   actor?: Actor;
   resumeReason?: TurnPauseReason;
-  reasoningLevel?: string;
   turnId: string;
   sliceId: number;
   startedAtMs?: number;

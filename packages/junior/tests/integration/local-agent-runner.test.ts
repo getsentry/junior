@@ -150,7 +150,6 @@ async function persistRunningSessionForFakeReply(
 ): Promise<void> {
   await saveTurnCheckpoint({
     mode: "running",
-    modelId: "fake-local-agent",
     conversationId: context.conversationId,
     destination: context.destination,
     actor:

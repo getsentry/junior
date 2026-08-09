@@ -29,9 +29,6 @@ async function resumeState(conversationId: string, turnId: string) {
     resume: createResumeState({
       destination: { platform: "local", conversationId },
       durability: {},
-      getLoadedSkillNames: () => [],
-      getModelId: () => "test/model",
-      getReasoningLevel: () => undefined,
       recordActiveMcpProviders: async () => undefined,
       runSource: createLocalSource(conversationId),
       conversationId,
@@ -64,9 +61,6 @@ describe("agent resume", () => {
     const resume = createResumeState({
       destination: { platform: "local", conversationId },
       durability: {},
-      getLoadedSkillNames: () => [],
-      getModelId: () => "test/model",
-      getReasoningLevel: () => undefined,
       recordActiveMcpProviders: async () => {
         throw new Error("provider metadata unavailable");
       },
@@ -97,7 +91,6 @@ describe("agent resume", () => {
       conversationId,
       turnId,
       sliceId: botConfig.maxSlicesPerTurn - 1,
-      modelId: "test/model",
       messages: [message("authorize")],
       surface: "internal",
     });

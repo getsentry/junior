@@ -796,7 +796,6 @@ describe("agent run continuation", () => {
 
     await saveTurnCheckpoint({
       mode: "completed",
-      modelId: "test-model",
       conversationId: "conversation-1",
       turnId: "turn-1",
       messages: reply.piMessages ?? [],
@@ -941,7 +940,6 @@ describe("agent run continuation", () => {
     // acceptance; generation itself does not commit provider delivery.
     await saveTurnCheckpoint({
       mode: "completed",
-      modelId: "test-model",
       conversationId: "slack:C123:1712345.0001",
       turnId: "turn-steering",
       messages: reply.piMessages ?? [],
@@ -1182,7 +1180,6 @@ describe("agent run continuation", () => {
       },
     ] as PiMessage[];
     await turnSessionState.upsertTurnRecord({
-      modelId: "test/model",
       conversationId,
       turnId: turnId,
       sliceId: 1,
@@ -1343,7 +1340,6 @@ describe("agent run continuation", () => {
       timestamp: 5,
     } satisfies PiMessage;
     await turnSessionState.upsertTurnRecord({
-      modelId: "test/model",
       conversationId,
       turnId: sessionId,
       sliceId: 1,

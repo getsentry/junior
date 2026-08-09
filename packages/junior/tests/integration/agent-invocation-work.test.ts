@@ -476,7 +476,6 @@ describe("agent invocation conversation work", () => {
         actor: invocationInput.actor,
         conversationId: created.childConversationId,
         destination,
-        modelId: "test-model",
         // Only uncommitted trailing assistant output survived the crash: there
         // is no continuable user/toolResult boundary to resume from.
         piMessages: [
@@ -581,7 +580,6 @@ describe("agent invocation conversation work", () => {
         actor: invocationInput.actor,
         conversationId: created.childConversationId,
         destination,
-        modelId: "test-model",
         piMessages: [
           {
             role: "user",

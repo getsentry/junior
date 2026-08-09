@@ -357,7 +357,6 @@ describe("Slack behavior: message content", () => {
                 context.turnId
               ) {
                 await upsertTurnRecord({
-                  modelId: "test/model",
                   conversationId: context.conversationId,
                   turnId: context.turnId,
                   sliceId: 1,
@@ -601,7 +600,6 @@ describe("Slack behavior: message content", () => {
       messages: activeMessages,
     });
     await upsertTurnRecord({
-      modelId: "test/model",
       conversationId: thread.id,
       turnId: "turn-active-crashed",
       sliceId: 1,

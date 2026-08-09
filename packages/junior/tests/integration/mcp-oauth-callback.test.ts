@@ -173,7 +173,6 @@ async function createAwaitingMcpTurnRecord(args: {
   threadTs: string;
 }) {
   await turnSessionStoreModule.upsertTurnRecord({
-    modelId: "test/model",
     conversationId: args.conversationId,
     turnId: args.turnId,
     sliceId: 2,
@@ -814,7 +813,6 @@ describe("mcp oauth callback integration", () => {
   it("does not resume a stale MCP-blocked request after a newer thread message", async () => {
     const sessionId = "turn_user-4";
     await turnSessionStoreModule.upsertTurnRecord({
-      modelId: "test/model",
       conversationId: "conversation-4",
       turnId: sessionId,
       sliceId: 2,

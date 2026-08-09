@@ -762,7 +762,6 @@ async function resumeSlackTurnInContext(
           conversationId: runArgs.conversationId,
           turnId: runArgs.turnId,
           messages: reply.piMessages,
-          modelId: reply.diagnostics.modelId,
           durationMs: reply.diagnostics.durationMs,
           usage: reply.diagnostics.usage,
           destination: replyContext.routing.destination,

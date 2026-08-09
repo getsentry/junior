@@ -478,9 +478,7 @@ export function createAgentInvocationWorker(options: {
             }
           : {}),
         messages: result.piMessages,
-        modelId: result.diagnostics.modelId,
         actor: invocation.actor,
-        reasoningLevel: result.diagnostics.reasoningLevel,
         source: invocation.source,
         surface: "internal",
       });

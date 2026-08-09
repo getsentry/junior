@@ -64,7 +64,6 @@ async function recordCompletedSession(args: {
       platform: "local",
       conversationId: args.conversationId,
     },
-    modelId: "test/model",
     piMessages: completedMessages(),
     turnId: args.sessionId,
     sliceId: 1,
