@@ -71,7 +71,7 @@ Three independent workflows run on pull requests:
 - `Integration evals` runs system evals when integration eval files/harness changed or the PR has `trigger-evals-integration` / `trigger-evals`
 - `Guardian evals` runs isolated Guardian snapshots when Guardian eval files/harness changed or the PR has `trigger-evals-guardian` / `trigger-evals`
 
-Suite labels follow `trigger-evals-[domain]`. Adding a trigger label fires immediately. If the label is already on the PR, future `synchronize` events still run the matching suite(s). Product source under `packages/junior/src/**` does not auto-run evals.
+Suite labels follow `trigger-evals-[domain]`. Adding a trigger label fires immediately. If the label is already on the PR, future `synchronize` events still run the matching suite(s). Product source under `packages/junior/src/**` does not auto-run evals, except Guardian policy changes in `packages/junior/src/chat/services/guardian-action-policy.ts`.
 
 Guardian evals only need gateway credentials. Behavioral and integration evals still need gateway plus sandbox access.
 
