@@ -28,6 +28,7 @@ import {
   saveTurnCheckpoint,
 } from "@/chat/task-execution/checkpoint";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
+import { wakePausedTurn } from "@/chat/task-execution/turn-wake";
 import {
   CONVERSATION_ID,
   SLACK_DESTINATION,
@@ -75,12 +76,21 @@ async function slack(
   const wakes = createConversationWorkQueueTestAdapter();
   const adapter = createSlackAdapterFixture();
   const agentRunner = options.agentRunner ?? { run: complete };
+  let pausedWakes = 0;
   const work = createConversationWork({
     agentRunner: options.pausedRunner ?? agentRunner,
     conversationStore: getConversationStore(),
     getSlackAdapter: () => adapter,
     queue: wakes,
-    services: { replyExecutor: { agentRunner } },
+    services: {
+      replyExecutor: {
+        agentRunner,
+        wakePausedTurn: async (request) => {
+          pausedWakes += 1;
+          await wakePausedTurn(request, { queue: wakes, state });
+        },
+      },
+    },
     state,
   });
   const run = async (context: Parameters<typeof work.run>[0]) =>
@@ -91,6 +101,7 @@ async function slack(
   return {
     state,
     wakes,
+    pausedWakes: () => pausedWakes,
     next: async () =>
       await processConversationQueueMessage(wakes.takeMessage(), {
         queue: wakes,
@@ -341,17 +352,43 @@ describe("durable queue contract", () => {
       );
     });
 
-    it("stops a timed-out turn that repeats its committed boundary", async () => {
+    it("continues a paused turn on the same queue, then stops when progress stalls", async () => {
       const turnId = await seedTurn("paused");
+      let resumes = 0;
       const q = await slack({
         shouldYield: () => true,
         pausedRunner: {
           run: async (request) => {
+            resumes += 1;
             const piMessages = request.input.piMessages?.map((message) =>
               message.role === "assistant"
                 ? { ...message, usage: { ...message.usage, output: 99 } }
                 : message,
             );
+            if (resumes === 1) {
+              const record = await saveTurnCheckpoint({
+                mode: "paused",
+                reason: "timeout",
+                actor: request.routing.actor,
+                conversationId: request.conversationId,
+                destination: request.routing.destination,
+                messages: [
+                  ...(piMessages ?? []),
+                  {
+                    role: "user",
+                    content: [{ type: "text", text: "new committed input" }],
+                    timestamp: 4,
+                  },
+                ],
+                modelId: "test-model",
+                sliceId: 2,
+                source: request.routing.source,
+                surface: request.routing.surface,
+                turnId: request.turnId,
+              });
+              if (!record) throw new Error("Expected paused checkpoint");
+              return { status: "suspended", resumeVersion: record.version };
+            }
             const faux = createFauxCore({ api: "test", provider: "test" });
             faux.setResponses([
               async () => {
@@ -385,20 +422,8 @@ describe("durable queue contract", () => {
       });
 
       await expect(q.next()).resolves.toEqual({ status: "completed" });
-      await requestConversationWork({
-        conversationId: CONVERSATION_ID,
-        destination: SLACK_DESTINATION,
-        nowMs: Date.now() + 60_000,
-        state: q.state,
-      });
-      await ensureConversationWake({
-        conversationId: CONVERSATION_ID,
-        idempotencyKey: "stuck-turn-redelivery",
-        nowMs: Date.now() + 60_000,
-        queue: q.wakes,
-        state: q.state,
-      });
-      await expect(q.next()).resolves.toEqual({ status: "completed" });
+      expect(resumes).toBeGreaterThan(1);
+      expect(q.pausedWakes()).toBeGreaterThan(0);
       expect(q.wakes.hasQueuedMessages()).toBe(false);
       expect(slackApiOutbox.messages()).toHaveLength(1);
       expect(
