@@ -190,6 +190,22 @@ async function expectTerminalTurn(
   );
 }
 
+/** Prove that a terminal turn does not block a later user request. */
+async function expectNextTurn(q: QueueTest, ts: string): Promise<void> {
+  const priorReplies = q.replies();
+  await q.send({
+    text: `<@${SLACK_BOT_USER_ID}> check the next deploy`,
+    threadTs: "1712345.0001",
+    ts,
+  });
+  await expect(q.next()).resolves.toEqual({ status: "completed" });
+  await expectTerminalTurn(q, {
+    turnId: `turn_${ts.replace(".", "_")}`,
+    state: "completed",
+    replies: [...priorReplies, "Deploy checked."],
+  });
+}
+
 /** Assert the durable state left by a turn that waits for an external event. */
 async function expectPausedTurn(
   q: QueueTest,
@@ -423,10 +439,12 @@ describe("durable queue contract", () => {
     it("continues a paused turn on the same queue, then stops when progress stalls", async () => {
       const turnId = await seedTurn("paused");
       let resumes = 0;
+      let shouldYield = true;
       const q = await slack({
-        shouldYield: () => true,
+        shouldYield: () => shouldYield,
         pausedRunner: {
           run: async (request) => {
+            if (request.turnId !== turnId) return await complete(request);
             resumes += 1;
             const piMessages = request.input.piMessages?.map((message) =>
               message.role === "assistant"
@@ -497,6 +515,8 @@ describe("durable queue contract", () => {
         replies: 1,
         error: "made no progress",
       });
+      shouldYield = false;
+      await expectNextTurn(q, "1712345.0005");
     });
 
     it("does not report failure after SQL recorded an accepted reply", async () => {
@@ -560,13 +580,7 @@ describe("durable queue contract", () => {
         replies: [],
       });
 
-      await q.send({
-        text: `<@${SLACK_BOT_USER_ID}> check the next deploy`,
-        threadTs: "1712345.0001",
-        ts: "1712345.0003",
-      });
-      await expect(q.next()).resolves.toEqual({ status: "completed" });
-      expect(q.replies()).toEqual(["Deploy checked."]);
+      await expectNextTurn(q, "1712345.0003");
     });
 
     it("stops a running turn after its worker disappears", async () => {
@@ -599,15 +613,19 @@ describe("durable queue contract", () => {
         replies: 1,
         error: "lost its worker",
       });
+      await expectNextTurn(q, "1712345.0006");
     });
 
     it("stops at the retry limit without duplicate delivery", async () => {
       let attempts = 0;
       const q = await slack({
         agentRunner: {
-          run: async () => {
+          run: async (request) => {
             attempts += 1;
-            throw new Error("agent unavailable");
+            if (attempts <= CONVERSATION_WORK_MAX_RETRIES) {
+              throw new Error("agent unavailable");
+            }
+            return await complete(request);
           },
         },
       });
@@ -626,6 +644,7 @@ describe("durable queue contract", () => {
         }),
       ).resolves.toMatchObject({ needsRun: false, messages: [] });
       expect(q.wakes.hasQueuedMessages()).toBe(false);
+      await expectNextTurn(q, "1712345.0007");
     });
   });
 });

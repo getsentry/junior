@@ -123,7 +123,7 @@ queues, and locks. The cases describe the expected product behavior:
   a timed-out turn that repeats its committed boundary stops; an expired worker
   lease stops its stranded running turn while preserving committed history; and
   repeated agent failure stops at the retry limit with at most one visible
-  fallback.
+  fallback. Each stopped state must allow a later user request to complete.
 
 Broader heartbeat scheduling remains in
 `packages/junior/tests/integration/heartbeat.test.ts`. Component tests own
