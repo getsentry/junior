@@ -36,7 +36,7 @@ import { createSlackListUpdateItemTool } from "@/chat/slack/tools/list/update-it
 import { createSlackThreadReadTool } from "@/chat/slack/tools/thread-read";
 import { createSlackUserLookupTool } from "@/chat/slack/tools/user-lookup";
 import { createSystemTimeTool } from "@/chat/tools/system-time";
-import { createListConversationEventsTool } from "@/chat/tools/list-conversation-events";
+import { createSearchConversationEventsTool } from "@/chat/tools/search-conversation-events";
 import { createHandoffTool } from "@/chat/tools/handoff/tool";
 import type { ToolRegistry } from "@/chat/tools/definition";
 import type {
@@ -138,7 +138,8 @@ export function createTools(
     ...createScheduledTaskTools(context),
   };
   if (context.conversationId) {
-    tools.listConversationEvents = createListConversationEventsTool(context);
+    tools.searchConversationEvents =
+      createSearchConversationEventsTool(context);
   }
   if (context.supportsImageInput) {
     tools.viewImage = createViewImageTool(

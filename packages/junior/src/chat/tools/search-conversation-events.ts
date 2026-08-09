@@ -48,7 +48,7 @@ const projectedEventSchema = z
   })
   .strict();
 
-const listConversationEventsOutputSchema = juniorToolOutputSchema.extend({
+const searchConversationEventsOutputSchema = juniorToolOutputSchema.extend({
   conversation_id: z.string().min(1),
   events: z.array(projectedEventSchema),
   has_older: z.boolean().describe("Whether matching older events exist."),
@@ -69,10 +69,12 @@ interface ConversationEventAccessScope {
 }
 
 /** Create a deferred tool that returns a bounded conversation event page. */
-export function createListConversationEventsTool(context: ToolRuntimeContext) {
+export function createSearchConversationEventsTool(
+  context: ToolRuntimeContext,
+) {
   return zodTool({
     description:
-      "List stored messages, agent history, tool results, handoffs, and compactions for one conversation. Cross-conversation access is limited to retained public conversations in the current Slack workspace.",
+      "Search stored messages, agent history, tool results, handoffs, and compactions for one conversation. Cross-conversation access is limited to retained public conversations in the current Slack workspace.",
     exposure: "deferred",
     source: CONVERSATIONS_TOOL_SOURCE,
     annotations: {
@@ -122,12 +124,12 @@ export function createListConversationEventsTool(context: ToolRuntimeContext) {
           .optional(),
       })
       .strict(),
-    outputSchema: listConversationEventsOutputSchema,
+    outputSchema: searchConversationEventsOutputSchema,
     execute: async (input) => {
       const currentConversationId = context.conversationId?.trim();
       if (!currentConversationId) {
         throw new ToolInputError(
-          "listConversationEvents requires an active conversation",
+          "searchConversationEvents requires an active conversation",
         );
       }
 
@@ -174,7 +176,7 @@ export function createListConversationEventsTool(context: ToolRuntimeContext) {
           : await conversationStore.get({
               conversationId: targetRootConversationId,
             });
-      assertCanListConversationEvents({
+      assertCanSearchConversationEvents({
         accessScope,
         targetConversationId: conversationId,
         targetRootConversationId,
@@ -279,7 +281,7 @@ async function resolveRootConversationId(
   return conversationId;
 }
 
-function assertCanListConversationEvents(args: {
+function assertCanSearchConversationEvents(args: {
   accessScope: ConversationEventAccessScope;
   targetConversationId: string;
   targetRootConversationId?: string;

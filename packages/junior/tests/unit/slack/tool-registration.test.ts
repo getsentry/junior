@@ -110,9 +110,9 @@ describe("Slack tool registration", () => {
     expect(tools).toHaveProperty("addReaction");
     expect(tools).toHaveProperty("slackCanvasCreate");
     expect(tools).not.toHaveProperty("searchConversationMessages");
-    expect(tools).toHaveProperty("listConversationEvents");
-    expect(tools.listConversationEvents?.exposure).toBe("deferred");
-    expect(tools.listConversationEvents?.source?.id).toBe("conversations");
+    expect(tools).toHaveProperty("searchConversationEvents");
+    expect(tools.searchConversationEvents?.exposure).toBe("deferred");
+    expect(tools.searchConversationEvents?.source?.id).toBe("conversations");
   });
 
   it("registers channel-scope tools in shared channel context", () => {
@@ -125,13 +125,13 @@ describe("Slack tool registration", () => {
     expect(tools).toHaveProperty("addReaction");
     expect(tools).toHaveProperty("slackCanvasCreate");
     expect(tools).toHaveProperty("searchConversationMessages");
-    expect(tools).toHaveProperty("listConversationEvents");
+    expect(tools).toHaveProperty("searchConversationEvents");
     expect(tools).toHaveProperty("stopWatchingResources");
     expect(tools).toHaveProperty("listResourceEventSubscriptions");
     expect(tools.searchConversationMessages?.exposure).toBe("deferred");
     expect(tools.searchConversationMessages?.source?.id).toBe("conversations");
-    expect(tools.listConversationEvents?.exposure).toBe("deferred");
-    expect(tools.listConversationEvents?.source?.id).toBe("conversations");
+    expect(tools.searchConversationEvents?.exposure).toBe("deferred");
+    expect(tools.searchConversationEvents?.source?.id).toBe("conversations");
     expect(tools.stopWatchingResources?.exposure).toBe("deferred");
     expect(tools.listResourceEventSubscriptions?.exposure).toBe("deferred");
   });
@@ -310,7 +310,7 @@ describe("Slack tool registration", () => {
     ).toEqual([]);
     expect(tools).not.toHaveProperty("attachFile");
     expect(tools).not.toHaveProperty("stopWatchingResources");
-    expect(tools).not.toHaveProperty("listConversationEvents");
+    expect(tools).not.toHaveProperty("searchConversationEvents");
   });
 
   it("registers image generation only when artifact persistence is available", () => {

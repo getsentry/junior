@@ -88,7 +88,7 @@ Host-owned `native_event` rows under the reserved `junior` namespace carry
 transcript metadata such as account link and unlink changes. They are visible
 in reporting but never enter model history. Plugin-owned `plugin_event` rows
 use the same presentation contract under a plugin namespace. The deferred
-`listConversationEvents` tool is the agent-facing observational reader for
+`searchConversationEvents` tool is the agent-facing observational reader for
 that same log: it returns bounded events for the current conversation tree, or
 for another retained public conversation in the same Slack workspace. Oversized
 event data is represented by identifying fields and its original JSON byte
