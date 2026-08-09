@@ -214,6 +214,7 @@ export function conversationQueueMessage(
   overrides: Partial<ConversationQueueMessage> = {},
 ): ConversationQueueMessage {
   return {
+    schemaVersion: 2,
     conversationId: CONVERSATION_ID,
     ...overrides,
   };

@@ -18,13 +18,14 @@ describe("conversation queue transport", () => {
 
     await expect(
       queue.send(
-        { conversationId: CONVERSATION_ID },
+        { schemaVersion: 2, conversationId: CONVERSATION_ID },
         { delayMs: 15_001, idempotencyKey: "idem-1" },
       ),
     ).resolves.toEqual({ messageId: "msg_123" });
     expect(send).toHaveBeenCalledWith(
       "junior_test_work",
       expect.objectContaining({
+        schemaVersion: 2,
         conversationId: CONVERSATION_ID,
         signature: expect.any(String),
         signatureVersion: "v2",

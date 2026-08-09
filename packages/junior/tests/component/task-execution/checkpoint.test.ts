@@ -578,7 +578,7 @@ describe("turn checkpoint", () => {
     );
   });
 
-  it("ignores unknown fields in stored turn cursors", async () => {
+  it("requires v2 and ignores unknown fields in stored turn cursors", async () => {
     const { getStateAdapter } = await import("@/chat/state/adapter");
     const { getTurnRecord } = await import("@/chat/task-execution/turn-cursor");
     const { turnCursorKey } =
@@ -590,6 +590,7 @@ describe("turn checkpoint", () => {
     await stateAdapter.set(
       turnCursorKey(conversationId, turnId),
       {
+        schemaVersion: 2,
         version: 1,
         conversationId,
         turnId,
@@ -613,8 +614,23 @@ describe("turn checkpoint", () => {
       60_000,
     );
 
+    const stored = await stateAdapter.get(
+      turnCursorKey(conversationId, turnId),
+    );
+    await stateAdapter.set(
+      turnCursorKey(conversationId, turnId),
+      { ...(stored as Record<string, unknown>), schemaVersion: undefined },
+      60_000,
+    );
+    await expect(getTurnRecord(conversationId, turnId)).rejects.toThrow();
+    await stateAdapter.set(
+      turnCursorKey(conversationId, turnId),
+      stored,
+      60_000,
+    );
+
     const record = await getTurnRecord(conversationId, turnId);
-    expect(record).toMatchObject({ state: "paused" });
+    expect(record).toMatchObject({ schemaVersion: 2, state: "paused" });
     expect(record).not.toHaveProperty("destination");
     expect(record).not.toHaveProperty("source");
     expect(record).not.toHaveProperty("actor");

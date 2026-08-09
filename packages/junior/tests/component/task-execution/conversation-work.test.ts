@@ -2235,17 +2235,18 @@ describe("conversation work execution", () => {
     expect(injected).toEqual(["m1"]);
   });
 
-  it("rejects malformed Vercel Queue payloads", async () => {
+  it.each([
+    { conversationId: CONVERSATION_ID },
+    { schemaVersion: 1, conversationId: CONVERSATION_ID },
+    { wrong: CONVERSATION_ID },
+  ])("rejects non-v2 Vercel Queue payloads", async (message) => {
     const queue = createConversationWorkQueueTestAdapter();
 
     await expect(
-      processConversationQueueMessage(
-        { wrong: CONVERSATION_ID },
-        {
-          queue,
-          run: async () => ({ status: "completed" }),
-        },
-      ),
+      processConversationQueueMessage(message, {
+        queue,
+        run: async () => ({ status: "completed" }),
+      }),
     ).rejects.toThrow("Conversation queue message is malformed");
   });
 });

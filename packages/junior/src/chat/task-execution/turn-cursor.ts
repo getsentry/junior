@@ -43,6 +43,7 @@ import {
   turnCursorMutationKey,
 } from "./turn-cursor-keys";
 
+const TURN_CURSOR_SCHEMA_VERSION = 2;
 const TURN_CURSOR_RESUME_TTL_MS = 24 * 60 * 60 * 1000;
 const TURN_CURSOR_TERMINAL_TTL_MS = 60 * 60 * 1000;
 const TURN_CURSOR_MUTATION_LOCK_WAIT_MS = 10_000;
@@ -102,6 +103,7 @@ interface ConversationMessageProjection {
 
 export interface TurnRecord {
   channelName?: string;
+  schemaVersion: 2;
   version: number;
   conversationId: string;
   cumulativeDurationMs: number;
@@ -138,6 +140,7 @@ export interface TurnRecord {
 }
 
 export interface TurnSummary {
+  schemaVersion: 2;
   conversationId: string;
   dispatchId?: string;
   dispatchOutcome?: AgentDispatchOutcome;
@@ -209,6 +212,7 @@ const seqCursorSchema = z.number().int().min(-1);
 /** Thin recovery projection stored per conversation. Reporting reads SQL. */
 const storedTurnSummarySchema = z
   .object({
+    schemaVersion: z.literal(TURN_CURSOR_SCHEMA_VERSION),
     version: z.number().int().nonnegative(),
     conversationId: z.string().min(1),
     dispatchId: z.string().min(1).optional(),
@@ -226,6 +230,7 @@ const storedTurnSummarySchema = z
 /** Full resume cursor stored for one turn. */
 const storedTurnRecordSchema = z
   .object({
+    schemaVersion: z.literal(TURN_CURSOR_SCHEMA_VERSION),
     version: z.number().int().nonnegative(),
     conversationId: z.string().min(1),
     dispatchId: z.string().min(1).optional(),
@@ -408,6 +413,7 @@ function materializeTurnRecord(
       ? restoreRuntimeContext(piProjection, stored.runtimeContext)
       : piProjection;
   return {
+    schemaVersion: stored.schemaVersion,
     version: stored.version,
     conversationId: stored.conversationId,
     turnId: stored.turnId,
@@ -596,6 +602,7 @@ function buildStoredRecord(args: {
 }): StoredTurnRecord {
   const nowMs = Date.now();
   return {
+    schemaVersion: TURN_CURSOR_SCHEMA_VERSION,
     version: (args.previousVersion ?? 0) + 1,
     conversationId: args.conversationId,
     turnId: args.turnId,
@@ -1015,6 +1022,7 @@ async function recordTurnSummaryOwned(
   // Summary-only path writes the recovery index, not the per-turn cursor key.
   const ttlMs = turnCursorIndexTtlMs(args.ttlMs);
   const summary: TurnSummary = {
+    schemaVersion: TURN_CURSOR_SCHEMA_VERSION,
     version: existing?.version ?? 0,
     conversationId: args.conversationId,
     turnId: args.turnId,

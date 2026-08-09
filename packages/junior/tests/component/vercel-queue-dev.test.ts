@@ -302,6 +302,7 @@ describe("registerVercelConversationWorkDevConsumer", () => {
     await expect(
       handler(
         signConversationQueueMessage({
+          schemaVersion: 2,
           conversationId: "slack:C123:1712345.0001",
         }),
         metadata,
