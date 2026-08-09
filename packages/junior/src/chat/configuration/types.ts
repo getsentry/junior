@@ -1,3 +1,4 @@
+/** One user-authored configuration value scoped to a Location. */
 export interface ConfigEntry {
   key: string;
   value: unknown;
@@ -8,17 +9,15 @@ export interface ConfigEntry {
   expiresAt?: string;
 }
 
-export interface LocationConfigState {
-  schemaVersion: 1;
-  entries: Record<string, ConfigEntry>;
-}
-
+/** Entry-level persistence used by Location configuration. */
 export interface LocationConfigurationStorage {
+  get: (key: string) => Promise<ConfigEntry | undefined>;
   list: () => Promise<ConfigEntry[]>;
   set: (entry: ConfigEntry) => Promise<void>;
   unset: (key: string) => Promise<boolean>;
 }
 
+/** Read and update user-authored configuration for one Location. */
 export interface LocationConfigurationService {
   get: (key: string) => Promise<ConfigEntry | undefined>;
   set: (input: {

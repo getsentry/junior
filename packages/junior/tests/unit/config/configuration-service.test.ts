@@ -5,6 +5,7 @@ import type { ConfigEntry } from "@/chat/configuration/types";
 function createInMemoryService() {
   const entries = new Map<string, ConfigEntry>();
   const service = createLocationConfigurationService({
+    get: async (key) => entries.get(key),
     list: async () => [...entries.values()],
     set: async (entry) => {
       entries.set(entry.key, entry);

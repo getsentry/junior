@@ -4,7 +4,7 @@ import { and, eq, sql } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorDestinations, juniorLocationConfigurations } from "@/db/schema";
 import {
-  coerceLocationConfigState,
+  coerceLegacyLocationConfig,
   createLocationConfigurationService,
 } from "@/chat/configuration/service";
 import type {
@@ -12,6 +12,7 @@ import type {
   LocationConfigurationService,
 } from "@/chat/configuration/types";
 
+/** Resolve or create the canonical Location for a Slack Destination. */
 async function resolveLocationId(
   db: JuniorDatabase,
   destination: SlackDestination,
@@ -49,6 +50,7 @@ async function resolveLocationId(
   return rows[0]!.id;
 }
 
+/** Persist configuration rows for the Location addressed by a Slack Destination. */
 function createSqlLocationConfigurationStorage(
   db: JuniorDatabase,
   destination: SlackDestination,
@@ -59,8 +61,8 @@ function createSqlLocationConfigurationStorage(
     eq(juniorDestinations.providerDestinationId, destination.channelId),
   );
 
-  const list = async (): Promise<ConfigEntry[]> => {
-    const rows = await db
+  const selectEntries = () =>
+    db
       .select({
         key: juniorLocationConfigurations.key,
         value: juniorLocationConfigurations.value,
@@ -73,18 +75,21 @@ function createSqlLocationConfigurationStorage(
       .innerJoin(
         juniorDestinations,
         eq(juniorDestinations.id, juniorLocationConfigurations.locationId),
-      )
-      .where(locationWhere);
-    return rows.map((row) => ({
-      key: row.key,
-      value: JSON.parse(row.value) as unknown,
-      scope: "location",
-      updatedAt: row.updatedAt.toISOString(),
-      updatedBy: row.updatedBy ?? undefined,
-      source: row.source ?? undefined,
-      expiresAt: row.expiresAt ?? undefined,
-    }));
-  };
+      );
+  const entryFromRow = (
+    row: Awaited<ReturnType<typeof selectEntries>>[number],
+  ): ConfigEntry => ({
+    key: row.key,
+    value: JSON.parse(row.value) as unknown,
+    scope: "location",
+    updatedAt: row.updatedAt.toISOString(),
+    updatedBy: row.updatedBy ?? undefined,
+    source: row.source ?? undefined,
+    expiresAt: row.expiresAt ?? undefined,
+  });
+
+  const list = async (): Promise<ConfigEntry[]> =>
+    (await selectEntries().where(locationWhere)).map(entryFromRow);
 
   const set = async (entry: ConfigEntry): Promise<void> => {
     const locationId = await resolveLocationId(db, destination);
@@ -115,6 +120,12 @@ function createSqlLocationConfigurationStorage(
   };
 
   return {
+    get: async (key: string): Promise<ConfigEntry | undefined> => {
+      const rows = await selectEntries()
+        .where(and(locationWhere, eq(juniorLocationConfigurations.key, key)))
+        .limit(1);
+      return rows[0] ? entryFromRow(rows[0]) : undefined;
+    },
     list,
     set,
     unset: async (key: string): Promise<boolean> => {
@@ -166,17 +177,27 @@ export function createDurableLocationConfigurationService(args: {
       if ((await storage.list()).length > 0) {
         return;
       }
-      // TODO(#1267, v0.147.0): Remove after SQL readers have copied all live 7-day Redis records.
-      const legacy = coerceLocationConfigState(await args.loadLegacy());
-      await storage.insertLegacy(Object.values(legacy.entries));
+      // TODO(v0.147.0): Remove the 7-day Redis Location configuration import.
+      const legacy = coerceLegacyLocationConfig(await args.loadLegacy());
+      await storage.insertLegacy(legacy);
     })());
 
   return createLocationConfigurationService({
+    get: async (key) => {
+      await ensureCutover();
+      return await storage.get(key);
+    },
     list: async () => {
       await ensureCutover();
       return await storage.list();
     },
-    set: storage.set,
-    unset: storage.unset,
+    set: async (entry) => {
+      await ensureCutover();
+      await storage.set(entry);
+    },
+    unset: async (key) => {
+      await ensureCutover();
+      return await storage.unset(key);
+    },
   });
 }

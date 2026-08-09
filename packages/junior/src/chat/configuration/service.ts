@@ -1,6 +1,5 @@
 import type {
   ConfigEntry,
-  LocationConfigState,
   LocationConfigurationService,
   LocationConfigurationStorage,
 } from "@/chat/configuration/types";
@@ -40,30 +39,24 @@ function sanitizeEntry(value: unknown): ConfigEntry | undefined {
   };
 }
 
-/** Coerce legacy persisted configuration into the current entry shape. */
-export function coerceLocationConfigState(raw: unknown): LocationConfigState {
+/** Coerce legacy persisted configuration into current Location entries. */
+export function coerceLegacyLocationConfig(raw: unknown): ConfigEntry[] {
   const rawConfig = isRecord(raw) && isRecord(raw.configuration)
     ? raw.configuration
     : {};
   const rawEntries = isRecord(rawConfig.entries) ? rawConfig.entries : {};
-  const entries: Record<string, ConfigEntry> = {};
-  for (const value of Object.values(rawEntries)) {
+  return Object.values(rawEntries).flatMap((value) => {
     const entry = sanitizeEntry(value);
-    if (entry) {
-      entries[entry.key] = entry;
-    }
-  }
-  return { schemaVersion: 1, entries };
+    return entry ? [entry] : [];
+  });
 }
 
 /** Create a Location configuration service over entry-level storage. */
 export function createLocationConfigurationService(
   storage: LocationConfigurationStorage,
 ): LocationConfigurationService {
-  const get = async (key: string): Promise<ConfigEntry | undefined> => {
-    const normalizedKey = key.trim();
-    return (await storage.list()).find((entry) => entry.key === normalizedKey);
-  };
+  const get = async (key: string): Promise<ConfigEntry | undefined> =>
+    await storage.get(key.trim());
 
   const set: LocationConfigurationService["set"] = async (input) => {
     const normalizedKey = input.key.trim();

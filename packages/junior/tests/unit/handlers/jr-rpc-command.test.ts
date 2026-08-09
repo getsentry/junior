@@ -16,6 +16,7 @@ const activeSkill: Skill = {
 function makeLocationConfiguration() {
   const entries = new Map<string, ConfigEntry>();
   return createLocationConfigurationService({
+    get: async (key) => entries.get(key),
     list: async () => [...entries.values()],
     set: async (entry) => {
       entries.set(entry.key, entry);
