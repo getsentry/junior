@@ -18,44 +18,35 @@ import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
-/** Built-in identity providers the model may query today. */
-export const USER_LOOKUP_PROVIDERS = ["slack", "github"] as const;
-export type UserLookupProvider = (typeof USER_LOOKUP_PROVIDERS)[number];
+const USER_LOOKUP_PROVIDERS = ["slack", "github"] as const;
+
+type UserLookupProvider = (typeof USER_LOOKUP_PROVIDERS)[number];
 
 type UserLookupMatch = SlackUserProfile & { mention: string };
+
+type UserLookupSearchMeta = {
+  searched_pages: number;
+  searched_user_count: number;
+  truncated: boolean;
+};
 
 type UserLookupResult = {
   provider: UserLookupProvider;
   query: string;
   count: number;
-  searched_pages?: number;
-  searched_user_count?: number;
-  truncated?: boolean;
   mention?: string;
   user?: UserLookupMatch;
   users?: UserLookupMatch[];
-};
-
-type UserLookupContext = {
-  teamId: SlackTeamId;
-};
-
-type UserLookupResolver = (
-  query: string,
-  context: UserLookupContext,
-) => Promise<UserLookupResult>;
+} & Partial<UserLookupSearchMeta>;
 
 function explicitUserLookupError(error: SlackActionError): string | undefined {
-  if (error.apiError === "user_not_found") {
+  if (error.apiError === "user_not_found" || error.code === "not_found") {
     return "No Slack user found for the supplied user ID.";
   }
   if (error.code === "missing_scope") {
     return error.needed
       ? `User lookup is unavailable because this installation is missing the \`${error.needed}\` scope.`
       : "User lookup is unavailable because this installation is missing a required Slack scope.";
-  }
-  if (error.code === "not_found") {
-    return "No Slack user found for the supplied user ID.";
   }
   if (error.code === "invalid_arguments") {
     return `Slack rejected the user lookup arguments (${error.apiError ?? error.code}).`;
@@ -70,26 +61,17 @@ function slackMention(userId: string): string {
   return `<@${userId}>`;
 }
 
-function withMention(user: SlackUserProfile): UserLookupMatch {
-  return {
-    ...user,
-    mention: slackMention(user.id),
-  };
+function asMatch(user: SlackUserProfile): UserLookupMatch {
+  return { ...user, mention: slackMention(user.id) };
 }
 
-function withMentions(users: SlackUserProfile[]): UserLookupMatch[] {
-  return users.map(withMention);
-}
-
-function singleOrMany(args: {
+function lookupResult(args: {
   provider: UserLookupProvider;
   query: string;
   users: SlackUserProfile[];
-  searched_pages?: number;
-  searched_user_count?: number;
-  truncated?: boolean;
+  search?: UserLookupSearchMeta;
 }): UserLookupResult {
-  const users = withMentions(args.users);
+  const users = args.users.map(asMatch);
   if (users.length === 1) {
     return {
       provider: args.provider,
@@ -97,13 +79,7 @@ function singleOrMany(args: {
       count: 1,
       mention: users[0]!.mention,
       user: users[0],
-      ...(args.searched_pages !== undefined
-        ? { searched_pages: args.searched_pages }
-        : {}),
-      ...(args.searched_user_count !== undefined
-        ? { searched_user_count: args.searched_user_count }
-        : {}),
-      ...(args.truncated !== undefined ? { truncated: args.truncated } : {}),
+      ...args.search,
     };
   }
   return {
@@ -111,13 +87,7 @@ function singleOrMany(args: {
     query: args.query,
     count: users.length,
     users,
-    ...(args.searched_pages !== undefined
-      ? { searched_pages: args.searched_pages }
-      : {}),
-    ...(args.searched_user_count !== undefined
-      ? { searched_user_count: args.searched_user_count }
-      : {}),
-    ...(args.truncated !== undefined ? { truncated: args.truncated } : {}),
+    ...args.search,
   };
 }
 
@@ -130,10 +100,8 @@ async function storeProfile(
     provider: "slack",
     providerTenantId: teamId,
     providerSubjectId: profile.id,
-    ...(profile.real_name || profile.display_name
-      ? { displayName: profile.real_name || profile.display_name }
-      : {}),
-    ...(profile.name ? { handle: profile.name } : {}),
+    displayName: profile.real_name || profile.display_name,
+    handle: profile.name,
     ...(profile.email ? { email: profile.email, emailVerified: true } : {}),
   });
 }
@@ -167,10 +135,10 @@ async function storedUserByEmail(
   if (!identity) return undefined;
   return {
     id: identity.providerSubjectId,
-    ...(identity.handle ? { name: identity.handle } : {}),
-    ...(identity.displayName ? { real_name: identity.displayName } : {}),
-    ...(identity.displayName ? { display_name: identity.displayName } : {}),
-    ...(identity.email ? { email: identity.email } : {}),
+    name: identity.handle ?? undefined,
+    real_name: identity.displayName ?? undefined,
+    display_name: identity.displayName ?? undefined,
+    email: identity.email ?? undefined,
     is_bot: false,
     is_deleted: false,
   };
@@ -181,43 +149,30 @@ function looksLikeEmail(query: string): boolean {
   return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(query);
 }
 
-async function resolveSlackQuery(
+async function resolveSlack(
+  teamId: SlackTeamId,
   query: string,
-  context: UserLookupContext,
 ): Promise<UserLookupResult> {
   const userId = parseSlackUserId(query);
   if (userId) {
     const user = await lookupSlackUserProfile(userId);
-    await storeProfile(context.teamId, user);
-    return singleOrMany({
-      provider: "slack",
-      query,
-      users: [user],
-    });
+    await storeProfile(teamId, user);
+    return lookupResult({ provider: "slack", query, users: [user] });
   }
 
   if (looksLikeEmail(query)) {
-    const stored = await storedUserByEmail(context.teamId, query);
+    const stored = await storedUserByEmail(teamId, query);
     if (stored) {
-      return singleOrMany({
-        provider: "slack",
-        query,
-        users: [stored],
-      });
+      return lookupResult({ provider: "slack", query, users: [stored] });
     }
-
     const profile = await lookupSlackUserByEmail(query);
     if (!profile) {
       throw new ToolInputError(
         `No Slack user found with email address ${query}.`,
       );
     }
-    await storeProfile(context.teamId, profile);
-    return singleOrMany({
-      provider: "slack",
-      query,
-      users: [profile],
-    });
+    await storeProfile(teamId, profile);
+    return lookupResult({ provider: "slack", query, users: [profile] });
   }
 
   const result = await searchSlackUsers({
@@ -227,59 +182,57 @@ async function resolveSlackQuery(
     includeBots: false,
   });
   if (result.users.length === 1) {
-    await storeProfile(context.teamId, result.users[0]!);
+    await storeProfile(teamId, result.users[0]!);
   }
-  return singleOrMany({
+  return lookupResult({
     provider: "slack",
     query,
     users: result.users,
-    searched_pages: result.searched_pages,
-    searched_user_count: result.searched_user_count,
-    truncated: result.truncated,
+    search: {
+      searched_pages: result.searched_pages,
+      searched_user_count: result.searched_user_count,
+      truncated: result.truncated,
+    },
   });
 }
 
-async function resolveGithubQuery(
+async function resolveGithub(
+  teamId: SlackTeamId,
   query: string,
-  context: UserLookupContext,
 ): Promise<UserLookupResult> {
-  const normalized = normalizeGithubUsername(query);
-  if (!normalized) {
+  const githubUsername = normalizeGithubUsername(query);
+  if (!githubUsername) {
     throw new ToolInputError(
       `Invalid GitHub username: ${query}. Use a login such as dcramer, @dcramer, or https://github.com/dcramer.`,
     );
   }
 
   const result = await searchSlackUsersByGithubUsername({
-    username: normalized,
+    githubUsername,
     limit: 10,
     maxPages: 3,
     includeBots: false,
   });
   if (result.users.length === 1) {
-    await storeProfile(context.teamId, result.users[0]!);
+    await storeProfile(teamId, result.users[0]!);
   }
-  return singleOrMany({
+  return lookupResult({
     provider: "github",
-    query: normalized,
+    query: githubUsername,
     users: result.users,
-    searched_pages: result.searched_pages,
-    searched_user_count: result.searched_user_count,
-    truncated: result.truncated,
+    search: {
+      searched_pages: result.searched_pages,
+      searched_user_count: result.searched_user_count,
+      truncated: result.truncated,
+    },
   });
 }
 
-const USER_LOOKUP_RESOLVERS: Record<UserLookupProvider, UserLookupResolver> = {
-  slack: resolveSlackQuery,
-  github: resolveGithubQuery,
-};
-
-/** Create the tool that resolves people across identity providers. */
+/** Create the tool that resolves people by identity provider and query. */
 export function createUserLookupTool(teamId: SlackTeamId) {
-  const providerSchema = z.enum(USER_LOOKUP_PROVIDERS);
   return zodTool({
     description:
-      "Look up people by identity provider and query. Pass provider such as `slack` or `github`, and a provider-specific query (Slack user ID, email, or name; GitHub login or profile URL). Returns Slack `mention` values (`<@U…>`) for the current workspace. Use a mention only when one person clearly matches; otherwise ask which person the user means.",
+      "Look up people by identity provider and query. Pass `provider` (`slack` or `github`) and a provider-specific `query` (Slack user ID, email, or name; GitHub login or profile URL). Returns Slack `mention` values (`<@U…>`) for the current workspace. Use a mention only when one person clearly matches; otherwise ask which person the user means.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -288,9 +241,9 @@ export function createUserLookupTool(teamId: SlackTeamId) {
     },
     inputSchema: z
       .object({
-        provider: providerSchema.describe(
-          "Identity provider to query. Built-ins: slack, github. Plugins may add more providers over time.",
-        ),
+        provider: z
+          .enum(USER_LOOKUP_PROVIDERS)
+          .describe("Identity provider to query: slack or github."),
         query: z
           .string()
           .trim()
@@ -303,7 +256,10 @@ export function createUserLookupTool(teamId: SlackTeamId) {
     outputSchema: juniorToolOutputSchema,
     execute: async ({ provider, query }) => {
       try {
-        return await USER_LOOKUP_RESOLVERS[provider](query, { teamId });
+        if (provider === "slack") {
+          return await resolveSlack(teamId, query);
+        }
+        return await resolveGithub(teamId, query);
       } catch (error) {
         if (error instanceof SlackActionError) {
           const message = explicitUserLookupError(error);

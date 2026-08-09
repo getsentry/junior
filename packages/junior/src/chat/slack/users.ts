@@ -179,29 +179,31 @@ function githubUsernameFromProfileField(field: {
   value?: string;
   alt?: string;
 }): string | undefined {
-  const label = `${field.label ?? ""} ${field.id ?? ""}`.toLowerCase();
-  const labeledGithub = label.includes("github");
+  const labeledGithub = `${field.label ?? ""} ${field.id ?? ""}`
+    .toLowerCase()
+    .includes("github");
   for (const raw of [field.value, field.alt]) {
     if (!raw) continue;
+    if (!labeledGithub && !/github\.com/i.test(raw)) continue;
     const normalized = normalizeGithubUsername(raw);
-    if (!normalized) continue;
-    if (labeledGithub || /github\.com/i.test(raw)) {
-      return normalized;
-    }
+    if (normalized) return normalized;
   }
   return undefined;
 }
 
-function githubUsernamesForUser(user: SlackUserRaw): string[] {
+function userHasGithubUsername(
+  user: SlackUserRaw,
+  githubUsername: string,
+): boolean {
   const fields = user.profile?.fields;
-  if (!fields || typeof fields !== "object") return [];
-  const usernames = new Set<string>();
+  if (!fields || typeof fields !== "object") return false;
   for (const [id, field] of Object.entries(fields)) {
     if (!field) continue;
-    const username = githubUsernameFromProfileField({ id, ...field });
-    if (username) usernames.add(username);
+    if (githubUsernameFromProfileField({ id, ...field }) === githubUsername) {
+      return true;
+    }
   }
-  return [...usernames];
+  return false;
 }
 
 /** Rank match quality: exact > prefix > word-boundary > substring > miss. */
@@ -234,7 +236,7 @@ async function listWorkspaceUsers(options: {
   maxPages: number;
   includeDeleted: boolean;
   includeBots: boolean;
-  match: (member: SlackUserRaw) => number | boolean;
+  score: (member: SlackUserRaw) => number;
 }): Promise<{
   matches: Array<{ user: SlackUserRaw; score: number }>;
   searched_pages: number;
@@ -268,12 +270,9 @@ async function listWorkspaceUsers(options: {
       if (!options.includeBots && member.is_bot) continue;
       if (member.id === "USLACKBOT") continue;
 
-      const matched = options.match(member);
-      if (matched === false || matched === 0) continue;
-      matches.push({
-        user: member,
-        score: typeof matched === "number" ? matched : 1,
-      });
+      const score = options.score(member);
+      if (score <= 0) continue;
+      matches.push({ user: member, score });
     }
 
     const nextCursor = result.response_metadata?.next_cursor;
@@ -313,7 +312,7 @@ export async function searchSlackUsers(options: {
     maxPages,
     includeDeleted,
     includeBots,
-    match: (member) => scoreMatch(member, queryLower),
+    score: (member) => scoreMatch(member, queryLower),
   });
 
   listed.matches.sort((a, b) => {
@@ -329,36 +328,27 @@ export async function searchSlackUsers(options: {
   };
 }
 
-/** Find workspace users whose Slack profile GitHub field matches a username. */
+/** Find workspace users whose Slack profile GitHub field matches a login. */
 export async function searchSlackUsersByGithubUsername(options: {
-  username: string;
+  githubUsername: string;
   limit?: number;
   maxPages?: number;
   includeDeleted?: boolean;
   includeBots?: boolean;
 }): Promise<SlackUserSearchResult> {
   const {
-    username,
+    githubUsername,
     limit = 10,
     maxPages = 3,
     includeDeleted = false,
     includeBots = false,
   } = options;
-  const normalized = normalizeGithubUsername(username);
-  if (!normalized) {
-    return {
-      users: [],
-      searched_pages: 0,
-      searched_user_count: 0,
-      truncated: false,
-    };
-  }
 
   const listed = await listWorkspaceUsers({
     maxPages,
     includeDeleted,
     includeBots,
-    match: (member) => githubUsernamesForUser(member).includes(normalized),
+    score: (member) => (userHasGithubUsername(member, githubUsername) ? 1 : 0),
   });
 
   listed.matches.sort((a, b) =>

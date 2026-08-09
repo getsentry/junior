@@ -705,7 +705,7 @@ describe("userLookup", () => {
       );
 
       expect(tools).toHaveProperty("userLookup");
-      expect(tools.userLookup.description).toContain("identity provider");
+      expect(tools.userLookup.description).toContain("provider");
     });
   });
 });
