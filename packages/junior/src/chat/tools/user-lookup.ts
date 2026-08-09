@@ -1,9 +1,8 @@
-import { and, eq, ilike, or } from "drizzle-orm";
+import { and, eq, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
 import { getSqlExecutor } from "@/chat/db";
 import { normalizeIdentityEmail } from "@/chat/identities/identity";
-import { upsertIdentity } from "@/chat/identities/sql";
 import { SlackActionError } from "@/chat/slack/client";
 import { parseSlackUserId, type SlackTeamId } from "@/chat/slack/ids";
 import {
@@ -19,7 +18,8 @@ import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 const linkedSlackIdentity = alias(juniorIdentities, "user_lookup_slack_identity");
 
-type UserLookupMatch = SlackUserProfile & { mention: string };
+type UserLookupProfile = SlackUserProfile | Pick<SlackUserProfile, "id" | "name">;
+type UserLookupMatch = UserLookupProfile & { mention: string };
 
 type UserLookupSearchMeta = {
   searched_pages: number;
@@ -58,14 +58,14 @@ function slackMention(userId: string): string {
   return `<@${userId}>`;
 }
 
-function asMatch(user: SlackUserProfile): UserLookupMatch {
+function asMatch(user: UserLookupProfile): UserLookupMatch {
   return { ...user, mention: slackMention(user.id) };
 }
 
 function lookupResult(args: {
   provider: string;
   query: string;
-  users: SlackUserProfile[];
+  users: UserLookupProfile[];
   search?: UserLookupSearchMeta;
 }): UserLookupResult {
   const users = args.users.map(asMatch);
@@ -88,21 +88,6 @@ function lookupResult(args: {
   };
 }
 
-async function storeProfile(
-  teamId: SlackTeamId,
-  profile: SlackUserProfile,
-): Promise<void> {
-  await upsertIdentity(getSqlExecutor(), {
-    kind: profile.is_bot ? "service" : "user",
-    provider: "slack",
-    providerTenantId: teamId,
-    providerSubjectId: profile.id,
-    displayName: profile.real_name || profile.display_name,
-    handle: profile.name,
-    ...(profile.email ? { email: profile.email, emailVerified: true } : {}),
-  });
-}
-
 function slackProfileFromIdentity(
   identity: typeof juniorIdentities.$inferSelect,
 ): SlackUserProfile {
@@ -114,6 +99,15 @@ function slackProfileFromIdentity(
     email: identity.email ?? undefined,
     is_bot: false,
     is_deleted: false,
+  };
+}
+
+function slackMentionProfileFromIdentity(
+  identity: typeof juniorIdentities.$inferSelect,
+): UserLookupProfile {
+  return {
+    id: identity.providerSubjectId,
+    name: identity.handle ?? undefined,
   };
 }
 
@@ -157,7 +151,6 @@ async function resolveSlack(
   const userId = parseSlackUserId(query);
   if (userId) {
     const user = await lookupSlackUserProfile(userId);
-    await storeProfile(teamId, user);
     return lookupResult({ provider: "slack", query, users: [user] });
   }
 
@@ -172,7 +165,6 @@ async function resolveSlack(
         `No Slack user found with email address ${query}.`,
       );
     }
-    await storeProfile(teamId, profile);
     return lookupResult({ provider: "slack", query, users: [profile] });
   }
 
@@ -182,9 +174,6 @@ async function resolveSlack(
     maxPages: 3,
     includeBots: false,
   });
-  if (result.users.length === 1) {
-    await storeProfile(teamId, result.users[0]!);
-  }
   return lookupResult({
     provider: "slack",
     query,
@@ -221,12 +210,14 @@ async function resolveStoredProvider(
         eq(juniorIdentities.provider, provider),
         or(
           eq(juniorIdentities.providerSubjectId, query),
-          ilike(juniorIdentities.handle, query),
+          sql`lower(${juniorIdentities.handle}) = lower(${query})`,
         ),
       ),
     )
     .limit(11);
-  const users = rows.slice(0, 10).map((row) => slackProfileFromIdentity(row.slack));
+  const users = rows
+    .slice(0, 10)
+    .map((row) => slackMentionProfileFromIdentity(row.slack));
   return lookupResult({ provider, query, users });
 }
 

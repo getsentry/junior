@@ -88,7 +88,7 @@ describe("userLookup", () => {
           .select({ id: juniorIdentities.providerSubjectId })
           .from(juniorIdentities)
           .where(eq(juniorIdentities.providerSubjectId, "U039RR91S")),
-      ).resolves.toEqual([{ id: "U039RR91S" }]);
+      ).resolves.toEqual([]);
     });
 
     it("returns user without custom fields when none are set", async () => {
@@ -478,6 +478,7 @@ describe("userLookup", () => {
         mention: "<@U039RR91S>",
         user: { id: "U039RR91S", name: "dcramer" },
       });
+      expect(result.user).not.toHaveProperty("email");
       expect(getCapturedSlackApiCalls("users.list")).toHaveLength(0);
     });
 
@@ -582,6 +583,21 @@ describe("userLookup", () => {
       });
     });
 
+    it("treats SQL pattern characters as literal provider handles", async () => {
+      await seedLinkedIdentities({
+        githubId: "12345",
+        githubHandle: "dcramer",
+        slackUserId: "U039RR91S",
+        slackHandle: "dcramer",
+      });
+
+      for (const query of ["%", "_"]) {
+        await expect(
+          executeTool(lookupTool(), { provider: "github", query }),
+        ).resolves.toMatchObject({ count: 0, users: [] });
+      }
+    });
+
     it("does not return provider identities without a linked Slack identity", async () => {
       await upsertIdentity(getSqlExecutor(), {
         kind: "user",
@@ -603,6 +619,7 @@ describe("userLookup", () => {
     it("requires provider and query in the model-facing schema", async () => {
       const tool = lookupTool();
 
+      expect(tool.annotations).toMatchObject({ readOnlyHint: true });
       expect(tool.inputSchema).toMatchObject({
         type: "object",
         additionalProperties: false,
