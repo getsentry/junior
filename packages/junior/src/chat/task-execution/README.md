@@ -1,42 +1,41 @@
 # Task Execution
 
-This module owns durable mailbox execution for asynchronous conversations.
-Queue messages are wake-up hints; persisted mailbox and lease state are the
-source of truth. Slack input and plugin dispatches use the same worker loop;
-their adapters only prepare input, restore task-specific authority, and accept
-the completed result.
+This module runs durable work for asynchronous conversations.
 
-Turn progress (running / paused / done) goes through one public API:
-`checkpoint.ts` (`loadTurnCheckpoint` / `saveTurnCheckpoint`). Storage lives
-in internal `turn-cursor.ts`; outside this folder, import checkpoint only.
+A queue message only tells a worker to check for work. The mailbox stores the
+work. The lease lets one worker run the conversation at a time. Slack input and
+plugin dispatches use the same worker loop. Their adapters prepare input and
+accept the result.
 
-Paused turns rewake via `turn-wake.ts`; `paused-turn.ts` runs them under the
-conversation lease. History lives in SQL conversation events; the Redis turn
-cursor is resume metadata only.
+`checkpoint.ts` is the public API for turn progress. Use
+`loadTurnCheckpoint` and `saveTurnCheckpoint`. `turn-cursor.ts` stores the
+checkpoint and is private to this module.
 
-The reliability policy is deliberately small:
+`turn-wake.ts` wakes paused turns. `paused-turn.ts` runs them under the
+conversation lease. SQL conversation events store history. The Redis turn
+cursor stores only the data that is needed to resume a turn.
+
+The reliability rules are small:
 
 - The conversation lease is the only owner for queue-driven execution.
 - A turn may run, pause at a committed boundary, complete, or fail.
 - Timeout, retry, and yield may continue only after the boundary advances;
   parking the same boundary twice fails the turn.
-- A hard process death may abandon an in-flight running turn. The next worker
-  stops that turn and records the error rather than inventing a second recovery
-  lifecycle; the user can trigger new work and committed SQL history remains.
-- Running a paused turn does not take a second lock. OAuth is the one
-  out-of-band exception and keeps its thread lock.
+- A process can stop while a turn runs. The next worker stops that turn and
+  records the error. The user can start new work. Committed SQL history remains.
+- A paused turn does not take a second lock. OAuth can run outside the queue and
+  uses the thread lock.
 
 Runtime and Redis status is `paused`. SQL free-text / enum rows may still say
 `awaiting_resume`; that historical SQL label does not define execution state.
 
 ## State Model
 
-- A conversation mailbox contains normalized pending work with a durable
-  delivery mode: `interrupt` or `defer`.
-- A queue payload identifies the conversation to wake; persisted conversation
-  work owns delivery. Provider conversations own their destination, while
-  destinationless child work resolves bounded execution authority from its
-  durable agent invocation.
+- A conversation mailbox contains pending work. Each item has an `interrupt`
+  or `defer` delivery mode.
+- A queue message identifies the conversation to wake. The stored work controls
+  delivery. A provider conversation stores its destination. Child work without
+  a destination gets its authority from its stored agent invocation.
 - A lease grants one worker temporary execution ownership.
 - Dispatch projection updates take a short dispatch lock only while the
   conversation lease is already held. They never wait for conversation work,
@@ -45,10 +44,10 @@ Runtime and Redis status is `paused`. SQL free-text / enum rows may still say
   slow work from abandoned work.
 - Delivery state prevents a completed turn from being posted twice.
 
-Redis execution state uses a new v2 namespace as a hard cut. This release never
-reads or migrates the old namespace. Old mailbox, lease, and turn-cursor state
-may be abandoned; committed SQL history remains. There are no compatibility
-readers, dual writes, or rollback contract.
+Redis execution state uses the new v2 keys. This release does not read or move
+old Redis state. Old mailbox, lease, and turn-cursor state can be lost.
+Committed SQL history remains. The code has no old-state reader, dual write, or
+rollback support.
 
 `checkpoint.ts`, `turn-wake.ts`, `paused-turn.ts`, `state.ts`, `store.ts`, and
 `worker.ts` define the execution surface.
@@ -66,12 +65,10 @@ readers, dual writes, or rollback contract.
    Agent invocation input follows the same rule: the mailbox carries its
    invocation ID, and an empty resume attempt resolves the active invocation
    from SQL.
-4. Runtime advances the turn until completion, auth pause, cooperative yield,
-   or terminal failure, delivering and recording completed tool-free assistant
-   messages as it advances. A requested turn resume is durable state, not an
-   in-memory callback; the same worker observes it on the next loop iteration.
-   Tool-bearing assistant text remains agent history; explicit progress uses
-   the status surface.
+4. The runtime runs the turn until it completes, pauses for authorization,
+   yields, or fails. It delivers and records complete assistant messages that
+   have no tool call. A resume request is stored state. The same worker sees it
+   on the next loop. Assistant text with a tool call stays in agent history.
 5. Work appended under a healthy lease does not send another queue nudge. The
    current worker observes it on its next state reload.
 6. Before yielding, the worker commits a safe history boundary, sends another
@@ -93,8 +90,7 @@ new turn starts, `interrupt` delivery is handled before queued `defer` delivery.
 
 - Duplicate queue delivery is expected and must be idempotent.
 - Queue authentication and payload validation happen before state access.
-- A busy conversation should be retried through durable wake-up state, not
-  parallel execution.
+- If a conversation is busy, store another wake. Do not run it in parallel.
 - Lease expiry permits recovery; it must not erase mailbox or agent history.
 - Heartbeats repair missing wake-ups and abandoned leases without becoming a
   second scheduler for healthy work.
@@ -114,10 +110,10 @@ new turn starts, `interrupt` delivery is handled before queued `defer` delivery.
 
 `packages/junior/tests/integration/durable-queue.test.ts` uses the same
 `createConversationWork` composition as production. It replaces agent behavior
-and Slack HTTP, selects the real memory-backed `StateAdapter`, and implements the
-one-method queue transport port in memory. Dedicated adapter contract tests own
-Vercel signing/options and StateAdapter storage, prefix, queue, and lock behavior.
-Its cases are organized around the behavior a maintainer should expect:
+and Slack HTTP. It uses the real `StateAdapter` with memory storage. It uses an
+in-memory queue that implements the one-method queue interface. Separate tests
+cover Vercel signing and options. They also cover `StateAdapter` storage, keys,
+queues, and locks. The cases describe the expected product behavior:
 
 - **Success:** accepted input runs once, commits SQL history, delivers once, and
   drains.
