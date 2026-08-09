@@ -1,21 +1,23 @@
 import type { Thread } from "chat";
 import type { Destination } from "@sentry/junior-plugin-api";
-import { toOptionalString } from "@/chat/coerce";
+import { isRecord, toOptionalString } from "@/chat/coerce";
 import { createDurableLocationConfigurationService } from "@/chat/configuration/sql";
 import type { LocationConfigurationService } from "@/chat/configuration/types";
 import { getDb } from "@/chat/db";
 import { buildConversationStatePatch } from "@/chat/state/conversation";
-import type { ThreadConversationState } from "@/chat/state/conversation";
+import {
+  coerceThreadConversationState,
+  type ThreadConversationState,
+} from "@/chat/state/conversation";
 import { persistConversationMessages } from "@/chat/conversations/messages";
 import {
   buildArtifactStatePatch,
+  coerceThreadArtifactsState,
   type ThreadArtifactsState,
 } from "@/chat/state/artifacts";
 import { getStateAdapter } from "@/chat/state/adapter";
 import {
-  JUNIOR_PROCESSING_STATE_TTL_MS,
-  JUNIOR_SANDBOX_REF_TTL_MS,
-  JUNIOR_TERMINAL_PROCESSING_STATE_TTL_MS,
+  JUNIOR_ACTIVE_THREAD_STATE_TTL_MS,
   JUNIOR_THREAD_STATE_TTL_MS,
 } from "@/chat/state/ttl";
 import type { SandboxRef } from "@/chat/sandbox/ref";
@@ -26,6 +28,12 @@ export interface ThreadStatePatch {
   sandboxRef?: SandboxRef | null;
 }
 
+export interface LoadedThreadRuntimeState {
+  artifacts: ThreadArtifactsState;
+  conversation: ThreadConversationState;
+  sandboxRef?: SandboxRef;
+}
+
 function threadStateKey(threadId: string): string {
   return `thread-state:${threadId}`;
 }
@@ -34,12 +42,22 @@ function channelStateKey(channelId: string): string {
   return `channel-state:${channelId}`;
 }
 
-function processingStateKey(threadId: string): string {
-  return `thread-processing-state:${threadId}`;
+function hasActiveProcessing(state: Record<string, unknown>): boolean {
+  const conversation = isRecord(state.conversation) ? state.conversation : {};
+  const processing = isRecord(conversation.processing)
+    ? conversation.processing
+    : {};
+  return Boolean(
+    toOptionalString(processing.activeTurnId) ||
+      (isRecord(processing.pendingAuth) &&
+        Object.keys(processing.pendingAuth).length > 0),
+  );
 }
 
-function sandboxRefKey(threadId: string): string {
-  return `thread-sandbox-ref:${threadId}`;
+function threadStateTtlMs(state: Record<string, unknown>): number {
+  return hasActiveProcessing(state)
+    ? JUNIOR_ACTIVE_THREAD_STATE_TTL_MS
+    : JUNIOR_THREAD_STATE_TTL_MS;
 }
 
 function buildThreadStatePayload(
@@ -53,9 +71,9 @@ function buildThreadStatePayload(
     Object.assign(payload, buildConversationStatePatch(patch.conversation));
   }
   if (patch.sandboxRef !== undefined) {
-    // TODO(v0.147.0): Remove the legacy app_sandbox_* field masks.
-    payload.app_sandbox_id = "";
-    payload.app_sandbox_dependency_profile_hash = "";
+    payload.app_sandbox_id = patch.sandboxRef?.id ?? "";
+    payload.app_sandbox_dependency_profile_hash =
+      patch.sandboxRef?.profileHash ?? "";
   }
   return payload;
 }
@@ -63,8 +81,8 @@ function buildThreadStatePayload(
 /**
  * Merge a payload into thread scratch with Junior's TTL.
  *
- * Chat SDK state writes hardcode a 30-day TTL. This boundary owns Junior's
- * shorter retention policy for the same scratch keys.
+ * Active processing keeps the whole bag short-lived. Otherwise scratch uses
+ * the longer cache TTL while artifacts and vision still share this record.
  */
 async function mergePersistedState(
   key: string,
@@ -77,46 +95,8 @@ async function mergePersistedState(
   const stateAdapter = getStateAdapter();
   await stateAdapter.connect();
   const existing = (await stateAdapter.get<Record<string, unknown>>(key)) ?? {};
-  await stateAdapter.set(
-    key,
-    { ...existing, ...payload },
-    JUNIOR_THREAD_STATE_TTL_MS,
-  );
-}
-
-/** Store active processing for 24h and terminal rollout markers for 1h. */
-async function persistProcessingState(
-  threadId: string,
-  processing: ThreadConversationState["processing"],
-): Promise<void> {
-  const stateAdapter = getStateAdapter();
-  await stateAdapter.connect();
-  const terminal = Object.values(processing).every(
-    (value) => value === undefined,
-  );
-  // TODO(v0.147.0): Delete terminal markers once legacy processing has aged out.
-  await stateAdapter.set(
-    processingStateKey(threadId),
-    processing,
-    terminal
-      ? JUNIOR_TERMINAL_PROCESSING_STATE_TTL_MS
-      : JUNIOR_PROCESSING_STATE_TTL_MS,
-  );
-}
-
-/** Store a resumable sandbox reference only for its 30-minute lifetime. */
-async function persistSandboxRef(
-  threadId: string,
-  sandboxRef: SandboxRef | null,
-): Promise<void> {
-  const stateAdapter = getStateAdapter();
-  await stateAdapter.connect();
-  const key = sandboxRefKey(threadId);
-  if (!sandboxRef) {
-    await stateAdapter.delete(key);
-    return;
-  }
-  await stateAdapter.set(key, sandboxRef, JUNIOR_SANDBOX_REF_TTL_MS);
+  const next = { ...existing, ...payload };
+  await stateAdapter.set(key, next, threadStateTtlMs(next));
 }
 
 /** Merge an artifact patch while preserving per-list column mappings. */
@@ -138,7 +118,7 @@ export function mergeArtifactsState(
   };
 }
 
-/** Extract persisted sandbox metadata from a merged thread-state payload. */
+/** Extract persisted sandbox metadata from thread state payload. */
 export function getPersistedSandboxState(
   state: Record<string, unknown>,
 ): SandboxRef | undefined {
@@ -152,6 +132,18 @@ export function getPersistedSandboxState(
   return {
     id,
     ...(profileHash ? { profileHash } : {}),
+  };
+}
+
+/** Load and coerce the thread scratch bag into runtime parts. */
+export async function loadThreadRuntimeState(
+  threadId: string,
+): Promise<LoadedThreadRuntimeState> {
+  const state = await getPersistedThreadState(threadId);
+  return {
+    artifacts: coerceThreadArtifactsState(state),
+    conversation: coerceThreadConversationState(state),
+    sandboxRef: getPersistedSandboxState(state),
   };
 }
 
@@ -188,56 +180,23 @@ export async function persistThreadRuntimeState(
   if (!threadId) {
     throw new Error("thread id is required to persist runtime scratch");
   }
-  await persistThreadRuntimeStateById(threadId, patch);
+  await mergePersistedState(
+    threadStateKey(threadId),
+    buildThreadStatePayload(patch),
+  );
 }
 
-/** Split one runtime patch across cache, processing, and sandbox records. */
-async function persistThreadRuntimeStateById(
-  threadId: string,
-  patch: ThreadStatePatch,
-): Promise<void> {
-  await Promise.all([
-    mergePersistedState(threadStateKey(threadId), buildThreadStatePayload(patch)),
-    ...(patch.conversation
-      ? [persistProcessingState(threadId, patch.conversation.processing)]
-      : []),
-    ...(patch.sandboxRef !== undefined
-      ? [persistSandboxRef(threadId, patch.sandboxRef)]
-      : []),
-  ]);
-}
-
-/** Load cache and ephemeral state as one compatibility payload. */
+/** Load the persisted state payload for a thread without requiring a Chat singleton. */
 export async function getPersistedThreadState(
   threadId: string,
 ): Promise<Record<string, unknown>> {
   const stateAdapter = getStateAdapter();
   await stateAdapter.connect();
-  const [threadState, processing, sandboxRef] = await Promise.all([
-    stateAdapter.get<Record<string, unknown>>(threadStateKey(threadId)),
-    stateAdapter.get<ThreadConversationState["processing"]>(
-      processingStateKey(threadId),
-    ),
-    stateAdapter.get<SandboxRef>(sandboxRefKey(threadId)),
-  ]);
-  const state = threadState ?? {};
-  // TODO(v0.147.0): Remove fallback reads of legacy processing and app_sandbox_* fields.
-  const conversation =
-    state.conversation && typeof state.conversation === "object"
-      ? (state.conversation as Record<string, unknown>)
-      : {};
-  return {
-    ...state,
-    ...(processing
-      ? { conversation: { ...conversation, processing } }
-      : {}),
-    ...(sandboxRef
-      ? {
-          app_sandbox_id: sandboxRef.id,
-          app_sandbox_dependency_profile_hash: sandboxRef.profileHash ?? "",
-        }
-      : {}),
-  };
+  return (
+    (await stateAdapter.get<Record<string, unknown>>(
+      threadStateKey(threadId),
+    )) ?? {}
+  );
 }
 
 /** Persist a thread-state patch by thread id without constructing a Chat thread. */
@@ -255,7 +214,10 @@ export async function persistThreadStateById(
     });
   }
 
-  await persistThreadRuntimeStateById(threadId, patch);
+  await mergePersistedState(
+    threadStateKey(threadId),
+    buildThreadStatePayload(patch),
+  );
 }
 
 /** Load legacy Redis-backed channel state during the SQL cutover. */

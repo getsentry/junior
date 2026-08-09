@@ -7,7 +7,6 @@ import {
 import { createJuniorRuntimeServices } from "@/chat/app/services";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
-import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import { logException, logWarn, withSpan } from "@/chat/logging";
 import { createReplyToThread } from "@/chat/runtime/reply-executor";
 import {
@@ -22,7 +21,7 @@ import {
 } from "@/chat/runtime/thread-context";
 import {
   getLocationConfigurationService,
-  getPersistedThreadState,
+  loadThreadRuntimeState,
   mergeArtifactsState,
   persistThreadState,
   persistThreadStateById,
@@ -54,10 +53,8 @@ async function persistAssistantContextChannelId(args: {
   sourceChannelId: string;
   threadId: string;
 }): Promise<void> {
-  const currentArtifacts = coerceThreadArtifactsState(
-    await getPersistedThreadState(args.threadId),
-  );
-  const nextArtifacts = mergeArtifactsState(currentArtifacts, {
+  const { artifacts } = await loadThreadRuntimeState(args.threadId);
+  const nextArtifacts = mergeArtifactsState(artifacts, {
     assistantContextChannelId: args.sourceChannelId,
   });
   await persistThreadStateById(args.threadId, {
@@ -150,13 +147,7 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
       decision,
       text,
     }) => {
-      const threadId = getThreadId(thread, message) ?? getRunId(thread, message);
-      if (!threadId) {
-        throw new Error("thread id is required to load runtime scratch");
-      }
-      const conversation = coerceThreadConversationState(
-        await getPersistedThreadState(threadId),
-      );
+      const conversation = coerceThreadConversationState(await thread.state);
       upsertSkippedConversationMessage(conversation, {
         decision,
         message,
@@ -173,13 +164,7 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
       completedAtMs,
       text,
     }) => {
-      const threadId = getThreadId(thread, message) ?? getRunId(thread, message);
-      if (!threadId) {
-        throw new Error("thread id is required to load runtime scratch");
-      }
-      const conversation = coerceThreadConversationState(
-        await getPersistedThreadState(threadId),
-      );
+      const conversation = coerceThreadConversationState(await thread.state);
       upsertSkippedConversationMessage(conversation, {
         decision,
         message,

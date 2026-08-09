@@ -7,7 +7,6 @@
  * snapshots; it should not execute the agent or post replies.
  */
 import type { Message, Thread } from "chat";
-import { coerceThreadConversationState } from "@/chat/state/conversation";
 import type {
   ConversationMessage,
   ThreadConversationState,
@@ -15,10 +14,7 @@ import type {
 import { setSpanAttributes } from "@/chat/logging";
 import { getThreadTs } from "@/chat/runtime/thread-context";
 import type { SandboxRef } from "@/chat/sandbox/ref";
-import {
-  coerceThreadArtifactsState,
-  type ThreadArtifactsState,
-} from "@/chat/state/artifacts";
+import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import {
   buildConversationContext,
   estimateConversationContextTokens,
@@ -32,8 +28,7 @@ import {
 } from "@/chat/slack/vision-context";
 import {
   getLocationConfigurationService,
-  getPersistedSandboxState,
-  getPersistedThreadState,
+  loadThreadRuntimeState,
 } from "@/chat/runtime/thread-state";
 import {
   hydrateConversationMessages,
@@ -166,12 +161,11 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
     args: PrepareTurnStateInput,
   ): Promise<PreparedTurnState> {
     const conversationId = args.context.threadId ?? args.context.runId;
-    const existingState = conversationId
-      ? await getPersistedThreadState(conversationId)
-      : ((await args.thread.state) ?? {});
-    const sandboxRef = getPersistedSandboxState(existingState);
-    const artifacts = coerceThreadArtifactsState(existingState);
-    const conversation = coerceThreadConversationState(existingState);
+    if (!conversationId) {
+      throw new Error("thread id is required to load runtime scratch");
+    }
+    const { artifacts, conversation, sandboxRef } =
+      await loadThreadRuntimeState(conversationId);
     await hydrateConversationMessages({ conversation, conversationId });
     const locationConfiguration =
       args.locationConfiguration ??

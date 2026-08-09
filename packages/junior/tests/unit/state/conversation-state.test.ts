@@ -111,7 +111,7 @@ describe("conversation state", () => {
     });
   });
 
-  it("includes only the vision cache in the shared state patch", () => {
+  it("includes vision cache and processing control in state patch payload", () => {
     const state: ThreadConversationState = coerceThreadConversationState({
       conversation: {
         messages: [
@@ -147,7 +147,11 @@ describe("conversation state", () => {
     expect(patch.conversation.vision.byFileId.F321?.summary).toContain(
       "staff engineer",
     );
-    expect(patch.conversation.processing).toBeNull();
+    expect(patch.conversation.processing.activeTurnId).toBe("turn-1");
+    expect(patch.conversation.processing.pendingAuth).toMatchObject({
+      kind: "plugin",
+      provider: "github",
+    });
   });
 
   it("omits rebuildable transcript and stats mirrors from the persisted patch", () => {

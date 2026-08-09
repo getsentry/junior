@@ -3,14 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getPersistedSandboxState,
   getPersistedThreadState,
+  loadThreadRuntimeState,
   persistThreadRuntimeState,
   persistThreadStateById,
 } from "@/chat/runtime/thread-state";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import {
-  JUNIOR_PROCESSING_STATE_TTL_MS,
-  JUNIOR_SANDBOX_REF_TTL_MS,
-  JUNIOR_TERMINAL_PROCESSING_STATE_TTL_MS,
+  JUNIOR_ACTIVE_THREAD_STATE_TTL_MS,
   JUNIOR_THREAD_STATE_TTL_MS,
 } from "@/chat/state/ttl";
 
@@ -65,38 +64,10 @@ describe("thread sandbox state", () => {
     expect(getPersistedSandboxState(state)).toBeUndefined();
   });
 
-  it("uses the sandbox lifetime for sandbox references", async () => {
+  it("uses the short TTL while processing is active", async () => {
     const stateAdapter = getStateAdapter();
     const set = vi.spyOn(stateAdapter, "set");
-    const conversationId = "local:test:thread-sandbox-ttl";
-
-    await persistThreadStateById(conversationId, {
-      sandboxRef: { id: "sandbox-ttl" },
-    });
-
-    expect(set).toHaveBeenCalledWith(
-      `thread-sandbox-ref:${conversationId}`,
-      { id: "sandbox-ttl" },
-      JUNIOR_SANDBOX_REF_TTL_MS,
-    );
-  });
-
-  it("deletes the sandbox key when the reference is cleared", async () => {
-    const stateAdapter = getStateAdapter();
-    const deleteState = vi.spyOn(stateAdapter, "delete");
-    const conversationId = "local:test:thread-sandbox-delete";
-
-    await persistThreadStateById(conversationId, { sandboxRef: null });
-
-    expect(deleteState).toHaveBeenCalledWith(
-      `thread-sandbox-ref:${conversationId}`,
-    );
-  });
-
-  it("uses the paused-turn window for processing control", async () => {
-    const stateAdapter = getStateAdapter();
-    const set = vi.spyOn(stateAdapter, "set");
-    const conversationId = "local:test:thread-processing-ttl";
+    const conversationId = "local:test:thread-active-ttl";
 
     await persistThreadStateById(conversationId, {
       conversation: {
@@ -106,38 +77,22 @@ describe("thread sandbox state", () => {
         processing: { activeTurnId: "turn-1" },
         vision: { byFileId: {} },
       },
+      sandboxRef: { id: "sandbox-active" },
     });
 
     expect(set).toHaveBeenCalledWith(
-      `thread-processing-state:${conversationId}`,
-      { activeTurnId: "turn-1" },
-      JUNIOR_PROCESSING_STATE_TTL_MS,
+      `thread-state:${conversationId}`,
+      expect.objectContaining({
+        app_sandbox_id: "sandbox-active",
+        conversation: expect.objectContaining({
+          processing: { activeTurnId: "turn-1" },
+        }),
+      }),
+      JUNIOR_ACTIVE_THREAD_STATE_TTL_MS,
     );
   });
 
-  it("keeps a short terminal marker when processing clears", async () => {
-    const stateAdapter = getStateAdapter();
-    const set = vi.spyOn(stateAdapter, "set");
-    const conversationId = "local:test:thread-processing-terminal";
-
-    await persistThreadStateById(conversationId, {
-      conversation: {
-        schemaVersion: 1,
-        compactions: [],
-        messages: [],
-        processing: {},
-        vision: { byFileId: {} },
-      },
-    });
-
-    expect(set).toHaveBeenCalledWith(
-      `thread-processing-state:${conversationId}`,
-      {},
-      JUNIOR_TERMINAL_PROCESSING_STATE_TTL_MS,
-    );
-  });
-
-  it("keeps artifact and vision cache writes on the cache TTL", async () => {
+  it("uses the cache TTL when processing is idle", async () => {
     const stateAdapter = getStateAdapter();
     const set = vi.spyOn(stateAdapter, "set");
     const conversationId = "local:test:thread-scratch-ttl";
@@ -149,14 +104,39 @@ describe("thread sandbox state", () => {
 
     await persistThreadRuntimeState(thread, {
       artifacts: { lastCanvasId: "Fcanvas" },
+      sandboxRef: { id: "sandbox-ttl" },
     });
 
     expect(set).toHaveBeenCalledWith(
       `thread-state:${conversationId}`,
       expect.objectContaining({
+        app_sandbox_id: "sandbox-ttl",
         artifacts: expect.objectContaining({ lastCanvasId: "Fcanvas" }),
       }),
       JUNIOR_THREAD_STATE_TTL_MS,
     );
+  });
+
+  it("loads coerced runtime parts from one helper", async () => {
+    const conversationId = "local:test:thread-load-runtime";
+    await persistThreadStateById(conversationId, {
+      artifacts: { lastCanvasId: "Fcanvas" },
+      conversation: {
+        schemaVersion: 1,
+        compactions: [],
+        messages: [],
+        processing: { activeTurnId: "turn-1" },
+        vision: { byFileId: {} },
+      },
+      sandboxRef: { id: "sandbox-load", profileHash: "hash-load" },
+    });
+
+    await expect(loadThreadRuntimeState(conversationId)).resolves.toEqual({
+      artifacts: expect.objectContaining({ lastCanvasId: "Fcanvas" }),
+      conversation: expect.objectContaining({
+        processing: { activeTurnId: "turn-1" },
+      }),
+      sandboxRef: { id: "sandbox-load", profileHash: "hash-load" },
+    });
   });
 });
