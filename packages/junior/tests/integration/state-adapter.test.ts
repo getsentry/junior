@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ACTIVE_LOCK_TTL_MS } from "@/chat/state/locks";
-import { createTestMessage } from "../../fixtures/slack-harness";
+import { createTestMessage } from "../fixtures/slack-harness";
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -21,6 +21,12 @@ async function loadMemoryStateAdapter(
   return stateAdapterModule;
 }
 
+/**
+ * Contract tests for the real StateAdapter selected by production composition.
+ * Durable-queue tests may select memory storage, but they use this same public
+ * adapter stack; these checks keep its storage, queue, prefix, and lock behavior
+ * equivalent to the Redis-backed production implementation.
+ */
 describe("state adapter lifecycle and lock lease", () => {
   afterEach(async () => {
     await stateAdapterModule?.disconnectStateAdapter();

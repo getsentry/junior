@@ -50,6 +50,10 @@ export interface ConversationQueueSendResult {
   messageId?: string;
 }
 
+/**
+ * External transport for wake-up hints. Durable work stays in the mailbox;
+ * transports only need to accept one hint and may return a provider message id.
+ */
 export interface ConversationWorkQueue {
   send(
     message: ConversationQueueMessage,

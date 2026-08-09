@@ -113,9 +113,11 @@ new turn starts, `interrupt` delivery is handled before queued `defer` delivery.
 ## Integration Contract
 
 `packages/junior/tests/integration/durable-queue.test.ts` uses the same
-`createConversationWork` composition as production. It replaces only external
-adapters: the agent, Slack HTTP, queue transport, state backend, and clock. Its
-cases are organized around the behavior a maintainer should expect:
+`createConversationWork` composition as production. It replaces agent behavior
+and Slack HTTP, selects the real memory-backed `StateAdapter`, and implements the
+one-method queue transport port in memory. Dedicated adapter contract tests own
+Vercel signing/options and StateAdapter storage, prefix, queue, and lock behavior.
+Its cases are organized around the behavior a maintainer should expect:
 
 - **Success:** accepted input runs once, commits SQL history, delivers once, and
   drains.

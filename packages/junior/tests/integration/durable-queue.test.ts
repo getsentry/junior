@@ -65,8 +65,9 @@ async function complete(request: Parameters<AgentRunner["run"]>[0]) {
 
 /**
  * Compose the same ingress, runtime, worker, resume, SQL, and delivery path used
- * in production. Tests replace only external adapters: agent behavior, Slack
- * HTTP, queue transport, state backend, and the soft-yield clock.
+ * in production. Tests replace agent behavior and Slack HTTP, select the real
+ * memory-backed StateAdapter, and use an in-memory implementation of the queue's
+ * one-method transport port. The Vercel transport has its own contract test.
  */
 async function slack(
   options: {

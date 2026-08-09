@@ -36,7 +36,6 @@ import {
   processConversationWork,
 } from "@/chat/task-execution/worker";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
-import { createVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { closeDb } from "@/chat/db";
 import type { ConversationStore } from "@/chat/conversations/store";
 import {
@@ -2162,48 +2161,6 @@ describe("conversation work execution", () => {
       },
     ]);
     expect(queue.queuedMessages()).toEqual([conversationQueueMessage()]);
-  });
-
-  it("maps the generic queue port to Vercel Queue send options", async () => {
-    process.env.JUNIOR_SECRET = "conversation-work-secret";
-    const sends: Array<{
-      message: unknown;
-      options: unknown;
-      topic: string;
-    }> = [];
-    const queue = createVercelConversationWorkQueue({
-      topic: "junior_test_work",
-      client: {
-        async send(topic, message, options) {
-          sends.push({ topic, message, options });
-          return { messageId: "msg_123" };
-        },
-      },
-    });
-
-    await expect(
-      queue.send(conversationQueueMessage(), {
-        delayMs: 15_001,
-        idempotencyKey: "idem-1",
-      }),
-    ).resolves.toEqual({ messageId: "msg_123" });
-
-    expect(sends).toEqual([
-      {
-        topic: "junior_test_work",
-        message: expect.objectContaining({
-          conversationId: CONVERSATION_ID,
-          signature: expect.any(String),
-          signatureVersion: "v2",
-          signedAtMs: expect.any(Number),
-        }),
-        options: {
-          delaySeconds: 16,
-          idempotencyKey: "idem-1",
-          retentionSeconds: 3_600,
-        },
-      },
-    ]);
   });
 
   it("verifies signed Vercel Queue callback payloads", () => {

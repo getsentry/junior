@@ -138,11 +138,21 @@ describe("turn checkpoint", () => {
   });
 
   it("does not let a delayed running summary replace completion", async () => {
-    const { listTurnSummaries, recordTurnSummary } =
+    const { listTurnSummaries, recordTurnSummary, upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
     const conversationId = "agent-dispatch:delayed-running";
     const turnId = "dispatch:delayed-running";
 
+    // A summary-only terminal write can race a still-running cursor written by
+    // another path. The terminal recovery projection wins in that split state.
+    await upsertTurnRecord({
+      conversationId,
+      turnId,
+      sliceId: 1,
+      state: "running",
+      modelId: "test/model",
+      piMessages: [],
+    });
     await recordTurnSummary({
       conversationId,
       turnId,

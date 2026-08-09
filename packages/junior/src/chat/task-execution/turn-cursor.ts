@@ -983,12 +983,16 @@ async function recordTurnSummaryOwned(
   const priorSummary = (await listTurnSummaries(args.conversationId)).find(
     (summary) => summary.turnId === args.turnId,
   );
-  const existing = stored ?? priorSummary;
+  const terminalSummary =
+    priorSummary &&
+    (priorSummary.state === "completed" ||
+      priorSummary.state === "failed" ||
+      priorSummary.state === "abandoned")
+      ? priorSummary
+      : undefined;
+  const existing = terminalSummary ?? stored ?? priorSummary;
   if (
-    existing &&
-    (existing.state === "completed" ||
-      existing.state === "failed" ||
-      existing.state === "abandoned") &&
+    terminalSummary &&
     (args.state === "running" || args.state === "paused")
   ) {
     return;
