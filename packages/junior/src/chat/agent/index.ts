@@ -104,6 +104,7 @@ import {
   AuthorizationFlowDisabledError,
   AuthorizationPauseError,
 } from "@/chat/services/auth-pause";
+import { TurnSliceLimitExceededError } from "@/chat/services/turn-limit";
 import {
   resolveConversationPrivacy,
   runWithConversationPrivacy,
@@ -1596,7 +1597,10 @@ async function executeAgentRunInPrivacyContext(
       error instanceof AssistantMessageDeliveryError
         ? error.originalError
         : error;
-    if (runError instanceof AuthPausePersistenceError) {
+    if (
+      runError instanceof AuthPausePersistenceError ||
+      runError instanceof TurnSliceLimitExceededError
+    ) {
       throw runError;
     }
     if (resume && runError instanceof AuthorizationPauseError) {

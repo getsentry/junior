@@ -663,6 +663,8 @@ vi.mock("@/chat/mcp/client", () => {
 
 import { executeAgentRun } from "@/chat/agent";
 import type { AgentRunRequest } from "@/chat/agent/request";
+import { botConfig } from "@/chat/config";
+import { TurnSliceLimitExceededError } from "@/chat/services/turn-limit";
 import {
   getTurnRecord,
   upsertTurnRecord,
@@ -1170,6 +1172,48 @@ describe("executeAgentRun progressive MCP loading", () => {
       { provider: "demo", available_tool_count: 1 },
     ]);
     expect(listToolsMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves the execution-limit error when provider restore pauses for auth", async () => {
+    const conversationId = "conversation-restore-auth-limit";
+    const turnId = "turn-restore-auth-limit";
+    const priorMessages = [
+      {
+        role: "toolResult",
+        toolCallId: "prior-call",
+        toolName: "callMcpTool",
+        isError: false,
+        content: [{ type: "text", text: "pong" }],
+        timestamp: 1,
+        input: {
+          tool_name: "mcp__demo__ping",
+          arguments: { query: "prior" },
+        },
+      },
+    ] as unknown as PiMessage[];
+    await upsertTurnRecord({
+      conversationId,
+      modelId: "test/model",
+      piMessages: priorMessages,
+      resumeReason: "auth",
+      sliceId: botConfig.maxSlicesPerTurn,
+      state: "paused",
+      turnId,
+    });
+
+    const error = await executeAgentRun(
+      makeAgentRunRequest("current follow-up", {
+        conversationId,
+        threadTs: "1712345.0090",
+        turnId,
+      }),
+    ).catch((caught) => caught);
+
+    expect(error).toBeInstanceOf(TurnSliceLimitExceededError);
+    await expect(getTurnRecord(conversationId, turnId)).resolves.toMatchObject({
+      errorMessage: expect.stringContaining("execution limit"),
+      state: "failed",
+    });
   });
 
   it("adds missing bootstrap context when inferred provider restore pauses before prompt", async () => {
