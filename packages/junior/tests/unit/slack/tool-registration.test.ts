@@ -109,6 +109,8 @@ describe("Slack tool registration", () => {
     expect(tools).not.toHaveProperty("slackChannelListMessages");
     expect(tools).toHaveProperty("addReaction");
     expect(tools).toHaveProperty("slackCanvasCreate");
+    expect(tools).toHaveProperty("slackUserLookup");
+    expect(tools).not.toHaveProperty("resolvePerson");
     expect(tools).not.toHaveProperty("searchConversationHistory");
     expect(tools).toHaveProperty("queryConversationEvents");
     expect(tools.queryConversationEvents?.exposure).toBe("deferred");
@@ -126,6 +128,8 @@ describe("Slack tool registration", () => {
     expect(tools).toHaveProperty("slackPublicSearch");
     expect(tools).toHaveProperty("addReaction");
     expect(tools).toHaveProperty("slackCanvasCreate");
+    expect(tools).toHaveProperty("slackUserLookup");
+    expect(tools).not.toHaveProperty("resolvePerson");
     expect(tools).toHaveProperty("searchConversationHistory");
     expect(tools).toHaveProperty("queryConversationEvents");
     expect(tools).toHaveProperty("stopWatchingResources");

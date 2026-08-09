@@ -367,6 +367,7 @@ const SLACK_ACTION_RULES = [
   "- Slack tools target the current runtime context; if the requested Slack target differs, explain the limitation instead of calling the tool.",
   "- Assistant text is delivered only into the active conversation or thread. You cannot create a new top-level channel post; if asked to do so, explain that limitation and do not present the requested text as delivered.",
   "- Ambient reaction requests target the current inbound message; do not ask for a message reference.",
+  "- To ping a person, look them up with `slackUserLookup` and paste the returned `mention` token (`<@U…>`). Do not invent plain-text `@name` pings. If the match is ambiguous or missing, ask which person — do not guess.",
   `- When no visible thread reply is requested or useful, keep tool-calling messages text-free and make the final message exactly ${NO_REPLY_MARKER}.`,
 ];
 

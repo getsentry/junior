@@ -21,6 +21,8 @@ runtime orchestration.
   each visible assistant message. Tool-bearing assistant text remains agent
   history; explicit progress uses the status surface.
 - Translate Junior Markdown to Slack `mrkdwn` only at the outbound boundary.
+- Normalize identity-backed person mentions at delivery (`<@U…>`, bare `@U…`,
+  `[[mention:U…]]`). Ordinary `@name` text stays plain text.
 - Continue oversized replies without splitting code fences into invalid
   fragments.
 - Upload files only through validated runtime artifacts; do not trust arbitrary

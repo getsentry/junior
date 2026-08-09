@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { createSlackSource } from "@sentry/junior-plugin-api";
+import { getSqlExecutor } from "@/chat/db";
+import { upsertIdentity } from "@/chat/identities/sql";
+import { parseSlackTeamId } from "@/chat/slack/ids";
+import type { SlackToolContext } from "@/chat/slack/tools/context";
 import { createSlackUserLookupTool } from "@/chat/slack/tools/user-lookup";
 import { usersInfoOk, usersListPage } from "../fixtures/slack/factories/api";
 import {
@@ -14,6 +18,27 @@ async function executeTool<TInput>(tool: any, input: TInput) {
   }
   const prepared = tool.prepareArguments?.(input) ?? input;
   return await tool.execute(prepared, {} as any);
+}
+
+function lookupTool() {
+  const teamId = parseSlackTeamId("T0TEST");
+  if (!teamId) throw new Error("invalid test team id");
+  const context: SlackToolContext = {
+    destination: {
+      platform: "slack",
+      teamId: "T0TEST",
+      channelId: "C0TEST",
+    },
+    source: createSlackSource({
+      teamId: "T0TEST",
+      channelId: "C0TEST",
+      visibility: "public",
+    }),
+    destinationChannelId: "C0TEST" as any,
+    sourceChannelId: "C0TEST" as any,
+    teamId,
+  };
+  return createSlackUserLookupTool(context);
 }
 
 describe("slackUserLookup", () => {
@@ -37,7 +62,7 @@ describe("slackUserLookup", () => {
         }),
       });
 
-      const tool = createSlackUserLookupTool();
+      const tool = lookupTool();
       const result = await executeTool(tool, {
         mode: "user_id",
         value: "U039RR91S",
@@ -77,7 +102,7 @@ describe("slackUserLookup", () => {
         }),
       });
 
-      const tool = createSlackUserLookupTool();
+      const tool = lookupTool();
       const result = await executeTool(tool, {
         mode: "user_id",
         value: "U0BASIC",
@@ -100,7 +125,7 @@ describe("slackUserLookup", () => {
     it("handles user not found", async () => {
       queueSlackApiError("users.info", { error: "user_not_found" });
 
-      const tool = createSlackUserLookupTool();
+      const tool = lookupTool();
       await expect(
         executeTool(tool, {
           mode: "user_id",
@@ -128,7 +153,7 @@ describe("slackUserLookup", () => {
         }),
       });
 
-      const tool = createSlackUserLookupTool();
+      const tool = lookupTool();
       const result = await executeTool(tool, {
         mode: "email",
         value: "emailuser@sentry.io",
@@ -147,12 +172,36 @@ describe("slackUserLookup", () => {
       expect(getCapturedSlackApiCalls("users.lookupByEmail")).toHaveLength(1);
     });
 
+    it("uses a stored identity before asking Slack", async () => {
+      await upsertIdentity(getSqlExecutor(), {
+        kind: "user",
+        provider: "slack",
+        providerTenantId: "T0TEST",
+        providerSubjectId: "U0STORED",
+        email: "stored@sentry.io",
+        emailVerified: true,
+        displayName: "Stored User",
+        handle: "stored",
+      });
+
+      const result = await executeTool(lookupTool(), {
+        mode: "email",
+        value: "stored@sentry.io",
+      });
+
+      expect(result).toMatchObject({
+        mention: "<@U0STORED>",
+        user: { id: "U0STORED", name: "stored" },
+      });
+      expect(getCapturedSlackApiCalls("users.lookupByEmail")).toHaveLength(0);
+    });
+
     it("returns error when email not found", async () => {
       queueSlackApiError("users.lookupByEmail", {
         error: "users_not_found",
       });
 
-      const tool = createSlackUserLookupTool();
+      const tool = lookupTool();
       await expect(
         executeTool(tool, {
           mode: "email",
@@ -180,7 +229,7 @@ describe("slackUserLookup", () => {
         }),
       });
 
-      const tool = createSlackUserLookupTool();
+      const tool = lookupTool();
       const result = await executeTool(tool, {
         mode: "query",
         value: "markus",
@@ -192,15 +241,39 @@ describe("slackUserLookup", () => {
       });
 
       // Should find Markus matches, ranked by relevance
-      expect(result.users.length).toBeGreaterThanOrEqual(1);
-      // Display name exact match should come first
+      expect(result.users).toHaveLength(1);
       expect(result.users[0]).toMatchObject({
         id: "U3",
         mention: "<@U3>",
       });
     });
 
-    it("returns empty results when no match", async () => {
+    it("asks when several users have the same exact name", async () => {
+      queueSlackApiResponse("users.list", {
+        body: usersListPage({
+          members: [
+            {
+              id: "U1ALEX",
+              name: "alex-one",
+              realName: "Alex One",
+              displayName: "Alex",
+            },
+            {
+              id: "U2ALEX",
+              name: "alex-two",
+              realName: "Alex Two",
+              displayName: "Alex",
+            },
+          ],
+        }),
+      });
+
+      await expect(
+        executeTool(lookupTool(), { mode: "query", value: "Alex" }),
+      ).rejects.toThrow("More than one Slack user matches");
+    });
+
+    it("returns an error when no name matches", async () => {
       queueSlackApiResponse("users.list", {
         body: usersListPage({
           members: [
@@ -210,17 +283,9 @@ describe("slackUserLookup", () => {
         }),
       });
 
-      const tool = createSlackUserLookupTool();
-      const result = await executeTool(tool, {
-        mode: "query",
-        value: "zzzzzz",
-      });
-
-      expect(result).toMatchObject({
-        mode: "query",
-        count: 0,
-        users: [],
-      });
+      await expect(
+        executeTool(lookupTool(), { mode: "query", value: "zzzzzz" }),
+      ).rejects.toThrow("No Slack user found");
     });
 
     it("skips bots by default", async () => {
@@ -233,7 +298,7 @@ describe("slackUserLookup", () => {
         }),
       });
 
-      const tool = createSlackUserLookupTool();
+      const tool = lookupTool();
       const result = await executeTool(tool, {
         mode: "query",
         value: "junior",
@@ -243,65 +308,6 @@ describe("slackUserLookup", () => {
       expect(result.users[0].id).toBe("U2");
     });
 
-    it("reports truncated when the default page cap is reached", async () => {
-      queueSlackApiResponse("users.list", {
-        body: usersListPage({
-          members: [{ id: "U1", name: "alice", realName: "Alice Smith" }],
-          nextCursor: "cursor_page2",
-        }),
-      });
-      queueSlackApiResponse("users.list", {
-        body: usersListPage({
-          members: [{ id: "U2", name: "alice2", realName: "Alice Jones" }],
-          nextCursor: "cursor_page3",
-        }),
-      });
-      queueSlackApiResponse("users.list", {
-        body: usersListPage({
-          members: [{ id: "U3", name: "alice3", realName: "Alice Brown" }],
-          nextCursor: "cursor_page4",
-        }),
-      });
-
-      const tool = createSlackUserLookupTool();
-      const result = await executeTool(tool, {
-        mode: "query",
-        value: "alice",
-      });
-
-      expect(result).toMatchObject({
-        count: 3,
-        searched_pages: 3,
-        truncated: true,
-      });
-    });
-
-    it("reports not truncated when pagination ends naturally", async () => {
-      queueSlackApiResponse("users.list", {
-        body: usersListPage({
-          members: [{ id: "U1", name: "alice", realName: "Alice Smith" }],
-          nextCursor: "cursor_page2",
-        }),
-      });
-      queueSlackApiResponse("users.list", {
-        body: usersListPage({
-          members: [{ id: "U2", name: "alice2", realName: "Alice Jones" }],
-        }),
-      });
-
-      const tool = createSlackUserLookupTool();
-      const result = await executeTool(tool, {
-        mode: "query",
-        value: "alice",
-      });
-
-      expect(result).toMatchObject({
-        count: 2,
-        searched_pages: 2,
-        truncated: false,
-      });
-    });
-
     it("reports a missing user scope with repair guidance", async () => {
       queueSlackApiError("users.list", {
         error: "missing_scope",
@@ -309,7 +315,7 @@ describe("slackUserLookup", () => {
         provided: "chat:write",
       });
 
-      const tool = createSlackUserLookupTool();
+      const tool = lookupTool();
       await expect(
         executeTool(tool, { mode: "query", value: "alice" }),
       ).rejects.toMatchObject({
@@ -328,7 +334,7 @@ describe("slackUserLookup", () => {
     it("leaves internal Slack failures unexpected", async () => {
       queueSlackApiError("users.list", { error: "fatal_error" });
 
-      const tool = createSlackUserLookupTool();
+      const tool = lookupTool();
       await expect(
         executeTool(tool, { mode: "query", value: "alice" }),
       ).rejects.toMatchObject({
@@ -353,7 +359,7 @@ describe("slackUserLookup", () => {
         }),
       });
 
-      const tool = createSlackUserLookupTool();
+      const tool = lookupTool();
       const result = await executeTool(tool, {
         mode: "query",
         value: "user",
@@ -366,7 +372,7 @@ describe("slackUserLookup", () => {
 
   describe("input validation", () => {
     it("requires mode and value in the model-facing schema", async () => {
-      const tool = createSlackUserLookupTool();
+      const tool = lookupTool();
 
       expect(tool.inputSchema).toMatchObject({
         type: "object",
@@ -383,7 +389,7 @@ describe("slackUserLookup", () => {
     });
 
     it("rejects the previous identifier fields", async () => {
-      const tool = createSlackUserLookupTool();
+      const tool = lookupTool();
       await expect(executeTool(tool, { user_id: "U123" })).rejects.toThrow(
         "Invalid tool arguments",
       );
@@ -439,7 +445,7 @@ describe("slackUserLookup", () => {
         }),
       });
 
-      const tool = createSlackUserLookupTool();
+      const tool = lookupTool();
       const result = await executeTool(tool, {
         mode: "user_id",
         value: "U0GH",
