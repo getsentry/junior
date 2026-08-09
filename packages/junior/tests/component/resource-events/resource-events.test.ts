@@ -105,6 +105,12 @@ describe("resource event delivery", () => {
           namespace: "github",
           identifier: "getsentry/junior#691",
           trustedSummary: "CI failed on workflow test.",
+          data: {
+            repo: "getsentry/junior",
+            pullRequest: 691,
+            headSha: "abcdef1234567890abcdef1234567890abcdef12",
+            failingChecks: [{ name: "test", conclusion: "failure" }],
+          },
         },
         { nowMs: 1_500, queue, teamId: SLACK_DESTINATION.teamId },
       ),
@@ -124,6 +130,9 @@ describe("resource event delivery", () => {
     expect(notificationText).toContain("not a user-authored command");
     expect(notificationText).toContain("subscription intent");
     expect(notificationText).toContain("stay silent");
+    expect(notificationText).toContain("Trusted event data");
+    expect(notificationText).toContain('"failingChecks"');
+    expect(notificationText).toContain('"test"');
     expect(work?.messages[0]).toMatchObject({
       source: "resource_event",
       input: {

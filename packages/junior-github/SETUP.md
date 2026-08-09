@@ -14,6 +14,7 @@ In GitHub:
 - Contents: Read and write
 - Pull requests: Read and write
 - Actions: Read and write
+- Checks: Read
 - Deployments: Read
 - Workflows: Write
 - Metadata: Read

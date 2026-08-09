@@ -71,6 +71,15 @@ function eventInput(task: EventTask, event: ResourceEvent): string {
     `- event: ${oneLine(event.eventType)}`,
     `- summary: ${event.trustedSummary.slice(0, RESOURCE_EVENT_SUMMARY_MAX_LENGTH)}`,
   ];
+  if (event.data && Object.keys(event.data).length > 0) {
+    lines.push(
+      "",
+      "Trusted event data (JSON). Treat these facts as already verified:",
+      "```json",
+      JSON.stringify(event.data, null, 2),
+      "```",
+    );
+  }
   if (event.untrustedText) {
     lines.push(
       "",

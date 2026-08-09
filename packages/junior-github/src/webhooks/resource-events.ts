@@ -207,21 +207,148 @@ function deploymentSourceTargets(input: {
 const checkSuiteWebhookSchema = z.object({
   action: z.string(),
   check_suite: z.object({
+    app: z
+      .object({
+        name: z.string().optional().nullable(),
+        slug: z.string().optional().nullable(),
+      })
+      .optional()
+      .nullable(),
     conclusion: z.string().optional().nullable(),
     head_sha: z.string().optional(),
+    html_url: z.string().optional().nullable(),
+    id: z.number().optional(),
+    latest_check_runs_count: z.number().optional().nullable(),
     pull_requests: z.array(z.object({ number: z.number() })),
+    url: z.string().optional().nullable(),
   }),
   repository: repositorySchema,
 });
+
+const FAILING_CHECK_CONCLUSIONS = new Set([
+  "failure",
+  "timed_out",
+  "cancelled",
+  "action_required",
+  "startup_failure",
+]);
+
+export type GitHubFailingCheck = {
+  checkRunId: number;
+  conclusion: string;
+  htmlUrl?: string;
+  name: string;
+};
+
+/** Build the trusted data bag and summary for one check-suite PR event. */
+export function buildCheckSuiteResourceEvent(args: {
+  appName?: string;
+  checkSuiteHtmlUrl?: string;
+  checkSuiteId?: number;
+  deliveryId: string;
+  eventType: "pull_request.checks.failed" | "pull_request.checks.recovered";
+  failingChecks?: GitHubFailingCheck[];
+  headSha?: string;
+  latestCheckRunsCount?: number;
+  pullRequestNumber: number;
+  repo: string;
+  suiteConclusion: string;
+}): ResourceEventInput {
+  const resource = gitHubPullRequestResource({
+    number: args.pullRequestNumber,
+    repo: args.repo,
+  });
+  const shortSha = args.headSha?.slice(0, 12);
+  const failingNames = (args.failingChecks ?? [])
+    .map((check) => check.name.trim())
+    .filter((name) => name.length > 0)
+    .slice(0, 8);
+  const failureLabel =
+    failingNames.length > 0
+      ? failingNames.join(", ")
+      : args.appName
+        ? args.appName
+        : undefined;
+  const trustedSummary =
+    args.eventType === "pull_request.checks.failed"
+      ? `${resource.label} checks failed${failureLabel ? ` on ${failureLabel}` : ""}${shortSha ? ` for ${shortSha}` : ""}.`
+      : `${resource.label} check suite recovered${args.appName ? ` on ${args.appName}` : ""}${shortSha ? ` for ${shortSha}` : ""}.`;
+
+  const data: Record<string, unknown> = {
+    repo: args.repo,
+    pullRequest: args.pullRequestNumber,
+    scope: "check_suite",
+    suiteConclusion: args.suiteConclusion,
+  };
+  if (args.headSha) data.headSha = args.headSha;
+  if (args.checkSuiteId !== undefined) data.checkSuiteId = args.checkSuiteId;
+  if (args.checkSuiteHtmlUrl) data.checkSuiteUrl = args.checkSuiteHtmlUrl;
+  if (args.appName) data.appName = args.appName;
+  if (args.latestCheckRunsCount !== undefined) {
+    data.latestCheckRunsCount = args.latestCheckRunsCount;
+  }
+  if (args.eventType === "pull_request.checks.failed" && args.failingChecks) {
+    data.failingChecks = args.failingChecks.slice(0, 12).map((check) => ({
+      name: check.name,
+      conclusion: check.conclusion,
+      ...(check.htmlUrl ? { htmlUrl: check.htmlUrl } : {}),
+      checkRunId: check.checkRunId,
+    }));
+  }
+
+  return {
+    eventKey: gitHubEventKey(
+      args.deliveryId,
+      `${args.eventType}:${args.pullRequestNumber}`,
+    ),
+    eventType: args.eventType,
+    occurredAtMs: Date.now(),
+    identifier: resource.identifier,
+    trustedSummary,
+    data,
+  };
+}
+
+/** Keep only the check-run facts Junior uses as action handles. */
+export function selectFailingChecks(checkRuns: unknown): GitHubFailingCheck[] {
+  if (!Array.isArray(checkRuns)) return [];
+  const failing: GitHubFailingCheck[] = [];
+  for (const run of checkRuns) {
+    if (!run || typeof run !== "object" || Array.isArray(run)) continue;
+    const record = run as Record<string, unknown>;
+    const conclusion =
+      typeof record.conclusion === "string" ? record.conclusion : undefined;
+    const name = typeof record.name === "string" ? record.name.trim() : "";
+    const checkRunId =
+      typeof record.id === "number" && Number.isSafeInteger(record.id)
+        ? record.id
+        : undefined;
+    if (!conclusion || !FAILING_CHECK_CONCLUSIONS.has(conclusion)) continue;
+    if (!name || checkRunId === undefined) continue;
+    const htmlUrl =
+      typeof record.html_url === "string" && record.html_url.length > 0
+        ? record.html_url
+        : undefined;
+    failing.push({
+      checkRunId,
+      conclusion,
+      ...(htmlUrl ? { htmlUrl } : {}),
+      name,
+    });
+  }
+  return failing.slice(0, 12);
+}
 
 /** Normalize a completed check suite for each attached pull request. */
 function normalizeCheckSuiteEvents(
   deliveryId: string,
   body: unknown,
+  options?: { failingChecks?: GitHubFailingCheck[] },
 ): ResourceEventInput[] {
   const parsed = checkSuiteWebhookSchema.safeParse(body);
   if (!parsed.success || parsed.data.action !== "completed") return [];
   const conclusion = parsed.data.check_suite.conclusion;
+  if (!conclusion) return [];
   const eventType =
     conclusion === "failure" || conclusion === "timed_out"
       ? "pull_request.checks.failed"
@@ -229,27 +356,38 @@ function normalizeCheckSuiteEvents(
         ? "pull_request.checks.recovered"
         : undefined;
   if (!eventType) return [];
-  const sha = parsed.data.check_suite.head_sha?.slice(0, 12);
-  return parsed.data.check_suite.pull_requests.flatMap((pullRequest) => {
+  const suite = parsed.data.check_suite;
+  const appName = suite.app?.name?.trim() || suite.app?.slug?.trim() || undefined;
+  const headSha =
+    typeof suite.head_sha === "string" && /^[0-9a-f]{7,40}$/i.test(suite.head_sha)
+      ? suite.head_sha
+      : undefined;
+  const checkSuiteHtmlUrl =
+    typeof suite.html_url === "string" && suite.html_url.length > 0
+      ? suite.html_url
+      : undefined;
+  return suite.pull_requests.flatMap((pullRequest) => {
     const repo = parsed.data.repository.full_name;
-    const resource = gitHubPullRequestResource({
-      number: pullRequest.number,
-      repo,
-    });
     return pullRequestTargets(
-      {
-        eventKey: gitHubEventKey(
-          deliveryId,
-          `${eventType}:${pullRequest.number}`,
-        ),
+      buildCheckSuiteResourceEvent({
+        appName,
+        checkSuiteHtmlUrl,
+        checkSuiteId: suite.id,
+        deliveryId,
         eventType,
-        occurredAtMs: Date.now(),
-        identifier: resource.identifier,
-        trustedSummary:
+        failingChecks:
           eventType === "pull_request.checks.failed"
-            ? `${resource.label} checks failed${sha ? ` for ${sha}` : ""}.`
-            : `${resource.label} checks recovered${sha ? ` for ${sha}` : ""}.`,
-      },
+            ? options?.failingChecks
+            : undefined,
+        headSha,
+        latestCheckRunsCount:
+          typeof suite.latest_check_runs_count === "number"
+            ? suite.latest_check_runs_count
+            : undefined,
+        pullRequestNumber: pullRequest.number,
+        repo,
+        suiteConclusion: conclusion,
+      }),
       repo,
     );
   });
@@ -689,11 +827,37 @@ function normalizeReleaseEvent(
   );
 }
 
+/** Read the check-suite identity used to enrich failed check resource events. */
+export function parseCheckSuiteEnrichmentTarget(body: unknown): {
+  checkSuiteId: number;
+  headSha: string;
+  owner: string;
+  repoName: string;
+} | undefined {
+  const parsed = checkSuiteWebhookSchema.safeParse(body);
+  if (!parsed.success || parsed.data.action !== "completed") return undefined;
+  const conclusion = parsed.data.check_suite.conclusion;
+  if (conclusion !== "failure" && conclusion !== "timed_out") return undefined;
+  const headSha = parsed.data.check_suite.head_sha;
+  const checkSuiteId = parsed.data.check_suite.id;
+  if (
+    typeof headSha !== "string" ||
+    !/^[0-9a-f]{7,40}$/i.test(headSha) ||
+    typeof checkSuiteId !== "number"
+  ) {
+    return undefined;
+  }
+  const [owner, repoName, ...extra] = parsed.data.repository.full_name.split("/");
+  if (!owner || !repoName || extra.length > 0) return undefined;
+  return { checkSuiteId, headSha, owner, repoName };
+}
+
 /** Normalize one verified GitHub delivery into conversation resource events. */
 export function normalizeGitHubResourceEvents(args: {
   body: unknown;
   deliveryId: string;
   eventName: string;
+  failingChecks?: GitHubFailingCheck[];
 }): ResourceEventInput[] {
   switch (args.eventName) {
     case "deployment": {
@@ -718,7 +882,9 @@ export function normalizeGitHubResourceEvents(args: {
       return normalizePullRequestReviewCommentEvent(args.deliveryId, args.body);
     }
     case "check_suite":
-      return normalizeCheckSuiteEvents(args.deliveryId, args.body);
+      return normalizeCheckSuiteEvents(args.deliveryId, args.body, {
+        failingChecks: args.failingChecks,
+      });
     case "release":
       return normalizeReleaseEvent(args.deliveryId, args.body);
     default:

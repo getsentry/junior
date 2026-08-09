@@ -34,7 +34,10 @@ conversation.
 - Core validates namespace, resource type, and event ownership again before
   storing a subscription.
 - Normalized events contain a stable namespace and identifier plus a bounded,
-  safe notification summary rather than a raw webhook payload.
+  safe notification summary rather than a raw webhook payload. Plugins may also
+  attach bounded trusted `data` for action handles the agent should not
+  re-fetch (ids, URLs, failing check names). Keep `data` small and useful;
+  leave investigation details for tools.
 - Ingestion appends a system-authored conversation message and sends a normal
   task-execution wake-up. Resource-event identity constants and detection live
   in `actor.ts` (`RESOURCE_EVENT_SYSTEM_ACTOR`, synthetic Slack author id, and

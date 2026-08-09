@@ -995,6 +995,7 @@ interface ResourceEventNotificationOptions {
   subscriptionId?: string;
   thread?: ThreadOverrides;
   trustedSummary: string;
+  data?: Record<string, unknown>;
   untrustedText?: string;
 }
 
@@ -1044,6 +1045,7 @@ function resourceEventNotificationText(
     {
       eventType: opts.eventType,
       trustedSummary: opts.trustedSummary,
+      data: opts.data,
       untrustedText: opts.untrustedText,
     },
   );
