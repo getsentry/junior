@@ -65,7 +65,7 @@ export async function getAwaitingAgentContinueRequest(args: {
     await failTurnRecord({
       conversationId: args.conversationId,
       expectedVersion: turn.version,
-      sessionId: args.turnId,
+      turnId: args.turnId,
       errorMessage: error instanceof Error ? error.message : String(error),
     });
     return undefined;

@@ -1184,7 +1184,7 @@ describe("agent run continuation", () => {
     await turnSessionState.upsertTurnRecord({
       modelId: "test/model",
       conversationId,
-      sessionId: turnId,
+      turnId: turnId,
       sliceId: 1,
       state: "paused",
       destination: TEST_DESTINATION,
@@ -1345,7 +1345,7 @@ describe("agent run continuation", () => {
     await turnSessionState.upsertTurnRecord({
       modelId: "test/model",
       conversationId,
-      sessionId,
+      turnId: sessionId,
       sliceId: 1,
       state: "running",
       destination: TEST_DESTINATION,

@@ -70,7 +70,7 @@ describe("agent continuation runner callbacks", () => {
     const sessionRecord = await upsertTurnRecord({
       modelId: "test/model",
       conversationId,
-      sessionId,
+      turnId: sessionId,
       sliceId: 2,
       state: "paused",
       destination: SLACK_DESTINATION,
@@ -168,7 +168,7 @@ describe("agent continuation runner callbacks", () => {
     const sessionRecord = await upsertTurnRecord({
       modelId: "test/model",
       conversationId,
-      sessionId,
+      turnId: sessionId,
       sliceId: 2,
       state: "paused",
       destination: SLACK_DESTINATION,
@@ -253,7 +253,7 @@ describe("agent continuation runner callbacks", () => {
     const sessionRecord = await upsertTurnRecord({
       modelId: "test/model",
       conversationId,
-      sessionId,
+      turnId: sessionId,
       sliceId: 2,
       state: "paused",
       resumeReason: "timeout",
@@ -343,7 +343,7 @@ describe("agent continuation runner callbacks", () => {
     const sessionRecord = await upsertTurnRecord({
       modelId: "test/model",
       conversationId,
-      sessionId,
+      turnId: sessionId,
       sliceId: 2,
       state: "paused",
       destination: SLACK_DESTINATION,

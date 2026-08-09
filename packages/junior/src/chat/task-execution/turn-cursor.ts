@@ -44,11 +44,11 @@ import {
 const AGENT_TURN_SESSION_RESUME_TTL_MS = 24 * 60 * 60 * 1000;
 const AGENT_TURN_SESSION_TERMINAL_TTL_MS = 60 * 60 * 1000;
 
-function executionMetricsForSession(
+function executionMetricsForTurn(
   conversation: Awaited<ReturnType<ConversationStore["get"]>>,
-  sessionId: string,
+  turnId: string,
 ): { durationMs: number; usage?: AgentTurnUsage } | undefined {
-  return conversation?.executionMetrics?.runId === sessionId
+  return conversation?.executionMetrics?.runId === turnId
     ? conversation.executionMetrics
     : undefined;
 }
@@ -106,7 +106,7 @@ export interface TurnRecord {
   actors: Actor[];
   resumeReason?: TurnPauseReason;
   resumedFromSliceId?: number;
-  sessionId: string;
+  turnId: string;
   sliceId: number;
   startedAtMs: number;
   state: TurnStatus;
@@ -123,7 +123,7 @@ export interface TurnSummary {
   /** Provider-owned identifier returned after visible delivery is accepted. */
   resultMessageId?: string;
   resumeReason?: TurnPauseReason;
-  sessionId: string;
+  turnId: string;
   sliceId: number;
   state: TurnStatus;
   surface?: AgentTurnSurface;
@@ -142,8 +142,11 @@ interface StoredTurnRecord extends Omit<
   | "piMessages"
   | "piMessageProvenance"
   | "reasoningLevel"
+  | "turnId"
   | "turnStartMessageIndex"
 > {
+  /** Legacy Redis wire name. */
+  sessionId: string;
   /**
    * `seq` of the last event in `junior_conversation_events` whose projection reproduces
    * this record's committed Pi messages; -1 when nothing was committed.
@@ -170,8 +173,7 @@ const agentTurnSessionStatusSchema = z
     "abandoned",
   ])
   .transform(
-    (state): TurnStatus =>
-      state === "awaiting_resume" ? "paused" : state,
+    (state): TurnStatus => (state === "awaiting_resume" ? "paused" : state),
   );
 
 const agentTurnSurfaceSchema = z.enum([
@@ -192,7 +194,7 @@ const nonNegativeNumberSchema = z.number().finite().nonnegative();
 const seqCursorSchema = z.number().int().min(-1);
 
 /** Thin recovery projection stored per conversation. Reporting reads SQL. */
-const agentTurnSessionSummarySchema = z
+const storedTurnSummarySchema = z
   .object({
     version: z.number().int().nonnegative(),
     conversationId: z.string().min(1),
@@ -206,7 +208,7 @@ const agentTurnSessionSummarySchema = z
     surface: agentTurnSurfaceSchema.optional(),
     updatedAtMs: nonNegativeNumberSchema,
   })
-  .strip() satisfies z.ZodType<TurnSummary>;
+  .strip();
 
 /** Full turn-session record stored under the session key. */
 const storedTurnRecordSchema = z
@@ -243,7 +245,7 @@ function conversationExecutionFromSummary(
       : summary.state;
   return {
     status,
-    runId: summary.sessionId,
+    runId: summary.turnId,
     updatedAtMs: summary.updatedAtMs,
   };
 }
@@ -254,14 +256,18 @@ function sessionLogActor(
   return actor?.platform === "slack" ? toStoredSlackActor(actor) : undefined;
 }
 
-function parseTurnRecord(
-  value: unknown,
-): StoredTurnRecord {
+function parseTurnRecord(value: unknown): StoredTurnRecord {
   return storedTurnRecordSchema.parse(value);
 }
 
 function parseTurnSummary(value: unknown): TurnSummary {
-  return agentTurnSessionSummarySchema.parse(value);
+  const { sessionId, ...summary } = storedTurnSummarySchema.parse(value);
+  return { ...summary, turnId: sessionId };
+}
+
+function storeTurnSummary(summary: TurnSummary) {
+  const { turnId, ...stored } = summary;
+  return storedTurnSummarySchema.parse({ ...stored, sessionId: turnId });
 }
 
 function agentTurnSessionRecordTtlMs(
@@ -285,10 +291,8 @@ function agentTurnSessionIndexTtlMs(ttlMs?: number): number {
   return Math.max(1, ttlMs ?? AGENT_TURN_SESSION_RESUME_TTL_MS);
 }
 
-function projectTurnSummary(
-  record: StoredTurnRecord,
-): TurnSummary {
-  return agentTurnSessionSummarySchema.parse(record);
+function projectTurnSummary(record: StoredTurnRecord): TurnSummary {
+  return parseTurnSummary(record);
 }
 
 async function appendTurnSummary(
@@ -298,7 +302,7 @@ async function appendTurnSummary(
   const stateAdapter = getStateAdapter();
   await stateAdapter.appendToList(
     agentTurnSessionConversationIndexKey(summary.conversationId),
-    agentTurnSessionSummarySchema.parse(summary),
+    storeTurnSummary(summary),
     { ttlMs },
   );
 }
@@ -398,7 +402,7 @@ function materializeTurnRecord(
   return {
     version: stored.version,
     conversationId: stored.conversationId,
-    sessionId: stored.sessionId,
+    turnId: stored.sessionId,
     sliceId: stored.sliceId,
     state: stored.state,
     startedAtMs: stored.startedAtMs,
@@ -480,12 +484,12 @@ function restoreRuntimeContext(
 /** Read only the stored metadata record without materializing transcript logs. */
 async function getStoredTurnRecord(
   conversationId: string,
-  sessionId: string,
+  turnId: string,
 ): Promise<StoredTurnRecord | undefined> {
   const stateAdapter = getStateAdapter();
   await stateAdapter.connect();
   const value = await stateAdapter.get(
-    agentTurnSessionKey(conversationId, sessionId),
+    agentTurnSessionKey(conversationId, turnId),
   );
   return value == null ? undefined : parseTurnRecord(value);
 }
@@ -493,13 +497,10 @@ async function getStoredTurnRecord(
 /** Read a materialized turn session record for resume and history loading. */
 async function materializeStoredTurnRecord(
   conversationId: string,
-  sessionId: string,
+  turnId: string,
   followCurrentReplacement: boolean,
 ): Promise<TurnRecord | undefined> {
-  const parsed = await getStoredTurnRecord(
-    conversationId,
-    sessionId,
-  );
+  const parsed = await getStoredTurnRecord(conversationId, turnId);
   if (!parsed) {
     return undefined;
   }
@@ -533,7 +534,7 @@ async function materializeStoredTurnRecord(
       : piProjection.seqs.filter((seq) => seq <= parsed.turnStartSeq!).length;
 
   const conversation = await getConversationStore().get({ conversationId });
-  const executionMetrics = executionMetricsForSession(conversation, sessionId);
+  const executionMetrics = executionMetricsForTurn(conversation, turnId);
   return materializeTurnRecord(
     parsed,
     piProjection,
@@ -552,25 +553,17 @@ async function materializeStoredTurnRecord(
 /** Read a turn record pinned to the history version containing its checkpoint. */
 export async function getTurnRecord(
   conversationId: string,
-  sessionId: string,
+  turnId: string,
 ): Promise<TurnRecord | undefined> {
-  return await materializeStoredTurnRecord(
-    conversationId,
-    sessionId,
-    false,
-  );
+  return await materializeStoredTurnRecord(conversationId, turnId, false);
 }
 
 /** Read a turn session for resume, following a newer committed replacement while unfinished. */
 export async function getTurnRecordForResume(
   conversationId: string,
-  sessionId: string,
+  turnId: string,
 ): Promise<TurnRecord | undefined> {
-  return await materializeStoredTurnRecord(
-    conversationId,
-    sessionId,
-    true,
-  );
+  return await materializeStoredTurnRecord(conversationId, turnId, true);
 }
 
 /** Build the storage record that advances optimistic resume versioning. */
@@ -583,7 +576,7 @@ function buildStoredRecord(args: {
   historyVersion?: number;
   lastProgressAtMs?: number;
   previousVersion?: number;
-  sessionId: string;
+  turnId: string;
   sliceId: number;
   startedAtMs?: number;
   state: TurnStatus;
@@ -599,7 +592,7 @@ function buildStoredRecord(args: {
   return {
     version: (args.previousVersion ?? 0) + 1,
     conversationId: args.conversationId,
-    sessionId: args.sessionId,
+    sessionId: args.turnId,
     sliceId: args.sliceId,
     state: args.state,
     startedAtMs: args.startedAtMs ?? nowMs,
@@ -660,7 +653,11 @@ async function setStoredRecord(args: {
     destinationVisibility: args.destinationVisibility,
     nowMs: Date.now(),
     source: args.source,
-    summary: { ...storedRecord, ...args.runtimeMetadata },
+    summary: {
+      ...projectTurnSummary(storedRecord),
+      startedAtMs: storedRecord.startedAtMs,
+      ...args.runtimeMetadata,
+    },
   });
   await stateAdapter.set(
     agentTurnSessionKey(storedRecord.conversationId, storedRecord.sessionId),
@@ -696,7 +693,7 @@ async function updateTurnState(args: {
 }): Promise<TurnRecord | undefined> {
   const parsed = await getStoredTurnRecord(
     args.existing.conversationId,
-    args.existing.sessionId,
+    args.existing.turnId,
   );
   if (!parsed || parsed.version !== args.existing.version) {
     return undefined;
@@ -721,7 +718,7 @@ async function updateTurnState(args: {
     }),
     record: buildStoredRecord({
       conversationId: args.existing.conversationId,
-      sessionId: args.existing.sessionId,
+      turnId: args.existing.turnId,
       sliceId: args.existing.sliceId,
       state: args.state,
       committedSeq: parsed.committedSeq,
@@ -761,7 +758,7 @@ export async function upsertTurnRecord(args: {
   loadedSkillNames?: string[];
   modelId: string;
   conversationStore?: ConversationStore;
-  sessionId: string;
+  turnId: string;
   sliceId: number;
   state: TurnStatus;
   surface?: AgentTurnSurface;
@@ -780,30 +777,25 @@ export async function upsertTurnRecord(args: {
 }): Promise<TurnRecord> {
   const existingRecord = await getStoredTurnRecord(
     args.conversationId,
-    args.sessionId,
+    args.turnId,
   );
   const conversation = await (
     args.conversationStore ?? getConversationStore()
   ).get({
     conversationId: args.conversationId,
   });
-  const executionMetrics = executionMetricsForSession(
-    conversation,
-    args.sessionId,
-  );
+  const executionMetrics = executionMetricsForTurn(conversation, args.turnId);
   const existingDispatchId =
     existingRecord?.dispatchId ??
-    (
-      await listTurnSummaries(args.conversationId)
-    ).find((summary) => summary.sessionId === args.sessionId)?.dispatchId;
+    (await listTurnSummaries(args.conversationId)).find(
+      (summary) => summary.turnId === args.turnId,
+    )?.dispatchId;
   if (
     existingDispatchId &&
     args.dispatchId &&
     existingDispatchId !== args.dispatchId
   ) {
-    throw new Error(
-      `Turn session ${args.sessionId} dispatchId cannot be changed`,
-    );
+    throw new Error(`Turn session ${args.turnId} dispatchId cannot be changed`);
   }
   const ttlMs = agentTurnSessionRecordTtlMs(args.state, args.ttlMs);
   // Attribute new user input to the turn's actor as an instruction; the event
@@ -825,7 +817,7 @@ export async function upsertTurnRecord(args: {
       ? {
           turnContext: {
             contexts: args.turnContexts,
-            turnId: args.sessionId,
+            turnId: args.turnId,
           },
         }
       : {}),
@@ -884,7 +876,7 @@ export async function upsertTurnRecord(args: {
     turnStartMessageIndex,
     record: buildStoredRecord({
       conversationId: args.conversationId,
-      sessionId: args.sessionId,
+      turnId: args.turnId,
       sliceId: args.sliceId,
       state: args.state,
       committedSeq: commit.committedSeq,
@@ -933,7 +925,7 @@ export async function recordTurnSummary(args: {
   actor?: Actor;
   resumeReason?: TurnPauseReason;
   reasoningLevel?: string;
-  sessionId: string;
+  turnId: string;
   sliceId: number;
   startedAtMs?: number;
   state: TurnStatus;
@@ -941,21 +933,15 @@ export async function recordTurnSummary(args: {
   traceId?: string;
   ttlMs?: number;
 }): Promise<void> {
-  const stored = await getStoredTurnRecord(
-    args.conversationId,
-    args.sessionId,
-  );
+  const stored = await getStoredTurnRecord(args.conversationId, args.turnId);
   const conversationStore = args.conversationStore ?? getConversationStore();
   const conversation = await conversationStore.get({
     conversationId: args.conversationId,
   });
-  const executionMetrics = executionMetricsForSession(
-    conversation,
-    args.sessionId,
+  const executionMetrics = executionMetricsForTurn(conversation, args.turnId);
+  const priorSummary = (await listTurnSummaries(args.conversationId)).find(
+    (summary) => summary.turnId === args.turnId,
   );
-  const priorSummary = (
-    await listTurnSummaries(args.conversationId)
-  ).find((summary) => summary.sessionId === args.sessionId);
   const existing = stored ?? priorSummary;
   const existingDispatchId = existing?.dispatchId;
   const existingDispatchOutcome =
@@ -967,9 +953,7 @@ export async function recordTurnSummary(args: {
     args.dispatchId &&
     existingDispatchId !== args.dispatchId
   ) {
-    throw new Error(
-      `Turn session ${args.sessionId} dispatchId cannot be changed`,
-    );
+    throw new Error(`Turn session ${args.turnId} dispatchId cannot be changed`);
   }
   const nowMs = Date.now();
   // Summary-only path writes the recovery index, not the per-session record key.
@@ -977,7 +961,7 @@ export async function recordTurnSummary(args: {
   const summary: TurnSummary = {
     version: existing?.version ?? 0,
     conversationId: args.conversationId,
-    sessionId: args.sessionId,
+    turnId: args.turnId,
     sliceId: args.sliceId,
     state: args.state,
     updatedAtMs: nowMs,
@@ -1008,9 +992,7 @@ export async function recordTurnSummary(args: {
   await appendTurnSummary(summary, ttlMs);
 }
 
-async function readTurnSummaries(
-  key: string,
-): Promise<TurnSummary[]> {
+async function readTurnSummaries(key: string): Promise<TurnSummary[]> {
   const stateAdapter = getStateAdapter();
   await stateAdapter.connect();
   const values = await stateAdapter.getList(key);
@@ -1023,7 +1005,7 @@ async function readTurnSummaries(
     } catch {
       continue;
     }
-    const summaryKey = `${summary.conversationId}:${summary.sessionId}`;
+    const summaryKey = `${summary.conversationId}:${summary.turnId}`;
     if (!summaries.has(summaryKey)) {
       summaries.set(summaryKey, summary);
     }
@@ -1046,13 +1028,10 @@ export async function listTurnSummaries(
 /** Mark an unfinished turn session record as abandoned when a newer turn wins. */
 export async function abandonTurnRecord(args: {
   conversationId: string;
-  sessionId: string;
+  turnId: string;
   errorMessage?: string;
 }): Promise<TurnRecord | undefined> {
-  const existing = await getTurnRecord(
-    args.conversationId,
-    args.sessionId,
-  );
+  const existing = await getTurnRecord(args.conversationId, args.turnId);
   if (
     !existing ||
     existing.state === "completed" ||
@@ -1073,13 +1052,10 @@ export async function abandonTurnRecord(args: {
 export async function failTurnRecord(args: {
   conversationId: string;
   expectedVersion: number;
-  sessionId: string;
+  turnId: string;
   errorMessage?: string;
 }): Promise<TurnRecord | undefined> {
-  const existing = await getTurnRecord(
-    args.conversationId,
-    args.sessionId,
-  );
+  const existing = await getTurnRecord(args.conversationId, args.turnId);
   if (
     !existing ||
     existing.state === "completed" ||

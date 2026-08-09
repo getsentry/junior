@@ -344,10 +344,7 @@ describe("agent continuation composition", () => {
       resumeVersion: expect.any(Number),
     });
 
-    const sessionRecord = await getTurnRecord(
-      "conversation-1",
-      "turn-1",
-    );
+    const sessionRecord = await getTurnRecord("conversation-1", "turn-1");
     expect(sessionRecord).toMatchObject({
       state: "paused",
       resumeReason: "timeout",
@@ -376,7 +373,7 @@ describe("agent continuation composition", () => {
     await upsertTurnRecord({
       modelId: "test/model",
       conversationId: "conversation-timeout-cap",
-      sessionId: "turn-timeout-cap",
+      turnId: "turn-timeout-cap",
       sliceId: botConfig.maxSlicesPerTurn,
       state: "paused",
       piMessages,
@@ -465,10 +462,7 @@ describe("agent continuation composition", () => {
     await vi.advanceTimersByTimeAsync(10_000);
     await replyPromise;
 
-    const sessionRecord = await getTurnRecord(
-      "conversation-2",
-      "turn-2",
-    );
+    const sessionRecord = await getTurnRecord("conversation-2", "turn-2");
     const userMessage = sessionRecord?.piMessages.find((message) =>
       JSON.stringify(message).includes("<omitted-image-attachments>"),
     ) as
@@ -514,10 +508,7 @@ describe("agent continuation composition", () => {
       resumeVersion: expect.any(Number),
     });
 
-    const sessionRecord = await getTurnRecord(
-      "conversation-hung",
-      "turn-hung",
-    );
+    const sessionRecord = await getTurnRecord("conversation-hung", "turn-hung");
     expect(sessionRecord).toMatchObject({
       state: "paused",
       resumeReason: "timeout",

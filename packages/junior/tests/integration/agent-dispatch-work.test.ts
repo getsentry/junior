@@ -233,9 +233,7 @@ describe("agent dispatch conversation work", () => {
       status: "running",
     });
     await expect(
-      listTurnSummaries(
-        getDispatchConversationId(dispatch),
-      ),
+      listTurnSummaries(getDispatchConversationId(dispatch)),
     ).resolves.toEqual([
       expect.not.objectContaining({ dispatchOutcome: expect.anything() }),
     ]);
@@ -291,7 +289,7 @@ describe("agent dispatch conversation work", () => {
         destination: dispatch.destination,
         destinationVisibility: dispatch.destinationVisibility,
         dispatchId: dispatch.id,
-        sessionId,
+        turnId: sessionId,
         sliceId: 2,
         source: dispatch.source,
         // Turn checkpoint status (dispatch status above stays SQL-bound).
@@ -307,7 +305,7 @@ describe("agent dispatch conversation work", () => {
           destinationVisibility: dispatch.destinationVisibility,
           dispatchId: dispatch.id,
           dispatchOutcome: "completed",
-          sessionId,
+          turnId: sessionId,
           sliceId: 2,
           source: dispatch.source,
           state: "completed",
@@ -400,7 +398,7 @@ describe("agent dispatch conversation work", () => {
       destinationVisibility: dispatch.destinationVisibility,
       dispatchId: dispatch.id,
       resultMessageId: "1700000000.000012",
-      sessionId: getDispatchTurnId(dispatch.id),
+      turnId: getDispatchTurnId(dispatch.id),
       sliceId: 1,
       source: dispatch.source,
       state: "running",
@@ -426,5 +424,4 @@ describe("agent dispatch conversation work", () => {
       status: "completed",
     });
   });
-
 });

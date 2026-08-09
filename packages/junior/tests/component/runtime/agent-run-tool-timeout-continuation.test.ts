@@ -273,10 +273,7 @@ describe("tool timeout continuation composition", () => {
     expect(observations.toolStarted).toBe(true);
     expect(observations.toolAborted).toBe(true);
     expect(suspended.status).toBe("suspended");
-    const suspendedRecord = await getTurnRecord(
-      conversationId,
-      turnId,
-    );
+    const suspendedRecord = await getTurnRecord(conversationId, turnId);
     expect(suspendedRecord).toMatchObject({
       state: "paused",
       resumeReason: "timeout",

@@ -215,15 +215,12 @@ export async function resolveAgentDispatchId(
     return undefined;
   }
 
-  const summaries = await listTurnSummaries(
-    context.conversationId,
-  );
+  const summaries = await listTurnSummaries(context.conversationId);
   const activeDispatchIds = new Set(
     summaries
       .filter(
         (summary) =>
-          (summary.state === "paused" ||
-            summary.state === "running") &&
+          (summary.state === "paused" || summary.state === "running") &&
           Boolean(summary.dispatchId),
       )
       .map((summary) => summary.dispatchId)
@@ -300,9 +297,9 @@ async function readDispatchTurnResult(
   const conversationId = getDispatchConversationId(dispatch);
   const turnId = getDispatchTurnId(dispatch.id);
   const storedSession = await getTurnRecord(conversationId, turnId);
-  const summary = (
-    await listTurnSummaries(conversationId)
-  ).find((candidate) => candidate.sessionId === turnId);
+  const summary = (await listTurnSummaries(conversationId)).find(
+    (candidate) => candidate.turnId === turnId,
+  );
   const session = storedSession ?? summary;
   const dispatchOutcome =
     summary?.dispatchOutcome ?? storedSession?.dispatchOutcome;
@@ -394,7 +391,7 @@ async function persistBlockedDispatchTurn(
     destinationVisibility: dispatch.destinationVisibility,
     dispatchId: dispatch.id,
     dispatchOutcome: "blocked",
-    sessionId,
+    turnId: sessionId,
     sliceId: session?.sliceId ?? 1,
     source: dispatch.source,
     state: "failed",

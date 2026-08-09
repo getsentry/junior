@@ -104,7 +104,7 @@ describe("turn checkpoint", () => {
       conversationId: "local:ttl-split:turn",
       modelId: "test/model",
       piMessages: [runtimeContext],
-      sessionId: "turn-ttl-split",
+      turnId: "turn-ttl-split",
       sliceId: 1,
       state: "running",
     });
@@ -127,7 +127,7 @@ describe("turn checkpoint", () => {
       conversationId: "local:ttl-split:turn",
       modelId: "test/model",
       piMessages: [runtimeContext],
-      sessionId: "turn-ttl-split",
+      turnId: "turn-ttl-split",
       sliceId: 1,
       state: "completed",
     });
@@ -143,7 +143,7 @@ describe("turn checkpoint", () => {
     await recordTurnSummary({
       conversationId: "agent-dispatch:dispatch_one",
       dispatchId: "dispatch_one",
-      sessionId: "dispatch:dispatch_one",
+      turnId: "dispatch:dispatch_one",
       sliceId: 1,
       state: "running",
     });
@@ -152,7 +152,7 @@ describe("turn checkpoint", () => {
       recordTurnSummary({
         conversationId: "agent-dispatch:dispatch_one",
         dispatchId: "dispatch_other",
-        sessionId: "dispatch:dispatch_one",
+        turnId: "dispatch:dispatch_one",
         sliceId: 1,
         state: "completed",
       }),
@@ -176,7 +176,7 @@ describe("turn checkpoint", () => {
     await upsertTurnRecord({
       modelId: "test-model",
       conversationId: "conversation-1",
-      sessionId: "turn-1",
+      turnId: "turn-1",
       sliceId: 1,
       state: "paused",
       source: SLACK_SOURCE,
@@ -238,7 +238,7 @@ describe("turn checkpoint", () => {
       modelId: "openai/gpt-5.6",
       piMessages: [userMessage("ship it")],
       reasoningLevel: "high",
-      sessionId: "turn-ops-bag",
+      turnId: "turn-ops-bag",
       sliceId: 1,
       source: SLACK_SOURCE,
       state: "running",
@@ -278,7 +278,7 @@ describe("turn checkpoint", () => {
       cumulativeUsage: { inputTokens: 7 },
       modelId: "test/model",
       piMessages: [userMessage("metered turn")],
-      sessionId,
+      turnId: sessionId,
       sliceId: 1,
       state: "running",
     });
@@ -306,7 +306,7 @@ describe("turn checkpoint", () => {
       conversationId,
       modelId: "test/model",
       piMessages: recovered!.piMessages,
-      sessionId,
+      turnId: sessionId,
       sliceId: 2,
       state: "paused",
     });
@@ -332,7 +332,7 @@ describe("turn checkpoint", () => {
       conversationId,
       cumulativeDurationMs: 1_500,
       cumulativeUsage: { inputTokens: 7 },
-      sessionId: "turn-first",
+      turnId: "turn-first",
       sliceId: 1,
       state: "completed",
     });
@@ -340,7 +340,7 @@ describe("turn checkpoint", () => {
       conversationId,
       modelId: "test/model",
       piMessages: [userMessage("second")],
-      sessionId: "turn-second",
+      turnId: "turn-second",
       sliceId: 1,
       state: "running",
     });
@@ -394,7 +394,7 @@ describe("turn checkpoint", () => {
         conversationId: "slack:C123:turn-activity",
         destination: SLACK_DESTINATION,
         piMessages: [userMessage("ship it")],
-        sessionId: "turn-activity",
+        turnId: "turn-activity",
         sliceId: 1,
         source: SLACK_SOURCE,
         state: "completed",
@@ -447,7 +447,7 @@ describe("turn checkpoint", () => {
       conversationStore,
       destination: SLACK_DESTINATION,
       piMessages: [userMessage("keep routing in sql")],
-      sessionId,
+      turnId: sessionId,
       sliceId: 1,
       source: SLACK_SOURCE,
       state: "running",
@@ -480,7 +480,7 @@ describe("turn checkpoint", () => {
     const record = await getTurnRecord(conversationId, sessionId);
     expect(record).toMatchObject({
       conversationId,
-      sessionId,
+      turnId: sessionId,
       state: "running",
     });
     expect(record).not.toHaveProperty("destination");
@@ -558,7 +558,7 @@ describe("turn checkpoint", () => {
         conversationStore: failingConversationStore(),
         destination: SLACK_DESTINATION,
         piMessages: [userMessage("persist anyway")],
-        sessionId: "turn-metadata-failure",
+        turnId: "turn-metadata-failure",
         sliceId: 1,
         state: "completed",
         surface: "slack",
@@ -579,7 +579,7 @@ describe("turn checkpoint", () => {
         conversationId: "slack:C123:summary-metadata-failure",
         conversationStore: failingConversationStore(),
         destination: SLACK_DESTINATION,
-        sessionId: "turn-summary-metadata-failure",
+        turnId: "turn-summary-metadata-failure",
         sliceId: 1,
         state: "failed",
         surface: "slack",
@@ -646,7 +646,7 @@ describe("turn checkpoint", () => {
     expect(summaries).toHaveLength(1);
     expect(summaries[0]).toMatchObject({
       conversationId,
-      sessionId: "turn-legacy-summary",
+      turnId: "turn-legacy-summary",
       state: "paused",
     });
     expect(summaries[0]).not.toHaveProperty("requester");
@@ -667,7 +667,7 @@ describe("turn checkpoint", () => {
     await upsertTurnRecord({
       modelId: "test-model",
       conversationId: "conversation-auth-complete",
-      sessionId: "turn-auth-complete",
+      turnId: "turn-auth-complete",
       sliceId: 1,
       state: "paused",
       piMessages: [userMessage],
@@ -728,7 +728,7 @@ describe("turn checkpoint", () => {
     await upsertTurnRecord({
       modelId: "test/model",
       conversationId,
-      sessionId,
+      turnId: sessionId,
       sliceId: 1,
       state: "paused",
       destination: SLACK_DESTINATION,
@@ -787,7 +787,7 @@ describe("turn checkpoint", () => {
     await upsertTurnRecord({
       modelId: "test/model",
       conversationId: "conversation-turn-scope",
-      sessionId: "turn-scope",
+      turnId: "turn-scope",
       sliceId: 1,
       state: "running",
       piMessages: [previousQuestion, currentQuestion],
@@ -802,7 +802,7 @@ describe("turn checkpoint", () => {
     await upsertTurnRecord({
       modelId: "test/model",
       conversationId: "conversation-turn-scope",
-      sessionId: "turn-scope",
+      turnId: "turn-scope",
       sliceId: 2,
       state: "completed",
       piMessages: [previousQuestion, currentQuestion],
@@ -850,7 +850,7 @@ describe("turn checkpoint", () => {
     await upsertTurnRecord({
       modelId: "test/model",
       conversationId: "conversation-provenance",
-      sessionId: "turn-provenance",
+      turnId: "turn-provenance",
       sliceId: 1,
       state: "completed",
       piMessages: [priorContext, currentQuestion, answer],
@@ -956,7 +956,7 @@ describe("turn checkpoint", () => {
     await upsertTurnRecord({
       modelId: "test/model",
       conversationId: "conversation-system-actor",
-      sessionId: "turn-system-actor",
+      turnId: "turn-system-actor",
       sliceId: 1,
       state: "completed",
       // No actor: nothing is attributed as an instruction actor.
@@ -979,7 +979,7 @@ describe("turn checkpoint", () => {
     await upsertTurnRecord({
       modelId: "test/model",
       conversationId: "conversation-1",
-      sessionId: "turn-1",
+      turnId: "turn-1",
       sliceId: 1,
       state: "paused",
       piMessages: [
@@ -1058,7 +1058,7 @@ describe("turn checkpoint", () => {
     await upsertTurnRecord({
       modelId: "test/model",
       conversationId: "conversation-timeout-cap",
-      sessionId: "turn-timeout-cap",
+      turnId: "turn-timeout-cap",
       sliceId: botConfig.maxSlicesPerTurn,
       state: "paused",
       piMessages,
@@ -1108,7 +1108,7 @@ describe("turn checkpoint", () => {
     await upsertTurnRecord({
       modelId: "test/model",
       conversationId: "conversation-auth-tail",
-      sessionId: "turn-auth-tail",
+      turnId: "turn-auth-tail",
       sliceId: 1,
       state: "running",
       piMessages: safeBoundary,
@@ -1183,7 +1183,7 @@ describe("turn checkpoint", () => {
 
     expect(authRecord).toMatchObject({
       conversationId: "conversation-auth-empty",
-      sessionId: "turn-auth-empty",
+      turnId: "turn-auth-empty",
       state: "paused",
       piMessages: [],
       modelId: "openai/gpt-5.5",
@@ -1636,7 +1636,7 @@ describe("turn checkpoint", () => {
     await upsertTurnRecord({
       modelId: "test/model",
       conversationId: "conversation-branch",
-      sessionId: "turn-branch",
+      turnId: "turn-branch",
       sliceId: 1,
       state: "running",
       piMessages: [user, unsafeAssistant],
@@ -1645,7 +1645,7 @@ describe("turn checkpoint", () => {
       upsertTurnRecord({
         modelId: "test/model",
         conversationId: "conversation-branch",
-        sessionId: "turn-branch",
+        turnId: "turn-branch",
         sliceId: 2,
         state: "paused",
         piMessages: [user],
@@ -1674,7 +1674,7 @@ describe("turn checkpoint", () => {
     const oldRecord = await upsertTurnRecord({
       modelId: "test/model",
       conversationId: "conversation-projection-pin",
-      sessionId: "turn-old",
+      turnId: "turn-old",
       sliceId: 1,
       state: "paused",
       resumeReason: "timeout",
@@ -1701,7 +1701,7 @@ describe("turn checkpoint", () => {
     await upsertTurnRecord({
       modelId: "test/model",
       conversationId: "conversation-projection-pin",
-      sessionId: "turn-new",
+      turnId: "turn-new",
       sliceId: 1,
       state: "completed",
       piMessages: [newRequest, newFollowup],
@@ -1715,7 +1715,7 @@ describe("turn checkpoint", () => {
 
     await failTurnRecord({
       conversationId: "conversation-projection-pin",
-      sessionId: "turn-old",
+      turnId: "turn-old",
       expectedVersion: oldRecord.version,
       errorMessage: "stale timeout callback",
     });
@@ -1754,7 +1754,7 @@ describe("turn checkpoint", () => {
     await upsertTurnRecord({
       modelId: "openai/gpt-5.5",
       conversationId,
-      sessionId: turnId,
+      turnId: turnId,
       sliceId: 1,
       state: "paused",
       resumeReason: "yield",
@@ -1817,7 +1817,7 @@ describe("turn checkpoint", () => {
     await upsertTurnRecord({
       modelId: "test/model",
       conversationId: "conversation-active-compaction-resume",
-      sessionId: "turn-active-compaction-resume",
+      turnId: "turn-active-compaction-resume",
       sliceId: 1,
       state: "paused",
       resumeReason: "yield",
@@ -1857,7 +1857,7 @@ describe("turn checkpoint", () => {
     await upsertTurnRecord({
       modelId: "test/model",
       conversationId: "conversation-agents-order-resume",
-      sessionId: "turn-agents-order-resume",
+      turnId: "turn-agents-order-resume",
       sliceId: 1,
       state: "paused",
       resumeReason: "yield",

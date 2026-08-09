@@ -140,13 +140,13 @@ async function failSessionRecordBestEffort(args: {
   conversationId: string;
   errorMessage: string;
   expectedVersion: number;
-  sessionId: string;
+  turnId: string;
 }): Promise<void> {
   try {
     await failTurnRecord({
       conversationId: args.conversationId,
       expectedVersion: args.expectedVersion,
-      sessionId: args.sessionId,
+      turnId: args.turnId,
       errorMessage: args.errorMessage,
     });
   } catch (error) {
@@ -155,7 +155,7 @@ async function failSessionRecordBestEffort(args: {
       "oauth.callback.session_record.failure_persistence.failed",
       {
         "app.ai.conversation_id": args.conversationId,
-        "app.ai.session_id": args.sessionId,
+        "app.ai.session_id": args.turnId,
       },
     );
   }
@@ -185,7 +185,7 @@ async function persistFailedOAuthReplyState(args: {
   await failSessionRecordBestEffort({
     conversationId: args.conversationId,
     expectedVersion: args.expectedVersion,
-    sessionId: args.sessionId,
+    turnId: args.sessionId,
     errorMessage: "OAuth-resumed turn failed",
   });
   await persistThreadStateById(args.conversationId, {
@@ -240,7 +240,7 @@ async function resumeOAuthSessionRecordTurn(
       });
       await abandonTurnRecord({
         conversationId: stored.resumeConversationId,
-        sessionId: pendingAuth.sessionId,
+        turnId: pendingAuth.sessionId,
         errorMessage:
           "Auth completed after a newer thread message abandoned this blocked request.",
       });
@@ -332,7 +332,7 @@ async function resumeOAuthSessionRecordTurn(
           });
           await abandonTurnRecord({
             conversationId: stored.resumeConversationId!,
-            sessionId: lockedPendingAuth.sessionId,
+            turnId: lockedPendingAuth.sessionId,
             errorMessage:
               "Auth completed after a newer thread message abandoned this blocked request.",
           });
@@ -371,7 +371,7 @@ async function resumeOAuthSessionRecordTurn(
         await failTurnRecord({
           conversationId: stored.resumeConversationId!,
           expectedVersion: lockedSessionRecord.version,
-          sessionId: lockedSessionId,
+          turnId: lockedSessionId,
           errorMessage: "Unable to rebuild Slack actor for OAuth resume",
         });
         return false;
@@ -385,7 +385,7 @@ async function resumeOAuthSessionRecordTurn(
         await failTurnRecord({
           conversationId: stored.resumeConversationId!,
           expectedVersion: lockedSessionRecord.version,
-          sessionId: lockedSessionId,
+          turnId: lockedSessionId,
           errorMessage: error instanceof Error ? error.message : String(error),
         });
         return false;
@@ -464,7 +464,7 @@ async function resumeOAuthSessionRecordTurn(
           await failTurnRecord({
             conversationId: stored.resumeConversationId!,
             expectedVersion: lockedSessionRecord.version,
-            sessionId: lockedSessionId,
+            turnId: lockedSessionId,
             errorMessage:
               "OAuth-resumed reply was delivered but completion state did not persist",
           });

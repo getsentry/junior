@@ -166,8 +166,7 @@ function sharedWrite(args: TurnCheckpointWrite, latest?: TurnRecord) {
   return {
     conversationId: args.conversationId,
     modelId: args.modelId,
-    // Redis wire storage still calls this field sessionId.
-    sessionId: args.turnId,
+    turnId: args.turnId,
     ...definedProps({
       actor: args.actor,
       channelName: args.channelName ?? latest?.channelName,

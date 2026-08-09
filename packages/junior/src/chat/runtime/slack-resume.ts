@@ -647,7 +647,7 @@ async function resumeSlackTurnInContext(
               destinationVisibility: routing.destinationVisibility,
               dispatchId,
               resultMessageId: messageTs,
-              sessionId: runArgs.turnId,
+              turnId: runArgs.turnId,
               sliceId: runArgs.sliceId ?? 1,
               source: routing.source,
               state: "running",
@@ -792,7 +792,7 @@ async function resumeSlackTurnInContext(
           ...(acceptedDeliveryId
             ? { resultMessageId: acceptedDeliveryId }
             : {}),
-          sessionId: runArgs.turnId,
+          turnId: runArgs.turnId,
           sliceId: runArgs.sliceId ?? 1,
           source: replyContext.routing.source,
           state:

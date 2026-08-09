@@ -324,10 +324,7 @@ async function withPluginTaskLock<T>(
 async function loadPluginRun(
   params: PluginTaskParams,
 ): Promise<PluginRunContext> {
-  const record = await getTurnRecord(
-    params.conversationId,
-    params.sessionId,
-  );
+  const record = await getTurnRecord(params.conversationId, params.sessionId);
   if (!record) {
     throw new Error("Completed plugin task session record is unavailable");
   }
@@ -372,7 +369,7 @@ async function loadPluginRun(
     // stripped transcript, so it reflects every committed instruction actor.
     actors: record.actors,
     ...(runActor ? { actor: runActor } : {}),
-    runId: record.sessionId,
+    runId: record.turnId,
     source: routing.source,
     transcript: [...contextEntries, ...runEntries],
   });

@@ -841,7 +841,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               // run.
               await abandonTurnRecord({
                 conversationId,
-                sessionId: activeTurnId,
+                turnId: activeTurnId,
                 errorMessage:
                   "Auth-parked session superseded by a new user message",
               });
@@ -855,7 +855,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               await failTurnRecord({
                 conversationId,
                 expectedVersion: sessionRecord.version,
-                sessionId: activeTurnId,
+                turnId: activeTurnId,
                 errorMessage:
                   "Awaiting agent continuation metadata could not be materialized",
               });
@@ -935,7 +935,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           void recordTurnSummary({
             channelName,
             conversationId,
-            sessionId: turnId,
+            turnId: turnId,
             sliceId: 1,
             startedAtMs: turnStartedAtMs,
             state: "running",
@@ -1030,7 +1030,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             ...(acceptedDeliveryId
               ? { resultMessageId: acceptedDeliveryId }
               : {}),
-            sessionId: turnId,
+            turnId: turnId,
             sliceId: 1,
             source,
             startedAtMs: message.metadata.dateSent.getTime(),
@@ -1165,7 +1165,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   destinationVisibility,
                   dispatchId: options.execution?.dispatch?.id,
                   resultMessageId: slackTs,
-                  sessionId: turnId,
+                  turnId: turnId,
                   sliceId: 1,
                   source,
                   startedAtMs: message.metadata.dateSent.getTime(),
@@ -1602,7 +1602,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 conversationId,
                 cumulativeDurationMs: reply.diagnostics.durationMs,
                 cumulativeUsage: reply.diagnostics.usage,
-                sessionId: turnId,
+                turnId: turnId,
                 sliceId: 1,
                 startedAtMs: message.metadata.dateSent.getTime(),
                 state: "completed",
@@ -1772,15 +1772,12 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             const recoveryText = buildCanvasRecoveryReply(createdCanvasUrl);
             await deliverAssistantMessage(recoveryText, dispatchOutcome);
             if (conversationId) {
-              const sessionRecord = await getTurnRecord(
-                conversationId,
-                turnId,
-              );
+              const sessionRecord = await getTurnRecord(conversationId, turnId);
               if (sessionRecord) {
                 await failTurnRecord({
                   conversationId,
                   expectedVersion: sessionRecord.version,
-                  sessionId: turnId,
+                  turnId: turnId,
                   errorMessage,
                 });
               }
@@ -1833,7 +1830,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 await recordTurnSummary({
                   channelName,
                   conversationId,
-                  sessionId: turnId,
+                  turnId: turnId,
                   sliceId: 1,
                   startedAtMs: message.metadata.dateSent.getTime(),
                   state: "failed",
@@ -1859,7 +1856,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   await failTurnRecord({
                     conversationId,
                     expectedVersion: sessionRecord.version,
-                    sessionId: turnId,
+                    turnId: turnId,
                     errorMessage:
                       "Agent turn failed before assistant output handling completed",
                   });

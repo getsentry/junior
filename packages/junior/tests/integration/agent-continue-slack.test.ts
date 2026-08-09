@@ -197,7 +197,7 @@ describe("agent continuation Slack integration", () => {
     const sessionRecord = await turnSessionStoreModule.upsertTurnRecord({
       modelId: "test/model",
       conversationId,
-      sessionId,
+      turnId: sessionId,
       sliceId: 2,
       state: "paused",
       destination: SLACK_DESTINATION,
@@ -365,7 +365,7 @@ describe("agent continuation Slack integration", () => {
     const sessionRecord = await turnSessionStoreModule.upsertTurnRecord({
       modelId: "test/model",
       conversationId,
-      sessionId,
+      turnId: sessionId,
       sliceId: 2,
       state: "paused",
       destination: SLACK_DESTINATION,
@@ -450,7 +450,7 @@ describe("agent continuation Slack integration", () => {
     const sessionRecord = await turnSessionStoreModule.upsertTurnRecord({
       modelId: "test/model",
       conversationId,
-      sessionId,
+      turnId: sessionId,
       sliceId: 2,
       state: "paused",
       destination: SLACK_DESTINATION,
@@ -620,7 +620,7 @@ describe("agent continuation Slack integration", () => {
     const sessionRecord = await turnSessionStoreModule.upsertTurnRecord({
       modelId: "test/model",
       conversationId,
-      sessionId,
+      turnId: sessionId,
       sliceId: 5,
       state: "paused",
       destination: SLACK_DESTINATION,
@@ -709,7 +709,7 @@ describe("agent continuation Slack integration", () => {
     const sessionRecord = await turnSessionStoreModule.upsertTurnRecord({
       modelId: "test/model",
       conversationId,
-      sessionId,
+      turnId: sessionId,
       sliceId: 2,
       state: "paused",
       destination: SLACK_DESTINATION,
@@ -786,7 +786,7 @@ describe("agent continuation Slack integration", () => {
     const sessionRecord = await turnSessionStoreModule.upsertTurnRecord({
       modelId: "test/model",
       conversationId,
-      sessionId,
+      turnId: sessionId,
       sliceId: 2,
       state: "paused",
       destination: SLACK_DESTINATION,
@@ -862,7 +862,7 @@ describe("agent continuation Slack integration", () => {
     const sessionRecord = await turnSessionStoreModule.upsertTurnRecord({
       modelId: "test/model",
       conversationId,
-      sessionId,
+      turnId: sessionId,
       sliceId: 2,
       state: "paused",
       destination: SLACK_DESTINATION,
@@ -935,7 +935,7 @@ describe("agent continuation Slack integration", () => {
     const sessionRecord = await turnSessionStoreModule.upsertTurnRecord({
       modelId: "test/model",
       conversationId,
-      sessionId,
+      turnId: sessionId,
       sliceId: 2,
       state: "paused",
       destination: SLACK_DESTINATION,
@@ -1028,7 +1028,7 @@ describe("agent continuation Slack integration", () => {
     const sessionRecord = await turnSessionStoreModule.upsertTurnRecord({
       modelId: "test/model",
       conversationId,
-      sessionId,
+      turnId: sessionId,
       sliceId: 2,
       state: "paused",
       destination: SLACK_DESTINATION,
@@ -1111,7 +1111,7 @@ describe("agent continuation Slack integration", () => {
     const sessionRecord = await turnSessionStoreModule.upsertTurnRecord({
       modelId: "test/model",
       conversationId,
-      sessionId,
+      turnId: sessionId,
       sliceId: 2,
       state: "paused",
       destination: SLACK_DESTINATION,

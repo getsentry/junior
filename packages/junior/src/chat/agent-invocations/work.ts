@@ -260,7 +260,7 @@ async function recoverRunningSession(
     mode: "paused",
     reason: "yield",
     conversationId: invocation.childConversationId,
-    turnId: session.sessionId,
+    turnId: session.turnId,
     sliceId: session.sliceId,
     errorMessage: "Recovered running agent invocation after worker loss",
     messages: session.piMessages,
@@ -274,7 +274,7 @@ async function recoverRunningSession(
     await failTurnRecord({
       conversationId: invocation.childConversationId,
       expectedVersion: session.version,
-      sessionId: session.sessionId,
+      turnId: session.turnId,
       errorMessage: `Running agent invocation had no resumable boundary for ${invocation.invocationId}`,
     });
     return;

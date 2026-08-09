@@ -737,10 +737,7 @@ describe("model handoff composition", () => {
       status: "suspended",
       resumeVersion: expect.any(Number),
     });
-    const suspendedRecord = await getTurnRecord(
-      conversationId,
-      turnId,
-    );
+    const suspendedRecord = await getTurnRecord(conversationId, turnId);
     expect(suspendedRecord).toMatchObject({
       state: "paused",
       resumeReason: "retry",

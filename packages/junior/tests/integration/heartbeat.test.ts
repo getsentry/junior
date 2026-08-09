@@ -251,7 +251,7 @@ describe("plugin heartbeat", () => {
     await upsertTurnRecord({
       modelId: "test/model",
       conversationId,
-      sessionId,
+      turnId: sessionId,
       sliceId: 2,
       destination: SLACK_DESTINATION,
       state: "paused",
@@ -311,7 +311,7 @@ describe("plugin heartbeat", () => {
     await upsertTurnRecord({
       modelId: "test/model",
       conversationId,
-      sessionId,
+      turnId: sessionId,
       sliceId: 1,
       destination: SLACK_DESTINATION,
       state: "paused",
@@ -371,7 +371,7 @@ describe("plugin heartbeat", () => {
     await upsertTurnRecord({
       modelId: "test/model",
       conversationId,
-      sessionId,
+      turnId: sessionId,
       sliceId: 2,
       destination: SLACK_DESTINATION,
       state: "paused",
@@ -413,7 +413,7 @@ describe("plugin heartbeat", () => {
     await upsertTurnRecord({
       modelId: "test/model",
       conversationId,
-      sessionId,
+      turnId: sessionId,
       sliceId: 2,
       destination: SLACK_DESTINATION,
       state: "paused",

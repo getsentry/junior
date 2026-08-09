@@ -417,7 +417,7 @@ describe("plugin prompt hook composition", () => {
     await upsertTurnRecord({
       modelId: "test/model",
       conversationId: LOCAL_DESTINATION.conversationId,
-      sessionId: "turn-plugin-prompt-resume-before-prompt",
+      turnId: "turn-plugin-prompt-resume-before-prompt",
       sliceId: 1,
       state: "paused",
       piMessages: [],
@@ -445,7 +445,7 @@ describe("plugin prompt hook composition", () => {
     await upsertTurnRecord({
       modelId: "test/model",
       conversationId: LOCAL_DESTINATION.conversationId,
-      sessionId: "turn-plugin-prompt-resume-after-prompt",
+      turnId: "turn-plugin-prompt-resume-after-prompt",
       sliceId: 1,
       state: "paused",
       piMessages: [

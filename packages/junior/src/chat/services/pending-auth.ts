@@ -115,7 +115,7 @@ export async function abandonReplacedPendingAuth(args: {
   ) {
     await abandonTurnRecord({
       conversationId: args.conversationId,
-      sessionId: args.previousPendingAuth.sessionId,
+      turnId: args.previousPendingAuth.sessionId,
       errorMessage:
         "Abandoned by a newer auth-blocked request in the same conversation.",
     });

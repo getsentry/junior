@@ -195,7 +195,7 @@ describe("run actor composition", () => {
       modelId: "test/model",
       actor: RUN_ACTOR,
       conversationId,
-      sessionId,
+      turnId: sessionId,
       sliceId: 1,
       state: "running",
       piMessages: [

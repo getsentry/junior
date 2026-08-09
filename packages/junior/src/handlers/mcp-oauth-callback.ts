@@ -173,12 +173,12 @@ async function failSessionRecordBestEffort(args: {
   conversationId: string;
   errorMessage: string;
   expectedVersion: number;
-  sessionId: string;
+  turnId: string;
 }): Promise<void> {
   try {
     await failTurnRecord({
       conversationId: args.conversationId,
-      sessionId: args.sessionId,
+      turnId: args.turnId,
       errorMessage: args.errorMessage,
       expectedVersion: args.expectedVersion,
     });
@@ -188,7 +188,7 @@ async function failSessionRecordBestEffort(args: {
       "mcp.oauth_callback.session_record.failure_persistence.failed",
       {
         "app.ai.conversation_id": args.conversationId,
-        "app.ai.session_id": args.sessionId,
+        "app.ai.session_id": args.turnId,
       },
     );
   }
@@ -216,7 +216,7 @@ async function persistFailedReplyState(
 
   await failSessionRecordBestEffort({
     conversationId: threadId,
-    sessionId,
+    turnId: sessionId,
     errorMessage: "OAuth-resumed MCP turn failed",
     expectedVersion,
   });
@@ -263,7 +263,7 @@ async function resumeAuthorizedMcpTurn(args: {
     await persistThreadStateById(threadId, { conversation });
     await abandonTurnRecord({
       conversationId: authSession.conversationId,
-      sessionId: pendingAuth.sessionId,
+      turnId: pendingAuth.sessionId,
       errorMessage:
         "Auth completed after a newer thread message abandoned this blocked request.",
     });
@@ -311,7 +311,7 @@ async function resumeAuthorizedMcpTurn(args: {
         });
         await abandonTurnRecord({
           conversationId: authSession.conversationId,
-          sessionId: lockedPendingAuth.sessionId,
+          turnId: lockedPendingAuth.sessionId,
           errorMessage:
             "Auth completed after a newer thread message abandoned this blocked request.",
         });
@@ -356,7 +356,7 @@ async function resumeAuthorizedMcpTurn(args: {
         await failTurnRecord({
           conversationId: authSession.conversationId,
           expectedVersion: lockedSessionRecord.version,
-          sessionId: lockedSessionId,
+          turnId: lockedSessionId,
           errorMessage: "Unable to rebuild Slack actor for OAuth resume",
         });
         return false;
@@ -370,7 +370,7 @@ async function resumeAuthorizedMcpTurn(args: {
         await failTurnRecord({
           conversationId: authSession.conversationId,
           expectedVersion: lockedSessionRecord.version,
-          sessionId: lockedSessionId,
+          turnId: lockedSessionId,
           errorMessage: error instanceof Error ? error.message : String(error),
         });
         return false;
@@ -443,7 +443,7 @@ async function resumeAuthorizedMcpTurn(args: {
           await failTurnRecord({
             conversationId: authSession.conversationId,
             expectedVersion: lockedSessionRecord.version,
-            sessionId: lockedSessionId,
+            turnId: lockedSessionId,
             errorMessage:
               "OAuth-resumed MCP reply was delivered but completion state did not persist",
           });

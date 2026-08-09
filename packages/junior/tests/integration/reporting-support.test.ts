@@ -68,7 +68,7 @@ describe("reporting support", () => {
     await recordTurnSummary({
       conversationId,
       destination: { platform: "local", conversationId },
-      sessionId: "reporting-support-local-turn",
+      turnId: "reporting-support-local-turn",
       sliceId: 1,
       state: "completed",
       surface: "internal",

@@ -169,7 +169,7 @@ describe("agent continuation scheduling", () => {
     await upsertTurnRecord({
       modelId: "test/model",
       conversationId,
-      sessionId: turnId,
+      turnId: turnId,
       sliceId: 1,
       state: "running",
       destination: SLACK_DESTINATION,
@@ -227,7 +227,7 @@ describe("agent continuation scheduling", () => {
     await upsertTurnRecord({
       modelId: "test/model",
       conversationId,
-      sessionId: "turn_msg_3",
+      turnId: "turn_msg_3",
       sliceId: 1,
       state: "paused",
       destination: SLACK_DESTINATION,
@@ -259,7 +259,7 @@ describe("agent continuation scheduling", () => {
     await upsertTurnRecord({
       modelId: "test/model",
       conversationId,
-      sessionId: "turn_msg_5",
+      turnId: "turn_msg_5",
       sliceId: 2,
       state: "paused",
       destination: SLACK_DESTINATION,
@@ -289,7 +289,7 @@ describe("agent continuation scheduling", () => {
     await upsertTurnRecord({
       modelId: "test/model",
       conversationId,
-      sessionId,
+      turnId: sessionId,
       sliceId: 2,
       state: "paused",
       destination: SLACK_DESTINATION,

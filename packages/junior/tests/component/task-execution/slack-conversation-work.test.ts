@@ -1244,7 +1244,7 @@ describe("Slack conversation work execution", () => {
     const sessionRecord = await upsertTurnRecord({
       modelId: "test/model",
       conversationId: CONVERSATION_ID,
-      sessionId: "turn-invalid-timeout",
+      turnId: "turn-invalid-timeout",
       sliceId: 1,
       state: "paused",
       destination: SLACK_DESTINATION,
@@ -1262,7 +1262,7 @@ describe("Slack conversation work execution", () => {
             await failTurnRecord({
               conversationId: CONVERSATION_ID,
               expectedVersion: sessionRecord.version,
-              sessionId: "turn-invalid-timeout",
+              turnId: "turn-invalid-timeout",
               errorMessage:
                 "Awaiting agent continuation metadata could not be materialized",
             });
@@ -1374,7 +1374,7 @@ describe("Slack conversation work execution", () => {
     const sessionRecord = await upsertTurnRecord({
       modelId: "test/model",
       conversationId: CONVERSATION_ID,
-      sessionId,
+      turnId: sessionId,
       sliceId: 2,
       state: "paused",
       destination: SLACK_DESTINATION,
@@ -1424,7 +1424,7 @@ describe("Slack conversation work execution", () => {
             await failTurnRecord({
               conversationId: CONVERSATION_ID,
               expectedVersion: sessionRecord.version,
-              sessionId,
+              turnId: sessionId,
               errorMessage:
                 "Awaiting agent continuation was stale before it could run",
             });

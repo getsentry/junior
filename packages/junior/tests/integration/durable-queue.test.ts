@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { createSlackSource } from "@sentry/junior-plugin-api";
+import { resumeAwaitingSlackContinuation } from "@/chat/task-execution/continue-run";
+import { createSlackConversationWorker } from "@/chat/task-execution/slack-work";
+import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import { createResumeState } from "@/chat/agent/resume";
 import type { PiMessage } from "@/chat/pi/messages";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
@@ -28,6 +31,8 @@ import {
   CONVERSATION_ID,
   SLACK_DESTINATION,
   createConversationWorkQueueTestAdapter,
+  createNoopSlackWebhookRuntime,
+  createSlackAdapterFixture,
   inboundMessage,
 } from "../fixtures/conversation-work";
 
@@ -131,7 +136,7 @@ describe("durable queue", () => {
   });
 
   it("stops the checkpoint loop from JUNIOR-62", async () => {
-    const turnId = "turn-stuck";
+    const turnId = "turn_1712345_0001";
     await saveTurnCheckpoint({
       mode: "paused",
       reason: "timeout",
@@ -140,55 +145,132 @@ describe("durable queue", () => {
       sliceId: 1,
       modelId: "test-model",
       messages: history(),
+      destination: SLACK_DESTINATION,
+      source: createSlackSource({
+        teamId: SLACK_DESTINATION.teamId,
+        channelId: SLACK_DESTINATION.channelId,
+        threadTs: "1712345.0001",
+        visibility: "private",
+      }),
+      surface: "slack",
+    });
+    await persistThreadStateById(CONVERSATION_ID, {
+      conversation: {
+        schemaVersion: 1,
+        compactions: [],
+        messages: [
+          {
+            id: "1712345.0001",
+            role: "user",
+            text: "inspect the deploy",
+            createdAtMs: 1,
+            author: { userId: "U123" },
+          },
+        ],
+        processing: { activeTurnId: turnId },
+        vision: { byFileId: {} },
+      },
     });
     await requestConversationWork({
       conversationId: CONVERSATION_ID,
       destination: SLACK_DESTINATION,
     });
 
-    const q = await queue(async () => {
-      const checkpoint = await loadTurnCheckpoint({
-        conversationId: CONVERSATION_ID,
-        turnId,
-      });
-      if (checkpoint.record?.state === "failed") return { status: "completed" };
-
-      const resume = createResumeState({
-        destination: SLACK_DESTINATION,
-        durability: {},
-        getLoadedSkillNames: () => [],
-        getModelId: () => "test-model",
-        getReasoningLevel: () => undefined,
-        recordActiveMcpProviders: async () => undefined,
-        runSource: createSlackSource({
-          teamId: SLACK_DESTINATION.teamId,
-          channelId: SLACK_DESTINATION.channelId,
-          visibility: "private",
-        }),
-        conversationId: CONVERSATION_ID,
-        turnId,
-        checkpoint,
-        startedAtMs: Date.now(),
-        surface: "slack",
-      });
-      const changed = checkpoint.record!.piMessages.map((message) =>
-        message.role === "assistant"
-          ? { ...message, usage: { ...message.usage, output: 99 } }
-          : message,
-      );
-      await resume.persistSafeBoundary(changed);
-      resume.captureResumeSnapshot(changed);
-      resume.markTimedOut();
-      await resume.translateSuspension({ error: new Error("timed out") });
-      return { status: "completed" };
+    const state = getStateAdapter();
+    await state.connect();
+    const wakes = createConversationWorkQueueTestAdapter();
+    const run = createSlackConversationWorker({
+      getSlackAdapter: createSlackAdapterFixture,
+      resumeAwaitingContinuation: async (conversationId, runOptions) =>
+        await resumeAwaitingSlackContinuation(
+          conversationId,
+          {
+            agentRunner: {
+              run: async (request) => {
+                const checkpoint = await loadTurnCheckpoint({
+                  conversationId: request.conversationId,
+                  turnId: request.turnId,
+                });
+                const changed = checkpoint.record!.piMessages.map((message) =>
+                  message.role === "assistant"
+                    ? { ...message, usage: { ...message.usage, output: 99 } }
+                    : message,
+                );
+                await saveTurnCheckpoint({
+                  mode: "running",
+                  conversationId: request.conversationId,
+                  turnId: request.turnId,
+                  sliceId: checkpoint.sliceId,
+                  modelId: "test-model",
+                  messages: changed,
+                });
+                const resume = createResumeState({
+                  destination: SLACK_DESTINATION,
+                  durability: request.durability ?? {},
+                  getLoadedSkillNames: () => [],
+                  getModelId: () => "test-model",
+                  getReasoningLevel: () => undefined,
+                  recordActiveMcpProviders: async () => undefined,
+                  runSource: request.routing.source,
+                  conversationId: request.conversationId,
+                  turnId: request.turnId,
+                  checkpoint,
+                  startedAtMs: Date.now(),
+                  surface: "slack",
+                });
+                resume.captureResumeSnapshot(changed);
+                resume.markTimedOut();
+                const outcome = await resume.translateSuspension({
+                  error: new Error("timed out"),
+                });
+                if (outcome?.status !== "suspended") {
+                  throw new Error("Expected the resumed turn to suspend");
+                }
+                return outcome;
+              },
+            },
+            scheduleAgentContinue: async (request) => {
+              await ensureConversationWake({
+                conversationId: request.conversationId,
+                idempotencyKey: `continue:${request.turnId}:${request.expectedVersion}`,
+                queue: wakes,
+              });
+            },
+          },
+          { ...runOptions, shouldYield: () => true },
+        ),
+      runtime: createNoopSlackWebhookRuntime(),
+      state,
     });
+    const q = {
+      wakes,
+      next: async () =>
+        await processConversationQueueMessage(wakes.takeMessage(), {
+          queue: wakes,
+          run,
+          state,
+        }),
+    };
     await ensureConversationWake({
       conversationId: CONVERSATION_ID,
       idempotencyKey: "stuck-turn",
       queue: q.wakes,
     });
 
-    await expect(q.next()).resolves.toEqual({ status: "failed" });
+    await expect(q.next()).resolves.toEqual({ status: "completed" });
+    await requestConversationWork({
+      conversationId: CONVERSATION_ID,
+      destination: SLACK_DESTINATION,
+      nowMs: Date.now() + 60_000,
+      state,
+    });
+    await ensureConversationWake({
+      conversationId: CONVERSATION_ID,
+      idempotencyKey: "stuck-turn-redelivery",
+      nowMs: Date.now() + 60_000,
+      queue: q.wakes,
+      state,
+    });
     await expect(q.next()).resolves.toEqual({ status: "completed" });
     expect(q.wakes.hasQueuedMessages()).toBe(false);
     await expect(getTurnRecord(CONVERSATION_ID, turnId)).resolves.toMatchObject(

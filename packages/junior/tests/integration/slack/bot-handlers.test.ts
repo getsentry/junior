@@ -568,7 +568,7 @@ describe("bot handlers (integration)", () => {
               await upsertTurnRecord({
                 modelId: "test/model",
                 conversationId,
-                sessionId,
+                turnId: sessionId,
                 sliceId: 1,
                 state: "running",
                 piMessages: promptMessages,
@@ -665,10 +665,7 @@ describe("bot handlers (integration)", () => {
 
     // The session must not be recorded as delivered, and the undelivered
     // assistant reply must not surface to later turns as durable history.
-    const sessionRecord = await getTurnRecord(
-      conversationId,
-      sessionId,
-    );
+    const sessionRecord = await getTurnRecord(conversationId, sessionId);
     expect(sessionRecord?.state).toBe("failed");
     const projection = await loadProjection({ conversationId });
     expect(JSON.stringify(projection)).not.toContain(finalText);
@@ -1263,7 +1260,7 @@ describe("bot handlers (integration)", () => {
     await upsertTurnRecord({
       modelId: "test/model",
       conversationId,
-      sessionId: activeSessionId,
+      turnId: activeSessionId,
       sliceId: 1,
       state: "paused",
       resumeReason: "auth",
@@ -1325,7 +1322,7 @@ describe("bot handlers (integration)", () => {
     await upsertTurnRecord({
       modelId: "test/model",
       conversationId,
-      sessionId: activeSessionId,
+      turnId: activeSessionId,
       sliceId: 1,
       state: "paused",
       resumeReason: "yield",
@@ -1381,10 +1378,7 @@ describe("bot handlers (integration)", () => {
 
     // The resumed continue() replays the record's Pi history, which must now
     // end with the follow-up at a continuable user boundary.
-    const record = await getTurnRecord(
-      conversationId,
-      activeSessionId,
-    );
+    const record = await getTurnRecord(conversationId, activeSessionId);
     expect(record?.state).toBe("paused");
     const lastMessage = record?.piMessages.at(-1) as
       | { content?: Array<{ text?: string }>; role?: string }
@@ -1412,7 +1406,7 @@ describe("bot handlers (integration)", () => {
     await upsertTurnRecord({
       modelId: "test/model",
       conversationId,
-      sessionId: activeSessionId,
+      turnId: activeSessionId,
       sliceId: 1,
       state: "paused",
       resumeReason: "yield",
@@ -1469,7 +1463,7 @@ describe("bot handlers (integration)", () => {
     await upsertTurnRecord({
       modelId: "test/model",
       conversationId,
-      sessionId: activeSessionId,
+      turnId: activeSessionId,
       sliceId: 1,
       state: "paused",
       resumeReason: "yield",
@@ -1631,7 +1625,7 @@ describe("bot handlers (integration)", () => {
     await upsertTurnRecord({
       modelId: "test/model",
       conversationId,
-      sessionId: activeSessionId,
+      turnId: activeSessionId,
       sliceId: 1,
       state: "paused",
       resumeReason: "yield",
@@ -1881,7 +1875,7 @@ describe("bot handlers (integration)", () => {
     await upsertTurnRecord({
       modelId: "test/model",
       conversationId,
-      sessionId: activeSessionId,
+      turnId: activeSessionId,
       sliceId: 1,
       state: "paused",
       resumeReason: "timeout",
@@ -1913,10 +1907,7 @@ describe("bot handlers (integration)", () => {
 
     expect(executeAgentRun).toHaveBeenCalledOnce();
     expect(postIncludes(thread, "Recovered.")).toBe(true);
-    const failedRecord = await getTurnRecord(
-      conversationId,
-      activeSessionId,
-    );
+    const failedRecord = await getTurnRecord(conversationId, activeSessionId);
     expect(failedRecord?.state).toBe("failed");
     expect(failedRecord?.errorMessage).toBe(
       "Awaiting agent continuation metadata could not be materialized",

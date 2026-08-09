@@ -87,7 +87,8 @@ type StateAdapterModule = typeof import("@/chat/state/adapter");
 type CapabilitiesFactoryModule = typeof import("@/chat/capabilities/factory");
 type OAuthCallbackHarnessModule =
   typeof import("../fixtures/oauth-callback-harness");
-type TurnSessionStoreModule = typeof import("@/chat/task-execution/turn-cursor");
+type TurnSessionStoreModule =
+  typeof import("@/chat/task-execution/turn-cursor");
 
 let stateAdapterModule: StateAdapterModule;
 let capabilitiesFactoryModule: CapabilitiesFactoryModule;
@@ -319,7 +320,7 @@ describe("oauth callback integration", () => {
     await turnSessionStoreModule.upsertTurnRecord({
       modelId: "test/model",
       conversationId,
-      sessionId,
+      turnId: sessionId,
       sliceId: 2,
       state: "paused",
       destination: SLACK_DESTINATION,
@@ -447,11 +448,10 @@ describe("oauth callback integration", () => {
     });
 
     expect(response.status).toBe(200);
-    const sessionRecordAfterAuth =
-      await turnSessionStoreModule.getTurnRecord(
-        conversationId,
-        sessionId,
-      );
+    const sessionRecordAfterAuth = await turnSessionStoreModule.getTurnRecord(
+      conversationId,
+      sessionId,
+    );
     expect(sessionRecordAfterAuth?.piMessages).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -643,7 +643,7 @@ describe("oauth callback integration", () => {
     await turnSessionStoreModule.upsertTurnRecord({
       modelId: "test/model",
       conversationId,
-      sessionId,
+      turnId: sessionId,
       sliceId: 2,
       state: "paused",
       destination: SLACK_DESTINATION,
@@ -741,7 +741,7 @@ describe("oauth callback integration", () => {
     await turnSessionStoreModule.upsertTurnRecord({
       modelId: "test/model",
       conversationId,
-      sessionId: oldSessionId,
+      turnId: oldSessionId,
       sliceId: 2,
       state: "abandoned",
       destination: SLACK_DESTINATION,
@@ -759,7 +759,7 @@ describe("oauth callback integration", () => {
     await turnSessionStoreModule.upsertTurnRecord({
       modelId: "test/model",
       conversationId,
-      sessionId: newSessionId,
+      turnId: newSessionId,
       sliceId: 2,
       state: "paused",
       destination: SLACK_DESTINATION,
@@ -868,7 +868,7 @@ describe("oauth callback integration", () => {
     await turnSessionStoreModule.upsertTurnRecord({
       modelId: "test/model",
       conversationId,
-      sessionId,
+      turnId: sessionId,
       sliceId: 2,
       state: "abandoned",
       destination: SLACK_DESTINATION,

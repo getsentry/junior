@@ -1176,7 +1176,7 @@ WHERE conversation_id = $1
         destination: inboundMessage("hung-target").destination,
         lastProgressAtMs: 1_000,
         piMessages: [],
-        sessionId: "turn-hung",
+        turnId: "turn-hung",
         sliceId: 1,
         state: "running",
         surface: "slack",

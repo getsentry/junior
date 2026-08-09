@@ -66,7 +66,7 @@ async function recordCompletedSession(args: {
     },
     modelId: "test/model",
     piMessages: completedMessages(),
-    sessionId: args.sessionId,
+    turnId: args.sessionId,
     sliceId: 1,
     source: createLocalSource(args.conversationId),
     state: "completed",
