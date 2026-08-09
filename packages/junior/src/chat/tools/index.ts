@@ -193,7 +193,7 @@ export function createTools(
         context.slackActionToken,
       );
     }
-    tools.slackUserLookup = createSlackUserLookupTool(slackContext);
+    tools.slackUserLookup = createSlackUserLookupTool();
     tools.slackListCreate = createSlackListCreateTool(state);
     tools.slackListAddItems = createSlackListAddItemsTool(state);
     tools.slackListGetItems = createSlackListGetItemsTool(state);
