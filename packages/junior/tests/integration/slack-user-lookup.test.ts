@@ -189,7 +189,7 @@ describe("slackUserLookup", () => {
       expect(getCapturedSlackApiCalls("users.lookupByEmail")).toHaveLength(0);
     });
 
-    it("asks Slack when several stored identities share an email", async () => {
+    it("throws when several stored identities share an email", async () => {
       await upsertIdentity(getSqlExecutor(), {
         kind: "user",
         provider: "slack",
@@ -210,25 +210,16 @@ describe("slackUserLookup", () => {
         displayName: "Two",
         handle: "two",
       });
-      queueSlackApiResponse("users.lookupByEmail", {
-        body: usersInfoOk({
-          userId: "U0LIVE",
-          userName: "live",
-          realName: "Live User",
-          email: "shared@sentry.io",
+
+      await expect(
+        executeTool(lookupTool(), {
+          mode: "email",
+          value: "shared@sentry.io",
         }),
-      });
-
-      const result = await executeTool(lookupTool(), {
-        mode: "email",
-        value: "shared@sentry.io",
-      });
-
-      expect(result).toMatchObject({
-        mention: "<@U0LIVE>",
-        user: { id: "U0LIVE", name: "live" },
-      });
-      expect(getCapturedSlackApiCalls("users.lookupByEmail")).toHaveLength(1);
+      ).rejects.toThrow(
+        "Multiple Slack users share verified email shared@sentry.io in workspace T0TEST",
+      );
+      expect(getCapturedSlackApiCalls("users.lookupByEmail")).toHaveLength(0);
     });
 
     it("returns error when email not found", async () => {

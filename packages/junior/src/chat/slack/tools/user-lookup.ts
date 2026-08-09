@@ -79,9 +79,13 @@ async function storedUserByEmail(
       ),
     )
     .limit(2);
-  // Only reuse a stored identity when the email maps to exactly one person.
-  if (identities.length !== 1) return undefined;
-  const identity = identities[0]!;
+  if (identities.length > 1) {
+    throw new Error(
+      `Multiple Slack users share verified email ${emailNormalized} in workspace ${teamId}`,
+    );
+  }
+  const identity = identities[0];
+  if (!identity) return undefined;
   return {
     id: identity.providerSubjectId,
     ...(identity.handle ? { name: identity.handle } : {}),
