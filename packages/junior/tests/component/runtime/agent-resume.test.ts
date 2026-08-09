@@ -115,11 +115,10 @@ describe("agent resume", () => {
         turnId,
       );
       resume.captureResumeSnapshot(storedBoundary);
-      if (writeRunning) {
-        await expect(resume.persistSafeBoundary(storedBoundary)).resolves.toBe(
-          true,
-        );
-      }
+      const runningWrite = writeRunning
+        ? await resume.persistSafeBoundary(storedBoundary)
+        : undefined;
+      expect(runningWrite).toBe(writeRunning ? true : undefined);
       if (reason === "timeout") resume.markTimedOut();
 
       await expect(resume.translateSuspension({ error })).rejects.toThrow(

@@ -34,7 +34,6 @@ import {
   SLACK_DESTINATION,
   createConversationWorkQueueTestAdapter,
   SLACK_BOT_USER_ID,
-  createNoopSlackWebhookRuntime,
   createSlackAdapterFixture,
   handleSlackWebhookAndFlush,
   slackEnvelope,

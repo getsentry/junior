@@ -761,7 +761,7 @@ describe("paused turn Slack integration", () => {
       turnSessionStoreModule.getTurnRecord(conversationId, sessionId),
     ).resolves.toMatchObject({
       state: "failed",
-      errorMessage: "Unable to rebuild Slack actor for continuation",
+      errorMessage: "Unable to rebuild the Slack actor for the paused turn",
     });
     expect(slackApiOutbox.messages()).toEqual([
       expect.objectContaining({

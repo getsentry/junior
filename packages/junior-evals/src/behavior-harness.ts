@@ -56,8 +56,8 @@ import type { PiMessage } from "@/chat/pi/messages";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { addAgentTurnUsage, type AgentTurnUsage } from "@/chat/usage";
-import { resumeAwaitingSlackContinuation } from "@/chat/task-execution/continue-run";
-import { scheduleAgentContinue } from "@/chat/task-execution/continue";
+import { runNextPausedTurn } from "@/chat/task-execution/paused-turn";
+import { wakePausedTurn } from "@/chat/task-execution/turn-wake";
 import { ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX } from "@/chat/services/context-compaction-marker";
 import { TURN_CONTEXT_TAG } from "@/chat/turn-context-tag";
 import {
@@ -2012,8 +2012,8 @@ function buildRuntimeServices(
           }
         },
       },
-      scheduleAgentContinue: async (request) => {
-        await scheduleAgentContinue(request, {
+      wakePausedTurn: async (request) => {
+        await wakePausedTurn(request, {
           queue: conversationWorkQueue,
           state: env.stateAdapter,
         });
@@ -2149,11 +2149,11 @@ async function processEvents(args: {
   const drainQueuedConversationWork = async (): Promise<void> => {
     const slackWorker = createSlackConversationWorker({
       getSlackAdapter: () => getSlackAdapter() as unknown as SlackAdapter,
-      resumeAwaitingContinuation: async (conversationId) =>
-        await resumeAwaitingSlackContinuation(conversationId, {
+      runNextPausedTurn: async (conversationId) =>
+        await runNextPausedTurn(conversationId, {
           agentRunner,
-          scheduleAgentContinue: async (request) => {
-            await scheduleAgentContinue(request, {
+          wakePausedTurn: async (request) => {
+            await wakePausedTurn(request, {
               queue: conversationWorkQueue,
               state: env.stateAdapter,
             });
@@ -2171,14 +2171,14 @@ async function processEvents(args: {
     });
     const dispatchWorker = createAgentDispatchConversationWorker({
       resumeTurn: async (dispatch, hooks) => {
-        await resumeAwaitingSlackContinuation(
+        await runNextPausedTurn(
           `agent-dispatch:${dispatch.id}`,
           {
             agentRunner,
             inputMessageIds: getDispatchInputMessageIds(dispatch.id),
             routingContext: buildDispatchRoutingContext(dispatch),
-            scheduleAgentContinue: async (request) => {
-              await scheduleAgentContinue(request, {
+            wakePausedTurn: async (request) => {
+              await wakePausedTurn(request, {
                 queue: conversationWorkQueue,
                 state: env.stateAdapter,
               });
