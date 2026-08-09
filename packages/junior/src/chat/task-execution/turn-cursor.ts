@@ -25,7 +25,7 @@ import type { PluginTurnContext } from "@/chat/plugins/prompt";
 import { projectConversationEvents } from "@/chat/pi/conversation-events";
 import type { AgentTurnUsage } from "@/chat/usage";
 import { getStateAdapter } from "@/chat/state/adapter";
-import { withLock } from "@/chat/state/locks";
+import { fenceLock, MUTATION_LOCK_TTL_MS, withLock } from "@/chat/state/locks";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import { isAgentsInstructionsMessage } from "@/chat/repository-instructions";
 import {
@@ -50,15 +50,18 @@ const TURN_CURSOR_MUTATION_LOCK_WAIT_MS = 10_000;
 async function withTurnCursorMutation<T>(
   conversationId: string,
   turnId: string,
-  run: () => Promise<T>,
+  run: (fence: () => Promise<void>) => Promise<T>,
 ): Promise<T> {
   const state = getStateAdapter();
   await state.connect();
   const result = await withLock(
     state,
     turnCursorMutationKey(conversationId, turnId),
-    run,
-    { waitMs: TURN_CURSOR_MUTATION_LOCK_WAIT_MS },
+    async (lock) => await run(async () => await fenceLock(state, lock)),
+    {
+      ttlMs: MUTATION_LOCK_TTL_MS,
+      waitMs: TURN_CURSOR_MUTATION_LOCK_WAIT_MS,
+    },
   );
   if (!result.acquired) {
     throw new Error(`Could not acquire turn cursor lock for ${turnId}`);
@@ -648,6 +651,7 @@ async function setStoredRecord(args: {
   /** Recovery index TTL override; defaults to the resume window. */
   indexTtlMs?: number;
   turnStartMessageIndex?: number;
+  fence: () => Promise<void>;
 }): Promise<TurnRecord> {
   const stateAdapter = getStateAdapter();
   await stateAdapter.connect();
@@ -666,6 +670,7 @@ async function setStoredRecord(args: {
       ...args.runtimeMetadata,
     },
   });
+  await args.fence();
   await stateAdapter.set(
     turnCursorKey(storedRecord.conversationId, storedRecord.turnId),
     storedRecord,
@@ -673,6 +678,7 @@ async function setStoredRecord(args: {
   );
   // The per-conversation recovery index contains many turns; keep the resume
   // window so a terminal write cannot expire unfinished siblings.
+  await args.fence();
   await appendTurnSummary(
     projectTurnSummary(storedRecord),
     turnCursorIndexTtlMs(args.indexTtlMs),
@@ -696,6 +702,7 @@ async function setStoredRecord(args: {
 async function updateTurnState(args: {
   existing: TurnRecord;
   errorMessage?: string;
+  fence: () => Promise<void>;
   state: "abandoned" | "failed";
 }): Promise<TurnRecord | undefined> {
   const parsed = await getStoredTurnRecord(
@@ -707,6 +714,7 @@ async function updateTurnState(args: {
   }
 
   return await setStoredRecord({
+    fence: args.fence,
     piMessages: args.existing.piMessages,
     piMessageProvenance: args.existing.piMessageProvenance,
     ttlMs: turnCursorTtlMs(args.state),
@@ -785,12 +793,13 @@ export async function upsertTurnRecord(args: {
   return await withTurnCursorMutation(
     args.conversationId,
     args.turnId,
-    async () => await upsertTurnRecordLocked(args),
+    async (fence) => await upsertTurnRecordLocked(args, fence),
   );
 }
 
 async function upsertTurnRecordLocked(
   args: Parameters<typeof upsertTurnRecord>[0],
+  fence: () => Promise<void>,
 ): Promise<TurnRecord> {
   const existingRecord = await getStoredTurnRecord(
     args.conversationId,
@@ -869,6 +878,7 @@ async function upsertTurnRecordLocked(
 
   return await setStoredRecord({
     actor: args.actor,
+    fence,
     conversationStore: args.conversationStore,
     destination: args.destination,
     destinationVisibility: args.destinationVisibility,
@@ -1049,7 +1059,7 @@ export async function abandonTurnRecord(args: {
   return await withTurnCursorMutation(
     args.conversationId,
     args.turnId,
-    async () => {
+    async (fence) => {
       const existing = await getTurnRecord(args.conversationId, args.turnId);
       if (
         !existing ||
@@ -1062,6 +1072,7 @@ export async function abandonTurnRecord(args: {
 
       return await updateTurnState({
         existing,
+        fence,
         state: "abandoned",
         errorMessage: args.errorMessage ?? existing.errorMessage,
       });
@@ -1079,7 +1090,7 @@ export async function failTurnRecord(args: {
   return await withTurnCursorMutation(
     args.conversationId,
     args.turnId,
-    async () => {
+    async (fence) => {
       const existing = await getTurnRecord(args.conversationId, args.turnId);
       if (
         !existing ||
@@ -1093,6 +1104,7 @@ export async function failTurnRecord(args: {
 
       return await updateTurnState({
         existing,
+        fence,
         state: "failed",
         errorMessage: args.errorMessage ?? existing.errorMessage,
       });

@@ -2,6 +2,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import type { Lock, StateAdapter } from "chat";
 
 export const ACTIVE_LOCK_TTL_MS = 90_000;
+export const MUTATION_LOCK_TTL_MS = 10_000;
 
 /**
  * Acquire a lock for long-running work that the queued state adapter should
@@ -20,13 +21,13 @@ export type LockAttempt<T> = { acquired: false } | { acquired: true; value: T };
 export async function withLock<T>(
   state: StateAdapter,
   key: string,
-  run: () => Promise<T>,
-  options: { retryMs?: number; waitMs?: number } = {},
+  run: (lock: Lock) => Promise<T>,
+  options: { retryMs?: number; ttlMs?: number; waitMs?: number } = {},
 ): Promise<LockAttempt<T>> {
   const startedAtMs = Date.now();
   let lock: Lock | null;
   while (true) {
-    lock = await acquireActiveLock(state, key);
+    lock = await state.acquireLock(key, options.ttlMs ?? ACTIVE_LOCK_TTL_MS);
     if (lock) break;
     if (Date.now() - startedAtMs >= (options.waitMs ?? 0)) {
       return { acquired: false };
@@ -34,9 +35,27 @@ export async function withLock<T>(
     await sleep(options.retryMs ?? 25, undefined, { ref: false });
   }
   try {
-    return { acquired: true, value: await run() };
+    return { acquired: true, value: await run(lock) };
   } finally {
     await state.releaseLock(lock);
+  }
+}
+
+/**
+ * Prove lock ownership immediately before a blind write.
+ *
+ * Whole-record mutations must stop if their lock expired rather than overwrite
+ * state committed by a newer owner.
+ */
+export async function fenceLock(
+  state: StateAdapter,
+  lock: Lock,
+  ttlMs = MUTATION_LOCK_TTL_MS,
+): Promise<void> {
+  if (!(await state.extendLock(lock, ttlMs))) {
+    throw new Error(
+      `Lock ownership was lost before write for ${lock.threadId}`,
+    );
   }
 }
 
