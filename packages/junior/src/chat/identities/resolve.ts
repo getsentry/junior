@@ -34,6 +34,8 @@ export interface ResolvedPersonMatch {
   is_bot?: boolean;
   is_deleted?: boolean;
   github_username?: string;
+  /** Live Slack profile when one was loaded during resolve. */
+  profile?: SlackUserProfile;
 }
 
 export interface PersonResolveCandidate {
@@ -388,6 +390,7 @@ function resolvedFromStored(args: {
       ? { is_bot: args.profile.is_bot, is_deleted: args.profile.is_deleted }
       : {}),
     ...(githubUsername ? { github_username: githubUsername } : {}),
+    ...(args.profile ? { profile: args.profile } : {}),
   };
 }
 
@@ -430,6 +433,7 @@ async function resolveFromProfile(args: {
       ...(githubUsernameFromProfile(args.profile)
         ? { github_username: githubUsernameFromProfile(args.profile) }
         : {}),
+      profile: args.profile,
     };
   }
   return resolvedFromStored({
