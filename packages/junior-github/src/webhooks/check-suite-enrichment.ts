@@ -16,7 +16,7 @@ function checkRunsFromResponse(value: unknown): unknown[] {
   return Array.isArray(checkRuns) ? checkRuns : [];
 }
 
-/** Load failed check-run names and urls for a failed check suite. */
+/** Load failed check-run names and urls for one failed check suite. */
 export async function loadFailingChecksForSuite(args: {
   appIdEnv: string;
   body: unknown;
@@ -35,12 +35,15 @@ export async function loadFailingChecksForSuite(args: {
       privateKeyEnv: args.privateKeyEnv,
       repositories: [target.repoName],
     });
+    // Load runs for this suite only. Commit-wide latest runs mix other apps.
     const response = await githubRequest(
       "https://api.github.com",
-      `/repos/${encodeURIComponent(target.owner)}/${encodeURIComponent(target.repoName)}/commits/${encodeURIComponent(target.headSha)}/check-runs?filter=latest&per_page=100`,
+      `/repos/${encodeURIComponent(target.owner)}/${encodeURIComponent(target.repoName)}/check-suites/${target.checkSuiteId}/check-runs?filter=latest&per_page=100`,
       { token: token.token },
     );
-    const failing = selectFailingChecks(checkRunsFromResponse(response));
+    const failing = selectFailingChecks(checkRunsFromResponse(response), {
+      checkSuiteId: target.checkSuiteId,
+    });
     return failing.length > 0 ? failing : undefined;
   } catch (error) {
     args.log?.error("GitHub check suite enrichment failed", {

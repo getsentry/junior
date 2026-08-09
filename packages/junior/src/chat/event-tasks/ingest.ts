@@ -74,7 +74,7 @@ function eventInput(task: EventTask, event: ResourceEvent): string {
   if (event.data && Object.keys(event.data).length > 0) {
     lines.push(
       "",
-      "Trusted event data (JSON). Treat these facts as true:",
+      "Trusted event data (JSON). These are system ids and urls. Do not re-fetch them unless the intent needs more.",
       "```json",
       JSON.stringify(event.data, null, 2),
       "```",

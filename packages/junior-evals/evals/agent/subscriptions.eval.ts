@@ -185,21 +185,26 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
           label: "GitHub PR getsentry/junior#691",
           identifier: "getsentry/junior#691",
           trustedSummary:
-            'GitHub PR getsentry/junior#691 checks failed on test for abcdef123456.',
+            "GitHub PR getsentry/junior#691 checks failed (1) for abcdef123456.",
           data: {
             repo: "getsentry/junior",
             pullRequest: 691,
             headSha: "abcdef1234567890abcdef1234567890abcdef12",
             scope: "check_suite",
             suiteConclusion: "failure",
+            checkSuiteId: 42,
+            checkSuiteUrl:
+              "https://github.com/getsentry/junior/commit/abcdef1234567890abcdef1234567890abcdef12/checks?check_suite_id=42",
             failingChecks: [
               {
-                name: "test",
+                checkRunId: 1,
                 conclusion: "failure",
                 htmlUrl: "https://github.com/getsentry/junior/actions/runs/1",
               },
             ],
           },
+          untrustedText:
+            "Failed checks:\n- test: https://github.com/getsentry/junior/actions/runs/1",
         }),
       ],
       criteria: rubric({

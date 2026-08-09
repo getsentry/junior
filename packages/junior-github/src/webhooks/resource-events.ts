@@ -216,11 +216,9 @@ const checkSuiteWebhookSchema = z.object({
       .nullable(),
     conclusion: z.string().optional().nullable(),
     head_sha: z.string().optional(),
-    html_url: z.string().optional().nullable(),
     id: z.number().optional(),
     latest_check_runs_count: z.number().optional().nullable(),
     pull_requests: z.array(z.object({ number: z.number() })),
-    url: z.string().optional().nullable(),
   }),
   repository: repositorySchema,
 });
@@ -240,10 +238,27 @@ export type GitHubFailingCheck = {
   name: string;
 };
 
+/** Build a browser URL for one check suite. GitHub does not send html_url. */
+export function buildCheckSuiteUrl(args: {
+  checkSuiteId: number;
+  headSha: string;
+  repo: string;
+}): string {
+  return `https://github.com/${args.repo}/commit/${args.headSha}/checks?check_suite_id=${args.checkSuiteId}`;
+}
+
+/** Collapse provider free text into one short summary fragment. */
+function oneLineLabel(value: string, maxLength = 80): string {
+  return value
+    .replace(/[\r\n]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength);
+}
+
 /** Build the trusted data and summary for one check-suite PR event. */
 export function buildCheckSuiteResourceEvent(args: {
   appName?: string;
-  checkSuiteHtmlUrl?: string;
   checkSuiteId?: number;
   deliveryId: string;
   eventType: "pull_request.checks.failed" | "pull_request.checks.recovered";
@@ -259,20 +274,12 @@ export function buildCheckSuiteResourceEvent(args: {
     repo: args.repo,
   });
   const shortSha = args.headSha?.slice(0, 12);
-  const failingNames = (args.failingChecks ?? [])
-    .map((check) => check.name.trim())
-    .filter((name) => name.length > 0)
-    .slice(0, 8);
-  const failureLabel =
-    failingNames.length > 0
-      ? failingNames.join(", ")
-      : args.appName
-        ? args.appName
-        : undefined;
+  const failingChecks = (args.failingChecks ?? []).slice(0, 12);
+  const failingCount = failingChecks.length;
   const trustedSummary =
     args.eventType === "pull_request.checks.failed"
-      ? `${resource.label} checks failed${failureLabel ? ` on ${failureLabel}` : ""}${shortSha ? ` for ${shortSha}` : ""}.`
-      : `${resource.label} check suite recovered${args.appName ? ` on ${args.appName}` : ""}${shortSha ? ` for ${shortSha}` : ""}.`;
+      ? `${resource.label} checks failed${failingCount > 0 ? ` (${failingCount})` : ""}${shortSha ? ` for ${shortSha}` : ""}.`
+      : `${resource.label} check suite recovered${shortSha ? ` for ${shortSha}` : ""}.`;
 
   const data: Record<string, unknown> = {
     repo: args.repo,
@@ -282,19 +289,43 @@ export function buildCheckSuiteResourceEvent(args: {
   };
   if (args.headSha) data.headSha = args.headSha;
   if (args.checkSuiteId !== undefined) data.checkSuiteId = args.checkSuiteId;
-  if (args.checkSuiteHtmlUrl) data.checkSuiteUrl = args.checkSuiteHtmlUrl;
-  if (args.appName) data.appName = args.appName;
+  if (args.checkSuiteId !== undefined && args.headSha) {
+    data.checkSuiteUrl = buildCheckSuiteUrl({
+      checkSuiteId: args.checkSuiteId,
+      headSha: args.headSha,
+      repo: args.repo,
+    });
+  }
+  if (args.appName) data.appName = oneLineLabel(args.appName, 120);
   if (args.latestCheckRunsCount !== undefined) {
     data.latestCheckRunsCount = args.latestCheckRunsCount;
   }
-  if (args.eventType === "pull_request.checks.failed" && args.failingChecks) {
-    data.failingChecks = args.failingChecks.slice(0, 12).map((check) => ({
-      name: check.name,
+  // Keep only system-controlled handles in trusted data. Check names come from
+  // workflow YAML and belong in untrustedText.
+  if (args.eventType === "pull_request.checks.failed" && failingCount > 0) {
+    data.failingChecks = failingChecks.map((check) => ({
       conclusion: check.conclusion,
       ...(check.htmlUrl ? { htmlUrl: check.htmlUrl } : {}),
       checkRunId: check.checkRunId,
     }));
   }
+
+  const untrustedParts =
+    args.eventType === "pull_request.checks.failed"
+      ? failingChecks
+          .map((check) => {
+            const name = oneLineLabel(check.name);
+            if (!name) return undefined;
+            return check.htmlUrl ? `${name}: ${check.htmlUrl}` : name;
+          })
+          .filter((part): part is string => part !== undefined)
+      : [];
+  const untrustedText =
+    untrustedParts.length > 0
+      ? [`Failed checks:`, ...untrustedParts.map((part) => `- ${part}`)].join(
+          "\n",
+        )
+      : undefined;
 
   return {
     eventKey: gitHubEventKey(
@@ -306,16 +337,33 @@ export function buildCheckSuiteResourceEvent(args: {
     identifier: resource.identifier,
     trustedSummary,
     data,
+    ...(untrustedText ? { untrustedText } : {}),
   };
 }
 
-/** Keep only the failed check-run facts Junior needs next. */
-export function selectFailingChecks(checkRuns: unknown): GitHubFailingCheck[] {
+/** Keep only failed check runs from one suite. */
+export function selectFailingChecks(
+  checkRuns: unknown,
+  options?: { checkSuiteId?: number },
+): GitHubFailingCheck[] {
   if (!Array.isArray(checkRuns)) return [];
   const failing: GitHubFailingCheck[] = [];
   for (const run of checkRuns) {
     if (!run || typeof run !== "object" || Array.isArray(run)) continue;
     const record = run as Record<string, unknown>;
+    // Drop runs that name a different suite. Keep runs with no suite id when
+    // the caller already loaded by suite endpoint.
+    if (options?.checkSuiteId !== undefined) {
+      const suite = record.check_suite;
+      const suiteId =
+        suite &&
+        typeof suite === "object" &&
+        !Array.isArray(suite) &&
+        typeof (suite as { id?: unknown }).id === "number"
+          ? (suite as { id: number }).id
+          : undefined;
+      if (suiteId !== undefined && suiteId !== options.checkSuiteId) continue;
+    }
     const conclusion =
       typeof record.conclusion === "string" ? record.conclusion : undefined;
     const name = typeof record.name === "string" ? record.name.trim() : "";
@@ -362,16 +410,11 @@ function normalizeCheckSuiteEvents(
     typeof suite.head_sha === "string" && /^[0-9a-f]{7,40}$/i.test(suite.head_sha)
       ? suite.head_sha
       : undefined;
-  const checkSuiteHtmlUrl =
-    typeof suite.html_url === "string" && suite.html_url.length > 0
-      ? suite.html_url
-      : undefined;
   return suite.pull_requests.flatMap((pullRequest) => {
     const repo = parsed.data.repository.full_name;
     return pullRequestTargets(
       buildCheckSuiteResourceEvent({
         appName,
-        checkSuiteHtmlUrl,
         checkSuiteId: suite.id,
         deliveryId,
         eventType,

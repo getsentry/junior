@@ -109,8 +109,12 @@ describe("resource event delivery", () => {
             repo: "getsentry/junior",
             pullRequest: 691,
             headSha: "abcdef1234567890abcdef1234567890abcdef12",
-            failingChecks: [{ name: "test", conclusion: "failure" }],
+            checkSuiteId: 42,
+            checkSuiteUrl:
+              "https://github.com/getsentry/junior/commit/abcdef1234567890abcdef1234567890abcdef12/checks?check_suite_id=42",
+            failingChecks: [{ checkRunId: 11, conclusion: "failure" }],
           },
+          untrustedText: "Failed checks:\n- test",
         },
         { nowMs: 1_500, queue, teamId: SLACK_DESTINATION.teamId },
       ),
@@ -131,8 +135,12 @@ describe("resource event delivery", () => {
     expect(notificationText).toContain("subscription intent");
     expect(notificationText).toContain("stay silent");
     expect(notificationText).toContain("Trusted event data");
+    expect(notificationText).toContain("system ids and urls");
     expect(notificationText).toContain('"failingChecks"');
-    expect(notificationText).toContain('"test"');
+    expect(notificationText).toContain('"checkRunId": 11');
+    expect(notificationText).toContain("Untrusted provider content");
+    expect(notificationText).toContain("Failed checks:");
+    expect(notificationText).toContain("- test");
     expect(work?.messages[0]).toMatchObject({
       source: "resource_event",
       input: {
