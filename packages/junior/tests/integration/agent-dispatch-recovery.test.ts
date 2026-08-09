@@ -92,7 +92,7 @@ describe("agent dispatch recovery", () => {
         expect.objectContaining({
           dispatchOutcome: "blocked",
           resultMessageId: expect.any(String),
-          sessionId: getDispatchTurnId(dispatch.id),
+          turnId: getDispatchTurnId(dispatch.id),
         }),
       ]),
     );

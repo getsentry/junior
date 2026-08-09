@@ -1795,7 +1795,7 @@ function buildRuntimeServices(
             ] as PiMessage[];
             const sessionRecord = await upsertTurnRecord({
               conversationId: runRequest.conversationId,
-              sessionId: runRequest.turnId,
+              turnId: runRequest.turnId,
               sliceId: 1,
               state: "paused",
               piMessages,
@@ -1873,7 +1873,7 @@ function buildRuntimeServices(
             ] as PiMessage[];
             const sessionRecord = await upsertTurnRecord({
               conversationId: runRequest.conversationId,
-              sessionId: runRequest.turnId,
+              turnId: runRequest.turnId,
               sliceId: 2,
               state: "paused",
               piMessages,

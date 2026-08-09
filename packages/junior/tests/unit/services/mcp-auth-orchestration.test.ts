@@ -208,7 +208,7 @@ describe("createMcpAuthOrchestration", () => {
     expect(recordPendingAuth).toHaveBeenCalledTimes(1);
     expect(abandonTurnRecord).toHaveBeenCalledWith({
       conversationId: "slack:C123:1700000000.000000",
-      sessionId: "run_old",
+      turnId: "run_old",
       errorMessage:
         "Abandoned by a newer auth-blocked request in the same conversation.",
     });

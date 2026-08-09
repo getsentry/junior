@@ -326,13 +326,15 @@ async function failUnresumableContinuation(args: {
   expectedVersion?: number;
   summary: TurnSummary;
 }): Promise<void> {
-  await failTurnRecord({
+  const failed = await failTurnRecord({
     conversationId: args.conversationId,
     expectedVersion: args.expectedVersion ?? args.summary.version,
     turnId: args.summary.turnId,
     errorMessage: args.errorMessage,
   });
-  if (args.summary.dispatchId) {
+  if (!failed) return;
+
+  if (failed.dispatchId) {
     try {
       const routing = await resolveTurnSessionRouting({
         conversationId: args.conversationId,
@@ -340,13 +342,13 @@ async function failUnresumableContinuation(args: {
       await recordTurnSummary({
         conversationId: args.conversationId,
         destination: routing.destination,
-        dispatchId: args.summary.dispatchId,
+        dispatchId: failed.dispatchId,
         dispatchOutcome: "failed",
-        turnId: args.summary.turnId,
-        sliceId: args.summary.sliceId,
+        turnId: failed.turnId,
+        sliceId: failed.sliceId,
         source: routing.source,
         state: "failed",
-        surface: args.summary.surface,
+        surface: failed.surface,
       });
     } catch (error) {
       logException(error, "agent.continue.dispatch_failure_summary.failed", {

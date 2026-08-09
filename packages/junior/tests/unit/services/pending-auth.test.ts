@@ -188,7 +188,7 @@ describe("abandonReplacedPendingAuth", () => {
 
     expect(abandonTurnRecord).toHaveBeenCalledWith({
       conversationId: "conversation-1",
-      sessionId: "run_old",
+      turnId: "run_old",
       errorMessage:
         "Abandoned by a newer auth-blocked request in the same conversation.",
     });

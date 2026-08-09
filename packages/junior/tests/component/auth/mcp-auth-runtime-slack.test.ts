@@ -562,7 +562,7 @@ describe("mcp auth runtime slack integration", () => {
     );
     expect(pendingCheckpoint).toMatchObject({
       conversationId: threadId,
-      sessionId: turnId,
+      turnId,
       sliceId: 2,
       state: "paused",
       resumeReason: "auth",
@@ -641,7 +641,7 @@ describe("mcp auth runtime slack integration", () => {
     );
     expect(completedCheckpoint).toMatchObject({
       conversationId: threadId,
-      sessionId: turnId,
+      turnId,
       sliceId: 2,
       state: "completed",
     });
@@ -795,7 +795,7 @@ describe("mcp auth runtime slack integration", () => {
     );
     expect(pendingCheckpoint).toMatchObject({
       conversationId: threadId,
-      sessionId: turnId,
+      turnId,
       sliceId: 2,
       state: "paused",
       resumeReason: "auth",
@@ -904,7 +904,7 @@ describe("mcp auth runtime slack integration", () => {
       await turnSessionStoreModule.getTurnRecord(threadId, turnId),
     ).toMatchObject({
       conversationId: threadId,
-      sessionId: turnId,
+      turnId,
       state: "failed",
       errorMessage:
         "Agent turn failed before assistant output handling completed",
@@ -1054,7 +1054,7 @@ describe("mcp auth runtime slack integration", () => {
     );
     expect(pendingCheckpoint).toMatchObject({
       conversationId: threadId,
-      sessionId: turnId,
+      turnId,
       sliceId: 2,
       state: "paused",
       resumeReason: "auth",
@@ -1090,7 +1090,7 @@ describe("mcp auth runtime slack integration", () => {
     );
     expect(completedCheckpoint).toMatchObject({
       conversationId: threadId,
-      sessionId: turnId,
+      turnId,
       state: "completed",
     });
 
