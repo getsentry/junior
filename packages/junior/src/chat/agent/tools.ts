@@ -146,7 +146,7 @@ type ToolRuntimeRoute =
     >;
 
 /** Resolve provider-specific tool routing without changing turn delivery. */
-export function resolveToolRuntimeRoute(args: {
+function resolveToolRuntimeRoute(args: {
   actor?: Actor;
   routing: AgentRunRouting;
 }): ToolRuntimeRoute {

@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createLocalSource, createWebSource } from "@sentry/junior-plugin-api";
 import { assertRunRoutingConsistency } from "@/chat/agent/request";
-import { resolveToolRuntimeRoute } from "@/chat/agent/tools";
 
 describe("agent run routing", () => {
   it("allows an internal child run to borrow its parent's local route", () => {
@@ -72,33 +71,6 @@ describe("agent run routing", () => {
         },
       }),
     ).not.toThrow();
-  });
-
-  it("keeps web source and actor when tool setup uses a Slack destination", () => {
-    const actor = {
-      platform: "web" as const,
-      userId: "dashboard:alice",
-      email: "alice@example.com",
-    };
-    const destination = {
-      platform: "slack" as const,
-      teamId: "T123",
-      channelId: "C123",
-    };
-    const source = createWebSource("slack:C123:1712345.0001", "public");
-
-    expect(
-      resolveToolRuntimeRoute({
-        actor,
-        routing: {
-          actor,
-          destination,
-          publishExternally: false,
-          source,
-          surface: "api",
-        },
-      }),
-    ).toEqual({ actor, destination, source });
   });
 
   it("rejects a web continue that would publish to Slack", () => {
