@@ -417,9 +417,12 @@ describe("durable queue contract", () => {
       await expect(firstSlice).resolves.toEqual({ status: "yielded" });
 
       const turnId = "turn_1712345_0001";
+      // Holding the next model step past the host deadline marks the agent
+      // timed out and parks for resume (production multi-slice shape).
       await expect(getTurnRecord(CONVERSATION_ID, turnId)).resolves.toMatchObject(
         {
           state: "paused",
+          resumeReason: "timeout",
           turnId,
         },
       );
@@ -482,9 +485,9 @@ describe("durable queue contract", () => {
       await expectNextTurn(q, "1712345.0008");
     });
 
-    it("completes quietly when a worker dies after the reply was accepted", async () => {
-      // Residue left when the process dies after destination accept: recovery
-      // must complete without a failure fallback or a second Slack post.
+    it("completes seeded dead-worker residue after an accepted reply", async () => {
+      // Seeded residue only: a live process cannot leave this state in-process.
+      // Recovery must complete without a failure fallback or a second Slack post.
       const turnId = await seedDeadWorkerResidue("running");
       await commitAcceptedReply({
         agentMessage: fauxAssistantMessage("Deploy checked."),

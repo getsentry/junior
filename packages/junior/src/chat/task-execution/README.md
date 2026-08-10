@@ -134,8 +134,8 @@ Vercel signing, and Vercel options. The cases own these product outcomes (see is
   at a safe boundary, leaves the host request, and finishes on a fresh queue wake
   with one final reply.
 - **Accepted reply is terminal:** after Slack accepts a tool-free reply, the turn
-  completes once with no second post (deadline during accept, or worker death
-  after accept).
+  completes once with no second post (deadline during accept, soft yield after
+  accept, or seeded dead-worker residue after accept).
 - **Worker dies mid-run:** an expired lease with no accepted reply fails the turn
   once, keeps committed history, and leaves the conversation free.
 - **Transient agent failure:** failure before input commit retries without a
