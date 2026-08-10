@@ -132,8 +132,7 @@ describe("Slack behavior: attachment handling", () => {
       throw new Error("vision unavailable");
     });
     const executeAgentRun = vi.fn(async (request) => {
-      const attachments =
-        request?.userAttachments ?? [];
+      const attachments = request?.instruction?.attachments ?? [];
       expect(attachments).toEqual([
         expect.objectContaining({
           filename: "error.png",

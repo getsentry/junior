@@ -1159,7 +1159,7 @@ describe("agent run continuation", () => {
           guardianActionRejection: {
             decision: "ask",
             priorRejection: {
-              instruction: {
+              input: {
                 workspace: "preview-42",
               },
               decision: "ask",

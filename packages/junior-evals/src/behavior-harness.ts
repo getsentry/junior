@@ -1906,7 +1906,7 @@ function buildRuntimeServices(
             "VERCEL_OIDC_TOKEN",
           ]);
           const baseToolOverrides: ToolHooks["toolOverrides"] = {
-            ...(request.policy?.toolOverrides ?? {}),
+            ...(request.environment?.toolOverrides ?? {}),
           };
           const viewImageFixtures = new Map(
             scenario.overrides?.view_image_files?.map((fixture) => [
