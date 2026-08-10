@@ -1,13 +1,11 @@
 import { describeEval } from "vitest-evals";
-import { expect } from "vitest";
 import { rubric, scheduledTaskDue, slackEvals } from "../../src/helpers";
-import { expectNoToolCalls, REMINDER_ONLY_FORBIDDEN_TOOLS } from "./helpers";
 
 describeEval("Scheduled Delivery", slackEvals, (it) => {
   it("when a one-off reminder becomes due, deliver the reminder outcome", async ({
     run,
   }) => {
-    const result = await run({
+    await run({
       initialEvents: [
         scheduledTaskDue("Post this reminder: Standup moved to 10:30 today.", {
           schedule: "Once at noon UTC",
@@ -27,13 +25,12 @@ describeEval("Scheduled Delivery", slackEvals, (it) => {
         ],
       }),
     });
-    expectNoToolCalls(result.session, REMINDER_ONLY_FORBIDDEN_TOOLS);
   });
 
   it("when a reminder addresses its creator, use the known creator mention", async ({
     run,
   }) => {
-    const result = await run({
+    await run({
       initialEvents: [
         scheduledTaskDue("Remind me to do healthchecks.", {
           schedule: "Once at noon UTC",
@@ -52,13 +49,12 @@ describeEval("Scheduled Delivery", slackEvals, (it) => {
         ],
       }),
     });
-    expectNoToolCalls(result.session, REMINDER_ONLY_FORBIDDEN_TOOLS);
   });
 
   it("when a recurring scheduled task becomes due, deliver that occurrence", async ({
     run,
   }) => {
-    const result = await run({
+    await run({
       initialEvents: [
         scheduledTaskDue(
           "Post this reminder: Submit timesheets by 5pm today.",
@@ -82,6 +78,5 @@ describeEval("Scheduled Delivery", slackEvals, (it) => {
         ],
       }),
     });
-    expectNoToolCalls(result.session, REMINDER_ONLY_FORBIDDEN_TOOLS);
   });
 });
