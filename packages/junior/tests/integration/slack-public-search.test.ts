@@ -86,6 +86,45 @@ describe("Slack public search", () => {
     });
   });
 
+  it("keeps messages with blank optional fields", async () => {
+    queueSlackApiResponse("assistant.search.context", {
+      body: {
+        ok: true,
+        results: {
+          messages: [
+            {
+              author_name: "",
+              author_user_id: "U123",
+              channel_id: "C123",
+              channel_name: " ",
+              message_ts: "1784000000.000100",
+              content: "Project Gizmo shipped.",
+              permalink:
+                "https://example.slack.com/archives/C123/p1784000000000100",
+            },
+          ],
+        },
+      },
+    });
+
+    const result = await executeTool(createSlackPublicSearchTool(actionToken), {
+      query: "project gizmo",
+    });
+
+    expect(result).toMatchObject({
+      count: 1,
+      messages: [
+        {
+          author_user_id: "U123",
+          channel_id: "C123",
+          content: "Project Gizmo shipped.",
+        },
+      ],
+    });
+    expect(result.messages[0]).not.toHaveProperty("author_name");
+    expect(result.messages[0]).not.toHaveProperty("channel_name");
+  });
+
   it("searches files and users when those content types are requested", async () => {
     queueSlackApiResponse("assistant.search.context", {
       body: {

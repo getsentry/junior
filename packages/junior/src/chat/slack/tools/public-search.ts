@@ -98,14 +98,19 @@ type SearchChannel = z.infer<typeof searchChannelSchema>;
 type SearchUser = z.infer<typeof searchUserSchema>;
 
 const nonEmptyString = z.string().trim().min(1);
+const blankAsUndefined = z.preprocess(
+  (value) =>
+    typeof value === "string" && value.trim() === "" ? undefined : value,
+  nonEmptyString.optional(),
+);
 
 /** Slack wire shape for one search message. */
 const slackSearchMessageWireSchema = z
   .object({
-    author_name: nonEmptyString.optional(),
-    author_user_id: nonEmptyString.optional(),
+    author_name: blankAsUndefined,
+    author_user_id: blankAsUndefined,
     channel_id: nonEmptyString,
-    channel_name: nonEmptyString.optional(),
+    channel_name: blankAsUndefined,
     message_ts: nonEmptyString,
     content: z.string(),
     is_author_bot: z.boolean().optional(),
