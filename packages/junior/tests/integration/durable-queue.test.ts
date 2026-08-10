@@ -456,12 +456,97 @@ describe("durable queue contract", () => {
       });
     });
 
-    it("continues a paused turn on the same queue, then stops when progress stalls", async () => {
+    it("leaves the host request after a timeout pause that advanced the boundary", async () => {
       const turnId = await seedTurn("paused");
       let resumes = 0;
-      let shouldYield = true;
       const q = await slack({
-        shouldYield: () => shouldYield,
+        // Soft yield is not due; the worker must still release the lease so the
+        // next slice starts under a fresh host request deadline.
+        shouldYield: () => false,
+        pausedRunner: {
+          run: async (request) => {
+            if (request.turnId !== turnId) return await complete(request);
+            resumes += 1;
+            if (resumes >= 2) {
+              return await complete(request);
+            }
+            const piMessages = request.input.piMessages?.map((message) =>
+              message.role === "assistant"
+                ? { ...message, usage: { ...message.usage, output: 99 } }
+                : message,
+            );
+            const record = await saveTurnCheckpoint({
+              mode: "paused",
+              reason: "timeout",
+              actor: request.routing.actor,
+              conversationId: request.conversationId,
+              destination: request.routing.destination,
+              messages: [
+                ...(piMessages ?? []),
+                {
+                  role: "user",
+                  content: [{ type: "text", text: "new committed input" }],
+                  timestamp: 4,
+                },
+              ],
+              // seedTurn already parked once; this write is the next timeout pause.
+              sliceId: 2,
+              source: request.routing.source,
+              surface: request.routing.surface,
+              turnId: request.turnId,
+            });
+            if (!record) throw new Error("Expected paused checkpoint");
+            return { status: "suspended", resumeVersion: record.version };
+          },
+        },
+      });
+      await requestConversationWork({
+        conversationId: CONVERSATION_ID,
+        destination: SLACK_DESTINATION,
+        state: q.state,
+      });
+      await ensureConversationWake({
+        conversationId: CONVERSATION_ID,
+        idempotencyKey: "timeout-fresh-request",
+        queue: q.wakes,
+      });
+
+      await expect(q.next()).resolves.toEqual({ status: "yielded" });
+      expect(resumes).toBe(1);
+      await expect(
+        getTurnRecord(CONVERSATION_ID, turnId),
+      ).resolves.toMatchObject({
+        state: "paused",
+        resumeReason: "timeout",
+        sliceId: 3,
+      });
+      const afterYield = await getConversationWorkState({
+        conversationId: CONVERSATION_ID,
+        state: q.state,
+      });
+      expect(afterYield).toMatchObject({
+        needsRun: true,
+        execution: { status: "paused" },
+      });
+      expect(afterYield?.lease).toBeUndefined();
+      expect(q.wakes.hasQueuedMessages()).toBe(true);
+
+      // Fresh queue delivery resumes under a new request and can finish.
+      await expect(q.next()).resolves.toEqual({ status: "completed" });
+      expect(resumes).toBe(2);
+      await expectTerminalTurn(q, {
+        turnId,
+        state: "completed",
+        replies: ["Deploy checked."],
+      });
+      await expectNextTurn(q, "1712345.0005");
+    });
+
+    it("stops a timed-out turn that repeats the same committed boundary", async () => {
+      const turnId = await seedTurn("paused");
+      let resumes = 0;
+      const q = await slack({
+        shouldYield: () => false,
         pausedRunner: {
           run: async (request) => {
             if (request.turnId !== turnId) return await complete(request);
@@ -472,6 +557,7 @@ describe("durable queue contract", () => {
                 : message,
             );
             if (resumes === 1) {
+              // Advance once so the next host request has a real resume boundary.
               const record = await saveTurnCheckpoint({
                 mode: "paused",
                 reason: "timeout",
@@ -494,23 +580,23 @@ describe("durable queue contract", () => {
               if (!record) throw new Error("Expected paused checkpoint");
               return { status: "suspended", resumeVersion: record.version };
             }
-            const faux = createFauxCore({ api: "test", provider: "test" });
-            faux.setResponses([
-              async () => {
-                await new Promise((resolve) => setTimeout(resolve, 50));
-                return fauxAssistantMessage("not delivered");
-              },
-            ]);
-            return await executeAgentRun(
-              {
-                ...request,
-                input: { ...request.input, piMessages },
-                policy: {
-                  ...request.policy,
-                  turnDeadlineAtMs: Date.now() + 10,
-                },
-              },
-              faux.stream,
+            // Same-boundary continue: fail the turn the way resume.ts does when
+            // timeout would park at the resumed boundary again.
+            await saveTurnCheckpoint({
+              mode: "failed",
+              actor: request.routing.actor,
+              conversationId: request.conversationId,
+              destination: request.routing.destination,
+              messages: piMessages ?? [],
+              sliceId: request.sliceId ?? 3,
+              source: request.routing.source,
+              surface: request.routing.surface,
+              turnId: request.turnId,
+              errorMessage:
+                "Turn made no progress: continue parked at the same boundary",
+            });
+            throw new Error(
+              `Turn made no progress for conversation=${request.conversationId} turn=${request.turnId}`,
             );
           },
         },
@@ -522,19 +608,22 @@ describe("durable queue contract", () => {
       });
       await ensureConversationWake({
         conversationId: CONVERSATION_ID,
-        idempotencyKey: "stuck-turn",
+        idempotencyKey: "stuck-boundary",
         queue: q.wakes,
       });
 
+      await expect(q.next()).resolves.toEqual({ status: "yielded" });
+      expect(resumes).toBe(1);
+      expect(q.wakes.hasQueuedMessages()).toBe(true);
+
       await expect(q.next()).resolves.toEqual({ status: "completed" });
-      expect(resumes).toBeGreaterThan(1);
+      expect(resumes).toBe(2);
       await expectTerminalTurn(q, {
         turnId,
         state: "failed",
         replies: 1,
         error: "made no progress",
       });
-      shouldYield = false;
       await expectNextTurn(q, "1712345.0005");
     });
 

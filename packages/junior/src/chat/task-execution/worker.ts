@@ -669,10 +669,14 @@ async function processConversationWorkInContext(
       if (!next || next.lease?.leaseToken !== lease.leaseToken) {
         return { status: "lost_lease" };
       }
-      if (
-        next.execution.status !== "paused" &&
-        countPendingConversationMessages(next) === 0
-      ) {
+      // A pause under this lease (timeout/retry/yield via wakePausedTurn →
+      // requestConversationWork) must leave the host request. Continuing the
+      // turn here reuses the spent request deadline and can fail a later slice
+      // with no-progress even after the boundary advanced once.
+      if (next.execution.status === "paused") {
+        return await yieldWork();
+      }
+      if (countPendingConversationMessages(next) === 0) {
         break;
       }
     }
