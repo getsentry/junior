@@ -7,7 +7,6 @@ runtime-dependencies:
     package: agent-browser
   - type: npm
     package: playwright
-    version: "1.60.0"
   - type: system
     package: alsa-lib
   - type: system
