@@ -25,8 +25,10 @@ file.
    delivery or intentional no-reply completion commits the durable turn outcome.
 
 The local CLI uses `local/runner.ts` directly rather than pretending to be a
-mailbox-backed provider. API-authored private root turns use the shared mailbox
-and worker through `api-turns/` with `publishExternally: false`.
+mailbox-backed provider. API-authored root turns and dashboard continues of
+existing conversations use the shared mailbox and worker through `api-turns/`
+with `publishExternally: false`. Continues keep the conversation destination
+(including Slack) for location context and never copy replies to the provider.
 
 ## Ownership
 
@@ -34,8 +36,9 @@ and worker through `api-turns/` with `publishExternally: false`.
 - `ingress/`: source parsing, classification, and routing.
 - `task-execution/`: mailbox, queue, lease, checkpoint, worker, and recovery.
 - `runtime/`: turn orchestration and provider-neutral delivery callbacks.
-- `api-turns/`: mailbox enqueue and worker consumer for dashboard/API root turns
-  that stay in the conversation log (`publishExternally: false`).
+- `api-turns/`: mailbox enqueue and worker consumer for dashboard/API turns
+  that stay in the conversation log (`publishExternally: false`), including
+  continues of Slack-rooted conversations by verified participants.
 - `agent-dispatch/`: durable task and plugin dispatch authority, mailbox
   adaptation, and plugin-facing outcome projection.
 - `agent-invocations/`: durable parent/child bindings, delegated work, and
@@ -118,9 +121,10 @@ delegation without becoming the execution actor or a general task owner.
   conversation receives its bounded execution destination from its durable
   agent invocation.
 - External publish is controlled per turn via `publishExternally`. Slack
-  ingress/resume publish unless the flag is explicitly false. Non-Slack and
-  destinationless work stay conversation-only unless the flag is true.
-  Destination presence must not invent publish.
+  ingress/resume publish unless the flag is explicitly false. Non-Slack,
+  destinationless, and dashboard/web work stay conversation-only unless the
+  flag is true. Destination presence must not invent publish. A web Source may
+  keep a Slack Destination when `publishExternally` is false.
 - Host-owned runtime context and the actor's current instruction are separate
   user messages. The context message immediately precedes the instruction,
   remains context-authority on resume, and may be replaced before a later model

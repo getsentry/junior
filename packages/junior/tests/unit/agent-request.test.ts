@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createLocalSource } from "@sentry/junior-plugin-api";
+import { createLocalSource, createWebSource } from "@sentry/junior-plugin-api";
 import { assertRunRoutingConsistency } from "@/chat/agent/request";
 
 describe("agent run routing", () => {
@@ -50,5 +50,51 @@ describe("agent run routing", () => {
         },
       }),
     ).toThrow("Source and destination conversation IDs do not match");
+  });
+
+  it("allows a web continue on a Slack destination without external publish", () => {
+    expect(() =>
+      assertRunRoutingConsistency({
+        conversationId: "slack:C123:1712345.0001",
+        routing: {
+          actor: {
+            platform: "web",
+            userId: "dashboard:alice",
+            email: "alice@example.com",
+          },
+          destination: {
+            platform: "slack",
+            teamId: "T123",
+            channelId: "C123",
+          },
+          publishExternally: false,
+          source: createWebSource("slack:C123:1712345.0001", "public"),
+          surface: "api",
+        },
+      }),
+    ).not.toThrow();
+  });
+
+  it("rejects a web continue that would publish to Slack", () => {
+    expect(() =>
+      assertRunRoutingConsistency({
+        conversationId: "slack:C123:1712345.0001",
+        routing: {
+          actor: {
+            platform: "web",
+            userId: "dashboard:alice",
+            email: "alice@example.com",
+          },
+          destination: {
+            platform: "slack",
+            teamId: "T123",
+            channelId: "C123",
+          },
+          publishExternally: true,
+          source: createWebSource("slack:C123:1712345.0001", "public"),
+          surface: "api",
+        },
+      }),
+    ).toThrow("Web turns on Slack destinations must not publish externally");
   });
 });

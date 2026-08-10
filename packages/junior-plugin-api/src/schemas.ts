@@ -76,7 +76,8 @@ export const webSourceSchema = z
   .object({
     platform: z.literal("web"),
     visibility: sourceVisibilitySchema,
-    conversationId: localConversationIdSchema,
+    // Web can continue any existing conversation id, including Slack roots.
+    conversationId: exactNonBlankStringSchema,
   })
   .strict();
 

@@ -83,19 +83,12 @@ export const createConversationMessageRoute = defineApiRoute({
     if (!conversation) {
       throwApiError(404, "Conversation not found.");
     }
-    if (conversation.destination?.platform === "slack") {
-      // Continuing Slack-rooted conversations from the dashboard needs source
-      // and destination decoupling. This slice covers local API roots only.
-      throwApiError(
-        409,
-        "Dashboard messages on Slack conversations are not enabled yet.",
-      );
-    }
-    if (
-      !conversation.destination ||
-      conversation.destination.platform !== "local" ||
-      !params.conversationId.startsWith("local:web:")
-    ) {
+    const destinationPlatform = conversation.destination?.platform;
+    const acceptsApiMessages =
+      (destinationPlatform === "local" &&
+        params.conversationId.startsWith("local:web:")) ||
+      destinationPlatform === "slack";
+    if (!acceptsApiMessages) {
       throwApiError(409, "Conversation does not accept API messages.");
     }
 

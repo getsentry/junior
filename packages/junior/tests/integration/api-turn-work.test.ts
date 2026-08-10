@@ -269,4 +269,132 @@ describe("api turn conversation work", () => {
     });
     expect(resolved).toBeUndefined();
   });
+
+  it("continues a Slack-rooted conversation without publishing externally", async () => {
+    const { actor, conversationStore, queue, state } =
+      await createApiTurnWorkFixture();
+    const conversationId = "slack:C1200:1712345.1200";
+    const slackDestination = {
+      platform: "slack" as const,
+      teamId: "T1200",
+      channelId: "C1200",
+    };
+    await conversationStore.recordActivity({
+      conversationId,
+      destination: slackDestination,
+      nowMs: 1,
+      actor: {
+        platform: "slack",
+        email: actor.email,
+        fullName: actor.fullName,
+        slackUserId: "U1200",
+        teamId: "T1200",
+      },
+      source: "slack",
+      sessionSource: {
+        platform: "slack",
+        visibility: "public",
+        teamId: "T1200",
+        channelId: "C1200",
+        threadTs: "1712345.1200",
+      },
+      visibility: "public",
+    });
+
+    const accepted = await appendAndEnqueueApiConversationMessage(
+      {
+        actor,
+        conversationId,
+        idempotencyKey: "slack-continue-1",
+        message: "Continue from the dashboard.",
+      },
+      { conversationStore, queue, state },
+    );
+    expect(accepted).toMatchObject({
+      conversationId,
+      status: "accepted",
+    });
+
+    await expect(
+      conversationStore.get({ conversationId }),
+    ).resolves.toMatchObject({
+      source: "slack",
+      destination: slackDestination,
+      visibility: "public",
+      sessionSource: {
+        platform: "slack",
+        teamId: "T1200",
+        channelId: "C1200",
+        threadTs: "1712345.1200",
+      },
+    });
+
+    const inbound = buildApiTurnInboundMessage({
+      actor,
+      conversationId,
+      destination: slackDestination,
+      message: "Continue from the dashboard.",
+      messageId: accepted.messageId,
+    });
+    expect(inbound).toMatchObject({
+      destination: slackDestination,
+      publishExternally: false,
+      source: "web",
+    });
+
+    let observedDestinationPlatform: string | undefined;
+    let observedPublishExternally: boolean | undefined;
+    let observedSourcePlatform: string | undefined;
+    const worker = createApiTurnWorker({
+      agentRunner: createApiTurnScriptedRunner({
+        replyText: "Dashboard-only reply.",
+        onRun: (request) => {
+          observedDestinationPlatform = request.routing.destination.platform;
+          observedPublishExternally = request.routing.publishExternally;
+          observedSourcePlatform = request.routing.source.platform;
+        },
+      }),
+    });
+    const route = routeApiTurnWork({
+      apiTurnWorker: worker,
+      fallbackWorker: async () => {
+        throw new Error("fallback worker must not run for web continues");
+      },
+    });
+
+    await expect(
+      processConversationQueueMessage(queue.takeMessage(), {
+        conversationStore,
+        queue,
+        run: route,
+        state,
+      }),
+    ).resolves.toMatchObject({ status: "completed" });
+
+    expect(observedDestinationPlatform).toBe("slack");
+    expect(observedPublishExternally).toBe(false);
+    expect(observedSourcePlatform).toBe("web");
+
+    const messages = (
+      await getConversationEventStore().loadMessageHistory(conversationId)
+    ).events.filter((event) => event.data.type === "message");
+    expect(messages.map((event) => event.data)).toEqual([
+      expect.objectContaining({
+        role: "user",
+        text: "Continue from the dashboard.",
+      }),
+      expect.objectContaining({
+        role: "assistant",
+        text: "Dashboard-only reply.",
+      }),
+    ]);
+
+    await expect(
+      getTurnRecord(conversationId, apiTurnIdForMessage(accepted.messageId)),
+    ).resolves.toMatchObject({
+      publishExternally: false,
+      state: "completed",
+      surface: "api",
+    });
+  });
 });

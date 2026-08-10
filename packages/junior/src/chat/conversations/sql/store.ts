@@ -801,7 +801,8 @@ export class SqlStore implements ConversationStore {
       .onConflictDoUpdate({
         target: juniorConversations.conversationId,
         set: {
-          source: sql`coalesce(excluded.source, ${juniorConversations.source})`,
+          // Origin source is set-once so dashboard continues cannot rewrite a Slack root.
+          source: sql`coalesce(${juniorConversations.source}, excluded.source)`,
           sessionSource: sql`coalesce(${juniorConversations.sessionSource}, excluded.source_json)`,
           originType: sql`coalesce(excluded.origin_type, ${juniorConversations.originType})`,
           originId: sql`coalesce(excluded.origin_id, ${juniorConversations.originId})`,

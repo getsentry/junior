@@ -275,8 +275,9 @@ export function assertRunRoutingConsistency(
   request: Pick<AgentRunRequest, "conversationId" | "routing">,
 ): void {
   const { destination, source } = request.routing;
-  // web/dashboard turns keep a local destination for conversation-log delivery
-  // while Source records what produced the work.
+  // Source records what produced the work. Destination is the conversation's
+  // reply container and may already be Slack when a dashboard turn continues a
+  // Slack-rooted conversation without publishing externally.
   switch (source.platform) {
     case "slack": {
       if (destination.platform !== "slack") {
@@ -287,7 +288,6 @@ export function assertRunRoutingConsistency(
       }
       break;
     }
-    case "web":
     case "local": {
       if (destination.platform !== "local") {
         throw new TypeError("Run source and destination platforms do not match");
@@ -307,6 +307,34 @@ export function assertRunRoutingConsistency(
       }
       break;
     }
+    case "web": {
+      if (source.conversationId !== request.conversationId) {
+        throw new TypeError(
+          "Web source and run conversation IDs do not match",
+        );
+      }
+      switch (destination.platform) {
+        case "local": {
+          if (destination.conversationId !== request.conversationId) {
+            throw new TypeError(
+              "Source, destination, and run conversation IDs do not match",
+            );
+          }
+          break;
+        }
+        case "slack": {
+          // Dashboard continues keep the Slack destination for location/context
+          // but must stay conversation-log only.
+          if (request.routing.publishExternally) {
+            throw new TypeError(
+              "Web turns on Slack destinations must not publish externally",
+            );
+          }
+          break;
+        }
+      }
+      break;
+    }
   }
 
   const actor = request.routing.dispatch?.actor ?? request.routing.actor;
@@ -320,8 +348,13 @@ export function assertRunRoutingConsistency(
       case "local":
         return destination.platform === "local";
       case "web":
-        // web actors write through the local conversation-log destination.
-        return destination.platform === "local";
+        // Web actors may write on local roots or continue Slack-rooted
+        // conversations without publishing externally.
+        return (
+          destination.platform === "local" ||
+          (destination.platform === "slack" &&
+            request.routing.publishExternally !== true)
+        );
     }
   })();
   if (!actorMatchesDestination) {

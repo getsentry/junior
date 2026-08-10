@@ -1,9 +1,11 @@
 /**
- * API-authored root conversation turns.
+ * API-authored conversation turns.
  *
  * Dashboard and product API messages enter the shared mailbox with
  * `publishExternally: false`. The worker leases the conversation, runs the
  * shared agent path, and accepts replies into the conversation log only.
+ * Continues of Slack-rooted conversations keep the Slack destination for
+ * location context and never publish back to Slack.
  */
 import { createHash } from "node:crypto";
 import { z } from "zod";
@@ -11,8 +13,11 @@ import type { StateAdapter } from "chat";
 import {
   createWebSource,
   localDestinationSchema,
+  type Destination,
   type LocalDestination,
+  type Source,
 } from "@sentry/junior-plugin-api";
+import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { WebActor } from "@/chat/actor";
 import type { ConversationStore } from "@/chat/conversations/store";
@@ -168,6 +173,28 @@ function requireLocalDestination(conversationId: string): LocalDestination {
   return parsed.data;
 }
 
+/** Keep an existing destination, or create a local one for new dashboard roots. */
+function resolveApiTurnDestination(args: {
+  conversationId: string;
+  existing?: Destination;
+}): Destination {
+  if (args.existing) {
+    return args.existing;
+  }
+  return requireLocalDestination(args.conversationId);
+}
+
+/** Build the web Source for one dashboard turn, inheriting conversation privacy. */
+function webSourceForConversation(args: {
+  conversationId: string;
+  visibility?: ConversationPrivacy;
+}): Source {
+  return createWebSource(
+    args.conversationId,
+    args.visibility === "private" ? "private" : "public",
+  );
+}
+
 function actorFromMetadata(metadata: ApiTurnMailboxMetadata): WebActor {
   return {
     platform: "web",
@@ -219,6 +246,8 @@ export function buildApiTurnInboundMessage(args: {
   actor: WebActor;
   conversationId: string;
   createdAtMs?: number;
+  /** Existing conversation destination; required when continuing a provider root. */
+  destination?: Destination;
   message: string;
   messageId: string;
   nowMs?: number;
@@ -230,7 +259,10 @@ export function buildApiTurnInboundMessage(args: {
   if (!args.actor.email) {
     throw new Error("API conversation actor requires a verified email");
   }
-  const destination = requireLocalDestination(args.conversationId);
+  const destination = resolveApiTurnDestination({
+    conversationId: args.conversationId,
+    existing: args.destination,
+  });
   const nowMs = args.nowMs ?? Date.now();
   return {
     conversationId: args.conversationId,
@@ -261,19 +293,29 @@ async function recordApiConversationActivity(args: {
   conversationId: string;
   conversationStore?: ConversationStore;
   nowMs: number;
-}): Promise<LocalDestination> {
-  const destination = requireLocalDestination(args.conversationId);
-  const source = createWebSource(args.conversationId);
-  await (args.conversationStore ?? getConversationStore()).recordActivity({
+}): Promise<Destination> {
+  const store = args.conversationStore ?? getConversationStore();
+  const existing = await store.get({ conversationId: args.conversationId });
+  const destination = resolveApiTurnDestination({
+    conversationId: args.conversationId,
+    existing: existing?.destination,
+  });
+  // New dashboard roots default public. Continues inherit the existing root
+  // visibility and keep the original session source (set-once).
+  const isNewRoot = !existing;
+  const source = isNewRoot
+    ? webSourceForConversation({ conversationId: args.conversationId })
+    : undefined;
+  await store.recordActivity({
     conversationId: args.conversationId,
     destination,
     nowMs: args.nowMs,
     actor: storedActorFromApi(args.actor),
-    source: "web",
-    sessionSource: source,
-    // Dashboard-created conversations are public by default so links can be
-    // shared. Private create remains a later product option.
-    visibility: "public",
+    // Do not rewrite a Slack root's origin source when a dashboard participant
+    // continues it. Mailbox entries still carry source "web" per turn.
+    ...(isNewRoot ? { source: "web" as const } : {}),
+    ...(source ? { sessionSource: source } : {}),
+    ...(isNewRoot ? { visibility: "public" as const } : {}),
   });
   return destination;
 }
@@ -313,13 +355,12 @@ export async function appendAndEnqueueApiConversationMessage(
   if (!input.actor.email) {
     throw new Error("API conversation actor requires a verified email");
   }
-  requireLocalDestination(input.conversationId);
   const nowMs = options.nowMs ?? Date.now();
   const messageId = apiMessageId({
     conversationId: input.conversationId,
     idempotencyKey: input.idempotencyKey,
   });
-  await recordApiConversationActivity({
+  const destination = await recordApiConversationActivity({
     actor: input.actor,
     conversationId: input.conversationId,
     conversationStore: options.conversationStore,
@@ -329,6 +370,7 @@ export async function appendAndEnqueueApiConversationMessage(
     message: buildApiTurnInboundMessage({
       actor: input.actor,
       conversationId: input.conversationId,
+      destination,
       message: text,
       messageId,
       nowMs,
@@ -480,6 +522,10 @@ export function createApiTurnWorker(options: {
     let startedAtMs: number;
     let inputMessageIds: string[];
 
+    const storedConversation = await getConversationStore().get({
+      conversationId: context.conversationId,
+    });
+
     if (resolved.kind === "mailbox") {
       const first = resolved.batch[0]!;
       text = resolved.batch
@@ -493,9 +539,9 @@ export function createApiTurnWorker(options: {
       inputMessageIds = resolved.batch.map((entry) => entry.metadata.messageId);
     } else {
       turnId = resolved.turnId;
-      const storedConversation = await getConversationStore().get({
-        conversationId: context.conversationId,
-      });
+      // Execution actor is rebuilt at resume from the durable conversation
+      // identity. For Slack-rooted continues, the root actor keeps the verified
+      // participant email used by dashboard access.
       const resumedActor = actorFromStoredConversation(
         storedConversation?.actor,
       );
@@ -512,8 +558,20 @@ export function createApiTurnWorker(options: {
       inputMessageIds = [];
     }
 
-    const destination = requireLocalDestination(context.conversationId);
-    const source = createWebSource(context.conversationId);
+    // Prefer the leased mailbox destination, then durable conversation state.
+    const destination = resolveApiTurnDestination({
+      conversationId: context.conversationId,
+      existing:
+        context.destination ??
+        (resolved.kind === "mailbox"
+          ? resolved.batch[0]?.message.destination
+          : undefined) ??
+        storedConversation?.destination,
+    });
+    const source = webSourceForConversation({
+      conversationId: context.conversationId,
+      visibility: storedConversation?.visibility,
+    });
 
     return await withLogContext(
       {
