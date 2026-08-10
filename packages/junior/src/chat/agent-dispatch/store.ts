@@ -54,10 +54,6 @@ const dispatchRecordSchema = z
     actor: dispatchActorSchema,
     createdAtMs: z.number().finite(),
     credentialSubject: credentialSubjectSchema.optional(),
-    creator: z
-      .object({ slackUserId: z.string().regex(/^[UW][A-Z0-9]+$/) })
-      .strict()
-      .optional(),
     destination: destinationSchema,
     destinationVisibility: destinationVisibilitySchema,
     errorMessage: z.string().optional(),
@@ -369,7 +365,6 @@ export async function createOrGetDispatch(args: {
       ...(args.options.credentialSubject
         ? { credentialSubject: args.options.credentialSubject }
         : {}),
-      ...(args.options.creator ? { creator: args.options.creator } : {}),
       destination: args.options.destination,
       destinationVisibility: args.options.destinationVisibility,
       id,

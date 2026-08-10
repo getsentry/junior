@@ -13,6 +13,7 @@ import { getDb } from "@/chat/db";
 import { logInfo } from "@/chat/logging";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { recordTaskExecution } from "@/chat/tasks/execution-stats";
+import { sanitizeScheduledTaskPrincipal } from "./identity";
 import { createSchedulerSqlStore, type SchedulerStore } from "./store";
 import {
   logScheduledTaskRunSkipped,
@@ -34,6 +35,16 @@ function singleLineMetadataValue(value: string): string {
     .replace(/[\r\n]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function buildDispatchInput(task: ScheduledTask): string {
+  const creator = sanitizeScheduledTaskPrincipal(task.createdBy);
+  return [
+    `The scheduled task creator is <@${creator.slackUserId}>.`,
+    "When the task refers to its creator, use this mention directly instead of looking them up by name.",
+    "",
+    task.task.text,
+  ].join("\n");
 }
 
 function buildDispatchMetadata(args: {
@@ -394,7 +405,6 @@ export async function runScheduledTaskHeartbeat(args: {
         conversationWorkQueue: args.conversationWorkQueue,
         nowMs: args.nowMs,
         options: {
-          creator: { slackUserId: task.createdBy.slackUserId },
           idempotencyKey: run.id,
           ...(task.credentialMode === "creator"
             ? {
@@ -408,7 +418,7 @@ export async function runScheduledTaskHeartbeat(args: {
             : {}),
           destination: task.destination,
           destinationVisibility: task.conversationAccess.visibility,
-          input: task.task.text,
+          input: buildDispatchInput(task),
           metadata,
           replyAttribution: replyAttribution(task),
           source: dispatchSource(task),

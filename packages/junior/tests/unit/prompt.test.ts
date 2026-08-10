@@ -88,38 +88,6 @@ describe("prompt builders", () => {
     expect(prompt).toContain("- dispatch.metadata.taskId: sched_plugin_1");
   });
 
-  it("renders a deterministic scheduled-task creator mention", () => {
-    const prompt = buildTurnContextPrompt({
-      availableSkills: [],
-      activeMcpCatalogs: [],
-      dispatch: {
-        actor: { platform: "system", name: "scheduler" },
-        creator: { slackUserId: "U039RR91S" },
-        plugin: "scheduler",
-        source: createSlackSource({
-          teamId: "T123",
-          channelId: "C123",
-          visibility: "private",
-        }),
-        destination: {
-          platform: "slack",
-          teamId: "T123",
-          channelId: "C123",
-        },
-      },
-    });
-
-    expect(prompt).toContain(
-      "- dispatch.creator.slack_user_id: U039RR91S",
-    );
-    expect(prompt).toContain(
-      "- dispatch.creator.slack_mention: &lt;@U039RR91S&gt;",
-    );
-    expect(prompt).toContain(
-      "use dispatch.creator.slack_mention directly; do not resolve the creator by name",
-    );
-  });
-
   it("omits follow-up runtime context once session bootstrap exists", () => {
     expect(
       buildTurnContextPrompt({

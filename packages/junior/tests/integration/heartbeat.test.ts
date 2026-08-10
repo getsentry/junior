@@ -6,7 +6,6 @@ import {
   type Source,
 } from "@sentry/junior-plugin-api";
 import { createHeartbeatContext } from "@/chat/agent-dispatch/context";
-import { buildDispatchRoutingContext } from "@/chat/agent-dispatch/work";
 import {
   createSchedulerSqlStore,
   type ScheduledTask,
@@ -674,7 +673,12 @@ describe("plugin heartbeat", () => {
     expect(conversationWorkQueue.sentRecords()).toHaveLength(1);
     const dispatchRecord = await getDispatchRecord(running!.dispatchId!);
     expect(dispatchRecord?.input).toBe(
-      "Post a digest. Summarize the latest state.",
+      [
+        "The scheduled task creator is <@U039RR91S>.",
+        "When the task refers to its creator, use this mention directly instead of looking them up by name.",
+        "",
+        "Post a digest. Summarize the latest state.",
+      ].join("\n"),
     );
     expect(dispatchRecord?.destination).toEqual(SLACK_DESTINATION);
     expect(dispatchRecord?.destinationVisibility).toBe("public");
@@ -685,7 +689,6 @@ describe("plugin heartbeat", () => {
         visibility: "public",
       }),
     );
-    expect(dispatchRecord?.creator).toEqual({ slackUserId: "U039RR91S" });
     expect(dispatchRecord?.metadata).toMatchObject({
       runId: `sched_plugin_1:${TEST_RUN_AT_MS}`,
       schedule: "Once at noon",
@@ -698,9 +701,6 @@ describe("plugin heartbeat", () => {
     expect(dispatchRecord?.metadata).not.toHaveProperty("creatorSlackUserId");
     expect(dispatchRecord?.metadata).not.toHaveProperty("creatorUserName");
     expect(dispatchRecord?.metadata).not.toHaveProperty("creatorFullName");
-    expect(buildDispatchRoutingContext(dispatchRecord!).dispatch.creator).toEqual(
-      { slackUserId: "U039RR91S" },
-    );
     expect(dispatchRecord?.replyAttribution).toEqual({
       label: "Scheduled task",
       detail: "One-time",

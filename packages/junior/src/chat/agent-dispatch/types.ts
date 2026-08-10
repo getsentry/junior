@@ -11,7 +11,6 @@ import type {
   CredentialSystemActor,
 } from "@/chat/credentials/context";
 import type { AgentRunRouting } from "@/chat/agent/request";
-import type { SlackUserId } from "@/chat/slack/ids";
 import type { AgentTurnSurface } from "@/chat/task-execution/checkpoint";
 import type { LocationConfigurationService } from "@/chat/configuration/types";
 
@@ -32,14 +31,12 @@ export interface BoundDispatchOptions extends Omit<
   "credentialSubject"
 > {
   credentialSubject?: CredentialSubject;
-  creator?: { slackUserId: SlackUserId };
 }
 
 export interface DispatchRecord {
   actor: CredentialSystemActor;
   createdAtMs: number;
   credentialSubject?: CredentialSubject;
-  creator?: { slackUserId: SlackUserId };
   destination: SlackDestination;
   destinationVisibility: DestinationVisibility;
   errorMessage?: string;

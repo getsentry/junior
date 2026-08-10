@@ -121,8 +121,6 @@ export interface AgentRunRouting {
   surface?: AgentTurnSurface;
   dispatch?: {
     actor?: SystemActor;
-    /** Known task creator for deterministic Slack attribution. */
-    creator?: { slackUserId: string };
     id: string;
     metadata?: Record<string, string>;
     plugin?: string;
