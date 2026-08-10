@@ -18,7 +18,6 @@ import { handleChatSdkPlatformWebhook } from "@/handlers/webhooks";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import {
   deliverAssistantMessagesForTest,
-  flattenAgentRunForTest,
 } from "../../fixtures/agent-runner";
 
 const SIGNING_SECRET = "test-signing-secret";
@@ -270,9 +269,7 @@ describe("Slack behavior: message_changed webhook ingress", () => {
           agentRunner: {
             run: async (request) => {
               const _prompt = request.instruction.text;
-              const context = {
-                ...flattenAgentRunForTest(request),
-              };
+              const context = request;
 
               expect(context?.actor).toEqual({
                 email: "david@example.com",

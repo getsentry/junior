@@ -55,7 +55,6 @@ import {
   slackEnvelope,
   slackWebhookRequest,
 } from "../../fixtures/conversation-work";
-import { flattenAgentRunForTest } from "../../fixtures/agent-runner";
 
 type SlackWorkerOptions = Parameters<typeof createSlackConversationWorker>[0];
 
@@ -1926,11 +1925,9 @@ describe("Slack conversation work execution", () => {
           agentRunner: {
             run: async (request) => {
               const _text = request.instruction.text;
-              const context = {
-                ...flattenAgentRunForTest(request),
-              };
+              const context = request;
 
-              await context?.onInputCommitted?.();
+              await context?.durability?.onInputCommitted?.();
               currentNowMs = 242_000;
               yieldedSessionId = context?.turnId;
               return { status: "suspended", resumeVersion: 1 };

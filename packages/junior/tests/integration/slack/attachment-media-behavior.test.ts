@@ -9,7 +9,6 @@ import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import {
   deliverAssistantMessagesForTest,
-  flattenAgentRunForTest,
 } from "../../fixtures/agent-runner";
 
 const ORIGINAL_ENV = { ...process.env };
@@ -78,10 +77,10 @@ describe("Slack behavior: mixed attachment media", () => {
               run: async (request) => {
                 const _prompt = request.instruction.text;
                 const context = {
-                  ...flattenAgentRunForTest(request),
+                  ...request,
                 };
 
-                const attachments = context?.userAttachments ?? [];
+                const attachments = context?.instruction.attachments ?? [];
                 capturedAttachmentMediaTypes.push(
                   attachments.map((attachment) => attachment.mediaType),
                 );
@@ -178,11 +177,9 @@ describe("Slack behavior: mixed attachment media", () => {
           agentRunner: {
             run: async (request) => {
               const _prompt = request.instruction.text;
-              const context = {
-                ...flattenAgentRunForTest(request),
-              };
+              const context = request;
 
-              const attachments = context?.userAttachments ?? [];
+              const attachments = context?.instruction.attachments ?? [];
               capturedAttachmentMediaTypes.push(
                 attachments.map((attachment) => attachment.mediaType),
               );
@@ -190,7 +187,7 @@ describe("Slack behavior: mixed attachment media", () => {
                 attachments.map((attachment) => attachment.filename ?? ""),
               );
               capturedOmittedImageCounts.push(
-                context?.omittedImageAttachmentCount ?? 0,
+                context?.instruction.omittedImageAttachmentCount ?? 0,
               );
               return completedAgentRun({
                 text: "Processed attachments.",
@@ -272,12 +269,10 @@ describe("Slack behavior: mixed attachment media", () => {
         replyExecutor: {
           agentRunner: {
             run: async (request) => {
-              const context = {
-                ...flattenAgentRunForTest(request),
-              };
+              const context = request;
 
               capturedOmittedImageCounts.push(
-                context?.omittedImageAttachmentCount ?? 0,
+                context?.instruction.omittedImageAttachmentCount ?? 0,
               );
               return executeAgentRun(request);
             },

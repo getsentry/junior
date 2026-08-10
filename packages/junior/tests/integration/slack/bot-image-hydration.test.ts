@@ -11,7 +11,6 @@ import {
   persistConversationMessages,
 } from "@/chat/conversations/messages";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
-import { flattenAgentRunForTest } from "../../fixtures/agent-runner";
 
 const listThreadRepliesMock = vi.fn();
 const ORIGINAL_ENV = { ...process.env };
@@ -510,8 +509,8 @@ describe("bot image hydration", () => {
       message: {} as never,
     }));
     const executeAgentRun = vi.fn<AgentRunner["run"]>(async (request) => {
-      const context = flattenAgentRunForTest(request);
-      expect(context?.conversationContext).toContain(
+      const context = request;
+      expect(context?.instruction.context).toContain(
         "Passive screenshot summary",
       );
       return makeSuccessOutcome();
@@ -655,8 +654,8 @@ describe("bot image hydration", () => {
     }));
     const attachmentFetch = vi.fn(async () => Buffer.from("attachment-image"));
     const executeAgentRun = vi.fn<AgentRunner["run"]>(async (request) => {
-      const context = flattenAgentRunForTest(request);
-      expect(context?.userAttachments).toEqual([
+      const context = request;
+      expect(context?.instruction.attachments).toEqual([
         expect.objectContaining({
           mediaType: "image/png",
           filename: "screen.png",
@@ -790,8 +789,8 @@ describe("bot image hydration", () => {
       Buffer.from("second-image"),
     );
     const executeAgentRun = vi.fn<AgentRunner["run"]>(async (request) => {
-      const context = flattenAgentRunForTest(request);
-      expect(context?.userAttachments).toEqual([
+      const context = request;
+      expect(context?.instruction.attachments).toEqual([
         expect.objectContaining({
           filename: "first.png",
           promptText: expect.stringContaining("First attachment summary"),
@@ -899,8 +898,8 @@ describe("bot image hydration", () => {
       message: {} as never,
     }));
     const executeAgentRun = vi.fn<AgentRunner["run"]>(async (request) => {
-      const context = flattenAgentRunForTest(request);
-      const promptText = context?.userAttachments?.[0]?.promptText;
+      const context = request;
+      const promptText = context?.instruction.attachments?.[0]?.promptText;
       const summary = extractImageAttachmentSummary(promptText);
       expect(summary).toBe(longSummary.slice(0, 500));
       expect(summary).toHaveLength(500);

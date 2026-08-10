@@ -24,7 +24,7 @@ describe("agent runner controls", () => {
     setExperimentalFeatures({ subagents: true });
     const spawnAgent = vi.fn();
     const bindSpawnAgent = vi.fn(() => spawnAgent);
-    const run = vi.fn(async () => ({
+    const run = vi.fn(async (_run: AgentRun) => ({
       status: "suspended" as const,
       resumeVersion: 1,
     }));
@@ -43,7 +43,7 @@ describe("agent runner controls", () => {
   it("keeps spawnAgent unavailable when experimental subagents stay off", async () => {
     setExperimentalFeatures({ subagents: false });
     const bindSpawnAgent = vi.fn(() => vi.fn());
-    const run = vi.fn(async () => ({
+    const run = vi.fn(async (_run: AgentRun) => ({
       status: "suspended" as const,
       resumeVersion: 1,
     }));
@@ -62,7 +62,7 @@ describe("agent runner controls", () => {
   it("does not advertise recursive spawning to delegated runs", async () => {
     setExperimentalFeatures({ subagents: true });
     const bindSpawnAgent = vi.fn();
-    const run = vi.fn(async () => ({
+    const run = vi.fn(async (_run: AgentRun) => ({
       status: "suspended" as const,
       resumeVersion: 1,
     }));
@@ -84,7 +84,7 @@ describe("agent runner controls", () => {
   it("preserves fixed child execution policy on delegated runs", async () => {
     setExperimentalFeatures({ subagents: true });
     const bindSpawnAgent = vi.fn();
-    const run = vi.fn(async () => ({
+    const run = vi.fn(async (_run: AgentRun) => ({
       status: "suspended" as const,
       resumeVersion: 1,
     }));

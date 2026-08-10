@@ -8,7 +8,6 @@ import {
 import { createSlackSource, type Destination } from "@sentry/junior-plugin-api";
 import { executeAgentRun } from "@/chat/agent";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
-import { makeAssistantStatus } from "@/chat/slack/assistant-thread/status";
 import { getSlackInterruptionMarker } from "@/chat/slack/output";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
@@ -49,7 +48,6 @@ import { resetAssistantTitleProjectionForTests } from "@/chat/slack/assistant-th
 import * as piClient from "@/chat/pi/client";
 import {
   deliverAssistantMessagesForTest,
-  flattenAgentRunForTest,
 } from "../../fixtures/agent-runner";
 
 const emptyThreadReplies = async () => [];
@@ -842,9 +840,7 @@ describe("bot handlers (integration)", () => {
           agentRunner: {
             run: async (request) => {
               const _prompt = request.instruction.text;
-              const context = {
-                ...flattenAgentRunForTest(request),
-              };
+              const context = request;
 
               capturedIdentity.push({
                 conversationId: context?.conversationId,
@@ -1786,11 +1782,9 @@ describe("bot handlers (integration)", () => {
           agentRunner: {
             run: async (request) => {
               const _input = request.instruction.text;
-              const context = {
-                ...flattenAgentRunForTest(request),
-              };
+              const context = request;
 
-              await context.onInputCommitted?.();
+              await context.durability?.onInputCommitted?.();
               throw new Error("post-ack turn failure");
             },
           },
@@ -2206,13 +2200,9 @@ describe("bot handlers (integration)", () => {
           agentRunner: {
             run: async (request) => {
               const _prompt = request.instruction.text;
-              const context = {
-                ...flattenAgentRunForTest(request),
-              };
+              const context = request;
 
-              await context?.onStatus?.(
-                makeAssistantStatus("reading", "channel messages"),
-              );
+              await context?.onEvent?.({ type: "status", text: "reading channel messages" });
               return completedAgentRun({
                 text: "Done.",
                 diagnostics: {
@@ -2979,11 +2969,9 @@ describe("bot handlers (integration)", () => {
           agentRunner: {
             run: async (request) => {
               const _prompt = request.instruction.text;
-              const context = {
-                ...flattenAgentRunForTest(request),
-              };
+              const context = request;
 
-              capturedContexts.push(context?.conversationContext);
+              capturedContexts.push(context?.instruction.context);
               return completedAgentRun({
                 text: "First reply.",
                 diagnostics: {
@@ -3027,11 +3015,9 @@ describe("bot handlers (integration)", () => {
           agentRunner: {
             run: async (request) => {
               const _prompt = request.instruction.text;
-              const context = {
-                ...flattenAgentRunForTest(request),
-              };
+              const context = request;
 
-              capturedContexts.push(context?.conversationContext);
+              capturedContexts.push(context?.instruction.context);
               return completedAgentRun({
                 text: "Follow-up reply.",
                 diagnostics: {
@@ -3137,11 +3123,9 @@ describe("bot handlers (integration)", () => {
           agentRunner: {
             run: async (request) => {
               const _prompt = request.instruction.text;
-              const context = {
-                ...flattenAgentRunForTest(request),
-              };
+              const context = request;
 
-              capturedContexts.push(context?.conversationContext);
+              capturedContexts.push(context?.instruction.context);
               return completedAgentRun({
                 text: "Responding to first message only.",
                 diagnostics: {

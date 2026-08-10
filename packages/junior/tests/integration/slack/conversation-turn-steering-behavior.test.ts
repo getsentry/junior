@@ -36,7 +36,6 @@ import {
 } from "@/chat/resource-events/store";
 import {
   deliverAssistantMessagesForTest,
-  flattenAgentRunForTest,
 } from "../../fixtures/agent-runner";
 
 const CHANNEL_ID = "CSTEER";
@@ -677,11 +676,11 @@ describe("Slack behavior: durable turn steering", () => {
           run: async (request) => {
             const prompt = request.instruction.text;
             const context = {
-              ...flattenAgentRunForTest(request),
+              ...request,
             };
 
             replyCalls.push(prompt);
-            await context?.onInputCommitted?.();
+            await context?.durability?.onInputCommitted?.();
             return completedAgentRun({
               text: "Started.",
               diagnostics: makeDiagnostics(),

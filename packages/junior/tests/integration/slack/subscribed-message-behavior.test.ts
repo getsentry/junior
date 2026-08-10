@@ -19,7 +19,6 @@ import {
 } from "@/chat/resource-events/store";
 import {
   deliverAssistantMessagesForTest,
-  flattenAgentRunForTest,
 } from "../../fixtures/agent-runner";
 
 const emptyThreadReplies = async () => [];
@@ -178,9 +177,7 @@ describe("Slack behavior: subscribed messages", () => {
           agentRunner: {
             run: async (request) => {
               const _prompt = request.instruction.text;
-              const context = {
-                ...flattenAgentRunForTest(request),
-              };
+              const context = request;
 
               replyContexts.push(context);
               return await completedReply(
@@ -563,9 +560,9 @@ describe("Slack behavior: subscribed messages", () => {
           agentRunner: {
             run: async (request) => {
               const prompt = request.instruction.text;
-              const context = flattenAgentRunForTest(request);
+              const context = request;
 
-              replyCalls.push({ prompt, piMessages: context.piMessages });
+              replyCalls.push({ prompt, piMessages: context.history ? [...context.history] : undefined });
               return await completedReply(
                 request,
                 "Handled queued subscribed turn.",

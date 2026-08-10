@@ -21,7 +21,6 @@ import {
   createTestDestination,
 } from "../../fixtures/slack-harness";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
-import { flattenAgentRunForTest } from "../../fixtures/agent-runner";
 
 interface CapturedCall {
   contextConversation?: string;
@@ -83,13 +82,11 @@ describe("Slack behavior: message content", () => {
           agentRunner: {
             run: async (request) => {
               const prompt = request.instruction.text;
-              const context = {
-                ...flattenAgentRunForTest(request),
-              };
+              const context = request;
 
               calls.push({
                 prompt,
-                contextConversation: context?.conversationContext,
+                contextConversation: context?.instruction.context,
               });
               return completedReply("Summary sent.");
             },
@@ -212,13 +209,11 @@ describe("Slack behavior: message content", () => {
           agentRunner: {
             run: async (request) => {
               const prompt = request.instruction.text;
-              const context = {
-                ...flattenAgentRunForTest(request),
-              };
+              const context = request;
 
               calls.push({
                 prompt,
-                contextConversation: context?.conversationContext,
+                contextConversation: context?.instruction.context,
               });
               return completedReply("Alert reviewed.");
             },
@@ -270,10 +265,10 @@ describe("Slack behavior: message content", () => {
         replyExecutor: {
           agentRunner: {
             run: async (request) => {
-              const context = flattenAgentRunForTest(request);
+              const context = request;
               calls.push({
                 prompt: request.instruction.text,
-                contextConversation: context?.conversationContext,
+                contextConversation: context?.instruction.context,
               });
               return completedReply("Review found.");
             },
@@ -430,14 +425,12 @@ describe("Slack behavior: message content", () => {
           agentRunner: {
             run: async (request) => {
               const prompt = request.instruction.text;
-              const context = {
-                ...flattenAgentRunForTest(request),
-              };
+              const context = request;
 
               calls.push({
                 prompt,
-                contextConversation: context?.conversationContext,
-                piMessages: context?.piMessages,
+                contextConversation: context?.instruction.context,
+                piMessages: context?.history ? [...context.history] : undefined,
               });
               if (
                 calls.length === 1 &&
@@ -536,14 +529,12 @@ describe("Slack behavior: message content", () => {
           agentRunner: {
             run: async (request) => {
               const prompt = request.instruction.text;
-              const context = {
-                ...flattenAgentRunForTest(request),
-              };
+              const context = request;
 
               calls.push({
                 prompt,
-                contextConversation: context?.conversationContext,
-                piMessages: context?.piMessages,
+                contextConversation: context?.instruction.context,
+                piMessages: context?.history ? [...context.history] : undefined,
               });
               return completedReply("Done.");
             },
@@ -721,14 +712,12 @@ describe("Slack behavior: message content", () => {
           agentRunner: {
             run: async (request) => {
               const prompt = request.instruction.text;
-              const context = {
-                ...flattenAgentRunForTest(request),
-              };
+              const context = request;
 
               calls.push({
                 prompt,
-                contextConversation: context?.conversationContext,
-                piMessages: context?.piMessages,
+                contextConversation: context?.instruction.context,
+                piMessages: context?.history ? [...context.history] : undefined,
               });
               return completedReply("Done.");
             },

@@ -25,66 +25,6 @@ export const realAgentRunner: AgentRunner = {
 };
 
 /**
- * Compatibility view of a flat `AgentRun` for older integration tests.
- * Prefer reading `run.instruction` / `run.history` / `run.durability` directly
- * in new tests.
- */
-export function flattenAgentRunForTest(run: AgentRun) {
-  return {
-    ...run,
-    messageText: run.instruction.text,
-    userAttachments: run.instruction.attachments,
-    inboundAttachmentCount: run.instruction.inboundAttachmentCount,
-    omittedImageAttachmentCount: run.instruction.omittedImageAttachmentCount,
-    conversationContext: run.instruction.context,
-    includeConversationContextWithPiMessages:
-      run.instruction.includeConversationContextWithHistory,
-    piMessages: run.history ? [...run.history] : undefined,
-    turnDeadlineAtMs: run.deadlineAtMs,
-    reasoningLevel: run.reasoning,
-    locationConfiguration: run.environment?.locationConfiguration,
-    configuration: run.environment?.configuration,
-    skillDirs: run.environment?.skillDirs,
-    toolOverrides: run.environment?.toolOverrides,
-    sandboxTracePropagation: run.environment?.sandboxTracePropagation,
-    sandboxEgressSignals: run.environment?.sandboxEgressSignals,
-    pendingAuth: run.state?.pendingAuth,
-    sandboxRef: run.state?.sandboxRef,
-    onInputCommitted: run.durability?.onInputCommitted,
-    shouldYield: run.durability?.shouldYield,
-    drainSteeringMessages: run.durability?.drainSteeringMessages,
-    recordPendingAuth: run.durability?.recordPendingAuth,
-    onSandboxRefChanged: run.durability?.onSandboxRefChanged,
-    spawnAgent: run.durability?.spawnAgent,
-    // Legacy observer names used by older integration tests.
-    onStatus: run.onEvent
-      ? async (status: { text: string }) => {
-          await run.onEvent?.({ type: "status", text: status.text });
-        }
-      : undefined,
-    onToolInvocation: run.onEvent
-      ? async (invocation: {
-          params: Record<string, unknown>;
-          toolCallId?: string;
-          toolName: string;
-        }) => {
-          await run.onEvent?.({
-            type: "tool_started",
-            toolCallId: invocation.toolCallId ?? "tool-call",
-            toolName: invocation.toolName,
-            params: invocation.params,
-          });
-        }
-      : undefined,
-    onToolResult: run.onEvent
-      ? async (report: import("@/chat/tool-support/tool-execution-report").ToolExecutionReport) => {
-          await run.onEvent?.({ type: "tool_finished", report });
-        }
-      : undefined,
-  };
-}
-
-/**
  * Guard runner for paths that must never reach agent execution; failing loud
  * beats silently producing a reply the test did not script.
  */
