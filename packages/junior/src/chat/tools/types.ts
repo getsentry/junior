@@ -1,5 +1,6 @@
 import type { FileUpload } from "chat";
 import type {
+  ApiSource,
   Destination,
   Identity,
   LocalDestination,
@@ -16,7 +17,7 @@ import type { AgentTurnSurface } from "@/chat/task-execution/checkpoint";
 import type { Skill } from "@/chat/skills";
 import type { LoadSkillMetadata } from "@/chat/tools/skill/load-skill";
 import type { JuniorToolOutput } from "@/chat/tool-support/structured-result";
-import type { LocalActor, Actor, SlackActor } from "@/chat/actor";
+import type { ApiActor, LocalActor, Actor, SlackActor } from "@/chat/actor";
 import type { SlackActionToken } from "@/chat/slack/action-token";
 import type { ModelProfile } from "@/chat/model-profile";
 import type { GeneratedArtifactFileRef } from "@/chat/tools/sandbox/file-uploads";
@@ -113,8 +114,9 @@ interface SlackToolRuntimeContext extends BaseToolRuntimeContext {
 
 interface LocalToolRuntimeContext extends BaseToolRuntimeContext {
   destination: LocalDestination;
-  actor?: LocalActor;
-  source: LocalSource;
+  /** Local CLI or dashboard/API actors share conversation-log delivery. */
+  actor?: LocalActor | ApiActor;
+  source: LocalSource | ApiSource;
   slack?: never;
   slackActionToken?: never;
 }

@@ -5,16 +5,16 @@
  * `publishExternally: false`. The worker leases the conversation, runs the
  * shared agent path, and accepts replies into the conversation log only.
  */
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { StateAdapter } from "chat";
 import {
-  createLocalSource,
+  createApiSource,
   localDestinationSchema,
   type LocalDestination,
 } from "@sentry/junior-plugin-api";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import type { LocalActor } from "@/chat/actor";
+import type { ApiActor } from "@/chat/actor";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { loadProjection } from "@/chat/conversations/projection";
 import {
@@ -43,6 +43,7 @@ import {
   startActiveTurn,
   TurnInputCommitLostError,
 } from "@/chat/runtime/turn";
+import { getTurnUserMessage } from "@/chat/runtime/turn-user-message";
 import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import {
   buildConversationContext,
@@ -54,12 +55,17 @@ import {
 import { finalizeFailedTurnReplyWithEvent } from "@/chat/services/turn-failure-response";
 import { persistWithRetry } from "@/chat/services/persist-retry";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
+import { buildDeterministicTurnId } from "@/chat/state/turn-id";
 import {
   appendAndEnqueueInboundMessage,
   type InboundMessage,
 } from "@/chat/task-execution/store";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
-import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
+import {
+  getTurnRecord,
+  listTurnSummaries,
+  saveTurnCheckpoint,
+} from "@/chat/task-execution/checkpoint";
 import type {
   ConversationWorkerContext,
   ConversationWorkerResult,
@@ -70,6 +76,7 @@ import {
 } from "@/chat/plugins/task-runner";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import type { AgentRunResult } from "@/chat/services/turn-result";
+import type { StoredSlackActor } from "@/chat/actor";
 
 const apiTurnMailboxMetadataSchema = z
   .object({
@@ -92,14 +99,14 @@ type EnqueueOptions = {
 };
 
 export interface CreateApiConversationInput {
-  actor: LocalActor;
+  actor: ApiActor;
   message: string;
   /** Client-supplied idempotency key for the first message. */
   idempotencyKey: string;
 }
 
 export interface AppendApiConversationMessageInput {
-  actor: LocalActor;
+  actor: ApiActor;
   conversationId: string;
   message: string;
   idempotencyKey: string;
@@ -122,9 +129,20 @@ function stableHex(...parts: string[]): string {
     .slice(0, 24);
 }
 
-/** Build a local conversation id valid for destination/source contracts. */
-export function createApiConversationId(): string {
-  return `local:api:${randomUUID().replaceAll("-", "")}`;
+/**
+ * Build a durable API conversation id for one viewer + create key.
+ *
+ * Retries of POST /api/conversations with the same key must address the same
+ * conversation before the mailbox message id is derived.
+ */
+export function createApiConversationId(args: {
+  actorEmail: string;
+  idempotencyKey: string;
+}): string {
+  return `local:api:${stableHex(
+    normalizeEmail(args.actorEmail),
+    args.idempotencyKey,
+  )}`;
 }
 
 function apiMessageId(args: {
@@ -134,9 +152,9 @@ function apiMessageId(args: {
   return `api-msg:${stableHex(args.conversationId, args.idempotencyKey)}`;
 }
 
-/** Stable turn id for one API mailbox message. */
+/** Stable turn id for one API mailbox message (matches getTurnUserMessage). */
 export function apiTurnIdForMessage(messageId: string): string {
-  return `api-turn:${stableHex(messageId)}`;
+  return buildDeterministicTurnId(messageId);
 }
 
 function requireLocalDestination(conversationId: string): LocalDestination {
@@ -150,9 +168,9 @@ function requireLocalDestination(conversationId: string): LocalDestination {
   return parsed.data;
 }
 
-function actorFromMetadata(metadata: ApiTurnMailboxMetadata): LocalActor {
+function actorFromMetadata(metadata: ApiTurnMailboxMetadata): ApiActor {
   return {
-    platform: "local",
+    platform: "api",
     userId: metadata.authorUserId,
     email: normalizeEmail(metadata.authorEmail),
     ...(metadata.authorFullName ? { fullName: metadata.authorFullName } : {}),
@@ -160,17 +178,44 @@ function actorFromMetadata(metadata: ApiTurnMailboxMetadata): LocalActor {
   };
 }
 
-function storedActorFromLocal(actor: LocalActor) {
+/** Durable conversation actor fields for API/dashboard participants. */
+function storedActorFromApi(actor: ApiActor): StoredSlackActor {
   return {
     ...(actor.email ? { email: normalizeEmail(actor.email) } : {}),
     ...(actor.fullName ? { fullName: actor.fullName } : {}),
-    ...(actor.userName ? { slackUserName: actor.userName } : {}),
   };
+}
+
+/** Rebuild the dashboard actor from durable conversation identity. */
+export function apiActorFromEmail(
+  email: string,
+  profile?: { fullName?: string; userName?: string },
+): ApiActor {
+  const normalized = normalizeEmail(email);
+  return {
+    platform: "api",
+    userId: `dashboard:${stableHex(normalized)}`,
+    email: normalized,
+    ...(profile?.fullName ? { fullName: profile.fullName } : {}),
+    ...(profile?.userName ? { userName: profile.userName } : {}),
+  };
+}
+
+function actorFromStoredConversation(
+  stored?: StoredSlackActor,
+): ApiActor | undefined {
+  const email = stored?.email?.trim().toLowerCase();
+  if (!email) {
+    return undefined;
+  }
+  return apiActorFromEmail(email, {
+    ...(stored?.fullName ? { fullName: stored.fullName } : {}),
+  });
 }
 
 /** Build one API mailbox entry with conversation-only publish. */
 export function buildApiTurnInboundMessage(args: {
-  actor: LocalActor;
+  actor: ApiActor;
   conversationId: string;
   createdAtMs?: number;
   message: string;
@@ -211,18 +256,18 @@ export function buildApiTurnInboundMessage(args: {
 }
 
 async function recordApiConversationActivity(args: {
-  actor: LocalActor;
+  actor: ApiActor;
   conversationId: string;
   conversationStore?: ConversationStore;
   nowMs: number;
 }): Promise<LocalDestination> {
   const destination = requireLocalDestination(args.conversationId);
-  const source = createLocalSource(args.conversationId);
+  const source = createApiSource(args.conversationId);
   await (args.conversationStore ?? getConversationStore()).recordActivity({
     conversationId: args.conversationId,
     destination,
     nowMs: args.nowMs,
-    actor: storedActorFromLocal(args.actor),
+    actor: storedActorFromApi(args.actor),
     source: "api",
     sessionSource: source,
     visibility: "private",
@@ -235,7 +280,13 @@ export async function createAndEnqueueApiConversation(
   input: CreateApiConversationInput,
   options: EnqueueOptions,
 ): Promise<ApiConversationMessageAccepted> {
-  const conversationId = createApiConversationId();
+  if (!input.actor.email) {
+    throw new Error("API conversation actor requires a verified email");
+  }
+  const conversationId = createApiConversationId({
+    actorEmail: input.actor.email,
+    idempotencyKey: input.idempotencyKey,
+  });
   return await appendAndEnqueueApiConversationMessage(
     {
       actor: input.actor,
@@ -315,9 +366,64 @@ function parseApiTurnMessages(
   });
 }
 
+/**
+ * Resolve API turn work from mailbox metadata or an active API turn checkpoint.
+ *
+ * Empty resume wakes after yield carry no mailbox rows; match agent-invocation
+ * and look up durable active turn state instead of falling through to Slack.
+ */
+export async function resolveApiTurnWork(
+  context: ConversationWorkerContext,
+): Promise<
+  | {
+      kind: "mailbox";
+      batch: Array<{
+        message: InboundMessage;
+        metadata: ApiTurnMailboxMetadata;
+      }>;
+    }
+  | { kind: "resume"; turnId: string }
+  | undefined
+> {
+  const batch = parseApiTurnMessages(context.attempt.messages);
+  if (batch.length > 0) {
+    return { kind: "mailbox", batch };
+  }
+  if (context.attempt.messages.length > 0) {
+    return undefined;
+  }
+
+  const summaries = await listTurnSummaries(context.conversationId);
+  const active = summaries.filter(
+    (summary) =>
+      summary.surface === "api" &&
+      (summary.state === "paused" || summary.state === "running"),
+  );
+  if (active.length > 1) {
+    throw new Error(
+      `Conversation ${context.conversationId} has multiple active API turns`,
+    );
+  }
+  const turnId = active[0]?.turnId;
+  if (!turnId) {
+    return undefined;
+  }
+  const record = await getTurnRecord(context.conversationId, turnId);
+  if (
+    !record ||
+    record.surface !== "api" ||
+    (record.state !== "paused" && record.state !== "running")
+  ) {
+    return undefined;
+  }
+  return { kind: "resume", turnId };
+}
+
 /** True when this leased attempt is API-authored root work. */
-export function isApiTurnWork(context: ConversationWorkerContext): boolean {
-  return parseApiTurnMessages(context.attempt.messages).length > 0;
+export async function isApiTurnWork(
+  context: ConversationWorkerContext,
+): Promise<boolean> {
+  return (await resolveApiTurnWork(context)) !== undefined;
 }
 
 function captureApiBoundaryFailure(args: {
@@ -343,8 +449,8 @@ export function createApiTurnWorker(options: {
   return async (
     context: ConversationWorkerContext,
   ): Promise<ConversationWorkerResult> => {
-    const batch = parseApiTurnMessages(context.attempt.messages);
-    if (batch.length === 0) {
+    const resolved = await resolveApiTurnWork(context);
+    if (!resolved) {
       throw new Error(
         `API turn worker received non-API work for ${context.conversationId}`,
       );
@@ -355,29 +461,62 @@ export function createApiTurnWorker(options: {
       );
     }
 
-    const first = batch[0]!;
-    const text = batch
-      .map((entry) => entry.message.input.text.trim())
-      .filter(Boolean)
-      .join("\n\n");
-    const actor = actorFromMetadata(first.metadata);
-    const destination = requireLocalDestination(context.conversationId);
-    const source = createLocalSource(context.conversationId);
-    const turnId = apiTurnIdForMessage(first.metadata.messageId);
-    const userMessageId = first.metadata.messageId;
     const lifecycle =
       options.turnLifecycle ??
       new ConversationTurnLifecycleService(getConversationEventStore());
 
+    const isResume = resolved.kind === "resume";
+    let actor: ApiActor;
+    let text: string;
+    let turnId: string;
+    let userMessageId: string;
+    let startedAtMs: number;
+    let inputMessageIds: string[];
+
+    if (resolved.kind === "mailbox") {
+      const first = resolved.batch[0]!;
+      text = resolved.batch
+        .map((entry) => entry.message.input.text.trim())
+        .filter(Boolean)
+        .join("\n\n");
+      actor = actorFromMetadata(first.metadata);
+      turnId = apiTurnIdForMessage(first.metadata.messageId);
+      userMessageId = first.metadata.messageId;
+      startedAtMs = first.message.createdAtMs;
+      inputMessageIds = resolved.batch.map((entry) => entry.metadata.messageId);
+    } else {
+      turnId = resolved.turnId;
+      const storedConversation = await getConversationStore().get({
+        conversationId: context.conversationId,
+      });
+      const resumedActor = actorFromStoredConversation(
+        storedConversation?.actor,
+      );
+      if (!resumedActor) {
+        throw new Error(
+          `API turn resume missing actor for ${context.conversationId}`,
+        );
+      }
+      actor = resumedActor;
+      // User message text/id are recovered from thread state below.
+      text = "";
+      userMessageId = "";
+      startedAtMs = Date.now();
+      inputMessageIds = [];
+    }
+
+    const destination = requireLocalDestination(context.conversationId);
+    const source = createApiSource(context.conversationId);
+
     return await withLogContext(
       {
         conversationId: context.conversationId,
-        platform: "local",
+        platform: "api",
         userId: actor.userId,
         ...(actor.userName ? { userName: actor.userName } : {}),
       },
       async () => {
-        let acknowledged = false;
+        let acknowledged = isResume || context.attempt.messages.length === 0;
         const acknowledge = async (): Promise<void> => {
           if (acknowledged) {
             return;
@@ -401,38 +540,50 @@ export function createApiTurnWorker(options: {
         let sandboxRef: SandboxRef | undefined =
           getPersistedSandboxState(persisted);
         const initialSandboxRef = sandboxRef;
-        const startedAtMs = first.message.createdAtMs;
 
-        upsertConversationMessage(conversation, {
-          id: userMessageId,
-          role: "user",
-          text: normalizeConversationText(text),
-          createdAtMs: startedAtMs,
-          author: {
-            ...(actor.fullName ? { fullName: actor.fullName } : {}),
-            userId: actor.userId,
-            ...(actor.userName ? { userName: actor.userName } : {}),
-          },
-          meta: {
-            explicitMention: true,
-            replied: false,
-          },
-        });
-        await persistConversationMessages({
-          conversation,
-          conversationId: context.conversationId,
-        });
-        await lifecycle.start({
-          conversationId: context.conversationId,
-          createdAtMs: Date.now(),
-          inputMessageIds: batch.map((entry) => entry.metadata.messageId),
-          surface: "api",
-          turnId,
-        });
-        startActiveTurn({
-          conversation,
-          nextTurnId: turnId,
-        });
+        if (isResume) {
+          const userMessage = getTurnUserMessage(conversation, turnId);
+          if (!userMessage) {
+            throw new Error(
+              `Unable to locate the persisted user message for API turn "${turnId}"`,
+            );
+          }
+          userMessageId = userMessage.id;
+          text = userMessage.text;
+          startedAtMs = userMessage.createdAtMs;
+          inputMessageIds = [userMessageId];
+        } else {
+          upsertConversationMessage(conversation, {
+            id: userMessageId,
+            role: "user",
+            text: normalizeConversationText(text),
+            createdAtMs: startedAtMs,
+            author: {
+              ...(actor.fullName ? { fullName: actor.fullName } : {}),
+              userId: actor.userId,
+              ...(actor.userName ? { userName: actor.userName } : {}),
+            },
+            meta: {
+              explicitMention: true,
+              replied: false,
+            },
+          });
+          await persistConversationMessages({
+            conversation,
+            conversationId: context.conversationId,
+          });
+          await lifecycle.start({
+            conversationId: context.conversationId,
+            createdAtMs: Date.now(),
+            inputMessageIds,
+            surface: "api",
+            turnId,
+          });
+          startActiveTurn({
+            conversation,
+            nextTurnId: turnId,
+          });
+        }
 
         let currentRunId: string | undefined;
         let assistantMessageDelivered = false;
@@ -560,11 +711,17 @@ export function createApiTurnWorker(options: {
             sandboxRef: reply.sandboxRef ?? sandboxRef,
           });
           if (reply.piMessages?.length) {
+            // Prefer the live checkpoint slice after yield/resume; first
+            // completion has no prior record and starts at slice 1.
+            const latest = await getTurnRecord(
+              context.conversationId,
+              turnId,
+            );
             await saveTurnCheckpoint({
               mode: "completed",
               conversationId: context.conversationId,
               turnId,
-              sliceId: 1,
+              sliceId: latest?.sliceId ?? 1,
               messages: reply.piMessages,
               durationMs: reply.diagnostics.durationMs,
               usage: reply.diagnostics.usage,
@@ -696,7 +853,7 @@ export function routeApiTurnWork(options: {
   return async (
     context: ConversationWorkerContext,
   ): Promise<ConversationWorkerResult> => {
-    return isApiTurnWork(context)
+    return (await isApiTurnWork(context))
       ? await options.apiTurnWorker(context)
       : await options.fallbackWorker(context);
   };

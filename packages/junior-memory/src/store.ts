@@ -383,9 +383,16 @@ function boundedLimit(value: number | undefined, fallback: number): number {
   return Math.min(200, Math.max(1, Math.floor(value)));
 }
 
+/** Map runtime Source platform onto the durable memory source platform. */
+function memorySourcePlatform(
+  source: MemoryRuntimeContext["source"],
+): "slack" | "local" {
+  return source.platform === "slack" ? "slack" : "local";
+}
+
 /** Build the durable source attribution key from runtime-owned source fields. */
 function sourceKey(ctx: MemoryRuntimeContext): string {
-  if (ctx.source.platform === "local") {
+  if (ctx.source.platform === "local" || ctx.source.platform === "api") {
     return ctx.source.conversationId;
   }
   const threadKey = ctx.source.threadTs ?? ctx.source.messageTs;
@@ -788,7 +795,7 @@ async function rememberDuplicateIdempotency(args: {
       scope: args.scope.scope,
       scopeKey: args.scope.scopeKey,
       sourceKey: sourceKey(args.runtimeContext),
-      sourcePlatform: args.runtimeContext.source.platform,
+      sourcePlatform: memorySourcePlatform(args.runtimeContext.source),
       subjectKey: args.subject.subjectKey,
       subjectType: args.subject.subjectType,
       supersededAtMs: args.nowMs,
@@ -1305,7 +1312,7 @@ export function createMemoryStore(
           scope: scope.scope,
           scopeKey: scope.scopeKey,
           sourceKey: sourceKey(runtimeContext),
-          sourcePlatform: runtimeContext.source.platform,
+          sourcePlatform: memorySourcePlatform(runtimeContext.source),
           subjectKey: subject.subjectKey,
           subjectType: subject.subjectType,
           kind: input.kind,

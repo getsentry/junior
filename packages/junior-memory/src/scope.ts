@@ -66,7 +66,7 @@ export function deriveViewerMemoryScopes(identities: Identity[]): {
 }
 
 function sourceConversationKey(ctx: MemoryRuntimeContext): string | undefined {
-  if (ctx.source.platform === "local") {
+  if (ctx.source.platform === "local" || ctx.source.platform === "api") {
     return ctx.source.conversationId;
   }
   if (!isPrivateSource(ctx.source)) {
@@ -86,6 +86,9 @@ function actorScopeKey(ctx: MemoryRuntimeContext): string | undefined {
   }
   if (actor.platform === "slack") {
     return `slack:${actor.teamId}:${actor.userId}`;
+  }
+  if (actor.platform === "api") {
+    return `api:${actor.userId}`;
   }
   return `local:${actor.userId}`;
 }

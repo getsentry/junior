@@ -1,8 +1,4 @@
-import {
-  actorSchema,
-  platformSchema,
-  sourceSchema,
-} from "@sentry/junior-plugin-api";
+import { actorSchema, sourceSchema } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 
 export const MEMORY_KINDS = ["preference", "procedure", "knowledge"] as const;
@@ -13,10 +9,9 @@ export const MEMORY_SUBJECT_TYPES = [
   "conversation",
   "general",
 ] as const;
-export const MEMORY_SOURCE_PLATFORMS = [
-  "slack",
-  "local",
-] as const satisfies readonly z.output<typeof platformSchema>[];
+// Memory stores only destination-like platforms. API/dashboard Source maps to
+// "local" at the write boundary so we do not expand the durable enum yet.
+export const MEMORY_SOURCE_PLATFORMS = ["slack", "local"] as const;
 export const MEMORY_EMBEDDING_METRICS = ["cosine"] as const;
 export const MEMORY_EMBEDDING_DIMENSIONS = 1536;
 

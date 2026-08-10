@@ -3,6 +3,7 @@ import type { ZodTypeAny } from "zod";
 import {
   destinationSchema,
   identitySchema,
+  apiActorSchema,
   localActorSchema,
   platformSchema,
   actorSchema,
@@ -17,12 +18,14 @@ export type Platform = z.output<typeof platformSchema>;
 export type Actor = z.output<typeof actorSchema>;
 export type SlackActor = z.output<typeof slackActorSchema>;
 export type LocalActor = z.output<typeof localActorSchema>;
+export type ApiActor = z.output<typeof apiActorSchema>;
 export type SystemActor = z.output<typeof systemActorSchema>;
 export type Identity = z.output<typeof identitySchema>;
 export type User = z.output<typeof userSchema>;
 export type Source = z.output<typeof sourceSchema>;
 export type SlackSource = Extract<Source, { platform: "slack" }>;
 export type LocalSource = Extract<Source, { platform: "local" }>;
+export type ApiSource = Extract<Source, { platform: "api" }>;
 export type SourceVisibility = Source["visibility"];
 
 export type Destination = z.output<typeof destinationSchema>;
@@ -128,6 +131,15 @@ export function createLocalSource(conversationId: string): LocalSource {
   };
 }
 
+/** Build a normalized API/dashboard source from a conversation id. */
+export function createApiSource(conversationId: string): ApiSource {
+  return {
+    platform: "api",
+    visibility: "private",
+    conversationId,
+  };
+}
+
 /** Return whether a source is private to a person or restricted group. */
 export function isPrivateSource(source: Source): boolean {
   return source.visibility === "private";
@@ -135,7 +147,7 @@ export function isPrivateSource(source: Source): boolean {
 
 /** Return the stable source identity used for idempotency and attribution. */
 export function getSourceKey(source: Source): string | undefined {
-  if (source.platform === "local") {
+  if (source.platform === "local" || source.platform === "api") {
     return source.conversationId;
   }
   const messageKey = source.threadTs ?? source.messageTs;

@@ -440,9 +440,9 @@ function buildRuntimeSection(params: {
 }
 
 function formatSourceLines(source: Source): string[] {
-  if (source.platform === "local") {
+  if (source.platform === "local" || source.platform === "api") {
     return [
-      "- source.platform: local",
+      `- source.platform: ${source.platform}`,
       `- source.conversation_id: ${escapeXml(source.conversationId)}`,
     ];
   }
@@ -688,7 +688,10 @@ const STATIC_SYSTEM_PROMPTS: Record<PromptPlatform, string> = {
 
 /** Return byte-stable platform instructions shared by every conversation and turn. */
 export function buildSystemPrompt(params: { source: Source }): string {
-  return STATIC_SYSTEM_PROMPTS[params.source.platform];
+  // API/dashboard turns use the local (non-Slack) instruction surface.
+  const platform: PromptPlatform =
+    params.source.platform === "slack" ? "slack" : "local";
+  return STATIC_SYSTEM_PROMPTS[platform];
 }
 
 /** Build volatile runtime context that belongs in the user turn, not the system prompt. */

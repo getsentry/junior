@@ -280,13 +280,15 @@ function runtimeDescription(
   const actor =
     runtime.actor?.platform === "slack"
       ? `slack:${runtime.actor.teamId}:${runtime.actor.userId}`
-      : runtime.actor?.platform === "local"
-        ? `local:${runtime.actor.userId}`
-        : "none";
+      : runtime.actor?.platform === "api"
+        ? `api:${runtime.actor.userId}`
+        : runtime.actor?.platform === "local"
+          ? `local:${runtime.actor.userId}`
+          : "none";
   const source =
     runtime.source.platform === "slack"
       ? `slack:${runtime.source.teamId}:${runtime.source.channelId}`
-      : `local:${runtime.source.conversationId}`;
+      : `${runtime.source.platform}:${runtime.source.conversationId}`;
   const lines = [
     `- actor: ${escapeXml(actor)}`,
     `- source: ${escapeXml(source)}`,

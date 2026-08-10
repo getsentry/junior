@@ -1,6 +1,6 @@
-import { createHash } from "node:crypto";
-import type { LocalActor } from "@/chat/actor";
+import type { ApiActor } from "@/chat/actor";
 import {
+  apiActorFromEmail,
   appendAndEnqueueApiConversationMessage,
   createAndEnqueueApiConversation,
 } from "@/chat/api-turns/work";
@@ -16,14 +16,11 @@ import {
 } from "../schema/conversation";
 import { readConversationAccessFromSql } from "./access";
 
-function actorFromViewerEmail(email: string): LocalActor {
+function actorFromViewerEmail(email: string): ApiActor {
   const normalized = email.trim().toLowerCase();
-  return {
-    platform: "local",
-    userId: `dashboard:${createHash("sha256").update(normalized).digest("hex").slice(0, 24)}`,
-    email: normalized,
+  return apiActorFromEmail(normalized, {
     userName: normalized.split("@")[0] || normalized,
-  };
+  });
 }
 
 /** Create a private root conversation and enqueue its first message. */

@@ -275,17 +275,24 @@ export function assertRunRoutingConsistency(
   request: Pick<AgentRunRequest, "conversationId" | "routing">,
 ): void {
   const { destination, source } = request.routing;
-  if (source.platform !== destination.platform) {
+  // API/dashboard turns keep a local destination for conversation-log delivery
+  // while Source records what produced the work.
+  const apiUsesLocalDestination =
+    source.platform === "api" && destination.platform === "local";
+  if (source.platform !== destination.platform && !apiUsesLocalDestination) {
     throw new TypeError("Run source and destination platforms do not match");
   }
   if (source.platform === "slack" && destination.platform === "slack") {
     if (source.teamId !== destination.teamId) {
       throw new TypeError("Slack source and destination teams do not match");
     }
-  } else if (source.platform === "local" && destination.platform === "local") {
+  } else if (
+    (source.platform === "local" || source.platform === "api") &&
+    destination.platform === "local"
+  ) {
     if (source.conversationId !== destination.conversationId) {
       throw new TypeError(
-        "Local source and destination conversation IDs do not match",
+        "Source and destination conversation IDs do not match",
       );
     }
     if (
@@ -293,7 +300,7 @@ export function assertRunRoutingConsistency(
       destination.conversationId !== request.conversationId
     ) {
       throw new TypeError(
-        "Local source, destination, and run conversation IDs do not match",
+        "Source, destination, and run conversation IDs do not match",
       );
     }
   }
@@ -302,7 +309,10 @@ export function assertRunRoutingConsistency(
   if (!actor || actor.platform === "system") {
     return;
   }
-  if (actor.platform !== destination.platform) {
+  const actorMatchesDestination =
+    actor.platform === destination.platform ||
+    (actor.platform === "api" && destination.platform === "local");
+  if (!actorMatchesDestination) {
     throw new TypeError(
       `Actor platform "${actor.platform}" does not match destination platform "${destination.platform}"`,
     );
@@ -335,5 +345,11 @@ export function surfaceFromRouting(routing: AgentRunRouting): AgentTurnSurface {
   if (routing.surface) {
     return routing.surface;
   }
-  return routing.source.platform === "slack" ? "slack" : "internal";
+  if (routing.source.platform === "slack") {
+    return "slack";
+  }
+  if (routing.source.platform === "api") {
+    return "api";
+  }
+  return "internal";
 }

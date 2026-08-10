@@ -43,12 +43,16 @@ export interface LocalActor extends BaseActor {
   platform: "local";
 }
 
+export interface ApiActor extends BaseActor {
+  platform: "api";
+}
+
 export interface SystemActor {
   platform: "system";
   name: string;
 }
 
-export type UserActor = SlackActor | LocalActor;
+export type UserActor = SlackActor | LocalActor | ApiActor;
 export type Actor = UserActor | SystemActor;
 
 export interface SlackActorProfile {
