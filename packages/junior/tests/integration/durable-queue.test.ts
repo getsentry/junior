@@ -538,9 +538,12 @@ describe("durable queue contract", () => {
       await expectNextTurn(q, "1712345.0005");
     });
 
-    it("does not report failure after SQL recorded an accepted reply", async () => {
+    it("parks a timeout after SQL recorded an accepted agent reply", async () => {
       const turnId = await seedTurn("running");
+      const deliveredAssistant = fauxAssistantMessage("Deploy checked.");
+      deliveredAssistant.timestamp = 4;
       await commitAcceptedReply({
+        agentMessage: deliveredAssistant,
         conversationId: CONVERSATION_ID,
         conversationMessageId: `${turnId}:assistant:1`,
         conversation: {
@@ -568,7 +571,50 @@ describe("durable queue contract", () => {
           vision: { byFileId: {} },
         },
       });
-      const q = await slack();
+      const paused = await saveTurnCheckpoint({
+        mode: "paused",
+        reason: "timeout",
+        conversationId: CONVERSATION_ID,
+        turnId,
+        sliceId: 1,
+        messages: history(),
+        destination: SLACK_DESTINATION,
+        source: createSlackSource({
+          teamId: SLACK_DESTINATION.teamId,
+          channelId: SLACK_DESTINATION.channelId,
+          threadTs: "1712345.0001",
+          visibility: "private",
+        }),
+        surface: "slack",
+      });
+      expect(paused).toMatchObject({
+        state: "paused",
+        resumeReason: "timeout",
+        sliceId: 2,
+      });
+      expect(paused?.piMessages.at(-1)).toMatchObject({
+        role: "assistant",
+        timestamp: 4,
+      });
+
+      const q = await slack({
+        pausedRunner: {
+          run: async (request) =>
+            completedAgentRun({
+              diagnostics: {
+                assistantMessageCount: 0,
+                modelId: "test-model",
+                outcome: "success",
+                toolCalls: [],
+                toolErrorCount: 0,
+                toolResultCount: 0,
+                usedPrimaryText: false,
+              },
+              piMessages: request.input.piMessages ?? [],
+              text: "",
+            }),
+        },
+      });
       expect(
         coerceThreadConversationState(
           await getPersistedThreadState(CONVERSATION_ID),
@@ -598,8 +644,6 @@ describe("durable queue contract", () => {
         state: "completed",
         replies: [],
       });
-
-      await expectNextTurn(q, "1712345.0003");
     });
 
     it("stops a running turn after its worker disappears", async () => {

@@ -1681,13 +1681,13 @@ describe("turn checkpoint", () => {
       content: [{ type: "text", text: "help me" }],
       timestamp: 1,
     };
-    const unsafeAssistant = assistantMessage("not committed", 2);
+    const committedAssistant = assistantMessage("committed", 2);
     await upsertTurnRecord({
       conversationId: "conversation-branch",
       turnId: "turn-branch",
       sliceId: 1,
       state: "running",
-      piMessages: [user, unsafeAssistant],
+      piMessages: [user, committedAssistant],
     });
     await expect(
       upsertTurnRecord({
@@ -1695,7 +1695,7 @@ describe("turn checkpoint", () => {
         turnId: "turn-branch",
         sliceId: 2,
         state: "paused",
-        piMessages: [user],
+        piMessages: [user, assistantMessage("different", 2)],
         resumeReason: "timeout",
       }),
     ).rejects.toThrow("changed before its committed boundary");

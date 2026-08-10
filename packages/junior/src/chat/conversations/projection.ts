@@ -116,8 +116,9 @@ function durableMessageIdentity(message: PiMessage): unknown {
  * Count how much of `current` is a durable prefix of `next`.
  *
  * Returns `current.length` only when every committed message still matches by
- * durable identity. A shorter `next` or a content/role/timestamp change is a
- * branch that only compaction/handoff may perform.
+ * durable identity. A shorter matching `next` is a stale checkpoint prefix; a
+ * content, role, or timestamp change is a branch that only compaction or
+ * handoff may perform.
  */
 function countDurablePrefix(current: PiMessage[], next: PiMessage[]): number {
   if (next.length < current.length) {
@@ -301,9 +302,10 @@ function messageTimestamp(message: PiMessage): number {
  *
  * Checkpoints are append-only against the durable identity of the committed
  * prefix (role, timestamp, content; tool results also match call id). A shorter
- * history or a true content branch is rejected — only compaction and handoff may
- * intentionally replace active model history. In-place Pi mutations of already
- * committed assistant envelopes (usage/stopReason) do not block the suffix.
+ * matching history is a stale no-op because accepted delivery may already have
+ * appended its assistant message. A true content branch is rejected. Only
+ * compaction and handoff may replace active model history. In-place Pi mutations
+ * of committed assistant envelopes (usage/stopReason) do not block the suffix.
  */
 export async function commitMessages(args: {
   conversationId: string;
@@ -425,6 +427,9 @@ async function commitMessagesLocked(
       ? { newMessageProvenance: args.newMessageProvenance }
       : {}),
   });
+  const isStalePrefix =
+    nextLocalMessages.length < current.messages.length &&
+    matchingPrefix === nextLocalMessages.length;
   if (matchingPrefix === current.messages.length) {
     const newMessages = nextLocalMessages.slice(matchingPrefix);
     const turnContext = args.turnContext;
@@ -453,7 +458,7 @@ async function commitMessagesLocked(
       })),
       ...turnContextEvents,
     ]);
-  } else {
+  } else if (!isStalePrefix) {
     throw new AgentHistoryBranchError(args.conversationId);
   }
   const committedEvents = await eventStore.loadCurrentHistory(
@@ -464,8 +469,8 @@ async function commitMessagesLocked(
     committedSeq: committedEvents.at(-1)?.seq ?? -1,
     historyVersion: committedEvents.at(-1)?.historyVersion ?? 0,
     messageSeqs: committed.seqs,
-    messages: nextLocalMessages,
-    provenance: nextLocalProvenance,
+    messages: isStalePrefix ? committed.messages : nextLocalMessages,
+    provenance: isStalePrefix ? committed.provenance : nextLocalProvenance,
   };
 }
 
