@@ -1,6 +1,7 @@
 export { dailyConversationActivitySchema } from "./activity";
 export type { DailyConversationActivity } from "./activity";
 export {
+  acceptedConversationMessageSchema,
   archiveConversationBodySchema,
   archiveConversationResponseSchema,
   conversationAuxiliaryCostsSchema,
@@ -16,8 +17,11 @@ export {
   conversationReportEventSchema,
   conversationStatsReportSchema,
   conversationSummaryReportSchema,
+  createConversationBodySchema,
+  createConversationMessageBodySchema,
 } from "./schema/conversation";
 export type {
+  AcceptedConversationMessage,
   ArchiveConversationBody,
   ArchiveConversationResponse,
   ActorIdentity,
@@ -39,6 +43,8 @@ export type {
   ConversationSummaryReport,
   ConversationSurface,
   ConversationUsage,
+  CreateConversationBody,
+  CreateConversationMessageBody,
   GuardianMetricDay,
   GuardianStats,
 } from "./schema/conversation";

@@ -58,6 +58,28 @@ export const archiveConversationResponseSchema = z
   .object({ archived: z.boolean() })
   .strict();
 
+export const createConversationBodySchema = z
+  .object({
+    idempotencyKey: z.string().trim().min(1).max(200),
+    message: z.string().trim().min(1).max(32_000),
+  })
+  .strict();
+
+export const createConversationMessageBodySchema = z
+  .object({
+    idempotencyKey: z.string().trim().min(1).max(200),
+    message: z.string().trim().min(1).max(32_000),
+  })
+  .strict();
+
+export const acceptedConversationMessageSchema = z
+  .object({
+    conversationId: z.string().min(1),
+    messageId: z.string().min(1),
+    status: z.enum(["accepted", "duplicate"]),
+  })
+  .strict();
+
 export const actorIdentitySchema = z
   .object({
     email: z.string().optional(),
@@ -677,4 +699,13 @@ export type ArchiveConversationBody = z.infer<
 >;
 export type ArchiveConversationResponse = z.infer<
   typeof archiveConversationResponseSchema
+>;
+export type CreateConversationBody = z.infer<
+  typeof createConversationBodySchema
+>;
+export type CreateConversationMessageBody = z.infer<
+  typeof createConversationMessageBodySchema
+>;
+export type AcceptedConversationMessage = z.infer<
+  typeof acceptedConversationMessageSchema
 >;

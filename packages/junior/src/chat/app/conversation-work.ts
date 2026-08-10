@@ -20,6 +20,10 @@ import {
   routeAgentInvocationWork,
 } from "@/chat/agent-invocations/work";
 import {
+  createApiTurnWorker,
+  routeApiTurnWork,
+} from "@/chat/api-turns/work";
+import {
   getDispatchConversationId,
   getDispatchInputMessageIds,
 } from "@/chat/agent-dispatch/store";
@@ -110,11 +114,16 @@ export function createConversationWork(
   return {
     conversationStore: options.conversationStore,
     queue: options.queue,
-    run: routeAgentInvocationWork({
-      invocationWorker: createAgentInvocationWorker({
+    run: routeApiTurnWork({
+      apiTurnWorker: createApiTurnWorker({
         agentRunner: options.agentRunner,
       }),
-      fallbackWorker: providerWorker,
+      fallbackWorker: routeAgentInvocationWork({
+        invocationWorker: createAgentInvocationWorker({
+          agentRunner: options.agentRunner,
+        }),
+        fallbackWorker: providerWorker,
+      }),
     }),
     runtime,
     state: options.state,

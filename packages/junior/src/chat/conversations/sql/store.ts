@@ -118,18 +118,32 @@ function sourceFromValue(value: unknown): ConversationSource | undefined {
 function identityFromActor(
   actor: StoredSlackActor | undefined,
 ): IdentityUpsert | undefined {
-  if (!actor?.slackUserId) {
+  if (actor?.slackUserId) {
+    return {
+      kind: "user",
+      provider: "slack",
+      providerTenantId: actor.teamId,
+      providerSubjectId: actor.slackUserId,
+      ...(actor.fullName ? { displayName: actor.fullName } : {}),
+      ...(actor.slackUserName ? { handle: actor.slackUserName } : {}),
+      ...(actor.email ? { email: actor.email, emailVerified: true } : {}),
+      metadata: { platform: "slack" },
+    };
+  }
+  // Dashboard/API actors store a verified email without a Slack subject.
+  const email = actor?.email?.trim().toLowerCase();
+  if (!email) {
     return undefined;
   }
   return {
     kind: "user",
-    provider: "slack",
-    providerTenantId: actor.teamId,
-    providerSubjectId: actor.slackUserId,
-    ...(actor.fullName ? { displayName: actor.fullName } : {}),
-    ...(actor.slackUserName ? { handle: actor.slackUserName } : {}),
-    ...(actor.email ? { email: actor.email, emailVerified: true } : {}),
-    metadata: { platform: "slack" },
+    provider: "junior",
+    providerSubjectId: email,
+    email,
+    emailVerified: true,
+    ...(actor?.fullName ? { displayName: actor.fullName } : {}),
+    ...(actor?.slackUserName ? { handle: actor.slackUserName } : {}),
+    metadata: { platform: "local" },
   };
 }
 
@@ -245,29 +259,37 @@ function executionStatusToSql(status: ConversationStatus): ConversationStatus {
   ) as ConversationStatus;
 }
 
-/** Reconstruct a Slack actor with the linked user name and identity-scoped provider fields. */
+/** Reconstruct a stored actor with the linked user name and identity-scoped provider fields. */
 function actorFromIdentityRow(
   identity: IdentityRow | null,
   userDisplayName: string | null,
 ): StoredSlackActor | undefined {
-  if (!identity || identity.provider !== "slack") {
+  if (!identity) {
     return undefined;
   }
   const fullName = userDisplayName?.trim()
     ? userDisplayName
     : identity.displayName;
-  return {
-    ...(identity.emailNormalized
-      ? { email: identity.emailNormalized }
-      : identity.email
-        ? { email: identity.email }
-        : {}),
-    ...(fullName ? { fullName } : {}),
-    platform: "slack",
-    slackUserId: identity.providerSubjectId,
-    ...(identity.handle ? { slackUserName: identity.handle } : {}),
-    ...(identity.providerTenantId ? { teamId: identity.providerTenantId } : {}),
-  };
+  const email = identity.emailNormalized ?? identity.email ?? undefined;
+  if (identity.provider === "slack") {
+    return {
+      ...(email ? { email } : {}),
+      ...(fullName ? { fullName } : {}),
+      platform: "slack",
+      slackUserId: identity.providerSubjectId,
+      ...(identity.handle ? { slackUserName: identity.handle } : {}),
+      ...(identity.providerTenantId ? { teamId: identity.providerTenantId } : {}),
+    };
+  }
+  // Dashboard/API actors are junior identities keyed by verified email.
+  if (identity.provider === "junior" && email) {
+    return {
+      email,
+      ...(fullName ? { fullName } : {}),
+      ...(identity.handle ? { slackUserName: identity.handle } : {}),
+    };
+  }
+  return undefined;
 }
 
 function destinationFromRow(

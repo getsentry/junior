@@ -25,7 +25,8 @@ file.
    delivery or intentional no-reply completion commits the durable turn outcome.
 
 The local CLI uses `local/runner.ts` directly rather than pretending to be a
-mailbox-backed provider.
+mailbox-backed provider. API-authored private root turns use the shared mailbox
+and worker through `api-turns/` with `publishExternally: false`.
 
 ## Ownership
 
@@ -33,6 +34,8 @@ mailbox-backed provider.
 - `ingress/`: source parsing, classification, and routing.
 - `task-execution/`: mailbox, queue, lease, checkpoint, worker, and recovery.
 - `runtime/`: turn orchestration and provider-neutral delivery callbacks.
+- `api-turns/`: mailbox enqueue and worker consumer for dashboard/API root turns
+  that stay in the conversation log (`publishExternally: false`).
 - `agent-dispatch/`: durable task and plugin dispatch authority, mailbox
   adaptation, and plugin-facing outcome projection.
 - `agent-invocations/`: durable parent/child bindings, delegated work, and
