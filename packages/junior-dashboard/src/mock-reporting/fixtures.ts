@@ -127,8 +127,20 @@ function activeConversation(nowMs: number): ConversationDetailReport {
     channelName: "proj-checkout",
     actorIdentity: actor("morgan@sentry.io", "Morgan Lee", "morgan"),
     auxiliaryCosts: {
-      costUsd: 0.0018,
+      costUsd: 0.0021,
       operations: [
+        {
+          costUsd: 0.0001,
+          events: 1,
+          name: "turn_routed",
+          namespace: "junior",
+        },
+        {
+          costUsd: 0.0002,
+          events: 2,
+          name: "passive_reply_routed",
+          namespace: "junior",
+        },
         {
           costUsd: 0.0012,
           events: 3,
