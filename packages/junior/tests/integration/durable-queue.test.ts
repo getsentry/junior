@@ -6,12 +6,15 @@ import {
 } from "@earendil-works/pi-ai/providers/faux";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createConversationWork } from "@/chat/app/conversation-work";
-import { commitAcceptedReply } from "@/chat/conversations/projection";
-import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
-import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
-import type { AgentRunner } from "@/chat/runtime/agent-runner";
-import type { AgentRunSteeringMessage } from "@/chat/agent/request";
+import { FUNCTION_TIMEOUT_BUFFER_SECONDS, getChatConfig } from "@/chat/config";
+import {
+  commitAcceptedReply,
+  loadProjection,
+} from "@/chat/conversations/projection";
 import { executeAgentRun } from "@/chat/agent";
+import type { AgentRunSteeringMessage } from "@/chat/agent/request";
+import type { AgentRunner } from "@/chat/runtime/agent-runner";
+import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import {
   getPersistedThreadState,
   persistThreadStateById,
@@ -47,68 +50,52 @@ import {
   slackEnvelope,
   slackWebhookRequest,
 } from "../fixtures/conversation-work";
-import { deliverAssistantMessagesForTest } from "../fixtures/agent-runner";
+import { chatPostMessageOk } from "../fixtures/slack/factories/api";
 import { slackApiOutbox } from "../fixtures/slack-api-outbox";
-import { resetSlackApiMockState } from "../msw/handlers/slack-api";
+import {
+  queueSlackApiResponse,
+  resetSlackApiMockState,
+} from "../msw/handlers/slack-api";
 
-async function complete(request: Parameters<AgentRunner["run"]>[0]) {
-  await request.durability?.onInputCommitted?.();
-  const piMessages = await deliverAssistantMessagesForTest(request, [
-    { text: "Deploy checked." },
-  ]);
-  return completedAgentRun({
-    diagnostics: {
-      assistantMessageCount: 1,
-      modelId: "test-model",
-      outcome: "success",
-      toolCalls: [],
-      toolErrorCount: 0,
-      toolResultCount: 0,
-      usedPrimaryText: true,
-    },
-    piMessages,
-    text: "Deploy checked.",
-  });
+/** Model stream that returns one completed assistant reply per call. */
+function streamReplies(...texts: string[]): StreamFn {
+  const faux = createFauxCore({ api: "test", provider: "test" });
+  faux.setResponses(texts.map((text) => fauxAssistantMessage(text)));
+  return faux.stream;
 }
 
 /**
  * Compose the same ingress, runtime, worker, resume, SQL, and delivery path used
- * in production. Task-execution coverage must not replace Junior-owned runtime
- * behavior. A scenario may provide model output to `executeAgentRun` and fake
- * Slack I/O. The memory StateAdapter and in-memory queue implement production
- * ports. Separate contract tests cover provider storage and Vercel transport.
+ * in production. These tests must not replace Junior-owned runtime behavior.
+ * They may fake only model generation at the `executeAgentRun` stream boundary
+ * and Slack I/O at the adapter boundary. The agent runtime, resume logic,
+ * checkpoint, worker, lease, mailbox, and queue routing must run unchanged.
+ *
+ * Custom `agentRunner` is reserved for agent-edge outcomes that are not model
+ * tokens: throw before input commit, mid-run coordination, or an auth pause.
  */
 async function slack(
   options: {
     agentRunner?: AgentRunner;
-    pausedModelStream?: StreamFn;
-    shouldYield?: () => boolean;
+    modelStream?: StreamFn;
   } = {},
 ) {
   const state = getStateAdapter();
   await state.connect();
   const wakes = createConversationWorkQueueTestAdapter();
   const adapter = createSlackAdapterFixture();
-  const agentRunner = options.agentRunner ?? { run: complete };
-  const pausedAgentRunner: AgentRunner = options.pausedModelStream
-    ? {
-        run: async (request) =>
-          await executeAgentRun(request, options.pausedModelStream),
-      }
-    : agentRunner;
+  const modelStream = options.modelStream ?? streamReplies("Deploy checked.");
+  const agentRunner: AgentRunner = options.agentRunner ?? {
+    run: async (request) => await executeAgentRun(request, modelStream),
+  };
   const work = createConversationWork({
-    agentRunner: pausedAgentRunner,
+    agentRunner,
     conversationStore: getConversationStore(),
     getSlackAdapter: () => adapter,
     queue: wakes,
     services: { replyExecutor: { agentRunner } },
     state,
   });
-  const run = async (context: Parameters<typeof work.run>[0]) =>
-    await work.run({
-      ...context,
-      shouldYield: options.shouldYield ?? context.shouldYield,
-    });
   return {
     state,
     wakes,
@@ -118,10 +105,11 @@ async function slack(
         .map((call) => call.params.text)
         .filter((text): text is string => typeof text === "string"),
     next: async (requestStartedAtMs?: number) => {
+      // Use production worker shouldYield (lease + host request deadline).
       const process = async () =>
         await processConversationQueueMessage(wakes.takeMessage(), {
           queue: wakes,
-          run,
+          run: work.run,
           state,
         });
       return requestStartedAtMs === undefined
@@ -378,7 +366,10 @@ describe("durable queue contract", () => {
                 steering.push(...messages);
               },
             );
-            return await complete(request);
+            return await executeAgentRun(
+              request,
+              streamReplies("Deploy checked."),
+            );
           },
         },
       });
@@ -454,7 +445,10 @@ describe("durable queue contract", () => {
           run: async (request) => {
             attempts += 1;
             if (attempts === 1) throw new Error("agent unavailable");
-            return await complete(request);
+            return await executeAgentRun(
+              request,
+              streamReplies("Deploy checked."),
+            );
           },
         },
       });
@@ -472,16 +466,8 @@ describe("durable queue contract", () => {
 
     it("leaves the host request after a timeout pause that advanced the boundary", async () => {
       const turnId = await seedTurn("paused");
-      const faux = createFauxCore({ api: "test", provider: "test" });
-      faux.setResponses([
-        fauxAssistantMessage("Deploy checked."),
-        fauxAssistantMessage("Deploy checked."),
-      ]);
       const q = await slack({
-        // Only model generation is fake. The production agent runtime owns the
-        // timeout, checkpoint, paused turn, worker, lease, and queue behavior.
-        shouldYield: () => false,
-        pausedModelStream: faux.stream,
+        modelStream: streamReplies("Deploy checked.", "Deploy checked."),
       });
       await requestConversationWork({
         conversationId: CONVERSATION_ID,
@@ -524,8 +510,12 @@ describe("durable queue contract", () => {
     });
 
     it("does not report failure after SQL recorded an accepted reply", async () => {
+      // Stranded running turn whose destination reply is already durable.
+      // Heartbeat recovery must complete it quietly: no failure fallback and no
+      // second Slack post.
       const turnId = await seedTurn("running");
       await commitAcceptedReply({
+        agentMessage: fauxAssistantMessage("Deploy checked."),
         conversationId: CONVERSATION_ID,
         conversationMessageId: `${turnId}:assistant:1`,
         conversation: {
@@ -581,10 +571,76 @@ describe("durable queue contract", () => {
       await expectTerminalTurn(q, {
         turnId,
         state: "completed",
+        // No new destination post: the accepted reply already exists.
         replies: [],
       });
 
       await expectNextTurn(q, "1712345.0003");
+    });
+
+    it("completes when timeout hits after Slack accepted a tool-free reply", async () => {
+      // JUNIOR-7Y user path:
+      // 1. model finishes a tool-free assistant
+      // 2. delivery posts to Slack and dual-writes SQL on accept
+      // 3. host deadline fires during that post
+      // 4. turn completes from the accepted reply (does not park a shorter history)
+      const turnId = await seedTurn("paused");
+      const slackSeen = deferred();
+      const releaseSlack = deferred();
+      queueSlackApiResponse("chat.postMessage", {
+        body: chatPostMessageOk({ ts: "1712345.0002" }),
+        onRequest: () => slackSeen.resolve(),
+        waitFor: releaseSlack.promise,
+      });
+      const requestBudgetMs =
+        (getChatConfig().functionMaxDurationSeconds -
+          FUNCTION_TIMEOUT_BUFFER_SECONDS) *
+        1000;
+      const remainingMs = 2_500;
+      const startedAtMs = Date.now() - requestBudgetMs + remainingMs;
+      const deadlineAtMs = startedAtMs + requestBudgetMs;
+      const q = await slack({
+        // One model reply only. A second generation would fail the faux stream.
+        modelStream: streamReplies("Deploy checked."),
+      });
+      await requestConversationWork({
+        conversationId: CONVERSATION_ID,
+        destination: SLACK_DESTINATION,
+        state: q.state,
+      });
+      await ensureConversationWake({
+        conversationId: CONVERSATION_ID,
+        idempotencyKey: "timeout-after-accepted-reply",
+        queue: q.wakes,
+      });
+
+      const firstSlice = q.next(startedAtMs);
+      await slackSeen.promise;
+      const waitForDeadlineMs = Math.max(0, deadlineAtMs - Date.now() + 25);
+      await new Promise((resolve) => setTimeout(resolve, waitForDeadlineMs));
+      releaseSlack.resolve();
+      await expect(firstSlice).resolves.toEqual({ status: "completed" });
+
+      await expectTerminalTurn(q, {
+        turnId,
+        state: "completed",
+        replies: ["Deploy checked."],
+      });
+      await expect(
+        loadProjection({ conversationId: CONVERSATION_ID }),
+      ).resolves.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            role: "assistant",
+            content: expect.arrayContaining([
+              expect.objectContaining({
+                type: "text",
+                text: "Deploy checked.",
+              }),
+            ]),
+          }),
+        ]),
+      );
     });
 
     it("stops a running turn after its worker disappears", async () => {
@@ -629,7 +685,10 @@ describe("durable queue contract", () => {
             if (attempts <= CONVERSATION_WORK_MAX_RETRIES) {
               throw new Error("agent unavailable");
             }
-            return await complete(request);
+            return await executeAgentRun(
+              request,
+              streamReplies("Deploy checked."),
+            );
           },
         },
       });

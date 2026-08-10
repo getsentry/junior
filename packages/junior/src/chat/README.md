@@ -111,6 +111,8 @@ delegation without becoming the execution actor or a general task owner.
 - Cooperative yield preserves the exact agent history and occurs only at a user
   or tool-result tail. Unlike timeout or auth recovery, it never rolls history
   back past delivered assistant output.
+- Once destination accepts a tool-free assistant reply, the turn is finished for
+  that reply. Timeout must complete the turn. It must not park a shorter history.
 - Unexpected failures propagate to the boundary that owns capture and fallback
   delivery.
 - Actor, execution destination, conversation, and credential context remain

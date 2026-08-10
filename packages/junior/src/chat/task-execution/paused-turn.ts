@@ -698,6 +698,50 @@ export async function runNextPausedTurn(
   );
 }
 
+/**
+ * Finish a turn whose destination reply is already durable.
+ *
+ * Once Slack accepted a tool-free assistant, the turn is done. Recovery must
+ * complete it instead of asking the model to continue from that assistant.
+ */
+async function completeTurnWithAcceptedReply(args: {
+  conversation: ReturnType<typeof coerceThreadConversationState>;
+  conversationId: string;
+  turn: {
+    turnId: string;
+    version: number;
+  };
+}): Promise<boolean> {
+  if (!turnHasReply(args.conversation, args.turn.turnId)) {
+    return false;
+  }
+  const acceptedReply = [...args.conversation.messages]
+    .reverse()
+    .find(
+      (message) =>
+        message.role === "assistant" &&
+        message.id.startsWith(`${args.turn.turnId}:assistant:`),
+    );
+  const completed = await completeTurnRecord({
+    conversationId: args.conversationId,
+    expectedVersion: args.turn.version,
+    resultMessageId: acceptedReply?.meta?.slackTs,
+    turnId: args.turn.turnId,
+  });
+  if (!completed) {
+    return false;
+  }
+  markTurnCompleted({
+    conversation: args.conversation,
+    nowMs: Date.now(),
+    sessionId: args.turn.turnId,
+  });
+  await persistThreadStateById(args.conversationId, {
+    conversation: args.conversation,
+  });
+  return true;
+}
+
 async function runNextPausedTurnInContext(
   conversationId: string,
   options: PausedTurnOptions,
@@ -715,27 +759,13 @@ async function runNextPausedTurnInContext(
     ? await getTurnRecord(conversationId, newest.turnId)
     : undefined;
   if (running?.state === "running") {
-    if (turnHasReply(conversation, running.turnId)) {
-      const acceptedReply = [...conversation.messages]
-        .reverse()
-        .find(
-          (message) =>
-            message.role === "assistant" &&
-            message.id.startsWith(`${running.turnId}:assistant:`),
-        );
-      const completed = await completeTurnRecord({
-        conversationId,
-        expectedVersion: running.version,
-        resultMessageId: acceptedReply?.meta?.slackTs,
-        turnId: running.turnId,
-      });
-      if (!completed) return false;
-      markTurnCompleted({
+    if (
+      await completeTurnWithAcceptedReply({
         conversation,
-        nowMs: Date.now(),
-        sessionId: running.turnId,
-      });
-      await persistThreadStateById(conversationId, { conversation });
+        conversationId,
+        turn: running,
+      })
+    ) {
       return false;
     }
 
@@ -759,6 +789,18 @@ async function runNextPausedTurnInContext(
   for (const summary of summaries) {
     if (!isPausedTurn(summary)) {
       continue;
+    }
+
+    const paused = await getTurnRecord(conversationId, summary.turnId);
+    if (
+      paused &&
+      (await completeTurnWithAcceptedReply({
+        conversation,
+        conversationId,
+        turn: paused,
+      }))
+    ) {
+      return false;
     }
 
     const request = await getPausedTurnRequest({

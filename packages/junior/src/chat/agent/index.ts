@@ -297,6 +297,13 @@ async function executeAgentRunInPrivacyContext(
   let connectedMcpProviders = new Set<string>();
   let turnUsage: AgentTurnUsage | undefined;
   let priorPhaseUsage: AgentTurnUsage | undefined;
+  // Kept outside the main try so timeout recovery can finish after delivery.
+  let agent: Agent | undefined;
+  let acceptedToolFreeAssistant = false;
+  const generatedFiles: FileUpload[] = [];
+  const toolCalls: string[] = [];
+  let shouldTrace = false;
+  let getSandboxRef: (() => typeof state.sandboxRef) | undefined;
   const configuredReasoningLevel =
     policy.reasoningLevel ?? botConfig.reasoningLevel;
   let turnRoute: TurnRoute | undefined = configuredReasoningLevel
@@ -339,7 +346,7 @@ async function executeAgentRunInPrivacyContext(
     activeModelProfile = projection.modelProfile;
     activeModelId = modelIdForProfile(botConfig, activeModelProfile);
     let durableModelProfile = projection.modelProfile;
-    const shouldTrace = shouldEmitDevAgentTrace();
+    shouldTrace = shouldEmitDevAgentTrace();
     const spanContext: LogContext = { modelId: activeModelId };
 
     // ── Skill discovery ──────────────────────────────────────────────
@@ -605,9 +612,6 @@ async function executeAgentRunInPrivacyContext(
     activeModelId = routedModelId;
 
     // ── Mutable turn state ───────────────────────────────────────────
-    const generatedFiles: FileUpload[] = [];
-    const toolCalls: string[] = [];
-    let agent: Agent | undefined;
     let pendingPiHookError: Error | undefined;
     // Handoff becomes live only after its replacement epoch commits. This
     // pending value then drives the one-way model/context swap at Pi's boundary.
@@ -784,6 +788,7 @@ async function executeAgentRunInPrivacyContext(
     });
     mcpToolManager = wiring.mcpToolManager;
     closeTools = wiring.close;
+    getSandboxRef = () => wiring.getSandboxRef();
     const initialRepositoryInstructions = wiring.getSandboxRef()
       ? await wiring.captureRepositoryInstructions()
       : undefined;
@@ -1001,6 +1006,7 @@ async function executeAgentRunInPrivacyContext(
       }
       try {
         await delivery(message);
+        acceptedToolFreeAssistant = true;
       } catch (error) {
         assistantMessageDeliveryError = new AssistantMessageDeliveryError(
           error,
@@ -1601,6 +1607,30 @@ async function executeAgentRunInPrivacyContext(
       // Eager provider restoration can request auth before the agent span
       // exists; use the same durable parking operation as the in-span path.
       return await resume.parkForAuth(runError, turnUsage);
+    }
+    // One writer for agent history: once destination accepted a tool-free
+    // reply, finish the turn. Do not park a trimmed boundary that fights the
+    // accepted assistant already written by delivery.
+    if (resume?.timedOut && acceptedToolFreeAssistant && agent && turnRoute) {
+      await recordActiveMcpProviders();
+      const piMessages = [...agent.state.messages];
+      return {
+        status: "completed",
+        result: buildTurnResult({
+          newMessages: piMessages.slice(resume.beforeMessageCount),
+          userInput,
+          toolCalls,
+          sandboxRef: getSandboxRef?.() ?? lastKnownSandboxRef,
+          piMessages,
+          durationMs: Date.now() - replyStartedAtMs,
+          generatedFileCount: generatedFiles.length,
+          shouldTrace,
+          usage: turnUsage,
+          executionProfile: turnRoute,
+          assistantUserName: botConfig.userName,
+          modelId: activeModelId,
+        }),
+      };
     }
     if (resume) {
       const outcome = await resume.translateSuspension({
