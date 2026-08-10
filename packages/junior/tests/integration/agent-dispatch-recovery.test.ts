@@ -185,7 +185,7 @@ describe("agent dispatch recovery", () => {
           };
         }
 
-        expect(request.routing).toMatchObject({
+        expect(request).toMatchObject({
           actor: dispatch.actor,
           credentialContext: {
             actor: dispatch.actor,
