@@ -9,14 +9,15 @@ import {
   type DashboardSession,
 } from "../src/auth";
 
-const { authenticatePersonalToken, resolveViewerUser } = vi.hoisted(() => ({
-  authenticatePersonalToken: vi.fn(),
-  resolveViewerUser: vi.fn(async (email: string) => ({
+const { authenticatePersonalToken, resolveViewerUser } = vi.hoisted(() => {
+  const authenticatePersonalToken = vi.fn();
+  const resolveViewerUser = vi.fn(async (email: string) => ({
     email,
     id: `user:${email}`,
-    identities: [],
-  })),
-}));
+    identities: [] as [],
+  }));
+  return { authenticatePersonalToken, resolveViewerUser };
+});
 vi.mock("@sentry/junior/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@sentry/junior/api")>()),
   authenticatePersonalToken,
@@ -885,11 +886,8 @@ describe("dashboard routes", () => {
       pluginName: "memory",
     });
   });
-
   it("does not authorize a synthetic participant when auth is disabled", async () => {
-    const pluginApp = new Hono<{
-      Variables: { viewer?: { email: string } };
-    }>();
+    const pluginApp = new Hono<{ Variables: { viewer?: { email: string } } }>();
     pluginApp.get("/viewer", (c) =>
       c.json({ viewerEmail: c.get("viewer")?.email ?? null }),
     );
@@ -898,16 +896,11 @@ describe("dashboard routes", () => {
       allowedGoogleDomains: [],
       pluginRoutes: [{ app: pluginApp, pluginName: "viewer" }],
     });
-
     const response = await app.fetch(
       new Request("http://localhost/api/plugins/viewer/viewer"),
     );
-
-    await expect(response.json()).resolves.toEqual({
-      viewerEmail: null,
-    });
+    await expect(response.json()).resolves.toEqual({ viewerEmail: null });
   });
-
   it("resolves auth policy from env when dashboard options omit allowlists", async () => {
     process.env.JUNIOR_DASHBOARD_GOOGLE_DOMAINS = "sentry.io, example.com";
     process.env.JUNIOR_DASHBOARD_ALLOWED_EMAILS = JSON.stringify([

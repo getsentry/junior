@@ -717,12 +717,13 @@ export function createDashboardApp(
     }
     const browserSession = await auth.getSession(c.req.raw);
     const token = personalBearerToken(c.req.raw);
+    const pathname = new URL(c.req.url).pathname;
     const tokenEmail =
       !browserSession &&
       token &&
       (c.req.method === "GET" || c.req.method === "HEAD") &&
-      new URL(c.req.url).pathname.startsWith("/api/") &&
-      !new URL(c.req.url).pathname.startsWith("/api/personal-tokens")
+      pathname.startsWith("/api/") &&
+      !pathname.startsWith("/api/personal-tokens")
         ? await authenticatePersonalToken(token)
         : undefined;
     const session =
@@ -735,29 +736,26 @@ export function createDashboardApp(
     if (!isAuthorized(session, allowedDomains, allowedEmails)) {
       return forbidden(c.req.raw, agentName);
     }
-    c.set("authSession", sanitizeDashboardSession(session));
+    const sanitizedSession = sanitizeDashboardSession(session);
+    c.set("authSession", sanitizedSession);
+    // Resolve the canonical user only for authenticated API requests.
+    if (pathname.startsWith("/api/")) {
+      const email = verifiedSessionEmail(sanitizedSession);
+      if (!email) {
+        throw new Error(
+          "Authenticated dashboard session has no verified email",
+        );
+      }
+      const viewer = await resolveViewerUser(email);
+      if (!viewer) {
+        throw new Error("Authenticated dashboard user could not be resolved");
+      }
+      c.set("viewer", viewer);
+    }
     await next();
   };
 
   app.use("*", requireAuth);
-
-  /** Resolve the canonical user only for authenticated API requests. */
-  app.use("/api/*", async (c, next) => {
-    if (!authRequired) {
-      await next();
-      return;
-    }
-    const email = verifiedSessionEmail(c.get("authSession"));
-    if (!email) {
-      throw new Error("Authenticated dashboard session has no verified email");
-    }
-    const viewer = await resolveViewerUser(email);
-    if (!viewer) {
-      throw new Error("Authenticated dashboard user could not be resolved");
-    }
-    c.set("viewer", viewer);
-    await next();
-  });
 
   for (const { nested, path } of dashboardPagePaths(basePath, {
     componentGallery: options.componentGallery,
