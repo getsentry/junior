@@ -14,12 +14,9 @@ import { Card } from "../../components/layout/Card";
 import { Tooltip } from "../../components/Tooltip";
 import { formatActivityChartAverage } from "../../format";
 
-const series = [
-  { color: "#6ee7b7", key: "scheduled", label: "Scheduled" },
-  { color: "#c4b5fd", key: "event", label: "Event" },
-] as const;
+const EXECUTION_COLOR = "#fbbf24";
 
-/** Render completed task executions stacked by type over a trailing window. */
+/** Render completed task executions over a trailing window. */
 export function TaskExecutionChart(props: {
   days: TaskExecutionDay[];
   range: TimeRangeDays;
@@ -38,32 +35,14 @@ export function TaskExecutionChart(props: {
     <Card className="min-h-[17rem] p-4 sm:p-5">
       <div>
         <h2 className="m-0 font-display text-xl font-medium text-dashboard-text">
-          Activity over time
+          Executions over time
         </h2>
         <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
-          Completed scheduled and event task runs each day.
+          Completed task executions each day.
         </p>
       </div>
 
-      <div
-        aria-label="Task execution legend"
-        className="mt-4 flex flex-wrap gap-4"
-      >
-        {series.map((item) => (
-          <span
-            className="inline-flex items-center gap-1.5 font-mono text-xs text-dashboard-text-muted"
-            key={item.key}
-          >
-            <i
-              className="size-2 rounded-sm"
-              style={{ backgroundColor: item.color }}
-            />
-            {item.label}
-          </span>
-        ))}
-      </div>
-
-      <div className="relative mt-3 overflow-hidden">
+      <div className="relative mt-5 overflow-hidden">
         <ChartSvg
           aria-label={`Task executions during the last ${props.range} days`}
           className="min-h-40"
@@ -71,45 +50,28 @@ export function TaskExecutionChart(props: {
         >
           <ActivityChartGrid layout={layout} maximum={maximum} />
           {days.map((day, dayIndex) => {
-            let stackedHeight = 0;
             const x = layout.left + dayIndex * step + (step - barWidth) / 2;
             const total = totals[dayIndex] ?? 0;
+            const height = (total / maximum) * layout.plotHeight;
             return (
               <Tooltip
-                content={
-                  <ActivityTooltipRows
-                    rows={[
-                      ["scheduled", day.scheduled],
-                      ["event", day.event],
-                      ["total", total],
-                    ]}
-                  />
-                }
+                content={<ActivityTooltipRows rows={[["executions", total]]} />}
                 key={day.date}
                 label={formatActivityDate(day.date)}
               >
                 <g
-                  aria-label={`${formatActivityDate(day.date)}: ${day.scheduled} scheduled, ${day.event} event, ${total} total executions`}
+                  aria-label={`${formatActivityDate(day.date)}: ${total} executions`}
                   tabIndex={0}
                 >
-                  {series.map((item) => {
-                    const value = day[item.key];
-                    const segmentHeight =
-                      (value / maximum) * layout.plotHeight;
-                    stackedHeight += segmentHeight;
-                    return (
-                      <rect
-                        fill={item.color}
-                        height={segmentHeight}
-                        key={item.key}
-                        opacity={0.82}
-                        rx="1"
-                        width={barWidth}
-                        x={x}
-                        y={layout.top + layout.plotHeight - stackedHeight}
-                      />
-                    );
-                  })}
+                  <rect
+                    fill={EXECUTION_COLOR}
+                    height={height}
+                    opacity={0.82}
+                    rx="1"
+                    width={barWidth}
+                    x={x}
+                    y={layout.top + layout.plotHeight - height}
+                  />
                   <rect
                     fill="transparent"
                     height={layout.plotHeight}

@@ -112,8 +112,12 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
   await expect(page.getByLabel("Tasks navigation")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Tasks" })).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Activity over time" }),
+    page.getByRole("heading", { name: "Executions over time" }),
   ).toBeVisible();
+  await expect(page.getByText("Total tasks")).toBeVisible();
+  await expect(page.getByText("Your tasks")).toBeVisible();
+  await expect(page.getByText("Public tasks")).toBeVisible();
+  await expect(page.getByText("Private tasks")).toBeVisible();
   await expect(
     page.getByLabel("Task executions during the last 30 days"),
   ).toBeVisible();
