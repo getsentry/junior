@@ -232,8 +232,13 @@ export async function processMemorySession(
   ) {
     return;
   }
-  // V1 passive learning only stores public channel facts outside local QA.
-  if (run.source.platform !== "local" && isPrivateSource(run.source)) {
+  // V1 passive learning only stores public Slack channel facts outside local
+  // QA. Shareable dashboard/API roots keep conversation visibility public for
+  // links, but their Source platform is not Slack channel evidence.
+  if (
+    run.source.platform !== "local" &&
+    (run.source.platform !== "slack" || isPrivateSource(run.source))
+  ) {
     return;
   }
   const sourceKey = getSourceKey(run.source);

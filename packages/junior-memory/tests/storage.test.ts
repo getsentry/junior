@@ -8,6 +8,7 @@ import {
   type LocalPgliteFixture,
 } from "@sentry/junior-testing/pglite";
 import {
+  createApiSource,
   createLocalSource,
   createSlackSource,
   pluginApiRouteRequestContextSchema,
@@ -1608,6 +1609,52 @@ describe("memory plugin storage", () => {
                 ],
                 actor: privateContext.actor,
                 source: privateContext.source,
+              });
+            },
+          },
+        }),
+      );
+
+      await expect(
+        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
+      ).resolves.toEqual([]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("skips passive extraction for public dashboard API sources", async () => {
+    const fixture = await createMemoryFixture();
+    const conversationId = "local:api:memory-public-dashboard";
+
+    try {
+      await processMemorySession(
+        processSessionContext({
+          db: memoryDb(fixture),
+          model: throwingExtractionModel,
+          run: {
+            async load() {
+              return completedRun({
+                conversationId,
+                destination: {
+                  platform: "local",
+                  conversationId,
+                },
+                transcript: [
+                  {
+                    type: "message",
+                    role: "user",
+                    text: "I prefer public dashboard links not to train memory.",
+                  },
+                ],
+                actor: {
+                  platform: "api",
+                  userId: "dashboard:memory-user",
+                  email: "memory@example.com",
+                },
+                // Conversation links may be public; Source still is not Slack
+                // channel evidence for passive extraction.
+                source: createApiSource(conversationId, "public"),
               });
             },
           },
