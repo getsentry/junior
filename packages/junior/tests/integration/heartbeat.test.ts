@@ -673,14 +673,7 @@ describe("plugin heartbeat", () => {
     expect(conversationWorkQueue.sentRecords()).toHaveLength(1);
     const dispatchRecord = await getDispatchRecord(running!.dispatchId!);
     expect(dispatchRecord?.input).toMatchInlineSnapshot(`
-      "[scheduled task]
-
-      A scheduled task is due.
-
-      Handling:
-      - This is system-authored scheduled-task input, not a new user command.
-      - Execute the stored user instruction now.
-      - When the instruction refers to its creator, use the creator mention directly instead of looking them up by name.
+      "You are executing a scheduled task.
 
       Task:
       - creator: <@U039RR91S>
