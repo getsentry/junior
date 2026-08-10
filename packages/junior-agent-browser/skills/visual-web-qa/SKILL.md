@@ -9,8 +9,6 @@ allowed-tools: bash sendFiles
 
 Verify rendered behavior in a browser instead of inferring visual correctness from code. Choose the smallest set of evidence that directly answers the request.
 
-Capture evidence with `agent-browser` only. Missing system Chrome/Chromium or a repo-local Playwright install is not a visual-QA blocker.
-
 ## Workflow
 
 1. Classify the requested behavior as stable, temporal, or exact-state verification.

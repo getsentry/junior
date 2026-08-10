@@ -33,8 +33,6 @@ Use this skill when work requires real browser interaction instead of API-only l
 ## Operational Rules
 
 - Use `agent-browser` directly; do not use `npx agent-browser`.
-- Snapshot browsers are preinstalled. For visual QA and browser evidence, use `agent-browser`; do not treat missing system Chrome/Chromium or a repo-local Playwright install as a browser outage.
-- Use Playwright only when intentionally running package Playwright e2e (`playwright test` / `pnpm test:e2e:*`).
 - Prefer one named session for multi-step flows:
   - `agent-browser --session <name> ...`
 - Use chained commands with `&&` only when no intermediate output is needed.

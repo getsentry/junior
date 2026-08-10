@@ -37,15 +37,12 @@ No plugin config is required.
 
 ## Plugin-specific setup
 
-This plugin provisions browser automation as part of the sandbox snapshot:
+This plugin adds two skills and installs a browser runtime into the sandbox snapshot:
 
-- Plugin manifest: `agent-browser`
-- General automation skill: `/agent-browser`
-- Visual verification skill: `/visual-web-qa`
-- Runtime dependencies: `agent-browser` and `playwright` npm packages installed in the snapshot
-- Runtime postinstall: `agent-browser install` and `playwright install chromium` to provision browser binaries in the snapshot
+- `/agent-browser` for general browser interaction
+- `/visual-web-qa` for evidence-driven visual checks
 
-Use `/agent-browser` or `/visual-web-qa` for browser evidence. Use the snapshot Playwright install only for package Playwright e2e runs.
+Rebuild the sandbox snapshot after you enable the plugin so browser commands work in new sandboxes.
 
 Use `/agent-browser` for general browser interaction:
 
@@ -68,8 +65,8 @@ Use `/visual-web-qa` when a frontend or docs change needs scoped browser evidenc
 
 ## Failure modes
 
-- `command not found: agent-browser`: the runtime dependency install did not complete. Retry the turn and check sandbox snapshot setup logs.
-- Browser launch fails during the turn: browser binaries were not provisioned successfully. Rebuild the snapshot so `agent-browser install` and `playwright install chromium` run again.
+- `command not found: agent-browser`: the plugin runtime did not load. Confirm the plugin is registered and rebuild the sandbox snapshot.
+- Browser launch fails during the turn: the snapshot browser runtime is missing or incomplete. Rebuild the sandbox snapshot after enabling the plugin.
 - Stale element references like `@e*`: the DOM changed after the snapshot was taken. Run a fresh `snapshot -i` after navigation or UI updates.
 - Page appears incomplete: the page had not finished loading before the next action. Wait explicitly with `agent-browser wait --load networkidle` before interacting.
 - Visual QA is blocked: no local server or preview URL is reachable. Start the repo-native development server or provide a preview URL, then retry.
