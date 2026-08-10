@@ -60,6 +60,7 @@ export function createGuardianActionReviewer(options: {
           maxTokens: GUARDIAN_REVIEW_MAX_TOKENS,
           recordTelemetryPayloads: false,
           temperature: 0,
+          promptName: "junior.guardian_action_review",
           signal,
           metadata: {
             conversationId: proposal.context.conversationId,

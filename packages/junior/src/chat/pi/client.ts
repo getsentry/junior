@@ -127,6 +127,7 @@ export async function completeText(params: {
   maxTokens?: number;
   signal?: AbortSignal;
   metadata?: Record<string, unknown>;
+  promptName?: string;
 }) {
   const model = resolveGatewayModel(params.modelId);
   const credential = await resolveGatewayCredential();
@@ -149,6 +150,7 @@ export async function completeText(params: {
     "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
     "gen_ai.request.model": params.modelId,
     "gen_ai.output.type": "text",
+    ...(params.promptName ? { "gen_ai.prompt.name": params.promptName } : {}),
     "server.address": GEN_AI_SERVER_ADDRESS,
     "server.port": GEN_AI_SERVER_PORT,
     ...(hasCompactedConversationContext(params.messages)
@@ -349,6 +351,7 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
   recordTelemetryPayloads?: boolean;
   signal?: AbortSignal;
   metadata?: Record<string, unknown>;
+  promptName?: string;
 }): Promise<{ costUsd?: number; object: z.infer<TSchema> }> {
   const credential = await resolveGatewayCredential();
   const provider = createGatewayProvider(
@@ -396,6 +399,9 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
         "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
         "gen_ai.request.model": params.modelId,
         "gen_ai.output.type": "json",
+        ...(params.promptName
+          ? { "gen_ai.prompt.name": params.promptName }
+          : {}),
         "server.address": GEN_AI_SERVER_ADDRESS,
         "server.port": GEN_AI_SERVER_PORT,
         "gen_ai.provider.auth_mode": credential?.mode ?? "api_key",

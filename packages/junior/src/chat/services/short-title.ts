@@ -53,6 +53,7 @@ export async function generateShortTitle(args: {
     const result = await args.completeText({
       modelId: botConfig.fastModelId,
       temperature: 0,
+      promptName: `junior.${args.kind}_title`,
       messages: [
         {
           role: "user",

@@ -42,6 +42,7 @@ import type { SubscribedReplyDecision } from "@/chat/services/subscribed-reply-p
 import { botConfig } from "@/chat/config";
 import { standardModelId } from "@/chat/model-profile";
 import { cancelSubscriptions as cancelEventSubscriptions } from "@/chat/resource-events/store";
+import { recordSubscribedReplyRoute } from "@/chat/conversations/projection";
 import { createSlackDispatchTurnRunner } from "@/chat/slack/dispatch-turn";
 
 export interface CreateSlackRuntimeOptions {
@@ -143,7 +144,26 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
     },
     getPreparedConversationContext: (preparedState) =>
       preparedState.conversationContext,
-    decideSubscribedReply: services.subscribedReplyPolicy,
+    decideSubscribedReply: async (args) => {
+      const decision = await services.subscribedReplyPolicy(args);
+      if (
+        decision.costUsd !== undefined &&
+        args.context.threadId &&
+        args.context.runId
+      ) {
+        await recordSubscribedReplyRoute({
+          conversationId: args.context.threadId,
+          costUsd: decision.costUsd,
+          reason: decision.reason,
+          runId: args.context.runId,
+          shouldReply: decision.shouldReply,
+          ...(decision.shouldUnsubscribe !== undefined
+            ? { shouldUnsubscribe: decision.shouldUnsubscribe }
+            : {}),
+        });
+      }
+      return decision;
+    },
     recordSkippedSteeringMessage: async ({
       thread,
       message,

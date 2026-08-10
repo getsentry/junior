@@ -728,6 +728,37 @@ export async function recordAgentsInstructionsUpdated(
   ]);
 }
 
+/** Record a model-backed subscribed reply route, including no-reply outcomes. */
+export async function recordSubscribedReplyRoute(args: {
+  conversationId: string;
+  costUsd: number;
+  reason: string;
+  runId: string;
+  shouldReply: boolean;
+  shouldUnsubscribe?: boolean;
+}): Promise<void> {
+  await getConversationEventStore().append(args.conversationId, [
+    {
+      idempotencyKey: `native:${JUNIOR_NATIVE_EVENT_NAMESPACE}:passive_reply_routed:${args.runId}`,
+      createdAtMs: Date.now(),
+      data: {
+        type: "structured_event",
+        namespace: JUNIOR_NATIVE_EVENT_NAMESPACE,
+        name: "passive_reply_routed",
+        version: 1,
+        content: {
+          costUsd: args.costUsd,
+          reason: args.reason,
+          shouldReply: args.shouldReply,
+          ...(args.shouldUnsubscribe !== undefined
+            ? { shouldUnsubscribe: args.shouldUnsubscribe }
+            : {}),
+        },
+      },
+    },
+  ]);
+}
+
 /** Load a previously selected execution profile for a resumed turn. */
 export async function loadTurnRoute(args: {
   conversationId: string;
@@ -754,6 +785,7 @@ export async function recordTurnRoute(args: {
   turnId: string;
   modelProfile: ModelProfile;
   modelId: string;
+  costUsd?: number;
   reasoningLevel: TurnReasoningLevel;
   confidence?: number;
   source: "configured" | "inherited" | "router";
@@ -767,6 +799,7 @@ export async function recordTurnRoute(args: {
         turnId: args.turnId,
         modelProfile: args.modelProfile,
         modelId: args.modelId,
+        ...(args.costUsd !== undefined ? { costUsd: args.costUsd } : {}),
         reasoningLevel: args.reasoningLevel,
         ...(args.confidence !== undefined
           ? { confidence: args.confidence }

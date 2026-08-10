@@ -67,6 +67,7 @@ function createTurnRouteSchema(
 
 export interface TurnRoute {
   confidence?: number;
+  costUsd?: number;
   profile: ModelProfile;
   reasoningLevel: TurnReasoningLevel;
   reason: string;
@@ -195,7 +196,8 @@ export async function selectTurnRoute(args: {
     thinkingLevel?: ProviderThinkingLevel;
     system: string;
     temperature: number;
-  }) => Promise<{ object: unknown }>;
+    promptName?: string;
+  }) => Promise<{ costUsd?: number; object: unknown }>;
   conversationContext?: string;
   context?: {
     channelId?: string;
@@ -332,6 +334,7 @@ async function classifyTurn(args: {
       thinkingLevel: "low",
       system: buildClassifierSystemPrompt(Object.keys(args.profiles)),
       temperature: 0,
+      promptName: "junior.thinking_route",
     });
 
     const parsed = schema.parse(result.object);
@@ -340,6 +343,7 @@ async function classifyTurn(args: {
     if (parsed.confidence < CLASSIFIER_CONFIDENCE_THRESHOLD) {
       return {
         confidence: parsed.confidence,
+        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : {}),
         profile: STANDARD_MODEL_PROFILE,
         reasoningLevel: CLASSIFIER_FALLBACK_REASONING_LEVEL,
         reason: `low_confidence_medium_default:${reason}`,
@@ -349,6 +353,7 @@ async function classifyTurn(args: {
 
     return {
       confidence: parsed.confidence,
+      ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : {}),
       profile: parsed.profile,
       reasoningLevel: parsed.reasoning_level,
       reason,

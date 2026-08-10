@@ -431,6 +431,7 @@ async function summarizeContext(
     messageAttributeMode: "metadata",
     temperature: 0,
     signal: args.signal,
+    promptName: "junior.context_compaction",
     messages: [
       {
         role: "user",

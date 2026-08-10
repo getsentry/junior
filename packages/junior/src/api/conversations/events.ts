@@ -355,6 +355,7 @@ function reportEventData(args: {
         turnId: data.turnId,
         modelProfile: data.modelProfile,
         modelId: data.modelId,
+        ...(data.costUsd !== undefined ? { costUsd: data.costUsd } : {}),
         reasoningLevel: data.reasoningLevel,
         ...(data.confidence !== undefined
           ? { confidence: data.confidence }

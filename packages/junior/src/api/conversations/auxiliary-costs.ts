@@ -1,9 +1,11 @@
 import {
   and,
   eq,
+  gte,
   inArray,
   isNotNull,
   isNull,
+  lt,
   or,
   sql,
   type SQL,
@@ -18,16 +20,73 @@ const auxiliaryRootConversation = alias(
   "auxiliary_root_conversation",
 );
 
+export interface AuxiliaryCostDay {
+  costUsd: number;
+  date: string;
+  events: number;
+  name: string;
+  namespace: string;
+}
+
 function eventCost(): SQL<number | null> {
   return sql<number | null>`CASE
     WHEN ${juniorConversationEvents.type} = 'structured_event'
       AND jsonb_typeof(${juniorConversationEvents.payload}->'content'->'costUsd') = 'number'
       THEN (${juniorConversationEvents.payload}->'content'->>'costUsd')::numeric
-    WHEN ${juniorConversationEvents.type} = 'guardian_action_reviewed'
+    WHEN ${juniorConversationEvents.type} IN ('guardian_action_reviewed', 'turn_routed')
       AND jsonb_typeof(${juniorConversationEvents.payload}->'costUsd') = 'number'
       THEN (${juniorConversationEvents.payload}->>'costUsd')::numeric
     ELSE NULL
   END`;
+}
+
+/** Aggregate all durable auxiliary event costs by operation and UTC day. */
+export async function readAuxiliaryCostsByDayFromSql(
+  db: JuniorDatabase,
+  options: { start: Date; end: Date },
+): Promise<AuxiliaryCostDay[]> {
+  const namespace = sql<string>`CASE
+    WHEN ${juniorConversationEvents.type} = 'structured_event'
+      THEN ${juniorConversationEvents.payload}->>'namespace'
+    ELSE 'junior'
+  END`;
+  const name = sql<string>`CASE
+    WHEN ${juniorConversationEvents.type} = 'structured_event'
+      THEN ${juniorConversationEvents.payload}->>'name'
+    ELSE ${juniorConversationEvents.type}
+  END`;
+  const date = sql<string>`to_char(
+    date_trunc('day', ${juniorConversationEvents.createdAt} AT TIME ZONE 'UTC'),
+    'YYYY-MM-DD'
+  )`;
+  const cost = eventCost();
+  return await db
+    .select({
+      costUsd: sql<number>`round(sum(${cost}), 12)::double precision`.mapWith(
+        Number,
+      ),
+      date,
+      events: sql<number>`count(*)::integer`.mapWith(Number),
+      name,
+      namespace,
+    })
+    .from(juniorConversationEvents)
+    .where(
+      and(
+        gte(juniorConversationEvents.createdAt, options.start),
+        lt(juniorConversationEvents.createdAt, options.end),
+        or(
+          eq(juniorConversationEvents.type, "structured_event"),
+          inArray(juniorConversationEvents.type, [
+            "guardian_action_reviewed",
+            "turn_routed",
+          ]),
+        ),
+        sql`${cost} >= 0`,
+      ),
+    )
+    .groupBy(date, namespace, name)
+    .orderBy(date, namespace, name);
 }
 
 /** Aggregate additive event costs by namespaced operation for conversations. */
@@ -102,7 +161,10 @@ export async function readConversationAuxiliaryCostsFromSql(
         selectedConversation,
         or(
           eq(juniorConversationEvents.type, "structured_event"),
-          eq(juniorConversationEvents.type, "guardian_action_reviewed"),
+          inArray(juniorConversationEvents.type, [
+            "guardian_action_reviewed",
+            "turn_routed",
+          ]),
         ),
         sql`${cost} >= 0`,
       ),

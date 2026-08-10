@@ -38,6 +38,7 @@ describe("selectTurnRoute", () => {
 
   it("classifies even simple acknowledgment turns with the fast model", async () => {
     const completeObject = vi.fn(async () => ({
+      costUsd: 0.00012,
       object: {
         reasoning_level: "none",
         profile: "standard",
@@ -53,6 +54,7 @@ describe("selectTurnRoute", () => {
     });
 
     expect(profile).toMatchObject({
+      costUsd: 0.00012,
       reasoningLevel: "none",
       profile: "standard",
       reason: "acknowledgment only",
@@ -61,6 +63,7 @@ describe("selectTurnRoute", () => {
       expect.objectContaining({
         modelId: "openai/gpt-5.4-mini",
         thinkingLevel: "low",
+        promptName: "junior.thinking_route",
       }),
     );
     expect(toPiReasoningLevel(profile.reasoningLevel)).toBe("off");

@@ -289,6 +289,7 @@ const conversationReportTurnRoutedEventDataSchema = z
     turnId: z.string().min(1),
     modelProfile: z.string().min(1),
     modelId: z.string().min(1),
+    costUsd: z.number().finite().nonnegative().optional(),
     reasoningLevel: z.string().min(1),
     confidence: z.number().min(0).max(1).optional(),
     source: z.enum(["configured", "inherited", "router"]),

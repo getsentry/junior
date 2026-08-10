@@ -320,6 +320,7 @@ async function summarizeConversationChunk(
     const result = await deps.completeText({
       modelId: botConfig.fastModelId,
       temperature: 0,
+      promptName: "junior.thread_compaction",
       messages: [
         {
           role: "user",

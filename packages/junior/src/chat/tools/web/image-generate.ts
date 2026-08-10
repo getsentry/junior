@@ -38,6 +38,7 @@ async function enrichImagePrompt(rawPrompt: string): Promise<string> {
       system: ENRICHMENT_SYSTEM_PROMPT,
       messages: [{ role: "user", content: rawPrompt, timestamp: Date.now() }],
       maxTokens: 1024,
+      promptName: "junior.image_prompt_enrichment",
     });
     if (text && text.trim().length > 0) {
       logInfo("image.prompt.enriched", {

@@ -164,6 +164,7 @@ async function summarizeImageWithVision(args: {
     modelId: visionModelId,
     temperature: 0,
     maxTokens: args.maxTokens,
+    promptName: "junior.vision_summary",
     messages: [
       {
         role: "user",

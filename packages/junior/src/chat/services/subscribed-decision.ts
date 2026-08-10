@@ -30,6 +30,7 @@ export interface SubscribedDecisionInput {
 }
 
 export interface SubscribedDecisionResult {
+  costUsd?: number;
   shouldReply: boolean;
   shouldUnsubscribe?: boolean;
   reason: SubscribedReplyReason;
@@ -413,7 +414,8 @@ export async function decideSubscribedThreadReply(args: {
     system: string;
     prompt: string;
     metadata: Record<string, string>;
-  }) => Promise<{ object: unknown }>;
+    promptName?: string;
+  }) => Promise<{ costUsd?: number; object: unknown }>;
   logClassifierFailure: (
     error: unknown,
     input: SubscribedDecisionInput,
@@ -500,6 +502,7 @@ export async function decideSubscribedThreadReply(args: {
         actorId: args.input.context.actorId ?? "",
         runId: args.input.context.runId ?? "",
       },
+      promptName: "junior.passive_reply_route",
     });
 
     const parsed = replyDecisionSchema.parse(result.object);
@@ -507,6 +510,7 @@ export async function decideSubscribedThreadReply(args: {
     if (parsed.should_unsubscribe) {
       if (parsed.confidence < ROUTER_CONFIDENCE_THRESHOLD) {
         return {
+          ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : {}),
           shouldReply: false,
           reason: SubscribedReplyReason.LowConfidence,
           reasonDetail: `${parsed.confidence.toFixed(2)}: ${reason}`,
@@ -514,6 +518,7 @@ export async function decideSubscribedThreadReply(args: {
       }
 
       return {
+        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : {}),
         shouldReply: false,
         shouldUnsubscribe: true,
         reason: SubscribedReplyReason.ThreadOptOut,
@@ -523,6 +528,7 @@ export async function decideSubscribedThreadReply(args: {
 
     if (!parsed.should_reply) {
       return {
+        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : {}),
         shouldReply: false,
         reason: SubscribedReplyReason.SideConversation,
         reasonDetail: reason,
@@ -531,6 +537,7 @@ export async function decideSubscribedThreadReply(args: {
 
     if (parsed.confidence < ROUTER_CONFIDENCE_THRESHOLD) {
       return {
+        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : {}),
         shouldReply: false,
         reason: SubscribedReplyReason.LowConfidence,
         reasonDetail: `${parsed.confidence.toFixed(2)}: ${reason}`,
@@ -538,6 +545,7 @@ export async function decideSubscribedThreadReply(args: {
     }
 
     return {
+      ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : {}),
       shouldReply: true,
       reason: SubscribedReplyReason.Classifier,
       reasonDetail: reason,

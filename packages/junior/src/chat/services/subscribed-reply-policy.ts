@@ -11,6 +11,7 @@ export interface SubscribedReplyPolicyDeps {
 }
 
 export interface SubscribedReplyDecision {
+  costUsd?: number;
   reason: string;
   shouldReply: boolean;
   shouldUnsubscribe?: boolean;
@@ -41,6 +42,7 @@ export function createSubscribedReplyPolicy(
       ? `${decision.reason}:${decision.reasonDetail}`
       : decision.reason;
     return {
+      ...(decision.costUsd !== undefined ? { costUsd: decision.costUsd } : {}),
       shouldReply: decision.shouldReply,
       shouldUnsubscribe: decision.shouldUnsubscribe,
       reason,

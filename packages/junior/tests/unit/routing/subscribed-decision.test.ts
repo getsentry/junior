@@ -32,7 +32,7 @@ function classify(
     botUserName: "junior",
     modelId: "router-model",
     input,
-    completeObject: vi.fn(async () => ({ object })),
+    completeObject: vi.fn(async () => ({ costUsd: 0.00023, object })),
     logClassifierFailure: vi.fn(),
   });
 }
@@ -113,6 +113,7 @@ describe("subscribed reply decision", () => {
         reason: "status chatter",
       },
       expected: {
+        costUsd: 0.00023,
         shouldReply: false,
         reason: SubscribedReplyReason.SideConversation,
         reasonDetail: "status chatter",
@@ -127,6 +128,7 @@ describe("subscribed reply decision", () => {
         reason: "stop participating",
       },
       expected: {
+        costUsd: 0.00023,
         shouldReply: false,
         shouldUnsubscribe: true,
         reason: SubscribedReplyReason.ThreadOptOut,
@@ -142,6 +144,7 @@ describe("subscribed reply decision", () => {
         reason: "maybe follow-up",
       },
       expected: {
+        costUsd: 0.00023,
         shouldReply: false,
         reason: SubscribedReplyReason.LowConfidence,
         reasonDetail: "0.65: maybe follow-up",
@@ -156,6 +159,7 @@ describe("subscribed reply decision", () => {
         reason: "direct question",
       },
       expected: {
+        costUsd: 0.00023,
         shouldReply: true,
         reason: SubscribedReplyReason.Classifier,
         reasonDetail: "direct question",
@@ -208,6 +212,7 @@ describe("subscribed reply decision", () => {
     expect(completeObject).toHaveBeenCalledWith(
       expect.objectContaining({
         maxTokens: 400,
+        promptName: "junior.passive_reply_route",
         prompt: expect.stringContaining(">>> TRANSCRIPT START"),
         system: expect.stringContaining("# Evidence Handling"),
       }),

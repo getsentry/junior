@@ -29,6 +29,7 @@ export function createPluginModel(
           ? { maxTokens: input.maxTokens }
           : {}),
         signal: runtime.signal,
+        promptName: `${pluginName}.structured_completion`,
         metadata: {
           pluginName,
           pluginModelRole: "structured",

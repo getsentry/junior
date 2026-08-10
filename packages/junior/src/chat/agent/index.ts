@@ -588,6 +588,9 @@ async function executeAgentRunInPrivacyContext(
         turnId,
         modelProfile: routedModelProfile,
         modelId: routedModelId,
+        ...(turnRoute.costUsd !== undefined
+          ? { costUsd: turnRoute.costUsd }
+          : {}),
         reasoningLevel: turnRoute.reasoningLevel,
         ...(turnRoute.confidence !== undefined
           ? { confidence: turnRoute.confidence }
