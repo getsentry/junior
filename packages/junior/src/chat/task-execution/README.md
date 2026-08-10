@@ -120,11 +120,14 @@ new turn starts, `interrupt` delivery is handled before queued `defer` delivery.
 ## Integration Contract
 
 `packages/junior/tests/integration/durable-queue.test.ts` uses the same
-`createConversationWork` composition as production. It replaces agent behavior
-and Slack HTTP. It uses the real `StateAdapter` with memory storage. It uses an
-in-memory queue that implements the one-method queue interface. Separate tests
-cover Vercel signing and options. They also cover `StateAdapter` storage, keys,
-queues, and locks. The cases describe the expected product behavior:
+`createConversationWork` composition as production. These tests must not replace
+Junior-owned runtime behavior. They may fake only model generation at the
+`executeAgentRun` stream boundary and Slack I/O at the adapter boundary. The
+agent runtime, resume logic, checkpoint, worker, lease, mailbox, and queue
+routing must run unchanged. The memory `StateAdapter` and in-memory queue
+implement production ports. Separate contract tests cover provider storage,
+Vercel signing, and Vercel options. The cases describe the expected product
+behavior:
 
 - **Success:** accepted input runs once, commits SQL history, delivers once, and
   drains.
@@ -132,8 +135,8 @@ queues, and locks. The cases describe the expected product behavior:
   turn; an authorization request parks the turn without retrying it.
 - **Failures:** failure before input commit retries without duplicate delivery;
   a timeout pause under a spent request deadline leaves the host request so the
-  next slice starts fresh; a timed-out turn that repeats its committed boundary
-  stops; an expired worker lease stops its stranded running turn while
+  next slice starts fresh; the agent runtime keeps the existing same-boundary
+  no-progress check; an expired worker lease stops its stranded running turn while
   preserving committed history; and repeated agent failure stops at the retry
   limit with at most one visible fallback. Each stopped state must allow a later
   user request to complete.
