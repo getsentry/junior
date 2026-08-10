@@ -14,12 +14,13 @@ import type {
   ConversationSummaryReport,
 } from "@sentry/junior/api/schema";
 import {
+  acceptedConversationMessageSchema,
   archiveConversationResponseSchema,
   conversationDetailReportSchema,
   conversationEventPageSchema,
 } from "@sentry/junior/api/schema";
 
-import { DashboardApiError, fetchDashboardJson, patch } from "../http";
+import { DashboardApiError, fetchDashboardJson, patch, post } from "../http";
 import {
   buildConversationTranscript,
   conversationHistoryBridgeCursor,
@@ -104,6 +105,44 @@ export function conversationDetailQueryOptions(
     refetchInterval: (query) =>
       query.state.data?.status === "active" ? 2_000 : false,
     retry: false,
+  });
+}
+
+/** Create one public dashboard conversation and refresh the personal feed. */
+export function useCreateConversation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { idempotencyKey: string; message: string }) =>
+      post(acceptedConversationMessageSchema, "/api/conversations", args),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["dashboard", "conversations"],
+      });
+    },
+  });
+}
+
+/** Add one dashboard message and refresh the shared transcript. */
+export function useAppendConversationMessage(conversationId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { idempotencyKey: string; message: string }) =>
+      post(
+        acceptedConversationMessageSchema,
+        `/api/conversations/${encodeURIComponent(conversationId)}/messages`,
+        args,
+      ),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["dashboard", "conversations"],
+        }),
+        queryClient.invalidateQueries({
+          exact: true,
+          queryKey: conversationDetailQueryKey(conversationId),
+        }),
+      ]);
+    },
   });
 }
 

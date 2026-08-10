@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Archive } from "lucide-react";
+import { Archive, Plus } from "lucide-react";
 import { Link } from "react-router";
 
 import { useArchiveConversation } from "./queries";
@@ -34,6 +34,7 @@ export function ConversationSidebar(props: {
   query: string;
   selectedId?: string;
   timeZone: string;
+  onNewConversation(): void;
   onQueryChange(value: string): void;
 }) {
   const [archivedConversation, setArchivedConversation] =
@@ -48,13 +49,18 @@ export function ConversationSidebar(props: {
   return (
     <aside className="relative grid h-full min-h-0 min-w-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-white/[0.07] bg-white/[0.02]">
       <div className="px-5 pb-3 pt-5">
-        <div className="flex items-end justify-between gap-3">
+        <div className="flex items-center justify-between gap-3">
           <h2 className="m-0 font-display text-xl font-medium leading-tight text-dashboard-text">
             Conversations
           </h2>
-          <div className="rounded border border-white/[0.08] bg-black/20 px-2.5 py-1 font-mono text-xs text-dashboard-text-muted">
-            {props.loading ? "…" : props.conversations.length}
-          </div>
+          <button
+            className="inline-flex items-center gap-1.5 rounded border border-cyan-300/20 bg-cyan-300/[0.07] px-2.5 py-1.5 font-mono text-xs font-semibold text-cyan-50 transition hover:border-cyan-300/40 hover:bg-cyan-300/[0.12] focus:outline-none focus:ring-2 focus:ring-cyan-300/35"
+            onClick={props.onNewConversation}
+            type="button"
+          >
+            <Plus aria-hidden="true" size={14} />
+            New
+          </button>
         </div>
       </div>
       <div className="px-3 pb-3">
@@ -276,10 +282,7 @@ function ArchivedConversationNotice(props: {
         </button>
       </div>
       {restore.error ? (
-        <div
-          className="mt-1 font-mono text-xs text-rose-200/80"
-          role="alert"
-        >
+        <div className="mt-1 font-mono text-xs text-rose-200/80" role="alert">
           Could not restore the conversation.
         </div>
       ) : null}

@@ -122,6 +122,7 @@ export function conversationTranscriptMessages(
         ]),
         ...(data.actorIdentity ? { actorIdentity: data.actorIdentity } : {}),
         ...(data.eventType ? { eventType: data.eventType } : {}),
+        ...(data.source ? { source: data.source } : {}),
       };
       messages.push(message);
       if (message.role === "user") latestUserMessage = message;

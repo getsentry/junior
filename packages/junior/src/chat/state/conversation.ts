@@ -11,6 +11,7 @@ export interface ConversationAuthor {
 
 export interface ConversationMessageMeta {
   attachmentCount?: number;
+  source?: "slack" | "web";
   eventType?: string;
   explicitMention?: boolean;
   imageAttachmentCount?: number;

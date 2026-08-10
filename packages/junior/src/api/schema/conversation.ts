@@ -156,6 +156,7 @@ const conversationReportMessageEventDataSchema = z
     type: z.literal("message"),
     messageId: z.string().min(1),
     role: z.enum(["assistant", "system", "user"]),
+    source: z.enum(["slack", "web"]).optional(),
     actorIdentity: actorIdentitySchema.optional(),
     eventType: z.string().min(1).optional(),
     text: z.string().optional(),

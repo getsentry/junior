@@ -108,6 +108,7 @@ export type TranscriptViewMessage = {
   outcome?: "error" | "delivery_failed";
   parts: TranscriptViewPart[];
   role: "assistant" | "system" | "tool" | "user";
+  source?: "slack" | "web";
   sourceSeq: number;
   timestamp?: number;
 };

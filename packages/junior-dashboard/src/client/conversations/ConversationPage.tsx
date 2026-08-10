@@ -13,12 +13,14 @@ import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 import type { ConversationFeed } from "@sentry/junior/api/schema";
 
 import {
+  useAppendConversationMessage,
   useArchiveConversation,
   useConversationData,
   type PendingArchiveConversationUpdate,
 } from "./queries";
 import { buildConversationMarkdown } from "../markdownExport";
 import { CopyMarkdownButton } from "./CopyMarkdownButton";
+import { ConversationComposer } from "./ConversationComposer";
 import {
   buildConversations,
   conversationDisplayTitle,
@@ -67,6 +69,7 @@ export function ConversationPage(props: {
   const conversations = buildConversations(summaries);
   const detail = useConversationData(conversationId);
   const archive = useArchiveConversation(conversationId);
+  const appendMessage = useAppendConversationMessage(conversationId);
   const feedConversation = conversations.find(
     (item) => item.id === conversationId,
   );
@@ -144,9 +147,7 @@ export function ConversationPage(props: {
                 Transcript refresh failed. Showing the latest available data.
               </div>
             ) : null}
-            <ConversationPrivacyNotice
-              visibility={conversation?.visibility}
-            />
+            <ConversationPrivacyNotice visibility={conversation?.visibility} />
             <Transcript
               actions={
                 <CopyMarkdownButton
@@ -179,6 +180,31 @@ export function ConversationPage(props: {
               }}
               transcript={detail.data}
             />
+            {detail.data?.isParticipant ? (
+              <div className="sticky bottom-0 z-10 mt-3 border-t border-white/[0.07] bg-[#050507]/95 pb-1 pt-3 backdrop-blur md:mt-5 md:pt-4">
+                <p className="mb-2 mt-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
+                  {conversation?.surface === "slack"
+                    ? "This reply stays in Junior. It will not be posted to Slack."
+                    : "This reply stays in this conversation."}
+                </p>
+                <ConversationComposer
+                  error={
+                    appendMessage.error
+                      ? "Could not send the message. Try again."
+                      : undefined
+                  }
+                  label="Continue this conversation"
+                  pending={appendMessage.isPending}
+                  submitLabel="Send"
+                  onSubmit={async (message, idempotencyKey) => {
+                    await appendMessage.mutateAsync({
+                      idempotencyKey,
+                      message,
+                    });
+                  }}
+                />
+              </div>
+            ) : null}
           </>
         )}
       </section>
@@ -487,8 +513,7 @@ function ConversationStats(props: {
   });
   const sourceUrl = props.detail?.sourceUrl ?? props.conversation.sourceUrl;
   const durationLabel = formatConversationDuration(props.conversation);
-  const live =
-    (props.detail?.status ?? props.conversation.status) === "active";
+  const live = (props.detail?.status ?? props.conversation.status) === "active";
   const activeModelId = liveModelId(props.detail);
   const sourceTask = props.detail?.sourceTask;
   const rawStats: Array<MetricListItem | undefined> = [

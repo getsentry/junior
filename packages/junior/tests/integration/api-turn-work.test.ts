@@ -162,10 +162,12 @@ describe("api turn conversation work", () => {
       expect.objectContaining({
         role: "user",
         text: "Start a dashboard turn.",
+        meta: expect.objectContaining({ source: "web" }),
       }),
       expect.objectContaining({
         role: "assistant",
         text: "Stored only in Junior.",
+        meta: expect.objectContaining({ source: "web" }),
       }),
     ]);
 

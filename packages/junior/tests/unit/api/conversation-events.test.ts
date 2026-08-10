@@ -609,6 +609,7 @@ describe("conversation report event projection", () => {
           meta: {
             eventType: "pull_request.merged",
             provider: "private-provider",
+            source: "slack",
           },
         }),
       ],
@@ -618,6 +619,7 @@ describe("conversation report event projection", () => {
       type: "message",
       messageId: "event-1",
       role: "user",
+      source: "slack",
       eventType: "pull_request.merged",
       text: "event details",
     });

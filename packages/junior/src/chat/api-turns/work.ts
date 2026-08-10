@@ -631,6 +631,7 @@ export function createApiTurnWorker(options: {
             meta: {
               explicitMention: true,
               replied: false,
+              source: "web",
             },
           });
           await persistConversationMessages({
@@ -672,6 +673,7 @@ export function createApiTurnWorker(options: {
           recordDeliveredAssistantMessage({
             conversation,
             sessionId: turnId,
+            source: "web",
             text: replyText,
             userMessageId,
           });

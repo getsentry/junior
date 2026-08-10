@@ -154,6 +154,7 @@ export function upsertConversationMessage(
 export function recordDeliveredAssistantMessage(args: {
   conversation: ThreadConversationState;
   sessionId: string;
+  source?: "slack" | "web";
   text: string;
   userMessageId?: string;
 }): string {
@@ -178,6 +179,7 @@ export function recordDeliveredAssistantMessage(args: {
     },
     meta: {
       replied: true,
+      ...(args.source ? { source: args.source } : {}),
     },
   });
   return messageId;

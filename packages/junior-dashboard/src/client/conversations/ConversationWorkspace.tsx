@@ -4,7 +4,9 @@ import { Link, useNavigate, useParams } from "react-router";
 
 import { useConversationsData } from "../api";
 import { ConversationSidebar } from "./ConversationSidebar";
+import { ConversationComposer } from "./ConversationComposer";
 import {
+  useCreateConversation,
   usePendingArchiveConversationUpdates,
   type PendingArchiveConversationUpdate,
 } from "./queries";
@@ -29,6 +31,8 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
     props.data.config.authRequired ? props.data.me.user.email : undefined,
   );
   const pendingArchiveUpdates = usePendingArchiveConversationUpdates();
+  const createConversation = useCreateConversation();
+  const [creating, setCreating] = useState(false);
   const conversations = useMemo(
     () =>
       applyPendingArchiveUpdates(
@@ -57,10 +61,10 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
 
   useEffect(() => {
     const first = conversations[0];
-    if (desktop && !selectedId && first) {
+    if (desktop && !creating && !selectedId && first) {
       navigate(conversationPath(first.id), { replace: true });
     }
-  }, [conversations, desktop, navigate, selectedId]);
+  }, [conversations, creating, desktop, navigate, selectedId]);
 
   return (
     <div
@@ -71,7 +75,7 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
     >
       <div
         className={
-          selectedId
+          selectedId || creating
             ? "hidden h-full min-h-0 overflow-hidden md:block"
             : "h-full min-h-0 overflow-hidden"
         }
@@ -80,6 +84,10 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
           conversations={visibleConversations}
           error={feed.error?.message}
           loading={feed.isPending}
+          onNewConversation={() => {
+            createConversation.reset();
+            setCreating(true);
+          }}
           onQueryChange={setQuery}
           query={query}
           selectedId={selectedId}
@@ -89,12 +97,30 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
       <section
         aria-label="Selected conversation"
         className={
-          selectedId
+          selectedId || creating
             ? "grid min-h-0 grid-rows-[auto_1fr] overflow-hidden bg-white/[0.012]"
             : "hidden min-h-0 overflow-hidden bg-white/[0.012] md:grid"
         }
       >
-        {selectedId ? (
+        {creating ? (
+          <NewConversationView
+            error={
+              createConversation.error
+                ? "Could not create the conversation. Try again."
+                : undefined
+            }
+            pending={createConversation.isPending}
+            onCancel={() => setCreating(false)}
+            onSubmit={async (message, idempotencyKey) => {
+              const accepted = await createConversation.mutateAsync({
+                idempotencyKey,
+                message,
+              });
+              setCreating(false);
+              navigate(conversationPath(accepted.conversationId));
+            }}
+          />
+        ) : selectedId ? (
           <>
             <div className="border-b border-white/[0.07] bg-white/[0.025] px-3 py-2.5 md:hidden">
               <Link
@@ -138,6 +164,44 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
           </div>
         )}
       </section>
+    </div>
+  );
+}
+
+function NewConversationView(props: {
+  error?: string;
+  pending: boolean;
+  onCancel(): void;
+  onSubmit(message: string, idempotencyKey: string): Promise<void>;
+}) {
+  return (
+    <div className="grid min-h-0 place-items-center overflow-y-auto px-4 py-8 md:px-8">
+      <div className="w-full max-w-2xl">
+        <div className="mb-5">
+          <h2 className="m-0 font-display text-2xl font-medium tracking-[-0.03em] text-dashboard-text md:text-3xl">
+            New conversation
+          </h2>
+          <p className="mt-2 font-mono text-xs leading-relaxed text-dashboard-text-muted">
+            This conversation is public. Anyone in this workspace can open its
+            link. Only participants can send messages.
+          </p>
+        </div>
+        <ConversationComposer
+          error={props.error}
+          label="Start a conversation"
+          pending={props.pending}
+          submitLabel="Start conversation"
+          onSubmit={props.onSubmit}
+        />
+        <button
+          className="mt-3 font-mono text-xs text-dashboard-text-muted underline decoration-white/20 underline-offset-2 hover:text-dashboard-text"
+          disabled={props.pending}
+          onClick={props.onCancel}
+          type="button"
+        >
+          Cancel
+        </button>
+      </div>
     </div>
   );
 }

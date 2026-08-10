@@ -59,6 +59,7 @@ export function toConversationMessage(
     },
     meta: {
       attachmentCount: args.entry.attachments.length,
+      source: "slack",
       eventType: resourceEventType(args.entry),
       explicitMention: args.explicitMention,
       imageAttachmentCount:

@@ -317,6 +317,9 @@ function reportEventData(args: {
         type: "message",
         messageId: data.messageId,
         role: data.role,
+        ...(data.meta?.source === "slack" || data.meta?.source === "web"
+          ? { source: data.meta.source }
+          : {}),
         ...(actorIdentity ? { actorIdentity } : {}),
         ...(typeof data.meta?.eventType === "string"
           ? { eventType: data.meta.eventType }
