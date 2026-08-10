@@ -8,9 +8,9 @@ import { CONVERSATIONS_TOOL_SOURCE } from "@/chat/conversations/tool-source";
 import { getConversationMessageSearchStore } from "@/chat/db";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import {
-  parseRequiredSlackChannelIdParam,
-  slackChannelIdParam,
-} from "@/chat/slack/id-param";
+  resolveSlackChannelRef,
+  slackChannelRefParam,
+} from "@/chat/slack/tools/channel-target";
 import { getSlackMessagePermalink } from "@/chat/slack/outbound";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
@@ -44,22 +44,19 @@ interface ConversationMessageSearchToolDeps {
   store?: ConversationMessageSearchStore;
 }
 
-function resolveSearchFilters(input: {
+async function resolveSearchFilters(input: {
   channel_id?: string | null;
   query?: string | null;
-}): ConversationMessageSearchFilters {
+}): Promise<ConversationMessageSearchFilters> {
   const query = input.query?.trim() || undefined;
   let channelId: string | undefined;
 
-  if (input.channel_id != null) {
-    const parsed = parseRequiredSlackChannelIdParam(
-      "channel_id",
-      input.channel_id,
-    );
-    if (!parsed.ok) {
-      throw new ToolInputError(parsed.error);
-    }
-    channelId = parsed.value;
+  if (input.channel_id != null && input.channel_id.trim() !== "") {
+    const target = await resolveSlackChannelRef({
+      field: "channel_id",
+      value: input.channel_id,
+    });
+    channelId = target.channelId;
   }
 
   if (!query && !channelId) {
@@ -93,8 +90,8 @@ export function createSlackConversationMessageSearchTool(
     },
     inputSchema: z
       .object({
-        channel_id: slackChannelIdParam(
-          "Destination Slack channel ID; no active-channel default.",
+        channel_id: slackChannelRefParam(
+          "Destination Slack channel id (`C123`) or public channel name (`#foo`). No active-channel default.",
         )
           .nullable()
           .optional(),
@@ -118,7 +115,7 @@ export function createSlackConversationMessageSearchTool(
       .strict(),
     outputSchema: conversationMessageSearchOutputSchema,
     execute: async (input) => {
-      const filters = resolveSearchFilters(input);
+      const filters = await resolveSearchFilters(input);
       const store = deps.store ?? getConversationMessageSearchStore();
       const matches = await store.search({
         currentConversationId,

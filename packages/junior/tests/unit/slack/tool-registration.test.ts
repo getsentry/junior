@@ -165,7 +165,6 @@ describe("Slack tool registration", () => {
     const tools = createTools([], {}, context);
 
     expect(tools).toHaveProperty("slackPublicSearch");
-    expect(tools).toHaveProperty("slackChannelResolve");
     expect(tools).toHaveProperty("slackChannelJoin");
   });
 

@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createSlackChannelJoinTool } from "@/chat/slack/tools/channel-join";
 import { createSlackChannelListMessagesTool } from "@/chat/slack/tools/channel-list-messages";
-import { createSlackChannelResolveTool } from "@/chat/slack/tools/channel-resolve";
 import { createSlackMessageAddReactionTool } from "@/chat/slack/tools/message-add-reaction";
 import { createSendFilesTool } from "@/chat/slack/tools/send-files";
 import type { SlackToolContext } from "@/chat/slack/tools/context";
@@ -764,19 +763,45 @@ describe("slack channel tools", () => {
     expect(getCapturedSlackApiCalls("reactions.add")).toHaveLength(1);
   });
 
-  it("resolves a public channel name to a channel id", async () => {
+  it("lists history when channel_id is a public channel name", async () => {
     queueSlackApiResponse("conversations.list", {
       body: conversationsListPage({
         channels: [
-          { id: "C0PROJ", name: "proj-foo", is_member: false, is_private: false },
+          { id: "C0PROJ", name: "proj-foo", is_member: true, is_private: false },
         ],
       }),
     });
-    const tool = createSlackChannelResolveTool();
-    const result = await executeTool(tool, { channel_name: "#proj-foo" });
+    queueSlackApiResponse("conversations.info", {
+      body: conversationsInfoOk({
+        channelId: "C0PROJ",
+        name: "proj-foo",
+        isPrivate: false,
+        isMember: true,
+      }),
+    });
+    queueSlackApiResponse("conversations.history", {
+      body: conversationsHistoryPage({
+        messages: [{ ts: "1700000000.710", text: "named-id", user: "U3" }],
+      }),
+    });
+    const tool = createSlackChannelListMessagesTool(
+      createContext("list by name in channel_id"),
+      {
+        visibilityStore: {
+          async getDestinationVisibility() {
+            return undefined;
+          },
+        },
+      },
+    );
+    const result = await executeTool(tool, {
+      channel_id: "#proj-foo",
+      limit: 5,
+    });
     expect(result).toMatchObject({
+      channel_id: "C0PROJ",
+      channel_name: "proj-foo",
       count: 1,
-      channel: { channel_id: "C0PROJ", channel_name: "proj-foo" },
     });
   });
 
@@ -803,42 +828,31 @@ describe("slack channel tools", () => {
     expect(getCapturedSlackApiCalls("conversations.join")).toHaveLength(1);
   });
 
-  it("lists history by channel name", async () => {
+  it("joins a public channel when channel_id is a channel name", async () => {
     queueSlackApiResponse("conversations.list", {
       body: conversationsListPage({
         channels: [
-          { id: "C0OTHER", name: "other", is_member: true, is_private: false },
+          { id: "C0JOINNAME", name: "join-me", is_member: false, is_private: false },
         ],
       }),
     });
     queueSlackApiResponse("conversations.info", {
       body: conversationsInfoOk({
-        channelId: "C0OTHER",
-        name: "other",
+        channelId: "C0JOINNAME",
+        name: "join-me",
         isPrivate: false,
-        isMember: true,
+        isMember: false,
       }),
     });
-    queueSlackApiResponse("conversations.history", {
-      body: conversationsHistoryPage({
-        messages: [{ ts: "1700000000.800", text: "named", user: "U3" }],
-      }),
+    queueSlackApiResponse("conversations.join", {
+      body: conversationsJoinOk({ channelId: "C0JOINNAME", name: "join-me" }),
     });
-    const tool = createSlackChannelListMessagesTool(
-      createContext("list named channel"),
-      {
-        visibilityStore: {
-          async getDestinationVisibility() {
-            return undefined;
-          },
-        },
-      },
-    );
-    const result = await executeTool(tool, { channel_name: "other", limit: 5 });
+    const tool = createSlackChannelJoinTool(createContext("join by name"));
+    const result = await executeTool(tool, { channel_id: "#join-me" });
     expect(result).toMatchObject({
-      channel_id: "C0OTHER",
-      channel_name: "other",
-      count: 1,
+      channel_id: "C0JOINNAME",
+      channel_name: "join-me",
+      joined: true,
     });
   });
 

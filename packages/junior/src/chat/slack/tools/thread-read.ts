@@ -8,9 +8,10 @@ import {
   type SlackConversationInfoReader,
 } from "@/chat/slack/tools/channel-access";
 import {
-  parseRequiredSlackChannelIdParam,
-  slackChannelIdParam,
-} from "@/chat/slack/id-param";
+  resolveSlackChannelRef,
+  slackChannelRefParam,
+  type SlackChannelNameResolver,
+} from "@/chat/slack/tools/channel-target";
 import { z } from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
@@ -86,6 +87,7 @@ export function createSlackThreadReadTool(
   deps: {
     conversationInfo?: SlackConversationInfoReader;
     joinChannel?: SlackChannelJoinWriter;
+    nameResolver?: SlackChannelNameResolver;
     visibilityStore?: DestinationVisibilityReader;
   } = {},
 ) {
@@ -106,8 +108,8 @@ export function createSlackThreadReadTool(
           "Slack message archive URL, e.g. https://workspace.slack.com/archives/C123/p1700000000123456",
         )
         .optional(),
-      channel_id: slackChannelIdParam(
-        "Slack channel/conversation ID (e.g. C123). Use with `ts` as an alternative to `url`.",
+      channel_id: slackChannelRefParam(
+        "Slack channel id (`C123`) or public channel name (`#foo`). Use with `ts` as an alternative to `url`.",
       ).optional(),
       ts: slackTimestampParam(
         "Slack message timestamp (e.g. 1700000000.123456). May be the thread root or any message in the thread.",
@@ -146,14 +148,12 @@ export function createSlackThreadReadTool(
         if (!parsedTs.ok) {
           throw new ToolInputError(parsedTs.error);
         }
-        const parsedChannelId = parseRequiredSlackChannelIdParam(
-          "channel_id",
-          channel_id,
-        );
-        if (!parsedChannelId.ok) {
-          throw new ToolInputError(parsedChannelId.error);
-        }
-        channelId = parsedChannelId.value;
+        const target = await resolveSlackChannelRef({
+          field: "channel_id",
+          value: channel_id,
+          nameResolver: deps.nameResolver,
+        });
+        channelId = target.channelId;
         messageTs = parsedTs.value;
       } else {
         throw new ToolInputError(

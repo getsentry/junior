@@ -15,9 +15,8 @@ import {
   type SlackConversationInfoReader,
 } from "@/chat/slack/tools/channel-access";
 import {
-  optionalSlackChannelIdParam,
-  optionalSlackChannelNameParam,
-  resolveSlackChannelTarget,
+  optionalSlackChannelRefParam,
+  resolveOptionalSlackChannelRef,
   type SlackChannelNameResolver,
 } from "@/chat/slack/tools/channel-target";
 import { z } from "zod";
@@ -84,7 +83,7 @@ export function createSlackChannelListMessagesTool(
 ) {
   return zodTool({
     description:
-      "List messages from Slack channel history. Defaults to the active channel. Pass `channel_id` or `channel_name` (`#foo`) to read another public channel. For public channels the bot is not in yet, Junior joins on demand and retries. Use for recent or historical channel context outside this thread. This is raw Slack channel history, not Junior-retained chat search and not workspace-wide search.",
+      "List messages from Slack channel history. Defaults to the active channel. Pass `channel_id` as a channel id (`C123`) or public channel name (`#foo`) to read another public channel. For public channels the bot is not in yet, Junior joins on demand and retries. Use for recent or historical channel context outside this thread. This is raw Slack channel history, not Junior-retained chat search and not workspace-wide search.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -92,11 +91,8 @@ export function createSlackChannelListMessagesTool(
       readOnlyHint: true,
     },
     inputSchema: z.object({
-      channel_id: optionalSlackChannelIdParam(
-        "Optional Slack channel ID to read. Defaults to the active channel context.",
-      ),
-      channel_name: optionalSlackChannelNameParam(
-        "Optional public channel name with or without a leading #. Use when the user names the channel.",
+      channel_id: optionalSlackChannelRefParam(
+        "Optional Slack channel id (`C123`) or public channel name (`#foo` / `foo`). Defaults to the active channel context.",
       ),
       limit: z.coerce
         .number()
@@ -130,7 +126,6 @@ export function createSlackChannelListMessagesTool(
     outputSchema: juniorToolOutputSchema,
     execute: async ({
       channel_id,
-      channel_name,
       limit,
       cursor,
       oldest,
@@ -138,9 +133,9 @@ export function createSlackChannelListMessagesTool(
       inclusive,
       max_pages,
     }) => {
-      const target = await resolveSlackChannelTarget({
-        channelId: channel_id,
-        channelName: channel_name,
+      const target = await resolveOptionalSlackChannelRef({
+        field: "channel_id",
+        value: channel_id,
         defaultChannelId: context.destinationChannelId,
         nameResolver: deps.nameResolver,
       });

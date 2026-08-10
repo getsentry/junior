@@ -12,6 +12,8 @@ import {
   conversationsCanvasesCreateOk,
   conversationsHistoryPage,
   conversationsInfoOk,
+  conversationsJoinOk,
+  conversationsListPage,
   conversationsOpenOk,
   conversationsRepliesPage,
   filesCompleteUploadOk,
