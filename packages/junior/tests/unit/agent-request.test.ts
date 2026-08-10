@@ -32,7 +32,7 @@ describe("agent run routing", () => {
         },
       }),
     ).toThrow(
-      "Local source, destination, and run conversation IDs do not match",
+      "Source, destination, and run conversation IDs do not match",
     );
   });
 
@@ -49,6 +49,6 @@ describe("agent run routing", () => {
           surface: "internal",
         },
       }),
-    ).toThrow("Local source and destination conversation IDs do not match");
+    ).toThrow("Source and destination conversation IDs do not match");
   });
 });

@@ -208,9 +208,10 @@ function actorFromStoredConversation(
   if (!email) {
     return undefined;
   }
-  return apiActorFromEmail(email, {
-    ...(stored?.fullName ? { fullName: stored.fullName } : {}),
-  });
+  return apiActorFromEmail(
+    email,
+    stored?.fullName ? { fullName: stored.fullName } : undefined,
+  );
 }
 
 /** Build one API mailbox entry with conversation-only publish. */

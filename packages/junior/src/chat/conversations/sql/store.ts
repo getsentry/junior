@@ -4,7 +4,6 @@ import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { parseDestination, sameDestination } from "@/chat/destination";
 import { upsertIdentity } from "@/chat/identities/sql";
-import type { IdentityUpsert } from "@/chat/identities/identity";
 import type { StoredSlackActor } from "@/chat/actor";
 import {
   normalizeSessionSource,

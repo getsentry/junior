@@ -174,7 +174,7 @@ describe("executeAgentRun error path", () => {
         },
       }),
     ).rejects.toThrow(
-      "Local source, destination, and run conversation IDs do not match",
+      "Source, destination, and run conversation IDs do not match",
     );
   });
 });
