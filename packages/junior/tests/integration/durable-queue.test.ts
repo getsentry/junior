@@ -7,7 +7,10 @@ import {
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createConversationWork } from "@/chat/app/conversation-work";
 import { FUNCTION_TIMEOUT_BUFFER_SECONDS, getChatConfig } from "@/chat/config";
-import { loadProjection } from "@/chat/conversations/projection";
+import {
+  commitAcceptedReply,
+  loadProjection,
+} from "@/chat/conversations/projection";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
@@ -544,6 +547,73 @@ describe("durable queue contract", () => {
         replies: ["Deploy checked."],
       });
       await expectNextTurn(q, "1712345.0005");
+    });
+
+    it("does not report failure after SQL recorded an accepted reply", async () => {
+      // Stranded running turn whose destination reply is already durable.
+      // Heartbeat recovery must complete it quietly: no failure fallback and no
+      // second Slack post. Distinct from the timeout-park race below.
+      const turnId = await seedTurn("running");
+      await commitAcceptedReply({
+        conversationId: CONVERSATION_ID,
+        conversationMessageId: `${turnId}:assistant:1`,
+        conversation: {
+          schemaVersion: 1,
+          compactions: [],
+          messages: [
+            {
+              id: "1712345.0001",
+              role: "user",
+              text: "inspect the deploy",
+              createdAtMs: 1,
+              author: { userId: "U123" },
+              meta: { replied: true },
+            },
+            {
+              id: `${turnId}:assistant:1`,
+              role: "assistant",
+              text: "Deploy checked.",
+              createdAtMs: 2,
+              author: { isBot: true },
+              meta: { replied: true, slackTs: "1712345.0002" },
+            },
+          ],
+          processing: { activeTurnId: turnId },
+          vision: { byFileId: {} },
+        },
+      });
+      const q = await slack();
+      expect(
+        coerceThreadConversationState(
+          await getPersistedThreadState(CONVERSATION_ID),
+        ).processing.activeTurnId,
+      ).toBe(turnId);
+      await requestConversationWork({
+        conversationId: CONVERSATION_ID,
+        destination: SLACK_DESTINATION,
+        nowMs: 1_000,
+        state: q.state,
+      });
+      await startConversationWork({
+        conversationId: CONVERSATION_ID,
+        nowMs: 1_000,
+        state: q.state,
+      });
+      await recoverConversationWork({
+        nowMs: 1_000 + CONVERSATION_WORK_LEASE_TTL_MS,
+        queue: q.wakes,
+        state: q.state,
+      });
+
+      await expect(q.next()).resolves.toEqual({ status: "completed" });
+
+      await expectTerminalTurn(q, {
+        turnId,
+        state: "completed",
+        replies: [],
+      });
+
+      await expectNextTurn(q, "1712345.0003");
     });
 
     it("keeps an accepted assistant when timeout parks a shorter matching prefix", async () => {

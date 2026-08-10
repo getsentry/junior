@@ -135,13 +135,15 @@ behavior:
   turn; an authorization request parks the turn without retrying it.
 - **Failures:** failure before input commit retries without duplicate delivery;
   a timeout pause under a spent request deadline leaves the host request so the
-  next slice starts fresh; an accepted assistant stays committed when timeout
-  recovery parks a shorter matching history prefix, and the next wake completes
-  that turn without another model call; the agent runtime keeps the existing
-  same-boundary no-progress check; an expired worker lease stops its stranded
-  running turn while preserving committed history; and repeated agent failure
-  stops at the retry limit with at most one visible fallback. Each stopped state
-  must allow a later user request to complete.
+  next slice starts fresh; a stranded running turn with an accepted reply
+  completes quietly without a failure fallback or second post; an accepted
+  assistant stays committed when timeout recovery parks a shorter matching
+  history prefix, and the next wake completes that turn without another model
+  call; the agent runtime keeps the existing same-boundary no-progress check;
+  an expired worker lease stops its stranded running turn while preserving
+  committed history; and repeated agent failure stops at the retry limit with
+  at most one visible fallback. Each stopped state must allow a later user
+  request to complete.
 
 Broader heartbeat scheduling remains in
 `packages/junior/tests/integration/heartbeat.test.ts`. Component tests own

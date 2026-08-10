@@ -72,8 +72,9 @@ older source-thread context; it does not replace Pi history.
 - Persist inbound `message` events before agent execution.
 - Persist assistant `message` events only after destination acceptance.
 - Append stable native agent-history events in sequence order.
-- Treat a matching stale checkpoint prefix as a no-op. Accepted delivery may
-  have already appended its assistant message before timeout recovery runs.
+- If timeout recovery parks an older safe boundary after delivery already wrote
+  the assistant, keep the committed SQL history. Do not treat that shorter
+  matching checkpoint as a branch.
 - Reject attempts to mutate an already committed agent-history prefix.
 - Replace agent history only through explicit compaction or handoff.
 - Restore transcripts and agent history directly from conversation events.

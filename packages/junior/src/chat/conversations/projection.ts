@@ -113,12 +113,17 @@ function durableMessageIdentity(message: PiMessage): unknown {
 }
 
 /**
- * Count how much of `current` is a durable prefix of `next`.
+ * Measure how far `next` still matches the already-committed SQL history.
  *
- * Returns `current.length` only when every committed message still matches by
- * durable identity. A shorter matching `next` is a stale checkpoint prefix; a
- * content, role, or timestamp change is a branch that only compaction or
- * handoff may perform.
+ * `commitMessages` uses this count to choose one of three outcomes:
+ * - full match (`current.length`): append only the new suffix
+ * - shorter exact match: timeout recovery is parking an older safe boundary
+ *   after delivery already wrote the assistant; keep SQL history as-is
+ * - mismatch inside the shared range: a true content branch (reject unless
+ *   compaction or handoff rewrote history)
+ *
+ * Compare by durable identity so in-place Pi envelope fields (usage,
+ * stopReason) do not look like content branches.
  */
 function countDurablePrefix(current: PiMessage[], next: PiMessage[]): number {
   const limit = Math.min(current.length, next.length);
@@ -286,11 +291,13 @@ function messageTimestamp(message: PiMessage): number {
  * Append newly stable native history items.
  *
  * Checkpoints are append-only against the durable identity of the committed
- * prefix (role, timestamp, content; tool results also match call id). A shorter
- * matching history is a stale no-op because accepted delivery may already have
- * appended its assistant message. A true content branch is rejected. Only
- * compaction and handoff may replace active model history. In-place Pi mutations
- * of committed assistant envelopes (usage/stopReason) do not block the suffix.
+ * prefix (role, timestamp, content; tool results also match call id).
+ *
+ * Timeout recovery may park a shorter safe boundary after delivery already
+ * dual-wrote the assistant. That older exact prefix is a no-op: keep SQL as-is.
+ * A true content branch is rejected. Only compaction and handoff may replace
+ * active model history. In-place Pi mutations of committed assistant envelopes
+ * (usage/stopReason) do not block the suffix.
  */
 export async function commitMessages(args: {
   conversationId: string;
@@ -412,7 +419,12 @@ async function commitMessagesLocked(
       ? { newMessageProvenance: args.newMessageProvenance }
       : {}),
   });
-  const isStalePrefix =
+  // Timeout recovery parks with continuableMessages(...), which drops the
+  // trailing tool-free assistant. Delivery may already have dual-written that
+  // assistant into SQL. A shorter `next` that still matches every remaining
+  // message is that race, not a rewrite — leave SQL alone and return the live
+  // committed projection.
+  const checkpointIsOlderExactPrefix =
     nextLocalMessages.length < current.messages.length &&
     matchingPrefix === nextLocalMessages.length;
   if (matchingPrefix === current.messages.length) {
@@ -443,7 +455,7 @@ async function commitMessagesLocked(
       })),
       ...turnContextEvents,
     ]);
-  } else if (!isStalePrefix) {
+  } else if (!checkpointIsOlderExactPrefix) {
     throw new AgentHistoryBranchError(args.conversationId);
   }
   const committedEvents = await eventStore.loadCurrentHistory(
@@ -454,8 +466,12 @@ async function commitMessagesLocked(
     committedSeq: committedEvents.at(-1)?.seq ?? -1,
     historyVersion: committedEvents.at(-1)?.historyVersion ?? 0,
     messageSeqs: committed.seqs,
-    messages: isStalePrefix ? committed.messages : nextLocalMessages,
-    provenance: isStalePrefix ? committed.provenance : nextLocalProvenance,
+    messages: checkpointIsOlderExactPrefix
+      ? committed.messages
+      : nextLocalMessages,
+    provenance: checkpointIsOlderExactPrefix
+      ? committed.provenance
+      : nextLocalProvenance,
   };
 }
 
