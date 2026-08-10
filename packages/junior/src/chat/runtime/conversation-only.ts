@@ -216,11 +216,16 @@ async function runConversationOnlyTurnInContext(
     new ConversationTurnLifecycleService(getConversationEventStore());
 
   const now = deps.now ?? (() => Date.now());
+  // Match turn-cursor activity mapping: local destinations stay `local`, and a
+  // non-local destination uses the turn surface. Do not invent Slack-or-local.
+  const activitySource =
+    destination.platform === "local" ? "local" : surface;
   await getConversationStore().recordActivity({
     conversationId: input.conversationId,
     destination,
     nowMs: now(),
-    source: source.platform === "slack" ? "slack" : "local",
+    source: activitySource,
+    sessionSource: source,
   });
   const persisted = await getPersistedThreadState(input.conversationId);
   const conversation = coerceThreadConversationState(persisted);
@@ -529,6 +534,8 @@ async function runConversationOnlyTurnInContext(
         durationMs: reply.diagnostics.durationMs,
         usage: reply.diagnostics.usage,
         destination,
+        // Durable record must match live routing: conversation log only.
+        publishExternally: false,
         source,
         actor: actor,
         surface,

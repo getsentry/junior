@@ -3,7 +3,8 @@ import { createLocalSource } from "@sentry/junior-plugin-api";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { runConversationOnlyTurn } from "@/chat/runtime/conversation-only";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
-import { getConversationEventStore } from "@/chat/db";
+import { getConversationEventStore, getConversationStore } from "@/chat/db";
+import { getTurnRecord } from "@/chat/task-execution/checkpoint";
 
 function assistantMessage(text: string): AssistantMessage {
   return {
@@ -35,7 +36,9 @@ describe("conversation-only runtime", () => {
   it("accepts replies into the conversation log without an output observer", async () => {
     const conversationId = "local:runtime:conversation-only";
     const destination = { platform: "local", conversationId } as const;
+    const source = createLocalSource(conversationId);
     const reply = assistantMessage("Stored only in Junior.");
+    let turnId = "";
 
     await runConversationOnlyTurn(
       {
@@ -47,12 +50,14 @@ describe("conversation-only runtime", () => {
         conversationId,
         destination,
         message: "Keep this reply in Junior.",
-        source: createLocalSource(conversationId),
+        source,
+        // Surface may be api later; local destination still owns activity source.
         surface: "api",
       },
       {
         agentRunner: {
           run: async (request) => {
+            turnId = request.turnId;
             expect(request.routing.publishExternally).toBe(false);
             await request.delivery?.(reply);
             return completedAgentRun({
@@ -86,5 +91,16 @@ describe("conversation-only runtime", () => {
         text: "Stored only in Junior.",
       }),
     ]);
+
+    await expect(
+      getConversationStore().get({ conversationId }),
+    ).resolves.toMatchObject({
+      source: "local",
+      sessionSource: source,
+    });
+    await expect(getTurnRecord(conversationId, turnId)).resolves.toMatchObject({
+      publishExternally: false,
+      state: "completed",
+    });
   });
 });
