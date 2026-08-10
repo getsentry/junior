@@ -5,6 +5,7 @@ import {
   authenticatePersonalToken,
   createJuniorApi,
   jsonResponse,
+  resolveViewerUser,
   type JuniorApiVariables,
 } from "@sentry/junior/api";
 import { apiErrorSchema } from "@sentry/junior/api/schema";
@@ -380,10 +381,22 @@ function bearerSession(email: string): DashboardSession {
   };
 }
 
-function verifiedViewerEmail(session: DashboardSession): string | undefined {
-  return session.user.emailVerified === true
-    ? session.user.email.trim().toLowerCase()
-    : undefined;
+function verifiedSessionEmail(session: DashboardSession): string | undefined {
+  if (session.user.emailVerified !== true) return undefined;
+  const email = session.user.email.trim().toLowerCase();
+  return email || undefined;
+}
+
+/** Build a local mock viewer without creating a durable Junior user. */
+function mockViewerFromSession(session: DashboardSession) {
+  const email = verifiedSessionEmail(session);
+  if (!email) return undefined;
+  return {
+    email,
+    id: `mock-user:${email}`,
+    identities: [],
+    ...(session.user.name?.trim() ? { displayName: session.user.name } : {}),
+  };
 }
 
 function readAssetUrl(url: URL): string {
@@ -716,12 +729,13 @@ export function createDashboardApp(
     }
     const browserSession = await auth.getSession(c.req.raw);
     const token = personalBearerToken(c.req.raw);
+    const pathname = new URL(c.req.url).pathname;
     const tokenEmail =
       !browserSession &&
       token &&
       (c.req.method === "GET" || c.req.method === "HEAD") &&
-      new URL(c.req.url).pathname.startsWith("/api/") &&
-      !new URL(c.req.url).pathname.startsWith("/api/personal-tokens")
+      pathname.startsWith("/api/") &&
+      !pathname.startsWith("/api/personal-tokens")
         ? await authenticatePersonalToken(token)
         : undefined;
     const session =
@@ -736,7 +750,23 @@ export function createDashboardApp(
     }
     const sanitizedSession = sanitizeDashboardSession(session);
     c.set("authSession", sanitizedSession);
-    c.set("verifiedViewerEmail", verifiedViewerEmail(sanitizedSession));
+    // Resolve the canonical user only for authenticated API requests.
+    if (pathname.startsWith("/api/")) {
+      const email = verifiedSessionEmail(sanitizedSession);
+      if (!email) {
+        throw new Error(
+          "Authenticated dashboard session has no verified email",
+        );
+      }
+      // Mock reporting stays local and does not require durable user rows.
+      const viewer = options.mockConversations
+        ? mockViewerFromSession(sanitizedSession)
+        : await resolveViewerUser(email);
+      if (!viewer) {
+        throw new Error("Authenticated dashboard user could not be resolved");
+      }
+      c.set("viewer", viewer);
+    }
     await next();
   };
 

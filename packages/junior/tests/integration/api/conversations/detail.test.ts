@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { testViewer } from "../../../fixtures/user";
 import { createJuniorApi } from "@/api";
 import { conversationDetailReportSchema } from "@/api/schema";
 import {
@@ -134,7 +135,7 @@ describe("conversation detail API", () => {
     );
     await expect(
       readConversationDetail(conversationId, {
-        verifiedViewerEmail: "participant@example.com",
+        viewer: testViewer("participant@example.com"),
       }),
     ).resolves.toMatchObject({
       annotations: [
@@ -152,20 +153,16 @@ describe("conversation detail API", () => {
   });
 
   it("links a viewer-visible source task from a terminal execution", async () => {
-    const { createConfiguredJuniorSqlFixture } = await import(
-      "../../../fixtures/sql"
-    );
-    const { migrateSchema } = await import(
-      "@/chat/conversations/sql/migrations"
-    );
+    const { createConfiguredJuniorSqlFixture } =
+      await import("../../../fixtures/sql");
+    const { migrateSchema } =
+      await import("@/chat/conversations/sql/migrations");
     const { createSqlStore } = await import("@/chat/conversations/sql/store");
     const { resolveViewerUserFromSql } = await import("@/chat/plugins/viewer");
-    const { createSchedulerSqlStore } = await import(
-      "@/chat/scheduled-tasks/store"
-    );
-    const { recordTaskExecution } = await import(
-      "@/chat/tasks/execution-stats"
-    );
+    const { createSchedulerSqlStore } =
+      await import("@/chat/scheduled-tasks/store");
+    const { recordTaskExecution } =
+      await import("@/chat/tasks/execution-stats");
     const fixture = createConfiguredJuniorSqlFixture();
     const conversationStore = createSqlStore(fixture.sql);
     try {
@@ -241,7 +238,7 @@ describe("conversation detail API", () => {
 
       await expect(
         readConversationDetail(conversationId, {
-          verifiedViewerEmail: "viewer@example.com",
+          viewer: user!,
         }),
       ).resolves.toMatchObject({
         sourceTask: {

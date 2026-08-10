@@ -1,3 +1,4 @@
+import type { User } from "@sentry/junior-plugin-api";
 import { and, eq, gte, sql } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import {
@@ -112,7 +113,7 @@ function locationLabel(row: {
 /** Load one complete person profile while bounding only its recent-conversation list. */
 export async function readPeopleProfileFromSql(
   email: string,
-  options: { verifiedViewerEmail?: string } = {},
+  options: { viewer?: User } = {},
 ): Promise<ActorProfileReport> {
   const nowMs = Date.now();
   const normalizedEmail = normalizeEmail(email);
@@ -247,7 +248,7 @@ export async function readPeopleProfileFromSql(
     readConversationAccessFromSql(
       getDb(),
       recentConversationIds,
-      options.verifiedViewerEmail,
+      options.viewer,
     ),
     readRootConversationMetricsFromSql(getDb(), recentConversationIds),
   ]);

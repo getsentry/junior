@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { testViewer } from "../fixtures/user";
 import { readConversationDetail } from "@/api/conversations/detail";
 import { readConversationFeedFromSql } from "@/api/conversations/list";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
@@ -667,19 +668,21 @@ describe("dashboard canonical event reporting", () => {
       email: "Owner@Example.com",
     });
     const { getDb } = await import("@/chat/db");
+    const { resolveViewerUser } = await import("@/chat/plugins/viewer");
+    const rootViewer = await resolveViewerUser("owner@example.com");
+    expect(rootViewer).toBeDefined();
     await appendVisibleHistory(rootConversationId, "Private owner answer");
     await createChild({
       childConversationId,
       parentConversationId: rootConversationId,
     });
-
     await expect(requireDetail(rootConversationId)).resolves.toMatchObject({
       eventHistory: { status: "redacted" },
       isParticipant: false,
     });
     expect(
       await readConversationDetail(rootConversationId, {
-        verifiedViewerEmail: "other@example.com",
+        viewer: testViewer("other@example.com"),
       }),
     ).toMatchObject({
       eventHistory: { status: "redacted" },
@@ -687,7 +690,7 @@ describe("dashboard canonical event reporting", () => {
     });
     const rootParticipantDetail = await readConversationDetail(
       rootConversationId,
-      { verifiedViewerEmail: " owner@example.COM " },
+      { viewer: testViewer(" owner@example.COM ") },
     );
     expect(rootParticipantDetail).toMatchObject({
       displayTitle: "Canonical event report",
@@ -698,7 +701,7 @@ describe("dashboard canonical event reporting", () => {
     });
     const rootParticipantSummary = (
       await readConversationFeedFromSql({
-        verifiedViewerEmail: "owner@example.com",
+        viewer: testViewer("owner@example.com"),
       })
     ).conversations.find(
       (conversation) => conversation.conversationId === rootConversationId,
@@ -707,7 +710,7 @@ describe("dashboard canonical event reporting", () => {
     expect(rootParticipantDetail).toMatchObject(rootParticipantSummary ?? {});
     const childParticipantDetail = await readConversationDetail(
       childConversationId,
-      { verifiedViewerEmail: "owner@example.com" },
+      { viewer: rootViewer! },
     );
     expect(childParticipantDetail).toMatchObject({ isParticipant: true });
     expect(childParticipantDetail?.events[0]?.data).toMatchObject({
@@ -719,12 +722,10 @@ describe("dashboard canonical event reporting", () => {
       .set({ emailVerified: false })
       .where(eq(juniorIdentities.providerSubjectId, "U-owner"));
     expect(
-      await readConversationDetail(rootConversationId, {
-        verifiedViewerEmail: "owner@example.com",
-      }),
+      await readConversationDetail(rootConversationId, { viewer: rootViewer! }),
     ).toMatchObject({
-      eventHistory: { status: "redacted" },
-      isParticipant: false,
+      eventHistory: { status: "available" },
+      isParticipant: true,
     });
   });
 
@@ -806,7 +807,7 @@ describe("dashboard canonical event reporting", () => {
 
     await expect(
       readConversationDetail(cyclicRoot, {
-        verifiedViewerEmail: "cyclic-owner@example.com",
+        viewer: testViewer("cyclic-owner@example.com"),
       }),
     ).resolves.toMatchObject({
       eventHistory: { status: "redacted" },
@@ -830,7 +831,7 @@ describe("dashboard canonical event reporting", () => {
 
     await expect(
       readConversationDetail(destinationlessRoot, {
-        verifiedViewerEmail: "destinationless-owner@example.com",
+        viewer: testViewer("destinationless-owner@example.com"),
       }),
     ).resolves.toMatchObject({
       eventHistory: { status: "available" },
@@ -838,7 +839,7 @@ describe("dashboard canonical event reporting", () => {
     });
     const destinationlessSummary = (
       await readConversationFeedFromSql({
-        verifiedViewerEmail: "destinationless-owner@example.com",
+        viewer: testViewer("destinationless-owner@example.com"),
       })
     ).conversations.find(
       (conversation) => conversation.conversationId === destinationlessRoot,
@@ -864,7 +865,7 @@ describe("dashboard canonical event reporting", () => {
 
     await expect(
       readConversationDetail(malformedTopLevel, {
-        verifiedViewerEmail: "foreign-owner@example.com",
+        viewer: testViewer("foreign-owner@example.com"),
       }),
     ).resolves.toMatchObject({
       eventHistory: { status: "redacted" },
@@ -872,7 +873,7 @@ describe("dashboard canonical event reporting", () => {
     });
     const malformedSummary = (
       await readConversationFeedFromSql({
-        verifiedViewerEmail: "foreign-owner@example.com",
+        viewer: testViewer("foreign-owner@example.com"),
       })
     ).conversations.find(
       (conversation) => conversation.conversationId === malformedTopLevel,

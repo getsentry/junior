@@ -64,6 +64,9 @@ test("opens a conversation in the built dashboard", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Checkout latency triage" }),
   ).toBeVisible();
+  await expect(page.getByRole("note")).toContainText(
+    "Public conversation. Anyone in this workspace can see this transcript.",
+  );
 
   const costMetric = page
     .getByRole("main")
@@ -133,6 +136,13 @@ test("opens a conversation in the built dashboard", async ({ page }) => {
   ).toHaveAttribute("aria-current", "page");
   await expect(page.getByRole("link", { name: "Plugins" })).toHaveCount(0);
   expect(await containerBounds()).toEqual(headerBounds);
+
+  await page.goto(
+    `${server.baseURL}/conversations/${encodeURIComponent("slack:DQA123:1770007200.000300")}`,
+  );
+  await expect(page.getByRole("note")).toContainText(
+    "Private conversation. Only members of this conversation can see this transcript.",
+  );
   expect(browserErrors).toEqual([]);
 });
 

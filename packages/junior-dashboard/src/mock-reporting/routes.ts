@@ -50,7 +50,7 @@ export function createMockReportingApi(): Hono<{
     jsonResponse(actorDirectoryReportSchema, readMockPeopleDirectory()),
   );
   app.get("/people/me/spend", (context) => {
-    const email = context.get("verifiedViewerEmail");
+    const email = context.get("viewer")?.email;
     const report = email ? readMockPersonalSpend(email) : undefined;
     return report
       ? jsonResponse(personalSpendReportSchema, report)

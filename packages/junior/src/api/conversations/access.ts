@@ -1,3 +1,4 @@
+import type { User } from "@sentry/junior-plugin-api";
 import { eq, inArray } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { canExposeConversationPayload } from "@/chat/conversation-privacy";
@@ -23,11 +24,10 @@ export interface ConversationAccess {
 export async function readConversationAccessFromSql(
   db: JuniorDatabase,
   conversationIds: readonly string[],
-  verifiedViewerEmail?: string,
+  viewer?: User,
 ): Promise<Map<string, ConversationAccess>> {
   if (conversationIds.length === 0) return new Map();
-  const normalizedViewerEmail =
-    verifiedViewerEmail?.trim().toLowerCase() || undefined;
+  const normalizedViewerEmail = viewer?.email.trim().toLowerCase() || undefined;
 
   const rows = await db
     .select({
@@ -40,6 +40,7 @@ export async function readConversationAccessFromSql(
       visibility: rootDestination.visibility,
       rootEmailNormalized: rootIdentity.emailNormalized,
       rootEmailVerified: rootIdentity.emailVerified,
+      rootUserId: rootIdentity.userId,
     })
     .from(juniorConversations)
     .leftJoin(
@@ -75,9 +76,11 @@ export async function readConversationAccessFromSql(
         validRootConversationId === undefined ? null : row.visibility;
       const isParticipant =
         validRootConversationId !== undefined &&
-        normalizedViewerEmail !== undefined &&
-        row.rootEmailVerified === true &&
-        row.rootEmailNormalized === normalizedViewerEmail;
+        viewer !== undefined &&
+        (row.rootUserId === viewer.id ||
+          (normalizedViewerEmail !== undefined &&
+            row.rootEmailVerified === true &&
+            row.rootEmailNormalized === normalizedViewerEmail));
       const canViewPrivateContent =
         isParticipant ||
         (validRootConversationId !== undefined &&

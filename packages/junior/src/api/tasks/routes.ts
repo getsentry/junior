@@ -8,7 +8,7 @@ import {
 } from "@/api/schema/task";
 import { jsonResponse } from "@/api/http";
 import type { JuniorApiEnv } from "@/api/route";
-import { resolveViewerUser } from "@/chat/plugins/viewer";
+import { requireViewer } from "@/api/viewer";
 import {
   deleteViewerTask,
   readViewerTaskExecutions,
@@ -17,45 +17,19 @@ import {
   ViewerTaskNotFoundError,
 } from "@/chat/tasks/read";
 
-async function viewer(context: {
-  get(key: "verifiedViewerEmail"): string | undefined;
-}) {
-  const email = context.get("verifiedViewerEmail")?.trim();
-  return email ? await resolveViewerUser(email) : undefined;
-}
-
 /** Create authenticated native task list and action routes. */
 export function createTaskRoutes(): Hono<JuniorApiEnv> {
   const app = new Hono<JuniorApiEnv>();
-  app.get("/", async (context) => {
-    const user = await viewer(context);
-    return user
-      ? jsonResponse(taskListSchema, await readViewerTasks(user))
-      : jsonResponse(
-          apiErrorSchema,
-          { error: "Authentication required." },
-          { status: 401 },
-        );
+  app.get("/", requireViewer, async (context) => {
+    const user = context.get("viewer");
+    return jsonResponse(taskListSchema, await readViewerTasks(user));
   });
-  app.get("/runs", async (context) => {
-    const user = await viewer(context);
-    return user
-      ? jsonResponse(taskRunListSchema, await readViewerTaskRuns(user))
-      : jsonResponse(
-          apiErrorSchema,
-          { error: "Authentication required." },
-          { status: 401 },
-        );
+  app.get("/runs", requireViewer, async (context) => {
+    const user = context.get("viewer");
+    return jsonResponse(taskRunListSchema, await readViewerTaskRuns(user));
   });
-  app.get("/:kind/:id/executions", async (context) => {
-    const user = await viewer(context);
-    if (!user) {
-      return jsonResponse(
-        apiErrorSchema,
-        { error: "Authentication required." },
-        { status: 401 },
-      );
-    }
+  app.get("/:kind/:id/executions", requireViewer, async (context) => {
+    const user = context.get("viewer");
     const params = taskParamsSchema.safeParse(context.req.param());
     if (!params.success) {
       return jsonResponse(
@@ -80,15 +54,8 @@ export function createTaskRoutes(): Hono<JuniorApiEnv> {
       throw error;
     }
   });
-  app.delete("/:kind/:id", async (context) => {
-    const user = await viewer(context);
-    if (!user) {
-      return jsonResponse(
-        apiErrorSchema,
-        { error: "Authentication required." },
-        { status: 401 },
-      );
-    }
+  app.delete("/:kind/:id", requireViewer, async (context) => {
+    const user = context.get("viewer");
     const params = taskParamsSchema.safeParse(context.req.param());
     if (!params.success) {
       return jsonResponse(

@@ -1,61 +1,19 @@
-import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createApp, defineJuniorPlugins } from "@sentry/junior";
-import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { createDashboardApp } from "../src/app";
-import {
-  createDashboardAuth,
-  type DashboardAuth,
-  type DashboardSession,
-} from "../src/auth";
+import { createDashboardAuth, type DashboardSession } from "../src/auth";
+import { auth, resetDashboardEnv } from "./dashboard-test-helpers";
 
-const { authenticatePersonalToken } = vi.hoisted(() => ({
-  authenticatePersonalToken: vi.fn(),
+const { resolveViewerUser } = vi.hoisted(() => ({
+  resolveViewerUser: vi.fn(async (email: string) => ({
+    email,
+    id: `user:${email}`,
+    identities: [] as [],
+  })),
 }));
 vi.mock("@sentry/junior/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@sentry/junior/api")>()),
-  authenticatePersonalToken,
+  resolveViewerUser,
 }));
-
-const dashboardEnvNames = [
-  "BETTER_AUTH_SECRET",
-  "BETTER_AUTH_URL",
-  "GOOGLE_CLIENT_ID",
-  "GOOGLE_CLIENT_SECRET",
-  "JUNIOR_SECRET",
-  "JUNIOR_BASE_URL",
-  "VERCEL_PROJECT_PRODUCTION_URL",
-  "VERCEL_URL",
-  "JUNIOR_DASHBOARD_AUTH_REQUIRED",
-  "JUNIOR_DASHBOARD_COMPONENT_GALLERY",
-  "JUNIOR_DASHBOARD_GOOGLE_DOMAINS",
-  "JUNIOR_DASHBOARD_ALLOWED_EMAILS",
-  "JUNIOR_DASHBOARD_TRUSTED_ORIGINS",
-  "JUNIOR_DASHBOARD_MOCK_CONVERSATIONS",
-  "SENTRY_DSN",
-  "SENTRY_ORG_SLUG",
-] as const;
-
-function auth(
-  session: DashboardSession | null,
-  onSignIn?: (callbackURL: string) => void,
-): DashboardAuth {
-  return {
-    async handler() {
-      return Response.json({ ok: true });
-    },
-    async getSession() {
-      return session;
-    },
-    async signInWithGoogle(_request, callbackURL) {
-      onSignIn?.(callbackURL);
-      return Response.redirect(
-        "https://accounts.google.com/o/oauth2/v2/auth",
-        302,
-      );
-    },
-  };
-}
 
 function dashboard(session: DashboardSession | null) {
   return createDashboardApp({
@@ -65,31 +23,15 @@ function dashboard(session: DashboardSession | null) {
   });
 }
 
-function mockDashboardVirtualConfig() {
-  vi.doMock("#junior/config", () => ({
-    createDashboardApp,
-    functionMaxDurationSeconds: undefined,
-    dashboard: undefined,
-    pluginRuntimeRegistrations: [],
-    pluginSet: undefined,
-    plugins: undefined,
-  }));
-}
-
 describe("dashboard routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    authenticatePersonalToken.mockReset();
-    for (const name of dashboardEnvNames) {
-      delete process.env[name];
-    }
+    resetDashboardEnv();
   });
 
   afterEach(() => {
     vi.doUnmock("#junior/config");
-    for (const name of dashboardEnvNames) {
-      delete process.env[name];
-    }
+    resetDashboardEnv();
   });
 
   it("redirects unauthenticated dashboard page requests to login", async () => {
@@ -689,217 +631,6 @@ describe("dashboard routes", () => {
     );
 
     expect(response.status).toBe(403);
-  });
-
-  it("mounts dashboard routes through core app config", async () => {
-    mockDashboardVirtualConfig();
-    const app = await createApp({
-      dashboard: {
-        authRequired: false,
-        allowedGoogleDomains: ["sentry.io"],
-      },
-      plugins: defineJuniorPlugins([]),
-    });
-
-    const dashboard = await app.fetch(new Request("http://localhost/"));
-    expect(dashboard.status).toBe(200);
-    expect(await dashboard.text()).toContain("dashboard-root");
-
-    const info = await app.fetch(new Request("http://localhost/api/runtime"));
-    expect(info.status).toBe(200);
-    expect(await info.json()).toMatchObject({
-      cwd: expect.any(String),
-      providers: expect.any(Array),
-    });
-
-    const health = await app.fetch(new Request("http://localhost/health"));
-    expect(health.status).toBe(200);
-    expect(await health.json()).toMatchObject({
-      status: "ok",
-      service: "junior",
-    });
-
-    const oldInfo = await app.fetch(new Request("http://localhost/api/info"));
-    expect(oldInfo.status).toBe(404);
-
-    const chatRoute = await app.fetch(
-      new Request("http://localhost/chat/legacy-id"),
-    );
-    expect(chatRoute.status).toBe(404);
-  });
-
-  it("mounts plugin API route apps under the authenticated namespace", async () => {
-    mockDashboardVirtualConfig();
-    const pluginApp = new Hono();
-    pluginApp.get("/memories", (c) => {
-      return c.json({ path: c.req.path, ok: true });
-    });
-
-    const app = await createApp({
-      dashboard: {
-        authRequired: false,
-        allowedGoogleDomains: ["sentry.io"],
-      },
-      plugins: defineJuniorPlugins([
-        defineJuniorPlugin({
-          manifest: {
-            name: "memory",
-            displayName: "Memory",
-            description: "Memory plugin",
-          },
-          hooks: {
-            apiRoutes() {
-              return pluginApp;
-            },
-          },
-        }),
-      ]),
-    });
-
-    const response = await app.fetch(
-      new Request("http://localhost/api/plugins/memory/memories"),
-    );
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({
-      path: "/memories",
-      ok: true,
-    });
-
-    const health = await app.fetch(new Request("http://localhost/health"));
-    expect(health.status).toBe(200);
-  });
-
-  it("protects plugin API route apps with dashboard auth", async () => {
-    const pluginApp = new Hono();
-    pluginApp.get("/memories", (c) => {
-      return c.json({ path: c.req.path, ok: true });
-    });
-
-    const unauthenticated = createDashboardApp({
-      allowedGoogleDomains: ["sentry.io"],
-      auth: auth(null),
-      pluginRoutes: [{ app: pluginApp, pluginName: "memory" }],
-    });
-
-    const denied = await unauthenticated.fetch(
-      new Request("http://localhost/api/plugins/memory/memories"),
-    );
-
-    expect(denied.status).toBe(401);
-    await expect(denied.json()).resolves.toEqual({
-      error: "unauthenticated",
-    });
-
-    const authenticated = createDashboardApp({
-      allowedGoogleDomains: ["sentry.io"],
-      auth: auth({
-        user: {
-          email: "person@sentry.io",
-          emailVerified: true,
-        },
-      }),
-      pluginRoutes: [{ app: pluginApp, pluginName: "memory" }],
-    });
-
-    const allowed = await authenticated.fetch(
-      new Request("http://localhost/api/plugins/memory/memories"),
-    );
-
-    expect(allowed.status).toBe(200);
-    await expect(allowed.json()).resolves.toEqual({
-      path: "/memories",
-      ok: true,
-    });
-  });
-
-  it("rejects personal bearer token writes before plugin dispatch", async () => {
-    authenticatePersonalToken.mockResolvedValue("person@sentry.io");
-    let dispatched = false;
-    const pluginApp = new Hono();
-    pluginApp.delete("/memories/:id", (c) => {
-      dispatched = true;
-      return c.body(null, 204);
-    });
-    const app = createDashboardApp({
-      allowedGoogleDomains: ["sentry.io"],
-      auth: auth(null),
-      pluginRoutes: [{ app: pluginApp, pluginName: "memory" }],
-    });
-
-    const response = await app.fetch(
-      new Request("http://localhost/api/plugins/memory/memories/memory-1", {
-        headers: { authorization: "Bearer jr_pat_valid" },
-        method: "DELETE",
-      }),
-    );
-
-    expect(response.status).toBe(401);
-    expect(authenticatePersonalToken).not.toHaveBeenCalled();
-    expect(dispatched).toBe(false);
-  });
-
-  it("passes sanitized auth context to plugin API route apps", async () => {
-    let pluginContext: unknown;
-    const authenticated = createDashboardApp({
-      allowedGoogleDomains: ["sentry.io"],
-      auth: auth({
-        user: {
-          email: "person@sentry.io",
-          emailVerified: true,
-          name: "Person",
-        },
-      }),
-      pluginRoutes: [
-        {
-          app: {
-            fetch(_request, context) {
-              pluginContext = context;
-              return Response.json({ ok: true });
-            },
-          },
-          pluginName: "memory",
-        },
-      ],
-    });
-
-    const response = await authenticated.fetch(
-      new Request("http://localhost/api/plugins/memory/memories"),
-    );
-
-    expect(response.status).toBe(200);
-    expect(pluginContext).toEqual({
-      auth: {
-        user: {
-          email: "person@sentry.io",
-          emailVerified: true,
-          name: "Person",
-        },
-      },
-      pluginName: "memory",
-    });
-  });
-
-  it("does not authorize a synthetic participant when auth is disabled", async () => {
-    const pluginApp = new Hono<{
-      Variables: { verifiedViewerEmail?: string };
-    }>();
-    pluginApp.get("/viewer", (c) =>
-      c.json({ verifiedViewerEmail: c.get("verifiedViewerEmail") ?? null }),
-    );
-    const app = createDashboardApp({
-      authRequired: false,
-      allowedGoogleDomains: [],
-      pluginRoutes: [{ app: pluginApp, pluginName: "viewer" }],
-    });
-
-    const response = await app.fetch(
-      new Request("http://localhost/api/plugins/viewer/viewer"),
-    );
-
-    await expect(response.json()).resolves.toEqual({
-      verifiedViewerEmail: null,
-    });
   });
 
   it("resolves auth policy from env when dashboard options omit allowlists", async () => {

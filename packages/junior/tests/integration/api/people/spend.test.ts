@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
+import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { personalSpendReportSchema } from "@/api/schema";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { juniorConversations } from "@/db/schema";
@@ -11,7 +12,11 @@ import { seedPeople } from "./fixture";
 function authenticatedApi(email: string) {
   const app = new Hono<{ Variables: JuniorApiVariables }>();
   app.use("*", async (context, next) => {
-    context.set("verifiedViewerEmail", email);
+    const viewer = await resolveViewerUser(email);
+    if (!viewer) {
+      throw new Error(`missing viewer for ${email}`);
+    }
+    context.set("viewer", viewer);
     await next();
   });
   app.route("/", createJuniorApi());
@@ -142,6 +147,6 @@ describe("personal spend API", () => {
     const response = await createJuniorApi().request(
       "http://localhost/api/people/me/spend",
     );
-    expect(response.status).toBe(403);
+    expect(response.status).toBe(401);
   });
 });

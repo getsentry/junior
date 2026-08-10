@@ -133,6 +133,7 @@ export const conversationSummaryReportSchema = z
     auxiliaryCosts: conversationAuxiliaryCostsSchema.optional(),
     conversationId: z.string(),
     isParticipant: z.boolean(),
+    visibility: z.enum(["private", "public"]).optional(),
     status: conversationReportStatusSchema,
     startedAt: z.string(),
     lastSeenAt: z.string(),

@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
+import { resolveViewerUser } from "@/chat/plugins/viewer";
 import {
   createdPersonalTokenSchema,
   personalTokenListSchema,
@@ -11,7 +12,11 @@ import { closeDb } from "@/chat/db";
 function authenticatedApi(email = "person@example.com") {
   const app = new Hono<{ Variables: JuniorApiVariables }>();
   app.use("*", async (c, next) => {
-    c.set("verifiedViewerEmail", email);
+    const viewer = await resolveViewerUser(email);
+    if (!viewer) {
+      throw new Error(`missing viewer for ${email}`);
+    }
+    c.set("viewer", viewer);
     await next();
   });
   app.route("/", createJuniorApi());

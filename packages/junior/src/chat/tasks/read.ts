@@ -18,7 +18,6 @@ import {
   type TaskExecutionSummary,
 } from "@/chat/tasks/execution-stats";
 import { getDb } from "@/chat/db";
-import { resolveViewerUser } from "@/chat/plugins/viewer";
 import {
   deleteEventTask,
   eventTaskBelongsToUser,
@@ -532,18 +531,15 @@ export async function readViewerTaskExecutions(
 /** Resolve the source task for one conversation when a terminal execution links it. */
 export async function readConversationSourceTask(args: {
   conversationId: string;
-  verifiedViewerEmail?: string;
+  viewer?: User;
 }): Promise<ConversationSourceTask | undefined> {
   const execution = await readTaskExecutionByConversationId({
     conversationId: args.conversationId,
   });
   if (!execution) return undefined;
-  const email = args.verifiedViewerEmail?.trim();
-  if (!email) return { kind: execution.kind };
-  const user = await resolveViewerUser(email);
-  if (!user) return { kind: execution.kind };
+  if (!args.viewer) return { kind: execution.kind };
   const candidate = await resolveViewerTaskCandidate(
-    user,
+    args.viewer,
     execution.kind,
     execution.taskId,
   );

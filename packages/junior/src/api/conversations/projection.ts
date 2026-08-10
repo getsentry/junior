@@ -254,6 +254,7 @@ export function conversationSummaryFromStoredConversation(args: {
       visibility,
     }),
     isParticipant: args.access?.isParticipant ?? false,
+    ...(visibility ? { visibility } : {}),
     lastProgressAt: new Date(
       conversation.execution.updatedAtMs ?? conversation.updatedAtMs,
     ).toISOString(),

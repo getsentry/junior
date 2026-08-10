@@ -6,6 +6,7 @@ import {
   pluginUserPageLinksSchema,
 } from "@sentry/junior-plugin-api";
 import { createJuniorApi } from "@/api";
+import { resolveViewerUser } from "@/chat/plugins/viewer";
 import type { JuniorApiEnv } from "@/api/route";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
@@ -42,7 +43,11 @@ function plugin() {
 function authenticatedApi(email: string) {
   const app = new Hono<JuniorApiEnv>();
   app.use("*", async (context, next) => {
-    context.set("verifiedViewerEmail", email);
+    const viewer = await resolveViewerUser(email);
+    if (!viewer) {
+      throw new Error(`missing viewer for ${email}`);
+    }
+    context.set("viewer", viewer);
     await next();
   });
   app.route("/", createJuniorApi());

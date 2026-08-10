@@ -10,7 +10,10 @@ import type { JuniorApiEnv } from "@/api/route";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { createEventTask, getEventTask } from "@/chat/event-tasks/store";
-import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
+import {
+  resolveViewerUser,
+  resolveViewerUserFromSql,
+} from "@/chat/plugins/viewer";
 import { createSchedulerSqlStore } from "@/chat/scheduled-tasks/store";
 import type { ScheduledTask } from "@/chat/scheduled-tasks/types";
 import { recordTaskExecution } from "@/chat/tasks/execution-stats";
@@ -19,7 +22,11 @@ import { createConfiguredJuniorSqlFixture } from "../../fixtures/sql";
 function authenticatedApi(email: string) {
   const app = new Hono<JuniorApiEnv>();
   app.use("*", async (context, next) => {
-    context.set("verifiedViewerEmail", email);
+    const viewer = await resolveViewerUser(email);
+    if (!viewer) {
+      throw new Error(`missing viewer for ${email}`);
+    }
+    context.set("viewer", viewer);
     await next();
   });
   app.route("/", createJuniorApi());
@@ -97,7 +104,15 @@ describe("Tasks API", () => {
       );
       expect(otherIdentity).toBeDefined();
 
-      const nowMs = Date.parse("2026-08-03T12:00:00.000Z");
+      // Keep fixture times inside the trailing 7-day stats window.
+      const nowMs = Date.now();
+      const todayUtc = new Date(nowMs);
+      todayUtc.setUTCHours(0, 0, 0, 0);
+      const yesterdayUtcMs = todayUtc.getTime() - 24 * 60 * 60 * 1000;
+      const eventRunAtMs = yesterdayUtcMs - 12 * 60 * 60 * 1000;
+      const scheduledRun1AtMs = yesterdayUtcMs + 12 * 60 * 60 * 1000;
+      const scheduledRun2AtMs = yesterdayUtcMs + 13 * 60 * 60 * 1000;
+      const startDate = todayUtc.toISOString().slice(0, 10);
       const scheduledTask: ScheduledTask = {
         id: "sched_tasks_api",
         conversationAccess: { audience: "channel", visibility: "public" },
@@ -117,7 +132,7 @@ describe("Tasks API", () => {
           recurrence: {
             frequency: "daily",
             interval: 1,
-            startDate: "2026-08-03",
+            startDate,
             time: { hour: 12, minute: 0 },
           },
           timezone: "UTC",
@@ -229,25 +244,25 @@ describe("Tasks API", () => {
       await recordTaskExecution("scheduled", "sched_tasks_api", {
         conversationId: "agent-dispatch:sched-run-1",
         executionId: "sched-run-1",
-        nowMs: Date.parse("2026-08-04T12:00:00.000Z"),
+        nowMs: scheduledRun1AtMs,
         status: "completed",
       });
       await recordTaskExecution("scheduled", "sched_tasks_api", {
         conversationId: "agent-dispatch:sched-run-2",
         executionId: "sched-run-2",
-        nowMs: Date.parse("2026-08-04T13:00:00.000Z"),
+        nowMs: scheduledRun2AtMs,
         status: "failed",
       });
       await recordTaskExecution("event", "event_tasks_api", {
         conversationId: "agent-dispatch:event-run-1",
         executionId: "event-run-1",
-        nowMs: Date.parse("2026-08-03T12:00:00.000Z"),
+        nowMs: eventRunAtMs,
         status: "completed",
       });
       await recordTaskExecution("scheduled", "sched_tasks_api", {
         conversationId: "agent-dispatch:sched-run-2",
         executionId: "sched-run-2",
-        nowMs: Date.parse("2026-08-04T13:00:00.000Z"),
+        nowMs: scheduledRun2AtMs,
         status: "failed",
       });
 
@@ -287,7 +302,7 @@ describe("Tasks API", () => {
             id: "event_tasks_api",
             kind: "event",
             lastConversationId: "agent-dispatch:event-run-1",
-            lastRunAt: "2026-08-03T12:00:00.000Z",
+            lastRunAt: new Date(eventRunAtMs).toISOString(),
             ownedByViewer: true,
             runsLast7Days: 1,
             source: "linear",
@@ -303,7 +318,7 @@ describe("Tasks API", () => {
             instruction: "Untitled scheduled task",
             kind: "scheduled",
             lastConversationId: "agent-dispatch:sched-run-2",
-            lastRunAt: "2026-08-04T13:00:00.000Z",
+            lastRunAt: new Date(scheduledRun2AtMs).toISOString(),
             ownedByViewer: true,
             runsLast7Days: 2,
             schedule: "Schedule unavailable",
@@ -352,19 +367,22 @@ describe("Tasks API", () => {
       const executionList = taskExecutionListSchema.parse(
         await executionsResponse.json(),
       );
+      const scheduledRunDay = new Date(scheduledRun2AtMs)
+        .toISOString()
+        .slice(0, 10);
       expect(executionList).toEqual({
         executionDays: expect.any(Array),
         executions: [
           {
             conversationId: "agent-dispatch:sched-run-2",
-            executedAt: "2026-08-04T13:00:00.000Z",
+            executedAt: new Date(scheduledRun2AtMs).toISOString(),
             executionId: "sched-run-2",
             status: "failed",
             title: "Task execution fixture",
           },
           {
             conversationId: "agent-dispatch:sched-run-1",
-            executedAt: "2026-08-04T12:00:00.000Z",
+            executedAt: new Date(scheduledRun1AtMs).toISOString(),
             executionId: "sched-run-1",
             status: "completed",
             title: "Task execution fixture",
@@ -379,11 +397,11 @@ describe("Tasks API", () => {
       });
       expect(executionList.executionDays).toHaveLength(90);
       expect(
-        executionList.executionDays.find((day) => day.date === "2026-08-04"),
+        executionList.executionDays.find((day) => day.date === scheduledRunDay),
       ).toEqual({
         blocked: 0,
         completed: 1,
-        date: "2026-08-04",
+        date: scheduledRunDay,
         failed: 1,
       });
 

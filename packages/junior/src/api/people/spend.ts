@@ -1,4 +1,3 @@
-import { throwApiError } from "../http";
 import { defineApiRoute, type ApiRoute } from "../route";
 import {
   personalSpendReportSchema,
@@ -43,13 +42,12 @@ export function createPersonalSpendRoute(): ApiRoute<
   }
 
   return defineApiRoute({
+    auth: true,
     method: "get",
     path: "/me/spend",
     responseSchema: personalSpendReportSchema,
     handler: async (context) => {
-      const email = context.get("verifiedViewerEmail");
-      if (!email) throwApiError(403, "Verified viewer email required.");
-      return read(email);
+      return read(context.get("viewer").email);
     },
   });
 }

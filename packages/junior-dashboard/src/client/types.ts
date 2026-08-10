@@ -134,6 +134,7 @@ export type Conversation = {
   status: ConversationSummaryReport["status"];
   surface: ConversationSummaryReport["surface"];
   traceId?: string;
+  visibility?: ConversationSummaryReport["visibility"];
 };
 
 export type Identity = DashboardIdentity;

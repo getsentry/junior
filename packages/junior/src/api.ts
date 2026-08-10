@@ -21,6 +21,7 @@ import skillsRoute from "./api/skills";
 import statsRoute from "./api/stats";
 
 export { authenticatePersonalToken } from "./personal-tokens/store";
+export { resolveViewerUser } from "./chat/plugins/viewer";
 export type { JuniorApiVariables };
 export { jsonResponse };
 
