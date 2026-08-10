@@ -12,7 +12,8 @@ export type ConversationSource =
   | "plugin"
   | "resource_event"
   | "scheduler"
-  | "slack";
+  | "slack"
+  | "web";
 
 export type ConversationStatus =
   | "paused"

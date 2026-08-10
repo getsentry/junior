@@ -112,7 +112,8 @@ function sourceFromValue(value: unknown): ConversationSource | undefined {
     value === "plugin" ||
     value === "resource_event" ||
     value === "scheduler" ||
-    value === "slack"
+    value === "slack" ||
+    value === "web"
   ) {
     return value;
   }

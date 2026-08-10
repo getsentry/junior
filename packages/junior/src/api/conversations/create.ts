@@ -1,6 +1,6 @@
-import type { ApiActor } from "@/chat/actor";
+import type { WebActor } from "@/chat/actor";
 import {
-  apiActorFromEmail,
+  webActorFromEmail,
   appendAndEnqueueApiConversationMessage,
   createAndEnqueueApiConversation,
 } from "@/chat/api-turns/work";
@@ -16,9 +16,9 @@ import {
 } from "../schema/conversation";
 import { readConversationAccessFromSql } from "./access";
 
-function actorFromViewerEmail(email: string): ApiActor {
+function actorFromViewerEmail(email: string): WebActor {
   const normalized = email.trim().toLowerCase();
-  return apiActorFromEmail(normalized, {
+  return webActorFromEmail(normalized, {
     userName: normalized.split("@")[0] || normalized,
   });
 }
@@ -96,7 +96,7 @@ export const createConversationMessageRoute = defineApiRoute({
     if (
       !conversation.destination ||
       conversation.destination.platform !== "local" ||
-      !params.conversationId.startsWith("local:api:")
+      !params.conversationId.startsWith("local:web:")
     ) {
       throwApiError(409, "Conversation does not accept API messages.");
     }

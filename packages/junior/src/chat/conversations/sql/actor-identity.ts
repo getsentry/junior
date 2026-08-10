@@ -21,7 +21,7 @@ export function identityFromActor(
       metadata: { platform: "slack" },
     };
   }
-  // Dashboard/API actors store a verified email without a Slack subject.
+  // Dashboard/web actors store a verified email without a Slack subject.
   const email = actor?.email?.trim().toLowerCase();
   if (!email) {
     return undefined;
@@ -33,7 +33,7 @@ export function identityFromActor(
     email,
     emailVerified: true,
     ...(actor?.fullName ? { displayName: actor.fullName } : {}),
-    metadata: { platform: "api" },
+    metadata: { platform: "web" },
   };
 }
 
@@ -103,7 +103,7 @@ export function actorFromIdentityRow(
       ...(identity.providerTenantId ? { teamId: identity.providerTenantId } : {}),
     };
   }
-  // Dashboard/API actors are junior identities keyed by verified email.
+  // Dashboard/web actors are junior identities keyed by verified email.
   if (identity.provider === "junior" && email) {
     return {
       email,

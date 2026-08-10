@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createApiSource } from "@sentry/junior-plugin-api";
+import { createWebSource } from "@sentry/junior-plugin-api";
 import {
   appendAndEnqueueApiConversationMessage,
   apiTurnIdForMessage,
@@ -24,7 +24,7 @@ import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation
 import { createConfiguredJuniorSqlFixture } from "../fixtures/sql";
 
 const actor = {
-  platform: "api" as const,
+  platform: "web" as const,
   userId: "dashboard:alice",
   email: "alice@example.com",
   fullName: "Alice Example",
@@ -96,7 +96,7 @@ describe("api turn conversation work", () => {
     }
   });
 
-  it("enqueues public API turns with publishExternally false and runs them on the worker", async () => {
+  it("enqueues public web turns with publishExternally false and runs them on the worker", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
     await migrateSchema(fixture.sql);
     const conversationStore = createSqlStore(fixture.sql);
@@ -114,13 +114,13 @@ describe("api turn conversation work", () => {
         { conversationStore, queue, state },
       );
       expect(accepted.status).toBe("accepted");
-      expect(accepted.conversationId.startsWith("local:api:")).toBe(true);
+      expect(accepted.conversationId.startsWith("local:web:")).toBe(true);
 
       await expect(
         conversationStore.get({ conversationId: accepted.conversationId }),
       ).resolves.toMatchObject({
-        source: "api",
-        sessionSource: createApiSource(accepted.conversationId),
+        source: "web",
+        sessionSource: createWebSource(accepted.conversationId),
         visibility: "public",
         destination: {
           platform: "local",
@@ -140,7 +140,7 @@ describe("api turn conversation work", () => {
       });
       expect(inbound).toMatchObject({
         publishExternally: false,
-        source: "api",
+        source: "web",
       });
 
       let observedPublishExternally: boolean | undefined;
@@ -209,7 +209,7 @@ describe("api turn conversation work", () => {
       const route = routeApiTurnWork({
         apiTurnWorker: worker,
         fallbackWorker: async () => {
-          throw new Error("fallback worker must not run for API turns");
+          throw new Error("fallback worker must not run for web turns");
         },
       });
 
@@ -223,8 +223,8 @@ describe("api turn conversation work", () => {
       ).resolves.toMatchObject({ status: "completed" });
 
       expect(observedPublishExternally).toBe(false);
-      expect(observedSourcePlatform).toBe("api");
-      expect(observedActorPlatform).toBe("api");
+      expect(observedSourcePlatform).toBe("web");
+      expect(observedActorPlatform).toBe("web");
 
       const messages = (
         await getConversationEventStore().loadMessageHistory(
@@ -294,7 +294,7 @@ describe("api turn conversation work", () => {
         ],
         destination,
         publishExternally: false,
-        source: createApiSource(accepted.conversationId),
+        source: createWebSource(accepted.conversationId),
         actor,
         surface: "api",
       });

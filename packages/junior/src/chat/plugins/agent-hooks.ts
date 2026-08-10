@@ -585,43 +585,27 @@ export function getPluginTools(
         state: createPluginState(pluginName),
         users: { resolveActor },
       };
-    } else if (context.source.platform === "api") {
-      if (context.destination.platform !== "local") {
-        throw new TypeError(
-          "API plugin tool context requires local destination",
-        );
-      }
-      pluginContext = {
-        ...basePluginContext(plugin),
-        actor:
-          context.actor?.platform === "api" ? context.actor : undefined,
-        conversationId: context.conversationId,
-        ...(annotations ? { annotations } : {}),
-        destination: context.destination,
-        source: context.source,
-        userText: context.userText,
-        embedder: createPluginEmbedder(pluginName),
-        egress: context.egress,
-        ...(mcp ? { mcp } : {}),
-        model: createPluginModel(pluginName, plugin.model),
-        resourceEvents,
-        sandbox,
-        state: createPluginState(pluginName),
-        users: { resolveActor },
-      };
     } else {
       if (context.destination.platform !== "local") {
         throw new TypeError(
           "Local plugin tool context requires local destination",
         );
       }
-      if (context.source.platform !== "local") {
-        throw new TypeError("Local plugin tool context requires a local source");
+      if (
+        context.source.platform !== "local" &&
+        context.source.platform !== "web"
+      ) {
+        throw new TypeError(
+          "Local plugin tool context requires a local or web source",
+        );
       }
       pluginContext = {
         ...basePluginContext(plugin),
         actor:
-          context.actor?.platform === "local" ? context.actor : undefined,
+          context.actor?.platform === "local" ||
+          context.actor?.platform === "web"
+            ? context.actor
+            : undefined,
         conversationId: context.conversationId,
         ...(annotations ? { annotations } : {}),
         destination: context.destination,

@@ -317,29 +317,23 @@ export async function wireAgentTools(
       source: runSource,
       slackActionToken: args.routing.slackActionToken,
     };
-  } else if (runSource.platform === "api") {
-    if (toolDestination.platform !== "local") {
-      throw new TypeError("API tool runtime requires a local destination");
-    }
-    toolRuntimeContext = {
-      ...commonToolRuntimeContext,
-      destination: toolDestination,
-      actor:
-        args.currentActor?.platform === "api" ? args.currentActor : undefined,
-      source: runSource,
-    };
   } else {
     if (toolDestination.platform !== "local") {
       throw new TypeError("Local tool runtime requires a local destination");
     }
-    if (runSource.platform !== "local") {
-      throw new TypeError("Local tool runtime requires a local source");
+    if (runSource.platform !== "local" && runSource.platform !== "web") {
+      throw new TypeError(
+        "Local tool runtime requires a local or web source",
+      );
     }
     toolRuntimeContext = {
       ...commonToolRuntimeContext,
       destination: toolDestination,
       actor:
-        args.currentActor?.platform === "local" ? args.currentActor : undefined,
+        args.currentActor?.platform === "local" ||
+        args.currentActor?.platform === "web"
+          ? args.currentActor
+          : undefined,
       source: runSource,
     };
   }

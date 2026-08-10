@@ -31,7 +31,7 @@ describe("memory permalink record", () => {
     });
   });
 
-  it("accepts dashboard API source platform on permalink loads", () => {
+  it("accepts dashboard web source platform on permalink loads", () => {
     expect(
       memoryPageRecord({
         content: "Prefers short dashboard answers.",
@@ -40,13 +40,13 @@ describe("memory permalink record", () => {
         kind: "preference",
         observedAt: "2026-08-05T00:00:00.000Z",
         origin: "automatic",
-        sourcePlatform: "api",
+        sourcePlatform: "web",
         visibility: "private",
       }),
     ).toMatchObject({
       id: "memory/api-1",
       metadata: expect.arrayContaining([
-        { label: "Source", value: "Api" },
+        { label: "Source", value: "Web" },
         { label: "Learned", value: "Automatic" },
       ]),
       title: "Prefers short dashboard answers.",

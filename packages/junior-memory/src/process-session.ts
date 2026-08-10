@@ -66,7 +66,7 @@ function allowsPassiveMemoryExtraction(source: Source): boolean {
   switch (source.platform) {
     case "local":
       return true;
-    case "api":
+    case "web":
     case "slack":
       return source.visibility === "public";
   }

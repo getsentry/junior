@@ -71,10 +71,10 @@ export const localSourceSchema = z
   })
   .strict();
 
-/** Runtime-owned dashboard/API coordinates for the inbound invocation. */
-export const apiSourceSchema = z
+/** Runtime-owned dashboard/web coordinates for the inbound invocation. */
+export const webSourceSchema = z
   .object({
-    platform: z.literal("api"),
+    platform: z.literal("web"),
     visibility: sourceVisibilitySchema,
     conversationId: localConversationIdSchema,
   })
@@ -84,7 +84,7 @@ export const apiSourceSchema = z
 export const sourceSchema = z.discriminatedUnion("platform", [
   slackSourceSchema,
   localSourceSchema,
-  apiSourceSchema,
+  webSourceSchema,
 ]);
 
 /** Stable user credential subject shape accepted from plugins. */
@@ -132,10 +132,10 @@ export const localActorSchema = z
   })
   .strict();
 
-export const apiActorSchema = z
+export const webActorSchema = z
   .object({
     ...actorProfileSchema,
-    platform: z.literal("api"),
+    platform: z.literal("web"),
   })
   .strict();
 
@@ -150,7 +150,7 @@ export const systemActorSchema = z
 export const actorSchema = z.discriminatedUnion("platform", [
   slackActorSchema,
   localActorSchema,
-  apiActorSchema,
+  webActorSchema,
   systemActorSchema,
 ]);
 

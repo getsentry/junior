@@ -9,12 +9,12 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { StateAdapter } from "chat";
 import {
-  createApiSource,
+  createWebSource,
   localDestinationSchema,
   type LocalDestination,
 } from "@sentry/junior-plugin-api";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import type { ApiActor } from "@/chat/actor";
+import type { WebActor } from "@/chat/actor";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { loadProjection } from "@/chat/conversations/projection";
 import {
@@ -99,14 +99,14 @@ type EnqueueOptions = {
 };
 
 export interface CreateApiConversationInput {
-  actor: ApiActor;
+  actor: WebActor;
   message: string;
   /** Client-supplied idempotency key for the first message. */
   idempotencyKey: string;
 }
 
 export interface AppendApiConversationMessageInput {
-  actor: ApiActor;
+  actor: WebActor;
   conversationId: string;
   message: string;
   idempotencyKey: string;
@@ -139,7 +139,7 @@ export function createApiConversationId(args: {
   actorEmail: string;
   idempotencyKey: string;
 }): string {
-  return `local:api:${stableHex(
+  return `local:web:${stableHex(
     normalizeEmail(args.actorEmail),
     args.idempotencyKey,
   )}`;
@@ -168,9 +168,9 @@ function requireLocalDestination(conversationId: string): LocalDestination {
   return parsed.data;
 }
 
-function actorFromMetadata(metadata: ApiTurnMailboxMetadata): ApiActor {
+function actorFromMetadata(metadata: ApiTurnMailboxMetadata): WebActor {
   return {
-    platform: "api",
+    platform: "web",
     userId: metadata.authorUserId,
     email: normalizeEmail(metadata.authorEmail),
     ...(metadata.authorFullName ? { fullName: metadata.authorFullName } : {}),
@@ -178,8 +178,8 @@ function actorFromMetadata(metadata: ApiTurnMailboxMetadata): ApiActor {
   };
 }
 
-/** Durable conversation actor fields for API/dashboard participants. */
-function storedActorFromApi(actor: ApiActor): StoredSlackActor {
+/** Durable conversation actor fields for web/dashboard participants. */
+function storedActorFromApi(actor: WebActor): StoredSlackActor {
   return {
     ...(actor.email ? { email: normalizeEmail(actor.email) } : {}),
     ...(actor.fullName ? { fullName: actor.fullName } : {}),
@@ -187,13 +187,13 @@ function storedActorFromApi(actor: ApiActor): StoredSlackActor {
 }
 
 /** Rebuild the dashboard actor from durable conversation identity. */
-export function apiActorFromEmail(
+export function webActorFromEmail(
   email: string,
   profile?: { fullName?: string; userName?: string },
-): ApiActor {
+): WebActor {
   const normalized = normalizeEmail(email);
   return {
-    platform: "api",
+    platform: "web",
     userId: `dashboard:${stableHex(normalized)}`,
     email: normalized,
     ...(profile?.fullName ? { fullName: profile.fullName } : {}),
@@ -203,12 +203,12 @@ export function apiActorFromEmail(
 
 function actorFromStoredConversation(
   stored?: StoredSlackActor,
-): ApiActor | undefined {
+): WebActor | undefined {
   const email = stored?.email?.trim().toLowerCase();
   if (!email) {
     return undefined;
   }
-  return apiActorFromEmail(
+  return webActorFromEmail(
     email,
     stored?.fullName ? { fullName: stored.fullName } : undefined,
   );
@@ -216,7 +216,7 @@ function actorFromStoredConversation(
 
 /** Build one API mailbox entry with conversation-only publish. */
 export function buildApiTurnInboundMessage(args: {
-  actor: ApiActor;
+  actor: WebActor;
   conversationId: string;
   createdAtMs?: number;
   message: string;
@@ -252,24 +252,24 @@ export function buildApiTurnInboundMessage(args: {
     },
     receivedAtMs: nowMs,
     publishExternally: false,
-    source: "api",
+    source: "web",
   };
 }
 
 async function recordApiConversationActivity(args: {
-  actor: ApiActor;
+  actor: WebActor;
   conversationId: string;
   conversationStore?: ConversationStore;
   nowMs: number;
 }): Promise<LocalDestination> {
   const destination = requireLocalDestination(args.conversationId);
-  const source = createApiSource(args.conversationId);
+  const source = createWebSource(args.conversationId);
   await (args.conversationStore ?? getConversationStore()).recordActivity({
     conversationId: args.conversationId,
     destination,
     nowMs: args.nowMs,
     actor: storedActorFromApi(args.actor),
-    source: "api",
+    source: "web",
     sessionSource: source,
     // Dashboard-created conversations are public by default so links can be
     // shared. Private create remains a later product option.
@@ -359,7 +359,7 @@ function parseApiTurnMessages(
     return [];
   }
   if (parsed.some((entry) => !entry.metadata.success)) {
-    throw new Error("Conversation mailbox mixes API turns and other input");
+    throw new Error("Conversation mailbox mixes web turns and other input");
   }
   return parsed.map((entry) => {
     if (!entry.metadata.success) {
@@ -407,7 +407,7 @@ export async function resolveApiTurnWork(
   );
   if (active.length > 1) {
     throw new Error(
-      `Conversation ${context.conversationId} has multiple active API turns`,
+      `Conversation ${context.conversationId} has multiple active web turns`,
     );
   }
   const turnId = active[0]?.turnId;
@@ -473,7 +473,7 @@ export function createApiTurnWorker(options: {
       new ConversationTurnLifecycleService(getConversationEventStore());
 
     const isResume = resolved.kind === "resume";
-    let actor: ApiActor;
+    let actor: WebActor;
     let text: string;
     let turnId: string;
     let userMessageId: string;
@@ -513,12 +513,12 @@ export function createApiTurnWorker(options: {
     }
 
     const destination = requireLocalDestination(context.conversationId);
-    const source = createApiSource(context.conversationId);
+    const source = createWebSource(context.conversationId);
 
     return await withLogContext(
       {
         conversationId: context.conversationId,
-        platform: "api",
+        platform: "web",
         userId: actor.userId,
         ...(actor.userName ? { userName: actor.userName } : {}),
       },

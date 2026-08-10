@@ -100,7 +100,7 @@ export const juniorMemoryMemories = pgTable(
     ),
     check(
       "junior_memory_memories_source_platform_check",
-      sql`${table.sourcePlatform} IN ('slack', 'local', 'api')`,
+      sql`${table.sourcePlatform} IN ('slack', 'local', 'web')`,
     ),
   ],
 );

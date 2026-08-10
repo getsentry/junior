@@ -8,7 +8,7 @@ import {
   type LocalPgliteFixture,
 } from "@sentry/junior-testing/pglite";
 import {
-  createApiSource,
+  createWebSource,
   createLocalSource,
   createSlackSource,
   pluginApiRouteRequestContextSchema,
@@ -401,7 +401,7 @@ function viewerUser(actors: Actor[], email = "person@example.com") {
         return [];
       }
       // Dashboard actors persist as junior identities keyed by verified email.
-      if (actor.platform === "api") {
+      if (actor.platform === "web") {
         const subject = actor.email?.trim().toLowerCase() ?? email;
         return [
           {
@@ -434,16 +434,16 @@ function apiContext(
   } = {},
 ) {
   const conversationId =
-    overrides.conversationId ?? "local:api:memory-dashboard";
+    overrides.conversationId ?? "local:web:memory-dashboard";
   const email = overrides.email ?? "memory@example.com";
   return {
     conversationId,
     actor: {
-      platform: "api" as const,
+      platform: "web" as const,
       userId: overrides.userId ?? `dashboard:${email}`,
       email,
     },
-    source: createApiSource(conversationId, overrides.visibility ?? "public"),
+    source: createWebSource(conversationId, overrides.visibility ?? "public"),
   };
 }
 
@@ -1658,10 +1658,10 @@ describe("memory plugin storage", () => {
     }
   });
 
-  it("skips passive extraction for private dashboard API sources", async () => {
+  it("skips passive extraction for private dashboard web sources", async () => {
     const fixture = await createMemoryFixture();
     const runtime = apiContext({
-      conversationId: "local:api:memory-private-dashboard",
+      conversationId: "local:web:memory-private-dashboard",
       visibility: "private",
     });
 
@@ -1701,7 +1701,7 @@ describe("memory plugin storage", () => {
     }
   });
 
-  it("stores actor memories from public API completed sessions", async () => {
+  it("stores actor memories from public web completed sessions", async () => {
     const fixture = await createMemoryFixture();
     const { model } = extractionModel([
       {
@@ -1710,7 +1710,7 @@ describe("memory plugin storage", () => {
       },
     ]);
     const runtime = apiContext({
-      conversationId: "local:api:memory-public-dashboard",
+      conversationId: "local:web:memory-public-dashboard",
       email: "dashboard@example.com",
       visibility: "public",
     });
@@ -1748,7 +1748,7 @@ describe("memory plugin storage", () => {
           scope: "personal",
           scopeKey: "junior:dashboard@example.com",
           sourceKey: runtime.conversationId,
-          sourcePlatform: "api",
+          sourcePlatform: "web",
           subjectKey: "junior:dashboard@example.com",
           kind: "preference",
         },
@@ -1758,7 +1758,7 @@ describe("memory plugin storage", () => {
     }
   });
 
-  it("stores explicit API personal memory under the junior identity scope", async () => {
+  it("stores explicit web personal memory under the junior identity scope", async () => {
     const fixture = await createMemoryFixture();
     const runtime = apiContext({ email: "dashboard@example.com" });
 
@@ -1784,7 +1784,7 @@ describe("memory plugin storage", () => {
           scope: "personal",
           scopeKey: "junior:dashboard@example.com",
           sourceKey: runtime.conversationId,
-          sourcePlatform: "api",
+          sourcePlatform: "web",
           subjectKey: "junior:dashboard@example.com",
           subjectType: "user",
         },

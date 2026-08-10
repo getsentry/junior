@@ -70,6 +70,7 @@ const inboundMessageSourceSchema = z.enum([
   "resource_event",
   "scheduler",
   "slack",
+  "web",
 ]);
 
 export type Source = z.output<typeof inboundMessageSourceSchema>;

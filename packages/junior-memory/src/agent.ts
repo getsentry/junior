@@ -290,8 +290,8 @@ function actorLabel(
       return `slack:${actor.teamId}:${actor.userId}`;
     case "local":
       return `local:${actor.userId}`;
-    case "api":
-      return `api:${actor.userId}`;
+    case "web":
+      return `web:${actor.userId}`;
   }
 }
 
@@ -299,7 +299,7 @@ function sourceLabel(source: z.output<typeof sourceSchema>): string {
   switch (source.platform) {
     case "slack":
       return `slack:${source.teamId}:${source.channelId}`;
-    case "api":
+    case "web":
     case "local":
       return `${source.platform}:${source.conversationId}`;
   }

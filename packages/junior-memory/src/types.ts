@@ -9,8 +9,8 @@ export const MEMORY_SUBJECT_TYPES = [
   "conversation",
   "general",
 ] as const;
-// Durable attribution follows Source platform, including dashboard/API roots.
-export const MEMORY_SOURCE_PLATFORMS = ["slack", "local", "api"] as const;
+// Durable attribution follows Source platform, including dashboard/web roots.
+export const MEMORY_SOURCE_PLATFORMS = ["slack", "local", "web"] as const;
 export const MEMORY_EMBEDDING_METRICS = ["cosine"] as const;
 export const MEMORY_EMBEDDING_DIMENSIONS = 1536;
 

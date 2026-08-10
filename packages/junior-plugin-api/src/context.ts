@@ -3,7 +3,7 @@ import type { ZodTypeAny } from "zod";
 import {
   destinationSchema,
   identitySchema,
-  apiActorSchema,
+  webActorSchema,
   localActorSchema,
   platformSchema,
   actorSchema,
@@ -18,14 +18,14 @@ export type Platform = z.output<typeof platformSchema>;
 export type Actor = z.output<typeof actorSchema>;
 export type SlackActor = z.output<typeof slackActorSchema>;
 export type LocalActor = z.output<typeof localActorSchema>;
-export type ApiActor = z.output<typeof apiActorSchema>;
+export type WebActor = z.output<typeof webActorSchema>;
 export type SystemActor = z.output<typeof systemActorSchema>;
 export type Identity = z.output<typeof identitySchema>;
 export type User = z.output<typeof userSchema>;
 export type Source = z.output<typeof sourceSchema>;
 export type SlackSource = Extract<Source, { platform: "slack" }>;
 export type LocalSource = Extract<Source, { platform: "local" }>;
-export type ApiSource = Extract<Source, { platform: "api" }>;
+export type WebSource = Extract<Source, { platform: "web" }>;
 export type SourceVisibility = Source["visibility"];
 
 export type Destination = z.output<typeof destinationSchema>;
@@ -96,23 +96,13 @@ export interface SlackInvocationContext extends BaseInvocationContext {
 export interface LocalInvocationContext extends BaseInvocationContext {
   /** Runtime-owned default outbound destination for this invocation. */
   destination: LocalDestination;
-  actor?: LocalActor;
+  /** Local CLI or web/dashboard actors both deliver through a local destination. */
+  actor?: LocalActor | WebActor;
   /** Runtime-owned source where the invocation came from. */
-  source: LocalSource;
+  source: LocalSource | WebSource;
 }
 
-export interface ApiInvocationContext extends BaseInvocationContext {
-  /** Dashboard/API turns still deliver through a local conversation destination. */
-  destination: LocalDestination;
-  actor?: ApiActor;
-  /** Runtime-owned source where the invocation came from. */
-  source: ApiSource;
-}
-
-export type InvocationContext =
-  | ApiInvocationContext
-  | LocalInvocationContext
-  | SlackInvocationContext;
+export type InvocationContext = LocalInvocationContext | SlackInvocationContext;
 
 /** Build a normalized Slack source from runtime-owned Slack coordinates. */
 export function createSlackSource(input: {
@@ -142,13 +132,13 @@ export function createLocalSource(conversationId: string): LocalSource {
   };
 }
 
-/** Build a normalized API/dashboard source from a conversation id. */
-export function createApiSource(
+/** Build a normalized web/dashboard source from a conversation id. */
+export function createWebSource(
   conversationId: string,
   visibility: SourceVisibility = "public",
-): ApiSource {
+): WebSource {
   return {
-    platform: "api",
+    platform: "web",
     visibility,
     conversationId,
   };
@@ -162,7 +152,7 @@ export function isPrivateSource(source: Source): boolean {
 /** Return the stable source identity used for idempotency and attribution. */
 export function getSourceKey(source: Source): string | undefined {
   switch (source.platform) {
-    case "api":
+    case "web":
     case "local":
       return source.conversationId;
     case "slack": {

@@ -389,7 +389,7 @@
         },
         "junior_memory_memories_source_platform_check": {
           "name": "junior_memory_memories_source_platform_check",
-          "value": "\"junior_memory_memories\".\"source_platform\" IN ('slack', 'local', 'api')"
+          "value": "\"junior_memory_memories\".\"source_platform\" IN ('slack', 'local', 'web')"
         }
       },
       "isRLSEnabled": false

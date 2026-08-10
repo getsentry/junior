@@ -6,8 +6,8 @@ Canonical words used across Junior's code and documentation.
 
 - **Conversation**: the durable container for visible history and execution
   state, identified by a globally unique `conversationId`.
-- **Source**: where an inbound event came from, such as Slack, local CLI,
-  scheduler, or plugin dispatch.
+- **Source**: where an inbound event came from, such as Slack, local CLI, web
+  (dashboard), scheduler, or plugin dispatch.
 - **Destination**: where Junior sends output or side effects.
 - **Location**: the optional provider container associated with a conversation,
   identified by Junior and provider ids. Conversation visibility is separate.

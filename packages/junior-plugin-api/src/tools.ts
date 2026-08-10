@@ -1,6 +1,5 @@
 import type {
   Actor,
-  ApiInvocationContext,
   Identity,
   LocalInvocationContext,
   PluginContext,
@@ -515,7 +514,7 @@ interface BaseToolRegistrationHookContext extends PluginContext {
   /**
    * Opaque Junior conversation/session identity for this turn.
    * Interactive Slack turns use `slack:{channelId}:{threadTs}`.
-   * Scheduled/API turns use an internal id such as `agent-dispatch:{id}`.
+   * Scheduled/web turns use an internal id such as `agent-dispatch:{id}`.
    * Do not parse as Slack unless the value starts with `slack:`.
    */
   conversationId?: string;
@@ -545,12 +544,6 @@ interface LocalToolRegistrationContext
   slack?: never;
 }
 
-interface ApiToolRegistrationContext
-  extends BaseToolRegistrationHookContext, ApiInvocationContext {
-  slack?: never;
-}
-
 export type ToolRegistrationHookContext =
-  | ApiToolRegistrationContext
   | LocalToolRegistrationContext
   | SlackToolRegistrationContext;

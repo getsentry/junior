@@ -13,7 +13,7 @@ const memoryRecordSchema = z
     kind: z.enum(["preference", "procedure", "knowledge"]),
     observedAt: z.iso.datetime(),
     origin: z.enum(["automatic", "explicit", "other"]),
-    sourcePlatform: z.enum(["local", "slack", "api"]),
+    sourcePlatform: z.enum(["local", "slack", "web"]),
     visibility: z.enum(["private", "public"]),
   })
   .strict();

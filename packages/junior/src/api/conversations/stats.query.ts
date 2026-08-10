@@ -60,7 +60,7 @@ function actorLabel(row: {
 
 function surfaceLabel(source: string | null): string {
   if (source === "scheduler") return "Scheduler";
-  if (source === "api") return "API";
+  if (source === "api" || source === "web") return "Web";
   if (source === "internal" || source === "local") return "Internal";
   return "Conversation";
 }

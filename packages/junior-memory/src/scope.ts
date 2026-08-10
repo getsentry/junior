@@ -35,7 +35,7 @@ function personalScopeFromIdentity(
       scopeKey: `local:${identity.providerSubjectId}`,
     };
   }
-  // Dashboard/API actors persist as junior identities keyed by verified email.
+  // Dashboard/web actors persist as junior identities keyed by verified email.
   if (identity.provider === "junior") {
     return {
       scope: "personal",
@@ -79,7 +79,7 @@ export function deriveViewerMemoryScopes(identities: Identity[]): {
 /** Conversation-scoped key for the Source branch we actually have. */
 function sourceConversationKey(source: Source): string | undefined {
   switch (source.platform) {
-    case "api":
+    case "web":
     case "local":
       return source.conversationId;
     case "slack": {
@@ -107,7 +107,7 @@ function actorScopeKey(actor: Actor | undefined): string | undefined {
       return `slack:${actor.teamId}:${actor.userId}`;
     case "local":
       return `local:${actor.userId}`;
-    case "api": {
+    case "web": {
       // Match junior identity personal scopes used by the dashboard viewer.
       const email = actor.email?.trim().toLowerCase();
       return email ? `junior:${email}` : undefined;

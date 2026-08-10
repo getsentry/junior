@@ -62,7 +62,7 @@
       "idx": 8,
       "version": "7",
       "when": 1786345372977,
-      "tag": "0008_api_memory_source_platform",
+      "tag": "0008_web_memory_source_platform",
       "breakpoints": true
     }
   ]

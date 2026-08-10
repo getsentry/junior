@@ -393,15 +393,15 @@ function memorySourcePlatform(
       return "slack";
     case "local":
       return "local";
-    case "api":
-      return "api";
+    case "web":
+      return "web";
   }
 }
 
 /** Build the durable source attribution key from runtime-owned source fields. */
 function sourceKey(ctx: MemoryRuntimeContext): string {
   switch (ctx.source.platform) {
-    case "api":
+    case "web":
     case "local":
       return ctx.source.conversationId;
     case "slack": {
@@ -421,7 +421,7 @@ function sourceChannelPrefix(ctx: MemoryRuntimeContext): string | undefined {
     case "slack":
       // TODO(v0.82.0): Replace Slack source-key prefix matching with typed source proximity metadata.
       return `slack:${ctx.source.teamId}:${ctx.source.channelId}:`;
-    case "api":
+    case "web":
     case "local":
       return undefined;
   }

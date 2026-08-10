@@ -2,7 +2,7 @@ import { sourceSchema, type Source } from "@sentry/junior-plugin-api";
 
 /** Source coordinates reduced to the stable locator for one conversation. */
 export type SessionSource =
-  | Extract<Source, { platform: "api" }>
+  | Extract<Source, { platform: "web" }>
   | Extract<Source, { platform: "local" }>
   | Omit<Extract<Source, { platform: "slack" }>, "messageTs">;
 
@@ -25,9 +25,9 @@ export function normalizeSessionSource(
       conversationId: value.conversationId,
     };
   }
-  if (value.platform === "api") {
+  if (value.platform === "web") {
     return {
-      platform: "api",
+      platform: "web",
       visibility: value.visibility,
       conversationId: value.conversationId,
     };

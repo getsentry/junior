@@ -1,6 +1,6 @@
 import type { FileUpload } from "chat";
 import type {
-  ApiSource,
+  WebSource,
   Destination,
   Identity,
   LocalDestination,
@@ -17,7 +17,7 @@ import type { AgentTurnSurface } from "@/chat/task-execution/checkpoint";
 import type { Skill } from "@/chat/skills";
 import type { LoadSkillMetadata } from "@/chat/tools/skill/load-skill";
 import type { JuniorToolOutput } from "@/chat/tool-support/structured-result";
-import type { ApiActor, LocalActor, Actor, SlackActor } from "@/chat/actor";
+import type { WebActor, LocalActor, Actor, SlackActor } from "@/chat/actor";
 import type { SlackActionToken } from "@/chat/slack/action-token";
 import type { ModelProfile } from "@/chat/model-profile";
 import type { GeneratedArtifactFileRef } from "@/chat/tools/sandbox/file-uploads";
@@ -80,7 +80,7 @@ interface BaseToolRuntimeContext {
   /**
    * Opaque Junior conversation/session identity for this turn.
    * Interactive Slack turns use `slack:{channelId}:{threadTs}`.
-   * Scheduled/API turns use an internal id such as `agent-dispatch:{id}`.
+   * Scheduled/web turns use an internal id such as `agent-dispatch:{id}`.
    * Do not parse as Slack unless the value starts with `slack:`.
    */
   conversationId?: string;
@@ -114,22 +114,14 @@ interface SlackToolRuntimeContext extends BaseToolRuntimeContext {
 
 interface LocalToolRuntimeContext extends BaseToolRuntimeContext {
   destination: LocalDestination;
-  actor?: LocalActor;
-  source: LocalSource;
-  slack?: never;
-  slackActionToken?: never;
-}
-
-interface ApiToolRuntimeContext extends BaseToolRuntimeContext {
-  destination: LocalDestination;
-  actor?: ApiActor;
-  source: ApiSource;
+  /** Local CLI or web/dashboard actors share conversation-log delivery. */
+  actor?: LocalActor | WebActor;
+  source: LocalSource | WebSource;
   slack?: never;
   slackActionToken?: never;
 }
 
 export type ToolRuntimeContext =
-  | ApiToolRuntimeContext
   | LocalToolRuntimeContext
   | SlackToolRuntimeContext;
 

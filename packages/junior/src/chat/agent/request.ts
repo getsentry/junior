@@ -275,7 +275,7 @@ export function assertRunRoutingConsistency(
   request: Pick<AgentRunRequest, "conversationId" | "routing">,
 ): void {
   const { destination, source } = request.routing;
-  // API/dashboard turns keep a local destination for conversation-log delivery
+  // web/dashboard turns keep a local destination for conversation-log delivery
   // while Source records what produced the work.
   switch (source.platform) {
     case "slack": {
@@ -287,7 +287,7 @@ export function assertRunRoutingConsistency(
       }
       break;
     }
-    case "api":
+    case "web":
     case "local": {
       if (destination.platform !== "local") {
         throw new TypeError("Run source and destination platforms do not match");
@@ -319,8 +319,8 @@ export function assertRunRoutingConsistency(
         return destination.platform === "slack";
       case "local":
         return destination.platform === "local";
-      case "api":
-        // API actors write through the local conversation-log destination.
+      case "web":
+        // web actors write through the local conversation-log destination.
         return destination.platform === "local";
     }
   })();
@@ -360,7 +360,8 @@ export function surfaceFromRouting(routing: AgentRunRouting): AgentTurnSurface {
   if (routing.source.platform === "slack") {
     return "slack";
   }
-  if (routing.source.platform === "api") {
+  if (routing.source.platform === "web") {
+    // Web/dashboard turns share the non-Slack api surface with agent-dispatch.
     return "api";
   }
   return "internal";

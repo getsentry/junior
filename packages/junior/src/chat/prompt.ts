@@ -441,7 +441,7 @@ function buildRuntimeSection(params: {
 
 function formatSourceLines(source: Source): string[] {
   switch (source.platform) {
-    case "api":
+    case "web":
     case "local":
       return [
         `- source.platform: ${source.platform}`,
@@ -690,7 +690,7 @@ const STATIC_SYSTEM_PROMPTS: Record<PromptPlatform, string> = {
 
 /** Return byte-stable platform instructions shared by every conversation and turn. */
 export function buildSystemPrompt(params: { source: Source }): string {
-  // API/dashboard turns use the local (non-Slack) instruction surface.
+  // web/dashboard turns use the local (non-Slack) instruction surface.
   const platform: PromptPlatform =
     params.source.platform === "slack" ? "slack" : "local";
   return STATIC_SYSTEM_PROMPTS[platform];

@@ -351,13 +351,17 @@ async function recordConversationActivityMetadata(args: {
   // Only derive ConversationSource when routing is known. Abandon/fail no longer
   // carry nested destination, and SQL coalesce(excluded, existing) would otherwise
   // overwrite a durable `local` source with surface `internal`.
+  // Prefer the typed session Source branch when present so web/dashboard turns
+  // are not collapsed to local just because delivery uses a local destination.
   const activitySource = isChild
     ? "internal"
-    : destination?.platform === "local"
-      ? "local"
-      : destination
-        ? args.summary.surface
-        : undefined;
+    : args.source?.platform === "web"
+      ? "web"
+      : destination?.platform === "local"
+        ? "local"
+        : destination
+          ? args.summary.surface
+          : undefined;
   await conversationStore.recordActivity({
     activityAtMs: args.summary.updatedAtMs,
     channelName: args.summary.channelName,

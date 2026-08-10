@@ -64,8 +64,14 @@ function surfaceFromSource(
   source: ConversationSource | undefined,
   conversationId: string,
 ): ConversationSurface {
-  if (source === "slack" || source === "api" || source === "scheduler") {
-    return source;
+  if (
+    source === "slack" ||
+    source === "api" ||
+    source === "web" ||
+    source === "scheduler"
+  ) {
+    // Dashboard web conversations share the product api surface label.
+    return source === "web" ? "api" : source;
   }
   return surfaceFromConversationId(conversationId);
 }

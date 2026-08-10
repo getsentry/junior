@@ -267,7 +267,7 @@ async function loadConversationContextTranscriptEntries(
         return [];
       }
       break;
-    case "api":
+    case "web":
     case "local":
       return [];
   }
