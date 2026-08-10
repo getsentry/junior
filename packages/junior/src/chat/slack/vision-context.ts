@@ -460,7 +460,10 @@ async function hydrateConversationVisionContextWithDeps(
   >();
   for (const message of conversation.messages) {
     if (!isHumanConversationMessage(message)) continue;
-    if (message.meta?.imagesHydrated) continue;
+    const missingCachedSummary = (message.meta?.imageFileIds ?? []).some(
+      (fileId) => !conversation.vision.byFileId[fileId],
+    );
+    if (message.meta?.imagesHydrated && !missingCachedSummary) continue;
     const slackTs = getConversationMessageSlackTs(message);
     if (!slackTs) continue;
     messagesByTs.set(slackTs, message);

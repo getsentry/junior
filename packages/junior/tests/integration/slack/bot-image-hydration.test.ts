@@ -187,6 +187,171 @@ describe("bot image hydration", () => {
     expect(listThreadRepliesMock).toHaveBeenCalledTimes(1);
   }, 20_000);
 
+  it("migrates legacy thread vision into the separate cache", async () => {
+    const executeAgentRun = vi.fn<AgentRunner["run"]>(async (request) => {
+      const context = flattenAgentRunRequestForTest(request);
+      expect(context?.conversationContext).toContain("Legacy screenshot summary");
+      return makeSuccessOutcome();
+    });
+    const { slackRuntime } = await createRuntime(
+      {
+        services: {
+          visionContext: {
+            listThreadReplies: listThreadRepliesMock,
+          },
+          replyExecutor: {
+            agentRunner: { run: executeAgentRun },
+          },
+        },
+      },
+      { AI_VISION_MODEL: "openai/gpt-5.4" },
+    );
+    const threadId = "slack:C0IMAGE:1700000007.000";
+    const seededConversation = coerceThreadConversationState({});
+    seededConversation.messages.push({
+      id: "1700000007.100",
+      role: "user",
+      text: "legacy screenshot",
+      createdAtMs: 1700000007100,
+      meta: {
+        slackTs: "1700000007.100",
+        imageFileIds: ["F_LEGACY"],
+        imagesHydrated: true,
+      },
+      author: { userId: "U-user", userName: "user" },
+    });
+    await persistConversationMessages({
+      conversation: seededConversation,
+      conversationId: threadId,
+    });
+    const thread = await createTestThread({
+      id: threadId,
+      state: {
+        conversation: {
+          schemaVersion: 1,
+          processing: {},
+          vision: {
+            backfillCompletedAtMs: 1700000007200,
+            byFileId: {
+              F_LEGACY: {
+                summary: "Legacy screenshot summary",
+                analyzedAtMs: 1700000007150,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "1700000007.200",
+        text: "what did that screenshot show?",
+        threadId,
+        isMention: true,
+        author: {
+          userId: "U-user",
+          userName: "user",
+          fullName: "User Example",
+          isBot: false,
+          isMe: false,
+        },
+      }),
+      { destination: createTestDestination(thread) },
+    );
+
+    expect(listThreadRepliesMock).not.toHaveBeenCalled();
+    expect((await thread.getState()).conversation).not.toHaveProperty("vision");
+    const { loadConversationVisionCache } = await import(
+      "@/chat/slack/vision-cache"
+    );
+    expect((await loadConversationVisionCache(threadId)).byFileId.F_LEGACY).toEqual(
+      expect.objectContaining({ summary: "Legacy screenshot summary" }),
+    );
+  });
+
+  it("rebuilds summaries after the separate cache expires", async () => {
+    listThreadRepliesMock.mockResolvedValue([
+      {
+        ts: "1700000008.100",
+        files: [
+          {
+            id: "F_EXPIRED",
+            mimetype: "image/png",
+            url_private_download: "https://files.slack.com/private/expired.png",
+          },
+        ],
+      },
+    ]);
+    const downloadFileMock = vi.fn(async () => Buffer.from("downloaded-image"));
+    const completeTextMock = vi.fn(async () => ({
+      text: "Rebuilt screenshot summary",
+      message: {} as never,
+    }));
+    const { slackRuntime } = await createRuntime(
+      {
+        services: {
+          visionContext: {
+            listThreadReplies: listThreadRepliesMock,
+            downloadFile: downloadFileMock,
+            completeText: completeTextMock,
+          },
+          replyExecutor: {
+            agentRunner: { run: async () => makeSuccessOutcome() },
+          },
+        },
+      },
+      { AI_VISION_MODEL: "openai/gpt-5.4" },
+    );
+    const threadId = "slack:C0IMAGE:1700000008.000";
+    const seededConversation = coerceThreadConversationState({});
+    seededConversation.messages.push({
+      id: "1700000008.100",
+      role: "user",
+      text: "expired screenshot",
+      createdAtMs: 1700000008100,
+      meta: {
+        slackTs: "1700000008.100",
+        imageFileIds: ["F_EXPIRED"],
+        imagesHydrated: true,
+      },
+      author: { userId: "U-user", userName: "user" },
+    });
+    await persistConversationMessages({
+      conversation: seededConversation,
+      conversationId: threadId,
+    });
+    const thread = await createTestThread({ id: threadId });
+
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "1700000008.200",
+        text: "what did that screenshot show?",
+        threadId,
+        isMention: true,
+        author: {
+          userId: "U-user",
+          userName: "user",
+          fullName: "User Example",
+          isBot: false,
+          isMe: false,
+        },
+      }),
+      { destination: createTestDestination(thread) },
+    );
+
+    expect(downloadFileMock).toHaveBeenCalledTimes(1);
+    expect(completeTextMock).toHaveBeenCalledTimes(1);
+    const { loadConversationVisionCache } = await import(
+      "@/chat/slack/vision-cache"
+    );
+    expect((await loadConversationVisionCache(threadId)).byFileId.F_EXPIRED).toEqual(
+      expect.objectContaining({ summary: "Rebuilt screenshot summary" }),
+    );
+  });
+
   it("does not hydrate thread images when AI_VISION_MODEL is unset", async () => {
     const { slackRuntime } = await createRuntime({
       services: {
