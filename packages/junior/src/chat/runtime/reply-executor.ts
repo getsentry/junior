@@ -9,6 +9,7 @@
 import type { Message, Thread } from "chat";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { createSlackSource, type Destination } from "@sentry/junior-plugin-api";
+import type { ReplyDelivery } from "@/chat/task-execution/reply-delivery";
 import { botConfig } from "@/chat/config";
 import {
   modelIdForProfile,
@@ -449,6 +450,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
       onTurnStatePersisted?: () => Promise<void>;
       preparedState?: PreparedTurnState;
       queuedMessages?: QueuedTurnMessage[];
+      replyDelivery?: ReplyDelivery;
       execution?: DispatchTurnContext;
       skipBackfill?: boolean;
       drainSteeringMessages?: (
@@ -1379,6 +1381,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               slackConversation,
               source,
               destination,
+              replyDelivery: options.replyDelivery ?? "destination",
               ...(destinationVisibility ? { destinationVisibility } : {}),
               surface: options.execution?.surface ?? "slack",
               dispatch: options.execution?.dispatch,

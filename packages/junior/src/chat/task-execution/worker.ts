@@ -4,6 +4,7 @@ import { getChatConfig } from "@/chat/config";
 import { logException, logInfo, logWarn, withLogContext } from "@/chat/logging";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { isProviderRetryError } from "@/chat/services/provider-error";
+import type { ReplyDelivery } from "./reply-delivery";
 import {
   ConversationQueueMessageRejectedError,
   type ConversationQueueMessage,
@@ -41,6 +42,7 @@ export interface ConversationWorkerContext {
   checkIn(): Promise<boolean>;
   conversationId: string;
   destination?: Destination;
+  replyDelivery: ReplyDelivery;
   shouldYield(): boolean;
 }
 
@@ -84,19 +86,21 @@ function now(options: ProcessConversationWorkOptions): number {
   return options.nowMs?.() ?? Date.now();
 }
 
-function selectContiguousActorBatch(
+function selectContiguousTurnBatch(
   messages: readonly InboundMessage[],
 ): InboundMessage[] {
   const first = messages[0];
   if (!first) {
     return [];
   }
-  const nextActorIndex = messages.findIndex(
-    (message) => message.input.authorId !== first.input.authorId,
+  const nextTurnIndex = messages.findIndex(
+    (message) =>
+      message.input.authorId !== first.input.authorId ||
+      message.replyDelivery !== first.replyDelivery,
   );
   return messages.slice(
     0,
-    nextActorIndex === -1 ? messages.length : nextActorIndex,
+    nextTurnIndex === -1 ? messages.length : nextTurnIndex,
   );
 }
 
@@ -107,11 +111,11 @@ function selectAttemptMessages(work: ConversationWorkState): InboundMessage[] {
     (message) => message.delivery === "interrupt",
   );
   if (interrupts.length > 0) {
-    return selectContiguousActorBatch(interrupts);
+    return selectContiguousTurnBatch(interrupts);
   }
   return work.execution.status === "paused"
     ? []
-    : selectContiguousActorBatch(messages);
+    : selectContiguousTurnBatch(messages);
 }
 
 function nudgeIdempotencyKey(
@@ -517,6 +521,9 @@ async function processConversationWorkInContext(
       attemptMessageIds = attemptMessages.map(
         (message) => message.inboundMessageId,
       );
+      const replyDelivery =
+        attemptMessages[0]?.replyDelivery ??
+        (destination ? "destination" : "conversation");
       attemptSelectedMessageIds = new Set(attemptMessageIds);
       const ack = async (): Promise<void> => {
         const acknowledged = await ackMessages({
@@ -547,6 +554,7 @@ async function processConversationWorkInContext(
         },
         conversationId,
         destination,
+        replyDelivery,
         shouldYield,
         checkIn,
       };

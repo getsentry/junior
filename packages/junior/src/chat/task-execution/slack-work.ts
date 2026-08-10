@@ -583,6 +583,7 @@ export function createSlackResourceEventInboundMessage(
     delivery: "defer",
     source: "resource_event",
     receivedAtMs: Date.now(),
+    replyDelivery: "destination",
     input: {
       text: input.text,
       authorId: RESOURCE_EVENT_SLACK_AUTHOR_ID,
@@ -864,6 +865,7 @@ export function createSlackConversationWorker(
             await options.runtime.handleNewMention(thread, latestMessage, {
               conversationId: context.conversationId,
               destination,
+              replyDelivery: context.replyDelivery,
               messageContext,
               drainSteeringMessages,
               ack,
@@ -877,6 +879,7 @@ export function createSlackConversationWorker(
               {
                 conversationId: context.conversationId,
                 destination,
+                replyDelivery: context.replyDelivery,
                 messageContext,
                 drainSteeringMessages,
                 ack,
@@ -943,6 +946,7 @@ export function buildSlackInboundMessage(args: {
     source: "slack",
     createdAtMs: args.message.metadata.dateSent.getTime(),
     receivedAtMs: args.receivedAtMs,
+    replyDelivery: "destination",
     input: {
       text: args.message.text || " ",
       authorId,

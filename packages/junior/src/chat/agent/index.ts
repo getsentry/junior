@@ -421,6 +421,10 @@ async function executeAgentRunInPrivacyContext(
       ...(routing.dispatch?.id ? { dispatchId: routing.dispatch.id } : {}),
       durability,
       recordActiveMcpProviders,
+      replyDelivery:
+        checkpoint.record?.replyDelivery ??
+        routing.replyDelivery ??
+        "destination",
       actor,
       runSource,
       conversationId,

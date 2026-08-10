@@ -63,6 +63,7 @@ function createContext(
     checkIn: vi.fn(async () => true),
     conversationId: message.conversationId,
     destination,
+    replyDelivery: "destination",
     shouldYield: () => false,
     ...overrides,
   };

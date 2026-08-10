@@ -326,6 +326,10 @@ describe("Slack conversation work execution", () => {
         },
       },
     };
+    const malformedWithDelivery = {
+      ...malformed,
+      replyDelivery: "destination" as const,
+    };
     const worker = createSlackConversationWorker({
       getSlackAdapter: () => slackAdapter,
       runNextPausedTurn: async () => false,
@@ -348,11 +352,12 @@ describe("Slack conversation work execution", () => {
           destination: SLACK_DESTINATION,
           drain: async () => [],
           isFinalAttempt: false,
-          messages: [malformed],
+          messages: [malformedWithDelivery],
         },
         checkIn: async () => true,
         conversationId: CONVERSATION_ID,
         destination: SLACK_DESTINATION,
+        replyDelivery: "destination",
         shouldYield: () => false,
       }),
     ).rejects.toThrow(

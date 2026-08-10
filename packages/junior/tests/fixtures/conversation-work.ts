@@ -201,6 +201,7 @@ export function inboundMessage(
     source: "slack",
     createdAtMs: 1_000,
     receivedAtMs: 1_100,
+    replyDelivery: "destination",
     input: {
       text: `message ${inboundMessageId}`,
       authorId: "U123",

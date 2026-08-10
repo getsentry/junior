@@ -36,6 +36,7 @@ import {
 import { TurnSliceLimitExceededError } from "@/chat/services/turn-limit";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
+import type { ReplyDelivery } from "@/chat/task-execution/reply-delivery";
 
 interface ResumeStateArgs {
   channelName?: string;
@@ -44,6 +45,7 @@ interface ResumeStateArgs {
   dispatchId?: string;
   durability: AgentRunDurability;
   recordActiveMcpProviders: () => Promise<void>;
+  replyDelivery: ReplyDelivery;
   actor?: Actor;
   runSource: Source;
   conversationId: string;
@@ -120,6 +122,7 @@ export function createResumeState(args: ResumeStateArgs) {
     destination: args.destination,
     destinationVisibility: args.destinationVisibility,
     dispatchId: args.dispatchId,
+    replyDelivery: args.replyDelivery,
     source: args.runSource,
     actor: args.actor,
     surface: args.surface,

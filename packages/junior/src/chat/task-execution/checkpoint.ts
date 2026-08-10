@@ -24,6 +24,7 @@ import { persistWithRetry } from "@/chat/services/persist-retry";
 import { TurnSliceLimitExceededError } from "@/chat/services/turn-limit";
 import { botConfig } from "@/chat/config";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
+import type { ReplyDelivery } from "./reply-delivery";
 import { AgentHistoryBranchError } from "@/chat/conversations/projection";
 import {
   abandonTurnRecord,
@@ -80,6 +81,7 @@ interface TurnCheckpointWrite {
   destinationVisibility?: ConversationPrivacy;
   dispatchId?: string;
   dispatchOutcome?: AgentDispatchOutcome;
+  replyDelivery?: ReplyDelivery;
   source?: Source;
   surface?: AgentTurnSurface;
   turnStartMessageIndex?: number;
@@ -183,6 +185,7 @@ function sharedWrite(args: TurnCheckpointWrite, latest?: TurnRecord) {
       destination: args.destination,
       destinationVisibility: args.destinationVisibility,
       dispatchId: args.dispatchId ?? latest?.dispatchId,
+      replyDelivery: args.replyDelivery ?? latest?.replyDelivery,
       source: args.source,
       surface: args.surface ?? latest?.surface,
       traceId: getActiveTraceId() ?? latest?.traceId,

@@ -1016,6 +1016,45 @@ describe("conversation work execution", () => {
     expect(queue.sentRecords()).toEqual([]);
   });
 
+  it("keeps different reply delivery modes in separate attempts", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const attempts: Array<{ ids: string[]; replyDelivery: string }> = [];
+    await appendInboundMessage({
+      message: inboundMessage("m1", { delivery: "defer" }),
+      nowMs: 1_000,
+    });
+    await appendInboundMessage({
+      message: inboundMessage("m2", {
+        createdAtMs: 2_000,
+        delivery: "defer",
+        receivedAtMs: 2_000,
+        replyDelivery: "conversation",
+      }),
+      nowMs: 2_000,
+    });
+
+    await expect(
+      processConversationWork(conversationQueueMessage(), {
+        queue,
+        run: async (context) => {
+          attempts.push({
+            ids: context.attempt.messages.map(
+              (message) => message.inboundMessageId,
+            ),
+            replyDelivery: context.replyDelivery,
+          });
+          await context.attempt.ack();
+          return { status: "completed" };
+        },
+      }),
+    ).resolves.toEqual({ status: "completed" });
+
+    expect(attempts).toEqual([
+      { ids: ["m1"], replyDelivery: "destination" },
+      { ids: ["m2"], replyDelivery: "conversation" },
+    ]);
+  });
+
   it("resumes a paused turn before defer delivery after requeue", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     let currentNowMs = 1_000;

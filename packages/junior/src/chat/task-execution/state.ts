@@ -15,6 +15,7 @@ import { isRecord, toOptionalNumber, toOptionalString } from "@/chat/coerce";
 import { getChatConfig } from "@/chat/config";
 import { parseDestination, sameDestination } from "@/chat/destination";
 import { parseStoredSlackActor, type StoredSlackActor } from "@/chat/actor";
+import { replyDeliverySchema } from "./reply-delivery";
 import {
   getDefaultRedisStateAdapterFor,
   getStateAdapter,
@@ -114,6 +115,7 @@ export const inboundMessageSchema = z
     injectedAtMs: z.number().finite().optional(),
     input: agentInputSchema,
     receivedAtMs: z.number().finite(),
+    replyDelivery: replyDeliverySchema,
     source: inboundMessageSourceSchema,
   })
   .strict();
@@ -328,7 +330,14 @@ function normalizeExecutionStatus(value: unknown): ExecutionStatus | undefined {
 }
 
 function normalizeMessage(value: unknown): InboundMessage | undefined {
-  const parsed = inboundMessageSchema.safeParse(value);
+  const candidate =
+    isRecord(value) && value.replyDelivery === undefined
+      ? {
+          ...value,
+          replyDelivery: value.destination ? "destination" : "conversation",
+        }
+      : value;
+  const parsed = inboundMessageSchema.safeParse(candidate);
   return parsed.success ? parsed.data : undefined;
 }
 

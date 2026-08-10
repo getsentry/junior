@@ -8,6 +8,7 @@
  */
 import type { Message, MessageContext, Thread } from "chat";
 import type { Destination } from "@sentry/junior-plugin-api";
+import type { ReplyDelivery } from "@/chat/task-execution/reply-delivery";
 import { getSubscribedReplyPreflightDecision } from "@/chat/services/subscribed-decision";
 import { isProviderRetryError } from "@/chat/services/provider-error";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
@@ -85,6 +86,7 @@ interface SteeringDrainContext {
 export interface SlackTurnOptions extends ReplyHooks {
   conversationId?: string;
   destination: Destination;
+  replyDelivery?: ReplyDelivery;
 }
 
 const THREAD_OPTOUT_ACK =
