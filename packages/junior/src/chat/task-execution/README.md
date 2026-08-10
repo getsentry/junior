@@ -126,25 +126,28 @@ Junior-owned runtime behavior. They may fake only model generation at the
 agent runtime, resume logic, checkpoint, worker, lease, mailbox, and queue
 routing must run unchanged. The memory `StateAdapter` and in-memory queue
 implement production ports. Separate contract tests cover provider storage,
-Vercel signing, and Vercel options. The cases describe the expected product
-behavior:
+Vercel signing, and Vercel options. The cases own these product outcomes (see issue #1398):
 
-- **Success:** accepted input runs once, commits SQL history, delivers once, and
-  drains.
-- **Interrupts:** an explicit instruction received during a run steers the active
-  turn; an authorization request parks the turn without retrying it.
-- **Failures:** failure before input commit retries without duplicate delivery;
-  a timeout pause under a spent request deadline leaves the host request so the
-  next slice starts fresh; a live mention that times out after Slack accepts a
-  tool-free reply completes once with one destination post; a stranded running
-  turn with an accepted reply completes quietly without a failure fallback or
-  second post; the agent runtime keeps the existing same-boundary no-progress
-  check; an expired worker lease stops its stranded running turn while
-  preserving committed history; and repeated agent failure stops at the retry
-  limit with at most one visible fallback. Each stopped state must allow a later
-  user request to complete.
+- **Happy path:** one mention runs once, delivers one reply, and leaves the
+  conversation free for the next mention.
+- **Long turn survives host limit:** mid-work under a spent host deadline parks
+  at a safe boundary, leaves the host request, and finishes on a fresh queue wake
+  with one final reply.
+- **Accepted reply is terminal:** after Slack accepts a tool-free reply, the turn
+  completes once with no second post (deadline during accept, or worker death
+  after accept).
+- **Worker dies mid-run:** an expired lease with no accepted reply fails the turn
+  once, keeps committed history, and leaves the conversation free.
+- **Transient agent failure:** failure before input commit retries without a
+  Slack post; the retry limit stops with at most one fallback.
+- **Mid-turn steer:** a second `@` mention folds into the active turn and still
+  produces one final reply.
+
+Each terminal case must allow a later user mention to complete. Drive live Slack
+ingress when the path can create the state. Seed only dead-worker residue that a
+live process cannot leave behind in-process.
 
 Broader heartbeat scheduling remains in
-`packages/junior/tests/integration/heartbeat.test.ts`. Component tests own
-isolated transition details; they should not duplicate these end-to-end
-contracts.
+`packages/junior/tests/integration/heartbeat.test.ts`. Auth park and OAuth resume
+live in their own suites. Component tests own isolated transition details; they
+should not duplicate these end-to-end contracts.
