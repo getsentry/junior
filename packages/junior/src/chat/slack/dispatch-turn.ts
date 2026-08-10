@@ -22,7 +22,7 @@ interface DispatchReplyToThread {
       conversationId?: string;
       destination: DispatchRecord["destination"];
       execution: DispatchTurnContext;
-      onbooleanAccepted?: (messageId?: string) => void;
+      onTurnDeliveryAccepted?: (messageId?: string) => void;
       onTurnOutcome?: (result: DispatchTurnResult) => void;
       shouldYield?: () => boolean;
       skipBackfill?: boolean;
@@ -106,7 +106,7 @@ export function createSlackDispatchTurnRunner(options: {
         surface: routing.surface,
         turnId: getDispatchTurnId(dispatch.id),
       },
-      onbooleanAccepted: (messageId) => {
+      onTurnDeliveryAccepted: (messageId) => {
         resultMessageTs = messageId;
       },
       onTurnOutcome: (result) => {

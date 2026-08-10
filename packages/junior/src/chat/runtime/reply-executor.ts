@@ -444,7 +444,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
       ack?: () => Promise<void>;
       onToolInvocation?: (invocation: TurnToolInvocation) => void;
       onTurnCompleted?: () => Promise<void>;
-      onbooleanAccepted?: (messageId?: string) => void;
+      onTurnDeliveryAccepted?: (messageId?: string) => void;
       onTurnOutcome?: (result: DispatchTurnResult) => void;
       onTurnStatePersisted?: () => Promise<void>;
       preparedState?: PreparedTurnState;
@@ -785,7 +785,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 candidate.id.startsWith(`${turnId}:assistant:`) &&
                 candidate.meta?.replied === true,
             );
-          options.onbooleanAccepted?.(deliveredMessage?.meta?.slackTs);
+          options.onTurnDeliveryAccepted?.(deliveredMessage?.meta?.slackTs);
           options.onTurnOutcome?.({ outcome: "completed" });
           await persistThreadState(thread, {
             conversation: preparedState.conversation,
@@ -1112,7 +1112,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           const slackTs = slackMessageTs.at(-1);
           assistantMessageDelivered = true;
           acceptedDeliveryId = slackTs;
-          options.onbooleanAccepted?.(slackTs);
+          options.onTurnDeliveryAccepted?.(slackTs);
           const recordedMessageId = recordDeliveredAssistantMessage({
             conversation: preparedState.conversation,
             sessionId: turnId,
