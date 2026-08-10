@@ -387,6 +387,18 @@ function verifiedSessionEmail(session: DashboardSession): string | undefined {
   return email || undefined;
 }
 
+/** Build a local mock viewer without creating a durable Junior user. */
+function mockViewerFromSession(session: DashboardSession) {
+  const email = verifiedSessionEmail(session);
+  if (!email) return undefined;
+  return {
+    email,
+    id: `mock-user:${email}`,
+    identities: [],
+    ...(session.user.name?.trim() ? { displayName: session.user.name } : {}),
+  };
+}
+
 function readAssetUrl(url: URL): string {
   if (!existsSync(url)) {
     return "";
@@ -746,7 +758,10 @@ export function createDashboardApp(
           "Authenticated dashboard session has no verified email",
         );
       }
-      const viewer = await resolveViewerUser(email);
+      // Mock reporting stays local and does not require durable user rows.
+      const viewer = options.mockConversations
+        ? mockViewerFromSession(sanitizedSession)
+        : await resolveViewerUser(email);
       if (!viewer) {
         throw new Error("Authenticated dashboard user could not be resolved");
       }
