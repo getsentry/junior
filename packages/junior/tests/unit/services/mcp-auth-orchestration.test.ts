@@ -253,7 +253,7 @@ describe("createMcpAuthOrchestration", () => {
 
     expect(patchMcpAuthSession).toHaveBeenCalledWith("auth_existing", {
       configuration: { region: "us" },
-      toolChannelId: "C-tools",
+      toolChannelId: "C123",
     });
     expect(deleteMcpAuthSession).toHaveBeenCalledWith("auth_1");
     expect(getMcpAuthSession).not.toHaveBeenCalled();

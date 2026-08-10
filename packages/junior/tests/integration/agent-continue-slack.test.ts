@@ -269,7 +269,7 @@ describe("paused turn Slack integration", () => {
           },
           destination: SLACK_DESTINATION,
           source: storedSource,
-          toolChannelId: "C999",
+          toolChannelId: "C123",
         }),
         state: expect.objectContaining({
           sandboxRef: undefined,

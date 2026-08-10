@@ -247,6 +247,25 @@ describe("tool idempotency", () => {
   });
 
   it("deduplicates repeated slack_list_add_items operations in one turn", async () => {
+    queueSlackApiResponse("files.info", {
+      body: {
+        ok: true,
+        file: {
+          id: "list-1",
+          list_metadata: {
+            schema: [
+              {
+                id: "COL_TITLE",
+                key: "task",
+                name: "Task",
+                type: "rich_text",
+                is_primary_column: true,
+              },
+            ],
+          },
+        },
+      },
+    });
     queueSlackApiResponse("slackLists.items.create", {
       body: slackListsItemsCreateOk({ itemId: "item-1" }),
     });
@@ -257,9 +276,11 @@ describe("tool idempotency", () => {
     const tool = createSlackListAddItemsTool(state);
 
     const first = await executeTool(tool, {
+      list_id: "list-1",
       items: ["Ship patch", "Run test"],
     });
     const second = await executeTool(tool, {
+      list_id: "list-1",
       items: ["Ship patch", "Run test"],
     });
 
@@ -287,18 +308,45 @@ describe("tool idempotency", () => {
 
     await expect(
       executeTool(tool, {
+        list_id: "list-1",
         items: ["Ship patch"],
         assignee_user_id: "not-a-slack-user",
       }),
     ).rejects.toThrow(ToolInputError);
     expect(getCapturedSlackApiCalls("slackLists.items.create")).toHaveLength(0);
 
+    queueSlackApiResponse("files.info", {
+      body: {
+        ok: true,
+        file: {
+          id: "list-1",
+          list_metadata: {
+            schema: [
+              {
+                id: "COL_TITLE",
+                key: "task",
+                name: "Task",
+                type: "rich_text",
+                is_primary_column: true,
+              },
+              {
+                id: "COL_ASSIGNEE",
+                key: "assignee",
+                name: "Assignee",
+                type: "user",
+              },
+            ],
+          },
+        },
+      },
+    });
     queueSlackApiResponse("slackLists.items.create", {
       body: slackListsItemsCreateOk({ itemId: "item-1" }),
     });
 
     await expect(
       executeTool(tool, {
+        list_id: "list-1",
         items: ["Ship patch"],
         assignee_user_id: "U123",
       }),
@@ -313,7 +361,7 @@ describe("tool idempotency", () => {
       list_id: "list-1",
       initial_fields: expect.arrayContaining([
         expect.objectContaining({
-          column_id: "col-assignee",
+          column_id: "COL_ASSIGNEE",
           user: ["U123"],
         }),
       ]),

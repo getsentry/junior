@@ -477,7 +477,7 @@ describe("oauth callback integration", () => {
           },
           destination: SLACK_DESTINATION,
           source: storedSource,
-          toolChannelId: "C999",
+          toolChannelId: "C123",
         }),
       }),
     );
@@ -693,7 +693,7 @@ describe("oauth callback integration", () => {
           ),
         }),
         routing: expect.objectContaining({
-          toolChannelId: "CFRESH",
+          toolChannelId: "C123",
           destination: SLACK_DESTINATION,
         }),
       }),

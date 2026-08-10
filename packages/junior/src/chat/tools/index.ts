@@ -181,7 +181,7 @@ export function createTools(
     );
     tools.slackListCreate = createSlackListCreateTool(state);
     tools.slackListAddItems = createSlackListAddItemsTool(state);
-    tools.slackListGetItems = createSlackListGetItemsTool(state);
+    tools.slackListGetItems = createSlackListGetItemsTool();
     tools.slackListUpdateItem = createSlackListUpdateItemTool(state);
 
     const outputChannelId = slackContext.destinationChannelId;

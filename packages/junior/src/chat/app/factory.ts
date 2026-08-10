@@ -21,7 +21,6 @@ import {
 } from "@/chat/runtime/thread-context";
 import {
   getLocationConfigurationService,
-  getPersistedThreadState,
   persistThreadState,
 } from "@/chat/runtime/thread-state";
 import {
@@ -184,7 +183,6 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
     },
     replyToThread,
     initializeAssistantThread: async ({
-      threadId,
       channelId,
       threadTs,
       sourceChannelId,
@@ -197,7 +195,6 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
       });
     },
     refreshAssistantThreadContext: async ({
-      threadId,
       channelId,
       threadTs,
       sourceChannelId,

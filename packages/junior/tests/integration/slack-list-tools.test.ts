@@ -1,23 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { createSlackListGetItemsTool } from "@/chat/slack/tools/list/get-items";
-import type { ToolState } from "@/chat/tools/types";
 import { slackListsItemsListPage } from "../fixtures/slack/factories/api";
 import {
   getCapturedSlackApiCalls,
   queueSlackApiError,
   queueSlackApiResponse,
 } from "../msw/handlers/slack-api";
-
-function createToolState(): ToolState {
-  const operationResultCache = new Map<string, unknown>();
-  return {
-    getOperationResult: <T>(operationKey: string): T | undefined =>
-      operationResultCache.get(operationKey) as T | undefined,
-    setOperationResult: (operationKey, result) => {
-      operationResultCache.set(operationKey, result);
-    },
-  };
-}
 
 async function executeTool<TInput>(tool: any, input: TInput) {
   if (typeof tool?.execute !== "function") {
@@ -28,7 +16,7 @@ async function executeTool<TInput>(tool: any, input: TInput) {
 
 describe("slack list tools", () => {
   it("requires list_id in the schema", () => {
-    const tool = createSlackListGetItemsTool(createToolState());
+    const tool = createSlackListGetItemsTool();
     expect(tool.inputSchema).toMatchObject({
       properties: {
         list_id: expect.any(Object),
@@ -50,7 +38,7 @@ describe("slack list tools", () => {
         items: [{ id: "ROW_2", fields: [] }],
       }),
     });
-    const tool = createSlackListGetItemsTool(createToolState());
+    const tool = createSlackListGetItemsTool();
 
     const result = await executeTool(tool, {
       list_id: "LIST_123",
@@ -84,7 +72,7 @@ describe("slack list tools", () => {
       needed: "lists:read",
       provided: "chat:write",
     });
-    const tool = createSlackListGetItemsTool(createToolState());
+    const tool = createSlackListGetItemsTool();
 
     await expect(
       executeTool(tool, {

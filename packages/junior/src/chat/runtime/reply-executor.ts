@@ -1238,18 +1238,28 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           }
 
           status.update();
-          const assistantTitleTask = maybeUpdateAssistantTitle({
-            assistantThreadContext,
-            assistantUserName: botConfig.userName,
-            channelId,
-            conversation: preparedState.conversation,
-            generateThreadTitle: deps.services.generateThreadTitle,
-            getSlackAdapter: deps.getSlackAdapter,
-            modelId: botConfig.fastModelId,
-            actorId: slackActorId,
-            runId,
-            threadId,
-          });
+          const assistantTitleTask = (async () => {
+            if (conversationId) {
+              const storedConversation = await getConversationStore().get({
+                conversationId,
+              });
+              if (storedConversation?.title) {
+                return undefined;
+              }
+            }
+            return maybeUpdateAssistantTitle({
+              assistantThreadContext,
+              assistantUserName: botConfig.userName,
+              channelId,
+              conversation: preparedState.conversation,
+              generateThreadTitle: deps.services.generateThreadTitle,
+              getSlackAdapter: deps.getSlackAdapter,
+              modelId: botConfig.fastModelId,
+              actorId: slackActorId,
+              runId,
+              threadId,
+            });
+          })();
           void assistantTitleTask
             .then(async (titleUpdateResult) => {
               if (!titleUpdateResult) return;

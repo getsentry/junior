@@ -2707,10 +2707,6 @@ describe("bot handlers (integration)", () => {
           agentRunner: {
             run: async (request) => {
               const _text = request.input.messageText;
-              const context = {
-                ...flattenAgentRunRequestForTest(request),
-              };
-
               await vi.waitFor(() => {
                 expect(
                   fakeAdapter.titleCalls.some(

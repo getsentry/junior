@@ -29,7 +29,6 @@ import {
   getTurnRecord,
   listTurnSummaries,
 } from "@/chat/task-execution/turn-cursor";
-import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import {
   hydrateConversationMessages,
   persistConversationMessages,

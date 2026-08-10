@@ -1,9 +1,7 @@
-import type { Thread } from "chat";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getPersistedSandboxState,
   getPersistedThreadState,
-  persistThreadRuntimeState,
   persistThreadStateById,
 } from "@/chat/runtime/thread-state";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";

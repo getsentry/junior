@@ -402,7 +402,7 @@ describe("mcp oauth callback integration", () => {
       channelId: "C123",
       threadTs: "1700000000.001",
       source: storedSource,
-      toolChannelId: "C999",
+      toolChannelId: "C123",
       configuration: {
         region: "us",
       },
@@ -441,7 +441,7 @@ describe("mcp oauth callback integration", () => {
       channelId: "C123",
       threadTs: "1700000000.001",
       source: storedSource,
-      toolChannelId: "C999",
+      toolChannelId: "C123",
       configuration: {
         region: "us",
       },
@@ -522,7 +522,7 @@ describe("mcp oauth callback integration", () => {
           },
           destination: SLACK_DESTINATION,
           source: storedSource,
-          toolChannelId: "C999",
+          toolChannelId: "C123",
         }),
         state: expect.objectContaining({}),
       }),
@@ -742,7 +742,7 @@ describe("mcp oauth callback integration", () => {
         }),
         routing: expect.objectContaining({
           destination: SLACK_DESTINATION,
-          toolChannelId: "CFRESH",
+          toolChannelId: "C123",
         }),
       }),
     );
