@@ -1,3 +1,4 @@
+import type { User } from "@sentry/junior-plugin-api";
 import { locationDetailReportSchema } from "../schema/location";
 import { readLocationDetailFromSql } from "./query";
 import { defineApiRoute } from "../route";
@@ -7,7 +8,7 @@ import { locationParamsSchema } from "../schema/location";
 /** Expose operational detail for one persisted public conversation location. */
 export async function readLocationDetail(
   locationId: string,
-  options: { verifiedViewerEmail?: string } = {},
+  options: { viewer?: User } = {},
 ) {
   const report = await readLocationDetailFromSql(locationId, options);
   return report ? locationDetailReportSchema.parse(report) : undefined;
@@ -23,7 +24,7 @@ export default defineApiRoute({
     const viewer = c.get("viewer");
     const report = await readLocationDetail(
       locationId,
-      viewer ? { verifiedViewerEmail: viewer.email } : {},
+      viewer ? { viewer } : {},
     );
     if (!report) throwApiError(404, "Location not found.");
     return report;

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { testViewer } from "../../../fixtures/user";
 import { eq } from "drizzle-orm";
 import { createJuniorApi } from "@/api";
 import { readConversationAccessFromSql } from "@/api/conversations/access";
@@ -69,7 +70,8 @@ describe("conversation list API", () => {
         conversations: [
           expect.objectContaining({
             conversationId: "slack:C123:source-link",
-            sourceUrl: "https://example.slack.com/archives/C123/p1700000000000100?thread_ts=1700000000.000100&cid=C123",
+            sourceUrl:
+              "https://example.slack.com/archives/C123/p1700000000000100?thread_ts=1700000000.000100&cid=C123",
           }),
         ],
       });
@@ -301,7 +303,7 @@ describe("conversation list API", () => {
 
       const feed = await readConversationFeedFromSql({
         actorEmail: "morgan@example.com",
-        verifiedViewerEmail: "MORGAN@example.com",
+        viewer: testViewer("MORGAN@example.com"),
         limit: 1,
       });
 

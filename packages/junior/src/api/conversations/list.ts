@@ -1,3 +1,4 @@
+import type { User } from "@sentry/junior-plugin-api";
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import type { Conversation } from "@/chat/conversations/store";
@@ -184,7 +185,7 @@ export async function readConversationFeedFromSql(
   options: {
     actorEmail?: string;
     limit?: number;
-    verifiedViewerEmail?: string;
+    viewer?: User;
   } = {},
 ): Promise<ConversationFeed> {
   const nowMs = Date.now();
@@ -204,23 +205,19 @@ export async function readConversationFeedFromSql(
     metricsByRoot,
     teamDomainByTeamId,
   ] = await Promise.all([
-      readConversationAccessFromSql(
-        db,
-        conversationIds,
-        options.verifiedViewerEmail,
+    readConversationAccessFromSql(db, conversationIds, options.viewer),
+    readConversationAuxiliaryCostsFromSql(db, conversationIds, {
+      includeDescendants: true,
+    }),
+    readRootConversationMetricsFromSql(db, conversationIds),
+    resolveSlackTeamDomains(
+      conversations.flatMap((conversation) =>
+        conversation.sessionSource?.platform === "slack"
+          ? [conversation.sessionSource.teamId]
+          : [],
       ),
-      readConversationAuxiliaryCostsFromSql(db, conversationIds, {
-        includeDescendants: true,
-      }),
-      readRootConversationMetricsFromSql(db, conversationIds),
-      resolveSlackTeamDomains(
-        conversations.flatMap((conversation) =>
-          conversation.sessionSource?.platform === "slack"
-            ? [conversation.sessionSource.teamId]
-            : [],
-        ),
-      ),
-    ]);
+    ),
+  ]);
   return {
     conversations: conversations.map((conversation, index) => {
       const row = rows[index]!;
@@ -247,7 +244,7 @@ export async function readConversationFeedFromSql(
  * filter. This filter is not an authorization boundary.
  */
 export async function readConversationFeed(
-  options: { actorEmail?: string; verifiedViewerEmail?: string } = {},
+  options: { actorEmail?: string; viewer?: User } = {},
 ): Promise<ConversationFeed> {
   return conversationFeedSchema.parse(
     await readConversationFeedFromSql(options),
@@ -267,7 +264,7 @@ export default defineApiRoute({
     const viewer = c.get("viewer");
     return readConversationFeed({
       ...(actorEmail ? { actorEmail } : {}),
-      ...(viewer ? { verifiedViewerEmail: viewer.email } : {}),
+      ...(viewer ? { viewer } : {}),
     });
   },
 });
