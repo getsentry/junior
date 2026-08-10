@@ -53,19 +53,6 @@ interface SlackUserRaw {
   };
 }
 
-/** Minimal Slack user fields needed to score a name-search query. */
-export type SlackNameSearchCandidate = {
-  name?: string;
-  real_name?: string;
-  is_restricted?: boolean;
-  is_ultra_restricted?: boolean;
-  is_stranger?: boolean;
-  profile?: {
-    display_name?: string;
-    real_name?: string;
-  };
-};
-
 function normalizeUser(raw: SlackUserRaw): SlackUserProfile {
   const rawFields = raw.profile?.fields;
   const profileFields: SlackUserProfile["profile_fields"] = [];
@@ -100,8 +87,8 @@ function normalizeUser(raw: SlackUserRaw): SlackUserProfile {
   };
 }
 
-/** Guests and Slack Connect strangers should lose ties to full workspace members. */
-function isExternalSlackUser(user: SlackNameSearchCandidate): boolean {
+/** Guests and Slack Connect strangers should lose to full workspace members. */
+function isExternalSlackUser(user: SlackUserRaw): boolean {
   return Boolean(
     user.is_restricted || user.is_ultra_restricted || user.is_stranger,
   );
@@ -114,7 +101,7 @@ function normalizeNameTokens(value: string): string[] {
     .filter(Boolean);
 }
 
-function nameFields(user: SlackNameSearchCandidate): string[] {
+function nameFields(user: SlackUserRaw): string[] {
   return [
     user.name ?? "",
     user.profile?.display_name ?? "",
@@ -181,14 +168,10 @@ export interface SlackUserSearchResult {
 
 /**
  * Rank Slack name-search quality for one candidate.
- * Exact field/token matches beat prefixes so a display-name prefix like
- * "Colin Curtin (Square)" does not outrank a real-name first-name hit.
- * External/guest accounts are demoted so full members win common first names.
+ * Exact field and token matches beat field prefixes, and external accounts are
+ * demoted so a guest display-name prefix cannot beat a full-member first name.
  */
-export function scoreSlackNameQuery(
-  user: SlackNameSearchCandidate,
-  query: string,
-): number {
+function scoreNameMatch(user: SlackUserRaw, query: string): number {
   const queryLower = query.toLowerCase().trim();
   if (!queryLower) return 0;
 
@@ -248,23 +231,6 @@ function compareNameMatches(
   const leftExternal = isExternalSlackUser(left.user) ? 1 : 0;
   const rightExternal = isExternalSlackUser(right.user) ? 1 : 0;
   if (leftExternal !== rightExternal) return leftExternal - rightExternal;
-
-  // Prefer the shorter real/display name on ties so padded external labels lose.
-  const leftLabel =
-    left.user.real_name ??
-    left.user.profile?.real_name ??
-    left.user.profile?.display_name ??
-    left.user.name ??
-    "";
-  const rightLabel =
-    right.user.real_name ??
-    right.user.profile?.real_name ??
-    right.user.profile?.display_name ??
-    right.user.name ??
-    "";
-  if (leftLabel.length !== rightLabel.length) {
-    return leftLabel.length - rightLabel.length;
-  }
 
   return (left.user.name ?? "").localeCompare(right.user.name ?? "");
 }
@@ -349,7 +315,7 @@ export async function searchSlackUsers(options: {
     maxPages,
     includeDeleted,
     includeBots,
-    score: (member) => scoreSlackNameQuery(member, queryLower),
+    score: (member) => scoreNameMatch(member, queryLower),
   });
 
   listed.matches.sort(compareNameMatches);

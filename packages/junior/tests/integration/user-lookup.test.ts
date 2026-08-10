@@ -295,21 +295,56 @@ describe("userLookup", () => {
         query: "colin",
       });
 
+      // Ambiguous first-name hits stay multi-match; ranking prefers the member.
       expect(result).toMatchObject({
         provider: "slack",
         query: "colin",
         count: 2,
       });
       expect(result.mention).toBeUndefined();
+      expect(result.users.map((user: { id: string }) => user.id)).toEqual([
+        "U_MEMBER_COLIN",
+        "U_EXTERNAL_COLIN",
+      ]);
       expect(result.users[0]).toMatchObject({
-        id: "U_MEMBER_COLIN",
         is_external: false,
         mention: "<@U_MEMBER_COLIN>",
       });
       expect(result.users[1]).toMatchObject({
-        id: "U_EXTERNAL_COLIN",
         is_external: true,
         mention: "<@U_EXTERNAL_COLIN>",
+      });
+    });
+
+    it("ranks a multi-token name above another first-name match", async () => {
+      queueSlackApiResponse("users.list", {
+        body: usersListPage({
+          members: [
+            {
+              id: "U_OTHER_COLIN",
+              name: "colin.curtin",
+              realName: "Colin Curtin",
+              displayName: "Colin Curtin",
+            },
+            {
+              id: "U_FULL_COLIN",
+              name: "colin.kawai",
+              realName: "Colin Kawai",
+              displayName: "Colin Kawai",
+            },
+          ],
+        }),
+      });
+
+      const result = await executeTool(lookupTool(), {
+        provider: "slack",
+        query: "colin kawai",
+      });
+
+      expect(result).toMatchObject({
+        count: 1,
+        mention: "<@U_FULL_COLIN>",
+        user: { id: "U_FULL_COLIN" },
       });
     });
 
