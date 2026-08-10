@@ -4,7 +4,6 @@ import type { ActorProfileReport } from "../schema/person";
 import { defineApiRoute } from "../route";
 import { parseParams } from "../http";
 import { personParamsSchema } from "../schema/person";
-import { getViewer } from "../viewer";
 
 /** Load one person profile from verified user identities in SQL. */
 export async function readPeopleProfile(
@@ -23,7 +22,7 @@ export default defineApiRoute({
   responseSchema: actorProfileReportSchema,
   handler: async (c) => {
     const { email } = parseParams(personParamsSchema, c.req.param());
-    const viewer = getViewer(c);
+    const viewer = c.get("viewer");
     return readPeopleProfile(
       email,
       viewer ? { verifiedViewerEmail: viewer.email } : {},

@@ -735,15 +735,29 @@ export function createDashboardApp(
     if (!isAuthorized(session, allowedDomains, allowedEmails)) {
       return forbidden(c.req.raw, agentName);
     }
-    const sanitizedSession = sanitizeDashboardSession(session);
-    c.set("authSession", sanitizedSession);
-    const email = verifiedSessionEmail(sanitizedSession);
-    const viewer = email ? await resolveViewerUser(email) : undefined;
-    if (viewer) c.set("viewer", viewer);
+    c.set("authSession", sanitizeDashboardSession(session));
     await next();
   };
 
   app.use("*", requireAuth);
+
+  /** Resolve the canonical user only for authenticated API requests. */
+  app.use("/api/*", async (c, next) => {
+    if (!authRequired) {
+      await next();
+      return;
+    }
+    const email = verifiedSessionEmail(c.get("authSession"));
+    if (!email) {
+      throw new Error("Authenticated dashboard session has no verified email");
+    }
+    const viewer = await resolveViewerUser(email);
+    if (!viewer) {
+      throw new Error("Authenticated dashboard user could not be resolved");
+    }
+    c.set("viewer", viewer);
+    await next();
+  });
 
   for (const { nested, path } of dashboardPagePaths(basePath, {
     componentGallery: options.componentGallery,

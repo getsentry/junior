@@ -24,7 +24,6 @@ export { authenticatePersonalToken } from "./personal-tokens/store";
 export { resolveViewerUser } from "./chat/plugins/viewer";
 export type { JuniorApiVariables };
 export { jsonResponse };
-export { getViewer, requireViewer } from "./api/viewer";
 
 const routes = [
   healthRoute,

@@ -15,7 +15,7 @@ export type JuniorApiEnv = {
 };
 
 /** Give authenticated route handlers a required canonical viewer. */
-export type AuthenticatedJuniorApiEnv = {
+export type AuthenticatedApiEnv = {
   Variables: Omit<JuniorApiVariables, "viewer"> & { viewer: User };
 };
 
@@ -30,7 +30,7 @@ export type ApiRoute<TResponseSchema extends z.ZodType = z.ZodType> =
   | (ApiRouteBase<TResponseSchema> & {
       auth: true;
       handler: (
-        context: Context<AuthenticatedJuniorApiEnv>,
+        context: Context<AuthenticatedApiEnv>,
       ) => Promise<z.input<TResponseSchema>> | z.input<TResponseSchema>;
     })
   | (ApiRouteBase<TResponseSchema> & {

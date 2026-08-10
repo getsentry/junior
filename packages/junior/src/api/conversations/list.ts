@@ -20,7 +20,6 @@ import { readConversationAuxiliaryCostsFromSql } from "./auxiliary-costs";
 import { defineApiRoute } from "../route";
 import { parseQuery } from "../http";
 import { conversationFeedQuerySchema } from "../schema/conversation";
-import { getViewer } from "../viewer";
 
 const CONVERSATION_FEED_LIMIT = 50;
 
@@ -265,7 +264,7 @@ export default defineApiRoute({
       conversationFeedQuerySchema,
       c.req.query(),
     );
-    const viewer = getViewer(c);
+    const viewer = c.get("viewer");
     return readConversationFeed({
       ...(actorEmail ? { actorEmail } : {}),
       ...(viewer ? { verifiedViewerEmail: viewer.email } : {}),

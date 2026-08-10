@@ -6,7 +6,6 @@ import { readConversationRecordFromSql } from "./list";
 import { conversationEventHistory } from "./projection";
 import { parseParams, parseQuery, throwApiError } from "../http";
 import { defineApiRoute } from "../route";
-import { getViewer } from "../viewer";
 import {
   conversationEventPageSchema,
   conversationEventsQuerySchema,
@@ -81,7 +80,7 @@ export default defineApiRoute({
       conversationEventsQuerySchema,
       c.req.query(),
     );
-    const viewer = getViewer(c);
+    const viewer = c.get("viewer");
     const report = await readConversationEvents(conversationId, before, {
       limit,
       ...(viewer ? { verifiedViewerEmail: viewer.email } : {}),

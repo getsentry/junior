@@ -1,16 +1,9 @@
-import type { Context } from "hono";
 import { createMiddleware } from "hono/factory";
-import type { User } from "@sentry/junior-plugin-api";
 import { throwApiError } from "./http";
-import type { AuthenticatedJuniorApiEnv, JuniorApiEnv } from "./route";
-
-/** Read the optional authenticated Junior user from one request. */
-export function getViewer(context: Context<JuniorApiEnv>): User | undefined {
-  return context.get("viewer");
-}
+import type { AuthenticatedApiEnv } from "./route";
 
 /** Require a viewer and refine later Hono handlers to authenticated context. */
-export const requireViewer = createMiddleware<AuthenticatedJuniorApiEnv>(
+export const requireViewer = createMiddleware<AuthenticatedApiEnv>(
   async (context, next) => {
     if (!context.get("viewer")) {
       throwApiError(401, "Authentication required.");
