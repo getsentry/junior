@@ -90,9 +90,7 @@ export function createSlackConversationMessageSearchTool(
     },
     inputSchema: z
       .object({
-        channel_id: slackChannelRefParam(
-          "Destination Slack channel id (`C123`) or public channel name (`#foo`). No active-channel default.",
-        )
+        channel_id: slackChannelRefParam
           .nullable()
           .optional(),
         query: z

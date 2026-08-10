@@ -8,8 +8,8 @@ import {
   type SlackConversationInfoReader,
 } from "@/chat/slack/tool-support/channel-access";
 import {
+  optionalSlackChannelRefParam,
   resolveSlackChannelRef,
-  slackChannelRefParam,
   type SlackChannelNameResolver,
 } from "@/chat/slack/tool-support/channel-target";
 import { z } from "zod";
@@ -108,9 +108,7 @@ export function createSlackThreadReadTool(
           "Slack message archive URL, e.g. https://workspace.slack.com/archives/C123/p1700000000123456",
         )
         .optional(),
-      channel_id: slackChannelRefParam(
-        "Slack channel id (`C123`) or public channel name (`#foo`). Use with `ts` as an alternative to `url`.",
-      ).optional(),
+      channel_id: optionalSlackChannelRefParam,
       ts: slackTimestampParam(
         "Slack message timestamp (e.g. 1700000000.123456). May be the thread root or any message in the thread.",
       ).optional(),

@@ -91,9 +91,7 @@ export function createSlackChannelListMessagesTool(
       readOnlyHint: true,
     },
     inputSchema: z.object({
-      channel_id: optionalSlackChannelRefParam(
-        "Optional Slack channel id (`C123`) or public channel name (`#foo` / `foo`). Defaults to the active channel context.",
-      ),
+      channel_id: optionalSlackChannelRefParam,
       limit: z.coerce
         .number()
         .int()

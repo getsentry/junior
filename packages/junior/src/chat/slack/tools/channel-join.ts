@@ -29,7 +29,7 @@ export function createSlackChannelJoinTool(
 ) {
   return zodTool({
     description:
-      "Join one public Slack channel on demand so Junior can read its history or threads. Use when a linked public thread or channel history fails because the bot is not in the channel, or when the user asks Junior to join a public channel. Pass a channel id (`C123`) or public channel name (`#proj-foo`). Do not join channels preemptively and never join private channels or DMs.",
+      "Join a public Slack channel. Use when the user asks Junior to join or when reading a public channel requires membership.",
     annotations: {
       destructiveHint: false,
       idempotentHint: false,
@@ -37,9 +37,7 @@ export function createSlackChannelJoinTool(
       readOnlyHint: false,
     },
     inputSchema: z.object({
-      channel_id: slackChannelRefParam(
-        "Public Slack channel id (`C123`) or public channel name (`#proj-foo` / `proj-foo`).",
-      ),
+      channel_id: slackChannelRefParam,
     }),
     outputSchema: juniorToolOutputSchema,
     execute: async ({ channel_id }) => {

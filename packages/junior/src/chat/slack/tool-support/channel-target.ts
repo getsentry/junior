@@ -18,20 +18,16 @@ export interface SlackChannelNameResolver {
   ): Promise<SlackPublicChannelSummary | undefined>;
 }
 
-/**
- * Model-facing channel reference parameter.
- *
- * Accepts a Slack conversation id (`C123`) or a public channel name
- * (`#proj-foo` / `proj-foo`). Names are resolved internally at execution time.
- */
-export function slackChannelRefParam(description: string) {
-  return z.string().trim().min(1).max(80).describe(description);
-}
+/** Model-facing Slack channel ID or public channel name parameter. */
+export const slackChannelRefParam = z
+  .string()
+  .trim()
+  .min(1)
+  .max(80)
+  .describe("Slack channel ID or public channel name.");
 
-/** Optional form of {@link slackChannelRefParam}. */
-export function optionalSlackChannelRefParam(description: string) {
-  return slackChannelRefParam(description).optional();
-}
+/** Optional Slack channel ID or public channel name parameter. */
+export const optionalSlackChannelRefParam = slackChannelRefParam.optional();
 
 /**
  * Resolve a channel reference from a tool param value.
