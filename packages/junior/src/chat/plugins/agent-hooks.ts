@@ -561,65 +561,80 @@ export function getPluginTools(
     const resolveActor =
       context.resolveActorIdentity ?? (async () => undefined);
     let pluginContext: ToolRegistrationHookContext;
-    if (context.source.platform === "slack") {
-      if (context.destination.platform !== "slack") {
-        throw new TypeError(
-          "Slack plugin tool context requires Slack destination",
-        );
+    switch (context.source.platform) {
+      case "slack": {
+        if (context.destination.platform !== "slack") {
+          throw new TypeError(
+            "Slack plugin tool context requires Slack destination",
+          );
+        }
+        pluginContext = {
+          ...basePluginContext(plugin),
+          actor:
+            context.actor?.platform === "slack" ? context.actor : undefined,
+          conversationId: context.conversationId,
+          ...(annotations ? { annotations } : {}),
+          destination: context.destination,
+          slack: slackContext!,
+          source: context.source,
+          userText: context.userText,
+          embedder: createPluginEmbedder(pluginName),
+          egress: context.egress,
+          ...(mcp ? { mcp } : {}),
+          model: createPluginModel(pluginName, plugin.model),
+          resourceEvents,
+          sandbox,
+          state: createPluginState(pluginName),
+          users: { resolveActor },
+        };
+        break;
       }
-      pluginContext = {
-        ...basePluginContext(plugin),
-        actor: context.actor?.platform === "slack" ? context.actor : undefined,
-        conversationId: context.conversationId,
-        ...(annotations ? { annotations } : {}),
-        destination: context.destination,
-        slack: slackContext!,
-        source: context.source,
-        userText: context.userText,
-        embedder: createPluginEmbedder(pluginName),
-        egress: context.egress,
-        ...(mcp ? { mcp } : {}),
-        model: createPluginModel(pluginName, plugin.model),
-        resourceEvents,
-        sandbox,
-        state: createPluginState(pluginName),
-        users: { resolveActor },
-      };
-    } else {
-      if (context.destination.platform !== "local") {
-        throw new TypeError(
-          "Local plugin tool context requires local destination",
-        );
+      case "local": {
+        if (context.destination.platform !== "local") {
+          throw new TypeError(
+            "Local plugin tool context requires local destination",
+          );
+        }
+        pluginContext = {
+          ...basePluginContext(plugin),
+          actor:
+            context.actor?.platform === "local" ? context.actor : undefined,
+          conversationId: context.conversationId,
+          ...(annotations ? { annotations } : {}),
+          destination: context.destination,
+          source: context.source,
+          userText: context.userText,
+          embedder: createPluginEmbedder(pluginName),
+          egress: context.egress,
+          ...(mcp ? { mcp } : {}),
+          model: createPluginModel(pluginName, plugin.model),
+          resourceEvents,
+          sandbox,
+          state: createPluginState(pluginName),
+          users: { resolveActor },
+        };
+        break;
       }
-      if (
-        context.source.platform !== "local" &&
-        context.source.platform !== "web"
-      ) {
-        throw new TypeError(
-          "Local plugin tool context requires a local or web source",
-        );
+      case "web": {
+        pluginContext = {
+          ...basePluginContext(plugin),
+          actor: context.actor?.platform === "web" ? context.actor : undefined,
+          conversationId: context.conversationId,
+          ...(annotations ? { annotations } : {}),
+          destination: context.destination,
+          source: context.source,
+          userText: context.userText,
+          embedder: createPluginEmbedder(pluginName),
+          egress: context.egress,
+          ...(mcp ? { mcp } : {}),
+          model: createPluginModel(pluginName, plugin.model),
+          resourceEvents,
+          sandbox,
+          state: createPluginState(pluginName),
+          users: { resolveActor },
+        };
+        break;
       }
-      pluginContext = {
-        ...basePluginContext(plugin),
-        actor:
-          context.actor?.platform === "local" ||
-          context.actor?.platform === "web"
-            ? context.actor
-            : undefined,
-        conversationId: context.conversationId,
-        ...(annotations ? { annotations } : {}),
-        destination: context.destination,
-        source: context.source,
-        userText: context.userText,
-        embedder: createPluginEmbedder(pluginName),
-        egress: context.egress,
-        ...(mcp ? { mcp } : {}),
-        model: createPluginModel(pluginName, plugin.model),
-        resourceEvents,
-        sandbox,
-        state: createPluginState(pluginName),
-        users: { resolveActor },
-      };
     }
     const pluginTools = hook(pluginContext);
     const namespace = pluginToolNamespace(pluginName);

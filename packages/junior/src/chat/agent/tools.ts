@@ -131,6 +131,57 @@ async function tryRecordSkillLoadStat(skill: Skill) {
   }
 }
 
+type ToolRuntimeRoute =
+  | Pick<
+      Extract<ToolRuntimeContext, { source: { platform: "slack" } }>,
+      "actor" | "destination" | "source" | "slackActionToken"
+    >
+  | Pick<
+      Extract<ToolRuntimeContext, { source: { platform: "local" } }>,
+      "actor" | "destination" | "source"
+    >
+  | Pick<
+      Extract<ToolRuntimeContext, { source: { platform: "web" } }>,
+      "actor" | "destination" | "source"
+    >;
+
+/** Resolve provider-specific tool routing without changing turn delivery. */
+export function resolveToolRuntimeRoute(args: {
+  actor?: Actor;
+  routing: AgentRunRouting;
+}): ToolRuntimeRoute {
+  const destination = toolInvocationDestination(args.routing);
+  switch (args.routing.source.platform) {
+    case "slack": {
+      if (destination.platform !== "slack") {
+        throw new TypeError("Slack tool runtime requires a Slack destination");
+      }
+      return {
+        destination,
+        actor: args.actor?.platform === "slack" ? args.actor : undefined,
+        source: args.routing.source,
+        slackActionToken: args.routing.slackActionToken,
+      };
+    }
+    case "local": {
+      if (destination.platform !== "local") {
+        throw new TypeError("Local tool runtime requires a local destination");
+      }
+      return {
+        destination,
+        actor: args.actor?.platform === "local" ? args.actor : undefined,
+        source: args.routing.source,
+      };
+    }
+    case "web":
+      return {
+        destination,
+        actor: args.actor?.platform === "web" ? args.actor : undefined,
+        source: args.routing.source,
+      };
+  }
+}
+
 export interface ToolWiring {
   activeMcpCatalogs: ActiveMcpCatalogSummary[];
   agentTools: AgentTool[];
@@ -303,46 +354,20 @@ export async function wireAgentTools(
       : {}),
     ...(args.requestHandoff ? { handoff: args.requestHandoff } : {}),
   };
-  const toolDestination = toolInvocationDestination(args.routing);
-  let toolRuntimeContext: ToolRuntimeContext;
-  if (runSource.platform === "slack") {
-    if (toolDestination.platform !== "slack") {
-      throw new TypeError("Slack tool runtime requires a Slack destination");
-    }
-    toolRuntimeContext = {
-      ...commonToolRuntimeContext,
-      destination: toolDestination,
-      actor:
-        args.currentActor?.platform === "slack" ? args.currentActor : undefined,
-      source: runSource,
-      slackActionToken: args.routing.slackActionToken,
-    };
-  } else {
-    if (toolDestination.platform !== "local") {
-      throw new TypeError("Local tool runtime requires a local destination");
-    }
-    if (runSource.platform !== "local" && runSource.platform !== "web") {
-      throw new TypeError(
-        "Local tool runtime requires a local or web source",
-      );
-    }
-    toolRuntimeContext = {
-      ...commonToolRuntimeContext,
-      destination: toolDestination,
-      actor:
-        args.currentActor?.platform === "local" ||
-        args.currentActor?.platform === "web"
-          ? args.currentActor
-          : undefined,
-      source: runSource,
-    };
-  }
+  const toolRoute = resolveToolRuntimeRoute({
+    actor: args.currentActor,
+    routing: args.routing,
+  });
+  const toolRuntimeContext = {
+    ...commonToolRuntimeContext,
+    ...toolRoute,
+  } as ToolRuntimeContext;
   const actionReview = createToolActionReview({
     context: {
       actor: args.currentActor,
       conversationId: args.conversationId,
       credentialContext: args.routing.credentialContext,
-      destination: toolDestination,
+      destination: toolRoute.destination,
       source: runSource,
       userIntent: args.currentUserIntent,
       evidence: () => buildToolActionEvidence(args.currentAgentMessages()),

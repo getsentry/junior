@@ -96,13 +96,23 @@ export interface SlackInvocationContext extends BaseInvocationContext {
 export interface LocalInvocationContext extends BaseInvocationContext {
   /** Runtime-owned default outbound destination for this invocation. */
   destination: LocalDestination;
-  /** Local CLI or web/dashboard actors both deliver through a local destination. */
-  actor?: LocalActor | WebActor;
+  actor?: LocalActor;
   /** Runtime-owned source where the invocation came from. */
-  source: LocalSource | WebSource;
+  source: LocalSource;
 }
 
-export type InvocationContext = LocalInvocationContext | SlackInvocationContext;
+export interface WebInvocationContext extends BaseInvocationContext {
+  /** Existing conversation destination used for location and tool context. */
+  destination: Destination;
+  actor?: WebActor;
+  /** Runtime-owned dashboard/web source for this invocation. */
+  source: WebSource;
+}
+
+export type InvocationContext =
+  | LocalInvocationContext
+  | SlackInvocationContext
+  | WebInvocationContext;
 
 /** Build a normalized Slack source from runtime-owned Slack coordinates. */
 export function createSlackSource(input: {

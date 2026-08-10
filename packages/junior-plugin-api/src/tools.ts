@@ -7,6 +7,7 @@ import type {
   PluginModel,
   SlackInvocationContext,
   User,
+  WebInvocationContext,
 } from "./context";
 import type { PluginCredentialSubject } from "./credentials";
 import type { PluginAnnotations } from "./annotations";
@@ -544,6 +545,12 @@ interface LocalToolRegistrationContext
   slack?: never;
 }
 
+interface WebToolRegistrationContext
+  extends BaseToolRegistrationHookContext, WebInvocationContext {
+  slack?: never;
+}
+
 export type ToolRegistrationHookContext =
   | LocalToolRegistrationContext
-  | SlackToolRegistrationContext;
+  | SlackToolRegistrationContext
+  | WebToolRegistrationContext;
