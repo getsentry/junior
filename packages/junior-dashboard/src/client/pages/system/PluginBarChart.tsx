@@ -6,13 +6,14 @@ import {
   ChartSvg,
   createActivityChartLayout,
 } from "../../components/charts/ActivityChart";
+import { ChartLegend } from "../../components/charts/ChartLegend";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { Tooltip } from "../../components/Tooltip";
 import { formatCostSummary } from "../../format";
 
 type Widget = NonNullable<PluginOperationalReport["widgets"]>[number];
 
-const colors = ["#67e8f9", "#6ee7b7", "#fbbf24", "#fb7185", "#a78bfa"];
+const colors = ["#67e8f9", "#6ee7b7", "#fbbf24", "#fb7185", "#a78bfa"] as const;
 const toneColors = {
   danger: "#fb7185",
   good: "#6ee7b7",
@@ -32,7 +33,7 @@ export function PluginBarChart(props: {
   const seriesFormat = commonSeriesFormat(widget);
   const layout = createActivityChartLayout(250, {
     bottom: 36,
-    left: seriesFormat === "usd" ? 72 : 56,
+    left: seriesFormat === "usd" ? 104 : 56,
     right: 12,
     top: 16,
     width: 520,
@@ -63,24 +64,16 @@ export function PluginBarChart(props: {
           </p>
         ) : null}
         {widget.series.length > 1 ? (
-          <div aria-label="Chart legend" className="mt-3 flex flex-wrap gap-3">
-            {widget.series.map((series, index) => (
-              <span
-                className="flex items-center gap-1.5 font-mono text-xs text-dashboard-text-muted"
-                key={series.key}
-              >
-                <i
-                  className="size-2 rounded-sm"
-                  style={{
-                    backgroundColor: series.tone
-                      ? toneColors[series.tone]
-                      : colors[index % colors.length],
-                  }}
-                />
-                {series.label}
-              </span>
-            ))}
-          </div>
+          <ChartLegend
+            ariaLabel="Chart legend"
+            items={widget.series.map((series, index) => ({
+              color: series.tone
+                ? toneColors[series.tone]
+                : colors[index % colors.length],
+              key: series.key,
+              label: series.label,
+            }))}
+          />
         ) : null}
       </div>
       {categories.length === 0 ? (
@@ -105,11 +98,7 @@ export function PluginBarChart(props: {
                   y1={y}
                   y2={y}
                 />
-                <ChartAxisLabel
-                  textAnchor="end"
-                  x={layout.left - 6}
-                  y={y + 3}
-                >
+                <ChartAxisLabel textAnchor="end" x={layout.left - 6} y={y + 3}>
                   {formatChartValue(tickValue, seriesFormat)}
                 </ChartAxisLabel>
               </g>

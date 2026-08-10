@@ -16,7 +16,7 @@ import { ChartHeader } from "../src/client/components/charts/ChartHeader";
 import { SystemMetricCharts } from "../src/client/components/charts/SystemMetricCharts";
 
 describe("ChartAxisLabel", () => {
-  it("defaults to the shared 12px screen-size contract", () => {
+  it("defaults to the shared 11px screen-size contract", () => {
     const html = renderToStaticMarkup(
       <svg>
         <ChartAxisLabel x={0} y={0}>
@@ -25,7 +25,7 @@ describe("ChartAxisLabel", () => {
       </svg>,
     );
 
-    expect(html).toContain('font-size="12"');
+    expect(html).toContain('font-size="11"');
     expect(html).toContain(">12</text>");
   });
 

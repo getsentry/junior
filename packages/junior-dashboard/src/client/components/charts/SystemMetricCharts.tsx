@@ -95,7 +95,7 @@ function MetricChart(props: {
   const { chart, days } = props;
   const layout = createActivityChartLayout(250, {
     bottom: 34,
-    left: 64,
+    left: chart.metric === "costUsd" ? 80 : 64,
     right: 14,
     top: 22,
     width: 400,

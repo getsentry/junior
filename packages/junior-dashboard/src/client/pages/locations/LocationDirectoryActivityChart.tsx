@@ -8,6 +8,7 @@ import {
   createActivityChartLayout,
   formatActivityDate,
 } from "../../components/charts/ActivityChart";
+import { ChartLegend } from "../../components/charts/ChartLegend";
 import { Card } from "../../components/layout/Card";
 import { CardHeader } from "../../components/layout/CardHeader";
 import { Tooltip } from "../../components/Tooltip";
@@ -34,14 +35,14 @@ export function LocationDirectoryActivityChart(props: {
         description="Daily public volume compared with private activity in aggregate."
         title="Conversations per day"
         trailing={
-          <span className="flex items-center gap-4">
-            <span className="flex items-center gap-2">
-              <span className="size-2 rounded-sm bg-cyan-400" /> public
-            </span>
-            <span className="flex items-center gap-2">
-              <span className="size-2 rounded-sm bg-amber-400" /> private
-            </span>
-          </span>
+          <ChartLegend
+            ariaLabel="Conversation visibility legend"
+            inline
+            items={[
+              { color: "#22d3ee", key: "public", label: "public" },
+              { color: "#fbbf24", key: "private", label: "private" },
+            ]}
+          />
         }
       />
       <div className="px-2 py-3 sm:px-4 sm:py-4">

@@ -6,6 +6,7 @@ import {
   createActivityChartLayout,
   formatActivityDate,
 } from "../../components/charts/ActivityChart";
+import { ChartLegend } from "../../components/charts/ChartLegend";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { Tooltip } from "../../components/Tooltip";
@@ -23,7 +24,8 @@ export function MemoryTimeline(props: {
 }) {
   const days = props.days.slice(-props.range);
   const layout = createActivityChartLayout(200);
-  const step = days.length > 0 ? layout.plotWidth / days.length : layout.plotWidth;
+  const step =
+    days.length > 0 ? layout.plotWidth / days.length : layout.plotWidth;
   const barWidth = Math.max(2, Math.min(13, step * 0.68));
   const totals = days.map((day) => day.personal + day.public);
   const maximum = Math.max(1, ...totals);
@@ -40,23 +42,7 @@ export function MemoryTimeline(props: {
         </p>
       </div>
 
-      <div
-        aria-label="Memory visibility legend"
-        className="mt-4 flex flex-wrap gap-4"
-      >
-        {series.map((item) => (
-          <span
-            className="inline-flex items-center gap-1.5 font-mono text-xs text-dashboard-text-muted"
-            key={item.key}
-          >
-            <i
-              className="size-2 rounded-sm"
-              style={{ backgroundColor: item.color }}
-            />
-            {item.label}
-          </span>
-        ))}
-      </div>
+      <ChartLegend ariaLabel="Memory visibility legend" items={series} />
 
       <div className="relative mt-3 overflow-hidden">
         <ChartSvg

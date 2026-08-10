@@ -69,7 +69,7 @@ export function activityLabelIndexes(count: number): number[] {
   );
 }
 
-const chartAxisFontSizePx = 12;
+const chartAxisFontSizePx = 11;
 const ChartSvgScaleContext = createContext(1);
 
 /** Shared visual style for SVG chart axis labels. */
@@ -251,8 +251,7 @@ export function activityChartAverage(values: readonly number[]): number {
 }
 
 /** Shared visual style for average-line labels. */
-export const chartAverageLabelClassName =
-  "fill-white font-mono leading-none";
+export const chartAverageLabelClassName = "fill-white font-mono leading-none";
 
 /** Solid chip behind average labels so series colors never wash out the text. */
 const chartAverageLabelChip = "rgba(9, 12, 14, 0.92)";

@@ -44,8 +44,8 @@ test("opens a registered plugin page from primary navigation", async ({
     page.getByRole("heading", { name: "Activity over time" }),
   ).toBeVisible();
   await expect(page.getByRole("heading", { name: /^\$/ })).toBeVisible();
-  await expect(page.getByText(/^Extraction \$/)).toBeVisible();
-  await expect(page.getByText(/^Recall \$/)).toBeVisible();
+  await expect(page.getByText(/^Extraction · \$/)).toBeVisible();
+  await expect(page.getByText(/^Recall · \$/)).toBeVisible();
   await expect(
     page.getByRole("img", {
       name: "Memory extraction and recall cost during the last 30 days",
