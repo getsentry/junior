@@ -47,7 +47,7 @@ export interface JuniorRuntimeServices {
 export interface JuniorRuntimeServiceOverrides {
   conversationMemory?: Partial<ConversationMemoryDeps>;
   contextCompactor?: Partial<ContextCompactorDeps>;
-  replyExecutor?: Partial<Omit<ReplyExecutorServices, "generateThreadTitle">>;
+  replyExecutor?: Partial<ReplyExecutorServices>;
   subscribedReplyPolicy?: Partial<SubscribedReplyPolicyDeps>;
   sandbox?: {
     tracePropagation?: SandboxEgressTracePropagationConfig;
@@ -101,7 +101,6 @@ export function createJuniorRuntimeServices(
       turnLifecycle:
         overrides.replyExecutor?.turnLifecycle ??
         new ConversationTurnLifecycleService(getConversationEventStore()),
-      generateThreadTitle: conversationMemory.generateThreadTitle,
     },
     subscribedReplyPolicy: createSubscribedReplyPolicy({
       completeObject:

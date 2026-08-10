@@ -1,28 +1,65 @@
 import type { ConversationStore } from "@/chat/conversations/store";
 import { getConversationStore } from "@/chat/db";
 import { logException, logWarn } from "@/chat/logging";
+import { completeText } from "@/chat/pi/client";
 import {
   getThreadTitleSourceMessage,
-  type ConversationMemoryService,
+  isHumanConversationMessage,
 } from "@/chat/services/conversation-memory";
+import {
+  fallbackShortTitle,
+  generateShortTitle,
+} from "@/chat/services/short-title";
 import type { ThreadConversationState } from "@/chat/state/conversation";
 
+const inFlightTitles = new Map<string, Promise<string | undefined>>();
+
+/** Test-only: clear in-flight title work between cases. */
+export function resetConversationTitleStateForTests(): void {
+  inFlightTitles.clear();
+}
+
 /**
- * Generate and persist a conversation title once from the earliest human
- * message. Provider surfaces may project the stored title afterward.
+ * Set-once conversation title from the earliest human message.
+ *
+ * One automatic generation path for every surface. Starts only from durable
+ * transcript writes via `scheduleConversationTitle`. Returns a newly persisted
+ * title, or undefined when the conversation is already titled or generation
+ * does not apply.
  */
-export async function ensureConversationTitle(args: {
-  activityAtMs?: number;
+async function ensureConversationTitle(args: {
   conversation: ThreadConversationState;
   conversationId: string;
   conversationStore?: Pick<ConversationStore, "get" | "recordActivity">;
-  generateThreadTitle: ConversationMemoryService["generateThreadTitle"];
   nowMs?: number;
 }): Promise<string | undefined> {
+  const pending = inFlightTitles.get(args.conversationId);
+  if (pending) {
+    return pending;
+  }
+
+  const work = ensureConversationTitleOnce(args).finally(() => {
+    inFlightTitles.delete(args.conversationId);
+  });
+  inFlightTitles.set(args.conversationId, work);
+  return work;
+}
+
+async function ensureConversationTitleOnce(args: {
+  conversation: ThreadConversationState;
+  conversationId: string;
+  conversationStore?: Pick<ConversationStore, "get" | "recordActivity">;
+  nowMs?: number;
+}): Promise<string | undefined> {
+  if (!args.conversation.messages.some(isHumanConversationMessage)) {
+    return undefined;
+  }
+
   const store = args.conversationStore ?? getConversationStore();
   try {
     const stored = await store.get({ conversationId: args.conversationId });
-    if (stored?.title) {
+    // Already titled: generation is done.
+    if (stored?.title?.trim()) {
       return undefined;
     }
     // Child conversations are execution machinery, not listable threads.
@@ -31,19 +68,25 @@ export async function ensureConversationTitle(args: {
     }
 
     const titleSourceMessage = getThreadTitleSourceMessage(args.conversation);
-    if (!titleSourceMessage?.text.trim()) {
+    const sourceText = titleSourceMessage?.text.trim() ?? "";
+    if (!sourceText) {
       return undefined;
     }
 
     let title: string;
     try {
-      title = await args.generateThreadTitle(titleSourceMessage.text);
+      const generated = await generateShortTitle({
+        completeText,
+        kind: "conversation",
+        sourceText,
+      });
+      title = generated ?? fallbackShortTitle(sourceText, "Conversation");
     } catch (error) {
       logWarn("conversation.title.generation.failed", {
         "exception.message":
           error instanceof Error ? error.message : String(error),
       });
-      return undefined;
+      title = fallbackShortTitle(sourceText, "Conversation");
     }
 
     const normalized = title.trim();
@@ -54,7 +97,7 @@ export async function ensureConversationTitle(args: {
     const nowMs = args.nowMs ?? Date.now();
     try {
       await store.recordActivity({
-        activityAtMs: args.activityAtMs ?? nowMs,
+        activityAtMs: nowMs,
         conversationId: args.conversationId,
         nowMs,
         title: normalized,
@@ -69,4 +112,44 @@ export async function ensureConversationTitle(args: {
     logException(error, "conversation.title.ensure.failed");
     return undefined;
   }
+}
+
+/**
+ * Fire-and-forget title work after durable human transcript writes.
+ * This is the only entry that starts generation.
+ */
+export function scheduleConversationTitle(args: {
+  conversation: ThreadConversationState;
+  conversationId: string | undefined;
+}): void {
+  if (!args.conversationId) {
+    return;
+  }
+  void ensureConversationTitle({
+    conversation: args.conversation,
+    conversationId: args.conversationId,
+  }).catch((error) => {
+    logException(error, "conversation.title.task.failed");
+  });
+}
+
+/**
+ * Join in-flight generation when present, otherwise read the stored title.
+ * Does not start generation; providers use this only to project a title.
+ */
+export async function resolveConversationTitle(args: {
+  conversationId: string;
+  conversationStore?: Pick<ConversationStore, "get">;
+}): Promise<string | undefined> {
+  const pending = inFlightTitles.get(args.conversationId);
+  if (pending) {
+    const generated = await pending;
+    if (generated?.trim()) {
+      return generated.trim();
+    }
+  }
+
+  const store = args.conversationStore ?? getConversationStore();
+  const stored = await store.get({ conversationId: args.conversationId });
+  return stored?.title?.trim() || undefined;
 }

@@ -77,7 +77,6 @@ import {
   type TurnToolInvocation,
 } from "@/chat/runtime/turn-input";
 import {
-  type ConversationMemoryService,
   markConversationMessage,
   normalizeConversationText,
   recordDeliveredAssistantMessage,
@@ -93,7 +92,7 @@ import {
   createSlackAdapterAssistantStatusSession,
   type AssistantStatusSpec,
 } from "@/chat/slack/assistant-thread/status";
-import { ensureConversationTitle } from "@/chat/services/conversation-title";
+import { resolveConversationTitle } from "@/chat/services/conversation-title";
 import { maybeSyncAssistantTitle } from "@/chat/slack/assistant-thread/title";
 import {
   conversationVisibilityFromSlackChannelType,
@@ -365,7 +364,6 @@ async function loadPiMessagesForTurn(args: {
 export interface ReplyExecutorServices {
   agentRunner: AgentRunner;
   contextCompactor: ContextCompactor;
-  generateThreadTitle: ConversationMemoryService["generateThreadTitle"];
   getPausedTurnRequest: (args: {
     conversationId: string;
     turnId: string;
@@ -1251,14 +1249,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           }
 
           status.update();
-          // Title generation is detached from reply delivery. Start it beside
-          // the agent run and project to Slack only after SQL persistence.
-          const conversationTitleTask = ensureConversationTitle({
-            activityAtMs: message.metadata.dateSent.getTime(),
-            conversation: preparedState.conversation,
-            conversationId,
-            generateThreadTitle: deps.services.generateThreadTitle,
-          })
+          // Title generation is automatic on transcript persist. DM threads only
+          // project the stored/in-flight title to Slack once it settles.
+          void resolveConversationTitle({ conversationId })
             .then(async (title) => {
               if (!title) {
                 return;
@@ -1273,7 +1266,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             .catch((error) => {
               logException(error, "conversation.title.task.failed");
             });
-          void conversationTitleTask;
           const toolChannelId = channelId;
           const activeInstructionAuthorId =
             actor?.userId ?? parseActorUserId(message.author.userId);

@@ -4,6 +4,7 @@
 import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { getConversationEventStore } from "@/chat/db";
+import { scheduleConversationTitle } from "@/chat/services/conversation-title";
 import { projectConversationMessageSummaries } from "./message-summaries";
 import { projectConversationMessages } from "./message-projection";
 import type {
@@ -89,6 +90,11 @@ export async function persistConversationMessages(args: {
 
   await appendConversationMessages(getConversationEventStore(), {
     ...args,
+    conversationId: args.conversationId,
+  });
+  // Single automatic title path: start once after durable human transcript.
+  scheduleConversationTitle({
+    conversation: args.conversation,
     conversationId: args.conversationId,
   });
 }

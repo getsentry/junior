@@ -12,9 +12,12 @@ import { makeAssistantStatus } from "@/chat/slack/assistant-thread/status";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import type { ConversationMemoryDeps } from "@/chat/services/conversation-memory";
+import { resetConversationTitleStateForTests } from "@/chat/services/conversation-title";
 import { handleChatSdkPlatformWebhook } from "@/handlers/webhooks";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { flattenAgentRunRequestForTest } from "../../fixtures/agent-runner";
+import { resetAssistantTitleProjectionForTests } from "@/chat/slack/assistant-thread/title";
+import * as piClient from "@/chat/pi/client";
 
 const SIGNING_SECRET = "test-signing-secret";
 const BOT_USER_ID = "U0BOT";
@@ -79,6 +82,11 @@ async function createDirectMessageBot(args: {
   completeText?: ConversationMemoryDeps["completeText"];
   agentRunner: AgentRunner;
 }) {
+  if (args.completeText) {
+    vi.spyOn(piClient, "completeText").mockImplementation(
+      args.completeText as typeof piClient.completeText,
+    );
+  }
   const bot = new JuniorChat<{ slack: SlackAdapter }>({
     userName: "junior",
     adapters: {
@@ -93,14 +101,6 @@ async function createDirectMessageBot(args: {
   const slackRuntime = createSlackRuntime({
     getSlackAdapter: () => bot.getAdapter("slack"),
     services: {
-      ...(args.completeText
-        ? {
-            conversationMemory: {
-              completeText:
-                args.completeText as ConversationMemoryDeps["completeText"],
-            },
-          }
-        : {}),
       replyExecutor: {
         agentRunner: args.agentRunner,
       },
@@ -149,6 +149,8 @@ async function createMentionBot(args: { agentRunner: AgentRunner }) {
 describe("Slack contract: assistant-thread delivery", () => {
   beforeEach(async () => {
     resetSlackApiMockState();
+    resetConversationTitleStateForTests();
+    resetAssistantTitleProjectionForTests();
     // Chat and Junior scratch must share one adapter; clear between cases so
     // fixed DM thread ids do not inherit prior title/artifact scratch.
     await disconnectStateAdapter();
@@ -156,6 +158,9 @@ describe("Slack contract: assistant-thread delivery", () => {
 
   afterEach(async () => {
     resetSlackApiMockState();
+    resetConversationTitleStateForTests();
+    resetAssistantTitleProjectionForTests();
+    vi.restoreAllMocks();
     await disconnectStateAdapter();
   });
 

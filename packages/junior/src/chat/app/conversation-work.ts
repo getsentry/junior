@@ -117,7 +117,6 @@ export function createConversationWork(
     run: routeApiTurnWork({
       apiTurnWorker: createApiTurnWorker({
         agentRunner: options.agentRunner,
-        generateThreadTitle: runtime.generateThreadTitle,
       }),
       fallbackWorker: routeAgentInvocationWork({
         invocationWorker: createAgentInvocationWorker({

@@ -123,9 +123,6 @@ describe("api turn conversation work", () => {
     let observedPublishExternally: boolean | undefined;
     let observedSourcePlatform: string | undefined;
     let observedActorPlatform: string | undefined;
-    const generateThreadTitle = vi
-      .fn()
-      .mockResolvedValue("Start a dashboard turn");
     const worker = createApiTurnWorker({
       agentRunner: createApiTurnScriptedRunner({
         replyText: "Stored only in Junior.",
@@ -135,7 +132,6 @@ describe("api turn conversation work", () => {
           observedActorPlatform = request.routing.actor?.platform;
         },
       }),
-      generateThreadTitle,
     });
     const route = routeApiTurnWork({
       apiTurnWorker: worker,
@@ -157,15 +153,14 @@ describe("api turn conversation work", () => {
     expect(observedSourcePlatform).toBe("web");
     expect(observedActorPlatform).toBe("web");
 
-    // Detached title work can settle just after the worker returns completed.
+    // Title generation is automatic on human transcript persist and may finish
+    // just after the worker returns completed.
     await vi.waitFor(async () => {
-      await expect(
-        conversationStore.get({ conversationId: accepted.conversationId }),
-      ).resolves.toMatchObject({
-        title: "Start a dashboard turn",
+      const stored = await conversationStore.get({
+        conversationId: accepted.conversationId,
       });
+      expect(stored?.title?.trim().length).toBeGreaterThan(0);
     });
-    expect(generateThreadTitle).toHaveBeenCalledWith("Start a dashboard turn.");
 
     const messages = (
       await getConversationEventStore().loadMessageHistory(
@@ -370,7 +365,6 @@ describe("api turn conversation work", () => {
           observedSourcePlatform = request.routing.source.platform;
         },
       }),
-      generateThreadTitle: async () => "Continue from the dashboard",
     });
     const route = routeApiTurnWork({
       apiTurnWorker: worker,

@@ -6,11 +6,24 @@ import {
 } from "@/chat/slack/errors";
 import { isDmChannel } from "@/chat/slack/client";
 
+/** Set-once DM title projection for the current process. */
+const projectedAssistantTitles = new Set<string>();
+
+function assistantTitleKey(channelId: string, threadTs: string): string {
+  return `${channelId}:${threadTs}`;
+}
+
+/** Test-only: clear set-once DM title projection between cases. */
+export function resetAssistantTitleProjectionForTests(): void {
+  projectedAssistantTitles.clear();
+}
+
 /**
  * Best-effort Slack projection for a stored conversation title.
  *
  * Only DM assistant threads support `setAssistantTitle`. Channel conversations
  * keep the title in Junior for dashboard reporting and do not call Slack.
+ * Projection is set-once per DM thread so later turns do not rewrite Slack.
  */
 export async function maybeSyncAssistantTitle(args: {
   channelId?: string;
@@ -24,9 +37,17 @@ export async function maybeSyncAssistantTitle(args: {
     return;
   }
 
+  const key = assistantTitleKey(channelId, threadTs);
+  if (projectedAssistantTitles.has(key)) {
+    return;
+  }
+  projectedAssistantTitles.add(key);
+
   try {
     await args.getSlackAdapter().setAssistantTitle(channelId, threadTs, args.title);
   } catch (error) {
+    // Allow a later turn to retry after a transient failure. Stable permission
+    // denials stay terminal for this process.
     const slackErrorCode = getSlackApiErrorCode(error);
     if (isSlackTitlePermissionError(error)) {
       const assistantTitleErrorAttributes = {
@@ -44,6 +65,7 @@ export async function maybeSyncAssistantTitle(args: {
       );
       return;
     }
+    projectedAssistantTitles.delete(key);
     logWarn("thread.title.slack_update.failed", {
       "exception.message":
         error instanceof Error ? error.message : String(error),

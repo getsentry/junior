@@ -11,10 +11,7 @@ import {
   estimateTextTokens,
   getConversationContextCompactionTriggerTokens,
 } from "@/chat/services/context-budget";
-import {
-  fallbackShortTitle,
-  generateShortTitle,
-} from "@/chat/services/short-title";
+
 import {
   parseSlackMessageTs,
   type SlackMessageTs,
@@ -41,7 +38,6 @@ export interface ConversationMemoryService {
       runId?: string;
     },
   ) => Promise<void>;
-  generateThreadTitle: (sourceText: string) => Promise<string>;
 }
 
 export function generateConversationId(
@@ -365,19 +361,6 @@ async function summarizeConversationChunk(
   return transcript.slice(0, 2800);
 }
 
-async function generateThreadTitleWithDeps(
-  sourceText: string,
-  deps: ConversationMemoryDeps,
-): Promise<string> {
-  const title = await generateShortTitle({
-    completeText: deps.completeText,
-    kind: "conversation",
-    sourceText,
-  });
-  // Keep the historical non-empty contract for conversation title callers.
-  return title ?? fallbackShortTitle(sourceText, "Conversation");
-}
-
 /** Return the earliest human-authored message known for a thread. */
 export function getThreadTitleSourceMessage(
   conversation: ThreadConversationState,
@@ -469,15 +452,13 @@ async function compactConversationIfNeededWithDeps(
   }
 }
 
-/** Build the service that owns durable conversation memory compaction and titles. */
+/** Build the service that owns durable conversation memory compaction. */
 export function createConversationMemoryService(
   deps: ConversationMemoryDeps,
 ): ConversationMemoryService {
   return {
     compactConversationIfNeeded: async (conversation, context) =>
       await compactConversationIfNeededWithDeps(conversation, context, deps),
-    generateThreadTitle: async (sourceText) =>
-      await generateThreadTitleWithDeps(sourceText, deps),
   };
 }
 

@@ -44,6 +44,9 @@ import {
   createTestDestination,
 } from "../../fixtures/slack-harness";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
+import { resetConversationTitleStateForTests } from "@/chat/services/conversation-title";
+import { resetAssistantTitleProjectionForTests } from "@/chat/slack/assistant-thread/title";
+import * as piClient from "@/chat/pi/client";
 import {
   deliverAssistantMessagesForTest,
   flattenAgentRunRequestForTest,
@@ -107,6 +110,14 @@ function expectBlocksIncludeConversationId(
 ): void {
   expect(params.blocks).toBeDefined();
   expect(JSON.stringify(params.blocks)).toContain(conversationId);
+}
+
+function mockTitleCompleteText(
+  impl: (...args: any[]) => Promise<any> | any,
+) {
+  return vi
+    .spyOn(piClient, "completeText")
+    .mockImplementation(async (...args) => await impl(...args));
 }
 
 function createRuntime(
@@ -211,11 +222,15 @@ function turnPiMessages(text: string) {
 
 describe("bot handlers (integration)", () => {
   beforeEach(async () => {
+    resetConversationTitleStateForTests();
+    resetAssistantTitleProjectionForTests();
     await disconnectStateAdapter();
   });
 
   afterEach(async () => {
     resetSlackApiMockState();
+    resetConversationTitleStateForTests();
+    resetAssistantTitleProjectionForTests();
     vi.restoreAllMocks();
     await disconnectStateAdapter();
   });
@@ -2413,16 +2428,16 @@ describe("bot handlers (integration)", () => {
 
   it("thread title: generates and sets title after first assistant reply", async () => {
     const fakeAdapter = new FakeSlackAdapter();
+    mockTitleCompleteText(async () =>
+      ({
+        text: "Debugging Node.js Memory Leaks",
+        message: { role: "assistant", content: "" },
+      }) as any,
+    );
+
     const { slackRuntime } = createRuntime({
       slackAdapter: fakeAdapter,
       services: {
-        conversationMemory: {
-          completeText: async () =>
-            ({
-              text: "Debugging Node.js Memory Leaks",
-              message: { role: "assistant", content: "" },
-            }) as any,
-        },
         replyExecutor: {
           agentRunner: {
             run: async () =>
@@ -2471,23 +2486,22 @@ describe("bot handlers (integration)", () => {
 
   it("thread title: uses the first human message we know about in the thread", async () => {
     const fakeAdapter = new FakeSlackAdapter();
+    mockTitleCompleteText(async (params) => {
+      const prompt =
+        typeof params.messages[0]?.content === "string"
+          ? params.messages[0].content
+          : "";
+      return {
+        text: prompt.includes("Original production issue summary")
+          ? "Production Issue Summary"
+          : "Follow-up Clarification",
+        message: { role: "assistant", content: "" },
+      } as any;
+    });
+
     const { slackRuntime } = createRuntime({
       slackAdapter: fakeAdapter,
       services: {
-        conversationMemory: {
-          completeText: async (params) => {
-            const prompt =
-              typeof params.messages[0]?.content === "string"
-                ? params.messages[0].content
-                : "";
-            return {
-              text: prompt.includes("Original production issue summary")
-                ? "Production Issue Summary"
-                : "Follow-up Clarification",
-              message: { role: "assistant", content: "" },
-            } as any;
-          },
-        },
         replyExecutor: {
           agentRunner: {
             run: async () =>
@@ -2542,16 +2556,16 @@ describe("bot handlers (integration)", () => {
 
   it("thread title: still generates for a new thread with starter assistant content", async () => {
     const fakeAdapter = new FakeSlackAdapter();
+    mockTitleCompleteText(async () =>
+      ({
+        text: "Today's Date",
+        message: { role: "assistant", content: "" },
+      }) as any,
+    );
+
     const { slackRuntime } = createRuntime({
       slackAdapter: fakeAdapter,
       services: {
-        conversationMemory: {
-          completeText: async () =>
-            ({
-              text: "Today's Date",
-              message: { role: "assistant", content: "" },
-            }) as any,
-        },
         replyExecutor: {
           agentRunner: {
             run: async (request) => {
@@ -2616,19 +2630,18 @@ describe("bot handlers (integration)", () => {
   it("thread title: does not block reply delivery when generation is slow", async () => {
     const fakeAdapter = new FakeSlackAdapter();
     let resolveTitle: (() => void) | undefined;
+    mockTitleCompleteText(async () =>
+      await new Promise((resolve) => {
+        resolveTitle = () =>
+          resolve({
+            text: "Today's Date",
+            message: { role: "assistant", content: "" },
+          } as any);
+      }),
+    );
     const { slackRuntime } = createRuntime({
       slackAdapter: fakeAdapter,
       services: {
-        conversationMemory: {
-          completeText: async () =>
-            await new Promise((resolve) => {
-              resolveTitle = () =>
-                resolve({
-                  text: "Today's Date",
-                  message: { role: "assistant", content: "" },
-                } as any);
-            }),
-        },
         replyExecutor: {
           agentRunner: {
             run: async (request) => {
@@ -2693,16 +2706,16 @@ describe("bot handlers (integration)", () => {
 
   it("thread title: preserves artifact updates when title resolves before completion", async () => {
     const fakeAdapter = new FakeSlackAdapter();
+    mockTitleCompleteText(async () =>
+      ({
+        text: "Today's Date",
+        message: { role: "assistant", content: "" },
+      }) as any,
+    );
+
     const { slackRuntime } = createRuntime({
       slackAdapter: fakeAdapter,
       services: {
-        conversationMemory: {
-          completeText: async () =>
-            ({
-              text: "Today's Date",
-              message: { role: "assistant", content: "" },
-            }) as any,
-        },
         replyExecutor: {
           agentRunner: {
             run: async (request) => {
@@ -2753,16 +2766,15 @@ describe("bot handlers (integration)", () => {
   it("thread title: does not generate title on subsequent replies", async () => {
     const fakeAdapter = new FakeSlackAdapter();
     let turnCount = 0;
+    mockTitleCompleteText(async () =>
+      ({
+        text: "Some Title",
+        message: { role: "assistant", content: "" },
+      }) as any,
+    );
     const { slackRuntime } = createRuntime({
       slackAdapter: fakeAdapter,
       services: {
-        conversationMemory: {
-          completeText: async () =>
-            ({
-              text: "Some Title",
-              message: { role: "assistant", content: "" },
-            }) as any,
-        },
         replyExecutor: {
           agentRunner: {
             run: async () => {
@@ -2835,16 +2847,15 @@ describe("bot handlers (integration)", () => {
       error.data = { error: "no_permission" };
       throw error;
     };
+    mockTitleCompleteText(async () =>
+      ({
+        text: "Permission Safe Title",
+        message: { role: "assistant", content: "" },
+      }) as any,
+    );
     const { slackRuntime } = createRuntime({
       slackAdapter: fakeAdapter,
       services: {
-        conversationMemory: {
-          completeText: async () =>
-            ({
-              text: "Permission Safe Title",
-              message: { role: "assistant", content: "" },
-            }) as any,
-        },
         replyExecutor: {
           agentRunner: {
             run: async (request) => {
@@ -2902,18 +2913,16 @@ describe("bot handlers (integration)", () => {
     };
 
     let titleGenerationCount = 0;
+    mockTitleCompleteText(async () => {
+      titleGenerationCount += 1;
+      return {
+        text: "Stable Permission Title",
+        message: { role: "assistant", content: "" },
+      } as any;
+    });
     const { slackRuntime } = createRuntime({
       slackAdapter: fakeAdapter,
       services: {
-        conversationMemory: {
-          completeText: async () => {
-            titleGenerationCount += 1;
-            return {
-              text: "Stable Permission Title",
-              message: { role: "assistant", content: "" },
-            } as any;
-          },
-        },
         replyExecutor: {
           agentRunner: {
             run: async () =>
