@@ -68,6 +68,10 @@ unsafe requests.
   not repeat parameter shape or value formats in the tool description when the
   shared param already owns that text. Reuse shared param schemas across tools
   that accept the same value kind.
+- Define shared param schemas as the required value shape. Mark a field
+  optional at the tool input use site with `.optional()` (or
+  `.nullable().optional()` when null means omit). Do not ship a separate
+  `optional*` export of the same param.
 - Prefer direct module imports and real dependencies over optional injected
   ports on tool factories. Add dependency injection only when production code
   needs more than one implementation.

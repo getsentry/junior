@@ -5,8 +5,8 @@ import {
   joinPublicChannelForRead,
 } from "@/chat/slack/tool-support/channel-access";
 import {
-  optionalSlackChannelRefParam,
   resolveSlackChannelRef,
+  slackChannelRefParam,
 } from "@/chat/slack/tool-support/channel-target";
 import { z } from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
@@ -94,7 +94,7 @@ export function createSlackThreadReadTool(context: SlackToolContext) {
         .min(1)
         .describe("Slack message archive URL.")
         .optional(),
-      channel_id: optionalSlackChannelRefParam,
+      channel_id: slackChannelRefParam.optional(),
       ts: slackTimestampParam(
         "Slack message timestamp. May be the thread root or any message in the thread.",
       ).optional(),

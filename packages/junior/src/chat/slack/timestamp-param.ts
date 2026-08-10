@@ -25,11 +25,6 @@ export function slackTimestampParam(description: string) {
     .describe(description);
 }
 
-/** Define an optional model-facing Slack timestamp string parameter. */
-export function optionalSlackTimestampParam(description: string) {
-  return slackTimestampParam(description).optional();
-}
-
 /** Parse tool input into a branded Slack timestamp before provider calls. */
 export function parseSlackTimestampParam(
   field: string,

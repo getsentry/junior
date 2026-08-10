@@ -4,16 +4,16 @@ import { parseSlackThreadId } from "@/chat/slack/context";
 import type { SlackChannelId } from "@/chat/slack/ids";
 import type { SlackMessageTs } from "@/chat/slack/timestamp";
 import {
-  optionalSlackTimestampParam,
   parseSlackTimestampParam,
+  slackTimestampParam,
 } from "@/chat/slack/timestamp-param";
 import {
   checkSlackChannelReadAccess,
   joinPublicChannelForRead,
 } from "@/chat/slack/tool-support/channel-access";
 import {
-  optionalSlackChannelRefParam,
   resolveOptionalSlackChannelRef,
+  slackChannelRefParam,
 } from "@/chat/slack/tool-support/channel-target";
 import { z } from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
@@ -79,7 +79,7 @@ export function createSlackChannelListMessagesTool(context: SlackToolContext) {
       readOnlyHint: true,
     },
     inputSchema: z.object({
-      channel_id: optionalSlackChannelRefParam,
+      channel_id: slackChannelRefParam.optional(),
       limit: z.coerce
         .number()
         .int()
@@ -92,12 +92,12 @@ export function createSlackChannelListMessagesTool(context: SlackToolContext) {
         .min(1)
         .describe("Optional cursor to continue from a prior call.")
         .optional(),
-      oldest: optionalSlackTimestampParam(
-        "Optional oldest message timestamp (Slack ts) for range filtering.",
-      ),
-      latest: optionalSlackTimestampParam(
-        "Optional latest message timestamp (Slack ts) for range filtering.",
-      ),
+      oldest: slackTimestampParam(
+        "Oldest message timestamp (Slack ts) for range filtering.",
+      ).optional(),
+      latest: slackTimestampParam(
+        "Latest message timestamp (Slack ts) for range filtering.",
+      ).optional(),
       inclusive: booleanInput(
         "Whether oldest/latest bounds should be inclusive.",
       ).optional(),

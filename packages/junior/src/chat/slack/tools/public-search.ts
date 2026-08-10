@@ -13,16 +13,35 @@ const DEFAULT_LIMIT = 10;
 const DEFAULT_CONTENT_TYPES = ["messages"] as const;
 const CONTENT_TYPES = ["messages", "files", "channels", "users"] as const;
 
-const optionalUnixTimestampParam = z.preprocess(
-  (value) =>
-    typeof value === "string" && value.trim() === "" ? undefined : value,
-  z.coerce
-    .number()
-    .int()
-    .nonnegative()
-    .describe("Unix timestamp bound.")
-    .optional(),
-);
+/** Unix-second bound for public search filters. */
+const unixTimestampParam = z.coerce.number().int().nonnegative();
+
+/**
+ * Optional search bound at the use site. Blank strings omit the filter instead
+ * of coercing to epoch. Shared value shape stays required above.
+ */
+function optionalUnixTimestampParam(description: string) {
+  return z
+    .preprocess(
+      (value) =>
+        typeof value === "string" && value.trim() === "" ? undefined : value,
+      unixTimestampParam.optional(),
+    )
+    .describe(description);
+}
+
+/** Normalize an optional bound after input parse (or raw test execute paths). */
+function normalizeOptionalUnixTimestamp(
+  value: unknown,
+): number | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (typeof value === "string" && value.trim() === "") {
+    return undefined;
+  }
+  return unixTimestampParam.parse(value);
+}
 
 /** Canonical public-search message result. */
 const searchMessageSchema = z.object({
@@ -351,12 +370,8 @@ export function createSlackPublicSearchTool(actionToken?: SlackActionToken) {
         .max(4)
         .describe("Content types to include. Defaults to messages.")
         .optional(),
-      after: optionalUnixTimestampParam.describe(
-        "Optional Unix timestamp lower bound.",
-      ),
-      before: optionalUnixTimestampParam.describe(
-        "Optional Unix timestamp upper bound.",
-      ),
+      after: optionalUnixTimestampParam("Unix timestamp lower bound."),
+      before: optionalUnixTimestampParam("Unix timestamp upper bound."),
       cursor: z
         .string()
         .min(1)
@@ -393,8 +408,8 @@ export function createSlackPublicSearchTool(actionToken?: SlackActionToken) {
       }
       try {
         const normalizedContentTypes = normalizeContentTypes(content_types);
-        const normalizedAfter = optionalUnixTimestampParam.parse(after);
-        const normalizedBefore = optionalUnixTimestampParam.parse(before);
+        const normalizedAfter = normalizeOptionalUnixTimestamp(after);
+        const normalizedBefore = normalizeOptionalUnixTimestamp(before);
         const response = slackSearchResponseSchema.parse(
           await withSlackRetries(
             () =>

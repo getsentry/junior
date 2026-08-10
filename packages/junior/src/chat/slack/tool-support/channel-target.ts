@@ -17,9 +17,6 @@ export const slackChannelRefParam = z
   .max(80)
   .describe("Slack channel ID or public channel name.");
 
-/** Optional Slack channel ID or public channel name parameter. */
-export const optionalSlackChannelRefParam = slackChannelRefParam.optional();
-
 /**
  * Resolve a channel reference from a tool param value.
  *
