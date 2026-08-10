@@ -69,10 +69,14 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
   }, [conversations, creating, desktop, navigate, selectedId]);
 
   useEffect(() => {
-    if (selectedId && selectedId !== createSourceId.current) {
-      creatingRef.current = false;
-      setCreating(false);
+    if (!selectedId) {
+      // Left the route we opened New from. Later selections should exit create.
+      createSourceId.current = undefined;
+      return;
     }
+    if (selectedId === createSourceId.current) return;
+    creatingRef.current = false;
+    setCreating(false);
   }, [selectedId]);
 
   return (
@@ -121,6 +125,7 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
                 className="inline-flex items-center gap-2 font-mono text-xs text-dashboard-text-muted hover:text-dashboard-text"
                 onClick={() => {
                   creatingRef.current = false;
+                  createSourceId.current = undefined;
                   setCreating(false);
                 }}
                 type="button"
@@ -159,6 +164,7 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
               </Link>
             </div>
             <ConversationPage
+              key={selectedId}
               conversationId={selectedId}
               data={
                 feed.data
