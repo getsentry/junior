@@ -66,6 +66,10 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
     }
   }, [conversations, creating, desktop, navigate, selectedId]);
 
+  useEffect(() => {
+    if (selectedId) setCreating(false);
+  }, [selectedId]);
+
   return (
     <div
       className={cn(
@@ -87,10 +91,11 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
           onNewConversation={() => {
             createConversation.reset();
             setCreating(true);
+            if (selectedId) navigate("/", { replace: true });
           }}
           onQueryChange={setQuery}
           query={query}
-          selectedId={selectedId}
+          selectedId={creating ? undefined : selectedId}
           timeZone={props.data.config.timeZone}
         />
       </div>
@@ -98,30 +103,41 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
         aria-label="Selected conversation"
         className={
           selectedId || creating
-            ? "grid min-h-0 grid-rows-[auto_1fr] overflow-hidden bg-white/[0.012]"
+            ? "grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-white/[0.012]"
             : "hidden min-h-0 overflow-hidden bg-white/[0.012] md:grid"
         }
       >
         {creating ? (
-          <div className="row-start-2 min-h-0 overflow-y-auto">
-            <NewConversationView
-              error={
-                createConversation.error
-                  ? "Could not create the conversation. Try again."
-                  : undefined
-              }
-              pending={createConversation.isPending}
-              onCancel={() => setCreating(false)}
-              onSubmit={async (message, idempotencyKey) => {
-                const accepted = await createConversation.mutateAsync({
-                  idempotencyKey,
-                  message,
-                });
-                setCreating(false);
-                navigate(conversationPath(accepted.conversationId));
-              }}
-            />
-          </div>
+          <>
+            <div className="border-b border-white/[0.07] bg-white/[0.025] px-3 py-2.5 md:hidden">
+              <button
+                className="inline-flex items-center gap-2 font-mono text-xs text-dashboard-text-muted hover:text-dashboard-text"
+                onClick={() => setCreating(false)}
+                type="button"
+              >
+                <ArrowLeft aria-hidden="true" size={15} />
+                Your conversations
+              </button>
+            </div>
+            <div className="min-h-0 overflow-y-auto">
+              <NewConversationView
+                error={
+                  createConversation.error
+                    ? "Could not create the conversation. Try again."
+                    : undefined
+                }
+                pending={createConversation.isPending}
+                onSubmit={async (message, idempotencyKey) => {
+                  const accepted = await createConversation.mutateAsync({
+                    idempotencyKey,
+                    message,
+                  });
+                  setCreating(false);
+                  navigate(conversationPath(accepted.conversationId));
+                }}
+              />
+            </div>
+          </>
         ) : selectedId ? (
           <>
             <div className="border-b border-white/[0.07] bg-white/[0.025] px-3 py-2.5 md:hidden">
@@ -133,25 +149,19 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
                 Your conversations
               </Link>
             </div>
-            <div
-              aria-label="Conversation transcript"
-              className="min-h-0 overflow-y-auto overscroll-contain"
-              tabIndex={0}
-            >
-              <ConversationPage
-                conversationId={selectedId}
-                data={
-                  feed.data
-                    ? {
-                        conversations: feed.data,
-                      }
-                    : undefined
-                }
-                pendingArchiveUpdate={pendingArchiveUpdates.find(
-                  (update) => update.conversationId === selectedId,
-                )}
-              />
-            </div>
+            <ConversationPage
+              conversationId={selectedId}
+              data={
+                feed.data
+                  ? {
+                      conversations: feed.data,
+                    }
+                  : undefined
+              }
+              pendingArchiveUpdate={pendingArchiveUpdates.find(
+                (update) => update.conversationId === selectedId,
+              )}
+            />
           </>
         ) : (
           <div className="grid min-h-0 place-items-center px-6 text-center">
@@ -173,7 +183,6 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
 function NewConversationView(props: {
   error?: string;
   pending: boolean;
-  onCancel(): void;
   onSubmit(message: string, idempotencyKey: string): Promise<void>;
 }) {
   return (
@@ -195,14 +204,6 @@ function NewConversationView(props: {
           submitLabel="Start conversation"
           onSubmit={props.onSubmit}
         />
-        <button
-          className="mt-3 font-mono text-xs text-dashboard-text-muted underline decoration-white/20 underline-offset-2 hover:text-dashboard-text"
-          disabled={props.pending}
-          onClick={props.onCancel}
-          type="button"
-        >
-          Cancel
-        </button>
       </div>
     </div>
   );

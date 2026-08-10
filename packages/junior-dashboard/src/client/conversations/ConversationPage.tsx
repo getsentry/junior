@@ -83,131 +83,142 @@ export function ConversationPage(props: {
     : undefined;
 
   return (
-    <div className="w-full min-w-0 px-3 py-3 md:px-7 md:py-6">
-      <section className="min-w-0">
-        <Card className="relative mb-3 grid gap-2 border-white/[0.07] bg-white/[0.025] p-3 md:mb-5 md:grid-cols-[minmax(0,1fr)_auto] md:gap-3 md:p-5">
-          <div className="min-w-0">
+    <div className="grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_auto]">
+      <div
+        aria-label="Conversation transcript"
+        className="min-h-0 overflow-y-auto overscroll-contain px-3 py-3 md:px-7 md:py-6"
+        tabIndex={0}
+      >
+        <section className="min-w-0">
+          <Card className="relative mb-3 grid gap-2 border-white/[0.07] bg-white/[0.025] p-3 md:mb-5 md:grid-cols-[minmax(0,1fr)_auto] md:gap-3 md:p-5">
             <div className="min-w-0">
-              <h2 className="m-0 line-clamp-2 font-display text-xl font-medium leading-tight tracking-[-0.03em] md:line-clamp-none md:truncate md:text-3xl">
-                {conversationDisplayTitle(conversation)}
-              </h2>
-            </div>
-            <div className="mt-1.5 min-w-0 font-mono text-xs leading-snug text-dashboard-text-muted md:mt-2">
-              <ConversationIdentity
-                conversation={conversation}
-                conversationId={conversationId}
-                detail={detail.data}
-              />
-            </div>
-          </div>
-          <div className="flex min-w-0 flex-row flex-wrap items-center gap-x-3 gap-y-2 self-start font-mono text-xs leading-snug text-dashboard-text-muted md:flex-col md:items-end md:text-right">
-            <div className="break-words">
-              updated{" "}
-              {formatRelativeTime(
-                conversation?.lastSeenAt ?? detail.data?.generatedAt,
-              )}
-            </div>
-            <Button
-              className="h-auto px-2.5 py-1 text-xs font-normal text-dashboard-text-muted"
-              disabled={!conversation || archive.isPending}
-              onClick={() =>
-                archive.mutate({
-                  archived: !conversation?.archivedAt,
-                  lastSeenAt: conversation!.lastSeenAt,
-                })
-              }
-              type="button"
-            >
-              {archive.isPending
-                ? "Saving…"
-                : conversation?.archivedAt
-                  ? "Unarchive"
-                  : "Archive"}
-            </Button>
-            {archive.error ? (
-              <div className="basis-full text-red-300/80 md:basis-auto">
-                Could not update archive state.
+              <div className="min-w-0">
+                <h2 className="m-0 line-clamp-2 font-display text-xl font-medium leading-tight tracking-[-0.03em] md:line-clamp-none md:truncate md:text-3xl">
+                  {conversationDisplayTitle(conversation)}
+                </h2>
               </div>
-            ) : null}
-          </div>
-          <ConversationStats conversation={conversation} detail={detail.data} />
-          <ConversationAnnotations detail={detail.data} />
-        </Card>
-
-        {detail.isPending ? (
-          <TranscriptLoading />
-        ) : detail.error && !detail.data ? (
-          <Card className="border-white/[0.07] bg-white/[0.025] p-4 font-mono text-xs leading-relaxed text-dashboard-text-muted">
-            {detail.error.message}
-          </Card>
-        ) : (
-          <>
-            {detail.error ? (
-              <div className="mb-3 rounded-lg border border-amber-300/15 bg-amber-300/[0.045] px-4 py-2 font-mono text-xs text-amber-100/65">
-                Transcript refresh failed. Showing the latest available data.
-              </div>
-            ) : null}
-            <ConversationPrivacyNotice visibility={conversation?.visibility} />
-            <Transcript
-              actions={
-                <CopyMarkdownButton
-                  key={conversationDetail?.conversationId ?? "loading"}
-                  getMarkdown={
-                    conversationDetail
-                      ? async () =>
-                          buildConversationMarkdown(
-                            await detail.loadCompleteTranscript(),
-                            conversation,
-                          )
-                      : undefined
-                  }
+              <div className="mt-1.5 min-w-0 font-mono text-xs leading-snug text-dashboard-text-muted md:mt-2">
+                <ConversationIdentity
+                  conversation={conversation}
+                  conversationId={conversationId}
+                  detail={detail.data}
                 />
-              }
-              hasPreviousPage={detail.hasPreviousPage}
-              historyError={detail.historyError}
-              historyVersion={detail.historyVersion}
-              live={conversationIsLive(visualStatus, detail.data)}
-              loadingPreviousPage={detail.isLoadingPreviousPage}
-              onLoadPreviousPage={detail.loadPreviousPage}
-              responding={
-                !detail.error && conversationIsLive(visualStatus, detail.data)
-              }
-              onOpenSubagentTranscript={({ part }) => {
-                setSubagentTarget({
-                  conversationId: part.childConversationId,
-                  part,
-                });
-              }}
-              transcript={detail.data}
+              </div>
+            </div>
+            <div className="flex min-w-0 flex-row flex-wrap items-center gap-x-3 gap-y-2 self-start font-mono text-xs leading-snug text-dashboard-text-muted md:flex-col md:items-end md:text-right">
+              <div className="break-words">
+                updated{" "}
+                {formatRelativeTime(
+                  conversation?.lastSeenAt ?? detail.data?.generatedAt,
+                )}
+              </div>
+              <Button
+                className="h-auto px-2.5 py-1 text-xs font-normal text-dashboard-text-muted"
+                disabled={!conversation || archive.isPending}
+                onClick={() =>
+                  archive.mutate({
+                    archived: !conversation?.archivedAt,
+                    lastSeenAt: conversation!.lastSeenAt,
+                  })
+                }
+                type="button"
+              >
+                {archive.isPending
+                  ? "Saving…"
+                  : conversation?.archivedAt
+                    ? "Unarchive"
+                    : "Archive"}
+              </Button>
+              {archive.error ? (
+                <div className="basis-full text-red-300/80 md:basis-auto">
+                  Could not update archive state.
+                </div>
+              ) : null}
+            </div>
+            <ConversationStats
+              conversation={conversation}
+              detail={detail.data}
             />
-            {detail.data?.isParticipant ? (
-              <div className="sticky bottom-0 z-10 mt-3 border-t border-white/[0.07] bg-[#050507]/95 pb-1 pt-3 backdrop-blur md:mt-5 md:pt-4">
-                <p className="mb-2 mt-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
-                  {conversation?.surface === "slack"
-                    ? "This reply stays in Junior. It will not be posted to Slack."
-                    : "This reply stays in this conversation."}
-                </p>
-                <ConversationComposer
-                  error={
-                    appendMessage.error
-                      ? "Could not send the message. Try again."
-                      : undefined
-                  }
-                  label="Continue this conversation"
-                  pending={appendMessage.isPending}
-                  submitLabel="Send"
-                  onSubmit={async (message, idempotencyKey) => {
-                    await appendMessage.mutateAsync({
-                      idempotencyKey,
-                      message,
-                    });
-                  }}
-                />
-              </div>
-            ) : null}
-          </>
-        )}
-      </section>
+            <ConversationAnnotations detail={detail.data} />
+          </Card>
+
+          {detail.isPending ? (
+            <TranscriptLoading />
+          ) : detail.error && !detail.data ? (
+            <Card className="border-white/[0.07] bg-white/[0.025] p-4 font-mono text-xs leading-relaxed text-dashboard-text-muted">
+              {detail.error.message}
+            </Card>
+          ) : (
+            <>
+              {detail.error ? (
+                <div className="mb-3 rounded-lg border border-amber-300/15 bg-amber-300/[0.045] px-4 py-2 font-mono text-xs text-amber-100/65">
+                  Transcript refresh failed. Showing the latest available data.
+                </div>
+              ) : null}
+              <ConversationPrivacyNotice
+                visibility={conversation?.visibility}
+              />
+              <Transcript
+                actions={
+                  <CopyMarkdownButton
+                    key={conversationDetail?.conversationId ?? "loading"}
+                    getMarkdown={
+                      conversationDetail
+                        ? async () =>
+                            buildConversationMarkdown(
+                              await detail.loadCompleteTranscript(),
+                              conversation,
+                            )
+                        : undefined
+                    }
+                  />
+                }
+                hasPreviousPage={detail.hasPreviousPage}
+                historyError={detail.historyError}
+                historyVersion={detail.historyVersion}
+                live={conversationIsLive(visualStatus, detail.data)}
+                loadingPreviousPage={detail.isLoadingPreviousPage}
+                onLoadPreviousPage={detail.loadPreviousPage}
+                responding={
+                  !detail.error && conversationIsLive(visualStatus, detail.data)
+                }
+                onOpenSubagentTranscript={({ part }) => {
+                  setSubagentTarget({
+                    conversationId: part.childConversationId,
+                    part,
+                  });
+                }}
+                transcript={detail.data}
+              />
+            </>
+          )}
+        </section>
+      </div>
+      {detail.data?.isParticipant ? (
+        <div className="border-t border-white/[0.07] bg-[#050507]/95 px-3 py-3 backdrop-blur md:px-7 md:py-4">
+          <p className="mb-2 mt-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
+            {conversation?.surface === "slack"
+              ? "This reply stays in Junior. It will not be posted to Slack."
+              : "This reply stays in this conversation."}
+          </p>
+          <ConversationComposer
+            error={
+              appendMessage.error
+                ? "Could not send the message. Try again."
+                : undefined
+            }
+            label="Continue this conversation"
+            pending={appendMessage.isPending}
+            submitLabel="Send"
+            onSubmit={async (message, idempotencyKey) => {
+              await appendMessage.mutateAsync({
+                idempotencyKey,
+                message,
+              });
+            }}
+          />
+        </div>
+      ) : null}
       <SubagentTranscriptDrawer
         onClose={() => setSubagentTarget(undefined)}
         target={subagentTarget}
