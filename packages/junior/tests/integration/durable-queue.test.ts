@@ -5,7 +5,7 @@ import {
 } from "@earendil-works/pi-ai/providers/faux";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createConversationWork } from "@/chat/app/conversation-work";
-import { commitAcceptedReply } from "@/chat/conversations/projection";
+import { loadProjection } from "@/chat/conversations/projection";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import type { AgentRunSteeringMessage } from "@/chat/agent/request";
@@ -29,6 +29,7 @@ import {
   startConversationWork,
 } from "@/chat/task-execution/store";
 import {
+  continuableMessages,
   getTurnRecord,
   listTurnSummaries,
   saveTurnCheckpoint,
@@ -222,7 +223,11 @@ async function expectNextTurn(q: QueueTest, ts: string): Promise<void> {
 /** Assert the durable state left by a turn that waits for an external event. */
 async function expectPausedTurn(
   q: QueueTest,
-  expected: { turnId: string; reason: "auth"; replies: number },
+  expected: {
+    turnId: string;
+    reason: "auth" | "timeout";
+    replies: string[] | number;
+  },
 ): Promise<void> {
   await expect(
     getTurnRecord(CONVERSATION_ID, expected.turnId),
@@ -241,17 +246,31 @@ async function expectPausedTurn(
   const conversation = coerceThreadConversationState(
     await getPersistedThreadState(CONVERSATION_ID),
   );
-  expect(conversation.processing.pendingAuth).toMatchObject({
-    sessionId: expected.turnId,
-  });
-  await expect(
-    getConversationWorkState({
-      conversationId: CONVERSATION_ID,
-      state: q.state,
-    }),
-  ).resolves.toMatchObject({ needsRun: false, messages: [] });
-  expect(q.wakes.hasQueuedMessages()).toBe(false);
-  expect(q.replies()).toHaveLength(expected.replies);
+  if (expected.reason === "auth") {
+    expect(conversation.processing.pendingAuth).toMatchObject({
+      sessionId: expected.turnId,
+    });
+    await expect(
+      getConversationWorkState({
+        conversationId: CONVERSATION_ID,
+        state: q.state,
+      }),
+    ).resolves.toMatchObject({ needsRun: false, messages: [] });
+    expect(q.wakes.hasQueuedMessages()).toBe(false);
+  } else {
+    expect(conversation.processing.pendingAuth).toBeUndefined();
+    // Timeout parks schedule a fresh wake so the next slice can resume.
+    expect(q.wakes.hasQueuedMessages()).toBe(true);
+  }
+  const replies = q.replies();
+  const replyCount =
+    typeof expected.replies === "number"
+      ? expected.replies
+      : expected.replies.length;
+  const expectedReplies =
+    typeof expected.replies === "number" ? replies : expected.replies;
+  expect(replies).toHaveLength(replyCount);
+  expect(replies).toEqual(expectedReplies);
 }
 
 function history(): PiMessage[] {
@@ -538,69 +557,85 @@ describe("durable queue contract", () => {
       await expectNextTurn(q, "1712345.0005");
     });
 
-    it("parks a timeout after SQL recorded an accepted agent reply", async () => {
-      const turnId = await seedTurn("running");
-      const deliveredAssistant = fauxAssistantMessage("Deploy checked.");
-      deliveredAssistant.timestamp = 4;
-      await commitAcceptedReply({
-        agentMessage: deliveredAssistant,
-        conversationId: CONVERSATION_ID,
-        conversationMessageId: `${turnId}:assistant:1`,
-        conversation: {
-          schemaVersion: 1,
-          compactions: [],
-          messages: [
-            {
-              id: "1712345.0001",
-              role: "user",
-              text: "inspect the deploy",
-              createdAtMs: 1,
-              author: { userId: "U123" },
-              meta: { replied: true },
-            },
-            {
-              id: `${turnId}:assistant:1`,
-              role: "assistant",
-              text: "Deploy checked.",
-              createdAtMs: 2,
-              author: { isBot: true },
-              meta: { replied: true, slackTs: "1712345.0002" },
-            },
-          ],
-          processing: { activeTurnId: turnId },
-          vision: { byFileId: {} },
-        },
-      });
-      const paused = await saveTurnCheckpoint({
-        mode: "paused",
-        reason: "timeout",
-        conversationId: CONVERSATION_ID,
-        turnId,
-        sliceId: 1,
-        messages: history(),
-        destination: SLACK_DESTINATION,
-        source: createSlackSource({
-          teamId: SLACK_DESTINATION.teamId,
-          channelId: SLACK_DESTINATION.channelId,
-          threadTs: "1712345.0001",
-          visibility: "private",
-        }),
-        surface: "slack",
-      });
-      expect(paused).toMatchObject({
-        state: "paused",
-        resumeReason: "timeout",
-        sliceId: 2,
-      });
-      expect(paused?.piMessages.at(-1)).toMatchObject({
-        role: "assistant",
-        timestamp: 4,
-      });
-
+    it("parks a timeout after the production delivery path accepts an agent reply", async () => {
+      // Production race from JUNIOR-7Y:
+      // 1) delivery dual-writes the accepted assistant into SQL
+      // 2) timeout recovery parks with the trimmed continuable boundary
+      // 3) that shorter checkpoint must not fail as a history branch
+      let slices = 0;
+      // Leave the host request after the timeout park so the resume slice starts
+      // from a fresh queue wake, matching the production serverless model.
+      let leaveHostAfterPark = false;
       const q = await slack({
-        pausedRunner: {
-          run: async (request) =>
-            completedAgentRun({
+        shouldYield: () => leaveHostAfterPark,
+        agentRunner: {
+          run: async (request) => {
+            slices += 1;
+            if (slices === 1) {
+              await request.durability?.onInputCommitted?.();
+              // Production order: commit the user/safe boundary first, then
+              // deliver the tool-free assistant (SQL dual-write), then timeout
+              // recovery parks with the trimmed continuable boundary.
+              const userInstruction: PiMessage = {
+                role: "user",
+                content: [
+                  {
+                    type: "text",
+                    text: request.input.messageText || "inspect the deploy",
+                  },
+                ],
+                timestamp: 1,
+              };
+              const running = await saveTurnCheckpoint({
+                mode: "running",
+                actor: request.routing.actor,
+                conversationId: request.conversationId,
+                destination: request.routing.destination,
+                messages: [userInstruction],
+                sliceId: 1,
+                source: request.routing.source,
+                surface: request.routing.surface,
+                turnId: request.turnId,
+              });
+              if (!running) {
+                throw new Error("Expected running input checkpoint");
+              }
+              const deliveredAssistant =
+                fauxAssistantMessage("Deploy checked.");
+              deliveredAssistant.timestamp = 2;
+              const delivered = await deliverAssistantMessagesForTest(
+                request,
+                [{ text: "Deploy checked." }],
+                [userInstruction, deliveredAssistant],
+              );
+              // Timeout recovery trims the trailing assistant before parking.
+              // Delivery already committed that assistant into SQL history.
+              const record = await saveTurnCheckpoint({
+                mode: "paused",
+                reason: "timeout",
+                actor: request.routing.actor,
+                conversationId: request.conversationId,
+                destination: request.routing.destination,
+                messages: continuableMessages(delivered),
+                sliceId: 1,
+                source: request.routing.source,
+                surface: request.routing.surface,
+                turnId: request.turnId,
+              });
+              if (!record) {
+                throw new Error(
+                  `Failed to persist continuation for conversation=${request.conversationId} turn=${request.turnId}`,
+                );
+              }
+              leaveHostAfterPark = true;
+              return {
+                status: "suspended" as const,
+                resumeVersion: record.version,
+              };
+            }
+            leaveHostAfterPark = false;
+            // Fresh resume slice finishes without another destination reply.
+            return completedAgentRun({
               diagnostics: {
                 assistantMessageCount: 0,
                 modelId: "test-model",
@@ -612,37 +647,60 @@ describe("durable queue contract", () => {
               },
               piMessages: request.input.piMessages ?? [],
               text: "",
-            }),
+            });
+          },
         },
       });
-      expect(
-        coerceThreadConversationState(
-          await getPersistedThreadState(CONVERSATION_ID),
-        ).processing.activeTurnId,
-      ).toBe(turnId);
-      await requestConversationWork({
-        conversationId: CONVERSATION_ID,
-        destination: SLACK_DESTINATION,
-        nowMs: 1_000,
-        state: q.state,
+      await q.send();
+
+      await expect(q.next()).resolves.toEqual({ status: "yielded" });
+      expect(slices).toBe(1);
+      await expectPausedTurn(q, {
+        turnId: "turn_1712345_0001",
+        reason: "timeout",
+        replies: ["Deploy checked."],
       });
-      await startConversationWork({
-        conversationId: CONVERSATION_ID,
-        nowMs: 1_000,
-        state: q.state,
-      });
-      await recoverConversationWork({
-        nowMs: 1_000 + CONVERSATION_WORK_LEASE_TTL_MS,
-        queue: q.wakes,
-        state: q.state,
+      await expect(
+        loadProjection({ conversationId: CONVERSATION_ID }),
+      ).resolves.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            role: "assistant",
+            content: expect.arrayContaining([
+              expect.objectContaining({
+                type: "text",
+                text: "Deploy checked.",
+              }),
+            ]),
+          }),
+        ]),
+      );
+      await expect(
+        getTurnRecord(CONVERSATION_ID, "turn_1712345_0001"),
+      ).resolves.toMatchObject({
+        state: "paused",
+        resumeReason: "timeout",
+        sliceId: 2,
+        piMessages: expect.arrayContaining([
+          expect.objectContaining({
+            role: "assistant",
+            content: expect.arrayContaining([
+              expect.objectContaining({
+                type: "text",
+                text: "Deploy checked.",
+              }),
+            ]),
+          }),
+        ]),
       });
 
+      // Next queue wake resumes the parked turn under production wiring.
       await expect(q.next()).resolves.toEqual({ status: "completed" });
-
+      expect(slices).toBe(2);
       await expectTerminalTurn(q, {
-        turnId,
+        turnId: "turn_1712345_0001",
         state: "completed",
-        replies: [],
+        replies: ["Deploy checked."],
       });
     });
 

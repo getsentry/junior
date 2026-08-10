@@ -121,29 +121,14 @@ function durableMessageIdentity(message: PiMessage): unknown {
  * handoff may perform.
  */
 function countDurablePrefix(current: PiMessage[], next: PiMessage[]): number {
-  if (next.length < current.length) {
-    return countMatchingDeepPrefix(current, next);
-  }
-  for (let index = 0; index < current.length; index += 1) {
+  const limit = Math.min(current.length, next.length);
+  for (let index = 0; index < limit; index += 1) {
     if (
       !isDeepStrictEqual(
         durableMessageIdentity(current[index]!),
         durableMessageIdentity(next[index]!),
       )
     ) {
-      return index;
-    }
-  }
-  return current.length;
-}
-
-function countMatchingDeepPrefix(
-  left: PiMessage[],
-  right: PiMessage[],
-): number {
-  const limit = Math.min(left.length, right.length);
-  for (let index = 0; index < limit; index += 1) {
-    if (!isDeepStrictEqual(left[index], right[index])) {
       return index;
     }
   }
