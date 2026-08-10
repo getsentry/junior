@@ -319,4 +319,58 @@ describe("api turn conversation work", () => {
       await fixture.close();
     }
   });
+
+  it("does not claim dispatch resume wakes that share surface api", async () => {
+    const fixture = createConfiguredJuniorSqlFixture();
+    await migrateSchema(fixture.sql);
+    const state = getStateAdapter();
+    await state.connect();
+
+    try {
+      const conversationId = "agent-dispatch:dispatch_shared_surface";
+      const turnId = "dispatch:dispatch_shared_surface";
+      const destination = {
+        platform: "slack" as const,
+        teamId: "T123",
+        channelId: "C123",
+      };
+      await saveTurnCheckpoint({
+        mode: "paused",
+        conversationId,
+        turnId,
+        sliceId: 1,
+        reason: "yield",
+        messages: [
+          {
+            role: "user",
+            content: [{ type: "text", text: "Dispatch resume wake." }],
+            timestamp: Date.now(),
+          },
+        ],
+        destination,
+        publishExternally: true,
+        dispatchId: "dispatch_shared_surface",
+        surface: "api",
+      });
+
+      const resolved = await resolveApiTurnWork({
+        attempt: {
+          ack: async () => undefined,
+          conversationId,
+          destination,
+          drain: async () => [],
+          isFinalAttempt: false,
+          messages: [],
+        },
+        conversationId,
+        destination,
+        publishExternally: true,
+        shouldYield: () => false,
+        checkIn: async () => true,
+      });
+      expect(resolved).toBeUndefined();
+    } finally {
+      await fixture.close();
+    }
+  });
 });

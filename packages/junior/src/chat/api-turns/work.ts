@@ -397,9 +397,12 @@ export async function resolveApiTurnWork(
   }
 
   const summaries = await listTurnSummaries(context.conversationId);
+  // Agent-dispatch also writes surface "api". Those turns own a dispatchId and
+  // must stay on the dispatch router (this route runs first).
   const active = summaries.filter(
     (summary) =>
       summary.surface === "api" &&
+      !summary.dispatchId &&
       (summary.state === "paused" || summary.state === "running"),
   );
   if (active.length > 1) {
@@ -415,6 +418,7 @@ export async function resolveApiTurnWork(
   if (
     !record ||
     record.surface !== "api" ||
+    Boolean(record.dispatchId) ||
     (record.state !== "paused" && record.state !== "running")
   ) {
     return undefined;
