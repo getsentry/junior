@@ -3,7 +3,6 @@ import {
   personalSpendReportSchema,
   type PersonalSpendReport,
 } from "../schema/person";
-import { requireViewer } from "../viewer";
 import { readPersonalSpendFromSql } from "./spend.query";
 
 const PERSONAL_SPEND_CACHE_TTL_MS = 5 * 60_000;
@@ -43,12 +42,12 @@ export function createPersonalSpendRoute(): ApiRoute<
   }
 
   return defineApiRoute({
+    auth: true,
     method: "get",
     path: "/me/spend",
     responseSchema: personalSpendReportSchema,
     handler: async (context) => {
-      const viewer = requireViewer(context);
-      return read(viewer.email);
+      return read(context.get("viewer").email);
     },
   });
 }

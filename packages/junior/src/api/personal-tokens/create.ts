@@ -5,15 +5,14 @@ import {
   createdPersonalTokenSchema,
 } from "../schema/personal-token";
 import { createPersonalToken } from "../../personal-tokens/store";
-import { requireViewer } from "../viewer";
-
 /** Create a personal API token for the authenticated viewer. */
 export default defineApiRoute({
+  auth: true,
   method: "post",
   path: "/",
   responseSchema: createdPersonalTokenSchema,
   handler: async (c) => {
-    const viewer = requireViewer(c);
+    const viewer = c.get("viewer");
     let input: unknown;
     try {
       input = await c.req.json();

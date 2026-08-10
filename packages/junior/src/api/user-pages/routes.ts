@@ -20,8 +20,8 @@ export function createUserPageRoutes(): Hono<JuniorApiEnv> {
   app.get("/", () =>
     jsonResponse(pluginUserPageLinksSchema, readPluginUserPageLinks()),
   );
-  app.get("/:pluginName/:pageId", async (context) => {
-    const viewer = requireViewer(context);
+  app.get("/:pluginName/:pageId", requireViewer, async (context) => {
+    const viewer = context.get("viewer");
     const pageInput = pluginUserPageInputSchema.safeParse({
       cursor: context.req.query("cursor") || undefined,
       filter: context.req.query("filter") || undefined,
