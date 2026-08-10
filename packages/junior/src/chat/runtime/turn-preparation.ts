@@ -6,7 +6,6 @@
  * memory/context rendering, vision hydration, and configuration; it should not execute the agent or post replies.
  */
 import type { Message, Thread } from "chat";
-import { coerceThreadConversationState } from "@/chat/state/conversation";
 import type {
   ConversationMessage,
   ThreadConversationState,
@@ -31,7 +30,7 @@ import {
 } from "@/chat/slack/vision-cache";
 import {
   getLocationConfigurationService,
-  getPersistedSandboxState,
+  loadThreadRuntimeState,
 } from "@/chat/runtime/thread-state";
 import {
   hydrateConversationMessages,
@@ -162,11 +161,13 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
   return async function prepareTurnState(
     args: PrepareTurnStateInput,
   ): Promise<PreparedTurnState> {
-    const existingState = await args.thread.state;
-    const sandboxRef = getPersistedSandboxState(existingState ?? {});
-    const conversation = coerceThreadConversationState(existingState);
     const conversationId = args.context.threadId ?? args.context.runId;
-    if (conversationId && isVisionEnabled()) {
+    if (!conversationId) {
+      throw new Error("thread id is required to load runtime scratch");
+    }
+    const { conversation, sandboxRef } =
+      await loadThreadRuntimeState(conversationId);
+    if (isVisionEnabled()) {
       conversation.vision = await loadConversationVisionCache(conversationId);
     }
     await hydrateConversationMessages({ conversation, conversationId });

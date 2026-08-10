@@ -1,19 +1,30 @@
 import type { Thread } from "chat";
 import type { Destination } from "@sentry/junior-plugin-api";
-import { toOptionalString } from "@/chat/coerce";
+import { isRecord, toOptionalNumber, toOptionalString } from "@/chat/coerce";
 import { createDurableLocationConfigurationService } from "@/chat/configuration/sql";
 import type { LocationConfigurationService } from "@/chat/configuration/types";
 import { getDb } from "@/chat/db";
 import { buildConversationStatePatch } from "@/chat/state/conversation";
-import type { ThreadConversationState } from "@/chat/state/conversation";
+import {
+  coerceThreadConversationState,
+  type ThreadConversationState,
+} from "@/chat/state/conversation";
 import { persistConversationMessages } from "@/chat/conversations/messages";
 import { getStateAdapter } from "@/chat/state/adapter";
-import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
+import {
+  JUNIOR_ACTIVE_THREAD_STATE_TTL_MS,
+  JUNIOR_TERMINAL_THREAD_STATE_TTL_MS,
+} from "@/chat/state/ttl";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 
 export interface ThreadStatePatch {
   conversation?: ThreadConversationState;
   sandboxRef?: SandboxRef | null;
+}
+
+export interface LoadedThreadRuntimeState {
+  conversation: ThreadConversationState;
+  sandboxRef?: SandboxRef;
 }
 
 function threadStateKey(threadId: string): string {
@@ -22,6 +33,40 @@ function threadStateKey(threadId: string): string {
 
 function channelStateKey(channelId: string): string {
   return `channel-state:${channelId}`;
+}
+
+function hasActiveProcessing(state: Record<string, unknown>): boolean {
+  const conversation = isRecord(state.conversation) ? state.conversation : {};
+  const processing = isRecord(conversation.processing)
+    ? conversation.processing
+    : {};
+  return Boolean(
+    toOptionalString(processing.activeTurnId) ||
+      (isRecord(processing.pendingAuth) &&
+        Object.keys(processing.pendingAuth).length > 0),
+  );
+}
+
+function hasThreadScratchPayload(state: Record<string, unknown>): boolean {
+  if (hasActiveProcessing(state)) {
+    return true;
+  }
+
+  const conversation = isRecord(state.conversation) ? state.conversation : {};
+  const processing = isRecord(conversation.processing)
+    ? conversation.processing
+    : {};
+  if (toOptionalNumber(processing.lastCompletedAtMs) !== undefined) {
+    return true;
+  }
+
+  return Boolean(toOptionalString(state.app_sandbox_id));
+}
+
+function threadStateTtlMs(state: Record<string, unknown>): number {
+  return hasActiveProcessing(state)
+    ? JUNIOR_ACTIVE_THREAD_STATE_TTL_MS
+    : JUNIOR_TERMINAL_THREAD_STATE_TTL_MS;
 }
 
 function buildThreadStatePayload(
@@ -40,10 +85,11 @@ function buildThreadStatePayload(
 }
 
 /**
- * Merge a payload into thread scratch with Junior's TTL.
+ * Merge a payload into active-only thread scratch.
  *
- * Chat SDK state writes hardcode a 30-day TTL. This boundary owns Junior's
- * shorter retention policy for the same scratch keys.
+ * Redis holds processing control and optional sandbox metadata only. Active
+ * turns keep a short resume window; idle/terminal records get a tiny grace
+ * period, then expire. Empty bags are deleted immediately.
  */
 async function mergePersistedState(
   key: string,
@@ -56,11 +102,12 @@ async function mergePersistedState(
   const stateAdapter = getStateAdapter();
   await stateAdapter.connect();
   const existing = (await stateAdapter.get<Record<string, unknown>>(key)) ?? {};
-  await stateAdapter.set(
-    key,
-    { ...existing, ...payload },
-    JUNIOR_THREAD_STATE_TTL_MS,
-  );
+  const next = { ...existing, ...payload };
+  if (!hasThreadScratchPayload(next)) {
+    await stateAdapter.delete(key);
+    return;
+  }
+  await stateAdapter.set(key, next, threadStateTtlMs(next));
 }
 
 /** Extract persisted sandbox metadata from thread state payload. */
@@ -77,6 +124,17 @@ export function getPersistedSandboxState(
   return {
     id,
     ...(profileHash ? { profileHash } : {}),
+  };
+}
+
+/** Load and coerce active thread scratch into runtime parts. */
+export async function loadThreadRuntimeState(
+  threadId: string,
+): Promise<LoadedThreadRuntimeState> {
+  const state = await getPersistedThreadState(threadId);
+  return {
+    conversation: coerceThreadConversationState(state),
+    sandboxRef: getPersistedSandboxState(state),
   };
 }
 

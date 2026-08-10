@@ -188,7 +188,7 @@ export function coerceThreadConversationState(
  * Wrap active conversation control into the thread scratch envelope.
  *
  * Visible history lives in SQL. Image summaries use a separate disposable
- * cache, so thread scratch does not retain them.
+ * cache. Thread scratch keeps only short-lived processing control.
  */
 export function buildConversationStatePatch(
   conversation: ThreadConversationState,
