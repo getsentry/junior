@@ -12,6 +12,7 @@ import { parseSlackChannelId, parseSlackTeamId } from "@/chat/slack/ids";
 import { parseSlackMessageTs } from "@/chat/slack/timestamp";
 import {
   conversationsHistoryPage,
+  conversationsInfoOk,
   reactionsAddOk,
 } from "../fixtures/slack/factories/api";
 import {
@@ -594,6 +595,72 @@ describe("slack channel tools", () => {
       channel: "C123",
       cursor: "expired-cursor",
     });
+  });
+
+  it("lists history for another public channel when channel_id is provided", async () => {
+    queueSlackApiResponse("conversations.info", {
+      body: conversationsInfoOk({
+        channelId: "C0OTHER",
+        isPrivate: false,
+      }),
+    });
+    queueSlackApiResponse("conversations.history", {
+      body: conversationsHistoryPage({
+        messages: [{ ts: "1700000000.700", text: "other-channel", user: "U3" }],
+      }),
+    });
+    const tool = createSlackChannelListMessagesTool(
+      createContext("list other channel", {
+        sourceChannelId: "C123",
+      }),
+      {
+        visibilityStore: {
+          async getDestinationVisibility() {
+            return undefined;
+          },
+        },
+      },
+    );
+
+    const result = await executeTool(tool, {
+      channel_id: "C0OTHER",
+      limit: 5,
+    });
+
+    expect(result).toMatchObject({
+      channel_id: "C0OTHER",
+      count: 1,
+    });
+    expect(getCapturedSlackApiCalls("conversations.info")).toHaveLength(1);
+    expect(
+      getCapturedSlackApiCalls("conversations.history")[0]?.params,
+    ).toMatchObject({
+      channel: "C0OTHER",
+    });
+  });
+
+  it("blocks history for a private channel_id outside the current conversation", async () => {
+    queueSlackApiResponse("conversations.info", {
+      body: conversationsInfoOk({
+        channelId: "C0PRIVATE",
+        isPrivate: true,
+      }),
+    });
+    const tool = createSlackChannelListMessagesTool(
+      createContext("list private channel"),
+      {
+        visibilityStore: {
+          async getDestinationVisibility() {
+            return undefined;
+          },
+        },
+      },
+    );
+
+    await expect(
+      executeTool(tool, { channel_id: "C0PRIVATE" }),
+    ).rejects.toThrow("public channels the bot can access");
+    expect(getCapturedSlackApiCalls("conversations.history")).toHaveLength(0);
   });
 
   it("adds a reaction to the implicitly targeted inbound message", async () => {

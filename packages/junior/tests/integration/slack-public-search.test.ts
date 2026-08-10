@@ -55,6 +55,7 @@ describe("Slack public search", () => {
 
     expect(result).toMatchObject({
       query: "project gizmo",
+      content_types: ["messages"],
       count: 1,
       next_cursor: "next-page",
       messages: [
@@ -66,6 +67,9 @@ describe("Slack public search", () => {
             "https://example.slack.com/archives/C123/p1784000000000100",
         },
       ],
+      files: [],
+      channels: [],
+      users: [],
     });
     expect(
       getCapturedSlackApiCalls("assistant.search.context")[0]?.params,
@@ -79,6 +83,73 @@ describe("Slack public search", () => {
       limit: "5",
       sort: "timestamp",
       sort_dir: "desc",
+    });
+  });
+
+  it("searches files and users when those content types are requested", async () => {
+    queueSlackApiResponse("assistant.search.context", {
+      body: {
+        ok: true,
+        results: {
+          messages: [],
+          files: [
+            {
+              id: "F123",
+              title: "gizmo plan",
+              name: "gizmo.pdf",
+              filetype: "pdf",
+              user: "U9",
+              channel_id: "C123",
+              permalink: "https://example.slack.com/files/U9/F123/gizmo.pdf",
+            },
+          ],
+          users: [
+            {
+              id: "U9",
+              name: "ada",
+              real_name: "Ada Lovelace",
+              display_name: "ada",
+            },
+          ],
+        },
+      },
+    });
+
+    const result = await executeTool(createSlackPublicSearchTool(actionToken), {
+      query: "gizmo",
+      content_types: ["files", "users"],
+    });
+
+    expect(result).toMatchObject({
+      query: "gizmo",
+      content_types: ["files", "users"],
+      count: 2,
+      files: [
+        {
+          file_id: "F123",
+          title: "gizmo plan",
+          name: "gizmo.pdf",
+          filetype: "pdf",
+          user_id: "U9",
+          channel_id: "C123",
+          permalink: "https://example.slack.com/files/U9/F123/gizmo.pdf",
+        },
+      ],
+      users: [
+        {
+          user_id: "U9",
+          user_name: "ada",
+          real_name: "Ada Lovelace",
+          display_name: "ada",
+        },
+      ],
+      messages: [],
+      channels: [],
+    });
+    expect(
+      getCapturedSlackApiCalls("assistant.search.context")[0]?.params,
+    ).toMatchObject({
+      content_types: ["files", "users"],
     });
   });
 
@@ -111,6 +182,22 @@ describe("Slack public search", () => {
       }),
     ).rejects.toThrow(
       "Public Slack search is unavailable because this installation is missing the `search:read.public` scope.",
+    );
+  });
+
+  it("reports a missing files search scope explicitly", async () => {
+    queueSlackApiError("assistant.search.context", {
+      error: "missing_scope",
+      needed: "search:read.files",
+    });
+
+    await expect(
+      executeTool(createSlackPublicSearchTool(actionToken), {
+        query: "roadmap pdf",
+        content_types: ["files"],
+      }),
+    ).rejects.toThrow(
+      "Public Slack search is unavailable because this installation is missing the `search:read.files` scope.",
     );
   });
 });

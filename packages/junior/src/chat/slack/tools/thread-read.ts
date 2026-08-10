@@ -3,6 +3,7 @@ import { listThreadReplies } from "@/chat/slack/channel";
 import {
   checkSlackChannelReadAccess,
   type DestinationVisibilityReader,
+  type SlackConversationInfoReader,
 } from "@/chat/slack/tools/channel-access";
 import {
   parseRequiredSlackChannelIdParam,
@@ -80,11 +81,14 @@ function truncateMessages(
 /** Create a tool that reads a Slack thread from a shared message URL or explicit coordinates. */
 export function createSlackThreadReadTool(
   context: SlackToolContext,
-  deps: { visibilityStore?: DestinationVisibilityReader } = {},
+  deps: {
+    conversationInfo?: SlackConversationInfoReader;
+    visibilityStore?: DestinationVisibilityReader;
+  } = {},
 ) {
   return zodTool({
     description:
-      "Read a Slack thread from a shared Slack message archive URL or explicit channel + timestamp. Use when the user shares a Slack message link (https://*.slack.com/archives/...) and you need the referenced message and its thread context. Only the current conversation and public channels Junior has seen in this workspace are readable.",
+      "Read a Slack thread from a shared Slack message archive URL or explicit channel + timestamp. Use when the user shares a Slack message link (https://*.slack.com/archives/...) and you need the referenced message and its thread context. Only the current conversation or public channels the bot can access are readable.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -161,6 +165,7 @@ export function createSlackThreadReadTool(
           context.destinationChannelId,
           context.sourceChannelId,
         ],
+        conversationInfo: deps.conversationInfo,
         store: deps.visibilityStore,
         targetChannelId: channelId,
         teamId: context.teamId,

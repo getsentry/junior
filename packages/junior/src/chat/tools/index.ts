@@ -204,10 +204,10 @@ export function createTools(
       );
     }
 
-    if (outputCapabilities?.canPostToChannel) {
-      tools.slackChannelListMessages =
-        createSlackChannelListMessagesTool(slackContext);
-    }
+    // Channel history is available in any Slack context, including DMs, so the
+    // model can read the active destination or another accessible public channel.
+    tools.slackChannelListMessages =
+      createSlackChannelListMessagesTool(slackContext);
 
     if (rawChannelCapabilities.canAddReactions) {
       tools.addReaction = createSlackMessageAddReactionTool(

@@ -4,7 +4,10 @@ import { createSlackThreadReadTool } from "@/chat/slack/tools/thread-read";
 import type { DestinationVisibilityReader } from "@/chat/slack/tools/channel-access";
 import type { SlackToolContext } from "@/chat/slack/tools/context";
 import { parseSlackChannelId, parseSlackTeamId } from "@/chat/slack/ids";
-import { conversationsRepliesPage } from "../fixtures/slack/factories/api";
+import {
+  conversationsInfoOk,
+  conversationsRepliesPage,
+} from "../fixtures/slack/factories/api";
 import {
   getCapturedSlackApiCalls,
   queueSlackApiError,
@@ -280,48 +283,110 @@ describe("slackThreadRead", () => {
   });
 
   it("blocks reading a private group channel from a DM conversation without assistant context", async () => {
+    queueSlackApiResponse("conversations.info", {
+      body: conversationsInfoOk({
+        channelId: "G0PRIVATE",
+        isPrivate: true,
+        isGroup: true,
+      }),
+    });
     const tool = createTool({ sourceChannelId: "D0DM" });
     await expect(
       executeTool(tool, {
         channel_id: "G0PRIVATE",
         ts: "1700000000.100000",
       }),
-    ).rejects.toThrow("current conversation");
+    ).rejects.toThrow("public channels the bot can access");
+    expect(getCapturedSlackApiCalls("conversations.info")).toHaveLength(1);
     expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(0);
   });
 
   it("blocks reading a private channel that is not the current channel", async () => {
+    queueSlackApiResponse("conversations.info", {
+      body: conversationsInfoOk({
+        channelId: "G0OTHER",
+        isPrivate: true,
+        isGroup: true,
+      }),
+    });
     const tool = createTool({ sourceChannelId: "C0CURRENT" });
     await expect(
       executeTool(tool, {
         url: "https://sentry.slack.com/archives/G0OTHER/p1700000000100000",
       }),
-    ).rejects.toThrow("current conversation");
+    ).rejects.toThrow("public channels the bot can access");
 
-    // Should NOT call any Slack API — blocked locally
-    expect(getCapturedSlackApiCalls("conversations.info")).toHaveLength(0);
+    expect(getCapturedSlackApiCalls("conversations.info")).toHaveLength(1);
     expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(0);
   });
 
   it("blocks reading a DM channel that is not the current channel", async () => {
+    queueSlackApiResponse("conversations.info", {
+      body: conversationsInfoOk({
+        channelId: "D0SOMEONE",
+        isIm: true,
+      }),
+    });
     const tool = createTool();
     await expect(
       executeTool(tool, {
         channel_id: "D0SOMEONE",
         ts: "1700000000.100000",
       }),
-    ).rejects.toThrow("current conversation");
+    ).rejects.toThrow("public channels the bot can access");
+    expect(getCapturedSlackApiCalls("conversations.info")).toHaveLength(1);
     expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(0);
   });
 
-  it("blocks reading a C-prefixed channel without persisted public visibility", async () => {
+  it("allows reading a public channel proven by conversations.info", async () => {
+    queueSlackApiResponse("conversations.info", {
+      body: conversationsInfoOk({
+        channelId: "C0UNCONFIRMED",
+        isPrivate: false,
+      }),
+    });
+    queueSlackApiResponse("conversations.replies", {
+      body: conversationsRepliesPage({
+        threadTs: "1700000000.100000",
+        messages: [
+          {
+            ts: "1700000000.100000",
+            thread_ts: "1700000000.100000",
+            user: "U1",
+            text: "public channel root",
+          },
+        ],
+      }),
+    });
+
+    const tool = createTool({ sourceChannelId: "C0CURRENT" });
+    const result = await executeTool(tool, {
+      url: "https://sentry.slack.com/archives/C0UNCONFIRMED/p1700000000100000",
+    });
+
+    expect(result).toMatchObject({
+      channel_id: "C0UNCONFIRMED",
+      count: 1,
+    });
+    expect(getCapturedSlackApiCalls("conversations.info")).toHaveLength(1);
+    expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(1);
+  });
+
+  it("blocks reading a private channel reported by conversations.info", async () => {
+    queueSlackApiResponse("conversations.info", {
+      body: conversationsInfoOk({
+        channelId: "C0UNCONFIRMED",
+        isPrivate: true,
+      }),
+    });
+
     const tool = createTool({ sourceChannelId: "C0CURRENT" });
     await expect(
       executeTool(tool, {
         url: "https://sentry.slack.com/archives/C0UNCONFIRMED/p1700000000100000",
       }),
-    ).rejects.toThrow("public channels Junior has seen");
-    // Blocked locally, no Slack API traffic.
+    ).rejects.toThrow("public channels the bot can access");
+    expect(getCapturedSlackApiCalls("conversations.info")).toHaveLength(1);
     expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(0);
   });
 

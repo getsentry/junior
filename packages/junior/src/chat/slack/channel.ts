@@ -136,3 +136,57 @@ export async function listThreadReplies(input: {
 
   return replies.slice(0, targetLimit);
 }
+
+export interface SlackConversationInfo {
+  id: SlackChannelId;
+  name?: string;
+  isChannel: boolean;
+  isPrivate: boolean;
+  isIm: boolean;
+  isMpim: boolean;
+  isMember?: boolean;
+}
+
+/** Load conversation metadata used for cross-channel read access checks. */
+export async function getConversationInfo(
+  channelId: SlackChannelId,
+): Promise<SlackConversationInfo> {
+  const client = getSlackClient();
+  const response = await withSlackRetries(
+    () =>
+      client.conversations.info({
+        channel: channelId,
+      }),
+    3,
+    { action: "conversations.info", idempotent: true },
+  );
+
+  const channel = response.channel;
+  if (!channel || typeof channel !== "object") {
+    throw new Error(`Slack conversations.info returned no channel for ${channelId}`);
+  }
+
+  const record = channel as {
+    id?: string;
+    name?: string;
+    is_channel?: boolean;
+    is_private?: boolean;
+    is_im?: boolean;
+    is_mpim?: boolean;
+    is_member?: boolean;
+  };
+
+  return {
+    id: channelId,
+    ...(typeof record.name === "string" && record.name
+      ? { name: record.name }
+      : {}),
+    isChannel: record.is_channel === true,
+    isPrivate: record.is_private === true,
+    isIm: record.is_im === true,
+    isMpim: record.is_mpim === true,
+    ...(typeof record.is_member === "boolean"
+      ? { isMember: record.is_member }
+      : {}),
+  };
+}

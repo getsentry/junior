@@ -7,6 +7,15 @@ import {
   optionalSlackTimestampParam,
   parseSlackTimestampParam,
 } from "@/chat/slack/timestamp-param";
+import {
+  checkSlackChannelReadAccess,
+  type DestinationVisibilityReader,
+  type SlackConversationInfoReader,
+} from "@/chat/slack/tools/channel-access";
+import {
+  parseRequiredSlackChannelIdParam,
+  slackChannelIdParam,
+} from "@/chat/slack/id-param";
 import { z } from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
@@ -59,11 +68,17 @@ function normalizeRangeTimestamp(
   return timestamp;
 }
 
-/** Create the active-channel history tool with preflight timestamp normalization. */
-export function createSlackChannelListMessagesTool(context: SlackToolContext) {
+/** Create the channel history tool with optional cross-channel targets. */
+export function createSlackChannelListMessagesTool(
+  context: SlackToolContext,
+  deps: {
+    conversationInfo?: SlackConversationInfoReader;
+    visibilityStore?: DestinationVisibilityReader;
+  } = {},
+) {
   return zodTool({
     description:
-      "List channel messages from Slack history in the active channel context. Use when the user asks for recent or historical channel context outside this thread. Do not use for live monitoring or when current thread context already answers the question.",
+      "List channel messages from Slack history. Defaults to the active channel context. Pass `channel_id` to read another public channel the bot can access, or the current conversation. Use when the user asks for recent or historical channel context outside this thread. Do not use for live monitoring or when current thread context already answers the question.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -71,6 +86,9 @@ export function createSlackChannelListMessagesTool(context: SlackToolContext) {
       readOnlyHint: true,
     },
     inputSchema: z.object({
+      channel_id: slackChannelIdParam(
+        "Optional Slack channel ID to read. Defaults to the active channel context. Only the current conversation or public channels the bot can access are allowed.",
+      ).optional(),
       limit: z.coerce
         .number()
         .int()
@@ -102,6 +120,7 @@ export function createSlackChannelListMessagesTool(context: SlackToolContext) {
     }),
     outputSchema: juniorToolOutputSchema,
     execute: async ({
+      channel_id,
       limit,
       cursor,
       oldest,
@@ -109,9 +128,33 @@ export function createSlackChannelListMessagesTool(context: SlackToolContext) {
       inclusive,
       max_pages,
     }) => {
-      const targetChannelId = context.destinationChannelId;
+      let targetChannelId = context.destinationChannelId;
+      if (channel_id !== undefined) {
+        const parsedChannelId = parseRequiredSlackChannelIdParam(
+          "channel_id",
+          channel_id,
+        );
+        if (!parsedChannelId.ok) {
+          throw new ToolInputError(parsedChannelId.error);
+        }
+        targetChannelId = parsedChannelId.value;
+      }
       if (!targetChannelId) {
         throw new ToolInputError("No active Slack destination is available.");
+      }
+
+      const access = await checkSlackChannelReadAccess({
+        currentChannelIds: [
+          context.destinationChannelId,
+          context.sourceChannelId,
+        ],
+        conversationInfo: deps.conversationInfo,
+        store: deps.visibilityStore,
+        targetChannelId,
+        teamId: context.teamId,
+      });
+      if (!access.allowed) {
+        throw new ToolInputError(access.error);
       }
 
       const normalizedOldest = normalizeRangeTimestamp(
@@ -152,17 +195,34 @@ export function createSlackChannelListMessagesTool(context: SlackToolContext) {
             { cause: error },
           );
         }
+        if (error instanceof SlackActionError) {
+          if (error.code === "not_in_channel") {
+            throw new ToolInputError(
+              "Could not read this Slack channel history. The bot is not in the channel.",
+              { cause: error },
+            );
+          }
+          if (error.code === "missing_scope") {
+            throw new ToolInputError(
+              "Could not read this Slack channel history because this installation is missing history scopes.",
+              { cause: error },
+            );
+          }
+          throw new ToolInputError(
+            "Could not read this Slack channel history. The bot may not be in the channel or may lack history scopes.",
+            { cause: error },
+          );
+        }
         throw error;
       }
 
-      const summary = {
+      return {
         channel_id: targetChannelId,
+        ...(access.channelName ? { channel_name: access.channelName } : {}),
         count: result.messages.length,
         messages: result.messages,
         ...(result.nextCursor ? { next_cursor: result.nextCursor } : {}),
       };
-
-      return summary;
     },
   });
 }

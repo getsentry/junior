@@ -116,7 +116,7 @@ describe("Slack tool registration", () => {
     expect(tools).not.toHaveProperty("loadSkill");
   });
 
-  it("registers thread sendFiles but not channel-only tools in DM context", () => {
+  it("registers thread sendFiles and channel history in DM context", () => {
     const tools = createTools([], {}, ctx("D12345"));
 
     expect(tools).toHaveProperty("sendFiles");
@@ -129,7 +129,7 @@ describe("Slack tool registration", () => {
       required: expect.arrayContaining(["files"]),
     });
     expect(tools).not.toHaveProperty("attachFile");
-    expect(tools).not.toHaveProperty("slackChannelListMessages");
+    expect(tools).toHaveProperty("slackChannelListMessages");
     expect(tools).toHaveProperty("addReaction");
     expect(tools).toHaveProperty("slackCanvasCreate");
     expect(tools).not.toHaveProperty("searchConversationMessages");
