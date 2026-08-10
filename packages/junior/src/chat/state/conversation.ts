@@ -185,28 +185,20 @@ export function coerceThreadConversationState(
 }
 
 /**
- * Wrap conversation runtime scratch into the storage envelope.
+ * Wrap active conversation control into the thread scratch envelope.
  *
- * Visible transcript and model history live in SQL. Redis only keeps
- * short-lived processing control and the vision cache, which has no other
- * authority yet.
+ * Visible history lives in SQL. Image summaries use a separate disposable
+ * cache, so thread scratch does not retain them.
  */
 export function buildConversationStatePatch(
   conversation: ThreadConversationState,
 ): {
-  conversation: Pick<
-    ThreadConversationState,
-    "schemaVersion" | "processing" | "vision"
-  >;
+  conversation: Pick<ThreadConversationState, "schemaVersion" | "processing">;
 } {
   return {
     conversation: {
       schemaVersion: 1,
       processing: { ...conversation.processing },
-      vision: {
-        backfillCompletedAtMs: conversation.vision.backfillCompletedAtMs,
-        byFileId: { ...conversation.vision.byFileId },
-      },
     },
   };
 }

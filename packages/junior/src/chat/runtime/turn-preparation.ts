@@ -26,6 +26,10 @@ import {
   isVisionEnabled,
 } from "@/chat/slack/vision-context";
 import {
+  loadConversationVisionCache,
+  persistConversationVisionCache,
+} from "@/chat/slack/vision-cache";
+import {
   getLocationConfigurationService,
   getPersistedSandboxState,
 } from "@/chat/runtime/thread-state";
@@ -162,6 +166,9 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
     const sandboxRef = getPersistedSandboxState(existingState ?? {});
     const conversation = coerceThreadConversationState(existingState);
     const conversationId = args.context.threadId ?? args.context.runId;
+    if (conversationId && isVisionEnabled()) {
+      conversation.vision = await loadConversationVisionCache(conversationId);
+    }
     await hydrateConversationMessages({ conversation, conversationId });
     const locationConfiguration =
       args.locationConfiguration ??
@@ -216,6 +223,9 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
         runId: args.context.runId,
         threadTs: getThreadTs(args.context.threadId),
       });
+      if (conversationId) {
+        await persistConversationVisionCache(conversationId, conversation.vision);
+      }
     }
 
     // Record the visible transcript after vision hydration (so the current

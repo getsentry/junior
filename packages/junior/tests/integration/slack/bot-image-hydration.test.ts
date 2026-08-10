@@ -241,27 +241,9 @@ describe("bot image hydration", () => {
 
     expect(listThreadRepliesMock).not.toHaveBeenCalled();
     const persistedState = (await thread.getState()) as {
-      conversation: {
-        messages: Array<{
-          author?: {
-            isBot?: boolean;
-          };
-          text: string;
-          meta?: {
-            attachmentCount?: number;
-            imageAttachmentCount?: number;
-            imagesHydrated?: boolean;
-            slackTs?: string;
-          };
-        }>;
-        vision: {
-          backfillCompletedAtMs?: number;
-        };
-      };
+      conversation: Record<string, unknown>;
     };
-    expect(
-      persistedState.conversation.vision.backfillCompletedAtMs,
-    ).toBeUndefined();
+    expect(persistedState.conversation).not.toHaveProperty("vision");
     const conversation = coerceThreadConversationState(await thread.getState());
     await hydrateConversationMessages({
       conversation,
@@ -401,19 +383,7 @@ describe("bot image hydration", () => {
     expect(downloadFileMock).toHaveBeenCalledTimes(1);
     expect(completeTextMock).toHaveBeenCalledTimes(1);
     const persistedState = (await secondThread.getState()) as {
-      conversation: {
-        messages: Array<{
-          id: string;
-          meta?: {
-            imagesHydrated?: boolean;
-            imageFileIds?: string[];
-          };
-        }>;
-        vision: {
-          backfillCompletedAtMs?: number;
-          byFileId: Record<string, { summary: string }>;
-        };
-      };
+      conversation: Record<string, unknown>;
     };
     const conversation = coerceThreadConversationState(await secondThread.getState());
     await hydrateConversationMessages({
@@ -429,12 +399,15 @@ describe("bot image hydration", () => {
         imageFileIds: ["F_OLD"],
       }),
     );
-    expect(persistedState.conversation.vision.byFileId.F_OLD?.summary).toBe(
+    expect(persistedState.conversation).not.toHaveProperty("vision");
+    const { loadConversationVisionCache } = await import(
+      "@/chat/slack/vision-cache"
+    );
+    const visionCache = await loadConversationVisionCache(secondThread.id);
+    expect(visionCache.byFileId.F_OLD?.summary).toBe(
       "Recovered screenshot context",
     );
-    expect(persistedState.conversation.vision.backfillCompletedAtMs).toBeTypeOf(
-      "number",
-    );
+    expect(visionCache.backfillCompletedAtMs).toBeTypeOf("number");
   });
 
   it("hydrates skipped passive screenshots when a later explicit mention needs them", async () => {
@@ -555,18 +528,7 @@ describe("bot image hydration", () => {
     expect(executeAgentRun).toHaveBeenCalledTimes(1);
 
     const persistedState = (await thread.getState()) as {
-      conversation: {
-        messages: Array<{
-          id: string;
-          meta?: {
-            imagesHydrated?: boolean;
-            imageFileIds?: string[];
-          };
-        }>;
-        vision: {
-          byFileId: Record<string, { summary: string }>;
-        };
-      };
+      conversation: Record<string, unknown>;
     };
     const conversation = coerceThreadConversationState(await thread.getState());
     await hydrateConversationMessages({
@@ -582,7 +544,12 @@ describe("bot image hydration", () => {
         imageFileIds: ["F_PASSIVE"],
       }),
     );
-    expect(persistedState.conversation.vision.byFileId.F_PASSIVE?.summary).toBe(
+    expect(persistedState.conversation).not.toHaveProperty("vision");
+    const { loadConversationVisionCache } = await import(
+      "@/chat/slack/vision-cache"
+    );
+    const visionCache = await loadConversationVisionCache(thread.id);
+    expect(visionCache.byFileId.F_PASSIVE?.summary).toBe(
       "Passive screenshot summary",
     );
   });

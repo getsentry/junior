@@ -111,7 +111,7 @@ describe("conversation state", () => {
     });
   });
 
-  it("includes vision cache and processing control in state patch payload", () => {
+  it("includes processing control but omits vision cache from thread scratch", () => {
     const state: ThreadConversationState = coerceThreadConversationState({
       conversation: {
         messages: [
@@ -144,9 +144,7 @@ describe("conversation state", () => {
     });
 
     const patch = buildConversationStatePatch(state);
-    expect(patch.conversation.vision.byFileId.F321?.summary).toContain(
-      "staff engineer",
-    );
+    expect(patch.conversation).not.toHaveProperty("vision");
     expect(patch.conversation.processing.activeTurnId).toBe("turn-1");
     expect(patch.conversation.processing.pendingAuth).toMatchObject({
       kind: "plugin",
