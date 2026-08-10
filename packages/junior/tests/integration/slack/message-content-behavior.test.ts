@@ -21,7 +21,7 @@ import {
   createTestDestination,
 } from "../../fixtures/slack-harness";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
-import { flattenAgentRunRequestForTest } from "../../fixtures/agent-runner";
+import { flattenAgentRunForTest } from "../../fixtures/agent-runner";
 
 interface CapturedCall {
   contextConversation?: string;
@@ -82,9 +82,9 @@ describe("Slack behavior: message content", () => {
         replyExecutor: {
           agentRunner: {
             run: async (request) => {
-              const prompt = request.input.messageText;
+              const prompt = request.instruction.text;
               const context = {
-                ...flattenAgentRunRequestForTest(request),
+                ...flattenAgentRunForTest(request),
               };
 
               calls.push({
@@ -127,7 +127,7 @@ describe("Slack behavior: message content", () => {
         replyExecutor: {
           agentRunner: {
             run: async (request) => {
-              calls.push({ prompt: request.input.messageText });
+              calls.push({ prompt: request.instruction.text });
               return completedReply("Reviewed.");
             },
           },
@@ -174,7 +174,7 @@ describe("Slack behavior: message content", () => {
         replyExecutor: {
           agentRunner: {
             run: async (request) => {
-              const prompt = request.input.messageText;
+              const prompt = request.instruction.text;
 
               calls.push({ prompt });
               return completedReply("Done.");
@@ -211,9 +211,9 @@ describe("Slack behavior: message content", () => {
         replyExecutor: {
           agentRunner: {
             run: async (request) => {
-              const prompt = request.input.messageText;
+              const prompt = request.instruction.text;
               const context = {
-                ...flattenAgentRunRequestForTest(request),
+                ...flattenAgentRunForTest(request),
               };
 
               calls.push({
@@ -270,9 +270,9 @@ describe("Slack behavior: message content", () => {
         replyExecutor: {
           agentRunner: {
             run: async (request) => {
-              const context = flattenAgentRunRequestForTest(request);
+              const context = flattenAgentRunForTest(request);
               calls.push({
-                prompt: request.input.messageText,
+                prompt: request.instruction.text,
                 contextConversation: context?.conversationContext,
               });
               return completedReply("Review found.");
@@ -429,9 +429,9 @@ describe("Slack behavior: message content", () => {
         replyExecutor: {
           agentRunner: {
             run: async (request) => {
-              const prompt = request.input.messageText;
+              const prompt = request.instruction.text;
               const context = {
-                ...flattenAgentRunRequestForTest(request),
+                ...flattenAgentRunForTest(request),
               };
 
               calls.push({
@@ -535,9 +535,9 @@ describe("Slack behavior: message content", () => {
         replyExecutor: {
           agentRunner: {
             run: async (request) => {
-              const prompt = request.input.messageText;
+              const prompt = request.instruction.text;
               const context = {
-                ...flattenAgentRunRequestForTest(request),
+                ...flattenAgentRunForTest(request),
               };
 
               calls.push({
@@ -720,9 +720,9 @@ describe("Slack behavior: message content", () => {
         replyExecutor: {
           agentRunner: {
             run: async (request) => {
-              const prompt = request.input.messageText;
+              const prompt = request.instruction.text;
               const context = {
-                ...flattenAgentRunRequestForTest(request),
+                ...flattenAgentRunForTest(request),
               };
 
               calls.push({

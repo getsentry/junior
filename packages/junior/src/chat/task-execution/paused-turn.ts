@@ -72,7 +72,7 @@ import {
 } from "@/chat/resource-events/actor";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
-import type { AgentRunRouting } from "@/chat/agent/request";
+import type { AgentRun } from "@/chat/agent/types";
 import { persistAuthPauseTurnState } from "@/chat/runtime/auth-pause-state";
 import { clearPendingAuth } from "@/chat/services/pending-auth";
 import { requireSlackDestination } from "@/chat/destination";
@@ -88,7 +88,7 @@ export interface PausedTurnOptions {
   /** Exact persisted input ids accepted while running the paused turn. */
   inputMessageIds?: readonly string[];
   routingContext?: Pick<
-    AgentRunRouting,
+    AgentRun,
     | "actor"
     | "credentialContext"
     | "destinationVisibility"
@@ -516,31 +516,31 @@ async function runPausedTurnInContext(
           inputMessageIds: [userMessage.id],
           initialStatus: latestReportedProgress(turnMessages),
           replyContext: {
-            input: {
-              ...(conversationContext ? { conversationContext } : {}),
-              // Pi history is SQL-authoritative: the resumed run reads its
-              // exact dispatch session so unrelated conversation input cannot
-              // gain system authority. Interactive turns retain their merged
-              // projection so queued steering remains visible.
-              piMessages: dispatchId
-                ? activeTurn.piMessages
-                : await loadProjection({
-                    conversationId: payload.conversationId,
-                  }),
+            instruction: {
+              ...(conversationContext ? { context: conversationContext } : {}),
+              // Attachment fields come from the turn user message context helper.
               ...getTurnUserReplyAttachmentContext(userMessage),
+              text: userMessage.text,
             },
-            routing: {
-              ...options.routingContext,
-              credentialContext,
-              actor,
-              destination: routingDestination,
-              // Slack resume publishes unless the checkpoint opted out.
-              // Missing means legacy/in-flight Slack turns still post.
-              publishExternally: activeTurn.publishExternally !== false,
-              source,
-              toolChannelId: destination.channelId,
-            },
-            policy: {
+            // Pi history is SQL-authoritative: the resumed run reads its
+            // exact dispatch session so unrelated conversation input cannot
+            // gain system authority. Interactive turns retain their merged
+            // projection so queued steering remains visible.
+            history: dispatchId
+              ? activeTurn.piMessages
+              : await loadProjection({
+                  conversationId: payload.conversationId,
+                }),
+            ...options.routingContext,
+            credentialContext,
+            actor,
+            destination: routingDestination,
+            // Slack resume publishes unless the checkpoint opted out.
+            // Missing means legacy/in-flight Slack turns still post.
+            publishExternally: activeTurn.publishExternally !== false,
+            source,
+            toolChannelId: destination.channelId,
+            environment: {
               locationConfiguration,
             },
             state: {

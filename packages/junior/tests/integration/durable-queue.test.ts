@@ -13,7 +13,7 @@ import {
   loadProjection,
 } from "@/chat/conversations/projection";
 import { executeAgentRun } from "@/chat/agent";
-import type { AgentRunSteeringMessage } from "@/chat/agent/request";
+import type { AgentSteeringMessage } from "@/chat/agent/types";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import {
@@ -649,7 +649,7 @@ describe("durable queue contract", () => {
     it("folds a second mention into the active turn", async () => {
       const entered = deferred();
       const release = deferred();
-      const steering: AgentRunSteeringMessage[] = [];
+      const steering: AgentSteeringMessage[] = [];
       const q = await slack({
         agentRunner: {
           run: async (request) => {

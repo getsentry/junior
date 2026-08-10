@@ -32,7 +32,7 @@ import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { createProviderError } from "@/chat/services/provider-error";
 import {
-  flattenAgentRunRequestForTest,
+  flattenAgentRunForTest,
   scriptedAssistantMessageRunner,
 } from "../fixtures/agent-runner";
 import { getConversationEventStore } from "@/chat/db";
@@ -120,7 +120,7 @@ async function loadLifecycleEvents(conversationId: string) {
   );
 }
 
-type FlatAgentRunRequest = ReturnType<typeof flattenAgentRunRequestForTest>;
+type FlatAgentRun = ReturnType<typeof flattenAgentRunForTest>;
 
 async function deliverAssistantText(
   request: Parameters<AgentRunner["run"]>[0],
@@ -144,7 +144,7 @@ async function deliverAssistantText(
 }
 
 async function persistRunningSessionForFakeReply(
-  context: FlatAgentRunRequest,
+  context: FlatAgentRun,
   piMessages: PiMessage[],
 ): Promise<void> {
   await saveTurnCheckpoint({
@@ -208,9 +208,9 @@ describe("local agent runner", () => {
     });
     expect(conversationId).toBeDefined();
 
-    const contexts: FlatAgentRunRequest[] = [];
+    const contexts: FlatAgentRun[] = [];
     const generateReply = vi.fn<AgentRunner["run"]>(async (request) => {
-      const context = flattenAgentRunRequestForTest(request);
+      const context = flattenAgentRunForTest(request);
 
       contexts.push(context);
       await deliverAssistantText(request, "hello from local");
@@ -233,20 +233,16 @@ describe("local agent runner", () => {
 
     expect(generateReply).toHaveBeenCalledWith(
       expect.objectContaining({
-        input: expect.objectContaining({ messageText: "hello" }),
-        policy: expect.objectContaining({
-          disabledFeatures: ["interactive-auth"],
-        }),
-        routing: expect.objectContaining({
-          credentialContext: {
-            actor: { type: "user", userId: "local-cli" },
-          },
-          destination: {
-            platform: "local",
-            conversationId,
-          },
-          surface: "internal",
-        }),
+        instruction: expect.objectContaining({ text: "hello" }),
+        disabledFeatures: ["interactive-auth"],
+        credentialContext: {
+          actor: { type: "user", userId: "local-cli" },
+        },
+        destination: {
+          platform: "local",
+          conversationId,
+        },
+        surface: "internal",
       }),
     );
     expect(contexts[0]?.actor).toEqual({
@@ -383,7 +379,7 @@ describe("local agent runner", () => {
     expect(saveTurnCheckpoint).toHaveBeenCalledWith(
       expect.objectContaining({ sliceId: 2 }),
     );
-    expect(requests[0]?.policy?.disabledFeatures).toBeUndefined();
+    expect(requests[0]?.disabledFeatures).toBeUndefined();
     expect(requests[0]?.authorization).toBeDefined();
     expect(requests[1]?.state?.pendingAuth).toMatchObject({
       kind: "plugin",
@@ -727,7 +723,7 @@ describe("local agent runner", () => {
     expect(conversationId).toBeDefined();
 
     const generateReply = vi.fn<AgentRunner["run"]>(async (request) => {
-      const context = flattenAgentRunRequestForTest(request);
+      const context = flattenAgentRunForTest(request);
 
       context.onToolInvocation?.({
         params: { content: "The actor prefers short updates." },
@@ -819,7 +815,7 @@ describe("local agent runner", () => {
           deliverReply: async () => undefined,
           agentRunner: {
             run: async (request) => {
-              const context = flattenAgentRunRequestForTest(request);
+              const context = flattenAgentRunForTest(request);
 
               const replyMessage = assistantPiMessage("captured", 2);
               const piMessages: PiMessage[] = [
@@ -900,10 +896,10 @@ describe("local agent runner", () => {
     });
     expect(conversationId).toBeDefined();
 
-    const contexts: FlatAgentRunRequest[] = [];
+    const contexts: FlatAgentRun[] = [];
     const generateReply = vi.fn<AgentRunner["run"]>(async (request) => {
-      const text = request.input.messageText;
-      const context = flattenAgentRunRequestForTest(request);
+      const text = request.instruction.text;
+      const context = flattenAgentRunForTest(request);
 
       contexts.push(context);
       const replyText = `reply to ${text}`;
@@ -1052,9 +1048,9 @@ describe("local agent runner", () => {
       messages: [projectedMessage],
     });
 
-    const contexts: FlatAgentRunRequest[] = [];
+    const contexts: FlatAgentRun[] = [];
     const generateReply = vi.fn<AgentRunner["run"]>(async (request) => {
-      const context = flattenAgentRunRequestForTest(request);
+      const context = flattenAgentRunForTest(request);
 
       contexts.push(context);
       return completedAgentRun(successReply("uses projection"));
@@ -1115,7 +1111,7 @@ describe("local agent runner", () => {
       generatedMessages,
     );
 
-    const contexts: FlatAgentRunRequest[] = [];
+    const contexts: FlatAgentRun[] = [];
     await runLocalAgentTurn(
       {
         conversationId: conversationId!,
@@ -1125,7 +1121,7 @@ describe("local agent runner", () => {
         deliverReply: async () => undefined,
         agentRunner: {
           run: async (request) => {
-            const context = flattenAgentRunRequestForTest(request);
+            const context = flattenAgentRunForTest(request);
 
             contexts.push(context);
             return completedAgentRun(successReply("follow up reply"));
@@ -1182,7 +1178,7 @@ describe("local agent runner", () => {
             },
             agentRunner: {
               run: async (request) => {
-                const context = flattenAgentRunRequestForTest(request);
+                const context = flattenAgentRunForTest(request);
 
                 await persistRunningSessionForFakeReply(
                   context,
@@ -1232,7 +1228,7 @@ describe("local agent runner", () => {
       messages: projectedMessages,
     });
 
-    const contexts: FlatAgentRunRequest[] = [];
+    const contexts: FlatAgentRun[] = [];
     await runLocalAgentTurn(
       {
         conversationId: conversationId!,
@@ -1242,7 +1238,7 @@ describe("local agent runner", () => {
         deliverReply: async () => undefined,
         agentRunner: {
           run: async (request) => {
-            const context = flattenAgentRunRequestForTest(request);
+            const context = flattenAgentRunForTest(request);
 
             contexts.push(context);
             return completedAgentRun(successReply("uses projection"));
@@ -1265,7 +1261,7 @@ describe("local agent runner", () => {
     const capture = vi.fn().mockReturnValue(eventId);
 
     const generateReply = vi.fn<AgentRunner["run"]>(async (request) => {
-      const context = flattenAgentRunRequestForTest(request);
+      const context = flattenAgentRunForTest(request);
       await context.onSandboxRefChanged?.({
         id: "sandbox-undelivered",
         profileHash: "profile-undelivered",

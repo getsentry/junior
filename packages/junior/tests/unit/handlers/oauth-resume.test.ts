@@ -137,14 +137,12 @@ describe("resumeSlackTurn", () => {
       threadTs: "1700000000.0004",
       initialText: "connected",
       replyContext: {
-        routing: {
           credentialContext: {
             actor: { type: "user", userId: "U-test" },
           },
           destination: TEST_SLACK_DESTINATION,
           source: testSlackSource("1700000000.0004"),
           actor: { platform: "slack", teamId: "T-test", userId: "U-test" },
-        },
       },
       agentRunner: {
         run: async () => {
@@ -185,7 +183,6 @@ describe("resumeSlackTurn", () => {
         channelId: "C-test",
         threadTs: "1700000000.0005",
         replyContext: {
-          routing: {
             credentialContext: {
               actor: { type: "user", userId: "U-test" },
             },
@@ -196,7 +193,6 @@ describe("resumeSlackTurn", () => {
               teamId: "T-test",
               userId: "U-test",
             },
-          },
         },
         agentRunner: {
           run: async (request) => {
@@ -254,14 +250,12 @@ describe("resumeSlackTurn", () => {
       channelId: "C-test",
       threadTs: "1700000000.0006",
       replyContext: {
-        routing: {
           credentialContext: {
             actor: { type: "user", userId: "U-test" },
           },
           destination: TEST_SLACK_DESTINATION,
           source: testSlackSource("1700000000.0006"),
           actor: { platform: "slack", teamId: "T-test", userId: "U-test" },
-        },
       },
       agentRunner: {
         run: async (request) => {
@@ -312,14 +306,12 @@ describe("resumeSlackTurn", () => {
       channelId: "C-test",
       threadTs: "1700000000.0002",
       replyContext: {
-        routing: {
           credentialContext: {
             actor: { type: "user", userId: "U-test" },
           },
           destination: TEST_SLACK_DESTINATION,
           source: testSlackSource("1700000000.0002"),
           actor: { platform: "slack", teamId: "T-test", userId: "U-test" },
-        },
       },
       agentRunner: {
         run: async () => ({
@@ -345,14 +337,12 @@ describe("resumeSlackTurn", () => {
       channelId: "C-test",
       threadTs: "1700000000.0003",
       replyContext: {
-        routing: {
           credentialContext: {
             actor: { type: "user", userId: "U-test" },
           },
           destination: TEST_SLACK_DESTINATION,
           source: testSlackSource("1700000000.0003"),
           actor: { platform: "slack", teamId: "T-test", userId: "U-test" },
-        },
       },
       agentRunner: {
         run: async () => ({

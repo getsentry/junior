@@ -660,7 +660,7 @@ vi.mock("@/chat/mcp/client", () => {
 });
 
 import { executeAgentRun } from "@/chat/agent";
-import type { AgentRunRequest } from "@/chat/agent/request";
+import type { AgentRun } from "@/chat/agent/types";
 import { botConfig } from "@/chat/config";
 import { TurnSliceLimitExceededError } from "@/chat/services/turn-limit";
 import {
@@ -676,7 +676,7 @@ function finalReply(outcome: Awaited<ReturnType<typeof executeAgentRun>>) {
   return outcome.result;
 }
 
-function makeAgentRunRequest(
+function makeAgentRun(
   messageText: string,
   args: {
     conversationId: string;
@@ -684,52 +684,68 @@ function makeAgentRunRequest(
     turnId: string;
   },
   overrides: {
-    input?: Partial<Omit<AgentRunRequest["input"], "messageText">>;
-    routing?: Partial<AgentRunRequest["routing"]>;
-    policy?: AgentRunRequest["policy"];
-    state?: AgentRunRequest["state"];
-    observers?: AgentRunRequest["observers"];
-    durability?: AgentRunRequest["durability"];
-  } = {},
-): AgentRunRequest {
+    instruction?: Partial<Omit<AgentRun["instruction"], "text">>;
+    history?: AgentRun["history"];
+    state?: AgentRun["state"];
+    onEvent?: AgentRun["onEvent"];
+    durability?: AgentRun["durability"];
+  } & Partial<
+    Omit<
+      AgentRun,
+      | "conversationId"
+      | "turnId"
+      | "instruction"
+      | "history"
+      | "state"
+      | "onEvent"
+      | "durability"
+      | "delivery"
+    >
+  > = {},
+): AgentRun {
   const destination = {
     platform: "slack" as const,
     teamId: "T123",
     channelId: "C123",
   };
+  const {
+    instruction: instructionOverrides,
+    history,
+    state,
+    onEvent,
+    durability: durabilityOverrides,
+    ...runOverrides
+  } = overrides;
   return {
     conversationId: args.conversationId,
     turnId: args.turnId,
-    input: {
-      messageText,
-      ...(overrides.input ?? {}),
+    instruction: {
+      text: messageText,
+      ...(instructionOverrides ?? {}),
     },
-    routing: {
-      destinationVisibility: "private",
-      credentialContext: {
-        actor: { type: "user" as const, userId: "U123" },
-      },
-      destination,
-      source: createSlackSource({
-        teamId: destination.teamId,
-        channelId: destination.channelId,
-        threadTs: args.threadTs,
-
-        visibility: "private",
-      }),
-      actor: TEST_ACTOR,
-      ...(overrides.routing ?? {}),
+    ...(history ? { history } : {}),
+    destinationVisibility: "private",
+    credentialContext: {
+      actor: { type: "user" as const, userId: "U123" },
     },
-    ...(overrides.policy ? { policy: overrides.policy } : {}),
-    ...(overrides.state ? { state: overrides.state } : {}),
-    ...(overrides.observers ? { observers: overrides.observers } : {}),
+    destination,
+    source: createSlackSource({
+      teamId: destination.teamId,
+      channelId: destination.channelId,
+      threadTs: args.threadTs,
+      visibility: "private",
+    }),
+    actor: TEST_ACTOR,
+    ...runOverrides,
+    ...(state ? { state } : {}),
+    ...(onEvent ? { onEvent } : {}),
     durability: {
       recordPendingAuth: async (pendingAuth) => {
         if (pendingAuth) {
           pendingAuthRecords.push(pendingAuth);
         }
       },
-      ...(overrides.durability ?? {}),
+      ...(durabilityOverrides ?? {}),
     },
   };
 }
@@ -811,7 +827,7 @@ describe("executeAgentRun progressive MCP loading", () => {
   });
 
   it("persists loaded plugin skills across auth pause and resume", async () => {
-    const context = makeAgentRunRequest("help me", {
+    const context = makeAgentRun("help me", {
       conversationId: "conversation-1",
       threadTs: "1712345.0001",
       turnId: "turn-1",
@@ -900,7 +916,7 @@ describe("executeAgentRun progressive MCP loading", () => {
 
     const reply = finalReply(
       await executeAgentRun(
-        makeAgentRunRequest("help me", {
+        makeAgentRun("help me", {
           conversationId: "conversation-2",
           threadTs: "1712345.0002",
           turnId: "turn-2",
@@ -960,7 +976,7 @@ describe("executeAgentRun progressive MCP loading", () => {
 
     const reply = finalReply(
       await executeAgentRun(
-        makeAgentRunRequest("check the demo provider", {
+        makeAgentRun("check the demo provider", {
           conversationId: "conversation-provider-failure",
           threadTs: "1712345.0098",
           turnId: "turn-provider-failure",
@@ -1003,7 +1019,7 @@ describe("executeAgentRun progressive MCP loading", () => {
     guardianDecision.value = "deny";
 
     await executeAgentRun(
-      makeAgentRunRequest("help me", {
+      makeAgentRun("help me", {
         conversationId: "conversation-guardian-deny",
         threadTs: "1712345.0099",
         turnId: "turn-guardian-deny",
@@ -1057,7 +1073,7 @@ describe("executeAgentRun progressive MCP loading", () => {
     guardianDecision.value = "unavailable";
 
     const outcome = await executeAgentRun(
-      makeAgentRunRequest("help me", {
+      makeAgentRun("help me", {
         conversationId: "conversation-guardian-unavailable",
         threadTs: "1712345.0100",
         turnId: "turn-guardian-unavailable",
@@ -1081,7 +1097,7 @@ describe("executeAgentRun progressive MCP loading", () => {
     listToolsMock.mockResolvedValue(makeDemoMcpTools());
 
     await executeAgentRun(
-      makeAgentRunRequest(
+      makeAgentRun(
         "help me",
         {
           conversationId: "conversation-restored-provider",
@@ -1089,22 +1105,20 @@ describe("executeAgentRun progressive MCP loading", () => {
           turnId: "turn-restored-provider",
         },
         {
-          input: {
-            piMessages: [
-              {
-                role: "toolResult",
-                toolCallId: "prior-call",
-                toolName: "callMcpTool",
-                isError: false,
-                content: [{ type: "text", text: "pong" }],
-                timestamp: 1,
-                input: {
-                  tool_name: "mcp__demo__ping",
-                  arguments: { query: "prior" },
-                },
+          history: [
+            {
+              input: {
+                tool_name: "mcp__demo__ping",
+                arguments: { query: "prior" },
               },
-            ] as unknown as PiMessage[],
-          },
+              role: "toolResult",
+              toolCallId: "prior-call",
+              toolName: "callMcpTool",
+              isError: false,
+              content: [{ type: "text", text: "pong" }],
+              timestamp: 1,
+            },
+          ] as unknown as PiMessage[],
         },
       ),
     );
@@ -1120,7 +1134,7 @@ describe("executeAgentRun progressive MCP loading", () => {
     listToolsMock.mockResolvedValue(makeDemoMcpTools());
 
     await executeAgentRun(
-      makeAgentRunRequest(
+      makeAgentRun(
         "run the scheduled task",
         {
           conversationId: "conversation-delegated-provider",
@@ -1128,37 +1142,33 @@ describe("executeAgentRun progressive MCP loading", () => {
           turnId: "turn-delegated-provider",
         },
         {
-          input: {
-            piMessages: [
-              {
-                role: "toolResult",
-                toolCallId: "prior-call",
-                toolName: "callMcpTool",
-                isError: false,
-                content: [{ type: "text", text: "pong" }],
-                timestamp: 1,
-                input: {
-                  tool_name: "mcp__demo__ping",
-                  arguments: { query: "prior" },
-                },
+          history: [
+            {
+              input: {
+                tool_name: "mcp__demo__ping",
+                arguments: { query: "prior" },
               },
-            ] as unknown as PiMessage[],
-          },
-          routing: {
+              role: "toolResult",
+              toolCallId: "prior-call",
+              toolName: "callMcpTool",
+              isError: false,
+              content: [{ type: "text", text: "pong" }],
+              timestamp: 1,
+            },
+          ] as unknown as PiMessage[],
+          actor: { platform: "system", name: "scheduler" },
+          credentialContext: {
             actor: { platform: "system", name: "scheduler" },
-            credentialContext: {
-              actor: { platform: "system", name: "scheduler" },
-              subject: {
-                type: "user",
-                userId: "U123",
-                allowedWhen: "scheduled-task",
+            subject: {
+              type: "user",
+              userId: "U123",
+              allowedWhen: "scheduled-task",
+              taskId: "scheduled-task-1",
+              binding: {
+                type: "scheduled-task",
+                plugin: "scheduler",
                 taskId: "scheduled-task-1",
-                binding: {
-                  type: "scheduled-task",
-                  plugin: "scheduler",
-                  taskId: "scheduled-task-1",
-                  signature: "v1=test",
-                },
+                signature: "v1=test",
               },
             },
           },
@@ -1177,16 +1187,16 @@ describe("executeAgentRun progressive MCP loading", () => {
     const turnId = "turn-restore-auth-limit";
     const priorMessages = [
       {
+        input: {
+          tool_name: "mcp__demo__ping",
+          arguments: { query: "prior" },
+        },
         role: "toolResult",
         toolCallId: "prior-call",
         toolName: "callMcpTool",
         isError: false,
         content: [{ type: "text", text: "pong" }],
         timestamp: 1,
-        input: {
-          tool_name: "mcp__demo__ping",
-          arguments: { query: "prior" },
-        },
       },
     ] as unknown as PiMessage[];
     await upsertTurnRecord({
@@ -1199,7 +1209,7 @@ describe("executeAgentRun progressive MCP loading", () => {
     });
 
     const error = await executeAgentRun(
-      makeAgentRunRequest("current follow-up", {
+      makeAgentRun("current follow-up", {
         conversationId,
         threadTs: "1712345.0090",
         turnId,
@@ -1221,21 +1231,21 @@ describe("executeAgentRun progressive MCP loading", () => {
         timestamp: 1,
       },
       {
+        input: {
+          tool_name: "mcp__demo__ping",
+          arguments: { query: "prior" },
+        },
         role: "toolResult",
         toolCallId: "prior-call",
         toolName: "callMcpTool",
         isError: false,
         content: [{ type: "text", text: "pong" }],
         timestamp: 2,
-        input: {
-          tool_name: "mcp__demo__ping",
-          arguments: { query: "prior" },
-        },
       },
     ] as unknown as PiMessage[];
 
     const firstError = await executeAgentRun(
-      makeAgentRunRequest(
+      makeAgentRun(
         "current follow-up",
         {
           conversationId: "conversation-restore-auth",
@@ -1243,7 +1253,7 @@ describe("executeAgentRun progressive MCP loading", () => {
           turnId: "turn-restore-auth",
         },
         {
-          input: { piMessages: priorMessages },
+          history: priorMessages,
         },
       ),
     ).catch((error) => error);
@@ -1274,7 +1284,7 @@ describe("executeAgentRun progressive MCP loading", () => {
 
     const reply = finalReply(
       await executeAgentRun(
-        makeAgentRunRequest(
+        makeAgentRun(
           "current follow-up",
           {
             conversationId: "conversation-restore-auth",
@@ -1282,7 +1292,7 @@ describe("executeAgentRun progressive MCP loading", () => {
             turnId: "turn-restore-auth",
           },
           {
-            input: { piMessages: priorMessages },
+            history: priorMessages,
           },
         ),
       ),
@@ -1325,7 +1335,7 @@ describe("executeAgentRun progressive MCP loading", () => {
     ] as PiMessage[];
 
     await executeAgentRun(
-      makeAgentRunRequest(
+      makeAgentRun(
         "help me",
         {
           conversationId: "conversation-history",
@@ -1333,10 +1343,10 @@ describe("executeAgentRun progressive MCP loading", () => {
           turnId: "turn-history",
         },
         {
-          input: {
-            conversationContext: "duplicated prior transcript",
-            piMessages: priorMessages,
+          instruction: {
+            context: "duplicated prior transcript",
           },
+          history: priorMessages,
         },
       ),
     );
@@ -1401,7 +1411,7 @@ describe("executeAgentRun progressive MCP loading", () => {
     });
 
     await executeAgentRun(
-      makeAgentRunRequest(messageText, {
+      makeAgentRun(messageText, {
         conversationId: "conversation-current-resume",
         threadTs: "1712345.0093",
         turnId: "turn-current-resume",
@@ -1451,7 +1461,7 @@ describe("executeAgentRun progressive MCP loading", () => {
     });
 
     await executeAgentRun(
-      makeAgentRunRequest(
+      makeAgentRun(
         "continue after crash",
         {
           conversationId: "conversation-crash-retry",
@@ -1459,7 +1469,7 @@ describe("executeAgentRun progressive MCP loading", () => {
           turnId: "turn-crash-retry",
         },
         {
-          input: { piMessages: strippedHistory },
+          history: strippedHistory,
         },
       ),
     );
@@ -1496,7 +1506,7 @@ describe("executeAgentRun progressive MCP loading", () => {
     ] as PiMessage[];
 
     await executeAgentRun(
-      makeAgentRunRequest(
+      makeAgentRun(
         "help me",
         {
           conversationId: "conversation-history-with-context",
@@ -1504,7 +1514,7 @@ describe("executeAgentRun progressive MCP loading", () => {
           turnId: "turn-history-with-context",
         },
         {
-          input: { piMessages: priorMessages },
+          history: priorMessages,
         },
       ),
     );
@@ -1542,7 +1552,7 @@ describe("executeAgentRun progressive MCP loading", () => {
       );
     });
 
-    const context = makeAgentRunRequest("help me", {
+    const context = makeAgentRun("help me", {
       conversationId: "conversation-4",
       threadTs: "1712345.0004",
       turnId: "turn-4",
@@ -1639,7 +1649,7 @@ describe("executeAgentRun progressive MCP loading", () => {
     });
 
     const firstError = await executeAgentRun(
-      makeAgentRunRequest("help me", {
+      makeAgentRun("help me", {
         conversationId: "conversation-5",
         threadTs: "1712345.0005",
         turnId: "turn-5",
@@ -1665,7 +1675,7 @@ describe("executeAgentRun progressive MCP loading", () => {
     completeEmptyAssistantOnAbort.value = true;
 
     const firstError = await executeAgentRun(
-      makeAgentRunRequest("help me", {
+      makeAgentRun("help me", {
         conversationId: "conversation-6",
         threadTs: "1712345.0006",
         turnId: "turn-6",

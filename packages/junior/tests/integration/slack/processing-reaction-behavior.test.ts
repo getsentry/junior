@@ -9,7 +9,7 @@ import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import {
   deliverAssistantMessagesForTest,
-  flattenAgentRunRequestForTest,
+  flattenAgentRunForTest,
 } from "../../fixtures/agent-runner";
 
 function successDiagnostics(toolCalls: string[] = []) {
@@ -258,9 +258,9 @@ describe("Slack behavior: processing reaction", () => {
         replyExecutor: {
           agentRunner: {
             run: async (request) => {
-              const _prompt = request.input.messageText;
+              const _prompt = request.instruction.text;
               const context = {
-                ...flattenAgentRunRequestForTest(request),
+                ...flattenAgentRunForTest(request),
               };
 
               context?.onToolInvocation?.({
@@ -314,7 +314,7 @@ describe("Slack behavior: processing reaction", () => {
           agentRunner: {
             run: async (request) => {
               const context = {
-                ...flattenAgentRunRequestForTest(request),
+                ...flattenAgentRunForTest(request),
               };
 
               context?.onToolInvocation?.({

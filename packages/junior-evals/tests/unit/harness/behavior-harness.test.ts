@@ -146,7 +146,7 @@ describe("behavior harness", () => {
         signal: controller.signal,
       },
     );
-    await runtimeState.agentRunner?.run({ policy: {} });
+    await runtimeState.agentRunner?.run({} as never);
 
     const forwardedSignal = executeAgentRunMock.mock.calls[0]?.[0]?.policy
       ?.signal as AbortSignal | undefined;
@@ -176,7 +176,7 @@ describe("behavior harness", () => {
     });
 
     await expect(
-      runtimeState.agentRunner?.run({ policy: {} }),
+      runtimeState.agentRunner?.run({} as never),
     ).rejects.toMatchObject({ name: "TimeoutError" });
   });
 
@@ -196,7 +196,7 @@ describe("behavior harness", () => {
 
     try {
       await runEvalScenario({ initialEvents: [] });
-      await runtimeState.agentRunner?.run({ policy: {} });
+      await runtimeState.agentRunner?.run({} as never);
     } finally {
       if (previousReplayMode === undefined) {
         delete process.env.VITEST_EVALS_REPLAY_MODE;

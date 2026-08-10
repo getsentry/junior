@@ -1,11 +1,9 @@
 /**
- * Agent run request contract.
+ * Public agent-run launch contract.
  *
- * Groups the per-slice run request by the runtime role each field serves and
- * owns interpretation of the routing group: actor derivation, surface
- * inference, destination consistency checks, and session identifiers. Run
- * phases consume these groups directly; callers build them at runtime
- * boundaries.
+ * Providers build one flat `AgentRun` and call `AgentRunner.run`. Delivery and
+ * durability are capabilities that affect the run. `onEvent` is best-effort UI
+ * only. Stable composition binds stream, spawn, and tracing outside this type.
  */
 import type {
   Destination,
@@ -22,7 +20,6 @@ import type { SandboxRef } from "@/chat/sandbox/ref";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
 import type { SandboxEgressSignalTransport } from "@/chat/sandbox/egress/signals";
 import type { OAuthAuthorization } from "@/chat/oauth-authorization";
-import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";
 import type { SlackConversationContext } from "@/chat/slack/conversation-context";
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 import type { ConversationMessageProvenance } from "@/chat/conversations/provenance";
@@ -38,28 +35,35 @@ import type {
 } from "@/chat/tools/types";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 
-export interface AgentRunAttachment {
+/** One attachment the model may see for the current instruction. */
+export type AgentAttachment = {
   data?: Buffer;
   mediaType: string;
   filename?: string;
   promptText?: string;
-}
+};
 
-export interface AgentRunInstructionActor {
+/** Instruction author metadata used for prompt labels and provenance. */
+export type AgentInstructionActor = {
   authorId?: string;
   authorName?: string;
+  /**
+   * Slack message ts for the instruction when known.
+   * TODO: generalize to a provider-neutral message id once prompt attrs are neutral.
+   */
   slackTs?: string;
-}
+};
 
-export interface AgentRunSteeringMessage {
-  actor?: AgentRunInstructionActor;
+/** One mid-turn steered user message drained from the durable mailbox. */
+export type AgentSteeringMessage = {
+  actor?: AgentInstructionActor;
   /** Provenance of this queued/steered message, carrying its original author. */
   provenance: ConversationMessageProvenance;
   omittedImageAttachmentCount?: number;
   text: string;
   timestampMs?: number;
-  userAttachments?: AgentRunAttachment[];
-}
+  attachments?: AgentAttachment[];
+};
 
 /** Model-safe input for one asynchronously delegated child-agent task. */
 export type SpawnAgentInput = {
@@ -79,55 +83,30 @@ export type SpawnAgent = (
   options: { signal?: AbortSignal; toolCallId: string },
 ) => Promise<SpawnAgentResult>;
 
-/** Carries the user-visible content and prior transcript for one agent-run slice. */
-export interface AgentRunInput {
-  actor?: AgentRunInstructionActor;
-  includeConversationContextWithPiMessages?: boolean;
-  messageText: string;
-  userAttachments?: AgentRunAttachment[];
+/** Current user instruction for one agent-run slice. */
+export type AgentInstruction = {
+  text: string;
+  attachments?: readonly AgentAttachment[];
   inboundAttachmentCount?: number;
   omittedImageAttachmentCount?: number;
-  /** Durable Pi transcript for this conversation, excluding ephemeral turn context. */
-  piMessages?: PiMessage[];
-  conversationContext?: string;
-}
-
-/**
- * Identity and addressing for one run.
- *
- * Set `actor` first (who runs). Derive `credentialContext` with
- * `credentialContextForActor(actor, subject?)` unless a caller already bound
- * credentials (dispatch with delegated subject). They name the same principal
- * except when a system actor carries `credentialContext.subject` for delegated
- * user tokens.
- */
-export interface AgentRunRouting {
-  /** Who this run executes as. Prefer always setting this. */
-  actor?: Actor;
-  /** Credential authority projected from actor (plus optional subject). */
-  credentialContext?: CredentialContext;
-  source: Source;
-  slackConversation?: SlackConversationContext;
+  /** Host-owned turn context shown to the model near the instruction. */
+  context?: string;
+  actor?: AgentInstructionActor;
   /**
-   * TODO: Move ephemeral Slack credentials into provider-owned turn context so
-   * the Slack tool registry can consume them without extending core routing.
+   * When history is present, still include `context` in the prompt. Default is
+   * to omit conversation context once durable history already carries it.
    */
-  slackActionToken?: SlackActionToken;
-  destination: Destination;
-  /** When true, also publish assistant output to the conversation destination. */
-  publishExternally?: boolean;
-  /** Confirmed visibility of the destination where this run is delivered. */
-  destinationVisibility?: ConversationPrivacy;
-  surface?: AgentTurnSurface;
-  dispatch?: {
-    actor?: SystemActor;
-    id: string;
-    metadata?: Record<string, string>;
-    plugin?: string;
-    replyAttribution?: ReplyAttribution;
-  };
-  toolChannelId?: string;
-}
+  includeConversationContextWithHistory?: boolean;
+};
+
+/** Dispatch identity carried on plugin-authored runs. */
+export type AgentDispatch = {
+  actor?: SystemActor;
+  id: string;
+  metadata?: Record<string, string>;
+  plugin?: string;
+  replyAttribution?: ReplyAttribution;
+};
 
 /** Optional agent capabilities that a run slice can turn off. */
 export const AGENT_RUN_FEATURES = [
@@ -136,34 +115,63 @@ export const AGENT_RUN_FEATURES = [
   "subagents",
 ] as const;
 
-/** One optional agent capability controlled by run policy. */
-export type AgentRunFeature = (typeof AGENT_RUN_FEATURES)[number];
+/** One optional agent capability controlled per run. */
+export type AgentFeature = (typeof AGENT_RUN_FEATURES)[number];
 
-/** Return whether one optional agent capability is disabled for this run. */
-export function isAgentRunFeatureDisabled(
-  policy: Pick<AgentRunPolicy, "disabledFeatures"> | undefined,
-  feature: AgentRunFeature,
-): boolean {
-  return policy?.disabledFeatures?.includes(feature) ?? false;
+/** Already-loaded resume state for this conversation. */
+export type AgentRunState = {
+  pendingAuth?: ConversationPendingAuthState;
+  /** Persisted sandbox reuse state from prior slices of this conversation. */
+  sandboxRef?: SandboxRef;
+};
+
+/**
+ * Delivers completed tool-free assistant messages in model order.
+ *
+ * The runner must commit the preceding agent boundary before invoking this
+ * port; the accepted reply transaction appends only this message.
+ */
+export type AgentDelivery = (
+  message: AssistantMessage,
+) => void | Promise<void>;
+
+/** Resume the agent turn after a transient or ambiguous delivery failure. */
+export class RetryableDeliveryError extends Error {
+  constructor(cause: unknown) {
+    super("Assistant delivery was transient or ambiguous", { cause });
+    this.name = "RetryableDeliveryError";
+  }
 }
 
-/** Carries execution limits and dependency overrides for one run slice. */
-export interface AgentRunPolicy {
-  /**
-   * Optional agent capabilities disabled for this run slice.
-   * `interactive-auth` blocks pausing to send an OAuth link; missing credentials
-   * hard-fail instead. Default is enabled when omitted.
-   * TODO(#881, #883): child invocations currently disable interactive-auth, but
-   * may later need a path to force the auth flow when a delegated tool requires
-   * credentials the parent can already request.
-   */
-  disabledFeatures?: readonly AgentRunFeature[];
-  /** Absolute wall-clock deadline for this host request, in milliseconds. */
-  turnDeadlineAtMs?: number;
-  /** Cancels provider work when the owning host request is abandoned. */
-  signal?: AbortSignal;
-  /** Explicit per-agent reasoning level. When set, adaptive routing is disabled. */
-  reasoningLevel?: TurnReasoningLevel;
+/** Durable-worker ports that commit or update resumable run state. */
+export type AgentDurability = {
+  /** Schedule delegated work with authority bound by the active parent run. */
+  spawnAgent?: SpawnAgent;
+  onInputCommitted?: () => void | Promise<void>;
+  /** Return true when the durable worker should pause at the next Pi boundary. */
+  shouldYield?: () => boolean;
+  drainSteeringMessages?: (
+    accept: (messages: AgentSteeringMessage[]) => Promise<void>,
+  ) => Promise<AgentSteeringMessage[]>;
+  recordPendingAuth?: (
+    pendingAuth: ConversationPendingAuthState | undefined,
+  ) => void | Promise<void>;
+  onSandboxRefChanged?: (sandboxRef: SandboxRef) => void | Promise<void>;
+};
+
+/** Best-effort progress events. Failures here never affect the run. */
+export type AgentEvent =
+  | { type: "status"; text: string }
+  | {
+      type: "tool_started";
+      toolCallId: string;
+      toolName: string;
+      params: Record<string, unknown>;
+    }
+  | { type: "tool_finished"; report: ToolExecutionReport };
+
+/** Resolved environment and optional per-run tool test overrides. */
+export type AgentEnvironment = {
   configuration?: Record<string, unknown>;
   locationConfiguration?: LocationConfigurationService;
   skillDirs?: string[];
@@ -177,104 +185,116 @@ export interface AgentRunPolicy {
     webFetch?: WebFetchToolDeps;
     webSearch?: WebSearchToolDeps;
   };
-}
-
-/** Carries durable state snapshots already loaded by the caller. */
-export interface AgentRunState {
-  pendingAuth?: ConversationPendingAuthState;
-  /** Persisted sandbox reuse state from prior slices of this conversation. */
-  sandboxRef?: SandboxRef;
-}
+};
 
 /**
- * Carries notification-only callbacks for streaming UI and status surfaces;
- * their failures never affect the run.
- */
-export interface AgentRunObservers {
-  onToolInvocation?: (invocation: {
-    params: Record<string, unknown>;
-    toolCallId: string;
-    toolName: string;
-  }) => void | Promise<void>;
-  onToolResult?: (result: ToolExecutionReport) => void | Promise<void>;
-  onStatus?: (status: AssistantStatusSpec) => void | Promise<void>;
-}
-
-/**
- * Delivers completed tool-free assistant messages in model order.
+ * One provider-launched agent-run slice.
  *
- * The runner must commit the preceding agent boundary before invoking this
- * port; the accepted reply transaction appends only this message.
+ * Build identity, instruction, history, delivery, and durability here. Bind
+ * stable model/stream composition when creating the runner, not on each run.
  */
-export type AgentRunDelivery = (
-  message: AssistantMessage,
-) => void | Promise<void>;
-
-/** Resume the agent turn after a transient or ambiguous delivery failure. */
-export class RetryableDeliveryError extends Error {
-  constructor(cause: unknown) {
-    super("Assistant delivery was transient or ambiguous", { cause });
-    this.name = "RetryableDeliveryError";
-  }
-}
-
-/** Carries durable-worker ports that commit or update resumable run state. */
-export interface AgentRunDurability {
-  /** Schedule delegated work with authority bound by the active parent run. */
-  spawnAgent?: SpawnAgent;
-  onInputCommitted?: () => void | Promise<void>;
-  /** Return true when the durable worker should pause at the next Pi boundary. */
-  shouldYield?: () => boolean;
-  drainSteeringMessages?: (
-    accept: (messages: AgentRunSteeringMessage[]) => Promise<void>,
-  ) => Promise<AgentRunSteeringMessage[]>;
-  recordPendingAuth?: (
-    pendingAuth: ConversationPendingAuthState | undefined,
-  ) => void | Promise<void>;
-  onSandboxRefChanged?: (sandboxRef: SandboxRef) => void | Promise<void>;
-}
-
-/** Groups the per-slice run request by the runtime role each field serves. */
-export interface AgentRunRequest {
+export type AgentRun = {
   /** Durable conversation advanced by this run. */
   conversationId: string;
   /** Stable turn advanced across this run and any continuation runs. */
   turnId: string;
   /** Optional bounded-run identifier used only for observability. */
   runId?: string;
-  input: AgentRunInput;
-  routing: AgentRunRouting;
+
+  instruction: AgentInstruction;
+  /** Durable Pi transcript for this conversation, excluding ephemeral turn context. */
+  history?: readonly PiMessage[];
+
+  /**
+   * Who this run executes as. Prefer always setting this. Derive
+   * `credentialContext` with `credentialContextForActor(actor, subject?)`
+   * unless a caller already bound credentials.
+   */
+  actor?: Actor;
+  /** Credential authority projected from actor (plus optional subject). */
+  credentialContext?: CredentialContext;
+  source: Source;
+  destination: Destination;
+  /** When true, also publish assistant output to the conversation destination. */
+  publishExternally?: boolean;
+  /** Confirmed visibility of the destination where this run is delivered. */
+  destinationVisibility?: ConversationPrivacy;
+  surface?: AgentTurnSurface;
+  dispatch?: AgentDispatch;
+
+  /**
+   * TODO: Move ephemeral Slack credentials and conversation labels into
+   * provider-owned tool/prompt context so the shared run edge stays neutral.
+   */
+  slackConversation?: SlackConversationContext;
+  slackActionToken?: SlackActionToken;
+  toolChannelId?: string;
+
   /** Surface-owned OAuth state and private delivery capabilities. */
   authorization?: OAuthAuthorization;
-  policy?: AgentRunPolicy;
+
+  /**
+   * Optional agent capabilities disabled for this run slice.
+   * `interactive-auth` blocks pausing to send an OAuth link; missing credentials
+   * hard-fail instead. Default is enabled when omitted.
+   * TODO(#881, #883): child invocations currently disable interactive-auth, but
+   * may later need a path to force the auth flow when a delegated tool requires
+   * credentials the parent can already request.
+   */
+  disabledFeatures?: readonly AgentFeature[];
+  /** Absolute wall-clock deadline for this host request, in milliseconds. */
+  deadlineAtMs?: number;
+  /** Cancels provider work when the owning host request is abandoned. */
+  signal?: AbortSignal;
+  /** Explicit per-agent reasoning level. When set, adaptive routing is disabled. */
+  reasoning?: TurnReasoningLevel;
+  environment?: AgentEnvironment;
+
   state?: AgentRunState;
-  observers?: AgentRunObservers;
-  delivery?: AgentRunDelivery;
-  durability?: AgentRunDurability;
+  /** Best-effort progress only. */
+  onEvent?: (event: AgentEvent) => void | Promise<void>;
+  delivery?: AgentDelivery;
+  durability?: AgentDurability;
+};
+
+/** Return whether one optional agent capability is disabled for this run. */
+export function isAgentRunFeatureDisabled(
+  disabledFeatures: readonly AgentFeature[] | undefined,
+  feature: AgentFeature,
+): boolean {
+  return disabledFeatures?.includes(feature) ?? false;
 }
 
-/** Resolve the explicit actor or the system credential actor for this run. */
-export function actorFromRouting(routing: AgentRunRouting): Actor | undefined {
-  if (routing.dispatch?.actor) {
-    return routing.dispatch.actor;
+/** Resolve the explicit actor, dispatch actor, or credential actor for this run. */
+export function actorFromRun(
+  run: Pick<AgentRun, "actor" | "dispatch" | "credentialContext">,
+): Actor | undefined {
+  if (run.dispatch?.actor) {
+    return run.dispatch.actor;
   }
-  if (routing.actor) {
-    return routing.actor;
+  if (run.actor) {
+    return run.actor;
   }
-  if (
-    routing.credentialContext &&
-    !("type" in routing.credentialContext.actor)
-  ) {
-    return routing.credentialContext.actor;
+  if (run.credentialContext && !("type" in run.credentialContext.actor)) {
+    return run.credentialContext.actor;
   }
   return undefined;
 }
 
 /** Reject contradictory provider coordinates before the run touches state. */
-export function assertRunRoutingConsistency(
-  request: Pick<AgentRunRequest, "conversationId" | "routing">,
+export function assertRunConsistency(
+  run: Pick<
+    AgentRun,
+    | "conversationId"
+    | "source"
+    | "destination"
+    | "surface"
+    | "publishExternally"
+    | "actor"
+    | "dispatch"
+  >,
 ): void {
-  const { destination, source } = request.routing;
+  const { destination, source } = run;
   // Source records what produced the work. Destination is the conversation's
   // reply container and may already be Slack when a dashboard turn continues a
   // Slack-rooted conversation without publishing externally.
@@ -298,8 +318,8 @@ export function assertRunRoutingConsistency(
         );
       }
       if (
-        request.routing.surface !== "internal" &&
-        destination.conversationId !== request.conversationId
+        run.surface !== "internal" &&
+        destination.conversationId !== run.conversationId
       ) {
         throw new TypeError(
           "Source, destination, and run conversation IDs do not match",
@@ -309,12 +329,10 @@ export function assertRunRoutingConsistency(
     }
     case "web": {
       if (
-        request.routing.surface !== "internal" &&
-        source.conversationId !== request.conversationId
+        run.surface !== "internal" &&
+        source.conversationId !== run.conversationId
       ) {
-        throw new TypeError(
-          "Web source and run conversation IDs do not match",
-        );
+        throw new TypeError("Web source and run conversation IDs do not match");
       }
       switch (destination.platform) {
         case "local": {
@@ -324,8 +342,8 @@ export function assertRunRoutingConsistency(
             );
           }
           if (
-            request.routing.surface !== "internal" &&
-            destination.conversationId !== request.conversationId
+            run.surface !== "internal" &&
+            destination.conversationId !== run.conversationId
           ) {
             throw new TypeError(
               "Source, destination, and run conversation IDs do not match",
@@ -336,7 +354,7 @@ export function assertRunRoutingConsistency(
         case "slack": {
           // Dashboard continues keep the Slack destination for location/context
           // but must stay conversation-log only.
-          if (request.routing.publishExternally) {
+          if (run.publishExternally) {
             throw new TypeError(
               "Web turns on Slack destinations must not publish externally",
             );
@@ -348,7 +366,7 @@ export function assertRunRoutingConsistency(
     }
   }
 
-  const actor = request.routing.dispatch?.actor ?? request.routing.actor;
+  const actor = run.dispatch?.actor ?? run.actor;
   if (!actor || actor.platform === "system") {
     return;
   }
@@ -363,8 +381,7 @@ export function assertRunRoutingConsistency(
         // conversations without publishing externally.
         return (
           destination.platform === "local" ||
-          (destination.platform === "slack" &&
-            request.routing.publishExternally !== true)
+          (destination.platform === "slack" && run.publishExternally !== true)
         );
     }
   })();
@@ -384,27 +401,29 @@ export function assertRunRoutingConsistency(
 
 /** Route tool side effects to the tool channel when one overrides the destination. */
 export function toolInvocationDestination(
-  routing: AgentRunRouting,
+  run: Pick<AgentRun, "destination" | "toolChannelId">,
 ): Destination {
-  if (routing.destination.platform !== "slack" || !routing.toolChannelId) {
-    return routing.destination;
+  if (run.destination.platform !== "slack" || !run.toolChannelId) {
+    return run.destination;
   }
   return {
     platform: "slack",
-    teamId: routing.destination.teamId,
-    channelId: routing.toolChannelId,
+    teamId: run.destination.teamId,
+    channelId: run.toolChannelId,
   };
 }
 
 /** Infer the run surface when the caller did not state one. */
-export function surfaceFromRouting(routing: AgentRunRouting): AgentTurnSurface {
-  if (routing.surface) {
-    return routing.surface;
+export function surfaceFromRun(
+  run: Pick<AgentRun, "surface" | "source">,
+): AgentTurnSurface {
+  if (run.surface) {
+    return run.surface;
   }
-  if (routing.source.platform === "slack") {
+  if (run.source.platform === "slack") {
     return "slack";
   }
-  if (routing.source.platform === "web") {
+  if (run.source.platform === "web") {
     // Web/dashboard turns share the non-Slack api surface with agent-dispatch.
     return "api";
   }

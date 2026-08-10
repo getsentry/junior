@@ -72,11 +72,13 @@ describe("buildUserTurnText", () => {
 
   it("keeps thread context separate from the current instruction", () => {
     const input = buildPromptInput({
-      includeConversationContextWithPiMessages: true,
-      messageText: "what now?",
-      conversationContext:
-        "<recent-thread-messages>\n  <message>add customer impact</message>\n</recent-thread-messages>",
-      piMessages: [{ role: "user" } as never],
+      instruction: {
+        text: "what now?",
+        context:
+          "<recent-thread-messages>\n  <message>add customer impact</message>\n</recent-thread-messages>",
+        includeConversationContextWithHistory: true,
+      },
+      history: [{ role: "user" } as never],
     });
 
     expect(input.contextContentParts).toEqual([

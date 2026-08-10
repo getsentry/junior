@@ -332,41 +332,44 @@ async function runLocalAgentTurnInContext(
         conversationId: input.conversationId,
         turnId,
         runId: currentRunId,
-        input: {
-          messageText: text,
-          conversationContext: buildConversationContext(conversation, {
+        instruction: {
+          text,
+          context: buildConversationContext(conversation, {
             excludeMessageId: userMessageId,
           }),
-          piMessages: messages,
         },
-        routing: {
-          actor: localActor,
-          credentialContext: credentialContextForActor(localActor),
-          destination,
-          source,
-          surface: "internal",
-        },
+        history: messages,
+        actor: localActor,
+        credentialContext: credentialContextForActor(localActor),
+        destination,
+        source,
+        surface: "internal",
         authorization,
-        policy: {
-          ...(deps.authorization
-            ? {}
-            : { disabledFeatures: ["interactive-auth"] as const }),
+        ...(deps.authorization
+          ? {}
+          : { disabledFeatures: ["interactive-auth"] as const }),
+        environment: {
           sandboxEgressSignals: deps.sandboxEgressSignals,
         },
         state: {
           pendingAuth: conversation.processing.pendingAuth,
           sandboxRef,
         },
-        observers: {
-          onStatus: async (status) => {
-            await deps.onStatus?.(status.text);
-          },
-          onToolInvocation: async (invocation) => {
-            await deps.onToolInvocation?.(invocation);
-          },
-          onToolResult: async (result) => {
-            await deps.onToolResult?.(result);
-          },
+        onEvent: async (event) => {
+          if (event.type === "status") {
+            await deps.onStatus?.(event.text);
+            return;
+          }
+          if (event.type === "tool_started") {
+            await deps.onToolInvocation?.({
+              params: event.params,
+              toolName: event.toolName,
+            });
+            return;
+          }
+          if (event.type === "tool_finished") {
+            await deps.onToolResult?.(event.report);
+          }
         },
         delivery: deliverAssistantMessage,
         durability: {

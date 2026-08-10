@@ -16,7 +16,7 @@ import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import {
   deliverAssistantMessagesForTest,
-  flattenAgentRunRequestForTest,
+  flattenAgentRunForTest,
 } from "../../fixtures/agent-runner";
 
 interface FakeReplyCall {
@@ -68,7 +68,7 @@ describe("Slack behavior: new mention", () => {
         replyExecutor: {
           agentRunner: {
             run: async (request) => {
-              const prompt = request.input.messageText;
+              const prompt = request.instruction.text;
 
               fakeReplyCalls.push({ prompt });
               return await completedReply(
@@ -114,8 +114,8 @@ describe("Slack behavior: new mention", () => {
         replyExecutor: {
           agentRunner: {
             run: async (request) => {
-              const prompt = request.input.messageText;
-              const context = flattenAgentRunRequestForTest(request);
+              const prompt = request.instruction.text;
+              const context = flattenAgentRunForTest(request);
 
               fakeReplyCalls.push({ prompt, piMessages: context.piMessages });
               return await completedReply(request, "Handled both updates.");
@@ -192,9 +192,9 @@ describe("Slack behavior: new mention", () => {
         replyExecutor: {
           agentRunner: {
             run: async (request) => {
-              const prompt = request.input.messageText;
+              const prompt = request.instruction.text;
               const context = {
-                ...flattenAgentRunRequestForTest(request),
+                ...flattenAgentRunForTest(request),
               };
 
               const attachments = context?.userAttachments ?? [];
@@ -274,9 +274,9 @@ describe("Slack behavior: new mention", () => {
         replyExecutor: {
           agentRunner: {
             run: async (request) => {
-              const _prompt = request.input.messageText;
+              const _prompt = request.instruction.text;
               const context = {
-                ...flattenAgentRunRequestForTest(request),
+                ...flattenAgentRunForTest(request),
               };
 
               await context?.onStatus?.(makeAssistantStatus("running", "bash"));

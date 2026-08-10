@@ -1,56 +1,60 @@
+import type { StreamFn } from "@earendil-works/pi-agent-core";
 import {
   isAgentRunFeatureDisabled,
-  type AgentRunRequest,
+  type AgentRun,
   type SpawnAgent,
-} from "@/chat/agent/request";
+} from "@/chat/agent/types";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
 
 /** Run one agent-run slice behind runtime-owned orchestration boundaries. */
 export interface AgentRunner {
-  run(request: AgentRunRequest): Promise<AgentRunOutcome>;
+  run(run: AgentRun): Promise<AgentRunOutcome>;
 }
 
-/** Adapt the Pi-facing agent-run executor behind the runtime-owned runner seam. */
+/** Compose the agent executor with stable host dependencies. */
 export function createAgentRunner(
-  run: AgentRunner["run"],
+  execute: (
+    run: AgentRun,
+    streamFn?: StreamFn,
+  ) => Promise<AgentRunOutcome>,
   options?: {
-    bindSpawnAgent?: (request: AgentRunRequest) => SpawnAgent | undefined;
+    bindSpawnAgent?: (run: AgentRun) => SpawnAgent | undefined;
+    streamFn?: StreamFn;
     tracePropagation?: SandboxEgressTracePropagationConfig;
   },
 ): AgentRunner {
+  const streamFn = options?.streamFn;
   const tracePropagation = options?.tracePropagation;
   const bindSpawnAgent = options?.bindSpawnAgent;
   const canBindSpawn =
     Boolean(bindSpawnAgent) && isExperimentalFeatureEnabled("subagents");
-  if (!tracePropagation && !canBindSpawn) {
-    return { run };
-  }
   return {
-    run: async (request) => {
+    run: async (run) => {
       const spawnAgent =
         bindSpawnAgent &&
         canBindSpawn &&
-        !isAgentRunFeatureDisabled(request.policy, "subagents")
-          ? bindSpawnAgent(request)
+        !isAgentRunFeatureDisabled(run.disabledFeatures, "subagents")
+          ? bindSpawnAgent(run)
           : undefined;
-      return await run({
-        ...request,
-        policy: {
-          ...request.policy,
+      const nextRun: AgentRun = {
+        ...run,
+        environment: {
+          ...run.environment,
           sandboxTracePropagation:
-            request.policy?.sandboxTracePropagation ?? tracePropagation,
+            run.environment?.sandboxTracePropagation ?? tracePropagation,
         },
         ...(spawnAgent
           ? {
               durability: {
-                ...request.durability,
+                ...run.durability,
                 spawnAgent,
               },
             }
           : {}),
-      });
+      };
+      return await execute(nextRun, streamFn);
     },
   };
 }

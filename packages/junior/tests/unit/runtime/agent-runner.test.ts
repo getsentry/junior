@@ -1,21 +1,19 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createLocalSource } from "@sentry/junior-plugin-api";
-import type { AgentRunRequest } from "@/chat/agent/request";
+import type { AgentRun } from "@/chat/agent/types";
 import { setExperimentalFeatures } from "@/chat/experimental";
 import { createAgentRunner } from "@/chat/runtime/agent-runner";
 
 const request = {
   conversationId: "local:test:parent",
   turnId: "turn-1",
-  input: { messageText: "Delegate this task." },
-  routing: {
-    destination: {
-      conversationId: "local:test:parent",
-      platform: "local",
-    },
-    source: createLocalSource("local:test:parent"),
+  instruction: { text: "Delegate this task." },
+  destination: {
+    conversationId: "local:test:parent",
+    platform: "local",
   },
-} satisfies AgentRunRequest;
+  source: createLocalSource("local:test:parent"),
+} satisfies AgentRun;
 
 afterEach(() => {
   setExperimentalFeatures(undefined);
@@ -35,7 +33,7 @@ describe("agent runner controls", () => {
     await runner.run(request);
 
     expect(bindSpawnAgent).toHaveBeenCalledWith(request);
-    expect(run).toHaveBeenCalledWith(
+    expect(run.mock.calls[0]?.[0]).toEqual(
       expect.objectContaining({
         durability: { spawnAgent },
       }),
@@ -54,7 +52,7 @@ describe("agent runner controls", () => {
     await runner.run(request);
 
     expect(bindSpawnAgent).not.toHaveBeenCalled();
-    expect(run).toHaveBeenCalledWith(
+    expect(run.mock.calls[0]?.[0]).toEqual(
       expect.not.objectContaining({
         durability: expect.objectContaining({ spawnAgent: expect.anything() }),
       }),
@@ -72,11 +70,11 @@ describe("agent runner controls", () => {
 
     await runner.run({
       ...request,
-      policy: { disabledFeatures: ["subagents"] },
+      disabledFeatures: ["subagents"],
     });
 
     expect(bindSpawnAgent).not.toHaveBeenCalled();
-    expect(run).toHaveBeenCalledWith(
+    expect(run.mock.calls[0]?.[0]).toEqual(
       expect.not.objectContaining({
         durability: expect.objectContaining({ spawnAgent: expect.anything() }),
       }),
@@ -94,19 +92,15 @@ describe("agent runner controls", () => {
 
     await runner.run({
       ...request,
-      policy: {
-        disabledFeatures: ["handoff", "interactive-auth", "subagents"],
-        reasoningLevel: "high",
-      },
+      disabledFeatures: ["handoff", "interactive-auth", "subagents"],
+      reasoning: "high",
     });
 
     expect(bindSpawnAgent).not.toHaveBeenCalled();
-    expect(run).toHaveBeenCalledWith(
+    expect(run.mock.calls[0]?.[0]).toEqual(
       expect.objectContaining({
-        policy: expect.objectContaining({
-          disabledFeatures: ["handoff", "interactive-auth", "subagents"],
-          reasoningLevel: "high",
-        }),
+        disabledFeatures: ["handoff", "interactive-auth", "subagents"],
+        reasoning: "high",
       }),
     );
   });

@@ -323,16 +323,16 @@ describe("paused turn composition", () => {
 
   it("stores the last safe boundary and returns a timed-out outcome", async () => {
     const replyPromise = executeAgentRun({
-      conversationId: "conversation-1",
-      turnId: "turn-1",
-      input: { messageText: "help me" },
-      routing: {
-        destinationVisibility: "private",
-        destination: TEST_DESTINATION,
-        source: TEST_SOURCE,
-        actor: TEST_ACTOR,
-      },
-    });
+  conversationId: "conversation-1",
+  turnId: "turn-1",
+  instruction:   {
+  text: "help me",
+  },
+  destinationVisibility: "private",
+  destination: TEST_DESTINATION,
+  source: TEST_SOURCE,
+  actor: TEST_ACTOR,
+});
 
     await waitForPromptCall(1);
     await vi.advanceTimersByTimeAsync(10_000);
@@ -380,16 +380,16 @@ describe("paused turn composition", () => {
     });
 
     const replyPromise = executeAgentRun({
-      conversationId: "conversation-timeout-cap",
-      turnId: "turn-timeout-cap",
-      input: { messageText: "help me" },
-      routing: {
-        destinationVisibility: "private",
-        destination: TEST_DESTINATION,
-        source: TEST_SOURCE,
-        actor: TEST_ACTOR,
-      },
-    }).catch((caught) => caught);
+  conversationId: "conversation-timeout-cap",
+  turnId: "turn-timeout-cap",
+  instruction:   {
+  text: "help me",
+  },
+  destinationVisibility: "private",
+  destination: TEST_DESTINATION,
+  source: TEST_SOURCE,
+  actor: TEST_ACTOR,
+}).catch((caught) => caught);
 
     await vi.advanceTimersByTimeAsync(10_000);
     const error = await replyPromise;
@@ -415,17 +415,17 @@ describe("paused turn composition", () => {
   it("records the effective request deadline timeout budget", async () => {
     const startedAtMs = Date.now();
     const replyPromise = executeAgentRun({
-      conversationId: "conversation-short-deadline",
-      turnId: "turn-short-deadline",
-      input: { messageText: "help me" },
-      routing: {
-        destinationVisibility: "private",
-        destination: TEST_DESTINATION,
-        source: TEST_SOURCE,
-        actor: TEST_ACTOR,
-      },
-      policy: { turnDeadlineAtMs: startedAtMs + 2_500 },
-    });
+  conversationId: "conversation-short-deadline",
+  turnId: "turn-short-deadline",
+  instruction:   {
+  text: "help me",
+  },
+  destinationVisibility: "private",
+  destination: TEST_DESTINATION,
+  source: TEST_SOURCE,
+  actor: TEST_ACTOR,
+  deadlineAtMs: startedAtMs + 2_500,
+});
 
     await waitForPromptCall(1);
     await vi.advanceTimersByTimeAsync(2_500);
@@ -444,19 +444,17 @@ describe("paused turn composition", () => {
 
   it("persists omitted-image context in the session-recorded Pi user message", async () => {
     const replyPromise = executeAgentRun({
-      conversationId: "conversation-2",
-      turnId: "turn-2",
-      input: {
-        messageText: "what is in this image?",
-        omittedImageAttachmentCount: 1,
-      },
-      routing: {
-        destinationVisibility: "private",
-        destination: TEST_DESTINATION,
-        source: TEST_SOURCE,
-        actor: TEST_ACTOR,
-      },
-    }).catch((caught) => caught);
+  conversationId: "conversation-2",
+  turnId: "turn-2",
+  instruction:   {
+  text: "what is in this image?",
+  omittedImageAttachmentCount: 1,
+  },
+  destinationVisibility: "private",
+  destination: TEST_DESTINATION,
+  source: TEST_SOURCE,
+  actor: TEST_ACTOR,
+}).catch((caught) => caught);
 
     await vi.advanceTimersByTimeAsync(10_000);
     await replyPromise;
@@ -485,16 +483,16 @@ describe("paused turn composition", () => {
   it("persists paused turn state when abort does not settle the agent run", async () => {
     promptMode.value = "hangsAfterAbort";
     const replyPromise = executeAgentRun({
-      conversationId: "conversation-hung",
-      turnId: "turn-hung",
-      input: { messageText: "help me" },
-      routing: {
-        destinationVisibility: "private",
-        destination: TEST_DESTINATION,
-        source: TEST_SOURCE,
-        actor: TEST_ACTOR,
-      },
-    });
+  conversationId: "conversation-hung",
+  turnId: "turn-hung",
+  instruction:   {
+  text: "help me",
+  },
+  destinationVisibility: "private",
+  destination: TEST_DESTINATION,
+  source: TEST_SOURCE,
+  actor: TEST_ACTOR,
+});
 
     await waitForPromptCall(1);
     await realSleep(10);
@@ -527,16 +525,16 @@ describe("paused turn composition", () => {
   it("uses one wall-clock timeout budget across provider retries", async () => {
     promptMode.value = "providerRetryThenHangs";
     const replyPromise = executeAgentRun({
-      conversationId: "conversation-retry",
-      turnId: "turn-retry",
-      input: { messageText: "help me" },
-      routing: {
-        destinationVisibility: "private",
-        destination: TEST_DESTINATION,
-        source: TEST_SOURCE,
-        actor: TEST_ACTOR,
-      },
-    });
+  conversationId: "conversation-retry",
+  turnId: "turn-retry",
+  instruction:   {
+  text: "help me",
+  },
+  destinationVisibility: "private",
+  destination: TEST_DESTINATION,
+  source: TEST_SOURCE,
+  actor: TEST_ACTOR,
+});
 
     await waitForPromptCall(1);
     // Spy before settlement so a fast event loop cannot schedule the retry

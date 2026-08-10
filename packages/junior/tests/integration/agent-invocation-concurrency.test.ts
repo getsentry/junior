@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createLocalSource } from "@sentry/junior-plugin-api";
-import type { AgentRunRequest } from "@/chat/agent/request";
+import type { AgentRun } from "@/chat/agent/types";
 import type { PiMessage } from "@/chat/pi/messages";
 import { AgentInvocationLimitError } from "@/chat/agent-invocations/errors";
 import {
@@ -38,27 +38,27 @@ const baseInput = {
 };
 
 async function successfulRun(
-  request: AgentRunRequest,
+  request: AgentRun,
   result: string,
 ): Promise<ReturnType<typeof completedAgentRun>> {
   const timestamp = Date.now();
   const runningMessages = [
-    ...(request.input.piMessages ?? []),
+    ...(request.history ?? []),
     {
       role: "user",
-      content: [{ type: "text", text: request.input.messageText }],
+      content: [{ type: "text", text: request.instruction.text }],
       timestamp,
     },
   ] as PiMessage[];
   const persisted = await saveTurnCheckpoint({
     mode: "running",
     conversationId: request.conversationId,
-    destination: request.routing.destination,
+    destination: request.destination,
     messages: runningMessages,
-    actor: request.routing.actor,
+    actor: request.actor,
     turnId: request.turnId,
     sliceId: 1,
-    source: request.routing.source,
+    source: request.source,
     surface: "internal",
   });
   if (!persisted) {
@@ -89,7 +89,7 @@ async function successfulRun(
 
 async function createHarness(
   run: (
-    request: AgentRunRequest,
+    request: AgentRun,
   ) => Promise<ReturnType<typeof completedAgentRun>>,
 ) {
   const fixture = createConfiguredJuniorSqlFixture();
@@ -163,13 +163,13 @@ describe("agent invocation identity and concurrency", () => {
   });
 
   it("gives each unnamed invocation a fresh child without inherited history", async () => {
-    const requests: AgentRunRequest[] = [];
+    const requests: AgentRun[] = [];
     const harness = await createHarness(async (request) => {
       requests.push(request);
       await request.durability?.onInputCommitted?.();
       return await successfulRun(
         request,
-        `result:${request.input.messageText}`,
+        `result:${request.instruction.text}`,
       );
     });
     try {
@@ -186,7 +186,7 @@ describe("agent invocation identity and concurrency", () => {
 
       expect(second.childConversationId).not.toBe(first.childConversationId);
       expect(requests).toHaveLength(2);
-      expect(requests.map((request) => request.input.piMessages)).toEqual([
+      expect(requests.map((request) => request.history)).toEqual([
         [],
         [],
       ]);
@@ -208,13 +208,13 @@ describe("agent invocation identity and concurrency", () => {
   });
 
   it("reuses one named child and supplies its completed history", async () => {
-    const requests: AgentRunRequest[] = [];
+    const requests: AgentRun[] = [];
     const harness = await createHarness(async (request) => {
       requests.push(request);
       await request.durability?.onInputCommitted?.();
       return await successfulRun(
         request,
-        `result:${request.input.messageText}`,
+        `result:${request.instruction.text}`,
       );
     });
     try {
@@ -235,26 +235,26 @@ describe("agent invocation identity and concurrency", () => {
 
       expect(second.childConversationId).toBe(first.childConversationId);
       expect(requests).toHaveLength(2);
-      expect(requests[0]?.input.piMessages).toEqual([]);
-      expect(requests[0]?.policy?.reasoningLevel).toBe("high");
-      expect(requests[0]?.policy?.disabledFeatures).toEqual([
+      expect(requests[0]?.history).toEqual([]);
+      expect(requests[0]?.reasoning).toBe("high");
+      expect(requests[0]?.disabledFeatures).toEqual([
         "handoff",
         "interactive-auth",
         "subagents",
       ]);
-      expect(requests[1]?.policy?.reasoningLevel).toBe("medium");
-      expect(requests[1]?.policy?.disabledFeatures).toEqual([
+      expect(requests[1]?.reasoning).toBe("medium");
+      expect(requests[1]?.disabledFeatures).toEqual([
         "handoff",
         "interactive-auth",
         "subagents",
       ]);
-      expect(requests[1]?.input.piMessages).toEqual(
+      expect(requests[1]?.history).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ role: "user" }),
           expect.objectContaining({ role: "assistant" }),
         ]),
       );
-      expect(JSON.stringify(requests[1]?.input.piMessages)).toContain(
+      expect(JSON.stringify(requests[1]?.history)).toContain(
         "result:first named task",
       );
       await expect(
@@ -283,8 +283,8 @@ describe("agent invocation identity and concurrency", () => {
       bothStarted = resolve;
     });
     const harness = await createHarness(async (request) => {
-      started.add(request.input.messageText);
-      histories.set(request.input.messageText, request.input.piMessages);
+      started.add(request.instruction.text);
+      histories.set(request.instruction.text, request.history ? [...request.history] : undefined);
       active += 1;
       maxActive = Math.max(maxActive, active);
       if (started.size === 2) {
@@ -295,7 +295,7 @@ describe("agent invocation identity and concurrency", () => {
       await request.durability?.onInputCommitted?.();
       return await successfulRun(
         request,
-        `result:${request.input.messageText}`,
+        `result:${request.instruction.text}`,
       );
     });
     try {
@@ -341,7 +341,7 @@ describe("agent invocation identity and concurrency", () => {
   });
 
   it("coalesces concurrent replay and rejects overlapping work for one name", async () => {
-    const run = vi.fn(async (request: AgentRunRequest) => {
+    const run = vi.fn(async (request: AgentRun) => {
       await request.durability?.onInputCommitted?.();
       return await successfulRun(request, "completed once");
     });
@@ -397,7 +397,7 @@ describe("agent invocation identity and concurrency", () => {
       await request.durability?.onInputCommitted?.();
       return await successfulRun(
         request,
-        `result:${request.input.messageText}`,
+        `result:${request.instruction.text}`,
       );
     });
     try {
@@ -449,7 +449,7 @@ describe("agent invocation identity and concurrency", () => {
   it("keeps a successful parallel child independent from a failing sibling", async () => {
     const attempts = new Map<string, number>();
     const harness = await createHarness(async (request) => {
-      const task = request.input.messageText;
+      const task = request.instruction.text;
       attempts.set(task, (attempts.get(task) ?? 0) + 1);
       if (task === "failing sibling") {
         throw new Error("sibling failed");

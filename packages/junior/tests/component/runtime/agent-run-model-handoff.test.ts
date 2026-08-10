@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createLocalSource } from "@sentry/junior-plugin-api";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { getAssistantReplyText } from "@/chat/services/assistant-reply";
-import type { AgentRunRequest } from "@/chat/agent/request";
+import type { AgentRun } from "@/chat/agent/types";
 
 const observations = vi.hoisted(() => ({
   afterHandoffModelId: "",
@@ -222,7 +222,7 @@ vi.mock("@/chat/skills", async (importOriginal) => ({
 }));
 
 import { executeAgentRun } from "@/chat/agent";
-import { RetryableDeliveryError } from "@/chat/agent/request";
+import { RetryableDeliveryError } from "@/chat/agent/types";
 import { getPausedTurnRequest } from "@/chat/task-execution/turn-wake";
 import {
   loadConversationProjection,
@@ -300,24 +300,22 @@ describe("model handoff composition", () => {
     observations.routedReasoningLevel = "xhigh";
     const conversationId = "local:test:router-model-handoff";
     const outcome = await executeAgentRun({
+      instruction: {
+        text: "Recommend the architecture and test strategy.",
+        attachments: [
+                  {
+                    data: Buffer.from("architecture-diagram"),
+                    filename: "architecture.png",
+                    mediaType: "image/png",
+                  },
+                ],
+      },
       conversationId,
       runId: "run-router-model-handoff",
       turnId: "turn-router-model-handoff",
-      input: {
-        messageText: "Recommend the architecture and test strategy.",
-        userAttachments: [
-          {
-            data: Buffer.from("architecture-diagram"),
-            filename: "architecture.png",
-            mediaType: "image/png",
-          },
-        ],
-      },
-      routing: {
-        destination: { platform: "local", conversationId },
-        source: createLocalSource(conversationId),
-      },
-      policy: { reasoningLevel: "xhigh" },
+      destination: { platform: "local", conversationId },
+      source: createLocalSource(conversationId),
+      reasoning: "xhigh",
     });
 
     expect(outcome.status).toBe("completed");
@@ -362,11 +360,9 @@ describe("model handoff composition", () => {
       conversationId,
       runId: "run-router-handoff-input-limit",
       turnId: "turn-router-handoff-input-limit",
-      input: { messageText: "x".repeat(1_600_000) },
-      routing: {
-        destination: { platform: "local", conversationId },
-        source: createLocalSource(conversationId),
-      },
+      instruction: { text: "x".repeat(1_600_000) },
+      destination: { platform: "local", conversationId },
+      source: createLocalSource(conversationId),
     });
 
     expect(outcome.status).toBe("completed");
@@ -386,12 +382,10 @@ describe("model handoff composition", () => {
       conversationId,
       runId: "run-router-model-handoff-timeout",
       turnId: "turn-router-model-handoff-timeout",
-      input: { messageText: "Recommend the architecture." },
-      policy: { turnDeadlineAtMs: Date.now() + 1_000 },
-      routing: {
-        destination: { platform: "local", conversationId },
-        source: createLocalSource(conversationId),
-      },
+      instruction: { text: "Recommend the architecture." },
+      deadlineAtMs: Date.now() + 1_000,
+      destination: { platform: "local", conversationId },
+      source: createLocalSource(conversationId),
     });
 
     expect(outcome.status).toBe("completed");
@@ -408,11 +402,9 @@ describe("model handoff composition", () => {
       conversationId,
       runId: "run-routed-model-confirms-handoff",
       turnId: "turn-routed-model-confirms-handoff",
-      input: { messageText: "Implement the multi-file refactor." },
-      routing: {
-        destination: { platform: "local", conversationId },
-        source: createLocalSource(conversationId),
-      },
+      instruction: { text: "Implement the multi-file refactor." },
+      destination: { platform: "local", conversationId },
+      source: createLocalSource(conversationId),
     });
 
     expect(outcome.status).toBe("completed");
@@ -439,20 +431,21 @@ describe("model handoff composition", () => {
       conversationId,
       runId: "run-repeated-model-handoff",
       turnId: "turn-repeated-model-handoff",
-      input: { messageText: "Switch profiles as the work changes." },
-      routing: {
-        destination: { platform: "local", conversationId },
-        source: createLocalSource(conversationId),
-      },
-      observers: {
-        onToolResult: (result) => {
+      instruction: { text: "Switch profiles as the work changes." },
+      destination: { platform: "local", conversationId },
+      source: createLocalSource(conversationId),
+      onEvent: async (event) => {
+        if (event.type === "tool_finished") {
+          await ((result) => {
           if (result.toolName === "handoff") {
             handoffResults.push({
               ok: result.ok,
               ...(result.result !== undefined ? { result: result.result } : {}),
             });
           }
-        },
+        })(event.report);
+          return;
+        }
       },
     });
 
@@ -486,15 +479,16 @@ describe("model handoff composition", () => {
       conversationId,
       runId: "run-model-handoff",
       turnId: "turn-model-handoff",
-      input: { messageText: "Implement the multi-file refactor." },
-      routing: {
-        destination: { platform: "local", conversationId },
-        source: createLocalSource(conversationId),
-      },
-      observers: {
-        onStatus: ({ text }) => {
+      instruction: { text: "Implement the multi-file refactor." },
+      destination: { platform: "local", conversationId },
+      source: createLocalSource(conversationId),
+      onEvent: async (event) => {
+        if (event.type === "status") {
+          await (({ text }) => {
           observations.statuses.push(text);
-        },
+        })({ text: event.text });
+          return;
+        }
       },
     });
 
@@ -576,11 +570,9 @@ describe("model handoff composition", () => {
       conversationId,
       runId: "run-model-handoff-follow-up",
       turnId: "turn-model-handoff-follow-up",
-      input: { messageText: "Now explain the verification result." },
-      routing: {
-        destination: { platform: "local", conversationId },
-        source: createLocalSource(conversationId),
-      },
+      instruction: { text: "Now explain the verification result." },
+      destination: { platform: "local", conversationId },
+      source: createLocalSource(conversationId),
     });
     expect(followUp.status).toBe("completed");
     if (followUp.status !== "completed") return;
@@ -617,11 +609,9 @@ describe("model handoff composition", () => {
       conversationId,
       runId: "run-tool-handoff-input-limit",
       turnId: "turn-tool-handoff-input-limit",
-      input: { messageText: "Start the implementation." },
-      routing: {
-        destination: { platform: "local", conversationId },
-        source: createLocalSource(conversationId),
-      },
+      instruction: { text: "Start the implementation." },
+      destination: { platform: "local", conversationId },
+      source: createLocalSource(conversationId),
       durability: {
         drainSteeringMessages: async (inject) => {
           if (drained) {
@@ -659,11 +649,9 @@ describe("model handoff composition", () => {
     const outcome = await executeAgentRun({
       conversationId,
       turnId: "turn-assistant-message-delivery",
-      input: { messageText: "Check the details." },
-      routing: {
-        destination: { platform: "local", conversationId },
-        source: createLocalSource(conversationId),
-      },
+      instruction: { text: "Check the details." },
+      destination: { platform: "local", conversationId },
+      source: createLocalSource(conversationId),
       delivery: (message) => {
         const text = getAssistantReplyText(message);
         if (text) delivered.push({ text });
@@ -688,18 +676,19 @@ describe("model handoff composition", () => {
       executeAgentRun({
         conversationId,
         turnId: "turn-assistant-message-delivery-failure",
-        input: { messageText: "Check the details." },
-        routing: {
-          destination: { platform: "local", conversationId },
-          source: createLocalSource(conversationId),
-        },
+        instruction: { text: "Check the details." },
+        destination: { platform: "local", conversationId },
+        source: createLocalSource(conversationId),
         delivery: () => {
           throw deliveryError;
         },
-        observers: {
-          onStatus: ({ text }) => {
+        onEvent: async (event) => {
+          if (event.type === "status") {
+            await (({ text }) => {
             observations.statuses.push(text);
-          },
+          })({ text: event.text });
+            return;
+          }
         },
       }),
     ).rejects.toBe(deliveryError);
@@ -713,14 +702,12 @@ describe("model handoff composition", () => {
     const turnId = "turn-assistant-message-delivery-retry";
     const delivered: Array<{ text: string }> = [];
     let deliveryAttempts = 0;
-    const request: AgentRunRequest = {
+    const request: AgentRun = {
       conversationId,
       turnId,
-      input: { messageText: "Check the details." },
-      routing: {
-        destination: { platform: "local" as const, conversationId },
-        source: createLocalSource(conversationId),
-      },
+      instruction: { text: "Check the details." },
+      destination: { platform: "local" as const, conversationId },
+      source: createLocalSource(conversationId),
       delivery: (message) => {
         deliveryAttempts += 1;
         if (deliveryAttempts === 1) {
@@ -769,12 +756,10 @@ describe("model handoff composition", () => {
     const outcome = await executeAgentRun({
       conversationId,
       turnId: "turn-model-handoff-explicit-reasoning",
-      input: { messageText: "Implement the multi-file refactor." },
-      routing: {
-        destination: { platform: "local", conversationId },
-        source: createLocalSource(conversationId),
-      },
-      policy: { reasoningLevel: "xhigh" },
+      instruction: { text: "Implement the multi-file refactor." },
+      destination: { platform: "local", conversationId },
+      source: createLocalSource(conversationId),
+      reasoning: "xhigh",
     });
 
     expect(outcome.status).toBe("completed");
@@ -786,12 +771,10 @@ describe("model handoff composition", () => {
     const followUp = await executeAgentRun({
       conversationId,
       turnId: "turn-model-handoff-explicit-reasoning-follow-up",
-      input: { messageText: "Now verify the result." },
-      routing: {
-        destination: { platform: "local", conversationId },
-        source: createLocalSource(conversationId),
-      },
-      policy: { reasoningLevel: "xhigh" },
+      instruction: { text: "Now verify the result." },
+      destination: { platform: "local", conversationId },
+      source: createLocalSource(conversationId),
+      reasoning: "xhigh",
     });
 
     expect(followUp.status).toBe("completed");
@@ -807,15 +790,13 @@ describe("model handoff composition", () => {
     const outcome = await executeAgentRun({
       conversationId,
       turnId: "turn-model-handoff-status-failure",
-      input: { messageText: "Implement the multi-file refactor." },
-      routing: {
-        destination: { platform: "local", conversationId },
-        source: createLocalSource(conversationId),
-      },
-      observers: {
-        onStatus: () => {
+      instruction: { text: "Implement the multi-file refactor." },
+      destination: { platform: "local", conversationId },
+      source: createLocalSource(conversationId),
+      onEvent: async (event) => {
+        if (event.type === "status") {
           throw new Error("status unavailable");
-        },
+        }
       },
     });
 
@@ -831,11 +812,9 @@ describe("model handoff composition", () => {
       conversationId,
       runId: "run-named-model-handoff",
       turnId: "turn-named-model-handoff",
-      input: { messageText: "Implement the focused code change." },
-      routing: {
-        destination: { platform: "local", conversationId },
-        source: createLocalSource(conversationId),
-      },
+      instruction: { text: "Implement the focused code change." },
+      destination: { platform: "local", conversationId },
+      source: createLocalSource(conversationId),
     });
 
     expect(outcome.status).toBe("completed");
@@ -865,11 +844,9 @@ describe("model handoff composition", () => {
       conversationId,
       runId: "run-named-model-handoff-follow-up",
       turnId: "turn-named-model-handoff-follow-up",
-      input: { messageText: "Verify that change now." },
-      routing: {
-        destination: { platform: "local", conversationId },
-        source: createLocalSource(conversationId),
-      },
+      instruction: { text: "Verify that change now." },
+      destination: { platform: "local", conversationId },
+      source: createLocalSource(conversationId),
     });
     expect(followUp.status).toBe("completed");
     if (followUp.status !== "completed") return;
@@ -886,11 +863,9 @@ describe("model handoff composition", () => {
       conversationId,
       runId: "run-mixed-handoff",
       turnId: "turn-mixed-handoff",
-      input: { messageText: "Implement the change." },
-      routing: {
-        destination: { platform: "local", conversationId },
-        source: createLocalSource(conversationId),
-      },
+      instruction: { text: "Implement the change." },
+      destination: { platform: "local", conversationId },
+      source: createLocalSource(conversationId),
     });
 
     expect(outcome.status).toBe("completed");
@@ -911,11 +886,9 @@ describe("model handoff composition", () => {
       conversationId,
       runId: "run-model-handoff-without-turn-record",
       turnId: "turn-model-handoff-without-turn-record",
-      input: { messageText: "Implement the refactor." },
-      routing: {
-        destination: { platform: "local", conversationId },
-        source: createLocalSource(conversationId),
-      },
+      instruction: { text: "Implement the refactor." },
+      destination: { platform: "local", conversationId },
+      source: createLocalSource(conversationId),
     });
 
     expect(outcome.status).toBe("completed");
@@ -949,11 +922,9 @@ describe("model handoff composition", () => {
       conversationId,
       runId: "run-model-handoff-yield",
       turnId: sessionId,
-      input: { messageText: "Implement the risky refactor." },
-      routing: {
-        destination: { platform: "local", conversationId },
-        source: createLocalSource(conversationId),
-      },
+      instruction: { text: "Implement the risky refactor." },
+      destination: { platform: "local", conversationId },
+      source: createLocalSource(conversationId),
       durability: {
         shouldYield: () => true,
       },
@@ -973,11 +944,9 @@ describe("model handoff composition", () => {
       conversationId,
       runId: "run-model-handoff-yield-resumed",
       turnId: sessionId,
-      input: { messageText: "Implement the risky refactor." },
-      routing: {
-        destination: { platform: "local", conversationId },
-        source: createLocalSource(conversationId),
-      },
+      instruction: { text: "Implement the risky refactor." },
+      destination: { platform: "local", conversationId },
+      source: createLocalSource(conversationId),
       durability: {
         shouldYield: () => false,
       },

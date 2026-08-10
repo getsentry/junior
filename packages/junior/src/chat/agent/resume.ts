@@ -31,8 +31,8 @@ import {
 } from "@/chat/pi/transcript";
 import {
   RetryableDeliveryError,
-  type AgentRunDurability,
-} from "@/chat/agent/request";
+  type AgentDurability,
+} from "@/chat/agent/types";
 import { TurnSliceLimitExceededError } from "@/chat/services/turn-limit";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
@@ -42,7 +42,7 @@ interface ResumeStateArgs {
   destination: Destination;
   destinationVisibility?: ConversationPrivacy;
   dispatchId?: string;
-  durability: AgentRunDurability;
+  durability: AgentDurability;
   recordActiveMcpProviders: () => Promise<void>;
   publishExternally: boolean;
   actor?: Actor;

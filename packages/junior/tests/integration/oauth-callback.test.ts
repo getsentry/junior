@@ -197,15 +197,15 @@ describe("oauth callback integration", () => {
           await saveTurnCheckpoint({
             mode: "paused",
             reason: "auth",
-            actor: request.routing.actor,
+            actor: request.actor,
             conversationId,
             sliceId: 1,
-            destination: request.routing.destination,
+            destination: request.destination,
             errorMessage: "eval-oauth authorization required",
             messages: [],
             turnId: request.turnId,
-            source: request.routing.source,
-            surface: request.routing.surface,
+            source: request.source,
+            surface: request.surface,
           });
           await request.authorization?.deliver({
             authorizationUrl: authorizationUrl!,
@@ -218,7 +218,7 @@ describe("oauth callback integration", () => {
           };
         }
         const history = [
-          ...(request.input.piMessages ?? []),
+          ...(request.history ?? []),
           {
             role: "assistant",
             content: [{ type: "text", text: "uploaded" }],
@@ -463,13 +463,12 @@ describe("oauth callback integration", () => {
       expect.objectContaining({
         conversationId,
         turnId: sessionId,
-        input: expect.objectContaining({
-          messageText: "list my sentry issues",
-          conversationContext: expect.stringContaining(
+        instruction: expect.objectContaining({
+          text: "list my sentry issues",
+          context: expect.stringContaining(
             "You need the budget by Friday.",
           ),
         }),
-        routing: expect.objectContaining({
           actor: {
             platform: "slack",
             teamId: "T123",
@@ -478,17 +477,16 @@ describe("oauth callback integration", () => {
           destination: SLACK_DESTINATION,
           source: storedSource,
           toolChannelId: "C123",
-        }),
       }),
     );
     const resumeContext = executeAgentRunMock.mock.calls[0]?.[0] as {
-      input?: { conversationContext?: string };
-      routing?: { source?: unknown };
+      instruction?: { context?: string };
+      source?: unknown;
     };
-    expect(resumeContext.routing?.source).toEqual(
+    expect(resumeContext.source).toEqual(
       slackSource("1700000000.009"),
     );
-    expect(resumeContext.input?.conversationContext).not.toContain(
+    expect(resumeContext.instruction?.context).not.toContain(
       "list my sentry issues",
     );
 
@@ -686,22 +684,20 @@ describe("oauth callback integration", () => {
 
     expect(executeAgentRunMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        input: expect.objectContaining({
-          messageText: "list my sentry issues",
-          conversationContext: expect.stringContaining(
+        instruction: expect.objectContaining({
+          text: "list my sentry issues",
+          context: expect.stringContaining(
             "Fresh context loaded after the lock.",
           ),
         }),
-        routing: expect.objectContaining({
           toolChannelId: "C123",
           destination: SLACK_DESTINATION,
-        }),
       }),
     );
     const resumeContext = executeAgentRunMock.mock.calls[0]?.[0] as {
-      input?: { conversationContext?: string };
+      instruction?: { context?: string };
     };
-    expect(resumeContext.input?.conversationContext).not.toContain(
+    expect(resumeContext.instruction?.context).not.toContain(
       "Old context that should not be used.",
     );
     expect(getCapturedSlackApiCalls("reactions.add")).toEqual([
@@ -830,7 +826,7 @@ describe("oauth callback integration", () => {
       expect.objectContaining({
         conversationId,
         turnId: newSessionId,
-        input: expect.objectContaining({ messageText: "new request" }),
+        instruction: expect.objectContaining({ text: "new request" }),
       }),
     );
     expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual(

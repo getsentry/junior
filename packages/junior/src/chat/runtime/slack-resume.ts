@@ -15,8 +15,9 @@ import type {
 } from "@/chat/configuration/types";
 import {
   RetryableDeliveryError,
-  type AgentRunRequest,
-} from "@/chat/agent/request";
+  type AgentDelivery,
+  type AgentRun,
+} from "@/chat/agent/types";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
@@ -201,12 +202,12 @@ interface ResumeSlackTurnArgs {
 }
 
 // Resume args carry the user message text, so stored contexts hold only the
-// remaining input fields.
+// remaining instruction fields.
 type ResumeReplyContext = Omit<
-  AgentRunRequest,
-  "conversationId" | "turnId" | "runId" | "input" | "delivery"
+  AgentRun,
+  "conversationId" | "turnId" | "runId" | "instruction" | "delivery"
 > & {
-  input?: Omit<AgentRunRequest["input"], "messageText">;
+  instruction?: Omit<AgentRun["instruction"], "text">;
 };
 
 interface ResumePreparedTurn {
@@ -235,8 +236,7 @@ function getResumeLogContext(
   args: ResumeSlackTurnArgs,
   lockKey: string,
 ): LogContext {
-  const routing = args.replyContext?.routing;
-  const actor = routing?.actor;
+  const actor = args.replyContext?.actor;
   return {
     conversationId: args.conversationId,
     messageConversationId: lockKey,
@@ -346,59 +346,56 @@ async function handleResumeFailure(args: {
 function createResumeReplyContext(
   args: ResumeSlackTurnArgs,
   statusSession: AssistantStatusSession,
-  delivery: NonNullable<AgentRunRequest["delivery"]>,
-): AgentRunRequest {
+  delivery: AgentDelivery,
+): AgentRun {
   const replyContext = args.replyContext;
   if (!replyContext) {
     throw new TypeError("Slack resume requires a reply context");
   }
-  if (!replyContext.routing.source) {
+  if (!replyContext.source) {
     throw new TypeError("Slack resume requires a reply context source");
   }
-  const source = replyContext.routing.source;
-  if (replyContext.routing.destination.platform !== "slack") {
+  const source = replyContext.source;
+  if (replyContext.destination.platform !== "slack") {
     throw new TypeError("Slack resume requires a Slack destination");
   }
   const requestDeadline = getTurnRequestDeadline();
   const threadId =
     args.lockKey ?? getDefaultLockKey(args.channelId, args.threadTs);
   const persistedLocationConfiguration =
-    replyContext.policy?.locationConfiguration ??
-    (replyContext.policy?.configuration
-      ? createReadOnlyConfigService(replyContext.policy.configuration)
+    replyContext.environment?.locationConfiguration ??
+    (replyContext.environment?.configuration
+      ? createReadOnlyConfigService(replyContext.environment.configuration)
       : undefined);
+  const priorOnEvent = replyContext.onEvent;
 
   return {
+    ...replyContext,
     conversationId: args.conversationId,
     turnId: args.turnId,
-    input: {
-      ...(replyContext.input ?? {}),
-      messageText: args.messageText,
+    instruction: {
+      ...(replyContext.instruction ?? { text: args.messageText }),
+      text: args.messageText,
     },
-    routing: {
-      ...replyContext.routing,
-      source:
-        source.platform === "slack"
-          ? {
-              ...source,
-              channelId: args.channelId,
-              ...(args.threadTs ? { threadTs: args.threadTs } : {}),
-            }
-          : source,
-    },
-    policy: {
-      ...replyContext.policy,
-      turnDeadlineAtMs:
-        replyContext.policy?.turnDeadlineAtMs ?? requestDeadline?.deadlineAtMs,
+    source:
+      source.platform === "slack"
+        ? {
+            ...source,
+            channelId: args.channelId,
+            ...(args.threadTs ? { threadTs: args.threadTs } : {}),
+          }
+        : source,
+    deadlineAtMs:
+      replyContext.deadlineAtMs ?? requestDeadline?.deadlineAtMs,
+    environment: {
+      ...replyContext.environment,
       locationConfiguration: persistedLocationConfiguration,
     },
-    state: replyContext.state,
-    observers: {
-      ...replyContext.observers,
-      onStatus: async (nextStatus) => {
-        statusSession.update(nextStatus);
-        await replyContext.observers?.onStatus?.(nextStatus);
-      },
+    onEvent: async (event) => {
+      if (event.type === "status") {
+        statusSession.update({ text: event.text });
+      }
+      await priorOnEvent?.(event);
     },
     delivery,
     durability: {
@@ -484,11 +481,11 @@ async function resumeSlackTurnInContext(
     if (!activeReplyContext) {
       throw new Error("Resumed turn requires replyContext");
     }
-    const credentialContext = activeReplyContext.routing.credentialContext;
+    const credentialContext = activeReplyContext.credentialContext;
     if (!credentialContext) {
       throw new Error("Resumed turn requires replyContext.credentialContext");
     }
-    const routingActor = activeReplyContext.routing.actor;
+    const routingActor = activeReplyContext.actor;
     let resumeActor: Actor;
     if ("type" in credentialContext.actor) {
       if (
@@ -496,7 +493,7 @@ async function resumeSlackTurnInContext(
         credentialContext.actor.userId !== routingActor.userId
       ) {
         throw new Error(
-          "Resumed turn credential actor must match replyContext.routing.actor.userId",
+          "Resumed turn credential actor must match replyContext.actor.userId",
         );
       }
       resumeActor = routingActor;
@@ -507,7 +504,7 @@ async function resumeSlackTurnInContext(
           routingActor.name !== credentialContext.actor.name)
       ) {
         throw new Error(
-          "Resumed turn system credential actor must match replyContext.routing.actor",
+          "Resumed turn system credential actor must match replyContext.actor",
         );
       }
       resumeActor = credentialContext.actor;
@@ -579,12 +576,12 @@ async function resumeSlackTurnInContext(
       const deliveryState = await getDeliveryConversation();
       let slackMessageTs: string[] = [];
       try {
-        if (runArgs.replyContext?.routing.publishExternally !== false) {
+        if (runArgs.replyContext?.publishExternally !== false) {
           slackMessageTs = await sendSlackReply({
             channelId: runArgs.channelId,
             conversationId: runArgs.conversationId,
             replyAttribution:
-              runArgs.replyContext?.routing.dispatch?.replyAttribution,
+              runArgs.replyContext?.dispatch?.replyAttribution,
             text,
             threadTs: runArgs.threadTs,
           });
@@ -610,8 +607,7 @@ async function resumeSlackTurnInContext(
         });
       }
       try {
-        const routing = runArgs.replyContext?.routing;
-        const destination = routing?.destination;
+        const destination = runArgs.replyContext?.destination;
         const providerConversationIds = runArgs.threadTs
           ? [runArgs.threadTs]
           : slackMessageTs;
@@ -621,7 +617,7 @@ async function resumeSlackTurnInContext(
             conversation: deliveryState.conversation,
             conversationMessageId: recordedMessageId,
             conversationId,
-            ...(routing?.dispatch &&
+            ...(runArgs.replyContext?.dispatch &&
             destination?.platform === "slack" &&
             providerConversationIds.length > 0
               ? {
@@ -644,22 +640,22 @@ async function resumeSlackTurnInContext(
           { "error.type": error instanceof Error ? error.name : typeof error },
         );
       }
-      const routing = runArgs.replyContext?.routing;
-      const dispatchId = routing?.dispatch?.id;
-      if (messageTs && dispatchId && routing) {
+      const replyContext = runArgs.replyContext;
+      const dispatchId = replyContext?.dispatch?.id;
+      if (messageTs && dispatchId && replyContext) {
         try {
           await persistWithRetry(() =>
             recordTurnSummary({
               conversationId: runArgs.conversationId,
-              destination: routing.destination,
-              destinationVisibility: routing.destinationVisibility,
+              destination: replyContext.destination,
+              destinationVisibility: replyContext.destinationVisibility,
               dispatchId,
               resultMessageId: messageTs,
               turnId: runArgs.turnId,
               sliceId: runArgs.sliceId ?? 1,
-              source: routing.source,
+              source: replyContext.source,
               state: "running",
-              surface: routing.surface ?? "slack",
+              surface: replyContext.surface ?? "slack",
             }),
           );
         } catch (error) {
@@ -749,7 +745,7 @@ async function resumeSlackTurnInContext(
       });
       const reply = finalized.reply;
       const dispatchErrorMessage =
-        replyContext.routing.dispatch && reply.diagnostics.outcome !== "success"
+        replyContext.dispatch && reply.diagnostics.outcome !== "success"
           ? (reply.diagnostics.errorMessage ??
             `Agent turn ended with ${reply.diagnostics.outcome}.`)
           : undefined;
@@ -772,9 +768,9 @@ async function resumeSlackTurnInContext(
           messages: reply.piMessages,
           durationMs: reply.diagnostics.durationMs,
           usage: reply.diagnostics.usage,
-          destination: replyContext.routing.destination,
-          destinationVisibility: replyContext.routing.destinationVisibility,
-          dispatchId: replyContext.routing.dispatch?.id,
+          destination: replyContext.destination,
+          destinationVisibility: replyContext.destinationVisibility,
+          dispatchId: replyContext.dispatch?.id,
           dispatchOutcome:
             reply.diagnostics.outcome === "success" ? "completed" : "failed",
           ...(dispatchErrorMessage
@@ -783,17 +779,17 @@ async function resumeSlackTurnInContext(
           ...(acceptedDeliveryId
             ? { resultMessageId: acceptedDeliveryId }
             : {}),
-          source: replyContext.routing.source,
+          source: replyContext.source,
           actor: resumeActor,
-          surface: replyContext.routing.surface ?? "slack",
+          surface: replyContext.surface ?? "slack",
           sliceId: runArgs.sliceId,
         });
-      } else if (replyContext.routing.dispatch?.id) {
+      } else if (replyContext.dispatch?.id) {
         await recordTurnSummary({
           conversationId: runArgs.conversationId,
-          destination: replyContext.routing.destination,
-          destinationVisibility: replyContext.routing.destinationVisibility,
-          dispatchId: replyContext.routing.dispatch?.id,
+          destination: replyContext.destination,
+          destinationVisibility: replyContext.destinationVisibility,
+          dispatchId: replyContext.dispatch?.id,
           dispatchOutcome:
             reply.diagnostics.outcome === "success" ? "completed" : "failed",
           ...(acceptedDeliveryId
@@ -801,10 +797,10 @@ async function resumeSlackTurnInContext(
             : {}),
           turnId: runArgs.turnId,
           sliceId: runArgs.sliceId ?? 1,
-          source: replyContext.routing.source,
+          source: replyContext.source,
           state:
             reply.diagnostics.outcome === "success" ? "completed" : "failed",
-          surface: replyContext.routing.surface ?? "slack",
+          surface: replyContext.surface ?? "slack",
         });
       }
       await runArgs.commitResult?.(reply);
@@ -908,7 +904,7 @@ async function resumeSlackTurnInContext(
             deferredAuthInfo.requestText,
           ),
           runArgs.conversationId,
-          runArgs.replyContext?.routing.dispatch?.replyAttribution,
+          runArgs.replyContext?.dispatch?.replyAttribution,
         );
       }
       return true;

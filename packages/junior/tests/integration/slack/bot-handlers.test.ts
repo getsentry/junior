@@ -49,7 +49,7 @@ import { resetAssistantTitleProjectionForTests } from "@/chat/slack/assistant-th
 import * as piClient from "@/chat/pi/client";
 import {
   deliverAssistantMessagesForTest,
-  flattenAgentRunRequestForTest,
+  flattenAgentRunForTest,
 } from "../../fixtures/agent-runner";
 
 const emptyThreadReplies = async () => [];
@@ -841,9 +841,9 @@ describe("bot handlers (integration)", () => {
         replyExecutor: {
           agentRunner: {
             run: async (request) => {
-              const _prompt = request.input.messageText;
+              const _prompt = request.instruction.text;
               const context = {
-                ...flattenAgentRunRequestForTest(request),
+                ...flattenAgentRunForTest(request),
               };
 
               capturedIdentity.push({
@@ -1306,7 +1306,7 @@ describe("bot handlers (integration)", () => {
     // The follow-up supersedes the pause: it must be answered, not consumed
     // into a resume that only happens if the user ever authorizes.
     expect(executeAgentRun).toHaveBeenCalledOnce();
-    expect(executeAgentRun.mock.calls[0]?.[0].input.messageText).toContain(
+    expect(executeAgentRun.mock.calls[0]?.[0].instruction.text).toContain(
       "any update?",
     );
     expect(postIncludes(thread, "Fresh answer without the provider.")).toBe(
@@ -1553,8 +1553,8 @@ describe("bot handlers (integration)", () => {
         replyExecutor: {
           agentRunner: {
             run: async (request) => {
-              capturedInput = request.input;
-              const runActor = request.routing.actor;
+              capturedInput = { piMessages: request.history ? [...request.history] : undefined };
+              const runActor = request.actor;
               capturedActorUserId =
                 runActor && "userId" in runActor ? runActor.userId : undefined;
               await request.durability?.onInputCommitted?.();
@@ -1785,9 +1785,9 @@ describe("bot handlers (integration)", () => {
         replyExecutor: {
           agentRunner: {
             run: async (request) => {
-              const _input = request.input.messageText;
+              const _input = request.instruction.text;
               const context = {
-                ...flattenAgentRunRequestForTest(request),
+                ...flattenAgentRunForTest(request),
               };
 
               await context.onInputCommitted?.();
@@ -2205,9 +2205,9 @@ describe("bot handlers (integration)", () => {
         replyExecutor: {
           agentRunner: {
             run: async (request) => {
-              const _prompt = request.input.messageText;
+              const _prompt = request.instruction.text;
               const context = {
-                ...flattenAgentRunRequestForTest(request),
+                ...flattenAgentRunForTest(request),
               };
 
               await context?.onStatus?.(
@@ -2719,7 +2719,7 @@ describe("bot handlers (integration)", () => {
         replyExecutor: {
           agentRunner: {
             run: async (request) => {
-              const _text = request.input.messageText;
+              const _text = request.instruction.text;
               await vi.waitFor(() => {
                 expect(
                   fakeAdapter.titleCalls.some(
@@ -2978,9 +2978,9 @@ describe("bot handlers (integration)", () => {
         replyExecutor: {
           agentRunner: {
             run: async (request) => {
-              const _prompt = request.input.messageText;
+              const _prompt = request.instruction.text;
               const context = {
-                ...flattenAgentRunRequestForTest(request),
+                ...flattenAgentRunForTest(request),
               };
 
               capturedContexts.push(context?.conversationContext);
@@ -3026,9 +3026,9 @@ describe("bot handlers (integration)", () => {
         replyExecutor: {
           agentRunner: {
             run: async (request) => {
-              const _prompt = request.input.messageText;
+              const _prompt = request.instruction.text;
               const context = {
-                ...flattenAgentRunRequestForTest(request),
+                ...flattenAgentRunForTest(request),
               };
 
               capturedContexts.push(context?.conversationContext);
@@ -3136,9 +3136,9 @@ describe("bot handlers (integration)", () => {
         replyExecutor: {
           agentRunner: {
             run: async (request) => {
-              const _prompt = request.input.messageText;
+              const _prompt = request.instruction.text;
               const context = {
-                ...flattenAgentRunRequestForTest(request),
+                ...flattenAgentRunForTest(request),
               };
 
               capturedContexts.push(context?.conversationContext);

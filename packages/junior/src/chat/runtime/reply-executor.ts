@@ -40,8 +40,8 @@ import {
 import { buildSteeringPiMessage } from "@/chat/agent/prompt";
 import {
   RetryableDeliveryError,
-  type AgentRunSteeringMessage,
-} from "@/chat/agent/request";
+  type AgentSteeringMessage,
+} from "@/chat/agent/types";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import {
   credentialContextForActor,
@@ -250,7 +250,7 @@ function appendRecentThreadMessagesToContext(
 
 function queuedInstructionActor(
   queued: QueuedTurnMessage,
-): AgentRunSteeringMessage["actor"] {
+): AgentSteeringMessage["actor"] {
   const actor = getMessageActorIdentity(queued.message);
   const authorId =
     actor?.userId ?? parseActorUserId(queued.message.author.userId);
@@ -616,7 +616,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         let activeTurnId = preparedState.conversation.processing.activeTurnId;
         const resolveSteeringMessages = async (
           queuedMessages: QueuedTurnMessage[],
-        ): Promise<AgentRunSteeringMessage[]> => {
+        ): Promise<AgentSteeringMessage[]> => {
           return await Promise.all(
             queuedMessages.map(async (queued) => {
               const attachments = queued.message.attachments;
@@ -629,7 +629,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   !isVisionEnabled() && hasPotentialImageAttachment(attachments)
                     ? countPotentialImageAttachments(attachments)
                     : 0,
-                userAttachments: await deps.resolveUserAttachments(
+                attachments: await deps.resolveUserAttachments(
                   attachments,
                   {
                     threadId,
@@ -1277,9 +1277,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           );
           const drainSteeringMessages = options.drainSteeringMessages
             ? async (
-                accept: (messages: AgentRunSteeringMessage[]) => Promise<void>,
-              ): Promise<AgentRunSteeringMessage[]> => {
-                let acceptedMessages: AgentRunSteeringMessage[] | undefined;
+                accept: (messages: AgentSteeringMessage[]) => Promise<void>,
+              ): Promise<AgentSteeringMessage[]> => {
+                let acceptedMessages: AgentSteeringMessage[] | undefined;
                 const drained = await options.drainSteeringMessages!(
                   async (queuedMessages) => {
                     acceptedMessages =
@@ -1297,7 +1297,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             conversationId,
             turnId,
             ...(runId ? { runId } : {}),
-            input: {
+            instruction: {
               actor: {
                 ...(activeInstructionAuthorId
                   ? { authorId: activeInstructionAuthorId }
@@ -1307,46 +1307,52 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   : {}),
                 ...(slackMessageTs ? { slackTs: slackMessageTs } : {}),
               },
-              includeConversationContextWithPiMessages: hasDurablePromptHistory,
-              messageText: effectiveUserText,
-              conversationContext: promptConversationContext,
-              piMessages,
+              includeConversationContextWithHistory: hasDurablePromptHistory,
+              text: effectiveUserText,
+              context: promptConversationContext,
               inboundAttachmentCount: turnAttachments.length,
               omittedImageAttachmentCount,
-              userAttachments,
+              attachments: userAttachments,
             },
-            routing: {
-              credentialContext,
-              // Always set the execution actor when known. Resource-event turns
-              // carry the system principal; interactive turns carry the Slack user.
-              actor: executionActor,
-              slackConversation,
-              source,
-              destination,
-              publishExternally: shouldPublishExternally(options.publishExternally),
-              ...(destinationVisibility ? { destinationVisibility } : {}),
-              surface: options.execution?.surface ?? "slack",
-              dispatch: options.execution?.dispatch,
-              toolChannelId,
-              slackActionToken,
-            },
-            policy: {
+            history: piMessages,
+            credentialContext,
+            // Always set the execution actor when known. Resource-event turns
+            // carry the system principal; interactive turns carry the Slack user.
+            actor: executionActor,
+            slackConversation,
+            source,
+            destination,
+            publishExternally: shouldPublishExternally(options.publishExternally),
+            ...(destinationVisibility ? { destinationVisibility } : {}),
+            surface: options.execution?.surface ?? "slack",
+            dispatch: options.execution?.dispatch,
+            toolChannelId,
+            slackActionToken,
+            environment: {
               configuration: preparedState.configuration,
               locationConfiguration: preparedState.locationConfiguration,
-              disabledFeatures:
-                options.execution?.disabledFeatures ??
-                (message.author.isBot === true
-                  ? (["interactive-auth"] as const)
-                  : undefined),
-              turnDeadlineAtMs: getTurnRequestDeadline()?.deadlineAtMs,
             },
+            disabledFeatures:
+              options.execution?.disabledFeatures ??
+              (message.author.isBot === true
+                ? (["interactive-auth"] as const)
+                : undefined),
+            deadlineAtMs: getTurnRequestDeadline()?.deadlineAtMs,
             state: {
               pendingAuth: preparedState.conversation.processing.pendingAuth,
               sandboxRef: preparedState.sandboxRef,
             },
-            observers: {
-              onStatus: (nextStatus) => status.update(nextStatus),
-              onToolInvocation: options.onToolInvocation,
+            onEvent: async (event) => {
+              if (event.type === "status") {
+                status.update({ text: event.text });
+                return;
+              }
+              if (event.type === "tool_started") {
+                await options.onToolInvocation?.({
+                  params: event.params,
+                  toolName: event.toolName,
+                });
+              }
             },
             delivery: deliverAssistantMessage,
             durability: {

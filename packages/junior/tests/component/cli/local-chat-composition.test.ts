@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { AgentRunRequest, SpawnAgentResult } from "@/chat/agent/request";
+import type { AgentRun, SpawnAgentResult } from "@/chat/agent/types";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { deliverAssistantMessagesForTest } from "../../fixtures/agent-runner";
@@ -119,19 +119,17 @@ export const plugins = {
             createState: expect.any(Function),
             deliver: expect.any(Function),
           }),
-          input: expect.objectContaining({ messageText: "hello" }),
-          policy: expect.objectContaining({
+          instruction: expect.objectContaining({ text: "hello" }),
+          environment: expect.objectContaining({
             sandboxEgressSignals: expect.objectContaining({
               clear: expect.any(Function),
               consume: expect.any(Function),
             }),
           }),
-          routing: expect.objectContaining({
             credentialContext: {
               actor: { type: "user", userId: "local-cli" },
             },
             destination: expect.objectContaining({ platform: "local" }),
-          }),
         }),
       );
       expect(output).toEqual(["hello local\n"]);
@@ -143,7 +141,7 @@ export const plugins = {
 
   it("finishes spawned child work in process before prompt mode exits", async () => {
     delete process.env.JUNIOR_STATE_ADAPTER;
-    const requests: AgentRunRequest[] = [];
+    const requests: AgentRun[] = [];
     executeAgentRunMock.mockImplementation(async (request) => {
       requests.push(request);
       if (request.policy?.disabledFeatures?.includes("subagents")) {
@@ -189,9 +187,7 @@ export const plugins = {
     expect(executeAgentRunMock).toHaveBeenCalledTimes(2);
     expect(requests[0]?.durability?.spawnAgent).toBeDefined();
     expect(requests[1]).toMatchObject({
-      policy: {
-        disabledFeatures: ["handoff", "interactive-auth", "subagents"],
-      },
+      disabledFeatures: ["handoff", "interactive-auth", "subagents"],
     });
     expect(requests[1]?.durability?.spawnAgent).toBeUndefined();
     expect(output).toEqual(["child scheduled\n"]);
@@ -205,10 +201,10 @@ export const plugins = {
       await import("@/chat/agent-invocations/store");
     executeAgentRunMock.mockImplementation(async (request) => {
       if (request.policy?.disabledFeatures?.includes("subagents")) {
-        childTasks.push(request.input.messageText);
+        childTasks.push(request.instruction.text);
         await request.durability.onInputCommitted?.();
         return completedAgentRun(
-          successReply(`completed:${request.input.messageText}`),
+          successReply(`completed:${request.instruction.text}`),
         );
       }
       const spawnAgent = request.durability.spawnAgent;
@@ -300,7 +296,7 @@ export const plugins = {
         await request.durability.onInputCommitted?.();
         activeChildren -= 1;
         return completedAgentRun(
-          successReply(`completed:${request.input.messageText}`),
+          successReply(`completed:${request.instruction.text}`),
         );
       }
       const spawnAgent = request.durability.spawnAgent;

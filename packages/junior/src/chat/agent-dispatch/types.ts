@@ -10,7 +10,7 @@ import type {
   CredentialSubject,
   CredentialSystemActor,
 } from "@/chat/credentials/context";
-import type { AgentRunRouting } from "@/chat/agent/request";
+import type { AgentDispatch } from "@/chat/agent/types";
 import type { AgentTurnSurface } from "@/chat/task-execution/checkpoint";
 import type { LocationConfigurationService } from "@/chat/configuration/types";
 
@@ -83,7 +83,7 @@ export interface DispatchTurnContext {
   locationConfiguration: LocationConfigurationService;
   credentialContext: CredentialContext;
   destinationVisibility: DestinationVisibility;
-  dispatch: NonNullable<AgentRunRouting["dispatch"]>;
+  dispatch: AgentDispatch;
   skipProviderDefaultConfig: true;
   source: Source;
   surface: Extract<AgentTurnSurface, "api">;

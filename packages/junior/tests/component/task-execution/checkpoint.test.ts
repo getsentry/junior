@@ -440,14 +440,14 @@ describe("turn checkpoint", () => {
       });
       await appendInboundMessage({
         message: {
-          conversationId: "slack:C123:turn-activity",
-          createdAtMs: 9_000,
-          destination: SLACK_DESTINATION,
-          inboundMessageId: "turn-activity-message",
           input: {
             authorId: "U123",
             text: "start",
           },
+          conversationId: "slack:C123:turn-activity",
+          createdAtMs: 9_000,
+          destination: SLACK_DESTINATION,
+          inboundMessageId: "turn-activity-message",
           receivedAtMs: 9_000,
           publishExternally: true,
           delivery: "defer",

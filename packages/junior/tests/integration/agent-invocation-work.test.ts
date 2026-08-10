@@ -16,7 +16,7 @@ import {
 } from "@/chat/agent-invocations/work";
 import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
 import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
-import type { AgentRunRequest } from "@/chat/agent/request";
+import type { AgentRun } from "@/chat/agent/types";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
@@ -179,19 +179,15 @@ describe("agent invocation conversation work", () => {
       const request = {
         conversationId: parentConversationId,
         turnId: "parent-turn",
-        input: {
-          messageText: "Delegate the investigation.",
+        instruction: { text: "Delegate the investigation.", },
+        actor: { platform: "local", userId: "local-user" },
+        credentialContext: {
+          actor: { type: "user", userId: "local-user" },
         },
-        routing: {
-          actor: { platform: "local", userId: "local-user" },
-          credentialContext: {
-            actor: { type: "user", userId: "local-user" },
-          },
           destination,
-          destinationVisibility: "private",
-          source: createLocalSource(parentConversationId),
-        },
-      } satisfies AgentRunRequest;
+        destinationVisibility: "private",
+        source: createLocalSource(parentConversationId),
+      } satisfies AgentRun;
       const spawnAgent = bindSpawnAgent(request, {
         conversationStore,
         queue,
@@ -265,18 +261,14 @@ describe("agent invocation conversation work", () => {
       const run = vi.fn(async (request) => {
         expect(request).toMatchObject({
           conversationId: created.childConversationId,
-          input: { messageText: invocationInput.input },
-          policy: {
-            disabledFeatures: ["handoff", "interactive-auth", "subagents"],
-            reasoningLevel: "medium",
-          },
-          routing: {
-            actor: invocationInput.actor,
-            destination,
-            destinationVisibility: "private",
-            source: invocationInput.source,
-            surface: "internal",
-          },
+          instruction: { text: invocationInput.input },
+          disabledFeatures: ["handoff", "interactive-auth", "subagents"],
+          reasoning: "medium",
+          actor: invocationInput.actor,
+          destination,
+          destinationVisibility: "private",
+          source: invocationInput.source,
+          surface: "internal",
           runId: created.invocationId,
         });
         await request.durability.onInputCommitted?.();

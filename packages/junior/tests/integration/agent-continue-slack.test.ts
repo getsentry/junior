@@ -10,7 +10,7 @@ import { resetSlackApiMockState } from "../msw/handlers/slack-api";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
-import type { AgentRunRequest } from "@/chat/agent/request";
+import type { AgentRun } from "@/chat/agent/types";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { createTools } from "@/chat/tools";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
@@ -70,29 +70,29 @@ function createSandbox(files: Record<string, Buffer>): SandboxWorkspace {
 
 /** Build a Slack tool context from the resumed request to exercise continuation file sends. */
 function createToolContext(
-  request: AgentRunRequest,
+  request: AgentRun,
   workspace: SandboxWorkspace,
 ): ToolRuntimeContext {
   if (
-    request.routing.source.platform !== "slack" ||
-    request.routing.destination.platform !== "slack"
+    request.source.platform !== "slack" ||
+    request.destination.platform !== "slack"
   ) {
     throw new Error("test requires Slack tool context");
   }
 
   return {
-    configuration: request.policy?.configuration,
+    configuration: request.environment?.configuration,
     conversationId: request.conversationId,
-    destination: request.routing.destination,
+    destination: request.destination,
     egress: {} as ToolRuntimeContext["egress"],
     actor:
-      request.routing.actor?.platform === "slack"
-        ? request.routing.actor
+      request.actor?.platform === "slack"
+        ? request.actor
         : undefined,
     workspace,
-    source: request.routing.source,
-    surface: request.routing.surface,
-    userText: request.input.messageText,
+    source: request.source,
+    surface: request.surface,
+    userText: request.instruction.text,
   };
 }
 
@@ -256,12 +256,11 @@ describe("paused turn Slack integration", () => {
 
     expect(executeAgentRunMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        input: expect.objectContaining({
-          messageText: "resume this request",
+        instruction: expect.objectContaining({
+          text: "resume this request",
           inboundAttachmentCount: 2,
           omittedImageAttachmentCount: 1,
         }),
-        routing: expect.objectContaining({
           actor: {
             platform: "slack",
             teamId: "T123",
@@ -270,24 +269,23 @@ describe("paused turn Slack integration", () => {
           destination: SLACK_DESTINATION,
           source: storedSource,
           toolChannelId: "C123",
-        }),
         state: expect.objectContaining({
           sandboxRef: undefined,
         }),
       }),
     );
     const resumeContext = executeAgentRunMock.mock.calls[0]?.[0] as {
-      policy?: {
+      deadlineAtMs?: number;
+      environment?: {
         locationConfiguration?: {
           resolve: (key: string) => Promise<unknown>;
         };
-        turnDeadlineAtMs?: number;
       };
     };
-    expect(resumeContext.policy?.turnDeadlineAtMs).toEqual(expect.any(Number));
-    expect(resumeContext.policy?.turnDeadlineAtMs).toBeGreaterThan(Date.now());
+    expect(resumeContext.deadlineAtMs).toEqual(expect.any(Number));
+    expect(resumeContext.deadlineAtMs).toBeGreaterThan(Date.now());
     expect(
-      await resumeContext.policy?.locationConfiguration?.resolve("demo.org"),
+      await resumeContext.environment?.locationConfiguration?.resolve("demo.org"),
     ).toBe("acme");
 
     expect(slackApiOutbox.calls("assistant.threads.setStatus")).toEqual(
@@ -421,14 +419,12 @@ describe("paused turn Slack integration", () => {
     ]);
     expect(executeAgentRunMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        input: expect.objectContaining({ messageText: "resume this request" }),
-        routing: expect.objectContaining({
+        instruction: expect.objectContaining({ text: "resume this request" }),
           actor: {
             platform: "slack",
             teamId: "T123",
             userId: "U123",
           },
-        }),
       }),
     );
   });
@@ -816,14 +812,12 @@ describe("paused turn Slack integration", () => {
     expect(continued).toBe(true);
     expect(executeAgentRunMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        routing: expect.objectContaining({
           actor: { platform: "system", name: "resource-event" },
           credentialContext: {
             actor: { platform: "system", name: "resource-event" },
           },
           destination: SLACK_DESTINATION,
           source: storedSource,
-        }),
       }),
     );
   });
@@ -886,13 +880,11 @@ describe("paused turn Slack integration", () => {
     expect(continued).toBe(true);
     expect(executeAgentRunMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        routing: expect.objectContaining({
           actor: {
             platform: "slack",
             teamId: "T123",
             userId: "U123",
           },
-        }),
       }),
     );
   });
@@ -967,14 +959,12 @@ describe("paused turn Slack integration", () => {
     expect(continued).toBe(true);
     expect(executeAgentRunMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        input: expect.objectContaining({ messageText: "resume this request" }),
-        routing: expect.objectContaining({
+        instruction: expect.objectContaining({ text: "resume this request" }),
           actor: expect.objectContaining({
             userId: "U123",
             userName: "testuser",
             fullName: "Test User",
             email: "testuser@example.com",
-          }),
         }),
       }),
     );
@@ -1024,7 +1014,7 @@ describe("paused turn Slack integration", () => {
         [],
         {},
         createToolContext(
-          request as AgentRunRequest,
+          request as AgentRun,
           createSandbox({
             "/tmp/resumed-image.png": Buffer.from("resumed image"),
           }),

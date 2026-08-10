@@ -506,15 +506,14 @@ describe("mcp oauth callback integration", () => {
 
     expect(executeAgentRunMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        input: expect.objectContaining({
-          messageText: "what did i say about the budget?",
+        instruction: expect.objectContaining({
+          text: "what did i say about the budget?",
           inboundAttachmentCount: 1,
           omittedImageAttachmentCount: 1,
-          conversationContext: expect.stringContaining(
+          context: expect.stringContaining(
             "You need the budget by Friday.",
           ),
         }),
-        routing: expect.objectContaining({
           actor: {
             platform: "slack",
             teamId: "T123",
@@ -523,20 +522,19 @@ describe("mcp oauth callback integration", () => {
           destination: SLACK_DESTINATION,
           source: storedSource,
           toolChannelId: "C123",
-        }),
         state: expect.objectContaining({}),
       }),
     );
 
     const resumeContext = executeAgentRunMock.mock.calls[0]?.[0] as {
-      input?: { conversationContext?: string };
-      policy?: { configuration?: Record<string, unknown> };
-      routing?: { source?: unknown };
+      instruction?: { context?: string };
+      environment?: { configuration?: Record<string, unknown> };
+      source?: unknown;
     };
-    expect(resumeContext.input?.conversationContext).not.toContain(
+    expect(resumeContext.instruction?.context).not.toContain(
       "what did i say about the budget?",
     );
-    expect(resumeContext.policy?.configuration?.region).toBe("us");
+    expect(resumeContext.environment?.configuration?.region).toBe("us");
 
     const persistedState = await stateAdapterModule
       .getStateAdapter()
@@ -734,26 +732,24 @@ describe("mcp oauth callback integration", () => {
 
     expect(executeAgentRunMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        input: expect.objectContaining({
-          messageText: "what did i say about the budget?",
-          conversationContext: expect.stringContaining(
+        instruction: expect.objectContaining({
+          text: "what did i say about the budget?",
+          context: expect.stringContaining(
             "Fresh MCP context loaded after the lock.",
           ),
         }),
-        routing: expect.objectContaining({
           destination: SLACK_DESTINATION,
           toolChannelId: "C123",
-        }),
       }),
     );
     const resumeContext = executeAgentRunMock.mock.calls[0]?.[0] as {
-      input?: { conversationContext?: string };
-      routing?: { source?: unknown };
+      instruction?: { context?: string };
+      source?: unknown;
     };
-    expect(resumeContext.routing?.source).toEqual(
+    expect(resumeContext.source).toEqual(
       slackSource("1700000000.005"),
     );
-    expect(resumeContext.input?.conversationContext).not.toContain(
+    expect(resumeContext.instruction?.context).not.toContain(
       "Old MCP context that should not be used.",
     );
     expect(getCapturedSlackApiCalls("reactions.add")).toEqual([

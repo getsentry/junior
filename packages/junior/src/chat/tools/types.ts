@@ -21,7 +21,7 @@ import type { WebActor, LocalActor, Actor, SlackActor } from "@/chat/actor";
 import type { SlackActionToken } from "@/chat/slack/action-token";
 import type { ModelProfile } from "@/chat/model-profile";
 import type { GeneratedArtifactFileRef } from "@/chat/tools/sandbox/file-uploads";
-import type { SpawnAgent } from "@/chat/agent/request";
+import type { SpawnAgent } from "@/chat/agent/types";
 
 interface HandoffControl {
   /** Non-empty catalog of configured targets. */

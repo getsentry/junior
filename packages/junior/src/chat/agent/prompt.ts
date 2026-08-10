@@ -38,11 +38,12 @@ import { isUserActor, type Actor } from "@/chat/actor";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
 import { escapeXml } from "@/chat/xml";
 import type {
-  AgentRunInput,
-  AgentRunInstructionActor,
-  AgentRunRouting,
-  AgentRunSteeringMessage,
-} from "@/chat/agent/request";
+  AgentAttachment,
+  AgentInstruction,
+  AgentInstructionActor,
+  AgentRun,
+  AgentSteeringMessage,
+} from "@/chat/agent/types";
 
 const MAX_INLINE_ATTACHMENT_BASE64_CHARS = 120_000;
 const MAX_ROUTER_ATTACHMENT_PREVIEW_CHARS = 2_000;
@@ -51,7 +52,7 @@ export type UserContentPart =
   | { type: "text"; text: string }
   | { type: "image"; data: string; mimeType: string };
 
-type UserTurnAttachment = NonNullable<AgentRunInput["userAttachments"]>[number];
+type UserTurnAttachment = NonNullable<AgentInstruction["attachments"]>[number];
 
 /** User-turn content parts plus the plain-text blocks used for routing decisions. */
 export interface PromptInput {
@@ -92,7 +93,7 @@ function renderThreadContextForPrompt(context: string): string {
 /** Render the current actor's instruction without host-owned thread context. */
 export function buildUserTurnText(
   userInput: string,
-  actor?: AgentRunInstructionActor,
+  actor?: AgentInstructionActor,
 ): string {
   return renderCurrentInstruction(userInput, actor);
 }
@@ -218,7 +219,7 @@ function buildRouterAttachmentBlock(attachment: UserTurnAttachment): string {
 
 function buildUserTurnInput(args: {
   omittedImageAttachmentCount: number;
-  userAttachments?: AgentRunInput["userAttachments"];
+  userAttachments?: AgentAttachment[];
   userTurnText: string;
 }): PromptInput {
   const routerBlocks: string[] = [];
@@ -275,17 +276,23 @@ function buildUserTurnInput(args: {
 }
 
 /** Build the prompt-facing user input, keeping router text aligned with Pi content. */
-export function buildPromptInput(input: AgentRunInput): PromptInput {
+export function buildPromptInput(args: {
+  instruction: AgentInstruction;
+  history?: readonly import("@/chat/pi/messages").PiMessage[];
+}): PromptInput {
+  const { instruction, history } = args;
   const promptConversationContext =
-    input.piMessages &&
-    input.piMessages.length > 0 &&
-    !input.includeConversationContextWithPiMessages
+    history &&
+    history.length > 0 &&
+    !instruction.includeConversationContextWithHistory
       ? undefined
-      : input.conversationContext;
+      : instruction.context;
   const promptInput = buildUserTurnInput({
-    omittedImageAttachmentCount: input.omittedImageAttachmentCount ?? 0,
-    userAttachments: input.userAttachments,
-    userTurnText: buildUserTurnText(input.messageText, input.actor),
+    omittedImageAttachmentCount: instruction.omittedImageAttachmentCount ?? 0,
+    userAttachments: instruction.attachments
+      ? [...instruction.attachments]
+      : undefined,
+    userTurnText: buildUserTurnText(instruction.text, instruction.actor),
   });
   const trimmedContext = promptConversationContext?.trim();
   return {
@@ -302,11 +309,11 @@ export function buildPromptInput(input: AgentRunInput): PromptInput {
  * paths store identical durable history.
  */
 export function buildSteeringPiMessage(
-  message: AgentRunSteeringMessage,
+  message: AgentSteeringMessage,
 ): PiMessage {
   const { userContentParts } = buildUserTurnInput({
     userTurnText: buildUserTurnText(message.text, message.actor),
-    userAttachments: message.userAttachments,
+    userAttachments: message.attachments ? [...message.attachments] : undefined,
     omittedImageAttachmentCount: message.omittedImageAttachmentCount ?? 0,
   });
   return {
@@ -442,7 +449,7 @@ export async function assemblePrompt(args: {
   explicitSkill: Skill | null;
   priorPiMessages?: PiMessage[];
   resumedFromSessionRecord: boolean;
-  routing: AgentRunRouting;
+  run: Pick<AgentRun, "source" | "destination" | "dispatch" | "slackConversation">;
   spanContext: LogContext;
   turnId: string;
   toolGuidance: Array<{
@@ -453,7 +460,7 @@ export async function assemblePrompt(args: {
   toolRuntimeContext: ToolRuntimeContext;
   userContentParts: UserContentPart[];
 }): Promise<PromptAssembly> {
-  const source = args.routing.source;
+  const source = args.run.source;
   const hasPromptCheckpoint =
     args.resumedFromSessionRecord &&
     args.existingTurnStartMessageIndex !== undefined;
@@ -508,12 +515,12 @@ export async function assemblePrompt(args: {
           toolGuidance: args.toolGuidance,
           runtime: {
             conversationId: args.spanContext.conversationId,
-            slackConversation: args.routing.slackConversation,
+            slackConversation: args.run.slackConversation,
           },
-          dispatch: args.routing.dispatch
+          dispatch: args.run.dispatch
             ? {
-                ...args.routing.dispatch,
-                destination: args.routing.destination,
+                ...args.run.dispatch,
+                destination: args.run.destination,
                 source,
               }
             : undefined,

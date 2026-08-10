@@ -502,7 +502,7 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
 }));
 
 import { executeAgentRun } from "@/chat/agent";
-import type { AgentRunRequest } from "@/chat/agent/request";
+import type { AgentRun } from "@/chat/agent/types";
 
 const LOCAL_DESTINATION = {
   platform: "local" as const,
@@ -512,22 +512,21 @@ const LOCAL_SOURCE = createLocalSource(LOCAL_DESTINATION.conversationId);
 
 async function generateLocalReply(
   message: string,
-  context: Partial<Omit<AgentRunRequest, "input" | "routing">> & {
-    input?: Partial<Omit<AgentRunRequest["input"], "messageText">>;
+  context: Partial<Omit<AgentRun, "instruction" | "destination" | "source">> & {
+    instruction?: Partial<Omit<AgentRun["instruction"], "text">>;
   } = {},
 ) {
+  const { instruction: instructionOverrides, ...rest } = context;
   const outcome = await executeAgentRun({
-    ...context,
     conversationId: context.conversationId ?? LOCAL_DESTINATION.conversationId,
     turnId: context.turnId ?? "turn-agent-run-sandbox",
-    input: {
-      messageText: message,
-      ...(context.input ?? {}),
+    instruction: {
+      text: message,
+      ...instructionOverrides,
     },
-    routing: {
-      destination: LOCAL_DESTINATION,
-      source: LOCAL_SOURCE,
-    },
+    destination: LOCAL_DESTINATION,
+    source: LOCAL_SOURCE,
+    ...rest,
   });
   if (outcome.status !== "completed") {
     throw new Error(`Expected final reply, got ${outcome.status}`);
@@ -682,9 +681,7 @@ describe("executeAgentRun lazy sandbox boot", () => {
     ];
 
     const reply = await generateLocalReply("continue the work", {
-      input: {
-        piMessages: [checkpointedContext, checkpointedInstruction] as never,
-      },
+      history: [checkpointedContext, checkpointedInstruction] as never,
       state: {
         sandboxRef: { id: "sandbox-test", profileHash: "hash-test" },
       },
@@ -711,8 +708,8 @@ describe("executeAgentRun lazy sandbox boot", () => {
 
   it("uses attachment text when routing the turn thinking level", async () => {
     const reply = await generateLocalReply("can you fix this?", {
-      input: {
-        userAttachments: [
+      instruction: {
+        attachments: [
           {
             data: Buffer.from("TypeError: x is undefined\nat agent-run.ts:42"),
             filename: "error.txt",
@@ -728,8 +725,8 @@ describe("executeAgentRun lazy sandbox boot", () => {
 
   it("uses structured-suffix attachment text when the media type has parameters", async () => {
     const reply = await generateLocalReply("can you fix this?", {
-      input: {
-        userAttachments: [
+      instruction: {
+        attachments: [
           {
             data: Buffer.from("TypeError: x is undefined\nat agent-run.ts:42"),
             filename: "error.json",

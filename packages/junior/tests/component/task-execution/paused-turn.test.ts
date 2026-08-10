@@ -132,13 +132,13 @@ describe("paused turn runner callbacks", () => {
               throw new Error("Expected prepared paused-turn reply context");
             }
             // Redis no longer stores execution actor; bare author + team rebuild.
-            expect(prepared.replyContext.routing.actor).toEqual({
+            expect(prepared.replyContext.actor).toEqual({
               platform: "slack",
               teamId: "T123",
               userId: "U123",
             });
             // Slack resume defaults to publish when the checkpoint omits the flag.
-            expect(prepared.replyContext.routing.publishExternally).toBe(true);
+            expect(prepared.replyContext.publishExternally).toBe(true);
             const runArgs = { ...args, ...prepared };
             await runArgs.onPostDeliveryCommitFailure?.(
               new Error("completion state did not persist"),
@@ -224,7 +224,7 @@ describe("paused turn runner callbacks", () => {
               throw new Error("Expected prepared paused-turn reply context");
             }
             seenPublishExternally =
-              prepared.replyContext.routing.publishExternally;
+              prepared.replyContext.publishExternally;
             return true;
           },
         },
@@ -393,7 +393,7 @@ describe("paused turn runner callbacks", () => {
             if (!prepared.replyContext) {
               throw new Error("Expected prepared paused-turn reply context");
             }
-            expect(prepared.replyContext.routing.source).toEqual(sessionSource);
+            expect(prepared.replyContext.source).toEqual(sessionSource);
             return true;
           },
         },

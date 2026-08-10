@@ -58,7 +58,7 @@ describe("agent dispatch conversation work", () => {
       input,
     );
     const run = vi.fn(async (request) => {
-      expect(request.input.messageText).toBe(input);
+      expect(request.instruction.text).toBe(input);
       await request.durability.onInputCommitted?.();
       const piMessages = await deliverAssistantMessagesForTest(request, [
         { text: "Done" },
@@ -100,24 +100,22 @@ describe("agent dispatch conversation work", () => {
       expect(request).toMatchObject({
         conversationId: `agent-dispatch:${dispatch.id}`,
         turnId: `dispatch:${dispatch.id}`,
-        routing: {
+        actor: { platform: "system", name: "scheduler" },
+        credentialContext: {
           actor: { platform: "system", name: "scheduler" },
-          credentialContext: {
-            actor: { platform: "system", name: "scheduler" },
-          },
-          destination,
-          destinationVisibility: "private",
-          dispatch: {
-            id: dispatch.id,
-            plugin: "scheduler",
-            replyAttribution: {
-              label: "Scheduled task",
-              detail: "Weekly",
-            },
-          },
-          surface: "api",
         },
-        policy: { disabledFeatures: ["interactive-auth"] },
+        destination,
+        destinationVisibility: "private",
+        dispatch: {
+          id: dispatch.id,
+          plugin: "scheduler",
+          replyAttribution: {
+            label: "Scheduled task",
+            detail: "Weekly",
+          },
+        },
+        surface: "api",
+        disabledFeatures: ["interactive-auth"],
       });
       await request.durability.onInputCommitted?.();
       const piMessages = await deliverAssistantMessagesForTest(request, [

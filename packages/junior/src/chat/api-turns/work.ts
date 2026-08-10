@@ -724,24 +724,20 @@ export function createApiTurnWorker(options: {
             conversationId: context.conversationId,
             turnId,
             runId: currentRunId,
-            input: {
-              messageText: text,
-              conversationContext: buildConversationContext(conversation, {
+            instruction: {
+              text,
+              context: buildConversationContext(conversation, {
                 excludeMessageId: userMessageId,
               }),
-              piMessages,
             },
-            routing: {
-              actor,
-              credentialContext: credentialContextForActor(actor),
-              destination,
-              publishExternally: false,
-              source,
-              surface: "api",
-            },
-            policy: {
-              disabledFeatures: ["interactive-auth"] as const,
-            },
+            history: piMessages,
+            actor,
+            credentialContext: credentialContextForActor(actor),
+            destination,
+            publishExternally: false,
+            source,
+            surface: "api",
+            disabledFeatures: ["interactive-auth"] as const,
             state: {
               pendingAuth: conversation.processing.pendingAuth,
               sandboxRef,

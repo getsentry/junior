@@ -13,7 +13,7 @@ import { handleChatSdkPlatformWebhook } from "@/handlers/webhooks";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { deliverAssistantMessagesForTest } from "../../fixtures/agent-runner";
 import { queueSlackApiError } from "../../msw/handlers/slack-api";
-import { RetryableDeliveryError } from "@/chat/agent/request";
+import { RetryableDeliveryError } from "@/chat/agent/types";
 import type { PausedTurnRequest } from "@/chat/task-execution/turn-wake";
 
 const SIGNING_SECRET = "test-signing-secret";
@@ -108,7 +108,7 @@ describe("Slack contract: edited-message reply delivery", () => {
     const bot = await createEditedDmBot({
       agentRunner: {
         run: async (request) => {
-          const _prompt = request.input.messageText;
+          const _prompt = request.instruction.text;
           await deliverAssistantMessagesForTest(request, [
             { text: "Hello world" },
           ]);

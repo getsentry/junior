@@ -358,27 +358,23 @@ export function createAgentInvocationWorker(options: {
         conversationId: invocation.childConversationId,
         turnId,
         runId: invocation.invocationId,
-        input: {
-          messageText: invocation.input,
-          piMessages: history,
+        instruction: {
+          text: invocation.input,
         },
-        routing: {
-          actor: invocation.actor,
-          credentialContext: invocation.credentialContext,
-          destination: invocation.destination,
-          destinationVisibility: invocation.destinationVisibility,
-          publishExternally: context.publishExternally,
-          source: invocation.source,
-          surface: "internal",
-        },
-        policy: {
-          // TODO(#881, #883): Child runs may still need a path to force
-          // interactive auth when a delegated tool requires credentials the
-          // parent already has authority to request. Today background children
-          // hard-fail instead of pausing for an OAuth link.
-          disabledFeatures: ["handoff", "interactive-auth", "subagents"],
-          reasoningLevel: invocation.reasoningLevel,
-        },
+        history,
+        actor: invocation.actor,
+        credentialContext: invocation.credentialContext,
+        destination: invocation.destination,
+        destinationVisibility: invocation.destinationVisibility,
+        publishExternally: context.publishExternally,
+        source: invocation.source,
+        surface: "internal",
+        // TODO(#881, #883): Child runs may still need a path to force
+        // interactive auth when a delegated tool requires credentials the
+        // parent already has authority to request. Today background children
+        // hard-fail instead of pausing for an OAuth link.
+        disabledFeatures: ["handoff", "interactive-auth", "subagents"],
+        reasoning: invocation.reasoningLevel,
         state: {
           sandboxRef,
         },

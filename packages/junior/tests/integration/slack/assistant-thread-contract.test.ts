@@ -15,7 +15,7 @@ import type { ConversationMemoryDeps } from "@/chat/services/conversation-memory
 import { resetConversationTitleStateForTests } from "@/chat/services/conversation-title";
 import { handleChatSdkPlatformWebhook } from "@/handlers/webhooks";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
-import { flattenAgentRunRequestForTest } from "../../fixtures/agent-runner";
+import { flattenAgentRunForTest } from "../../fixtures/agent-runner";
 import { resetAssistantTitleProjectionForTests } from "@/chat/slack/assistant-thread/title";
 import * as piClient from "@/chat/pi/client";
 
@@ -168,9 +168,9 @@ describe("Slack contract: assistant-thread delivery", () => {
     const bot = await createDirectMessageBot({
       agentRunner: {
         run: async (request) => {
-          const _prompt = request.input.messageText;
+          const _prompt = request.instruction.text;
           const context = {
-            ...flattenAgentRunRequestForTest(request),
+            ...flattenAgentRunForTest(request),
           };
 
           await context?.onStatus?.(makeAssistantStatus("running", "bash"));
@@ -197,9 +197,9 @@ describe("Slack contract: assistant-thread delivery", () => {
     const bot = await createDirectMessageBot({
       agentRunner: {
         run: async (request) => {
-          const _prompt = request.input.messageText;
+          const _prompt = request.instruction.text;
           const context = {
-            ...flattenAgentRunRequestForTest(request),
+            ...flattenAgentRunForTest(request),
           };
 
           await context?.onStatus?.(makeAssistantStatus("running", "bash"));
@@ -245,9 +245,9 @@ describe("Slack contract: assistant-thread delivery", () => {
     const bot = await createMentionBot({
       agentRunner: {
         run: async (request) => {
-          const _prompt = request.input.messageText;
+          const _prompt = request.instruction.text;
           const context = {
-            ...flattenAgentRunRequestForTest(request),
+            ...flattenAgentRunForTest(request),
           };
 
           await context?.onStatus?.(makeAssistantStatus("running", "bash"));

@@ -49,7 +49,7 @@ import { buildSlackInboundMessage } from "@/chat/task-execution/slack-work";
 import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
 import { deleteConversationState } from "@/chat/task-execution/state";
 import { executeAgentRun } from "@/chat/agent";
-import { actorFromRouting } from "@/chat/agent/request";
+import { actorFromRun } from "@/chat/agent/types";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
 import { standardModelId } from "@/chat/model-profile";
 import type { PiMessage } from "@/chat/pi/messages";
@@ -1759,7 +1759,7 @@ function buildRuntimeServices(
             activeTurnCompactionInjected = true;
             await runRequest.durability?.onInputCommitted?.();
             const nowMs = Date.now();
-            const actor = actorFromRouting(runRequest.routing);
+            const actor = actorFromRun(runRequest);
             const piMessages = [
               {
                 role: "user",
@@ -1777,7 +1777,7 @@ function buildRuntimeServices(
                   {
                     type: "text",
                     text: renderCurrentInstruction(
-                      runRequest.input.messageText,
+                      runRequest.instruction.text,
                     ),
                   },
                 ],
@@ -1801,10 +1801,10 @@ function buildRuntimeServices(
               state: "paused",
               piMessages,
               resumeReason: "yield",
-              destination: runRequest.routing.destination,
-              destinationVisibility: runRequest.routing.destinationVisibility,
-              source: runRequest.routing.source,
-              surface: runRequest.routing.surface,
+              destination: runRequest.destination,
+              destinationVisibility: runRequest.destinationVisibility,
+              source: runRequest.source,
+              surface: runRequest.surface,
               actor,
               trailingMessageProvenance: [
                 { authority: "instruction", actor },
@@ -1839,7 +1839,7 @@ function buildRuntimeServices(
             const piMessages = [
               {
                 role: "user",
-                content: [{ type: "text", text: runRequest.input.messageText }],
+                content: [{ type: "text", text: runRequest.instruction.text }],
                 timestamp: nowMs,
               },
               {
@@ -1877,11 +1877,11 @@ function buildRuntimeServices(
               piMessages,
               resumeReason: "timeout",
               resumedFromSliceId: 1,
-              destination: runRequest.routing.destination,
-              destinationVisibility: runRequest.routing.destinationVisibility,
-              source: runRequest.routing.source,
-              surface: runRequest.routing.surface,
-              actor: actorFromRouting(runRequest.routing),
+              destination: runRequest.destination,
+              destinationVisibility: runRequest.destinationVisibility,
+              source: runRequest.source,
+              surface: runRequest.surface,
+              actor: actorFromRun(runRequest),
               errorMessage: "Agent turn timed out at the eval fixture boundary",
               turnStartMessageIndex: 0,
             });
@@ -1946,47 +1946,53 @@ function buildRuntimeServices(
               executeAgentRun(
                 {
                   ...runRequest,
-                  policy: {
-                    ...runRequest.policy,
-                    signal: replySignal,
-                    turnDeadlineAtMs: Math.min(
-                      runRequest.policy?.turnDeadlineAtMs ??
-                        Number.POSITIVE_INFINITY,
-                      Date.now() + replyTimeoutMs,
-                    ),
+                  signal: replySignal,
+                  deadlineAtMs: Math.min(
+                    runRequest.deadlineAtMs ?? Number.POSITIVE_INFINITY,
+                    Date.now() + replyTimeoutMs,
+                  ),
+                  environment: {
+                    ...runRequest.environment,
                     ...(env.configuredSkillDirs.length > 0
                       ? { skillDirs: env.configuredSkillDirs }
                       : {}),
                     toolOverrides,
                   },
-                  observers: {
-                    ...runRequest.observers,
-                    onToolInvocation: (invocation) => {
-                      const evalInvocation = toEvalToolInvocation(invocation);
+                  onEvent: async (event) => {
+                    await runRequest.onEvent?.(event);
+                    if (event.type === "tool_started") {
+                      const evalInvocation = toEvalToolInvocation({
+                        params: event.params,
+                        toolCallId: event.toolCallId,
+                        toolName: event.toolName,
+                      });
                       observations.toolInvocations.push(evalInvocation);
                       pendingToolInvocations.push(evalInvocation);
-                    },
-                    onToolResult: (result) => {
-                      const pendingIndex = pendingToolInvocations.findIndex(
-                        (candidate) =>
-                          candidate.toolCallId === result.toolCallId,
-                      );
-                      if (pendingIndex === -1) {
-                        return;
-                      }
-                      const [invocation] = pendingToolInvocations.splice(
-                        pendingIndex,
-                        1,
-                      );
-                      invocation.completed = true;
-                      invocation.ok = result.ok;
-                      if (result.error) {
-                        invocation.error = result.error;
-                      }
-                      if (result.result !== undefined) {
-                        invocation.result = result.result;
-                      }
-                    },
+                      return;
+                    }
+                    if (event.type !== "tool_finished") {
+                      return;
+                    }
+                    const result = event.report;
+                    const pendingIndex = pendingToolInvocations.findIndex(
+                      (candidate) =>
+                        candidate.toolCallId === result.toolCallId,
+                    );
+                    if (pendingIndex === -1) {
+                      return;
+                    }
+                    const [invocation] = pendingToolInvocations.splice(
+                      pendingIndex,
+                      1,
+                    );
+                    invocation.completed = true;
+                    invocation.ok = result.ok;
+                    if (result.error) {
+                      invocation.error = result.error;
+                    }
+                    if (result.result !== undefined) {
+                      invocation.result = result.result;
+                    }
                   },
                 },
                 scriptedStream?.stream,

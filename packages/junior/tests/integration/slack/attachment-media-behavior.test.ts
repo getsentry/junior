@@ -9,7 +9,7 @@ import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import {
   deliverAssistantMessagesForTest,
-  flattenAgentRunRequestForTest,
+  flattenAgentRunForTest,
 } from "../../fixtures/agent-runner";
 
 const ORIGINAL_ENV = { ...process.env };
@@ -76,9 +76,9 @@ describe("Slack behavior: mixed attachment media", () => {
           replyExecutor: {
             agentRunner: {
               run: async (request) => {
-                const _prompt = request.input.messageText;
+                const _prompt = request.instruction.text;
                 const context = {
-                  ...flattenAgentRunRequestForTest(request),
+                  ...flattenAgentRunForTest(request),
                 };
 
                 const attachments = context?.userAttachments ?? [];
@@ -177,9 +177,9 @@ describe("Slack behavior: mixed attachment media", () => {
         replyExecutor: {
           agentRunner: {
             run: async (request) => {
-              const _prompt = request.input.messageText;
+              const _prompt = request.instruction.text;
               const context = {
-                ...flattenAgentRunRequestForTest(request),
+                ...flattenAgentRunForTest(request),
               };
 
               const attachments = context?.userAttachments ?? [];
@@ -273,7 +273,7 @@ describe("Slack behavior: mixed attachment media", () => {
           agentRunner: {
             run: async (request) => {
               const context = {
-                ...flattenAgentRunRequestForTest(request),
+                ...flattenAgentRunForTest(request),
               };
 
               capturedOmittedImageCounts.push(

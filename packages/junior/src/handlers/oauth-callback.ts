@@ -414,28 +414,27 @@ async function resumeOAuthSessionRecordTurn(
         messageTs: lockedMessageTs,
         inputMessageIds: [lockedUserMessage.id],
         replyContext: {
-          input: {
-            conversationContext: lockedConversationContext,
-            // Pi history is SQL-authoritative: the resumed run reads its
-            // session record first and falls back to the step projection.
-            piMessages: await loadProjection({
-              conversationId: stored.resumeConversationId!,
-            }),
+          instruction: {
+            text: lockedUserMessage.text,
+            context: lockedConversationContext,
             ...getTurnUserReplyAttachmentContext(lockedUserMessage),
           },
-          routing: {
-            credentialContext: {
-              actor: {
-                type: "user",
-                userId: actor.userId,
-              },
+          // Pi history is SQL-authoritative: the resumed run reads its
+          // session record first and falls back to the step projection.
+          history: await loadProjection({
+            conversationId: stored.resumeConversationId!,
+          }),
+          credentialContext: {
+            actor: {
+              type: "user",
+              userId: actor.userId,
             },
-            actor,
-            destination,
-            source: routing.source,
-            toolChannelId: stored.channelId!,
           },
-          policy: {
+          actor,
+          destination,
+          source: routing.source,
+          toolChannelId: stored.channelId!,
+          environment: {
             locationConfiguration: lockedLocationConfiguration,
           },
           state: {

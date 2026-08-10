@@ -1,14 +1,7 @@
 import type { StateAdapter } from "chat";
 import type { ConversationStore } from "@/chat/conversations/store";
-import type {
-  AgentRunRequest,
-  SpawnAgent,
-  SpawnAgentInput,
-} from "@/chat/agent/request";
-import {
-  actorFromRouting,
-  toolInvocationDestination,
-} from "@/chat/agent/request";
+import type { AgentRun, SpawnAgent, SpawnAgentInput } from "@/chat/agent/types";
+import { actorFromRun, toolInvocationDestination } from "@/chat/agent/types";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { createAndEnqueueAgentInvocation } from "./work";
 
@@ -20,10 +13,10 @@ type SpawnOptions = {
 
 /** Bind one run's runtime-owned authority to the model-safe spawn capability. */
 export function bindSpawnAgent(
-  request: AgentRunRequest,
+  run: AgentRun,
   options: SpawnOptions,
 ): SpawnAgent | undefined {
-  const actor = actorFromRouting(request.routing);
+  const actor = actorFromRun(run);
   if (!actor) {
     return undefined;
   }
@@ -38,22 +31,22 @@ export function bindSpawnAgent(
       {
         actor,
         ...(input.name ? { agentName: input.name } : {}),
-        ...(request.routing.credentialContext
-          ? { credentialContext: request.routing.credentialContext }
+        ...(run.credentialContext
+          ? { credentialContext: run.credentialContext }
           : {}),
-        destination: toolInvocationDestination(request.routing),
-        ...(request.routing.destinationVisibility
+        destination: toolInvocationDestination(run),
+        ...(run.destinationVisibility
           ? {
-              destinationVisibility: request.routing.destinationVisibility,
+              destinationVisibility: run.destinationVisibility,
             }
           : {}),
-        idempotencyKey: `${request.turnId}:${call.toolCallId}`,
+        idempotencyKey: `${run.turnId}:${call.toolCallId}`,
         input: input.task,
-        parentConversationId: request.conversationId,
+        parentConversationId: run.conversationId,
         ...(input.reasoningLevel
           ? { reasoningLevel: input.reasoningLevel }
           : {}),
-        source: request.routing.source,
+        source: run.source,
       },
       { ...options, queue },
     );

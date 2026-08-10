@@ -662,18 +662,16 @@ describe("agent run continuation", () => {
 
     const result = finalReply(
       await executeAgentRun({
-        input: {
-          messageText: "Make a large generated-file edit.",
-        },
-        routing: {
-          destinationVisibility: "private",
-          source: TEST_SOURCE,
-          destination: TEST_DESTINATION,
-          actor: { platform: "slack", teamId: "T123", userId: "U123" },
-        },
-        conversationId: "conversation-active-compaction",
-        turnId: "turn-active-compaction",
-      }),
+  conversationId: "conversation-active-compaction",
+  turnId: "turn-active-compaction",
+  instruction:   {
+  text: "Make a large generated-file edit.",
+  },
+  destinationVisibility: "private",
+  source: TEST_SOURCE,
+  destination: TEST_DESTINATION,
+  actor: { platform: "slack", teamId: "T123", userId: "U123" },
+}),
     );
 
     expect(result.text).toBe("Finished the requested edit.");
@@ -713,19 +711,17 @@ describe("agent run continuation", () => {
 
     const result = finalReply(
       await executeAgentRun({
-        input: {
-          messageText: currentInstruction,
-          piMessages: priorMessages,
-        },
-        routing: {
-          destinationVisibility: "private",
-          source: TEST_SOURCE,
-          destination: TEST_DESTINATION,
-          actor: { platform: "slack", teamId: "T123", userId: "U123" },
-        },
-        conversationId: "conversation-preflight-compaction",
-        turnId: "turn-preflight-compaction",
-      }),
+  conversationId: "conversation-preflight-compaction",
+  turnId: "turn-preflight-compaction",
+  instruction:   {
+  text: currentInstruction,
+  },
+  history: priorMessages,
+  destinationVisibility: "private",
+  source: TEST_SOURCE,
+  destination: TEST_DESTINATION,
+  actor: { platform: "slack", teamId: "T123", userId: "U123" },
+}),
     );
 
     expect(result.text).toBe("Preserved after preflight compaction.");
@@ -738,16 +734,16 @@ describe("agent run continuation", () => {
 
   it("continues from the last safe boundary after an HTTP request timeout", async () => {
     const replyPromise = executeAgentRun({
-      conversationId: "conversation-1",
-      turnId: "turn-1",
-      input: { messageText: "help me" },
-      routing: {
-        destinationVisibility: "private",
-        destination: TEST_DESTINATION,
-        source: TEST_SOURCE,
-        actor: { platform: "slack", teamId: "T123", userId: "U123" },
-      },
-    });
+  conversationId: "conversation-1",
+  turnId: "turn-1",
+  instruction:   {
+  text: "help me",
+  },
+  destinationVisibility: "private",
+  destination: TEST_DESTINATION,
+  source: TEST_SOURCE,
+  actor: { platform: "slack", teamId: "T123", userId: "U123" },
+});
 
     await waitForPromptCall(1);
     await Promise.race([
@@ -818,17 +814,17 @@ describe("agent run continuation", () => {
     const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
     const controller = new AbortController();
     const replyPromise = executeAgentRun({
-      conversationId: "conversation-cancelled-backoff",
-      turnId: "turn-cancelled-backoff",
-      input: { messageText: "help me" },
-      routing: {
-        destinationVisibility: "private",
-        destination: TEST_DESTINATION,
-        source: TEST_SOURCE,
-        actor: { platform: "slack", teamId: "T123", userId: "U123" },
-      },
-      policy: { signal: controller.signal },
-    });
+  conversationId: "conversation-cancelled-backoff",
+  turnId: "turn-cancelled-backoff",
+  instruction:   {
+  text: "help me",
+  },
+  destinationVisibility: "private",
+  destination: TEST_DESTINATION,
+  source: TEST_SOURCE,
+  actor: { platform: "slack", teamId: "T123", userId: "U123" },
+  signal: controller.signal,
+});
 
     for (let attempt = 0; attempt < 2_000; attempt += 1) {
       if (setTimeoutSpy.mock.calls.some((call) => call[1] === 2_000)) {
@@ -855,17 +851,17 @@ describe("agent run continuation", () => {
     agentMode.value = "pendingProviderCall";
     const controller = new AbortController();
     const replyPromise = executeAgentRun({
-      conversationId: "conversation-cancelled-provider",
-      turnId: "turn-cancelled-provider",
-      input: { messageText: "help me" },
-      routing: {
-        destinationVisibility: "private",
-        destination: TEST_DESTINATION,
-        source: TEST_SOURCE,
-        actor: { platform: "slack", teamId: "T123", userId: "U123" },
-      },
-      policy: { signal: controller.signal },
-    });
+  conversationId: "conversation-cancelled-provider",
+  turnId: "turn-cancelled-provider",
+  instruction:   {
+  text: "help me",
+  },
+  destinationVisibility: "private",
+  destination: TEST_DESTINATION,
+  source: TEST_SOURCE,
+  actor: { platform: "slack", teamId: "T123", userId: "U123" },
+  signal: controller.signal,
+});
 
     await waitForPromptCall(1);
     controller.abort(new Error("eval test cancelled"));
@@ -907,30 +903,31 @@ describe("agent run continuation", () => {
 
     const reply = finalReply(
       await executeAgentRun({
-        conversationId: "slack:C123:1712345.0001",
-        turnId: "turn-steering",
-        input: { messageText: "help me", piMessages: priorMessages },
-        routing: {
-          destinationVisibility: "private",
-          destination: TEST_DESTINATION,
-          source: TEST_SOURCE,
-          actor: { platform: "slack", teamId: "T123", userId: "U123" },
-        },
-        durability: {
-          drainSteeringMessages: async (inject) => {
-            const messages = [
-              {
-                text: "actually do the other thing",
-                timestampMs: 2_000,
-                provenance: { authority: "instruction" as const },
-              },
-            ];
-            await inject(messages);
-            injectedTexts.push(...messages.map((message) => message.text));
-            return messages;
+  conversationId: "slack:C123:1712345.0001",
+  turnId: "turn-steering",
+  instruction:   {
+  text: "help me",
+  },
+  history: priorMessages,
+  destinationVisibility: "private",
+  destination: TEST_DESTINATION,
+  source: TEST_SOURCE,
+  actor: { platform: "slack", teamId: "T123", userId: "U123" },
+  durability:   {
+            drainSteeringMessages: async (inject) => {
+              const messages = [
+                {
+                  text: "actually do the other thing",
+                  timestampMs: 2_000,
+                  provenance: { authority: "instruction" as const },
+                },
+              ];
+              await inject(messages);
+              injectedTexts.push(...messages.map((message) => message.text));
+              return messages;
+            },
           },
-        },
-      }),
+}),
     );
 
     expect(reply.text).toBe("Steered.");
@@ -970,32 +967,32 @@ describe("agent run continuation", () => {
     const delivered: Array<{ text: string }> = [];
 
     const outcome = await executeAgentRun({
-      conversationId: "conversation-steering-delivery",
-      turnId: "turn-steering-delivery",
-      input: { messageText: "help me" },
-      routing: {
-        destinationVisibility: "private",
-        destination: TEST_DESTINATION,
-        source: TEST_SOURCE,
-        actor: { platform: "slack", teamId: "T123", userId: "U123" },
-      },
-      delivery: (message) => {
-        delivered.push({ text: extractAssistantText(message) });
-      },
-      durability: {
-        drainSteeringMessages: async (inject) => {
-          const messages = [
-            {
-              text: "actually do the other thing",
-              timestampMs: 2_000,
-              provenance: { authority: "instruction" as const },
-            },
-          ];
-          await inject(messages);
-          return messages;
+  conversationId: "conversation-steering-delivery",
+  turnId: "turn-steering-delivery",
+  instruction:   {
+  text: "help me",
+  },
+  destinationVisibility: "private",
+  destination: TEST_DESTINATION,
+  source: TEST_SOURCE,
+  actor: { platform: "slack", teamId: "T123", userId: "U123" },
+  delivery:   (message) => {
+          delivered.push({ text: extractAssistantText(message) });
         },
-      },
-    });
+  durability:   {
+          drainSteeringMessages: async (inject) => {
+            const messages = [
+              {
+                text: "actually do the other thing",
+                timestampMs: 2_000,
+                provenance: { authority: "instruction" as const },
+              },
+            ];
+            await inject(messages);
+            return messages;
+          },
+        },
+});
 
     expect(outcome.status).toBe("completed");
     expect(delivered).toEqual([
@@ -1009,20 +1006,20 @@ describe("agent run continuation", () => {
     const delivered: Array<{ text: string }> = [];
 
     const outcome = await executeAgentRun({
-      conversationId: "conversation-terminal-delivery-yield",
-      turnId: "turn-terminal-delivery-yield",
-      input: { messageText: "help me" },
-      routing: {
-        destinationVisibility: "private",
-        destination: TEST_DESTINATION,
-        source: TEST_SOURCE,
-        actor: { platform: "slack", teamId: "T123", userId: "U123" },
-      },
-      delivery: (message) => {
-        delivered.push({ text: extractAssistantText(message) });
-      },
-      durability: { shouldYield: () => true },
-    });
+  conversationId: "conversation-terminal-delivery-yield",
+  turnId: "turn-terminal-delivery-yield",
+  instruction:   {
+  text: "help me",
+  },
+  destinationVisibility: "private",
+  destination: TEST_DESTINATION,
+  source: TEST_SOURCE,
+  actor: { platform: "slack", teamId: "T123", userId: "U123" },
+  delivery:   (message) => {
+          delivered.push({ text: extractAssistantText(message) });
+        },
+  durability: { shouldYield: () => true },
+});
 
     expect(delivered).toEqual([{ text: "Final answer." }]);
     expect(outcome.status).toBe("completed");
@@ -1033,33 +1030,33 @@ describe("agent run continuation", () => {
     const delivered: Array<{ text: string }> = [];
 
     const outcome = await executeAgentRun({
-      conversationId: "conversation-delivery-steering-yield",
-      turnId: "turn-delivery-steering-yield",
-      input: { messageText: "help me" },
-      routing: {
-        destinationVisibility: "private",
-        destination: TEST_DESTINATION,
-        source: TEST_SOURCE,
-        actor: { platform: "slack", teamId: "T123", userId: "U123" },
-      },
-      delivery: (message) => {
-        delivered.push({ text: extractAssistantText(message) });
-      },
-      durability: {
-        drainSteeringMessages: async (inject) => {
-          const messages = [
-            {
-              text: "actually do the other thing",
-              timestampMs: 2_000,
-              provenance: { authority: "instruction" as const },
-            },
-          ];
-          await inject(messages);
-          return messages;
+  conversationId: "conversation-delivery-steering-yield",
+  turnId: "turn-delivery-steering-yield",
+  instruction:   {
+  text: "help me",
+  },
+  destinationVisibility: "private",
+  destination: TEST_DESTINATION,
+  source: TEST_SOURCE,
+  actor: { platform: "slack", teamId: "T123", userId: "U123" },
+  delivery:   (message) => {
+          delivered.push({ text: extractAssistantText(message) });
         },
-        shouldYield: () => true,
-      },
-    });
+  durability:   {
+          drainSteeringMessages: async (inject) => {
+            const messages = [
+              {
+                text: "actually do the other thing",
+                timestampMs: 2_000,
+                provenance: { authority: "instruction" as const },
+              },
+            ];
+            await inject(messages);
+            return messages;
+          },
+          shouldYield: () => true,
+        },
+});
 
     expect(outcome.status).toBe("suspended");
     expect(delivered).toEqual([{ text: "Initial answer." }]);
@@ -1079,17 +1076,17 @@ describe("agent run continuation", () => {
     agentMode.value = "cooperativeYield";
 
     const outcome = await executeAgentRun({
-      conversationId: "conversation-yield",
-      turnId: "turn-yield",
-      input: { messageText: "help me" },
-      routing: {
-        destinationVisibility: "private",
-        destination: TEST_DESTINATION,
-        source: TEST_SOURCE,
-        actor: { platform: "slack", teamId: "T123", userId: "U123" },
-      },
-      durability: { shouldYield: () => true },
-    });
+  conversationId: "conversation-yield",
+  turnId: "turn-yield",
+  instruction:   {
+  text: "help me",
+  },
+  destinationVisibility: "private",
+  destination: TEST_DESTINATION,
+  source: TEST_SOURCE,
+  actor: { platform: "slack", teamId: "T123", userId: "U123" },
+  durability: { shouldYield: () => true },
+});
 
     expect(outcome).toMatchObject({
       status: "suspended",
@@ -1162,10 +1159,11 @@ describe("agent run continuation", () => {
           guardianActionRejection: {
             decision: "ask",
             priorRejection: {
+              instruction: {
+                workspace: "preview-42",
+              },
               decision: "ask",
-              input: { workspace: "preview-42" },
-              reason:
-                "User has not confirmed permanently deleting preview-42 and all of its contents.",
+              reason: "User has not confirmed permanently deleting preview-42 and all of its contents.",
               tool: {
                 description:
                   "Permanently delete preview-42 and all of its contents.",
@@ -1197,13 +1195,11 @@ describe("agent run continuation", () => {
       await executeAgentRun({
         conversationId,
         turnId,
-        input: { messageText: "Delete preview-42 after I confirm." },
-        routing: {
-          destinationVisibility: "private",
-          destination: TEST_DESTINATION,
-          source: TEST_SOURCE,
-          actor: { platform: "slack", teamId: "T123", userId: "U123" },
-        },
+        instruction: { text: "Delete preview-42 after I confirm." },
+        destinationVisibility: "private",
+        destination: TEST_DESTINATION,
+        source: TEST_SOURCE,
+        actor: { platform: "slack", teamId: "T123", userId: "U123" },
         delivery: (message) => {
           delivered.push({ text: extractAssistantText(message) });
         },
@@ -1221,30 +1217,30 @@ describe("agent run continuation", () => {
     agentMode.value = "cooperativeYield";
 
     const outcome = await executeAgentRun({
-      conversationId: "conversation-yield-steering",
-      turnId: "turn-yield-steering",
-      input: { messageText: "help me" },
-      routing: {
-        destinationVisibility: "private",
-        actor: { platform: "slack", teamId: "T123", userId: "U123" },
-        destination: TEST_DESTINATION,
-        source: TEST_SOURCE,
-      },
-      durability: {
-        drainSteeringMessages: async (inject) => {
-          const messages = [
-            {
-              text: "actually do the other thing",
-              timestampMs: 2_000,
-              provenance: { authority: "instruction" as const },
-            },
-          ];
-          await inject(messages);
-          return messages;
+  conversationId: "conversation-yield-steering",
+  turnId: "turn-yield-steering",
+  instruction:   {
+  text: "help me",
+  },
+  destinationVisibility: "private",
+  actor: { platform: "slack", teamId: "T123", userId: "U123" },
+  destination: TEST_DESTINATION,
+  source: TEST_SOURCE,
+  durability:   {
+          drainSteeringMessages: async (inject) => {
+            const messages = [
+              {
+                text: "actually do the other thing",
+                timestampMs: 2_000,
+                provenance: { authority: "instruction" as const },
+              },
+            ];
+            await inject(messages);
+            return messages;
+          },
+          shouldYield: () => true,
         },
-        shouldYield: () => true,
-      },
-    });
+});
 
     expect(outcome).toMatchObject({
       status: "suspended",
@@ -1279,17 +1275,17 @@ describe("agent run continuation", () => {
       .mockRejectedValue(new Error("storage unavailable"));
 
     const error = await executeAgentRun({
-      conversationId: "conversation-yield-persist-failure",
-      turnId: "turn-yield-persist-failure",
-      input: { messageText: "help me" },
-      routing: {
-        destinationVisibility: "private",
-        destination: TEST_DESTINATION,
-        source: TEST_SOURCE,
-        actor: { platform: "slack", teamId: "T123", userId: "U123" },
-      },
-      durability: { shouldYield: () => true },
-    }).then(
+  conversationId: "conversation-yield-persist-failure",
+  turnId: "turn-yield-persist-failure",
+  instruction:   {
+  text: "help me",
+  },
+  destinationVisibility: "private",
+  destination: TEST_DESTINATION,
+  source: TEST_SOURCE,
+  actor: { platform: "slack", teamId: "T123", userId: "U123" },
+  durability: { shouldYield: () => true },
+}).then(
       () => undefined,
       (caught: unknown) => caught,
     );
@@ -1313,16 +1309,16 @@ describe("agent run continuation", () => {
 
     const reply = finalReply(
       await executeAgentRun({
-        conversationId: "conversation-tool-activity",
-        turnId: "turn-tool-activity",
-        input: { messageText: "run the tool" },
-        routing: {
-          destinationVisibility: "private",
-          destination: TEST_DESTINATION,
-          source: TEST_SOURCE,
-          actor: { platform: "slack", teamId: "T123", userId: "U123" },
-        },
-      }),
+  conversationId: "conversation-tool-activity",
+  turnId: "turn-tool-activity",
+  instruction:   {
+  text: "run the tool",
+  },
+  destinationVisibility: "private",
+  destination: TEST_DESTINATION,
+  source: TEST_SOURCE,
+  actor: { platform: "slack", teamId: "T123", userId: "U123" },
+}),
     );
 
     expect(sessionLogState.toolExecutionAppendCalls).toBe(1);
@@ -1354,13 +1350,12 @@ describe("agent run continuation", () => {
       await executeAgentRun({
         conversationId,
         turnId: sessionId,
-        input: { messageText: "help me", piMessages: [checkpointedPrompt] },
-        routing: {
-          destinationVisibility: "private",
-          destination: TEST_DESTINATION,
-          source: TEST_SOURCE,
-          actor: { platform: "slack", teamId: "T123", userId: "U123" },
-        },
+        instruction: { text: "help me" },
+        history: [checkpointedPrompt],
+        destinationVisibility: "private",
+        destination: TEST_DESTINATION,
+        source: TEST_SOURCE,
+        actor: { platform: "slack", teamId: "T123", userId: "U123" },
       }),
     );
 
@@ -1384,35 +1379,35 @@ describe("agent run continuation", () => {
     let injectCompleted = false;
 
     await executeAgentRun({
-      conversationId: "conversation-steering-failure",
-      turnId: "turn-steering-failure",
-      input: { messageText: "help me" },
-      routing: {
-        destinationVisibility: "private",
-        destination: TEST_DESTINATION,
-        source: TEST_SOURCE,
-        actor: { platform: "slack", teamId: "T123", userId: "U123" },
-      },
-      durability: {
-        drainSteeringMessages: async (inject) => {
-          const messages = [
-            {
-              text: "actually do the other thing",
-              timestampMs: 2_000,
-              provenance: { authority: "instruction" as const },
-            },
-          ];
-          try {
-            await inject(messages);
-            injectCompleted = true;
-            return messages;
-          } catch {
-            injectRejected = true;
-            throw new Error("inject rejected");
-          }
+  conversationId: "conversation-steering-failure",
+  turnId: "turn-steering-failure",
+  instruction:   {
+  text: "help me",
+  },
+  destinationVisibility: "private",
+  destination: TEST_DESTINATION,
+  source: TEST_SOURCE,
+  actor: { platform: "slack", teamId: "T123", userId: "U123" },
+  durability:   {
+          drainSteeringMessages: async (inject) => {
+            const messages = [
+              {
+                text: "actually do the other thing",
+                timestampMs: 2_000,
+                provenance: { authority: "instruction" as const },
+              },
+            ];
+            try {
+              await inject(messages);
+              injectCompleted = true;
+              return messages;
+            } catch {
+              injectRejected = true;
+              throw new Error("inject rejected");
+            }
+          },
         },
-      },
-    });
+});
 
     expect(injectRejected).toBe(true);
     expect(injectCompleted).toBe(false);

@@ -8,7 +8,7 @@ import {
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import {
   deliverAssistantMessagesForTest,
-  flattenAgentRunRequestForTest,
+  flattenAgentRunForTest,
 } from "../../fixtures/agent-runner";
 
 const ORIGINAL_ENV = { ...process.env };
@@ -67,9 +67,9 @@ describe("Slack behavior: attachment handling", () => {
         replyExecutor: {
           agentRunner: {
             run: async (request) => {
-              const _prompt = request.input.messageText;
+              const _prompt = request.instruction.text;
               const context = {
-                ...flattenAgentRunRequestForTest(request),
+                ...flattenAgentRunForTest(request),
               };
 
               const attachments = context?.userAttachments ?? [];
@@ -136,7 +136,7 @@ describe("Slack behavior: attachment handling", () => {
     });
     const executeAgentRun = vi.fn(async (request) => {
       const attachments =
-        flattenAgentRunRequestForTest(request)?.userAttachments ?? [];
+        flattenAgentRunForTest(request)?.userAttachments ?? [];
       expect(attachments).toEqual([
         expect.objectContaining({
           filename: "error.png",

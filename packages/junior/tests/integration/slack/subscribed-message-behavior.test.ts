@@ -19,7 +19,7 @@ import {
 } from "@/chat/resource-events/store";
 import {
   deliverAssistantMessagesForTest,
-  flattenAgentRunRequestForTest,
+  flattenAgentRunForTest,
 } from "../../fixtures/agent-runner";
 
 const emptyThreadReplies = async () => [];
@@ -177,9 +177,9 @@ describe("Slack behavior: subscribed messages", () => {
         replyExecutor: {
           agentRunner: {
             run: async (request) => {
-              const _prompt = request.input.messageText;
+              const _prompt = request.instruction.text;
               const context = {
-                ...flattenAgentRunRequestForTest(request),
+                ...flattenAgentRunForTest(request),
               };
 
               replyContexts.push(context);
@@ -459,7 +459,7 @@ describe("Slack behavior: subscribed messages", () => {
         replyExecutor: {
           agentRunner: {
             run: async (request) => {
-              const prompt = request.input.messageText;
+              const prompt = request.instruction.text;
 
               replyCalls.push(prompt);
               return await completedReply(
@@ -513,7 +513,7 @@ describe("Slack behavior: subscribed messages", () => {
         replyExecutor: {
           agentRunner: {
             run: async (request) => {
-              const prompt = request.input.messageText;
+              const prompt = request.instruction.text;
 
               replyCalls.push(prompt);
               return await completedReply(
@@ -562,8 +562,8 @@ describe("Slack behavior: subscribed messages", () => {
         replyExecutor: {
           agentRunner: {
             run: async (request) => {
-              const prompt = request.input.messageText;
-              const context = flattenAgentRunRequestForTest(request);
+              const prompt = request.instruction.text;
+              const context = flattenAgentRunForTest(request);
 
               replyCalls.push({ prompt, piMessages: context.piMessages });
               return await completedReply(
@@ -638,7 +638,7 @@ describe("Slack behavior: subscribed messages", () => {
         replyExecutor: {
           agentRunner: {
             run: async (request) => {
-              const prompt = request.input.messageText;
+              const prompt = request.instruction.text;
 
               replyCalls.push(prompt);
               return await completedReply(
@@ -1183,7 +1183,7 @@ describe("Slack behavior: subscribed messages", () => {
         replyExecutor: {
           agentRunner: {
             run: async (request) => {
-              const prompt = request.input.messageText;
+              const prompt = request.instruction.text;
 
               replyCalls.push(prompt);
               return await completedReply(
@@ -1249,7 +1249,7 @@ describe("Slack behavior: subscribed messages", () => {
         replyExecutor: {
           agentRunner: {
             run: async (request) => {
-              const prompt = request.input.messageText;
+              const prompt = request.instruction.text;
 
               replyCalls.push(prompt);
               return await completedReply(

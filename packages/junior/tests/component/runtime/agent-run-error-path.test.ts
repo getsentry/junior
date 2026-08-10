@@ -34,8 +34,9 @@ describe("executeAgentRun error path", () => {
     const outcome = await executeAgentRun({
       conversationId: LOCAL_DESTINATION.conversationId,
       turnId: "turn-sandbox-failure",
-      input: { messageText: "hello" },
-      routing: { destination: LOCAL_DESTINATION, source: LOCAL_SOURCE },
+      instruction: { text: "hello" },
+      destination: LOCAL_DESTINATION,
+      source: LOCAL_SOURCE,
       state: {
         sandboxRef: {
           id: "sb-123",
@@ -69,16 +70,14 @@ describe("executeAgentRun error path", () => {
         conversationId: LOCAL_DESTINATION.conversationId,
         turnId: "turn-context-failure",
         runId: "run-context-failure",
-        input: { messageText: "hello" },
-        routing: {
-          actor: {
-            platform: "local",
-            userId: "local-user",
-            userName: "alice",
-          },
-          destination: LOCAL_DESTINATION,
-          source: LOCAL_SOURCE,
+        instruction: { text: "hello" },
+        actor: {
+          platform: "local",
+          userId: "local-user",
+          userName: "alice",
         },
+        destination: LOCAL_DESTINATION,
+        source: LOCAL_SOURCE,
       });
     } finally {
       unregister();
@@ -103,9 +102,10 @@ describe("executeAgentRun error path", () => {
     const outcome = await executeAgentRun({
       conversationId: LOCAL_DESTINATION.conversationId,
       turnId: "turn-reasoning-failure",
-      input: { messageText: "hello" },
-      policy: { reasoningLevel: "high" },
-      routing: { destination: LOCAL_DESTINATION, source: LOCAL_SOURCE },
+      instruction: { text: "hello" },
+      reasoning: "high",
+      destination: LOCAL_DESTINATION,
+      source: LOCAL_SOURCE,
     });
     const reply = outcome.status === "completed" ? outcome.result : undefined;
 
@@ -119,8 +119,9 @@ describe("executeAgentRun error path", () => {
       executeAgentRun({
         conversationId: LOCAL_DESTINATION.conversationId,
         turnId: "turn-input-failure",
-        input: { messageText: "hello" },
-        routing: { destination: LOCAL_DESTINATION, source: LOCAL_SOURCE },
+        instruction: { text: "hello" },
+        destination: LOCAL_DESTINATION,
+        source: LOCAL_SOURCE,
         durability: {
           onInputCommitted: async () => {
             throw new Error("input should not commit before startup succeeds");
@@ -135,9 +136,8 @@ describe("executeAgentRun error path", () => {
       executeAgentRun({
         conversationId: LOCAL_DESTINATION.conversationId,
         turnId: "turn-missing-destination",
-        input: { messageText: "hello" },
-        routing: {} as Parameters<typeof executeAgentRun>[0]["routing"],
-      }),
+        instruction: { text: "hello" },
+      } as Parameters<typeof executeAgentRun>[0]),
     ).rejects.toThrow("Assistant reply generation requires a destination");
   });
 
@@ -146,15 +146,13 @@ describe("executeAgentRun error path", () => {
       executeAgentRun({
         conversationId: LOCAL_DESTINATION.conversationId,
         turnId: "turn-actor-mismatch",
-        input: { messageText: "hello" },
-        routing: {
-          destination: LOCAL_DESTINATION,
-          source: LOCAL_SOURCE,
-          actor: {
-            platform: "slack",
-            teamId: "T123",
-            userId: "U123",
-          },
+        instruction: { text: "hello" },
+        destination: LOCAL_DESTINATION,
+        source: LOCAL_SOURCE,
+        actor: {
+          platform: "slack",
+          teamId: "T123",
+          userId: "U123",
         },
       }),
     ).rejects.toThrow(
@@ -167,11 +165,9 @@ describe("executeAgentRun error path", () => {
       executeAgentRun({
         conversationId: "local:test:different-conversation",
         turnId: "turn-conversation-mismatch",
-        input: { messageText: "hello" },
-        routing: {
-          destination: LOCAL_DESTINATION,
-          source: LOCAL_SOURCE,
-        },
+        instruction: { text: "hello" },
+        destination: LOCAL_DESTINATION,
+        source: LOCAL_SOURCE,
       }),
     ).rejects.toThrow(
       "Source, destination, and run conversation IDs do not match",

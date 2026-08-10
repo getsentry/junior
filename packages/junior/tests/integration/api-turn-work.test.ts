@@ -135,9 +135,9 @@ describe("api turn conversation work", () => {
       agentRunner: createApiTurnScriptedRunner({
         replyText: "Stored only in Junior.",
         onRun: (request) => {
-          observedPublishExternally = request.routing.publishExternally;
-          observedSource = request.routing.source;
-          observedActorPlatform = request.routing.actor?.platform;
+          observedPublishExternally = request.publishExternally;
+          observedSource = request.source;
+          observedActorPlatform = request.actor?.platform;
         },
       }),
     });
@@ -227,7 +227,7 @@ describe("api turn conversation work", () => {
       agentRunner: createApiTurnScriptedRunner({
         replyText: "Private reply stays in Junior.",
         onRun: (request) => {
-          observedSource = request.routing.source;
+          observedSource = request.source;
         },
       }),
     });
@@ -419,9 +419,9 @@ describe("api turn conversation work", () => {
       agentRunner: createApiTurnScriptedRunner({
         replyText: "Dashboard-only reply.",
         onRun: (request) => {
-          observedDestinationPlatform = request.routing.destination.platform;
-          observedPublishExternally = request.routing.publishExternally;
-          observedSourcePlatform = request.routing.source.platform;
+          observedDestinationPlatform = request.destination.platform;
+          observedPublishExternally = request.publishExternally;
+          observedSourcePlatform = request.source.platform;
         },
       }),
     });

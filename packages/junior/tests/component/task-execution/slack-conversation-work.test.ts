@@ -55,7 +55,7 @@ import {
   slackEnvelope,
   slackWebhookRequest,
 } from "../../fixtures/conversation-work";
-import { flattenAgentRunRequestForTest } from "../../fixtures/agent-runner";
+import { flattenAgentRunForTest } from "../../fixtures/agent-runner";
 
 type SlackWorkerOptions = Parameters<typeof createSlackConversationWorker>[0];
 
@@ -271,6 +271,54 @@ describe("Slack conversation work execution", () => {
     await state.connect();
     const slackAdapter = createSlackAdapterFixture();
     const malformed = {
+      input: {
+        text: "hello",
+        authorId: "U123",
+        metadata: {
+                  platform: "slack",
+                  route: "mention",
+                  message: {
+                    _type: "chat:Message",
+                    attachments: [],
+                    author: {
+                      userId: "U123",
+                      userName: "dcramer",
+                      fullName: "David Cramer",
+                      isBot: false,
+                      isMe: false,
+                    },
+                    formatted: {
+                      type: "root",
+                      children: [
+                        {
+                          type: "paragraph",
+                          children: [
+                            {
+                              type: "table",
+                              children: [],
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                    id: "1712345.0002",
+                    metadata: {
+                      dateSent: "2026-07-22T12:00:00.000Z",
+                      edited: false,
+                    },
+                    raw: {},
+                    text: "hello",
+                    threadId: CONVERSATION_ID,
+                  },
+                  thread: {
+                    _type: "chat:Thread",
+                    adapterName: "slack",
+                    channelId: "C123",
+                    id: CONVERSATION_ID,
+                    isDM: false,
+                  },
+                },
+      },
       ...conversationQueueMessage(),
       destination: SLACK_DESTINATION,
       inboundMessageId: "malformed-slack-metadata",
@@ -278,54 +326,6 @@ describe("Slack conversation work execution", () => {
       source: "slack" as const,
       createdAtMs: 1_000,
       receivedAtMs: 1_100,
-      input: {
-        text: "hello",
-        authorId: "U123",
-        metadata: {
-          platform: "slack",
-          route: "mention",
-          message: {
-            _type: "chat:Message",
-            attachments: [],
-            author: {
-              userId: "U123",
-              userName: "dcramer",
-              fullName: "David Cramer",
-              isBot: false,
-              isMe: false,
-            },
-            formatted: {
-              type: "root",
-              children: [
-                {
-                  type: "paragraph",
-                  children: [
-                    {
-                      type: "table",
-                      children: [],
-                    },
-                  ],
-                },
-              ],
-            },
-            id: "1712345.0002",
-            metadata: {
-              dateSent: "2026-07-22T12:00:00.000Z",
-              edited: false,
-            },
-            raw: {},
-            text: "hello",
-            threadId: CONVERSATION_ID,
-          },
-          thread: {
-            _type: "chat:Thread",
-            adapterName: "slack",
-            channelId: "C123",
-            id: CONVERSATION_ID,
-            isDM: false,
-          },
-        },
-      },
     };
     const malformedWithDelivery = {
       ...malformed,
@@ -1925,9 +1925,9 @@ describe("Slack conversation work execution", () => {
         replyExecutor: {
           agentRunner: {
             run: async (request) => {
-              const _text = request.input.messageText;
+              const _text = request.instruction.text;
               const context = {
-                ...flattenAgentRunRequestForTest(request),
+                ...flattenAgentRunForTest(request),
               };
 
               await context?.onInputCommitted?.();
