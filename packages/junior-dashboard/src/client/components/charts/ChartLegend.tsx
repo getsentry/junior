@@ -34,8 +34,8 @@ export function ChartLegend(props: {
             {item.label}
             {item.value !== undefined ? (
               <>
-                <span aria-hidden="true"> · </span>
-                {item.value}
+                {" "}
+                <span aria-hidden="true">·</span> {item.value}
               </>
             ) : null}
           </span>

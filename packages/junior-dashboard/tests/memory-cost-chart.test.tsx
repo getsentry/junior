@@ -23,11 +23,12 @@ describe("MemoryCostChart", () => {
         recallDays={costDays(0.005, 2)}
       />,
     );
-    const text = html.replaceAll(/<[^>]+>/g, "");
 
     expect(html).toContain("$0.01");
-    expect(text).toContain("Extraction · $0.005");
-    expect(text).toContain("Recall · $0.005");
+    expect(html).toContain(
+      'Extraction <span aria-hidden="true">·</span> $0.005',
+    );
+    expect(html).toContain('Recall <span aria-hidden="true">·</span> $0.005');
     expect(html).toContain(
       'aria-label="Memory extraction and recall cost during the last 30 days"',
     );
