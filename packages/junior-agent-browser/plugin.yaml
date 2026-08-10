@@ -5,6 +5,9 @@ description: Browser automation workflows powered by agent-browser CLI
 runtime-dependencies:
   - type: npm
     package: agent-browser
+  - type: npm
+    package: playwright
+    version: "1.60.0"
   - type: system
     package: alsa-lib
   - type: system
@@ -57,3 +60,5 @@ runtime-dependencies:
 runtime-postinstall:
   - cmd: agent-browser
     args: [install]
+  - cmd: playwright
+    args: [install, chromium]

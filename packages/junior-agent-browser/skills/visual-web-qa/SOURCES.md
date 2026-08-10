@@ -17,3 +17,4 @@
 - Aligned the behavior contract with the runtime guidance, where a purely temporal request may use video without a redundant screenshot
 - Clarified the routing boundary between evidence-driven `/visual-web-qa` and general-purpose `/agent-browser`
 - Kept the skill inline because the runtime decisions and examples are short enough to remain coherent in one file
+- 2026-08-10: Added one runtime line so visual QA does not treat missing system Chrome or repo Playwright as a blocker; capture stays on `agent-browser`

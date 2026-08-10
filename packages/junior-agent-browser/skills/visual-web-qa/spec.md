@@ -56,6 +56,10 @@ The agent SHALL use a user-provided, local, or preview target for changed code, 
 
 The agent MUST NOT claim that a rendered change looks correct from code inspection alone or without browser evidence that supports the claim.
 
+### Constraint: Browser runtime
+
+The agent MUST capture visual evidence with `agent-browser` and MUST NOT treat missing system Chrome/Chromium or a repo-local Playwright install as a visual-QA blocker.
+
 ### Constraint: Artifact delivery claims
 
 The agent MUST NOT claim a screenshot or video was shared unless `sendFiles` succeeded; when delivery is unavailable or fails, it must report the saved path and limitation.

@@ -42,8 +42,10 @@ This plugin provisions browser automation as part of the sandbox snapshot:
 - Plugin manifest: `agent-browser`
 - General automation skill: `/agent-browser`
 - Visual verification skill: `/visual-web-qa`
-- Runtime dependency: `agent-browser` npm package installed in the snapshot
-- Runtime postinstall: `agent-browser install` to provision browser binaries in the snapshot
+- Runtime dependencies: `agent-browser` and `playwright` npm packages installed in the snapshot
+- Runtime postinstall: `agent-browser install` and `playwright install chromium` to provision browser binaries in the snapshot
+
+Use `/agent-browser` or `/visual-web-qa` for browser evidence. Use the snapshot Playwright install only for package Playwright e2e runs.
 
 Use `/agent-browser` for general browser interaction:
 
@@ -67,7 +69,7 @@ Use `/visual-web-qa` when a frontend or docs change needs scoped browser evidenc
 ## Failure modes
 
 - `command not found: agent-browser`: the runtime dependency install did not complete. Retry the turn and check sandbox snapshot setup logs.
-- Browser launch fails during the turn: browser binaries were not provisioned successfully. Rebuild the snapshot so `agent-browser install` runs again.
+- Browser launch fails during the turn: browser binaries were not provisioned successfully. Rebuild the snapshot so `agent-browser install` and `playwright install chromium` run again.
 - Stale element references like `@e*`: the DOM changed after the snapshot was taken. Run a fresh `snapshot -i` after navigation or UI updates.
 - Page appears incomplete: the page had not finished loading before the next action. Wait explicitly with `agent-browser wait --load networkidle` before interacting.
 - Visual QA is blocked: no local server or preview URL is reachable. Start the repo-native development server or provide a preview URL, then retry.
