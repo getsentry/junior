@@ -43,6 +43,7 @@ export interface ConversationWorkerContext {
   conversationId: string;
   destination?: Destination;
   publishExternally: boolean;
+  /** True when the current execution slice must stop at its next safe boundary. */
   shouldYield(): boolean;
 }
 
@@ -419,8 +420,12 @@ async function processConversationWorkInContext(
 
   const requestDeadlineAtMs = getTurnRequestDeadline()?.deadlineAtMs;
   const shouldYield = (): boolean =>
+    // Lease ownership is no longer confirmed, so this worker must stop.
     leaseLost ||
+    // The worker soft limit reserves time to persist state and release the lease.
     now(options) >= softYieldDeadlineMs ||
+    // Nested work can inherit an older host request deadline. Stop after that
+    // absolute deadline, even if this worker acquired its lease later.
     (requestDeadlineAtMs !== undefined && Date.now() >= requestDeadlineAtMs);
   const checkIn = async (): Promise<boolean> => {
     const checkedIn = await checkInConversationWork({
