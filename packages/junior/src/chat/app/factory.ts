@@ -100,7 +100,12 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
         messages
           .filter((message) => {
             const actor = getMessageActorIdentity(message);
-            return !message.author.isMe && !actor?.fullName && !actor?.userName;
+            return (
+              !message.author.isMe &&
+              Boolean(actor?.userId) &&
+              !actor?.fullName &&
+              !actor?.userName
+            );
           })
           .map((message) =>
             ensureSlackMessageActorIdentity(
