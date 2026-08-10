@@ -308,14 +308,25 @@ export function assertRunRoutingConsistency(
       break;
     }
     case "web": {
-      if (source.conversationId !== request.conversationId) {
+      if (
+        request.routing.surface !== "internal" &&
+        source.conversationId !== request.conversationId
+      ) {
         throw new TypeError(
           "Web source and run conversation IDs do not match",
         );
       }
       switch (destination.platform) {
         case "local": {
-          if (destination.conversationId !== request.conversationId) {
+          if (source.conversationId !== destination.conversationId) {
+            throw new TypeError(
+              "Source and destination conversation IDs do not match",
+            );
+          }
+          if (
+            request.routing.surface !== "internal" &&
+            destination.conversationId !== request.conversationId
+          ) {
             throw new TypeError(
               "Source, destination, and run conversation IDs do not match",
             );

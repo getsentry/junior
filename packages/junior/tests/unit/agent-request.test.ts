@@ -19,6 +19,22 @@ describe("agent run routing", () => {
     ).not.toThrow();
   });
 
+  it("allows an internal child run to borrow its parent's web route", () => {
+    expect(() =>
+      assertRunRoutingConsistency({
+        conversationId: "local:test:child",
+        routing: {
+          destination: {
+            conversationId: "local:web:parent",
+            platform: "local",
+          },
+          source: createWebSource("local:web:parent"),
+          surface: "internal",
+        },
+      }),
+    ).not.toThrow();
+  });
+
   it("rejects the same local route mismatch outside internal work", () => {
     expect(() =>
       assertRunRoutingConsistency({
