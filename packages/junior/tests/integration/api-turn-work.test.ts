@@ -9,7 +9,6 @@ import {
   createApiTurnWorker,
   resolveApiTurnWork,
   routeApiTurnWork,
-  WebTurnQuotaExceededError,
 } from "@/chat/api-turns/work";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
@@ -92,55 +91,6 @@ describe("api turn conversation work", () => {
         messageId: accepted.messageId,
         status: "duplicate",
       });
-    } finally {
-      await fixture.close();
-    }
-  });
-
-  it("limits unique web turn enqueues per verified viewer", async () => {
-    const fixture = createConfiguredJuniorSqlFixture();
-    await migrateSchema(fixture.sql);
-    const conversationStore = createSqlStore(fixture.sql);
-    const queue = createConversationWorkQueueTestAdapter();
-    const state = getStateAdapter();
-    await state.connect();
-
-    try {
-      for (let index = 0; index < 20; index += 1) {
-        await expect(
-          createAndEnqueueApiConversation(
-            {
-              actor,
-              idempotencyKey: `quota-${index}`,
-              message: `Dashboard turn ${index}.`,
-            },
-            { conversationStore, nowMs: 1_000, queue, state },
-          ),
-        ).resolves.toMatchObject({ status: "accepted" });
-      }
-
-      await expect(
-        createAndEnqueueApiConversation(
-          {
-            actor,
-            idempotencyKey: "quota-0",
-            message: "Dashboard turn 0.",
-          },
-          { conversationStore, nowMs: 1_000, queue, state },
-        ),
-      ).resolves.toMatchObject({ status: "duplicate" });
-
-      await expect(
-        createAndEnqueueApiConversation(
-          {
-            actor,
-            idempotencyKey: "quota-20",
-            message: "Dashboard turn 20.",
-          },
-          { conversationStore, nowMs: 1_000, queue, state },
-        ),
-      ).rejects.toBeInstanceOf(WebTurnQuotaExceededError);
-      expect(queue.sentRecords()).toHaveLength(20);
     } finally {
       await fixture.close();
     }

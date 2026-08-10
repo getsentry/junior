@@ -3,7 +3,6 @@ import {
   webActorFromEmail,
   appendAndEnqueueApiConversationMessage,
   createAndEnqueueApiConversation,
-  WebTurnQuotaExceededError,
 } from "@/chat/api-turns/work";
 import { getConversationStore, getDb } from "@/chat/db";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
@@ -52,12 +51,6 @@ export const createConversationRoute = defineApiRoute({
         },
       );
     } catch (error) {
-      if (error instanceof WebTurnQuotaExceededError) {
-        throwApiError(
-          429,
-          "Too many conversation requests. Try again shortly.",
-        );
-      }
       throwApiError(500, "Unable to create conversation.", error);
     }
   },
@@ -127,12 +120,6 @@ export const createConversationMessageRoute = defineApiRoute({
         },
       );
     } catch (error) {
-      if (error instanceof WebTurnQuotaExceededError) {
-        throwApiError(
-          429,
-          "Too many conversation requests. Try again shortly.",
-        );
-      }
       throwApiError(500, "Unable to append message.", error);
     }
   },
