@@ -40,6 +40,10 @@ import { standardModelId } from "@/chat/model-profile";
 import { cancelSubscriptions as cancelEventSubscriptions } from "@/chat/resource-events/store";
 import { recordSubscribedReplyRoute } from "@/chat/conversations/projection";
 import { createSlackDispatchTurnRunner } from "@/chat/slack/dispatch-turn";
+import {
+  ensureSlackMessageActorIdentity,
+  getMessageActorIdentity,
+} from "@/chat/services/message-actor-identity";
 
 export interface CreateSlackRuntimeOptions {
   getSlackAdapter: () => SlackAdapter;
@@ -88,6 +92,25 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
       services.conversationMemory.compactConversationIfNeeded,
     hydrateConversationVisionContext:
       services.visionContext.hydrateConversationVisionContext,
+    resolveBackfillMessageActors: async (messages, destination) => {
+      if (destination.platform !== "slack") {
+        throw new Error("Slack turn backfill requires a Slack destination");
+      }
+      await Promise.all(
+        messages
+          .filter((message) => {
+            const actor = getMessageActorIdentity(message);
+            return !message.author.isMe && !actor?.fullName && !actor?.userName;
+          })
+          .map((message) =>
+            ensureSlackMessageActorIdentity(
+              message,
+              destination.teamId,
+              services.replyExecutor.lookupSlackUser,
+            ),
+          ),
+      );
+    },
   });
   const replyToThread = createReplyToThread({
     getSlackAdapter: options.getSlackAdapter,

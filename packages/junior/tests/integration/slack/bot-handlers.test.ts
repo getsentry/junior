@@ -3066,9 +3066,29 @@ describe("bot handlers (integration)", () => {
 
     expect(capturedContexts).toHaveLength(1);
     expect(capturedContexts[0]).toContain("<thread-transcript>");
+    expect(capturedContexts[0]).toContain('author="Test User"');
+    expect(capturedContexts[0]).toContain("[user] Test User:");
     expect(capturedContexts[0]).toContain("Original production issue summary.");
     expect(capturedContexts[0]).not.toContain(
       "Can you include the regression window?",
+    );
+    const report = projectConversationReportEventPage({
+      canExposePayload: true,
+      events: await getConversationEventStore().loadHistory(threadId),
+    });
+    expect(report).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          data: expect.objectContaining({
+            actorIdentity: expect.objectContaining({
+              fullName: "Test User",
+              slackUserName: "testuser",
+            }),
+            text: "Original production issue summary.",
+            type: "message",
+          }),
+        }),
+      ]),
     );
   });
 
