@@ -244,11 +244,25 @@ describe("dashboard routes", () => {
 
     const me = await app.fetch(new Request("http://localhost/api/me"));
     expect(me.status).toBe(200);
+    expect(me.headers.get("cache-control")).toBe("no-store");
     expect(await me.json()).toEqual({
       user: {
-        email: "local-dashboard@localhost.test",
+        email: "dev@example.com",
         emailVerified: true,
       },
+    });
+    expect(resolveViewerUser).toHaveBeenCalledWith("dev@example.com");
+
+    const create = await app.fetch(
+      new Request("http://localhost/api/conversations", {
+        body: "{}",
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      }),
+    );
+    expect(create.status).toBe(400);
+    await expect(create.json()).resolves.toEqual({
+      error: "Invalid request body.",
     });
   });
 
@@ -273,6 +287,7 @@ describe("dashboard routes", () => {
     ]) {
       const response = await app.fetch(new Request(`http://localhost${path}`));
       expect(response.status).toBe(401);
+      expect(response.headers.get("cache-control")).toBe("no-store");
       expect(await response.json()).toEqual({ error: "unauthenticated" });
     }
 
@@ -296,6 +311,7 @@ describe("dashboard routes", () => {
     );
 
     expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
     const body = (await response.json()) as { providers: string[] };
     expect(body.providers).toEqual(expect.any(Array));
   });

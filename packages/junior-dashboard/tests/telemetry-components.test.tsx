@@ -1522,7 +1522,7 @@ describe("dashboard canonical-event components", () => {
     );
     expect(html).toContain('aria-label="2026-07-31, Cost: $0.0042"');
     expect(html).toContain(">$0.0042</text>");
-    expect(html).toContain('x1="72"');
+    expect(html).toContain('x1="104"');
   });
 
   it("renders daily chart ranges from the shared page selection", () => {

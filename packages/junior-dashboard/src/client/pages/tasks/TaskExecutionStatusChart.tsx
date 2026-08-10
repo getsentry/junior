@@ -7,6 +7,7 @@ import {
   createActivityChartLayout,
   formatActivityDate,
 } from "../../components/charts/ActivityChart";
+import { ChartLegend } from "../../components/charts/ChartLegend";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { Tooltip } from "../../components/Tooltip";
@@ -24,11 +25,10 @@ export function TaskExecutionStatusChart(props: {
 }) {
   const days = props.days.slice(-props.range);
   const layout = createActivityChartLayout(220);
-  const totals = days.map(
-    (day) => day.completed + day.failed + day.blocked,
-  );
+  const totals = days.map((day) => day.completed + day.failed + day.blocked);
   const maximum = Math.max(1, ...totals);
-  const step = days.length > 0 ? layout.plotWidth / days.length : layout.plotWidth;
+  const step =
+    days.length > 0 ? layout.plotWidth / days.length : layout.plotWidth;
   const barWidth = Math.max(2, Math.min(13, step * 0.68));
   const hasExecutions = totals.some((total) => total > 0);
 
@@ -43,23 +43,7 @@ export function TaskExecutionStatusChart(props: {
         </p>
       </div>
 
-      <div
-        aria-label="Task execution status legend"
-        className="mt-4 flex flex-wrap gap-4"
-      >
-        {series.map((item) => (
-          <span
-            className="inline-flex items-center gap-1.5 font-mono text-xs text-dashboard-text-muted"
-            key={item.key}
-          >
-            <i
-              className="size-2 rounded-sm"
-              style={{ backgroundColor: item.color }}
-            />
-            {item.label}
-          </span>
-        ))}
-      </div>
+      <ChartLegend ariaLabel="Task execution status legend" items={series} />
 
       <div className="relative mt-3 overflow-hidden">
         <ChartSvg

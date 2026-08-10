@@ -67,6 +67,10 @@ export interface PrepareTurnStateDeps {
     conversation: ThreadConversationState,
     context: TurnContext & { threadTs?: string },
   ) => Promise<void>;
+  resolveBackfillMessageActors: (
+    messages: Message[],
+    destination: PrepareTurnStateInput["destination"],
+  ) => Promise<void>;
 }
 
 function hasPendingImageHydration(
@@ -94,6 +98,7 @@ async function seedConversationBackfill(
     messageId: string;
     messageCreatedAtMs: number;
   },
+  resolveMessageActors: (messages: Message[]) => Promise<void>,
 ): Promise<"recent_messages" | "thread_fetch"> {
   if (conversation.messages.length > 0 || conversation.compactions.length > 0) {
     return "recent_messages";
@@ -102,15 +107,20 @@ async function seedConversationBackfill(
   const seeded: ConversationMessage[] = [];
   let source: "recent_messages" | "thread_fetch" = "recent_messages";
 
+  let fetchedNewestFirst: Message[] | undefined;
   try {
-    const fetchedNewestFirst: Message[] = [];
+    const fetched: Message[] = [];
     for await (const entry of thread.messages) {
-      fetchedNewestFirst.push(entry);
-      if (fetchedNewestFirst.length >= BACKFILL_MESSAGE_LIMIT) {
+      fetched.push(entry);
+      if (fetched.length >= BACKFILL_MESSAGE_LIMIT) {
         break;
       }
     }
-    fetchedNewestFirst.reverse();
+    fetchedNewestFirst = fetched.reverse();
+  } catch {}
+
+  if (fetchedNewestFirst) {
+    await resolveMessageActors(fetchedNewestFirst);
     for (const entry of fetchedNewestFirst) {
       const text = getBackfillText(entry);
       if (text) {
@@ -120,7 +130,7 @@ async function seedConversationBackfill(
     if (seeded.length > 0) {
       source = "thread_fetch";
     }
-  } catch {}
+  }
 
   if (seeded.length === 0) {
     try {
@@ -128,6 +138,7 @@ async function seedConversationBackfill(
     } catch {}
 
     const fromRecent = thread.recentMessages.slice(-BACKFILL_MESSAGE_LIMIT);
+    await resolveMessageActors(fromRecent);
     for (const entry of fromRecent) {
       const text = getBackfillText(entry);
       if (text) {
@@ -177,10 +188,16 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
 
     const backfillSource = args.skipBackfill
       ? undefined
-      : await seedConversationBackfill(args.thread, conversation, {
-          messageId: args.message.id,
-          messageCreatedAtMs: args.message.metadata.dateSent.getTime(),
-        });
+      : await seedConversationBackfill(
+          args.thread,
+          conversation,
+          {
+            messageId: args.message.id,
+            messageCreatedAtMs: args.message.metadata.dateSent.getTime(),
+          },
+          (messages) =>
+            deps.resolveBackfillMessageActors(messages, args.destination),
+        );
     for (const queued of args.queuedMessages ?? []) {
       const queuedMessage = toConversationMessage({
         entry: queued.message,
@@ -224,7 +241,10 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
         threadTs: getThreadTs(args.context.threadId),
       });
       if (conversationId) {
-        await persistConversationVisionCache(conversationId, conversation.vision);
+        await persistConversationVisionCache(
+          conversationId,
+          conversation.vision,
+        );
       }
     }
 

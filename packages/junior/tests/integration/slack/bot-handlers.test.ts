@@ -3058,7 +3058,19 @@ describe("bot handlers (integration)", () => {
       author: { userId: "U-current", userName: "bob", isBot: false },
     });
     currentMessage.metadata.dateSent = new Date(1_700_000_001_000);
-    thread.recentMessages = [priorMessage, currentMessage];
+    const syntheticMessage = createTestMessage({
+      id: "msg-first-synthetic",
+      threadId,
+      text: "Automated deployment context.",
+      author: {
+        fullName: "unknown",
+        isBot: true,
+        userId: "unknown",
+        userName: "unknown",
+      },
+    });
+    syntheticMessage.metadata.dateSent = new Date(1_700_000_000_500);
+    thread.recentMessages = [priorMessage, syntheticMessage, currentMessage];
 
     await slackRuntime.handleNewMention(thread, currentMessage, {
       destination: createTestDestination(thread),
@@ -3066,9 +3078,30 @@ describe("bot handlers (integration)", () => {
 
     expect(capturedContexts).toHaveLength(1);
     expect(capturedContexts[0]).toContain("<thread-transcript>");
+    expect(capturedContexts[0]).toContain('author="Test User"');
+    expect(capturedContexts[0]).toContain("[user] Test User:");
     expect(capturedContexts[0]).toContain("Original production issue summary.");
+    expect(capturedContexts[0]).toContain("Automated deployment context.");
     expect(capturedContexts[0]).not.toContain(
       "Can you include the regression window?",
+    );
+    const report = projectConversationReportEventPage({
+      canExposePayload: true,
+      events: await getConversationEventStore().loadHistory(threadId),
+    });
+    expect(report).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          data: expect.objectContaining({
+            actorIdentity: expect.objectContaining({
+              fullName: "Test User",
+              slackUserName: "testuser",
+            }),
+            text: "Original production issue summary.",
+            type: "message",
+          }),
+        }),
+      ]),
     );
   });
 

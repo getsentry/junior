@@ -44,8 +44,8 @@ test("opens a registered plugin page from primary navigation", async ({
     page.getByRole("heading", { name: "Activity over time" }),
   ).toBeVisible();
   await expect(page.getByRole("heading", { name: /^\$/ })).toBeVisible();
-  await expect(page.getByText(/^Extraction \$/)).toBeVisible();
-  await expect(page.getByText(/^Recall \$/)).toBeVisible();
+  await expect(page.getByText(/^Extraction · \$/)).toBeVisible();
+  await expect(page.getByText(/^Recall · \$/)).toBeVisible();
   await expect(
     page.getByRole("img", {
       name: "Memory extraction and recall cost during the last 30 days",
@@ -112,8 +112,12 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
   await expect(page.getByLabel("Tasks navigation")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Tasks" })).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Activity over time" }),
+    page.getByRole("heading", { name: "Executions over time" }),
   ).toBeVisible();
+  await expect(page.getByText("Total tasks")).toBeVisible();
+  await expect(page.getByText("Your tasks")).toBeVisible();
+  await expect(page.getByText("Public tasks")).toBeVisible();
+  await expect(page.getByText("Private tasks")).toBeVisible();
   await expect(
     page.getByLabel("Task executions during the last 30 days"),
   ).toBeVisible();
@@ -163,7 +167,7 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
   ).toBeVisible();
   await expect(details.getByRole("link", { name: "you" })).toHaveAttribute(
     "href",
-    "/people/morgan%40sentry.io",
+    "/people/dev%40example.com",
   );
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);

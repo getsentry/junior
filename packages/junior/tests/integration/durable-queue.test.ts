@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { StreamFn } from "@earendil-works/pi-agent-core";
 import {
   createFauxCore,
   fauxAssistantMessage,
@@ -7,13 +8,14 @@ import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createConversationWork } from "@/chat/app/conversation-work";
 import { commitAcceptedReply } from "@/chat/conversations/projection";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
+import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import type { AgentRunSteeringMessage } from "@/chat/agent/request";
+import { executeAgentRun } from "@/chat/agent";
 import {
   getPersistedThreadState,
   persistThreadStateById,
 } from "@/chat/runtime/thread-state";
-import { executeAgentRun } from "@/chat/agent";
 import type { PiMessage } from "@/chat/pi/messages";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
@@ -71,14 +73,15 @@ async function complete(request: Parameters<AgentRunner["run"]>[0]) {
 
 /**
  * Compose the same ingress, runtime, worker, resume, SQL, and delivery path used
- * in production. Tests replace agent behavior and Slack HTTP, select the real
- * memory-backed StateAdapter, and use an in-memory implementation of the queue's
- * one-method transport port. The Vercel transport has its own contract test.
+ * in production. Task-execution coverage must not replace Junior-owned runtime
+ * behavior. A scenario may provide model output to `executeAgentRun` and fake
+ * Slack I/O. The memory StateAdapter and in-memory queue implement production
+ * ports. Separate contract tests cover provider storage and Vercel transport.
  */
 async function slack(
   options: {
     agentRunner?: AgentRunner;
-    pausedRunner?: AgentRunner;
+    pausedModelStream?: StreamFn;
     shouldYield?: () => boolean;
   } = {},
 ) {
@@ -87,8 +90,14 @@ async function slack(
   const wakes = createConversationWorkQueueTestAdapter();
   const adapter = createSlackAdapterFixture();
   const agentRunner = options.agentRunner ?? { run: complete };
+  const pausedAgentRunner: AgentRunner = options.pausedModelStream
+    ? {
+        run: async (request) =>
+          await executeAgentRun(request, options.pausedModelStream),
+      }
+    : agentRunner;
   const work = createConversationWork({
-    agentRunner: options.pausedRunner ?? agentRunner,
+    agentRunner: pausedAgentRunner,
     conversationStore: getConversationStore(),
     getSlackAdapter: () => adapter,
     queue: wakes,
@@ -108,12 +117,17 @@ async function slack(
         .messages()
         .map((call) => call.params.text)
         .filter((text): text is string => typeof text === "string"),
-    next: async () =>
-      await processConversationQueueMessage(wakes.takeMessage(), {
-        queue: wakes,
-        run,
-        state,
-      }),
+    next: async (requestStartedAtMs?: number) => {
+      const process = async () =>
+        await processConversationQueueMessage(wakes.takeMessage(), {
+          queue: wakes,
+          run,
+          state,
+        });
+      return requestStartedAtMs === undefined
+        ? await process()
+        : await runWithTurnRequestDeadline(process, requestStartedAtMs);
+    },
     send: async (
       input: {
         eventType?: "app_mention" | "message";
@@ -456,64 +470,18 @@ describe("durable queue contract", () => {
       });
     });
 
-    it("continues a paused turn on the same queue, then stops when progress stalls", async () => {
+    it("leaves the host request after a timeout pause that advanced the boundary", async () => {
       const turnId = await seedTurn("paused");
-      let resumes = 0;
-      let shouldYield = true;
+      const faux = createFauxCore({ api: "test", provider: "test" });
+      faux.setResponses([
+        fauxAssistantMessage("Deploy checked."),
+        fauxAssistantMessage("Deploy checked."),
+      ]);
       const q = await slack({
-        shouldYield: () => shouldYield,
-        pausedRunner: {
-          run: async (request) => {
-            if (request.turnId !== turnId) return await complete(request);
-            resumes += 1;
-            const piMessages = request.input.piMessages?.map((message) =>
-              message.role === "assistant"
-                ? { ...message, usage: { ...message.usage, output: 99 } }
-                : message,
-            );
-            if (resumes === 1) {
-              const record = await saveTurnCheckpoint({
-                mode: "paused",
-                reason: "timeout",
-                actor: request.routing.actor,
-                conversationId: request.conversationId,
-                destination: request.routing.destination,
-                messages: [
-                  ...(piMessages ?? []),
-                  {
-                    role: "user",
-                    content: [{ type: "text", text: "new committed input" }],
-                    timestamp: 4,
-                  },
-                ],
-                sliceId: 2,
-                source: request.routing.source,
-                surface: request.routing.surface,
-                turnId: request.turnId,
-              });
-              if (!record) throw new Error("Expected paused checkpoint");
-              return { status: "suspended", resumeVersion: record.version };
-            }
-            const faux = createFauxCore({ api: "test", provider: "test" });
-            faux.setResponses([
-              async () => {
-                await new Promise((resolve) => setTimeout(resolve, 50));
-                return fauxAssistantMessage("not delivered");
-              },
-            ]);
-            return await executeAgentRun(
-              {
-                ...request,
-                input: { ...request.input, piMessages },
-                policy: {
-                  ...request.policy,
-                  turnDeadlineAtMs: Date.now() + 10,
-                },
-              },
-              faux.stream,
-            );
-          },
-        },
+        // Only model generation is fake. The production agent runtime owns the
+        // timeout, checkpoint, paused turn, worker, lease, and queue behavior.
+        shouldYield: () => false,
+        pausedModelStream: faux.stream,
       });
       await requestConversationWork({
         conversationId: CONVERSATION_ID,
@@ -522,19 +490,36 @@ describe("durable queue contract", () => {
       });
       await ensureConversationWake({
         conversationId: CONVERSATION_ID,
-        idempotencyKey: "stuck-turn",
+        idempotencyKey: "timeout-fresh-request",
         queue: q.wakes,
       });
 
+      await expect(q.next(0)).resolves.toEqual({ status: "yielded" });
+      await expect(
+        getTurnRecord(CONVERSATION_ID, turnId),
+      ).resolves.toMatchObject({
+        state: "paused",
+        resumeReason: "timeout",
+        sliceId: 3,
+      });
+      const afterYield = await getConversationWorkState({
+        conversationId: CONVERSATION_ID,
+        state: q.state,
+      });
+      expect(afterYield).toMatchObject({
+        needsRun: true,
+        execution: { status: "paused" },
+      });
+      expect(afterYield?.lease).toBeUndefined();
+      expect(q.wakes.hasQueuedMessages()).toBe(true);
+
+      // Fresh queue delivery resumes under a new request and can finish.
       await expect(q.next()).resolves.toEqual({ status: "completed" });
-      expect(resumes).toBeGreaterThan(1);
       await expectTerminalTurn(q, {
         turnId,
-        state: "failed",
-        replies: 1,
-        error: "made no progress",
+        state: "completed",
+        replies: ["Deploy checked."],
       });
-      shouldYield = false;
       await expectNextTurn(q, "1712345.0005");
     });
 

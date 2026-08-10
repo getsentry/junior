@@ -38,6 +38,7 @@ const DASHBOARD_CLIENT_VERSION = Date.now().toString(36);
 const DASHBOARD_CLIENT_PATH = "/_junior/dashboard/client.js";
 const DASHBOARD_AVATAR_HEADER_PATH = "/_junior/dashboard/avatar.png";
 const LOGIN_NEXT_PARAM = "next";
+const LOCAL_VIEWER_EMAIL = "dev@example.com";
 
 export interface JuniorDashboardOptions {
   agentName?: string;
@@ -355,7 +356,7 @@ function forbidden(request: Request, agentName: string): Response {
 }
 
 function localAuthBypassSession(
-  email = "local-dashboard@localhost.test",
+  email = LOCAL_VIEWER_EMAIL,
 ): DashboardSession {
   return {
     user: {
@@ -713,11 +714,19 @@ export function createDashboardApp(
     c: Context<{ Variables: Variables }>,
     next: Next,
   ) => {
+    const pathname = new URL(c.req.url).pathname;
     if (!authRequired) {
-      const session = localAuthBypassSession(
-        options.mockConversations ? "morgan@sentry.io" : undefined,
-      );
+      const session = localAuthBypassSession();
       c.set("authSession", session);
+      if (pathname.startsWith("/api/")) {
+        const viewer = options.mockConversations
+          ? mockViewerFromSession(session)
+          : await resolveViewerUser(LOCAL_VIEWER_EMAIL);
+        if (!viewer) {
+          throw new Error("Local dashboard viewer could not be resolved");
+        }
+        c.set("viewer", viewer);
+      }
       await next();
       return;
     }
@@ -729,7 +738,6 @@ export function createDashboardApp(
     }
     const browserSession = await auth.getSession(c.req.raw);
     const token = personalBearerToken(c.req.raw);
-    const pathname = new URL(c.req.url).pathname;
     const tokenEmail =
       !browserSession &&
       token &&

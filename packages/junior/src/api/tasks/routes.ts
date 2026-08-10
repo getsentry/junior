@@ -1,4 +1,6 @@
 import { Hono } from "hono";
+import { emptyResponse, jsonResponse } from "@/api/http";
+import type { JuniorApiEnv } from "@/api/route";
 import { apiErrorSchema } from "@/api/schema/common";
 import {
   taskExecutionListSchema,
@@ -6,8 +8,7 @@ import {
   taskParamsSchema,
   taskRunListSchema,
 } from "@/api/schema/task";
-import { jsonResponse } from "@/api/http";
-import type { JuniorApiEnv } from "@/api/route";
+import { validateRequest } from "@/api/validation";
 import { requireViewer } from "@/api/viewer";
 import {
   deleteViewerTask,
@@ -28,58 +29,51 @@ export function createTaskRoutes(): Hono<JuniorApiEnv> {
     const user = context.get("viewer");
     return jsonResponse(taskRunListSchema, await readViewerTaskRuns(user));
   });
-  app.get("/:kind/:id/executions", requireViewer, async (context) => {
-    const user = context.get("viewer");
-    const params = taskParamsSchema.safeParse(context.req.param());
-    if (!params.success) {
-      return jsonResponse(
-        apiErrorSchema,
-        { error: "Invalid task." },
-        { status: 400 },
-      );
-    }
-    try {
-      return jsonResponse(
-        taskExecutionListSchema,
-        await readViewerTaskExecutions(user, params.data.kind, params.data.id),
-      );
-    } catch (error) {
-      if (error instanceof ViewerTaskNotFoundError) {
+  app.get(
+    "/:kind/:id/executions",
+    requireViewer,
+    validateRequest("param", taskParamsSchema, "Invalid task."),
+    async (context) => {
+      const user = context.get("viewer");
+      const params = context.req.valid("param");
+      try {
         return jsonResponse(
-          apiErrorSchema,
-          { error: error.message },
-          { status: 404 },
+          taskExecutionListSchema,
+          await readViewerTaskExecutions(user, params.kind, params.id),
         );
+      } catch (error) {
+        if (error instanceof ViewerTaskNotFoundError) {
+          return jsonResponse(
+            apiErrorSchema,
+            { error: error.message },
+            { status: 404 },
+          );
+        }
+        throw error;
       }
-      throw error;
-    }
-  });
-  app.delete("/:kind/:id", requireViewer, async (context) => {
-    const user = context.get("viewer");
-    const params = taskParamsSchema.safeParse(context.req.param());
-    if (!params.success) {
-      return jsonResponse(
-        apiErrorSchema,
-        { error: "Invalid task." },
-        { status: 400 },
-      );
-    }
-    try {
-      await deleteViewerTask(user, params.data.kind, params.data.id);
-      return new Response(null, {
-        headers: { "cache-control": "no-store" },
-        status: 204,
-      });
-    } catch (error) {
-      if (error instanceof ViewerTaskNotFoundError) {
-        return jsonResponse(
-          apiErrorSchema,
-          { error: error.message },
-          { status: 404 },
-        );
+    },
+  );
+  app.delete(
+    "/:kind/:id",
+    requireViewer,
+    validateRequest("param", taskParamsSchema, "Invalid task."),
+    async (context) => {
+      const user = context.get("viewer");
+      const params = context.req.valid("param");
+      try {
+        await deleteViewerTask(user, params.kind, params.id);
+        return emptyResponse();
+      } catch (error) {
+        if (error instanceof ViewerTaskNotFoundError) {
+          return jsonResponse(
+            apiErrorSchema,
+            { error: error.message },
+            { status: 404 },
+          );
+        }
+        throw error;
       }
-      throw error;
-    }
-  });
+    },
+  );
   return app;
 }

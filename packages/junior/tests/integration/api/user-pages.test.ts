@@ -125,6 +125,12 @@ describe("plugin user page API", () => {
       query: "runbooks",
     });
 
+    const emptyLimit = await authenticatedApi("viewer@example.com").request(
+      "http://localhost/api/user-pages/memory/memories?limit=",
+    );
+    expect(emptyLimit.status).toBe(200);
+    expect(receivedInput).toEqual({ limit: 20 });
+
     const invalid = await authenticatedApi("viewer@example.com").request(
       "http://localhost/api/user-pages/memory/memories?limit=500",
     );

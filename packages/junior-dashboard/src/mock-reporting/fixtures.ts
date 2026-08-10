@@ -125,7 +125,7 @@ function activeConversation(nowMs: number): ConversationDetailReport {
     surface: "slack",
     channel: "CQA123",
     channelName: "proj-checkout",
-    actorIdentity: actor("morgan@sentry.io", "Morgan Lee", "morgan"),
+    actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),
     auxiliaryCosts: {
       costUsd: 0.0021,
       operations: [
@@ -233,7 +233,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
     startedAt,
     lastSeenAt: iso(nowMs, -8 * 60_000),
     lastProgressAt: iso(nowMs, -8 * 60_000),
-    actorIdentity: actor("morgan@sentry.io", "Morgan Lee", "morgan"),
+    actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),
     annotations: [
       {
         kind: "resource_link",
@@ -623,7 +623,7 @@ function incidentConversation(nowMs: number): ConversationDetailReport {
     visibility: "public",
     channel: "CQA123",
     channelName: "proj-checkout",
-    actorIdentity: actor("morgan@sentry.io", "Morgan Lee", "morgan"),
+    actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),
     cumulativeDurationMs: 206_000,
     cumulativeUsage: usage(0.0332),
     events: [
@@ -1556,7 +1556,7 @@ function mockTasks(): TaskSummary[] {
     {
       createdAt: "2026-07-28T16:00:00.000Z",
       createdBy: "Morgan",
-      createdByEmail: "morgan@sentry.io",
+      createdByEmail: "dev@example.com",
       destination: {
         channelId: "C123",
         label: "#project-updates",
@@ -1579,7 +1579,7 @@ function mockTasks(): TaskSummary[] {
     {
       createdAt: "2026-07-29T16:00:00.000Z",
       createdBy: "Morgan",
-      createdByEmail: "morgan@sentry.io",
+      createdByEmail: "dev@example.com",
       destination: {
         channelId: "C123",
         label: "#project-updates",

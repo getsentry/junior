@@ -25,8 +25,10 @@ describe("MemoryCostChart", () => {
     );
 
     expect(html).toContain("$0.01");
-    expect(html).toContain("Extraction $0.005");
-    expect(html).toContain("Recall $0.005");
+    expect(html).toContain(
+      'Extraction <span aria-hidden="true">·</span> $0.005',
+    );
+    expect(html).toContain('Recall <span aria-hidden="true">·</span> $0.005');
     expect(html).toContain(
       'aria-label="Memory extraction and recall cost during the last 30 days"',
     );
@@ -34,11 +36,7 @@ describe("MemoryCostChart", () => {
     expect(html).toContain(
       'aria-label="Jul 30: extraction $0.005, 1 run; recall $0.005, 2 runs"',
     );
-    expect(html).toMatch(
-      /fill="#67e8f9"[^>]+height="70"[^>]+y="94"/,
-    );
-    expect(html).toMatch(
-      /fill="#e879f9"[^>]+height="70"[^>]+y="24"/,
-    );
+    expect(html).toMatch(/fill="#67e8f9"[^>]+height="70"[^>]+y="94"/);
+    expect(html).toMatch(/fill="#e879f9"[^>]+height="70"[^>]+y="24"/);
   });
 });

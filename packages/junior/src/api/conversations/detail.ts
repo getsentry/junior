@@ -17,14 +17,8 @@ import {
 } from "./access";
 import { readRootConversationMetricsFromSql } from "./usage";
 import { readConversationAuxiliaryCostsFromSql } from "./auxiliary-costs";
-import {
-  conversationDetailQuerySchema,
-  conversationDetailReportSchema,
-} from "../schema/conversation";
+import { conversationDetailReportSchema } from "../schema/conversation";
 import type { ConversationDetailReport } from "../schema/conversation";
-import { defineApiRoute } from "../route";
-import { parseParams, parseQuery, throwApiError } from "../http";
-import { conversationParamsSchema } from "../schema/conversation";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import { readConversationSourceTask } from "@/chat/tasks/read";
 
@@ -170,24 +164,3 @@ export async function readConversationDetail(
   });
   return report ? conversationDetailReportSchema.parse(report) : undefined;
 }
-
-/** Serve one conversation detail endpoint. */
-export default defineApiRoute({
-  method: "get",
-  path: "/:conversationId",
-  responseSchema: conversationDetailReportSchema,
-  handler: async (c) => {
-    const { conversationId } = parseParams(
-      conversationParamsSchema,
-      c.req.param(),
-    );
-    const query = parseQuery(conversationDetailQuerySchema, c.req.query());
-    const viewer = c.get("viewer");
-    const report = await readConversationDetail(conversationId, {
-      ...query,
-      ...(viewer ? { viewer } : {}),
-    });
-    if (!report) throwApiError(404, "Conversation not found.");
-    return report;
-  },
-});

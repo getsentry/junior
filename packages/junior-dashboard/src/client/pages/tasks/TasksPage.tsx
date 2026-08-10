@@ -6,6 +6,8 @@ import {
   CalendarClock,
   ChevronRight,
   Globe2,
+  ListChecks,
+  LockKeyhole,
   Trash2,
   UserRound,
 } from "lucide-react";
@@ -22,6 +24,7 @@ import { SelectableRow } from "../../components/SelectableRow";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
+import { StatCard } from "../../components/metrics/StatCard";
 import { deleteDashboardResource } from "../../http";
 import { formatTime } from "../../format";
 import {
@@ -107,6 +110,9 @@ export function TasksPage(props: {
   const publicCount = tasks.filter(
     (task) => task.destination.visibility === "public",
   ).length;
+  const privateCount = tasks.filter(
+    (task) => task.destination.visibility === "private",
+  ).length;
   const scopedTasks = useMemo(
     () =>
       tasks.filter((task) =>
@@ -174,8 +180,38 @@ export function TasksPage(props: {
           : {})}
         title={props.view === "overview" ? "Tasks" : "All tasks"}
       />
-      {props.view === "overview" && query.data?.executionDays?.length ? (
-        <TaskExecutionChart days={query.data.executionDays} range={range} />
+      {props.view === "overview" ? (
+        <>
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <StatCard
+              detail="All tasks you can access"
+              icon={ListChecks}
+              label="Total tasks"
+              value={tasks.length}
+            />
+            <StatCard
+              detail="Created by you"
+              icon={UserRound}
+              label="Your tasks"
+              value={mineCount}
+            />
+            <StatCard
+              detail="In shared destinations"
+              icon={Globe2}
+              label="Public tasks"
+              value={publicCount}
+            />
+            <StatCard
+              detail="Visible only to you"
+              icon={LockKeyhole}
+              label="Private tasks"
+              value={privateCount}
+            />
+          </div>
+          {query.data?.executionDays?.length ? (
+            <TaskExecutionChart days={query.data.executionDays} range={range} />
+          ) : null}
+        </>
       ) : null}
       {props.view === "list" ? (
         <>

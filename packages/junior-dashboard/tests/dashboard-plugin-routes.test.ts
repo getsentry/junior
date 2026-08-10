@@ -222,7 +222,7 @@ describe("dashboard plugin routes", () => {
     });
   });
 
-  it("does not authorize a synthetic participant when auth is disabled", async () => {
+  it("does not pass core viewer state into plugin routes", async () => {
     const pluginApp = new Hono<{
       Variables: { viewer?: { email: string } };
     }>();
@@ -238,5 +238,6 @@ describe("dashboard plugin routes", () => {
       new Request("http://localhost/api/plugins/viewer/viewer"),
     );
     await expect(response.json()).resolves.toEqual({ viewerEmail: null });
+    expect(resolveViewerUser).toHaveBeenCalledWith("dev@example.com");
   });
 });

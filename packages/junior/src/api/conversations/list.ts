@@ -18,9 +18,6 @@ import { conversationFeedSchema } from "../schema/conversation";
 import type { ConversationFeed } from "../schema/conversation";
 import { readRootConversationMetricsFromSql } from "./usage";
 import { readConversationAuxiliaryCostsFromSql } from "./auxiliary-costs";
-import { defineApiRoute } from "../route";
-import { parseQuery } from "../http";
-import { conversationFeedQuerySchema } from "../schema/conversation";
 
 const CONVERSATION_FEED_LIMIT = 50;
 
@@ -250,21 +247,3 @@ export async function readConversationFeed(
     await readConversationFeedFromSql(options),
   );
 }
-
-/** Serve the conversation feed endpoint. */
-export default defineApiRoute({
-  method: "get",
-  path: "/",
-  responseSchema: conversationFeedSchema,
-  handler: async (c) => {
-    const { actorEmail } = parseQuery(
-      conversationFeedQuerySchema,
-      c.req.query(),
-    );
-    const viewer = c.get("viewer");
-    return readConversationFeed({
-      ...(actorEmail ? { actorEmail } : {}),
-      ...(viewer ? { viewer } : {}),
-    });
-  },
-});
