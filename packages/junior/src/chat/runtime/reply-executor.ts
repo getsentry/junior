@@ -93,7 +93,8 @@ import {
   createSlackAdapterAssistantStatusSession,
   type AssistantStatusSpec,
 } from "@/chat/slack/assistant-thread/status";
-import { maybeUpdateAssistantTitle } from "@/chat/slack/assistant-thread/title";
+import { ensureConversationTitle } from "@/chat/services/conversation-title";
+import { maybeSyncAssistantTitle } from "@/chat/slack/assistant-thread/title";
 import {
   conversationVisibilityFromSlackChannelType,
   resolveSlackChannelTypeFromMessage,
@@ -139,7 +140,6 @@ import {
   saveTurnCheckpoint,
 } from "@/chat/task-execution/checkpoint";
 import { resolveDestinationVisibility } from "@/chat/conversations/destination-visibility";
-import { getConversationStore } from "@/chat/db";
 import {
   contextProvenance,
   instructionProvenanceFor,
@@ -1251,48 +1251,29 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           }
 
           status.update();
-          const assistantTitleTask = (async () => {
-            if (conversationId) {
-              const storedConversation = await getConversationStore().get({
-                conversationId,
+          // Title generation is detached from reply delivery. Start it beside
+          // the agent run and project to Slack only after SQL persistence.
+          const conversationTitleTask = ensureConversationTitle({
+            activityAtMs: message.metadata.dateSent.getTime(),
+            conversation: preparedState.conversation,
+            conversationId,
+            generateThreadTitle: deps.services.generateThreadTitle,
+          })
+            .then(async (title) => {
+              if (!title) {
+                return;
+              }
+              await maybeSyncAssistantTitle({
+                channelId: assistantThreadContext?.channelId,
+                getSlackAdapter: deps.getSlackAdapter,
+                threadTs: assistantThreadContext?.threadTs,
+                title,
               });
-              if (storedConversation?.title) {
-                return undefined;
-              }
-            }
-            return maybeUpdateAssistantTitle({
-              assistantThreadContext,
-              assistantUserName: botConfig.userName,
-              channelId,
-              conversation: preparedState.conversation,
-              generateThreadTitle: deps.services.generateThreadTitle,
-              getSlackAdapter: deps.getSlackAdapter,
-              modelId: botConfig.fastModelId,
-              actorId: slackActorId,
-              runId,
-              threadId,
-            });
-          })();
-          void assistantTitleTask
-            .then(async (titleUpdateResult) => {
-              if (!titleUpdateResult) return;
-
-              if (conversationId && titleUpdateResult.title) {
-                try {
-                  await getConversationStore().recordActivity({
-                    activityAtMs: message.metadata.dateSent.getTime(),
-                    conversationId,
-                    nowMs: Date.now(),
-                    title: titleUpdateResult.title,
-                  });
-                } catch (error) {
-                  logException(error, "conversation.title.persist.failed");
-                }
-              }
             })
             .catch((error) => {
-              logException(error, "assistant.title.task.failed");
+              logException(error, "conversation.title.task.failed");
             });
+          void conversationTitleTask;
           const toolChannelId = channelId;
           const activeInstructionAuthorId =
             actor?.userId ?? parseActorUserId(message.author.userId);

@@ -8,7 +8,7 @@ export type ShortTitleKind = "conversation" | "task";
 
 const TITLE_PROMPTS: Record<ShortTitleKind, string[]> = {
   conversation: [
-    "Generate a concise 5-8 word Slack conversation title from the first user message below.",
+    "Generate a concise 5-8 word conversation title from the first user message below.",
     "Capture the user's main request.",
     "Reply with ONLY the title, with no quotes or trailing punctuation.",
   ],

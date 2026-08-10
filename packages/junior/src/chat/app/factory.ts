@@ -257,6 +257,7 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
   });
   return {
     ...runtime,
+    generateThreadTitle: services.conversationMemory.generateThreadTitle,
     runDispatchTurn: createSlackDispatchTurnRunner({
       getLocationConfiguration: getLocationConfigurationService,
       getSlackAdapter: options.getSlackAdapter,

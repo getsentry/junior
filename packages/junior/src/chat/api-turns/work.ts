@@ -56,7 +56,9 @@ import {
   normalizeConversationText,
   recordDeliveredAssistantMessage,
   upsertConversationMessage,
+  type ConversationMemoryService,
 } from "@/chat/services/conversation-memory";
+import { ensureConversationTitle } from "@/chat/services/conversation-title";
 import { finalizeFailedTurnReplyWithEvent } from "@/chat/services/turn-failure-response";
 import { persistWithRetry } from "@/chat/services/persist-retry";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
@@ -493,6 +495,7 @@ function captureApiBoundaryFailure(args: {
 /** Build the mailbox consumer for API-authored root turns. */
 export function createApiTurnWorker(options: {
   agentRunner: AgentRunner;
+  generateThreadTitle: ConversationMemoryService["generateThreadTitle"];
   turnLifecycle?: ConversationTurnLifecycle;
 }) {
   return async (
@@ -707,6 +710,19 @@ export function createApiTurnWorker(options: {
           failureCode = "agent_run_failed";
           currentRunId = `api-run:${stableHex(turnId, String(startedAtMs))}`;
           setTags({ runId: currentRunId });
+
+          // Title generation is detached from reply delivery. Start it beside
+          // the agent run so dashboard conversations get the same set-once
+          // title path as Slack without blocking the visible reply.
+          const conversationTitleTask = ensureConversationTitle({
+            activityAtMs: startedAtMs,
+            conversation,
+            conversationId: context.conversationId,
+            generateThreadTitle: options.generateThreadTitle,
+          }).catch((error) => {
+            logException(error, "conversation.title.task.failed");
+          });
+          void conversationTitleTask;
 
           const outcome = await options.agentRunner.run({
             conversationId: context.conversationId,
