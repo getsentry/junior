@@ -1,12 +1,10 @@
 import { and, eq, isNotNull } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import { juniorConversations } from "@/db/schema";
-import { defineApiRoute } from "../route";
-import { parseBody, parseParams, throwApiError } from "../http";
-import {
-  archiveConversationBodySchema,
-  archiveConversationResponseSchema,
-  conversationParamsSchema,
+import { throwApiError } from "../http";
+import type {
+  ArchiveConversationBody,
+  ArchiveConversationResponse,
 } from "../schema/conversation";
 
 async function archiveIfUnchanged(args: {
@@ -41,30 +39,17 @@ async function archiveIfUnchanged(args: {
   return "conflict";
 }
 
-/** Serve the archive mutation with optimistic activity concurrency control. */
-export default defineApiRoute({
-  method: "patch",
-  path: "/:conversationId/archive",
-  responseSchema: archiveConversationResponseSchema,
-  handler: async (c) => {
-    const { conversationId } = parseParams(
-      conversationParamsSchema,
-      c.req.param(),
-    );
-    let input: unknown;
-    try {
-      input = await c.req.json();
-    } catch (error) {
-      throwApiError(400, "Invalid request body.", error);
-    }
-    const body = parseBody(archiveConversationBodySchema, input);
-    const result = await archiveIfUnchanged({ ...body, conversationId });
-    if (result === "not_found") {
-      throwApiError(404, "Conversation not found.");
-    }
-    if (result === "conflict") {
-      throwApiError(409, "Conversation received new activity.");
-    }
-    return { archived: body.archived };
-  },
-});
+/** Archive or restore one conversation with optimistic activity concurrency control. */
+export async function archiveConversation(
+  conversationId: string,
+  body: ArchiveConversationBody,
+): Promise<ArchiveConversationResponse> {
+  const result = await archiveIfUnchanged({ ...body, conversationId });
+  if (result === "not_found") {
+    throwApiError(404, "Conversation not found.");
+  }
+  if (result === "conflict") {
+    throwApiError(409, "Conversation received new activity.");
+  }
+  return { archived: body.archived };
+}
