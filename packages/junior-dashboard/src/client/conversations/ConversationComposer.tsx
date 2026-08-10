@@ -19,16 +19,19 @@ export function ConversationComposer(props: {
 }) {
   const [message, setMessage] = useState("");
   const id = useId();
-  const idempotencyKey = useRef(crypto.randomUUID());
+  const submission = useRef({ idempotencyKey: crypto.randomUUID(), text: "" });
 
   const submit = async (event?: FormEvent) => {
     event?.preventDefault();
     const text = message.trim();
     if (!text || props.pending) return;
+    if (submission.current.text !== text) {
+      submission.current = { idempotencyKey: crypto.randomUUID(), text };
+    }
     try {
-      await props.onSubmit(text, idempotencyKey.current);
+      await props.onSubmit(text, submission.current.idempotencyKey);
       setMessage("");
-      idempotencyKey.current = crypto.randomUUID();
+      submission.current = { idempotencyKey: crypto.randomUUID(), text: "" };
     } catch {
       // The parent renders the mutation error and keeps the draft for retry.
     }

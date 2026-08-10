@@ -103,23 +103,25 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
         }
       >
         {creating ? (
-          <NewConversationView
-            error={
-              createConversation.error
-                ? "Could not create the conversation. Try again."
-                : undefined
-            }
-            pending={createConversation.isPending}
-            onCancel={() => setCreating(false)}
-            onSubmit={async (message, idempotencyKey) => {
-              const accepted = await createConversation.mutateAsync({
-                idempotencyKey,
-                message,
-              });
-              setCreating(false);
-              navigate(conversationPath(accepted.conversationId));
-            }}
-          />
+          <div className="row-start-2 min-h-0 overflow-y-auto">
+            <NewConversationView
+              error={
+                createConversation.error
+                  ? "Could not create the conversation. Try again."
+                  : undefined
+              }
+              pending={createConversation.isPending}
+              onCancel={() => setCreating(false)}
+              onSubmit={async (message, idempotencyKey) => {
+                const accepted = await createConversation.mutateAsync({
+                  idempotencyKey,
+                  message,
+                });
+                setCreating(false);
+                navigate(conversationPath(accepted.conversationId));
+              }}
+            />
+          </div>
         ) : selectedId ? (
           <>
             <div className="border-b border-white/[0.07] bg-white/[0.025] px-3 py-2.5 md:hidden">
@@ -175,7 +177,7 @@ function NewConversationView(props: {
   onSubmit(message: string, idempotencyKey: string): Promise<void>;
 }) {
   return (
-    <div className="grid min-h-0 place-items-center overflow-y-auto px-4 py-8 md:px-8">
+    <div className="grid min-h-full place-items-center px-4 py-8 md:px-8">
       <div className="w-full max-w-2xl">
         <div className="mb-5">
           <h2 className="m-0 font-display text-2xl font-medium tracking-[-0.03em] text-dashboard-text md:text-3xl">

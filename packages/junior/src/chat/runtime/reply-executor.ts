@@ -880,7 +880,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             },
             meta: {
               replied: true,
-              source: "slack",
             },
           });
           await persistThreadState(thread, {
@@ -1055,8 +1054,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 slackMessageTs = await sendSlackReply({
                   channelId,
                   conversationId,
-                  replyAttribution:
-                    options.execution?.dispatch?.replyAttribution,
+                  replyAttribution: options.execution?.dispatch?.replyAttribution,
                   text,
                   ...(threadTs ? { threadTs } : {}),
                 });
@@ -1093,7 +1091,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           const recordedMessageId = recordDeliveredAssistantMessage({
             conversation: preparedState.conversation,
             sessionId: turnId,
-            source: "slack",
             text,
             userMessageId: preparedState.userMessageId,
           });
@@ -1353,9 +1350,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               slackConversation,
               source,
               destination,
-              publishExternally: shouldPublishExternally(
-                options.publishExternally,
-              ),
+              publishExternally: shouldPublishExternally(options.publishExternally),
               ...(destinationVisibility ? { destinationVisibility } : {}),
               surface: options.execution?.surface ?? "slack",
               dispatch: options.execution?.dispatch,

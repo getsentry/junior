@@ -105,14 +105,6 @@ describe("conversation message actor identity", () => {
     });
   });
 
-  it("marks provider messages as Slack source", () => {
-    const message = createMessage();
-
-    expect(
-      toConversationMessage({ entry: message, text: message.text }).meta,
-    ).toMatchObject({ source: "slack" });
-  });
-
   it("preserves resource event type metadata", () => {
     const message = createMessage();
     message.raw = {

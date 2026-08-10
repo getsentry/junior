@@ -597,7 +597,7 @@ describe("conversation report event projection", () => {
     expect(JSON.stringify(projected)).not.toContain("AAAA");
   });
 
-  it("projects only the resource event discriminator from message metadata", () => {
+  it("projects dashboard source with visible message metadata", () => {
     const [projected] = projectConversationReportEventPage({
       canExposePayload: true,
       events: [
@@ -609,7 +609,7 @@ describe("conversation report event projection", () => {
           meta: {
             eventType: "pull_request.merged",
             provider: "private-provider",
-            source: "slack",
+            source: "web",
           },
         }),
       ],
@@ -619,7 +619,7 @@ describe("conversation report event projection", () => {
       type: "message",
       messageId: "event-1",
       role: "user",
-      source: "slack",
+      source: "web",
       eventType: "pull_request.merged",
       text: "event details",
     });

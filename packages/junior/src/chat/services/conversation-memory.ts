@@ -154,7 +154,7 @@ export function upsertConversationMessage(
 export function recordDeliveredAssistantMessage(args: {
   conversation: ThreadConversationState;
   sessionId: string;
-  source?: "slack" | "web";
+  source?: "web";
   text: string;
   userMessageId?: string;
 }): string {

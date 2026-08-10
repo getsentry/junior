@@ -146,6 +146,95 @@ test("opens a conversation in the built dashboard", async ({ page }) => {
   expect(browserErrors).toEqual([]);
 });
 
+test("starts and continues conversations from the dashboard", async ({
+  page,
+}) => {
+  const createdConversationId = "local:web:created";
+  const createRequests: Array<{ idempotencyKey: string; message: string }> = [];
+  const continueRequests: Array<{ idempotencyKey: string; message: string }> =
+    [];
+  await page.route("**/api/conversations", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    createRequests.push(route.request().postDataJSON());
+    await route.fulfill({
+      json: {
+        conversationId: createdConversationId,
+        messageId: "created-message",
+        status: "accepted",
+      },
+    });
+  });
+  await page.route("**/api/conversations/*/messages", async (route) => {
+    continueRequests.push(route.request().postDataJSON());
+    if (continueRequests.length === 1) {
+      await route.fulfill({
+        json: { error: "temporary failure" },
+        status: 500,
+      });
+      return;
+    }
+    await route.fulfill({
+      json: {
+        conversationId: "slack:CQA123:1770000000.000100",
+        messageId: "continued-message",
+        status: "accepted",
+      },
+    });
+  });
+
+  await page.goto(server.baseURL);
+  await page.getByRole("button", { name: "New" }).click();
+  await expect(
+    page.getByRole("heading", { name: "New conversation" }),
+  ).toBeVisible();
+  await expect(page.getByText("This conversation is public.")).toBeVisible();
+  await page
+    .getByLabel("Start a conversation")
+    .fill("Start from the dashboard");
+  await page.getByRole("button", { name: "Start conversation" }).click();
+  await expect(page).toHaveURL(
+    `${server.baseURL}/conversations/${encodeURIComponent(createdConversationId)}`,
+  );
+  expect(createRequests).toHaveLength(1);
+  expect(createRequests[0]?.message).toBe("Start from the dashboard");
+  expect(createRequests[0]?.idempotencyKey).toBeTruthy();
+
+  const slackConversationId = "slack:CQA123:1770000000.000100";
+  await page.route(
+    `**/api/conversations/${encodeURIComponent(slackConversationId)}`,
+    async (route) => {
+      const response = await route.fetch();
+      await route.fulfill({
+        response,
+        json: { ...(await response.json()), isParticipant: true },
+      });
+    },
+  );
+  await page.goto(
+    `${server.baseURL}/conversations/${encodeURIComponent(slackConversationId)}`,
+  );
+  await expect(
+    page.getByText(
+      "This reply stays in Junior. It will not be posted to Slack.",
+    ),
+  ).toBeVisible();
+  await page
+    .getByLabel("Continue this conversation")
+    .fill("Continue in Junior");
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect(page.getByText("Could not send the message.")).toBeVisible();
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect.poll(() => continueRequests.length).toBe(2);
+  expect(continueRequests[0]?.message).toBe("Continue in Junior");
+  expect(continueRequests[0]?.idempotencyKey).toBeTruthy();
+  expect(continueRequests[1]?.idempotencyKey).toBe(
+    continueRequests[0]?.idempotencyKey,
+  );
+});
+
 test("positions a long cost tooltip clear of its metric", async ({ page }) => {
   const conversationId = "slack:CQA123:1770003600.000200";
   await page.setViewportSize({ height: 900, width: 1600 });

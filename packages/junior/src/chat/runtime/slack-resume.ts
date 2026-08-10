@@ -601,7 +601,6 @@ async function resumeSlackTurnInContext(
       const recordedMessageId = recordDeliveredAssistantMessage({
         conversation: deliveryState.conversation,
         sessionId: deliveryState.sessionId,
-        source: "slack",
         text,
         userMessageId: deliveryState.userMessageId,
       });
