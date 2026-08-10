@@ -29,6 +29,7 @@ import {
   withSpan,
 } from "@/chat/logging";
 import { sendSlackReply } from "@/chat/slack/reply";
+import { hasDashboardActivitySincePriorSlackMessage } from "@/chat/slack/dashboard-activity";
 import {
   buildSlackOutputMessage,
   splitSlackReplyText,
@@ -569,6 +570,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           }));
 
         const slackMessageTs = getMessageTimestamp(message);
+        const hasDashboardActivity = hasDashboardActivitySincePriorSlackMessage(
+          preparedState.conversation,
+          preparedState.userMessageId,
+        );
         const turnId =
           options.execution?.turnId ?? buildDeterministicTurnId(message.id);
         let beforeFirstResponsePostCalled = false;
@@ -600,6 +605,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               await sendSlackReply({
                 channelId,
                 conversationId,
+                hasDashboardActivity,
                 replyAttribution: options.execution?.dispatch?.replyAttribution,
                 text,
                 threadTs,
@@ -1054,7 +1060,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 slackMessageTs = await sendSlackReply({
                   channelId,
                   conversationId,
-                  replyAttribution: options.execution?.dispatch?.replyAttribution,
+                  hasDashboardActivity,
+                  replyAttribution:
+                    options.execution?.dispatch?.replyAttribution,
                   text,
                   ...(threadTs ? { threadTs } : {}),
                 });
@@ -1350,7 +1358,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               slackConversation,
               source,
               destination,
-              publishExternally: shouldPublishExternally(options.publishExternally),
+              publishExternally: shouldPublishExternally(
+                options.publishExternally,
+              ),
               ...(destinationVisibility ? { destinationVisibility } : {}),
               surface: options.execution?.surface ?? "slack",
               dispatch: options.execution?.dispatch,

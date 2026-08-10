@@ -9,6 +9,7 @@ import { createSlackSource, type Destination } from "@sentry/junior-plugin-api";
 import { executeAgentRun } from "@/chat/agent";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { makeAssistantStatus } from "@/chat/slack/assistant-thread/status";
+import { setDashboardConversationLinkOptions } from "@/chat/slack/dashboard-link";
 import { getSlackInterruptionMarker } from "@/chat/slack/output";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
@@ -215,6 +216,7 @@ describe("bot handlers (integration)", () => {
   });
 
   afterEach(async () => {
+    setDashboardConversationLinkOptions(undefined);
     resetSlackApiMockState();
     vi.restoreAllMocks();
     await disconnectStateAdapter();
@@ -3008,6 +3010,88 @@ describe("bot handlers (integration)", () => {
     );
 
     expect(capturedContexts).toEqual([undefined]);
+  });
+
+  it("uses dashboard activity as context and links it in the next Slack reply", async () => {
+    const capturedContexts: Array<string | undefined> = [];
+    const { slackRuntime } = createRuntime({
+      services: {
+        replyExecutor: {
+          agentRunner: {
+            run: async (request) => {
+              capturedContexts.push(
+                flattenAgentRunRequestForTest(request)?.conversationContext,
+              );
+              await deliverAssistantMessagesForTest(request, [
+                { text: "Continuing from the dashboard." },
+              ]);
+              return completedAgentRun({
+                text: "Continuing from the dashboard.",
+                diagnostics: {
+                  assistantMessageCount: 1,
+                  modelId: "test-model",
+                  outcome: "success" as const,
+                  toolCalls: [],
+                  toolErrorCount: 0,
+                  toolResultCount: 0,
+                  usedPrimaryText: true,
+                },
+              });
+            },
+          },
+        },
+      },
+    });
+    setDashboardConversationLinkOptions({
+      baseURL: "https://junior.example.com",
+    });
+
+    const threadId = "slack:C0DASHBOARD:1700000000.000";
+    await seedVisibleConversation(threadId, [
+      {
+        id: "slack-before",
+        role: "user",
+        text: "Start in Slack.",
+        createdAtMs: 1_700_000_000_000,
+        meta: { slackTs: "1700000000.000" },
+      },
+      {
+        id: "web-user",
+        role: "user",
+        text: "Dashboard-only detail.",
+        createdAtMs: 1_700_000_001_000,
+        meta: { source: "web" },
+      },
+      {
+        id: "web-assistant",
+        role: "assistant",
+        text: "Dashboard-only reply.",
+        createdAtMs: 1_700_000_002_000,
+        meta: { replied: true, source: "web" },
+      },
+    ]);
+    const thread = await createTestThread({ id: threadId });
+    (thread.adapter as { name?: string }).name = "slack";
+    const currentMessage = createTestMessage({
+      id: "slack-current",
+      threadId,
+      text: "Continue here.",
+      isMention: true,
+    });
+    currentMessage.metadata.dateSent = new Date(1_700_000_003_000);
+
+    await slackRuntime.handleNewMention(thread, currentMessage, {
+      destination: createTestDestination(thread),
+    });
+
+    expect(capturedContexts[0]).toContain("Dashboard-only detail.");
+    expect(capturedContexts[0]).toContain("Dashboard-only reply.");
+    expect(
+      JSON.stringify(getCapturedSlackApiCalls("chat.postMessage")),
+    ).toContain("See dashboard activity in Junior");
+    expect(
+      JSON.stringify(getCapturedSlackApiCalls("chat.postMessage")),
+    ).toContain("Open in Junior");
   });
 
   it("new mention first turn uses pre-existing thread transcript without the current message", async () => {

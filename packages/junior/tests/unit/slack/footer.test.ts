@@ -70,7 +70,7 @@ describe("buildSlackReplyFooter", () => {
     ).toEqual({
       items: [
         {
-          label: "ID",
+          label: "Open in Junior",
           url: "https://junior.example.com/ops/conversations/slack%3AC123%3A1700000000.000100",
           value: "slack:C123:1700000000.000100",
         },
@@ -92,8 +92,33 @@ describe("buildSlackReplyFooter", () => {
     ).toEqual({
       items: [
         {
-          label: "ID",
+          label: "Open in Junior",
           url: "https://junior-env.example.com/ops/conversations/slack%3AC123%3A1700000000.000100",
+          value: "slack:C123:1700000000.000100",
+        },
+      ],
+    });
+  });
+
+  it("calls out dashboard activity before the conversation link", () => {
+    setDashboardConversationLinkOptions({
+      baseURL: "https://junior.example.com",
+    });
+
+    expect(
+      buildSlackReplyFooter({
+        conversationId: "slack:C123:1700000000.000100",
+        hasDashboardActivity: true,
+      }),
+    ).toEqual({
+      items: [
+        {
+          url: "https://junior.example.com/conversations/slack%3AC123%3A1700000000.000100",
+          value: "See dashboard activity in Junior",
+        },
+        {
+          label: "Open in Junior",
+          url: "https://junior.example.com/conversations/slack%3AC123%3A1700000000.000100",
           value: "slack:C123:1700000000.000100",
         },
       ],
@@ -164,9 +189,8 @@ describe("buildSlackReplyBlocks", () => {
 
 describe("getDashboardTaskLink", () => {
   it("builds a task detail URL when dashboard links are configured", async () => {
-    const { getDashboardTaskLink } = await import(
-      "@/chat/slack/dashboard-link"
-    );
+    const { getDashboardTaskLink } =
+      await import("@/chat/slack/dashboard-link");
     setDashboardConversationLinkOptions({
       basePath: "/ops",
       baseURL: "https://junior.example.com",
@@ -178,9 +202,8 @@ describe("getDashboardTaskLink", () => {
   });
 
   it("returns undefined when dashboard links are disabled", async () => {
-    const { getDashboardTaskLink } = await import(
-      "@/chat/slack/dashboard-link"
-    );
+    const { getDashboardTaskLink } =
+      await import("@/chat/slack/dashboard-link");
     expect(getDashboardTaskLink("sched_abc")).toBeUndefined();
   });
 });

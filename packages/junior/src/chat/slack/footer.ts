@@ -36,7 +36,7 @@ export type SlackMessageBlock =
   | SlackContextBlock;
 
 interface SlackReplyFooterItem {
-  label: string;
+  label?: string;
   url?: string;
   value: string;
 }
@@ -60,6 +60,7 @@ export function formatReplyAttribution(attribution: ReplyAttribution): string {
  */
 export function buildSlackReplyFooter(args: {
   conversationId?: string;
+  hasDashboardActivity?: boolean;
   replyAttribution?: ReplyAttribution;
 }): SlackReplyFooter | undefined {
   const items: SlackReplyFooterItem[] = [];
@@ -70,14 +71,25 @@ export function buildSlackReplyFooter(args: {
       label: "ID",
       value: conversationId,
     };
-    const conversationUrl =
-      getPluginSlackConversationLink(conversationId)?.url ??
-      getDashboardConversationLink(conversationId) ??
-      buildSentryConversationUrl(conversationId);
-    if (conversationUrl) {
-      idItem.url = conversationUrl;
+    const dashboardUrl = getDashboardConversationLink(conversationId);
+    if (dashboardUrl) {
+      if (args.hasDashboardActivity) {
+        items.push({
+          url: dashboardUrl,
+          value: "See dashboard activity in Junior",
+        });
+      }
+      items.push({
+        label: "Open in Junior",
+        url: dashboardUrl,
+        value: conversationId,
+      });
+    } else {
+      idItem.url =
+        getPluginSlackConversationLink(conversationId)?.url ??
+        buildSentryConversationUrl(conversationId);
+      items.push(idItem);
     }
-    items.push(idItem);
   }
 
   return items.length > 0 || args.replyAttribution
@@ -122,8 +134,12 @@ export function buildSlackReplyBlocks(
         ...footer.items.map((item) => ({
           type: "mrkdwn" as const,
           text: item.url
-            ? `*${escapeSlackMrkdwnText(item.label)}:* ${formatSlackLink(item.url, item.value)}`
-            : `*${escapeSlackMrkdwnText(item.label)}:* ${escapeSlackMrkdwnText(item.value)}`,
+            ? item.label
+              ? `*${escapeSlackMrkdwnText(item.label)}:* ${formatSlackLink(item.url, item.value)}`
+              : formatSlackLink(item.url, item.value)
+            : item.label
+              ? `*${escapeSlackMrkdwnText(item.label)}:* ${escapeSlackMrkdwnText(item.value)}`
+              : escapeSlackMrkdwnText(item.value),
         })),
       ],
     });

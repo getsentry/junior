@@ -49,6 +49,7 @@ import {
   type AssistantStatusSpec,
 } from "@/chat/slack/assistant-thread/status";
 import { sendSlackReply } from "@/chat/slack/reply";
+import { hasDashboardActivitySincePriorSlackMessage } from "@/chat/slack/dashboard-activity";
 import { isUserActor, type Actor } from "@/chat/actor";
 import { postSlackMessage as postSlackApiMessage } from "@/chat/slack/outbound";
 import { getStateAdapter } from "@/chat/state/adapter";
@@ -577,12 +578,17 @@ async function resumeSlackTurnInContext(
       }
       failureCode = "delivery_failed";
       const deliveryState = await getDeliveryConversation();
+      const hasDashboardActivity = hasDashboardActivitySincePriorSlackMessage(
+        deliveryState.conversation,
+        deliveryState.userMessageId,
+      );
       let slackMessageTs: string[] = [];
       try {
         if (runArgs.replyContext?.routing.publishExternally !== false) {
           slackMessageTs = await sendSlackReply({
             channelId: runArgs.channelId,
             conversationId: runArgs.conversationId,
+            hasDashboardActivity,
             replyAttribution:
               runArgs.replyContext?.routing.dispatch?.replyAttribution,
             text,

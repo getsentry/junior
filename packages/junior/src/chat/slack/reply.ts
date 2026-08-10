@@ -22,6 +22,7 @@ import { splitSlackReplyText } from "@/chat/slack/output";
 export async function sendSlackReply(args: {
   channelId: string;
   conversationId: string;
+  hasDashboardActivity?: boolean;
   replyAttribution?: ReplyAttribution;
   text: string;
   threadTs?: string;
@@ -29,6 +30,7 @@ export async function sendSlackReply(args: {
   const chunks = splitSlackReplyText(args.text);
   const footer = buildSlackReplyFooter({
     conversationId: args.conversationId,
+    hasDashboardActivity: args.hasDashboardActivity,
     replyAttribution: args.replyAttribution,
   });
   const messageTs: string[] = [];
