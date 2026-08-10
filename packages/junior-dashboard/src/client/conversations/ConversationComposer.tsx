@@ -8,6 +8,7 @@ import {
 import { Send } from "lucide-react";
 
 import { Button } from "../components/Button";
+import { cn } from "../styles";
 
 /** Render the dashboard message composer for a new or existing conversation. */
 export function ConversationComposer(props: {
@@ -46,14 +47,14 @@ export function ConversationComposer(props: {
 
   return (
     <form
-      className="grid gap-2 rounded-lg border border-white/[0.09] bg-white/[0.035] p-3"
+      className="overflow-hidden rounded-lg border border-white/[0.09] bg-white/[0.035] focus-within:border-cyan-300/35 focus-within:ring-1 focus-within:ring-cyan-300/25"
       onSubmit={submit}
     >
       <label className="sr-only" htmlFor={id}>
         {props.label}
       </label>
       <textarea
-        className="min-h-20 w-full resize-y rounded-md border border-white/10 bg-black/25 px-3 py-2.5 font-mono text-sm leading-relaxed text-dashboard-text outline-none placeholder:text-dashboard-text-muted/65 focus:border-cyan-300/35 focus:ring-1 focus:ring-cyan-300/25 disabled:opacity-60"
+        className="min-h-24 w-full resize-y border-0 bg-transparent px-3.5 py-3 font-mono text-sm leading-relaxed text-dashboard-text outline-none placeholder:text-dashboard-text-muted/65 disabled:opacity-60"
         disabled={props.pending}
         id={id}
         maxLength={32_000}
@@ -62,8 +63,15 @@ export function ConversationComposer(props: {
         placeholder="Message Junior…"
         value={message}
       />
-      <div className="flex min-w-0 items-center justify-between gap-3">
-        <div className="min-w-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
+      <div className="flex min-w-0 items-center justify-between gap-3 border-t border-white/[0.07] bg-black/15 px-3 py-2">
+        <div
+          className={cn(
+            "min-w-0 font-mono text-xs leading-relaxed",
+            props.error
+              ? "text-red-300/80"
+              : "text-dashboard-text-muted",
+          )}
+        >
           {props.error ?? "Enter to send · Shift+Enter for a new line"}
         </div>
         <Button disabled={!message.trim() || props.pending} type="submit">
