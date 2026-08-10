@@ -3086,12 +3086,11 @@ describe("bot handlers (integration)", () => {
 
     expect(capturedContexts[0]).toContain("Dashboard-only detail.");
     expect(capturedContexts[0]).toContain("Dashboard-only reply.");
-    expect(
-      JSON.stringify(getCapturedSlackApiCalls("chat.postMessage")),
-    ).toContain("See dashboard activity in Junior");
-    expect(
-      JSON.stringify(getCapturedSlackApiCalls("chat.postMessage")),
-    ).toContain("Open in Junior");
+    const postedSlackMessages = JSON.stringify(
+      getCapturedSlackApiCalls("chat.postMessage"),
+    );
+    expect(postedSlackMessages).toContain("See dashboard activity in Junior");
+    expect(postedSlackMessages).toContain("*ID:*");
   });
 
   it("new mention first turn uses pre-existing thread transcript without the current message", async () => {

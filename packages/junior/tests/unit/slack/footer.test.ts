@@ -70,7 +70,7 @@ describe("buildSlackReplyFooter", () => {
     ).toEqual({
       items: [
         {
-          label: "Open in Junior",
+          label: "ID",
           url: "https://junior.example.com/ops/conversations/slack%3AC123%3A1700000000.000100",
           value: "slack:C123:1700000000.000100",
         },
@@ -92,7 +92,7 @@ describe("buildSlackReplyFooter", () => {
     ).toEqual({
       items: [
         {
-          label: "Open in Junior",
+          label: "ID",
           url: "https://junior-env.example.com/ops/conversations/slack%3AC123%3A1700000000.000100",
           value: "slack:C123:1700000000.000100",
         },
@@ -117,7 +117,7 @@ describe("buildSlackReplyFooter", () => {
           value: "See dashboard activity in Junior",
         },
         {
-          label: "Open in Junior",
+          label: "ID",
           url: "https://junior.example.com/conversations/slack%3AC123%3A1700000000.000100",
           value: "slack:C123:1700000000.000100",
         },

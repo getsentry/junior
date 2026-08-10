@@ -72,24 +72,17 @@ export function buildSlackReplyFooter(args: {
       value: conversationId,
     };
     const dashboardUrl = getDashboardConversationLink(conversationId);
-    if (dashboardUrl) {
-      if (args.hasDashboardActivity) {
-        items.push({
-          url: dashboardUrl,
-          value: "See dashboard activity in Junior",
-        });
-      }
+    if (dashboardUrl && args.hasDashboardActivity) {
       items.push({
-        label: "Open in Junior",
         url: dashboardUrl,
-        value: conversationId,
+        value: "See dashboard activity in Junior",
       });
-    } else {
-      idItem.url =
-        getPluginSlackConversationLink(conversationId)?.url ??
-        buildSentryConversationUrl(conversationId);
-      items.push(idItem);
     }
+    idItem.url =
+      dashboardUrl ??
+      getPluginSlackConversationLink(conversationId)?.url ??
+      buildSentryConversationUrl(conversationId);
+    items.push(idItem);
   }
 
   return items.length > 0 || args.replyAttribution
