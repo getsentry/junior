@@ -17,14 +17,7 @@ import {
   juniorUsers,
 } from "@/db/schema";
 import { createConfiguredJuniorSqlFixture } from "../../../fixtures/sql";
-
-function reportingViewer(email: string) {
-  return {
-    email,
-    id: `viewer:${email.trim().toLowerCase()}`,
-    identities: [],
-  };
-}
+import { reportingViewer } from "../../../fixtures/reporting-viewer";
 
 describe("conversation list API", () => {
   test("serves the route and validates its filters", async () => {

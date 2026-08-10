@@ -13,14 +13,7 @@ import {
   createConfiguredJuniorSqlFixture,
 } from "../../../fixtures/sql";
 import { seedDisplayNameBackfill, seedPeople } from "./fixture";
-
-function reportingViewer(email: string) {
-  return {
-    email,
-    id: `viewer:${email.trim().toLowerCase()}`,
-    identities: [],
-  };
-}
+import { reportingViewer } from "../../../fixtures/reporting-viewer";
 
 describe("people profile API", () => {
   test("validates and decodes profile identifiers", async () => {

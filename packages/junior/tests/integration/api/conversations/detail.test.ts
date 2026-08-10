@@ -9,14 +9,7 @@ import {
 } from "@/chat/db";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { readConversationDetail } from "@/api/conversations/detail";
-
-function reportingViewer(email: string) {
-  return {
-    email,
-    id: `viewer:${email.trim().toLowerCase()}`,
-    identities: [],
-  };
-}
+import { reportingViewer } from "../../../fixtures/reporting-viewer";
 
 describe("conversation detail API", () => {
   afterEach(async () => {

@@ -104,7 +104,14 @@ describe("Tasks API", () => {
       );
       expect(otherIdentity).toBeDefined();
 
-      const nowMs = Date.parse("2026-08-03T12:00:00.000Z");
+      // Keep fixture timestamps inside the rolling 7-day stats window.
+      const now = new Date();
+      now.setUTCHours(12, 0, 0, 0);
+      const nowMs = now.getTime() - 2 * 24 * 60 * 60 * 1000;
+      const eventRunAtMs = nowMs;
+      const scheduledCompletedAtMs = nowMs + 24 * 60 * 60 * 1000;
+      const scheduledFailedAtMs = scheduledCompletedAtMs + 60 * 60 * 1000;
+      const startDate = new Date(nowMs).toISOString().slice(0, 10);
       const scheduledTask: ScheduledTask = {
         id: "sched_tasks_api",
         conversationAccess: { audience: "channel", visibility: "public" },
@@ -124,7 +131,7 @@ describe("Tasks API", () => {
           recurrence: {
             frequency: "daily",
             interval: 1,
-            startDate: "2026-08-03",
+            startDate,
             time: { hour: 12, minute: 0 },
           },
           timezone: "UTC",
@@ -236,25 +243,25 @@ describe("Tasks API", () => {
       await recordTaskExecution("scheduled", "sched_tasks_api", {
         conversationId: "agent-dispatch:sched-run-1",
         executionId: "sched-run-1",
-        nowMs: Date.parse("2026-08-04T12:00:00.000Z"),
+        nowMs: scheduledCompletedAtMs,
         status: "completed",
       });
       await recordTaskExecution("scheduled", "sched_tasks_api", {
         conversationId: "agent-dispatch:sched-run-2",
         executionId: "sched-run-2",
-        nowMs: Date.parse("2026-08-04T13:00:00.000Z"),
+        nowMs: scheduledFailedAtMs,
         status: "failed",
       });
       await recordTaskExecution("event", "event_tasks_api", {
         conversationId: "agent-dispatch:event-run-1",
         executionId: "event-run-1",
-        nowMs: Date.parse("2026-08-03T12:00:00.000Z"),
+        nowMs: eventRunAtMs,
         status: "completed",
       });
       await recordTaskExecution("scheduled", "sched_tasks_api", {
         conversationId: "agent-dispatch:sched-run-2",
         executionId: "sched-run-2",
-        nowMs: Date.parse("2026-08-04T13:00:00.000Z"),
+        nowMs: scheduledFailedAtMs,
         status: "failed",
       });
 
@@ -294,7 +301,7 @@ describe("Tasks API", () => {
             id: "event_tasks_api",
             kind: "event",
             lastConversationId: "agent-dispatch:event-run-1",
-            lastRunAt: "2026-08-03T12:00:00.000Z",
+            lastRunAt: new Date(eventRunAtMs).toISOString(),
             ownedByViewer: true,
             runsLast7Days: 1,
             source: "linear",
@@ -310,7 +317,7 @@ describe("Tasks API", () => {
             instruction: "Untitled scheduled task",
             kind: "scheduled",
             lastConversationId: "agent-dispatch:sched-run-2",
-            lastRunAt: "2026-08-04T13:00:00.000Z",
+            lastRunAt: new Date(scheduledFailedAtMs).toISOString(),
             ownedByViewer: true,
             runsLast7Days: 2,
             schedule: "Schedule unavailable",
@@ -364,14 +371,14 @@ describe("Tasks API", () => {
         executions: [
           {
             conversationId: "agent-dispatch:sched-run-2",
-            executedAt: "2026-08-04T13:00:00.000Z",
+            executedAt: new Date(scheduledFailedAtMs).toISOString(),
             executionId: "sched-run-2",
             status: "failed",
             title: "Task execution fixture",
           },
           {
             conversationId: "agent-dispatch:sched-run-1",
-            executedAt: "2026-08-04T12:00:00.000Z",
+            executedAt: new Date(scheduledCompletedAtMs).toISOString(),
             executionId: "sched-run-1",
             status: "completed",
             title: "Task execution fixture",
@@ -385,12 +392,15 @@ describe("Tasks API", () => {
         truncated: false,
       });
       expect(executionList.executionDays).toHaveLength(90);
+      const scheduledDay = new Date(scheduledCompletedAtMs)
+        .toISOString()
+        .slice(0, 10);
       expect(
-        executionList.executionDays.find((day) => day.date === "2026-08-04"),
+        executionList.executionDays.find((day) => day.date === scheduledDay),
       ).toEqual({
         blocked: 0,
         completed: 1,
-        date: "2026-08-04",
+        date: scheduledDay,
         failed: 1,
       });
 

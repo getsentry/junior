@@ -14,6 +14,7 @@ import {
   juniorIdentities,
 } from "@/db/schema";
 import { slackIdFromText } from "../fixtures/slack/factories/ids";
+import { reportingViewer } from "../fixtures/reporting-viewer";
 
 const ORIGINAL_ENV = { ...process.env };
 const TEST_DATABASE_URL = ORIGINAL_ENV.DATABASE_URL;
@@ -307,14 +308,6 @@ async function waitUntilApplicationWaitsOnLock(
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
   throw new Error(`${applicationName} did not reach the expected lock wait`);
-}
-
-function reportingViewer(email: string) {
-  return {
-    email,
-    id: `viewer:${email.trim().toLowerCase()}`,
-    identities: [],
-  };
 }
 
 describe("dashboard canonical event reporting", () => {
