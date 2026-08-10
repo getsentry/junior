@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { z } from "zod";
 import {
   pluginUserPageContentSchema,
   pluginUserPageInputSchema,
@@ -11,7 +12,24 @@ import {
 import type { JuniorApiEnv } from "../route";
 import { apiErrorSchema } from "../schema/common";
 import { jsonResponse } from "../http";
+import { validateRequest } from "../validation";
 import { requireViewer } from "../viewer";
+
+const userPageQuerySchema = z.object({
+  cursor: z.preprocess(
+    (value) => value || undefined,
+    pluginUserPageInputSchema.shape.cursor,
+  ),
+  filter: z.preprocess(
+    (value) => value || undefined,
+    pluginUserPageInputSchema.shape.filter,
+  ),
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+  q: z.preprocess(
+    (value) => value || undefined,
+    pluginUserPageInputSchema.shape.query,
+  ),
+});
 
 /** Create authenticated discovery and read routes for plugin user pages. */
 export function createUserPageRoutes(): Hono<JuniorApiEnv> {
@@ -20,37 +38,28 @@ export function createUserPageRoutes(): Hono<JuniorApiEnv> {
   app.get("/", () =>
     jsonResponse(pluginUserPageLinksSchema, readPluginUserPageLinks()),
   );
-  app.get("/:pluginName/:pageId", requireViewer, async (context) => {
-    const viewer = context.get("viewer");
-    const pageInput = pluginUserPageInputSchema.safeParse({
-      cursor: context.req.query("cursor") || undefined,
-      filter: context.req.query("filter") || undefined,
-      limit: context.req.query("limit")
-        ? Number(context.req.query("limit"))
-        : 20,
-      query: context.req.query("q") || undefined,
-    });
-    if (!pageInput.success) {
-      return jsonResponse(
-        apiErrorSchema,
-        { error: "Invalid user page query." },
-        { status: 400 },
-      );
-    }
-    const page = await readPluginUserPage({
-      email: viewer.email,
-      pageId: context.req.param("pageId"),
-      pluginName: context.req.param("pluginName"),
-      query: pageInput.data,
-    });
-    return page
-      ? jsonResponse(pluginUserPageContentSchema, page)
-      : jsonResponse(
-          apiErrorSchema,
-          { error: "User page not found." },
-          { status: 404 },
-        );
-  });
+  app.get(
+    "/:pluginName/:pageId",
+    requireViewer,
+    validateRequest("query", userPageQuerySchema, "Invalid user page query."),
+    async (context) => {
+      const viewer = context.get("viewer");
+      const { q, ...query } = context.req.valid("query");
+      const page = await readPluginUserPage({
+        email: viewer.email,
+        pageId: context.req.param("pageId"),
+        pluginName: context.req.param("pluginName"),
+        query: { ...query, ...(q === undefined ? {} : { query: q }) },
+      });
+      return page
+        ? jsonResponse(pluginUserPageContentSchema, page)
+        : jsonResponse(
+            apiErrorSchema,
+            { error: "User page not found." },
+            { status: 404 },
+          );
+    },
+  );
 
   return app;
 }

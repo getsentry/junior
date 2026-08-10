@@ -72,6 +72,7 @@
     "@chat-adapter/state-redis": "4.29.0",
     "@earendil-works/pi-agent-core": "catalog:",
     "@earendil-works/pi-ai": "catalog:",
+    "@hono/zod-validator": "^0.9.0",
     "@logtape/logtape": "^2.1.1",
     "@modelcontextprotocol/sdk": "1.29.0",
     "@neondatabase/serverless": "^1.1.0",

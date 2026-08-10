@@ -166,6 +166,9 @@ importers:
       '@earendil-works/pi-ai':
         specifier: 'catalog:'
         version: 0.82.1(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(zod@4.4.3)
+      '@hono/zod-validator':
+        specifier: ^0.9.0
+        version: 0.9.0(hono@4.12.27)(zod@4.4.3)
       '@logtape/logtape':
         specifier: ^2.1.1
         version: 2.1.1
@@ -2064,6 +2067,12 @@ packages:
     engines: {node: '>=18.14.1'}
     peerDependencies:
       hono: ^4
+
+  '@hono/zod-validator@0.9.0':
+    resolution: {integrity: sha512-n0ZSXmCiHVIp4Y5wlOOyZCeTd/rsawA/qW1cipB8QOYKZ9N8Tk0nZUZCXho9cu374AN4JpDNKioNKBJ/W+LBug==}
+    peerDependencies:
+      hono: '>=4.11.2'
+      zod: ^3.25.0 || ^4.0.0
 
   '@humanfs/core@0.19.2':
     resolution: {integrity: sha512-UhXNm+CFMWcbChXywFwkmhqjs3PRCmcSa/hfBgLIb7oQ5HNb1wS0icWsGtSAUNgefHeI+eBrA8I1fxmbHsGdvA==}
@@ -9750,6 +9759,11 @@ snapshots:
   '@hono/node-server@1.19.14(hono@4.12.27)':
     dependencies:
       hono: 4.12.27
+
+  '@hono/zod-validator@0.9.0(hono@4.12.27)(zod@4.4.3)':
+    dependencies:
+      hono: 4.12.27
+      zod: 4.4.3
 
   '@humanfs/core@0.19.2':
     dependencies:
