@@ -13,17 +13,17 @@ import {
   type DestinationVisibilityReader,
   type SlackChannelJoinWriter,
   type SlackConversationInfoReader,
-} from "@/chat/slack/tools/channel-access";
+} from "@/chat/slack/tool-support/channel-access";
 import {
   optionalSlackChannelRefParam,
   resolveOptionalSlackChannelRef,
   type SlackChannelNameResolver,
-} from "@/chat/slack/tools/channel-target";
+} from "@/chat/slack/tool-support/channel-target";
 import { z } from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import type { SlackToolContext } from "@/chat/slack/tools/context";
+import type { SlackToolContext } from "@/chat/slack/tool-support/context";
 
 const booleanInput = (description: string) =>
   z

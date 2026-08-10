@@ -51,6 +51,14 @@ transport retries. `errors.ts` owns reply-failure classification. `mrkdwn.ts`
 owns format conversion. `assistant-thread/` owns assistant-thread lifecycle and
 status rendering.
 
+## Tools And Tool Support
+
+- `tools/` holds concrete model-facing tool definitions and executors only.
+  Keep one tool per file.
+- Shared helpers used by those tools live in `tool-support/` (for example
+  channel access checks, channel name resolution, canvas/list API helpers, and
+  Slack tool context). Do not put reusable helpers under `tools/`.
+
 ## Boundaries
 
 - Slack modules must not import runtime modules.
@@ -59,5 +67,6 @@ status rendering.
 - Do not add bespoke `chat.update` streaming loops unless Slack imposes a hard
   limitation; the standard reply path consumes finalized or iterable text.
 
-Follow `../../../../../policies/provider-boundaries.md` and the local
-`slack-development` skill for Slack-specific implementation work.
+Follow `../../../../../policies/provider-boundaries.md`,
+`../../../../../policies/tool-design.md`, and the local `slack-development`
+skill for Slack-specific implementation work.

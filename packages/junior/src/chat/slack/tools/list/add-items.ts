@@ -1,4 +1,4 @@
-import { addListItems } from "@/chat/slack/tools/list/api";
+import { addListItems } from "@/chat/slack/tool-support/list/api";
 import {
   parseRequiredSlackUserIdParam,
   slackUserIdParam,

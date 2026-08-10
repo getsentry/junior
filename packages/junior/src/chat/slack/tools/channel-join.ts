@@ -5,13 +5,13 @@ import {
   type DestinationVisibilityReader,
   type SlackChannelJoinWriter,
   type SlackConversationInfoReader,
-} from "@/chat/slack/tools/channel-access";
+} from "@/chat/slack/tool-support/channel-access";
 import {
   resolveSlackChannelRef,
   slackChannelRefParam,
   type SlackChannelNameResolver,
-} from "@/chat/slack/tools/channel-target";
-import type { SlackToolContext } from "@/chat/slack/tools/context";
+} from "@/chat/slack/tool-support/channel-target";
+import type { SlackToolContext } from "@/chat/slack/tool-support/context";
 import { z } from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";

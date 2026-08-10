@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { inferListColumnMap } from "@/chat/slack/tools/list/api";
+import { inferListColumnMap } from "@/chat/slack/tool-support/list/api";
 
 describe("inferListColumnMap", () => {
   it("detects canonical todo columns", () => {

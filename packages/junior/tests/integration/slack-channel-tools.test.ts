@@ -4,7 +4,7 @@ import { createSlackChannelJoinTool } from "@/chat/slack/tools/channel-join";
 import { createSlackChannelListMessagesTool } from "@/chat/slack/tools/channel-list-messages";
 import { createSlackMessageAddReactionTool } from "@/chat/slack/tools/message-add-reaction";
 import { createSendFilesTool } from "@/chat/slack/tools/send-files";
-import type { SlackToolContext } from "@/chat/slack/tools/context";
+import type { SlackToolContext } from "@/chat/slack/tool-support/context";
 import { readSandboxFileUpload } from "@/chat/tools/sandbox/file-uploads";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";

@@ -1,4 +1,4 @@
-import { resolveChannelCapabilities } from "@/chat/slack/tools/channel-capabilities";
+import { resolveChannelCapabilities } from "@/chat/slack/tool-support/channel-capabilities";
 import { botConfig } from "@/chat/config";
 import { createBashTool } from "@/chat/tools/sandbox/bash";
 import { createEditFileTool } from "@/chat/tools/sandbox/edit-file";
@@ -23,7 +23,7 @@ import { createSlackChannelJoinTool } from "@/chat/slack/tools/channel-join";
 import { createSlackChannelListMessagesTool } from "@/chat/slack/tools/channel-list-messages";
 import { createSlackConversationMessageSearchTool } from "@/chat/slack/tools/conversation-message-search";
 import { createSlackPublicSearchTool } from "@/chat/slack/tools/public-search";
-import { getSlackToolContext } from "@/chat/slack/tools/context";
+import { getSlackToolContext } from "@/chat/slack/tool-support/context";
 import { createSlackMessageAddReactionTool } from "@/chat/slack/tools/message-add-reaction";
 import { createSendFilesTool } from "@/chat/slack/tools/send-files";
 import { createSlackCanvasCreateTool } from "@/chat/slack/tools/canvas/create";

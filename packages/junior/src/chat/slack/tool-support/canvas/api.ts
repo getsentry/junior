@@ -12,7 +12,7 @@ import { extractCanvasId } from "@/chat/slack/canvas-references";
 import {
   normalizeCanvasMarkdown,
   type CanvasMarkdownNormalization,
-} from "@/chat/slack/tools/canvas/markdown";
+} from "@/chat/slack/tool-support/canvas/markdown";
 
 export { extractCanvasId } from "@/chat/slack/canvas-references";
 

@@ -1,4 +1,4 @@
-import { extractCanvasId } from "@/chat/slack/tools/canvas/api";
+import { extractCanvasId } from "@/chat/slack/tool-support/canvas/api";
 
 /** Resolve model-provided canvas references before Slack API calls. */
 export function resolveCanvasTarget(

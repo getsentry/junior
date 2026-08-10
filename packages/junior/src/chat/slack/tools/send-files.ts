@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { uploadFilesToConversation } from "@/chat/slack/outbound";
-import type { SlackToolContext } from "@/chat/slack/tools/context";
+import type { SlackToolContext } from "@/chat/slack/tool-support/context";
 import { z } from "zod";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";

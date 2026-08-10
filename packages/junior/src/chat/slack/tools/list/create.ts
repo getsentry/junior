@@ -1,4 +1,4 @@
-import { createTodoList } from "@/chat/slack/tools/list/api";
+import { createTodoList } from "@/chat/slack/tool-support/list/api";
 import { z } from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";

@@ -10,7 +10,7 @@ import { parseSlackThreadId } from "@/chat/slack/context";
 import {
   resolveSlackChannelRef,
   slackChannelRefParam,
-} from "@/chat/slack/tools/channel-target";
+} from "@/chat/slack/tool-support/channel-target";
 import { getSlackMessagePermalink } from "@/chat/slack/outbound";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";

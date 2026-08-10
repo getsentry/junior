@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractCanvasId } from "@/chat/slack/tools/canvas/api";
+import { extractCanvasId } from "@/chat/slack/tool-support/canvas/api";
 
 describe("extractCanvasId", () => {
   it("returns an uppercased F-prefixed ID as-is", () => {

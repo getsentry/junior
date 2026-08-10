@@ -1,7 +1,7 @@
 import { logError } from "@/chat/logging";
 import { isConversationScopedChannel } from "@/chat/slack/client";
-import { createCanvas } from "@/chat/slack/tools/canvas/api";
-import type { SlackToolContext } from "@/chat/slack/tools/context";
+import { createCanvas } from "@/chat/slack/tool-support/canvas/api";
+import type { SlackToolContext } from "@/chat/slack/tool-support/context";
 import { z } from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";

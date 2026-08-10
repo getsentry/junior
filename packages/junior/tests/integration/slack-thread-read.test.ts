@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createSlackThreadReadTool } from "@/chat/slack/tools/thread-read";
-import type { DestinationVisibilityReader } from "@/chat/slack/tools/channel-access";
-import type { SlackToolContext } from "@/chat/slack/tools/context";
+import type { DestinationVisibilityReader } from "@/chat/slack/tool-support/channel-access";
+import type { SlackToolContext } from "@/chat/slack/tool-support/context";
 import { parseSlackChannelId, parseSlackTeamId } from "@/chat/slack/ids";
 import {
   conversationsInfoOk,

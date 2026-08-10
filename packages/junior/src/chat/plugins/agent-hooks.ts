@@ -36,7 +36,7 @@ import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { getDashboardConversationLink } from "@/chat/slack/dashboard-link";
 import { canRouteResourceEvents } from "@/chat/resource-events/workspace";
-import { getSlackToolContext } from "@/chat/slack/tools/context";
+import { getSlackToolContext } from "@/chat/slack/tool-support/context";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import type {
@@ -44,7 +44,7 @@ import type {
   SandboxWorkspace,
 } from "@/chat/sandbox/workspace";
 import { createSlackDirectCredentialSubject } from "@/chat/credentials/subject";
-import { resolveChannelCapabilities } from "@/chat/slack/tools/channel-capabilities";
+import { resolveChannelCapabilities } from "@/chat/slack/tool-support/channel-capabilities";
 import type { Actor } from "@/chat/actor";
 import { z } from "zod";
 

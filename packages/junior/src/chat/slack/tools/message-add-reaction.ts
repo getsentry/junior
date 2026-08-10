@@ -5,7 +5,7 @@ import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { createOperationKey } from "@/chat/tools/idempotency";
-import type { SlackToolContext } from "@/chat/slack/tools/context";
+import type { SlackToolContext } from "@/chat/slack/tool-support/context";
 import type { ToolState } from "@/chat/tools/types";
 
 /** Create the tool that reacts to the current inbound Slack message. */

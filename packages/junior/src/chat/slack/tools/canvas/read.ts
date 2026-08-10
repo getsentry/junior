@@ -1,5 +1,5 @@
-import { readCanvas } from "@/chat/slack/tools/canvas/api";
-import { resolveCanvasTarget } from "@/chat/slack/tools/canvas/context";
+import { readCanvas } from "@/chat/slack/tool-support/canvas/api";
+import { resolveCanvasTarget } from "@/chat/slack/tool-support/canvas/context";
 import { z } from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";

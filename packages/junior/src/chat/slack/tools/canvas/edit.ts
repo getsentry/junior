@@ -1,6 +1,6 @@
-import { readCanvas, writeCanvasMarkdown } from "@/chat/slack/tools/canvas/api";
-import { resolveCanvasTarget } from "@/chat/slack/tools/canvas/context";
-import { normalizeCanvasMarkdown } from "@/chat/slack/tools/canvas/markdown";
+import { readCanvas, writeCanvasMarkdown } from "@/chat/slack/tool-support/canvas/api";
+import { resolveCanvasTarget } from "@/chat/slack/tool-support/canvas/context";
+import { normalizeCanvasMarkdown } from "@/chat/slack/tool-support/canvas/markdown";
 import { z } from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
