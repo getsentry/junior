@@ -69,7 +69,7 @@ async function ensureConversationTitleOnce(args: {
 
     const titleSourceMessage = getThreadTitleSourceMessage(args.conversation);
     const sourceText = titleSourceMessage?.text.trim() ?? "";
-    if (!sourceText) {
+    if (!titleSourceMessage || !sourceText) {
       return undefined;
     }
 
@@ -94,10 +94,13 @@ async function ensureConversationTitleOnce(args: {
       return undefined;
     }
 
+    // Keep lastActivityAtMs on the source message time. Title generation latency
+    // must not reorder conversations by recent activity.
+    const activityAtMs = titleSourceMessage.createdAtMs;
     const nowMs = args.nowMs ?? Date.now();
     try {
       await store.recordActivity({
-        activityAtMs: nowMs,
+        activityAtMs,
         conversationId: args.conversationId,
         nowMs,
         title: normalized,
