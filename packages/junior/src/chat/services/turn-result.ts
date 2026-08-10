@@ -5,7 +5,6 @@ import type { PiMessage } from "@/chat/pi/messages";
 import { createProviderError } from "@/chat/services/provider-error";
 import type { TurnRoute } from "@/chat/services/turn-router";
 import type { AgentTurnUsage } from "@/chat/usage";
-import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import {
   extractAssistantText,
@@ -39,7 +38,6 @@ export interface AgentTurnDiagnostics {
 export interface AgentRunResult {
   /** Sanitized terminal text for diagnostics and failure fallback, not success delivery. */
   text: string;
-  artifactStatePatch?: Partial<ThreadArtifactsState>;
   sandboxRef?: SandboxRef;
   piMessages?: PiMessage[];
   diagnostics: AgentTurnDiagnostics;
@@ -48,7 +46,6 @@ export interface AgentRunResult {
 export interface TurnResultInput {
   newMessages: unknown[];
   userInput: string;
-  artifactStatePatch: Partial<ThreadArtifactsState>;
   toolCalls: string[];
   sandboxRef?: SandboxRef;
   piMessages?: PiMessage[];
@@ -65,7 +62,6 @@ export interface TurnResultInput {
 export function buildTurnResult(input: TurnResultInput): AgentRunResult {
   const {
     newMessages,
-    artifactStatePatch,
     toolCalls,
     sandboxRef,
     durationMs,
@@ -199,10 +195,6 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
 
   return {
     text: primaryText,
-    artifactStatePatch:
-      Object.keys(artifactStatePatch).length > 0
-        ? artifactStatePatch
-        : undefined,
     sandboxRef,
     piMessages: input.piMessages,
     diagnostics: resolvedDiagnostics,

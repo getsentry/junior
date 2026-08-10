@@ -9,25 +9,10 @@ import {
   queueSlackPrivateFileDownload,
 } from "../msw/handlers/slack-api";
 
-function createState(
-  options: {
-    lastCanvasId?: string;
-    lastCanvasUrl?: string;
-    recentCanvases?: ToolState["artifactState"]["recentCanvases"];
-  } = {},
-): ToolState {
+function createState(): ToolState {
   const operationResultCache = new Map<string, unknown>();
-  const artifactState: Record<string, unknown> = {
-    lastCanvasId: options.lastCanvasId,
-    lastCanvasUrl: options.lastCanvasUrl,
-    recentCanvases: options.recentCanvases,
-  };
+
   return {
-    artifactState: artifactState as ToolState["artifactState"],
-    patchArtifactState: (patch) => {
-      Object.assign(artifactState, patch);
-    },
-    getCurrentListId: () => undefined,
     getOperationResult: <T>(operationKey: string) =>
       operationResultCache.get(operationKey) as T | undefined,
     setOperationResult: (operationKey: string, result: unknown) => {
@@ -57,7 +42,7 @@ describe("Slack canvas file-like tools", () => {
     queueSlackApiResponse("canvases.edit", {
       body: canvasesEditOk(),
     });
-    const state = createState({ lastCanvasId: "F0PREVIOUS" });
+    const state = createState();
     const tool = createSlackCanvasEditTool(state);
 
     if (typeof tool.execute !== "function") {
@@ -97,7 +82,6 @@ describe("Slack canvas file-like tools", () => {
     });
     expect((result as { diff: string }).diff).toContain("-3 Old summary");
     expect((result as { diff: string }).diff).toContain("+3 New summary");
-    expect(state.artifactState.lastCanvasId).toBe("F0PREVIOUS");
   });
 
   it("applies multiple edits against the original canvas content in one write", async () => {
@@ -108,7 +92,7 @@ describe("Slack canvas file-like tools", () => {
     queueSlackApiResponse("canvases.edit", {
       body: canvasesEditOk(),
     });
-    const state = createState({ lastCanvasId: "F0PREVIOUS" });
+    const state = createState();
     const tool = createSlackCanvasEditTool(state);
 
     if (typeof tool.execute !== "function") {
@@ -151,7 +135,7 @@ describe("Slack canvas file-like tools", () => {
     queueSlackApiResponse("canvases.edit", {
       body: canvasesEditOk(),
     });
-    const state = createState({ lastCanvasId: "F0PREVIOUS" });
+    const state = createState();
     const tool = createSlackCanvasEditTool(state);
 
     if (typeof tool.execute !== "function") {
@@ -179,7 +163,7 @@ describe("Slack canvas file-like tools", () => {
 
   it("rejects missing exact text without writing to Slack", async () => {
     queueCanvasRead("F0PREVIOUS", "# Section\n\nOriginal");
-    const state = createState({ lastCanvasId: "F0PREVIOUS" });
+    const state = createState();
     const tool = createSlackCanvasEditTool(state);
 
     if (typeof tool.execute !== "function") {
@@ -200,7 +184,7 @@ describe("Slack canvas file-like tools", () => {
 
   it("rejects ambiguous exact text without writing to Slack", async () => {
     queueCanvasRead("F0PREVIOUS", "# A\n\nDuplicate\n\n# B\n\nDuplicate");
-    const state = createState({ lastCanvasId: "F0PREVIOUS" });
+    const state = createState();
     const tool = createSlackCanvasEditTool(state);
 
     if (typeof tool.execute !== "function") {
@@ -223,7 +207,7 @@ describe("Slack canvas file-like tools", () => {
     queueSlackApiResponse("canvases.edit", {
       body: canvasesEditOk(),
     });
-    const state = createState({ lastCanvasId: "F0PREVIOUS" });
+    const state = createState();
     const tool = createSlackCanvasWriteTool(state);
 
     if (typeof tool.execute !== "function") {
@@ -255,42 +239,5 @@ describe("Slack canvas file-like tools", () => {
         },
       ],
     });
-  });
-
-  it("does not preserve a stale canvas URL after a full write", async () => {
-    queueSlackApiResponse("canvases.edit", {
-      body: canvasesEditOk(),
-    });
-    const state = createState({
-      lastCanvasId: "F0NEWCANV",
-      lastCanvasUrl: "https://sentry.slack.com/docs/T000/F0OLDCANV",
-      recentCanvases: [
-        {
-          id: "F0NEWCANV",
-          url: "https://sentry.slack.com/docs/T000/F0NEWCANV",
-        },
-      ],
-    });
-    const tool = createSlackCanvasWriteTool(state);
-
-    if (typeof tool.execute !== "function") {
-      throw new Error("slackCanvasWrite execute function missing");
-    }
-
-    const result = await tool.execute(
-      {
-        canvas: "F0NEWCANV",
-        content: "# Replacement\n\nNew body",
-      },
-      {} as never,
-    );
-
-    expect(result).toMatchObject({
-      canvas_id: "F0NEWCANV",
-    });
-    expect(state.artifactState.lastCanvasId).toBe("F0NEWCANV");
-    expect(state.artifactState.lastCanvasUrl).toBe(
-      "https://sentry.slack.com/docs/T000/F0NEWCANV",
-    );
   });
 });

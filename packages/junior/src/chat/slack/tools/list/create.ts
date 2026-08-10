@@ -35,12 +35,6 @@ export function createSlackListCreateTool(state: ToolState) {
       }
 
       const list = await createTodoList(name);
-      await state.patchArtifactState({
-        lastListId: list.listId,
-        lastListUrl: list.permalink,
-        listColumnMap: list.listColumnMap,
-      });
-
       const response = {
         list_id: list.listId,
         permalink: list.permalink,

@@ -22,14 +22,8 @@ import {
 
 function createToolState(): ToolState {
   const operationResultCache = new Map<string, unknown>();
-  const artifactState: Record<string, unknown> = {
-    listColumnMap: {},
-  };
 
   return {
-    artifactState: artifactState as ToolState["artifactState"],
-    patchArtifactState: () => undefined,
-    getCurrentListId: () => undefined,
     getOperationResult: <T>(operationKey: string): T | undefined =>
       operationResultCache.get(operationKey) as T | undefined,
     setOperationResult: (operationKey, result) => {

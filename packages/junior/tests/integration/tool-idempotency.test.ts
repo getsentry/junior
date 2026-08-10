@@ -20,28 +20,10 @@ import {
   queueSlackApiResponse,
 } from "../msw/handlers/slack-api";
 
-function createToolState(
-  options: {
-    currentListId?: string;
-    listColumnMap?: {
-      titleColumnId?: string;
-      completedColumnId?: string;
-      assigneeColumnId?: string;
-      dueDateColumnId?: string;
-    };
-  } = {},
-): ToolState {
+function createToolState(): ToolState {
   const operationResultCache = new Map<string, unknown>();
-  const artifactState: Record<string, unknown> = {
-    listColumnMap: options.listColumnMap ?? {},
-  };
 
   return {
-    artifactState: artifactState as ToolState["artifactState"],
-    patchArtifactState: (patch) => {
-      Object.assign(artifactState, patch);
-    },
-    getCurrentListId: () => options.currentListId,
     getOperationResult: <T>(operationKey: string): T | undefined =>
       operationResultCache.get(operationKey) as T | undefined,
     setOperationResult: (operationKey, result) => {
@@ -154,12 +136,6 @@ describe("tool idempotency", () => {
     expect(second).toMatchObject({
       canvas_id: "canvas-1",
       deduplicated: true,
-    });
-    expect(state.artifactState.lastCanvasId).toBe("canvas-1");
-    expect(state.artifactState.recentCanvases?.[0]).toMatchObject({
-      id: "canvas-1",
-      title: "Weekly plan",
-      url: "https://example.invalid/canvas-1",
     });
   });
 
@@ -277,12 +253,7 @@ describe("tool idempotency", () => {
     queueSlackApiResponse("slackLists.items.create", {
       body: slackListsItemsCreateOk({ itemId: "item-2" }),
     });
-    const state = createToolState({
-      currentListId: "list-1",
-      listColumnMap: {
-        titleColumnId: "col-title",
-      },
-    });
+    const state = createToolState();
     const tool = createSlackListAddItemsTool(state);
 
     const first = await executeTool(tool, {
@@ -311,13 +282,7 @@ describe("tool idempotency", () => {
   });
 
   it("validates slack_list_add_items assignee user ids before Slack calls", async () => {
-    const state = createToolState({
-      currentListId: "list-1",
-      listColumnMap: {
-        titleColumnId: "col-title",
-        assigneeColumnId: "col-assignee",
-      },
-    });
+    const state = createToolState();
     const tool = createSlackListAddItemsTool(state);
 
     await expect(

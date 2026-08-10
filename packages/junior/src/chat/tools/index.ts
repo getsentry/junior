@@ -50,35 +50,10 @@ import { getOAuthAccountProviders } from "@/chat/plugins/credential-hooks";
 import { createWebFetchTool } from "@/chat/tools/web/fetch-tool";
 import { createWebSearchTool } from "@/chat/tools/web/search";
 import { createWriteFileTool } from "@/chat/tools/sandbox/write-file";
-import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 
-function createToolState(
-  hooks: ToolHooks,
-  context: ToolRuntimeContext,
-): ToolState {
+function createToolState(): ToolState {
   const operationResultCache = new Map<string, unknown>();
-  const artifactState: ThreadArtifactsState = {
-    ...(context.artifactState ?? {}),
-    listColumnMap: {
-      ...(context.artifactState?.listColumnMap ?? {}),
-    },
-  };
-
-  const patchArtifactState = async (patch: Partial<ThreadArtifactsState>) => {
-    Object.assign(artifactState, patch);
-    if (patch.listColumnMap) {
-      artifactState.listColumnMap = {
-        ...(artifactState.listColumnMap ?? {}),
-        ...patch.listColumnMap,
-      };
-    }
-    await hooks.onArtifactStatePatch?.(patch);
-  };
-
   return {
-    artifactState,
-    patchArtifactState,
-    getCurrentListId: () => artifactState.lastListId,
     getOperationResult: <T>(operationKey: string): T | undefined =>
       operationResultCache.get(operationKey) as T | undefined,
     setOperationResult: (operationKey: string, result: unknown) => {
@@ -101,7 +76,7 @@ export function createTools(
   context: ToolRuntimeContext,
   options: CreateToolsOptions = {},
 ) {
-  const state = createToolState(hooks, context);
+  const state = createToolState();
   const slackContext = getSlackToolContext(context);
   const slackSourceCapabilities = slackContext
     ? resolveChannelCapabilities(slackContext.sourceChannelId)

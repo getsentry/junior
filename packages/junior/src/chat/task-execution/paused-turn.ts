@@ -44,7 +44,6 @@ import {
   markConversationMessage,
   turnHasReply,
 } from "@/chat/services/conversation-memory";
-import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import { markTurnCompleted, markTurnFailed } from "@/chat/runtime/turn";
 import {
   getPausedTurnRequest,
@@ -120,10 +119,8 @@ async function persistCompletedReplyState(args: {
     conversation,
     conversationId: args.turn.conversationId,
   });
-  const artifacts = coerceThreadArtifactsState(currentState);
   const userMessage = getTurnUserMessage(conversation, args.turn.turnId);
   const statePatch = buildDeliveredTurnStatePatch({
-    artifacts,
     conversation,
     reply: args.reply,
     sessionId: args.turn.turnId,
@@ -430,7 +427,6 @@ async function runPausedTurnInContext(
           conversation,
           conversationId: payload.conversationId,
         });
-        const artifacts = coerceThreadArtifactsState(currentState);
         const dispatchId =
           activeTurn.dispatchId ?? options.routingContext?.dispatch?.id;
         const dispatchUserMessage = dispatchId
@@ -539,14 +535,12 @@ async function runPausedTurnInContext(
               actor,
               destination: routingDestination,
               source,
-              toolChannelId:
-                artifacts.assistantContextChannelId ?? destination.channelId,
+              toolChannelId: destination.channelId,
             },
             policy: {
               locationConfiguration,
             },
             state: {
-              artifactState: artifacts,
               pendingAuth: conversation.processing.pendingAuth,
               sandboxRef,
             },

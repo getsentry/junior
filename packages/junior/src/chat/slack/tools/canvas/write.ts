@@ -1,8 +1,5 @@
 import { writeCanvasMarkdown } from "@/chat/slack/tools/canvas/api";
-import {
-  resolveCanvasTarget,
-  storedCanvasUrl,
-} from "@/chat/slack/tools/canvas/context";
+import { resolveCanvasTarget } from "@/chat/slack/tools/canvas/context";
 import { z } from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
@@ -54,10 +51,6 @@ export function createSlackCanvasWriteTool(state: ToolState) {
       const written = await writeCanvasMarkdown({
         canvasId: target.canvasId,
         markdown: content,
-      });
-      await state.patchArtifactState({
-        lastCanvasId: target.canvasId,
-        lastCanvasUrl: storedCanvasUrl(state, target.canvasId),
       });
       const response = {
         canvas_id: target.canvasId,

@@ -35,7 +35,6 @@ import type { ActiveMcpCatalogSummary } from "@/chat/tool-support/skill/mcp-tool
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { isUserActor, type Actor } from "@/chat/actor";
-import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
 import { escapeXml } from "@/chat/xml";
 import type {
@@ -434,7 +433,6 @@ function checkpointedPrompt(args: {
 export async function assemblePrompt(args: {
   activeMcpCatalogs: ActiveMcpCatalogSummary[];
   currentActor?: Actor;
-  artifactState?: ThreadArtifactsState;
   availableSkills: SkillMetadata[];
   configurationValues: Record<string, unknown>;
   contextContentParts: UserContentPart[];
@@ -520,7 +518,6 @@ export async function assemblePrompt(args: {
               }
             : undefined,
           actor: isUserActor(args.currentActor) ? args.currentActor : undefined,
-          artifactState: args.artifactState,
           configuration: args.configurationValues,
         })
       : null;

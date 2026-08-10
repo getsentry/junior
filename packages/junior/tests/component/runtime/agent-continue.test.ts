@@ -298,9 +298,6 @@ describe("paused turn scheduling", () => {
       ],
     });
     await persistThreadStateById(conversationId, {
-      artifacts: {
-        listColumnMap: {},
-      },
       conversation: {
         schemaVersion: 1,
         compactions: [],

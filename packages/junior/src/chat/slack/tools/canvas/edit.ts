@@ -106,11 +106,6 @@ export function createSlackCanvasEditTool(state: ToolState) {
         canvasId: target.canvasId,
         markdown: newContent,
       });
-      await state.patchArtifactState({
-        lastCanvasId: target.canvasId,
-        lastCanvasUrl: current.permalink ?? state.artifactState.lastCanvasUrl,
-      });
-
       const diff = buildCompactDiff(
         normalizeCanvasMarkdown(baseContent).markdown,
         written.markdown,

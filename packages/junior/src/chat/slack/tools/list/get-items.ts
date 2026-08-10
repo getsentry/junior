@@ -3,13 +3,12 @@ import { z } from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import type { ToolState } from "@/chat/tools/types";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
-/** Create a tool that reads items from the active Slack list. */
+/** Create a tool that reads items from an explicit Slack list. */
 export function createSlackListGetItemsTool(state: ToolState) {
   return zodTool({
     description:
-      "Read items from the active Slack list tracked in artifact context. Use when the user asks for task status, open items, or list contents. Do not use when list state is already known from the immediately prior result.",
+      "Read items from a Slack list. Use the list_id from a prior tool result or conversation history.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -17,6 +16,7 @@ export function createSlackListGetItemsTool(state: ToolState) {
       readOnlyHint: true,
     },
     inputSchema: z.object({
+      list_id: z.string().min(1).describe("ID of the Slack list to read."),
       limit: z.coerce
         .number()
         .int()
@@ -26,17 +26,12 @@ export function createSlackListGetItemsTool(state: ToolState) {
         .optional(),
     }),
     outputSchema: juniorToolOutputSchema,
-    execute: async ({ limit }) => {
-      const targetListId = state.getCurrentListId();
+    execute: async ({ list_id, limit }) => {
       const resolvedLimit = limit ?? 100;
-      if (!targetListId) {
-        throw new ToolInputError("No active list found in artifact context");
-      }
-
-      const items = await listItems(targetListId, resolvedLimit);
+      const items = await listItems(list_id, resolvedLimit);
 
       return {
-        list_id: targetListId,
+        list_id,
         items: items.map((item) => ({ id: item.id, fields: item.fields })),
       };
     },

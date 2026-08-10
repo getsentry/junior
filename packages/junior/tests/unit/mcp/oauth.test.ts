@@ -103,7 +103,6 @@ describe("createMcpOAuthClientProvider", () => {
       threadTs: "1712345.0001",
       toolChannelId: "C999",
       configuration: { region: "eu" },
-      artifactState: { assistantContextChannelId: "C999" },
     });
 
     expect(secondProvider.authSessionId).not.toBe(firstProvider.authSessionId);

@@ -9,7 +9,6 @@ import {
   type ConversationMemoryService,
 } from "@/chat/services/conversation-memory";
 import { isDmChannel } from "@/chat/slack/client";
-import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { ThreadConversationState } from "@/chat/state/conversation";
 
 /**
@@ -31,7 +30,6 @@ export function maybeUpdateAssistantTitle(args: {
     threadTs: string;
   };
   assistantUserName: string;
-  artifacts: ThreadArtifactsState;
   channelId?: string;
   conversation: ThreadConversationState;
   generateThreadTitle: ConversationMemoryService["generateThreadTitle"];
@@ -40,7 +38,7 @@ export function maybeUpdateAssistantTitle(args: {
   actorId?: string;
   runId?: string;
   threadId?: string;
-}): Promise<{ sourceMessageId: string; title?: string } | undefined> {
+}): Promise<{ title?: string } | undefined> {
   const assistantThreadContext = args.assistantThreadContext;
   if (!assistantThreadContext?.channelId || !assistantThreadContext.threadTs) {
     return Promise.resolve(undefined);
@@ -50,10 +48,6 @@ export function maybeUpdateAssistantTitle(args: {
   if (!titleSourceMessage) {
     return Promise.resolve(undefined);
   }
-  if (args.artifacts.assistantTitleSourceMessageId === titleSourceMessage.id) {
-    return Promise.resolve(undefined);
-  }
-
   const isDm = isDmChannel(assistantThreadContext.channelId);
 
   return (async () => {
@@ -106,6 +100,6 @@ export function maybeUpdateAssistantTitle(args: {
       }
     }
 
-    return { sourceMessageId: titleSourceMessage.id, title };
+    return { title };
   })();
 }

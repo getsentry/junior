@@ -1,7 +1,6 @@
 import { logError } from "@/chat/logging";
 import { isConversationScopedChannel } from "@/chat/slack/client";
 import { createCanvas } from "@/chat/slack/tools/canvas/api";
-import { mergeRecentCanvases } from "@/chat/slack/tools/canvas/context";
 import type { SlackToolContext } from "@/chat/slack/tools/context";
 import { z } from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
@@ -62,19 +61,6 @@ export function createSlackCanvasCreateTool(
         markdown,
         channelId: targetChannelId,
       });
-      await state.patchArtifactState({
-        lastCanvasId: created.canvasId,
-        lastCanvasUrl: created.permalink,
-        recentCanvases: mergeRecentCanvases(
-          state.artifactState.recentCanvases,
-          {
-            id: created.canvasId,
-            title,
-            url: created.permalink,
-          },
-        ),
-      });
-
       const response = {
         canvas_id: created.canvasId,
         permalink: created.permalink,

@@ -7,16 +7,11 @@ import { getDb } from "@/chat/db";
 import { buildConversationStatePatch } from "@/chat/state/conversation";
 import type { ThreadConversationState } from "@/chat/state/conversation";
 import { persistConversationMessages } from "@/chat/conversations/messages";
-import {
-  buildArtifactStatePatch,
-  type ThreadArtifactsState,
-} from "@/chat/state/artifacts";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 
 export interface ThreadStatePatch {
-  artifacts?: ThreadArtifactsState;
   conversation?: ThreadConversationState;
   sandboxRef?: SandboxRef | null;
 }
@@ -33,9 +28,6 @@ function buildThreadStatePayload(
   patch: ThreadStatePatch,
 ): Record<string, unknown> {
   const payload: Record<string, unknown> = {};
-  if (patch.artifacts) {
-    Object.assign(payload, buildArtifactStatePatch(patch.artifacts));
-  }
   if (patch.conversation) {
     Object.assign(payload, buildConversationStatePatch(patch.conversation));
   }
@@ -69,25 +61,6 @@ async function mergePersistedState(
     { ...existing, ...payload },
     JUNIOR_THREAD_STATE_TTL_MS,
   );
-}
-
-/** Merge an artifact patch while preserving per-list column mappings. */
-export function mergeArtifactsState(
-  artifacts: ThreadArtifactsState,
-  patch: Partial<ThreadArtifactsState> | undefined,
-): ThreadArtifactsState {
-  if (!patch) {
-    return artifacts;
-  }
-
-  return {
-    ...artifacts,
-    ...patch,
-    listColumnMap: {
-      ...artifacts.listColumnMap,
-      ...patch.listColumnMap,
-    },
-  };
 }
 
 /** Extract persisted sandbox metadata from thread state payload. */
@@ -207,7 +180,6 @@ export function getLocationConfigurationService(
   return createDurableLocationConfigurationService({
     destination,
     db: getDb(),
-    loadLegacy: async () =>
-      await getLegacyChannelState(destination.channelId),
+    loadLegacy: async () => await getLegacyChannelState(destination.channelId),
   });
 }

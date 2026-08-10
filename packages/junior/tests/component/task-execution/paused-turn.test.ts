@@ -88,9 +88,6 @@ describe("paused turn runner callbacks", () => {
       threadTs: "1712345.0005",
     });
     await persistThreadStateById(conversationId, {
-      artifacts: {
-        listColumnMap: {},
-      },
       conversation: {
         schemaVersion: 1,
         compactions: [],

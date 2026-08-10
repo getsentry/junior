@@ -5,7 +5,6 @@ import { resolveBaseUrl } from "@/chat/oauth-flow";
 import { fetchWithBoundedOAuthErrorBodies } from "@/chat/oauth-response";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import type { PluginDefinition } from "@/chat/plugins/types";
-import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import { getMcpAuthSession, type McpAuthSessionState } from "./auth-store";
 import { StateBackedMcpOAuthClientProvider } from "./oauth-provider";
 import { toMcpProviderError } from "./errors";
@@ -35,7 +34,6 @@ export async function createMcpOAuthClientProvider(input: {
   threadTs?: string;
   toolChannelId?: string;
   configuration?: Record<string, unknown>;
-  artifactState?: ThreadArtifactsState;
   createAuthorizationState?: () => Promise<string>;
 }): Promise<StateBackedMcpOAuthClientProvider> {
   requirePluginWithMcp(input.provider);
@@ -66,7 +64,6 @@ export async function createMcpOAuthClientProvider(input: {
       ...(input.threadTs ? { threadTs: input.threadTs } : {}),
       ...(input.toolChannelId ? { toolChannelId: input.toolChannelId } : {}),
       ...(input.configuration ? { configuration: input.configuration } : {}),
-      ...(input.artifactState ? { artifactState: input.artifactState } : {}),
     },
   );
 }

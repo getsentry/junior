@@ -30,7 +30,6 @@ import {
   AuthorizationFlowDisabledError,
   AuthorizationPauseError,
 } from "@/chat/services/auth-pause";
-import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 import { recordAuthorizationRequested } from "@/chat/conversations/projection";
 import type { PluginDefinition } from "@/chat/plugins/types";
@@ -59,8 +58,6 @@ export interface McpAuthOrchestrationInput {
   userMessage: string;
   pendingAuth?: ConversationPendingAuthState;
   getConfiguration: () => Record<string, unknown>;
-  getArtifactState: () => ThreadArtifactsState | undefined;
-  getMergedArtifactState: () => ThreadArtifactsState;
   recordPendingAuth?: (
     pendingAuth: ConversationPendingAuthState | undefined,
   ) => void | Promise<void>;
@@ -108,7 +105,6 @@ export function createMcpAuthOrchestration(
       ...(input.threadTs ? { threadTs: input.threadTs } : {}),
       ...(input.toolChannelId ? { toolChannelId: input.toolChannelId } : {}),
       configuration: input.getConfiguration(),
-      artifactState: input.getArtifactState(),
       createAuthorizationState: input.authorization?.createState,
     });
     authSessionIdsByProvider.set(plugin.manifest.name, provider.authSessionId);
@@ -154,14 +150,9 @@ export function createMcpAuthOrchestration(
         ? input.pendingAuth.authSessionId
         : undefined;
     const activeAuthSessionId = reusedAuthSessionId ?? authSessionId;
-    const latestArtifactState = input.getMergedArtifactState();
     await patchMcpAuthSession(activeAuthSessionId, {
       configuration: { ...input.getConfiguration() },
-      artifactState: latestArtifactState,
-      toolChannelId:
-        input.toolChannelId ??
-        latestArtifactState.assistantContextChannelId ??
-        input.channelId,
+      toolChannelId: input.toolChannelId ?? input.channelId,
     });
 
     const providerLabel = formatProviderLabel(provider);

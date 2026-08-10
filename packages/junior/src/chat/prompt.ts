@@ -23,7 +23,6 @@ import {
   sandboxSkillDir,
 } from "@/chat/sandbox/paths";
 import type { SlackConversationContext } from "@/chat/slack/conversation-context";
-import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { SkillMetadata } from "@/chat/skills";
 import type { ActiveMcpCatalogSummary } from "@/chat/tool-support/skill/mcp-tool-summary";
 import { escapeXml } from "@/chat/xml";
@@ -256,37 +255,6 @@ function formatReferenceFilesLines(): string[] | null {
     const name = path.basename(filePath);
     return `- ${escapeXml(name)} (${escapeXml(`${SANDBOX_DATA_ROOT}/${name}`)})`;
   });
-}
-
-function formatArtifactsLines(
-  artifactState: ThreadArtifactsState | undefined,
-): string[] | null {
-  if (!artifactState) return null;
-  const lines: string[] = [];
-  if (artifactState.lastCanvasId) {
-    lines.push(`- last_canvas_id: ${escapeXml(artifactState.lastCanvasId)}`);
-  }
-  if (artifactState.lastCanvasUrl) {
-    lines.push(`- last_canvas_url: ${escapeXml(artifactState.lastCanvasUrl)}`);
-  }
-  if (artifactState.recentCanvases && artifactState.recentCanvases.length > 0) {
-    lines.push("- recent_canvases:");
-    for (const canvas of artifactState.recentCanvases) {
-      lines.push(`  - id: ${escapeXml(canvas.id)}`);
-      if (canvas.title) lines.push(`    title: ${escapeXml(canvas.title)}`);
-      if (canvas.url) lines.push(`    url: ${escapeXml(canvas.url)}`);
-      if (canvas.createdAt) {
-        lines.push(`    created_at: ${escapeXml(canvas.createdAt)}`);
-      }
-    }
-  }
-  if (artifactState.lastListId) {
-    lines.push(`- last_list_id: ${escapeXml(artifactState.lastListId)}`);
-  }
-  if (artifactState.lastListUrl) {
-    lines.push(`- last_list_url: ${escapeXml(artifactState.lastListUrl)}`);
-  }
-  return lines.length > 0 ? lines : null;
 }
 
 function formatConfigurationLines(
@@ -549,7 +517,6 @@ function buildDispatchSection(
 
 function buildContextSection(params: {
   actor?: { userName?: string; fullName?: string; userId?: string };
-  artifactState?: ThreadArtifactsState;
   configuration?: Record<string, unknown>;
   dispatch?: {
     actor?: SystemActor;
@@ -583,11 +550,6 @@ function buildContextSection(params: {
   const dispatchLines = buildDispatchSection(params.dispatch);
   if (dispatchLines) {
     blocks.push(dispatchLines);
-  }
-
-  const artifactLines = formatArtifactsLines(params.artifactState);
-  if (artifactLines) {
-    blocks.push(renderTag("artifacts", artifactLines));
   }
 
   const configLines = formatConfigurationLines(params.configuration);
@@ -703,7 +665,6 @@ type TurnContextPromptInput = {
     fullName?: string;
     userId?: string;
   };
-  artifactState?: ThreadArtifactsState;
   configuration?: Record<string, unknown>;
 };
 
@@ -761,7 +722,6 @@ export function buildTurnContextPrompt(
     includeSessionContext
       ? buildContextSection({
           actor: params.actor,
-          artifactState: params.artifactState,
           configuration: params.configuration,
           dispatch: params.dispatch,
         })

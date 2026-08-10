@@ -72,24 +72,5 @@ describe("thread sandbox state", () => {
       expect.objectContaining({ app_sandbox_id: "sandbox-ttl" }),
       JUNIOR_THREAD_STATE_TTL_MS,
     );
-
-    set.mockClear();
-    const thread = {
-      id: conversationId,
-      channelId: "C-scratch-ttl",
-      channel: { id: "C-scratch-ttl" },
-    } as Thread;
-    await persistThreadRuntimeState(thread, {
-      artifacts: { lastCanvasId: "Fcanvas" },
-    });
-    expect(set).toHaveBeenCalledWith(
-      `thread-state:${conversationId}`,
-      expect.objectContaining({
-        app_sandbox_id: "sandbox-ttl",
-        artifacts: expect.objectContaining({ lastCanvasId: "Fcanvas" }),
-      }),
-      JUNIOR_THREAD_STATE_TTL_MS,
-    );
   });
-
 });

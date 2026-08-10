@@ -79,7 +79,6 @@ function makeDiagnostics() {
   };
 }
 
-type ArtifactStateModule = typeof import("@/chat/state/artifacts");
 type ConversationStateModule = typeof import("@/chat/state/conversation");
 type McpAuthStoreModule = typeof import("@/chat/mcp/auth-store");
 type McpClientModule = typeof import("@/chat/mcp/client");
@@ -92,7 +91,6 @@ type StateAdapterModule = typeof import("@/chat/state/adapter");
 type TurnSessionStoreModule =
   typeof import("@/chat/task-execution/turn-cursor");
 
-let artifactStateModule: ArtifactStateModule;
 let conversationStateModule: ConversationStateModule;
 let mcpAuthStoreModule: McpAuthStoreModule;
 let mcpClientModule: McpClientModule;
@@ -209,9 +207,6 @@ describe("mcp oauth callback integration", () => {
       ]);
       return completedAgentRun({
         text: "The budget deadline you mentioned earlier was Friday.",
-        artifactStatePatch: {
-          lastCanvasUrl: "https://example.com/canvas",
-        },
         sandboxRef: { id: "sandbox-1", profileHash: "hash-1" },
         diagnostics: makeDiagnostics(),
       });
@@ -226,7 +221,6 @@ describe("mcp oauth callback integration", () => {
     pluginApp = await createPluginAppFixture([EVAL_MCP_PLUGIN_ROOT]);
 
     vi.resetModules();
-    artifactStateModule = await import("@/chat/state/artifacts");
     conversationStateModule = await import("@/chat/state/conversation");
     mcpAuthStoreModule = await import("@/chat/mcp/auth-store");
     mcpClientModule = await import("@/chat/mcp/client");
@@ -364,10 +358,6 @@ describe("mcp oauth callback integration", () => {
           },
         },
       },
-      artifacts: {
-        assistantContextChannelId: "C999",
-        lastCanvasId: "F123",
-      },
     });
     await seedVisibleTranscriptFromThreadState(
       stateAdapterModule.getStateAdapter(),
@@ -416,10 +406,6 @@ describe("mcp oauth callback integration", () => {
       configuration: {
         region: "us",
       },
-      artifactState: {
-        assistantContextChannelId: "C999",
-        lastCanvasId: "F123",
-      },
     });
 
     const plugin =
@@ -458,10 +444,6 @@ describe("mcp oauth callback integration", () => {
       toolChannelId: "C999",
       configuration: {
         region: "us",
-      },
-      artifactState: {
-        assistantContextChannelId: "C999",
-        lastCanvasId: "F123",
       },
       authorizationUrl: expect.stringContaining(
         "https://eval-auth.example.test/oauth/authorize",
@@ -542,12 +524,7 @@ describe("mcp oauth callback integration", () => {
           source: storedSource,
           toolChannelId: "C999",
         }),
-        state: expect.objectContaining({
-          artifactState: expect.objectContaining({
-            assistantContextChannelId: "C999",
-            lastCanvasId: "F123",
-          }),
-        }),
+        state: expect.objectContaining({}),
       }),
     );
 
@@ -570,9 +547,6 @@ describe("mcp oauth callback integration", () => {
       conversation,
       conversationId: threadId,
     });
-    const artifacts =
-      artifactStateModule.coerceThreadArtifactsState(persistedState);
-
     expect(
       conversation.messages.find((message) => message.id === "user-1"),
     ).toMatchObject({
@@ -592,12 +566,6 @@ describe("mcp oauth callback integration", () => {
       role: "assistant",
       text: "The budget deadline you mentioned earlier was Friday.",
     });
-    expect(artifacts).toMatchObject({
-      assistantContextChannelId: "C999",
-      lastCanvasId: "F123",
-      lastCanvasUrl: "https://example.com/canvas",
-    });
-
     expect(getCapturedSlackApiCalls("assistant.threads.setStatus")).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -672,9 +640,6 @@ describe("mcp oauth callback integration", () => {
           },
         },
       },
-      artifacts: {
-        assistantContextChannelId: "COLD",
-      },
     };
     const freshState = {
       conversation: {
@@ -714,9 +679,6 @@ describe("mcp oauth callback integration", () => {
             linkSentAtMs: 1,
           },
         },
-      },
-      artifacts: {
-        assistantContextChannelId: "CFRESH",
       },
     };
 

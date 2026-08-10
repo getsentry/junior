@@ -24,7 +24,6 @@ import type { SandboxEgressSignalTransport } from "@/chat/sandbox/egress/signals
 import type { OAuthAuthorization } from "@/chat/oauth-authorization";
 import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";
 import type { SlackConversationContext } from "@/chat/slack/conversation-context";
-import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 import type { ConversationMessageProvenance } from "@/chat/conversations/provenance";
 import type { AgentTurnSurface } from "@/chat/task-execution/checkpoint";
@@ -180,7 +179,6 @@ export interface AgentRunPolicy {
 
 /** Carries durable state snapshots already loaded by the caller. */
 export interface AgentRunState {
-  artifactState?: ThreadArtifactsState;
   pendingAuth?: ConversationPendingAuthState;
   /** Persisted sandbox reuse state from prior slices of this conversation. */
   sandboxRef?: SandboxRef;
@@ -232,9 +230,6 @@ export interface AgentRunDurability {
     pendingAuth: ConversationPendingAuthState | undefined,
   ) => void | Promise<void>;
   onSandboxRefChanged?: (sandboxRef: SandboxRef) => void | Promise<void>;
-  onArtifactStateUpdated?: (
-    artifactState: ThreadArtifactsState,
-  ) => void | Promise<void>;
 }
 
 /** Groups the per-slice run request by the runtime role each field serves. */

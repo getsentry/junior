@@ -13,7 +13,6 @@ import type {
 import type { McpToolManager } from "@/chat/mcp/tool-manager";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import type { AgentTurnSurface } from "@/chat/task-execution/checkpoint";
-import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { Skill } from "@/chat/skills";
 import type { LoadSkillMetadata } from "@/chat/tools/skill/load-skill";
 import type { JuniorToolOutput } from "@/chat/tool-support/structured-result";
@@ -63,9 +62,6 @@ export interface ToolHooks {
   writeGeneratedArtifacts?: (
     files: FileUpload[],
   ) => GeneratedArtifactFileRef[] | Promise<GeneratedArtifactFileRef[]>;
-  onArtifactStatePatch?: (
-    patch: Partial<ThreadArtifactsState>,
-  ) => void | Promise<void>;
   onSkillLoaded?: (
     skill: Skill,
   ) => void | LoadSkillMetadata | Promise<void | LoadSkillMetadata>;
@@ -100,7 +96,6 @@ interface BaseToolRuntimeContext {
   /** Runtime surface that owns final delivery semantics for this turn. */
   surface?: AgentTurnSurface;
   userText?: string;
-  artifactState?: ThreadArtifactsState;
   configuration?: Record<string, unknown>;
   egress: PluginEgress;
   mcpToolManager?: McpToolManager;
@@ -129,11 +124,6 @@ export type ToolRuntimeContext =
   | SlackToolRuntimeContext;
 
 export interface ToolState {
-  artifactState: ThreadArtifactsState;
-  patchArtifactState: (
-    patch: Partial<ThreadArtifactsState>,
-  ) => void | Promise<void>;
-  getCurrentListId: () => string | undefined;
   getOperationResult: <T>(operationKey: string) => T | undefined;
   setOperationResult: (operationKey: string, result: unknown) => void;
 }

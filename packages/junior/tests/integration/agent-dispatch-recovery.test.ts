@@ -61,68 +61,6 @@ describe("agent dispatch recovery", () => {
     vi.restoreAllMocks();
   });
 
-  it("projects a canvas recovery as a blocked dispatch", async () => {
-    const dispatch = await createDispatch("auth-projection-lag");
-    const runtime = createDispatchRuntime({
-      agentRunner: {
-        run: vi.fn(async (request) => {
-          await request.durability.onInputCommitted?.();
-          await request.durability.onArtifactStateUpdated?.({
-            lastCanvasId: "F_DISPATCH_CANVAS",
-            lastCanvasUrl: "https://slack.example/docs/T/F_DISPATCH_CANVAS",
-          });
-          throw new AuthorizationFlowDisabledError("plugin", "github");
-        }),
-      },
-    });
-
-    await expect(
-      runtime.runDispatchTurn(dispatch, { ack: vi.fn(async () => {}) }),
-    ).resolves.toMatchObject({
-      outcome: "blocked",
-      resultMessageTs: expect.any(String),
-    });
-    await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
-      status: "pending",
-    });
-    const runTurn = vi.fn();
-    const resumeTurn = vi.fn();
-    const worker = createAgentDispatchConversationWorker({
-      resumeTurn,
-      runTurn,
-    });
-    const replay = createContext(dispatch);
-    await expect(worker(replay.context, dispatch.id)).resolves.toEqual({
-      status: "completed",
-    });
-    expect(runTurn).not.toHaveBeenCalled();
-    expect(resumeTurn).not.toHaveBeenCalled();
-    await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
-      resultMessageTs: expect.any(String),
-      status: "blocked",
-    });
-    await expect(
-      listTurnSummaries(getDispatchConversationId(dispatch)),
-    ).resolves.toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          dispatchOutcome: "blocked",
-          resultMessageId: expect.any(String),
-          turnId: getDispatchTurnId(dispatch.id),
-        }),
-      ]),
-    );
-    expect(slackApiOutbox.messages()).toEqual([
-      expect.objectContaining({
-        params: expect.objectContaining({
-          text: expect.stringContaining(
-            "https://slack.example/docs/T/F_DISPATCH_CANVAS",
-          ),
-        }),
-      }),
-    ]);
-  });
-
   it("projects the diagnostic from a terminal model failure", async () => {
     const dispatch = await createDispatch("model-failure-detail");
     const runtime = createDispatchRuntime({

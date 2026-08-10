@@ -38,7 +38,6 @@ import {
   buildConversationContext,
   markConversationMessage,
 } from "@/chat/services/conversation-memory";
-import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import { resumeSlackTurn } from "@/chat/runtime/slack-resume";
 import { persistAuthPauseTurnState } from "@/chat/runtime/auth-pause-state";
 import {
@@ -154,10 +153,8 @@ async function persistCompletedReplyState(
   const currentState = await getPersistedThreadState(threadId);
   const conversation = coerceThreadConversationState(currentState);
   await hydrateConversationMessages({ conversation, conversationId: threadId });
-  const artifacts = coerceThreadArtifactsState(currentState);
   const userMessage = getTurnUserMessage(conversation, sessionId);
   const statePatch = buildDeliveredTurnStatePatch({
-    artifacts,
     conversation,
     reply,
     sessionId,
@@ -290,7 +287,6 @@ async function resumeAuthorizedMcpTurn(args: {
         conversation: lockedConversation,
         conversationId: threadId,
       });
-      const lockedArtifacts = coerceThreadArtifactsState(lockedState);
       const lockedPendingAuth = getConversationPendingAuth({
         conversation: lockedConversation,
         kind: "mcp",
@@ -407,17 +403,13 @@ async function resumeAuthorizedMcpTurn(args: {
             actor,
             destination,
             source: routing.source,
-            toolChannelId:
-              authSession.toolChannelId ??
-              lockedArtifacts.assistantContextChannelId ??
-              authSession.channelId,
+            toolChannelId: authSession.toolChannelId ?? authSession.channelId,
           },
           policy: {
             configuration: authSession.configuration,
             locationConfiguration: lockedLocationConfiguration,
           },
           state: {
-            artifactState: lockedArtifacts,
             pendingAuth: lockedPendingAuth,
             sandboxRef: getPersistedSandboxState(lockedState),
           },

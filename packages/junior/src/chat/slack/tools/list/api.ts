@@ -5,7 +5,6 @@ import {
   withSlackRetries,
 } from "@/chat/slack/client";
 import type { SlackUserId } from "@/chat/slack/ids";
-import type { ListColumnMap } from "@/chat/state/artifacts";
 
 type RichTextBlock = {
   type: "rich_text";
@@ -17,6 +16,13 @@ type RichTextBlock = {
     }>;
   }>;
 };
+
+export interface ListColumnMap {
+  titleColumnId?: string;
+  completedColumnId?: string;
+  assigneeColumnId?: string;
+  dueDateColumnId?: string;
+}
 
 interface SlackListsSchemaColumnResponse {
   id: string;
@@ -149,6 +155,20 @@ export async function createTodoList(name: string): Promise<{
   };
 }
 
+/** Read a Slack list schema and map its standard columns. */
+export async function getListColumnMap(listId: string): Promise<ListColumnMap> {
+  const client = getSlackClient();
+  const response = await withSlackRetries(
+    () => client.files.info({ file: listId }),
+    3,
+    { action: "files.info", idempotent: true },
+  );
+  const file = response.file as
+    | { list_metadata?: { schema?: SlackListsSchemaColumnResponse[] } }
+    | undefined;
+  return inferListColumnMap(file?.list_metadata?.schema ?? []);
+}
+
 /** Add one or more items to an existing Slack list. */
 export async function addListItems(input: {
   listId: string;
@@ -159,7 +179,8 @@ export async function addListItems(input: {
 }): Promise<{ createdItemIds: string[]; listColumnMap?: ListColumnMap }> {
   const client = getSlackClient();
 
-  const listColumnMap = input.listColumnMap ?? {};
+  const listColumnMap =
+    input.listColumnMap ?? (await getListColumnMap(input.listId));
   if (!listColumnMap.titleColumnId) {
     throw new Error(
       "Cannot add list items because title column could not be inferred",
@@ -253,15 +274,16 @@ export async function updateListItem(input: {
   title?: string;
 }): Promise<void> {
   const client = getSlackClient();
+  const listColumnMap =
+    Object.keys(input.listColumnMap).length > 0
+      ? input.listColumnMap
+      : await getListColumnMap(input.listId);
   const cells: Array<{ row_id: string } & SlackListsItemField> = [];
 
-  if (
-    typeof input.completed === "boolean" &&
-    input.listColumnMap.completedColumnId
-  ) {
+  if (typeof input.completed === "boolean" && listColumnMap.completedColumnId) {
     cells.push({
       row_id: input.itemId,
-      column_id: input.listColumnMap.completedColumnId,
+      column_id: listColumnMap.completedColumnId,
       checkbox: input.completed,
     } as { row_id: string } & SlackListsItemField);
   }
@@ -269,12 +291,12 @@ export async function updateListItem(input: {
   if (
     typeof input.title === "string" &&
     input.title.trim() &&
-    input.listColumnMap.titleColumnId
+    listColumnMap.titleColumnId
   ) {
     cells.push({
       row_id: input.itemId,
       ...(richTextField(
-        input.listColumnMap.titleColumnId,
+        listColumnMap.titleColumnId,
         input.title,
       ) as SlackListsItemField),
     } as { row_id: string } & SlackListsItemField);

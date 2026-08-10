@@ -46,9 +46,7 @@ import type { LogContext } from "@/chat/logging";
 import { logWarn } from "@/chat/logging";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { OAuthAuthorization } from "@/chat/oauth-authorization";
-import { mergeArtifactsState } from "@/chat/runtime/thread-state";
 import type { Actor } from "@/chat/actor";
-import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { AuthorizationPauseError } from "@/chat/services/auth-pause";
 import type { AgentTurnSurface } from "@/chat/task-execution/checkpoint";
 import {
@@ -85,7 +83,6 @@ interface ToolWiringArgs {
   currentTurnMessages: readonly PiMessage[];
   /** Live same-actor instructions that authorize the pending action. */
   currentUserIntent: () => string;
-  artifactStatePatch: Partial<ThreadArtifactsState>;
   availableSkills: SkillMetadata[];
   configurationValues: Record<string, unknown>;
   connectedMcpProviders: Set<string>;
@@ -212,12 +209,6 @@ export async function wireAgentTools(
     userMessage: args.userInput,
     pendingAuth: args.state.pendingAuth,
     getConfiguration: () => args.configurationValues,
-    getArtifactState: () => args.state.artifactState,
-    getMergedArtifactState: () =>
-      mergeArtifactsState(
-        args.state.artifactState ?? {},
-        args.artifactStatePatch,
-      ),
     recordPendingAuth: args.durability.recordPendingAuth,
     interactiveAuthEnabled: !isAgentRunFeatureDisabled(
       args.policy,
@@ -277,7 +268,6 @@ export async function wireAgentTools(
   const commonToolRuntimeContext = {
     conversationId: args.conversationId,
     userText: args.userInput,
-    artifactState: args.state.artifactState,
     configuration: args.configurationValues,
     egress: createPluginEgress({
       credentialContext: args.routing.credentialContext,
@@ -374,15 +364,6 @@ export async function wireAgentTools(
         const refs = await agentSandbox.writeGeneratedArtifacts(files);
         args.generatedFiles.push(...files);
         return refs;
-      },
-      onArtifactStatePatch: async (patch) => {
-        Object.assign(args.artifactStatePatch, patch);
-        await args.durability.onArtifactStateUpdated?.(
-          mergeArtifactsState(
-            args.state.artifactState ?? {},
-            args.artifactStatePatch,
-          ),
-        );
       },
       toolOverrides: args.policy.toolOverrides,
       onSkillLoaded: async (loadedSkill) => {

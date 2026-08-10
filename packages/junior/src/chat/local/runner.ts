@@ -43,7 +43,6 @@ import {
   recordDeliveredAssistantMessage,
   upsertConversationMessage,
 } from "@/chat/services/conversation-memory";
-import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import {
@@ -219,9 +218,7 @@ async function runLocalAgentTurnInContext(
     conversation,
     conversationId: input.conversationId,
   });
-  let artifacts = coerceThreadArtifactsState(persisted);
   let sandboxRef = getPersistedSandboxState(persisted);
-  const initialArtifacts = artifacts;
   const initialSandboxRef = sandboxRef;
 
   const turnId = localTurnId();
@@ -357,7 +354,6 @@ async function runLocalAgentTurnInContext(
           sandboxEgressSignals: deps.sandboxEgressSignals,
         },
         state: {
-          artifactState: artifacts,
           pendingAuth: conversation.processing.pendingAuth,
           sandboxRef,
         },
@@ -374,18 +370,9 @@ async function runLocalAgentTurnInContext(
         },
         delivery: deliverAssistantMessage,
         durability: {
-          onArtifactStateUpdated: async (nextArtifacts) => {
-            artifacts = nextArtifacts;
-            await persistThreadStateById(input.conversationId, {
-              artifacts,
-              conversation,
-              sandboxRef,
-            });
-          },
           onSandboxRefChanged: async (nextSandboxRef) => {
             sandboxRef = nextSandboxRef;
             await persistThreadStateById(input.conversationId, {
-              artifacts,
               conversation,
               sandboxRef,
             });
@@ -393,7 +380,6 @@ async function runLocalAgentTurnInContext(
           recordPendingAuth: async (pendingAuth) => {
             conversation.processing.pendingAuth = pendingAuth;
             await persistThreadStateById(input.conversationId, {
-              artifacts,
               conversation,
               sandboxRef,
             });
@@ -412,7 +398,6 @@ async function runLocalAgentTurnInContext(
       }
       completeAuthPauseTurn({ conversation, sessionId: turnId });
       await persistThreadStateById(input.conversationId, {
-        artifacts,
         conversation,
         sandboxRef,
       });
@@ -456,7 +441,6 @@ async function runLocalAgentTurnInContext(
     }
 
     completedState = buildDeliveredTurnStatePatch({
-      artifacts,
       conversation,
       reply,
       sessionId: turnId,
@@ -483,7 +467,6 @@ async function runLocalAgentTurnInContext(
         markConversationMessage,
       });
       await persistThreadStateById(input.conversationId, {
-        artifacts: initialArtifacts,
         conversation,
         sandboxRef: initialSandboxRef ?? null,
       });
@@ -520,7 +503,6 @@ async function runLocalAgentTurnInContext(
   deps.authorization?.cancel();
   try {
     await persistThreadStateById(input.conversationId, {
-      artifacts: completedState.artifacts ?? artifacts,
       conversation: completedState.conversation,
       sandboxRef: reply.sandboxRef ?? sandboxRef,
     });

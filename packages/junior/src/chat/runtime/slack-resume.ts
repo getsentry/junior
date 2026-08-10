@@ -409,10 +409,6 @@ function createResumeReplyContext(
         });
         await replyContext.durability?.onSandboxRefChanged?.(sandboxRef);
       },
-      onArtifactStateUpdated: async (artifacts) => {
-        await persistThreadStateById(threadId, { artifacts });
-        await replyContext.durability?.onArtifactStateUpdated?.(artifacts);
-      },
     },
   };
 }

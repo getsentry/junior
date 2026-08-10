@@ -22,14 +22,18 @@ describe("slack harness fixture", () => {
   });
 
   it("falls back to parsing channelId from slack thread id", async () => {
-    const thread = await createTestThread({ id: "slack:C0TEST:1700000000.000" });
+    const thread = await createTestThread({
+      id: "slack:C0TEST:1700000000.000",
+    });
 
     expect(thread.channelId).toBe("slack:C0TEST");
     expect(thread.channel.id).toBe("slack:C0TEST");
   });
 
   it("keeps posts and postKinds aligned when deleting a duplicate post", async () => {
-    const thread = await createTestThread({ id: "slack:C0TEST:1700000000.000" });
+    const thread = await createTestThread({
+      id: "slack:C0TEST:1700000000.000",
+    });
 
     await thread.post(
       (async function* () {
@@ -48,13 +52,9 @@ describe("slack harness fixture", () => {
     const threadId = "slack:C0HARNESS:1700000000.000";
     const first = await createTestThread({
       id: threadId,
-      state: {
-        artifacts: { lastCanvasId: "Fstale" },
-      },
+      state: {},
     });
-    await expect(first.getState()).resolves.toMatchObject({
-      artifacts: { lastCanvasId: "Fstale" },
-    });
+    await expect(first.getState()).resolves.toMatchObject({});
 
     const second = await createTestThread({ id: threadId });
     await expect(second.getState()).resolves.toEqual({});

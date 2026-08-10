@@ -6,11 +6,11 @@ import {
 import { z } from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { createOperationKey } from "@/chat/tools/idempotency";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolState } from "@/chat/tools/types";
 
-/** Create a tool that appends items to the active Slack list. */
+/** Create a tool that appends items to an explicit Slack list. */
 export function createSlackListAddItemsTool(state: ToolState) {
   return zodTool({
     annotations: {
@@ -20,8 +20,9 @@ export function createSlackListAddItemsTool(state: ToolState) {
       readOnlyHint: false,
     },
     description:
-      "Add tasks to the active Slack list tracked in artifact context. Use when the user wants actionable items recorded in the current thread list. Do not use when no list exists and list creation was not requested.",
+      "Add tasks to a Slack list. Use the list_id from the list create result or conversation history.",
     inputSchema: z.object({
+      list_id: z.string().min(1).describe("ID of the Slack list to update."),
       items: z
         .array(z.string().min(1))
         .min(1)
@@ -37,11 +38,7 @@ export function createSlackListAddItemsTool(state: ToolState) {
         .optional(),
     }),
     outputSchema: juniorToolOutputSchema,
-    execute: async ({ items, assignee_user_id, due_date }) => {
-      const targetListId = state.getCurrentListId();
-      if (!targetListId) {
-        throw new ToolInputError("No active list found in artifact context");
-      }
+    execute: async ({ list_id, items, assignee_user_id, due_date }) => {
       const parsedAssigneeUserId =
         assignee_user_id === undefined
           ? undefined
@@ -51,7 +48,7 @@ export function createSlackListAddItemsTool(state: ToolState) {
       }
 
       const operationKey = createOperationKey("slackListAddItems", {
-        list_id: targetListId,
+        list_id: list_id,
         items,
         assignee_user_id: parsedAssigneeUserId?.value ?? null,
         due_date: due_date ?? null,
@@ -69,20 +66,14 @@ export function createSlackListAddItemsTool(state: ToolState) {
       }
 
       const result = await addListItems({
-        listId: targetListId,
+        listId: list_id,
         titles: items,
-        listColumnMap: state.artifactState.listColumnMap,
         assigneeUserId: parsedAssigneeUserId?.value,
         dueDate: due_date,
       });
 
-      await state.patchArtifactState({
-        lastListId: targetListId,
-        listColumnMap: result.listColumnMap,
-      });
-
       const response = {
-        list_id: targetListId,
+        list_id: list_id,
         created_item_ids: result.createdItemIds,
         created_count: result.createdItemIds.length,
       };

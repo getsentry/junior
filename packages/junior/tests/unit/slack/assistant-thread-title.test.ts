@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from "vitest";
-import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { ThreadConversationState } from "@/chat/state/conversation";
 import { maybeUpdateAssistantTitle } from "@/chat/slack/assistant-thread/title";
 
@@ -31,16 +30,9 @@ function makeConversation(
   };
 }
 
-function makeArtifacts(
-  override?: Partial<ThreadArtifactsState>,
-): ThreadArtifactsState {
-  return { ...override };
-}
-
 function makeArgs(
   channelId: string,
   overrides?: {
-    artifacts?: Partial<ThreadArtifactsState>;
     generateThreadTitle?: () => Promise<string>;
     setAssistantTitle?: (...args: unknown[]) => Promise<void>;
   },
@@ -54,7 +46,6 @@ function makeArgs(
   return {
     assistantThreadContext: { channelId, threadTs: THREAD_TS },
     assistantUserName: "junior",
-    artifacts: makeArtifacts(overrides?.artifacts),
     channelId,
     conversation: makeConversation(),
     generateThreadTitle,
@@ -74,7 +65,6 @@ describe("maybeUpdateAssistantTitle", () => {
       const result = await maybeUpdateAssistantTitle(args);
 
       expect(result).toEqual({
-        sourceMessageId: USER_MESSAGE_ID,
         title: GENERATED_TITLE,
       });
       expect(args.generateThreadTitle).toHaveBeenCalledWith(USER_MESSAGE_TEXT);
@@ -92,7 +82,6 @@ describe("maybeUpdateAssistantTitle", () => {
       const result = await maybeUpdateAssistantTitle(args);
 
       expect(result).toEqual({
-        sourceMessageId: USER_MESSAGE_ID,
         title: GENERATED_TITLE,
       });
       expect(args._setAssistantTitle).not.toHaveBeenCalled();
@@ -105,7 +94,6 @@ describe("maybeUpdateAssistantTitle", () => {
       const result = await maybeUpdateAssistantTitle(args);
 
       expect(result).toEqual({
-        sourceMessageId: USER_MESSAGE_ID,
         title: GENERATED_TITLE,
       });
       expect(args._setAssistantTitle).toHaveBeenCalledWith(
@@ -124,7 +112,6 @@ describe("maybeUpdateAssistantTitle", () => {
       const result = await maybeUpdateAssistantTitle(args);
 
       expect(result).toEqual({
-        sourceMessageId: USER_MESSAGE_ID,
         title: GENERATED_TITLE,
       });
     });
@@ -137,7 +124,6 @@ describe("maybeUpdateAssistantTitle", () => {
       const result = await maybeUpdateAssistantTitle(args);
 
       expect(result).toEqual({
-        sourceMessageId: USER_MESSAGE_ID,
         title: GENERATED_TITLE,
       });
     });
@@ -156,15 +142,6 @@ describe("maybeUpdateAssistantTitle", () => {
     it("returns undefined when there is no human message in the conversation", async () => {
       const args = makeArgs(CHANNEL_ID);
       args.conversation = makeConversation({ messages: [] });
-      const result = await maybeUpdateAssistantTitle(args);
-      expect(result).toBeUndefined();
-      expect(args.generateThreadTitle).not.toHaveBeenCalled();
-    });
-
-    it("skips generation when source message id matches existing artifact (dedup)", async () => {
-      const args = makeArgs(CHANNEL_ID, {
-        artifacts: { assistantTitleSourceMessageId: USER_MESSAGE_ID },
-      });
       const result = await maybeUpdateAssistantTitle(args);
       expect(result).toBeUndefined();
       expect(args.generateThreadTitle).not.toHaveBeenCalled();

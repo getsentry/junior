@@ -3,8 +3,7 @@
  *
  * This module turns durable chat thread state plus the current Slack message
  * into the state needed before agent execution. It owns conversation backfill,
- * memory/context rendering, vision hydration, configuration, and artifact
- * snapshots; it should not execute the agent or post replies.
+ * memory/context rendering, vision hydration, and configuration; it should not execute the agent or post replies.
  */
 import type { Message, Thread } from "chat";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
@@ -15,10 +14,6 @@ import type {
 import { setSpanAttributes } from "@/chat/logging";
 import { getThreadTs } from "@/chat/runtime/thread-context";
 import type { SandboxRef } from "@/chat/sandbox/ref";
-import {
-  coerceThreadArtifactsState,
-  type ThreadArtifactsState,
-} from "@/chat/state/artifacts";
 import {
   buildConversationContext,
   estimateConversationContextTokens,
@@ -50,7 +45,6 @@ import { toConversationMessage } from "@/chat/runtime/conversation-message";
 const BACKFILL_MESSAGE_LIMIT = 80;
 
 export interface PreparedTurnState {
-  artifacts: ThreadArtifactsState;
   configuration?: Record<string, unknown>;
   locationConfiguration?: LocationConfigurationService;
   conversation: ThreadConversationState;
@@ -166,7 +160,6 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
   ): Promise<PreparedTurnState> {
     const existingState = await args.thread.state;
     const sandboxRef = getPersistedSandboxState(existingState ?? {});
-    const artifacts = coerceThreadArtifactsState(existingState);
     const conversation = coerceThreadConversationState(existingState);
     const conversationId = args.context.threadId ?? args.context.runId;
     await hydrateConversationMessages({ conversation, conversationId });
@@ -254,7 +247,6 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
     });
 
     return {
-      artifacts,
       configuration,
       locationConfiguration,
       conversation,

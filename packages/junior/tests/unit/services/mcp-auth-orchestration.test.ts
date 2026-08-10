@@ -91,8 +91,6 @@ describe("createMcpAuthOrchestration", () => {
       threadTs: "1700000000.000000",
       userMessage: "<scheduled-task-run />",
       getConfiguration: () => ({}),
-      getArtifactState: () => undefined,
-      getMergedArtifactState: () => ({}),
       interactiveAuthEnabled: false,
     });
 
@@ -125,8 +123,6 @@ describe("createMcpAuthOrchestration", () => {
       threadTs: "1700000000.000000",
       userMessage: "use MCP",
       getConfiguration: () => ({}),
-      getArtifactState: () => undefined,
-      getMergedArtifactState: () => ({}),
     });
 
     await expect(
@@ -170,8 +166,6 @@ describe("createMcpAuthOrchestration", () => {
         linkSentAtMs: Date.now(),
       },
       getConfiguration: () => ({}),
-      getArtifactState: () => undefined,
-      getMergedArtifactState: () => ({}),
       recordPendingAuth,
     });
 
@@ -191,7 +185,6 @@ describe("createMcpAuthOrchestration", () => {
     );
     expect(patchMcpAuthSession).toHaveBeenCalledWith("auth_1", {
       configuration: {},
-      artifactState: {},
       toolChannelId: "C123",
     });
     expect(getMcpAuthSession).toHaveBeenCalledWith("auth_1");
@@ -249,10 +242,6 @@ describe("createMcpAuthOrchestration", () => {
       userMessage: "use MCP",
       pendingAuth,
       getConfiguration: () => ({ region: "us" }),
-      getArtifactState: () => undefined,
-      getMergedArtifactState: () => ({
-        assistantContextChannelId: "C-tools",
-      }),
       recordPendingAuth,
     });
 
@@ -264,7 +253,6 @@ describe("createMcpAuthOrchestration", () => {
 
     expect(patchMcpAuthSession).toHaveBeenCalledWith("auth_existing", {
       configuration: { region: "us" },
-      artifactState: { assistantContextChannelId: "C-tools" },
       toolChannelId: "C-tools",
     });
     expect(deleteMcpAuthSession).toHaveBeenCalledWith("auth_1");
@@ -304,8 +292,6 @@ describe("createMcpAuthOrchestration", () => {
       userMessage: "use MCP",
       pendingAuth: previousPendingAuth,
       getConfiguration: () => ({}),
-      getArtifactState: () => undefined,
-      getMergedArtifactState: () => ({}),
       recordPendingAuth,
     });
 

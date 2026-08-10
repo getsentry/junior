@@ -9,7 +9,6 @@ import {
   type Source,
 } from "@sentry/junior-plugin-api";
 import { parseDestination } from "@/chat/destination";
-import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import { isRecord } from "@/chat/coerce";
 import { getStateAdapter } from "@/chat/state/adapter";
 
@@ -35,7 +34,6 @@ export interface McpAuthSessionState {
   threadTs?: string;
   toolChannelId?: string;
   configuration?: Record<string, unknown>;
-  artifactState?: ThreadArtifactsState;
   authorizationUrl?: string;
   codeVerifier?: string;
   createdAtMs: number;
@@ -150,9 +148,6 @@ function parseMcpAuthSession(value: unknown): McpAuthSessionState | undefined {
         : {}),
       ...(isRecord(parsed.configuration)
         ? { configuration: parsed.configuration }
-        : {}),
-      ...(isRecord(parsed.artifactState)
-        ? { artifactState: parsed.artifactState as ThreadArtifactsState }
         : {}),
       ...(typeof parsed.authorizationUrl === "string"
         ? { authorizationUrl: parsed.authorizationUrl }

@@ -8,28 +8,10 @@ import {
   queueSlackApiResponse,
 } from "../msw/handlers/slack-api";
 
-function createToolState(
-  options: {
-    currentListId?: string;
-    listColumnMap?: {
-      titleColumnId?: string;
-      completedColumnId?: string;
-      assigneeColumnId?: string;
-      dueDateColumnId?: string;
-    };
-  } = {},
-): ToolState {
+function createToolState(): ToolState {
   const operationResultCache = new Map<string, unknown>();
-  const artifactState: Record<string, unknown> = {
-    listColumnMap: options.listColumnMap ?? {},
-  };
 
   return {
-    artifactState: artifactState as ToolState["artifactState"],
-    patchArtifactState: (patch) => {
-      Object.assign(artifactState, patch);
-    },
-    getCurrentListId: () => options.currentListId,
     getOperationResult: <T>(operationKey: string): T | undefined =>
       operationResultCache.get(operationKey) as T | undefined,
     setOperationResult: (operationKey, result) => {
@@ -74,33 +56,31 @@ describe("slack list create/update tools", () => {
       list_id: "LIST_ABC",
       deduplicated: true,
     });
-    expect(state.artifactState.lastListId).toBe("LIST_ABC");
-    expect(state.artifactState.listColumnMap).toMatchObject({
-      titleColumnId: "COL_TITLE",
-      completedColumnId: "COL_DONE",
-      assigneeColumnId: "COL_ASSIGNEE",
-      dueDateColumnId: "COL_DUE",
-    });
 
     expect(getCapturedSlackApiCalls("slackLists.create")).toHaveLength(1);
     expect(getCapturedSlackApiCalls("files.info")).toHaveLength(1);
   });
 
   it("updates list items using inferred title/completed columns", async () => {
+    queueSlackApiResponse("files.info", {
+      body: {
+        ok: true,
+        file: {
+          id: "LIST_ABC",
+          list_metadata: slackListsCreateOk({ listId: "LIST_ABC" })
+            .list_metadata,
+        },
+      },
+    });
     queueSlackApiResponse("slackLists.items.update", {
       body: { ok: true },
     });
 
-    const state = createToolState({
-      currentListId: "LIST_ABC",
-      listColumnMap: {
-        titleColumnId: "COL_TITLE",
-        completedColumnId: "COL_DONE",
-      },
-    });
+    const state = createToolState();
     const tool = createSlackListUpdateItemTool(state);
 
     const result = await executeTool(tool, {
+      list_id: "LIST_ABC",
       item_id: "ROW_77",
       completed: true,
       title: "Ship durable workflow rollout",
@@ -145,14 +125,12 @@ describe("slack list create/update tools", () => {
   });
 
   it("fails fast when update fields cannot be mapped to list columns", async () => {
-    const state = createToolState({
-      currentListId: "LIST_ABC",
-      listColumnMap: {},
-    });
+    const state = createToolState();
     const tool = createSlackListUpdateItemTool(state);
 
     await expect(
       executeTool(tool, {
+        list_id: "LIST_ABC",
         item_id: "ROW_77",
         completed: true,
       }),

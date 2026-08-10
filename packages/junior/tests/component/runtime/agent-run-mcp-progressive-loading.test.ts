@@ -402,7 +402,6 @@ vi.mock("@/chat/mcp/oauth", () => ({
     threadTs?: string;
     toolChannelId?: string;
     configuration?: Record<string, unknown>;
-    artifactState?: Record<string, unknown>;
   }) => {
     const { patchMcpAuthSession, putMcpAuthSession } =
       await import("@/chat/mcp/auth-store");
@@ -419,7 +418,6 @@ vi.mock("@/chat/mcp/oauth", () => ({
       ...(input.threadTs ? { threadTs: input.threadTs } : {}),
       ...(input.toolChannelId ? { toolChannelId: input.toolChannelId } : {}),
       ...(input.configuration ? { configuration: input.configuration } : {}),
-      ...(input.artifactState ? { artifactState: input.artifactState } : {}),
       createdAtMs: Date.now(),
       updatedAtMs: Date.now(),
     });

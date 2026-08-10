@@ -6,7 +6,6 @@ interface AssistantThreadLifecycleEvent {
   threadTs: string;
   sourceChannelId?: string;
   getSlackAdapter: () => SlackAdapter;
-  onContextChannelResolved: (sourceChannelId: string) => Promise<void>;
 }
 
 async function syncAssistantThreadContext(
@@ -17,9 +16,6 @@ async function syncAssistantThreadContext(
   if (!channelId) {
     throw new Error("Assistant thread initialization requires a channel ID");
   }
-  const sourceChannelId = event.sourceChannelId
-    ? normalizeSlackConversationId(event.sourceChannelId)
-    : undefined;
   const slack = event.getSlackAdapter();
   if (options.setInitialTitle) {
     await slack.setAssistantTitle(channelId, event.threadTs, "Junior");
@@ -35,12 +31,6 @@ async function syncAssistantThreadContext(
       message: "Generate an image based on this conversation.",
     },
   ]);
-
-  if (!sourceChannelId) {
-    return;
-  }
-
-  await event.onContextChannelResolved(sourceChannelId);
 }
 
 /** Initialize a newly started Slack assistant thread. */

@@ -101,11 +101,6 @@ describe("prompt builders", () => {
         activeMcpCatalogs: [
           { provider: "alpha-provider", available_tool_count: 2 },
         ],
-        artifactState: {
-          listColumnMap: {},
-          lastCanvasId: "canvas-1",
-          lastCanvasUrl: "https://example.com/canvas-1",
-        },
         configuration: {
           sentry_project: "junior",
         },

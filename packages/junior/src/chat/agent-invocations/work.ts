@@ -10,8 +10,6 @@ import {
   getPersistedThreadState,
   persistThreadStateById,
 } from "@/chat/runtime/thread-state";
-import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
-import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import {
   failTurnRecord,
   getTurnRecord,
@@ -291,7 +289,6 @@ export function createAgentInvocationWorker(options: {
     const lifecycle = new ConversationTurnLifecycleService(
       getConversationEventStore(),
     );
-    let artifacts: ThreadArtifactsState;
     let sandboxRef: SandboxRef | undefined;
     let history: PiMessage[];
     try {
@@ -332,7 +329,6 @@ export function createAgentInvocationWorker(options: {
           conversationId: invocation.childConversationId,
         }),
       ]);
-      artifacts = coerceThreadArtifactsState(persisted);
       sandboxRef = getPersistedSandboxState(persisted);
       history = projection.messages;
     } catch (error) {
@@ -382,23 +378,14 @@ export function createAgentInvocationWorker(options: {
           reasoningLevel: invocation.reasoningLevel,
         },
         state: {
-          artifactState: artifacts,
           sandboxRef,
         },
         durability: {
           onInputCommitted: acknowledge,
           shouldYield: context.shouldYield,
-          onArtifactStateUpdated: async (nextArtifacts) => {
-            artifacts = nextArtifacts;
-            await persistThreadStateById(invocation.childConversationId, {
-              artifacts,
-              sandboxRef,
-            });
-          },
           onSandboxRefChanged: async (nextSandboxRef) => {
             sandboxRef = nextSandboxRef;
             await persistThreadStateById(invocation.childConversationId, {
-              artifacts,
               sandboxRef,
             });
           },
@@ -457,9 +444,6 @@ export function createAgentInvocationWorker(options: {
     const result = outcome.result;
     const failed = result.diagnostics.outcome !== "success";
     await persistThreadStateById(invocation.childConversationId, {
-      artifacts: result.artifactStatePatch
-        ? { ...artifacts, ...result.artifactStatePatch }
-        : artifacts,
       sandboxRef: result.sandboxRef ?? sandboxRef,
     });
     if (result.piMessages?.length) {

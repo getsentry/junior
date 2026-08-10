@@ -47,7 +47,6 @@ import { publishAppHomeView } from "@/chat/slack/app-home";
 import { getSlackClient } from "@/chat/slack/client";
 import { createSlackResumeActor, type Actor } from "@/chat/actor";
 import { getStateAdapter } from "@/chat/state/adapter";
-import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import {
   failTurnRecord,
   getTurnRecord,
@@ -75,10 +74,7 @@ import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { requireSlackDestination } from "@/chat/destination";
 import { relayLocalOAuthCallback } from "@/chat/local/oauth-relay";
 import { getSqlExecutor } from "@/chat/db";
-import {
-  upsertIdentity,
-  upsertLinkedIdentity,
-} from "@/chat/identities/sql";
+import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
 import { lookupSlackUserProfile } from "@/chat/slack/users";
 import { parseSlackUserId } from "@/chat/slack/ids";
 
@@ -127,10 +123,8 @@ async function persistCompletedOAuthReplyState(args: {
     conversation,
     conversationId: args.conversationId,
   });
-  const artifacts = coerceThreadArtifactsState(currentState);
   const userMessage = getTurnUserMessage(conversation, args.sessionId);
   const statePatch = buildDeliveredTurnStatePatch({
-    artifacts,
     conversation,
     reply: args.reply,
     sessionId: args.sessionId,
@@ -311,7 +305,6 @@ async function resumeOAuthSessionRecordTurn(
         conversation: lockedConversation,
         conversationId: stored.resumeConversationId!,
       });
-      const lockedArtifacts = coerceThreadArtifactsState(lockedState);
       const lockedPendingAuth = getConversationPendingAuth({
         conversation: lockedConversation,
         kind: "plugin",
@@ -440,14 +433,12 @@ async function resumeOAuthSessionRecordTurn(
             actor,
             destination,
             source: routing.source,
-            toolChannelId:
-              lockedArtifacts.assistantContextChannelId ?? stored.channelId!,
+            toolChannelId: stored.channelId!,
           },
           policy: {
             locationConfiguration: lockedLocationConfiguration,
           },
           state: {
-            artifactState: lockedArtifacts,
             pendingAuth: lockedPendingAuth,
             sandboxRef: getPersistedSandboxState(lockedState),
           },
@@ -697,7 +688,8 @@ export async function GET(
     ...parsedTokenResponse,
     ...(account ? { account } : {}),
   });
-  const slackActor = stored.actor?.platform === "slack" ? stored.actor : undefined;
+  const slackActor =
+    stored.actor?.platform === "slack" ? stored.actor : undefined;
   if (account && slackActor) {
     await runBestEffort(
       async () => {

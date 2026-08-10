@@ -428,10 +428,6 @@ describe("oauth callback integration", () => {
             },
           },
         },
-        artifacts: {
-          assistantContextChannelId: "C999",
-          listColumnMap: {},
-        },
       });
     await seedVisibleTranscriptFromThreadState(
       stateAdapterModule.getStateAdapter(),
@@ -591,9 +587,6 @@ describe("oauth callback integration", () => {
           },
         },
       },
-      artifacts: {
-        assistantContextChannelId: "COLD",
-      },
     };
     const freshState = {
       conversation: {
@@ -632,9 +625,6 @@ describe("oauth callback integration", () => {
             linkSentAtMs: 1,
           },
         },
-      },
-      artifacts: {
-        assistantContextChannelId: "CFRESH",
       },
     };
 

@@ -28,7 +28,6 @@ import {
 } from "@/chat/conversations/projection";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
-import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { createProviderError } from "@/chat/services/provider-error";
@@ -1267,11 +1266,6 @@ describe("local agent runner", () => {
 
     const generateReply = vi.fn<AgentRunner["run"]>(async (request) => {
       const context = flattenAgentRunRequestForTest(request);
-
-      await context.onArtifactStateUpdated?.({
-        lastCanvasId: "canvas-undelivered",
-        lastCanvasUrl: "https://example.invalid/canvas",
-      });
       await context.onSandboxRefChanged?.({
         id: "sandbox-undelivered",
         profileHash: "profile-undelivered",
@@ -1300,7 +1294,6 @@ describe("local agent runner", () => {
       [],
     );
     const state = await getPersistedThreadState(conversationId!);
-    expect(coerceThreadArtifactsState(state).lastCanvasId).toBeUndefined();
     expect(getPersistedSandboxState(state)).toBeUndefined();
     const visible = coerceThreadConversationState(state);
     await hydrateConversationMessages({

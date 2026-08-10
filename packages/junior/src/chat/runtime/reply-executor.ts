@@ -99,7 +99,6 @@ import {
   resolveSlackChannelTypeFromMessage,
   resolveSlackConversationContext,
 } from "@/chat/slack/conversation-context";
-import { type ThreadArtifactsState } from "@/chat/state/artifacts";
 import { lookupSlackUser } from "@/chat/slack/user";
 import { createActor, parseActorUserId, type Actor } from "@/chat/actor";
 import {
@@ -176,15 +175,6 @@ async function persistThreadRuntimeStateWithRetry(
   patch: Parameters<typeof persistThreadState>[1],
 ): Promise<void> {
   await persistWithRetry(() => persistThreadRuntimeState(thread, patch));
-}
-
-function collectCanvasUrls(artifacts: Partial<ThreadArtifactsState>) {
-  return new Set(
-    [
-      artifacts.lastCanvasUrl,
-      ...(artifacts.recentCanvases?.map((canvas) => canvas.url) ?? []),
-    ].filter((url): url is string => typeof url === "string" && url !== ""),
-  );
 }
 
 /**
@@ -313,24 +303,6 @@ async function resolveChannelName(thread: Thread): Promise<string | undefined> {
   } catch {
     return undefined;
   }
-}
-
-function getCurrentTurnCanvasUrl(args: {
-  before: Partial<ThreadArtifactsState>;
-  after: Partial<ThreadArtifactsState>;
-}): string | undefined {
-  const previousUrls = collectCanvasUrls(args.before);
-  const latestUrls = collectCanvasUrls(args.after);
-  for (const url of latestUrls) {
-    if (!previousUrls.has(url)) {
-      return url;
-    }
-  }
-  return undefined;
-}
-
-function buildCanvasRecoveryReply(canvasUrl: string) {
-  return `I created the canvas, but the turn was interrupted before I could finish the thread reply: ${canvasUrl}`;
 }
 
 function collectTurnAttachments(
@@ -1037,8 +1009,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             surface: options.execution?.surface ?? "slack",
           });
         };
-        let latestArtifacts = preparedState.artifacts;
-        let assistantTitleArtifacts: Partial<ThreadArtifactsState> = {};
         let turnWakeError: unknown;
         let boundaryFailureCode: "agent_run_failed" | "delivery_failed" =
           "agent_run_failed";
@@ -1271,7 +1241,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           const assistantTitleTask = maybeUpdateAssistantTitle({
             assistantThreadContext,
             assistantUserName: botConfig.userName,
-            artifacts: preparedState.artifacts,
             channelId,
             conversation: preparedState.conversation,
             generateThreadTitle: deps.services.generateThreadTitle,
@@ -1285,18 +1254,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             .then(async (titleUpdateResult) => {
               if (!titleUpdateResult) return;
 
-              assistantTitleArtifacts = {
-                assistantTitleSourceMessageId:
-                  titleUpdateResult.sourceMessageId,
-                ...(titleUpdateResult.title
-                  ? { assistantTitle: titleUpdateResult.title }
-                  : {}),
-              };
-              latestArtifacts = {
-                ...latestArtifacts,
-                ...assistantTitleArtifacts,
-              };
-
               if (conversationId && titleUpdateResult.title) {
                 try {
                   await getConversationStore().recordActivity({
@@ -1309,20 +1266,11 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   logException(error, "conversation.title.persist.failed");
                 }
               }
-
-              try {
-                await persistThreadState(thread, {
-                  artifacts: latestArtifacts,
-                });
-              } catch (error) {
-                logException(error, "assistant.title.artifact_persist.failed");
-              }
             })
             .catch((error) => {
               logException(error, "assistant.title.task.failed");
             });
-          const toolChannelId =
-            preparedState.artifacts.assistantContextChannelId ?? channelId;
+          const toolChannelId = channelId;
           const activeInstructionAuthorId =
             actor?.userId ?? parseActorUserId(message.author.userId);
           const activeInstructionAuthorName =
@@ -1396,7 +1344,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               turnDeadlineAtMs: getTurnRequestDeadline()?.deadlineAtMs,
             },
             state: {
-              artifactState: preparedState.artifacts,
               pendingAuth: preparedState.conversation.processing.pendingAuth,
               sandboxRef: preparedState.sandboxRef,
             },
@@ -1412,15 +1359,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               onSandboxRefChanged: async (sandboxRef) => {
                 await persistThreadState(thread, {
                   sandboxRef,
-                });
-              },
-              onArtifactStateUpdated: async (artifacts) => {
-                latestArtifacts = {
-                  ...artifacts,
-                  ...assistantTitleArtifacts,
-                };
-                await persistThreadState(thread, {
-                  artifacts: latestArtifacts,
                 });
               },
               recordPendingAuth: async (pendingAuth) => {
@@ -1545,23 +1483,12 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           shouldPersistFailureState = false;
           boundaryFailureCode = "agent_run_failed";
 
-          const artifactStatePatch: Partial<ThreadArtifactsState> =
-            reply.artifactStatePatch ? { ...reply.artifactStatePatch } : {};
-
           const completedState = buildDeliveredTurnStatePatch({
-            artifactStatePatch: {
-              ...artifactStatePatch,
-              ...assistantTitleArtifacts,
-            },
-            artifacts: latestArtifacts,
             conversation: preparedState.conversation,
             reply,
             sessionId: turnId,
             userMessageId: preparedState.userMessageId,
           });
-          if (completedState.artifacts) {
-            latestArtifacts = completedState.artifacts;
-          }
           try {
             // Commit the durable delivery record first so recovery cannot
             // regenerate an accepted reply. Persist canonical message
@@ -1626,20 +1553,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               }),
             );
             await persistThreadRuntimeStateWithRetry(thread, completedState);
-            if (
-              completedState.artifacts &&
-              (assistantTitleArtifacts.assistantTitle !== undefined ||
-                assistantTitleArtifacts.assistantTitleSourceMessageId !==
-                  undefined) &&
-              (completedState.artifacts.assistantTitle !==
-                assistantTitleArtifacts.assistantTitle ||
-                completedState.artifacts.assistantTitleSourceMessageId !==
-                  assistantTitleArtifacts.assistantTitleSourceMessageId)
-            ) {
-              await persistThreadRuntimeStateWithRetry(thread, {
-                artifacts: latestArtifacts,
-              });
-            }
           } catch (commitError) {
             // The user already saw the reply; keep the turn successful and
             // record the persistence failure for operators.
@@ -1756,56 +1669,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             logException(failureCause, "slack.turn.execution.failed", {
               "app.ai.failure_code": failureCode,
             });
-          const createdCanvasUrl = getCurrentTurnCanvasUrl({
-            before: preparedState.artifacts,
-            after: latestArtifacts,
-          });
-          if (createdCanvasUrl) {
-            const dispatchOutcome = terminalDispatchFailureOutcome ?? "failed";
-            const errorMessage =
-              failureCause instanceof Error
-                ? failureCause.message
-                : "Agent turn failed after creating a canvas";
-            const recoveryText = buildCanvasRecoveryReply(createdCanvasUrl);
-            await deliverAssistantMessage(recoveryText, dispatchOutcome);
-            if (conversationId) {
-              const sessionRecord = await getTurnRecord(conversationId, turnId);
-              if (sessionRecord) {
-                await failTurnRecord({
-                  conversationId,
-                  expectedVersion: sessionRecord.version,
-                  turnId: turnId,
-                  errorMessage,
-                });
-              }
-            }
-            options.onTurnOutcome?.({
-              errorMessage,
-              outcome: dispatchOutcome,
-            });
-            markTurnClosed({
-              conversation: preparedState.conversation,
-              nowMs: Date.now(),
-              sessionId: turnId,
-            });
-            await persistThreadState(thread, {
-              artifacts: latestArtifacts,
-              conversation: preparedState.conversation,
-            });
-            if (conversationId && !lifecycleTerminalized) {
-              await deps.services.turnLifecycle.fail({
-                conversationId,
-                createdAtMs: Date.now(),
-                ...(failureEventId ? { eventId: failureEventId } : {}),
-                failureCode,
-                turnId,
-              });
-              lifecycleTerminalized = true;
-            }
-            persistedAtLeastOnce = true;
-            shouldPersistFailureState = false;
-            return;
-          }
           throw new ConversationTurnBoundaryError({
             cause: failureCause,
             ...(failureEventId ? { eventId: failureEventId } : {}),
