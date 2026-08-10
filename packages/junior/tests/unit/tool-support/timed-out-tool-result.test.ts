@@ -44,27 +44,23 @@ describe("projectTimedOutToolResult", () => {
     );
   });
 
-  it("still projects when details only carry a target", () => {
+  it("leaves finished tool results alone", () => {
     expect(
       projectTimedOutToolResult({
-        content: [{ type: "text", text: "partial" }],
-        details: { target: "editFile" },
-      }),
-    ).toEqual({
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify({
-            target: "editFile",
-            timed_out: true,
-          }),
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              target: "editFile",
+              ok: true,
+            }),
+          },
+        ],
+        details: {
+          target: "editFile",
+          ok: true,
         },
-      ],
-      details: {
-        target: "editFile",
-        timed_out: true,
-      },
-      isError: false,
-    });
+      }),
+    ).toBeUndefined();
   });
 });

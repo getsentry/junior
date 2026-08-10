@@ -1099,17 +1099,21 @@ async function executeAgentRunInPrivacyContext(
       },
       afterToolCall: async ({ result, toolCall }, signal) => {
         // Host continuity is session-owned (`resumeReason: "timeout"` + auto
-        // continue). If this slice preempted a tool, reuse the normal
-        // `timed_out` tool field — not cancelled/deadline jargon.
-        const sourceResult =
+        // continue). Only rewrite tool attempts that themselves aborted; a
+        // finished sibling must keep its real result. Project those preempted
+        // attempts onto the normal `timed_out` field — not cancelled jargon.
+        const timedOutResult =
           runResume.timedOut && signal?.aborted
             ? projectTimedOutToolResult(result)
-            : result;
+            : undefined;
+        const sourceResult = timedOutResult ?? result;
         const projectedResult = wiring.projectActionReviewResult(
           toolCall.id,
           sourceResult,
         );
-        return projectedResult !== result ? projectedResult : undefined;
+        return timedOutResult || projectedResult !== result
+          ? projectedResult
+          : undefined;
       },
       prepareNextTurnWithContext: async (nextTurn, hookSignal) => {
         try {
