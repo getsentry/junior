@@ -181,6 +181,7 @@ function slackSideEffectArtifacts(result: EvalResult): JsonValue {
   return {
     suggested_prompt_calls: result.slackAdapter.promptCalls.length,
     thread_title_calls: result.slackAdapter.titleCalls.length,
+    thread_titles: result.slackAdapter.titleCalls.map((call) => call.title),
   };
 }
 
@@ -793,6 +794,7 @@ export const slackEvals = {
 export interface SlackSideEffects {
   suggestedPromptCalls: number;
   threadTitleCalls: number;
+  threadTitles: string[];
 }
 
 function artifactNumber(
@@ -806,6 +808,17 @@ function artifactNumber(
   return value;
 }
 
+function artifactStringArray(
+  artifact: Record<string, JsonValue>,
+  key: string,
+): string[] {
+  const value = artifact[key];
+  if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string")) {
+    throw new Error(`Missing string-array Slack side-effect artifact: ${key}`);
+  }
+  return value as string[];
+}
+
 /** Returns deterministic Slack side effects captured outside the rubric prompt. */
 export function slackSideEffects(result: Pick<HarnessRun, "artifacts">) {
   const artifact = result.artifacts?.slack_side_effects;
@@ -815,7 +828,17 @@ export function slackSideEffects(result: Pick<HarnessRun, "artifacts">) {
   return {
     suggestedPromptCalls: artifactNumber(artifact, "suggested_prompt_calls"),
     threadTitleCalls: artifactNumber(artifact, "thread_title_calls"),
+    threadTitles: artifactStringArray(artifact, "thread_titles"),
   } satisfies SlackSideEffects;
+}
+
+/** Return runtime conversation ids recorded for this harness run. */
+export function conversationIds(result: Pick<HarnessRun, "session">): string[] {
+  const value = result.session.metadata?.[CONVERSATION_IDS_METADATA_KEY];
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((entry): entry is string => typeof entry === "string");
 }
 
 export interface AuthorizationCompletionView {

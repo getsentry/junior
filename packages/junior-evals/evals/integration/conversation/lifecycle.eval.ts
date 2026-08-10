@@ -1,6 +1,8 @@
 import { describeEval, toolCalls } from "vitest-evals";
-import { expect } from "vitest";
+import { expect, vi } from "vitest";
+import { getConversationStore } from "@/chat/db";
 import {
+  conversationIds,
   mention,
   rubric,
   slackEvals,
@@ -11,7 +13,7 @@ import {
 } from "../../../src/helpers";
 
 describeEval("Lifecycle and Resilience", slackEvals, (it) => {
-  it("when an assistant thread starts, set title and prompts without posting a reply", async ({
+  it("when an assistant thread starts, set the default title and prompts without posting a reply", async ({
     run,
   }) => {
     const result = await run({
@@ -22,6 +24,32 @@ describeEval("Lifecycle and Resilience", slackEvals, (it) => {
     expect(slackSideEffects(result)).toMatchObject({
       suggestedPromptCalls: 1,
       threadTitleCalls: 1,
+      threadTitles: ["Junior"],
+    });
+  });
+
+  it("when the first human message lands, store a non-default conversation title", async ({
+    run,
+  }) => {
+    const result = await run({
+      initialEvents: [
+        mention("How do I debug a Node.js memory leak in production?"),
+      ],
+      requireSandboxReady: false,
+    });
+
+    const ids = conversationIds(result);
+    expect(ids.length).toBeGreaterThan(0);
+
+    // Title generation is detached from reply delivery, so wait briefly for the
+    // automatic persist path to finish after the first human message.
+    await vi.waitFor(async () => {
+      const stored = await getConversationStore().get({
+        conversationId: ids[0]!,
+      });
+      const title = stored?.title?.trim() ?? "";
+      expect(title.length).toBeGreaterThan(0);
+      expect(title).not.toBe("Junior");
     });
   });
 
