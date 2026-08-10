@@ -698,49 +698,6 @@ export async function runNextPausedTurn(
   );
 }
 
-/**
- * Finish a stranded running turn whose destination reply is already durable.
- *
- * Call only when `turnHasReply` is true. Live turns complete after Slack accepts
- * a tool-free reply. This path covers lease loss after that accept, before the
- * turn record is closed. Returns whether the turn record closed; callers must
- * not fall through to failure fallback either way.
- */
-async function completeTurnWithAcceptedReply(args: {
-  conversation: ReturnType<typeof coerceThreadConversationState>;
-  conversationId: string;
-  turn: {
-    turnId: string;
-    version: number;
-  };
-}): Promise<boolean> {
-  const acceptedReply = [...args.conversation.messages]
-    .reverse()
-    .find(
-      (message) =>
-        message.role === "assistant" &&
-        message.id.startsWith(`${args.turn.turnId}:assistant:`),
-    );
-  const completed = await completeTurnRecord({
-    conversationId: args.conversationId,
-    expectedVersion: args.turn.version,
-    resultMessageId: acceptedReply?.meta?.slackTs,
-    turnId: args.turn.turnId,
-  });
-  if (!completed) {
-    return false;
-  }
-  markTurnCompleted({
-    conversation: args.conversation,
-    nowMs: Date.now(),
-    sessionId: args.turn.turnId,
-  });
-  await persistThreadStateById(args.conversationId, {
-    conversation: args.conversation,
-  });
-  return true;
-}
-
 async function runNextPausedTurnInContext(
   conversationId: string,
   options: PausedTurnOptions,
@@ -758,15 +715,27 @@ async function runNextPausedTurnInContext(
     ? await getTurnRecord(conversationId, newest.turnId)
     : undefined;
   if (running?.state === "running") {
-    // An accepted destination reply owns the user outcome. Never post a
-    // stranded-failure fallback after that, even if the turn record did not
-    // close on this attempt.
     if (turnHasReply(conversation, running.turnId)) {
-      await completeTurnWithAcceptedReply({
-        conversation,
+      const acceptedReply = [...conversation.messages]
+        .reverse()
+        .find(
+          (message) =>
+            message.role === "assistant" &&
+            message.id.startsWith(`${running.turnId}:assistant:`),
+        );
+      const completed = await completeTurnRecord({
         conversationId,
-        turn: running,
+        expectedVersion: running.version,
+        resultMessageId: acceptedReply?.meta?.slackTs,
+        turnId: running.turnId,
       });
+      if (!completed) return false;
+      markTurnCompleted({
+        conversation,
+        nowMs: Date.now(),
+        sessionId: running.turnId,
+      });
+      await persistThreadStateById(conversationId, { conversation });
       return false;
     }
 
