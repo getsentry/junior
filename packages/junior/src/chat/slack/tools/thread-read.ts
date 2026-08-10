@@ -3,14 +3,10 @@ import { listThreadReplies } from "@/chat/slack/channel";
 import {
   checkSlackChannelReadAccess,
   joinPublicChannelForRead,
-  type DestinationVisibilityReader,
-  type SlackChannelJoinWriter,
-  type SlackConversationInfoReader,
 } from "@/chat/slack/tool-support/channel-access";
 import {
   optionalSlackChannelRefParam,
   resolveSlackChannelRef,
-  type SlackChannelNameResolver,
 } from "@/chat/slack/tool-support/channel-target";
 import { z } from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
@@ -82,18 +78,10 @@ function truncateMessages(
 }
 
 /** Create a tool that reads a Slack thread from a shared message URL or explicit coordinates. */
-export function createSlackThreadReadTool(
-  context: SlackToolContext,
-  deps: {
-    conversationInfo?: SlackConversationInfoReader;
-    joinChannel?: SlackChannelJoinWriter;
-    nameResolver?: SlackChannelNameResolver;
-    visibilityStore?: DestinationVisibilityReader;
-  } = {},
-) {
+export function createSlackThreadReadTool(context: SlackToolContext) {
   return zodTool({
     description:
-      "Read a Slack thread from a shared archive URL or explicit channel + timestamp. Use when the user pastes a Slack message link and you need that thread. Works for the current conversation and public channels. If the public channel is readable but the bot is not a member yet, Junior joins on demand and retries. Private channels and DMs outside the current conversation stay blocked.",
+      "Read a Slack thread from a shared archive URL or explicit channel + timestamp. Works for the current conversation and public channels.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -104,13 +92,11 @@ export function createSlackThreadReadTool(
       url: z
         .string()
         .min(1)
-        .describe(
-          "Slack message archive URL, e.g. https://workspace.slack.com/archives/C123/p1700000000123456",
-        )
+        .describe("Slack message archive URL.")
         .optional(),
       channel_id: optionalSlackChannelRefParam,
       ts: slackTimestampParam(
-        "Slack message timestamp (e.g. 1700000000.123456). May be the thread root or any message in the thread.",
+        "Slack message timestamp. May be the thread root or any message in the thread.",
       ).optional(),
       limit: z.coerce
         .number()
@@ -149,7 +135,6 @@ export function createSlackThreadReadTool(
         const target = await resolveSlackChannelRef({
           field: "channel_id",
           value: channel_id,
-          nameResolver: deps.nameResolver,
         });
         channelId = target.channelId;
         messageTs = parsedTs.value;
@@ -164,8 +149,6 @@ export function createSlackThreadReadTool(
           context.destinationChannelId,
           context.sourceChannelId,
         ],
-        conversationInfo: deps.conversationInfo,
-        store: deps.visibilityStore,
         targetChannelId: channelId,
         teamId: context.teamId,
       });
@@ -197,7 +180,6 @@ export function createSlackThreadReadTool(
         if (canJoin) {
           const joinResult = await joinPublicChannelForRead({
             channelName,
-            joinChannel: deps.joinChannel,
             targetChannelId: channelId,
           });
           if (!joinResult.ok) {

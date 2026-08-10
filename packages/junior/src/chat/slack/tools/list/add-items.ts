@@ -20,8 +20,7 @@ export function createSlackListAddItemsTool(state: ToolState) {
       openWorldHint: true,
       readOnlyHint: false,
     },
-    description:
-      "Add tasks to a Slack list. Use the list_id from the list create result or conversation history.",
+    description: "Add tasks to a Slack list.",
     inputSchema: z.object({
       list_id: slackListIdParam,
       items: z

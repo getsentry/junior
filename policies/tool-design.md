@@ -59,6 +59,18 @@ unsafe requests.
   `packages/junior/src/chat/tool-support`. Plugin packages should follow the same
   split locally. Files under any `tools` directory must be concrete tool
   definitions or tool executors, not shared helper modules.
+- Keep one first-party tool definition per file under any `tools` directory.
+- Write short tool descriptions in plain language. State what the tool does and
+  what it returns. Do not name the bot product (the display name is
+  configurable). Do not narrate when to call the tool, how it implements the
+  work, or other tools to prefer unless that contrast is the contract.
+- Put field meaning on the parameter schema with concise `describe()` text. Do
+  not repeat parameter shape or value formats in the tool description when the
+  shared param already owns that text. Reuse shared param schemas across tools
+  that accept the same value kind.
+- Prefer direct module imports and real dependencies over optional injected
+  ports on tool factories. Add dependency injection only when production code
+  needs more than one implementation.
 - Keep runtime authority, destination, actor, credential, and durable context
   out of model-facing arguments unless the owning module explicitly allows them.
   See `policies/runtime-boundary-schemas.md`.

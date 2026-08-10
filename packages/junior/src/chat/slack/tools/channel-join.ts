@@ -1,15 +1,9 @@
 import { joinPublicChannel } from "@/chat/slack/channel";
 import { SlackActionError } from "@/chat/slack/client";
-import {
-  checkSlackChannelReadAccess,
-  type DestinationVisibilityReader,
-  type SlackChannelJoinWriter,
-  type SlackConversationInfoReader,
-} from "@/chat/slack/tool-support/channel-access";
+import { checkSlackChannelReadAccess } from "@/chat/slack/tool-support/channel-access";
 import {
   resolveSlackChannelRef,
   slackChannelRefParam,
-  type SlackChannelNameResolver,
 } from "@/chat/slack/tool-support/channel-target";
 import type { SlackToolContext } from "@/chat/slack/tool-support/context";
 import { z } from "zod";
@@ -17,19 +11,10 @@ import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
-/** Create a tool that joins one public Slack channel on demand. */
-export function createSlackChannelJoinTool(
-  context: SlackToolContext,
-  deps: {
-    conversationInfo?: SlackConversationInfoReader;
-    joinChannel?: SlackChannelJoinWriter;
-    nameResolver?: SlackChannelNameResolver;
-    visibilityStore?: DestinationVisibilityReader;
-  } = {},
-) {
+/** Create a tool that joins one public Slack channel. */
+export function createSlackChannelJoinTool(context: SlackToolContext) {
   return zodTool({
-    description:
-      "Join a public Slack channel. Use when the user asks Junior to join or when reading a public channel requires membership.",
+    description: "Join a public Slack channel.",
     annotations: {
       destructiveHint: false,
       idempotentHint: false,
@@ -44,7 +29,6 @@ export function createSlackChannelJoinTool(
       const target = await resolveSlackChannelRef({
         field: "channel_id",
         value: channel_id,
-        nameResolver: deps.nameResolver,
       });
 
       const access = await checkSlackChannelReadAccess({
@@ -52,8 +36,6 @@ export function createSlackChannelJoinTool(
           context.destinationChannelId,
           context.sourceChannelId,
         ],
-        conversationInfo: deps.conversationInfo,
-        store: deps.visibilityStore,
         targetChannelId: target.channelId,
         teamId: context.teamId,
       });
@@ -71,14 +53,8 @@ export function createSlackChannelJoinTool(
         };
       }
 
-      const joinChannel =
-        deps.joinChannel ??
-        ({
-          joinPublicChannel,
-        } satisfies SlackChannelJoinWriter);
-
       try {
-        await joinChannel.joinPublicChannel(target.channelId);
+        await joinPublicChannel(target.channelId);
       } catch (error) {
         if (error instanceof SlackActionError) {
           if (error.code === "missing_scope") {

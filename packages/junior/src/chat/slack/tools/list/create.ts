@@ -15,7 +15,7 @@ export function createSlackListCreateTool(state: ToolState) {
       readOnlyHint: false,
     },
     description:
-      "Create a Slack todo list for action tracking. Use when the user needs structured tasks with ownership/completion tracking. Do not use for one-off notes without task management needs.",
+      "Create a Slack todo list.",
     inputSchema: z.object({
       name: z.string().min(1).max(160).describe("Name for the new Slack list."),
     }),

@@ -10,14 +10,10 @@ import {
 import {
   checkSlackChannelReadAccess,
   joinPublicChannelForRead,
-  type DestinationVisibilityReader,
-  type SlackChannelJoinWriter,
-  type SlackConversationInfoReader,
 } from "@/chat/slack/tool-support/channel-access";
 import {
   optionalSlackChannelRefParam,
   resolveOptionalSlackChannelRef,
-  type SlackChannelNameResolver,
 } from "@/chat/slack/tool-support/channel-target";
 import { z } from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
@@ -34,7 +30,7 @@ const booleanInput = (description: string) =>
     .describe(description);
 
 /**
- * Accept numeric Slack ts bounds and recover matching Junior
+ * Accept numeric Slack ts bounds and recover matching
  * `slack:<channel>:<ts>` references before Slack API calls.
  */
 function normalizeRangeTimestamp(
@@ -72,18 +68,10 @@ function normalizeRangeTimestamp(
 }
 
 /** Create the channel history tool with optional cross-channel targets. */
-export function createSlackChannelListMessagesTool(
-  context: SlackToolContext,
-  deps: {
-    conversationInfo?: SlackConversationInfoReader;
-    joinChannel?: SlackChannelJoinWriter;
-    nameResolver?: SlackChannelNameResolver;
-    visibilityStore?: DestinationVisibilityReader;
-  } = {},
-) {
+export function createSlackChannelListMessagesTool(context: SlackToolContext) {
   return zodTool({
     description:
-      "List messages from Slack channel history. Defaults to the active channel. Pass `channel_id` as a channel id (`C123`) or public channel name (`#foo`) to read another public channel. For public channels the bot is not in yet, Junior joins on demand and retries. Use for recent or historical channel context outside this thread. This is raw Slack channel history, not Junior-retained chat search and not workspace-wide search.",
+      "List messages from Slack channel history. Defaults to the active channel. Pass `channel_id` to read another public channel.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -135,7 +123,6 @@ export function createSlackChannelListMessagesTool(
         field: "channel_id",
         value: channel_id,
         defaultChannelId: context.destinationChannelId,
-        nameResolver: deps.nameResolver,
       });
       const targetChannelId = target.channelId;
 
@@ -144,8 +131,6 @@ export function createSlackChannelListMessagesTool(
           context.destinationChannelId,
           context.sourceChannelId,
         ],
-        conversationInfo: deps.conversationInfo,
-        store: deps.visibilityStore,
         targetChannelId,
         teamId: context.teamId,
       });
@@ -196,7 +181,6 @@ export function createSlackChannelListMessagesTool(
         if (canJoin) {
           const joinResult = await joinPublicChannelForRead({
             channelName,
-            joinChannel: deps.joinChannel,
             targetChannelId,
           });
           if (!joinResult.ok) {

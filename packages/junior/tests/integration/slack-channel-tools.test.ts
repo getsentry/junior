@@ -616,13 +616,6 @@ describe("slack channel tools", () => {
       createContext("list other channel", {
         sourceChannelId: "C123",
       }),
-      {
-        visibilityStore: {
-          async getDestinationVisibility() {
-            return undefined;
-          },
-        },
-      },
     );
 
     const result = await executeTool(tool, {
@@ -650,15 +643,7 @@ describe("slack channel tools", () => {
       }),
     });
     const tool = createSlackChannelListMessagesTool(
-      createContext("list private channel"),
-      {
-        visibilityStore: {
-          async getDestinationVisibility() {
-            return undefined;
-          },
-        },
-      },
-    );
+      createContext("list private channel"));
 
     await expect(
       executeTool(tool, { channel_id: "C0PRIVATE" }),
@@ -785,15 +770,7 @@ describe("slack channel tools", () => {
       }),
     });
     const tool = createSlackChannelListMessagesTool(
-      createContext("list by name in channel_id"),
-      {
-        visibilityStore: {
-          async getDestinationVisibility() {
-            return undefined;
-          },
-        },
-      },
-    );
+      createContext("list by name in channel_id"));
     const result = await executeTool(tool, {
       channel_id: "#proj-foo",
       limit: 5,
@@ -875,15 +852,7 @@ describe("slack channel tools", () => {
       }),
     });
     const tool = createSlackChannelListMessagesTool(
-      createContext("history after join"),
-      {
-        visibilityStore: {
-          async getDestinationVisibility() {
-            return undefined;
-          },
-        },
-      },
-    );
+      createContext("history after join"));
     const result = await executeTool(tool, { channel_id: "C0JOINME", limit: 5 });
     expect(result).toMatchObject({
       channel_id: "C0JOINME",

@@ -6,8 +6,7 @@ import { zodTool } from "@/chat/tool-support/zod-tool";
 /** Create a tool that reads items from an explicit Slack list. */
 export function createSlackListGetItemsTool() {
   return zodTool({
-    description:
-      "Read items from a Slack list. Use the list_id from a prior tool result or conversation history.",
+    description: "Read items from a Slack list.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,

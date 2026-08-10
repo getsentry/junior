@@ -202,7 +202,7 @@ export async function joinPublicChannel(
         channel: channelId,
       }),
     3,
-    { action: "conversations.join" },
+    { action: "conversations.join", idempotent: true },
   );
 }
 

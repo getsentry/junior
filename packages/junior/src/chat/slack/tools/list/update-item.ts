@@ -41,8 +41,7 @@ export function createSlackListUpdateItemTool(state: ToolState) {
       openWorldHint: true,
       readOnlyHint: false,
     },
-    description:
-      "Update an item in a Slack list. Use list_id and item_id from prior tool results or conversation history.",
+    description: "Update an item in a Slack list.",
     inputSchema: updateListItemInputSchema,
     outputSchema: juniorToolOutputSchema,
     execute: async ({ list_id, item_id, completed, title }) => {

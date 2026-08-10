@@ -13,69 +13,75 @@ const DEFAULT_LIMIT = 10;
 const DEFAULT_CONTENT_TYPES = ["messages"] as const;
 const CONTENT_TYPES = ["messages", "files", "channels", "users"] as const;
 
-const optionalTimestampSchema = z.preprocess(
+const optionalUnixTimestampParam = z.preprocess(
   (value) =>
     typeof value === "string" && value.trim() === "" ? undefined : value,
   z.coerce
     .number()
     .int()
     .nonnegative()
-    .describe("Optional Unix timestamp bound.")
+    .describe("Unix timestamp bound.")
     .optional(),
 );
 
+const optionalString = z.string().min(1).optional();
+const optionalUrl = z.string().url().optional();
+const optionalBoolean = z.boolean().optional();
+
 const searchMessageSchema = z.object({
-  author_name: z.string().optional(),
-  author_user_id: z.string().optional(),
-  channel_id: z.string().min(1),
-  channel_name: z.string().optional(),
-  message_ts: z.string().min(1),
-  content: z.string(),
-  is_author_bot: z.boolean().optional(),
-  permalink: z.string().url(),
+  author_name: optionalString.describe("Author display name."),
+  author_user_id: optionalString.describe("Author user ID."),
+  channel_id: z.string().min(1).describe("Channel ID."),
+  channel_name: optionalString.describe("Channel name."),
+  message_ts: z.string().min(1).describe("Message timestamp."),
+  content: z.string().describe("Message text."),
+  is_author_bot: optionalBoolean.describe("Whether the author is a bot."),
+  permalink: z.string().url().describe("Message permalink."),
 });
 
 const searchFileSchema = z.object({
-  file_id: z.string().min(1).optional(),
-  title: z.string().optional(),
-  name: z.string().optional(),
-  filetype: z.string().optional(),
-  user_id: z.string().optional(),
-  user_name: z.string().optional(),
-  channel_id: z.string().optional(),
-  channel_name: z.string().optional(),
-  permalink: z.string().url().optional(),
-  content: z.string().optional(),
+  file_id: optionalString.describe("File ID."),
+  title: optionalString.describe("File title."),
+  name: optionalString.describe("File name."),
+  filetype: optionalString.describe("File type."),
+  user_id: optionalString.describe("Uploader user ID."),
+  user_name: optionalString.describe("Uploader user name."),
+  channel_id: optionalString.describe("Channel ID."),
+  channel_name: optionalString.describe("Channel name."),
+  permalink: optionalUrl.describe("File permalink."),
+  content: optionalString.describe("File preview or content snippet."),
 });
 
 const searchChannelSchema = z.object({
-  channel_id: z.string().min(1).optional(),
-  channel_name: z.string().optional(),
-  is_private: z.boolean().optional(),
-  is_member: z.boolean().optional(),
-  topic: z.string().optional(),
-  purpose: z.string().optional(),
-  permalink: z.string().url().optional(),
+  channel_id: optionalString.describe("Channel ID."),
+  channel_name: optionalString.describe("Channel name."),
+  is_private: optionalBoolean.describe("Whether the channel is private."),
+  is_member: optionalBoolean.describe("Whether the bot is a member."),
+  topic: optionalString.describe("Channel topic."),
+  purpose: optionalString.describe("Channel purpose."),
+  permalink: optionalUrl.describe("Channel permalink."),
 });
 
 const searchUserSchema = z.object({
-  user_id: z.string().min(1).optional(),
-  user_name: z.string().optional(),
-  real_name: z.string().optional(),
-  display_name: z.string().optional(),
-  title: z.string().optional(),
-  permalink: z.string().url().optional(),
+  user_id: optionalString.describe("User ID."),
+  user_name: optionalString.describe("Username."),
+  real_name: optionalString.describe("Real name."),
+  display_name: optionalString.describe("Display name."),
+  title: optionalString.describe("Profile title."),
+  permalink: optionalUrl.describe("Profile permalink."),
 });
 
 const publicSearchOutputSchema = juniorToolOutputSchema.extend({
-  query: z.string(),
-  content_types: z.array(z.enum(CONTENT_TYPES)),
-  count: z.number().int().nonnegative(),
-  messages: z.array(searchMessageSchema),
-  files: z.array(searchFileSchema),
-  channels: z.array(searchChannelSchema),
-  users: z.array(searchUserSchema),
-  next_cursor: z.string().optional(),
+  query: z.string().describe("Search query."),
+  content_types: z
+    .array(z.enum(CONTENT_TYPES))
+    .describe("Content types included in the search."),
+  count: z.number().int().nonnegative().describe("Total matched results."),
+  messages: z.array(searchMessageSchema).describe("Matched messages."),
+  files: z.array(searchFileSchema).describe("Matched files."),
+  channels: z.array(searchChannelSchema).describe("Matched channels."),
+  users: z.array(searchUserSchema).describe("Matched users."),
+  next_cursor: optionalString.describe("Cursor for the next result page."),
 });
 
 type SearchMessage = z.infer<typeof searchMessageSchema>;
@@ -93,11 +99,6 @@ interface SlackSearchResponse {
   };
 }
 
-function normalizeMessage(value: unknown): SearchMessage | undefined {
-  const parsed = searchMessageSchema.safeParse(value);
-  return parsed.success ? parsed.data : undefined;
-}
-
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return undefined;
@@ -105,26 +106,46 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value as Record<string, unknown>;
 }
 
-function optionalString(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim() ? value : undefined;
+function pickString(
+  record: Record<string, unknown>,
+  ...keys: string[]
+): string | undefined {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) {
+      return value;
+    }
+  }
+  return undefined;
 }
 
-function optionalBoolean(value: unknown): boolean | undefined {
+function pickBoolean(
+  record: Record<string, unknown>,
+  key: string,
+): boolean | undefined {
+  const value = record[key];
   return typeof value === "boolean" ? value : undefined;
 }
 
-function optionalUrl(value: unknown): string | undefined {
-  const text = optionalString(value);
+function pickUrl(
+  record: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  const text = pickString(record, key);
   if (!text) {
     return undefined;
   }
   try {
-    // Validate URL shape without throwing out of search result mapping.
     new URL(text);
     return text;
   } catch {
     return undefined;
   }
+}
+
+function normalizeMessage(value: unknown): SearchMessage | undefined {
+  const parsed = searchMessageSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
 }
 
 function normalizeFile(value: unknown): SearchFile | undefined {
@@ -133,36 +154,21 @@ function normalizeFile(value: unknown): SearchFile | undefined {
     return undefined;
   }
 
-  const file: SearchFile = {
-    ...(optionalString(record.file_id ?? record.id)
-      ? { file_id: optionalString(record.file_id ?? record.id) }
-      : {}),
-    ...(optionalString(record.title) ? { title: optionalString(record.title) } : {}),
-    ...(optionalString(record.name) ? { name: optionalString(record.name) } : {}),
-    ...(optionalString(record.filetype ?? record.file_type)
-      ? { filetype: optionalString(record.filetype ?? record.file_type) }
-      : {}),
-    ...(optionalString(record.user_id ?? record.user)
-      ? { user_id: optionalString(record.user_id ?? record.user) }
-      : {}),
-    ...(optionalString(record.user_name ?? record.username)
-      ? { user_name: optionalString(record.user_name ?? record.username) }
-      : {}),
-    ...(optionalString(record.channel_id)
-      ? { channel_id: optionalString(record.channel_id) }
-      : {}),
-    ...(optionalString(record.channel_name)
-      ? { channel_name: optionalString(record.channel_name) }
-      : {}),
-    ...(optionalUrl(record.permalink)
-      ? { permalink: optionalUrl(record.permalink) }
-      : {}),
-    ...(optionalString(record.content ?? record.preview)
-      ? { content: optionalString(record.content ?? record.preview) }
-      : {}),
-  };
-
-  return Object.keys(file).length > 0 ? file : undefined;
+  const file = searchFileSchema.safeParse({
+    file_id: pickString(record, "file_id", "id"),
+    title: pickString(record, "title"),
+    name: pickString(record, "name"),
+    filetype: pickString(record, "filetype", "file_type"),
+    user_id: pickString(record, "user_id", "user"),
+    user_name: pickString(record, "user_name", "username"),
+    channel_id: pickString(record, "channel_id"),
+    channel_name: pickString(record, "channel_name"),
+    permalink: pickUrl(record, "permalink"),
+    content: pickString(record, "content", "preview"),
+  });
+  return file.success && Object.values(file.data).some((v) => v !== undefined)
+    ? file.data
+    : undefined;
 }
 
 function normalizeChannel(value: unknown): SearchChannel | undefined {
@@ -171,29 +177,19 @@ function normalizeChannel(value: unknown): SearchChannel | undefined {
     return undefined;
   }
 
-  const channel: SearchChannel = {
-    ...(optionalString(record.channel_id ?? record.id)
-      ? { channel_id: optionalString(record.channel_id ?? record.id) }
-      : {}),
-    ...(optionalString(record.channel_name ?? record.name)
-      ? { channel_name: optionalString(record.channel_name ?? record.name) }
-      : {}),
-    ...(optionalBoolean(record.is_private) !== undefined
-      ? { is_private: optionalBoolean(record.is_private) }
-      : {}),
-    ...(optionalBoolean(record.is_member) !== undefined
-      ? { is_member: optionalBoolean(record.is_member) }
-      : {}),
-    ...(optionalString(record.topic) ? { topic: optionalString(record.topic) } : {}),
-    ...(optionalString(record.purpose)
-      ? { purpose: optionalString(record.purpose) }
-      : {}),
-    ...(optionalUrl(record.permalink)
-      ? { permalink: optionalUrl(record.permalink) }
-      : {}),
-  };
-
-  return Object.keys(channel).length > 0 ? channel : undefined;
+  const channel = searchChannelSchema.safeParse({
+    channel_id: pickString(record, "channel_id", "id"),
+    channel_name: pickString(record, "channel_name", "name"),
+    is_private: pickBoolean(record, "is_private"),
+    is_member: pickBoolean(record, "is_member"),
+    topic: pickString(record, "topic"),
+    purpose: pickString(record, "purpose"),
+    permalink: pickUrl(record, "permalink"),
+  });
+  return channel.success &&
+    Object.values(channel.data).some((v) => v !== undefined)
+    ? channel.data
+    : undefined;
 }
 
 function normalizeUser(value: unknown): SearchUser | undefined {
@@ -202,30 +198,17 @@ function normalizeUser(value: unknown): SearchUser | undefined {
     return undefined;
   }
 
-  const user: SearchUser = {
-    ...(optionalString(record.user_id ?? record.id)
-      ? { user_id: optionalString(record.user_id ?? record.id) }
-      : {}),
-    ...(optionalString(record.user_name ?? record.name ?? record.username)
-      ? {
-          user_name: optionalString(
-            record.user_name ?? record.name ?? record.username,
-          ),
-        }
-      : {}),
-    ...(optionalString(record.real_name)
-      ? { real_name: optionalString(record.real_name) }
-      : {}),
-    ...(optionalString(record.display_name)
-      ? { display_name: optionalString(record.display_name) }
-      : {}),
-    ...(optionalString(record.title) ? { title: optionalString(record.title) } : {}),
-    ...(optionalUrl(record.permalink)
-      ? { permalink: optionalUrl(record.permalink) }
-      : {}),
-  };
-
-  return Object.keys(user).length > 0 ? user : undefined;
+  const user = searchUserSchema.safeParse({
+    user_id: pickString(record, "user_id", "id"),
+    user_name: pickString(record, "user_name", "name", "username"),
+    real_name: pickString(record, "real_name"),
+    display_name: pickString(record, "display_name"),
+    title: pickString(record, "title"),
+    permalink: pickUrl(record, "permalink"),
+  });
+  return user.success && Object.values(user.data).some((v) => v !== undefined)
+    ? user.data
+    : undefined;
 }
 
 function explicitSearchError(error: SlackActionError): string | undefined {
@@ -255,12 +238,10 @@ function normalizeContentTypes(
 }
 
 /** Create the public-channel Slack search tool. */
-export function createSlackPublicSearchTool(
-  actionToken?: SlackActionToken,
-) {
+export function createSlackPublicSearchTool(actionToken?: SlackActionToken) {
   return zodTool({
     description:
-      "Search live public Slack content across the workspace (Real-time Search). Defaults to messages; optionally include files, channels, or users. Use for company activity, announcements, public mentions, shared files, or people outside the active channel. Cite permalinks. This is NOT Junior-retained chat search (`searchConversationMessages`) and NOT single-channel history (`slackChannelListMessages`). Private channels and DMs are never searched. Requires an interactive Slack turn with an action token; otherwise the tool explains that limit.",
+      "Search live public Slack content across the workspace. Defaults to messages; optionally include files, channels, or users. Private channels and DMs are never searched.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -273,21 +254,17 @@ export function createSlackPublicSearchTool(
         .trim()
         .min(1)
         .max(500)
-        .describe(
-          "A focused Slack search query, including Slack search filters when useful.",
-        ),
+        .describe("Slack search query."),
       content_types: z
         .array(z.enum(CONTENT_TYPES))
         .min(1)
         .max(4)
-        .describe(
-          "Content types to include. Defaults to messages. Use files, channels, or users only when needed. Requires matching bot scopes: search:read.public, and search:read.files / search:read.users for those types.",
-        )
+        .describe("Content types to include. Defaults to messages.")
         .optional(),
-      after: optionalTimestampSchema.describe(
+      after: optionalUnixTimestampParam.describe(
         "Optional Unix timestamp lower bound.",
       ),
-      before: optionalTimestampSchema.describe(
+      before: optionalUnixTimestampParam.describe(
         "Optional Unix timestamp upper bound.",
       ),
       cursor: z
@@ -326,8 +303,8 @@ export function createSlackPublicSearchTool(
       }
       try {
         const normalizedContentTypes = normalizeContentTypes(content_types);
-        const normalizedAfter = optionalTimestampSchema.parse(after);
-        const normalizedBefore = optionalTimestampSchema.parse(before);
+        const normalizedAfter = optionalUnixTimestampParam.parse(after);
+        const normalizedBefore = optionalUnixTimestampParam.parse(before);
         const response = (await withSlackRetries(
           () =>
             getSlackClient().apiCall("assistant.search.context", {

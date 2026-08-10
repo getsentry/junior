@@ -1,7 +1,4 @@
-import {
-  resolvePublicChannelByName,
-  type SlackPublicChannelSummary,
-} from "@/chat/slack/channel";
+import { resolvePublicChannelByName } from "@/chat/slack/channel";
 import { parseSlackChannelId, type SlackChannelId } from "@/chat/slack/ids";
 import { z } from "zod";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -10,12 +7,6 @@ export interface ResolvedSlackChannelTarget {
   channelId: SlackChannelId;
   channelName?: string;
   resolvedFromName: boolean;
-}
-
-export interface SlackChannelNameResolver {
-  resolvePublicChannelByName(
-    channelName: string,
-  ): Promise<SlackPublicChannelSummary | undefined>;
 }
 
 /** Model-facing Slack channel ID or public channel name parameter. */
@@ -38,7 +29,6 @@ export const optionalSlackChannelRefParam = slackChannelRefParam.optional();
 export async function resolveSlackChannelRef(input: {
   field: string;
   value: string;
-  nameResolver?: SlackChannelNameResolver;
 }): Promise<ResolvedSlackChannelTarget> {
   const trimmed = input.value.trim();
   if (!trimmed) {
@@ -55,12 +45,7 @@ export async function resolveSlackChannelRef(input: {
     };
   }
 
-  const resolver =
-    input.nameResolver ??
-    ({
-      resolvePublicChannelByName,
-    } satisfies SlackChannelNameResolver);
-  const match = await resolver.resolvePublicChannelByName(trimmed);
+  const match = await resolvePublicChannelByName(trimmed);
   if (!match) {
     throw new ToolInputError(
       `No public Slack channel named \`${trimmed}\` was found. Use an exact public channel name or a channel id.`,
@@ -81,13 +66,11 @@ export async function resolveOptionalSlackChannelRef(input: {
   field?: string;
   value?: string;
   defaultChannelId?: SlackChannelId;
-  nameResolver?: SlackChannelNameResolver;
 }): Promise<ResolvedSlackChannelTarget> {
   if (input.value !== undefined) {
     return resolveSlackChannelRef({
       field: input.field ?? "channel_id",
       value: input.value,
-      nameResolver: input.nameResolver,
     });
   }
 
@@ -99,6 +82,6 @@ export async function resolveOptionalSlackChannelRef(input: {
   }
 
   throw new ToolInputError(
-    "Provide `channel_id` (channel id or public channel name), or use this tool in an active Slack channel context.",
+    "Provide `channel_id`, or use this tool in an active Slack channel context.",
   );
 }

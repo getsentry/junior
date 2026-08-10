@@ -2,7 +2,6 @@ import { z } from "zod";
 import type {
   ConversationMessageSearchFilters,
   ConversationMessageSearchScope,
-  ConversationMessageSearchStore,
 } from "@/chat/conversations/message-search";
 import { CONVERSATIONS_TOOL_SOURCE } from "@/chat/conversations/tool-source";
 import { getConversationMessageSearchStore } from "@/chat/db";
@@ -39,11 +38,6 @@ const conversationMessageSearchOutputSchema = juniorToolOutputSchema.extend({
   ),
 });
 
-interface ConversationMessageSearchToolDeps {
-  getPermalink?: typeof getSlackMessagePermalink;
-  store?: ConversationMessageSearchStore;
-}
-
 async function resolveSearchFilters(input: {
   channel_id?: string | null;
   query?: string | null;
@@ -75,11 +69,10 @@ async function resolveSearchFilters(input: {
 export function createSlackConversationMessageSearchTool(
   scope: ConversationMessageSearchScope,
   currentConversationId: string,
-  deps: ConversationMessageSearchToolDeps = {},
 ) {
   return zodTool({
     description:
-      "Search Junior-retained user and assistant messages from public Junior conversations in this Slack workspace (not live Slack workspace search). Excludes the current conversation. Use only for prior Junior chats. For live public Slack content use `slackPublicSearch`; for one channel's raw history use `slackChannelListMessages`.",
+      "Search retained user and assistant messages from public conversations in this Slack workspace. Excludes the current conversation. Not live Slack workspace search.",
     exposure: "deferred",
     source: CONVERSATIONS_TOOL_SOURCE,
     annotations: {
@@ -90,9 +83,7 @@ export function createSlackConversationMessageSearchTool(
     },
     inputSchema: z
       .object({
-        channel_id: slackChannelRefParam
-          .nullable()
-          .optional(),
+        channel_id: slackChannelRefParam.nullable().optional(),
         query: z
           .string()
           .trim()
@@ -114,14 +105,13 @@ export function createSlackConversationMessageSearchTool(
     outputSchema: conversationMessageSearchOutputSchema,
     execute: async (input) => {
       const filters = await resolveSearchFilters(input);
-      const store = deps.store ?? getConversationMessageSearchStore();
+      const store = getConversationMessageSearchStore();
       const matches = await store.search({
         currentConversationId,
         filters,
         limit: input.limit ?? DEFAULT_LIMIT,
         scope,
       });
-      const getPermalink = deps.getPermalink ?? getSlackMessagePermalink;
       const matchesOutput = await Promise.all(
         matches.map(async (match) => {
           const reference = parseSlackThreadId(match.conversationId);
@@ -133,7 +123,7 @@ export function createSlackConversationMessageSearchTool(
               "Stored Slack conversation search returned an invalid destination",
             );
           }
-          const permalink = await getPermalink({
+          const permalink = await getSlackMessagePermalink({
             channelId: reference.channelId,
             messageTs: reference.threadTs,
           });

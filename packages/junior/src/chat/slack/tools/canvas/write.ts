@@ -19,8 +19,7 @@ export function createSlackCanvasWriteTool(state: ToolState) {
       openWorldHint: true,
       readOnlyHint: false,
     },
-    description:
-      "Write UTF-8 markdown content to a Slack canvas. Use for deliberate full-Canvas replacement after validation; use slackCanvasEdit for targeted changes to existing canvas content.",
+    description: "Replace the full markdown body of a Slack canvas.",
     executionMode: "sequential",
     inputSchema: z.object({
       canvas: slackCanvasRefParam,

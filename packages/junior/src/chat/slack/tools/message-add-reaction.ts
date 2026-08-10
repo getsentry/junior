@@ -22,7 +22,7 @@ export function createSlackMessageAddReactionTool(
       readOnlyHint: false,
     },
     description:
-      "Add an emoji reaction to the current inbound Slack message. Use for explicit reaction requests and for non-text acknowledgements on the current message when no thread reply is needed. Provide a Slack emoji alias name (for example `thumbsup`, `white_check_mark`, or `thumbsup::skin-tone-6`), not a unicode emoji glyph. The target message is injected by runtime context; do not use this for arbitrary historical messages.",
+      "Add an emoji reaction to the current inbound Slack message.",
     inputSchema: z.object({
       emoji: z
         .string()

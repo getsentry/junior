@@ -1,21 +1,10 @@
-import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { getConversationStore } from "@/chat/db";
 import {
   getConversationInfo,
   joinPublicChannel,
-  type SlackConversationInfo,
 } from "@/chat/slack/channel";
 import { SlackActionError } from "@/chat/slack/client";
 import type { SlackChannelId, SlackTeamId } from "@/chat/slack/ids";
-
-/** Minimal persisted-visibility port for cross-conversation read gates. */
-export interface DestinationVisibilityReader {
-  getDestinationVisibility(args: {
-    provider: string;
-    providerDestinationId: string;
-    providerTenantId?: string;
-  }): Promise<ConversationPrivacy | undefined>;
-}
 
 export type SlackChannelReadAccess =
   | {
@@ -33,18 +22,8 @@ export type SlackChannelReadDenialReason =
   | "missing_scope"
   | "unknown";
 
-export interface SlackConversationInfoReader {
-  getConversationInfo(
-    channelId: SlackChannelId,
-  ): Promise<SlackConversationInfo>;
-}
-
-export interface SlackChannelJoinWriter {
-  joinPublicChannel(channelId: SlackChannelId): Promise<void>;
-}
-
 const DENIED_PRIVATE =
-  "Cannot read this Slack conversation because it is private. Junior only reads the current conversation or public channels.";
+  "Cannot read this Slack conversation because it is private. Only the current conversation or public channels are readable.";
 const DENIED_NOT_FOUND =
   "Cannot read this Slack conversation because the channel was not found or the bot cannot see it.";
 const DENIED_NOT_IN_CHANNEL =
@@ -64,14 +43,12 @@ function deny(
  *
  * The current conversation is always readable. Any other channel first checks
  * persisted visibility in the same workspace. When visibility is unknown,
- * Junior asks Slack via `conversations.info` and allows only public channels.
- * Missing or private destinations fail closed. Channel-id prefixes alone
- * cannot prove a channel public.
+ * live `conversations.info` allows only public channels. Missing or private
+ * destinations fail closed. Channel-id prefixes alone cannot prove a channel
+ * public.
  */
 export async function checkSlackChannelReadAccess(args: {
   currentChannelIds: Array<SlackChannelId | undefined>;
-  conversationInfo?: SlackConversationInfoReader;
-  store?: DestinationVisibilityReader;
   targetChannelId: SlackChannelId;
   teamId: SlackTeamId;
 }): Promise<SlackChannelReadAccess> {
@@ -82,8 +59,7 @@ export async function checkSlackChannelReadAccess(args: {
     return { allowed: true, isMember: true };
   }
 
-  const store = args.store ?? getConversationStore();
-  const visibility = await store.getDestinationVisibility({
+  const visibility = await getConversationStore().getDestinationVisibility({
     provider: "slack",
     providerTenantId: args.teamId,
     providerDestinationId: args.targetChannelId,
@@ -92,19 +68,11 @@ export async function checkSlackChannelReadAccess(args: {
     return deny("private", DENIED_PRIVATE);
   }
 
-  const conversationInfo =
-    args.conversationInfo ??
-    ({
-      getConversationInfo,
-    } satisfies SlackConversationInfoReader);
-
   // Prefer live Slack metadata when available so membership and public proof
   // stay current. Fall back to persisted public visibility only when Slack
   // cannot answer.
   try {
-    const info = await conversationInfo.getConversationInfo(
-      args.targetChannelId,
-    );
+    const info = await getConversationInfo(args.targetChannelId);
     const isPublicChannel =
       info.isChannel && !info.isPrivate && !info.isIm && !info.isMpim;
     if (!isPublicChannel) {
@@ -142,20 +110,13 @@ export async function checkSlackChannelReadAccess(args: {
  */
 export async function joinPublicChannelForRead(args: {
   channelName?: string;
-  joinChannel?: SlackChannelJoinWriter;
   targetChannelId: SlackChannelId;
 }): Promise<
   | { ok: true; channelName?: string }
   | { ok: false; error: string; reason: SlackChannelReadDenialReason }
 > {
-  const joinChannel =
-    args.joinChannel ??
-    ({
-      joinPublicChannel,
-    } satisfies SlackChannelJoinWriter);
-
   try {
-    await joinChannel.joinPublicChannel(args.targetChannelId);
+    await joinPublicChannel(args.targetChannelId);
     return {
       ok: true,
       ...(args.channelName ? { channelName: args.channelName } : {}),
@@ -192,7 +153,7 @@ export async function joinPublicChannelForRead(args: {
         ok: false as const,
         reason: "not_in_channel" as const,
         error:
-          "Could not join this public Slack channel. Ask an admin to add the bot, or invite Junior, then retry.",
+          "Could not join this public Slack channel. Ask an admin to add the bot, then retry.",
       };
     }
     throw error;

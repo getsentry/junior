@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createSlackThreadReadTool } from "@/chat/slack/tools/thread-read";
-import type { DestinationVisibilityReader } from "@/chat/slack/tool-support/channel-access";
 import type { SlackToolContext } from "@/chat/slack/tool-support/context";
 import { parseSlackChannelId, parseSlackTeamId } from "@/chat/slack/ids";
 import {
@@ -76,29 +75,8 @@ function createContext(overrides: ContextOverrides = {}): SlackToolContext {
   };
 }
 
-/** Persisted-visibility fake: only listed channels are public in T123. */
-function persistedPublicChannels(
-  ...channelIds: string[]
-): DestinationVisibilityReader {
-  return {
-    async getDestinationVisibility(args) {
-      if (args.provider !== "slack" || args.providerTenantId !== "T123") {
-        return undefined;
-      }
-      return channelIds.includes(args.providerDestinationId)
-        ? "public"
-        : undefined;
-    },
-  };
-}
-
-function createTool(
-  overrides: ContextOverrides = {},
-  publicChannels: string[] = [],
-) {
-  return createSlackThreadReadTool(createContext(overrides), {
-    visibilityStore: persistedPublicChannels(...publicChannels),
-  });
+function createTool(overrides: ContextOverrides = {}) {
+  return createSlackThreadReadTool(createContext(overrides));
 }
 
 async function executeTool<TInput>(tool: any, input: TInput) {
@@ -130,7 +108,7 @@ describe("slackThreadRead", () => {
       }),
     });
 
-    const tool = createTool({}, ["C0AHB7N2JCR"]);
+    const tool = createTool({});
     const result = await executeTool(tool, {
       url: "https://sentry.slack.com/archives/C0AHB7N2JCR/p1700000000123456",
     });
@@ -172,7 +150,7 @@ describe("slackThreadRead", () => {
       }),
     });
 
-    const tool = createTool({}, ["C123"]);
+    const tool = createTool({});
     const result = await executeTool(tool, {
       url: "https://sentry.slack.com/archives/C123/p1700000000999999?thread_ts=1700000000.000000&cid=C123",
     });
@@ -207,7 +185,7 @@ describe("slackThreadRead", () => {
       }),
     });
 
-    const tool = createTool({}, ["C0MANUAL"]);
+    const tool = createTool({});
     const result = await executeTool(tool, {
       channel_id: "C0MANUAL",
       ts: "1700000000.500000",
@@ -411,7 +389,7 @@ describe("slackThreadRead", () => {
       }),
     });
 
-    const tool = createTool({}, ["C0FLAKY"]);
+    const tool = createTool({});
     const result = await executeTool(tool, {
       channel_id: "C0FLAKY",
       ts: "1700000000.100000",
@@ -436,7 +414,7 @@ describe("slackThreadRead", () => {
       error: "not_in_channel",
     });
 
-    const tool = createTool({}, ["C0STILL"]);
+    const tool = createTool({});
     await expect(
       executeTool(tool, {
         channel_id: "C0STILL",
@@ -503,7 +481,7 @@ describe("slackThreadRead", () => {
       }),
     });
 
-    const tool = createTool({}, ["C0PAGED"]);
+    const tool = createTool({});
     const result = await executeTool(tool, {
       channel_id: "C0PAGED",
       ts: "1700000000.000000",
@@ -548,7 +526,7 @@ describe("slackThreadRead", () => {
       }),
     });
 
-    const tool = createTool({}, ["C123"]);
+    const tool = createTool({});
     const result = await executeTool(tool, {
       channel_id: "C123",
       ts: "1700000000.100000",
@@ -580,7 +558,7 @@ describe("slackThreadRead", () => {
       }),
     });
 
-    const tool = createTool({}, ["C123"]);
+    const tool = createTool({});
     await executeTool(tool, {
       url: "https://sentry.slack.com/archives/C123/p1700000000100000",
     });
