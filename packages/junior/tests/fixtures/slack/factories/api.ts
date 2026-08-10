@@ -403,6 +403,9 @@ export function usersInfoOk(
     statusText?: string;
     statusEmoji?: string;
     isBot?: boolean;
+    isRestricted?: boolean;
+    isUltraRestricted?: boolean;
+    isStranger?: boolean;
     deleted?: boolean;
     tz?: string;
     fields?: Record<string, { value?: string; alt?: string; label?: string }>;
@@ -418,6 +421,9 @@ export function usersInfoOk(
       real_name: input.realName ?? "Test User",
       deleted: input.deleted ?? false,
       is_bot: input.isBot ?? false,
+      is_restricted: input.isRestricted ?? false,
+      is_ultra_restricted: input.isUltraRestricted ?? false,
+      is_stranger: input.isStranger ?? false,
       tz: input.tz ?? "America/Los_Angeles",
       profile: {
         display_name: input.displayName ?? "Test User",
@@ -460,6 +466,9 @@ export function usersListPage(
       displayName?: string;
       deleted?: boolean;
       isBot?: boolean;
+      isRestricted?: boolean;
+      isUltraRestricted?: boolean;
+      isStranger?: boolean;
       fields?: Record<string, { value?: string; alt?: string; label?: string }>;
     }>;
     nextCursor?: string;
@@ -475,6 +484,9 @@ export function usersListPage(
     real_name: m.realName ?? "Test User",
     deleted: m.deleted ?? false,
     is_bot: m.isBot ?? false,
+    is_restricted: m.isRestricted ?? false,
+    is_ultra_restricted: m.isUltraRestricted ?? false,
+    is_stranger: m.isStranger ?? false,
     profile: {
       display_name: m.displayName ?? m.name ?? "Test User",
       real_name: m.realName ?? "Test User",

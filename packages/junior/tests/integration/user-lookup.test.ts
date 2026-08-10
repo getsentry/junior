@@ -269,6 +269,50 @@ describe("userLookup", () => {
       });
     });
 
+    it("prefers a full workspace member over an external display-name match", async () => {
+      queueSlackApiResponse("users.list", {
+        body: usersListPage({
+          members: [
+            {
+              id: "U_EXTERNAL_COLIN",
+              name: "colin.curtin",
+              realName: "Colin Curtin",
+              displayName: "Colin Curtin (Square)",
+              isStranger: true,
+            },
+            {
+              id: "U_MEMBER_COLIN",
+              name: "colin.kawai",
+              realName: "Colin Kawai",
+              displayName: "Colin Kawai",
+            },
+          ],
+        }),
+      });
+
+      const result = await executeTool(lookupTool(), {
+        provider: "slack",
+        query: "colin",
+      });
+
+      expect(result).toMatchObject({
+        provider: "slack",
+        query: "colin",
+        count: 2,
+      });
+      expect(result.mention).toBeUndefined();
+      expect(result.users[0]).toMatchObject({
+        id: "U_MEMBER_COLIN",
+        is_external: false,
+        mention: "<@U_MEMBER_COLIN>",
+      });
+      expect(result.users[1]).toMatchObject({
+        id: "U_EXTERNAL_COLIN",
+        is_external: true,
+        mention: "<@U_EXTERNAL_COLIN>",
+      });
+    });
+
     it("returns empty results when no match", async () => {
       queueSlackApiResponse("users.list", {
         body: usersListPage({
