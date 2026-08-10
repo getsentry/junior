@@ -138,8 +138,14 @@ describe("CostMetric", () => {
     const html = renderToStaticMarkup(
       <CostMetric
         auxiliaryCosts={{
-          costUsd: 0.0018,
+          costUsd: 0.002,
           operations: [
+            {
+              costUsd: 0.0002,
+              events: 1,
+              name: "turn_routed",
+              namespace: "junior",
+            },
             {
               costUsd: 0.0004,
               events: 2,
@@ -165,10 +171,11 @@ describe("CostMetric", () => {
     );
 
     expect(html).toContain("$0.04");
-    expect(html).toContain("total: $0.0428");
+    expect(html).toContain("total: $0.043");
     expect(html).toContain("agent: $0.041");
     expect(html).toContain("Auxiliary");
-    expect(html).toContain("total: $0.0018");
+    expect(html).toContain("total: $0.002");
+    expect(html).toContain("Thinking routing (1): $0.0002");
     expect(html).toContain("Memory recall (2): $0.0004");
     expect(html).toContain("Guardian (1): $0.0014");
     expect(html).toContain('data-tooltip-placement="above"');

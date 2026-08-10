@@ -237,6 +237,8 @@ function auxiliaryOperationLabel(
 ): string {
   const knownLabels: Readonly<Record<string, string>> = {
     "junior/guardian_action_reviewed": "Guardian",
+    "junior/passive_reply_routed": "Passive reply routing",
+    "junior/turn_routed": "Thinking routing",
     "memory/memories_captured": "Memory extraction",
     "memory/memories_recalled": "Memory recall",
   };

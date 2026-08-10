@@ -53,6 +53,19 @@ describe("conversation detail API", () => {
           version: 1,
         },
       },
+      {
+        createdAtMs: 4,
+        data: {
+          confidence: 0.9,
+          costUsd: 0.0002,
+          modelId: "openai/gpt-5-mini",
+          modelProfile: "standard",
+          reasoningLevel: "medium",
+          source: "router",
+          turnId: "turn-1",
+          type: "turn_routed",
+        },
+      },
     ]);
     const refreshedResponse = await app.request(
       `http://localhost/api/conversations/${conversationId}`,
@@ -60,10 +73,16 @@ describe("conversation detail API", () => {
     const refreshed = conversationDetailReportSchema.parse(
       await refreshedResponse.json(),
     );
-    expect(refreshed.events.map((event) => event.seq)).toEqual([0]);
+    expect(refreshed.events.map((event) => event.seq)).toEqual([0, 2]);
     expect(refreshed.auxiliaryCosts).toEqual({
-      costUsd: 0.0004,
+      costUsd: 0.0006,
       operations: [
+        {
+          costUsd: 0.0002,
+          events: 1,
+          name: "turn_routed",
+          namespace: "junior",
+        },
         {
           costUsd: 0.0004,
           events: 1,
