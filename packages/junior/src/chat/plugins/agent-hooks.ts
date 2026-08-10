@@ -174,28 +174,39 @@ function invocationPluginContext(
     text: context.userText ?? "",
     state: createPluginState(plugin.manifest.name),
   };
-  if (context.source.platform === "slack") {
-    if (context.destination.platform !== "slack") {
-      throw new TypeError(
-        "Slack plugin prompt context requires Slack destination",
-      );
+  switch (context.source.platform) {
+    case "slack": {
+      if (context.destination.platform !== "slack") {
+        throw new TypeError(
+          "Slack plugin prompt context requires Slack destination",
+        );
+      }
+      return {
+        ...common,
+        destination: context.destination,
+        actor: context.actor?.platform === "slack" ? context.actor : undefined,
+      };
     }
-    return {
-      ...common,
-      destination: context.destination,
-      actor: context.actor?.platform === "slack" ? context.actor : undefined,
-    };
+    case "local": {
+      if (context.destination.platform !== "local") {
+        throw new TypeError(
+          "Local plugin prompt context requires local destination",
+        );
+      }
+      return {
+        ...common,
+        destination: context.destination,
+        actor: context.actor?.platform === "local" ? context.actor : undefined,
+      };
+    }
+    case "web":
+      // Dashboard continues may keep a Slack destination for location context.
+      return {
+        ...common,
+        destination: context.destination,
+        actor: context.actor?.platform === "web" ? context.actor : undefined,
+      };
   }
-  if (context.destination.platform !== "local") {
-    throw new TypeError(
-      "Local plugin prompt context requires local destination",
-    );
-  }
-  return {
-    ...common,
-    destination: context.destination,
-    actor: context.actor?.platform === "local" ? context.actor : undefined,
-  };
 }
 
 function pluginMcpContext(

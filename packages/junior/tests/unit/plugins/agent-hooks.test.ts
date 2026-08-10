@@ -1,6 +1,7 @@
 import {
   createLocalSource,
   createSlackSource,
+  createWebSource,
   definePromptContext,
   definePluginTool,
   defineJuniorPlugin,
@@ -311,6 +312,58 @@ describe("agent plugin hooks", () => {
           id: "userPrompt:0",
           pluginName: "agent-demo",
           text: "remembered context",
+        },
+      ]);
+    } finally {
+      setPlugins(previous);
+    }
+  });
+
+  it("keeps web actors and Slack destinations for dashboard continues", async () => {
+    const webActor = {
+      platform: "web" as const,
+      userId: "dashboard:alice",
+      email: "alice@example.com",
+    };
+    const slackDestination = {
+      platform: "slack" as const,
+      teamId: "T123",
+      channelId: "C123",
+    };
+    const webSource = createWebSource("slack:C123:1712345.0001", "public");
+    const previous = setPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "agent-demo",
+          displayName: "Agent Demo",
+          description: "Agent demo",
+        },
+        hooks: {
+          async userPrompt(ctx) {
+            expect(ctx.actor).toEqual(webActor);
+            expect(ctx.destination).toEqual(slackDestination);
+            expect(ctx.source).toEqual(webSource);
+            return [{ text: "web continue context" }];
+          },
+        },
+      }),
+    ]);
+    try {
+      await expect(
+        getPluginUserPromptContributions({
+          context: {
+            conversationId: "slack:C123:1712345.0001",
+            actor: webActor,
+            destination: slackDestination,
+            source: webSource,
+            userText: "continue from the dashboard",
+          },
+        }),
+      ).resolves.toEqual([
+        {
+          id: "userPrompt:0",
+          pluginName: "agent-demo",
+          text: "web continue context",
         },
       ]);
     } finally {
