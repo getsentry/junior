@@ -246,22 +246,22 @@ async function expectPausedTurn(
   const conversation = coerceThreadConversationState(
     await getPersistedThreadState(CONVERSATION_ID),
   );
-  if (expected.reason === "auth") {
-    expect(conversation.processing.pendingAuth).toMatchObject({
-      sessionId: expected.turnId,
-    });
-    await expect(
-      getConversationWorkState({
-        conversationId: CONVERSATION_ID,
-        state: q.state,
-      }),
-    ).resolves.toMatchObject({ needsRun: false, messages: [] });
-    expect(q.wakes.hasQueuedMessages()).toBe(false);
-  } else {
-    expect(conversation.processing.pendingAuth).toBeUndefined();
-    // Timeout parks schedule a fresh wake so the next slice can resume.
-    expect(q.wakes.hasQueuedMessages()).toBe(true);
-  }
+  const expectsAuth = expected.reason === "auth";
+  expect(conversation.processing.pendingAuth?.sessionId).toBe(
+    expectsAuth ? expected.turnId : undefined,
+  );
+  await expect(
+    getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+      state: q.state,
+    }),
+  ).resolves.toMatchObject(
+    expectsAuth
+      ? { needsRun: false, messages: [] }
+      : { needsRun: true, execution: { status: "paused" } },
+  );
+  // Timeout parks schedule a fresh wake so the next slice can resume.
+  expect(q.wakes.hasQueuedMessages()).toBe(!expectsAuth);
   const replies = q.replies();
   const replyCount =
     typeof expected.replies === "number"
