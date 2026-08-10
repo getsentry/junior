@@ -34,9 +34,9 @@ import {
 } from "@/chat/pi/transcript";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import {
-  replyDeliverySchema,
-  type ReplyDelivery,
-} from "./reply-delivery";
+  turnDeliverySchema,
+  type TurnDelivery,
+} from "./turn-delivery";
 import type {
   ConversationExecution,
   ConversationStore,
@@ -129,7 +129,7 @@ export interface TurnRecord {
    */
   actors: Actor[];
   resumeReason?: TurnPauseReason;
-  replyDelivery?: ReplyDelivery;
+  turnDelivery?: TurnDelivery;
   resumedFromSliceId?: number;
   turnId: string;
   sliceId: number;
@@ -237,7 +237,7 @@ const storedTurnRecordSchema = z
     resultMessageId: z.string().min(1).optional(),
     lastProgressAtMs: nonNegativeNumberSchema,
     resumeReason: turnPauseReasonSchema.optional(),
-    replyDelivery: replyDeliverySchema.optional(),
+    turnDelivery: turnDeliverySchema.optional(),
     resumedFromSliceId: z.number().int().nonnegative().optional(),
     turnId: z.string().min(1),
     sliceId: z.number().int().nonnegative(),
@@ -433,7 +433,7 @@ function materializeTurnRecord(
       dispatchOutcome: stored.dispatchOutcome,
       errorMessage: stored.errorMessage,
       resumeReason: stored.resumeReason,
-      replyDelivery: stored.replyDelivery,
+      turnDelivery: stored.turnDelivery,
       resultMessageId: stored.resultMessageId,
       resumedFromSliceId: stored.resumedFromSliceId,
       surface: stored.surface,
@@ -592,7 +592,7 @@ function buildStoredRecord(args: {
   state: TurnStatus;
   surface?: AgentTurnSurface;
   resumeReason?: TurnPauseReason;
-  replyDelivery?: ReplyDelivery;
+  turnDelivery?: TurnDelivery;
   errorMessage?: string;
   resumedFromSliceId?: number;
   traceId?: string;
@@ -617,7 +617,7 @@ function buildStoredRecord(args: {
       errorMessage: args.errorMessage,
       historyVersion: args.historyVersion,
       resumeReason: args.resumeReason,
-      replyDelivery: args.replyDelivery,
+      turnDelivery: args.turnDelivery,
       resultMessageId: args.resultMessageId,
       resumedFromSliceId: args.resumedFromSliceId,
       runtimeContext:
@@ -746,7 +746,7 @@ async function updateTurnState(args: {
         errorMessage: args.errorMessage ?? args.existing.errorMessage,
         historyVersion: parsed.historyVersion,
         resumeReason: args.existing.resumeReason,
-        replyDelivery: args.existing.replyDelivery,
+        turnDelivery: args.existing.turnDelivery,
         resultMessageId: args.resultMessageId ?? args.existing.resultMessageId,
         resumedFromSliceId: args.existing.resumedFromSliceId,
         surface: args.existing.surface,
@@ -781,7 +781,7 @@ export async function upsertTurnRecord(args: {
   trailingMessageProvenance?: ConversationMessageProvenance[];
   actor?: Actor;
   resumeReason?: TurnPauseReason;
-  replyDelivery?: ReplyDelivery;
+  turnDelivery?: TurnDelivery;
   errorMessage?: string;
   resumedFromSliceId?: number;
   traceId?: string;
@@ -912,7 +912,7 @@ async function upsertTurnRecordLocked(
         errorMessage: args.errorMessage,
         lastProgressAtMs: args.lastProgressAtMs,
         resumeReason: args.resumeReason,
-        replyDelivery: args.replyDelivery ?? existingRecord?.replyDelivery,
+        turnDelivery: args.turnDelivery ?? existingRecord?.turnDelivery,
         resultMessageId:
           args.resultMessageId ?? existingRecord?.resultMessageId,
         resumedFromSliceId: args.resumedFromSliceId,

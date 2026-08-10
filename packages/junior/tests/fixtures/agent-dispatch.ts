@@ -103,7 +103,7 @@ export function createAgentDispatchWorkerContext(
     checkIn: vi.fn(async () => true),
     conversationId: message.conversationId,
     destination: agentDispatchTestDestination,
-    replyDelivery: "destination",
+    turnDelivery: "destination",
     shouldYield: () => false,
     ...overrides,
   };

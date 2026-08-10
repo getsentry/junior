@@ -583,7 +583,7 @@ export function createSlackResourceEventInboundMessage(
     delivery: "defer",
     source: "resource_event",
     receivedAtMs: Date.now(),
-    replyDelivery: "destination",
+    turnDelivery: "destination",
     input: {
       text: input.text,
       authorId: RESOURCE_EVENT_SLACK_AUTHOR_ID,
@@ -847,6 +847,9 @@ export function createSlackConversationWorker(
         ): Promise<void> => {
           await context.attempt.drain(async (pendingRecords) => {
             const candidates = pendingRecords
+              .filter(
+                (record) => record.turnDelivery === context.turnDelivery,
+              )
               .map((record) => ({
                 inboundMessageId: record.inboundMessageId,
                 message: restoreMessage({ adapter, record }),
@@ -865,7 +868,7 @@ export function createSlackConversationWorker(
             await options.runtime.handleNewMention(thread, latestMessage, {
               conversationId: context.conversationId,
               destination,
-              replyDelivery: context.replyDelivery,
+              turnDelivery: context.turnDelivery,
               messageContext,
               drainSteeringMessages,
               ack,
@@ -879,7 +882,7 @@ export function createSlackConversationWorker(
               {
                 conversationId: context.conversationId,
                 destination,
-                replyDelivery: context.replyDelivery,
+                turnDelivery: context.turnDelivery,
                 messageContext,
                 drainSteeringMessages,
                 ack,
@@ -946,7 +949,7 @@ export function buildSlackInboundMessage(args: {
     source: "slack",
     createdAtMs: args.message.metadata.dateSent.getTime(),
     receivedAtMs: args.receivedAtMs,
-    replyDelivery: "destination",
+    turnDelivery: "destination",
     input: {
       text: args.message.text || " ",
       authorId,

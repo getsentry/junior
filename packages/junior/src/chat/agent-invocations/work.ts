@@ -84,7 +84,7 @@ export function buildAgentInvocationInboundMessage(
       },
     },
     receivedAtMs: nowMs,
-    replyDelivery: "conversation",
+    turnDelivery: "conversation",
     source: "internal",
   };
 }
@@ -371,7 +371,7 @@ export function createAgentInvocationWorker(options: {
           credentialContext: invocation.credentialContext,
           destination: invocation.destination,
           destinationVisibility: invocation.destinationVisibility,
-          replyDelivery: context.replyDelivery,
+          turnDelivery: context.turnDelivery,
           source: invocation.source,
           surface: "internal",
         },

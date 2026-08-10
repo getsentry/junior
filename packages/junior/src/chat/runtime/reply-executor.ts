@@ -9,7 +9,7 @@
 import type { Message, Thread } from "chat";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { createSlackSource, type Destination } from "@sentry/junior-plugin-api";
-import type { ReplyDelivery } from "@/chat/task-execution/reply-delivery";
+import type { TurnDelivery } from "@/chat/task-execution/turn-delivery";
 import { botConfig } from "@/chat/config";
 import {
   modelIdForProfile,
@@ -450,7 +450,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
       onTurnStatePersisted?: () => Promise<void>;
       preparedState?: PreparedTurnState;
       queuedMessages?: QueuedTurnMessage[];
-      replyDelivery?: ReplyDelivery;
+      turnDelivery?: TurnDelivery;
       execution?: DispatchTurnContext;
       skipBackfill?: boolean;
       drainSteeringMessages?: (
@@ -617,6 +617,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           );
           try {
             await beforeFirstResponsePost();
+            if (options.turnDelivery === "conversation") {
+              return;
+            }
             if (channelId && threadTs) {
               await sendSlackReply({
                 channelId,
@@ -879,7 +882,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             });
         if (configReply) {
           await beforeFirstResponsePost();
-          await thread.post(buildSlackOutputMessage(configReply.text));
+          if (options.turnDelivery !== "conversation") {
+            await thread.post(buildSlackOutputMessage(configReply.text));
+          }
           markConversationMessage(
             preparedState.conversation,
             preparedState.userMessageId,
@@ -1070,7 +1075,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           // classified as retryable delivery errors.
           await beforeFirstResponsePost();
           try {
-            if (channelId && thread.adapter.name === "slack") {
+            if (options.turnDelivery === "conversation") {
+              // The conversation commit below is the visible delivery boundary.
+            } else if (channelId && thread.adapter.name === "slack") {
               slackMessageTs = await sendSlackReply({
                 channelId,
                 conversationId,
@@ -1381,7 +1388,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               slackConversation,
               source,
               destination,
-              replyDelivery: options.replyDelivery ?? "destination",
+              turnDelivery: options.turnDelivery ?? "destination",
               ...(destinationVisibility ? { destinationVisibility } : {}),
               surface: options.execution?.surface ?? "slack",
               dispatch: options.execution?.dispatch,

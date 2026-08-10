@@ -1016,9 +1016,9 @@ describe("conversation work execution", () => {
     expect(queue.sentRecords()).toEqual([]);
   });
 
-  it("keeps different reply delivery modes in separate attempts", async () => {
+  it("keeps different turn delivery modes in separate attempts", async () => {
     const queue = createConversationWorkQueueTestAdapter();
-    const attempts: Array<{ ids: string[]; replyDelivery: string }> = [];
+    const attempts: Array<{ ids: string[]; turnDelivery: string }> = [];
     await appendInboundMessage({
       message: inboundMessage("m1", { delivery: "defer" }),
       nowMs: 1_000,
@@ -1028,7 +1028,7 @@ describe("conversation work execution", () => {
         createdAtMs: 2_000,
         delivery: "defer",
         receivedAtMs: 2_000,
-        replyDelivery: "conversation",
+        turnDelivery: "conversation",
       }),
       nowMs: 2_000,
     });
@@ -1041,7 +1041,7 @@ describe("conversation work execution", () => {
             ids: context.attempt.messages.map(
               (message) => message.inboundMessageId,
             ),
-            replyDelivery: context.replyDelivery,
+            turnDelivery: context.turnDelivery,
           });
           await context.attempt.ack();
           return { status: "completed" };
@@ -1050,8 +1050,8 @@ describe("conversation work execution", () => {
     ).resolves.toEqual({ status: "completed" });
 
     expect(attempts).toEqual([
-      { ids: ["m1"], replyDelivery: "destination" },
-      { ids: ["m2"], replyDelivery: "conversation" },
+      { ids: ["m1"], turnDelivery: "destination" },
+      { ids: ["m2"], turnDelivery: "conversation" },
     ]);
   });
 

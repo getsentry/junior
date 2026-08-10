@@ -253,7 +253,7 @@ describe("turn checkpoint", () => {
       source: SLACK_SOURCE,
       piMessages: priorMessages,
       resumeReason: "auth",
-      replyDelivery: "conversation",
+      turnDelivery: "conversation",
       errorMessage: "initial auth pause",
     });
 
@@ -275,7 +275,7 @@ describe("turn checkpoint", () => {
       sliceId: 2,
       resumedFromSliceId: 1,
       resumeReason: "auth",
-      replyDelivery: "conversation",
+      turnDelivery: "conversation",
       errorMessage: "plugin auth pause",
       piMessages: [priorMessages[0]],
     });
@@ -449,7 +449,7 @@ describe("turn checkpoint", () => {
             text: "start",
           },
           receivedAtMs: 9_000,
-          replyDelivery: "destination",
+          turnDelivery: "destination",
           delivery: "defer",
           source: "slack",
         },

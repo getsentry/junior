@@ -28,7 +28,7 @@ import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 import type { ConversationMessageProvenance } from "@/chat/conversations/provenance";
 import type { AgentTurnSurface } from "@/chat/task-execution/checkpoint";
-import type { ReplyDelivery } from "@/chat/task-execution/reply-delivery";
+import type { TurnDelivery } from "@/chat/task-execution/turn-delivery";
 import type { ToolExecutionReport } from "@/chat/tool-support/tool-execution-report";
 import type { SlackActionToken } from "@/chat/slack/action-token";
 import type { TurnReasoningLevel } from "@/chat/reasoning-level";
@@ -117,7 +117,7 @@ export interface AgentRunRouting {
   slackActionToken?: SlackActionToken;
   destination: Destination;
   /** Where visible assistant messages from this turn are delivered. */
-  replyDelivery?: ReplyDelivery;
+  turnDelivery?: TurnDelivery;
   /** Confirmed visibility of the destination where this run is delivered. */
   destinationVisibility?: ConversationPrivacy;
   surface?: AgentTurnSurface;

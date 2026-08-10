@@ -30,7 +30,7 @@ async function resumeState(conversationId: string, turnId: string) {
       destination: { platform: "local", conversationId },
       durability: {},
       recordActiveMcpProviders: async () => undefined,
-      replyDelivery: "destination",
+      turnDelivery: "destination",
       runSource: createLocalSource(conversationId),
       conversationId,
       turnId,
@@ -65,7 +65,7 @@ describe("agent resume", () => {
       recordActiveMcpProviders: async () => {
         throw new Error("provider metadata unavailable");
       },
-      replyDelivery: "destination",
+      turnDelivery: "destination",
       runSource: createLocalSource(conversationId),
       conversationId,
       turnId,

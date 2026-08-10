@@ -526,7 +526,7 @@ describe("agent invocation conversation work", () => {
         },
         checkIn: vi.fn(),
         conversationId: created.childConversationId,
-        replyDelivery: "conversation",
+        turnDelivery: "conversation",
         shouldYield: () => false,
       } satisfies ConversationWorkerContext;
 
@@ -733,7 +733,7 @@ describe("agent invocation conversation work", () => {
         checkIn: vi.fn(),
         conversationId: created.childConversationId,
         destination,
-        replyDelivery: "conversation",
+        turnDelivery: "conversation",
         shouldYield: () => false,
       } satisfies ConversationWorkerContext;
 

@@ -4,7 +4,7 @@ import { getChatConfig } from "@/chat/config";
 import { logException, logInfo, logWarn, withLogContext } from "@/chat/logging";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { isProviderRetryError } from "@/chat/services/provider-error";
-import type { ReplyDelivery } from "./reply-delivery";
+import type { TurnDelivery } from "./turn-delivery";
 import {
   ConversationQueueMessageRejectedError,
   type ConversationQueueMessage,
@@ -42,7 +42,7 @@ export interface ConversationWorkerContext {
   checkIn(): Promise<boolean>;
   conversationId: string;
   destination?: Destination;
-  replyDelivery: ReplyDelivery;
+  turnDelivery: TurnDelivery;
   shouldYield(): boolean;
 }
 
@@ -96,7 +96,7 @@ function selectContiguousTurnBatch(
   const nextTurnIndex = messages.findIndex(
     (message) =>
       message.input.authorId !== first.input.authorId ||
-      message.replyDelivery !== first.replyDelivery,
+      message.turnDelivery !== first.turnDelivery,
   );
   return messages.slice(
     0,
@@ -521,8 +521,8 @@ async function processConversationWorkInContext(
       attemptMessageIds = attemptMessages.map(
         (message) => message.inboundMessageId,
       );
-      const replyDelivery =
-        attemptMessages[0]?.replyDelivery ??
+      const turnDelivery =
+        attemptMessages[0]?.turnDelivery ??
         (destination ? "destination" : "conversation");
       attemptSelectedMessageIds = new Set(attemptMessageIds);
       const ack = async (): Promise<void> => {
@@ -554,7 +554,7 @@ async function processConversationWorkInContext(
         },
         conversationId,
         destination,
-        replyDelivery,
+        turnDelivery,
         shouldYield,
         checkIn,
       };

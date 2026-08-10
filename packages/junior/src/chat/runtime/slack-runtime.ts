@@ -8,7 +8,7 @@
  */
 import type { Message, MessageContext, Thread } from "chat";
 import type { Destination } from "@sentry/junior-plugin-api";
-import type { ReplyDelivery } from "@/chat/task-execution/reply-delivery";
+import type { TurnDelivery } from "@/chat/task-execution/turn-delivery";
 import { getSubscribedReplyPreflightDecision } from "@/chat/services/subscribed-decision";
 import { isProviderRetryError } from "@/chat/services/provider-error";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
@@ -86,7 +86,7 @@ interface SteeringDrainContext {
 export interface SlackTurnOptions extends ReplyHooks {
   conversationId?: string;
   destination: Destination;
-  replyDelivery?: ReplyDelivery;
+  turnDelivery?: TurnDelivery;
 }
 
 const THREAD_OPTOUT_ACK =
@@ -184,6 +184,7 @@ export interface SlackTurnRuntimeDependencies<TPreparedState> {
       onTurnStatePersisted?: () => Promise<void>;
       preparedState?: TPreparedState;
       queuedMessages?: QueuedTurnMessage[];
+      turnDelivery?: TurnDelivery;
       drainSteeringMessages?: (
         accept: (messages: QueuedTurnMessage[]) => Promise<void>,
         context?: SteeringDrainContext,
@@ -780,6 +781,7 @@ export function createSlackTurnRuntime<
             conversationId: hooks.conversationId,
             destination: hooks.destination,
             queuedMessages,
+            turnDelivery: hooks.turnDelivery,
             ack,
             onToolInvocation: toolInvocationHook,
             onTurnCompleted,
@@ -844,11 +846,13 @@ export function createSlackTurnRuntime<
           lifecycleError = error;
         }
         await hooks.beforeFirstResponsePost?.();
-        await postFallbackErrorReplyWithLogging({
-          thread,
-          eventId,
-          postFailureEventName: "mention.handler.failure_reply_post.failed",
-        });
+        if (hooks.turnDelivery !== "conversation") {
+          await postFallbackErrorReplyWithLogging({
+            thread,
+            eventId,
+            postFailureEventName: "mention.handler.failure_reply_post.failed",
+          });
+        }
         if (lifecycleError) throw lifecycleError;
       } finally {
         if (completed) {
@@ -1083,6 +1087,7 @@ export function createSlackTurnRuntime<
             conversationId: hooks.conversationId,
             destination: hooks.destination,
             preparedState,
+            turnDelivery: hooks.turnDelivery,
             beforeFirstResponsePost: hooks.beforeFirstResponsePost,
             queuedMessages,
             ack,
@@ -1152,12 +1157,14 @@ export function createSlackTurnRuntime<
           lifecycleError = error;
         }
         await hooks.beforeFirstResponsePost?.();
-        await postFallbackErrorReplyWithLogging({
-          thread,
-          eventId,
-          postFailureEventName:
-            "subscribed_message.handler.failure_reply_post.failed",
-        });
+        if (hooks.turnDelivery !== "conversation") {
+          await postFallbackErrorReplyWithLogging({
+            thread,
+            eventId,
+            postFailureEventName:
+              "subscribed_message.handler.failure_reply_post.failed",
+          });
+        }
         if (lifecycleError) throw lifecycleError;
       } finally {
         if (completed) {
