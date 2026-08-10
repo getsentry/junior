@@ -277,31 +277,35 @@ export function assertRunRoutingConsistency(
   const { destination, source } = request.routing;
   // API/dashboard turns keep a local destination for conversation-log delivery
   // while Source records what produced the work.
-  const apiUsesLocalDestination =
-    source.platform === "api" && destination.platform === "local";
-  if (source.platform !== destination.platform && !apiUsesLocalDestination) {
-    throw new TypeError("Run source and destination platforms do not match");
-  }
-  if (source.platform === "slack" && destination.platform === "slack") {
-    if (source.teamId !== destination.teamId) {
-      throw new TypeError("Slack source and destination teams do not match");
+  switch (source.platform) {
+    case "slack": {
+      if (destination.platform !== "slack") {
+        throw new TypeError("Run source and destination platforms do not match");
+      }
+      if (source.teamId !== destination.teamId) {
+        throw new TypeError("Slack source and destination teams do not match");
+      }
+      break;
     }
-  } else if (
-    (source.platform === "local" || source.platform === "api") &&
-    destination.platform === "local"
-  ) {
-    if (source.conversationId !== destination.conversationId) {
-      throw new TypeError(
-        "Source and destination conversation IDs do not match",
-      );
-    }
-    if (
-      request.routing.surface !== "internal" &&
-      destination.conversationId !== request.conversationId
-    ) {
-      throw new TypeError(
-        "Source, destination, and run conversation IDs do not match",
-      );
+    case "api":
+    case "local": {
+      if (destination.platform !== "local") {
+        throw new TypeError("Run source and destination platforms do not match");
+      }
+      if (source.conversationId !== destination.conversationId) {
+        throw new TypeError(
+          "Source and destination conversation IDs do not match",
+        );
+      }
+      if (
+        request.routing.surface !== "internal" &&
+        destination.conversationId !== request.conversationId
+      ) {
+        throw new TypeError(
+          "Source, destination, and run conversation IDs do not match",
+        );
+      }
+      break;
     }
   }
 
@@ -309,9 +313,17 @@ export function assertRunRoutingConsistency(
   if (!actor || actor.platform === "system") {
     return;
   }
-  const actorMatchesDestination =
-    actor.platform === destination.platform ||
-    (actor.platform === "api" && destination.platform === "local");
+  const actorMatchesDestination = (() => {
+    switch (actor.platform) {
+      case "slack":
+        return destination.platform === "slack";
+      case "local":
+        return destination.platform === "local";
+      case "api":
+        // API actors write through the local conversation-log destination.
+        return destination.platform === "local";
+    }
+  })();
   if (!actorMatchesDestination) {
     throw new TypeError(
       `Actor platform "${actor.platform}" does not match destination platform "${destination.platform}"`,

@@ -37,6 +37,7 @@ import {
   memoryRuntimeContextSchema,
   type MemoryRuntimeContext,
   type MemoryScope,
+  type MemorySourcePlatform,
 } from "./types";
 import {
   deriveMemoryScope,
@@ -386,15 +387,14 @@ function boundedLimit(value: number | undefined, fallback: number): number {
 /** Map runtime Source platform onto the durable memory source platform. */
 function memorySourcePlatform(
   source: MemoryRuntimeContext["source"],
-): "slack" | "local" {
+): MemorySourcePlatform {
   switch (source.platform) {
     case "slack":
       return "slack";
-    case "api":
     case "local":
-      // Durable enum is still destination-like; keep API writes as local until
-      // MEMORY_SOURCE_PLATFORMS grows an api value.
       return "local";
+    case "api":
+      return "api";
   }
 }
 

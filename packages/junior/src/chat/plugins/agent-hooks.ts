@@ -585,49 +585,47 @@ export function getPluginTools(
         state: createPluginState(pluginName),
         users: { resolveActor },
       };
+    } else if (context.source.platform === "api") {
+      if (context.destination.platform !== "local") {
+        throw new TypeError(
+          "API plugin tool context requires local destination",
+        );
+      }
+      pluginContext = {
+        ...basePluginContext(plugin),
+        actor:
+          context.actor?.platform === "api" ? context.actor : undefined,
+        conversationId: context.conversationId,
+        ...(annotations ? { annotations } : {}),
+        destination: context.destination,
+        source: context.source,
+        userText: context.userText,
+        embedder: createPluginEmbedder(pluginName),
+        egress: context.egress,
+        ...(mcp ? { mcp } : {}),
+        model: createPluginModel(pluginName, plugin.model),
+        resourceEvents,
+        sandbox,
+        state: createPluginState(pluginName),
+        users: { resolveActor },
+      };
     } else {
       if (context.destination.platform !== "local") {
         throw new TypeError(
           "Local plugin tool context requires local destination",
         );
       }
-      if (context.source.platform !== "local" && context.source.platform !== "api") {
-        throw new TypeError(
-          "Local plugin tool context requires a local or API source",
-        );
+      if (context.source.platform !== "local") {
+        throw new TypeError("Local plugin tool context requires a local source");
       }
-      const localActor =
-        context.actor?.platform === "local"
-          ? context.actor
-          : context.actor?.platform === "api"
-            ? {
-                platform: "local" as const,
-                userId: context.actor.userId,
-                ...(context.actor.email ? { email: context.actor.email } : {}),
-                ...(context.actor.fullName
-                  ? { fullName: context.actor.fullName }
-                  : {}),
-                ...(context.actor.userName
-                  ? { userName: context.actor.userName }
-                  : {}),
-              }
-            : undefined;
       pluginContext = {
         ...basePluginContext(plugin),
-        actor: localActor,
+        actor:
+          context.actor?.platform === "local" ? context.actor : undefined,
         conversationId: context.conversationId,
         ...(annotations ? { annotations } : {}),
         destination: context.destination,
-        // Plugin tool contexts still use the local Source branch for non-Slack
-        // conversation-log work; API Source is runtime-only routing identity.
-        source:
-          context.source.platform === "api"
-            ? {
-                platform: "local" as const,
-                visibility: "private" as const,
-                conversationId: context.source.conversationId,
-              }
-            : context.source,
+        source: context.source,
         userText: context.userText,
         embedder: createPluginEmbedder(pluginName),
         egress: context.egress,

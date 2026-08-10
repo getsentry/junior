@@ -440,24 +440,26 @@ function buildRuntimeSection(params: {
 }
 
 function formatSourceLines(source: Source): string[] {
-  if (source.platform === "local" || source.platform === "api") {
-    return [
-      `- source.platform: ${source.platform}`,
-      `- source.conversation_id: ${escapeXml(source.conversationId)}`,
-    ];
+  switch (source.platform) {
+    case "api":
+    case "local":
+      return [
+        `- source.platform: ${source.platform}`,
+        `- source.conversation_id: ${escapeXml(source.conversationId)}`,
+      ];
+    case "slack":
+      return [
+        "- source.platform: slack",
+        `- source.team_id: ${escapeXml(source.teamId)}`,
+        `- source.channel_id: ${escapeXml(source.channelId)}`,
+        ...(source.messageTs
+          ? [`- source.message_ts: ${escapeXml(source.messageTs)}`]
+          : []),
+        ...(source.threadTs
+          ? [`- source.thread_ts: ${escapeXml(source.threadTs)}`]
+          : []),
+      ];
   }
-
-  return [
-    "- source.platform: slack",
-    `- source.team_id: ${escapeXml(source.teamId)}`,
-    `- source.channel_id: ${escapeXml(source.channelId)}`,
-    ...(source.messageTs
-      ? [`- source.message_ts: ${escapeXml(source.messageTs)}`]
-      : []),
-    ...(source.threadTs
-      ? [`- source.thread_ts: ${escapeXml(source.threadTs)}`]
-      : []),
-  ];
 }
 
 function formatDestinationLines(destination: Destination): string[] {

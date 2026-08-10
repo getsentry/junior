@@ -114,14 +114,22 @@ interface SlackToolRuntimeContext extends BaseToolRuntimeContext {
 
 interface LocalToolRuntimeContext extends BaseToolRuntimeContext {
   destination: LocalDestination;
-  /** Local CLI or dashboard/API actors share conversation-log delivery. */
-  actor?: LocalActor | ApiActor;
-  source: LocalSource | ApiSource;
+  actor?: LocalActor;
+  source: LocalSource;
+  slack?: never;
+  slackActionToken?: never;
+}
+
+interface ApiToolRuntimeContext extends BaseToolRuntimeContext {
+  destination: LocalDestination;
+  actor?: ApiActor;
+  source: ApiSource;
   slack?: never;
   slackActionToken?: never;
 }
 
 export type ToolRuntimeContext =
+  | ApiToolRuntimeContext
   | LocalToolRuntimeContext
   | SlackToolRuntimeContext;
 

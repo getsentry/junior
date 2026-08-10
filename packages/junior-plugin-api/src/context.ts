@@ -101,7 +101,18 @@ export interface LocalInvocationContext extends BaseInvocationContext {
   source: LocalSource;
 }
 
-export type InvocationContext = LocalInvocationContext | SlackInvocationContext;
+export interface ApiInvocationContext extends BaseInvocationContext {
+  /** Dashboard/API turns still deliver through a local conversation destination. */
+  destination: LocalDestination;
+  actor?: ApiActor;
+  /** Runtime-owned source where the invocation came from. */
+  source: ApiSource;
+}
+
+export type InvocationContext =
+  | ApiInvocationContext
+  | LocalInvocationContext
+  | SlackInvocationContext;
 
 /** Build a normalized Slack source from runtime-owned Slack coordinates. */
 export function createSlackSource(input: {

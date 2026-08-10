@@ -1,10 +1,11 @@
 import type {
-  PluginContext,
-  LocalInvocationContext,
-  PluginEmbedder,
-  Identity,
-  PluginModel,
   Actor,
+  ApiInvocationContext,
+  Identity,
+  LocalInvocationContext,
+  PluginContext,
+  PluginEmbedder,
+  PluginModel,
   SlackInvocationContext,
   User,
 } from "./context";
@@ -544,6 +545,12 @@ interface LocalToolRegistrationContext
   slack?: never;
 }
 
+interface ApiToolRegistrationContext
+  extends BaseToolRegistrationHookContext, ApiInvocationContext {
+  slack?: never;
+}
+
 export type ToolRegistrationHookContext =
+  | ApiToolRegistrationContext
   | LocalToolRegistrationContext
   | SlackToolRegistrationContext;

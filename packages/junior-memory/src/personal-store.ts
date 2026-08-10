@@ -15,7 +15,7 @@ import {
   type MemoryDb,
   type MemoryRecord,
 } from "./store";
-import { MEMORY_KINDS } from "./types";
+import { MEMORY_KINDS, type MemorySourcePlatform } from "./types";
 
 const nonEmptyStringSchema = z.string().min(1);
 const memoryVisibilitySchema = z.enum(["private", "public"]);
@@ -58,7 +58,7 @@ export interface PersonalMemoryPage {
 /** Safe provenance attached to one viewer-visible memory. */
 export type PersonalMemoryRecord = MemoryRecord & {
   origin: "automatic" | "explicit" | "other";
-  sourcePlatform: "local" | "slack";
+  sourcePlatform: MemorySourcePlatform;
   visibility: MemoryVisibility;
 };
 
