@@ -112,8 +112,9 @@ delegation without becoming the execution actor or a general task owner.
   or tool-result tail. Unlike timeout or auth recovery, it never rolls history
   back past delivered assistant output.
 - Once destination accepts a tool-free assistant reply, the turn is finished for
-  that reply. Timeout and soft yield must complete the turn. They must not park a
-  shorter history.
+  that reply. Hard timeout must complete the turn. It must not park a shorter
+  history. Soft yield after a pure assistant tail already cannot park; soft yield
+  after delivery plus steering may still park so steered work can continue.
 - Unexpected failures propagate to the boundary that owns capture and fallback
   delivery.
 - Actor, execution destination, conversation, and credential context remain

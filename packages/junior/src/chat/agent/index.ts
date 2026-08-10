@@ -1609,16 +1609,18 @@ async function executeAgentRunInPrivacyContext(
       return await resume.parkForAuth(runError, turnUsage);
     }
     // One writer for agent history: once destination accepted a tool-free
-    // reply, finish the turn. Soft yield and hard timeout both hit this path
-    // after delivery; do not park a trimmed boundary that fights the accepted
-    // assistant already written by delivery.
-    if (acceptedToolFreeAssistant && agent && turnRoute) {
+    // reply, hard timeout must finish the turn. Do not park a trimmed boundary
+    // that fights the accepted assistant already written by delivery.
+    // Soft yield after a pure assistant tail is already a no-op (not
+    // continuable). Soft yield after delivery + steering still parks so the
+    // steered work can run on the next slice.
+    if (resume?.timedOut && acceptedToolFreeAssistant && agent && turnRoute) {
       await recordActiveMcpProviders();
       const piMessages = [...agent.state.messages];
       return {
         status: "completed",
         result: buildTurnResult({
-          newMessages: piMessages.slice(resume?.beforeMessageCount ?? 0),
+          newMessages: piMessages.slice(resume.beforeMessageCount),
           userInput,
           toolCalls,
           sandboxRef: getSandboxRef?.() ?? lastKnownSandboxRef,
