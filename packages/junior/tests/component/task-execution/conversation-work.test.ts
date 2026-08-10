@@ -1018,7 +1018,7 @@ describe("conversation work execution", () => {
 
   it("keeps different turn delivery modes in separate attempts", async () => {
     const queue = createConversationWorkQueueTestAdapter();
-    const attempts: Array<{ ids: string[]; turnDelivery: string }> = [];
+    const attempts: Array<{ ids: string[]; publishExternally: boolean }> = [];
     await appendInboundMessage({
       message: inboundMessage("m1", { delivery: "defer" }),
       nowMs: 1_000,
@@ -1028,7 +1028,7 @@ describe("conversation work execution", () => {
         createdAtMs: 2_000,
         delivery: "defer",
         receivedAtMs: 2_000,
-        turnDelivery: "conversation",
+        publishExternally: false,
       }),
       nowMs: 2_000,
     });
@@ -1041,7 +1041,7 @@ describe("conversation work execution", () => {
             ids: context.attempt.messages.map(
               (message) => message.inboundMessageId,
             ),
-            turnDelivery: context.turnDelivery,
+            publishExternally: context.publishExternally,
           });
           await context.attempt.ack();
           return { status: "completed" };
@@ -1050,8 +1050,8 @@ describe("conversation work execution", () => {
     ).resolves.toEqual({ status: "completed" });
 
     expect(attempts).toEqual([
-      { ids: ["m1"], turnDelivery: "destination" },
-      { ids: ["m2"], turnDelivery: "conversation" },
+      { ids: ["m1"], publishExternally: true },
+      { ids: ["m2"], publishExternally: false },
     ]);
   });
 

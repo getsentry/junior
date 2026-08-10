@@ -224,7 +224,7 @@ describe("Slack conversation work execution", () => {
       isDM: false,
     });
     const handleNewMention = vi.fn(async (_thread, restored, hooks) => {
-      expect(hooks.turnDelivery).toBe("destination");
+      expect(hooks.publishExternally).toBe(true);
       expect(restored.text).toBe("");
       expect(restored.attachments).toHaveLength(1);
       expect(restored.formatted.children).toHaveLength(2);
@@ -329,7 +329,7 @@ describe("Slack conversation work execution", () => {
     };
     const malformedWithDelivery = {
       ...malformed,
-      turnDelivery: "destination" as const,
+      publishExternally: true as const,
     };
     const worker = createSlackConversationWorker({
       getSlackAdapter: () => slackAdapter,
@@ -358,7 +358,7 @@ describe("Slack conversation work execution", () => {
         checkIn: async () => true,
         conversationId: CONVERSATION_ID,
         destination: SLACK_DESTINATION,
-        turnDelivery: "destination",
+        publishExternally: true,
         shouldYield: () => false,
       }),
     ).rejects.toThrow(

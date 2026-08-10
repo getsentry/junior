@@ -583,7 +583,7 @@ async function resumeSlackTurnInContext(
       const deliveryState = await getDeliveryConversation();
       let slackMessageTs: string[] = [];
       try {
-        if (runArgs.replyContext?.routing.turnDelivery === "conversation") {
+        if (runArgs.replyContext?.routing.publishExternally === false) {
           // The conversation commit below is the visible delivery boundary.
         } else {
           slackMessageTs = await sendSlackReply({

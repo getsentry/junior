@@ -135,7 +135,7 @@ export function buildAgentDispatchInboundMessage(
       },
     },
     receivedAtMs: nowMs,
-    turnDelivery: "destination",
+    publishExternally: true,
     source: "plugin",
   };
 }

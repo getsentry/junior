@@ -32,11 +32,14 @@ Runtime and Redis status is `paused`. SQL free-text / enum rows may still say
 ## State Model
 
 - A conversation mailbox contains pending work. Each item has an `interrupt`
-  or `defer` mailbox delivery and a `destination` or `conversation` reply
-  delivery. The worker keeps different reply deliveries in separate turns.
+  or `defer` mailbox delivery and a `publishExternally` flag. The worker keeps
+  different publish choices in separate turns.
 - A queue message identifies the conversation to wake. The stored work controls
-  delivery. A provider conversation stores its destination. Child work without
-  a destination gets its authority from its stored agent invocation.
+  delivery. A provider conversation stores its destination/location. Child work
+  without a destination gets its authority from its stored agent invocation.
+- `publishExternally` means the turn also publishes assistant output to the
+  conversation location. The conversation log always stores the turn. Dashboard
+  and destinationless work leave the flag false.
 - A lease grants one worker temporary execution ownership.
 - Dispatch projection updates take a short dispatch lock only while the
   conversation lease is already held. They never wait for conversation work,
@@ -44,8 +47,8 @@ Runtime and Redis status is `paused`. SQL free-text / enum rows may still say
 - Check-ins extend active ownership and allow heartbeat recovery to distinguish
   slow work from abandoned work.
 - Delivery state prevents a completed turn from being posted twice. The turn
-  checkpoint keeps turn delivery across pause and yield; worker execution state
-  does not duplicate it.
+  checkpoint keeps `publishExternally` across pause and yield; worker execution
+  state does not duplicate it.
 
 Redis execution state uses the new v2 keys. This release does not read or move
 old Redis state. Old mailbox, lease, and turn-cursor state can be lost.

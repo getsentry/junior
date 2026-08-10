@@ -292,7 +292,7 @@ describe("registerVercelConversationWorkDevConsumer", () => {
         source: "slack",
         createdAtMs: 1_000,
         receivedAtMs: 1_100,
-        turnDelivery: "destination",
+        publishExternally: true,
         input: {
           authorId: "U123",
           text: "message m1",

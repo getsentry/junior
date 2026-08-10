@@ -15,7 +15,7 @@ import { isRecord, toOptionalNumber, toOptionalString } from "@/chat/coerce";
 import { getChatConfig } from "@/chat/config";
 import { parseDestination, sameDestination } from "@/chat/destination";
 import { parseStoredSlackActor, type StoredSlackActor } from "@/chat/actor";
-import { turnDeliverySchema } from "./turn-delivery";
+import { publishExternallySchema } from "./publish-externally";
 import {
   getDefaultRedisStateAdapterFor,
   getStateAdapter,
@@ -115,7 +115,7 @@ export const inboundMessageSchema = z
     injectedAtMs: z.number().finite().optional(),
     input: agentInputSchema,
     receivedAtMs: z.number().finite(),
-    turnDelivery: turnDeliverySchema,
+    publishExternally: publishExternallySchema,
     source: inboundMessageSourceSchema,
   })
   .strict();

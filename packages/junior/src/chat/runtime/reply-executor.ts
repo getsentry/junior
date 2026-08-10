@@ -9,7 +9,6 @@
 import type { Message, Thread } from "chat";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { createSlackSource, type Destination } from "@sentry/junior-plugin-api";
-import type { TurnDelivery } from "@/chat/task-execution/turn-delivery";
 import { botConfig } from "@/chat/config";
 import {
   modelIdForProfile,
@@ -445,12 +444,12 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
       ack?: () => Promise<void>;
       onToolInvocation?: (invocation: TurnToolInvocation) => void;
       onTurnCompleted?: () => Promise<void>;
-      onTurnDeliveryAccepted?: (messageId?: string) => void;
+      onbooleanAccepted?: (messageId?: string) => void;
       onTurnOutcome?: (result: DispatchTurnResult) => void;
       onTurnStatePersisted?: () => Promise<void>;
       preparedState?: PreparedTurnState;
       queuedMessages?: QueuedTurnMessage[];
-      turnDelivery?: TurnDelivery;
+      publishExternally?: boolean;
       execution?: DispatchTurnContext;
       skipBackfill?: boolean;
       drainSteeringMessages?: (
@@ -617,7 +616,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           );
           try {
             await beforeFirstResponsePost();
-            if (options.turnDelivery === "conversation") {
+            if (options.publishExternally === false) {
               return;
             }
             if (channelId && threadTs) {
@@ -786,7 +785,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 candidate.id.startsWith(`${turnId}:assistant:`) &&
                 candidate.meta?.replied === true,
             );
-          options.onTurnDeliveryAccepted?.(deliveredMessage?.meta?.slackTs);
+          options.onbooleanAccepted?.(deliveredMessage?.meta?.slackTs);
           options.onTurnOutcome?.({ outcome: "completed" });
           await persistThreadState(thread, {
             conversation: preparedState.conversation,
@@ -882,7 +881,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             });
         if (configReply) {
           await beforeFirstResponsePost();
-          if (options.turnDelivery !== "conversation") {
+          if (options.publishExternally !== false) {
             await thread.post(buildSlackOutputMessage(configReply.text));
           }
           markConversationMessage(
@@ -1075,7 +1074,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           // classified as retryable delivery errors.
           await beforeFirstResponsePost();
           try {
-            if (options.turnDelivery === "conversation") {
+            if (options.publishExternally === false) {
               // The conversation commit below is the visible delivery boundary.
             } else if (channelId && thread.adapter.name === "slack") {
               slackMessageTs = await sendSlackReply({
@@ -1113,7 +1112,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           const slackTs = slackMessageTs.at(-1);
           assistantMessageDelivered = true;
           acceptedDeliveryId = slackTs;
-          options.onTurnDeliveryAccepted?.(slackTs);
+          options.onbooleanAccepted?.(slackTs);
           const recordedMessageId = recordDeliveredAssistantMessage({
             conversation: preparedState.conversation,
             sessionId: turnId,
@@ -1388,7 +1387,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               slackConversation,
               source,
               destination,
-              turnDelivery: options.turnDelivery ?? "destination",
+              publishExternally: options.publishExternally ?? true,
               ...(destinationVisibility ? { destinationVisibility } : {}),
               surface: options.execution?.surface ?? "slack",
               dispatch: options.execution?.dispatch,

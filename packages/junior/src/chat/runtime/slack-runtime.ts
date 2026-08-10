@@ -8,7 +8,6 @@
  */
 import type { Message, MessageContext, Thread } from "chat";
 import type { Destination } from "@sentry/junior-plugin-api";
-import type { TurnDelivery } from "@/chat/task-execution/turn-delivery";
 import { getSubscribedReplyPreflightDecision } from "@/chat/services/subscribed-decision";
 import { isProviderRetryError } from "@/chat/services/provider-error";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
@@ -86,7 +85,7 @@ interface SteeringDrainContext {
 export interface SlackTurnOptions extends ReplyHooks {
   conversationId?: string;
   destination: Destination;
-  turnDelivery?: TurnDelivery;
+  publishExternally?: boolean;
 }
 
 const THREAD_OPTOUT_ACK =
@@ -184,7 +183,7 @@ export interface SlackTurnRuntimeDependencies<TPreparedState> {
       onTurnStatePersisted?: () => Promise<void>;
       preparedState?: TPreparedState;
       queuedMessages?: QueuedTurnMessage[];
-      turnDelivery?: TurnDelivery;
+      publishExternally?: boolean;
       drainSteeringMessages?: (
         accept: (messages: QueuedTurnMessage[]) => Promise<void>,
         context?: SteeringDrainContext,
@@ -781,7 +780,7 @@ export function createSlackTurnRuntime<
             conversationId: hooks.conversationId,
             destination: hooks.destination,
             queuedMessages,
-            turnDelivery: hooks.turnDelivery,
+            publishExternally: hooks.publishExternally,
             ack,
             onToolInvocation: toolInvocationHook,
             onTurnCompleted,
@@ -846,7 +845,7 @@ export function createSlackTurnRuntime<
           lifecycleError = error;
         }
         await hooks.beforeFirstResponsePost?.();
-        if (hooks.turnDelivery !== "conversation") {
+        if (hooks.publishExternally !== false) {
           await postFallbackErrorReplyWithLogging({
             thread,
             eventId,
@@ -1087,7 +1086,7 @@ export function createSlackTurnRuntime<
             conversationId: hooks.conversationId,
             destination: hooks.destination,
             preparedState,
-            turnDelivery: hooks.turnDelivery,
+            publishExternally: hooks.publishExternally,
             beforeFirstResponsePost: hooks.beforeFirstResponsePost,
             queuedMessages,
             ack,
@@ -1157,7 +1156,7 @@ export function createSlackTurnRuntime<
           lifecycleError = error;
         }
         await hooks.beforeFirstResponsePost?.();
-        if (hooks.turnDelivery !== "conversation") {
+        if (hooks.publishExternally !== false) {
           await postFallbackErrorReplyWithLogging({
             thread,
             eventId,
