@@ -674,10 +674,14 @@ describe("plugin heartbeat", () => {
     const dispatchRecord = await getDispatchRecord(running!.dispatchId!);
     expect(dispatchRecord?.input).toBe(
       [
-        "The scheduled task creator is <@U039RR91S>.",
-        "When the task refers to its creator, use this mention directly instead of looking them up by name.",
+        "A scheduled task is due.",
+        "Junior is executing a stored user-authored scheduled task.",
+        "This fire is system-authored input, not a new user command.",
         "",
-        "Post a digest. Summarize the latest state.",
+        "Stored user instruction: Post a digest. Summarize the latest state.",
+        "",
+        "Task creator: <@U039RR91S>",
+        "When the instruction refers to its creator, use that mention directly instead of looking them up by name.",
       ].join("\n"),
     );
     expect(dispatchRecord?.destination).toEqual(SLACK_DESTINATION);

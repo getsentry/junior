@@ -37,13 +37,18 @@ function singleLineMetadataValue(value: string): string {
     .trim();
 }
 
+/** Render the due scheduled task with explicit authority, matching event-task input. */
 function buildDispatchInput(task: ScheduledTask): string {
   const creator = sanitizeScheduledTaskPrincipal(task.createdBy);
   return [
-    `The scheduled task creator is <@${creator.slackUserId}>.`,
-    "When the task refers to its creator, use this mention directly instead of looking them up by name.",
+    "A scheduled task is due.",
+    "Junior is executing a stored user-authored scheduled task.",
+    "This fire is system-authored input, not a new user command.",
     "",
-    task.task.text,
+    `Stored user instruction: ${task.task.text}`,
+    "",
+    `Task creator: <@${creator.slackUserId}>`,
+    "When the instruction refers to its creator, use that mention directly instead of looking them up by name.",
   ].join("\n");
 }
 
