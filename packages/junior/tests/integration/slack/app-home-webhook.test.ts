@@ -38,12 +38,13 @@ function createSlackAdapter() {
 
 function interactiveDisconnectPayload(
   provider: string = "notion",
+  userId: string = "U123",
 ): Record<string, unknown> {
   return {
     type: "block_actions",
     team: { id: "T123" },
     user: {
-      id: "U123",
+      id: userId,
       team_id: "T123",
       username: "alice",
     },
@@ -285,6 +286,76 @@ describe("Slack webhook: App Home events", () => {
           ),
         ),
     ).resolves.toEqual([{ subjectId: "github-2" }]);
+  });
+
+  it("does not remove an identity owned by another user", async () => {
+    const owner = await upsertIdentity(getSqlExecutor(), {
+      kind: "user",
+      provider: "slack",
+      providerTenantId: "T123",
+      providerSubjectId: "U999",
+      email: "owner@example.com",
+      emailVerified: true,
+    });
+    await upsertIdentity(getSqlExecutor(), {
+      kind: "user",
+      provider: "slack",
+      providerTenantId: "T123",
+      providerSubjectId: "U123",
+      email: "other@example.com",
+      emailVerified: true,
+    });
+    if (!owner.userId) throw new Error("missing identity owner");
+    await upsertLinkedIdentity(getSqlExecutor(), owner.userId, {
+      kind: "user",
+      provider: "github",
+      providerSubjectId: "github-owner",
+      handle: "owner",
+    });
+
+    const state = createMemoryState();
+    const client = createSlackWebhookTestClient({
+      signingSecret: SIGNING_SECRET,
+    });
+    const waitUntil = client.waitUntil();
+    const userTokenStore = createTokenStore({
+      get: vi.fn(async () => ({
+        accessToken: "github-access-token",
+        refreshToken: "github-refresh-token",
+        account: { id: "github-owner" },
+      })),
+    });
+    const params = new URLSearchParams({
+      payload: JSON.stringify(interactiveDisconnectPayload("github", "U123")),
+    });
+
+    const response = await handleSlackWebhook({
+      request: client.form(params),
+      waitUntil: waitUntil.fn,
+      services: {
+        getSlackAdapter: createSlackAdapter,
+        queue: createConversationWorkQueueTestAdapter(),
+        runtime: createNoopSlackWebhookRuntime(),
+        state,
+        getUserTokenStore: () => userTokenStore,
+      },
+    });
+
+    expect(response.status).toBe(200);
+    await waitUntil.flush();
+    expect(userTokenStore.delete).toHaveBeenCalledWith("U123", "github");
+    await expect(
+      getSqlExecutor()
+        .db()
+        .select({ subjectId: juniorIdentities.providerSubjectId })
+        .from(juniorIdentities)
+        .where(
+          and(
+            eq(juniorIdentities.userId, owner.userId),
+            eq(juniorIdentities.provider, "github"),
+          ),
+        ),
+    ).resolves.toEqual([{ subjectId: "github-owner" }]);
   });
 
   it("refreshes App Home after disconnect unlink failure", async () => {

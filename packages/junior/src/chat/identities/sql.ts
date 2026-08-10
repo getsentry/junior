@@ -216,17 +216,36 @@ export async function upsertLinkedIdentity(
   return await upsertIdentityRecord(executor, identity, userId, nowMs);
 }
 
-/** Remove one exact non-tenant provider identity. */
-export async function deleteProviderIdentity(
+/** Remove one exact provider identity owned by a workspace Slack user. */
+export async function deleteProviderIdentityForSlackUser(
   executor: JuniorSqlDatabase,
+  slackTeamId: string,
+  slackUserId: string,
   provider: string,
   providerSubjectId: string,
 ): Promise<void> {
+  const slackRows = await executor
+    .db()
+    .select({ userId: juniorIdentities.userId })
+    .from(juniorIdentities)
+    .where(
+      and(
+        eq(juniorIdentities.kind, "user"),
+        eq(juniorIdentities.provider, "slack"),
+        eq(juniorIdentities.providerTenantId, slackTeamId),
+        eq(juniorIdentities.providerSubjectId, slackUserId),
+      ),
+    )
+    .limit(1);
+  const userId = slackRows[0]?.userId;
+  if (!userId) return;
+
   await executor
     .db()
     .delete(juniorIdentities)
     .where(
       and(
+        eq(juniorIdentities.userId, userId),
         eq(juniorIdentities.provider, provider),
         eq(juniorIdentities.providerTenantId, ""),
         eq(juniorIdentities.providerSubjectId, providerSubjectId),

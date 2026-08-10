@@ -92,7 +92,8 @@ async function handleUnlink(
   }
 
   const tokenStore = createUserTokenStore();
-  await unlinkProvider(actorId, provider, tokenStore);
+  const teamId = (event.raw as { team_id?: string }).team_id;
+  await unlinkProvider(actorId, provider, tokenStore, teamId);
 
   logInfo("slash_command.credential.unlinked", {
     "app.credential.provider": provider,
