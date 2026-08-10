@@ -167,22 +167,7 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
     const conversation = coerceThreadConversationState(existingState);
     const conversationId = args.context.threadId ?? args.context.runId;
     if (conversationId && isVisionEnabled()) {
-      const legacyVision = conversation.vision;
-      const cachedVision = await loadConversationVisionCache(conversationId);
-      conversation.vision = {
-        backfillCompletedAtMs:
-          cachedVision.backfillCompletedAtMs ?? legacyVision.backfillCompletedAtMs,
-        byFileId: {
-          ...legacyVision.byFileId,
-          ...cachedVision.byFileId,
-        },
-      };
-      if (
-        legacyVision.backfillCompletedAtMs !== undefined ||
-        Object.keys(legacyVision.byFileId).length > 0
-      ) {
-        await persistConversationVisionCache(conversationId, conversation.vision);
-      }
+      conversation.vision = await loadConversationVisionCache(conversationId);
     }
     await hydrateConversationMessages({ conversation, conversationId });
     const locationConfiguration =
