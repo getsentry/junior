@@ -18,6 +18,7 @@ import {
   PersonalMemoryNotFoundError,
   type PersonalMemoryRecord,
 } from "./personal";
+import { MEMORY_SOURCE_PLATFORMS } from "./types";
 
 export const memoryApiSchema = z
   .object({
@@ -28,7 +29,7 @@ export const memoryApiSchema = z
     kind: z.enum(["preference", "procedure", "knowledge"]),
     observedAt: z.iso.datetime(),
     origin: z.enum(["automatic", "explicit", "other"]),
-    sourcePlatform: z.enum(["local", "slack", "api"]),
+    sourcePlatform: z.enum(MEMORY_SOURCE_PLATFORMS),
     visibility: z.enum(["private", "public"]),
   })
   .strict();

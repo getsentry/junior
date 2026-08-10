@@ -30,4 +30,26 @@ describe("memory permalink record", () => {
       title: "Use pnpm.",
     });
   });
+
+  it("accepts dashboard API source platform on permalink loads", () => {
+    expect(
+      memoryPageRecord({
+        content: "Prefers short dashboard answers.",
+        createdAt: "2026-08-06T00:00:00.000Z",
+        id: "memory/api-1",
+        kind: "preference",
+        observedAt: "2026-08-05T00:00:00.000Z",
+        origin: "automatic",
+        sourcePlatform: "api",
+        visibility: "private",
+      }),
+    ).toMatchObject({
+      id: "memory/api-1",
+      metadata: expect.arrayContaining([
+        { label: "Source", value: "Api" },
+        { label: "Learned", value: "Automatic" },
+      ]),
+      title: "Prefers short dashboard answers.",
+    });
+  });
 });
