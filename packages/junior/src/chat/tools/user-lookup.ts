@@ -99,7 +99,6 @@ function slackProfileFromIdentity(
     email: identity.email ?? undefined,
     is_bot: false,
     is_deleted: false,
-    is_external: false,
   };
 }
 

@@ -269,19 +269,18 @@ describe("userLookup", () => {
       });
     });
 
-    it("prefers a full workspace member over an external display-name match", async () => {
+    it("keeps ambiguous first-name hits multi-match", async () => {
       queueSlackApiResponse("users.list", {
         body: usersListPage({
           members: [
             {
-              id: "U_EXTERNAL_COLIN",
+              id: "U_COLIN_CURTIN",
               name: "colin.curtin",
               realName: "Colin Curtin",
               displayName: "Colin Curtin (Square)",
-              isStranger: true,
             },
             {
-              id: "U_MEMBER_COLIN",
+              id: "U_COLIN_KAWAI",
               name: "colin.kawai",
               realName: "Colin Kawai",
               displayName: "Colin Kawai",
@@ -295,25 +294,15 @@ describe("userLookup", () => {
         query: "colin",
       });
 
-      // Ambiguous first-name hits stay multi-match; ranking prefers the member.
       expect(result).toMatchObject({
         provider: "slack",
         query: "colin",
         count: 2,
       });
       expect(result.mention).toBeUndefined();
-      expect(result.users.map((user: { id: string }) => user.id)).toEqual([
-        "U_MEMBER_COLIN",
-        "U_EXTERNAL_COLIN",
-      ]);
-      expect(result.users[0]).toMatchObject({
-        is_external: false,
-        mention: "<@U_MEMBER_COLIN>",
-      });
-      expect(result.users[1]).toMatchObject({
-        is_external: true,
-        mention: "<@U_EXTERNAL_COLIN>",
-      });
+      expect(result.users.map((user: { id: string }) => user.id).sort()).toEqual(
+        ["U_COLIN_CURTIN", "U_COLIN_KAWAI"],
+      );
     });
 
     it("ranks a multi-token name above another first-name match", async () => {
@@ -380,19 +369,18 @@ describe("userLookup", () => {
       });
     });
 
-    it("does not let external demotion invert a stronger exact match", async () => {
+    it("ranks an exact name above a longer prefix hit", async () => {
       queueSlackApiResponse("users.list", {
         body: usersListPage({
           members: [
             {
-              id: "U_GUEST_ALEX",
+              id: "U_ALEX",
               name: "alex",
               realName: "Alex",
               displayName: "Alex",
-              isStranger: true,
             },
             {
-              id: "U_MEMBER_ALEXANDRA",
+              id: "U_ALEXANDRA",
               name: "alexandra",
               realName: "Alexandra",
               displayName: "Alexandra",
@@ -407,8 +395,8 @@ describe("userLookup", () => {
       });
 
       expect(result.users.map((user: { id: string }) => user.id)).toEqual([
-        "U_GUEST_ALEX",
-        "U_MEMBER_ALEXANDRA",
+        "U_ALEX",
+        "U_ALEXANDRA",
       ]);
     });
 

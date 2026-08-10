@@ -14,8 +14,6 @@ export interface SlackUserProfile {
   status_emoji?: string;
   is_bot: boolean;
   is_deleted: boolean;
-  /** True for guests, multi-channel guests, and Slack Connect strangers. */
-  is_external: boolean;
   timezone?: string;
   profile_fields?: Array<{
     id: string;
@@ -38,9 +36,6 @@ interface SlackUserRaw {
   real_name?: string;
   deleted?: boolean;
   is_bot?: boolean;
-  is_restricted?: boolean;
-  is_ultra_restricted?: boolean;
-  is_stranger?: boolean;
   tz?: string;
   profile?: {
     display_name?: string;
@@ -81,17 +76,9 @@ function normalizeUser(raw: SlackUserRaw): SlackUserProfile {
     status_emoji: raw.profile?.status_emoji ?? undefined,
     is_bot: raw.is_bot ?? false,
     is_deleted: raw.deleted ?? false,
-    is_external: isExternalSlackUser(raw),
     timezone: raw.tz || undefined,
     ...(profileFields.length > 0 ? { profile_fields: profileFields } : {}),
   };
-}
-
-/** Guests and Slack Connect strangers should lose to full workspace members. */
-function isExternalSlackUser(user: SlackUserRaw): boolean {
-  return Boolean(
-    user.is_restricted || user.is_ultra_restricted || user.is_stranger,
-  );
 }
 
 function normalizeNameTokens(value: string): string[] {
@@ -170,7 +157,7 @@ export interface SlackUserSearchResult {
 /**
  * Rank Slack name-search quality for one candidate.
  * Exact field and token matches beat field prefixes so a display-name prefix
- * cannot outrank a real-name first-name hit. Membership is a tie-break only.
+ * cannot outrank a real-name first-name hit.
  */
 function scoreNameMatch(user: SlackUserRaw, query: string): number {
   const queryLower = query.toLowerCase().trim();
@@ -223,12 +210,6 @@ function compareNameMatches(
   right: { user: SlackUserRaw; score: number },
 ): number {
   if (right.score !== left.score) return right.score - left.score;
-
-  // Prefer full members only when match quality is equal.
-  const leftExternal = isExternalSlackUser(left.user) ? 1 : 0;
-  const rightExternal = isExternalSlackUser(right.user) ? 1 : 0;
-  if (leftExternal !== rightExternal) return leftExternal - rightExternal;
-
   return (left.user.name ?? "").localeCompare(right.user.name ?? "");
 }
 
