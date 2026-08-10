@@ -108,6 +108,8 @@ export interface CreateApiConversationInput {
   message: string;
   /** Client-supplied idempotency key for the first message. */
   idempotencyKey: string;
+  /** New roots default public. Continues never rewrite visibility. */
+  visibility?: ConversationPrivacy;
 }
 
 export interface AppendApiConversationMessageInput {
@@ -115,6 +117,8 @@ export interface AppendApiConversationMessageInput {
   conversationId: string;
   message: string;
   idempotencyKey: string;
+  /** Applied only when this call creates the conversation root. */
+  rootVisibility?: ConversationPrivacy;
 }
 
 export interface ApiConversationMessageAccepted {
@@ -293,6 +297,8 @@ async function recordApiConversationActivity(args: {
   conversationId: string;
   conversationStore?: ConversationStore;
   nowMs: number;
+  /** Applied only when this call creates the conversation root. */
+  rootVisibility?: ConversationPrivacy;
 }): Promise<Destination> {
   const store = args.conversationStore ?? getConversationStore();
   const existing = await store.get({ conversationId: args.conversationId });
@@ -303,8 +309,12 @@ async function recordApiConversationActivity(args: {
   // New dashboard roots default public. Continues inherit the existing root
   // visibility and keep the original session source (set-once).
   const isNewRoot = !existing;
+  const visibility = args.rootVisibility === "private" ? "private" : "public";
   const source = isNewRoot
-    ? webSourceForConversation({ conversationId: args.conversationId })
+    ? webSourceForConversation({
+        conversationId: args.conversationId,
+        visibility,
+      })
     : undefined;
   await store.recordActivity({
     conversationId: args.conversationId,
@@ -315,12 +325,12 @@ async function recordApiConversationActivity(args: {
     // continues it. Mailbox entries still carry source "web" per turn.
     ...(isNewRoot ? { source: "web" as const } : {}),
     ...(source ? { sessionSource: source } : {}),
-    ...(isNewRoot ? { visibility: "public" as const } : {}),
+    ...(isNewRoot ? { visibility } : {}),
   });
   return destination;
 }
 
-/** Create a public root conversation and enqueue its first message. */
+/** Create a dashboard root conversation and enqueue its first message. */
 export async function createAndEnqueueApiConversation(
   input: CreateApiConversationInput,
   options: EnqueueOptions,
@@ -338,6 +348,7 @@ export async function createAndEnqueueApiConversation(
       conversationId,
       idempotencyKey: input.idempotencyKey,
       message: input.message,
+      rootVisibility: input.visibility === "private" ? "private" : "public",
     },
     options,
   );
@@ -365,6 +376,7 @@ export async function appendAndEnqueueApiConversationMessage(
     conversationId: input.conversationId,
     conversationStore: options.conversationStore,
     nowMs,
+    ...(input.rootVisibility ? { rootVisibility: input.rootVisibility } : {}),
   });
   const result = await appendAndEnqueueInboundMessage({
     message: buildApiTurnInboundMessage({

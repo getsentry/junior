@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Globe2, LockKeyhole } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router";
 
 import { useConversationsData } from "../api";
 import { ConversationSidebar } from "./ConversationSidebar";
+import { ToggleButton } from "../components/Button";
 import { ConversationComposer } from "./ConversationComposer";
 import {
   useCreateConversation,
@@ -142,10 +143,11 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
                     : undefined
                 }
                 pending={createConversation.isPending}
-                onSubmit={async (message, idempotencyKey) => {
+                onSubmit={async (message, idempotencyKey, visibility) => {
                   const accepted = await createConversation.mutateAsync({
                     idempotencyKey,
                     message,
+                    visibility,
                   });
                   navigate(conversationPath(accepted.conversationId));
                 }}
@@ -198,8 +200,15 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
 function NewConversationView(props: {
   error?: string;
   pending: boolean;
-  onSubmit(message: string, idempotencyKey: string): Promise<void>;
+  onSubmit(
+    message: string,
+    idempotencyKey: string,
+    visibility: "private" | "public",
+  ): Promise<void>;
 }) {
+  const [visibility, setVisibility] = useState<"private" | "public">("public");
+  const isPublic = visibility === "public";
+
   return (
     <div className="grid min-h-full place-items-center px-4 py-8 md:px-8">
       <div className="w-full max-w-2xl">
@@ -208,16 +217,42 @@ function NewConversationView(props: {
             New conversation
           </h2>
           <p className="mt-2 font-mono text-xs leading-relaxed text-dashboard-text-muted">
-            This conversation is public. Anyone in this workspace can open its
-            link. Only participants can send messages.
+            {isPublic
+              ? "This conversation is public. Anyone in this workspace can open its link. Only participants can send messages."
+              : "This conversation is private. Only you can open its transcript and send messages."}
           </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <ToggleButton
+              onClick={() => setVisibility("public")}
+              pressed={isPublic}
+              type="button"
+              variant="pill"
+            >
+              <Globe2 aria-hidden="true" className="mr-1.5 inline size-3" />
+              Public
+            </ToggleButton>
+            <ToggleButton
+              onClick={() => setVisibility("private")}
+              pressed={!isPublic}
+              type="button"
+              variant="pill"
+            >
+              <LockKeyhole
+                aria-hidden="true"
+                className="mr-1.5 inline size-3"
+              />
+              Private
+            </ToggleButton>
+          </div>
         </div>
         <ConversationComposer
           error={props.error}
           label="Start a conversation"
           pending={props.pending}
           submitLabel="Send"
-          onSubmit={props.onSubmit}
+          onSubmit={(message, idempotencyKey) =>
+            props.onSubmit(message, idempotencyKey, visibility)
+          }
         />
       </div>
     </div>

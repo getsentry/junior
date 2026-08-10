@@ -23,7 +23,7 @@ function actorFromViewer(viewer: User): WebActor {
   });
 }
 
-/** Create a public root conversation and enqueue its first message. */
+/** Create a dashboard root conversation and enqueue its first message. */
 export async function createConversationForViewer(
   viewer: User,
   body: CreateConversationBody,
@@ -34,6 +34,7 @@ export async function createConversationForViewer(
         actor: actorFromViewer(viewer),
         idempotencyKey: body.idempotencyKey,
         message: body.message,
+        ...(body.visibility ? { visibility: body.visibility } : {}),
       },
       {
         conversationStore: getConversationStore(),

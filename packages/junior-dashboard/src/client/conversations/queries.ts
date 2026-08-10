@@ -108,12 +108,15 @@ export function conversationDetailQueryOptions(
   });
 }
 
-/** Create one public dashboard conversation and refresh the personal feed. */
+/** Create one dashboard conversation and refresh the personal feed. */
 export function useCreateConversation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (args: { idempotencyKey: string; message: string }) =>
-      post(acceptedConversationMessageSchema, "/api/conversations", args),
+    mutationFn: (args: {
+      idempotencyKey: string;
+      message: string;
+      visibility?: "private" | "public";
+    }) => post(acceptedConversationMessageSchema, "/api/conversations", args),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
         queryKey: ["dashboard", "conversations"],

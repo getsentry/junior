@@ -79,6 +79,53 @@ describe("api turn conversation work", () => {
     });
   });
 
+  it("creates a private dashboard root when visibility is private", async () => {
+    const { actor, conversationStore, queue, state } =
+      await createApiTurnWorkFixture();
+    const accepted = await createAndEnqueueApiConversation(
+      {
+        actor,
+        idempotencyKey: "private-1",
+        message: "Keep this private.",
+        visibility: "private",
+      },
+      { conversationStore, queue, state },
+    );
+
+    await expect(
+      conversationStore.get({ conversationId: accepted.conversationId }),
+    ).resolves.toMatchObject({
+      source: "web",
+      sessionSource: createWebSource(accepted.conversationId, "private"),
+      visibility: "private",
+      destination: {
+        platform: "local",
+        conversationId: accepted.conversationId,
+      },
+    });
+
+    const createRetry = await createAndEnqueueApiConversation(
+      {
+        actor,
+        idempotencyKey: "private-1",
+        message: "Keep this private.",
+        visibility: "public",
+      },
+      { conversationStore, queue, state },
+    );
+    expect(createRetry).toMatchObject({
+      conversationId: accepted.conversationId,
+      messageId: accepted.messageId,
+      status: "duplicate",
+    });
+    await expect(
+      conversationStore.get({ conversationId: accepted.conversationId }),
+    ).resolves.toMatchObject({
+      visibility: "private",
+      sessionSource: createWebSource(accepted.conversationId, "private"),
+    });
+  });
+
   it("enqueues public web turns with publishExternally false and runs them on the worker", async () => {
     const { actor, conversationStore, queue, state } =
       await createApiTurnWorkFixture();

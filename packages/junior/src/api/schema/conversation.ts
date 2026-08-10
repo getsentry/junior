@@ -62,6 +62,8 @@ export const createConversationBodySchema = z
   .object({
     idempotencyKey: z.string().trim().min(1).max(200),
     message: z.string().trim().min(1).max(32_000),
+    /** New roots default public. Private roots stay participant-only. */
+    visibility: z.enum(["private", "public"]).optional(),
   })
   .strict();
 

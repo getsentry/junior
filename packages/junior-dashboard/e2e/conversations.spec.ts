@@ -150,7 +150,11 @@ test("starts and continues conversations from the dashboard", async ({
   page,
 }) => {
   const createdConversationId = "local:web:created";
-  const createRequests: Array<{ idempotencyKey: string; message: string }> = [];
+  const createRequests: Array<{
+    idempotencyKey: string;
+    message: string;
+    visibility?: "private" | "public";
+  }> = [];
   const continueRequests: Array<{ idempotencyKey: string; message: string }> =
     [];
   await page.route("**/api/conversations", async (route) => {
@@ -191,6 +195,8 @@ test("starts and continues conversations from the dashboard", async ({
     page.getByRole("heading", { name: "New conversation" }),
   ).toBeVisible();
   await expect(page.getByText("This conversation is public.")).toBeVisible();
+  await page.getByRole("button", { name: "Private" }).click();
+  await expect(page.getByText("This conversation is private.")).toBeVisible();
   await page
     .getByLabel("Start a conversation")
     .fill("Start from the dashboard");
@@ -200,6 +206,7 @@ test("starts and continues conversations from the dashboard", async ({
   );
   expect(createRequests).toHaveLength(1);
   expect(createRequests[0]?.message).toBe("Start from the dashboard");
+  expect(createRequests[0]?.visibility).toBe("private");
   expect(createRequests[0]?.idempotencyKey).toBeTruthy();
 
   const slackConversationId = "slack:CQA123:1770000000.000100";
