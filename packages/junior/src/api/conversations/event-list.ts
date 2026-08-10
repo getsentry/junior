@@ -5,12 +5,9 @@ import { decodeConversationCursor, encodeConversationCursor } from "./cursor";
 import { readConversationEventPage } from "./event-page";
 import { readConversationRecordFromSql } from "./list";
 import { conversationEventHistory } from "./projection";
-import { parseParams, parseQuery, throwApiError } from "../http";
-import { defineApiRoute } from "../route";
+import { throwApiError } from "../http";
 import {
   conversationEventPageSchema,
-  conversationEventsQuerySchema,
-  conversationParamsSchema,
   type ConversationEventPage,
 } from "../schema/conversation";
 
@@ -67,26 +64,3 @@ export async function readConversationEvents(
     generatedAt: new Date().toISOString(),
   });
 }
-
-export default defineApiRoute({
-  method: "get",
-  path: "/:conversationId/events",
-  responseSchema: conversationEventPageSchema,
-  handler: async (c) => {
-    const { conversationId } = parseParams(
-      conversationParamsSchema,
-      c.req.param(),
-    );
-    const { before, limit } = parseQuery(
-      conversationEventsQuerySchema,
-      c.req.query(),
-    );
-    const viewer = c.get("viewer");
-    const report = await readConversationEvents(conversationId, before, {
-      limit,
-      ...(viewer ? { viewer } : {}),
-    });
-    if (!report) throwApiError(404, "Conversation not found.");
-    return report;
-  },
-});

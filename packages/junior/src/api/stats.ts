@@ -1,5 +1,4 @@
 import { readStats } from "@/stats";
-import { defineApiRoute } from "./route";
 import { statsReportSchema, type StatsReport } from "./schema/stats";
 
 const WINDOW_DAYS = 90;
@@ -20,10 +19,3 @@ export async function readStatsReport(): Promise<StatsReport> {
     windowStart: start,
   });
 }
-
-export default defineApiRoute({
-  method: "get",
-  path: "/api/stats",
-  responseSchema: statsReportSchema,
-  handler: readStatsReport,
-});
