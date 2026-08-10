@@ -672,18 +672,22 @@ describe("plugin heartbeat", () => {
     expect(fetchMock).not.toHaveBeenCalled();
     expect(conversationWorkQueue.sentRecords()).toHaveLength(1);
     const dispatchRecord = await getDispatchRecord(running!.dispatchId!);
-    expect(dispatchRecord?.input).toBe(
-      [
-        "A scheduled task is due.",
-        "Junior is executing a stored user-authored scheduled task.",
-        "This fire is system-authored input, not a new user command.",
-        "",
-        "Stored user instruction: Post a digest. Summarize the latest state.",
-        "",
-        "Task creator: <@U039RR91S>",
-        "When the instruction refers to its creator, use that mention directly instead of looking them up by name.",
-      ].join("\n"),
-    );
+    expect(dispatchRecord?.input).toMatchInlineSnapshot(`
+      "[scheduled task]
+
+      A scheduled task is due.
+
+      Handling:
+      - This is system-authored scheduled-task input, not a new user command.
+      - Execute the stored user instruction now.
+      - When the instruction refers to its creator, use the creator mention directly instead of looking them up by name.
+
+      Task:
+      - creator: <@U039RR91S>
+
+      Stored user instruction:
+      Post a digest. Summarize the latest state."
+    `);
     expect(dispatchRecord?.destination).toEqual(SLACK_DESTINATION);
     expect(dispatchRecord?.destinationVisibility).toBe("public");
     expect(dispatchRecord?.source).toEqual(
