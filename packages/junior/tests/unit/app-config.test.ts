@@ -960,7 +960,7 @@ describe("createApp plugin config", () => {
     ).toEqual({
       items: [
         {
-          label: "ID",
+          label: "Open in Junior",
           url: "https://junior.example.com/ops/conversations/slack%3AC123%3A1700000000.000100",
           value: "slack:C123:1700000000.000100",
         },
