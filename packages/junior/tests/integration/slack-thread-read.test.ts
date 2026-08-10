@@ -6,6 +6,7 @@ import type { SlackToolContext } from "@/chat/slack/tools/context";
 import { parseSlackChannelId, parseSlackTeamId } from "@/chat/slack/ids";
 import {
   conversationsInfoOk,
+  conversationsJoinOk,
   conversationsRepliesPage,
 } from "../fixtures/slack/factories/api";
 import {
@@ -146,8 +147,7 @@ describe("slackThreadRead", () => {
     expect(result.messages[0].text).toBe("root message");
     expect(result.messages[1].text).toBe("reply message");
 
-    // No conversations.info call — access determined by persisted visibility
-    expect(getCapturedSlackApiCalls("conversations.info")).toHaveLength(0);
+    // Live channel metadata may be fetched even when persisted public visibility exists.
     expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(1);
   });
 
@@ -296,7 +296,7 @@ describe("slackThreadRead", () => {
         channel_id: "G0PRIVATE",
         ts: "1700000000.100000",
       }),
-    ).rejects.toThrow("public channels the bot can access");
+    ).rejects.toThrow("private");
     expect(getCapturedSlackApiCalls("conversations.info")).toHaveLength(1);
     expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(0);
   });
@@ -314,7 +314,7 @@ describe("slackThreadRead", () => {
       executeTool(tool, {
         url: "https://sentry.slack.com/archives/G0OTHER/p1700000000100000",
       }),
-    ).rejects.toThrow("public channels the bot can access");
+    ).rejects.toThrow("private");
 
     expect(getCapturedSlackApiCalls("conversations.info")).toHaveLength(1);
     expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(0);
@@ -333,7 +333,7 @@ describe("slackThreadRead", () => {
         channel_id: "D0SOMEONE",
         ts: "1700000000.100000",
       }),
-    ).rejects.toThrow("public channels the bot can access");
+    ).rejects.toThrow("private");
     expect(getCapturedSlackApiCalls("conversations.info")).toHaveLength(1);
     expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(0);
   });
@@ -385,20 +385,61 @@ describe("slackThreadRead", () => {
       executeTool(tool, {
         url: "https://sentry.slack.com/archives/C0UNCONFIRMED/p1700000000100000",
       }),
-    ).rejects.toThrow("public channels the bot can access");
+    ).rejects.toThrow("private");
     expect(getCapturedSlackApiCalls("conversations.info")).toHaveLength(1);
     expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(0);
   });
 
-  it("returns a recoverable error when conversations.replies fails", async () => {
+  it("joins then retries when conversations.replies returns not_in_channel", async () => {
+    queueSlackApiError("conversations.replies", {
+      error: "not_in_channel",
+    });
+    queueSlackApiResponse("conversations.join", {
+      body: conversationsJoinOk({ channelId: "C0FLAKY" }),
+    });
+    queueSlackApiResponse("conversations.replies", {
+      body: conversationsRepliesPage({
+        threadTs: "1700000000.100000",
+        messages: [
+          {
+            ts: "1700000000.100000",
+            thread_ts: "1700000000.100000",
+            user: "U1",
+            text: "after join",
+          },
+        ],
+      }),
+    });
+
+    const tool = createTool({}, ["C0FLAKY"]);
+    const result = await executeTool(tool, {
+      channel_id: "C0FLAKY",
+      ts: "1700000000.100000",
+    });
+    expect(result).toMatchObject({
+      channel_id: "C0FLAKY",
+      joined_channel: true,
+      count: 1,
+    });
+    expect(getCapturedSlackApiCalls("conversations.join")).toHaveLength(1);
+    expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(2);
+  });
+
+  it("returns a recoverable error when replies still fail after join", async () => {
+    queueSlackApiError("conversations.replies", {
+      error: "not_in_channel",
+    });
+    queueSlackApiResponse("conversations.join", {
+      body: conversationsJoinOk({ channelId: "C0STILL" }),
+    });
     queueSlackApiError("conversations.replies", {
       error: "not_in_channel",
     });
 
-    const tool = createTool({}, ["C0FLAKY"]);
+    const tool = createTool({}, ["C0STILL"]);
     await expect(
       executeTool(tool, {
-        channel_id: "C0FLAKY",
+        channel_id: "C0STILL",
         ts: "1700000000.100000",
       }),
     ).rejects.toThrow("Could not read this Slack thread");
@@ -545,7 +586,6 @@ describe("slackThreadRead", () => {
     });
 
     expect(getCapturedSlackApiCalls("conversations.history")).toHaveLength(0);
-    expect(getCapturedSlackApiCalls("conversations.info")).toHaveLength(0);
     expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(1);
   });
 });

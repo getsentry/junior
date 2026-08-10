@@ -19,7 +19,9 @@ import { createResourceEventTools } from "@/chat/tools/resource-events";
 import { getResourceEventCatalog } from "@/chat/resource-events/runtime-catalog";
 import { createEventTaskTools } from "@/chat/tools/event-tasks";
 import { createScheduledTaskTools } from "@/chat/tools/scheduled-tasks";
+import { createSlackChannelJoinTool } from "@/chat/slack/tools/channel-join";
 import { createSlackChannelListMessagesTool } from "@/chat/slack/tools/channel-list-messages";
+import { createSlackChannelResolveTool } from "@/chat/slack/tools/channel-resolve";
 import { createSlackConversationMessageSearchTool } from "@/chat/slack/tools/conversation-message-search";
 import { createSlackPublicSearchTool } from "@/chat/slack/tools/public-search";
 import { getSlackToolContext } from "@/chat/slack/tools/context";
@@ -155,6 +157,8 @@ export function createTools(
     tools.slackCanvasEdit = createSlackCanvasEditTool(state);
     tools.slackCanvasWrite = createSlackCanvasWriteTool(state);
     tools.slackThreadRead = createSlackThreadReadTool(slackContext);
+    tools.slackChannelResolve = createSlackChannelResolveTool();
+    tools.slackChannelJoin = createSlackChannelJoinTool(slackContext);
     if (context.conversationId && slackContext.source.visibility === "public") {
       tools.searchConversationMessages =
         createSlackConversationMessageSearchTool(
@@ -166,7 +170,9 @@ export function createTools(
           context.conversationId,
         );
     }
-    if (context.source.platform === "slack" && context.slackActionToken) {
+    // Always register public search in Slack turns. Without an action token the
+    // tool stays visible and returns an honest interactive-turn limit.
+    if (context.source.platform === "slack") {
       tools.slackPublicSearch = createSlackPublicSearchTool(
         context.slackActionToken,
       );

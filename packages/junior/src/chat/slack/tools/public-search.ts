@@ -254,11 +254,13 @@ function normalizeContentTypes(
   return [...new Set(selected)];
 }
 
-/** Create an interactive, public-channel Slack search tool. */
-export function createSlackPublicSearchTool(actionToken: SlackActionToken) {
+/** Create the public-channel Slack search tool. */
+export function createSlackPublicSearchTool(
+  actionToken?: SlackActionToken,
+) {
   return zodTool({
     description:
-      "Search public Slack content across the current workspace. Defaults to messages. Optionally include files, channels, or users when those content types are needed. Use when the user asks about company activity, announcements, public mentions, shared files, people, or context outside the active channel. Search only when requested or clearly needed, prefer focused keywords and time bounds, and cite returned permalinks. This never searches private channels or DMs.",
+      "Search live public Slack content across the workspace (Real-time Search). Defaults to messages; optionally include files, channels, or users. Use for company activity, announcements, public mentions, shared files, or people outside the active channel. Cite permalinks. This is NOT Junior-retained chat search (`searchConversationMessages`) and NOT single-channel history (`slackChannelListMessages`). Private channels and DMs are never searched. Requires an interactive Slack turn with an action token; otherwise the tool explains that limit.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -317,6 +319,11 @@ export function createSlackPublicSearchTool(actionToken: SlackActionToken) {
       sort,
       sort_dir,
     }) => {
+      if (!actionToken) {
+        throw new ToolInputError(
+          "Public Slack search needs a fresh interactive mention or DM. Slack only issues the short-lived action token on those turns, so resumes and scheduled runs cannot search the workspace. Ask again in a new message, or use channel history / thread read when you already know the channel.",
+        );
+      }
       try {
         const normalizedContentTypes = normalizeContentTypes(content_types);
         const normalizedAfter = optionalTimestampSchema.parse(after);

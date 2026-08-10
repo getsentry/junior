@@ -42,6 +42,7 @@ Grant the smallest scopes that cover the Slack features you enable. A typical Ju
 | User lookup and App Home ownership                 | `users:read`                                                                                                   |
 | Slash command configured by `JUNIOR_SLASH_COMMAND` | `commands`                                                                                                     |
 | Thread and channel history in channels and DMs     | `channels:history`, `channels:read`, `groups:history`, `groups:read`, `im:history`, `mpim:history` as needed |
+| On-demand join of public channels                  | `channels:join` **required** to join a public channel when reading linked threads or history               |
 | Public workspace search (messages)                 | `search:read.public` **required** for interactive public Slack search                                          |
 | Public workspace search (files)                    | `search:read.files` **required** when searching public files                                                   |
 | Public workspace search (users)                    | `search:read.users` **required** when searching people via public search                                       |
@@ -51,7 +52,7 @@ Grant the smallest scopes that cover the Slack features you enable. A typical Ju
 
 Slack requires reinstalling the app after scope changes. Reinstall before debugging runtime behavior.
 
-Public search uses Slack Real-time Search on interactive turns. The bot app must include `search:read.public`. Add `search:read.files` and `search:read.users` when those content types are enabled. The reference manifest in `packages/junior/slack-manifest.yml` lists the full required bot scope set.
+Public search uses Slack Real-time Search on interactive turns. The bot app must include `search:read.public`. Add `search:read.files` and `search:read.users` when those content types are enabled. On-demand public channel joins require `channels:join`. The reference manifest in `packages/junior/slack-manifest.yml` lists the full required bot scope set.
 
 Also enable App Home in Slack app settings. Junior publishes the connected-account view when Slack sends `app_home_opened`.
 

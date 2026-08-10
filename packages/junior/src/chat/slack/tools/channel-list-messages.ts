@@ -9,13 +9,17 @@ import {
 } from "@/chat/slack/timestamp-param";
 import {
   checkSlackChannelReadAccess,
+  joinPublicChannelForRead,
   type DestinationVisibilityReader,
+  type SlackChannelJoinWriter,
   type SlackConversationInfoReader,
 } from "@/chat/slack/tools/channel-access";
 import {
-  parseRequiredSlackChannelIdParam,
-  slackChannelIdParam,
-} from "@/chat/slack/id-param";
+  optionalSlackChannelIdParam,
+  optionalSlackChannelNameParam,
+  resolveSlackChannelTarget,
+  type SlackChannelNameResolver,
+} from "@/chat/slack/tools/channel-target";
 import { z } from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
@@ -73,12 +77,14 @@ export function createSlackChannelListMessagesTool(
   context: SlackToolContext,
   deps: {
     conversationInfo?: SlackConversationInfoReader;
+    joinChannel?: SlackChannelJoinWriter;
+    nameResolver?: SlackChannelNameResolver;
     visibilityStore?: DestinationVisibilityReader;
   } = {},
 ) {
   return zodTool({
     description:
-      "List channel messages from Slack history. Defaults to the active channel context. Pass `channel_id` to read another public channel the bot can access, or the current conversation. Use when the user asks for recent or historical channel context outside this thread. Do not use for live monitoring or when current thread context already answers the question.",
+      "List messages from Slack channel history. Defaults to the active channel. Pass `channel_id` or `channel_name` (`#foo`) to read another public channel. For public channels the bot is not in yet, Junior joins on demand and retries. Use for recent or historical channel context outside this thread. This is raw Slack channel history, not Junior-retained chat search and not workspace-wide search.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -86,9 +92,12 @@ export function createSlackChannelListMessagesTool(
       readOnlyHint: true,
     },
     inputSchema: z.object({
-      channel_id: slackChannelIdParam(
-        "Optional Slack channel ID to read. Defaults to the active channel context. Only the current conversation or public channels the bot can access are allowed.",
-      ).optional(),
+      channel_id: optionalSlackChannelIdParam(
+        "Optional Slack channel ID to read. Defaults to the active channel context.",
+      ),
+      channel_name: optionalSlackChannelNameParam(
+        "Optional public channel name with or without a leading #. Use when the user names the channel.",
+      ),
       limit: z.coerce
         .number()
         .int()
@@ -121,6 +130,7 @@ export function createSlackChannelListMessagesTool(
     outputSchema: juniorToolOutputSchema,
     execute: async ({
       channel_id,
+      channel_name,
       limit,
       cursor,
       oldest,
@@ -128,20 +138,13 @@ export function createSlackChannelListMessagesTool(
       inclusive,
       max_pages,
     }) => {
-      let targetChannelId = context.destinationChannelId;
-      if (channel_id !== undefined) {
-        const parsedChannelId = parseRequiredSlackChannelIdParam(
-          "channel_id",
-          channel_id,
-        );
-        if (!parsedChannelId.ok) {
-          throw new ToolInputError(parsedChannelId.error);
-        }
-        targetChannelId = parsedChannelId.value;
-      }
-      if (!targetChannelId) {
-        throw new ToolInputError("No active Slack destination is available.");
-      }
+      const target = await resolveSlackChannelTarget({
+        channelId: channel_id,
+        channelName: channel_name,
+        defaultChannelId: context.destinationChannelId,
+        nameResolver: deps.nameResolver,
+      });
+      const targetChannelId = target.channelId;
 
       const access = await checkSlackChannelReadAccess({
         currentChannelIds: [
@@ -174,9 +177,8 @@ export function createSlackChannelListMessagesTool(
         throw new ToolInputError(normalizedLatest.error);
       }
 
-      let result;
-      try {
-        result = await listChannelMessages({
+      const readHistory = async () =>
+        listChannelMessages({
           channelId: targetChannelId,
           limit: limit ?? 100,
           cursor,
@@ -185,7 +187,41 @@ export function createSlackChannelListMessagesTool(
           inclusive,
           maxPages: max_pages,
         });
+
+      let result: Awaited<ReturnType<typeof listChannelMessages>> | undefined;
+      let joined = false;
+      let channelName = access.channelName ?? target.channelName;
+      let readError: unknown;
+      try {
+        result = await readHistory();
       } catch (error) {
+        readError = error;
+        const canJoin =
+          error instanceof SlackActionError &&
+          error.code === "not_in_channel" &&
+          access.isMember !== true;
+        if (canJoin) {
+          const joinResult = await joinPublicChannelForRead({
+            channelName,
+            joinChannel: deps.joinChannel,
+            targetChannelId,
+          });
+          if (!joinResult.ok) {
+            throw new ToolInputError(joinResult.error);
+          }
+          joined = true;
+          channelName = joinResult.channelName ?? channelName;
+          try {
+            result = await readHistory();
+            readError = undefined;
+          } catch (retryError) {
+            readError = retryError;
+          }
+        }
+      }
+
+      if (!result) {
+        const error = readError;
         if (
           error instanceof SlackActionError &&
           error.apiError === "invalid_cursor"
@@ -198,7 +234,7 @@ export function createSlackChannelListMessagesTool(
         if (error instanceof SlackActionError) {
           if (error.code === "not_in_channel") {
             throw new ToolInputError(
-              "Could not read this Slack channel history. The bot is not in the channel.",
+              "Could not read this Slack channel history because the bot is not in the channel.",
               { cause: error },
             );
           }
@@ -209,7 +245,7 @@ export function createSlackChannelListMessagesTool(
             );
           }
           throw new ToolInputError(
-            "Could not read this Slack channel history. The bot may not be in the channel or may lack history scopes.",
+            "Could not read this Slack channel history.",
             { cause: error },
           );
         }
@@ -218,7 +254,8 @@ export function createSlackChannelListMessagesTool(
 
       return {
         channel_id: targetChannelId,
-        ...(access.channelName ? { channel_name: access.channelName } : {}),
+        ...(channelName ? { channel_name: channelName } : {}),
+        ...(joined ? { joined_channel: true } : {}),
         count: result.messages.length,
         messages: result.messages,
         ...(result.nextCursor ? { next_cursor: result.nextCursor } : {}),

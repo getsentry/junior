@@ -159,12 +159,14 @@ describe("Slack tool registration", () => {
     expect(tools.listResourceEventSubscriptions?.exposure).toBe("deferred");
   });
 
-  it("does not register public search without an action token", () => {
+  it("still registers public search without an action token", () => {
     const context = ctx("C12345");
     delete context.slackActionToken;
     const tools = createTools([], {}, context);
 
-    expect(tools).not.toHaveProperty("slackPublicSearch");
+    expect(tools).toHaveProperty("slackPublicSearch");
+    expect(tools).toHaveProperty("slackChannelResolve");
+    expect(tools).toHaveProperty("slackChannelJoin");
   });
 
   it("does not register conversation search for a source-confirmed private C channel", () => {

@@ -185,6 +185,14 @@ describe("Slack public search", () => {
     );
   });
 
+  it("explains the interactive action-token limit when no token is available", async () => {
+    await expect(
+      executeTool(createSlackPublicSearchTool(undefined), {
+        query: "company announcement",
+      }),
+    ).rejects.toThrow("fresh interactive mention");
+  });
+
   it("reports a missing files search scope explicitly", async () => {
     queueSlackApiError("assistant.search.context", {
       error: "missing_scope",

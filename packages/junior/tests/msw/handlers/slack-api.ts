@@ -47,6 +47,8 @@ export const SUPPORTED_SLACK_API_METHODS = [
   "reactions.remove",
   "conversations.history",
   "conversations.info",
+  "conversations.join",
+  "conversations.list",
   "conversations.open",
   "conversations.replies",
   "canvases.access.set",
@@ -216,6 +218,10 @@ function defaultSlackApiResponse(
       return { body: conversationsHistoryPage() };
     case "conversations.info":
       return { body: conversationsInfoOk() };
+    case "conversations.join":
+      return { body: conversationsJoinOk() };
+    case "conversations.list":
+      return { body: conversationsListPage() };
     case "conversations.open":
       return { body: conversationsOpenOk() };
     case "conversations.replies":

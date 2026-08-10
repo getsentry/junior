@@ -360,20 +360,24 @@ export function filesCompleteUploadOk(
 export function conversationsInfoOk(
   input: {
     channelId?: string;
+    name?: string;
     isPrivate?: boolean;
     isIm?: boolean;
     isMpim?: boolean;
     isGroup?: boolean;
+    isMember?: boolean;
   } = {},
 ): {
   ok: true;
   channel: {
     id: string;
+    name?: string;
     is_channel: boolean;
     is_private: boolean;
     is_im: boolean;
     is_mpim: boolean;
     is_group: boolean;
+    is_member?: boolean;
   };
 } {
   const isPrivate = input.isPrivate ?? false;
@@ -383,12 +387,63 @@ export function conversationsInfoOk(
   return slackOk({
     channel: {
       id: input.channelId ?? TEST_CHANNEL_ID,
+      ...(input.name ? { name: input.name } : {}),
       is_channel: !isPrivate && !isIm && !isMpim && !isGroup,
       is_private: isPrivate,
       is_im: isIm,
       is_mpim: isMpim,
       is_group: isGroup,
+      ...(typeof input.isMember === "boolean"
+        ? { is_member: input.isMember }
+        : {}),
     },
+  });
+}
+
+export function conversationsJoinOk(
+  input: { channelId?: string; name?: string } = {},
+): {
+  ok: true;
+  channel: { id: string; name?: string };
+} {
+  return slackOk({
+    channel: {
+      id: input.channelId ?? TEST_CHANNEL_ID,
+      ...(input.name ? { name: input.name } : {}),
+    },
+  });
+}
+
+export function conversationsListPage(
+  input: {
+    channels?: Array<{
+      id: string;
+      name?: string;
+      is_member?: boolean;
+      is_private?: boolean;
+      is_archived?: boolean;
+    }>;
+    nextCursor?: string;
+  } = {},
+): {
+  ok: true;
+  channels: Array<Record<string, unknown>>;
+  response_metadata?: { next_cursor?: string };
+} {
+  const channels = input.channels ?? [
+    {
+      id: TEST_CHANNEL_ID,
+      name: "general",
+      is_member: true,
+      is_private: false,
+      is_archived: false,
+    },
+  ];
+  return slackOk({
+    channels,
+    ...(input.nextCursor
+      ? { response_metadata: { next_cursor: input.nextCursor } }
+      : {}),
   });
 }
 

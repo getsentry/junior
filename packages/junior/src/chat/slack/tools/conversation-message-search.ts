@@ -82,7 +82,7 @@ export function createSlackConversationMessageSearchTool(
 ) {
   return zodTool({
     description:
-      "Search retained user and assistant messages in public Junior conversations across the current Slack workspace. Excludes the current conversation.",
+      "Search Junior-retained user and assistant messages from public Junior conversations in this Slack workspace (not live Slack workspace search). Excludes the current conversation. Use only for prior Junior chats. For live public Slack content use `slackPublicSearch`; for one channel's raw history use `slackChannelListMessages`.",
     exposure: "deferred",
     source: CONVERSATIONS_TOOL_SOURCE,
     annotations: {
