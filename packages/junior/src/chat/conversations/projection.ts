@@ -113,25 +113,24 @@ function durableMessageIdentity(message: PiMessage): unknown {
 }
 
 /**
- * Measure how far `next` still matches the already-committed SQL history.
+ * How many leading messages of `sqlHistory` still match `checkpoint`.
  *
- * `commitMessages` uses this count to choose one of three outcomes:
- * - full match (`current.length`): append only the new suffix
- * - shorter exact match: timeout recovery is parking an older safe boundary
- *   after delivery already wrote the assistant; keep SQL history as-is
- * - mismatch inside the shared range: a true content branch (reject unless
- *   compaction or handoff rewrote history)
+ * `checkpoint` is the message list a turn write is trying to persist (from a
+ * running/paused checkpoint). `sqlHistory` is what SQL already has.
  *
  * Compare by durable identity so in-place Pi envelope fields (usage,
  * stopReason) do not look like content branches.
  */
-function countDurablePrefix(current: PiMessage[], next: PiMessage[]): number {
-  const limit = Math.min(current.length, next.length);
+function countDurablePrefix(
+  sqlHistory: PiMessage[],
+  checkpoint: PiMessage[],
+): number {
+  const limit = Math.min(sqlHistory.length, checkpoint.length);
   for (let index = 0; index < limit; index += 1) {
     if (
       !isDeepStrictEqual(
-        durableMessageIdentity(current[index]!),
-        durableMessageIdentity(next[index]!),
+        durableMessageIdentity(sqlHistory[index]!),
+        durableMessageIdentity(checkpoint[index]!),
       )
     ) {
       return index;
@@ -288,16 +287,18 @@ function messageTimestamp(message: PiMessage): number {
 }
 
 /**
- * Append newly stable native history items.
+ * Append newly stable native history items from a turn checkpoint.
  *
- * Checkpoints are append-only against the durable identity of the committed
- * prefix (role, timestamp, content; tool results also match call id).
+ * `messages` is the checkpoint the turn wants to persist. SQL already holds
+ * the committed agent history. Compare them and do one of:
+ * 1. checkpoint extends SQL → append the new suffix
+ * 2. checkpoint is an exact older prefix of SQL → no-op (keep SQL)
+ * 3. otherwise → reject as a content branch
  *
- * Timeout recovery may park a shorter safe boundary after delivery already
- * dual-wrote the assistant. That older exact prefix is a no-op: keep SQL as-is.
- * A true content branch is rejected. Only compaction and handoff may replace
- * active model history. In-place Pi mutations of committed assistant envelopes
- * (usage/stopReason) do not block the suffix.
+ * Case 2 is the timeout/delivery race: delivery may dual-write the assistant
+ * into SQL first, then timeout parks `continuableMessages(...)` which drops
+ * that trailing tool-free assistant. Keep the accepted assistant in SQL.
+ * Only compaction and handoff may replace active model history.
  */
 export async function commitMessages(args: {
   conversationId: string;
@@ -403,32 +404,30 @@ async function commitMessagesLocked(
   const nextLocalMessages = stripRuntimeTurnContext(args.messages).map(
     normalizeDurableMessage,
   );
-  const matchingPrefix = countDurablePrefix(
-    current.messages,
-    nextLocalMessages,
-  );
-  const nextLocalProvenance = resolveCommitProvenance({
-    existing: current,
-    nextMessages: nextLocalMessages,
-    matchingPrefix,
-    ...(args.provenance ? { explicitProvenance: args.provenance } : {}),
-    ...(args.trailingMessageProvenance
-      ? { trailingMessageProvenance: args.trailingMessageProvenance }
-      : {}),
-    ...(args.newMessageProvenance
-      ? { newMessageProvenance: args.newMessageProvenance }
-      : {}),
-  });
-  // Timeout recovery parks with continuableMessages(...), which drops the
-  // trailing tool-free assistant. Delivery may already have dual-written that
-  // assistant into SQL. A shorter `next` that still matches every remaining
-  // message is that race, not a rewrite — leave SQL alone and return the live
-  // committed projection.
+  // SQL already has the committed agent history. The checkpoint is the message
+  // list this turn write wants to persist (running/paused/completed).
+  const sqlHistory = current.messages;
+  const checkpoint = nextLocalMessages;
+  const matchingPrefix = countDurablePrefix(sqlHistory, checkpoint);
+  const checkpointExtendsSql = matchingPrefix === sqlHistory.length;
   const checkpointIsOlderExactPrefix =
-    nextLocalMessages.length < current.messages.length &&
-    matchingPrefix === nextLocalMessages.length;
-  if (matchingPrefix === current.messages.length) {
-    const newMessages = nextLocalMessages.slice(matchingPrefix);
+    checkpoint.length < sqlHistory.length &&
+    matchingPrefix === checkpoint.length;
+
+  if (checkpointExtendsSql) {
+    const nextLocalProvenance = resolveCommitProvenance({
+      existing: current,
+      nextMessages: checkpoint,
+      matchingPrefix,
+      ...(args.provenance ? { explicitProvenance: args.provenance } : {}),
+      ...(args.trailingMessageProvenance
+        ? { trailingMessageProvenance: args.trailingMessageProvenance }
+        : {}),
+      ...(args.newMessageProvenance
+        ? { newMessageProvenance: args.newMessageProvenance }
+        : {}),
+    });
+    const newMessages = checkpoint.slice(matchingPrefix);
     const turnContext = args.turnContext;
     const turnContextEvents =
       turnContext?.contexts.map((context, index) => ({
@@ -456,8 +455,13 @@ async function commitMessagesLocked(
       ...turnContextEvents,
     ]);
   } else if (!checkpointIsOlderExactPrefix) {
+    // Mismatch inside the shared range, or a longer rewrite that is not an
+    // append. Compaction/handoff replace history through other writers.
     throw new AgentHistoryBranchError(args.conversationId);
   }
+  // Always return the live SQL projection. For the older-prefix race that is the
+  // accepted assistant delivery already wrote; for append it includes the
+  // suffix we just committed.
   const committedEvents = await eventStore.loadCurrentHistory(
     args.conversationId,
   );
@@ -466,12 +470,8 @@ async function commitMessagesLocked(
     committedSeq: committedEvents.at(-1)?.seq ?? -1,
     historyVersion: committedEvents.at(-1)?.historyVersion ?? 0,
     messageSeqs: committed.seqs,
-    messages: checkpointIsOlderExactPrefix
-      ? committed.messages
-      : nextLocalMessages,
-    provenance: checkpointIsOlderExactPrefix
-      ? committed.provenance
-      : nextLocalProvenance,
+    messages: committed.messages,
+    provenance: committed.provenance,
   };
 }
 
