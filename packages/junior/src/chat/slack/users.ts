@@ -95,9 +95,10 @@ function isExternalSlackUser(user: SlackUserRaw): boolean {
 }
 
 function normalizeNameTokens(value: string): string[] {
+  // Keep letters across scripts/accents; only split on punctuation and spaces.
   return value
     .toLowerCase()
-    .split(/[^a-z0-9]+/i)
+    .split(/[^\p{L}\p{N}]+/u)
     .filter(Boolean);
 }
 
@@ -168,8 +169,8 @@ export interface SlackUserSearchResult {
 
 /**
  * Rank Slack name-search quality for one candidate.
- * Exact field and token matches beat field prefixes, and external accounts are
- * demoted so a guest display-name prefix cannot beat a full-member first name.
+ * Exact field and token matches beat field prefixes so a display-name prefix
+ * cannot outrank a real-name first-name hit. Membership is a tie-break only.
  */
 function scoreNameMatch(user: SlackUserRaw, query: string): number {
   const queryLower = query.toLowerCase().trim();
@@ -214,11 +215,6 @@ function scoreNameMatch(user: SlackUserRaw, query: string): number {
     }
   }
 
-  if (best <= 0) return 0;
-  // Keep a positive score so external hits still surface when they are unique.
-  if (isExternalSlackUser(user)) {
-    best = Math.max(1, best - 40);
-  }
   return best;
 }
 
@@ -228,6 +224,7 @@ function compareNameMatches(
 ): number {
   if (right.score !== left.score) return right.score - left.score;
 
+  // Prefer full members only when match quality is equal.
   const leftExternal = isExternalSlackUser(left.user) ? 1 : 0;
   const rightExternal = isExternalSlackUser(right.user) ? 1 : 0;
   if (leftExternal !== rightExternal) return leftExternal - rightExternal;

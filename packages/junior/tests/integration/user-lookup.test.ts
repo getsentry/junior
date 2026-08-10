@@ -348,6 +348,70 @@ describe("userLookup", () => {
       });
     });
 
+    it("keeps accented last-name tokens intact", async () => {
+      queueSlackApiResponse("users.list", {
+        body: usersListPage({
+          members: [
+            {
+              id: "U_GARCIA",
+              name: "maria.garcia",
+              realName: "Maria García",
+              displayName: "Maria García",
+            },
+            {
+              id: "U_OTHER",
+              name: "maria.other",
+              realName: "Maria Other",
+              displayName: "Maria Other",
+            },
+          ],
+        }),
+      });
+
+      const result = await executeTool(lookupTool(), {
+        provider: "slack",
+        query: "garcía",
+      });
+
+      expect(result).toMatchObject({
+        count: 1,
+        mention: "<@U_GARCIA>",
+        user: { id: "U_GARCIA" },
+      });
+    });
+
+    it("does not let external demotion invert a stronger exact match", async () => {
+      queueSlackApiResponse("users.list", {
+        body: usersListPage({
+          members: [
+            {
+              id: "U_GUEST_ALEX",
+              name: "alex",
+              realName: "Alex",
+              displayName: "Alex",
+              isStranger: true,
+            },
+            {
+              id: "U_MEMBER_ALEXANDRA",
+              name: "alexandra",
+              realName: "Alexandra",
+              displayName: "Alexandra",
+            },
+          ],
+        }),
+      });
+
+      const result = await executeTool(lookupTool(), {
+        provider: "slack",
+        query: "alex",
+      });
+
+      expect(result.users.map((user: { id: string }) => user.id)).toEqual([
+        "U_GUEST_ALEX",
+        "U_MEMBER_ALEXANDRA",
+      ]);
+    });
+
     it("returns empty results when no match", async () => {
       queueSlackApiResponse("users.list", {
         body: usersListPage({
