@@ -24,51 +24,55 @@ const optionalUnixTimestampParam = z.preprocess(
     .optional(),
 );
 
-const optionalString = z.string().min(1).optional();
-const optionalUrl = z.string().url().optional();
-const optionalBoolean = z.boolean().optional();
-
+/** Canonical public-search message result. */
 const searchMessageSchema = z.object({
-  author_name: optionalString.describe("Author display name."),
-  author_user_id: optionalString.describe("Author user ID."),
+  author_name: z.string().min(1).optional().describe("Author display name."),
+  author_user_id: z.string().min(1).optional().describe("Author user ID."),
   channel_id: z.string().min(1).describe("Channel ID."),
-  channel_name: optionalString.describe("Channel name."),
+  channel_name: z.string().min(1).optional().describe("Channel name."),
   message_ts: z.string().min(1).describe("Message timestamp."),
   content: z.string().describe("Message text."),
-  is_author_bot: optionalBoolean.describe("Whether the author is a bot."),
+  is_author_bot: z.boolean().optional().describe("Whether the author is a bot."),
   permalink: z.string().url().describe("Message permalink."),
 });
 
+/** Canonical public-search file result. */
 const searchFileSchema = z.object({
-  file_id: optionalString.describe("File ID."),
-  title: optionalString.describe("File title."),
-  name: optionalString.describe("File name."),
-  filetype: optionalString.describe("File type."),
-  user_id: optionalString.describe("Uploader user ID."),
-  user_name: optionalString.describe("Uploader user name."),
-  channel_id: optionalString.describe("Channel ID."),
-  channel_name: optionalString.describe("Channel name."),
-  permalink: optionalUrl.describe("File permalink."),
-  content: optionalString.describe("File preview or content snippet."),
+  file_id: z.string().min(1).describe("File ID."),
+  title: z.string().min(1).optional().describe("File title."),
+  name: z.string().min(1).optional().describe("File name."),
+  filetype: z.string().min(1).optional().describe("File type."),
+  user_id: z.string().min(1).optional().describe("Uploader user ID."),
+  user_name: z.string().min(1).optional().describe("Uploader user name."),
+  channel_id: z.string().min(1).optional().describe("Channel ID."),
+  channel_name: z.string().min(1).optional().describe("Channel name."),
+  permalink: z.string().url().optional().describe("File permalink."),
+  content: z
+    .string()
+    .min(1)
+    .optional()
+    .describe("File preview or content snippet."),
 });
 
+/** Canonical public-search channel result. */
 const searchChannelSchema = z.object({
-  channel_id: optionalString.describe("Channel ID."),
-  channel_name: optionalString.describe("Channel name."),
-  is_private: optionalBoolean.describe("Whether the channel is private."),
-  is_member: optionalBoolean.describe("Whether the bot is a member."),
-  topic: optionalString.describe("Channel topic."),
-  purpose: optionalString.describe("Channel purpose."),
-  permalink: optionalUrl.describe("Channel permalink."),
+  channel_id: z.string().min(1).describe("Channel ID."),
+  channel_name: z.string().min(1).optional().describe("Channel name."),
+  is_private: z.boolean().optional().describe("Whether the channel is private."),
+  is_member: z.boolean().optional().describe("Whether the bot is a member."),
+  topic: z.string().min(1).optional().describe("Channel topic."),
+  purpose: z.string().min(1).optional().describe("Channel purpose."),
+  permalink: z.string().url().optional().describe("Channel permalink."),
 });
 
+/** Canonical public-search user result. */
 const searchUserSchema = z.object({
-  user_id: optionalString.describe("User ID."),
-  user_name: optionalString.describe("Username."),
-  real_name: optionalString.describe("Real name."),
-  display_name: optionalString.describe("Display name."),
-  title: optionalString.describe("Profile title."),
-  permalink: optionalUrl.describe("Profile permalink."),
+  user_id: z.string().min(1).describe("User ID."),
+  user_name: z.string().min(1).optional().describe("Username."),
+  real_name: z.string().min(1).optional().describe("Real name."),
+  display_name: z.string().min(1).optional().describe("Display name."),
+  title: z.string().min(1).optional().describe("Profile title."),
+  permalink: z.string().url().optional().describe("Profile permalink."),
 });
 
 const publicSearchOutputSchema = juniorToolOutputSchema.extend({
@@ -81,7 +85,11 @@ const publicSearchOutputSchema = juniorToolOutputSchema.extend({
   files: z.array(searchFileSchema).describe("Matched files."),
   channels: z.array(searchChannelSchema).describe("Matched channels."),
   users: z.array(searchUserSchema).describe("Matched users."),
-  next_cursor: optionalString.describe("Cursor for the next result page."),
+  next_cursor: z
+    .string()
+    .min(1)
+    .optional()
+    .describe("Cursor for the next result page."),
 });
 
 type SearchMessage = z.infer<typeof searchMessageSchema>;
@@ -89,126 +97,175 @@ type SearchFile = z.infer<typeof searchFileSchema>;
 type SearchChannel = z.infer<typeof searchChannelSchema>;
 type SearchUser = z.infer<typeof searchUserSchema>;
 
-interface SlackSearchResponse {
-  results?: {
-    messages?: unknown[];
-    files?: unknown[];
-    channels?: unknown[];
-    users?: unknown[];
-    next_cursor?: unknown;
-  };
-}
+const nonEmptyString = z.string().trim().min(1);
 
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return undefined;
-  }
-  return value as Record<string, unknown>;
-}
+/** Slack wire shape for one search message. */
+const slackSearchMessageWireSchema = z
+  .object({
+    author_name: nonEmptyString.optional(),
+    author_user_id: nonEmptyString.optional(),
+    channel_id: nonEmptyString,
+    channel_name: nonEmptyString.optional(),
+    message_ts: nonEmptyString,
+    content: z.string(),
+    is_author_bot: z.boolean().optional(),
+    permalink: z.string().url(),
+  })
+  .transform(
+    (value): SearchMessage => ({
+      channel_id: value.channel_id,
+      message_ts: value.message_ts,
+      content: value.content,
+      permalink: value.permalink,
+      ...(value.author_name ? { author_name: value.author_name } : {}),
+      ...(value.author_user_id
+        ? { author_user_id: value.author_user_id }
+        : {}),
+      ...(value.channel_name ? { channel_name: value.channel_name } : {}),
+      ...(value.is_author_bot !== undefined
+        ? { is_author_bot: value.is_author_bot }
+        : {}),
+    }),
+  );
 
-function pickString(
-  record: Record<string, unknown>,
-  ...keys: string[]
-): string | undefined {
-  for (const key of keys) {
-    const value = record[key];
-    if (typeof value === "string" && value.trim()) {
-      return value;
+/** Slack wire shape for one search file. */
+const slackSearchFileWireSchema = z
+  .object({
+    id: nonEmptyString.optional(),
+    file_id: nonEmptyString.optional(),
+    title: nonEmptyString.optional(),
+    name: nonEmptyString.optional(),
+    filetype: nonEmptyString.optional(),
+    file_type: nonEmptyString.optional(),
+    user: nonEmptyString.optional(),
+    user_id: nonEmptyString.optional(),
+    username: nonEmptyString.optional(),
+    user_name: nonEmptyString.optional(),
+    channel_id: nonEmptyString.optional(),
+    channel_name: nonEmptyString.optional(),
+    permalink: z.string().url().optional(),
+    content: nonEmptyString.optional(),
+    preview: nonEmptyString.optional(),
+  })
+  .transform((value): SearchFile | undefined => {
+    const fileId = value.file_id ?? value.id;
+    if (!fileId) {
+      return undefined;
+    }
+    return {
+      file_id: fileId,
+      ...(value.title ? { title: value.title } : {}),
+      ...(value.name ? { name: value.name } : {}),
+      ...((value.filetype ?? value.file_type)
+        ? { filetype: value.filetype ?? value.file_type }
+        : {}),
+      ...((value.user_id ?? value.user)
+        ? { user_id: value.user_id ?? value.user }
+        : {}),
+      ...((value.user_name ?? value.username)
+        ? { user_name: value.user_name ?? value.username }
+        : {}),
+      ...(value.channel_id ? { channel_id: value.channel_id } : {}),
+      ...(value.channel_name ? { channel_name: value.channel_name } : {}),
+      ...(value.permalink ? { permalink: value.permalink } : {}),
+      ...((value.content ?? value.preview)
+        ? { content: value.content ?? value.preview }
+        : {}),
+    };
+  });
+
+/** Slack wire shape for one search channel. */
+const slackSearchChannelWireSchema = z
+  .object({
+    id: nonEmptyString.optional(),
+    channel_id: nonEmptyString.optional(),
+    name: nonEmptyString.optional(),
+    channel_name: nonEmptyString.optional(),
+    is_private: z.boolean().optional(),
+    is_member: z.boolean().optional(),
+    topic: nonEmptyString.optional(),
+    purpose: nonEmptyString.optional(),
+    permalink: z.string().url().optional(),
+  })
+  .transform((value): SearchChannel | undefined => {
+    const channelId = value.channel_id ?? value.id;
+    if (!channelId) {
+      return undefined;
+    }
+    return {
+      channel_id: channelId,
+      ...((value.channel_name ?? value.name)
+        ? { channel_name: value.channel_name ?? value.name }
+        : {}),
+      ...(value.is_private !== undefined
+        ? { is_private: value.is_private }
+        : {}),
+      ...(value.is_member !== undefined ? { is_member: value.is_member } : {}),
+      ...(value.topic ? { topic: value.topic } : {}),
+      ...(value.purpose ? { purpose: value.purpose } : {}),
+      ...(value.permalink ? { permalink: value.permalink } : {}),
+    };
+  });
+
+/** Slack wire shape for one search user. */
+const slackSearchUserWireSchema = z
+  .object({
+    id: nonEmptyString.optional(),
+    user_id: nonEmptyString.optional(),
+    name: nonEmptyString.optional(),
+    username: nonEmptyString.optional(),
+    user_name: nonEmptyString.optional(),
+    real_name: nonEmptyString.optional(),
+    display_name: nonEmptyString.optional(),
+    title: nonEmptyString.optional(),
+    permalink: z.string().url().optional(),
+  })
+  .transform((value): SearchUser | undefined => {
+    const userId = value.user_id ?? value.id;
+    if (!userId) {
+      return undefined;
+    }
+    return {
+      user_id: userId,
+      ...((value.user_name ?? value.name ?? value.username)
+        ? { user_name: value.user_name ?? value.name ?? value.username }
+        : {}),
+      ...(value.real_name ? { real_name: value.real_name } : {}),
+      ...(value.display_name ? { display_name: value.display_name } : {}),
+      ...(value.title ? { title: value.title } : {}),
+      ...(value.permalink ? { permalink: value.permalink } : {}),
+    };
+  });
+
+const slackSearchResponseSchema = z.object({
+  results: z
+    .object({
+      messages: z.array(z.unknown()).default([]),
+      files: z.array(z.unknown()).default([]),
+      channels: z.array(z.unknown()).default([]),
+      users: z.array(z.unknown()).default([]),
+      next_cursor: z.string().min(1).optional(),
+    })
+    .default({
+      messages: [],
+      files: [],
+      channels: [],
+      users: [],
+    }),
+});
+
+function parseItems<T>(
+  values: unknown[],
+  schema: z.ZodType<T | undefined>,
+): T[] {
+  const items: T[] = [];
+  for (const value of values) {
+    const parsed = schema.safeParse(value);
+    if (parsed.success && parsed.data !== undefined) {
+      items.push(parsed.data);
     }
   }
-  return undefined;
-}
-
-function pickBoolean(
-  record: Record<string, unknown>,
-  key: string,
-): boolean | undefined {
-  const value = record[key];
-  return typeof value === "boolean" ? value : undefined;
-}
-
-function pickUrl(
-  record: Record<string, unknown>,
-  key: string,
-): string | undefined {
-  const text = pickString(record, key);
-  if (!text) {
-    return undefined;
-  }
-  try {
-    new URL(text);
-    return text;
-  } catch {
-    return undefined;
-  }
-}
-
-function normalizeMessage(value: unknown): SearchMessage | undefined {
-  const parsed = searchMessageSchema.safeParse(value);
-  return parsed.success ? parsed.data : undefined;
-}
-
-function normalizeFile(value: unknown): SearchFile | undefined {
-  const record = asRecord(value);
-  if (!record) {
-    return undefined;
-  }
-
-  const file = searchFileSchema.safeParse({
-    file_id: pickString(record, "file_id", "id"),
-    title: pickString(record, "title"),
-    name: pickString(record, "name"),
-    filetype: pickString(record, "filetype", "file_type"),
-    user_id: pickString(record, "user_id", "user"),
-    user_name: pickString(record, "user_name", "username"),
-    channel_id: pickString(record, "channel_id"),
-    channel_name: pickString(record, "channel_name"),
-    permalink: pickUrl(record, "permalink"),
-    content: pickString(record, "content", "preview"),
-  });
-  return file.success && Object.values(file.data).some((v) => v !== undefined)
-    ? file.data
-    : undefined;
-}
-
-function normalizeChannel(value: unknown): SearchChannel | undefined {
-  const record = asRecord(value);
-  if (!record) {
-    return undefined;
-  }
-
-  const channel = searchChannelSchema.safeParse({
-    channel_id: pickString(record, "channel_id", "id"),
-    channel_name: pickString(record, "channel_name", "name"),
-    is_private: pickBoolean(record, "is_private"),
-    is_member: pickBoolean(record, "is_member"),
-    topic: pickString(record, "topic"),
-    purpose: pickString(record, "purpose"),
-    permalink: pickUrl(record, "permalink"),
-  });
-  return channel.success &&
-    Object.values(channel.data).some((v) => v !== undefined)
-    ? channel.data
-    : undefined;
-}
-
-function normalizeUser(value: unknown): SearchUser | undefined {
-  const record = asRecord(value);
-  if (!record) {
-    return undefined;
-  }
-
-  const user = searchUserSchema.safeParse({
-    user_id: pickString(record, "user_id", "id"),
-    user_name: pickString(record, "user_name", "name", "username"),
-    real_name: pickString(record, "real_name"),
-    display_name: pickString(record, "display_name"),
-    title: pickString(record, "title"),
-    permalink: pickUrl(record, "permalink"),
-  });
-  return user.success && Object.values(user.data).some((v) => v !== undefined)
-    ? user.data
-    : undefined;
+  return items;
 }
 
 function explicitSearchError(error: SlackActionError): string | undefined {
@@ -305,44 +362,49 @@ export function createSlackPublicSearchTool(actionToken?: SlackActionToken) {
         const normalizedContentTypes = normalizeContentTypes(content_types);
         const normalizedAfter = optionalUnixTimestampParam.parse(after);
         const normalizedBefore = optionalUnixTimestampParam.parse(before);
-        const response = (await withSlackRetries(
-          () =>
-            getSlackClient().apiCall("assistant.search.context", {
-              action_token: actionToken,
-              query,
-              channel_types: ["public_channel"],
-              content_types: normalizedContentTypes,
-              include_bots: true,
-              limit: limit ?? DEFAULT_LIMIT,
-              ...(normalizedAfter !== undefined
-                ? { after: normalizedAfter }
-                : {}),
-              ...(normalizedBefore !== undefined
-                ? { before: normalizedBefore }
-                : {}),
-              ...(cursor ? { cursor } : {}),
-              ...(sort ? { sort } : {}),
-              ...(sort_dir ? { sort_dir } : {}),
-            }),
-          3,
-          {
-            action: "assistant.search.context",
-            idempotent: true,
-          },
-        )) as SlackSearchResponse;
-        const messages = (response.results?.messages ?? [])
-          .map(normalizeMessage)
-          .filter((message): message is SearchMessage => Boolean(message));
-        const files = (response.results?.files ?? [])
-          .map(normalizeFile)
-          .filter((file): file is SearchFile => Boolean(file));
-        const channels = (response.results?.channels ?? [])
-          .map(normalizeChannel)
-          .filter((channel): channel is SearchChannel => Boolean(channel));
-        const users = (response.results?.users ?? [])
-          .map(normalizeUser)
-          .filter((user): user is SearchUser => Boolean(user));
-        const nextCursor = response.results?.next_cursor;
+        const response = slackSearchResponseSchema.parse(
+          await withSlackRetries(
+            () =>
+              getSlackClient().apiCall("assistant.search.context", {
+                action_token: actionToken,
+                query,
+                channel_types: ["public_channel"],
+                content_types: normalizedContentTypes,
+                include_bots: true,
+                limit: limit ?? DEFAULT_LIMIT,
+                ...(normalizedAfter !== undefined
+                  ? { after: normalizedAfter }
+                  : {}),
+                ...(normalizedBefore !== undefined
+                  ? { before: normalizedBefore }
+                  : {}),
+                ...(cursor ? { cursor } : {}),
+                ...(sort ? { sort } : {}),
+                ...(sort_dir ? { sort_dir } : {}),
+              }),
+            3,
+            {
+              action: "assistant.search.context",
+              idempotent: true,
+            },
+          ),
+        );
+        const messages = parseItems(
+          response.results.messages,
+          slackSearchMessageWireSchema,
+        );
+        const files = parseItems(
+          response.results.files,
+          slackSearchFileWireSchema,
+        );
+        const channels = parseItems(
+          response.results.channels,
+          slackSearchChannelWireSchema,
+        );
+        const users = parseItems(
+          response.results.users,
+          slackSearchUserWireSchema,
+        );
         const count =
           messages.length + files.length + channels.length + users.length;
 
@@ -354,8 +416,8 @@ export function createSlackPublicSearchTool(actionToken?: SlackActionToken) {
           files,
           channels,
           users,
-          ...(typeof nextCursor === "string" && nextCursor
-            ? { next_cursor: nextCursor }
+          ...(response.results.next_cursor
+            ? { next_cursor: response.results.next_cursor }
             : {}),
         };
       } catch (error) {
