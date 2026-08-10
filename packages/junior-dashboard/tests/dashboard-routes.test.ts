@@ -246,9 +246,22 @@ describe("dashboard routes", () => {
     expect(me.status).toBe(200);
     expect(await me.json()).toEqual({
       user: {
-        email: "local-dashboard@localhost.test",
+        email: "dev@example.com",
         emailVerified: true,
       },
+    });
+    expect(resolveViewerUser).toHaveBeenCalledWith("dev@example.com");
+
+    const create = await app.fetch(
+      new Request("http://localhost/api/conversations", {
+        body: "{}",
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      }),
+    );
+    expect(create.status).toBe(400);
+    await expect(create.json()).resolves.toEqual({
+      error: "Invalid request body.",
     });
   });
 
