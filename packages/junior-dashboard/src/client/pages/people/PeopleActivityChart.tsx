@@ -11,6 +11,7 @@ import {
   formatActivityDate,
   type ActivityChartLayout,
 } from "../../components/charts/ActivityChart";
+import { ChartLegend } from "../../components/charts/ChartLegend";
 import { Card } from "../../components/layout/Card";
 import { CardHeader } from "../../components/layout/CardHeader";
 import { Tooltip } from "../../components/Tooltip";
@@ -56,10 +57,11 @@ export function PeopleActivityChart(props: {
         description="Distinct verified actors grouped by recorded conversation activity."
         title="Active people per day"
         trailing={
-          <span className="flex items-center gap-2">
-            <span className="size-2 rounded-full bg-amber-400 shadow-[0_0_12px_rgba(251,191,36,0.55)]" />
-            people
-          </span>
+          <ChartLegend
+            ariaLabel="People activity legend"
+            inline
+            items={[{ color: "#fbbf24", key: "people", label: "people" }]}
+          />
         }
       />
       <div className="px-2 py-3 sm:px-4 sm:py-4">

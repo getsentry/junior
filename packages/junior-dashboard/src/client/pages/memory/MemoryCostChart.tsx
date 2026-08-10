@@ -8,6 +8,7 @@ import {
   createActivityChartLayout,
   formatActivityDate,
 } from "../../components/charts/ActivityChart";
+import { ChartLegend } from "../../components/charts/ChartLegend";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { Tooltip } from "../../components/Tooltip";
@@ -46,7 +47,7 @@ export function MemoryCostChart(props: {
   const maximum = Math.max(0.01, ...dayTotals);
   const average = activityChartAverage(dayTotals);
   // Cost charts need a wider left gutter for currency tick labels.
-  const layout = createActivityChartLayout(200, { left: 64 });
+  const layout = createActivityChartLayout(200, { left: 112 });
   const step =
     days.length > 0 ? layout.plotWidth / days.length : layout.plotWidth;
   const barWidth = Math.max(2, Math.min(13, step * 0.68));
@@ -61,22 +62,23 @@ export function MemoryCostChart(props: {
           System-wide estimate across {formatRunCount(runs)} spanning extraction
           and recall.
         </p>
-        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-xs text-dashboard-text-muted">
-          <span className="inline-flex items-center gap-1.5">
-            <span
-              aria-hidden="true"
-              className="h-2 w-2 rounded-[1px] bg-cyan-300"
-            />
-            Extraction {formatCostSummary({ total: extractionTotal })}
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span
-              aria-hidden="true"
-              className="h-2 w-2 rounded-[1px] bg-fuchsia-400"
-            />
-            Recall {formatCostSummary({ total: recallTotal })}
-          </span>
-        </div>
+        <ChartLegend
+          ariaLabel="Memory cost legend"
+          items={[
+            {
+              color: "#67e8f9",
+              key: "extraction",
+              label: "Extraction",
+              value: formatCostSummary({ total: extractionTotal }),
+            },
+            {
+              color: "#e879f9",
+              key: "recall",
+              label: "Recall",
+              value: formatCostSummary({ total: recallTotal }),
+            },
+          ]}
+        />
       </div>
 
       <div className="relative mt-4 overflow-hidden">

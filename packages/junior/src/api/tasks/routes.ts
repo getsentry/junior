@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { jsonResponse } from "@/api/http";
+import { emptyResponse, jsonResponse } from "@/api/http";
 import type { JuniorApiEnv } from "@/api/route";
 import { apiErrorSchema } from "@/api/schema/common";
 import {
@@ -62,10 +62,7 @@ export function createTaskRoutes(): Hono<JuniorApiEnv> {
       const params = context.req.valid("param");
       try {
         await deleteViewerTask(user, params.kind, params.id);
-        return new Response(null, {
-          headers: { "cache-control": "no-store" },
-          status: 204,
-        });
+        return emptyResponse();
       } catch (error) {
         if (error instanceof ViewerTaskNotFoundError) {
           return jsonResponse(
