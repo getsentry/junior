@@ -701,8 +701,10 @@ export async function runNextPausedTurn(
 /**
  * Finish a stranded running turn whose destination reply is already durable.
  *
- * Live turns complete after Slack accepts a tool-free reply. This path only
- * covers lease loss after that accept, before the turn record is closed.
+ * Call only when `turnHasReply` is true. Live turns complete after Slack accepts
+ * a tool-free reply. This path covers lease loss after that accept, before the
+ * turn record is closed. Returns whether the turn record closed; callers must
+ * not fall through to failure fallback either way.
  */
 async function completeTurnWithAcceptedReply(args: {
   conversation: ReturnType<typeof coerceThreadConversationState>;
@@ -712,9 +714,6 @@ async function completeTurnWithAcceptedReply(args: {
     version: number;
   };
 }): Promise<boolean> {
-  if (!turnHasReply(args.conversation, args.turn.turnId)) {
-    return false;
-  }
   const acceptedReply = [...args.conversation.messages]
     .reverse()
     .find(
@@ -759,13 +758,15 @@ async function runNextPausedTurnInContext(
     ? await getTurnRecord(conversationId, newest.turnId)
     : undefined;
   if (running?.state === "running") {
-    if (
+    // An accepted destination reply owns the user outcome. Never post a
+    // stranded-failure fallback after that, even if the turn record did not
+    // close on this attempt.
+    if (turnHasReply(conversation, running.turnId)) {
       await completeTurnWithAcceptedReply({
         conversation,
         conversationId,
         turn: running,
-      })
-    ) {
+      });
       return false;
     }
 
