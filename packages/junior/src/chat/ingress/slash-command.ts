@@ -1,5 +1,6 @@
 import type { SlashCommandEvent } from "chat";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
+import { unlinkProvider } from "@/chat/credentials/unlink-provider";
 import { formatProviderLabel, startOAuthFlow } from "@/chat/oauth-flow";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import { logInfo } from "@/chat/logging";
@@ -91,7 +92,7 @@ async function handleUnlink(
   }
 
   const tokenStore = createUserTokenStore();
-  await tokenStore.delete(actorId, provider);
+  await unlinkProvider(actorId, provider, tokenStore);
 
   logInfo("slash_command.credential.unlinked", {
     "app.credential.provider": provider,

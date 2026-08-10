@@ -215,3 +215,21 @@ export async function upsertLinkedIdentity(
 ): Promise<StoredIdentity> {
   return await upsertIdentityRecord(executor, identity, userId, nowMs);
 }
+
+/** Remove one exact non-tenant provider identity. */
+export async function deleteProviderIdentity(
+  executor: JuniorSqlDatabase,
+  provider: string,
+  providerSubjectId: string,
+): Promise<void> {
+  await executor
+    .db()
+    .delete(juniorIdentities)
+    .where(
+      and(
+        eq(juniorIdentities.provider, provider),
+        eq(juniorIdentities.providerTenantId, ""),
+        eq(juniorIdentities.providerSubjectId, providerSubjectId),
+      ),
+    );
+}
