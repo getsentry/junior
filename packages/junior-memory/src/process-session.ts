@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
 import {
   getSourceKey,
-  isPrivateSource,
   type PluginRunContext,
   type PluginRunTranscriptEntry,
   type PluginTaskContext,
+  type Source,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import {
@@ -56,6 +56,22 @@ const extractedMemoryCacheSchema = z.union([
 
 /** Where a passively extracted memory may be stored, or dropped when unproven. */
 type MemoryRouteTarget = "drop" | "personal" | "conversation";
+
+/**
+ * V1 passive learning opts in by Source branch. Unknown branches stay out.
+ * Conversation link visibility is not enough; only public Slack is channel
+ * evidence, and local remains available for QA.
+ */
+function allowsPassiveMemoryExtraction(source: Source): boolean {
+  switch (source.platform) {
+    case "local":
+      return true;
+    case "slack":
+      return source.visibility === "public";
+    case "api":
+      return false;
+  }
+}
 
 function recordCapturedMemory(
   captured: ReturnType<typeof capturedMemory>[],
@@ -232,13 +248,9 @@ export async function processMemorySession(
   ) {
     return;
   }
-  // V1 passive learning only stores public Slack channel facts outside local
-  // QA. Shareable dashboard/API roots keep conversation visibility public for
-  // links, but their Source platform is not Slack channel evidence.
-  if (
-    run.source.platform !== "local" &&
-    (run.source.platform !== "slack" || isPrivateSource(run.source))
-  ) {
+  // V1 passive learning is a Source-branch policy, not a visibility sniff.
+  // Local QA and public Slack channels may learn. API/dashboard never does.
+  if (!allowsPassiveMemoryExtraction(run.source)) {
     return;
   }
   const sourceKey = getSourceKey(run.source);

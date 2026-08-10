@@ -1,4 +1,8 @@
-import { actorSchema, type PluginModel } from "@sentry/junior-plugin-api";
+import {
+  actorSchema,
+  sourceSchema,
+  type PluginModel,
+} from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import {
   memorySupersessionDecisionSchema,
@@ -273,25 +277,41 @@ function escapeXml(value: string): string {
     .replaceAll(">", "&gt;");
 }
 
+function actorLabel(
+  actor: z.output<typeof actorSchema> | undefined,
+): string {
+  if (!actor) {
+    return "none";
+  }
+  switch (actor.platform) {
+    case "system":
+      return `system:${actor.name}`;
+    case "slack":
+      return `slack:${actor.teamId}:${actor.userId}`;
+    case "local":
+      return `local:${actor.userId}`;
+    case "api":
+      return `api:${actor.userId}`;
+  }
+}
+
+function sourceLabel(source: z.output<typeof sourceSchema>): string {
+  switch (source.platform) {
+    case "slack":
+      return `slack:${source.teamId}:${source.channelId}`;
+    case "api":
+    case "local":
+      return `${source.platform}:${source.conversationId}`;
+  }
+}
+
 function runtimeDescription(
   request: Pick<CreateMemoryRequest, "expiresAtMs" | "runtimeContext">,
 ): string {
   const runtime = request.runtimeContext;
-  const actor =
-    runtime.actor?.platform === "slack"
-      ? `slack:${runtime.actor.teamId}:${runtime.actor.userId}`
-      : runtime.actor?.platform === "api"
-        ? `api:${runtime.actor.userId}`
-        : runtime.actor?.platform === "local"
-          ? `local:${runtime.actor.userId}`
-          : "none";
-  const source =
-    runtime.source.platform === "slack"
-      ? `slack:${runtime.source.teamId}:${runtime.source.channelId}`
-      : `${runtime.source.platform}:${runtime.source.conversationId}`;
   const lines = [
-    `- actor: ${escapeXml(actor)}`,
-    `- source: ${escapeXml(source)}`,
+    `- actor: ${escapeXml(actorLabel(runtime.actor))}`,
+    `- source: ${escapeXml(sourceLabel(runtime.source))}`,
     `- has_conversation: ${runtime.conversationId ? "true" : "false"}`,
     `- expires_at: ${
       request.expiresAtMs === undefined
@@ -391,20 +411,6 @@ function reviewPrompt(request: CreateMemoryRequest): string {
   return sections.join("\n");
 }
 
-function transcriptActorLabel(
-  actor: z.output<typeof actorSchema> | undefined,
-): string {
-  if (!actor) {
-    return "none";
-  }
-  if (actor.platform === "system") {
-    return `system:${actor.name}`;
-  }
-  return actor.platform === "slack"
-    ? `slack:${actor.teamId}:${actor.userId}`
-    : `local:${actor.userId}`;
-}
-
 function runTranscriptContext(request: ExtractSessionRequest): string {
   return [
     "<run-transcript>",
@@ -418,7 +424,7 @@ function runTranscriptContext(request: ExtractSessionRequest): string {
       }
       const authority = entry.provenance?.authority ?? "context";
       const isRunActor = entry.isRunActor === true;
-      const actor = transcriptActorLabel(entry.provenance?.actor);
+      const actor = actorLabel(entry.provenance?.actor);
       return [
         `<message index="${index}" role="${entry.role}" authority="${authority}" is_run_actor="${isRunActor ? "true" : "false"}" actor="${escapeXml(actor)}">`,
         escapeXml(entry.text),

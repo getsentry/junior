@@ -150,14 +150,18 @@ export function isPrivateSource(source: Source): boolean {
 
 /** Return the stable source identity used for idempotency and attribution. */
 export function getSourceKey(source: Source): string | undefined {
-  if (source.platform === "local" || source.platform === "api") {
-    return source.conversationId;
+  switch (source.platform) {
+    case "api":
+    case "local":
+      return source.conversationId;
+    case "slack": {
+      const messageKey = source.threadTs ?? source.messageTs;
+      if (!messageKey) {
+        return undefined;
+      }
+      return `slack:${source.teamId}:${source.channelId}:${messageKey}`;
+    }
   }
-  const messageKey = source.threadTs ?? source.messageTs;
-  if (!messageKey) {
-    return undefined;
-  }
-  return `slack:${source.teamId}:${source.channelId}:${messageKey}`;
 }
 
 /** Narrow a runtime destination to the Slack-specific address shape. */

@@ -387,29 +387,44 @@ function boundedLimit(value: number | undefined, fallback: number): number {
 function memorySourcePlatform(
   source: MemoryRuntimeContext["source"],
 ): "slack" | "local" {
-  return source.platform === "slack" ? "slack" : "local";
+  switch (source.platform) {
+    case "slack":
+      return "slack";
+    case "api":
+    case "local":
+      // Durable enum is still destination-like; keep API writes as local until
+      // MEMORY_SOURCE_PLATFORMS grows an api value.
+      return "local";
+  }
 }
 
 /** Build the durable source attribution key from runtime-owned source fields. */
 function sourceKey(ctx: MemoryRuntimeContext): string {
-  if (ctx.source.platform === "local" || ctx.source.platform === "api") {
-    return ctx.source.conversationId;
+  switch (ctx.source.platform) {
+    case "api":
+    case "local":
+      return ctx.source.conversationId;
+    case "slack": {
+      const threadKey = ctx.source.threadTs ?? ctx.source.messageTs;
+      if (!threadKey) {
+        throw new Error(
+          "Memory source requires a Slack message or thread timestamp.",
+        );
+      }
+      return `slack:${ctx.source.teamId}:${ctx.source.channelId}:${threadKey}`;
+    }
   }
-  const threadKey = ctx.source.threadTs ?? ctx.source.messageTs;
-  if (!threadKey) {
-    throw new Error(
-      "Memory source requires a Slack message or thread timestamp.",
-    );
-  }
-  return `slack:${ctx.source.teamId}:${ctx.source.channelId}:${threadKey}`;
 }
 
 function sourceChannelPrefix(ctx: MemoryRuntimeContext): string | undefined {
-  if (ctx.source.platform !== "slack") {
-    return undefined;
+  switch (ctx.source.platform) {
+    case "slack":
+      // TODO(v0.82.0): Replace Slack source-key prefix matching with typed source proximity metadata.
+      return `slack:${ctx.source.teamId}:${ctx.source.channelId}:`;
+    case "api":
+    case "local":
+      return undefined;
   }
-  // TODO(v0.82.0): Replace Slack source-key prefix matching with typed source proximity metadata.
-  return `slack:${ctx.source.teamId}:${ctx.source.channelId}:`;
 }
 
 /** Parse one SQL row into the public memory record projection. */

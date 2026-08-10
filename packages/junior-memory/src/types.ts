@@ -9,8 +9,8 @@ export const MEMORY_SUBJECT_TYPES = [
   "conversation",
   "general",
 ] as const;
-// Memory stores only destination-like platforms. API/dashboard Source maps to
-// "local" at the write boundary so we do not expand the durable enum yet.
+// Durable attribution still uses destination-like platforms. Explicit API
+// Source branches map to "local" at the write boundary until the enum grows.
 export const MEMORY_SOURCE_PLATFORMS = ["slack", "local"] as const;
 export const MEMORY_EMBEDDING_METRICS = ["cosine"] as const;
 export const MEMORY_EMBEDDING_DIMENSIONS = 1536;

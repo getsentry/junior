@@ -13,10 +13,7 @@ import type {
   PluginRunTranscriptProvenance,
   PluginTaskContext,
 } from "@sentry/junior-plugin-api";
-import {
-  isPrivateSource,
-  pluginRunContextSchema,
-} from "@sentry/junior-plugin-api";
+import { pluginRunContextSchema } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginConversationEvents } from "@/chat/plugins/conversation-events";
@@ -263,8 +260,16 @@ async function loadConversationContextTranscriptEntries(
   source: PluginRunContext["source"],
   runActor: Actor | undefined,
 ): Promise<PluginRunTranscriptEntry[]> {
-  if (source.platform !== "slack" || isPrivateSource(source)) {
-    return [];
+  // Prior conversation evidence is a Slack public-channel concern only.
+  switch (source.platform) {
+    case "slack":
+      if (source.visibility === "private") {
+        return [];
+      }
+      break;
+    case "api":
+    case "local":
+      return [];
   }
   const state = await getPersistedThreadState(record.conversationId);
   const conversation = coerceThreadConversationState(state);

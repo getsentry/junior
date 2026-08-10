@@ -43,6 +43,7 @@ import {
   createMemorySearchTool,
   type MemoryReviewer,
 } from "../src/tools";
+import { createViewerMemories } from "../src/personal";
 import { createMemoryStore, type MemoryDb } from "../src/store";
 import type {
   MemorySupersessionDecider,
@@ -395,20 +396,54 @@ function viewerUser(actors: Actor[], email = "person@example.com") {
   return {
     email,
     id: `user:${email}`,
-    identities: actors.flatMap((actor) =>
-      actor.platform === "system"
-        ? []
-        : [
-            {
-              id: `identity:${actor.platform}:${actor.platform === "slack" ? `${actor.teamId}:` : ""}${actor.userId}`,
-              provider: actor.platform,
-              providerSubjectId: actor.userId,
-              ...(actor.platform === "slack"
-                ? { providerTenantId: actor.teamId }
-                : {}),
-            },
-          ],
-    ),
+    identities: actors.flatMap((actor) => {
+      if (actor.platform === "system") {
+        return [];
+      }
+      // Dashboard actors persist as junior identities keyed by verified email.
+      if (actor.platform === "api") {
+        const subject = actor.email?.trim().toLowerCase() ?? email;
+        return [
+          {
+            id: `identity:junior:${subject}`,
+            provider: "junior",
+            providerSubjectId: subject,
+          },
+        ];
+      }
+      return [
+        {
+          id: `identity:${actor.platform}:${actor.platform === "slack" ? `${actor.teamId}:` : ""}${actor.userId}`,
+          provider: actor.platform,
+          providerSubjectId: actor.userId,
+          ...(actor.platform === "slack"
+            ? { providerTenantId: actor.teamId }
+            : {}),
+        },
+      ];
+    }),
+  };
+}
+
+function apiContext(
+  overrides: {
+    conversationId?: string;
+    email?: string;
+    userId?: string;
+    visibility?: "public" | "private";
+  } = {},
+) {
+  const conversationId =
+    overrides.conversationId ?? "local:api:memory-dashboard";
+  const email = overrides.email ?? "memory@example.com";
+  return {
+    conversationId,
+    actor: {
+      platform: "api" as const,
+      userId: overrides.userId ?? `dashboard:${email}`,
+      email,
+    },
+    source: createApiSource(conversationId, overrides.visibility ?? "public"),
   };
 }
 
@@ -1625,7 +1660,9 @@ describe("memory plugin storage", () => {
 
   it("skips passive extraction for public dashboard API sources", async () => {
     const fixture = await createMemoryFixture();
-    const conversationId = "local:api:memory-public-dashboard";
+    const runtime = apiContext({
+      conversationId: "local:api:memory-public-dashboard",
+    });
 
     try {
       await processMemorySession(
@@ -1635,10 +1672,10 @@ describe("memory plugin storage", () => {
           run: {
             async load() {
               return completedRun({
-                conversationId,
+                conversationId: runtime.conversationId,
                 destination: {
                   platform: "local",
-                  conversationId,
+                  conversationId: runtime.conversationId,
                 },
                 transcript: [
                   {
@@ -1647,14 +1684,10 @@ describe("memory plugin storage", () => {
                     text: "I prefer public dashboard links not to train memory.",
                   },
                 ],
-                actor: {
-                  platform: "api",
-                  userId: "dashboard:memory-user",
-                  email: "memory@example.com",
-                },
+                actor: runtime.actor,
                 // Conversation links may be public; Source still is not Slack
                 // channel evidence for passive extraction.
-                source: createApiSource(conversationId, "public"),
+                source: runtime.source,
               });
             },
           },
@@ -1664,6 +1697,50 @@ describe("memory plugin storage", () => {
       await expect(
         memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
       ).resolves.toEqual([]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("stores explicit API personal memory under the junior identity scope", async () => {
+    const fixture = await createMemoryFixture();
+    const runtime = apiContext({ email: "dashboard@example.com" });
+
+    try {
+      const store = createMemoryStore(memoryDb(fixture), runtime, {
+        now: () => TEST_NOW_MS,
+      });
+      const created = await store.createMemory({
+        content: "Prefers short dashboard answers.",
+        idempotencyKey: "tool:api:personal-scope",
+        kind: "preference",
+      });
+
+      expect(created.memory).toMatchObject({
+        scope: "personal",
+        subjectType: "user",
+      });
+      await expect(
+        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
+      ).resolves.toMatchObject([
+        {
+          id: created.memory.id,
+          scope: "personal",
+          scopeKey: "junior:dashboard@example.com",
+          sourceKey: runtime.conversationId,
+          sourcePlatform: "local",
+          subjectKey: "junior:dashboard@example.com",
+          subjectType: "user",
+        },
+      ]);
+
+      const viewer = viewerUser([runtime.actor], "dashboard@example.com");
+      const listed = await createViewerMemories(memoryDb(fixture), viewer).list({
+        limit: 10,
+      });
+      expect(listed.memories.map((memory) => memory.id)).toEqual([
+        created.memory.id,
+      ]);
     } finally {
       await fixture.close();
     }

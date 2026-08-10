@@ -1,4 +1,4 @@
-import { isPrivateSource, type Identity } from "@sentry/junior-plugin-api";
+import { type Actor, type Identity, type Source } from "@sentry/junior-plugin-api";
 import type {
   MemoryRuntimeContext,
   MemoryScope,
@@ -25,29 +25,40 @@ function uniqueScopes(scopes: ResolvedMemoryScope[]): ResolvedMemoryScope[] {
   ];
 }
 
+/** Personal scope key for one verified provider identity, when one exists. */
+function personalScopeFromIdentity(
+  identity: Identity,
+): ResolvedMemoryScope | undefined {
+  if (identity.provider === "local") {
+    return {
+      scope: "personal",
+      scopeKey: `local:${identity.providerSubjectId}`,
+    };
+  }
+  // Dashboard/API actors persist as junior identities keyed by verified email.
+  if (identity.provider === "junior") {
+    return {
+      scope: "personal",
+      scopeKey: `junior:${identity.providerSubjectId}`,
+    };
+  }
+  if (identity.provider === "slack" && identity.providerTenantId) {
+    return {
+      scope: "personal",
+      scopeKey: `slack:${identity.providerTenantId}:${identity.providerSubjectId}`,
+    };
+  }
+  return undefined;
+}
+
 /** Derive viewer-visible memory scopes from canonical provider identities. */
 export function deriveViewerMemoryScopes(identities: Identity[]): {
   privateScopes: ResolvedMemoryScope[];
   publicScopes: ResolvedMemoryScope[];
 } {
   const privateScopes = identities.flatMap((identity) => {
-    if (identity.provider === "local") {
-      return [
-        {
-          scope: "personal" as const,
-          scopeKey: `local:${identity.providerSubjectId}`,
-        },
-      ];
-    }
-    if (identity.provider === "slack" && identity.providerTenantId) {
-      return [
-        {
-          scope: "personal" as const,
-          scopeKey: `slack:${identity.providerTenantId}:${identity.providerSubjectId}`,
-        },
-      ];
-    }
-    return [];
+    const scope = personalScopeFromIdentity(identity);
+    return scope ? [scope] : [];
   });
   const publicScopes = identities.flatMap((identity) =>
     identity.provider === "slack" && identity.providerTenantId
@@ -65,32 +76,43 @@ export function deriveViewerMemoryScopes(identities: Identity[]): {
   };
 }
 
-function sourceConversationKey(ctx: MemoryRuntimeContext): string | undefined {
-  if (ctx.source.platform === "local" || ctx.source.platform === "api") {
-    return ctx.source.conversationId;
+/** Conversation-scoped key for the Source branch we actually have. */
+function sourceConversationKey(source: Source): string | undefined {
+  switch (source.platform) {
+    case "api":
+    case "local":
+      return source.conversationId;
+    case "slack": {
+      if (source.visibility === "public") {
+        return `slack:${source.teamId}`;
+      }
+      const threadKey = source.threadTs ?? source.messageTs;
+      if (!threadKey) {
+        return undefined;
+      }
+      return `slack:${source.teamId}:${source.channelId}:${threadKey}`;
+    }
   }
-  if (!isPrivateSource(ctx.source)) {
-    return `slack:${ctx.source.teamId}`;
-  }
-  const threadKey = ctx.source.threadTs ?? ctx.source.messageTs;
-  if (!threadKey) {
-    return undefined;
-  }
-  return `slack:${ctx.source.teamId}:${ctx.source.channelId}:${threadKey}`;
 }
 
-function actorScopeKey(ctx: MemoryRuntimeContext): string | undefined {
-  const actor = ctx.actor;
-  if (!actor || actor.platform === "system") {
+/** Personal scope key for the Actor branch we actually have. */
+function actorScopeKey(actor: Actor | undefined): string | undefined {
+  if (!actor) {
     return undefined;
   }
-  if (actor.platform === "slack") {
-    return `slack:${actor.teamId}:${actor.userId}`;
+  switch (actor.platform) {
+    case "system":
+      return undefined;
+    case "slack":
+      return `slack:${actor.teamId}:${actor.userId}`;
+    case "local":
+      return `local:${actor.userId}`;
+    case "api": {
+      // Match junior identity personal scopes used by the dashboard viewer.
+      const email = actor.email?.trim().toLowerCase();
+      return email ? `junior:${email}` : undefined;
+    }
   }
-  if (actor.platform === "api") {
-    return `api:${actor.userId}`;
-  }
-  return `local:${actor.userId}`;
 }
 
 /** Derive the authority-bearing key for a requested memory scope. */
@@ -99,14 +121,14 @@ export function deriveMemoryScope(
   scope: MemoryScope,
 ): ResolvedMemoryScope {
   if (scope === "personal") {
-    const scopeKey = actorScopeKey(ctx);
+    const scopeKey = actorScopeKey(ctx.actor);
     if (!scopeKey) {
       throw new Error("Personal memory requires actor context.");
     }
     return { scope, scopeKey };
   }
 
-  const scopeKey = sourceConversationKey(ctx);
+  const scopeKey = sourceConversationKey(ctx.source);
   if (!scopeKey) {
     throw new Error("Conversation memory requires conversation context.");
   }
@@ -119,14 +141,14 @@ export function deriveMemorySubject(
   scope: ResolvedMemoryScope,
 ): ResolvedMemorySubject {
   if (scope.scope === "personal") {
-    const subjectKey = actorScopeKey(ctx);
+    const subjectKey = actorScopeKey(ctx.actor);
     if (!subjectKey) {
       throw new Error("User-subject memory requires actor context.");
     }
     return { subjectType: "user", subjectKey };
   }
 
-  const subjectKey = sourceConversationKey(ctx);
+  const subjectKey = sourceConversationKey(ctx.source);
   if (!subjectKey) {
     throw new Error(
       "Conversation-subject memory requires conversation context.",
