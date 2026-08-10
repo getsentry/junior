@@ -71,6 +71,8 @@ export interface SlackMockHttpResponse {
   status?: number;
   headers?: Record<string, string>;
   body?: Record<string, unknown> | string;
+  /** Optional artificial latency before the HTTP response is returned. */
+  delayMs?: number;
 }
 
 export interface CapturedSlackApiCall {
@@ -426,6 +428,9 @@ export const slackApiHandlers = [
 
     const response =
       dequeueResponse(rawMethod) ?? defaultSlackApiResponse(rawMethod);
+    if (response.delayMs !== undefined && response.delayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, response.delayMs));
+    }
     return toHttpResponse(response);
   }),
 

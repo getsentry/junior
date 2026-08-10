@@ -6,6 +6,7 @@ import {
 } from "@earendil-works/pi-ai/providers/faux";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createConversationWork } from "@/chat/app/conversation-work";
+import { FUNCTION_TIMEOUT_BUFFER_SECONDS, getChatConfig } from "@/chat/config";
 import { loadProjection } from "@/chat/conversations/projection";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
@@ -31,7 +32,6 @@ import {
   startConversationWork,
 } from "@/chat/task-execution/store";
 import {
-  continuableMessages,
   getTurnRecord,
   listTurnSummaries,
   saveTurnCheckpoint,
@@ -49,8 +49,12 @@ import {
   slackWebhookRequest,
 } from "../fixtures/conversation-work";
 import { deliverAssistantMessagesForTest } from "../fixtures/agent-runner";
+import { chatPostMessageOk } from "../fixtures/slack/factories/api";
 import { slackApiOutbox } from "../fixtures/slack-api-outbox";
-import { resetSlackApiMockState } from "../msw/handlers/slack-api";
+import {
+  queueSlackApiResponse,
+  resetSlackApiMockState,
+} from "../msw/handlers/slack-api";
 
 async function complete(request: Parameters<AgentRunner["run"]>[0]) {
   await request.durability?.onInputCommitted?.();
@@ -542,106 +546,48 @@ describe("durable queue contract", () => {
       await expectNextTurn(q, "1712345.0005");
     });
 
-    it("parks a timeout after the production delivery path accepts an agent reply", async () => {
-      // Production race from JUNIOR-7Y:
-      // 1) delivery dual-writes the accepted assistant into SQL
-      // 2) timeout recovery parks with the trimmed continuable boundary
-      // 3) that shorter checkpoint must not fail as a history branch
-      let slices = 0;
-      // Leave the host request after the timeout park so the resume slice starts
-      // from a fresh queue wake, matching the production serverless model.
-      let leaveHostAfterPark = false;
-      const q = await slack({
-        shouldYield: () => leaveHostAfterPark,
-        agentRunner: {
-          run: async (request) => {
-            slices += 1;
-            if (slices === 1) {
-              await request.durability?.onInputCommitted?.();
-              // Production order: commit the user/safe boundary first, then
-              // deliver the tool-free assistant (SQL dual-write), then timeout
-              // recovery parks with the trimmed continuable boundary.
-              const userInstruction: PiMessage = {
-                role: "user",
-                content: [
-                  {
-                    type: "text",
-                    text: request.input.messageText || "inspect the deploy",
-                  },
-                ],
-                timestamp: 1,
-              };
-              const running = await saveTurnCheckpoint({
-                mode: "running",
-                actor: request.routing.actor,
-                conversationId: request.conversationId,
-                destination: request.routing.destination,
-                messages: [userInstruction],
-                sliceId: 1,
-                source: request.routing.source,
-                surface: request.routing.surface,
-                turnId: request.turnId,
-              });
-              if (!running) {
-                throw new Error("Expected running input checkpoint");
-              }
-              const deliveredAssistant =
-                fauxAssistantMessage("Deploy checked.");
-              deliveredAssistant.timestamp = 2;
-              const delivered = await deliverAssistantMessagesForTest(
-                request,
-                [{ text: "Deploy checked." }],
-                [userInstruction, deliveredAssistant],
-              );
-              // Timeout recovery trims the trailing assistant before parking.
-              // Delivery already committed that assistant into SQL history.
-              const record = await saveTurnCheckpoint({
-                mode: "paused",
-                reason: "timeout",
-                actor: request.routing.actor,
-                conversationId: request.conversationId,
-                destination: request.routing.destination,
-                messages: continuableMessages(delivered),
-                sliceId: 1,
-                source: request.routing.source,
-                surface: request.routing.surface,
-                turnId: request.turnId,
-              });
-              if (!record) {
-                throw new Error(
-                  `Failed to persist continuation for conversation=${request.conversationId} turn=${request.turnId}`,
-                );
-              }
-              leaveHostAfterPark = true;
-              return {
-                status: "suspended" as const,
-                resumeVersion: record.version,
-              };
-            }
-            leaveHostAfterPark = false;
-            // Fresh resume slice finishes without another destination reply.
-            return completedAgentRun({
-              diagnostics: {
-                assistantMessageCount: 0,
-                modelId: "test-model",
-                outcome: "success",
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: false,
-              },
-              piMessages: request.input.piMessages ?? [],
-              text: "",
-            });
-          },
-        },
+    it("keeps an accepted assistant when timeout parks a shorter matching prefix", async () => {
+      const turnId = await seedTurn("paused");
+      const faux = createFauxCore({ api: "test", provider: "test" });
+      faux.setResponses([
+        fauxAssistantMessage("Deploy checked."),
+        fauxAssistantMessage("Deploy checked."),
+      ]);
+      // Delay only destination acceptance through the shared Slack fixture so
+      // capture still works. Model generation stays fast: the assistant reaches
+      // message_end, delivery dual-writes SQL, then the host deadline forces
+      // timeout recovery to park the trimmed boundary.
+      queueSlackApiResponse("chat.postMessage", {
+        body: chatPostMessageOk({ ts: "1712345.0002" }),
+        delayMs: 2_500,
       });
-      await q.send();
+      const requestBudgetMs =
+        (getChatConfig().functionMaxDurationSeconds -
+          FUNCTION_TIMEOUT_BUFFER_SECONDS) *
+        1000;
+      // Leave enough budget to stream and enter delivery, but not enough for the
+      // delayed Slack accept. Timeout recovery then parks while delivery finishes.
+      const startedAtMs = Date.now() - requestBudgetMs + 1_500;
+      const q = await slack({
+        // Only model generation and Slack HTTP are fake. Delivery, checkpoint,
+        // timeout park, worker, lease, and queue routing stay production.
+        shouldYield: () => false,
+        pausedModelStream: faux.stream,
+      });
+      await requestConversationWork({
+        conversationId: CONVERSATION_ID,
+        destination: SLACK_DESTINATION,
+        state: q.state,
+      });
+      await ensureConversationWake({
+        conversationId: CONVERSATION_ID,
+        idempotencyKey: "timeout-after-accepted-reply",
+        queue: q.wakes,
+      });
 
-      await expect(q.next()).resolves.toEqual({ status: "yielded" });
-      expect(slices).toBe(1);
+      await expect(q.next(startedAtMs)).resolves.toEqual({ status: "yielded" });
       await expectPausedTurn(q, {
-        turnId: "turn_1712345_0001",
+        turnId,
         reason: "timeout",
         replies: ["Deploy checked."],
       });
@@ -661,11 +607,10 @@ describe("durable queue contract", () => {
         ]),
       );
       await expect(
-        getTurnRecord(CONVERSATION_ID, "turn_1712345_0001"),
+        getTurnRecord(CONVERSATION_ID, turnId),
       ).resolves.toMatchObject({
         state: "paused",
         resumeReason: "timeout",
-        sliceId: 2,
         piMessages: expect.arrayContaining([
           expect.objectContaining({
             role: "assistant",
@@ -679,11 +624,10 @@ describe("durable queue contract", () => {
         ]),
       });
 
-      // Next queue wake resumes the parked turn under production wiring.
+      // Fresh queue delivery resumes under a new request and can finish.
       await expect(q.next()).resolves.toEqual({ status: "completed" });
-      expect(slices).toBe(2);
       await expectTerminalTurn(q, {
-        turnId: "turn_1712345_0001",
+        turnId,
         state: "completed",
         replies: ["Deploy checked."],
       });
