@@ -75,7 +75,7 @@ export const localSourceSchema = z
 export const apiSourceSchema = z
   .object({
     platform: z.literal("api"),
-    visibility: z.literal("private"),
+    visibility: sourceVisibilitySchema,
     conversationId: localConversationIdSchema,
   })
   .strict();

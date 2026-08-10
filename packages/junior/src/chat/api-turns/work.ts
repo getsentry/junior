@@ -271,12 +271,14 @@ async function recordApiConversationActivity(args: {
     actor: storedActorFromApi(args.actor),
     source: "api",
     sessionSource: source,
-    visibility: "private",
+    // Dashboard-created conversations are public by default so links can be
+    // shared. Private create remains a later product option.
+    visibility: "public",
   });
   return destination;
 }
 
-/** Create a private root conversation and enqueue its first message. */
+/** Create a public root conversation and enqueue its first message. */
 export async function createAndEnqueueApiConversation(
   input: CreateApiConversationInput,
   options: EnqueueOptions,

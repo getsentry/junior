@@ -18,10 +18,17 @@ export function normalizeSessionSource(
   if (!value) {
     return undefined;
   }
-  if (value.platform === "local" || value.platform === "api") {
+  if (value.platform === "local") {
     return {
-      platform: value.platform,
-      visibility: "private",
+      platform: "local",
+      visibility: value.visibility,
+      conversationId: value.conversationId,
+    };
+  }
+  if (value.platform === "api") {
+    return {
+      platform: "api",
+      visibility: value.visibility,
       conversationId: value.conversationId,
     };
   }

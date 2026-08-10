@@ -54,7 +54,7 @@ describe("api turn conversation work", () => {
         {
           actor,
           idempotencyKey: "create-1",
-          message: "Start a private dashboard turn.",
+          message: "Start a dashboard turn.",
         },
         { conversationStore, queue, state },
       );
@@ -67,7 +67,7 @@ describe("api turn conversation work", () => {
         {
           actor,
           idempotencyKey: "create-1",
-          message: "Start a private dashboard turn.",
+          message: "Start a dashboard turn.",
         },
         { conversationStore, queue, state },
       );
@@ -82,7 +82,7 @@ describe("api turn conversation work", () => {
           actor,
           conversationId: accepted.conversationId,
           idempotencyKey: "create-1",
-          message: "Start a private dashboard turn.",
+          message: "Start a dashboard turn.",
         },
         { conversationStore, queue, state },
       );
@@ -96,7 +96,7 @@ describe("api turn conversation work", () => {
     }
   });
 
-  it("enqueues private API turns with publishExternally false and runs them on the worker", async () => {
+  it("enqueues public API turns with publishExternally false and runs them on the worker", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
     await migrateSchema(fixture.sql);
     const conversationStore = createSqlStore(fixture.sql);
@@ -109,7 +109,7 @@ describe("api turn conversation work", () => {
         {
           actor,
           idempotencyKey: "create-1",
-          message: "Start a private dashboard turn.",
+          message: "Start a dashboard turn.",
         },
         { conversationStore, queue, state },
       );
@@ -121,7 +121,7 @@ describe("api turn conversation work", () => {
       ).resolves.toMatchObject({
         source: "api",
         sessionSource: createApiSource(accepted.conversationId),
-        visibility: "private",
+        visibility: "public",
         destination: {
           platform: "local",
           conversationId: accepted.conversationId,
@@ -135,7 +135,7 @@ describe("api turn conversation work", () => {
       const inbound = buildApiTurnInboundMessage({
         actor,
         conversationId: accepted.conversationId,
-        message: "Start a private dashboard turn.",
+        message: "Start a dashboard turn.",
         messageId: accepted.messageId,
       });
       expect(inbound).toMatchObject({
@@ -186,7 +186,7 @@ describe("api turn conversation work", () => {
                   content: [
                     {
                       type: "text",
-                      text: "Start a private dashboard turn.",
+                      text: "Start a dashboard turn.",
                     },
                   ],
                   timestamp: Date.now(),
@@ -234,7 +234,7 @@ describe("api turn conversation work", () => {
       expect(messages.map((event) => event.data)).toEqual([
         expect.objectContaining({
           role: "user",
-          text: "Start a private dashboard turn.",
+          text: "Start a dashboard turn.",
         }),
         expect.objectContaining({
           role: "assistant",

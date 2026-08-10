@@ -23,7 +23,7 @@ function actorFromViewerEmail(email: string): ApiActor {
   });
 }
 
-/** Create a private root conversation and enqueue its first message. */
+/** Create a public root conversation and enqueue its first message. */
 export const createConversationRoute = defineApiRoute({
   method: "post",
   path: "/",
@@ -87,7 +87,7 @@ export const createConversationMessageRoute = defineApiRoute({
     }
     if (conversation.destination?.platform === "slack") {
       // Continuing Slack-rooted conversations from the dashboard needs source
-      // and destination decoupling. This slice covers private local roots only.
+      // and destination decoupling. This slice covers local API roots only.
       throwApiError(
         409,
         "Dashboard messages on Slack conversations are not enabled yet.",

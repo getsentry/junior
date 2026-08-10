@@ -132,10 +132,13 @@ export function createLocalSource(conversationId: string): LocalSource {
 }
 
 /** Build a normalized API/dashboard source from a conversation id. */
-export function createApiSource(conversationId: string): ApiSource {
+export function createApiSource(
+  conversationId: string,
+  visibility: SourceVisibility = "public",
+): ApiSource {
   return {
     platform: "api",
-    visibility: "private",
+    visibility,
     conversationId,
   };
 }

@@ -168,8 +168,10 @@ function destinationUpsertFromDestination(args: {
       localWorkspaceFromConversationId(destination.conversationId) ??
       localWorkspaceFromConversationId(args.conversationId ?? ""),
     providerDestinationId: destination.conversationId,
-    refreshVisibility: true,
-    visibility: "direct",
+    // Match Slack: only refresh when a live visibility signal is present so
+    // execution-metadata writes cannot clobber public dashboard roots.
+    refreshVisibility: args.visibility !== undefined,
+    visibility: args.visibility ?? "direct",
     metadata: { platform: "local" },
   };
 }
