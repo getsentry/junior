@@ -1658,10 +1658,11 @@ describe("memory plugin storage", () => {
     }
   });
 
-  it("skips passive extraction for public dashboard API sources", async () => {
+  it("skips passive extraction for private dashboard API sources", async () => {
     const fixture = await createMemoryFixture();
     const runtime = apiContext({
-      conversationId: "local:api:memory-public-dashboard",
+      conversationId: "local:api:memory-private-dashboard",
+      visibility: "private",
     });
 
     try {
@@ -1681,12 +1682,10 @@ describe("memory plugin storage", () => {
                   {
                     type: "message",
                     role: "user",
-                    text: "I prefer public dashboard links not to train memory.",
+                    text: "I prefer private dashboard context skips.",
                   },
                 ],
                 actor: runtime.actor,
-                // Conversation links may be public; Source still is not Slack
-                // channel evidence for passive extraction.
                 source: runtime.source,
               });
             },
@@ -1697,6 +1696,63 @@ describe("memory plugin storage", () => {
       await expect(
         memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
       ).resolves.toEqual([]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("stores actor memories from public API completed sessions", async () => {
+    const fixture = await createMemoryFixture();
+    const { model } = extractionModel([
+      {
+        kind: "preference",
+        content: "Prefers short dashboard answers.",
+      },
+    ]);
+    const runtime = apiContext({
+      conversationId: "local:api:memory-public-dashboard",
+      email: "dashboard@example.com",
+      visibility: "public",
+    });
+
+    try {
+      await processMemorySession(
+        processSessionContext({
+          db: memoryDb(fixture),
+          model,
+          run: {
+            async load() {
+              return completedRun({
+                conversationId: runtime.conversationId,
+                destination: {
+                  platform: "local",
+                  conversationId: runtime.conversationId,
+                },
+                transcript: [
+                  instructionMessage("I prefer short dashboard answers."),
+                ],
+                actor: runtime.actor,
+                actors: [runtime.actor],
+                source: runtime.source,
+              });
+            },
+          },
+        }),
+      );
+
+      await expect(
+        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
+      ).resolves.toMatchObject([
+        {
+          content: "Prefers short dashboard answers.",
+          scope: "personal",
+          scopeKey: "junior:dashboard@example.com",
+          sourceKey: runtime.conversationId,
+          sourcePlatform: "local",
+          subjectKey: "junior:dashboard@example.com",
+          kind: "preference",
+        },
+      ]);
     } finally {
       await fixture.close();
     }

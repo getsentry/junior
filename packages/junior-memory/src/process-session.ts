@@ -58,18 +58,17 @@ const extractedMemoryCacheSchema = z.union([
 type MemoryRouteTarget = "drop" | "personal" | "conversation";
 
 /**
- * V1 passive learning opts in by Source branch. Unknown branches stay out.
- * Conversation link visibility is not enough; only public Slack is channel
- * evidence, and local remains available for QA.
+ * V1 passive learning opts in by Source branch, then public vs private.
+ * Public API is the same as public Slack: shared conversation evidence may
+ * learn. Private sources stay out. Local remains available for QA.
  */
 function allowsPassiveMemoryExtraction(source: Source): boolean {
   switch (source.platform) {
     case "local":
       return true;
+    case "api":
     case "slack":
       return source.visibility === "public";
-    case "api":
-      return false;
   }
 }
 
@@ -248,8 +247,8 @@ export async function processMemorySession(
   ) {
     return;
   }
-  // V1 passive learning is a Source-branch policy, not a visibility sniff.
-  // Local QA and public Slack channels may learn. API/dashboard never does.
+  // V1 passive learning is a Source-branch policy: local QA always, public
+  // Slack/API by visibility, private sources never.
   if (!allowsPassiveMemoryExtraction(run.source)) {
     return;
   }
