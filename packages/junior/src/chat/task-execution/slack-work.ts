@@ -42,10 +42,6 @@ import {
   createSlackDestination,
   requireSlackDestination,
 } from "@/chat/destination";
-import {
-  deliverReplyTo,
-  requireReplyDestination,
-} from "@/chat/task-execution/reply-delivery";
 import { stripLeadingSteeringOverride } from "@/chat/slack/message-control";
 import { botConfig, type CrossActorMidRunMode } from "@/chat/config";
 
@@ -465,7 +461,7 @@ export interface CreateSlackConversationWorkerOptions {
     teamId: string,
     userId: string,
   ) => Promise<SlackActorProfile | null | undefined>;
-  resumeAwaitingContinuation: (
+  runNextPausedTurn: (
     conversationId: string,
     options: { shouldYield: () => boolean },
   ) => Promise<boolean>;
@@ -585,7 +581,6 @@ export function createSlackResourceEventInboundMessage(
     destination,
     inboundMessageId: `resource-event:${input.subscription.id}:${input.event.eventKey}`,
     delivery: "defer",
-    replyDelivery: deliverReplyTo(destination),
     source: "resource_event",
     receivedAtMs: Date.now(),
     input: {
@@ -761,18 +756,15 @@ export function createSlackConversationWorker(
     });
     if (records.length === 0) {
       const destination = requireSlackDestination(
-        requireReplyDestination(
-          context.replyDelivery,
-          "Slack continuation recovery",
-        ),
-        "Slack continuation recovery",
+        context.destination,
+        "Slack paused-turn recovery",
       );
       await runWithSlackInstallation({
         adapter,
         installation: { teamId: destination.teamId },
         state,
         task: async () => {
-          await options.resumeAwaitingContinuation(context.conversationId, {
+          await options.runNextPausedTurn(context.conversationId, {
             shouldYield: context.shouldYield,
           });
         },
@@ -805,10 +797,7 @@ export function createSlackConversationWorker(
           restoreMessage({ adapter, record }),
         );
         const destination = requireSlackDestination(
-          requireReplyDestination(
-            context.replyDelivery,
-            "Slack conversation work",
-          ),
+          context.destination,
           "Slack conversation work",
         );
         await bindSlackActorIdentities({
@@ -966,6 +955,5 @@ export function buildSlackInboundMessage(args: {
         message: args.message.toJSON(),
       } satisfies SlackConversationMessageMetadata,
     },
-    replyDelivery: deliverReplyTo(destination),
   };
 }

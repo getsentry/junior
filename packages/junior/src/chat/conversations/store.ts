@@ -15,7 +15,7 @@ export type ConversationSource =
   | "slack";
 
 export type ConversationStatus =
-  | "awaiting_resume"
+  | "paused"
   | "failed"
   | "idle"
   | "pending"

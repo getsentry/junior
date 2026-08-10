@@ -8,7 +8,11 @@
 import type { ReplyAttribution } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
 import { standardModelId } from "@/chat/model-profile";
-import type { ChannelConfigurationService } from "@/chat/configuration/types";
+import { configValueSchema } from "@/chat/configuration/types";
+import type {
+  ConfigValue,
+  LocationConfigurationService,
+} from "@/chat/configuration/types";
 import {
   RetryableDeliveryError,
   type AgentRunRequest,
@@ -35,8 +39,10 @@ import {
 } from "@/chat/conversations/turn-lifecycle";
 import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
 import { getConversationEventStore } from "@/chat/db";
-import { persistCompletedSessionRecord } from "@/chat/services/turn-session-record";
-import { recordAgentTurnSessionSummary } from "@/chat/state/turn-session";
+import {
+  recordTurnSummary,
+  saveTurnCheckpoint,
+} from "@/chat/task-execution/checkpoint";
 import {
   createSlackWebApiAssistantStatusSession,
   type AssistantStatusSession,
@@ -115,12 +121,18 @@ async function postSlackMessageBestEffort(
 
 /** Create a read-only configuration service from persisted values. */
 function createReadOnlyConfigService(
-  values: Record<string, unknown>,
-): ChannelConfigurationService {
+  rawValues: Record<string, unknown>,
+): LocationConfigurationService {
+  const values: Record<string, ConfigValue> = Object.fromEntries(
+    Object.entries(rawValues).map(([key, value]) => [
+      key,
+      configValueSchema.parse(value),
+    ]),
+  );
   const entries = Object.entries(values).map(([key, value]) => ({
     key,
     value,
-    scope: "conversation" as const,
+    scope: "location" as const,
     updatedAt: new Date().toISOString(),
   }));
 
@@ -134,7 +146,7 @@ function createReadOnlyConfigService(
       entries.filter((entry) => !prefix || entry.key.startsWith(prefix)),
     resolve: async (key) => values[key],
     resolveValues: async ({ keys, prefix } = {}) => {
-      const filtered: Record<string, unknown> = {};
+      const filtered: Record<string, ConfigValue> = {};
       for (const [key, value] of Object.entries(values)) {
         if (prefix && !key.startsWith(prefix)) continue;
         if (keys && !keys.includes(key)) continue;
@@ -164,6 +176,12 @@ interface ResumeSlackTurnArgs {
   messageTs?: SlackMessageTs;
   replyContext?: ResumeReplyContext;
   lockKey?: string;
+  /**
+   * When true, the caller already holds the conversation work lease.
+   * Skip the second resume lock so queue continue is one owner, not two.
+   * OAuth and other out-of-band resumes leave this false.
+   */
+  ownsConversationLease?: boolean;
   initialText?: string;
   initialStatus?: AssistantStatusSpec;
   agentRunner: AgentRunner;
@@ -344,8 +362,8 @@ function createResumeReplyContext(
   const requestDeadline = getTurnRequestDeadline();
   const threadId =
     args.lockKey ?? getDefaultLockKey(args.channelId, args.threadTs);
-  const persistedChannelConfiguration =
-    replyContext.policy?.channelConfiguration ??
+  const persistedLocationConfiguration =
+    replyContext.policy?.locationConfiguration ??
     (replyContext.policy?.configuration
       ? createReadOnlyConfigService(replyContext.policy.configuration)
       : undefined);
@@ -372,7 +390,7 @@ function createResumeReplyContext(
       ...replyContext.policy,
       turnDeadlineAtMs:
         replyContext.policy?.turnDeadlineAtMs ?? requestDeadline?.deadlineAtMs,
-      channelConfiguration: persistedChannelConfiguration,
+      locationConfiguration: persistedLocationConfiguration,
     },
     state: replyContext.state,
     observers: {
@@ -400,11 +418,13 @@ function createResumeReplyContext(
 }
 
 /**
- * Resume a paused Slack turn under the normal thread lock.
+ * Resume a paused Slack turn.
  *
- * Started resumes own their completion side effects: assistant-message
- * delivery, pause persistence, or failure response. Returns false only when
- * `beforeStart` proves the resume is stale before generation begins.
+ * Queue continues pass `ownsConversationLease` and skip the second lock
+ * (worker lease is already held). OAuth and other out-of-band resumes still
+ * take the thread lock. Started resumes own their completion side effects.
+ * Returns false only when `beforeStart` proves the resume is stale before
+ * generation begins.
  */
 export async function resumeSlackTurn(
   args: ResumeSlackTurnArgs,
@@ -423,8 +443,12 @@ async function resumeSlackTurnInContext(
   await stateAdapter.connect();
   const lockKey =
     args.lockKey ?? getDefaultLockKey(args.channelId, args.threadTs);
-  const lock = await acquireActiveLock(stateAdapter, lockKey);
-  if (!lock) {
+  // Worker continue already holds the conversation lease. Taking a second
+  // active lock here was a dual-machine leftover (lease + resume lock).
+  const lock = args.ownsConversationLease
+    ? undefined
+    : await acquireActiveLock(stateAdapter, lockKey);
+  if (!args.ownsConversationLease && !lock) {
     throw new ResumeTurnBusyError(lockKey);
   }
 
@@ -627,13 +651,13 @@ async function resumeSlackTurnInContext(
       if (messageTs && dispatchId && routing) {
         try {
           await persistWithRetry(() =>
-            recordAgentTurnSessionSummary({
+            recordTurnSummary({
               conversationId: runArgs.conversationId,
               destination: routing.destination,
               destinationVisibility: routing.destinationVisibility,
               dispatchId,
               resultMessageId: messageTs,
-              sessionId: runArgs.turnId,
+              turnId: runArgs.turnId,
               sliceId: runArgs.sliceId ?? 1,
               source: routing.source,
               state: "running",
@@ -743,13 +767,13 @@ async function resumeSlackTurnInContext(
       // failure reaches this runtime boundary instead of being mistaken for a
       // completed durable turn.
       if (reply.piMessages?.length) {
-        await persistCompletedSessionRecord({
+        await saveTurnCheckpoint({
+          mode: "completed",
           conversationId: runArgs.conversationId,
-          sessionId: runArgs.turnId,
-          allMessages: reply.piMessages,
-          modelId: reply.diagnostics.modelId,
-          currentDurationMs: reply.diagnostics.durationMs,
-          currentUsage: reply.diagnostics.usage,
+          turnId: runArgs.turnId,
+          messages: reply.piMessages,
+          durationMs: reply.diagnostics.durationMs,
+          usage: reply.diagnostics.usage,
           destination: replyContext.routing.destination,
           destinationVisibility: replyContext.routing.destinationVisibility,
           dispatchId: replyContext.routing.dispatch?.id,
@@ -767,7 +791,7 @@ async function resumeSlackTurnInContext(
           sliceId: runArgs.sliceId,
         });
       } else if (replyContext.routing.dispatch?.id) {
-        await recordAgentTurnSessionSummary({
+        await recordTurnSummary({
           conversationId: runArgs.conversationId,
           destination: replyContext.routing.destination,
           destinationVisibility: replyContext.routing.destinationVisibility,
@@ -777,7 +801,7 @@ async function resumeSlackTurnInContext(
           ...(acceptedDeliveryId
             ? { resultMessageId: acceptedDeliveryId }
             : {}),
-          sessionId: runArgs.turnId,
+          turnId: runArgs.turnId,
           sliceId: runArgs.sliceId ?? 1,
           source: replyContext.routing.source,
           state:
@@ -853,7 +877,9 @@ async function resumeSlackTurnInContext(
     } else {
       await processingReaction?.stop();
     }
-    await stateAdapter.releaseLock(lock);
+    if (lock) {
+      await stateAdapter.releaseLock(lock);
+    }
   }
 
   if (postDeliveryCommitError) {

@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
-import { deliverReplyTo } from "@/chat/task-execution/reply-delivery";
 
 const originalNodeEnv = process.env.NODE_ENV;
 const originalQueueTopic = process.env.JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC;
@@ -290,11 +289,6 @@ describe("registerVercelConversationWorkDevConsumer", () => {
           platform: "slack",
           teamId: "T123",
         },
-        replyDelivery: deliverReplyTo({
-          channelId: "C123",
-          platform: "slack",
-          teamId: "T123",
-        }),
         source: "slack",
         createdAtMs: 1_000,
         receivedAtMs: 1_100,
@@ -308,6 +302,7 @@ describe("registerVercelConversationWorkDevConsumer", () => {
     await expect(
       handler(
         signConversationQueueMessage({
+          schemaVersion: 2,
           conversationId: "slack:C123:1712345.0001",
         }),
         metadata,
@@ -316,13 +311,10 @@ describe("registerVercelConversationWorkDevConsumer", () => {
     expect(run).toHaveBeenCalledOnce();
     expect(run).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        replyDelivery: {
-          type: "destination",
-          destination: {
-            channelId: "C123",
-            platform: "slack",
-            teamId: "T123",
-          },
+        destination: {
+          channelId: "C123",
+          platform: "slack",
+          teamId: "T123",
         },
       }),
     );
@@ -331,6 +323,7 @@ describe("registerVercelConversationWorkDevConsumer", () => {
     let missingSecretError: unknown;
     await handler(
       {
+        schemaVersion: 2,
         conversationId: "slack:C123:1712345.0001",
         signature: "signature",
         signatureVersion: "v2",

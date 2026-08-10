@@ -35,13 +35,12 @@ import {
 } from "@/chat/runtime/thread-state";
 import { startActiveTurn, markTurnFailed } from "@/chat/runtime/turn";
 import { finalizeFailedTurnReplyWithEvent } from "@/chat/services/turn-failure-response";
-import { completeDeliveredTurn } from "@/chat/services/turn-session-record";
+import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import {
   buildConversationContext,
   markConversationMessage,
   normalizeConversationText,
   recordDeliveredAssistantMessage,
-  updateConversationStats,
   upsertConversationMessage,
 } from "@/chat/services/conversation-memory";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
@@ -100,8 +99,8 @@ export interface LocalAgentTurnDeps {
     cancel: () => void;
     wait: () => Promise<void>;
   };
-  /** Post-delivery Pi/session persistence boundary. */
-  completeDeliveredTurn?: typeof completeDeliveredTurn;
+  /** Post-delivery checkpoint write. */
+  saveTurnCheckpoint?: typeof saveTurnCheckpoint;
   deliverReply: (reply: LocalAgentReply) => Promise<void>;
   sandboxEgressSignals?: SandboxEgressSignalTransport;
   /** Pre-agent durable Pi projection boundary. */
@@ -259,7 +258,6 @@ async function runLocalAgentTurnInContext(
   startActiveTurn({
     conversation,
     nextTurnId: turnId,
-    updateConversationStats,
   });
 
   let reply: AgentRunResult | undefined;
@@ -483,7 +481,6 @@ async function runLocalAgentTurnInContext(
         sessionId: turnId,
         userMessageId,
         markConversationMessage,
-        updateConversationStats,
       });
       await persistThreadStateById(input.conversationId, {
         artifacts: initialArtifacts,
@@ -531,15 +528,14 @@ async function runLocalAgentTurnInContext(
       // Destination acceptance is the completion boundary: this first commits
       // the final assistant messages to the event log and marks the session
       // record completed only after the CLI sink accepted the reply.
-      await (deps.completeDeliveredTurn ?? completeDeliveredTurn)({
+      await (deps.saveTurnCheckpoint ?? saveTurnCheckpoint)({
+        mode: "completed",
         conversationId: input.conversationId,
-        sessionId: turnId,
+        turnId,
         sliceId: completionSliceId,
         messages: reply.piMessages,
-        modelId: reply.diagnostics.modelId,
         durationMs: reply.diagnostics.durationMs,
         usage: reply.diagnostics.usage,
-        reasoningLevel: reply.diagnostics.reasoningLevel,
         destination,
         source,
         actor: localActor,

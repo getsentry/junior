@@ -12,9 +12,10 @@ related:
 ---
 
 Plugins add provider manifests, credentials, tools, runtime hooks, background
-work, and optional skills. Start with a packaged plugin when one exists; build a
-custom plugin only when the app needs a new provider or deterministic runtime
-behavior.
+work, and optional skills. A manifest is a file that describes a plugin. A
+runtime hook lets the plugin run code in the Junior app. Use a packaged plugin
+when one exists. Build a custom plugin only when the app needs a new provider or
+fixed behavior that code must control.
 
 ## Choose a plugin
 
@@ -82,9 +83,9 @@ import { plugins } from "./plugins.ts";
 export default await createApp({ plugins });
 ```
 
-Manifest-only plugins may be registered by package name. Plugins with runtime
-hooks export a JavaScript factory. Each provider page documents its required
-registration and environment variables.
+You can register a manifest-only plugin by package name. Plugins with runtime
+hooks export a JavaScript function. Each provider page lists the required setup
+and environment variables.
 
 ## Add an app-local plugin
 
@@ -98,8 +99,8 @@ app/plugins/<plugin-name>/
         └── SKILL.md
 ```
 
-Use this shape for app-specific provider configuration or workflows that do not
-need backend hooks. Runtime hooks and host tools require a code plugin; follow
+Use this layout for app-specific provider settings or work that does not need
+server hooks. Runtime hooks and host tools require a code plugin. Follow
 [Build a Plugin](/extend/build-a-plugin/).
 
 ## Validate

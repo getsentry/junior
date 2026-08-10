@@ -12,7 +12,6 @@ import {
 import {
   getConversationMessageSlackTs,
   isHumanConversationMessage,
-  updateConversationStats,
 } from "@/chat/services/conversation-memory";
 
 export interface UserInputAttachment {
@@ -489,7 +488,6 @@ async function hydrateConversationVisionContextWithDeps(
   let cacheHits = 0;
   let cacheMisses = 0;
   let analyzed = 0;
-  let mutated = false;
   const hydratedMessageIds = new Set<string>();
 
   for (const reply of replies) {
@@ -519,7 +517,6 @@ async function hydrateConversationVisionContextWithDeps(
         slackTs: existingMeta.slackTs ?? ts,
         imagesHydrated: true,
       };
-      mutated = true;
       continue;
     }
 
@@ -532,7 +529,6 @@ async function hydrateConversationVisionContextWithDeps(
       imageFileIds,
       imagesHydrated: true,
     };
-    mutated = true;
 
     for (const file of imageFiles) {
       const fileId = toOptionalString(file.id);
@@ -606,12 +602,7 @@ async function hydrateConversationVisionContextWithDeps(
         analyzedAtMs: Date.now(),
       };
       analyzed += 1;
-      mutated = true;
     }
-  }
-
-  if (mutated) {
-    updateConversationStats(conversation);
   }
 
   if (

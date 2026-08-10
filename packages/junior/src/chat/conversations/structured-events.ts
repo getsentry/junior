@@ -19,11 +19,67 @@ const authenticationEventContentSchema = z
   })
   .strict();
 
+const agentsInstructionsUpdatedContentSchema = z
+  .object({
+    action: z.enum(["loaded", "replaced", "cleared"]),
+    directory: z.string().trim().min(1).max(500).optional(),
+    fingerprint: z.string().trim().min(1).max(128),
+    sources: z
+      .array(
+        z
+          .object({
+            content: z
+              .string()
+              .min(1)
+              .max(32 * 1024),
+            path: z.string().trim().min(1).max(500),
+          })
+          .strict(),
+      )
+      .max(32),
+    textBytes: z.number().int().nonnegative().optional(),
+  })
+  .strict();
+
 function providerTitle(content: {
   provider: string;
   providerLabel?: string;
 }): string {
   return content.providerLabel?.trim() || content.provider;
+}
+
+function agentsInstructionsTitle(
+  action: "loaded" | "replaced" | "cleared",
+): string {
+  if (action === "loaded") return "Loaded AGENTS.md";
+  if (action === "replaced") return "Updated AGENTS.md";
+  return "Cleared AGENTS.md";
+}
+
+function sourceFilename(sourcePath: string): string {
+  return sourcePath.split("/").at(-1) || sourcePath;
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} bytes`;
+  const kilobytes = bytes / 1024;
+  return `${Number.isInteger(kilobytes) ? kilobytes : kilobytes.toFixed(1)} KB`;
+}
+
+function agentsInstructionsPreview(content: {
+  sources: Array<{ content: string; path: string }>;
+  textBytes?: number;
+}): string | undefined {
+  const source = content.sources[0];
+  if (!source) return undefined;
+  const filename = sourceFilename(source.path);
+  const label =
+    content.sources.length === 1
+      ? filename
+      : `${content.sources.length} AGENTS.md files`;
+  return typeof content.textBytes === "number"
+    ? `${label} · ${formatBytes(content.textBytes)}`
+    : label;
 }
 
 /** Junior-owned account-link transcript event. */
@@ -72,9 +128,34 @@ export const authenticationUnlinkedEvent = defineConversationEvent({
   },
 });
 
+/** Junior-owned AGENTS.md bootstrap transition for the dashboard timeline. */
+export const agentsInstructionsUpdatedEvent = defineConversationEvent({
+  name: "agents_instructions_updated",
+  version: 1,
+  schema: agentsInstructionsUpdatedContentSchema,
+  renderEvent(event) {
+    const title = agentsInstructionsTitle(event.action);
+    const preview = agentsInstructionsPreview(event);
+    return {
+      icon: "brain",
+      title,
+      ...(preview ? { preview } : {}),
+      ...(event.sources.length > 0
+        ? {
+            details: event.sources.map((source) => ({
+              title: sourceFilename(source.path),
+              content: source.content,
+            })),
+          }
+        : {}),
+    };
+  },
+});
+
 const NATIVE_EVENT_DEFINITIONS: readonly PluginConversationEventDefinition[] = [
   authenticationLinkedEvent,
   authenticationUnlinkedEvent,
+  agentsInstructionsUpdatedEvent,
 ];
 
 /** Resolve a registered Junior-native conversation event definition. */

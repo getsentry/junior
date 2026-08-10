@@ -37,7 +37,10 @@ export async function seedPeople(fixture: LocalJuniorSqlFixture) {
       updatedAtMs: Date.parse("2026-06-10T10:04:00.000Z"),
     },
     lastActivityAtMs: Date.parse("2026-06-10T10:04:00.000Z"),
-    metrics: { durationMs: 1_000, usage: { totalTokens: 100 } },
+    metrics: {
+      durationMs: 1_000,
+      usage: { cost: { total: 0.25 }, totalTokens: 100 },
+    },
     source: "slack",
     updatedAtMs: Date.parse("2026-06-10T10:04:00.000Z"),
   });
@@ -74,7 +77,10 @@ export async function seedPeople(fixture: LocalJuniorSqlFixture) {
       updatedAtMs: Date.parse("2026-06-12T11:01:00.000Z"),
     },
     lastActivityAtMs: Date.parse("2026-06-12T11:01:00.000Z"),
-    metrics: { durationMs: 500, usage: { totalTokens: 50 } },
+    metrics: {
+      durationMs: 500,
+      usage: { cost: { total: 0.17 }, totalTokens: 50 },
+    },
     actor: {
       email: "alice@example.com",
       fullName: "Provider Specific Alice",

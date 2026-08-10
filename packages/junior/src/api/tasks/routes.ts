@@ -4,6 +4,7 @@ import {
   taskExecutionListSchema,
   taskListSchema,
   taskParamsSchema,
+  taskRunListSchema,
 } from "@/api/schema/task";
 import { jsonResponse } from "@/api/http";
 import type { JuniorApiEnv } from "@/api/route";
@@ -11,6 +12,7 @@ import { resolveViewerUser } from "@/chat/plugins/viewer";
 import {
   deleteViewerTask,
   readViewerTaskExecutions,
+  readViewerTaskRuns,
   readViewerTasks,
   ViewerTaskNotFoundError,
 } from "@/chat/tasks/read";
@@ -29,6 +31,16 @@ export function createTaskRoutes(): Hono<JuniorApiEnv> {
     const user = await viewer(context);
     return user
       ? jsonResponse(taskListSchema, await readViewerTasks(user))
+      : jsonResponse(
+          apiErrorSchema,
+          { error: "Authentication required." },
+          { status: 401 },
+        );
+  });
+  app.get("/runs", async (context) => {
+    const user = await viewer(context);
+    return user
+      ? jsonResponse(taskRunListSchema, await readViewerTaskRuns(user))
       : jsonResponse(
           apiErrorSchema,
           { error: "Authentication required." },
@@ -55,11 +67,7 @@ export function createTaskRoutes(): Hono<JuniorApiEnv> {
     try {
       return jsonResponse(
         taskExecutionListSchema,
-        await readViewerTaskExecutions(
-          user,
-          params.data.kind,
-          params.data.id,
-        ),
+        await readViewerTaskExecutions(user, params.data.kind, params.data.id),
       );
     } catch (error) {
       if (error instanceof ViewerTaskNotFoundError) {

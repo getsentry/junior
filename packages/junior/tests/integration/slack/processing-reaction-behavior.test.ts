@@ -56,7 +56,7 @@ describe("Slack behavior: processing reaction", () => {
       },
     });
 
-    const thread = createTestThread({
+    const thread = await createTestThread({
       id: "slack:C0PROCESSING:1700007000.000000",
     });
     await slackRuntime.handleNewMention(
@@ -111,7 +111,7 @@ describe("Slack behavior: processing reaction", () => {
       },
     });
 
-    const thread = createTestThread({
+    const thread = await createTestThread({
       id: "slack:C0PROCESSING:1700007100.000000",
     });
     await slackRuntime.handleSubscribedMessage(
@@ -168,7 +168,7 @@ describe("Slack behavior: processing reaction", () => {
       },
     });
 
-    const thread = createTestThread({
+    const thread = await createTestThread({
       id: "slack:C0PROCESSING:1700007150.000000",
     });
     await slackRuntime.handleSubscribedMessage(
@@ -217,7 +217,7 @@ describe("Slack behavior: processing reaction", () => {
       },
     });
 
-    const thread = createTestThread({
+    const thread = await createTestThread({
       id: "slack:C0PROCESSING:1700007160.000000",
     });
     await slackRuntime.handleSubscribedMessage(
@@ -278,7 +278,7 @@ describe("Slack behavior: processing reaction", () => {
       },
     });
 
-    const thread = createTestThread({
+    const thread = await createTestThread({
       id: "slack:C0PROCESSING:1700007200.000000",
     });
     await slackRuntime.handleNewMention(
@@ -332,7 +332,7 @@ describe("Slack behavior: processing reaction", () => {
       },
     });
 
-    const thread = createTestThread({
+    const thread = await createTestThread({
       id: "slack:C0PROCESSING:1700007300.000000",
     });
     await slackRuntime.handleNewMention(

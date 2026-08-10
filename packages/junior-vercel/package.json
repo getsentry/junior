@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior-vercel",
-  "version": "0.140.0",
+  "version": "0.146.0",
   "private": false,
   "publishConfig": {
     "access": "public"

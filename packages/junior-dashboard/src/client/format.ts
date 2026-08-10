@@ -367,6 +367,20 @@ export function formatCompactNumber(value: number | undefined): string {
   return formatNumber(value);
 }
 
+/**
+ * Format a chart-bucket average for the dashed average guide.
+ * Keeps one decimal below 10 so fractional daily means do not collapse to "0".
+ */
+export function formatActivityChartAverage(value: number | undefined): string {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return "0";
+  }
+  if (value < 10) {
+    return (Math.round(value * 10) / 10).toFixed(1).replace(/\.0$/, "");
+  }
+  return formatCompactNumber(value);
+}
+
 export type TokenUsageSummary = {
   cachedInputTokens?: number;
   cacheCreationTokens?: number;
@@ -667,6 +681,11 @@ export function peoplePath(email: string): string {
 /** Build the canonical detail route for a persisted public location. */
 export function locationPath(locationId: string): string {
   return `/system/locations/${encodeURIComponent(locationId)}`;
+}
+
+/** Build the canonical task detail route for a task id. */
+export function taskPath(taskId: string): string {
+  return `/tasks/${encodeURIComponent(taskId)}`;
 }
 
 function normalizeLanguage(language: string | undefined): BundledLanguage {

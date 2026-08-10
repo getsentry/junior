@@ -1,15 +1,22 @@
 import type { ConversationMetricDay } from "@sentry/junior/api/schema";
 
 import {
+  ActivityChartAverageLine,
   ActivityChartDateLabels,
   ActivityChartGrid,
+  activityChartAverage,
   ActivityTooltipRows,
+  ChartSvg,
   createActivityChartLayout,
   formatActivityDate,
 } from "../../components/charts/ActivityChart";
+import { ChartHeader } from "../../components/charts/ChartHeader";
 import { Card } from "../../components/layout/Card";
 import { Tooltip } from "../../components/Tooltip";
-import { formatCompactNumber } from "../../format";
+import {
+  formatActivityChartAverage,
+  formatCompactNumber,
+} from "../../format";
 
 /** Plot root conversations with recorded activity each day. */
 export function ConversationActivityChart(props: {
@@ -19,36 +26,22 @@ export function ConversationActivityChart(props: {
   const maximum = Math.max(1, ...props.days.map((day) => day.conversations));
   const step = layout.plotWidth / Math.max(1, props.days.length);
   const barWidth = Math.max(2, Math.min(24, step * 0.68));
-  const total = props.days.reduce((sum, day) => sum + day.conversations, 0);
+  const values = props.days.map((day) => day.conversations);
+  const total = values.reduce((sum, value) => sum + value, 0);
+  const average = activityChartAverage(values);
 
   return (
     <Card>
-      <div className="border-b border-white/[0.06] px-4 py-4 sm:px-5">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h3 className="m-0 font-mono text-xs font-medium uppercase tracking-[0.14em] text-dashboard-text-muted">
-              Conversation activity
-            </h3>
-            <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
-              Root conversations with recorded activity, bucketed by day.
-            </p>
-          </div>
-          <div className="shrink-0 text-right">
-            <div className="font-display text-xl font-light text-dashboard-text">
-              {formatCompactNumber(total)}
-            </div>
-            <div className="font-mono text-sm leading-relaxed text-dashboard-text-muted">
-              period total
-            </div>
-          </div>
-        </div>
-      </div>
+      <ChartHeader
+        description="Root conversations with recorded activity, bucketed by day."
+        title="Conversation activity"
+        total={formatCompactNumber(total)}
+      />
       <div className="px-2 py-3 sm:px-4 sm:py-4">
-        <svg
+        <ChartSvg
           aria-label="Conversations per day"
-          className="block h-auto min-h-60 w-full overflow-visible"
-          role="img"
-          viewBox={`0 0 ${layout.width} ${layout.height}`}
+          className="min-h-60 overflow-visible"
+          layout={layout}
         >
           <ActivityChartGrid layout={layout} maximum={maximum} />
           {props.days.map((day, index) => {
@@ -92,12 +85,19 @@ export function ConversationActivityChart(props: {
               </Tooltip>
             );
           })}
+          <ActivityChartAverageLine
+            average={average}
+            format={formatActivityChartAverage}
+            layout={layout}
+            maximum={maximum}
+            stroke="#22d3ee"
+          />
           <ActivityChartDateLabels
             dates={props.days.map((day) => day.date)}
             layout={layout}
             xPosition={(index) => layout.left + index * step + step / 2}
           />
-        </svg>
+        </ChartSvg>
       </div>
     </Card>
   );

@@ -17,6 +17,9 @@ type RepositoryInstructionsContextOptions = {
   capture(): Promise<RepositoryInstructions | undefined>;
   hasSandbox(): boolean;
   initialInstructions?: RepositoryInstructions;
+  onTransition?: (
+    instructions: RepositoryInstructions | undefined,
+  ) => void | Promise<void>;
   restoredMessages?: PiMessage[];
   restoredProvenance?: ConversationMessageProvenance[];
   promptContextContentParts: UserContentPart[];
@@ -64,7 +67,6 @@ export function createRepositoryInstructionsContext(
     visibleInstructions.text === options.initialInstructions.text
       ? options.initialInstructions.fingerprint
       : undefined;
-
   return {
     async applyUpdate(
       currentUpdate: AgentLoopTurnUpdate | undefined,
@@ -98,6 +100,7 @@ export function createRepositoryInstructionsContext(
       options.setMessages(messages);
       visibleFingerprint = instructions?.fingerprint;
       instructionsVisible = Boolean(instructions);
+      await options.onTransition?.(instructions);
       return {
         ...currentUpdate,
         context: { ...context, messages },

@@ -68,7 +68,7 @@ describeEval("Lifecycle and Resilience", slackEvals, (it) => {
       },
       initialEvents: [
         mention(
-          "After the deployment diagnostic finishes, tell me the current UTC time. Do not reply until you have checked it.",
+          "After the deployment diagnostic finishes, tell me the current UTC time. Wait until you've checked it before answering.",
         ),
       ],
       requireSandboxReady: false,

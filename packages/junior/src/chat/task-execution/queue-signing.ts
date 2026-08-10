@@ -125,7 +125,10 @@ export function verifyConversationQueueMessage(
 
   return {
     status: "verified",
-    message: { conversationId: message.conversationId },
+    message: {
+      schemaVersion: message.schemaVersion,
+      conversationId: message.conversationId,
+    },
   };
 }
 

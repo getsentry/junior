@@ -2090,6 +2090,7 @@ Conversation: \`local:test:old-conversation\`
     });
 
     expect(account).toEqual({
+      handle: "actor",
       id: "12345",
       label: "actor",
       url: "https://github.com/actor",

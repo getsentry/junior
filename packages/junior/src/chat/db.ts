@@ -3,8 +3,8 @@ import { createSqlStore } from "@/chat/conversations/sql/store";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import type { ConversationEventStore } from "@/chat/conversations/history";
-import { createSqlConversationSearchStore } from "@/chat/conversations/sql/search";
-import type { ConversationSearchStore } from "@/chat/conversations/search";
+import { createSqlConversationMessageSearchStore } from "@/chat/conversations/sql/message-search";
+import type { ConversationMessageSearchStore } from "@/chat/conversations/message-search";
 import type { JuniorDatabase, JuniorSqlExecutor } from "@/db/db";
 import { createJuniorSqlExecutor } from "@/db/executor";
 
@@ -16,7 +16,7 @@ let current:
       statementTimeoutMs: number | false;
       store: ConversationStore;
       eventStore: ConversationEventStore;
-      searchStore: ConversationSearchStore;
+      searchStore: ConversationMessageSearchStore;
     }
   | undefined;
 
@@ -57,7 +57,7 @@ export function getSqlExecutor(): JuniorSqlExecutor {
       db,
       store: createSqlStore(db),
       eventStore: createSqlConversationEventStore(db),
-      searchStore: createSqlConversationSearchStore(db),
+      searchStore: createSqlConversationMessageSearchStore(db),
     };
   }
   return current.db;
@@ -81,7 +81,7 @@ export function getConversationEventStore(): ConversationEventStore {
 }
 
 /** Return the SQL-backed public provider-tenant conversation search store. */
-export function getConversationSearchStore(): ConversationSearchStore {
+export function getConversationMessageSearchStore(): ConversationMessageSearchStore {
   getSqlExecutor();
   return current!.searchStore;
 }

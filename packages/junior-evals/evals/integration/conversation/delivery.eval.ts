@@ -22,7 +22,7 @@ describeEval("Slack Message Delivery", slackEvals, (it) => {
     const result = await run({
       initialEvents: [
         mention(
-          "please record that this has been seen, but do not post a visible reply",
+          "please just mark that this has been seen — no need to reply",
         ),
       ],
     });

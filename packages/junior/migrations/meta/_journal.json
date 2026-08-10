@@ -162,6 +162,20 @@
       "when": 1786128720003,
       "tag": "0022_task_execution_status",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1786153663118,
+      "tag": "0023_task_title_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1786313061094,
+      "tag": "0024_misty_typhoid_mary",
+      "breakpoints": true
     }
   ]
 }

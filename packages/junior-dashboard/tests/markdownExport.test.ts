@@ -336,4 +336,41 @@ describe("dashboard canonical-event Markdown export", () => {
     );
     expect(markdown).toContain("Transcript expired for this conversation.");
   });
+
+  it("exports structured-event content with a fence that survives nested backticks", () => {
+    const agentsBody = [
+      "# Agent Instructions",
+      "",
+      "Use this example:",
+      "",
+      "```ts",
+      "console.log('hi')",
+      "```",
+    ].join("\n");
+    const markdown = buildConversationMarkdown(
+      conversation([
+        event(0, {
+          type: "structured_event",
+          namespace: "junior",
+          name: "agents_instructions_updated",
+          version: 1,
+          presentation: {
+            icon: "brain",
+            title: "Loaded AGENTS.md",
+            preview: "AGENTS.md · 2 KB",
+            details: [
+              {
+                title: "AGENTS.md",
+                content: agentsBody,
+              },
+            ],
+          },
+        }),
+      ]),
+    );
+
+    expect(markdown).toContain("### Loaded AGENTS.md");
+    expect(markdown).toContain("- AGENTS.md");
+    expect(markdown).toContain("````md\n" + agentsBody + "\n````");
+  });
 });

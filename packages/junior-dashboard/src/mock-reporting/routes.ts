@@ -20,6 +20,7 @@ import {
   taskExecutionListSchema,
   taskListSchema,
   taskParamsSchema,
+  taskRunListSchema,
 } from "@sentry/junior/api/schema";
 import {
   readMockConversationDetail,
@@ -130,6 +131,24 @@ export function createMockReportingApi(): Hono<{
       : errorResponse("Conversation not found.", 404);
   });
   app.get("/tasks", () => jsonResponse(taskListSchema, readMockTaskList()));
+  app.get("/tasks/runs", () => {
+    const tasks = readMockTaskList().tasks;
+    const runs = tasks.flatMap((task) => {
+      const report = readMockTaskExecutions(task.kind, task.id);
+      return (report?.executions ?? []).map((run) => ({
+        ...run,
+        kind: task.kind,
+        taskId: task.id,
+        taskTitle: task.title,
+      }));
+    });
+    return jsonResponse(taskRunListSchema, {
+      runs: runs.sort((left, right) =>
+        right.executedAt.localeCompare(left.executedAt),
+      ),
+      truncated: false,
+    });
+  });
   app.get("/tasks/:kind/:id/executions", (c) => {
     const params = taskParamsSchema.safeParse(c.req.param());
     if (!params.success) {

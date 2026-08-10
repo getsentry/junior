@@ -1,10 +1,11 @@
 import type { SlashCommandEvent } from "chat";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
+import { unlinkProvider } from "@/chat/credentials/unlink-provider";
 import { formatProviderLabel, startOAuthFlow } from "@/chat/oauth-flow";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import { logInfo } from "@/chat/logging";
 import { getChatConfig } from "@/chat/config";
-import { parseActorUserId } from "@/chat/actor";
+import { createActor, parseActorUserId } from "@/chat/actor";
 
 async function postEphemeral(
   event: SlashCommandEvent,
@@ -43,9 +44,14 @@ async function handleLink(
     return;
   }
 
-  const raw = event.raw as { channel_id?: string };
+  const raw = event.raw as { channel_id?: string; team_id?: string };
+  const actor = createActor(
+    { platform: "slack", teamId: raw.team_id, userId: actorId },
+    { platform: "slack", teamId: raw.team_id, userId: actorId },
+  );
   const result = await startOAuthFlow(provider, {
     actorId,
+    ...(actor ? { actor } : {}),
     channelId: raw.channel_id,
   });
 
@@ -86,7 +92,8 @@ async function handleUnlink(
   }
 
   const tokenStore = createUserTokenStore();
-  await tokenStore.delete(actorId, provider);
+  const teamId = (event.raw as { team_id?: string }).team_id;
+  await unlinkProvider(actorId, provider, tokenStore, teamId);
 
   logInfo("slash_command.credential.unlinked", {
     "app.credential.provider": provider,

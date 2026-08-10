@@ -24,7 +24,10 @@ import {
   normalizeGitHubPullRequestLinkedIssues,
   normalizeGitHubPullRequestOutcome,
 } from "./pull-request-outcome.js";
-import { normalizeGitHubResourceEvents } from "./resource-events.js";
+import {
+  normalizeGitHubResourceEvents,
+  type GitHubFailingCheck,
+} from "./resource-events.js";
 
 /** Verify GitHub's SHA-256 signature against the untouched request body. */
 function verifyGitHubSignature(
@@ -85,6 +88,7 @@ export function createGitHubWebhookRoute(args: {
   }): Promise<GitHubPullRequestCommitComposition | undefined>;
   db: GitHubDb;
   installationId(): string | undefined;
+  loadFailingChecks?(body: unknown): Promise<GitHubFailingCheck[] | undefined>;
   log?: Pick<PluginLogger, "error">;
   resourceEvents: ResourceEventPublisher;
   webhookSecret(): string | undefined;
@@ -187,10 +191,15 @@ export function createGitHubWebhookRoute(args: {
           )
         : false;
 
+      const failingChecks =
+        eventName === "check_suite" && args.loadFailingChecks
+          ? await args.loadFailingChecks(body)
+          : undefined;
       const resourceEvents = normalizeGitHubResourceEvents({
         body,
         deliveryId,
         eventName,
+        failingChecks,
       });
       for (const event of resourceEvents) {
         await args.resourceEvents.publish(event);

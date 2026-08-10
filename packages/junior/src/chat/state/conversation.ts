@@ -37,11 +37,6 @@ export interface ConversationCompaction {
   summary: string;
 }
 
-export interface ConversationBackfillState {
-  completedAtMs?: number;
-  source?: "recent_messages" | "thread_fetch";
-}
-
 export interface ConversationProcessingState {
   activeTurnId?: string;
   lastCompletedAtMs?: number;
@@ -65,13 +60,6 @@ export type ConversationPendingAuthState =
       kind: "plugin";
     });
 
-export interface ConversationStats {
-  compactedMessageCount: number;
-  estimatedContextTokens: number;
-  totalMessageCount: number;
-  updatedAtMs: number;
-}
-
 export interface ConversationVisionSummary {
   analyzedAtMs: number;
   summary: string;
@@ -83,29 +71,19 @@ export interface ConversationVisionState {
 }
 
 export interface ThreadConversationState {
-  backfill: ConversationBackfillState;
   compactions: ConversationCompaction[];
   messages: ConversationMessage[];
   processing: ConversationProcessingState;
   schemaVersion: 1;
-  stats: ConversationStats;
   vision: ConversationVisionState;
 }
 
 function defaultConversationState(): ThreadConversationState {
-  const nowMs = Date.now();
   return {
     schemaVersion: 1,
     messages: [],
     compactions: [],
-    backfill: {},
     processing: {},
-    stats: {
-      estimatedContextTokens: 0,
-      totalMessageCount: 0,
-      compactedMessageCount: 0,
-      updatedAtMs: nowMs,
-    },
     vision: {
       byFileId: {},
     },
@@ -161,24 +139,10 @@ export function coerceThreadConversationState(
     conversation?: unknown;
   };
   const rawConversation = isRecord(root.conversation) ? root.conversation : {};
-  const base = defaultConversationState();
-
   // Conversation history lives in SQL. The operator upgrade reads any old
   // thread-state history; live code starts empty and hydrates canonical events.
   const messages: ConversationMessage[] = [];
   const compactions: ConversationCompaction[] = [];
-
-  const rawBackfill = isRecord(rawConversation.backfill)
-    ? rawConversation.backfill
-    : {};
-  const backfill: ConversationBackfillState = {
-    completedAtMs: toOptionalNumber(rawBackfill.completedAtMs),
-    source:
-      rawBackfill.source === "recent_messages" ||
-      rawBackfill.source === "thread_fetch"
-        ? rawBackfill.source
-        : undefined,
-  };
 
   const rawProcessing = isRecord(rawConversation.processing)
     ? rawConversation.processing
@@ -189,18 +153,6 @@ export function coerceThreadConversationState(
     pendingAuth: coercePendingAuthState(rawProcessing.pendingAuth),
   };
 
-  const rawStats = isRecord(rawConversation.stats) ? rawConversation.stats : {};
-  const stats: ConversationStats = {
-    estimatedContextTokens:
-      toOptionalNumber(rawStats.estimatedContextTokens) ??
-      base.stats.estimatedContextTokens,
-    totalMessageCount:
-      toOptionalNumber(rawStats.totalMessageCount) ?? messages.length,
-    compactedMessageCount:
-      toOptionalNumber(rawStats.compactedMessageCount) ?? 0,
-    updatedAtMs:
-      toOptionalNumber(rawStats.updatedAtMs) ?? base.stats.updatedAtMs,
-  };
   const rawVision = isRecord(rawConversation.vision)
     ? rawConversation.vision
     : {};
@@ -224,9 +176,7 @@ export function coerceThreadConversationState(
     schemaVersion: 1,
     messages,
     compactions,
-    backfill,
     processing,
-    stats,
     vision: {
       backfillCompletedAtMs: toOptionalNumber(rawVision.backfillCompletedAtMs),
       byFileId,
@@ -235,29 +185,27 @@ export function coerceThreadConversationState(
 }
 
 /**
- * Wrap a conversation state into the storage envelope for persistence. The
- * visible transcript (`messages`) is not written to `thread-state`; visible and
- * model history live in the SQL `ConversationEventStore`. Only runtime scratch
- * is persisted here.
+ * Wrap conversation runtime scratch into the storage envelope.
+ *
+ * Visible transcript and model history live in SQL. Redis only keeps
+ * short-lived processing control and the vision cache, which has no other
+ * authority yet.
  */
 export function buildConversationStatePatch(
   conversation: ThreadConversationState,
 ): {
-  conversation: Omit<ThreadConversationState, "compactions" | "messages">;
+  conversation: Pick<
+    ThreadConversationState,
+    "schemaVersion" | "processing" | "vision"
+  >;
 } {
-  const {
-    compactions: _compactions,
-    messages: _messages,
-    ...scratch
-  } = conversation;
   return {
     conversation: {
-      ...scratch,
       schemaVersion: 1,
-      stats: {
-        ...conversation.stats,
-        totalMessageCount: conversation.messages.length,
-        updatedAtMs: Date.now(),
+      processing: { ...conversation.processing },
+      vision: {
+        backfillCompletedAtMs: conversation.vision.backfillCompletedAtMs,
+        byFileId: { ...conversation.vision.byFileId },
       },
     },
   };

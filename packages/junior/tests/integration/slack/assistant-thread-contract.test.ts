@@ -1,6 +1,6 @@
 import { createTestDestination } from "../../fixtures/slack-harness";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createMemoryState } from "@chat-adapter/state-memory";
+import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { slackEventsApiEnvelope } from "../../fixtures/slack/factories/events";
 import { resetSlackApiMockState } from "../../msw/handlers/slack-api";
@@ -88,7 +88,7 @@ async function createDirectMessageBot(args: {
         signingSecret: SIGNING_SECRET,
       }),
     },
-    state: createMemoryState(),
+    state: getStateAdapter(),
   });
   const slackRuntime = createSlackRuntime({
     getSlackAdapter: () => bot.getAdapter("slack"),
@@ -126,7 +126,7 @@ async function createMentionBot(args: { agentRunner: AgentRunner }) {
         signingSecret: SIGNING_SECRET,
       }),
     },
-    state: createMemoryState(),
+    state: getStateAdapter(),
   });
   const slackRuntime = createSlackRuntime({
     getSlackAdapter: () => bot.getAdapter("slack"),
@@ -147,12 +147,16 @@ async function createMentionBot(args: { agentRunner: AgentRunner }) {
 }
 
 describe("Slack contract: assistant-thread delivery", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     resetSlackApiMockState();
+    // Chat and Junior scratch must share one adapter; clear between cases so
+    // fixed DM thread ids do not inherit prior title/artifact scratch.
+    await disconnectStateAdapter();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     resetSlackApiMockState();
+    await disconnectStateAdapter();
   });
 
   it("does not post assistant status when the DM message omits thread_ts", async () => {

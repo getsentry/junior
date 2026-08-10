@@ -3,10 +3,7 @@ import { TriangleAlert } from "lucide-react";
 import { Navigate, useLocation } from "react-router";
 
 import { agentNamePossessive, getDashboardAgentName } from "../../agentName";
-import {
-  TimeRangeSelector,
-  type TimeRangeDays,
-} from "../../components/controls/TimeRangeSelector";
+import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import type { SystemData } from "../../types";
@@ -81,13 +78,9 @@ function OverviewSystemPage(props: {
   return (
     <>
       <PageHeader
-        actions={
-          <TimeRangeSelector
-            onChange={props.onRangeChange}
-            value={props.range}
-          />
-        }
         description={`A live read on ${agentNamePossessive()} runtime and model usage.`}
+        onRangeChange={props.onRangeChange}
+        range={props.range}
         title="System"
       />
       <SystemActivity
@@ -137,15 +130,10 @@ function PluginSystemPage(props: {
   return (
     <>
       <PageHeader
-        actions={
-          rangeRelevant ? (
-            <TimeRangeSelector
-              onChange={props.onRangeChange}
-              value={props.range}
-            />
-          ) : undefined
-        }
         description={props.plugin.description}
+        {...(rangeRelevant
+          ? { onRangeChange: props.onRangeChange, range: props.range }
+          : {})}
         title={props.plugin.displayName}
       />
       {props.data.pluginReportsError ? (

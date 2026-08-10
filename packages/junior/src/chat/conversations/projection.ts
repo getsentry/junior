@@ -15,7 +15,9 @@ import type {
   AuthorizationKind,
   ConversationEvent,
 } from "@/chat/conversations/history";
+import type { RepositoryInstructions } from "@/chat/repository-instructions";
 import {
+  agentsInstructionsUpdatedEvent,
   authenticationLinkedEvent,
   authenticationUnlinkedEvent,
   JUNIOR_NATIVE_EVENT_NAMESPACE,
@@ -60,14 +62,14 @@ function isUserMessage(message: PiMessage): boolean {
   return (message as { role?: unknown }).role === "user";
 }
 
-function countMatchingPrefix(left: PiMessage[], right: PiMessage[]): number {
-  const limit = Math.min(left.length, right.length);
-  for (let index = 0; index < limit; index += 1) {
-    if (!isDeepStrictEqual(left[index], right[index])) {
-      return index;
-    }
+/** A checkpoint tried to replace already committed agent history. */
+export class AgentHistoryBranchError extends Error {
+  constructor(conversationId: string) {
+    super(
+      `Agent history for ${conversationId} changed before its committed boundary`,
+    );
+    this.name = "AgentHistoryBranchError";
   }
-  return limit;
 }
 
 /** Match the exact JSONB shape used for prefix comparison and replay. */
@@ -75,6 +77,76 @@ function normalizeDurableMessage(message: PiMessage): PiMessage {
   return piMessageSchema.parse(
     JSON.parse(JSON.stringify(sanitizePostgresJson(message))),
   );
+}
+
+/**
+ * Identity used for append-only prefix checks.
+ *
+ * Pi may mutate already-committed assistant envelopes in place (usage,
+ * stopReason, provider metadata). Append checkpoints must still accept the
+ * new suffix when role, timestamp, and durable content match.
+ */
+function durableMessageIdentity(message: PiMessage): unknown {
+  const record = message as {
+    role?: unknown;
+    timestamp?: unknown;
+    content?: unknown;
+    toolCallId?: unknown;
+    toolName?: unknown;
+    isError?: unknown;
+  };
+  if (record.role === "toolResult") {
+    return {
+      role: "toolResult",
+      timestamp: record.timestamp,
+      toolCallId: record.toolCallId,
+      toolName: record.toolName,
+      isError: record.isError,
+      content: record.content,
+    };
+  }
+  return {
+    role: record.role,
+    timestamp: record.timestamp,
+    content: record.content,
+  };
+}
+
+/**
+ * Count how much of `current` is a durable prefix of `next`.
+ *
+ * Returns `current.length` only when every committed message still matches by
+ * durable identity. A shorter `next` or a content/role/timestamp change is a
+ * branch that only compaction/handoff may perform.
+ */
+function countDurablePrefix(current: PiMessage[], next: PiMessage[]): number {
+  if (next.length < current.length) {
+    return countMatchingDeepPrefix(current, next);
+  }
+  for (let index = 0; index < current.length; index += 1) {
+    if (
+      !isDeepStrictEqual(
+        durableMessageIdentity(current[index]!),
+        durableMessageIdentity(next[index]!),
+      )
+    ) {
+      return index;
+    }
+  }
+  return current.length;
+}
+
+function countMatchingDeepPrefix(
+  left: PiMessage[],
+  right: PiMessage[],
+): number {
+  const limit = Math.min(left.length, right.length);
+  for (let index = 0; index < limit; index += 1) {
+    if (!isDeepStrictEqual(left[index], right[index])) {
+      return index;
+    }
+  }
+  return limit;
 }
 
 /**
@@ -225,9 +297,13 @@ function messageTimestamp(message: PiMessage): number {
 }
 
 /**
- * Append newly stable native history items. A shorter or changed prefix indicates
- * that a caller persisted volatile Pi state; only compaction and handoff may
- * intentionally replace active model history.
+ * Append newly stable native history items.
+ *
+ * Checkpoints are append-only against the durable identity of the committed
+ * prefix (role, timestamp, content; tool results also match call id). A shorter
+ * history or a true content branch is rejected — only compaction and handoff may
+ * intentionally replace active model history. In-place Pi mutations of already
+ * committed assistant envelopes (usage/stopReason) do not block the suffix.
  */
 export async function commitMessages(args: {
   conversationId: string;
@@ -333,7 +409,7 @@ async function commitMessagesLocked(
   const nextLocalMessages = stripRuntimeTurnContext(args.messages).map(
     normalizeDurableMessage,
   );
-  const matchingPrefix = countMatchingPrefix(
+  const matchingPrefix = countDurablePrefix(
     current.messages,
     nextLocalMessages,
   );
@@ -378,9 +454,7 @@ async function commitMessagesLocked(
       ...turnContextEvents,
     ]);
   } else {
-    throw new Error(
-      `Agent history for ${args.conversationId} changed before its committed boundary`,
-    );
+    throw new AgentHistoryBranchError(args.conversationId);
   }
   const committedEvents = await eventStore.loadCurrentHistory(
     args.conversationId,
@@ -554,6 +628,104 @@ export async function recordAuthenticationUnlinked(
   args: AuthenticationAccountChangeArgs,
 ): Promise<void> {
   await recordAuthenticationAccountChange("unlinked", args);
+}
+
+type AgentsInstructionsTransitionArgs = {
+  conversationId: string;
+  instructions?: RepositoryInstructions;
+  turnId: string;
+};
+
+type AgentsEventContent = {
+  action: "loaded" | "replaced" | "cleared";
+  directory?: string;
+  fingerprint: string;
+};
+
+async function loadAgentsEvent(conversationId: string): Promise<
+  | {
+      content: AgentsEventContent;
+      seq: number;
+    }
+  | undefined
+> {
+  const event = await getConversationEventStore().loadLatestStructuredEvent(
+    conversationId,
+    JUNIOR_NATIVE_EVENT_NAMESPACE,
+    agentsInstructionsUpdatedEvent.eventName,
+  );
+  if (!event || event.data.type !== "structured_event") return undefined;
+  return {
+    content: agentsInstructionsUpdatedEvent.parse(
+      event.data.content,
+    ) as AgentsEventContent,
+    seq: event.seq,
+  };
+}
+
+function agentsInstructionsIdempotencyKey(args: {
+  action: "loaded" | "replaced" | "cleared";
+  fingerprint: string;
+  previousSeq?: number;
+  turnId: string;
+}): string {
+  const previous = args.previousSeq ?? "none";
+  return (
+    `native:${JUNIOR_NATIVE_EVENT_NAMESPACE}:agents_instructions_updated:` +
+    `${args.turnId}:${args.action}:${previous}->${args.fingerprint}`
+  );
+}
+
+/** Record one AGENTS.md bootstrap transition as host transcript metadata. */
+export async function recordAgentsInstructionsUpdated(
+  args: AgentsInstructionsTransitionArgs,
+): Promise<void> {
+  const previous = await loadAgentsEvent(args.conversationId);
+  const instructions = args.instructions;
+  if (
+    previous &&
+    ((!instructions && previous.content.action === "cleared") ||
+      (instructions &&
+        previous.content.action !== "cleared" &&
+        previous.content.fingerprint === instructions.fingerprint &&
+        previous.content.directory === instructions.directory))
+  ) {
+    return;
+  }
+  const action = !instructions
+    ? "cleared"
+    : previous && previous.content.action !== "cleared"
+      ? "replaced"
+      : "loaded";
+  const fingerprint = instructions?.fingerprint ?? "cleared";
+  const content = agentsInstructionsUpdatedEvent.parse({
+    action,
+    fingerprint,
+    sources: instructions?.sources ?? [],
+    ...(instructions ? { directory: instructions.directory } : {}),
+    ...(instructions
+      ? { textBytes: Buffer.byteLength(instructions.text, "utf8") }
+      : {}),
+  });
+  await getConversationEventStore().append(args.conversationId, [
+    {
+      createdAtMs: Date.now(),
+      idempotencyKey: agentsInstructionsIdempotencyKey({
+        action,
+        fingerprint,
+        previousSeq: previous?.seq,
+        turnId: args.turnId,
+      }),
+      data: {
+        type: "structured_event",
+        namespace: JUNIOR_NATIVE_EVENT_NAMESPACE,
+        name: agentsInstructionsUpdatedEvent.eventName,
+        version: agentsInstructionsUpdatedEvent.version,
+        turnId: args.turnId,
+        content,
+      },
+    },
+  ]);
 }
 
 /** Load a previously selected execution profile for a resumed turn. */

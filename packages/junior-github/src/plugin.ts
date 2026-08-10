@@ -37,6 +37,7 @@ import {
 import type { GitHubDb } from "./db/database.js";
 import { buildGitHubOutcomeReport } from "./outcomes/report.js";
 import { classifyGitHubPullRequestCommitComposition } from "./pull-request-outcomes/commit-composition.js";
+import { loadFailingChecksForSuite } from "./webhooks/check-suite-enrichment.js";
 import {
   additionalActorCoauthorTrailers,
   configureGit,
@@ -775,6 +776,14 @@ export function githubPlugin(
             },
             db: ctx.db as GitHubDb,
             installationId: () => readEnv(installationIdEnv),
+            loadFailingChecks: async (body) =>
+              await loadFailingChecksForSuite({
+                appIdEnv,
+                body,
+                installationIdEnv,
+                log: ctx.log,
+                privateKeyEnv,
+              }),
             log: ctx.log,
             resourceEvents: ctx.resourceEvents,
             webhookSecret: () => readEnv("GITHUB_WEBHOOK_SECRET"),

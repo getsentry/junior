@@ -12,7 +12,7 @@ import type {
 } from "@sentry/junior-plugin-api";
 import type { McpToolManager } from "@/chat/mcp/tool-manager";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
-import type { AgentTurnSurface } from "@/chat/state/turn-session";
+import type { AgentTurnSurface } from "@/chat/task-execution/checkpoint";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { Skill } from "@/chat/skills";
 import type { LoadSkillMetadata } from "@/chat/tools/skill/load-skill";

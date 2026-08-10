@@ -13,6 +13,7 @@ import {
   personalSpendReportSchema,
   taskExecutionListSchema,
   taskListSchema,
+  taskRunListSchema,
 } from "@sentry/junior/api/schema";
 import {
   pluginOperationalReportFeedSchema,
@@ -110,6 +111,17 @@ export function useTasksData(enabled: boolean) {
     queryKey: ["dashboard", "tasks"],
     queryFn: ({ signal }) =>
       fetchDashboardJson(taskListSchema, "/api/tasks", signal),
+    retry: false,
+  });
+}
+
+/** Fetch newest runs across all viewer-visible tasks. */
+export function useTaskRunsData(enabled: boolean) {
+  return useQuery({
+    enabled,
+    queryKey: ["dashboard", "tasks", "runs"],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(taskRunListSchema, "/api/tasks/runs", signal),
     retry: false,
   });
 }

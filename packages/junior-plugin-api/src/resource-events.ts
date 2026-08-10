@@ -2,6 +2,28 @@ import { z } from "zod";
 
 export const RESOURCE_EVENT_SUMMARY_MAX_LENGTH = 4_000;
 export const RESOURCE_EVENT_TEXT_MAX_LENGTH = 8_000;
+export const RESOURCE_EVENT_DATA_MAX_KEYS = 32;
+export const RESOURCE_EVENT_DATA_MAX_JSON_BYTES = 4_000;
+
+/** Small trusted facts from the plugin. The agent should not look these up again. */
+export const resourceEventDataSchema = z
+  .record(z.string(), z.unknown())
+  .superRefine((value, context) => {
+    const keys = Object.keys(value);
+    if (keys.length > RESOURCE_EVENT_DATA_MAX_KEYS) {
+      context.addIssue({
+        code: "custom",
+        message: `Resource event data may include at most ${RESOURCE_EVENT_DATA_MAX_KEYS} keys.`,
+      });
+    }
+    const jsonBytes = new TextEncoder().encode(JSON.stringify(value)).byteLength;
+    if (jsonBytes > RESOURCE_EVENT_DATA_MAX_JSON_BYTES) {
+      context.addIssue({
+        code: "custom",
+        message: `Resource event data may be at most ${RESOURCE_EVENT_DATA_MAX_JSON_BYTES} JSON bytes.`,
+      });
+    }
+  });
 
 /** Canonical dotted event type published and selected across plugins. */
 export const resourceEventTypeSchema = z
@@ -124,6 +146,8 @@ export const resourceEventInputSchema = z
       .string()
       .min(1)
       .transform((value) => value.slice(0, RESOURCE_EVENT_SUMMARY_MAX_LENGTH)),
+    /** Trusted structured facts. Prefer ids and urls over long prose. */
+    data: resourceEventDataSchema.optional(),
     untrustedText: z
       .string()
       .transform((value) => value.slice(0, RESOURCE_EVENT_TEXT_MAX_LENGTH))
@@ -131,6 +155,7 @@ export const resourceEventInputSchema = z
   })
   .strict();
 
+export type ResourceEventData = z.output<typeof resourceEventDataSchema>;
 export type ResourceEventInput = z.output<typeof resourceEventInputSchema>;
 
 export const resourceEventSchema = resourceEventInputSchema.extend({

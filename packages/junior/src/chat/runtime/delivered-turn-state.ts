@@ -8,7 +8,6 @@ import {
 import { markTurnCompleted } from "@/chat/runtime/turn";
 import {
   markConversationMessage,
-  updateConversationStats,
 } from "@/chat/services/conversation-memory";
 import { clearPendingAuth } from "@/chat/services/pending-auth";
 
@@ -40,7 +39,6 @@ export function buildDeliveredTurnStatePatch(args: {
     conversation,
     nowMs: Date.now(),
     sessionId: args.sessionId,
-    updateConversationStats,
   });
 
   return {

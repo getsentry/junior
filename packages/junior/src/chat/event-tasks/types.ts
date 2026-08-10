@@ -44,4 +44,10 @@ export const eventTaskSchema = z
   .strict();
 
 /** Durable instruction dispatched for matching resource events. */
-export type EventTask = z.output<typeof eventTaskSchema>;
+export type EventTask = z.output<typeof eventTaskSchema> & {
+  /**
+   * Short display title generated from the task instruction.
+   * SQL-backed column; never stored inside the JSON task payload.
+   */
+  title?: string;
+};

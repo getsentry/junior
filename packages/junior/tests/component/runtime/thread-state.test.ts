@@ -1,10 +1,13 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { Thread } from "chat";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getPersistedSandboxState,
   getPersistedThreadState,
+  persistThreadRuntimeState,
   persistThreadStateById,
 } from "@/chat/runtime/thread-state";
-import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
+import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 
 const originalStateAdapter = process.env.JUNIOR_STATE_ADAPTER;
 
@@ -56,4 +59,37 @@ describe("thread sandbox state", () => {
     });
     expect(getPersistedSandboxState(state)).toBeUndefined();
   });
+
+  it("writes thread scratch with Junior's 7-day TTL", async () => {
+    const stateAdapter = getStateAdapter();
+    const set = vi.spyOn(stateAdapter, "set");
+    const conversationId = "local:test:thread-scratch-ttl";
+    await persistThreadStateById(conversationId, {
+      sandboxRef: { id: "sandbox-ttl" },
+    });
+    expect(set).toHaveBeenCalledWith(
+      `thread-state:${conversationId}`,
+      expect.objectContaining({ app_sandbox_id: "sandbox-ttl" }),
+      JUNIOR_THREAD_STATE_TTL_MS,
+    );
+
+    set.mockClear();
+    const thread = {
+      id: conversationId,
+      channelId: "C-scratch-ttl",
+      channel: { id: "C-scratch-ttl" },
+    } as Thread;
+    await persistThreadRuntimeState(thread, {
+      artifacts: { lastCanvasId: "Fcanvas" },
+    });
+    expect(set).toHaveBeenCalledWith(
+      `thread-state:${conversationId}`,
+      expect.objectContaining({
+        app_sandbox_id: "sandbox-ttl",
+        artifacts: expect.objectContaining({ lastCanvasId: "Fcanvas" }),
+      }),
+      JUNIOR_THREAD_STATE_TTL_MS,
+    );
+  });
+
 });

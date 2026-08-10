@@ -74,7 +74,7 @@ describe("Slack behavior: thread continuity", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700003000.000" });
+    const thread = await createTestThread({ id: "slack:C0BEHAVIOR:1700003000.000" });
     const firstMessage = createTestMessage({
       id: "m-continuity-1",
       text: "<@U0APP> We rolled back the deploy after a 500 spike. Give me a status update.",

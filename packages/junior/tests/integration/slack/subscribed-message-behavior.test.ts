@@ -106,7 +106,7 @@ describe("Slack behavior: subscribed messages", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700002000.000" });
+    const thread = await createTestThread({ id: "slack:C0BEHAVIOR:1700002000.000" });
     const message = createTestMessage({
       id: "m-subscribed-skip",
       text: "sounds good thanks everyone",
@@ -145,7 +145,7 @@ describe("Slack behavior: subscribed messages", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700002000.001" });
+    const thread = await createTestThread({ id: "slack:C0BEHAVIOR:1700002000.001" });
     const message = createTestMessage({
       id: "m-subscribed-provider-retry",
       text: "can you check this?",
@@ -193,7 +193,7 @@ describe("Slack behavior: subscribed messages", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700002000.002" });
+    const thread = await createTestThread({ id: "slack:C0BEHAVIOR:1700002000.002" });
     const message = createTestMessage({
       id: "resource-event-resub-1-check-suite-1",
       text: "[event notification]\n\nA subscribed resource changed.\n\nHandling:\n- Stay concise.",
@@ -261,7 +261,7 @@ describe("Slack behavior: subscribed messages", () => {
         replyExecutor: { agentRunner: { run: agentRunner } },
       },
     });
-    const thread = createTestThread({
+    const thread = await createTestThread({
       id: "slack:C0BEHAVIOR:1700002000.0025",
     });
     const destination = createTestDestination(thread);
@@ -386,7 +386,7 @@ describe("Slack behavior: subscribed messages", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700002000.003" });
+    const thread = await createTestThread({ id: "slack:C0BEHAVIOR:1700002000.003" });
     const message = createTestMessage({
       id: "resource-event-resub-1-check-suite-auth",
       text: "[event notification]\n\nA subscribed resource changed.",
@@ -472,7 +472,7 @@ describe("Slack behavior: subscribed messages", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700002001.000" });
+    const thread = await createTestThread({ id: "slack:C0BEHAVIOR:1700002001.000" });
     const message = createTestMessage({
       id: "m-subscribed-reply",
       text: "can you suggest one concrete next step?",
@@ -526,7 +526,7 @@ describe("Slack behavior: subscribed messages", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700002002.000" });
+    const thread = await createTestThread({ id: "slack:C0BEHAVIOR:1700002002.000" });
     const message = createTestMessage({
       id: "m-subscribed-mention",
       text: "<@U0APP> quick status?",
@@ -575,7 +575,7 @@ describe("Slack behavior: subscribed messages", () => {
         },
       },
     });
-    const thread = createTestThread({
+    const thread = await createTestThread({
       id: "slack:C0BEHAVIOR:1700002002.250",
     });
     const queued = createTestMessage({
@@ -653,7 +653,7 @@ describe("Slack behavior: subscribed messages", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700002002.500" });
+    const thread = await createTestThread({ id: "slack:C0BEHAVIOR:1700002002.500" });
 
     await slackRuntime.handleNewMention(
       thread,
@@ -763,7 +763,7 @@ describe("Slack behavior: subscribed messages", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700002003.000" });
+    const thread = await createTestThread({ id: "slack:C0BEHAVIOR:1700002003.000" });
     const message = createTestMessage({
       id: "m-subscribed-ack",
       text: "thanks!",
@@ -814,7 +814,7 @@ describe("Slack behavior: subscribed messages", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700002003.125" });
+    const thread = await createTestThread({ id: "slack:C0BEHAVIOR:1700002003.125" });
     const message = createTestMessage({
       id: "m-subscribed-ack-attachment",
       text: "thanks!",
@@ -871,7 +871,7 @@ describe("Slack behavior: subscribed messages", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700002003.250" });
+    const thread = await createTestThread({ id: "slack:C0BEHAVIOR:1700002003.250" });
     const message = createTestMessage({
       id: "m-subscribed-attachment-only",
       text: "",
@@ -930,7 +930,7 @@ describe("Slack behavior: subscribed messages", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700002003.275" });
+    const thread = await createTestThread({ id: "slack:C0BEHAVIOR:1700002003.275" });
     const message = createTestMessage({
       id: "m-subscribed-legacy-attachment-only",
       text: "",
@@ -992,7 +992,7 @@ describe("Slack behavior: subscribed messages", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700002003.300" });
+    const thread = await createTestThread({ id: "slack:C0BEHAVIOR:1700002003.300" });
     await slackRuntime.handleNewMention(
       thread,
       createTestMessage({
@@ -1056,7 +1056,7 @@ describe("Slack behavior: subscribed messages", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700002003.350" });
+    const thread = await createTestThread({ id: "slack:C0BEHAVIOR:1700002003.350" });
     await slackRuntime.handleNewMention(
       thread,
       createTestMessage({
@@ -1121,7 +1121,7 @@ describe("Slack behavior: subscribed messages", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700002003.500" });
+    const thread = await createTestThread({ id: "slack:C0BEHAVIOR:1700002003.500" });
     const message = createTestMessage({
       id: "m-subscribed-other-bot",
       text: "@Cursor can you help address issue 87?",
@@ -1196,7 +1196,7 @@ describe("Slack behavior: subscribed messages", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700002004.000" });
+    const thread = await createTestThread({ id: "slack:C0BEHAVIOR:1700002004.000" });
     await slackRuntime.handleNewMention(
       thread,
       createTestMessage({
@@ -1264,7 +1264,7 @@ describe("Slack behavior: subscribed messages", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700002004.500" });
+    const thread = await createTestThread({ id: "slack:C0BEHAVIOR:1700002004.500" });
     await slackRuntime.handleNewMention(
       thread,
       createTestMessage({
@@ -1302,7 +1302,7 @@ describe("Slack behavior: subscribed messages", () => {
   it("calls ack when preflight skips a message directed at another user", async () => {
     const { slackRuntime } = createRuntime();
     const ack = vi.fn().mockResolvedValue(undefined);
-    const thread = createTestThread({ id: "slack:C0REGRESS:1700010000.001" });
+    const thread = await createTestThread({ id: "slack:C0REGRESS:1700010000.001" });
 
     await slackRuntime.handleSubscribedMessage(
       thread,
@@ -1324,7 +1324,7 @@ describe("Slack behavior: subscribed messages", () => {
     const { slackRuntime } = createRuntime();
     const ack = vi.fn().mockResolvedValue(undefined);
     const activeTurnId = "turn_existing_resume";
-    const thread = createTestThread({
+    const thread = await createTestThread({
       id: "slack:C0REGRESS:1700010000.005",
       state: {
         conversation: {
@@ -1373,7 +1373,7 @@ describe("Slack behavior: subscribed messages", () => {
       },
     });
     const ack = vi.fn().mockResolvedValue(undefined);
-    const thread = createTestThread({ id: "slack:C0REGRESS:1700010000.002" });
+    const thread = await createTestThread({ id: "slack:C0REGRESS:1700010000.002" });
 
     await slackRuntime.handleSubscribedMessage(
       thread,
@@ -1409,7 +1409,7 @@ describe("Slack behavior: subscribed messages", () => {
       },
     });
     const ack = vi.fn().mockResolvedValue(undefined);
-    const thread = createTestThread({ id: "slack:C0REGRESS:1700010000.003" });
+    const thread = await createTestThread({ id: "slack:C0REGRESS:1700010000.003" });
     // Subscribe first so opt-out has something to unsubscribe from.
     thread.subscribe();
 
@@ -1434,7 +1434,7 @@ describe("Slack behavior: subscribed messages", () => {
       "lease lost during skip commit",
     );
     const ack = vi.fn().mockRejectedValue(commitError);
-    const thread = createTestThread({ id: "slack:C0REGRESS:1700010000.004" });
+    const thread = await createTestThread({ id: "slack:C0REGRESS:1700010000.004" });
 
     await expect(
       slackRuntime.handleSubscribedMessage(

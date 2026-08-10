@@ -26,9 +26,9 @@ import type {
   SubscribedReplyPolicy,
 } from "@/chat/services/subscribed-reply-policy";
 import {
-  appendSlackLegacyAttachmentText,
-  renderSlackLegacyAttachmentText,
-} from "@/chat/slack/legacy-attachments";
+  parseContent,
+  replaceTopLevelText,
+} from "@/chat/slack/message/content";
 import {
   shouldKeepProcessingReactionForToolInvocation,
   startSlackProcessingReaction,
@@ -36,7 +36,6 @@ import {
 } from "@/chat/runtime/processing-reaction";
 import { getMessageTs } from "@/chat/runtime/thread-context";
 import { stripLeadingSteeringOverride } from "@/chat/slack/message-control";
-import { getSlackMessageText } from "@/chat/slack/message";
 import {
   combineTurnText,
   type PrepareTurnStateInput,
@@ -218,9 +217,9 @@ function getQueuedMessages(
   },
 ): QueuedTurnMessage[] {
   return (context?.skipped ?? []).map((message) => {
-    const messageText = getSlackMessageText(message);
+    const content = parseContent(message);
     const stripped = options.stripLeadingBotMention(
-      stripLeadingSteeringOverride(messageText),
+      stripLeadingSteeringOverride(content.topLevelText),
       {
         stripLeadingSlackMentionToken:
           options.explicitMention || Boolean(message.isMention),
@@ -229,8 +228,8 @@ function getQueuedMessages(
     return {
       explicitMention: Boolean(message.isMention),
       message,
-      rawText: appendSlackLegacyAttachmentText(messageText, message.raw),
-      userText: appendSlackLegacyAttachmentText(stripped, message.raw),
+      rawText: content.text,
+      userText: replaceTopLevelText(content, stripped),
     };
   });
 }
@@ -508,24 +507,22 @@ export function createSlackTurnRuntime<
       channelId: deps.getChannelId(thread, message),
       runId: deps.getRunId(thread, message),
     };
-    const legacyAttachmentText = renderSlackLegacyAttachmentText(message.raw);
-    const messageText = getSlackMessageText(message);
+    const content = parseContent(message);
     const strippedUserText = deps.stripLeadingBotMention(
-      stripLeadingSteeringOverride(messageText),
+      stripLeadingSteeringOverride(content.topLevelText),
       {
         stripLeadingSlackMentionToken: Boolean(message.isMention),
       },
     );
     const text: TurnMessageText = {
-      rawText: appendSlackLegacyAttachmentText(messageText, message.raw),
-      userText: appendSlackLegacyAttachmentText(strippedUserText, message.raw),
+      rawText: content.text,
+      userText: replaceTopLevelText(content, strippedUserText),
     };
     const decision = await deps.decideSubscribedReply({
       rawText: text.rawText,
       text: text.userText,
       conversationContext,
-      hasAttachments:
-        message.attachments.length > 0 || legacyAttachmentText !== "",
+      hasAttachments: content.hasAttachments,
       isExplicitMention: true,
       context,
     });
@@ -914,22 +911,16 @@ export function createSlackTurnRuntime<
         await deps.withSpan("chat.turn", "chat.turn", turnContext, async () => {
           // This path can compact context and run router/vision model calls
           // before replyToThread() opens the main reply span.
-          const legacyAttachmentText = renderSlackLegacyAttachmentText(
-            message.raw,
-          );
-          const messageText = getSlackMessageText(message);
+          const content = parseContent(message);
           const strippedUserText = deps.stripLeadingBotMention(
-            stripLeadingSteeringOverride(messageText),
+            stripLeadingSteeringOverride(content.topLevelText),
             {
               stripLeadingSlackMentionToken: Boolean(message.isMention),
             },
           );
           const currentText: TurnMessageText = {
-            rawText: appendSlackLegacyAttachmentText(messageText, message.raw),
-            userText: appendSlackLegacyAttachmentText(
-              strippedUserText,
-              message.raw,
-            ),
+            rawText: content.text,
+            userText: replaceTopLevelText(content, strippedUserText),
           };
           const threadContext: TurnContext = {
             threadId,
@@ -974,6 +965,7 @@ export function createSlackTurnRuntime<
             message,
             text: currentText,
             explicitMention: Boolean(message.isMention),
+            destination: hooks.destination,
             context: threadContext,
             queuedMessages,
           });
@@ -991,11 +983,10 @@ export function createSlackTurnRuntime<
                 conversationContext:
                   deps.getPreparedConversationContext(preparedState),
                 hasAttachments:
-                  message.attachments.length > 0 ||
+                  content.hasAttachments ||
                   queuedMessages.some(
                     (queued) => queued.message.attachments.length > 0,
-                  ) ||
-                  legacyAttachmentText !== "",
+                  ),
                 isExplicitMention: turnIsExplicitMention,
                 context: threadContext,
               });

@@ -169,6 +169,7 @@ export function entryMatchesSearch(
       ...(presentation.details ?? []).flatMap((detail) => [
         detail.title,
         detail.description,
+        detail.content,
         ...(detail.metadata ?? []),
       ]),
     ].some((value) => textContains(value, normalizedQuery));

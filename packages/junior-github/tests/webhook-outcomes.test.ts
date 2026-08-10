@@ -20,7 +20,11 @@ import type { GitHubDb } from "../src/db/database";
 import { githubPlugin } from "../src/index";
 import { buildGitHubOutcomeReport } from "../src/outcomes/report";
 import { createGitHubWebhookRoute } from "../src/webhooks/handler";
-import { normalizeGitHubResourceEvents } from "../src/webhooks/resource-events";
+import {
+  buildCheckSuiteUrl,
+  normalizeGitHubResourceEvents,
+  selectFailingChecks,
+} from "../src/webhooks/resource-events";
 import { mswServer } from "./msw";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -442,8 +446,13 @@ describe("GitHub webhook resource events", () => {
           action: "completed",
           repository: { full_name: "getsentry/junior" },
           check_suite: {
+            app: { name: "GitHub Actions", slug: "github-actions" },
             conclusion: "failure",
             head_sha: "abcdef1234567890",
+            html_url:
+              "https://github.com/getsentry/junior/commit/abcdef1234567890/checks?check_suite_id=99",
+            id: 99,
+            latest_check_runs_count: 3,
             pull_requests: [{ number: 946 }, { number: 947 }],
           },
         },
@@ -455,6 +464,18 @@ describe("GitHub webhook resource events", () => {
             identifier: "getsentry/junior#946",
             trustedSummary:
               "GitHub PR getsentry/junior#946 checks failed for abcdef123456.",
+            data: {
+              repo: "getsentry/junior",
+              pullRequest: 946,
+              scope: "check_suite",
+              suiteConclusion: "failure",
+              headSha: "abcdef1234567890",
+              checkSuiteId: 99,
+              checkSuiteUrl:
+                "https://github.com/getsentry/junior/commit/abcdef1234567890/checks?check_suite_id=99",
+              appName: "GitHub Actions",
+              latestCheckRunsCount: 3,
+            },
           },
           {
             eventKey: "github:delivery-event:pull_request.checks.failed:947",
@@ -463,6 +484,18 @@ describe("GitHub webhook resource events", () => {
             identifier: "getsentry/junior#947",
             trustedSummary:
               "GitHub PR getsentry/junior#947 checks failed for abcdef123456.",
+            data: {
+              repo: "getsentry/junior",
+              pullRequest: 947,
+              scope: "check_suite",
+              suiteConclusion: "failure",
+              headSha: "abcdef1234567890",
+              checkSuiteId: 99,
+              checkSuiteUrl:
+                "https://github.com/getsentry/junior/commit/abcdef1234567890/checks?check_suite_id=99",
+              appName: "GitHub Actions",
+              latestCheckRunsCount: 3,
+            },
           },
         ],
       },
@@ -485,6 +518,169 @@ describe("GitHub webhook resource events", () => {
         ]),
       );
     }
+  });
+
+  it("attaches failing check-run handles when enrichment data is provided", () => {
+    vi.setSystemTime(1_000);
+    expect(
+      normalizeGitHubResourceEvents({
+        body: {
+          action: "completed",
+          repository: { full_name: "getsentry/junior" },
+          check_suite: {
+            app: { name: "GitHub Actions" },
+            conclusion: "failure",
+            head_sha: "abcdef1234567890abcdef1234567890abcdef12",
+            id: 42,
+            pull_requests: [{ number: 691 }],
+          },
+        },
+        deliveryId: "delivery-enriched",
+        eventName: "check_suite",
+        failingChecks: [
+          {
+            checkRunId: 11,
+            conclusion: "failure",
+            htmlUrl: "https://github.com/getsentry/junior/actions/runs/11",
+            name: "test",
+          },
+          {
+            checkRunId: 12,
+            conclusion: "timed_out",
+            name: "lint",
+          },
+        ],
+      }),
+    ).toEqual([
+      {
+        eventKey: "github:delivery-enriched:pull_request.checks.failed:691",
+        eventType: "pull_request.checks.failed",
+        occurredAtMs: 1_000,
+        identifier: "getsentry/junior#691",
+        trustedSummary:
+          "GitHub PR getsentry/junior#691 checks failed (2) for abcdef123456.",
+        data: {
+          repo: "getsentry/junior",
+          pullRequest: 691,
+          scope: "check_suite",
+          suiteConclusion: "failure",
+          headSha: "abcdef1234567890abcdef1234567890abcdef12",
+          checkSuiteId: 42,
+          checkSuiteUrl:
+            "https://github.com/getsentry/junior/commit/abcdef1234567890abcdef1234567890abcdef12/checks?check_suite_id=42",
+          appName: "GitHub Actions",
+          failingChecks: [
+            {
+              conclusion: "failure",
+              htmlUrl: "https://github.com/getsentry/junior/actions/runs/11",
+              checkRunId: 11,
+            },
+            {
+              conclusion: "timed_out",
+              checkRunId: 12,
+            },
+          ],
+        },
+        untrustedText: [
+          "Failed checks:",
+          "- test: https://github.com/getsentry/junior/actions/runs/11",
+          "- lint",
+        ].join("\n"),
+      },
+      {
+        eventKey: "github:delivery-enriched:pull_request.checks.failed:691",
+        eventType: "pull_request.checks.failed",
+        occurredAtMs: 1_000,
+        identifier: "getsentry/junior",
+        trustedSummary:
+          "GitHub PR getsentry/junior#691 checks failed (2) for abcdef123456.",
+        data: {
+          repo: "getsentry/junior",
+          pullRequest: 691,
+          scope: "check_suite",
+          suiteConclusion: "failure",
+          headSha: "abcdef1234567890abcdef1234567890abcdef12",
+          checkSuiteId: 42,
+          checkSuiteUrl:
+            "https://github.com/getsentry/junior/commit/abcdef1234567890abcdef1234567890abcdef12/checks?check_suite_id=42",
+          appName: "GitHub Actions",
+          failingChecks: [
+            {
+              conclusion: "failure",
+              htmlUrl: "https://github.com/getsentry/junior/actions/runs/11",
+              checkRunId: 11,
+            },
+            {
+              conclusion: "timed_out",
+              checkRunId: 12,
+            },
+          ],
+        },
+        untrustedText: [
+          "Failed checks:",
+          "- test: https://github.com/getsentry/junior/actions/runs/11",
+          "- lint",
+        ].join("\n"),
+      },
+    ]);
+  });
+
+  it("builds the browser suite url from repo, sha, and suite id", () => {
+    expect(
+      buildCheckSuiteUrl({
+        checkSuiteId: 42,
+        headSha: "abcdef1234567890abcdef1234567890abcdef12",
+        repo: "getsentry/junior",
+      }),
+    ).toBe(
+      "https://github.com/getsentry/junior/commit/abcdef1234567890abcdef1234567890abcdef12/checks?check_suite_id=42",
+    );
+  });
+
+  it("keeps only failed runs and drops runs from other suites", () => {
+    expect(
+      selectFailingChecks(
+        [
+          {
+            id: 1,
+            name: "test",
+            conclusion: "failure",
+            html_url: "https://github.com/getsentry/junior/actions/runs/1",
+            check_suite: { id: 42 },
+          },
+          {
+            id: 2,
+            name: "other-app",
+            conclusion: "failure",
+            check_suite: { id: 99 },
+          },
+          {
+            id: 3,
+            name: "lint",
+            conclusion: "success",
+            check_suite: { id: 42 },
+          },
+          {
+            id: 4,
+            name: "suite-local",
+            conclusion: "timed_out",
+          },
+        ],
+        { checkSuiteId: 42 },
+      ),
+    ).toEqual([
+      {
+        checkRunId: 1,
+        conclusion: "failure",
+        htmlUrl: "https://github.com/getsentry/junior/actions/runs/1",
+        name: "test",
+      },
+      {
+        checkRunId: 4,
+        conclusion: "timed_out",
+        name: "suite-local",
+      },
+    ]);
   });
 
   it("normalizes issue lifecycle and comments for issue and repository tasks", () => {

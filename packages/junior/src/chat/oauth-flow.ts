@@ -1,6 +1,8 @@
 import { randomBytes } from "node:crypto";
 import {
+  actorSchema,
   sourceSchema,
+  type Actor,
   type Destination,
   type Source,
 } from "@sentry/junior-plugin-api";
@@ -29,6 +31,7 @@ type PrivateDeliveryResult = "in_context" | "fallback_dm" | false;
 export type OAuthStatePayload = {
   userId: string;
   provider: string;
+  actor?: Actor;
   channelId?: string;
   destination?: Destination;
   source?: Source;
@@ -40,6 +43,7 @@ export type OAuthStatePayload = {
 
 type OAuthFlowInput = {
   actorId: string;
+  actor?: Actor;
   channelId?: string;
   destination?: Destination;
   source?: Source;
@@ -67,6 +71,11 @@ export function parseOAuthStatePayload(
   if (typeof value.userId !== "string" || typeof value.provider !== "string") {
     return undefined;
   }
+  const actor =
+    value.actor === undefined ? undefined : actorSchema.safeParse(value.actor);
+  if (value.actor !== undefined && (!actor || !actor.success)) {
+    return undefined;
+  }
   const destination = parseDestination(value.destination);
   if (value.destination !== undefined && !destination) {
     return undefined;
@@ -81,6 +90,7 @@ export function parseOAuthStatePayload(
   return {
     userId: value.userId,
     provider: value.provider,
+    ...(actor?.success ? { actor: actor.data } : {}),
     ...(optionalString(value.channelId)
       ? { channelId: optionalString(value.channelId) }
       : {}),
@@ -257,6 +267,7 @@ export async function startOAuthFlow(
     {
       userId: input.actorId,
       provider,
+      ...(input.actor ? { actor: input.actor } : {}),
       ...(input.channelId ? { channelId: input.channelId } : {}),
       ...(input.destination ? { destination: input.destination } : {}),
       ...(input.source ? { source: input.source } : {}),

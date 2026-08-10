@@ -37,7 +37,6 @@ import {
   historyItemFromPiMessage,
   piMessageFromHistoryItem,
 } from "@/chat/pi/conversation-events";
-import { updateConversationStats } from "@/chat/services/conversation-memory";
 import { modelIdForProfile, type ModelProfile } from "@/chat/model-profile";
 import {
   ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX,
@@ -632,7 +631,6 @@ async function writeCompactedThreadContext(
     },
   });
 
-  updateConversationStats(args.conversation);
   setSpanAttributes({
     "app.compaction.input_messages": sourceMessages.length,
     "app.compaction.retained_messages": replacement.length - 1,

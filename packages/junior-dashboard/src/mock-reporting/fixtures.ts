@@ -434,6 +434,35 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
           ],
         },
       }),
+      reportEvent(14, iso(Date.parse(startedAt), 62_000), {
+        type: "structured_event",
+        namespace: "junior",
+        name: "agents_instructions_updated",
+        version: 1,
+        turnId: "qa-turn",
+        presentation: {
+          icon: "brain",
+          title: "Loaded AGENTS.md",
+          preview: "AGENTS.md · 2 KB",
+          details: [
+            {
+              title: "AGENTS.md",
+              content: `# Agent Instructions
+
+## Core principles
+
+- Use the words in \`TERMINOLOGY.md\`.
+- Prefer functions, plain objects, simple types, and small modules.
+- Optimize for the next maintainer.
+- Use **pnpm** for repository commands.
+
+## Testing
+
+Run targeted tests before broad suites, and keep durable explanations beside the owning code.`,
+            },
+          ],
+        },
+      }),
     ],
   });
 }
@@ -749,6 +778,7 @@ function simpleConversation(
     displayTitle: string;
     surface: "internal" | "scheduler" | "slack";
     channel?: string;
+    sourceTask?: ConversationDetailReport["sourceTask"];
   },
 ): ConversationDetailReport {
   const startedAt = iso(nowMs, -2 * 60 * 60_000);
@@ -815,6 +845,13 @@ function mockConversations(nowMs: number): MockConversation[] {
       conversationId: SCHEDULER_CONVERSATION_ID,
       displayTitle: "Daily operations digest",
       surface: "scheduler",
+      sourceTask: {
+        id: "scheduled-1",
+        kind: "scheduled",
+        label:
+          "Send the weekly project summary with release blockers, owner follow-ups, and next-week risks for every tracked workstream",
+        title: "Weekly project summary",
+      },
     }),
   ];
 }
@@ -831,6 +868,7 @@ function summaryFromConversation(
     parentConversationId: _parentConversationId,
     previousCursor: _previousCursor,
     sentryConversationUrl: _sentryConversationUrl,
+    sourceTask: _sourceTask,
     ...summary
   } = conversation;
   return summary.channel && PUBLIC_MOCK_CHANNEL_IDS.has(summary.channel)
@@ -1521,6 +1559,7 @@ function mockTasks(): TaskSummary[] {
       runsLast7Days: 3,
       schedule: "Every Monday at 9:00 AM",
       status: "active",
+      title: "Weekly project summary",
       totalRuns: 48,
     },
     {
@@ -1541,6 +1580,7 @@ function mockTasks(): TaskSummary[] {
       resource: "Issue · ACME-42",
       runsLast7Days: 1,
       source: "github",
+      title: "Closed issue summary",
       totalRuns: 7,
       triggerAvailable: true,
     },
@@ -1562,6 +1602,7 @@ function mockTasks(): TaskSummary[] {
       resource: "Incident · INC-17",
       runsLast7Days: 0,
       source: "pagerduty",
+      title: "Incident change alerts",
       totalRuns: 0,
       triggerAvailable: false,
     },
@@ -1626,7 +1667,9 @@ export function readMockTaskExecutions(
             title: titles[index % titles.length],
           }
         : {}),
-      executedAt: new Date(nowMs - index * 86_400_000 - 3_600_000).toISOString(),
+      executedAt: new Date(
+        nowMs - index * 86_400_000 - 3_600_000,
+      ).toISOString(),
       executionId: `${id}-run-${index + 1}`,
       status,
     };

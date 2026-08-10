@@ -119,7 +119,7 @@ import { z } from "zod";
 import { executeAgentRun } from "@/chat/agent";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
+import { upsertTurnRecord } from "@/chat/task-execution/turn-cursor";
 import { getConversationEventStore } from "@/chat/db";
 import { TurnInputCommitLostError } from "@/chat/runtime/turn";
 
@@ -414,12 +414,11 @@ describe("plugin prompt hook composition", () => {
   });
 
   it("runs user prompt hooks when a resumed record has no prompt checkpoint", async () => {
-    await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
+    await upsertTurnRecord({
       conversationId: LOCAL_DESTINATION.conversationId,
-      sessionId: "turn-plugin-prompt-resume-before-prompt",
+      turnId: "turn-plugin-prompt-resume-before-prompt",
       sliceId: 1,
-      state: "awaiting_resume",
+      state: "paused",
       piMessages: [],
       resumeReason: "auth",
       errorMessage: "authorization required",
@@ -442,12 +441,11 @@ describe("plugin prompt hook composition", () => {
   });
 
   it("does not run user prompt hooks when a resumed record has a prompt checkpoint", async () => {
-    await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
+    await upsertTurnRecord({
       conversationId: LOCAL_DESTINATION.conversationId,
-      sessionId: "turn-plugin-prompt-resume-after-prompt",
+      turnId: "turn-plugin-prompt-resume-after-prompt",
       sliceId: 1,
-      state: "awaiting_resume",
+      state: "paused",
       piMessages: [
         {
           role: "user",

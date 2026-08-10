@@ -5,6 +5,13 @@ import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
 import { getWorkspaceTeamId } from "@/chat/slack/workspace-context";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { getSqlExecutor } from "@/chat/db";
+import {
+  upsertIdentity,
+  upsertLinkedIdentity,
+} from "@/chat/identities/sql";
+import { juniorIdentities } from "@/db/schema";
+import { and, eq } from "drizzle-orm";
 import {
   queueSlackApiError,
   resetSlackApiMockState,
@@ -29,19 +36,22 @@ function createSlackAdapter() {
   });
 }
 
-function interactiveDisconnectPayload(): Record<string, unknown> {
+function interactiveDisconnectPayload(
+  provider: string = "notion",
+  userId: string = "U123",
+): Record<string, unknown> {
   return {
     type: "block_actions",
     team: { id: "T123" },
     user: {
-      id: "U123",
+      id: userId,
       team_id: "T123",
       username: "alice",
     },
     actions: [
       {
         action_id: "app_home_disconnect",
-        value: "notion",
+        value: provider,
       },
     ],
   };
@@ -156,6 +166,7 @@ describe("Slack webhook: App Home events", () => {
     expect(responseSettled).toBe(false);
     expect(queue.queuedMessages()).toEqual([
       {
+        schemaVersion: 2,
         conversationId: "slack:C123:1712345.0001",
       },
     ]);
@@ -203,9 +214,148 @@ describe("Slack webhook: App Home events", () => {
     expect(waitUntil.pendingCount()).toBe(0);
     expect(queue.queuedMessages()).toEqual([
       {
+        schemaVersion: 2,
         conversationId: "slack:C123:1712345.0002",
       },
     ]);
+  });
+
+  it("removes only the disconnected provider account identity", async () => {
+    const slackIdentity = await upsertIdentity(getSqlExecutor(), {
+      kind: "user",
+      provider: "slack",
+      providerTenantId: "T123",
+      providerSubjectId: "U123",
+      email: "alice@example.com",
+      emailVerified: true,
+    });
+    if (!slackIdentity.userId) throw new Error("missing test user");
+    await upsertLinkedIdentity(getSqlExecutor(), slackIdentity.userId, {
+      kind: "user",
+      provider: "github",
+      providerSubjectId: "github-1",
+      handle: "alice-one",
+    });
+    await upsertLinkedIdentity(getSqlExecutor(), slackIdentity.userId, {
+      kind: "user",
+      provider: "github",
+      providerSubjectId: "github-2",
+      handle: "alice-two",
+    });
+
+    const state = createMemoryState();
+    const client = createSlackWebhookTestClient({
+      signingSecret: SIGNING_SECRET,
+    });
+    const waitUntil = client.waitUntil();
+    const userTokenStore = createTokenStore({
+      get: vi.fn(async () => ({
+        accessToken: "github-access-token",
+        refreshToken: "github-refresh-token",
+        account: { id: "github-1" },
+      })),
+    });
+    const params = new URLSearchParams({
+      payload: JSON.stringify(interactiveDisconnectPayload("github")),
+    });
+
+    const response = await handleSlackWebhook({
+      request: client.form(params),
+      waitUntil: waitUntil.fn,
+      services: {
+        getSlackAdapter: createSlackAdapter,
+        queue: createConversationWorkQueueTestAdapter(),
+        runtime: createNoopSlackWebhookRuntime(),
+        state,
+        getUserTokenStore: () => userTokenStore,
+      },
+    });
+
+    expect(response.status).toBe(200);
+    await waitUntil.flush();
+    expect(userTokenStore.delete).toHaveBeenCalledWith("U123", "github");
+    await expect(
+      getSqlExecutor()
+        .db()
+        .select({ subjectId: juniorIdentities.providerSubjectId })
+        .from(juniorIdentities)
+        .where(
+          and(
+            eq(juniorIdentities.userId, slackIdentity.userId),
+            eq(juniorIdentities.provider, "github"),
+          ),
+        ),
+    ).resolves.toEqual([{ subjectId: "github-2" }]);
+  });
+
+  it("does not remove an identity owned by another user", async () => {
+    const owner = await upsertIdentity(getSqlExecutor(), {
+      kind: "user",
+      provider: "slack",
+      providerTenantId: "T123",
+      providerSubjectId: "U999",
+      email: "owner@example.com",
+      emailVerified: true,
+    });
+    await upsertIdentity(getSqlExecutor(), {
+      kind: "user",
+      provider: "slack",
+      providerTenantId: "T123",
+      providerSubjectId: "U123",
+      email: "other@example.com",
+      emailVerified: true,
+    });
+    if (!owner.userId) throw new Error("missing identity owner");
+    await upsertLinkedIdentity(getSqlExecutor(), owner.userId, {
+      kind: "user",
+      provider: "github",
+      providerSubjectId: "github-owner",
+      handle: "owner",
+    });
+
+    const state = createMemoryState();
+    const client = createSlackWebhookTestClient({
+      signingSecret: SIGNING_SECRET,
+    });
+    const waitUntil = client.waitUntil();
+    const userTokenStore = createTokenStore({
+      get: vi.fn(async () => ({
+        accessToken: "github-access-token",
+        refreshToken: "github-refresh-token",
+        account: { id: "github-owner" },
+      })),
+    });
+    const params = new URLSearchParams({
+      payload: JSON.stringify(interactiveDisconnectPayload("github", "U123")),
+    });
+
+    const response = await handleSlackWebhook({
+      request: client.form(params),
+      waitUntil: waitUntil.fn,
+      services: {
+        getSlackAdapter: createSlackAdapter,
+        queue: createConversationWorkQueueTestAdapter(),
+        runtime: createNoopSlackWebhookRuntime(),
+        state,
+        getUserTokenStore: () => userTokenStore,
+      },
+    });
+
+    expect(response.status).toBe(200);
+    await waitUntil.flush();
+    expect(userTokenStore.delete).toHaveBeenCalledWith("U123", "github");
+    await expect(
+      getSqlExecutor()
+        .db()
+        .select({ subjectId: juniorIdentities.providerSubjectId })
+        .from(juniorIdentities)
+        .where(
+          and(
+            eq(juniorIdentities.userId, owner.userId),
+            eq(juniorIdentities.provider, "github"),
+          ),
+        ),
+    ).resolves.toEqual([{ subjectId: "github-owner" }]);
   });
 
   it("refreshes App Home after disconnect unlink failure", async () => {

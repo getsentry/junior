@@ -12,15 +12,14 @@ related:
   - /start-here/verify-and-troubleshoot/
 ---
 
-Use this runbook for product, runtime, prompt, skill, plugin, tool, sandbox, or
-environment-backed credential changes that are not specifically about Slack
-ingress, Slack message formatting, Slack retries, or Slack OAuth UI. The local
-agent should be the first manual behavior check for those changes.
+Use this runbook for changes to the product, runtime, prompts, skills, plugins,
+tools, sandbox, or credentials. Do not use it first for Slack input, message
+format, retries, or OAuth screens. For all other changes, test the local agent
+first.
 
-Inside this monorepo, `pnpm cli -- ...` runs Junior from `apps/example`. Treat
-that app as the canonical local validation app: it loads the example SOUL,
-WORLD, local skills, plugin-bundled skills, and normal development env without
-requiring Slack.
+In this monorepo, `pnpm cli -- ...` runs Junior from `apps/example`. Use this
+app for local tests. It loads the example SOUL, WORLD, local skills, plugin
+skills, and normal development environment. It does not require Slack.
 
 ## First Check
 
@@ -52,8 +51,8 @@ The command should print a Junior response and exit with status `0`. If it
 reports missing model or provider credentials, refresh or add the required
 environment variables and rerun the same prompt.
 
-`-p` uses a fresh local conversation for each invocation. Use interactive mode
-when you need to validate multi-turn context.
+`-p` uses a new local conversation for each command. Use interactive mode to
+test context across turns.
 
 ## Example App Checks
 

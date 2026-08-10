@@ -25,6 +25,7 @@ import { defineApiRoute } from "../route";
 import { parseParams, parseQuery, throwApiError } from "../http";
 import { conversationParamsSchema } from "../schema/conversation";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
+import { readConversationSourceTask } from "@/chat/tasks/read";
 
 /** Project stored metadata and a bounded event page into a signed history cursor. */
 function projectConversationDetail(args: {
@@ -37,6 +38,7 @@ function projectConversationDetail(args: {
   locationId?: string;
   modelUsage: NonNullable<ConversationDetailReport["modelUsage"]>;
   previousSeq?: number;
+  sourceTask?: ConversationDetailReport["sourceTask"];
   teamDomainByTeamId?: ReadonlyMap<string, string>;
   usage: ConversationDetailReport["cumulativeUsage"];
 }): ConversationDetailReport {
@@ -76,6 +78,7 @@ function projectConversationDetail(args: {
     }),
     generatedAt: new Date().toISOString(),
     ...(sentryConversationUrl ? { sentryConversationUrl } : {}),
+    ...(args.sourceTask ? { sourceTask: args.sourceTask } : {}),
   };
 }
 
@@ -97,6 +100,7 @@ async function readConversationDetailFromSql(
     auxiliaryCostsByConversation,
     modelUsage,
     metricsByRoot,
+    sourceTask,
     teamDomainByTeamId,
   ] = await Promise.all([
     readConversationAccessFromSql(
@@ -118,6 +122,12 @@ async function readConversationDetailFromSql(
       getDb(),
       includeDescendantMetrics ? [conversationId] : [],
     ),
+    readConversationSourceTask({
+      conversationId,
+      ...(options.verifiedViewerEmail
+        ? { verifiedViewerEmail: options.verifiedViewerEmail }
+        : {}),
+    }),
     resolveSlackTeamDomains(
       record.conversation.sessionSource?.platform === "slack"
         ? [record.conversation.sessionSource.teamId]
@@ -142,6 +152,7 @@ async function readConversationDetailFromSql(
     durationMs: metrics?.durationMs ?? record.durationMs,
     events: page.events,
     modelUsage,
+    ...(sourceTask ? { sourceTask } : {}),
     teamDomainByTeamId,
     ...(page.previousSeq === undefined
       ? {}

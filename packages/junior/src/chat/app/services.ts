@@ -2,9 +2,9 @@ import { completeObject, completeText } from "@/chat/pi/client";
 import { executeAgentRun as executeAgentRunImpl } from "@/chat/agent";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
 import {
-  getAwaitingAgentContinueRequest,
-  scheduleAgentContinue,
-} from "@/chat/services/agent-continue";
+  getPausedTurnRequest,
+  wakePausedTurn,
+} from "@/chat/task-execution/turn-wake";
 import { scheduleSessionCompletedPluginTasks } from "@/chat/plugins/task-runner";
 import {
   createConversationMemoryService,
@@ -88,13 +88,11 @@ export function createJuniorRuntimeServices(
       contextCompactor:
         overrides.replyExecutor?.contextCompactor ?? contextCompactor,
       agentRunner,
-      getAwaitingAgentContinueRequest:
-        overrides.replyExecutor?.getAwaitingAgentContinueRequest ??
-        getAwaitingAgentContinueRequest,
+      getPausedTurnRequest:
+        overrides.replyExecutor?.getPausedTurnRequest ?? getPausedTurnRequest,
       lookupSlackUser:
         overrides.replyExecutor?.lookupSlackUser ?? lookupSlackUser,
-      scheduleAgentContinue:
-        overrides.replyExecutor?.scheduleAgentContinue ?? scheduleAgentContinue,
+      wakePausedTurn: overrides.replyExecutor?.wakePausedTurn ?? wakePausedTurn,
       scheduleSessionCompletedPluginTasks:
         overrides.replyExecutor?.scheduleSessionCompletedPluginTasks ??
         (async (params) => {

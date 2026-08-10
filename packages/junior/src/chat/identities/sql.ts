@@ -74,11 +74,11 @@ async function existingIdentity(
   return rows[0];
 }
 
-/** Persist one provider identity observation and link verified emails to users. */
-export async function upsertIdentity(
+async function upsertIdentityRecord(
   executor: JuniorSqlDatabase,
   identity: IdentityUpsert,
-  nowMs: number = Date.now(),
+  linkedUserId: string | undefined,
+  nowMs: number,
 ): Promise<StoredIdentity> {
   const emailNormalized = normalizeIdentityEmail(identity.email);
   const email = emailNormalized
@@ -113,7 +113,21 @@ export async function upsertIdentity(
   ) {
     throw new Error("Identity verified email conflicts with linked user");
   }
-  const userId = existing?.userId ?? verifiedUserId;
+  if (
+    linkedUserId &&
+    verifiedUserId &&
+    linkedUserId !== verifiedUserId
+  ) {
+    throw new Error("Linked identity conflicts with verified email user");
+  }
+  if (
+    existing?.userId &&
+    linkedUserId &&
+    existing.userId !== linkedUserId
+  ) {
+    throw new Error("Identity conflicts with linked user");
+  }
+  const userId = existing?.userId ?? linkedUserId ?? verifiedUserId;
   const rows = await executor
     .db()
     .insert(juniorIdentities)
@@ -143,8 +157,12 @@ export async function upsertIdentity(
       set: {
         kind: sql`excluded.kind`,
         userId: sql`coalesce(${juniorIdentities.userId}, excluded.user_id)`,
-        displayName: sql`coalesce(${juniorIdentities.displayName}, excluded.display_name)`,
-        handle: sql`coalesce(${juniorIdentities.handle}, excluded.handle)`,
+        displayName: linkedUserId
+          ? sql`coalesce(excluded.display_name, ${juniorIdentities.displayName})`
+          : sql`coalesce(${juniorIdentities.displayName}, excluded.display_name)`,
+        handle: linkedUserId
+          ? sql`coalesce(excluded.handle, ${juniorIdentities.handle})`
+          : sql`coalesce(${juniorIdentities.handle}, excluded.handle)`,
         email: sql`case when ${juniorIdentities.emailVerified} then coalesce(${juniorIdentities.email}, excluded.email) when excluded.email_verified then excluded.email else coalesce(${juniorIdentities.email}, excluded.email) end`,
         emailNormalized: sql`case when ${juniorIdentities.emailVerified} then coalesce(${juniorIdentities.emailNormalized}, excluded.email_normalized) when excluded.email_verified then excluded.email_normalized else coalesce(${juniorIdentities.emailNormalized}, excluded.email_normalized) end`,
         emailVerified: sql`${juniorIdentities.emailVerified} OR excluded.email_verified`,
@@ -152,6 +170,11 @@ export async function upsertIdentity(
         metadata: sql`coalesce(${juniorIdentities.metadata}, excluded.metadata_json)`,
         updatedAt: sql`excluded.updated_at`,
       },
+      ...(linkedUserId
+        ? {
+            setWhere: sql`${juniorIdentities.userId} IS NULL OR ${juniorIdentities.userId} = excluded.user_id`,
+          }
+        : {}),
     })
     .returning({
       id: juniorIdentities.id,
@@ -159,10 +182,73 @@ export async function upsertIdentity(
     });
   const row = rows[0];
   if (!row) {
+    if (linkedUserId) {
+      throw new Error("Identity conflicts with linked user");
+    }
     throw new Error("Identity upsert returned no row");
   }
   return {
     id: row.id,
     ...(row.userId ? { userId: row.userId } : {}),
   };
+}
+
+/** Persist one provider identity observation and link verified emails to users. */
+export async function upsertIdentity(
+  executor: JuniorSqlDatabase,
+  identity: IdentityUpsert,
+  nowMs: number = Date.now(),
+): Promise<StoredIdentity> {
+  return await upsertIdentityRecord(executor, identity, undefined, nowMs);
+}
+
+/**
+ * Persist one provider identity after a trusted account-linking flow.
+ * Callers must use provider-verified account data, such as GitHub's authenticated
+ * user response, never identity claims inferred from content such as Git commits.
+ */
+export async function upsertLinkedIdentity(
+  executor: JuniorSqlDatabase,
+  userId: string,
+  identity: IdentityUpsert,
+  nowMs: number = Date.now(),
+): Promise<StoredIdentity> {
+  return await upsertIdentityRecord(executor, identity, userId, nowMs);
+}
+
+/** Remove one exact provider identity owned by a workspace Slack user. */
+export async function deleteProviderIdentityForSlackUser(
+  executor: JuniorSqlDatabase,
+  slackTeamId: string,
+  slackUserId: string,
+  provider: string,
+  providerSubjectId: string,
+): Promise<void> {
+  const slackRows = await executor
+    .db()
+    .select({ userId: juniorIdentities.userId })
+    .from(juniorIdentities)
+    .where(
+      and(
+        eq(juniorIdentities.kind, "user"),
+        eq(juniorIdentities.provider, "slack"),
+        eq(juniorIdentities.providerTenantId, slackTeamId),
+        eq(juniorIdentities.providerSubjectId, slackUserId),
+      ),
+    )
+    .limit(1);
+  const userId = slackRows[0]?.userId;
+  if (!userId) return;
+
+  await executor
+    .db()
+    .delete(juniorIdentities)
+    .where(
+      and(
+        eq(juniorIdentities.userId, userId),
+        eq(juniorIdentities.provider, provider),
+        eq(juniorIdentities.providerTenantId, ""),
+        eq(juniorIdentities.providerSubjectId, providerSubjectId),
+      ),
+    );
 }

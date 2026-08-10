@@ -26,9 +26,9 @@ import { recoverPendingAgentInvocationMailboxAppends } from "@/chat/agent-dispat
 import { CONVERSATION_WORK_MAX_DELIVERY_ATTEMPTS } from "@/chat/task-execution/store";
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
 import {
-  getAgentTurnSessionRecord,
-  upsertAgentTurnSessionRecord,
-} from "@/chat/state/turn-session";
+  getTurnRecord,
+  upsertTurnRecord,
+} from "@/chat/task-execution/turn-cursor";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import { createConfiguredJuniorSqlFixture } from "../fixtures/sql";
 
@@ -457,7 +457,7 @@ describe("agent invocation conversation work", () => {
     }
   });
 
-  it("terminally fails a stranded running child with no resumable boundary", async () => {
+  it("stops a stranded running child without rerunning it", async () => {
     const { fixture } = await prepareParentConversation();
     const state = getStateAdapter();
     await state.connect();
@@ -472,11 +472,10 @@ describe("agent invocation conversation work", () => {
       );
       const turnId = getAgentInvocationTurnId(created.invocationId);
       await markAgentInvocationRunning(created.invocationId);
-      await upsertAgentTurnSessionRecord({
+      await upsertTurnRecord({
         actor: invocationInput.actor,
         conversationId: created.childConversationId,
         destination,
-        modelId: "test-model",
         // Only uncommitted trailing assistant output survived the crash: there
         // is no continuable user/toolResult boundary to resume from.
         piMessages: [
@@ -504,7 +503,7 @@ describe("agent invocation conversation work", () => {
             timestamp: 2,
           },
         ] as unknown as PiMessage[],
-        sessionId: turnId,
+        turnId: turnId,
         sliceId: 1,
         source: invocationInput.source,
         state: "running",
@@ -516,8 +515,7 @@ describe("agent invocation conversation work", () => {
       const worker = createAgentInvocationWorker({
         agentRunner: { run },
       });
-      // Empty resume wakes set isFinalAttempt false, so unrecoverable stranded
-      // recovery must terminalize without relying on final-attempt handling.
+      // Empty wakes are not final attempts, but a stranded running turn still stops.
       const emptyResumeContext = {
         attempt: {
           ack: vi.fn(),
@@ -525,11 +523,9 @@ describe("agent invocation conversation work", () => {
           drain: vi.fn(),
           isFinalAttempt: false,
           messages: [],
-          replyDelivery: { type: "conversation" as const },
         },
         checkIn: vi.fn(),
         conversationId: created.childConversationId,
-        replyDelivery: { type: "conversation" as const },
         shouldYield: () => false,
       } satisfies ConversationWorkerContext;
 
@@ -540,19 +536,18 @@ describe("agent invocation conversation work", () => {
       expect(run).not.toHaveBeenCalled();
       expect(emptyResumeContext.attempt.ack).not.toHaveBeenCalled();
       await expect(
-        getAgentTurnSessionRecord(created.childConversationId, turnId),
+        getTurnRecord(created.childConversationId, turnId),
       ).resolves.toMatchObject({
-        errorMessage: expect.stringContaining("no resumable boundary"),
+        errorMessage: expect.stringContaining("lost its worker"),
         state: "failed",
       });
       await expect(
         getAgentInvocation(created.invocationId),
       ).resolves.toMatchObject({
-        errorMessage: expect.stringContaining("no resumable boundary"),
+        errorMessage: expect.stringContaining("lost its worker"),
         status: "failed",
       });
-      // Named agents must free after unrecoverable stranded recovery so a later
-      // spawn can reuse the binding instead of staying permanently busy.
+      // Named agents free after the stopped turn so a later spawn can reuse them.
       await expect(
         createAgentInvocation({
           ...invocationInput,
@@ -563,81 +558,6 @@ describe("agent invocation conversation work", () => {
         childConversationId: created.childConversationId,
         status: "pending",
       });
-    } finally {
-      await fixture.close();
-    }
-  });
-
-  it("re-parks a stranded running child session before resuming", async () => {
-    const { conversationStore, fixture } = await prepareParentConversation();
-    const queue = createConversationWorkQueueTestAdapter();
-    const state = getStateAdapter();
-    await state.connect();
-    try {
-      const created = await createAndEnqueueAgentInvocation(
-        {
-          ...invocationInput,
-          idempotencyKey: "running-recovery-1",
-        },
-        { conversationStore, queue, state },
-      );
-      const turnId = getAgentInvocationTurnId(created.invocationId);
-      await upsertAgentTurnSessionRecord({
-        actor: invocationInput.actor,
-        conversationId: created.childConversationId,
-        destination,
-        modelId: "test-model",
-        piMessages: [
-          {
-            role: "user",
-            content: [{ type: "text", text: invocationInput.input }],
-            timestamp: 1,
-          },
-        ],
-        sessionId: turnId,
-        sliceId: 1,
-        source: invocationInput.source,
-        state: "running",
-        surface: "internal",
-      });
-      const run = vi.fn(async (request) => {
-        await expect(
-          getAgentTurnSessionRecord(created.childConversationId, turnId),
-        ).resolves.toMatchObject({ state: "awaiting_resume" });
-        await request.durability.onInputCommitted?.();
-        return completedAgentRun({
-          diagnostics: {
-            assistantMessageCount: 1,
-            modelId: "test-model",
-            outcome: "success",
-            toolCalls: [],
-            toolErrorCount: 0,
-            toolResultCount: 0,
-            usedPrimaryText: true,
-          },
-          text: "Recovered answer",
-        });
-      });
-      const route = routeAgentInvocationWork({
-        fallbackWorker: vi.fn(async () => ({ status: "completed" as const })),
-        invocationWorker: createAgentInvocationWorker({
-          agentRunner: { run },
-        }),
-      });
-
-      await processConversationQueueMessage(queue.takeMessage(), {
-        conversationStore,
-        queue,
-        run: route,
-        state,
-      });
-
-      expect(run).toHaveBeenCalledOnce();
-      await expect(
-        conversationStore.get({
-          conversationId: created.childConversationId,
-        }),
-      ).resolves.not.toHaveProperty("destination");
     } finally {
       await fixture.close();
     }
@@ -656,11 +576,10 @@ describe("agent invocation conversation work", () => {
         },
         { conversationStore, queue, state },
       );
-      await upsertAgentTurnSessionRecord({
+      await upsertTurnRecord({
         actor: invocationInput.actor,
         conversationId: created.childConversationId,
         destination,
-        modelId: "test-model",
         piMessages: [
           {
             role: "user",
@@ -690,7 +609,7 @@ describe("agent invocation conversation work", () => {
             content: [{ type: "text", text: "Recovered visible result" }],
           },
         ] as unknown as PiMessage[],
-        sessionId: getAgentInvocationTurnId(created.invocationId),
+        turnId: getAgentInvocationTurnId(created.invocationId),
         sliceId: 1,
         source: invocationInput.source,
         state: "completed",
@@ -809,12 +728,10 @@ describe("agent invocation conversation work", () => {
           drain: vi.fn(),
           isFinalAttempt: true,
           messages: [buildAgentInvocationInboundMessage(created)],
-          replyDelivery: { type: "conversation" as const },
         },
         checkIn: vi.fn(),
         conversationId: created.childConversationId,
         destination,
-        replyDelivery: { type: "conversation" as const },
         shouldYield: () => false,
       } satisfies ConversationWorkerContext;
 

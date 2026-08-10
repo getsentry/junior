@@ -2,8 +2,6 @@ import type { StateAdapter } from "chat";
 import { z } from "zod";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { openConversationProjection } from "@/chat/conversations/projection";
-import { botConfig } from "@/chat/config";
-import { modelIdForProfile } from "@/chat/model-profile";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import { getConversationEventStore } from "@/chat/db";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
@@ -15,18 +13,15 @@ import {
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import {
-  failAgentTurnSessionRecord,
-  getAgentTurnSessionRecord,
-} from "@/chat/state/turn-session";
+  failTurnRecord,
+  getTurnRecord,
+  saveTurnCheckpoint,
+} from "@/chat/task-execution/checkpoint";
 import {
   getConversationTurnBoundaryError,
   isTurnInputCommitLostError,
   TurnInputCommitLostError,
 } from "@/chat/runtime/turn";
-import {
-  persistCompletedSessionRecord,
-  persistYieldSessionRecord,
-} from "@/chat/services/turn-session-record";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
 import { getAssistantReplyText } from "@/chat/services/assistant-reply";
@@ -89,8 +84,6 @@ export function buildAgentInvocationInboundMessage(
       },
     },
     receivedAtMs: nowMs,
-    // Destinationless child work stays in the conversation transcript.
-    replyDelivery: { type: "conversation" },
     source: "internal",
   };
 }
@@ -206,30 +199,41 @@ async function persistTerminalLifecycle(
   }
 }
 
-/** Recover a terminal invocation from its authoritative completed session. */
-async function projectTerminalSession(
+/** Stop an invocation whose worker died, or project its terminal turn result. */
+async function projectTerminalTurn(
   invocation: AgentInvocation,
 ): Promise<AgentInvocation | undefined> {
-  const session = await getAgentTurnSessionRecord(
+  let turn = await getTurnRecord(
     invocation.childConversationId,
     getAgentInvocationTurnId(invocation.invocationId),
   );
-  if (!session) {
+  if (!turn) {
     return undefined;
   }
-  if (session.state === "awaiting_resume" || session.state === "running") {
+  if (turn.state === "running") {
+    turn = await failTurnRecord({
+      conversationId: turn.conversationId,
+      expectedVersion: turn.version,
+      turnId: turn.turnId,
+      errorMessage: "Agent invocation lost its worker before it could pause",
+    });
+    if (!turn) {
+      return undefined;
+    }
+  }
+  if (turn.state === "paused") {
     return undefined;
   }
-  const result = getTerminalAssistantMessages(session.piMessages)
+  const result = getTerminalAssistantMessages(turn.piMessages)
     .map(getAssistantReplyText)
     .filter((text): text is string => text !== undefined)
     .join("\n\n");
-  const failed = session.state !== "completed" || Boolean(session.errorMessage);
+  const failed = turn.state !== "completed" || Boolean(turn.errorMessage);
   return await completeAgentInvocation({
     invocationId: invocation.invocationId,
     ...(failed
       ? {
-          errorMessage: session.errorMessage ?? "Agent invocation failed",
+          errorMessage: turn.errorMessage ?? "Agent invocation failed",
           status: "failed" as const,
         }
       : {
@@ -237,52 +241,6 @@ async function projectTerminalSession(
           status: "completed" as const,
         }),
   });
-}
-
-/**
- * Re-park a stranded running session at its latest durable safe boundary.
- *
- * Unrecoverable stranded sessions are failed immediately, matching agent
- * continue recovery. Empty resume wakes never become final delivery attempts,
- * so throwing here would requeue forever and leave named agents busy.
- */
-async function recoverRunningSession(
-  invocation: AgentInvocation,
-): Promise<void> {
-  const session = await getAgentTurnSessionRecord(
-    invocation.childConversationId,
-    getAgentInvocationTurnId(invocation.invocationId),
-  );
-  if (!session || session.state !== "running") {
-    return;
-  }
-  const projection = await openConversationProjection({
-    conversationId: invocation.childConversationId,
-  });
-  // Child invocation conversations are destinationless; routing lives on the
-  // parent invocation record, not the turn-session projection.
-  const parked = await persistYieldSessionRecord({
-    conversationId: invocation.childConversationId,
-    currentSliceId: session.sliceId,
-    errorMessage: "Recovered running agent invocation after worker loss",
-    messages: session.piMessages,
-    modelId: modelIdForProfile(botConfig, projection.modelProfile),
-    // Execution actor and reasoning live on the parent invocation, not Redis.
-    actor: invocation.actor,
-    reasoningLevel: invocation.reasoningLevel,
-    sessionId: session.sessionId,
-    surface: session.surface,
-  });
-  if (!parked) {
-    await failAgentTurnSessionRecord({
-      conversationId: invocation.childConversationId,
-      expectedVersion: session.version,
-      sessionId: session.sessionId,
-      errorMessage: `Running agent invocation had no resumable boundary for ${invocation.invocationId}`,
-    });
-    return;
-  }
-  await markAgentInvocationAwaitingResume(invocation.invocationId);
 }
 
 /** Classify authorization failures that terminally block background work. */
@@ -352,11 +310,7 @@ export function createAgentInvocationWorker(options: {
         await acknowledge();
         return { status: "completed" };
       }
-      // Recover stranded running sessions before terminal projection so an
-      // unrecoverable child can fail its session and complete through the
-      // same immutable result path as a normal completed/failed session.
-      await recoverRunningSession(invocation);
-      const projected = await projectTerminalSession(invocation);
+      const projected = await projectTerminalTurn(invocation);
       if (projected && isTerminalAgentInvocation(projected)) {
         await persistTerminalLifecycle(projected);
         await acknowledge();
@@ -509,10 +463,12 @@ export function createAgentInvocationWorker(options: {
       sandboxRef: result.sandboxRef ?? sandboxRef,
     });
     if (result.piMessages?.length) {
-      await persistCompletedSessionRecord({
+      await saveTurnCheckpoint({
+        mode: "completed",
         conversationId: invocation.childConversationId,
-        currentDurationMs: result.diagnostics.durationMs,
-        currentUsage: result.diagnostics.usage,
+        turnId,
+        durationMs: result.diagnostics.durationMs,
+        usage: result.diagnostics.usage,
         destination: invocation.destination,
         destinationVisibility: invocation.destinationVisibility,
         ...(failed
@@ -521,11 +477,8 @@ export function createAgentInvocationWorker(options: {
                 result.diagnostics.errorMessage ?? "Agent invocation failed",
             }
           : {}),
-        sessionId: turnId,
-        allMessages: result.piMessages,
-        modelId: result.diagnostics.modelId,
+        messages: result.piMessages,
         actor: invocation.actor,
-        reasoningLevel: result.diagnostics.reasoningLevel,
         source: invocation.source,
         surface: "internal",
       });

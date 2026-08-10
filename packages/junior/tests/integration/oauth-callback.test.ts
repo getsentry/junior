@@ -87,7 +87,8 @@ type StateAdapterModule = typeof import("@/chat/state/adapter");
 type CapabilitiesFactoryModule = typeof import("@/chat/capabilities/factory");
 type OAuthCallbackHarnessModule =
   typeof import("../fixtures/oauth-callback-harness");
-type TurnSessionStoreModule = typeof import("@/chat/state/turn-session");
+type TurnSessionStoreModule =
+  typeof import("@/chat/task-execution/turn-cursor");
 
 let stateAdapterModule: StateAdapterModule;
 let capabilitiesFactoryModule: CapabilitiesFactoryModule;
@@ -120,7 +121,7 @@ describe("oauth callback integration", () => {
     capabilitiesFactoryModule = await import("@/chat/capabilities/factory");
     oauthCallbackHarnessModule =
       await import("../fixtures/oauth-callback-harness");
-    turnSessionStoreModule = await import("@/chat/state/turn-session");
+    turnSessionStoreModule = await import("@/chat/task-execution/turn-cursor");
     await stateAdapterModule.disconnectStateAdapter();
     await stateAdapterModule.getStateAdapter().connect();
   }, 45_000);
@@ -178,8 +179,8 @@ describe("oauth callback integration", () => {
       await import("@/chat/local/oauth-callback-server");
     const { createLocalOAuthState } = await import("@/chat/local/oauth-relay");
     const { runLocalAgentTurn } = await import("@/chat/local/runner");
-    const { persistAuthPauseSessionRecord } =
-      await import("@/chat/services/turn-session-record");
+    const { saveTurnCheckpoint } =
+      await import("@/chat/task-execution/checkpoint");
     const conversationId = "local:oauth:loopback";
     const requests: Parameters<typeof testAgentRunner.run>[0][] = [];
     const localAgentRunner = {
@@ -193,15 +194,16 @@ describe("oauth callback integration", () => {
             provider: "eval-oauth",
             sessionId: request.turnId,
           });
-          await persistAuthPauseSessionRecord({
+          await saveTurnCheckpoint({
+            mode: "paused",
+            reason: "auth",
             actor: request.routing.actor,
             conversationId,
-            currentSliceId: 1,
+            sliceId: 1,
             destination: request.routing.destination,
             errorMessage: "eval-oauth authorization required",
             messages: [],
-            modelId: "fake-local-oauth",
-            sessionId: request.turnId,
+            turnId: request.turnId,
             source: request.routing.source,
             surface: request.routing.surface,
           });
@@ -290,7 +292,7 @@ describe("oauth callback integration", () => {
         expect.objectContaining({ accessToken: "eval-oauth-access-token" }),
       );
       await expect(
-        turnSessionStoreModule.getAgentTurnSessionRecord(
+        turnSessionStoreModule.getTurnRecord(
           conversationId,
           requests[0]!.turnId,
         ),
@@ -314,12 +316,11 @@ describe("oauth callback integration", () => {
       visibility: "private",
     });
 
-    await turnSessionStoreModule.upsertAgentTurnSessionRecord({
-      modelId: "test/model",
+    await turnSessionStoreModule.upsertTurnRecord({
       conversationId,
-      sessionId,
+      turnId: sessionId,
       sliceId: 2,
-      state: "awaiting_resume",
+      state: "paused",
       destination: SLACK_DESTINATION,
       destinationVisibility: "public",
       source: storedSource,
@@ -445,11 +446,10 @@ describe("oauth callback integration", () => {
     });
 
     expect(response.status).toBe(200);
-    const sessionRecordAfterAuth =
-      await turnSessionStoreModule.getAgentTurnSessionRecord(
-        conversationId,
-        sessionId,
-      );
+    const sessionRecordAfterAuth = await turnSessionStoreModule.getTurnRecord(
+      conversationId,
+      sessionId,
+    );
     expect(sessionRecordAfterAuth?.piMessages).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -550,7 +550,6 @@ describe("oauth callback integration", () => {
     ]);
   });
 
-
   it("rebuilds session-recorded OAuth resume context from state loaded under the thread lock", async () => {
     const conversationId = "slack:C123:1700000000.011";
     const sessionId = "turn_msg_11";
@@ -639,12 +638,11 @@ describe("oauth callback integration", () => {
       },
     };
 
-    await turnSessionStoreModule.upsertAgentTurnSessionRecord({
-      modelId: "test/model",
+    await turnSessionStoreModule.upsertTurnRecord({
       conversationId,
-      sessionId,
+      turnId: sessionId,
       sliceId: 2,
-      state: "awaiting_resume",
+      state: "paused",
       destination: SLACK_DESTINATION,
       source: slackSource("1700000000.011"),
       piMessages: [],
@@ -737,10 +735,9 @@ describe("oauth callback integration", () => {
     const oldSessionId = "turn_msg_old_12";
     const newSessionId = "turn_msg_new_12";
 
-    await turnSessionStoreModule.upsertAgentTurnSessionRecord({
-      modelId: "test/model",
+    await turnSessionStoreModule.upsertTurnRecord({
       conversationId,
-      sessionId: oldSessionId,
+      turnId: oldSessionId,
       sliceId: 2,
       state: "abandoned",
       destination: SLACK_DESTINATION,
@@ -755,12 +752,11 @@ describe("oauth callback integration", () => {
         userName: "dcramer",
       },
     });
-    await turnSessionStoreModule.upsertAgentTurnSessionRecord({
-      modelId: "test/model",
+    await turnSessionStoreModule.upsertTurnRecord({
       conversationId,
-      sessionId: newSessionId,
+      turnId: newSessionId,
       sliceId: 2,
-      state: "awaiting_resume",
+      state: "paused",
       destination: SLACK_DESTINATION,
       source: slackSource("1700000000.012"),
       piMessages: [],
@@ -864,10 +860,9 @@ describe("oauth callback integration", () => {
     const conversationId = "slack:C123:1700000000.010";
     const sessionId = "turn_msg_10";
 
-    await turnSessionStoreModule.upsertAgentTurnSessionRecord({
-      modelId: "test/model",
+    await turnSessionStoreModule.upsertTurnRecord({
       conversationId,
-      sessionId,
+      turnId: sessionId,
       sliceId: 2,
       state: "abandoned",
       destination: SLACK_DESTINATION,

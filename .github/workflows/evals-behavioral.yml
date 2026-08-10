@@ -1,0 +1,214 @@
+name: Behavioral evals
+
+permissions:
+  contents: read
+  checks: write
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize, labeled]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  EVAL_MIN_PASS_RATE: "0.8"
+
+jobs:
+  select:
+    name: behavioral / select
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    outputs:
+      should_run: ${{ steps.decision.outputs.should_run }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: getsentry/action-filter-paths@98a158469c63115591d1c2952d34450838ab3bc1 # v0.1.0
+        id: changes
+        with:
+          filters: |
+            relevant:
+              - 'packages/junior-evals/evals/agent/**'
+              - 'packages/junior-evals/evals/conversation/**'
+              - 'packages/junior-evals/evals/github/**'
+              - 'packages/junior-evals/evals/memory/**'
+              - 'packages/junior-evals/evals/scheduler/**'
+              - 'packages/junior-evals/evals/sentry/**'
+              - 'packages/junior-evals/package.json'
+              - 'packages/junior-evals/global-setup.ts'
+              - 'packages/junior-evals/postgres-global-setup.ts'
+              - 'packages/junior-evals/src/behavior-harness.ts'
+              - 'packages/junior-evals/src/eval-ai-gateway-dispatcher.ts'
+              - 'packages/junior-evals/src/eval-context.ts'
+              - 'packages/junior-evals/src/eval-egress.ts'
+              - 'packages/junior-evals/src/eval-plugin-fixtures.ts'
+              - 'packages/junior-evals/src/helpers.ts'
+              - 'packages/junior-evals/src/setup.ts'
+              - 'packages/junior-evals/src/slack-link.ts'
+              - 'packages/junior-evals/src/snapshot-warmup.ts'
+              - 'packages/junior-evals/tests/**'
+              - 'packages/junior-evals/vitest.evals.config.ts'
+              - 'packages/junior-evals/vitest.evals.behavioral.config.ts'
+
+      - id: decision
+        env:
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+          VERCEL_OIDC_TOKEN: ${{ secrets.VERCEL_OIDC_TOKEN }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          RELEVANT: ${{ steps.changes.outputs.relevant }}
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: |
+          set -euo pipefail
+          gateway_ready=false
+          sandbox_ready=false
+          requested=false
+          [[ -n "${AI_GATEWAY_API_KEY:-}" || -n "${VERCEL_OIDC_TOKEN:-}" ]] && gateway_ready=true
+          [[ -n "${VERCEL_OIDC_TOKEN:-}" || ( -n "${VERCEL_TOKEN:-}" && -n "${VERCEL_TEAM_ID:-}" && -n "${VERCEL_PROJECT_ID:-}" ) ]] && sandbox_ready=true
+          IFS=',' read -r -a labels <<< "${PR_LABELS:-}"
+          for label in "${labels[@]}"; do
+            if [[ "$label" == "trigger-evals" || "$label" == "trigger-evals-behavioral" ]]; then
+              requested=true
+            fi
+          done
+          should_run=false
+          [[ "$gateway_ready" == "true" && "$sandbox_ready" == "true" && ( "$RELEVANT" == "true" || "$requested" == "true" ) ]] && should_run=true
+          echo "should_run=$should_run" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Behavioral eval selection"
+            echo
+            echo "- relevant_files_changed: $RELEVANT"
+            echo "- requested: $requested"
+            echo "- gateway_ready: $gateway_ready"
+            echo "- sandbox_ready: $sandbox_ready"
+            echo "- will_run: $should_run"
+            echo "- minimum_pass_rate: $EVAL_MIN_PASS_RATE"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  behavioral:
+    name: behavioral / shard ${{ matrix.shard }}/4
+    needs: select
+    if: needs.select.outputs.should_run == 'true'
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: junior
+          POSTGRES_PASSWORD: junior
+          POSTGRES_DB: junior
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U junior -d junior"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      JUNIOR_EVAL_REDIS_URL: redis://127.0.0.1:6379
+      DATABASE_URL: postgres://junior:junior@localhost:5432/junior
+      AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_OIDC_TOKEN: ${{ secrets.VERCEL_OIDC_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: Install cloudflared
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error \
+            https://github.com/cloudflare/cloudflared/releases/download/2026.7.2/cloudflared-linux-amd64 \
+            --output "$RUNNER_TEMP/cloudflared"
+          echo "ec905ea7b7e327ff8abdde8cb64697a2152de74dbcdbf6aec9db8364eb3886cd  $RUNNER_TEMP/cloudflared" | sha256sum --check
+          chmod +x "$RUNNER_TEMP/cloudflared"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/cloudflared" version
+      - name: Verify eval egress lifecycle
+        run: pnpm --filter @sentry/junior-evals test tests/integration/eval-egress.test.ts
+      - name: Run behavioral evals
+        id: run
+        continue-on-error: true
+        env:
+          VITEST_EVALS_OUTPUT_FILE: behavioral-results-${{ matrix.shard }}.json
+          VITEST_EVALS_REPORT_LEVEL: info
+        run: pnpm --filter @sentry/junior-evals evals:behavioral --shard=${{ matrix.shard }}/4
+      - name: Require behavioral eval results
+        id: results
+        if: steps.run.conclusion != 'skipped'
+        run: |
+          set -euo pipefail
+          result_file="packages/junior-evals/behavioral-results-${{ matrix.shard }}.json"
+          if [[ ! -f "$result_file" ]]; then
+            echo "::error::missing behavioral eval results for shard ${{ matrix.shard }} ($result_file). Treat setup/runtime crashes as hard failures."
+            exit 1
+          fi
+      - name: Publish behavioral shard summary
+        if: steps.results.conclusion == 'success'
+        uses: getsentry/vitest-evals@v0.16.1
+        with:
+          results: packages/junior-evals/behavioral-results-${{ matrix.shard }}.json
+      - name: Upload behavioral eval results
+        if: steps.results.conclusion == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: behavioral-evals-${{ matrix.shard }}
+          path: packages/junior-evals/behavioral-results-${{ matrix.shard }}.json
+          if-no-files-found: error
+          retention-days: 7
+
+  report:
+    name: behavioral / report
+    needs: [select, behavioral]
+    if: ${{ always() && !cancelled() && needs.select.outputs.should_run == 'true' }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Download behavioral eval results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: behavioral-evals-*
+          path: eval-results
+          merge-multiple: true
+      - name: Require all behavioral shard results
+        run: |
+          set -euo pipefail
+          expected=4
+          shopt -s nullglob
+          files=(eval-results/behavioral-results-*.json)
+          count="${#files[@]}"
+          if [[ "$count" -ne "$expected" ]]; then
+            echo "::error::expected $expected behavioral eval result files, found $count"
+            printf '%s\n' "${files[@]:-}"
+            exit 1
+          fi
+          ls -la eval-results
+      - name: Publish combined behavioral eval report
+        uses: getsentry/vitest-evals@v0.16.1
+        with:
+          results: eval-results/*.json
+          publish-check: true
+          check-name: behavioral / score
+          min-pass-rate: ${{ env.EVAL_MIN_PASS_RATE }}

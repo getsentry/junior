@@ -89,7 +89,8 @@ type McpOauthCallbackHarnessModule =
 type PluginCatalogRuntimeModule =
   typeof import("@/chat/plugins/catalog-runtime");
 type StateAdapterModule = typeof import("@/chat/state/adapter");
-type TurnSessionStoreModule = typeof import("@/chat/state/turn-session");
+type TurnSessionStoreModule =
+  typeof import("@/chat/task-execution/turn-cursor");
 
 let artifactStateModule: ArtifactStateModule;
 let conversationStateModule: ConversationStateModule;
@@ -166,17 +167,16 @@ async function createAwaitingMcpTurnRecord(args: {
   conversationId: string;
   actor?: Actor;
   includeSource?: boolean;
-  sessionId: string;
+  turnId: string;
   source?: Source;
   text: string;
   threadTs: string;
 }) {
-  await turnSessionStoreModule.upsertAgentTurnSessionRecord({
-    modelId: "test/model",
+  await turnSessionStoreModule.upsertTurnRecord({
     conversationId: args.conversationId,
-    sessionId: args.sessionId,
+    turnId: args.turnId,
     sliceId: 2,
-    state: "awaiting_resume",
+    state: "paused",
     destination: SLACK_DESTINATION,
     destinationVisibility: "public",
     ...(args.includeSource === false
@@ -235,7 +235,7 @@ describe("mcp oauth callback integration", () => {
       await import("../fixtures/mcp-oauth-callback-harness");
     pluginCatalogRuntimeModule = await import("@/chat/plugins/catalog-runtime");
     stateAdapterModule = await import("@/chat/state/adapter");
-    turnSessionStoreModule = await import("@/chat/state/turn-session");
+    turnSessionStoreModule = await import("@/chat/task-execution/turn-cursor");
 
     await stateAdapterModule.disconnectStateAdapter();
     await stateAdapterModule.getStateAdapter().connect();
@@ -396,7 +396,7 @@ describe("mcp oauth callback integration", () => {
         fullName: "Stored User",
         email: "stored@example.com",
       },
-      sessionId,
+      turnId: sessionId,
       source: storedSource,
       text: "what did i say about the budget?",
       threadTs: "1700000000.001",
@@ -630,7 +630,6 @@ describe("mcp oauth callback integration", () => {
     );
   });
 
-
   it("rebuilds MCP OAuth resume context from state loaded under the thread lock", async () => {
     const threadId = "slack:C123:1700000000.005";
     const sessionId = "turn_user-5";
@@ -734,7 +733,7 @@ describe("mcp oauth callback integration", () => {
       authProvider.authSessionId;
     await createAwaitingMcpTurnRecord({
       conversationId: threadId,
-      sessionId,
+      turnId: sessionId,
       source: slackSource("1700000000.005"),
       text: "what did i say about the budget?",
       threadTs: "1700000000.005",
@@ -813,12 +812,11 @@ describe("mcp oauth callback integration", () => {
 
   it("does not resume a stale MCP-blocked request after a newer thread message", async () => {
     const sessionId = "turn_user-4";
-    await turnSessionStoreModule.upsertAgentTurnSessionRecord({
-      modelId: "test/model",
+    await turnSessionStoreModule.upsertTurnRecord({
       conversationId: "conversation-4",
-      sessionId,
+      turnId: sessionId,
       sliceId: 2,
-      state: "awaiting_resume",
+      state: "paused",
       destination: SLACK_DESTINATION,
       source: slackSource("1700000000.004"),
       piMessages: [],
@@ -894,11 +892,10 @@ describe("mcp oauth callback integration", () => {
       conversationStateModule.coerceThreadConversationState(persistedState);
     expect(conversation.processing.pendingAuth).toBeUndefined();
 
-    const sessionRecord =
-      await turnSessionStoreModule.getAgentTurnSessionRecord(
-        "conversation-4",
-        sessionId,
-      );
+    const sessionRecord = await turnSessionStoreModule.getTurnRecord(
+      "conversation-4",
+      sessionId,
+    );
     expect(sessionRecord?.state).toBe("abandoned");
   });
 
@@ -956,6 +953,4 @@ describe("mcp oauth callback integration", () => {
     expect(executeAgentRunMock).not.toHaveBeenCalled();
     expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(0);
   });
-
-
 });

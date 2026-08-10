@@ -1,22 +1,28 @@
 import type { DailyConversationActivity } from "@sentry/junior/api/schema";
 
 import {
+  ActivityChartAverageLine,
   ActivityChartDateLabels,
   ActivityChartGrid,
+  activityChartAverage,
   ActivityTooltipRows,
+  ChartSvg,
   createActivityChartLayout,
   formatActivityDate,
 } from "../../components/charts/ActivityChart";
 import { Card } from "../../components/layout/Card";
 import { CardHeader } from "../../components/layout/CardHeader";
 import { Tooltip } from "../../components/Tooltip";
+import { formatActivityChartAverage } from "../../format";
 
 /** Plot daily conversation volume across one public location. */
 export function LocationActivityChart(props: {
   days: DailyConversationActivity[];
 }) {
   const layout = createActivityChartLayout(240);
-  const maximum = Math.max(1, ...props.days.map((day) => day.conversations));
+  const values = props.days.map((day) => day.conversations);
+  const maximum = Math.max(1, ...values);
+  const average = activityChartAverage(values);
   const step = layout.plotWidth / Math.max(1, props.days.length);
   const barWidth = Math.max(4, Math.min(20, step * 0.55));
 
@@ -33,11 +39,10 @@ export function LocationActivityChart(props: {
         }
       />
       <div className="px-2 py-3 sm:px-4 sm:py-4">
-        <svg
+        <ChartSvg
           aria-label="Daily conversations for this location"
-          className="block h-auto min-h-52 w-full overflow-visible"
-          role="img"
-          viewBox={`0 0 ${layout.width} ${layout.height}`}
+          className="min-h-52 w-full overflow-visible"
+          layout={layout}
         >
           <defs>
             <linearGradient id="location-bars" x1="0" x2="0" y1="0" y2="1">
@@ -78,12 +83,19 @@ export function LocationActivityChart(props: {
               </Tooltip>
             );
           })}
+          <ActivityChartAverageLine
+            average={average}
+            format={formatActivityChartAverage}
+            layout={layout}
+            maximum={maximum}
+            stroke="#22d3ee"
+          />
           <ActivityChartDateLabels
             dates={props.days.map((day) => day.date)}
             layout={layout}
             xPosition={(index) => layout.left + index * step + step / 2}
           />
-        </svg>
+        </ChartSvg>
       </div>
     </Card>
   );

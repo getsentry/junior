@@ -54,7 +54,7 @@ describe("createSlackTurnRuntime", () => {
     it("subscribes thread and calls replyToThread with explicitMention: true", async () => {
       const deps = createMockDeps();
       const runtime = createSlackTurnRuntime<TestState>(deps);
-      const thread = createTestThread({});
+      const thread = await createTestThread({});
       const message = createTestMessage({ text: "hey bot" });
 
       await runtime.handleNewMention(thread, message, {
@@ -80,7 +80,7 @@ describe("createSlackTurnRuntime", () => {
         ),
       });
       const runtime = createSlackTurnRuntime<TestState>(deps);
-      const thread = createTestThread({});
+      const thread = await createTestThread({});
       const skipped = createTestMessage({
         id: "m-skipped",
         text: "<@U0APP> first queued bit",
@@ -129,7 +129,7 @@ describe("createSlackTurnRuntime", () => {
         }),
       });
       const runtime = createSlackTurnRuntime<TestState>(deps);
-      const thread = createTestThread({});
+      const thread = await createTestThread({});
       const message = createTestMessage({});
       await thread.subscribe();
 
@@ -155,7 +155,7 @@ describe("createSlackTurnRuntime", () => {
         withSpan: vi.fn(async (_n, _o, _c, cb) => cb()),
       });
       const runtime = createSlackTurnRuntime<TestState>(deps);
-      const thread = createTestThread({});
+      const thread = await createTestThread({});
       const message = createTestMessage({
         text: "<@U123> stripped text",
         isMention: true,
@@ -185,7 +185,7 @@ describe("createSlackTurnRuntime", () => {
         withSpan: vi.fn(async (_n, _o, _c, cb) => cb()),
       });
       const runtime = createSlackTurnRuntime<TestState>(deps);
-      const thread = createTestThread({});
+      const thread = await createTestThread({});
       const message = createTestMessage({});
 
       await runtime.handleSubscribedMessage(thread, message, {
@@ -202,7 +202,7 @@ describe("createSlackTurnRuntime", () => {
         withSpan: vi.fn(async (_n, _o, _c, cb) => cb()),
       });
       const runtime = createSlackTurnRuntime<TestState>(deps);
-      const thread = createTestThread({});
+      const thread = await createTestThread({});
       const message = createTestMessage({
         author: { userId: "UJRNEVENT", isBot: true },
         raw: { event_type: "resource_event" },

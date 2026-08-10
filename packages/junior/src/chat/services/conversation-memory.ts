@@ -12,6 +12,10 @@ import {
   getConversationContextCompactionTriggerTokens,
 } from "@/chat/services/context-budget";
 import {
+  fallbackShortTitle,
+  generateShortTitle,
+} from "@/chat/services/short-title";
+import {
   parseSlackMessageTs,
   type SlackMessageTs,
 } from "@/chat/slack/timestamp";
@@ -116,15 +120,11 @@ function authorDisplayField(
   return value;
 }
 
-export function updateConversationStats(
+/** Estimate the token cost of the current visible conversation context. */
+export function estimateConversationContextTokens(
   conversation: ThreadConversationState,
-): void {
-  const contextText = buildConversationContext(conversation);
-  conversation.stats.estimatedContextTokens = estimateTextTokens(
-    contextText ?? "",
-  );
-  conversation.stats.totalMessageCount = conversation.messages.length;
-  conversation.stats.updatedAtMs = Date.now();
+): number {
+  return estimateTextTokens(buildConversationContext(conversation) ?? "");
 }
 
 export function upsertConversationMessage(
@@ -143,12 +143,10 @@ export function upsertConversationMessage(
         ...message.meta,
       },
     };
-    updateConversationStats(conversation);
     return message.id;
   }
 
   conversation.messages.push(message);
-  updateConversationStats(conversation);
   return message.id;
 }
 
@@ -217,7 +215,6 @@ export function markConversationMessage(
       ...patch,
     },
   };
-  updateConversationStats(conversation);
 }
 
 /**
@@ -369,27 +366,13 @@ async function generateThreadTitleWithDeps(
   sourceText: string,
   deps: ConversationMemoryDeps,
 ): Promise<string> {
-  const result = await deps.completeText({
-    modelId: botConfig.fastModelId,
-    temperature: 0,
-    messages: [
-      {
-        role: "user",
-        content: [
-          "Generate a concise 5-8 word Slack conversation title from the first user message below.",
-          "Capture the user's main request.",
-          "Reply with ONLY the title, with no quotes or trailing punctuation.",
-          "",
-          `First user message: ${sourceText.slice(0, 500)}`,
-        ].join("\n"),
-        timestamp: Date.now(),
-      },
-    ],
-    metadata: {
-      modelId: botConfig.fastModelId,
-    },
+  const title = await generateShortTitle({
+    completeText: deps.completeText,
+    kind: "conversation",
+    sourceText,
   });
-  return result.text.trim().slice(0, 60);
+  // Keep the historical non-empty contract for conversation title callers.
+  return title ?? fallbackShortTitle(sourceText, "Conversation");
 }
 
 /** Return the earliest human-authored message known for a thread. */
@@ -434,8 +417,7 @@ async function compactConversationIfNeededWithDeps(
   },
   deps: ConversationMemoryDeps,
 ): Promise<void> {
-  updateConversationStats(conversation);
-  let estimatedTokens = conversation.stats.estimatedContextTokens;
+  let estimatedTokens = estimateConversationContextTokens(conversation);
   setSpanAttributes({
     "app.context_tokens_estimated": estimatedTokens,
   });
@@ -469,10 +451,8 @@ async function compactConversationIfNeededWithDeps(
     });
     conversation.compactions = pruneCompactions(conversation.compactions);
     conversation.messages = conversation.messages.slice(compactCount);
-    conversation.stats.compactedMessageCount += compactCount;
-    updateConversationStats(conversation);
 
-    estimatedTokens = conversation.stats.estimatedContextTokens;
+    estimatedTokens = estimateConversationContextTokens(conversation);
     setSpanAttributes({
       "app.compaction_messages_covered": compactCount,
       "app.compaction.trigger_tokens": triggerTokens,

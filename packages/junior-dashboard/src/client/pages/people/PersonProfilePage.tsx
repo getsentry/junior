@@ -10,10 +10,7 @@ import type {
 import { useActorProfileData } from "../../api";
 import { ContributionGrid } from "./ContributionGrid";
 import { SystemMetricCharts } from "../../components/charts/SystemMetricCharts";
-import {
-  TimeRangeSelector,
-  type TimeRangeDays,
-} from "../../components/controls/TimeRangeSelector";
+import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { LoadingView } from "../../components/LoadingView";
 import { Card } from "../../components/layout/Card";
@@ -70,7 +67,6 @@ export function Profile(props: { profile: ActorProfileReport }) {
         Back to people
       </Link>
       <PageHeader
-        actions={<TimeRangeSelector onChange={setRange} value={range} />}
         description={
           <>
             {profile.actor.email}
@@ -79,6 +75,8 @@ export function Profile(props: { profile: ActorProfileReport }) {
               : ""}
           </>
         }
+        onRangeChange={setRange}
+        range={range}
         title={displayName}
       />
 

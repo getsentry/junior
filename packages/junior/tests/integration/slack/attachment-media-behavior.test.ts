@@ -110,7 +110,7 @@ describe("Slack behavior: mixed attachment media", () => {
       },
     );
 
-    const thread = createTestThread({
+    const thread = await createTestThread({
       id: "slack:C0BEHAVIOR:1700004010.000",
     });
     const message = createTestMessage({
@@ -210,7 +210,7 @@ describe("Slack behavior: mixed attachment media", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700004011.000" });
+    const thread = await createTestThread({ id: "slack:C0BEHAVIOR:1700004011.000" });
     const message = createTestMessage({
       id: "m-attachment-mixed-2",
       text: "<@U0APP> summarize these files",
@@ -286,7 +286,7 @@ describe("Slack behavior: mixed attachment media", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700004012.000" });
+    const thread = await createTestThread({ id: "slack:C0BEHAVIOR:1700004012.000" });
     const message = createTestMessage({
       id: "m-attachment-mixed-3",
       text: "<@U0APP> what about this image?",

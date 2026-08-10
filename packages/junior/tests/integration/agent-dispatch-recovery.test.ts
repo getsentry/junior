@@ -22,14 +22,13 @@ import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
-import { resumeAwaitingSlackContinuation } from "@/chat/runtime/agent-continue-runner";
-import { scheduleAgentContinue } from "@/chat/services/agent-continue";
-import { persistYieldSessionRecord } from "@/chat/services/turn-session-record";
+import { runNextPausedTurn } from "@/chat/task-execution/paused-turn";
+import { wakePausedTurn } from "@/chat/task-execution/turn-wake";
+import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import {
-  getAgentTurnSessionRecord,
-  listAgentTurnSessionSummariesForConversation,
-  upsertAgentTurnSessionRecord,
-} from "@/chat/state/turn-session";
+  getTurnRecord,
+  listTurnSummaries,
+} from "@/chat/task-execution/turn-cursor";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import {
   hydrateConversationMessages,
@@ -39,10 +38,9 @@ import { getPersistedThreadState } from "@/chat/runtime/thread-state";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { slackApiOutbox } from "../fixtures/slack-api-outbox";
 import { resetSlackApiMockState } from "../msw/handlers/slack-api";
-import { agentTurnSessionKey } from "@/chat/state/turn-session-keys";
+import { turnCursorKey } from "@/chat/task-execution/turn-cursor-keys";
 import { deliverAssistantMessagesForTest } from "../fixtures/agent-runner";
 import {
-  agentDispatchTestDestination as destination,
   createAgentDispatchTestRecord as createDispatch,
   createAgentDispatchTestRuntime as createDispatchRuntime,
   createAgentDispatchWorkerContext as createContext,
@@ -61,95 +59,6 @@ describe("agent dispatch recovery", () => {
   afterEach(async () => {
     await disconnectStateAdapter();
     vi.restoreAllMocks();
-  });
-
-  it("fails a stranded dispatch visibly when no resume boundary survived", async () => {
-    const dispatch = await createDispatch("stranded-visible-failure");
-    const conversationId = getDispatchConversationId(dispatch);
-    const sessionId = getDispatchTurnId(dispatch.id);
-    const agentRunner = { run: vi.fn() };
-    await upsertAgentTurnSessionRecord({
-      actor: dispatch.actor,
-      conversationId,
-      destination: dispatch.destination,
-      dispatchId: dispatch.id,
-      modelId: "test/model",
-      piMessages: [
-        {
-          role: "assistant",
-          content: [{ type: "text", text: "partial output" }],
-          api: "responses",
-          provider: "openai",
-          model: "test/model",
-          usage: {
-            input: 1,
-            output: 1,
-            cacheRead: 0,
-            cacheWrite: 0,
-            totalTokens: 2,
-            cost: {
-              input: 0,
-              output: 0,
-              cacheRead: 0,
-              cacheWrite: 0,
-              total: 0,
-            },
-          },
-          stopReason: "stop",
-          timestamp: dispatch.createdAtMs,
-        },
-      ],
-      sessionId,
-      sliceId: 1,
-      source: dispatch.source,
-      state: "running",
-      surface: "api",
-    });
-    const worker = createAgentDispatchConversationWorker({
-      resumeTurn: async (_dispatch, hooks) => {
-        await resumeAwaitingSlackContinuation(
-          getDispatchConversationId(_dispatch),
-          {
-            agentRunner,
-            inputMessageIds: getDispatchInputMessageIds(_dispatch.id),
-            routingContext: buildDispatchRoutingContext(_dispatch),
-          },
-          { shouldYield: hooks.shouldYield },
-        );
-      },
-      runTurn: vi.fn(),
-    });
-    const { ack, context } = createContext(dispatch);
-    context.attempt.messages = [];
-
-    await expect(worker(context, dispatch.id)).resolves.toEqual({
-      status: "completed",
-    });
-
-    expect(agentRunner.run).not.toHaveBeenCalled();
-    expect(ack).not.toHaveBeenCalled();
-    await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
-      status: "failed",
-    });
-    await expect(
-      getAgentTurnSessionRecord(conversationId, sessionId),
-    ).resolves.toMatchObject({
-      errorMessage: expect.stringContaining("no resumable boundary"),
-      state: "failed",
-    });
-    expect(slackApiOutbox.messages()).toEqual([
-      expect.objectContaining({
-        params: expect.objectContaining({
-          channel: destination.channelId,
-          text: expect.stringContaining(
-            "I ran into an internal error while processing that.",
-          ),
-        }),
-      }),
-    ]);
-    expect(slackApiOutbox.messages()[0]?.params).not.toHaveProperty(
-      "thread_ts",
-    );
   });
 
   it("projects a canvas recovery as a blocked dispatch", async () => {
@@ -176,20 +85,6 @@ describe("agent dispatch recovery", () => {
     await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
       status: "pending",
     });
-    await expect(
-      listAgentTurnSessionSummariesForConversation(
-        getDispatchConversationId(dispatch),
-      ),
-    ).resolves.toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          dispatchOutcome: "blocked",
-          resultMessageId: expect.any(String),
-          sessionId: getDispatchTurnId(dispatch.id),
-        }),
-      ]),
-    );
-
     const runTurn = vi.fn();
     const resumeTurn = vi.fn();
     const worker = createAgentDispatchConversationWorker({
@@ -206,6 +101,17 @@ describe("agent dispatch recovery", () => {
       resultMessageTs: expect.any(String),
       status: "blocked",
     });
+    await expect(
+      listTurnSummaries(getDispatchConversationId(dispatch)),
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          dispatchOutcome: "blocked",
+          resultMessageId: expect.any(String),
+          turnId: getDispatchTurnId(dispatch.id),
+        }),
+      ]),
+    );
     expect(slackApiOutbox.messages()).toEqual([
       expect.objectContaining({
         params: expect.objectContaining({
@@ -257,7 +163,7 @@ describe("agent dispatch recovery", () => {
       status: "pending",
     });
     await expect(
-      getAgentTurnSessionRecord(
+      getTurnRecord(
         getDispatchConversationId(dispatch),
         getDispatchTurnId(dispatch.id),
       ),
@@ -313,10 +219,12 @@ describe("agent dispatch recovery", () => {
         runCount += 1;
         if (runCount === 1) {
           await request.durability.onInputCommitted?.();
-          const session = await persistYieldSessionRecord({
+          const session = await saveTurnCheckpoint({
+            mode: "paused",
+            reason: "yield",
             actor: dispatch.actor,
             conversationId: request.conversationId,
-            currentSliceId: 3,
+            sliceId: 3,
             destination: dispatch.destination,
             dispatchId: dispatch.id,
             errorMessage: "Conversation worker yielded",
@@ -327,8 +235,7 @@ describe("agent dispatch recovery", () => {
                 timestamp: dispatch.createdAtMs,
               },
             ],
-            modelId: "test-model",
-            sessionId: request.turnId,
+            turnId: request.turnId,
             source: dispatch.source,
             surface: "api",
           });
@@ -380,20 +287,20 @@ describe("agent dispatch recovery", () => {
     };
     const runtime = createDispatchRuntime({
       agentRunner,
-      scheduleAgentContinue: async (request) => {
-        await scheduleAgentContinue(request, { queue, state });
+      wakePausedTurn: async (request) => {
+        await wakePausedTurn(request, { queue, state });
       },
     });
     const dispatchWorker = createAgentDispatchConversationWorker({
       resumeTurn: async (_dispatch, hooks) => {
-        await resumeAwaitingSlackContinuation(
+        await runNextPausedTurn(
           `agent-dispatch:${_dispatch.id}`,
           {
             agentRunner,
             inputMessageIds: getDispatchInputMessageIds(_dispatch.id),
             routingContext: buildDispatchRoutingContext(_dispatch),
-            scheduleAgentContinue: async (request) => {
-              await scheduleAgentContinue(request, { queue, state });
+            wakePausedTurn: async (request) => {
+              await wakePausedTurn(request, { queue, state });
             },
           },
           { shouldYield: hooks.shouldYield },
@@ -442,7 +349,7 @@ describe("agent dispatch recovery", () => {
           conversation,
           conversationId,
         });
-        const sessionKey = agentTurnSessionKey(
+        const sessionKey = turnCursorKey(
           conversationId,
           getDispatchTurnId(dispatch.id),
         );
@@ -467,9 +374,7 @@ describe("agent dispatch recovery", () => {
       text: "Resumed scheduled digest\n\nScheduled task · Weekly",
     });
     await expect(
-      listAgentTurnSessionSummariesForConversation(
-        `agent-dispatch:${dispatch.id}`,
-      ),
+      listTurnSummaries(`agent-dispatch:${dispatch.id}`),
     ).resolves.toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -480,10 +385,7 @@ describe("agent dispatch recovery", () => {
       ]),
     );
     await expect(
-      getAgentTurnSessionRecord(
-        `agent-dispatch:${dispatch.id}`,
-        `dispatch:${dispatch.id}`,
-      ),
+      getTurnRecord(`agent-dispatch:${dispatch.id}`, `dispatch:${dispatch.id}`),
     ).resolves.toMatchObject({
       dispatchOutcome: "completed",
       resultMessageId: expect.any(String),

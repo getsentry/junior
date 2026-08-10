@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import {
   taskExecutionListSchema,
   taskListSchema,
+  taskRunListSchema,
 } from "@/api/schema/task";
 import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
@@ -307,7 +308,36 @@ describe("Tasks API", () => {
             runsLast7Days: 2,
             schedule: "Schedule unavailable",
             status: "active",
+            title: "Untitled scheduled task",
             totalRuns: 2,
+          }),
+        ],
+        truncated: false,
+      });
+
+      const runsResponse = await authenticatedApi("viewer@example.com").request(
+        "http://localhost/api/tasks/runs",
+      );
+      expect(runsResponse.status).toBe(200);
+      expect(taskRunListSchema.parse(await runsResponse.json())).toEqual({
+        runs: [
+          expect.objectContaining({
+            executionId: "sched-run-2",
+            kind: "scheduled",
+            status: "failed",
+            taskId: "sched_tasks_api",
+            taskTitle: "Untitled scheduled task",
+          }),
+          expect.objectContaining({
+            executionId: "sched-run-1",
+            kind: "scheduled",
+            status: "completed",
+            taskId: "sched_tasks_api",
+          }),
+          expect.objectContaining({
+            executionId: "event-run-1",
+            kind: "event",
+            taskId: "event_tasks_api",
           }),
         ],
         truncated: false,

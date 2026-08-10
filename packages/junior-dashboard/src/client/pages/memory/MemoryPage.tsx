@@ -6,31 +6,29 @@ import {
   Database,
   Globe2,
   LockKeyhole,
-  Search,
   Sparkles,
   UserRound,
 } from "lucide-react";
-import { useEffect } from "react";
-import {
-  Navigate,
-  NavLink,
-  useLocation,
-  useNavigate,
-  useParams,
-} from "react-router";
+import { useEffect, useState } from "react";
+import { Navigate, useLocation, useNavigate, useParams } from "react-router";
 import type { PluginUserPageLink } from "@sentry/junior-plugin-api";
 
-import { Button } from "../../components/Button";
+import { FilterTabList } from "../../components/FilterBar";
 import { LoadingView } from "../../components/LoadingView";
+import { LoadMorePagination } from "../../components/Pagination";
+import { SearchInput } from "../../components/SearchInput";
 import { SelectableRow } from "../../components/SelectableRow";
+import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
+import { PageLayout } from "../../components/layout/PageLayout";
+import { SecondaryNavigation } from "../../components/layout/SecondaryNavigation";
 import {
   type PluginUserPageRecord,
   usePluginUserPageData,
 } from "../user/pluginUserPageData";
 import { pathWithSearch } from "../../searchParams";
-import { cn, dashboardContainerClass } from "../../styles";
+import { cn } from "../../styles";
 import {
   type MemoryDashboardData,
   useMemoryDashboardData,
@@ -42,6 +40,7 @@ import { useMemoryRecord } from "./memoryRecord";
 
 /** Render the temporary first-class dashboard experience for memory. */
 export function MemoryPage(props: { page: PluginUserPageLink }) {
+  const [range, setRange] = useState<TimeRangeDays>(30);
   const location = useLocation();
   const { memoryId } = useParams();
   const basePath = "/memories";
@@ -51,46 +50,32 @@ export function MemoryPage(props: { page: PluginUserPageLink }) {
   if (!overview && !library) return <Navigate replace to={basePath} />;
   const libraryHref = pathWithSearch(libraryPath, location.search);
 
-  const navigationClass = ({ isActive }: { isActive: boolean }) =>
-    cn(
-      "relative px-1 py-3 font-mono text-xs uppercase tracking-[0.12em] no-underline after:absolute after:inset-x-0 after:bottom-0 after:h-px",
-      isActive
-        ? "text-cyan-100 after:bg-cyan-300"
-        : "text-dashboard-text-muted after:bg-transparent hover:text-dashboard-text",
-    );
-
   return (
-    <div
-      className={cn(
-        dashboardContainerClass,
-        "grid content-start gap-6 px-4 py-6 sm:gap-8 sm:px-6 sm:py-8 md:px-8",
-      )}
-    >
-      <PageHeader
-        description={props.page.description}
-        title={props.page.label}
+    <div className="min-w-0">
+      <SecondaryNavigation
+        ariaLabel="Memory navigation"
+        items={[
+          { end: true, label: "Overview", to: basePath },
+          { label: "Memories", to: libraryHref },
+        ]}
       />
-      <nav
-        aria-label="Memory navigation"
-        className="flex gap-6 border-b border-white/[0.06]"
-      >
-        <NavLink className={navigationClass} end to={basePath}>
-          Overview
-        </NavLink>
-        <NavLink className={navigationClass} to={libraryHref}>
-          Memories
-        </NavLink>
-      </nav>
-      {overview ? (
-        <MemoryOverview />
-      ) : (
-        <MemoryLibrary libraryPath={libraryPath} page={props.page} />
-      )}
+      <PageLayout className="gap-6 sm:gap-8">
+        <PageHeader
+          description={props.page.description}
+          {...(overview ? { onRangeChange: setRange, range } : {})}
+          title={props.page.label}
+        />
+        {overview ? (
+          <MemoryOverview range={range} />
+        ) : (
+          <MemoryLibrary libraryPath={libraryPath} page={props.page} />
+        )}
+      </PageLayout>
     </div>
   );
 }
 
-function MemoryOverview() {
+function MemoryOverview(props: { range: TimeRangeDays }) {
   const dashboardQuery = useMemoryDashboardData();
   if (dashboardQuery.error) {
     return (
@@ -115,9 +100,10 @@ function MemoryOverview() {
   return (
     <>
       <section className="grid gap-4 xl:grid-cols-2">
-        <MemoryTimeline days={dashboardQuery.data.days} />
+        <MemoryTimeline days={dashboardQuery.data.days} range={props.range} />
         <MemoryCostChart
           extractionDays={dashboardQuery.data.extractionDays}
+          range={props.range}
           recallDays={dashboardQuery.data.recallDays}
         />
       </section>
@@ -200,28 +186,38 @@ function MemoryLibrary(props: {
           </h2>
         </div>
         {content?.searchPlaceholder ? (
-          <label className="relative w-full max-w-md sm:w-auto">
-            <span className="sr-only">{content.searchPlaceholder}</span>
-            <Search
-              aria-hidden="true"
-              className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-dashboard-text-muted"
-              size={15}
-            />
-            <input
-              className="h-10 w-full min-w-0 rounded border border-white/10 bg-black/20 pr-3 pl-9 font-mono text-xs text-dashboard-text outline-none transition-colors placeholder:text-dashboard-text-muted/70 focus:border-cyan-300/35"
-              onChange={(event) => setSearchText(event.target.value)}
-              placeholder={content.searchPlaceholder}
-              type="search"
-              value={searchText}
-            />
-          </label>
+          <SearchInput
+            className="w-full max-w-md sm:w-auto"
+            label={content.searchPlaceholder}
+            onChange={setSearchText}
+            placeholder={content.searchPlaceholder}
+            size="default"
+            value={searchText}
+          />
         ) : null}
       </div>
 
-      <MemoryCollections
-        activeFilter={filter}
-        onSelect={setFilter}
-        stats={dashboardQuery.data?.stats}
+      <FilterTabList
+        ariaLabel="Memory collections"
+        items={[
+          {
+            count: dashboardQuery.data?.stats?.active,
+            label: "All",
+            value: "",
+          },
+          {
+            count: dashboardQuery.data?.stats?.personal,
+            label: "Private",
+            value: "private",
+          },
+          {
+            count: dashboardQuery.data?.stats?.public,
+            label: "Public",
+            value: "public",
+          },
+        ]}
+        onChange={setFilter}
+        value={filter}
       />
 
       {query.error ? (
@@ -264,15 +260,12 @@ function MemoryLibrary(props: {
               />
             ))}
           </Card>
-          {!query.isPlaceholderData && query.hasNextPage ? (
-            <Button
-              className="mt-2 justify-self-center"
-              disabled={query.isFetchingNextPage}
-              onClick={() => void query.fetchNextPage()}
-            >
-              {query.isFetchingNextPage ? "Loading…" : "Load more"}
-            </Button>
-          ) : null}
+          <LoadMorePagination
+            className="mt-2"
+            hasMore={!query.isPlaceholderData && Boolean(query.hasNextPage)}
+            loading={query.isFetchingNextPage}
+            onLoadMore={() => void query.fetchNextPage()}
+          />
           {action.error ? (
             <p className="m-0 text-center text-sm text-rose-300">
               Could not complete this action. Try again.
@@ -301,66 +294,6 @@ function MemoryListHeader() {
       <span>Type</span>
       <span>Learned</span>
       <span aria-hidden="true" className="size-4" />
-    </div>
-  );
-}
-
-function MemoryCollections(props: {
-  activeFilter: string;
-  onSelect(filter: string): void;
-  stats: MemoryDashboardData["stats"] | undefined;
-}) {
-  const collections = [
-    { count: props.stats?.active, filter: "", label: "All" },
-    {
-      count: props.stats?.personal,
-      filter: "private",
-      label: "Private",
-    },
-    {
-      count: props.stats?.public,
-      filter: "public",
-      label: "Public",
-    },
-  ];
-  return (
-    <div
-      aria-label="Memory collections"
-      className="grid min-w-0 grid-cols-3 gap-1 border-b border-white/[0.06] sm:flex sm:overflow-x-auto"
-      role="tablist"
-    >
-      {collections.map((collection) => {
-        const selected = props.activeFilter === collection.filter;
-        return (
-          <button
-            aria-selected={selected}
-            className={cn(
-              "relative flex min-w-0 cursor-pointer items-center justify-between gap-2 border-0 bg-transparent px-3 py-2.5 font-mono text-xs uppercase tracking-[0.1em] transition-colors after:absolute after:inset-x-2 after:bottom-0 after:h-px sm:shrink-0 sm:justify-start",
-              selected
-                ? "text-cyan-100 after:bg-cyan-300"
-                : "text-dashboard-text-muted after:bg-transparent hover:text-dashboard-text",
-            )}
-            key={collection.filter || "all"}
-            onClick={() => props.onSelect(collection.filter)}
-            role="tab"
-            type="button"
-          >
-            {collection.label}
-            {collection.count !== undefined ? (
-              <span
-                className={cn(
-                  "rounded-sm border px-1.5 py-0.5 text-xs",
-                  selected
-                    ? "border-cyan-300/20 bg-cyan-300/10 text-cyan-100"
-                    : "border-white/[0.07] bg-white/[0.025] text-dashboard-text-muted",
-                )}
-              >
-                {collection.count.toLocaleString("en-US")}
-              </span>
-            ) : null}
-          </button>
-        );
-      })}
     </div>
   );
 }

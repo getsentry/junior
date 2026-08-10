@@ -6,7 +6,6 @@ import { isDeepStrictEqual } from "node:util";
 import { getConversationEventStore } from "@/chat/db";
 import { projectConversationMessageSummaries } from "./message-summaries";
 import { projectConversationMessages } from "./message-projection";
-import { updateConversationStats } from "@/chat/services/conversation-memory";
 import type {
   ConversationMessage,
   ThreadConversationState,
@@ -78,7 +77,6 @@ export async function hydrateConversationMessages(args: {
     ? projectConversationMessageSummaries([history.compaction])
     : [];
   args.conversation.messages = projectConversationMessages(history);
-  updateConversationStats(args.conversation);
 }
 
 /** Append new messages and handled markers idempotently. */

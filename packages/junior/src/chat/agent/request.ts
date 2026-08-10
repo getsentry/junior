@@ -13,7 +13,7 @@ import type {
   Source,
   SystemActor,
 } from "@sentry/junior-plugin-api";
-import type { ChannelConfigurationService } from "@/chat/configuration/types";
+import type { LocationConfigurationService } from "@/chat/configuration/types";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { CredentialContext } from "@/chat/credentials/context";
 import type { PiMessage } from "@/chat/pi/messages";
@@ -27,7 +27,7 @@ import type { SlackConversationContext } from "@/chat/slack/conversation-context
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 import type { ConversationMessageProvenance } from "@/chat/conversations/provenance";
-import type { AgentTurnSurface } from "@/chat/state/turn-session";
+import type { AgentTurnSurface } from "@/chat/task-execution/checkpoint";
 import type { ToolExecutionReport } from "@/chat/tool-support/tool-execution-report";
 import type { SlackActionToken } from "@/chat/slack/action-token";
 import type { TurnReasoningLevel } from "@/chat/reasoning-level";
@@ -164,7 +164,7 @@ export interface AgentRunPolicy {
   /** Explicit per-agent reasoning level. When set, adaptive routing is disabled. */
   reasoningLevel?: TurnReasoningLevel;
   configuration?: Record<string, unknown>;
-  channelConfiguration?: ChannelConfigurationService;
+  locationConfiguration?: LocationConfigurationService;
   skillDirs?: string[];
   /** Per-slice override for app-owned sandbox egress trace propagation. */
   sandboxTracePropagation?: SandboxEgressTracePropagationConfig;

@@ -1,11 +1,24 @@
 import type { ReactNode } from "react";
 
+import {
+  TimeRangeSelector,
+  type TimeRangeDays,
+} from "../controls/TimeRangeSelector";
+
 /** Render a spacious analytics page heading with optional controls. */
 export function PageHeader(props: {
   actions?: ReactNode;
   description: ReactNode;
+  onRangeChange?(value: TimeRangeDays): void;
+  range?: TimeRangeDays;
   title: ReactNode;
 }) {
+  const rangeActions =
+    props.range !== undefined && props.onRangeChange ? (
+      <TimeRangeSelector onChange={props.onRangeChange} value={props.range} />
+    ) : undefined;
+  const actions = props.actions ?? rangeActions;
+
   return (
     <header className="flex min-w-0 items-center justify-between gap-6 border-b border-white/[0.05] pb-4 sm:pb-6 max-md:flex-col max-md:items-stretch">
       <div className="min-w-0">
@@ -16,7 +29,7 @@ export function PageHeader(props: {
           {props.description}
         </div>
       </div>
-      {props.actions ? <div className="shrink-0">{props.actions}</div> : null}
+      {actions ? <div className="shrink-0">{actions}</div> : null}
     </header>
   );
 }

@@ -17,10 +17,10 @@ import {
   TurnInputCommitLostError,
 } from "@/chat/runtime/turn";
 import {
-  getAgentTurnSessionRecord,
-  listAgentTurnSessionSummariesForConversation,
-  recordAgentTurnSessionSummary,
-} from "@/chat/state/turn-session";
+  getTurnRecord,
+  listTurnSummaries,
+  recordTurnSummary,
+} from "@/chat/task-execution/checkpoint";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
 import {
@@ -28,10 +28,6 @@ import {
   type InboundMessage,
 } from "@/chat/task-execution/store";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
-import {
-  deliverReplyTo,
-  requireReplyDestination,
-} from "@/chat/task-execution/reply-delivery";
 import type {
   ConversationWorkerContext,
   ConversationWorkerResult,
@@ -139,7 +135,6 @@ export function buildAgentDispatchInboundMessage(
       },
     },
     receivedAtMs: nowMs,
-    replyDelivery: deliverReplyTo(dispatch.destination),
     source: "plugin",
   };
 }
@@ -220,15 +215,12 @@ export async function resolveAgentDispatchId(
     return undefined;
   }
 
-  const summaries = await listAgentTurnSessionSummariesForConversation(
-    context.conversationId,
-  );
+  const summaries = await listTurnSummaries(context.conversationId);
   const activeDispatchIds = new Set(
     summaries
       .filter(
         (summary) =>
-          (summary.state === "awaiting_resume" ||
-            summary.state === "running") &&
+          (summary.state === "paused" || summary.state === "running") &&
           Boolean(summary.dispatchId),
       )
       .map((summary) => summary.dispatchId)
@@ -304,10 +296,10 @@ async function readDispatchTurnResult(
 ): Promise<DurableDispatchTurnResult> {
   const conversationId = getDispatchConversationId(dispatch);
   const turnId = getDispatchTurnId(dispatch.id);
-  const storedSession = await getAgentTurnSessionRecord(conversationId, turnId);
-  const summary = (
-    await listAgentTurnSessionSummariesForConversation(conversationId)
-  ).find((candidate) => candidate.sessionId === turnId);
+  const storedSession = await getTurnRecord(conversationId, turnId);
+  const summary = (await listTurnSummaries(conversationId)).find(
+    (candidate) => candidate.turnId === turnId,
+  );
   const session = storedSession ?? summary;
   const dispatchOutcome =
     summary?.dispatchOutcome ?? storedSession?.dispatchOutcome;
@@ -332,7 +324,7 @@ async function readDispatchTurnResult(
   if (!session) {
     return {};
   }
-  if (session.state === "awaiting_resume") {
+  if (session.state === "paused") {
     return { hasResumableRun: true, outcome: "awaiting_resume" };
   }
   if (session.state === "running") {
@@ -391,15 +383,15 @@ async function persistBlockedDispatchTurn(
 ): Promise<void> {
   const conversationId = getDispatchConversationId(dispatch);
   const sessionId = getDispatchTurnId(dispatch.id);
-  const session = await getAgentTurnSessionRecord(conversationId, sessionId);
-  await recordAgentTurnSessionSummary({
+  const session = await getTurnRecord(conversationId, sessionId);
+  await recordTurnSummary({
     actor: dispatch.actor,
     conversationId,
     destination: dispatch.destination,
     destinationVisibility: dispatch.destinationVisibility,
     dispatchId: dispatch.id,
     dispatchOutcome: "blocked",
-    sessionId,
+    turnId: sessionId,
     sliceId: session?.sliceId ?? 1,
     source: dispatch.source,
     state: "failed",
@@ -431,17 +423,14 @@ export function createAgentDispatchConversationWorker(
         `Dispatch ${dispatch.id} belongs to ${expectedConversationId}, not ${context.conversationId}`,
       );
     }
-    const replyDestination = requireReplyDestination(
-      context.replyDelivery,
-      "Agent dispatch",
-    );
     if (
-      replyDestination.platform !== dispatch.destination.platform ||
-      replyDestination.teamId !== dispatch.destination.teamId ||
-      replyDestination.channelId !== dispatch.destination.channelId
+      !context.destination ||
+      context.destination.platform !== dispatch.destination.platform ||
+      context.destination.teamId !== dispatch.destination.teamId ||
+      context.destination.channelId !== dispatch.destination.channelId
     ) {
       throw new Error(
-        `Dispatch ${dispatch.id} reply delivery does not match its conversation lease`,
+        `Dispatch ${dispatch.id} destination does not match its conversation lease`,
       );
     }
 

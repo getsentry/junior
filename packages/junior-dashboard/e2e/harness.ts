@@ -359,6 +359,7 @@ export async function mockDashboardApis(page: Page) {
             runsLast7Days: 3,
             schedule: "Every Monday at 9:00 AM",
             status: "active",
+            title: "Weekly project summary",
             totalRuns: 48,
           },
           {
@@ -379,6 +380,7 @@ export async function mockDashboardApis(page: Page) {
             resource: "Issue · ACME-42",
             runsLast7Days: 1,
             source: "github",
+            title: "Closed issue summary",
             totalRuns: 7,
             triggerAvailable: true,
           },
@@ -400,6 +402,7 @@ export async function mockDashboardApis(page: Page) {
             resource: "Incident · INC-17",
             runsLast7Days: 0,
             source: "pagerduty",
+            title: "Incident change alerts",
             totalRuns: 0,
             triggerAvailable: false,
           },
@@ -435,6 +438,10 @@ export async function mockDashboardApis(page: Page) {
       kind,
       ownedByViewer: true,
       runsLast7Days: kind === "scheduled" ? 3 : 1,
+      title:
+        kind === "scheduled"
+          ? "Weekly project summary"
+          : "Closed issue summary",
       totalRuns: kind === "scheduled" ? 48 : 7,
       ...(kind === "scheduled"
         ? {

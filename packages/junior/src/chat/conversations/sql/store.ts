@@ -75,11 +75,9 @@ export async function withConversationMutationLock<T>(
 function now(): number {
   return Date.now();
 }
-
 function dateFromMs(ms: number): Date {
   return new Date(ms);
 }
-
 function msFromDate(
   value: Date | string | null | undefined,
 ): number | undefined {
@@ -228,10 +226,10 @@ function destinationUpsertFromDestination(args: {
     metadata: { platform: "local" },
   };
 }
-
+// TODO(v0.145.0): Migrate SQL execution_status from awaiting_resume to paused, then remove this mapping.
 function executionStatusFromValue(value: unknown): ConversationStatus {
+  if (value === "awaiting_resume" || value === "paused") return "paused";
   if (
-    value === "awaiting_resume" ||
     value === "failed" ||
     value === "idle" ||
     value === "pending" ||
@@ -241,16 +239,18 @@ function executionStatusFromValue(value: unknown): ConversationStatus {
   }
   throw new Error("Conversation record execution status is invalid");
 }
+function executionStatusToSql(status: ConversationStatus): ConversationStatus {
+  return (
+    status === "paused" ? "awaiting_resume" : status
+  ) as ConversationStatus;
+}
 
 /** Reconstruct a Slack actor with the linked user name and identity-scoped provider fields. */
 function actorFromIdentityRow(
   identity: IdentityRow | null,
   userDisplayName: string | null,
 ): StoredSlackActor | undefined {
-  if (!identity) {
-    return undefined;
-  }
-  if (identity.provider !== "slack") {
+  if (!identity || identity.provider !== "slack") {
     return undefined;
   }
   const fullName = userDisplayName?.trim()
@@ -899,7 +899,7 @@ export class SqlStore implements ConversationStore {
           conversation.execution.updatedAtMs === undefined
             ? null
             : dateFromMs(conversation.execution.updatedAtMs),
-        executionStatus: conversation.execution.status,
+        executionStatus: executionStatusToSql(conversation.execution.status),
         runId: conversation.execution.runId ?? null,
         lastCheckpointAt:
           conversation.execution.lastCheckpointAtMs === undefined

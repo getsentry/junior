@@ -19,7 +19,6 @@ import {
   startConversationWork,
 } from "@/chat/task-execution/store";
 import { processConversationWork } from "@/chat/task-execution/worker";
-import { deliverReplyTo } from "@/chat/task-execution/reply-delivery";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import {
   buildSlackInboundMessage,
@@ -30,10 +29,10 @@ import { getMessageActorIdentity } from "@/chat/services/message-actor-identity"
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import {
-  failAgentTurnSessionRecord,
-  getAgentTurnSessionRecord,
-  upsertAgentTurnSessionRecord,
-} from "@/chat/state/turn-session";
+  failTurnRecord,
+  getTurnRecord,
+  upsertTurnRecord,
+} from "@/chat/task-execution/turn-cursor";
 import {
   getPersistedThreadState,
   persistThreadStateById,
@@ -65,7 +64,7 @@ interface ProcessQueuedSlackWorkArgs {
   lookupSlackUser?: SlackWorkerOptions["lookupSlackUser"];
   nowMs?: () => number;
   queue: ConversationWorkQueueTestAdapter;
-  resumeAwaitingContinuation?: SlackWorkerOptions["resumeAwaitingContinuation"];
+  runNextPausedTurn?: SlackWorkerOptions["runNextPausedTurn"];
   softYieldAfterMs?: number;
   runtime: SlackWorkerOptions["runtime"];
   state: StateAdapter;
@@ -79,8 +78,7 @@ function processNextQueuedSlackWork(args: ProcessQueuedSlackWorkArgs) {
     run: createSlackConversationWorker({
       getSlackAdapter: args.getSlackAdapter,
       lookupSlackUser: args.lookupSlackUser,
-      resumeAwaitingContinuation:
-        args.resumeAwaitingContinuation ?? (async () => false),
+      runNextPausedTurn: args.runNextPausedTurn ?? (async () => false),
       runtime: args.runtime,
       state: args.state,
     }),
@@ -276,7 +274,6 @@ describe("Slack conversation work execution", () => {
       destination: SLACK_DESTINATION,
       inboundMessageId: "malformed-slack-metadata",
       delivery: "defer" as const,
-      replyDelivery: deliverReplyTo(SLACK_DESTINATION),
       source: "slack" as const,
       createdAtMs: 1_000,
       receivedAtMs: 1_100,
@@ -331,7 +328,7 @@ describe("Slack conversation work execution", () => {
     };
     const worker = createSlackConversationWorker({
       getSlackAdapter: () => slackAdapter,
-      resumeAwaitingContinuation: async () => false,
+      runNextPausedTurn: async () => false,
       runtime: {
         handleNewMention: async () => {
           throw new Error("malformed metadata must not reach the runtime");
@@ -348,14 +345,14 @@ describe("Slack conversation work execution", () => {
         attempt: {
           ack: async () => {},
           conversationId: CONVERSATION_ID,
+          destination: SLACK_DESTINATION,
           drain: async () => [],
           isFinalAttempt: false,
           messages: [malformed],
-          replyDelivery: deliverReplyTo(SLACK_DESTINATION),
         },
         checkIn: async () => true,
         conversationId: CONVERSATION_ID,
-        replyDelivery: deliverReplyTo(SLACK_DESTINATION),
+        destination: SLACK_DESTINATION,
         shouldYield: () => false,
       }),
     ).rejects.toThrow(
@@ -777,7 +774,7 @@ describe("Slack conversation work execution", () => {
     const state = getStateAdapter();
     await state.connect();
     const slackAdapter = createSlackAdapterFixture();
-    const resumeAwaitingContinuation = vi.fn(async () => false);
+    const runNextPausedTurn = vi.fn(async () => false);
 
     await handleSlackWebhookAndFlush({
       request: slackWebhookRequest(
@@ -800,7 +797,7 @@ describe("Slack conversation work execution", () => {
       processNextQueuedSlackWork({
         getSlackAdapter: () => slackAdapter,
         queue,
-        resumeAwaitingContinuation,
+        runNextPausedTurn,
         runtime: {
           handleNewMention: async (_thread, message, hooks) => {
             await hooks.ack?.();
@@ -814,7 +811,7 @@ describe("Slack conversation work execution", () => {
       }),
     ).resolves.toEqual({ status: "completed" });
 
-    expect(resumeAwaitingContinuation).not.toHaveBeenCalled();
+    expect(runNextPausedTurn).not.toHaveBeenCalled();
     expect(calls).toEqual([expect.stringContaining("follow-up")]);
     const work = await getConversationWorkState({
       conversationId: CONVERSATION_ID,
@@ -829,7 +826,7 @@ describe("Slack conversation work execution", () => {
     await state.connect();
     const slackAdapter = createSlackAdapterFixture();
     const calls: string[] = [];
-    const resumeAwaitingContinuation = vi.fn(
+    const runNextPausedTurn = vi.fn(
       async (
         _conversationId: string,
         options: { shouldYield: () => boolean },
@@ -862,7 +859,7 @@ describe("Slack conversation work execution", () => {
         getSlackAdapter: () => slackAdapter,
         nowMs: () => 3_500,
         queue,
-        resumeAwaitingContinuation,
+        runNextPausedTurn,
         runtime: {
           handleNewMention: async (_thread, message, hooks) => {
             await hooks.ack?.();
@@ -883,8 +880,8 @@ describe("Slack conversation work execution", () => {
       }),
     ).resolves.toEqual({ status: "completed" });
 
-    expect(resumeAwaitingContinuation).toHaveBeenCalledOnce();
-    expect(resumeAwaitingContinuation).toHaveBeenCalledWith(CONVERSATION_ID, {
+    expect(runNextPausedTurn).toHaveBeenCalledOnce();
+    expect(runNextPausedTurn).toHaveBeenCalledWith(CONVERSATION_ID, {
       shouldYield: expect.any(Function),
     });
     expect(calls).toEqual([
@@ -1243,12 +1240,11 @@ describe("Slack conversation work execution", () => {
       nowMs: 1_000,
       state,
     });
-    const sessionRecord = await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
+    const sessionRecord = await upsertTurnRecord({
       conversationId: CONVERSATION_ID,
-      sessionId: "turn-invalid-timeout",
+      turnId: "turn-invalid-timeout",
       sliceId: 1,
-      state: "awaiting_resume",
+      state: "paused",
       destination: SLACK_DESTINATION,
       resumeReason: "timeout",
       piMessages: [],
@@ -1260,13 +1256,13 @@ describe("Slack conversation work execution", () => {
         state,
         run: createSlackConversationWorker({
           getSlackAdapter: () => slackAdapter,
-          resumeAwaitingContinuation: async () => {
-            await failAgentTurnSessionRecord({
+          runNextPausedTurn: async () => {
+            await failTurnRecord({
               conversationId: CONVERSATION_ID,
               expectedVersion: sessionRecord.version,
-              sessionId: "turn-invalid-timeout",
+              turnId: "turn-invalid-timeout",
               errorMessage:
-                "Awaiting agent continuation metadata could not be materialized",
+                "Awaiting paused-turn metadata could not be materialized",
             });
             return false;
           },
@@ -1291,11 +1287,10 @@ describe("Slack conversation work execution", () => {
     expect(recovered?.needsRun).toBe(false);
     expect(recovered?.messages).toEqual([]);
     await expect(
-      getAgentTurnSessionRecord(CONVERSATION_ID, "turn-invalid-timeout"),
+      getTurnRecord(CONVERSATION_ID, "turn-invalid-timeout"),
     ).resolves.toMatchObject({
       state: "failed",
-      errorMessage:
-        "Awaiting agent continuation metadata could not be materialized",
+      errorMessage: "Awaiting paused-turn metadata could not be materialized",
     });
   });
 
@@ -1335,7 +1330,7 @@ describe("Slack conversation work execution", () => {
         state,
         run: createSlackConversationWorker({
           getSlackAdapter: () => slackAdapter,
-          resumeAwaitingContinuation: async () => {
+          runNextPausedTurn: async () => {
             observedToken = getSlackClient().token;
             return true;
           },
@@ -1373,12 +1368,11 @@ describe("Slack conversation work execution", () => {
       nowMs: 1_000,
       state,
     });
-    const sessionRecord = await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
+    const sessionRecord = await upsertTurnRecord({
       conversationId: CONVERSATION_ID,
-      sessionId,
+      turnId: sessionId,
       sliceId: 2,
-      state: "awaiting_resume",
+      state: "paused",
       destination: SLACK_DESTINATION,
       resumeReason: "timeout",
       piMessages: [
@@ -1395,7 +1389,6 @@ describe("Slack conversation work execution", () => {
       },
       conversation: {
         schemaVersion: 1,
-        backfill: {},
         compactions: [],
         messages: [
           {
@@ -1411,12 +1404,6 @@ describe("Slack conversation work execution", () => {
         processing: {
           activeTurnId: "turn-newer",
         },
-        stats: {
-          compactedMessageCount: 0,
-          estimatedContextTokens: 0,
-          totalMessageCount: 1,
-          updatedAtMs: 1_000,
-        },
         vision: {
           byFileId: {},
         },
@@ -1429,13 +1416,13 @@ describe("Slack conversation work execution", () => {
         state,
         run: createSlackConversationWorker({
           getSlackAdapter: () => slackAdapter,
-          resumeAwaitingContinuation: async () => {
-            await failAgentTurnSessionRecord({
+          runNextPausedTurn: async () => {
+            await failTurnRecord({
               conversationId: CONVERSATION_ID,
               expectedVersion: sessionRecord.version,
-              sessionId,
+              turnId: sessionId,
               errorMessage:
-                "Awaiting agent continuation was stale before it could run",
+                "Awaiting paused turn was stale before it could run",
             });
             return false;
           },
@@ -1460,10 +1447,10 @@ describe("Slack conversation work execution", () => {
     expect(recovered?.needsRun).toBe(false);
     expect(recovered?.messages).toEqual([]);
     await expect(
-      getAgentTurnSessionRecord(CONVERSATION_ID, sessionId),
+      getTurnRecord(CONVERSATION_ID, sessionId),
     ).resolves.toMatchObject({
       state: "failed",
-      errorMessage: "Awaiting agent continuation was stale before it could run",
+      errorMessage: "Awaiting paused turn was stale before it could run",
     });
   });
 
@@ -2004,7 +1991,7 @@ describe("Slack conversation work execution", () => {
     const persistedState = await getPersistedThreadState(CONVERSATION_ID);
     const conversation = coerceThreadConversationState(persistedState);
     expect(conversation.processing.activeTurnId).toBe(yieldedSessionId);
-    const sessionRecord = await getAgentTurnSessionRecord(
+    const sessionRecord = await getTurnRecord(
       CONVERSATION_ID,
       yieldedSessionId ?? "",
     );

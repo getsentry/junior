@@ -5,8 +5,29 @@ import { juniorDestinations } from "@/db/schema/destinations";
 import { juniorEventTasks } from "@/db/schema/event-tasks";
 import { eventTaskSchema, type EventTask } from "./types";
 
-function parseTask(value: unknown): EventTask {
-  return eventTaskSchema.parse(value);
+type EventTaskRow = {
+  task: unknown;
+  title: string | null;
+};
+
+/** JSON task payload must not carry the SQL-backed title column. */
+function eventTaskJsonPayload(task: EventTask): EventTask {
+  const { title: _title, ...payload } = task;
+  return payload as EventTask;
+}
+
+function parseTask(row: EventTaskRow): EventTask {
+  const raw =
+    row.task && typeof row.task === "object"
+      ? ({ ...(row.task as Record<string, unknown>) } as Record<string, unknown>)
+      : row.task;
+  // Title is SQL-column-backed; ignore any legacy JSON title key.
+  if (raw && typeof raw === "object" && "title" in raw) {
+    delete raw.title;
+  }
+  const payload = eventTaskSchema.parse(raw);
+  const title = row.title?.trim();
+  return title ? { ...payload, title } : payload;
 }
 
 /** Read one event task by id. */
@@ -15,11 +36,11 @@ export async function getEventTask(
   id: string,
 ): Promise<EventTask | undefined> {
   const rows = await db
-    .select({ task: juniorEventTasks.task })
+    .select({ task: juniorEventTasks.task, title: juniorEventTasks.title })
     .from(juniorEventTasks)
     .where(eq(juniorEventTasks.id, id))
     .limit(1);
-  return rows[0] ? parseTask(rows[0].task) : undefined;
+  return rows[0] ? parseTask(rows[0]) : undefined;
 }
 
 /** Create one retry-stable event task or return its existing record. */
@@ -27,7 +48,8 @@ export async function createEventTask(
   db: JuniorDatabase,
   task: EventTask,
 ): Promise<EventTask> {
-  const parsed = eventTaskSchema.parse(task);
+  const parsed = eventTaskSchema.parse(eventTaskJsonPayload(task));
+  const title = task.title?.trim() || null;
   await db
     .insert(juniorEventTasks)
     .values({
@@ -36,10 +58,11 @@ export async function createEventTask(
       namespace: parsed.trigger.namespace,
       identifier: parsed.trigger.identifier,
       createdAtMs: parsed.createdAtMs,
+      title,
       task: parsed,
     })
     .onConflictDoNothing();
-  return (await getEventTask(db, parsed.id)) ?? parsed;
+  return (await getEventTask(db, parsed.id)) ?? { ...parsed, ...(title ? { title } : {}) };
 }
 
 /** Replace an existing event task. */
@@ -47,17 +70,19 @@ export async function saveEventTask(
   db: JuniorDatabase,
   task: EventTask,
 ): Promise<EventTask | undefined> {
-  const parsed = eventTaskSchema.parse(task);
+  const parsed = eventTaskSchema.parse(eventTaskJsonPayload(task));
+  const title = task.title?.trim() || null;
   const rows = await db
     .update(juniorEventTasks)
     .set({
       namespace: parsed.trigger.namespace,
       identifier: parsed.trigger.identifier,
+      title,
       task: parsed,
     })
     .where(eq(juniorEventTasks.id, parsed.id))
-    .returning({ task: juniorEventTasks.task });
-  return rows[0] ? parseTask(rows[0].task) : undefined;
+    .returning({ task: juniorEventTasks.task, title: juniorEventTasks.title });
+  return rows[0] ? parseTask(rows[0]) : undefined;
 }
 
 /** Delete one existing event task. */
@@ -68,8 +93,8 @@ export async function deleteEventTask(
   const rows = await db
     .delete(juniorEventTasks)
     .where(eq(juniorEventTasks.id, id))
-    .returning({ task: juniorEventTasks.task });
-  return rows[0] ? parseTask(rows[0].task) : undefined;
+    .returning({ task: juniorEventTasks.task, title: juniorEventTasks.title });
+  return rows[0] ? parseTask(rows[0]) : undefined;
 }
 
 /** List event tasks in one Slack workspace. */
@@ -78,11 +103,11 @@ export async function listEventTasksForTeam(
   teamId: string,
 ): Promise<EventTask[]> {
   const rows = await db
-    .select({ task: juniorEventTasks.task })
+    .select({ task: juniorEventTasks.task, title: juniorEventTasks.title })
     .from(juniorEventTasks)
     .where(eq(juniorEventTasks.teamId, teamId))
     .orderBy(asc(juniorEventTasks.createdAtMs), asc(juniorEventTasks.id));
-  return rows.map((row) => parseTask(row.task));
+  return rows.map(parseTask);
 }
 
 function viewerSlackIdentities(user: User) {
@@ -120,12 +145,12 @@ export async function listEventTasksCreatedBy(
   );
   if (!ownership) return [];
   const rows = await db
-    .select({ task: juniorEventTasks.task })
+    .select({ task: juniorEventTasks.task, title: juniorEventTasks.title })
     .from(juniorEventTasks)
     .where(ownership)
     .orderBy(desc(juniorEventTasks.createdAtMs), desc(juniorEventTasks.id))
     .limit(limit);
-  return rows.map((row) => parseTask(row.task));
+  return rows.map(parseTask);
 }
 
 /** List event tasks whose current Slack destination is public. */
@@ -136,7 +161,7 @@ export async function listPublicEventTasksForTeams(
 ): Promise<EventTask[]> {
   if (teamIds.length === 0) return [];
   const rows = await db
-    .select({ task: juniorEventTasks.task })
+    .select({ task: juniorEventTasks.task, title: juniorEventTasks.title })
     .from(juniorEventTasks)
     .innerJoin(
       juniorDestinations,
@@ -154,7 +179,7 @@ export async function listPublicEventTasksForTeams(
     )
     .orderBy(desc(juniorEventTasks.createdAtMs), desc(juniorEventTasks.id))
     .limit(limit);
-  return rows.map((row) => parseTask(row.task));
+  return rows.map(parseTask);
 }
 
 /** Find every task matching one normalized resource event. */
@@ -164,7 +189,7 @@ export async function findMatchingEventTasks(
   teamId: string,
 ): Promise<EventTask[]> {
   const rows = await db
-    .select({ task: juniorEventTasks.task })
+    .select({ task: juniorEventTasks.task, title: juniorEventTasks.title })
     .from(juniorEventTasks)
     .where(
       and(
@@ -175,6 +200,6 @@ export async function findMatchingEventTasks(
     )
     .orderBy(asc(juniorEventTasks.createdAtMs), asc(juniorEventTasks.id));
   return rows
-    .map((row) => parseTask(row.task))
+    .map(parseTask)
     .filter((task) => task.trigger.events.includes(event.eventType));
 }

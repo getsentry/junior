@@ -33,6 +33,7 @@ export type {
   ConversationMetricDay,
   ConversationModelUsage,
   ConversationParams,
+  ConversationSourceTask,
   ConversationStatsItem,
   ConversationStatsReport,
   ConversationSummaryReport,
@@ -91,6 +92,8 @@ export {
   taskExecutionStatusSchema,
   taskListSchema,
   taskParamsSchema,
+  taskRunListSchema,
+  taskRunSchema,
   taskSummarySchema,
 } from "./schema/task";
 export type {
@@ -99,6 +102,8 @@ export type {
   TaskExecutionList,
   TaskExecutionStatusDay,
   TaskList,
+  TaskRun,
+  TaskRunList,
   TaskSummary,
 } from "./schema/task";
 export { statSchema, statsReportSchema } from "./schema/stats";

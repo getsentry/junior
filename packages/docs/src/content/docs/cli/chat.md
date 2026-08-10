@@ -12,7 +12,7 @@ related:
   - /operate/observability/
 ---
 
-Use `junior chat` when you want to exercise Junior's agent runtime without sending a Slack message. The command runs from a project that already has `@sentry/junior` installed and uses the same app files, skills, plugins, model settings, and sandbox behavior as a normal agent turn. For a focused validation workflow, use [Local Agent Validation](/contribute/local-agent-validation/).
+Use `junior chat` to test Junior without sending a Slack message. Run the command from a project that has `@sentry/junior` installed. It uses the same app files, skills, plugins, model settings, and sandbox behavior as a normal turn. For a focused test, use [Local Agent Validation](/contribute/local-agent-validation/).
 
 ## Usage
 
@@ -34,13 +34,13 @@ pnpm exec junior chat -p "Summarize this repository"
 | -------------- | -------------------------------------------------- |
 | `-p <message>` | Sends one message, prints the response, and exits. |
 
-Every `junior chat` invocation creates a fresh local conversation. Interactive mode keeps context only while that process is running; `-p` sends one isolated message and exits.
+Each `junior chat` command creates a new local conversation. Interactive mode keeps context only while the process runs. The `-p` option sends one separate message and exits.
 
 ## State and environment
 
 `junior chat` does not require Slack request signing, Slack tokens, or a Slack channel. It still needs the model and tool environment required by the behavior you are testing, such as Vercel OIDC (`vercel env pull`) or `AI_GATEWAY_API_KEY`, plus any plugin provider credentials.
 
-When neither `JUNIOR_STATE_ADAPTER` nor `REDIS_URL` is set, the command uses the in-memory state adapter so a new project can start a local session without Redis. Set `REDIS_URL` when you want local run state stored for diagnostics or to match your deployed app state behavior; the CLI still starts a new conversation on each invocation.
+If `JUNIOR_STATE_ADAPTER` and `REDIS_URL` are not set, the command keeps state in memory. This lets a new project start without Redis. Set `REDIS_URL` to save local run state or to match the deployed app. The CLI still starts a new conversation for each command.
 
 The local actor is the `local-cli` user. When a provider needs user OAuth, the command prints the authorization link, waits for the browser callback, and then continues the same request. Keep the command running while you authorize. The public development URL and local dev server must be reachable for this relay; see [Local Agent Validation](/contribute/local-agent-validation/) for the setup and troubleshooting steps.
 

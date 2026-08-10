@@ -21,7 +21,7 @@ import {
   stripLeadingBotMention,
 } from "@/chat/runtime/thread-context";
 import {
-  getChannelConfigurationServiceById,
+  getLocationConfigurationService,
   getPersistedThreadState,
   mergeArtifactsState,
   persistThreadState,
@@ -36,7 +36,6 @@ import { buildDeterministicTurnId } from "@/chat/runtime/turn";
 import { toConversationMessage } from "@/chat/runtime/conversation-message";
 import {
   markConversationMessage,
-  updateConversationStats,
   upsertConversationMessage,
 } from "@/chat/services/conversation-memory";
 import type { SubscribedReplyDecision } from "@/chat/services/subscribed-reply-policy";
@@ -157,7 +156,6 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
         message,
         text,
       });
-      updateConversationStats(conversation);
       await persistThreadState(thread, {
         conversation,
       });
@@ -177,7 +175,6 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
       });
       clearSkippedTurnIfActive(conversation, message.id);
       conversation.processing.lastCompletedAtMs = completedAtMs;
-      updateConversationStats(conversation);
       await persistThreadState(thread, {
         conversation,
       });
@@ -199,7 +196,6 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
       );
       clearSkippedTurnIfActive(preparedState.conversation, message.id);
       preparedState.conversation.processing.lastCompletedAtMs = completedAtMs;
-      updateConversationStats(preparedState.conversation);
       await persistThreadState(thread, {
         conversation: preparedState.conversation,
       });
@@ -245,7 +241,7 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
   return {
     ...runtime,
     runDispatchTurn: createSlackDispatchTurnRunner({
-      getChannelConfiguration: getChannelConfigurationServiceById,
+      getLocationConfiguration: getLocationConfigurationService,
       getSlackAdapter: options.getSlackAdapter,
       replyToThread,
     }),

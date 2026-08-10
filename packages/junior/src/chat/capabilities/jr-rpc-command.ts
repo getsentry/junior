@@ -1,12 +1,12 @@
 import { Bash, defineCommand } from "just-bash";
-import type { ChannelConfigurationService } from "@/chat/configuration/types";
+import type { LocationConfigurationService } from "@/chat/configuration/types";
 import { logInfo } from "@/chat/logging";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import type { Skill } from "@/chat/skills";
 
 type JrRpcDeps = {
   activeSkill: Skill | null;
-  channelConfiguration?: ChannelConfigurationService;
+  locationConfiguration?: LocationConfigurationService;
   actorId?: string;
   onConfigurationValueChanged?: (
     key: string,
@@ -32,13 +32,13 @@ function commandResult(input: {
   };
 }
 
-function requireChannelConfiguration(
+function requireLocationConfiguration(
   deps: JrRpcDeps,
 ):
-  | { ok: true; configuration: ChannelConfigurationService }
+  | { ok: true; configuration: LocationConfigurationService }
   | { ok: false; result: ReturnType<typeof commandResult> } {
-  if (deps.channelConfiguration) {
-    return { ok: true, configuration: deps.channelConfiguration };
+  if (deps.locationConfiguration) {
+    return { ok: true, configuration: deps.locationConfiguration };
   }
   return {
     ok: false,
@@ -100,7 +100,7 @@ async function handleConfigCommand(
     "jr-rpc config list [--prefix <value>]",
   ].join("\n");
   const subverb = (args[0] ?? "").trim();
-  const configurationResult = requireChannelConfiguration(deps);
+  const configurationResult = requireLocationConfiguration(deps);
   if (!configurationResult.ok) {
     return configurationResult.result;
   }

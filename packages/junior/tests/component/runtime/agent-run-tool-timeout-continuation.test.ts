@@ -211,7 +211,7 @@ vi.mock("@/chat/skills", async (importOriginal) => ({
 
 import { executeAgentRun } from "@/chat/agent";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { getAgentTurnSessionRecord } from "@/chat/state/turn-session";
+import { getTurnRecord } from "@/chat/task-execution/turn-cursor";
 
 const ORIGINAL_STATE_ADAPTER = process.env.JUNIOR_STATE_ADAPTER;
 
@@ -273,12 +273,9 @@ describe("tool timeout continuation composition", () => {
     expect(observations.toolStarted).toBe(true);
     expect(observations.toolAborted).toBe(true);
     expect(suspended.status).toBe("suspended");
-    const suspendedRecord = await getAgentTurnSessionRecord(
-      conversationId,
-      turnId,
-    );
+    const suspendedRecord = await getTurnRecord(conversationId, turnId);
     expect(suspendedRecord).toMatchObject({
-      state: "awaiting_resume",
+      state: "paused",
       resumeReason: "timeout",
     });
     expect(suspendedRecord?.piMessages.at(-1)).toMatchObject({

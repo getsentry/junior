@@ -73,7 +73,7 @@ describe("Slack behavior: finalized thread replies", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C0FINAL:1700006000.000" });
+    const thread = await createTestThread({ id: "slack:C0FINAL:1700006000.000" });
     await slackRuntime.handleNewMention(
       thread,
       createTestMessage({
@@ -123,7 +123,7 @@ describe("Slack behavior: finalized thread replies", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C0FINAL:1700006001.000" });
+    const thread = await createTestThread({ id: "slack:C0FINAL:1700006001.000" });
     await slackRuntime.handleNewMention(
       thread,
       createTestMessage({
@@ -157,7 +157,7 @@ describe("Slack behavior: finalized thread replies", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C0FINAL:1700006005.000" });
+    const thread = await createTestThread({ id: "slack:C0FINAL:1700006005.000" });
     await slackRuntime.handleNewMention(
       thread,
       createTestMessage({
@@ -195,7 +195,7 @@ describe("Slack behavior: finalized thread replies", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C0FINAL:1700006005.000" });
+    const thread = await createTestThread({ id: "slack:C0FINAL:1700006005.000" });
     await slackRuntime.handleNewMention(
       thread,
       createTestMessage({
@@ -234,7 +234,7 @@ describe("Slack behavior: finalized thread replies", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C0FINAL:1700006006.000" });
+    const thread = await createTestThread({ id: "slack:C0FINAL:1700006006.000" });
     await slackRuntime.handleNewMention(
       thread,
       createTestMessage({
@@ -280,7 +280,7 @@ describe("Slack behavior: finalized thread replies", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C0FINAL:1700006007.000" });
+    const thread = await createTestThread({ id: "slack:C0FINAL:1700006007.000" });
     await slackRuntime.handleNewMention(
       thread,
       createTestMessage({

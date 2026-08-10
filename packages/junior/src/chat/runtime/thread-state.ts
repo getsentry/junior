@@ -1,7 +1,9 @@
 import type { Thread } from "chat";
+import type { Destination } from "@sentry/junior-plugin-api";
 import { toOptionalString } from "@/chat/coerce";
-import { createChannelConfigurationService } from "@/chat/configuration/service";
-import type { ChannelConfigurationService } from "@/chat/configuration/types";
+import { createDurableLocationConfigurationService } from "@/chat/configuration/sql";
+import type { LocationConfigurationService } from "@/chat/configuration/types";
+import { getDb } from "@/chat/db";
 import { buildConversationStatePatch } from "@/chat/state/conversation";
 import type { ThreadConversationState } from "@/chat/state/conversation";
 import { persistConversationMessages } from "@/chat/conversations/messages";
@@ -45,6 +47,31 @@ function buildThreadStatePayload(
   return payload;
 }
 
+/**
+ * Merge a payload into thread scratch with Junior's TTL.
+ *
+ * Chat SDK state writes hardcode a 30-day TTL. This boundary owns Junior's
+ * shorter retention policy for the same scratch keys.
+ */
+async function mergePersistedState(
+  key: string,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  if (Object.keys(payload).length === 0) {
+    return;
+  }
+
+  const stateAdapter = getStateAdapter();
+  await stateAdapter.connect();
+  const existing = (await stateAdapter.get<Record<string, unknown>>(key)) ?? {};
+  await stateAdapter.set(
+    key,
+    { ...existing, ...payload },
+    JUNIOR_THREAD_STATE_TTL_MS,
+  );
+}
+
+/** Merge an artifact patch while preserving per-list column mappings. */
 export function mergeArtifactsState(
   artifacts: ThreadArtifactsState,
   patch: Partial<ThreadArtifactsState> | undefined,
@@ -80,16 +107,16 @@ export function getPersistedSandboxState(
   };
 }
 
-/** Persist a thread-state patch through the Chat SDK thread interface. */
+/** Persist a thread-state patch for a Chat thread handle. */
 export async function persistThreadState(
   thread: Thread,
   patch: ThreadStatePatch,
 ): Promise<void> {
   // The visible transcript is durable in SQL, keyed by the conversation id —
   // which is the thread's own id here (its thread-state key), the same way
-  // persistThreadStateById treats its thread id. Sync it at this Chat-SDK
-  // persist boundary so scratch and transcript stay symmetric with the
-  // id-based boundary and never diverge.
+  // persistThreadStateById treats its thread id. Sync it at this persist
+  // boundary so scratch and transcript stay symmetric with the id-based
+  // boundary and never diverge.
   if (patch.conversation) {
     await persistConversationMessages({
       conversation: patch.conversation,
@@ -107,11 +134,16 @@ export async function persistThreadRuntimeState(
   thread: Thread,
   patch: ThreadStatePatch,
 ): Promise<void> {
-  const payload = buildThreadStatePayload(patch);
-  if (Object.keys(payload).length === 0) {
-    return;
+  const threadId =
+    toOptionalString(thread.id) ??
+    toOptionalString((thread as { runId?: unknown }).runId);
+  if (!threadId) {
+    throw new Error("thread id is required to persist runtime scratch");
   }
-  await thread.setState(payload);
+  await mergePersistedState(
+    threadStateKey(threadId),
+    buildThreadStatePayload(patch),
+  );
 }
 
 /** Load the persisted state payload for a thread without requiring a Chat singleton. */
@@ -123,19 +155,6 @@ export async function getPersistedThreadState(
   return (
     (await stateAdapter.get<Record<string, unknown>>(
       threadStateKey(threadId),
-    )) ?? {}
-  );
-}
-
-/** Load the persisted state payload for a channel without constructing a Chat channel. */
-export async function getPersistedChannelState(
-  channelId: string,
-): Promise<Record<string, unknown>> {
-  const stateAdapter = getStateAdapter();
-  await stateAdapter.connect();
-  return (
-    (await stateAdapter.get<Record<string, unknown>>(
-      channelStateKey(channelId),
     )) ?? {}
   );
 }
@@ -155,53 +174,40 @@ export async function persistThreadStateById(
     });
   }
 
-  const payload = buildThreadStatePayload(patch);
-  if (Object.keys(payload).length === 0) {
-    return;
-  }
-
-  const stateAdapter = getStateAdapter();
-  await stateAdapter.connect();
-  const key = threadStateKey(threadId);
-  const existing = (await stateAdapter.get<Record<string, unknown>>(key)) ?? {};
-  await stateAdapter.set(
-    key,
-    { ...existing, ...payload },
-    JUNIOR_THREAD_STATE_TTL_MS,
+  await mergePersistedState(
+    threadStateKey(threadId),
+    buildThreadStatePayload(patch),
   );
 }
 
-export function getChannelConfigurationService(
-  thread: Thread,
-): ChannelConfigurationService {
-  const channel = thread.channel;
-  return createChannelConfigurationService({
-    load: async () => channel.state,
-    save: async (state) => {
-      await channel.setState({
-        configuration: state,
-      });
-    },
-  });
+/** Load legacy Redis-backed channel state during the SQL cutover. */
+async function getLegacyChannelState(
+  channelId: string,
+): Promise<Record<string, unknown>> {
+  const stateAdapter = getStateAdapter();
+  await stateAdapter.connect();
+  return (
+    (await stateAdapter.get<Record<string, unknown>>(
+      channelStateKey(channelId),
+    )) ?? {}
+  );
 }
 
-/** Resolve a channel configuration service by channel id without a Chat thread. */
-export function getChannelConfigurationServiceById(
-  channelId: string,
-): ChannelConfigurationService {
-  return createChannelConfigurationService({
-    load: async () => await getPersistedChannelState(channelId),
-    save: async (state) => {
-      const stateAdapter = getStateAdapter();
-      await stateAdapter.connect();
-      const key = channelStateKey(channelId);
-      const existing =
-        (await stateAdapter.get<Record<string, unknown>>(key)) ?? {};
-      await stateAdapter.set(
-        key,
-        { ...existing, configuration: state },
-        JUNIOR_THREAD_STATE_TTL_MS,
-      );
-    },
+/**
+ * Resolve durable location configuration.
+ *
+ * Slack still reads the old channel-id Redis bag once during cutover.
+ */
+export function getLocationConfigurationService(
+  destination: Destination,
+): LocationConfigurationService {
+  if (destination.platform !== "slack") {
+    throw new Error("Location configuration requires a Slack Location");
+  }
+  return createDurableLocationConfigurationService({
+    destination,
+    db: getDb(),
+    loadLegacy: async () =>
+      await getLegacyChannelState(destination.channelId),
   });
 }

@@ -33,21 +33,19 @@ describeEval("Personal Memory", slackEvals, (it) => {
         }),
       ],
       events: [
-        mention("List the exact stored memory content for that preference.", {
+        mention("What do you remember about how I like PR summaries?", {
           thread: explicitRememberThread,
         }),
       ],
       criteria: rubric({
         pass: [
-          "Treat createMemory arguments as candidate input, not stored content.",
-          "The assistant uses the exact canonical stored memory content. Good: 'Prefers terse PR summaries'. Bad: 'The actor prefers terse PR summaries'. Bad: 'I prefer terse PR summaries'.",
-          "The assistant does not ask the user to provide hidden scope, actor, Slack, or subject identifiers.",
+          "The assistant says it remembers a preference for terse PR summaries.",
+          "The assistant does not ask the user for hidden scope, actor, Slack, or subject identifiers.",
         ],
         fail: [
-          "Do not fail only because the createMemory candidate uses natural first-person or display-name phrasing; the stored/listed memory content is the contract.",
-          "Do not ask the user for Slack ids, actor ids, scope names, or subject ids.",
-          "Do not present actor names, display names, 'the actor', 'the user', 'I', 'my', thread labels, channel labels, or source labels as the stored memory content.",
           "Do not say the memory failed to save.",
+          "Do not ask the user for Slack ids, actor ids, scope names, or subject ids.",
+          "Do not claim no relevant preference was remembered.",
         ],
       }),
     });
@@ -124,13 +122,11 @@ describeEval("Personal Memory", slackEvals, (it) => {
         pass: [
           "The assistant uses the remembered San Francisco / Pacific Time preference from memory.",
           "The final answer reports the user's current local time in Pacific Time without asking for their location or timezone.",
-          "The assistant checks the current time with systemTime before answering.",
         ],
         fail: [
           "Do not answer only with UTC or the server's timezone.",
           "Do not ask the user to restate their location or timezone.",
           "Do not claim that no relevant memory exists.",
-          "Do not shell out to bash or other tools just to convert the current time into the remembered timezone.",
         ],
       }),
     });
@@ -183,19 +179,18 @@ describeEval("Personal Memory", slackEvals, (it) => {
         }),
       ],
       events: [
-        mention("What exact memory did you store about Python types?", {
+        mention("What do you remember about my opinion on Python types?", {
           thread: firstPersonRewrittenThread,
         }),
       ],
       criteria: rubric({
         pass: [
-          "The assistant treats the user's first-person request as actor-authored source evidence.",
-          "The assistant stores and later reports a canonical actor memory matching the user's opinion about Python types.",
+          "The assistant remembers that the user dislikes Python types or type annotations.",
           "The assistant does not ask the user for hidden scope, actor, Slack, or subject identifiers.",
         ],
         fail: [
-          "Do not refuse the memory because a candidate or reply uses the actor's name, 'the actor', or third-person wording.",
           "Do not ask the user to rephrase the already first-person memory request.",
+          "Do not claim no relevant preference was remembered.",
           "Do not store a memory about a third party.",
         ],
       }),

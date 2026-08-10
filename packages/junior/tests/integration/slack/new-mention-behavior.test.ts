@@ -81,7 +81,7 @@ describe("Slack behavior: new mention", () => {
       },
     });
 
-    const thread = createTestThread({
+    const thread = await createTestThread({
       id: "slack:C0BEHAVIOR:1700001234.000",
     });
     const message = createTestMessage({
@@ -125,7 +125,7 @@ describe("Slack behavior: new mention", () => {
       },
     });
 
-    const thread = createTestThread({
+    const thread = await createTestThread({
       id: "slack:C0QUEUED:1700001234.000",
     });
     const queued = createTestMessage({
@@ -159,7 +159,7 @@ describe("Slack behavior: new mention", () => {
     expect(JSON.stringify(fakeReplyCalls[0]?.piMessages)).toContain(
       "first queued request",
     );
-    const conversation = coerceThreadConversationState(thread.getState());
+    const conversation = coerceThreadConversationState(await thread.getState());
     await hydrateConversationMessages({
       conversation,
       conversationId: thread.id,
@@ -217,7 +217,7 @@ describe("Slack behavior: new mention", () => {
       },
     });
 
-    const thread = createTestThread({
+    const thread = await createTestThread({
       id: "slack:C0QUEUEDATTACHMENTS:1700001234.000",
     });
     const queued = createTestMessage({
@@ -287,7 +287,7 @@ describe("Slack behavior: new mention", () => {
       },
     });
 
-    const thread = createTestThread({
+    const thread = await createTestThread({
       id: "slack:C0STATUS:1700002000.000",
     });
     await slackRuntime.handleNewMention(
@@ -325,7 +325,7 @@ describe("Slack behavior: new mention", () => {
       },
     });
 
-    const thread = createTestThread({
+    const thread = await createTestThread({
       id: "slack:C0STATUS:1700003000.000",
     });
     await slackRuntime.handleNewMention(

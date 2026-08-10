@@ -12,11 +12,11 @@ related:
   - /extend/
 ---
 
-Junior is a Slack bot runtime for teams that want company tools available from Slack threads. A Junior app receives Slack events, runs agent turns with configured tools and skills, and posts finalized replies back to the originating thread.
+Junior is a Slack bot for teams that want to use company tools from Slack threads. A Junior app receives Slack events and runs turns with its tools and skills. It posts final replies to the original thread.
 
-## Runtime Shape
+## Main parts
 
-Junior apps are small Hono apps built and deployed with Nitro. `createApp()` owns the public runtime routes, while `juniorNitro()` makes app files and declared plugin packages available in the deployment bundle.
+Junior apps are small Hono apps that use Nitro to build and deploy. `createApp()` owns the public routes. `juniorNitro()` adds app files and declared plugin packages to the deployed app.
 
 | Layer      | What it controls                                                                         |
 | ---------- | ---------------------------------------------------------------------------------------- |
@@ -42,7 +42,7 @@ The recommended first app path is `junior init`, then Slack setup, then Vercel d
 
 ## What to Configure First
 
-Configure only the core runtime before adding provider plugins. That keeps early failures narrow: health route, Slack webhook, queue callback, and one thread reply.
+Set up only the core app before you add provider plugins. This limits early failures to the health route, Slack webhook, queue callback, and one thread reply.
 
 After that baseline works, add one plugin at a time. Each plugin page lists its env vars, auth model, verification request, and failure modes.
 

@@ -11,10 +11,15 @@ import {
   requireSupportedEventTaskTrigger,
 } from "@/chat/event-tasks/tool-support";
 import type { EventTask } from "@/chat/event-tasks/types";
+import { completeText } from "@/chat/pi/client";
 import {
   normalizeEventIdentifier,
   type ResourceEventCatalog,
 } from "@/chat/resource-events/catalog";
+import {
+  resolveTaskTitle,
+  SHORT_TITLE_MAX_LENGTH,
+} from "@/chat/services/short-title";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
@@ -64,6 +69,16 @@ export function createEventTaskTool(
     inputSchema: z
       .object({
         task: z.string().trim().min(1).max(4000),
+        title: z
+          .string()
+          .trim()
+          .min(1)
+          .max(SHORT_TITLE_MAX_LENGTH)
+          .nullable()
+          .describe(
+            "Optional short display title. Omit or use null to generate one from the task instruction.",
+          )
+          .optional(),
         trigger,
         credentialMode: z
           .enum(["creator", "system"])
@@ -77,17 +92,20 @@ export function createEventTaskTool(
     prepareArguments(args) {
       const input = args as {
         task: string;
+        title?: string | null;
         trigger: z.input<typeof trigger>;
         credentialMode?: "creator" | "system" | null;
       };
-      if (
-        input?.credentialMode !== "creator" &&
-        input?.credentialMode !== null
-      ) {
-        return input;
-      }
       const prepared = { ...input };
-      delete prepared.credentialMode;
+      if (prepared.title == null) {
+        delete prepared.title;
+      }
+      if (
+        prepared.credentialMode === "creator" ||
+        prepared.credentialMode === null
+      ) {
+        delete prepared.credentialMode;
+      }
       return prepared;
     },
     outputSchema: eventTaskToolResultSchema,
@@ -112,6 +130,11 @@ export function createEventTaskTool(
         }
         return eventTaskSuccess(existing, catalog);
       }
+      const title = await resolveTaskTitle({
+        completeText,
+        instruction: input.task,
+        title: input.title,
+      });
       const task: EventTask = {
         id,
         destinationVisibility: source.visibility,
@@ -124,6 +147,7 @@ export function createEventTaskTool(
         credentialMode: input.credentialMode ?? "creator",
         destination,
         task: { text: input.task },
+        ...(title ? { title } : {}),
         trigger: {
           namespace: input.trigger.namespace,
           identifier: normalizeEventIdentifier(

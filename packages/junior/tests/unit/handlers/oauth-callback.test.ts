@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { http, HttpResponse } from "msw";
 import { mswServer } from "../../msw/server";
+import { queueSlackApiError } from "../../msw/handlers/slack-api";
 
 const {
   BASE_URL,
@@ -553,6 +554,44 @@ describe("oauth callback handler", () => {
         accessToken: "github-user-token",
         refreshToken: "github-refresh-token",
       }),
+    });
+  });
+
+  it("keeps a successful OAuth connection when identity linking fails", async () => {
+    const stateKey = "oauth-state:github-identity-link-failure";
+    await putStoredState(stateKey, {
+      userId: "U777",
+      provider: "github",
+      actor: { platform: "slack", teamId: "T777", userId: "U777" },
+    });
+
+    configureGitHubOAuthEnv();
+    resolvePluginOAuthAccountMock.mockResolvedValue({
+      id: "12345",
+      handle: "actor",
+      label: "actor",
+    });
+    mockJsonFetch({
+      access_token: "github-user-token",
+      refresh_token: "github-refresh-token",
+      expires_in: 28_800,
+      scope: "",
+    });
+    queueSlackApiError("users.info", { error: "user_not_found" });
+
+    const response = await GET(
+      makeRequest(
+        "https://example.com/api/oauth/callback/github?code=valid-code&state=github-identity-link-failure",
+      ),
+      "github",
+      testWaitUntil,
+      { agentRunner: testAgentRunner },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await getStoredTokens("U777", "github")).toMatchObject({
+      accessToken: "github-user-token",
+      account: { id: "12345", handle: "actor" },
     });
   });
 

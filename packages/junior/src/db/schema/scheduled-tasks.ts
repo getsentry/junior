@@ -14,6 +14,8 @@ export const juniorSchedulerTasks = pgTable(
     nextRunAtMs: bigint("next_run_at_ms", { mode: "number" }),
     runNowAtMs: bigint("run_now_at_ms", { mode: "number" }),
     createdAtMs: bigint("created_at_ms", { mode: "number" }).notNull(),
+    /** Short display title generated from the task instruction. */
+    title: text("title"),
     record: jsonb("record").$type<ScheduledTask>().notNull(),
   },
   (table) => [

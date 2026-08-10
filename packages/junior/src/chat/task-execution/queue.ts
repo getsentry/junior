@@ -1,8 +1,11 @@
 import { z } from "zod";
 
-/** Validate the conversation work hint sent through Vercel Queue. */
+export const CONVERSATION_QUEUE_SCHEMA_VERSION = 2;
+
+/** Validate the v2 conversation work hint sent through Vercel Queue. */
 export const conversationQueueMessageSchema = z
   .object({
+    schemaVersion: z.literal(CONVERSATION_QUEUE_SCHEMA_VERSION),
     conversationId: z.string().trim().min(1),
   })
   .strict();
@@ -50,6 +53,10 @@ export interface ConversationQueueSendResult {
   messageId?: string;
 }
 
+/**
+ * External transport for wake-up hints. Durable work stays in the mailbox;
+ * transports only need to accept one hint and may return a provider message id.
+ */
 export interface ConversationWorkQueue {
   send(
     message: ConversationQueueMessage,

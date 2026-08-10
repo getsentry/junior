@@ -31,7 +31,7 @@ mailbox-backed provider.
 
 - `app/`: composition root only.
 - `ingress/`: source parsing, classification, and routing.
-- `task-execution/`: mailbox, queue, lease, worker, and recovery.
+- `task-execution/`: mailbox, queue, lease, checkpoint, worker, and recovery.
 - `runtime/`: turn orchestration and provider-neutral delivery callbacks.
 - `agent-dispatch/`: durable task and plugin dispatch authority, mailbox
   adaptation, and plugin-facing outcome projection.

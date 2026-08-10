@@ -18,6 +18,7 @@ type TooltipProps = {
   content: ReactNode;
   label?: ReactNode;
   placement?: "above" | "below";
+  triggerClassName?: string;
 };
 
 const VIEWPORT_GAP = 8;
@@ -52,6 +53,7 @@ export function Tooltip({
   content,
   label,
   placement = "above",
+  triggerClassName,
 }: TooltipProps) {
   const tooltipId = useId();
   const rootRef = useRef<Element | null>(null);
@@ -160,7 +162,7 @@ export function Tooltip({
 
   return (
     <span
-      className="inline-flex"
+      className={cn("inline-flex", triggerClassName)}
       ref={rootRef as RefObject<HTMLSpanElement | null>}
     >
       {card}

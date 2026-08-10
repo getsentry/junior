@@ -157,12 +157,12 @@ async function mirrorThreadStateToAdapter(
     await originalSetState(next, options);
     await stateAdapterModule
       .getStateAdapter()
-      .set(`thread-state:${thread.id}`, thread.getState());
+      .set(`thread-state:${thread.id}`, await thread.getState());
   };
 
   await stateAdapterModule
     .getStateAdapter()
-    .set(`thread-state:${thread.id}`, thread.getState());
+    .set(`thread-state:${thread.id}`, await thread.getState());
 }
 
 describe("plugin auth runtime slack integration", () => {
@@ -233,7 +233,7 @@ describe("plugin auth runtime slack integration", () => {
       teamId: "T123",
       channelId: "C0PLUGINBOT",
     };
-    const thread = createTestThread({
+    const thread = await createTestThread({
       id: threadId,
       state: {
         conversation: {

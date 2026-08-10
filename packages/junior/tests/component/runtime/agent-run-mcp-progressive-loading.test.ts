@@ -663,10 +663,12 @@ vi.mock("@/chat/mcp/client", () => {
 
 import { executeAgentRun } from "@/chat/agent";
 import type { AgentRunRequest } from "@/chat/agent/request";
+import { botConfig } from "@/chat/config";
+import { TurnSliceLimitExceededError } from "@/chat/services/turn-limit";
 import {
-  getAgentTurnSessionRecord,
-  upsertAgentTurnSessionRecord,
-} from "@/chat/state/turn-session";
+  getTurnRecord,
+  upsertTurnRecord,
+} from "@/chat/task-execution/turn-cursor";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 
 function finalReply(outcome: Awaited<ReturnType<typeof executeAgentRun>>) {
@@ -827,12 +829,9 @@ describe("executeAgentRun progressive MCP loading", () => {
     expect(agentInitialToolNames[0]).toContain("executeTool");
     expect(agentInitialToolNames[0]).not.toContain("mcp__demo__ping");
 
-    const pausedSessionRecord = await getAgentTurnSessionRecord(
-      "conversation-1",
-      "turn-1",
-    );
+    const pausedSessionRecord = await getTurnRecord("conversation-1", "turn-1");
     expect(pausedSessionRecord).toMatchObject({
-      state: "awaiting_resume",
+      state: "paused",
       resumeReason: "auth",
     });
     expect(pausedSessionRecord?.piMessages.at(-1)).toMatchObject({
@@ -888,12 +887,12 @@ describe("executeAgentRun progressive MCP loading", () => {
 
     // Generation completing is not delivery: the record stays resumable until
     // the destination boundary commits completion after Slack acceptance.
-    const resumedSessionRecord = await getAgentTurnSessionRecord(
+    const resumedSessionRecord = await getTurnRecord(
       "conversation-1",
       "turn-1",
     );
     expect(resumedSessionRecord).toMatchObject({
-      state: "awaiting_resume",
+      state: "paused",
     });
   });
 
@@ -933,10 +932,7 @@ describe("executeAgentRun progressive MCP loading", () => {
 
     // Generation completing is not delivery: the record stays at its running
     // safe boundary until the destination boundary commits completion.
-    const sessionRecord = await getAgentTurnSessionRecord(
-      "conversation-2",
-      "turn-2",
-    );
+    const sessionRecord = await getTurnRecord("conversation-2", "turn-2");
     expect(sessionRecord).toMatchObject({
       state: "running",
     });
@@ -1178,6 +1174,47 @@ describe("executeAgentRun progressive MCP loading", () => {
     expect(listToolsMock).toHaveBeenCalledTimes(1);
   });
 
+  it("preserves the execution-limit error when provider restore pauses for auth", async () => {
+    const conversationId = "conversation-restore-auth-limit";
+    const turnId = "turn-restore-auth-limit";
+    const priorMessages = [
+      {
+        role: "toolResult",
+        toolCallId: "prior-call",
+        toolName: "callMcpTool",
+        isError: false,
+        content: [{ type: "text", text: "pong" }],
+        timestamp: 1,
+        input: {
+          tool_name: "mcp__demo__ping",
+          arguments: { query: "prior" },
+        },
+      },
+    ] as unknown as PiMessage[];
+    await upsertTurnRecord({
+      conversationId,
+      piMessages: priorMessages,
+      resumeReason: "auth",
+      sliceId: botConfig.maxSlicesPerTurn,
+      state: "paused",
+      turnId,
+    });
+
+    const error = await executeAgentRun(
+      makeAgentRunRequest("current follow-up", {
+        conversationId,
+        threadTs: "1712345.0090",
+        turnId,
+      }),
+    ).catch((caught) => caught);
+
+    expect(error).toBeInstanceOf(TurnSliceLimitExceededError);
+    await expect(getTurnRecord(conversationId, turnId)).resolves.toMatchObject({
+      errorMessage: expect.stringContaining("execution limit"),
+      state: "failed",
+    });
+  });
+
   it("adds missing bootstrap context when inferred provider restore pauses before prompt", async () => {
     const priorMessages = [
       {
@@ -1215,12 +1252,12 @@ describe("executeAgentRun progressive MCP loading", () => {
 
     expect(firstError.status).toBe("awaiting_auth");
 
-    const pausedSessionRecord = await getAgentTurnSessionRecord(
+    const pausedSessionRecord = await getTurnRecord(
       "conversation-restore-auth",
       "turn-restore-auth",
     );
     expect(pausedSessionRecord).toMatchObject({
-      state: "awaiting_resume",
+      state: "paused",
       resumeReason: "auth",
     });
     expect(pausedSessionRecord?.turnStartMessageIndex).toBeUndefined();
@@ -1355,12 +1392,11 @@ describe("executeAgentRun progressive MCP loading", () => {
       currentContext,
       currentPrompt,
     ] as PiMessage[];
-    await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
+    await upsertTurnRecord({
       conversationId: "conversation-current-resume",
-      sessionId: "turn-current-resume",
+      turnId: "turn-current-resume",
       sliceId: 2,
-      state: "awaiting_resume",
+      state: "paused",
       piMessages: storedMessages,
       resumeReason: "auth",
       errorMessage: "authorization required",
@@ -1408,10 +1444,9 @@ describe("executeAgentRun progressive MCP loading", () => {
         timestamp: 1,
       },
     ] as PiMessage[];
-    await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
+    await upsertTurnRecord({
       conversationId: "conversation-crash-retry",
-      sessionId: "turn-crash-retry",
+      turnId: "turn-crash-retry",
       sliceId: 1,
       state: "running",
       piMessages: storedRunningMessages,
@@ -1520,12 +1555,9 @@ describe("executeAgentRun progressive MCP loading", () => {
     expect(firstError.status).toBe("awaiting_auth");
     expect(deliverPrivateMessageMock).toHaveBeenCalledTimes(1);
 
-    const pausedSessionRecord = await getAgentTurnSessionRecord(
-      "conversation-4",
-      "turn-4",
-    );
+    const pausedSessionRecord = await getTurnRecord("conversation-4", "turn-4");
     expect(pausedSessionRecord).toMatchObject({
-      state: "awaiting_resume",
+      state: "paused",
       resumeReason: "auth",
     });
 
@@ -1535,12 +1567,12 @@ describe("executeAgentRun progressive MCP loading", () => {
 
     // Generation completing is not delivery: the record stays resumable until
     // the destination boundary commits completion after Slack acceptance.
-    const resumedSessionRecord = await getAgentTurnSessionRecord(
+    const resumedSessionRecord = await getTurnRecord(
       "conversation-4",
       "turn-4",
     );
     expect(resumedSessionRecord).toMatchObject({
-      state: "awaiting_resume",
+      state: "paused",
     });
   });
 
@@ -1590,12 +1622,11 @@ describe("executeAgentRun progressive MCP loading", () => {
       },
     ];
     const expectedResumeMessages = priorMessages.slice(0, 2);
-    await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
+    await upsertTurnRecord({
       conversationId: "conversation-5",
-      sessionId: "turn-5",
+      turnId: "turn-5",
       sliceId: 1,
-      state: "awaiting_resume",
+      state: "paused",
       piMessages: expectedResumeMessages,
       resumeReason: "auth",
     });
@@ -1619,12 +1650,12 @@ describe("executeAgentRun progressive MCP loading", () => {
 
     expect(firstError.status).toBe("awaiting_auth");
 
-    const resumedSessionRecord = await getAgentTurnSessionRecord(
+    const resumedSessionRecord = await getTurnRecord(
       "conversation-5",
       "turn-5",
     );
     expect(resumedSessionRecord).toMatchObject({
-      state: "awaiting_resume",
+      state: "paused",
       sliceId: 2,
       resumedFromSliceId: 1,
       piMessages: expectedResumeMessages,
@@ -1645,12 +1676,9 @@ describe("executeAgentRun progressive MCP loading", () => {
 
     expect(firstError.status).toBe("awaiting_auth");
 
-    const pausedSessionRecord = await getAgentTurnSessionRecord(
-      "conversation-6",
-      "turn-6",
-    );
+    const pausedSessionRecord = await getTurnRecord("conversation-6", "turn-6");
     expect(pausedSessionRecord).toMatchObject({
-      state: "awaiting_resume",
+      state: "paused",
       resumeReason: "auth",
     });
     expect(pausedSessionRecord?.piMessages.at(-1)).toMatchObject({

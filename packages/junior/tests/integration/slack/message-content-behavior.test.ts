@@ -11,7 +11,7 @@ import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import { commitMessages } from "@/chat/conversations/projection";
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
-import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
+import { upsertTurnRecord } from "@/chat/task-execution/turn-cursor";
 import { getConversationEventStore } from "@/chat/db";
 import { botConfig } from "@/chat/config";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
@@ -98,7 +98,9 @@ describe("Slack behavior: message content", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700005000.000" });
+    const thread = await createTestThread({
+      id: "slack:C0BEHAVIOR:1700005000.000",
+    });
     const message = createTestMessage({
       id: "m-content-strip",
       text: "<@U0APP>   please summarize the deploy status",
@@ -133,7 +135,9 @@ describe("Slack behavior: message content", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700005000.500" });
+    const thread = await createTestThread({
+      id: "slack:C0BEHAVIOR:1700005000.500",
+    });
     const message = createTestMessage({
       id: "m-content-link-target",
       text: "<@U0APP> inspect evals.sentry.dev/run/…",
@@ -152,7 +156,7 @@ describe("Slack behavior: message content", () => {
     expect(calls[0]?.prompt).toBe(
       `inspect [evals.sentry.dev/run/…](${fullUrl})`,
     );
-    const conversation = coerceThreadConversationState(thread.getState());
+    const conversation = coerceThreadConversationState(await thread.getState());
     await hydrateConversationMessages({
       conversation,
       conversationId: thread.id,
@@ -180,7 +184,9 @@ describe("Slack behavior: message content", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700005001.000" });
+    const thread = await createTestThread({
+      id: "slack:C0BEHAVIOR:1700005001.000",
+    });
     const message = createTestMessage({
       id: "m-content-preserve",
       text: "<@U0APP> remind me to message <@U0ONCALL> after deploy",
@@ -221,7 +227,9 @@ describe("Slack behavior: message content", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700005002.500" });
+    const thread = await createTestThread({
+      id: "slack:C0BEHAVIOR:1700005002.500",
+    });
     const message = createTestMessage({
       id: "m-content-legacy-attachment",
       text: "<@U0APP>",
@@ -254,6 +262,94 @@ describe("Slack behavior: message content", () => {
     expect(calls[0]?.prompt).toContain("Service: checkout");
   });
 
+  it("includes nested attachment blocks from earlier thread messages", async () => {
+    const calls: CapturedCall[] = [];
+
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        replyExecutor: {
+          agentRunner: {
+            run: async (request) => {
+              const context = flattenAgentRunRequestForTest(request);
+              calls.push({
+                prompt: request.input.messageText,
+                contextConversation: context?.conversationContext,
+              });
+              return completedReply("Review found.");
+            },
+          },
+        },
+      },
+    });
+
+    const thread = await createTestThread({
+      id: "slack:C0BEHAVIOR:1700005002.750",
+    });
+    const reviewMessage = createTestMessage({
+      id: "m-content-nested-blocks",
+      text: "",
+      threadId: thread.id,
+      author: { userId: "U0REVIEWBOT", userName: "reviewbot", isBot: true },
+      raw: {
+        channel: "C0BEHAVIOR",
+        ts: "1700005002.750",
+        thread_ts: "1700005002.750",
+        attachments: [
+          {
+            fallback: "[no preview available]",
+            blocks: [
+              {
+                type: "section",
+                text: { type: "plain_text", text: "Taylor Example" },
+              },
+              {
+                type: "section",
+                text: { type: "plain_text", text: "The app never loaded" },
+              },
+              {
+                type: "actions",
+                elements: [
+                  {
+                    type: "button",
+                    text: { type: "plain_text", text: "Read full review" },
+                    url: "https://example.com/review/123",
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    });
+    reviewMessage.metadata.dateSent = new Date(1_700_005_002_750);
+    const currentMessage = createTestMessage({
+      id: "m-content-nested-blocks-request",
+      text: "<@U0APP> who left this review?",
+      isMention: true,
+      threadId: thread.id,
+      author: { userId: "U0TESTER" },
+    });
+    currentMessage.metadata.dateSent = new Date(1_700_005_003_000);
+    thread.recentMessages = [reviewMessage, currentMessage];
+
+    await slackRuntime.handleNewMention(thread, currentMessage, {
+      destination: createTestDestination(thread),
+    });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.contextConversation).toContain("Taylor Example");
+    expect(calls[0]?.contextConversation).toContain("The app never loaded");
+    expect(calls[0]?.contextConversation).toContain(
+      "Read full review (https://example.com/review/123)",
+    );
+    expect(calls[0]?.contextConversation).not.toContain(
+      "[no preview available]",
+    );
+    expect(calls[0]?.contextConversation).not.toContain(
+      "who left this review?",
+    );
+  });
+
   it("does not invoke the agent for self-authored mention messages", async () => {
     let replyCalled = false;
 
@@ -270,7 +366,9 @@ describe("Slack behavior: message content", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700005002.000" });
+    const thread = await createTestThread({
+      id: "slack:C0BEHAVIOR:1700005002.000",
+    });
     const message = createTestMessage({
       id: "m-content-self",
       text: "<@U0APP> do not respond",
@@ -346,10 +444,9 @@ describe("Slack behavior: message content", () => {
                 context?.conversationId &&
                 context.turnId
               ) {
-                await upsertAgentTurnSessionRecord({
-                  modelId: "test/model",
+                await upsertTurnRecord({
                   conversationId: context.conversationId,
-                  sessionId: context.turnId,
+                  turnId: context.turnId,
                   sliceId: 1,
                   state: "completed",
                   piMessages: storedFirstTurnHistory,
@@ -364,7 +461,9 @@ describe("Slack behavior: message content", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700005003.000" });
+    const thread = await createTestThread({
+      id: "slack:C0BEHAVIOR:1700005003.000",
+    });
     const first = createTestMessage({
       id: "m-content-context-1",
       text: "<@U0APP> I need the budget by Friday",
@@ -414,7 +513,9 @@ describe("Slack behavior: message content", () => {
       },
       assistantPiMessage("old answer ".repeat(1_000), 2),
     ] as PiMessage[];
-    const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700005005.000" });
+    const thread = await createTestThread({
+      id: "slack:C0BEHAVIOR:1700005005.000",
+    });
     await commitMessages({
       conversationId: thread.id,
       messages: priorMessages,
@@ -500,7 +601,9 @@ describe("Slack behavior: message content", () => {
         timestamp: 1,
       },
     ] as PiMessage[];
-    const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700005005.500" });
+    const thread = await createTestThread({
+      id: "slack:C0BEHAVIOR:1700005005.500",
+    });
     await getConversationEventStore().replaceHistory(thread.id, {
       createdAtMs: 1,
       data: {
@@ -577,15 +680,16 @@ describe("Slack behavior: message content", () => {
       },
       assistantPiMessage("older answer ".repeat(1_000), 2),
     ] as PiMessage[];
-    const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700005006.000" });
+    const thread = await createTestThread({
+      id: "slack:C0BEHAVIOR:1700005006.000",
+    });
     await commitMessages({
       conversationId: thread.id,
       messages: activeMessages,
     });
-    await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
+    await upsertTurnRecord({
       conversationId: thread.id,
-      sessionId: "turn-active-crashed",
+      turnId: "turn-active-crashed",
       sliceId: 1,
       state: "running",
       piMessages: activeMessages,

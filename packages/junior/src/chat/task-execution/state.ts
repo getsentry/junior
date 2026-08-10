@@ -16,18 +16,12 @@ import { getChatConfig } from "@/chat/config";
 import { parseDestination, sameDestination } from "@/chat/destination";
 import { parseStoredSlackActor, type StoredSlackActor } from "@/chat/actor";
 import {
-  deliverReplyTo,
-  replyDeliverySchema,
-  sameReplyDelivery,
-  type ReplyDelivery,
-} from "@/chat/task-execution/reply-delivery";
-import {
   getDefaultRedisStateAdapterFor,
   getStateAdapter,
 } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 
-const CONVERSATION_PREFIX = "junior:conversation";
+const CONVERSATION_PREFIX = "junior:conversation:v2";
 const CONVERSATION_SCHEMA_VERSION = 2;
 const CONVERSATION_ACTIVITY_INDEX_MAX_LENGTH = 10_000;
 const CONVERSATION_INDEX_LOCK_TTL_MS = 10_000;
@@ -81,7 +75,7 @@ const inboundMessageSourceSchema = z.enum([
 export type Source = z.output<typeof inboundMessageSourceSchema>;
 
 export type ExecutionStatus =
-  | "awaiting_resume"
+  | "paused"
   | "failed"
   | "idle"
   | "pending"
@@ -120,7 +114,6 @@ export const inboundMessageSchema = z
     injectedAtMs: z.number().finite().optional(),
     input: agentInputSchema,
     receivedAtMs: z.number().finite(),
-    replyDelivery: replyDeliverySchema,
     source: inboundMessageSourceSchema,
   })
   .strict();
@@ -143,7 +136,6 @@ export interface ConversationExecution {
   lease?: Lease;
   pendingCount: number;
   pendingMessages: InboundMessage[];
-  replyDelivery?: ReplyDelivery;
   runId?: string;
   status: ExecutionStatus;
   updatedAtMs?: number;
@@ -321,8 +313,10 @@ function normalizeSource(value: unknown): Source | undefined {
 }
 
 function normalizeExecutionStatus(value: unknown): ExecutionStatus | undefined {
+  if (value === "paused") {
+    return value;
+  }
   if (
-    value === "awaiting_resume" ||
     value === "failed" ||
     value === "idle" ||
     value === "pending" ||
@@ -333,32 +327,8 @@ function normalizeExecutionStatus(value: unknown): ExecutionStatus | undefined {
   return undefined;
 }
 
-function normalizeMessage(
-  value: unknown,
-  schemaVersion: 1 | 2,
-): InboundMessage | undefined {
-  // TODO(v0.110.0): Remove schema-v1 mailbox migration after old records expire.
-  let candidate = value;
-  if (isRecord(candidate) && candidate.replyDelivery === undefined) {
-    const destination = parseDestination(candidate.destination);
-    if (destination) {
-      candidate = {
-        ...candidate,
-        replyDelivery: deliverReplyTo(destination),
-      };
-    }
-  }
-  if (
-    schemaVersion === 1 &&
-    isRecord(candidate) &&
-    candidate.delivery === undefined
-  ) {
-    candidate = {
-      ...candidate,
-      delivery: "defer",
-    };
-  }
-  const parsed = inboundMessageSchema.safeParse(candidate);
+function normalizeMessage(value: unknown): InboundMessage | undefined {
+  const parsed = inboundMessageSchema.safeParse(value);
   return parsed.success ? parsed.data : undefined;
 }
 
@@ -399,16 +369,10 @@ function normalizeLease(value: unknown): Lease | undefined {
   };
 }
 
-/**
- * Decode schema-v1 execution state and repair idle records that still own work.
- *
- * Pending messages or leases must keep active-index membership so heartbeat can
- * recover them even if an older writer persisted an inconsistent status.
- */
+/** Decode execution state and repair idle records that still own work. */
 function normalizeExecution(
   conversationId: string,
   value: unknown,
-  schemaVersion: 1 | 2,
 ): ConversationExecution | undefined {
   if (!isRecord(value)) {
     return undefined;
@@ -420,7 +384,7 @@ function normalizeExecution(
   const pendingMessages: InboundMessage[] = [];
   if (Array.isArray(value.pendingMessages)) {
     for (const rawMessage of value.pendingMessages) {
-      const message = normalizeMessage(rawMessage, schemaVersion);
+      const message = normalizeMessage(rawMessage);
       if (!message || message.conversationId !== conversationId) {
         return undefined;
       }
@@ -440,13 +404,6 @@ function normalizeExecution(
     : [];
 
   const lease = normalizeLease(value.lease);
-  const replyDelivery =
-    value.replyDelivery === undefined
-      ? undefined
-      : replyDeliverySchema.safeParse(value.replyDelivery);
-  if (replyDelivery && !replyDelivery.success) {
-    return undefined;
-  }
   const normalizedStatus =
     status === "idle" && lease
       ? "running"
@@ -462,7 +419,6 @@ function normalizeExecution(
     ]),
     pendingCount: pendingMessages.length,
     pendingMessages,
-    ...(replyDelivery?.success ? { replyDelivery: replyDelivery.data } : {}),
     lease,
     lastCheckpointAtMs: toOptionalNumber(value.lastCheckpointAtMs),
     lastEnqueuedAtMs: toOptionalNumber(value.lastEnqueuedAtMs),
@@ -473,30 +429,19 @@ function normalizeExecution(
   };
 }
 
-/**
- * Decode current conversation records and migrate schema-v1 mailbox delivery.
- */
+/** Decode current conversation records. */
 function normalizeConversation(
   conversationId: string,
   value: unknown,
 ): Conversation | undefined {
-  if (
-    !isRecord(value) ||
-    (value.schemaVersion !== 1 &&
-      value.schemaVersion !== CONVERSATION_SCHEMA_VERSION)
-  ) {
+  if (!isRecord(value) || value.schemaVersion !== CONVERSATION_SCHEMA_VERSION) {
     return undefined;
   }
-  const schemaVersion = value.schemaVersion;
   const storedConversationId = toOptionalString(value.conversationId);
   const createdAtMs = toOptionalNumber(value.createdAtMs);
   const lastActivityAtMs = toOptionalNumber(value.lastActivityAtMs);
   const updatedAtMs = toOptionalNumber(value.updatedAtMs);
-  const execution = normalizeExecution(
-    conversationId,
-    value.execution,
-    schemaVersion,
-  );
+  const execution = normalizeExecution(conversationId, value.execution);
   const destination =
     value.destination === undefined
       ? undefined
@@ -1058,19 +1003,6 @@ function assertSameOptionalConversationDestination(args: {
   );
 }
 
-function assertSameReplyDelivery(args: {
-  conversationId: string;
-  current: ReplyDelivery | undefined;
-  next: ReplyDelivery;
-}): void {
-  if (!args.current || sameReplyDelivery(args.current, args.next)) {
-    return;
-  }
-  throw new Error(
-    `Conversation reply delivery changed for ${args.conversationId}`,
-  );
-}
-
 function conversationWorkState(
   conversation: Conversation,
 ): ConversationWorkState {
@@ -1190,13 +1122,11 @@ export async function appendInboundMessage(args: {
       }
 
       const status =
-        current.execution.status === "awaiting_resume"
-          ? "awaiting_resume"
-          : current.execution.lease && current.execution.status === "running"
-            ? "running"
-            : current.execution.lease
-              ? "awaiting_resume"
-              : "pending";
+        current.execution.lease && current.execution.status === "running"
+          ? "running"
+          : current.execution.lease
+            ? "paused"
+            : "pending";
       const next: Conversation = {
         ...current,
         destination: current.destination ?? args.message.destination,
@@ -1252,7 +1182,7 @@ export async function requestConversationWork(args: {
         destination: args.destination,
         nowMs,
       });
-    const status = current.execution.lease ? "awaiting_resume" : "pending";
+    const status = current.execution.lease ? "paused" : "pending";
     await writeConversation(
       state,
       lock,
@@ -1501,10 +1431,7 @@ export async function startConversationWork(args: {
         {
           ...current.execution,
           lease,
-          status:
-            current.execution.status === "awaiting_resume"
-              ? "awaiting_resume"
-              : "running",
+          status: current.execution.status === "paused" ? "paused" : "running",
           runId: current.execution.runId ?? randomUUID(),
           lastEnqueuedAtMs: undefined,
           retryCount: startsNewRun ? 0 : current.execution.retryCount,
@@ -1681,12 +1608,11 @@ export async function ackMessages(args: {
 }
 
 /** Mark the leased conversation as needing another queue-delivered slice. */
-export async function requestConversationContinuation(args: {
+export async function requestAnotherSlice(args: {
   conversationId: string;
   destination?: Destination;
   leaseToken: string;
   nowMs?: number;
-  replyDelivery: ReplyDelivery;
   state?: StateAdapter;
 }): Promise<boolean> {
   const nowMs = args.nowMs ?? now();
@@ -1700,15 +1626,6 @@ export async function requestConversationContinuation(args: {
       current: current.destination,
       next: args.destination,
     });
-    // A paused turn keeps its delivery until it finishes. After resume starts
-    // (status is running again), a later pause may choose different delivery.
-    if (current.execution.status === "awaiting_resume") {
-      assertSameReplyDelivery({
-        conversationId: args.conversationId,
-        current: current.execution.replyDelivery,
-        next: args.replyDelivery,
-      });
-    }
     await writeConversation(
       state,
       lock,
@@ -1716,8 +1633,7 @@ export async function requestConversationContinuation(args: {
         current,
         {
           ...current.execution,
-          replyDelivery: args.replyDelivery,
-          status: "awaiting_resume",
+          status: "paused",
         },
         nowMs,
       ),
@@ -1739,12 +1655,10 @@ export async function beginConversationResume(args: {
     if (
       !current ||
       current.execution.lease?.token !== args.leaseToken ||
-      current.execution.status !== "awaiting_resume"
+      current.execution.status !== "paused"
     ) {
       return false;
     }
-    // Keep replyDelivery until the resumed turn completes or dead-letters. If
-    // the worker dies after this write, lease recovery still knows how to reply.
     await writeConversation(
       state,
       lock,
@@ -1821,7 +1735,7 @@ export async function recordConversationRetry(args: {
           retryCount: count,
           pendingMessages: stopped ? [] : current.execution.pendingMessages,
           runId: stopped ? undefined : current.execution.runId,
-          status: stopped ? "failed" : "awaiting_resume",
+          status: stopped ? "failed" : "paused",
         },
         nowMs,
       ),
@@ -1845,7 +1759,7 @@ export async function completeConversationWork(args: {
       return "lost_lease";
     }
     const hasPending = pendingMessages(current).length > 0;
-    const needsRun = current.execution.status === "awaiting_resume";
+    const needsRun = current.execution.status === "paused";
     const runnable = needsRun || hasPending;
     await writeConversation(
       state,
@@ -1855,11 +1769,7 @@ export async function completeConversationWork(args: {
         {
           ...current.execution,
           lease: undefined,
-          status: needsRun
-            ? "awaiting_resume"
-            : hasPending
-              ? "pending"
-              : "idle",
+          status: needsRun ? "paused" : hasPending ? "pending" : "idle",
           lastProgressAtMs:
             args.madeProgress === false
               ? current.execution.lastProgressAtMs
@@ -1868,7 +1778,7 @@ export async function completeConversationWork(args: {
             runnable || args.madeProgress === false
               ? current.execution.retryCount
               : 0,
-          replyDelivery: needsRun ? current.execution.replyDelivery : undefined,          runId: runnable ? current.execution.runId : undefined,
+          runId: runnable ? current.execution.runId : undefined,
         },
         nowMs,
       ),
@@ -2001,7 +1911,6 @@ export async function deadLetterAttempt(args: {
         {
           ...current.execution,
           lease: undefined,
-          replyDelivery: undefined,
           status: runnable ? "pending" : "failed",
           runId: runnable ? current.execution.runId : undefined,
         },
@@ -2041,7 +1950,7 @@ export async function clearExpiredConversationLease(args: {
           retryCount,
           pendingMessages: stopped ? [] : current.execution.pendingMessages,
           runId: stopped ? undefined : current.execution.runId,
-          status: stopped ? "failed" : "awaiting_resume",
+          status: stopped ? "failed" : "paused",
         },
         nowMs,
       ),

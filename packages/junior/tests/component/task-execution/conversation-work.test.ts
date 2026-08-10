@@ -1,15 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { StateAdapter } from "chat";
-import { scheduleAgentContinue } from "@/chat/services/agent-continue";
+import { wakePausedTurn } from "@/chat/task-execution/turn-wake";
 import { registerLogRecordSink, type EmittedLogRecord } from "@/chat/logging";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
 import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
 import {
   appendAndEnqueueInboundMessage,
   appendInboundMessage,
-  beginConversationResume,
   checkInConversationWork,
-  clearExpiredConversationLease,
   CONVERSATION_ACTIVE_INDEX_KEY,
   CONVERSATION_BY_ACTIVITY_INDEX_KEY,
   completeConversationWork,
@@ -17,14 +15,13 @@ import {
   CONVERSATION_WORK_MAX_DELIVERY_ATTEMPTS,
   CONVERSATION_WORK_MAX_RETRIES,
   countPendingConversationMessages,
-  deadLetterAttempt,
   drainConversationMailbox,
   getConversationWorkState,
   listActiveConversationIds,
   listConversationsByActivity,
   ackMessages,
   recordConversationActivity,
-  requestConversationContinuation,
+  requestAnotherSlice,
   requestConversationWork,
   releaseConversationWork,
   startConversationWork,
@@ -39,11 +36,6 @@ import {
   processConversationWork,
 } from "@/chat/task-execution/worker";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
-import {
-  deliverReplyTo,
-  requireReplyDestination,
-} from "@/chat/task-execution/reply-delivery";
-import { createVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { closeDb } from "@/chat/db";
 import type { ConversationStore } from "@/chat/conversations/store";
 import {
@@ -70,7 +62,7 @@ const OTHER_SLACK_DESTINATION = {
   teamId: "T123",
   channelId: "C456",
 } as const;
-const CONVERSATION_WORK_STATE_KEY = `junior:conversation:${CONVERSATION_ID}`;
+const CONVERSATION_WORK_STATE_KEY = `junior:conversation:v2:${CONVERSATION_ID}`;
 
 function failingMetadataStore(): ConversationStore {
   return {
@@ -221,7 +213,7 @@ describe("conversation work execution", () => {
     };
     delete legacyMessage.destination;
     const legacyWork = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       conversationId: CONVERSATION_ID,
       createdAtMs: 1_000,
       destination: SLACK_DESTINATION,
@@ -244,40 +236,6 @@ describe("conversation work execution", () => {
     await expect(state.get(CONVERSATION_WORK_STATE_KEY)).resolves.toEqual(
       legacyWork,
     );
-  });
-
-  it("migrates schema-v1 Slack mailbox messages for classification", async () => {
-    const state = getStateAdapter();
-    await state.connect();
-    await appendInboundMessage({
-      message: inboundMessage("legacy-delivery"),
-      nowMs: 1_000,
-      state,
-    });
-    const raw = (await state.get(CONVERSATION_WORK_STATE_KEY)) as {
-      execution: { pendingMessages: Array<Record<string, unknown>> };
-      schemaVersion: number;
-    };
-    raw.schemaVersion = 1;
-    delete raw.execution.pendingMessages[0]?.delivery;
-    await state.set(CONVERSATION_WORK_STATE_KEY, raw);
-    const observed: string[] = [];
-
-    await expect(
-      processConversationWork(conversationQueueMessage(), {
-        queue: createConversationWorkQueueTestAdapter(),
-        run: async (context) => {
-          observed.push(
-            ...context.attempt.messages.map((message) => message.delivery),
-          );
-          await context.attempt.ack();
-          return { status: "completed" };
-        },
-        state,
-      }),
-    ).resolves.toEqual({ status: "completed" });
-
-    expect(observed).toEqual(["defer"]);
   });
 
   it("rejects unknown mailbox delivery without dropping pending work", async () => {
@@ -608,7 +566,7 @@ describe("conversation work execution", () => {
     await state.connect();
     const pendingMessage = inboundMessage("m1");
     await state.set(CONVERSATION_WORK_STATE_KEY, {
-      schemaVersion: 1,
+      schemaVersion: 2,
       conversationId: CONVERSATION_ID,
       createdAtMs: 1_000,
       destination: SLACK_DESTINATION,
@@ -679,7 +637,7 @@ describe("conversation work execution", () => {
     const state = getStateAdapter();
     await state.connect();
     await state.set(CONVERSATION_WORK_STATE_KEY, {
-      schemaVersion: 1,
+      schemaVersion: 2,
       conversationId: CONVERSATION_ID,
       createdAtMs: 1_000,
       destination: SLACK_DESTINATION,
@@ -829,9 +787,7 @@ describe("conversation work execution", () => {
     const records: EmittedLogRecord[] = [];
     const unregister = registerLogRecordSink((record) => records.push(record));
     const run = vi.fn(async (context) => {
-      expect(
-        requireReplyDestination(context.replyDelivery, "test worker"),
-      ).toEqual(SLACK_DESTINATION);
+      expect(context.destination).toEqual(SLACK_DESTINATION);
       await context.attempt.ack();
       return { status: "completed" as const };
     });
@@ -876,21 +832,19 @@ describe("conversation work execution", () => {
     }
 
     await expect(
-      requestConversationContinuation({
+      requestAnotherSlice({
         conversationId: CONVERSATION_ID,
         destination: OTHER_SLACK_DESTINATION,
         leaseToken: lease.leaseToken,
         nowMs: 3_000,
-        replyDelivery: deliverReplyTo(SLACK_DESTINATION),
       }),
     ).rejects.toThrow("Conversation destination changed");
     await expect(
-      requestConversationContinuation({
+      requestAnotherSlice({
         conversationId: CONVERSATION_ID,
         destination: undefined,
         leaseToken: lease.leaseToken,
         nowMs: 3_000,
-        replyDelivery: deliverReplyTo(SLACK_DESTINATION),
       }),
     ).rejects.toThrow("Conversation destination changed");
     await expect(
@@ -898,291 +852,6 @@ describe("conversation work execution", () => {
     ).resolves.toMatchObject({
       destination: SLACK_DESTINATION,
     });
-  });
-
-  it("rejects continuation requests that change reply delivery", async () => {
-    await requestConversationWork({
-      conversationId: CONVERSATION_ID,
-      destination: SLACK_DESTINATION,
-      nowMs: 1_000,
-    });
-    const lease = await startConversationWork({
-      conversationId: CONVERSATION_ID,
-      nowMs: 2_000,
-    });
-    expect(lease.status).toBe("acquired");
-    if (lease.status !== "acquired") {
-      return;
-    }
-
-    await expect(
-      requestConversationContinuation({
-        conversationId: CONVERSATION_ID,
-        destination: SLACK_DESTINATION,
-        leaseToken: lease.leaseToken,
-        nowMs: 3_000,
-        replyDelivery: deliverReplyTo(SLACK_DESTINATION),
-      }),
-    ).resolves.toBe(true);
-    await expect(
-      requestConversationContinuation({
-        conversationId: CONVERSATION_ID,
-        destination: SLACK_DESTINATION,
-        leaseToken: lease.leaseToken,
-        nowMs: 4_000,
-        replyDelivery: deliverReplyTo(OTHER_SLACK_DESTINATION),
-      }),
-    ).rejects.toThrow("Conversation reply delivery changed");
-    await expect(
-      requestConversationContinuation({
-        conversationId: CONVERSATION_ID,
-        destination: undefined,
-        leaseToken: lease.leaseToken,
-        nowMs: 3_000,
-        replyDelivery: deliverReplyTo(SLACK_DESTINATION),
-      }),
-    ).rejects.toThrow("Conversation destination changed");
-    await expect(
-      getConversationWorkState({ conversationId: CONVERSATION_ID }),
-    ).resolves.toMatchObject({
-      destination: SLACK_DESTINATION,
-      execution: {
-        replyDelivery: deliverReplyTo(SLACK_DESTINATION),
-      },
-    });
-  });
-
-  it("allows new reply delivery after a paused turn resumes", async () => {
-    await requestConversationWork({
-      conversationId: CONVERSATION_ID,
-      destination: SLACK_DESTINATION,
-      nowMs: 1_000,
-    });
-    const lease = await startConversationWork({
-      conversationId: CONVERSATION_ID,
-      nowMs: 2_000,
-    });
-    expect(lease.status).toBe("acquired");
-    if (lease.status !== "acquired") {
-      return;
-    }
-    await requestConversationContinuation({
-      conversationId: CONVERSATION_ID,
-        destination: SLACK_DESTINATION,
-      leaseToken: lease.leaseToken,
-      nowMs: 3_000,
-      replyDelivery: deliverReplyTo(SLACK_DESTINATION),
-    });
-
-    await expect(
-      beginConversationResume({
-        conversationId: CONVERSATION_ID,
-        leaseToken: lease.leaseToken,
-        nowMs: 4_000,
-      }),
-    ).resolves.toBe(true);
-    await expect(
-      getConversationWorkState({ conversationId: CONVERSATION_ID }),
-    ).resolves.toMatchObject({
-      execution: {
-        replyDelivery: deliverReplyTo(SLACK_DESTINATION),
-        status: "running",
-      },
-    });
-    await expect(
-      requestConversationContinuation({
-        conversationId: CONVERSATION_ID,
-        destination: SLACK_DESTINATION,
-        leaseToken: lease.leaseToken,
-        nowMs: 5_000,
-        replyDelivery: { type: "conversation" },
-      }),
-    ).resolves.toBe(true);
-  });
-
-  it("keeps paused reply delivery across lease expiry recovery", async () => {
-    await requestConversationWork({
-      conversationId: CONVERSATION_ID,
-      destination: SLACK_DESTINATION,
-      nowMs: 1_000,
-    });
-    const lease = await startConversationWork({
-      conversationId: CONVERSATION_ID,
-      nowMs: 2_000,
-    });
-    expect(lease.status).toBe("acquired");
-    if (lease.status !== "acquired") {
-      return;
-    }
-    await requestConversationContinuation({
-      conversationId: CONVERSATION_ID,
-        destination: SLACK_DESTINATION,
-      leaseToken: lease.leaseToken,
-      nowMs: 3_000,
-      replyDelivery: { type: "conversation" },
-    });
-    await expect(
-      beginConversationResume({
-        conversationId: CONVERSATION_ID,
-        leaseToken: lease.leaseToken,
-        nowMs: 4_000,
-      }),
-    ).resolves.toBe(true);
-
-    await expect(
-      clearExpiredConversationLease({
-        conversationId: CONVERSATION_ID,
-        nowMs: 4_000 + CONVERSATION_WORK_LEASE_TTL_MS,
-      }),
-    ).resolves.toBe("requeued");
-
-    const work = await getConversationWorkState({
-      conversationId: CONVERSATION_ID,
-    });
-    expect(work?.lease).toBeUndefined();
-    expect(work).toMatchObject({
-      execution: {
-        replyDelivery: { type: "conversation" },
-        status: "awaiting_resume",
-      },
-    });
-
-    const attempts: string[] = [];
-    await expect(
-      processConversationWork(conversationQueueMessage(), {
-        queue: createConversationWorkQueueTestAdapter(),
-        run: async (context) => {
-          attempts.push(context.replyDelivery.type);
-          await context.attempt.ack();
-          return { status: "completed" };
-        },
-      }),
-    ).resolves.toEqual({ status: "completed" });
-    expect(attempts).toEqual(["conversation"]);
-  });
-
-  it("clears reply delivery when a paused turn is dead-lettered", async () => {
-    await requestConversationWork({
-      conversationId: CONVERSATION_ID,
-      destination: SLACK_DESTINATION,
-      nowMs: 1_000,
-    });
-    const lease = await startConversationWork({
-      conversationId: CONVERSATION_ID,
-      nowMs: 2_000,
-    });
-    expect(lease.status).toBe("acquired");
-    if (lease.status !== "acquired") {
-      return;
-    }
-    await requestConversationContinuation({
-      conversationId: CONVERSATION_ID,
-        destination: SLACK_DESTINATION,
-      leaseToken: lease.leaseToken,
-      nowMs: 3_000,
-      replyDelivery: deliverReplyTo(SLACK_DESTINATION),
-    });
-    await appendInboundMessage({
-      message: inboundMessage("m1", {
-        replyDelivery: { type: "conversation" },
-      }),
-      nowMs: 4_000,
-    });
-
-    await expect(
-      deadLetterAttempt({
-        conversationId: CONVERSATION_ID,
-        leaseToken: lease.leaseToken,
-        nowMs: 5_000,
-      }),
-    ).resolves.toBe("pending");
-    const work = await getConversationWorkState({
-      conversationId: CONVERSATION_ID,
-    });
-    expect(work?.execution.status).toBe("pending");
-    expect(work?.execution.replyDelivery).toBeUndefined();
-  });
-
-  it("runs different reply delivery in separate attempts", async () => {
-    const queue = createConversationWorkQueueTestAdapter();
-    const deliveries: string[] = [];
-    const drained: string[] = [];
-    await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
-
-    await expect(
-      processConversationWork(conversationQueueMessage(), {
-        queue,
-        run: async (context) => {
-          deliveries.push(context.replyDelivery.type);
-          if (deliveries.length === 1) {
-            await appendInboundMessage({
-              message: inboundMessage("m2", {
-                createdAtMs: 2_000,
-                receivedAtMs: 2_100,
-                replyDelivery: { type: "conversation" },
-              }),
-              nowMs: 2_100,
-            });
-            await context.attempt.drain(async (messages) => {
-              drained.push(
-                ...messages.map((message) => message.inboundMessageId),
-              );
-            });
-          }
-          await context.attempt.ack();
-          return { status: "completed" };
-        },
-      }),
-    ).resolves.toEqual({ status: "completed" });
-
-    expect(deliveries).toEqual(["destination", "conversation"]);
-    expect(drained).toEqual(["m1"]);
-  });
-
-  it("resumes a turn before work with different reply delivery", async () => {
-    const queue = createConversationWorkQueueTestAdapter();
-    await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
-
-    await expect(
-      processConversationWork(conversationQueueMessage(), {
-        queue,
-        run: async (context) => {
-          await context.attempt.ack();
-          return { status: "yielded" };
-        },
-      }),
-    ).resolves.toEqual({ status: "yielded" });
-
-    await appendInboundMessage({
-      message: inboundMessage("m2", {
-        createdAtMs: 2_000,
-        receivedAtMs: 2_100,
-        replyDelivery: { type: "conversation" },
-      }),
-      nowMs: 2_100,
-    });
-
-    const attempts: Array<{ messages: string[]; replyDelivery: string }> = [];
-    await expect(
-      processConversationWork(conversationQueueMessage(), {
-        queue,
-        run: async (context) => {
-          attempts.push({
-            messages: context.attempt.messages.map(
-              (message) => message.inboundMessageId,
-            ),
-            replyDelivery: context.replyDelivery.type,
-          });
-          await context.attempt.ack();
-          return { status: "completed" };
-        },
-      }),
-    ).resolves.toEqual({ status: "completed" });
-
-    expect(attempts).toEqual([
-      { messages: [], replyDelivery: "destination" },
-      { messages: ["m2"], replyDelivery: "conversation" },
-    ]);
   });
 
   it("preserves a requested turn resume when completion races with new work", async () => {
@@ -1199,12 +868,11 @@ describe("conversation work execution", () => {
     if (lease.status !== "acquired") {
       return;
     }
-    await requestConversationContinuation({
+    await requestAnotherSlice({
       conversationId: CONVERSATION_ID,
-        destination: SLACK_DESTINATION,
+      destination: SLACK_DESTINATION,
       leaseToken: lease.leaseToken,
       nowMs: 3_000,
-      replyDelivery: deliverReplyTo(SLACK_DESTINATION),
     });
 
     await expect(
@@ -1219,7 +887,7 @@ describe("conversation work execution", () => {
     });
     expect(work).toMatchObject({
       execution: {
-        status: "awaiting_resume",
+        status: "paused",
       },
     });
     expect(work?.lease).toBeUndefined();
@@ -1242,10 +910,7 @@ describe("conversation work execution", () => {
             currentNowMs = 2_000;
             await requestConversationWork({
               conversationId: context.conversationId,
-              destination: requireReplyDestination(
-                context.replyDelivery,
-                "test worker",
-              ),
+              destination: context.destination,
               nowMs: currentNowMs,
             });
           }
@@ -1279,14 +944,12 @@ describe("conversation work execution", () => {
           await context.attempt.drain(async () => {});
           if (runs === 1) {
             currentNowMs = 2_000;
-            await scheduleAgentContinue(
+            await wakePausedTurn(
               {
                 conversationId: context.conversationId,
-                destination: requireReplyDestination(
-                  context.replyDelivery,
-                  "test worker",
-                ),                expectedVersion: 2,
-                sessionId: "turn-1",
+                destination: context.destination ?? SLACK_DESTINATION,
+                expectedVersion: 2,
+                turnId: "turn-1",
               },
               { queue, nowMs: currentNowMs },
             );
@@ -1321,14 +984,12 @@ describe("conversation work execution", () => {
           await context.attempt.drain(async () => {});
           if (runs === 1) {
             currentNowMs = 2_000;
-            await scheduleAgentContinue(
+            await wakePausedTurn(
               {
                 conversationId: context.conversationId,
-                destination: requireReplyDestination(
-                  context.replyDelivery,
-                  "test worker",
-                ),                expectedVersion: 2,
-                sessionId: "turn-1",
+                destination: context.destination ?? SLACK_DESTINATION,
+                expectedVersion: 2,
+                turnId: "turn-1",
               },
               { queue, nowMs: currentNowMs },
             );
@@ -1372,14 +1033,12 @@ describe("conversation work execution", () => {
           );
           await context.attempt.ack();
           currentNowMs = 2_000;
-          await scheduleAgentContinue(
+          await wakePausedTurn(
             {
               conversationId: context.conversationId,
-              destination: requireReplyDestination(
-                context.replyDelivery,
-                "test worker",
-              ),              expectedVersion: 2,
-              sessionId: "turn-1",
+              destination: context.destination ?? SLACK_DESTINATION,
+              expectedVersion: 2,
+              turnId: "turn-1",
             },
             { queue, nowMs: currentNowMs },
           );
@@ -1489,14 +1148,12 @@ describe("conversation work execution", () => {
         run: async (context) => {
           await context.attempt.drain(async () => {});
           currentNowMs = 2_000;
-          await scheduleAgentContinue(
+          await wakePausedTurn(
             {
               conversationId: context.conversationId,
-              destination: requireReplyDestination(
-                context.replyDelivery,
-                "test worker",
-              ),              expectedVersion: 2,
-              sessionId: "turn-1",
+              destination: context.destination ?? SLACK_DESTINATION,
+              expectedVersion: 2,
+              turnId: "turn-1",
             },
             { queue, nowMs: currentNowMs },
           );
@@ -1584,7 +1241,7 @@ describe("conversation work execution", () => {
     const state = getStateAdapter();
     await state.connect();
     await state.set(CONVERSATION_WORK_STATE_KEY, {
-      schemaVersion: 1,
+      schemaVersion: 2,
       conversationId: CONVERSATION_ID,
       createdAtMs: 1_000,
       destination: SLACK_DESTINATION,
@@ -2099,7 +1756,7 @@ describe("conversation work execution", () => {
       getConversationWorkState({ conversationId: CONVERSATION_ID }),
     ).resolves.toMatchObject({
       execution: {
-        status: "awaiting_resume",
+        status: "paused",
       },
     });
     await expect(
@@ -2158,8 +1815,8 @@ describe("conversation work execution", () => {
       nowMs: 500,
       state,
     });
-    await state.set(`junior:conversation:${unreadableConversationId}`, {
-      schemaVersion: 1,
+    await state.set(`junior:conversation:v2:${unreadableConversationId}`, {
+      schemaVersion: 2,
       conversationId: unreadableConversationId,
       createdAtMs: 500,
       destination: SLACK_DESTINATION,
@@ -2203,7 +1860,7 @@ describe("conversation work execution", () => {
             if (stealLockOnNextRead && key === CONVERSATION_WORK_STATE_KEY) {
               stealLockOnNextRead = false;
               await target.forceReleaseLock(
-                `junior:conversation:mutation:${CONVERSATION_ID}`,
+                `junior:conversation:v2:mutation:${CONVERSATION_ID}`,
               );
             }
             return value;
@@ -2398,14 +2055,12 @@ describe("conversation work execution", () => {
         softYieldAfterMs: 1_000,
         run: async (context) => {
           await context.attempt.ack();
-          await scheduleAgentContinue(
+          await wakePausedTurn(
             {
               conversationId: context.conversationId,
-              destination: requireReplyDestination(
-                context.replyDelivery,
-                "test worker",
-              ),              expectedVersion: 2,
-              sessionId: "turn-1",
+              destination: context.destination ?? SLACK_DESTINATION,
+              expectedVersion: 2,
+              turnId: "turn-1",
             },
             { queue, nowMs: currentNowMs },
           );
@@ -2508,48 +2163,6 @@ describe("conversation work execution", () => {
     expect(queue.queuedMessages()).toEqual([conversationQueueMessage()]);
   });
 
-  it("maps the generic queue port to Vercel Queue send options", async () => {
-    process.env.JUNIOR_SECRET = "conversation-work-secret";
-    const sends: Array<{
-      message: unknown;
-      options: unknown;
-      topic: string;
-    }> = [];
-    const queue = createVercelConversationWorkQueue({
-      topic: "junior_test_work",
-      client: {
-        async send(topic, message, options) {
-          sends.push({ topic, message, options });
-          return { messageId: "msg_123" };
-        },
-      },
-    });
-
-    await expect(
-      queue.send(conversationQueueMessage(), {
-        delayMs: 15_001,
-        idempotencyKey: "idem-1",
-      }),
-    ).resolves.toEqual({ messageId: "msg_123" });
-
-    expect(sends).toEqual([
-      {
-        topic: "junior_test_work",
-        message: expect.objectContaining({
-          conversationId: CONVERSATION_ID,
-          signature: expect.any(String),
-          signatureVersion: "v2",
-          signedAtMs: expect.any(Number),
-        }),
-        options: {
-          delaySeconds: 16,
-          idempotencyKey: "idem-1",
-          retentionSeconds: 3_600,
-        },
-      },
-    ]);
-  });
-
   it("verifies signed Vercel Queue callback payloads", () => {
     process.env.JUNIOR_SECRET = "conversation-work-secret";
     const signedAtMs = 12_345;
@@ -2559,9 +2172,9 @@ describe("conversation work execution", () => {
       signedAtMs,
     );
 
-    expect(verifySignedConversationQueueMessage(signed, signedAtMs)).toEqual({
-      conversationId: CONVERSATION_ID,
-    });
+    expect(verifySignedConversationQueueMessage(signed, signedAtMs)).toEqual(
+      conversationQueueMessage(),
+    );
     expect(
       verifySignedConversationQueueMessage(
         {
@@ -2598,9 +2211,7 @@ describe("conversation work execution", () => {
 
     expect(
       verifySignedConversationQueueMessage(signed, signedAtMs + 330_000),
-    ).toEqual({
-      conversationId: CONVERSATION_ID,
-    });
+    ).toEqual(conversationQueueMessage());
   });
 
   it("processes Vercel Queue payloads through the leased worker", async () => {
@@ -2622,17 +2233,18 @@ describe("conversation work execution", () => {
     expect(injected).toEqual(["m1"]);
   });
 
-  it("rejects malformed Vercel Queue payloads", async () => {
+  it.each([
+    { conversationId: CONVERSATION_ID },
+    { schemaVersion: 1, conversationId: CONVERSATION_ID },
+    { wrong: CONVERSATION_ID },
+  ])("rejects non-v2 Vercel Queue payloads", async (message) => {
     const queue = createConversationWorkQueueTestAdapter();
 
     await expect(
-      processConversationQueueMessage(
-        { wrong: CONVERSATION_ID },
-        {
-          queue,
-          run: async () => ({ status: "completed" }),
-        },
-      ),
+      processConversationQueueMessage(message, {
+        queue,
+        run: async () => ({ status: "completed" }),
+      }),
     ).rejects.toThrow("Conversation queue message is malformed");
   });
 });

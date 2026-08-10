@@ -17,7 +17,7 @@ import {
 import type { PiMessage } from "@/chat/pi/messages";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
-import { persistRunningSessionRecord } from "@/chat/services/turn-session-record";
+import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import {
   getPersistedSandboxState,
   getPersistedThreadState,
@@ -148,16 +148,14 @@ async function persistRunningSessionForFakeReply(
   context: FlatAgentRunRequest,
   piMessages: PiMessage[],
 ): Promise<void> {
-  const conversationId = context.conversationId;
-  const sessionId = context.turnId;
-  await persistRunningSessionRecord({
-    modelId: "fake-local-agent",
-    conversationId,
+  await saveTurnCheckpoint({
+    mode: "running",
+    conversationId: context.conversationId,
     destination: context.destination,
     actor:
       context.actor && "platform" in context.actor ? context.actor : undefined,
     source: context.source,
-    sessionId,
+    turnId: context.turnId,
     sliceId: 1,
     messages: piMessages.slice(0, -1),
     surface: context.surface,
@@ -330,7 +328,7 @@ describe("local agent runner", () => {
     const deliverAuthorizationRequest =
       vi.fn<NonNullable<LocalAgentTurnDeps["authorization"]>["deliver"]>();
     const waitForAuthorization = vi.fn(async () => undefined);
-    const completeDeliveredTurn = vi.fn(async () => undefined);
+    const saveTurnCheckpoint = vi.fn(async () => undefined);
 
     await runLocalAgentTurn(
       {
@@ -373,7 +371,7 @@ describe("local agent runner", () => {
           deliver: deliverAuthorizationRequest,
           wait: waitForAuthorization,
         },
-        completeDeliveredTurn,
+        saveTurnCheckpoint,
         deliverReply: async () => undefined,
       },
     );
@@ -383,7 +381,7 @@ describe("local agent runner", () => {
     expect(requests).toHaveLength(2);
     expect(requests[0]?.turnId).toBe(requests[1]?.turnId);
     expect(requests[0]?.runId).not.toBe(requests[1]?.runId);
-    expect(completeDeliveredTurn).toHaveBeenCalledWith(
+    expect(saveTurnCheckpoint).toHaveBeenCalledWith(
       expect.objectContaining({ sliceId: 2 }),
     );
     expect(requests[0]?.policy?.disabledFeatures).toBeUndefined();
@@ -602,7 +600,7 @@ describe("local agent runner", () => {
           agentRunner: {
             run: async () => completedAgentRun(reply),
           },
-          completeDeliveredTurn: async () => {
+          saveTurnCheckpoint: async () => {
             throw new Error("session-persistence-error-sentinel");
           },
           deliverReply: async () => undefined,
@@ -655,7 +653,7 @@ describe("local agent runner", () => {
               return completedAgentRun(reply);
             },
           },
-          completeDeliveredTurn: async () => {
+          saveTurnCheckpoint: async () => {
             throw new Error(rawError);
           },
           deliverReply: async () => undefined,
@@ -941,6 +939,8 @@ describe("local agent runner", () => {
     );
 
     const state = await getPersistedThreadState(conversationId!);
+    expect(state.conversation).not.toHaveProperty("stats");
+    expect(state.conversation).not.toHaveProperty("backfill");
     const conversation = coerceThreadConversationState(state);
     await hydrateConversationMessages({
       conversation,

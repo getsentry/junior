@@ -26,7 +26,10 @@ import {
 } from "@/chat/ingress/message-changed";
 import { normalizeIncomingSlackThreadId } from "@/chat/ingress/message-router";
 import { isExternalSlackUser } from "@/chat/ingress/workspace-membership";
-import { runWithWorkspaceTeamId } from "@/chat/slack/workspace-context";
+import {
+  getWorkspaceTeamId,
+  runWithWorkspaceTeamId,
+} from "@/chat/slack/workspace-context";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { handleSlashCommand } from "@/chat/ingress/slash-command";
@@ -593,7 +596,12 @@ async function handleInteractivePayload(args: {
     { userId: userId },
     async () => {
       try {
-        await unlinkProvider(userId, provider, args.userTokenStore);
+        await unlinkProvider(
+          userId,
+          provider,
+          args.userTokenStore,
+          getWorkspaceTeamId(),
+        );
       } catch (error) {
         logException(error, "app_home.disconnect_unlink.failed", {
           "app.credential.provider": provider,

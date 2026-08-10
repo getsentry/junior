@@ -35,7 +35,7 @@ describeEval("Event Task Management", slackEvals, (it) => {
       },
       initialEvents: [
         mention(
-          "What kinds of GitHub resource events can I temporarily watch in this thread or use for durable event tasks in this channel? Just show me the available options; do not configure anything yet.",
+          "What GitHub events can you watch for me here, either just in this thread or as something ongoing for the channel? Just list the options—don't set anything up yet.",
         ),
       ],
       criteria: rubric({
@@ -90,7 +90,7 @@ describeEval("Event Task Management", slackEvals, (it) => {
       },
       initialEvents: [
         mention(
-          "$eval-resource-events Create a pull request titled 'Automate review handling'. Whenever a reviewer requests changes, set up an event task that summarizes the requested changes and posts a concrete fix plan in this channel. The event task itself must use system credentials.",
+          "$eval-resource-events Create a pull request titled 'Automate review handling'. Whenever a reviewer requests changes, set up an event task that summarizes the requested changes and posts a concrete fix plan in this channel. Don't use any of my connected credentials for that task.",
         ),
       ],
       criteria: rubric({

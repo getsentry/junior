@@ -21,9 +21,9 @@ import {
 } from "@/chat/state/artifacts";
 import {
   buildConversationContext,
+  estimateConversationContextTokens,
   isHumanConversationMessage,
   normalizeConversationText,
-  updateConversationStats,
   upsertConversationMessage,
 } from "@/chat/services/conversation-memory";
 import {
@@ -31,7 +31,7 @@ import {
   isVisionEnabled,
 } from "@/chat/slack/vision-context";
 import {
-  getChannelConfigurationService,
+  getLocationConfigurationService,
   getPersistedSandboxState,
 } from "@/chat/runtime/thread-state";
 import {
@@ -39,9 +39,8 @@ import {
   persistConversationMessages,
 } from "@/chat/conversations/messages";
 import { persistConversationMessageSummaries } from "@/chat/conversations/message-summaries";
-import type { ChannelConfigurationService } from "@/chat/configuration/types";
-import { appendSlackLegacyAttachmentText } from "@/chat/slack/legacy-attachments";
-import { getSlackMessageText } from "@/chat/slack/message";
+import type { LocationConfigurationService } from "@/chat/configuration/types";
+import { parseContent } from "@/chat/slack/message/content";
 import type {
   PrepareTurnStateInput,
   TurnContext,
@@ -53,7 +52,7 @@ const BACKFILL_MESSAGE_LIMIT = 80;
 export interface PreparedTurnState {
   artifacts: ThreadArtifactsState;
   configuration?: Record<string, unknown>;
-  channelConfiguration?: ChannelConfigurationService;
+  locationConfiguration?: LocationConfigurationService;
   conversation: ThreadConversationState;
   conversationContext?: string;
   sandboxRef?: SandboxRef;
@@ -82,9 +81,7 @@ function hasPendingImageHydration(
 }
 
 function getBackfillText(entry: Message): string | undefined {
-  const text = normalizeConversationText(
-    appendSlackLegacyAttachmentText(getSlackMessageText(entry), entry.raw),
-  );
+  const text = normalizeConversationText(parseContent(entry).text);
   return text || undefined;
 }
 
@@ -99,17 +96,9 @@ async function seedConversationBackfill(
     messageId: string;
     messageCreatedAtMs: number;
   },
-): Promise<void> {
-  if (conversation.backfill.completedAtMs) {
-    return;
-  }
+): Promise<"recent_messages" | "thread_fetch"> {
   if (conversation.messages.length > 0 || conversation.compactions.length > 0) {
-    conversation.backfill = {
-      completedAtMs: Date.now(),
-      source: "recent_messages",
-    };
-    updateConversationStats(conversation);
-    return;
+    return "recent_messages";
   }
 
   const seeded: ConversationMessage[] = [];
@@ -167,11 +156,7 @@ async function seedConversationBackfill(
     upsertConversationMessage(conversation, message);
   }
 
-  conversation.backfill = {
-    completedAtMs: Date.now(),
-    source,
-  };
-  updateConversationStats(conversation);
+  return source;
 }
 
 /** Build the turn-state preparer from injected conversation services. */
@@ -185,16 +170,17 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
     const conversation = coerceThreadConversationState(existingState);
     const conversationId = args.context.threadId ?? args.context.runId;
     await hydrateConversationMessages({ conversation, conversationId });
-    const channelConfiguration =
-      args.channelConfiguration ?? getChannelConfigurationService(args.thread);
-    const configuration = await channelConfiguration.resolveValues();
+    const locationConfiguration =
+      args.locationConfiguration ??
+      getLocationConfigurationService(args.destination);
+    const configuration = await locationConfiguration.resolveValues();
 
-    if (!args.skipBackfill) {
-      await seedConversationBackfill(args.thread, conversation, {
-        messageId: args.message.id,
-        messageCreatedAtMs: args.message.metadata.dateSent.getTime(),
-      });
-    }
+    const backfillSource = args.skipBackfill
+      ? undefined
+      : await seedConversationBackfill(args.thread, conversation, {
+          messageId: args.message.id,
+          messageCreatedAtMs: args.message.metadata.dateSent.getTime(),
+        });
     for (const queued of args.queuedMessages ?? []) {
       const queuedMessage = toConversationMessage({
         entry: queued.message,
@@ -262,14 +248,15 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
     });
 
     setSpanAttributes({
-      "app.backfill_source": conversation.backfill.source ?? "none",
-      "app.context_tokens_estimated": conversation.stats.estimatedContextTokens,
+      "app.backfill_source": backfillSource ?? "none",
+      "app.context_tokens_estimated":
+        estimateConversationContextTokens(conversation),
     });
 
     return {
       artifacts,
       configuration,
-      channelConfiguration,
+      locationConfiguration,
       conversation,
       sandboxRef,
       conversationContext,

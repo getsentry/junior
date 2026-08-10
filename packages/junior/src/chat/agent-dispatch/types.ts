@@ -11,8 +11,8 @@ import type {
   CredentialSystemActor,
 } from "@/chat/credentials/context";
 import type { AgentRunRouting } from "@/chat/agent/request";
-import type { AgentTurnSurface } from "@/chat/state/turn-session";
-import type { ChannelConfigurationService } from "@/chat/configuration/types";
+import type { AgentTurnSurface } from "@/chat/task-execution/checkpoint";
+import type { LocationConfigurationService } from "@/chat/configuration/types";
 
 export type DispatchStatus =
   | "pending"
@@ -80,7 +80,7 @@ export interface DispatchTurnResult {
 /** Dispatch-owned authority supplied to the shared turn runtime. */
 export interface DispatchTurnContext {
   disabledFeatures: readonly ["interactive-auth"];
-  channelConfiguration: ChannelConfigurationService;
+  locationConfiguration: LocationConfigurationService;
   credentialContext: CredentialContext;
   destinationVisibility: DestinationVisibility;
   dispatch: NonNullable<AgentRunRouting["dispatch"]>;

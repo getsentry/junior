@@ -89,6 +89,11 @@ export interface ScheduledTask {
   status: ScheduledTaskStatus;
   statusReason?: string;
   task: ScheduledTaskSpec;
+  /**
+   * Short display title generated from the task instruction.
+   * SQL-backed column; never stored inside the JSON record payload.
+   */
+  title?: string;
   updatedAtMs: number;
 }
 

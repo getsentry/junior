@@ -54,20 +54,32 @@ test("opens a registered plugin page from primary navigation", async ({
   await expect(
     page.getByRole("heading", { name: "What Junior remembers" }),
   ).toBeVisible();
-  const activityRange = page.getByLabel("Memory timeline range");
-  const sevenDays = activityRange.getByRole("button", { name: "7d" });
-  const thirtyDays = activityRange.getByRole("button", { name: "30d" });
-  const ninetyDays = activityRange.getByRole("button", { name: "90d" });
+  const reportingPeriod = page.getByLabel("Reporting period");
+  await expect(reportingPeriod).toHaveCount(1);
+  const sevenDays = reportingPeriod.getByRole("button", { name: "7d" });
+  const thirtyDays = reportingPeriod.getByRole("button", { name: "30d" });
+  const ninetyDays = reportingPeriod.getByRole("button", { name: "90d" });
   await expect(thirtyDays).toHaveAttribute("aria-pressed", "true");
   await sevenDays.click();
   await expect(sevenDays).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    page.getByRole("img", { name: "Memories learned during the last 7 days" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("img", {
+      name: "Memory extraction and recall cost during the last 7 days",
+    }),
+  ).toBeVisible();
   await ninetyDays.click();
   await expect(ninetyDays).toHaveAttribute("aria-pressed", "true");
-  const costRange = page.getByLabel("Memory cost range");
-  await expect(costRange.getByRole("button", { name: "30d" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
+  await expect(
+    page.getByRole("img", { name: "Memories learned during the last 90 days" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("img", {
+      name: "Memory extraction and recall cost during the last 90 days",
+    }),
+  ).toBeVisible();
   await page
     .getByRole("navigation", { name: "Memory navigation" })
     .getByRole("link", { name: "Memories" })
@@ -97,6 +109,7 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
   await page.getByRole("link", { name: "Tasks" }).click();
 
   await expect(page).toHaveURL(`${server.baseURL}/tasks`);
+  await expect(page.getByLabel("Tasks navigation")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Tasks" })).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Activity over time" }),
@@ -104,19 +117,34 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
   await expect(
     page.getByLabel("Task executions during the last 30 days"),
   ).toBeVisible();
+  const reportingPeriod = page.getByLabel("Reporting period");
+  await expect(reportingPeriod).toHaveCount(1);
+  await reportingPeriod.getByRole("button", { name: "7d" }).click();
+  await expect(
+    page.getByLabel("Task executions during the last 7 days"),
+  ).toBeVisible();
+  await expect(page.getByText("2 tasks")).not.toBeVisible();
+  await expect(page.getByText("Weekly project summary")).not.toBeVisible();
+  await page
+    .getByLabel("Tasks navigation")
+    .getByRole("link", { name: "Tasks" })
+    .click();
+  await expect(page).toHaveURL(`${server.baseURL}/tasks/list`);
+  await expect(page.getByRole("heading", { name: "All tasks" })).toBeVisible();
+  await expect(page.getByLabel("Search tasks")).toBeVisible();
   await expect(page.getByText("2 tasks")).toBeVisible();
-  await expect(page.getByText("Send the weekly project summary")).toBeVisible();
-  await expect(page.getByText("Summarize the closed issue")).toBeVisible();
+  await expect(page.getByText("Weekly project summary")).toBeVisible();
+  await expect(page.getByText("Closed issue summary")).toBeVisible();
   await expect(page.getByLabel("Scheduled task")).toBeVisible();
   await expect(page.getByLabel("GitHub event task")).toBeVisible();
   await expect(page.getByText("#project-updates").last()).toBeVisible();
   await expect(page.getByText("Assigned to")).toHaveCount(0);
   await expect(page.getByRole("dialog")).toHaveCount(0);
   const taskDetailsTrigger = page.getByRole("button", {
-    name: "View task details: Send the weekly project summary",
+    name: "View task details: Weekly project summary",
   });
   await taskDetailsTrigger.click();
-  const details = page.getByRole("dialog", { name: "scheduled task" });
+  const details = page.getByRole("dialog", { name: "Weekly project summary" });
   await expect(details).toBeVisible();
   await expect
     .poll(() => page.evaluate(() => document.body.style.overflow))
@@ -143,22 +171,16 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
     .poll(() => page.evaluate(() => document.body.style.overflow))
     .toBe("");
   await expect(taskDetailsTrigger).toBeFocused();
-  await expect(
-    page.getByText("Notify responders when the incident changes"),
-  ).not.toBeVisible();
+  await expect(page.getByText("Incident change alerts")).not.toBeVisible();
   await page.getByRole("button", { name: "event", exact: true }).click();
-  await expect(
-    page.getByText("Send the weekly project summary"),
-  ).not.toBeVisible();
-  await expect(page.getByText("Summarize the closed issue")).toBeVisible();
+  await expect(page.getByText("Weekly project summary")).not.toBeVisible();
+  await expect(page.getByText("Closed issue summary")).toBeVisible();
   await page.getByRole("button", { name: /^Public/ }).click();
-  await expect(
-    page.getByText("Notify responders when the incident changes"),
-  ).toBeVisible();
+  await expect(page.getByText("Incident change alerts")).toBeVisible();
   await expect(page.getByText("#incident-response").last()).toBeVisible();
   await page
     .getByRole("button", {
-      name: "View task details: Notify responders when the incident changes",
+      name: "View task details: Incident change alerts",
     })
     .click();
   const publicDetails = page.getByRole("dialog");
@@ -176,23 +198,49 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
   expect(browserErrors).toEqual([]);
 });
 
+test("lists runs across tasks", async ({ page }) => {
+  const browserErrors = collectBrowserErrors(page);
+  await page.goto(`${server.baseURL}/tasks/runs`);
+
+  await expect(page.getByRole("heading", { name: "Runs" })).toBeVisible();
+  await expect(page.getByLabel("Search runs")).toBeVisible();
+  await expect(page.getByRole("group", { name: "Type" })).toBeVisible();
+  await expect(page.getByRole("group", { name: "Status" })).toBeVisible();
+  await expect(page.getByText("Weekly project summary").first()).toBeVisible();
+  await expect(
+    page.getByText("scheduled", { exact: true }).first(),
+  ).toBeVisible();
+  await expect(
+    page.getByText("completed", { exact: true }).first(),
+  ).toBeVisible();
+  expect(browserErrors).toEqual([]);
+});
+
 test("opens one task's execution history", async ({ page }) => {
   const browserErrors = collectBrowserErrors(page);
-  await page.goto(
-    `${server.baseURL}/tasks/scheduled/scheduled-1/executions`,
-  );
+  await page.goto(`${server.baseURL}/tasks/scheduled/scheduled-1/executions`);
 
   await expect(
-    page.getByRole("heading", { name: "Send the weekly project summary" }),
+    page.getByRole("heading", { name: "Weekly project summary" }),
   ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Executions over time" }),
   ).toBeVisible();
+  const reportingPeriod = page.getByLabel("Reporting period");
+  await expect(reportingPeriod).toHaveCount(1);
+  await reportingPeriod.getByRole("button", { name: "90d" }).click();
+  await expect(
+    page.getByLabel("Task executions during the last 90 days"),
+  ).toBeVisible();
   await expect(
     page.getByRole("link", { name: /Weekly project summary/ }),
   ).toBeVisible();
-  await expect(page.getByText("completed", { exact: true }).first()).toBeVisible();
-  await expect(page.getByText("No conversation", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("completed", { exact: true }).first(),
+  ).toBeVisible();
+  await expect(
+    page.getByText("No conversation", { exact: true }),
+  ).toBeVisible();
   expect(browserErrors).toEqual([]);
 });
 

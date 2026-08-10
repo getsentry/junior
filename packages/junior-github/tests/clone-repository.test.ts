@@ -16,6 +16,25 @@ function context(run: ReturnType<typeof vi.fn>): ToolRegistrationHookContext {
 }
 
 describe("cloneRepository", () => {
+  it("declares clone as a non-destructive open-world read", () => {
+    const tool = createGitHubCloneRepositoryTool(context(vi.fn()));
+
+    expect(tool.annotations).toEqual({
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+      readOnlyHint: true,
+    });
+    expect(
+      tool.describeProposal?.({
+        directory: "junior",
+        repo: "getsentry/junior",
+      }),
+    ).toBe(
+      "Shallow-clone getsentry/junior into the local sandbox at junior for inspection (no GitHub mutation).",
+    );
+  });
+
   it("clones into a new sandbox directory", async () => {
     const signal = new AbortController().signal;
     const run = vi

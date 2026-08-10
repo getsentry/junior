@@ -67,10 +67,9 @@ async function recordCompletedSession(args: {
   conversationId: string;
   sessionId: string;
 }): Promise<void> {
-  const { upsertAgentTurnSessionRecord } =
-    await import("@/chat/state/turn-session");
-  await upsertAgentTurnSessionRecord({
-    modelId: "test/model",
+  const { upsertTurnRecord } =
+    await import("@/chat/task-execution/turn-cursor");
+  await upsertTurnRecord({
     conversationId: args.conversationId,
     destination: {
       ...destination,
@@ -92,7 +91,7 @@ async function recordCompletedSession(args: {
         content: "Done.",
       },
     ]),
-    sessionId: args.sessionId,
+    turnId: args.sessionId,
     sliceId: 1,
     source: createLocalSource(args.conversationId),
     state: "completed",
@@ -151,8 +150,8 @@ describe("plugin background tasks", () => {
     const { setPlugins } = await import("@/chat/plugins/agent-hooks");
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
-    const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
-      await import("@/chat/state/turn-session");
+    const { getTurnRecord, upsertTurnRecord } =
+      await import("@/chat/task-execution/turn-cursor");
     setPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -169,8 +168,7 @@ describe("plugin background tasks", () => {
         },
       }),
     ]);
-    await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
+    await upsertTurnRecord({
       conversationId: runConversationId,
       destination: runDestination,
       piMessages: testPiMessages([
@@ -208,7 +206,7 @@ describe("plugin background tasks", () => {
           content: "Understood.",
         },
       ]),
-      sessionId: runSessionId,
+      turnId: runSessionId,
       sliceId: 1,
       source: runSource,
       actor: {
@@ -221,9 +219,7 @@ describe("plugin background tasks", () => {
       surface: "internal",
       turnStartMessageIndex: 2,
     });
-    expect(
-      await getAgentTurnSessionRecord(runConversationId, runSessionId),
-    ).toBeDefined();
+    expect(await getTurnRecord(runConversationId, runSessionId)).toBeDefined();
 
     await scheduleSessionCompletedPluginTasks(
       { conversationId: runConversationId, sessionId: runSessionId },
@@ -297,8 +293,8 @@ describe("plugin background tasks", () => {
     const { setPlugins } = await import("@/chat/plugins/agent-hooks");
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
-    const { upsertAgentTurnSessionRecord } =
-      await import("@/chat/state/turn-session");
+    const { upsertTurnRecord } =
+      await import("@/chat/task-execution/turn-cursor");
     setPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -332,8 +328,7 @@ describe("plugin background tasks", () => {
       "</current-instruction>",
     ].join("\n");
 
-    await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
+    await upsertTurnRecord({
       conversationId: runConversationId,
       destination: { ...destination, conversationId: runConversationId },
       piMessages: testPiMessages([
@@ -343,7 +338,7 @@ describe("plugin background tasks", () => {
         },
         { role: "assistant", content: "Here are the takeaways." },
       ]),
-      sessionId: runSessionId,
+      turnId: runSessionId,
       sliceId: 1,
       source: runSource,
       actor: {
@@ -421,8 +416,8 @@ describe("plugin background tasks", () => {
     const { setPlugins } = await import("@/chat/plugins/agent-hooks");
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
-    const { upsertAgentTurnSessionRecord } =
-      await import("@/chat/state/turn-session");
+    const { upsertTurnRecord } =
+      await import("@/chat/task-execution/turn-cursor");
     setPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -457,15 +452,14 @@ describe("plugin background tasks", () => {
       },
     ]);
 
-    await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
+    await upsertTurnRecord({
       conversationId: slackConversationId,
       destination: { platform: "slack", teamId, channelId },
       piMessages: testPiMessages([
         { role: "user", content: "Deploy the release now." },
         { role: "assistant", content: "On it." },
       ]),
-      sessionId: slackSessionId,
+      turnId: slackSessionId,
       sliceId: 1,
       source,
       actor: alice,
@@ -533,8 +527,8 @@ describe("plugin background tasks", () => {
     const { setPlugins } = await import("@/chat/plugins/agent-hooks");
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
-    const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
-      await import("@/chat/state/turn-session");
+    const { getTurnRecord, upsertTurnRecord } =
+      await import("@/chat/task-execution/turn-cursor");
     setPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -553,15 +547,14 @@ describe("plugin background tasks", () => {
     ]);
 
     vi.useFakeTimers({ now: completionMs });
-    await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
+    await upsertTurnRecord({
       conversationId: slackConversationId,
       destination: { platform: "slack", teamId, channelId },
       piMessages: testPiMessages([
         { role: "user", content: "Summarize the thread context." },
         { role: "assistant", content: "On it." },
       ]),
-      sessionId: slackSessionId,
+      turnId: slackSessionId,
       sliceId: 1,
       source,
       actor: alice,
@@ -570,7 +563,7 @@ describe("plugin background tasks", () => {
       turnStartMessageIndex: 0,
     });
     expect(
-      await getAgentTurnSessionRecord(slackConversationId, slackSessionId),
+      await getTurnRecord(slackConversationId, slackSessionId),
     ).toMatchObject({ updatedAtMs: completionMs });
 
     vi.setSystemTime(completionMs + 10_000);
@@ -629,8 +622,8 @@ describe("plugin background tasks", () => {
     const { setPlugins } = await import("@/chat/plugins/agent-hooks");
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
-    const { upsertAgentTurnSessionRecord } =
-      await import("@/chat/state/turn-session");
+    const { upsertTurnRecord } =
+      await import("@/chat/task-execution/turn-cursor");
     setPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -648,15 +641,14 @@ describe("plugin background tasks", () => {
       }),
     ]);
 
-    await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
+    await upsertTurnRecord({
       conversationId: runConversationId,
       destination: { ...destination, conversationId: runConversationId },
       piMessages: testPiMessages([
         { role: "user", content: "Run a legacy system task." },
         { role: "assistant", content: "Done." },
       ]),
-      sessionId: runSessionId,
+      turnId: runSessionId,
       sliceId: 1,
       source: runSource,
       state: "completed",
@@ -716,8 +708,8 @@ describe("plugin background tasks", () => {
     const { setPlugins } = await import("@/chat/plugins/agent-hooks");
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
-    const { upsertAgentTurnSessionRecord } =
-      await import("@/chat/state/turn-session");
+    const { upsertTurnRecord } =
+      await import("@/chat/task-execution/turn-cursor");
     const { persistThreadStateById } =
       await import("@/chat/runtime/thread-state");
     const { coerceThreadConversationState } =
@@ -755,15 +747,14 @@ describe("plugin background tasks", () => {
       }),
     });
 
-    await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
+    await upsertTurnRecord({
       conversationId: slackConversationId,
       destination: { platform: "slack", teamId, channelId },
       piMessages: testPiMessages([
         { role: "user", content: "Handle this direct message." },
         { role: "assistant", content: "Sure." },
       ]),
-      sessionId: slackSessionId,
+      turnId: slackSessionId,
       sliceId: 1,
       source,
       actor: alice,

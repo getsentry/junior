@@ -85,6 +85,24 @@ export const conversationAuxiliaryCostsSchema = z
   })
   .strict();
 
+/** Optional reverse link from a task-triggered conversation back to its task. */
+export const conversationSourceTaskSchema = z
+  .object({
+    id: z.string().min(1).optional(),
+    kind: z.enum(["scheduled", "event"]),
+    label: z.string().min(1).optional(),
+    title: z.string().min(1).optional(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (Boolean(value.id) !== Boolean(value.label)) {
+      context.addIssue({
+        code: "custom",
+        message: "sourceTask id and label must both be set or both omitted",
+      });
+    }
+  });
+
 export const conversationSummaryReportSchema = z
   .object({
     displayTitle: z.string(),
@@ -526,6 +544,7 @@ export const conversationDetailReportSchema = conversationSummaryReportSchema
     previousCursor: z.string().min(1).optional(),
     generatedAt: z.string(),
     sentryConversationUrl: z.string().optional(),
+    sourceTask: conversationSourceTaskSchema.optional(),
   })
   .strict()
   .superRefine(validateConversationEvents);
@@ -635,6 +654,9 @@ export type ConversationReportEvent = z.infer<
 >;
 export type ConversationEventHistory = z.infer<
   typeof conversationEventHistorySchema
+>;
+export type ConversationSourceTask = z.infer<
+  typeof conversationSourceTaskSchema
 >;
 export type ConversationDetailReport = z.infer<
   typeof conversationDetailReportSchema

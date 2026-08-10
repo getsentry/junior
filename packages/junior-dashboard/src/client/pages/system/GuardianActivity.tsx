@@ -1,5 +1,6 @@
 import type { GuardianMetricDay } from "@sentry/junior/api/schema";
 
+import { ChartAxisHtmlLabel } from "../../components/charts/ActivityChart";
 import { Tooltip } from "../../components/Tooltip";
 import { Card } from "../../components/layout/Card";
 import { formatCompactNumber, formatCostSummary } from "../../format";
@@ -122,10 +123,11 @@ export function GuardianActivity(props: { days: GuardianMetricDay[] }) {
                 }
                 key={day.date}
                 label={shortDate(day.date)}
+                triggerClassName="h-full min-w-0 flex-1 items-end"
               >
                 <button
                   aria-label={`${shortDate(day.date)}: ${day.allow} allowed, ${day.ask} asked, ${day.deny} denied, ${formatCostSummary({ total: day.costUsd ?? 0 })}`}
-                  className="flex min-w-0 flex-1 flex-col justify-end overflow-hidden rounded-t-sm bg-white/[0.035] focus-visible:outline-1 focus-visible:outline-cyan-300"
+                  className="flex w-full min-w-0 flex-col justify-end overflow-hidden rounded-t-sm bg-white/[0.035] focus-visible:outline-1 focus-visible:outline-cyan-300"
                   style={{ height: `${height}%` }}
                   type="button"
                 >
@@ -152,12 +154,12 @@ export function GuardianActivity(props: { days: GuardianMetricDay[] }) {
             );
           })}
         </div>
-        <div className="relative mt-2 h-4 font-mono text-xs text-dashboard-text-muted">
+        <div className="relative mt-2 h-4">
           {labels.map((index) => {
             const day = props.days[index];
             if (!day) return null;
             return (
-              <span
+              <ChartAxisHtmlLabel
                 className="absolute -translate-x-1/2"
                 key={day.date}
                 style={{
@@ -165,7 +167,7 @@ export function GuardianActivity(props: { days: GuardianMetricDay[] }) {
                 }}
               >
                 {shortDate(day.date)}
-              </span>
+              </ChartAxisHtmlLabel>
             );
           })}
         </div>
