@@ -127,9 +127,10 @@ Pass eval file paths, `-t` filters, and shard options directly after the suite s
   - `trigger-evals-behavioral`, `trigger-evals-integration`, and `trigger-evals-guardian` start one suite
 - Behavioral and integration evals require both gateway and sandbox secrets. Guardian only needs gateway credentials.
 - Adding a trigger label fires immediately; unrelated labels do not.
-- Behavioral path triggers cover domain folders under `evals/{agent,conversation,github,memory,scheduler,sentry}/`, shared harness files, and `packages/junior/src/**`.
-- Integration path triggers cover `evals/integration/**`, the integration config, shared harness files, and `packages/junior/src/**`.
-- Guardian path triggers cover `evals/guardian/**`, the Guardian harness/config, and Guardian policy/reviewer inputs under `packages/junior/src/chat/services/guardian-action-*.ts` and `tool-support/action-review*`.
+- Behavioral path triggers cover domain folders under `evals/{agent,conversation,github,memory,scheduler,sentry}/` and shared harness/config files under `packages/junior-evals/`.
+- Integration path triggers cover `evals/integration/**`, the integration config, and shared harness files under `packages/junior-evals/`.
+- Guardian path triggers cover `evals/guardian/**`, the Guardian harness/config under `packages/junior-evals/`, and `packages/junior/src/chat/services/guardian-action-policy.ts`.
+- Other product source under `packages/junior/src/**` does not auto-run evals; use a `trigger-evals*` label for that.
 - Behavioral shards still fail individual cases under the per-case judge threshold (`0.75`), but the workflow no longer fails the shard job on those case failures alone. Each behavioral shard and the Guardian job publishes its own `vitest-evals` job summary (pass rate, scores, quality misses).
 - After all behavioral shards finish, `behavioral / report` combines results, writes the aggregate job summary, and publishes a `behavioral / score` Check Run. The Check Run title carries the gate line (for example `Eval pass rate 90.2% — floor 80.0%`). When that check publishes, the report step soft-fails so the Check Run owns green/red instead of canned job failure text.
 - The behavioral floor is `EVAL_MIN_PASS_RATE=0.8` (`80%` of cases passed). `vitest-evals@0.16` owns the aggregate gate math; individual case misses are warnings when the floor still passes. Missing shard result files or setup/runtime crashes before results are written remain hard failures on the report job.

@@ -13,13 +13,13 @@ const {
   getOAuthConfigMock,
   startOAuthFlow,
   unlinkProvider,
-  abandonAgentTurnSessionRecord,
+  abandonTurnRecord,
 } = vi.hoisted(() => ({
   formatProviderLabel: vi.fn((provider: string) => provider),
   getOAuthConfigMock: vi.fn(),
   startOAuthFlow: vi.fn(),
   unlinkProvider: vi.fn(),
-  abandonAgentTurnSessionRecord: vi.fn(),
+  abandonTurnRecord: vi.fn(),
 }));
 
 vi.mock("@/chat/oauth-flow", () => ({
@@ -37,8 +37,8 @@ vi.mock("@/chat/credentials/unlink-provider", () => ({
   unlinkProvider,
 }));
 
-vi.mock("@/chat/state/turn-session", () => ({
-  abandonAgentTurnSessionRecord,
+vi.mock("@/chat/task-execution/turn-cursor", () => ({
+  abandonTurnRecord,
 }));
 
 function tokenStore(): UserTokenStore {
@@ -81,7 +81,7 @@ describe("createPluginAuthOrchestration", () => {
     );
     startOAuthFlow.mockReset();
     unlinkProvider.mockReset();
-    abandonAgentTurnSessionRecord.mockReset();
+    abandonTurnRecord.mockReset();
   });
 
   async function expectPluginCredentialFailure(
@@ -350,9 +350,9 @@ describe("createPluginAuthOrchestration", () => {
         sessionId: "run_new",
       }),
     );
-    expect(abandonAgentTurnSessionRecord).toHaveBeenCalledWith({
+    expect(abandonTurnRecord).toHaveBeenCalledWith({
       conversationId: "slack:C123:1700000000.000000",
-      sessionId: "run_old",
+      turnId: "run_old",
       errorMessage:
         "Abandoned by a newer auth-blocked request in the same conversation.",
     });

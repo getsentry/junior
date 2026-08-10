@@ -30,9 +30,11 @@ import {
   summarizeTurns,
   summarizeToolCalls,
   summarizeUsage,
+  taskPath,
   visualStatusForConversation,
 } from "../format";
 import { Button } from "../components/Button";
+import { Tooltip } from "../components/Tooltip";
 import { Card } from "../components/layout/Card";
 import { MetricList, type MetricListItem } from "../components/Metric";
 import {
@@ -355,6 +357,56 @@ function SourceLocation(props: { label: string; sourceUrl?: string }) {
   );
 }
 
+function SourceTask(props: {
+  sourceTask: NonNullable<ConversationDetailReport["sourceTask"]>;
+}) {
+  const kindLabel =
+    props.sourceTask.kind === "scheduled" ? "Scheduled Task" : "Event Task";
+  const label = props.sourceTask.label?.trim();
+  const taskId = props.sourceTask.id?.trim();
+  const title = props.sourceTask.title?.trim();
+  const link = taskId ? (
+    <Link
+      className="text-dashboard-text underline decoration-white/20 underline-offset-2 transition-colors hover:decoration-white/60"
+      to={taskPath(taskId)}
+    >
+      Triggered by {kindLabel}
+    </Link>
+  ) : (
+    <span>Triggered by {kindLabel}</span>
+  );
+  if (!label && !title) return link;
+  return (
+    <Tooltip
+      align="left"
+      content={
+        <span className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
+          {title ? (
+            <>
+              <span>Title</span>
+              <span className="text-dashboard-text">{title}</span>
+            </>
+          ) : null}
+          {label ? (
+            <>
+              <span>Instruction</span>
+              <span className="text-dashboard-text">{label}</span>
+            </>
+          ) : null}
+          {taskId ? (
+            <>
+              <span>ID</span>
+              <span className="break-all text-dashboard-text">{taskId}</span>
+            </>
+          ) : null}
+        </span>
+      }
+    >
+      {link}
+    </Tooltip>
+  );
+}
+
 /** Resolve the model still running an open turn, including mid-turn handoffs. */
 export function liveModelId(
   detail: ConversationDetailReport | undefined,
@@ -406,11 +458,18 @@ function ConversationStats(props: {
   const live =
     (props.detail?.status ?? props.conversation.status) === "active";
   const activeModelId = liveModelId(props.detail);
+  const sourceTask = props.detail?.sourceTask;
   const rawStats: Array<MetricListItem | undefined> = [
     location
       ? {
           content: <SourceLocation label={location} sourceUrl={sourceUrl} />,
           key: "location",
+        }
+      : undefined,
+    sourceTask
+      ? {
+          content: <SourceTask sourceTask={sourceTask} />,
+          key: "source-task",
         }
       : undefined,
     durationLabel !== "none"

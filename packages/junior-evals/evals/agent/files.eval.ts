@@ -23,7 +23,7 @@ describeEval("Coding File Tools", slackEvals, (it) => {
       overrides: imageFixtureOverrides,
       initialEvents: [
         mention(
-          "Use viewImage to inspect /vercel/sandbox/fixtures/workspace-shapes.png, then explain what it shows. Describe the colored shapes and where they are positioned.",
+          "What's in /vercel/sandbox/fixtures/workspace-shapes.png? Describe the colored shapes and where they are.",
         ),
       ],
       criteria: rubric({
@@ -113,7 +113,7 @@ describeEval("Coding File Tools", slackEvals, (it) => {
     await run({
       initialEvents: [
         mention(
-          "I have a TypeScript worker where config.ts defines emergencyMode, but alerts.ts currently receives a mode argument independently. Before we implement anything, recommend whether alerts should import runtime config directly or keep mode as an explicit dependency, and give me the test strategy. Use only this description; no repository inspection is needed.",
+          "I have a TypeScript worker where config.ts defines emergencyMode, but alerts.ts currently receives a mode argument independently. Before we implement anything, recommend whether alerts should import runtime config directly or keep mode as an explicit dependency, and give me the test strategy. I'm looking for a design recommendation first, not a repository review.",
         ),
       ],
       criteria: rubric({

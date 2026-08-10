@@ -1,17 +1,15 @@
-import { useState } from "react";
 import type { TaskExecutionStatusDay } from "@sentry/junior/api/schema";
 import {
   ActivityChartDateLabels,
   ActivityChartGrid,
   ActivityTooltipRows,
+  ChartSvg,
   createActivityChartLayout,
   formatActivityDate,
 } from "../../components/charts/ActivityChart";
+import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { Tooltip } from "../../components/Tooltip";
-import { cn } from "../../styles";
-
-type ChartRange = 7 | 30 | 90;
 
 const series = [
   { color: "#6ee7b7", key: "completed", label: "Completed" },
@@ -22,9 +20,9 @@ const series = [
 /** Render one task's terminal executions stacked by status over a trailing window. */
 export function TaskExecutionStatusChart(props: {
   days: TaskExecutionStatusDay[];
+  range: TimeRangeDays;
 }) {
-  const [range, setRange] = useState<ChartRange>(30);
-  const days = props.days.slice(-range);
+  const days = props.days.slice(-props.range);
   const layout = createActivityChartLayout(220);
   const totals = days.map(
     (day) => day.completed + day.failed + day.blocked,
@@ -36,36 +34,13 @@ export function TaskExecutionStatusChart(props: {
 
   return (
     <Card className="min-h-[15rem] p-4 sm:p-5">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h2 className="m-0 font-display text-xl font-medium text-dashboard-text">
-            Executions over time
-          </h2>
-          <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
-            Terminal runs for this task each day.
-          </p>
-        </div>
-        <div
-          aria-label="Task execution range"
-          className="inline-flex rounded border border-white/[0.08] bg-black/20 p-0.5"
-        >
-          {([7, 30, 90] as const).map((daysOption) => (
-            <button
-              aria-pressed={range === daysOption}
-              className={cn(
-                "cursor-pointer rounded-sm border-0 px-2.5 py-1.5 font-mono text-xs uppercase tracking-[0.1em] transition-colors",
-                range === daysOption
-                  ? "bg-cyan-300/10 text-cyan-100"
-                  : "bg-transparent text-dashboard-text-muted hover:text-dashboard-text",
-              )}
-              key={daysOption}
-              onClick={() => setRange(daysOption)}
-              type="button"
-            >
-              {daysOption}d
-            </button>
-          ))}
-        </div>
+      <div>
+        <h2 className="m-0 font-display text-xl font-medium text-dashboard-text">
+          Executions over time
+        </h2>
+        <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
+          Terminal runs for this task each day.
+        </p>
       </div>
 
       <div
@@ -87,11 +62,10 @@ export function TaskExecutionStatusChart(props: {
       </div>
 
       <div className="relative mt-3 overflow-hidden">
-        <svg
-          aria-label={`Task executions during the last ${range} days`}
-          className="block h-auto min-h-40 w-full"
-          role="img"
-          viewBox={`0 0 ${layout.width} ${layout.height}`}
+        <ChartSvg
+          aria-label={`Task executions during the last ${props.range} days`}
+          className="min-h-40"
+          layout={layout}
         >
           <ActivityChartGrid layout={layout} maximum={maximum} />
           {days.map((day, dayIndex) => {
@@ -150,7 +124,7 @@ export function TaskExecutionStatusChart(props: {
             layout={layout}
             xPosition={(index) => layout.left + index * step + step / 2}
           />
-        </svg>
+        </ChartSvg>
         {!hasExecutions ? (
           <div className="pointer-events-none absolute inset-0 grid place-items-center pt-12 font-mono text-xs text-dashboard-text-muted">
             No task executions in this period.

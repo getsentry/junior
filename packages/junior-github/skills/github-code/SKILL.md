@@ -66,7 +66,13 @@ Unless the user explicitly says not to create a PR, every completed repository e
 4. Resolve the actual default branch.
 5. Reuse and update an existing PR for the branch; otherwise call `github_createPullRequest` with explicit repo, head, base, title, body, and `draft: true` unless the user or repo explicitly requires ready-for-review.
 
-The PR body should explain what changed and why, checks run, and remaining risks or unverified areas. Never include customer data, PII, secrets, or sensitive thread context, especially in public repositories. Re-evaluate its title/body after material follow-up commits. Resolve requested assignee/reviewer handles from evidence; skip unconfirmed identities.
+PR titles use the same conventional form as commits: `<type>(<scope>): <Subject>` or `<type>: <Subject>`. Match the current dominant change, not the latest commit or a stale title.
+
+Write the PR body for a reviewer who knows the product but not this change. Use ASD-STE100 English: short sentences, common words, active voice, and one idea per sentence. Avoid dense academic prose and unnecessary jargon.
+
+Explain what this PR changes and why it matters. Add only context the diff cannot show. Keep the body short by default; add structure only when it helps. Omit empty or `N/A` sections, file-by-file narration, copied commit logs, and redundant diff summaries.
+
+Treat the current title, body, and commit messages as fallible context. After material follow-up commits, re-check the title and rewrite the body against the current diff. Never include customer data, PII, secrets, or sensitive thread context, especially in public repositories. Resolve requested assignee/reviewer handles from evidence; skip unconfirmed identities.
 
 If PR creation is blocked, report the exact failed command/tool call and leave the committed branch intact.
 

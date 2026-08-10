@@ -90,10 +90,7 @@ export function createMcpAuthOrchestration(
     if (!input.conversationId || !input.sessionId || !input.actorId) {
       return undefined;
     }
-    if (
-      !input.recordPendingAuth &&
-      input.interactiveAuthEnabled !== false
-    ) {
+    if (!input.recordPendingAuth && input.interactiveAuthEnabled !== false) {
       throw new Error(
         `Missing pending auth recorder for MCP authorization pause "${plugin.manifest.name}"`,
       );

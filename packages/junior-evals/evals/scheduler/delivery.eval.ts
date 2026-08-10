@@ -16,7 +16,7 @@ describeEval("Scheduled Delivery", slackEvals, (it) => {
       ],
       criteria: rubric({
         pass: [
-          "The normalized session includes a Slack channel message saying standup moved to 10:30 today.",
+          "Junior posts a Slack message saying standup moved to 10:30 today.",
           "The delivered message is the reminder content itself, not a schedule creation confirmation.",
           "The delivered message does not ask for clarification or confirmation.",
         ],
@@ -46,7 +46,7 @@ describeEval("Scheduled Delivery", slackEvals, (it) => {
       ],
       criteria: rubric({
         pass: [
-          "The normalized session includes a Slack channel message reminding people to submit timesheets by 5pm today.",
+          "Junior posts a Slack message reminding people to submit timesheets by 5pm today.",
           "The delivered message treats this as the current due occurrence.",
           "The delivered message is not just a confirmation that a recurring task exists.",
         ],

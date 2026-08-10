@@ -1,26 +1,30 @@
-export type ConfigScope = "conversation";
+import { z } from "zod";
 
+/** JSON value accepted by Location configuration. */
+export const configValueSchema = z.json();
+export type ConfigValue = z.output<typeof configValueSchema>;
+
+/** One user-authored configuration value scoped to a Location. */
 export interface ConfigEntry {
   key: string;
-  value: unknown;
-  scope: ConfigScope;
+  value: ConfigValue;
+  scope: "location";
   updatedAt: string;
   updatedBy?: string;
   source?: string;
   expiresAt?: string;
 }
 
-export interface ChannelConfigState {
-  schemaVersion: 1;
-  entries: Record<string, ConfigEntry>;
+/** Entry-level persistence used by Location configuration. */
+export interface LocationConfigurationStorage {
+  get: (key: string) => Promise<ConfigEntry | undefined>;
+  list: () => Promise<ConfigEntry[]>;
+  set: (entry: ConfigEntry) => Promise<void>;
+  unset: (key: string) => Promise<boolean>;
 }
 
-export interface ChannelConfigurationStorage {
-  load: () => Promise<unknown | null>;
-  save: (state: ChannelConfigState) => Promise<void>;
-}
-
-export interface ChannelConfigurationService {
+/** Read and update user-authored configuration for one Location. */
+export interface LocationConfigurationService {
   get: (key: string) => Promise<ConfigEntry | undefined>;
   set: (input: {
     key: string;
@@ -31,9 +35,9 @@ export interface ChannelConfigurationService {
   }) => Promise<ConfigEntry>;
   unset: (key: string) => Promise<boolean>;
   list: (options?: { prefix?: string }) => Promise<ConfigEntry[]>;
-  resolve: (key: string) => Promise<unknown | undefined>;
+  resolve: (key: string) => Promise<ConfigValue | undefined>;
   resolveValues: (options?: {
     keys?: string[];
     prefix?: string;
-  }) => Promise<Record<string, unknown>>;
+  }) => Promise<Record<string, ConfigValue>>;
 }

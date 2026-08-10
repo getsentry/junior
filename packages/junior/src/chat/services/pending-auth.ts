@@ -4,7 +4,7 @@ import type {
   ThreadConversationState,
 } from "@/chat/state/conversation";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
-import { abandonAgentTurnSessionRecord } from "@/chat/state/turn-session";
+import { abandonTurnRecord } from "@/chat/task-execution/checkpoint";
 
 // A fresh private auth link is worth reissuing after ~10 minutes: long enough
 // to cover normal back-and-forth (read the prompt, check a password manager),
@@ -113,9 +113,9 @@ export async function abandonReplacedPendingAuth(args: {
     args.previousPendingAuth.sessionId !== args.nextPendingAuth.sessionId &&
     args.conversationId
   ) {
-    await abandonAgentTurnSessionRecord({
+    await abandonTurnRecord({
       conversationId: args.conversationId,
-      sessionId: args.previousPendingAuth.sessionId,
+      turnId: args.previousPendingAuth.sessionId,
       errorMessage:
         "Abandoned by a newer auth-blocked request in the same conversation.",
     });

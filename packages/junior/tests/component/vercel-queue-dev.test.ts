@@ -302,6 +302,7 @@ describe("registerVercelConversationWorkDevConsumer", () => {
     await expect(
       handler(
         signConversationQueueMessage({
+          schemaVersion: 2,
           conversationId: "slack:C123:1712345.0001",
         }),
         metadata,
@@ -322,6 +323,7 @@ describe("registerVercelConversationWorkDevConsumer", () => {
     let missingSecretError: unknown;
     await handler(
       {
+        schemaVersion: 2,
         conversationId: "slack:C123:1712345.0001",
         signature: "signature",
         signatureVersion: "v2",

@@ -6,10 +6,7 @@ import type { ActorDirectoryReport } from "@sentry/junior/api/schema";
 import { useActorDirectoryData } from "../../api";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { LoadingView } from "../../components/LoadingView";
-import {
-  TimeRangeSelector,
-  type TimeRangeDays,
-} from "../../components/controls/TimeRangeSelector";
+import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { getDashboardAgentName } from "../../agentName";
@@ -79,12 +76,13 @@ export function PeoplePageContent(props: {
   return (
     <SystemPageLayout>
       <PageHeader
-        actions={<TimeRangeSelector onChange={setRange} value={range} />}
         description={
           props.error
             ? "People failed to load."
             : `See who's been working with ${getDashboardAgentName()}, how often, and for how long.`
         }
+        onRangeChange={setRange}
+        range={range}
         title="People"
       />
       {props.error ? (

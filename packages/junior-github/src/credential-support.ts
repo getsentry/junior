@@ -613,6 +613,7 @@ export async function resolveUserAccount(
   const url =
     typeof account.html_url === "string" ? account.html_url : undefined;
   return {
+    handle: login.trim(),
     id: String(id),
     label: login.trim(),
     ...(url ? { url } : {}),

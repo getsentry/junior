@@ -1,9 +1,12 @@
 import type { PeopleActivityDayReport } from "@sentry/junior/api/schema";
 
 import {
+  ActivityChartAverageLine,
   ActivityChartDateLabels,
   ActivityChartGrid,
+  activityChartAverage,
   ActivityTooltipRows,
+  ChartSvg,
   createActivityChartLayout,
   formatActivityDate,
   type ActivityChartLayout,
@@ -11,6 +14,7 @@ import {
 import { Card } from "../../components/layout/Card";
 import { CardHeader } from "../../components/layout/CardHeader";
 import { Tooltip } from "../../components/Tooltip";
+import { formatActivityChartAverage } from "../../format";
 
 function chartPoint(
   day: PeopleActivityDayReport,
@@ -33,7 +37,9 @@ export function PeopleActivityChart(props: {
   days: PeopleActivityDayReport[];
 }) {
   const layout = createActivityChartLayout(260);
-  const maximum = Math.max(1, ...props.days.map((day) => day.activePeople));
+  const values = props.days.map((day) => day.activePeople);
+  const maximum = Math.max(1, ...values);
+  const average = activityChartAverage(values);
   const points = props.days.map((day, index) =>
     chartPoint(day, index, props.days.length, maximum, layout),
   );
@@ -57,11 +63,10 @@ export function PeopleActivityChart(props: {
         }
       />
       <div className="px-2 py-3 sm:px-4 sm:py-4">
-        <svg
+        <ChartSvg
           aria-label="Active people per day"
-          className="block h-auto min-h-56 w-full overflow-visible"
-          role="img"
-          viewBox={`0 0 ${layout.width} ${layout.height}`}
+          className="min-h-56 w-full overflow-visible"
+          layout={layout}
         >
           <defs>
             <linearGradient id="people-area" x1="0" x2="0" y1="0" y2="1">
@@ -113,12 +118,19 @@ export function PeopleActivityChart(props: {
               </Tooltip>
             );
           })}
+          <ActivityChartAverageLine
+            average={average}
+            format={formatActivityChartAverage}
+            layout={layout}
+            maximum={maximum}
+            stroke="#fbbf24"
+          />
           <ActivityChartDateLabels
             dates={props.days.map((day) => day.date)}
             layout={layout}
             xPosition={(index) => points[index]?.x ?? layout.left}
           />
-        </svg>
+        </ChartSvg>
       </div>
     </Card>
   );

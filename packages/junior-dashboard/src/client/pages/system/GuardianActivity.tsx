@@ -1,5 +1,6 @@
 import type { GuardianMetricDay } from "@sentry/junior/api/schema";
 
+import { ChartAxisHtmlLabel } from "../../components/charts/ActivityChart";
 import { Tooltip } from "../../components/Tooltip";
 import { Card } from "../../components/layout/Card";
 import { formatCompactNumber, formatCostSummary } from "../../format";
@@ -153,12 +154,12 @@ export function GuardianActivity(props: { days: GuardianMetricDay[] }) {
             );
           })}
         </div>
-        <div className="relative mt-2 h-4 font-mono text-xs text-dashboard-text-muted">
+        <div className="relative mt-2 h-4">
           {labels.map((index) => {
             const day = props.days[index];
             if (!day) return null;
             return (
-              <span
+              <ChartAxisHtmlLabel
                 className="absolute -translate-x-1/2"
                 key={day.date}
                 style={{
@@ -166,7 +167,7 @@ export function GuardianActivity(props: { days: GuardianMetricDay[] }) {
                 }}
               >
                 {shortDate(day.date)}
-              </span>
+              </ChartAxisHtmlLabel>
             );
           })}
         </div>

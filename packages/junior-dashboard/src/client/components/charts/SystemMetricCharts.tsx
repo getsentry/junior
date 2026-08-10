@@ -3,7 +3,21 @@ import type { ConversationMetricDay } from "@sentry/junior/api/schema";
 import { formatDuration } from "../Duration";
 import { Card } from "../layout/Card";
 import { Tooltip } from "../Tooltip";
-import { formatCompactNumber, formatCostSummary } from "../../format";
+import {
+  formatActivityChartAverage,
+  formatCompactNumber,
+  formatCostSummary,
+} from "../../format";
+import {
+  ActivityChartAverageLine,
+  ActivityChartDateLabels,
+  ActivityChartGrid,
+  activityChartAverage,
+  ChartSvg,
+  createActivityChartLayout,
+  formatActivityDate,
+} from "./ActivityChart";
+import { ChartHeader } from "./ChartHeader";
 
 type Metric = "costUsd" | "durationMs" | "tokens";
 
@@ -59,14 +73,6 @@ const charts: ChartConfig[] = [
   },
 ];
 
-function shortDate(date: string): string {
-  return new Date(`${date}T00:00:00.000Z`).toLocaleDateString(undefined, {
-    day: "numeric",
-    month: "short",
-    timeZone: "UTC",
-  });
-}
-
 function metricValue(day: ConversationMetricDay, metric: Metric): number {
   return day[metric] ?? 0;
 }
@@ -87,61 +93,41 @@ function MetricChart(props: {
   days: ConversationMetricDay[];
 }) {
   const { chart, days } = props;
-  const width = 400;
-  const height = 250;
-  const left = 64;
-  const right = 14;
-  const top = 22;
-  const bottom = 34;
-  const plotWidth = width - left - right;
-  const plotHeight = height - top - bottom;
+  const layout = createActivityChartLayout(250, {
+    bottom: 34,
+    left: 64,
+    right: 14,
+    top: 22,
+    width: 400,
+  });
   const values = days.map((day) => metricValue(day, chart.metric));
   const maximum = Math.max(Number.EPSILON, ...values);
-  const step = plotWidth / Math.max(1, days.length);
+  const step = layout.plotWidth / Math.max(1, days.length);
   const points = values.map((value, index) => ({
-    x: left + step * index + step / 2,
-    y: top + plotHeight - (value / maximum) * plotHeight,
+    x: layout.left + step * index + step / 2,
+    y: layout.top + layout.plotHeight - (value / maximum) * layout.plotHeight,
   }));
   const area = points.length
-    ? `M ${points[0]!.x} ${top + plotHeight} L ${points
+    ? `M ${points[0]!.x} ${layout.top + layout.plotHeight} L ${points
         .map((point) => `${point.x} ${point.y}`)
-        .join(" L ")} L ${points.at(-1)!.x} ${top + plotHeight} Z`
+        .join(" L ")} L ${points.at(-1)!.x} ${layout.top + layout.plotHeight} Z`
     : "";
-  const labels = [0, Math.floor((days.length - 1) / 2), days.length - 1].filter(
-    (index, position, indexes) =>
-      index >= 0 && indexes.indexOf(index) === position,
-  );
   const total = values.reduce((sum, value) => sum + value, 0);
+  const average = activityChartAverage(values);
   const barWidth = Math.max(1.5, Math.min(8, step * 0.65));
 
   return (
     <Card>
-      <div className="border-b border-white/[0.06] px-4 py-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h3 className="m-0 font-mono text-xs font-medium uppercase tracking-[0.14em] text-dashboard-text-muted">
-              {chart.title}
-            </h3>
-            <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
-              {chart.description}
-            </p>
-          </div>
-          <div className="shrink-0 text-right">
-            <div className="font-display text-xl font-light text-dashboard-text">
-              {chart.format(total)}
-            </div>
-            <div className="font-mono text-sm leading-relaxed text-dashboard-text-muted">
-              period total
-            </div>
-          </div>
-        </div>
-      </div>
+      <ChartHeader
+        description={chart.description}
+        title={chart.title}
+        total={chart.format(total)}
+      />
       <div className="px-2 py-3">
-        <svg
+        <ChartSvg
           aria-label={`${chart.title} per day`}
-          className="block h-auto min-h-52 w-full overflow-hidden"
-          role="img"
-          viewBox={`0 0 ${width} ${height}`}
+          className="min-h-52 overflow-hidden"
+          layout={layout}
         >
           <defs>
             <linearGradient
@@ -155,31 +141,11 @@ function MetricChart(props: {
               <stop offset="100%" stopColor={chart.color} stopOpacity="0" />
             </linearGradient>
           </defs>
-          {[0, 0.5, 1].map((ratio) => {
-            const y = top + ratio * plotHeight;
-            return (
-              <g key={ratio}>
-                <line
-                  stroke="rgba(255,255,255,0.07)"
-                  strokeDasharray="3 5"
-                  x1={left}
-                  x2={width - right}
-                  y1={y}
-                  y2={y}
-                />
-                <text
-                  fill="rgba(255,255,255,0.35)"
-                  fontFamily="ui-monospace, monospace"
-                  fontSize="12"
-                  textAnchor="end"
-                  x={left - 7}
-                  y={y + 3}
-                >
-                  {chart.axisFormat(maximum * (1 - ratio))}
-                </text>
-              </g>
-            );
-          })}
+          <ActivityChartGrid
+            format={chart.axisFormat}
+            layout={layout}
+            maximum={maximum}
+          />
           {chart.type === "area" && area ? (
             <>
               <path d={area} fill={`url(#${chart.metric}-area)`} />
@@ -198,17 +164,17 @@ function MetricChart(props: {
           {days.map((day, index) => {
             const value = values[index]!;
             const point = points[index]!;
-            const barHeight = (value / maximum) * plotHeight;
+            const barHeight = (value / maximum) * layout.plotHeight;
             const renderedBarHeight = Math.max(value ? 2 : 0, barHeight);
             return (
               <Tooltip
                 content={chart.format(value)}
                 key={day.date}
-                label={shortDate(day.date)}
+                label={formatActivityDate(day.date)}
               >
                 {chart.type === "bar" ? (
                   <rect
-                    aria-label={`${shortDate(day.date)}: ${chart.format(value)}`}
+                    aria-label={`${formatActivityDate(day.date)}: ${chart.format(value)}`}
                     fill={chart.color}
                     height={renderedBarHeight}
                     opacity={value ? 0.8 : 0.1}
@@ -216,11 +182,11 @@ function MetricChart(props: {
                     tabIndex={0}
                     width={barWidth}
                     x={point.x - barWidth / 2}
-                    y={top + plotHeight - renderedBarHeight}
+                    y={layout.top + layout.plotHeight - renderedBarHeight}
                   />
                 ) : (
                   <circle
-                    aria-label={`${shortDate(day.date)}: ${chart.format(value)}`}
+                    aria-label={`${formatActivityDate(day.date)}: ${chart.format(value)}`}
                     cx={point.x}
                     cy={point.y}
                     fill={chart.color}
@@ -232,31 +198,23 @@ function MetricChart(props: {
               </Tooltip>
             );
           })}
-          {labels.map((index) => {
-            const day = days[index];
-            const point = points[index];
-            if (!day || !point) return null;
-            return (
-              <text
-                fill="rgba(255,255,255,0.35)"
-                fontFamily="ui-monospace, monospace"
-                fontSize="12"
-                key={day.date}
-                textAnchor={
-                  index === 0
-                    ? "start"
-                    : index === days.length - 1
-                      ? "end"
-                      : "middle"
-                }
-                x={point.x}
-                y={height - 8}
-              >
-                {shortDate(day.date)}
-              </text>
-            );
-          })}
-        </svg>
+          <ActivityChartAverageLine
+            average={average}
+            format={
+              chart.metric === "tokens"
+                ? formatActivityChartAverage
+                : chart.format
+            }
+            layout={layout}
+            maximum={maximum}
+            stroke={chart.color}
+          />
+          <ActivityChartDateLabels
+            dates={days.map((day) => day.date)}
+            layout={layout}
+            xPosition={(index) => points[index]?.x ?? layout.left}
+          />
+        </ChartSvg>
       </div>
     </Card>
   );

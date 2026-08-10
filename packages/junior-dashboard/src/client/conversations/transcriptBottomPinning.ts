@@ -307,6 +307,7 @@ export function usePinnedTranscriptBottom(input: {
       showJumpToLatest: input.enabled && !following,
     }),
     [
+      contentRef,
       following,
       hasPendingUpdate,
       input.enabled,

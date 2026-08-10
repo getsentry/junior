@@ -18,9 +18,9 @@ import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import {
-  listAgentTurnSessionSummariesForConversation,
-  recordAgentTurnSessionSummary,
-} from "@/chat/state/turn-session";
+  listTurnSummaries,
+  recordTurnSummary,
+} from "@/chat/task-execution/turn-cursor";
 import { persistConversationMessages } from "@/chat/conversations/messages";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { slackApiOutbox } from "../fixtures/slack-api-outbox";
@@ -233,9 +233,7 @@ describe("agent dispatch conversation work", () => {
       status: "running",
     });
     await expect(
-      listAgentTurnSessionSummariesForConversation(
-        getDispatchConversationId(dispatch),
-      ),
+      listTurnSummaries(getDispatchConversationId(dispatch)),
     ).resolves.toEqual([
       expect.not.objectContaining({ dispatchOutcome: expect.anything() }),
     ]);
@@ -285,28 +283,29 @@ describe("agent dispatch conversation work", () => {
         },
         JUNIOR_THREAD_STATE_TTL_MS,
       );
-      await recordAgentTurnSessionSummary({
+      await recordTurnSummary({
         actor: dispatch.actor,
         conversationId,
         destination: dispatch.destination,
         destinationVisibility: dispatch.destinationVisibility,
         dispatchId: dispatch.id,
-        sessionId,
+        turnId: sessionId,
         sliceId: 2,
         source: dispatch.source,
-        state: sessionState,
+        // Turn checkpoint status (dispatch status above stays SQL-bound).
+        state: sessionState === "awaiting_resume" ? "paused" : sessionState,
         surface: "api",
       });
       const runTurn = vi.fn();
       const resumeTurn = vi.fn(async () => {
-        await recordAgentTurnSessionSummary({
+        await recordTurnSummary({
           actor: dispatch.actor,
           conversationId,
           destination: dispatch.destination,
           destinationVisibility: dispatch.destinationVisibility,
           dispatchId: dispatch.id,
           dispatchOutcome: "completed",
-          sessionId,
+          turnId: sessionId,
           sliceId: 2,
           source: dispatch.source,
           state: "completed",
@@ -392,14 +391,14 @@ describe("agent dispatch conversation work", () => {
 
   it("uses a durable delivery receipt when the worker died before outcome persistence", async () => {
     const dispatch = await createDispatch("delivery-receipt-fence");
-    await recordAgentTurnSessionSummary({
+    await recordTurnSummary({
       actor: dispatch.actor,
       conversationId: getDispatchConversationId(dispatch),
       destination: dispatch.destination,
       destinationVisibility: dispatch.destinationVisibility,
       dispatchId: dispatch.id,
       resultMessageId: "1700000000.000012",
-      sessionId: getDispatchTurnId(dispatch.id),
+      turnId: getDispatchTurnId(dispatch.id),
       sliceId: 1,
       source: dispatch.source,
       state: "running",
@@ -425,5 +424,4 @@ describe("agent dispatch conversation work", () => {
       status: "completed",
     });
   });
-
 });

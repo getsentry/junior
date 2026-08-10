@@ -281,9 +281,9 @@ import { executeAgentRun } from "@/chat/agent";
 import { botConfig } from "@/chat/config";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
-  getAgentTurnSessionRecord,
-  upsertAgentTurnSessionRecord,
-} from "@/chat/state/turn-session";
+  getTurnRecord,
+  upsertTurnRecord,
+} from "@/chat/task-execution/turn-cursor";
 
 const TEST_DESTINATION = {
   platform: "slack",
@@ -303,7 +303,7 @@ const TEST_ACTOR = {
   userId: "U123",
 } as const;
 
-describe("agent continuation composition", () => {
+describe("paused turn composition", () => {
   beforeEach(async () => {
     promptAborted.value = false;
     continueCalls.value = 0;
@@ -344,12 +344,9 @@ describe("agent continuation composition", () => {
       resumeVersion: expect.any(Number),
     });
 
-    const sessionRecord = await getAgentTurnSessionRecord(
-      "conversation-1",
-      "turn-1",
-    );
+    const sessionRecord = await getTurnRecord("conversation-1", "turn-1");
     expect(sessionRecord).toMatchObject({
-      state: "awaiting_resume",
+      state: "paused",
       resumeReason: "timeout",
       resumedFromSliceId: 1,
       sliceId: 2,
@@ -373,12 +370,11 @@ describe("agent continuation composition", () => {
         timestamp: 1,
       } as PiMessage,
     ];
-    await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
+    await upsertTurnRecord({
       conversationId: "conversation-timeout-cap",
-      sessionId: "turn-timeout-cap",
+      turnId: "turn-timeout-cap",
       sliceId: botConfig.maxSlicesPerTurn,
-      state: "awaiting_resume",
+      state: "paused",
       piMessages,
       resumeReason: "timeout",
     });
@@ -404,7 +400,7 @@ describe("agent continuation composition", () => {
     expect(error).not.toHaveProperty("text");
     expect(error.message).toContain("execution limit");
 
-    const sessionRecord = await getAgentTurnSessionRecord(
+    const sessionRecord = await getTurnRecord(
       "conversation-timeout-cap",
       "turn-timeout-cap",
     );
@@ -437,7 +433,7 @@ describe("agent continuation composition", () => {
 
     expect(promptAborted.value).toBe(true);
     expect(outcome.status).toBe("suspended");
-    const sessionRecord = await getAgentTurnSessionRecord(
+    const sessionRecord = await getTurnRecord(
       "conversation-short-deadline",
       "turn-short-deadline",
     );
@@ -465,10 +461,7 @@ describe("agent continuation composition", () => {
     await vi.advanceTimersByTimeAsync(10_000);
     await replyPromise;
 
-    const sessionRecord = await getAgentTurnSessionRecord(
-      "conversation-2",
-      "turn-2",
-    );
+    const sessionRecord = await getTurnRecord("conversation-2", "turn-2");
     const userMessage = sessionRecord?.piMessages.find((message) =>
       JSON.stringify(message).includes("<omitted-image-attachments>"),
     ) as
@@ -489,7 +482,7 @@ describe("agent continuation composition", () => {
     );
   });
 
-  it("persists agent continuation state when abort does not settle the agent run", async () => {
+  it("persists paused turn state when abort does not settle the agent run", async () => {
     promptMode.value = "hangsAfterAbort";
     const replyPromise = executeAgentRun({
       conversationId: "conversation-hung",
@@ -514,12 +507,9 @@ describe("agent continuation composition", () => {
       resumeVersion: expect.any(Number),
     });
 
-    const sessionRecord = await getAgentTurnSessionRecord(
-      "conversation-hung",
-      "turn-hung",
-    );
+    const sessionRecord = await getTurnRecord("conversation-hung", "turn-hung");
     expect(sessionRecord).toMatchObject({
-      state: "awaiting_resume",
+      state: "paused",
       resumeReason: "timeout",
       resumedFromSliceId: 1,
       sliceId: 2,
@@ -572,12 +562,12 @@ describe("agent continuation composition", () => {
 
     expect(promptAborted.value).toBe(true);
     expect(outcome.status).toBe("suspended");
-    const sessionRecord = await getAgentTurnSessionRecord(
+    const sessionRecord = await getTurnRecord(
       "conversation-retry",
       "turn-retry",
     );
     expect(sessionRecord).toMatchObject({
-      state: "awaiting_resume",
+      state: "paused",
       resumeReason: "timeout",
       resumedFromSliceId: 1,
       sliceId: 2,

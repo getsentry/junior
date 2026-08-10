@@ -223,13 +223,13 @@ vi.mock("@/chat/skills", async (importOriginal) => ({
 
 import { executeAgentRun } from "@/chat/agent";
 import { RetryableDeliveryError } from "@/chat/agent/request";
-import { getAwaitingAgentContinueRequest } from "@/chat/services/agent-continue";
+import { getPausedTurnRequest } from "@/chat/task-execution/turn-wake";
 import {
   loadConversationProjection,
   loadProjection,
 } from "@/chat/conversations/projection";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { getAgentTurnSessionRecord } from "@/chat/state/turn-session";
+import { getTurnRecord } from "@/chat/task-execution/turn-cursor";
 import { getConversationEventStore } from "@/chat/db";
 import { ContextInputLimitExceededError } from "@/chat/services/context-compaction";
 
@@ -737,12 +737,9 @@ describe("model handoff composition", () => {
       status: "suspended",
       resumeVersion: expect.any(Number),
     });
-    const suspendedRecord = await getAgentTurnSessionRecord(
-      conversationId,
-      turnId,
-    );
+    const suspendedRecord = await getTurnRecord(conversationId, turnId);
     expect(suspendedRecord).toMatchObject({
-      state: "awaiting_resume",
+      state: "paused",
       resumeReason: "retry",
       sliceId: 2,
     });
@@ -750,10 +747,10 @@ describe("model handoff composition", () => {
       "Handoff model completed it.",
     );
     await expect(
-      getAwaitingAgentContinueRequest({ conversationId, sessionId: turnId }),
+      getPausedTurnRequest({ conversationId, turnId: turnId }),
     ).resolves.toMatchObject({
       conversationId,
-      sessionId: turnId,
+      turnId: turnId,
       expectedVersion: suspendedRecord?.version,
     });
 
@@ -963,8 +960,8 @@ describe("model handoff composition", () => {
     });
 
     expect(outcome.status).toBe("suspended");
-    const record = await getAgentTurnSessionRecord(conversationId, sessionId);
-    expect(record).toMatchObject({ state: "awaiting_resume" });
+    const record = await getTurnRecord(conversationId, sessionId);
+    expect(record).toMatchObject({ state: "paused" });
     expect(JSON.stringify(record?.piMessages)).toContain(
       "Implement the requested change and verify it.",
     );

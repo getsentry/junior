@@ -1,8 +1,8 @@
 # Data Redaction
 
-Conversation privacy follows the persisted destination visibility. Redaction
-protects raw payloads and telemetry; it does not change the product data that a
-conversation is authorized to retain.
+Conversation privacy follows the stored destination visibility. Redaction
+protects raw payloads and telemetry. It does not change the product data that a
+conversation is authorized to keep.
 
 ## Visibility
 
@@ -10,18 +10,18 @@ conversation is authorized to retain.
 - Private channels, direct messages, local conversations, and unknown
   destinations are private by default.
 - Missing visibility metadata never widens access.
-- Child conversations, conversation events, generated artifacts, and plugin records
-  inherit the visibility and actor boundaries of their owning conversation.
+- Child conversations, conversation events, generated artifacts, and plugin
+  records inherit the visibility and actor edges of their owning conversation.
 
 ## Storage
 
 - Store only the content required for conversation continuity, delivery,
   reporting, or an explicitly installed plugin feature.
-- Persist normalized product fields instead of complete provider webhook or SDK
+- Store normalized product fields instead of complete provider webhook or SDK
   payloads.
 - Legacy raw payload fields are migration inputs, not preferred read models.
-- Retention expiry and privacy redaction are distinct: expired data is deleted;
-  redacted data remains represented without sensitive content.
+- Retention expiry and privacy redaction are distinct. Expired data is deleted.
+  Redacted data remains represented without sensitive content.
 - Plugin-owned tables must carry enough conversation, actor, and visibility
   context to enforce their own reads and cleanup.
 
@@ -32,11 +32,11 @@ The conversation implementation lives in
 
 Do not record:
 
-- raw message bodies, prompts, model responses, memory contents, or attachments;
+- raw message bodies, prompts, model responses, memory contents, or attachments
 - OAuth codes, access tokens, cookies, authorization headers, API keys, signed
-  callback payloads, or credential-context tokens;
+  callback payloads, or credential-context tokens
 - raw provider webhook payloads, SQL parameters containing content, or sandbox
-  command output that may contain secrets.
+  command output that may contain secrets
 
 Prefer stable identifiers, counts, sizes, classifications, operation names,
 visibility tiers, and bounded error summaries. Apply allowlists when serializing
@@ -54,5 +54,5 @@ third-party errors or metadata.
 
 ## Verification
 
-Test deterministic visibility, retention, and serialization boundaries. Do not
-assert on raw private content in snapshots or telemetry tests.
+Test fixed visibility, retention, and serialization edges. Do not assert on raw
+private content in snapshots or telemetry tests.

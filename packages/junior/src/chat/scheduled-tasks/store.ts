@@ -161,6 +161,7 @@ export interface SchedulerStore {
   getRun(runId: string): Promise<ScheduledRun | undefined>;
   getTask(taskId: string): Promise<ScheduledTask | undefined>;
   listIncompleteRuns(): Promise<ScheduledRun[]>;
+  listIncompleteRunsForTasks(tasks: ScheduledTask[]): Promise<ScheduledRun[]>;
   listTasks(): Promise<ScheduledTask[]>;
   listTasksCreatedBy(input: ListTasksCreatedByInput): Promise<ScheduledTask[]>;
   listTasksForTeam(teamId: string): Promise<ScheduledTask[]>;
@@ -994,6 +995,12 @@ class PluginStateSchedulerStore implements SchedulerStore {
 
   async listIncompleteRuns(): Promise<ScheduledRun[]> {
     const tasks = await this.listTasks();
+    return await listIncompleteRunsForTasksFromState(this.state, tasks);
+  }
+
+  async listIncompleteRunsForTasks(
+    tasks: ScheduledTask[],
+  ): Promise<ScheduledRun[]> {
     return await listIncompleteRunsForTasksFromState(this.state, tasks);
   }
 

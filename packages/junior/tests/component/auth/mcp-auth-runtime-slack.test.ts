@@ -341,7 +341,8 @@ type McpOauthCallbackHarnessModule =
   typeof import("../../fixtures/mcp-oauth-callback-harness");
 type StateAdapterModule = typeof import("@/chat/state/adapter");
 type ThreadStateModule = typeof import("@/chat/runtime/thread-state");
-type TurnSessionStoreModule = typeof import("@/chat/state/turn-session");
+type TurnSessionStoreModule =
+  typeof import("@/chat/task-execution/turn-cursor");
 
 let chatRuntimeModule: ChatRuntimeModule;
 let mcpAuthStoreModule: McpAuthStoreModule;
@@ -428,7 +429,7 @@ describe("mcp auth runtime slack integration", () => {
       await import("../../fixtures/mcp-oauth-callback-harness");
     stateAdapterModule = await import("@/chat/state/adapter");
     threadStateModule = await import("@/chat/runtime/thread-state");
-    turnSessionStoreModule = await import("@/chat/state/turn-session");
+    turnSessionStoreModule = await import("@/chat/task-execution/turn-cursor");
 
     await stateAdapterModule.disconnectStateAdapter();
     await stateAdapterModule.getStateAdapter().connect();
@@ -555,13 +556,15 @@ describe("mcp auth runtime slack integration", () => {
     });
     const parkedAuthSessionId = pendingAuthSession!.authSessionId;
 
-    const pendingCheckpoint =
-      await turnSessionStoreModule.getAgentTurnSessionRecord(threadId, turnId);
+    const pendingCheckpoint = await turnSessionStoreModule.getTurnRecord(
+      threadId,
+      turnId,
+    );
     expect(pendingCheckpoint).toMatchObject({
       conversationId: threadId,
-      sessionId: turnId,
+      turnId,
       sliceId: 2,
-      state: "awaiting_resume",
+      state: "paused",
       resumeReason: "auth",
       resumedFromSliceId: 1,
     });
@@ -590,8 +593,10 @@ describe("mcp auth runtime slack integration", () => {
       });
 
     expect(response.status).toBe(200);
-    const sessionRecordAfterAuth =
-      await turnSessionStoreModule.getAgentTurnSessionRecord(threadId, turnId);
+    const sessionRecordAfterAuth = await turnSessionStoreModule.getTurnRecord(
+      threadId,
+      turnId,
+    );
     expect(sessionRecordAfterAuth?.piMessages).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -630,11 +635,13 @@ describe("mcp auth runtime slack integration", () => {
       },
     });
 
-    const completedCheckpoint =
-      await turnSessionStoreModule.getAgentTurnSessionRecord(threadId, turnId);
+    const completedCheckpoint = await turnSessionStoreModule.getTurnRecord(
+      threadId,
+      turnId,
+    );
     expect(completedCheckpoint).toMatchObject({
       conversationId: threadId,
-      sessionId: turnId,
+      turnId,
       sliceId: 2,
       state: "completed",
     });
@@ -782,13 +789,15 @@ describe("mcp auth runtime slack integration", () => {
       "slack:C124:1700000000.002",
     );
 
-    const pendingCheckpoint =
-      await turnSessionStoreModule.getAgentTurnSessionRecord(threadId, turnId);
+    const pendingCheckpoint = await turnSessionStoreModule.getTurnRecord(
+      threadId,
+      turnId,
+    );
     expect(pendingCheckpoint).toMatchObject({
       conversationId: threadId,
-      sessionId: turnId,
+      turnId,
       sliceId: 2,
-      state: "awaiting_resume",
+      state: "paused",
       resumeReason: "auth",
       resumedFromSliceId: 1,
     });
@@ -892,10 +901,10 @@ describe("mcp auth runtime slack integration", () => {
       ),
     ).toBeUndefined();
     expect(
-      await turnSessionStoreModule.getAgentTurnSessionRecord(threadId, turnId),
+      await turnSessionStoreModule.getTurnRecord(threadId, turnId),
     ).toMatchObject({
       conversationId: threadId,
-      sessionId: turnId,
+      turnId,
       state: "failed",
       errorMessage:
         "Agent turn failed before assistant output handling completed",
@@ -1039,13 +1048,15 @@ describe("mcp auth runtime slack integration", () => {
       { destination },
     );
 
-    const pendingCheckpoint =
-      await turnSessionStoreModule.getAgentTurnSessionRecord(threadId, turnId);
+    const pendingCheckpoint = await turnSessionStoreModule.getTurnRecord(
+      threadId,
+      turnId,
+    );
     expect(pendingCheckpoint).toMatchObject({
       conversationId: threadId,
-      sessionId: turnId,
+      turnId,
       sliceId: 2,
-      state: "awaiting_resume",
+      state: "paused",
       resumeReason: "auth",
     });
 
@@ -1073,11 +1084,13 @@ describe("mcp auth runtime slack integration", () => {
     expect(agentProbe.continueCallCount).toBe(1);
     expect(agentProbe.searchToolNames).toEqual([[MCP_TOOL_NAME]]);
 
-    const completedCheckpoint =
-      await turnSessionStoreModule.getAgentTurnSessionRecord(threadId, turnId);
+    const completedCheckpoint = await turnSessionStoreModule.getTurnRecord(
+      threadId,
+      turnId,
+    );
     expect(completedCheckpoint).toMatchObject({
       conversationId: threadId,
-      sessionId: turnId,
+      turnId,
       state: "completed",
     });
 

@@ -50,7 +50,7 @@ import { mergeArtifactsState } from "@/chat/runtime/thread-state";
 import type { Actor } from "@/chat/actor";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { AuthorizationPauseError } from "@/chat/services/auth-pause";
-import type { AgentTurnSurface } from "@/chat/state/turn-session";
+import type { AgentTurnSurface } from "@/chat/task-execution/checkpoint";
 import {
   isAgentRunFeatureDisabled,
   toolInvocationDestination,
@@ -111,7 +111,6 @@ interface ToolWiringArgs {
   state: AgentRunState;
   supportsImageInput: () => boolean;
   surface: AgentTurnSurface;
-  syncLoadedSkillNamesForResume: () => void;
   toolCalls: string[];
   userInput: string;
 }
@@ -183,7 +182,7 @@ export async function wireAgentTools(
     egressSignals: args.policy.sandboxEgressSignals,
     credentialEgress: args.routing.credentialContext,
     actor: args.currentActor,
-    channelConfiguration: args.policy.channelConfiguration,
+    locationConfiguration: args.policy.locationConfiguration,
     configurationValues: args.configurationValues,
     getActiveSkill: () => args.skillSandbox.getActiveSkill(),
     prepareSandbox: pluginHooks.prepareSandbox,
@@ -231,6 +230,7 @@ export async function wireAgentTools(
     conversationId: args.conversationId,
     sessionId: args.turnId,
     actorId: credentialUserId,
+    actor: args.currentActor,
     channelId: slackChannelId,
     destination: args.routing.destination,
     source: runSource,
@@ -391,7 +391,6 @@ export async function wireAgentTools(
         );
         const effective = resolvedSkill ?? loadedSkill;
         upsertActiveSkill(args.activeSkills, effective);
-        args.syncLoadedSkillNamesForResume();
         if (await mcpToolManager.activateForSkill(effective)) {
           await args.recordConnectedMcpProvider(effective.pluginProvider!);
         }

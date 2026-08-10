@@ -1,7 +1,10 @@
 import type { StateAdapter } from "chat";
 import { getConversationStore } from "@/chat/db";
 import type { ConversationStore } from "@/chat/conversations/store";
-import type { ConversationWorkQueue } from "./queue";
+import {
+  CONVERSATION_QUEUE_SCHEMA_VERSION,
+  type ConversationWorkQueue,
+} from "./queue";
 import * as workState from "./state";
 export {
   CONVERSATION_ACTIVE_INDEX_KEY,
@@ -198,6 +201,7 @@ export async function ensureConversationWake(args: {
 
   const queueResult = await args.queue.send(
     {
+      schemaVersion: CONVERSATION_QUEUE_SCHEMA_VERSION,
       conversationId: args.conversationId,
     },
     {
@@ -410,7 +414,7 @@ export async function ackMessages(args: {
 }
 
 /** Mark the leased conversation as needing another queue-delivered slice. */
-export async function requestConversationContinuation(args: {
+export async function requestAnotherSlice(args: {
   conversationId: string;
   destination: InboundMessage["destination"];
   leaseToken: string;
@@ -418,7 +422,7 @@ export async function requestConversationContinuation(args: {
   nowMs?: number;
   state?: StateAdapter;
 }) {
-  const result = await workState.requestConversationContinuation(args);
+  const result = await workState.requestAnotherSlice(args);
   await recordExecutionMetadata(args);
   return result;
 }

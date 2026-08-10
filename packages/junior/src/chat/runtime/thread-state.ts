@@ -1,7 +1,9 @@
 import type { Thread } from "chat";
+import type { Destination } from "@sentry/junior-plugin-api";
 import { toOptionalString } from "@/chat/coerce";
-import { createChannelConfigurationService } from "@/chat/configuration/service";
-import type { ChannelConfigurationService } from "@/chat/configuration/types";
+import { createDurableLocationConfigurationService } from "@/chat/configuration/sql";
+import type { LocationConfigurationService } from "@/chat/configuration/types";
+import { getDb } from "@/chat/db";
 import { buildConversationStatePatch } from "@/chat/state/conversation";
 import type { ThreadConversationState } from "@/chat/state/conversation";
 import { persistConversationMessages } from "@/chat/conversations/messages";
@@ -46,7 +48,7 @@ function buildThreadStatePayload(
 }
 
 /**
- * Merge a payload into thread or channel scratch with Junior's TTL.
+ * Merge a payload into thread scratch with Junior's TTL.
  *
  * Chat SDK state writes hardcode a 30-day TTL. This boundary owns Junior's
  * shorter retention policy for the same scratch keys.
@@ -157,19 +159,6 @@ export async function getPersistedThreadState(
   );
 }
 
-/** Load the persisted state payload for a channel without constructing a Chat channel. */
-export async function getPersistedChannelState(
-  channelId: string,
-): Promise<Record<string, unknown>> {
-  const stateAdapter = getStateAdapter();
-  await stateAdapter.connect();
-  return (
-    (await stateAdapter.get<Record<string, unknown>>(
-      channelStateKey(channelId),
-    )) ?? {}
-  );
-}
-
 /** Persist a thread-state patch by thread id without constructing a Chat thread. */
 export async function persistThreadStateById(
   threadId: string,
@@ -191,36 +180,34 @@ export async function persistThreadStateById(
   );
 }
 
-/** Resolve channel configuration from a Chat thread and persist it with Junior's TTL. */
-export function getChannelConfigurationService(
-  thread: Thread,
-): ChannelConfigurationService {
-  const channel = thread.channel;
-  const channelId =
-    toOptionalString(thread.channelId) ?? toOptionalString(channel.id);
-  if (!channelId) {
-    throw new Error("channel id is required to load channel configuration");
-  }
-  return createChannelConfigurationService({
-    load: async () => await channel.state,
-    save: async (state) => {
-      await mergePersistedState(channelStateKey(channelId), {
-        configuration: state,
-      });
-    },
-  });
+/** Load legacy Redis-backed channel state during the SQL cutover. */
+async function getLegacyChannelState(
+  channelId: string,
+): Promise<Record<string, unknown>> {
+  const stateAdapter = getStateAdapter();
+  await stateAdapter.connect();
+  return (
+    (await stateAdapter.get<Record<string, unknown>>(
+      channelStateKey(channelId),
+    )) ?? {}
+  );
 }
 
-/** Resolve a channel configuration service by channel id without a Chat thread. */
-export function getChannelConfigurationServiceById(
-  channelId: string,
-): ChannelConfigurationService {
-  return createChannelConfigurationService({
-    load: async () => await getPersistedChannelState(channelId),
-    save: async (state) => {
-      await mergePersistedState(channelStateKey(channelId), {
-        configuration: state,
-      });
-    },
+/**
+ * Resolve durable location configuration.
+ *
+ * Slack still reads the old channel-id Redis bag once during cutover.
+ */
+export function getLocationConfigurationService(
+  destination: Destination,
+): LocationConfigurationService {
+  if (destination.platform !== "slack") {
+    throw new Error("Location configuration requires a Slack Location");
+  }
+  return createDurableLocationConfigurationService({
+    destination,
+    db: getDb(),
+    loadLegacy: async () =>
+      await getLegacyChannelState(destination.channelId),
   });
 }

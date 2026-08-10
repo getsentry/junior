@@ -14,6 +14,7 @@ import {
   conversationIdentityMeta,
   conversationMessageCount,
   filterConversationList,
+  formatActivityChartAverage,
   formatCompactNumber,
   formatConversationDuration,
   formatCostTotal,
@@ -80,6 +81,13 @@ describe("dashboard conversation formatting", () => {
   it("scales large values through billions and trillions", () => {
     expect(formatCompactNumber(1_912_000_000)).toBe("1.9b");
     expect(formatCompactNumber(2_100_000_000_000)).toBe("2.1t");
+  });
+
+  it("keeps fractional chart averages readable below ten", () => {
+    expect(formatActivityChartAverage(0.4)).toBe("0.4");
+    expect(formatActivityChartAverage(1.25)).toBe("1.3");
+    expect(formatActivityChartAverage(12)).toBe("12");
+    expect(formatActivityChartAverage(1_200_000_000)).toBe("1.2b");
   });
 
   it("formats cumulative conversation usage", () => {

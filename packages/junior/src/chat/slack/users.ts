@@ -162,31 +162,24 @@ function scoreMatch(user: SlackUserRaw, queryLower: string): number {
   return 0;
 }
 
-/** Search workspace users by name with bounded pagination through `users.list`. */
-export async function searchSlackUsers(options: {
-  query: string;
-  limit?: number;
-  maxPages?: number;
-  includeDeleted?: boolean;
-  includeBots?: boolean;
-}): Promise<SlackUserSearchResult> {
-  const {
-    query,
-    limit = 10,
-    maxPages = 3,
-    includeDeleted = false,
-    includeBots = false,
-  } = options;
-  const queryLower = query.toLowerCase().trim();
-
+async function listWorkspaceUsers(options: {
+  maxPages: number;
+  includeDeleted: boolean;
+  includeBots: boolean;
+  score: (member: SlackUserRaw) => number;
+}): Promise<{
+  matches: Array<{ user: SlackUserRaw; score: number }>;
+  searched_pages: number;
+  searched_user_count: number;
+  truncated: boolean;
+}> {
   const client = getSlackClient();
   const matches: Array<{ user: SlackUserRaw; score: number }> = [];
   let cursor: string | undefined;
   let pages = 0;
   let totalScanned = 0;
-  let truncated = false;
 
-  while (pages < maxPages) {
+  while (pages < options.maxPages) {
     pages++;
 
     const result = await withSlackRetries(
@@ -203,37 +196,64 @@ export async function searchSlackUsers(options: {
     totalScanned += members.length;
 
     for (const member of members) {
-      if (!includeDeleted && member.deleted) continue;
-      if (!includeBots && member.is_bot) continue;
+      if (!options.includeDeleted && member.deleted) continue;
+      if (!options.includeBots && member.is_bot) continue;
       if (member.id === "USLACKBOT") continue;
 
-      const score = scoreMatch(member, queryLower);
-      if (score > 0) {
-        matches.push({ user: member, score });
-      }
+      const score = options.score(member);
+      if (score <= 0) continue;
+      matches.push({ user: member, score });
     }
 
     const nextCursor = result.response_metadata?.next_cursor;
     if (!nextCursor) {
+      cursor = undefined;
       break;
     }
     cursor = nextCursor;
   }
 
-  // True only when we hit the page cap with more data remaining.
-  if (pages >= maxPages && cursor) {
-    truncated = true;
-  }
+  return {
+    matches,
+    searched_pages: pages,
+    searched_user_count: totalScanned,
+    // True only when we hit the page cap with more data remaining.
+    truncated: pages >= options.maxPages && Boolean(cursor),
+  };
+}
 
-  matches.sort((a, b) => {
+/** Search workspace users by name with bounded pagination through `users.list`. */
+export async function searchSlackUsers(options: {
+  query: string;
+  limit?: number;
+  maxPages?: number;
+  includeDeleted?: boolean;
+  includeBots?: boolean;
+}): Promise<SlackUserSearchResult> {
+  const {
+    query,
+    limit = 10,
+    maxPages = 3,
+    includeDeleted = false,
+    includeBots = false,
+  } = options;
+  const queryLower = query.toLowerCase().trim();
+  const listed = await listWorkspaceUsers({
+    maxPages,
+    includeDeleted,
+    includeBots,
+    score: (member) => scoreMatch(member, queryLower),
+  });
+
+  listed.matches.sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;
     return (a.user.name ?? "").localeCompare(b.user.name ?? "");
   });
 
   return {
-    users: matches.slice(0, limit).map((m) => normalizeUser(m.user)),
-    searched_pages: pages,
-    searched_user_count: totalScanned,
-    truncated,
+    users: listed.matches.slice(0, limit).map((m) => normalizeUser(m.user)),
+    searched_pages: listed.searched_pages,
+    searched_user_count: listed.searched_user_count,
+    truncated: listed.truncated,
   };
 }

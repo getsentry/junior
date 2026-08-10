@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
-import { createChannelConfigurationService } from "@/chat/configuration/service";
+import { createLocationConfigurationService } from "@/chat/configuration/service";
+import type { ConfigEntry } from "@/chat/configuration/types";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import type { Skill } from "@/chat/skills";
 
@@ -12,16 +13,15 @@ const activeSkill: Skill = {
   pluginProvider: "github",
 };
 
-function makeChannelConfiguration() {
-  let state: Record<string, unknown> | null = null;
-  return createChannelConfigurationService({
-    load: async () => state,
-    save: async (next) => {
-      state = {
-        ...(state ?? {}),
-        configuration: next,
-      };
+function makeLocationConfiguration() {
+  const entries = new Map<string, ConfigEntry>();
+  return createLocationConfigurationService({
+    get: async (key) => entries.get(key),
+    list: async () => [...entries.values()],
+    set: async (entry) => {
+      entries.set(entry.key, entry);
     },
+    unset: async (key) => entries.delete(key),
   });
 }
 
@@ -64,14 +64,14 @@ describe("jr-rpc custom command", () => {
   });
 
   it("sets and gets configuration values", async () => {
-    const configuration = makeChannelConfiguration();
+    const configuration = makeLocationConfiguration();
     const onConfigurationValueChanged = vi.fn();
 
     const setResult = await maybeExecuteJrRpcCustomCommand(
       "jr-rpc config set github.repo getsentry/junior",
       {
         activeSkill,
-        channelConfiguration: configuration,
+        locationConfiguration: configuration,
         actorId: "U123",
         onConfigurationValueChanged,
       },
@@ -86,7 +86,7 @@ describe("jr-rpc custom command", () => {
       "jr-rpc config get github.repo",
       {
         activeSkill,
-        channelConfiguration: configuration,
+        locationConfiguration: configuration,
         actorId: "U123",
       },
     );
@@ -100,7 +100,7 @@ describe("jr-rpc custom command", () => {
   });
 
   it("supports config list with a prefix filter", async () => {
-    const configuration = makeChannelConfiguration();
+    const configuration = makeLocationConfiguration();
     await configuration.set({
       key: "github.repo",
       value: "getsentry/junior",
@@ -118,7 +118,7 @@ describe("jr-rpc custom command", () => {
       "jr-rpc config list --prefix github.",
       {
         activeSkill,
-        channelConfiguration: configuration,
+        locationConfiguration: configuration,
         actorId: "U123",
       },
     );
@@ -175,7 +175,7 @@ describe("jr-rpc custom command", () => {
   });
 
   it("unsets configuration values", async () => {
-    const configuration = makeChannelConfiguration();
+    const configuration = makeLocationConfiguration();
     const onConfigurationValueChanged = vi.fn();
 
     await configuration.set({
@@ -189,7 +189,7 @@ describe("jr-rpc custom command", () => {
       "jr-rpc config unset github.repo",
       {
         activeSkill,
-        channelConfiguration: configuration,
+        locationConfiguration: configuration,
         actorId: "U123",
         onConfigurationValueChanged,
       },
@@ -225,12 +225,12 @@ describe("jr-rpc custom command", () => {
       ],
     });
     try {
-      const configuration = makeChannelConfiguration();
+      const configuration = makeLocationConfiguration();
       const result = await maybeExecuteJrRpcCustomCommand(
         "jr-rpc config set cloudflare.worker-id sentry-mcp",
         {
           activeSkill,
-          channelConfiguration: configuration,
+          locationConfiguration: configuration,
           actorId: "U123",
         },
       );
@@ -265,12 +265,12 @@ describe("jr-rpc custom command", () => {
       ],
     });
     try {
-      const configuration = makeChannelConfiguration();
+      const configuration = makeLocationConfiguration();
       const result = await maybeExecuteJrRpcCustomCommand(
         "jr-rpc config set cloudflare.worker.name sentry-mcp",
         {
           activeSkill,
-          channelConfiguration: configuration,
+          locationConfiguration: configuration,
           actorId: "U123",
         },
       );

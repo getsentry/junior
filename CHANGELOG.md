@@ -1,4 +1,97 @@
 # Changelog
+## 0.146.0
+
+### New Features ✨
+
+- (conversations) Expand and align retained conversation tools by @sentry-junior in [#1355](https://github.com/getsentry/junior/pull/1355)
+- (slack) Resolve identity-backed mentions by @sentry-junior in [#1358](https://github.com/getsentry/junior/pull/1358)
+
+### Bug Fixes 🐛
+
+#### Slack
+
+- Render blocks in secondary attachments by @erickreutz in [#1346](https://github.com/getsentry/junior/pull/1346)
+- Return mention format from user lookup by @sentry-junior in [#1352](https://github.com/getsentry/junior/pull/1352)
+
+#### Other
+
+- (tools) Rank catalog searches by relevance by @dcramer in [#1351](https://github.com/getsentry/junior/pull/1351)
+
+### Documentation 📚
+
+#### Policy
+
+- Add agent-steering anti prompt-bloat rules by @sentry-junior in [#1354](https://github.com/getsentry/junior/pull/1354)
+- Tighten frontend component taste rules by @sentry-junior in [#1353](https://github.com/getsentry/junior/pull/1353)
+
+#### Other
+
+- (policies) Rewrite policies in plain English by @sentry-junior in [#1350](https://github.com/getsentry/junior/pull/1350)
+
+### Internal Changes 🔧
+
+- (chat) Drop dead turn-cursor model metadata by @sentry-junior in [#1356](https://github.com/getsentry/junior/pull/1356)
+
+## 0.145.0
+
+### New Features ✨
+
+- (dashboard) Compact task conversation header by @sentry-junior in [#1347](https://github.com/getsentry/junior/pull/1347)
+
+### Documentation 📚
+
+- (github) Improve PR description guidance by @sentry-junior in [#1345](https://github.com/getsentry/junior/pull/1345)
+
+### Internal Changes 🔧
+
+- (chat) Simplify durable conversation execution by @sentry-junior in [#1344](https://github.com/getsentry/junior/pull/1344)
+- (evals) Run suites only on eval changes or labels by @sentry-junior in [#1348](https://github.com/getsentry/junior/pull/1348)
+
+## 0.144.0
+
+### New Features ✨
+
+#### Dashboard
+
+- Add task navigation with shared filters by @sentry-junior in [#1339](https://github.com/getsentry/junior/pull/1339)
+- Add opt-in average line to activity charts by @sentry-junior in [#1338](https://github.com/getsentry/junior/pull/1338)
+- Link task-triggered conversations back to their task by @sentry-junior in [#1306](https://github.com/getsentry/junior/pull/1306)
+- Show daily profile usage in activity tooltips by @sentry-junior in [#1340](https://github.com/getsentry/junior/pull/1340)
+
+#### Other
+
+- (scheduler) Move scheduled tasks via list and update by @sentry-junior in [#1336](https://github.com/getsentry/junior/pull/1336)
+
+### Bug Fixes 🐛
+
+- (github) Treat sandbox clone as ordinary read work by @sentry-junior in [#1333](https://github.com/getsentry/junior/pull/1333)
+- (scheduler) Point management errors at current destination by @sentry-junior in [#1341](https://github.com/getsentry/junior/pull/1341)
+
+### Internal Changes 🔧
+
+- (dashboard) Share secondary navigation by @sentry-junior in [#1337](https://github.com/getsentry/junior/pull/1337)
+- (deps) Bump react-router from 7.16.0 to 7.18.2 by @dependabot in [#1295](https://github.com/getsentry/junior/pull/1295)
+
+## 0.143.0
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Share chart header and axis label components by @sentry-junior in [#1329](https://github.com/getsentry/junior/pull/1329)
+- Share page-level time range selectors by @sentry-junior in [#1330](https://github.com/getsentry/junior/pull/1330)
+
+### Internal Changes 🔧
+
+#### Dashboard
+
+- Extract shared drawer components by @sentry-junior in [#1334](https://github.com/getsentry/junior/pull/1334)
+- Enable oxlint React hooks rules by @sentry-junior in [#1332](https://github.com/getsentry/junior/pull/1332)
+
+#### Other
+
+- (evals) Prefer natural user-led prompts by @sentry-junior in [#1327](https://github.com/getsentry/junior/pull/1327)
+
 ## 0.142.0
 
 ### New Features ✨

@@ -1,19 +1,24 @@
 import type { SlackDestination, User } from "@sentry/junior-plugin-api";
 import { and, eq, or } from "drizzle-orm";
+import type { ConversationSourceTask } from "@/api/schema/conversation";
 import type {
   TaskExecutionList,
   TaskList,
+  TaskRunList,
   TaskSummary,
 } from "@/api/schema/task";
 import { fallbackShortTitle } from "@/chat/services/short-title";
 import {
+  readTaskExecutionByConversationId,
   readTaskExecutionDays,
   readTaskExecutions,
   readTaskExecutionStatusDays,
   readTaskExecutionSummaries,
+  readTaskRuns,
   type TaskExecutionSummary,
 } from "@/chat/tasks/execution-stats";
 import { getDb } from "@/chat/db";
+import { resolveViewerUser } from "@/chat/plugins/viewer";
 import {
   deleteEventTask,
   eventTaskBelongsToUser,
@@ -467,6 +472,28 @@ export async function readViewerTasks(user: User): Promise<TaskList> {
   };
 }
 
+/** Read newest runs across the viewer-visible scheduled and event tasks. */
+export async function readViewerTaskRuns(user: User): Promise<TaskRunList> {
+  const taskList = await readViewerTasks(user);
+  const taskTitles = new Map(
+    taskList.tasks.map((task) => [`${task.kind}:${task.id}`, task.title]),
+  );
+  const runs = await readTaskRuns({
+    limit: TASK_EXECUTION_LIST_LIMIT + 1,
+    tasks: taskList.tasks.map((task) => ({
+      kind: task.kind,
+      taskId: task.id,
+    })),
+  });
+  return {
+    runs: runs.slice(0, TASK_EXECUTION_LIST_LIMIT).map((run) => ({
+      ...run,
+      taskTitle: taskTitles.get(`${run.kind}:${run.taskId}`) ?? "Untitled task",
+    })),
+    truncated: runs.length > TASK_EXECUTION_LIST_LIMIT,
+  };
+}
+
 export class ViewerTaskNotFoundError extends Error {
   constructor() {
     super("Task was not found.");
@@ -499,6 +526,57 @@ export async function readViewerTaskExecutions(
     executions: executions.slice(0, TASK_EXECUTION_LIST_LIMIT),
     task,
     truncated: executions.length > TASK_EXECUTION_LIST_LIMIT,
+  };
+}
+
+/** Resolve the source task for one conversation when a terminal execution links it. */
+export async function readConversationSourceTask(args: {
+  conversationId: string;
+  verifiedViewerEmail?: string;
+}): Promise<ConversationSourceTask | undefined> {
+  const execution = await readTaskExecutionByConversationId({
+    conversationId: args.conversationId,
+  });
+  if (!execution) return undefined;
+  const email = args.verifiedViewerEmail?.trim();
+  if (!email) return { kind: execution.kind };
+  const user = await resolveViewerUser(email);
+  if (!user) return { kind: execution.kind };
+  const candidate = await resolveViewerTaskCandidate(
+    user,
+    execution.kind,
+    execution.taskId,
+  );
+  if (!candidate) return { kind: execution.kind };
+  if (candidate.kind === "scheduled") {
+    const instruction = displayText(
+      candidate.task.task.text,
+      "Untitled scheduled task",
+    );
+    return {
+      id: candidate.task.id,
+      kind: "scheduled",
+      label: instruction,
+      title: taskDisplayTitle(
+        candidate.task.title,
+        instruction,
+        "Untitled scheduled task",
+      ),
+    };
+  }
+  const instruction = displayText(
+    candidate.task.task.text,
+    "Untitled event task",
+  );
+  return {
+    id: candidate.task.id,
+    kind: "event",
+    label: instruction,
+    title: taskDisplayTitle(
+      candidate.task.title,
+      instruction,
+      "Untitled event task",
+    ),
   };
 }
 

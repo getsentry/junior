@@ -51,7 +51,9 @@ pnpm docs:check
 pnpm release:check
 ```
 
-## Internal Documentation
+## Documentation
+
+Write public and internal docs in ASD-STE100 English. Use common words, active voice, short sentences, and one idea per sentence. Keep required terms from `TERMINOLOGY.md`. Explain them when needed. Remove other jargon. Public docs have more rules in `packages/docs/src/content/docs/contribute/documentation-guidelines.md`.
 
 - `policies/` contains durable repo-wide engineering rules.
 - Package and module `README.md` files explain implemented architecture and

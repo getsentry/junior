@@ -1,12 +1,16 @@
+import { ActivityTooltipRows } from "../../components/charts/ActivityChart";
 import { formatDuration } from "../../components/Duration";
 import { Tooltip } from "../../components/Tooltip";
 import { getDashboardAgentName } from "../../agentName";
+import { formatCompactNumber, formatCostSummary } from "../../format";
 import { cn } from "../../styles";
 
 type ContributionDay = {
   conversations: number;
+  costUsd?: number;
   date: string;
   durationMs: number;
+  tokens?: number;
 };
 
 /** Render a calendar grid for daily conversation activity. */
@@ -77,24 +81,20 @@ export function ContributionGrid(props: { days: ContributionDay[] }) {
               day ? (
                 <Tooltip
                   content={
-                    <div className="grid grid-cols-[auto_auto] gap-x-4 gap-y-0.5">
-                      <span className="text-dashboard-text-muted">
-                        conversations
-                      </span>
-                      <span className="text-right text-dashboard-text">
-                        {day.conversations}
-                      </span>
-                      <span className="text-dashboard-text-muted">runtime</span>
-                      <span className="text-right text-dashboard-text">
-                        {activityRuntime(day)}
-                      </span>
-                    </div>
+                    <ActivityTooltipRows
+                      rows={[
+                        ["conversations", day.conversations],
+                        ["runtime", activityRuntime(day)],
+                        ["spend", formatCostSummary({ total: day.costUsd ?? 0 })],
+                        ["tokens", formatCompactNumber(day.tokens ?? 0)],
+                      ]}
+                    />
                   }
                   key={day.date}
                   label={formatDate(day.date)}
                 >
                   <span
-                    aria-label={`${day.date}: ${day.conversations} conversations, ${activityRuntime(day)}`}
+                    aria-label={`${day.date}: ${day.conversations} conversations, ${activityRuntime(day)}, ${formatCostSummary({ total: day.costUsd ?? 0 })} spend, ${formatCompactNumber(day.tokens ?? 0)} tokens`}
                     className={cn(
                       "size-3 border border-black/40 outline-none focus-visible:ring-2 focus-visible:ring-[#beaaff]",
                       activityClass(day.conversations, max),

@@ -13,7 +13,7 @@ related:
 
 Junior stores work before processing it. This lets a turn continue after a timeout, authorization prompt, or worker restart.
 
-## Lifecycle
+## How work moves through Junior
 
 1. A Slack message, task, or plugin event arrives.
 2. Junior validates and stores the work.
@@ -34,14 +34,14 @@ Progress updates are status, not final replies. Text produced while calling tool
 
 ## Recovery
 
-Junior checkpoints completed tool work and resumes from the latest saved state. This applies when:
+Junior saves completed tool work. It resumes from the latest saved state when:
 
 - OAuth pauses a turn
 - work exceeds one execution window
 - a worker stops unexpectedly
 - delivery fails and can be retried
 
-Sandbox files are not durable state and may disappear between attempts.
+Sandbox files are temporary. They may disappear between attempts.
 
 ## Delivery Guarantees
 

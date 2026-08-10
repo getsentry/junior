@@ -59,7 +59,6 @@ export async function restoreSkillRuntime(args: {
   invokedSkill: SkillMetadata | null;
   priorPiMessages: PiMessage[] | undefined;
   skillSandbox: SkillSandbox;
-  syncLoadedSkillNamesForResume: () => void;
 }): Promise<void> {
   for (const skillName of inferLoadedSkillNamesFromPiMessages(
     args.priorPiMessages,
@@ -67,7 +66,6 @@ export async function restoreSkillRuntime(args: {
     const restoredSkill = await args.skillSandbox.loadSkill(skillName);
     if (restoredSkill) {
       upsertActiveSkill(args.activeSkills, restoredSkill);
-      args.syncLoadedSkillNamesForResume();
     }
   }
   if (args.invokedSkill) {
@@ -76,7 +74,6 @@ export async function restoreSkillRuntime(args: {
     );
     if (restoredSkill) {
       upsertActiveSkill(args.activeSkills, restoredSkill);
-      args.syncLoadedSkillNamesForResume();
     }
   }
 }

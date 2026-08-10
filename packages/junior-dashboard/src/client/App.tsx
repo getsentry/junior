@@ -27,7 +27,9 @@ import { PersonalTokensPage } from "./pages/PersonalTokensPage";
 import { PersonProfilePage } from "./pages/people/PersonProfilePage";
 import { SystemPage } from "./pages/system/SystemPage";
 import { TaskExecutionsPage } from "./pages/tasks/TaskExecutionsPage";
+import { TaskRunsPage } from "./pages/tasks/TaskRunsPage";
 import { TasksPage } from "./pages/tasks/TasksPage";
+import { TasksPageLayout } from "./pages/tasks/TasksPageLayout";
 import {
   MemoryPermalinkRoute,
   PluginUserPageRoute,
@@ -178,7 +180,9 @@ export function DashboardShell() {
             loading ? (
               <LoadingView label="Loading task executions" />
             ) : loggedIn ? (
-              <TaskExecutionsPage enabled={loggedIn} />
+              <TasksPageLayout>
+                <TaskExecutionsPage enabled={loggedIn} />
+              </TasksPageLayout>
             ) : (
               <Navigate replace to="/" />
             )
@@ -188,14 +192,44 @@ export function DashboardShell() {
         <Route
           element={
             loading ? (
-              <LoadingView label="Loading tasks" />
+              <LoadingView label="Loading task runs" />
             ) : loggedIn ? (
-              <TasksPage enabled={loggedIn} />
+              <TasksPageLayout>
+                <TaskRunsPage enabled={loggedIn} />
+              </TasksPageLayout>
             ) : (
               <Navigate replace to="/" />
             )
           }
-          path="/tasks/:taskId?"
+          path="/tasks/runs"
+        />
+        <Route
+          element={
+            loading ? (
+              <LoadingView label="Loading tasks" />
+            ) : loggedIn ? (
+              <TasksPageLayout>
+                <TasksPage enabled={loggedIn} view="list" />
+              </TasksPageLayout>
+            ) : (
+              <Navigate replace to="/" />
+            )
+          }
+          path="/tasks/list/:taskId?"
+        />
+        <Route
+          element={
+            loading ? (
+              <LoadingView label="Loading tasks" />
+            ) : loggedIn ? (
+              <TasksPageLayout>
+                <TasksPage enabled={loggedIn} view="overview" />
+              </TasksPageLayout>
+            ) : (
+              <Navigate replace to="/" />
+            )
+          }
+          path="/tasks"
         />
         <Route
           element={<LegacySystemRedirect section="locations" />}

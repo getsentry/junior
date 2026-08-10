@@ -60,8 +60,8 @@ Run database migrations before the app build:
 pnpm exec junior upgrade && pnpm build
 ```
 
-`junior upgrade` applies the idempotent core and plugin SQL migrations, while
-`junior snapshot create` inside `pnpm build` prepares sandbox runtime
+`junior upgrade` applies each core and plugin SQL migration only once. The
+`junior snapshot create` command inside `pnpm build` prepares the sandbox
 dependencies declared by enabled plugins. Existing pre-Drizzle deployments
 must complete the bridge-release procedure below before this build command can
 succeed.
@@ -101,20 +101,20 @@ The heartbeat endpoint returns `401` unless the incoming Vercel Cron request has
 
 Set the core runtime variables in Vercel:
 
-| Variable                                    | Required    | Purpose                                                                        |
-| ------------------------------------------- | ----------- | ------------------------------------------------------------------------------ |
-| `SLACK_SIGNING_SECRET`                      | Yes         | Verifies Slack requests.                                                       |
-| `SLACK_BOT_TOKEN` or `SLACK_BOT_USER_TOKEN` | Yes         | Posts replies and calls Slack APIs.                                            |
-| `REDIS_URL`                                 | Yes         | Queue and runtime state storage.                                               |
-| `DATABASE_URL`                              | Yes         | Standard Neon/Vercel Postgres URL for Junior SQL records and reporting.        |
-| `JUNIOR_DATABASE_DRIVER`                    | No          | SQL client driver: `neon` or `postgres`. Defaults to `neon`.                   |
-| `JUNIOR_SQL_STATEMENT_TIMEOUT_MS`           | No          | Runtime PostgreSQL statement timeout. Defaults to `30000`; set `0` to disable. |
-| `JUNIOR_SECRET`                             | Yes         | Signs internal callbacks and sandbox actor context.                            |
-| `CRON_SECRET`                               | Yes         | Authenticates Vercel Cron requests to the internal heartbeat route.            |
-| `JUNIOR_BASE_URL`                           | Conditional | Canonical URL for OAuth and callback URLs when Vercel URL envs are not enough. |
-| `JUNIOR_STATE_KEY_PREFIX`                   | No          | Redis key namespace for this deployment when sharing one Redis database.       |
+| Variable                                    | Required    | Purpose                                                                           |
+| ------------------------------------------- | ----------- | --------------------------------------------------------------------------------- |
+| `SLACK_SIGNING_SECRET`                      | Yes         | Verifies Slack requests.                                                          |
+| `SLACK_BOT_TOKEN` or `SLACK_BOT_USER_TOKEN` | Yes         | Posts replies and calls Slack APIs.                                               |
+| `REDIS_URL`                                 | Yes         | Queue and runtime state storage.                                                  |
+| `DATABASE_URL`                              | Yes         | Standard Neon/Vercel Postgres URL for Junior SQL records and reporting.           |
+| `JUNIOR_DATABASE_DRIVER`                    | No          | SQL client driver: `neon` or `postgres`. Defaults to `neon`.                      |
+| `JUNIOR_SQL_STATEMENT_TIMEOUT_MS`           | No          | Runtime PostgreSQL statement timeout. Defaults to `30000`; set `0` to disable.    |
+| `JUNIOR_SECRET`                             | Yes         | Signs internal callbacks and sandbox actor context.                               |
+| `CRON_SECRET`                               | Yes         | Authenticates Vercel Cron requests to the internal heartbeat route.               |
+| `JUNIOR_BASE_URL`                           | Conditional | Main URL for OAuth and callback URLs when Vercel URL values are not enough.       |
+| `JUNIOR_STATE_KEY_PREFIX`                   | No          | Redis key namespace for this deployment when sharing one Redis database.          |
 | `AI_GATEWAY_API_KEY`                        | Optional    | Fallback AI Gateway auth when OIDC is unavailable. Prefer project OIDC on Vercel. |
-| `VERCEL_SANDBOX_KEEPALIVE_MS`               | Recommended | Extends an active sandbox on each tool acquire. Set to `900000` (15 minutes).  |
+| `VERCEL_SANDBOX_KEEPALIVE_MS`               | Recommended | Extends an active sandbox on each tool acquire. Set to `900000` (15 minutes).     |
 
 ### AI Gateway auth (preferred: project OIDC)
 
@@ -126,7 +126,7 @@ usage and spend attribute to this project instead of showing as `unknown`.
 2. Do **not** set `AI_GATEWAY_API_KEY` in production unless you need a non-OIDC
    fallback. When both are present, Junior prefers OIDC.
 3. For local development without OIDC, either run `vercel link` + `vercel env
-   pull` or set `AI_GATEWAY_API_KEY`.
+pull` or set `AI_GATEWAY_API_KEY`.
 
 `AI_GATEWAY_API_KEY` remains supported for CI and non-Vercel hosts. Team-scoped
 keys without a `projectId` will still show as `unknown` in the AI Gateway

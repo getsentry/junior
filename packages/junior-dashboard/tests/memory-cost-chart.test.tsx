@@ -19,6 +19,7 @@ describe("MemoryCostChart", () => {
     const html = renderToStaticMarkup(
       <MemoryCostChart
         extractionDays={costDays(0.005, 1)}
+        range={30}
         recallDays={costDays(0.005, 2)}
       />,
     );
@@ -26,6 +27,10 @@ describe("MemoryCostChart", () => {
     expect(html).toContain("$0.01");
     expect(html).toContain("Extraction $0.005");
     expect(html).toContain("Recall $0.005");
+    expect(html).toContain(
+      'aria-label="Memory extraction and recall cost during the last 30 days"',
+    );
+    expect(html).not.toContain('aria-label="Memory cost range"');
     expect(html).toContain(
       'aria-label="Jul 30: extraction $0.005, 1 run; recall $0.005, 2 runs"',
     );

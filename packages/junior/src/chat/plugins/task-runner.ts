@@ -43,9 +43,9 @@ import {
   type ConversationMessageProvenance,
 } from "@/chat/conversations/provenance";
 import {
-  getAgentTurnSessionRecord,
-  type AgentTurnSessionRecord,
-} from "@/chat/state/turn-session";
+  getTurnRecord,
+  type TurnRecord,
+} from "@/chat/task-execution/checkpoint";
 import { getPlugins } from "./agent-hooks";
 import {
   pluginTaskId,
@@ -184,7 +184,7 @@ function runTranscriptEntry(
  * pairing is applied per message rather than by post-strip index.
  */
 function turnMessagesWithProvenance(
-  record: AgentTurnSessionRecord,
+  record: TurnRecord,
 ): Array<{ message: PiMessage; provenance: ConversationMessageProvenance }> {
   const startIndex = record.turnStartMessageIndex ?? 0;
   const messages = record.piMessages.slice(startIndex);
@@ -259,7 +259,7 @@ function messageExistedAtRunCompletion(
  * contribute; private and local sources add nothing here.
  */
 async function loadConversationContextTranscriptEntries(
-  record: AgentTurnSessionRecord,
+  record: TurnRecord,
   source: PluginRunContext["source"],
   runActor: Actor | undefined,
 ): Promise<PluginRunTranscriptEntry[]> {
@@ -324,10 +324,7 @@ async function withPluginTaskLock<T>(
 async function loadPluginRun(
   params: PluginTaskParams,
 ): Promise<PluginRunContext> {
-  const record = await getAgentTurnSessionRecord(
-    params.conversationId,
-    params.sessionId,
-  );
+  const record = await getTurnRecord(params.conversationId, params.sessionId);
   if (!record) {
     throw new Error("Completed plugin task session record is unavailable");
   }
@@ -372,7 +369,7 @@ async function loadPluginRun(
     // stripped transcript, so it reflects every committed instruction actor.
     actors: record.actors,
     ...(runActor ? { actor: runActor } : {}),
-    runId: record.sessionId,
+    runId: record.turnId,
     source: routing.source,
     transcript: [...contextEntries, ...runEntries],
   });
@@ -436,7 +433,7 @@ export async function scheduleSessionCompletedPluginTasks(
   if (taskRegistrations.length === 0) {
     return;
   }
-  const record = await getAgentTurnSessionRecord(
+  const record = await getTurnRecord(
     coreParams.conversationId,
     coreParams.sessionId,
   );

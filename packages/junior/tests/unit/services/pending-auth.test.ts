@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-const { abandonAgentTurnSessionRecord } = vi.hoisted(() => ({
-  abandonAgentTurnSessionRecord: vi.fn(),
+const { abandonTurnRecord } = vi.hoisted(() => ({
+  abandonTurnRecord: vi.fn(),
 }));
 
-vi.mock("@/chat/state/turn-session", () => ({
-  abandonAgentTurnSessionRecord,
+vi.mock("@/chat/task-execution/turn-cursor", () => ({
+  abandonTurnRecord,
 }));
 
 import {
@@ -21,7 +21,7 @@ const NOW = 1_700_000_000_000;
 const REUSE_WINDOW_MS = 10 * 60 * 1000;
 
 beforeEach(() => {
-  abandonAgentTurnSessionRecord.mockReset();
+  abandonTurnRecord.mockReset();
 });
 
 function pendingAuth(
@@ -186,9 +186,9 @@ describe("abandonReplacedPendingAuth", () => {
       nextPendingAuth,
     });
 
-    expect(abandonAgentTurnSessionRecord).toHaveBeenCalledWith({
+    expect(abandonTurnRecord).toHaveBeenCalledWith({
       conversationId: "conversation-1",
-      sessionId: "run_old",
+      turnId: "run_old",
       errorMessage:
         "Abandoned by a newer auth-blocked request in the same conversation.",
     });

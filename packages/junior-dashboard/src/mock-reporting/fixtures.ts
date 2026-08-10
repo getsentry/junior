@@ -778,6 +778,7 @@ function simpleConversation(
     displayTitle: string;
     surface: "internal" | "scheduler" | "slack";
     channel?: string;
+    sourceTask?: ConversationDetailReport["sourceTask"];
   },
 ): ConversationDetailReport {
   const startedAt = iso(nowMs, -2 * 60 * 60_000);
@@ -844,6 +845,13 @@ function mockConversations(nowMs: number): MockConversation[] {
       conversationId: SCHEDULER_CONVERSATION_ID,
       displayTitle: "Daily operations digest",
       surface: "scheduler",
+      sourceTask: {
+        id: "scheduled-1",
+        kind: "scheduled",
+        label:
+          "Send the weekly project summary with release blockers, owner follow-ups, and next-week risks for every tracked workstream",
+        title: "Weekly project summary",
+      },
     }),
   ];
 }
@@ -860,6 +868,7 @@ function summaryFromConversation(
     parentConversationId: _parentConversationId,
     previousCursor: _previousCursor,
     sentryConversationUrl: _sentryConversationUrl,
+    sourceTask: _sourceTask,
     ...summary
   } = conversation;
   return summary.channel && PUBLIC_MOCK_CHANNEL_IDS.has(summary.channel)

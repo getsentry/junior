@@ -36,26 +36,23 @@ jobs:
               - 'packages/junior-evals/vitest.evals.guardian.config.ts'
               - 'packages/junior-evals/package.json'
               - 'packages/junior/src/chat/services/guardian-action-policy.ts'
-              - 'packages/junior/src/chat/services/guardian-action-review.ts'
-              - 'packages/junior/src/chat/tool-support/action-review.ts'
-              - 'packages/junior/src/chat/tool-support/action-review-evidence.ts'
-              - 'packages/junior/src/chat/tool-support/action-review-history.ts'
-              - 'packages/junior/src/chat/pi/client.ts'
-              - 'packages/junior/src/chat/pi/gateway-auth.ts'
-              - 'packages/junior/src/chat/config.ts'
       - id: decision
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
           VERCEL_OIDC_TOKEN: ${{ secrets.VERCEL_OIDC_TOKEN }}
           RELEVANT: ${{ steps.changes.outputs.relevant }}
-          ACTION: ${{ github.event.action }}
-          LABEL: ${{ github.event.label.name }}
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
         run: |
           set -euo pipefail
           gateway_ready=false
           requested=false
           [[ -n "${AI_GATEWAY_API_KEY:-}" || -n "${VERCEL_OIDC_TOKEN:-}" ]] && gateway_ready=true
-          [[ "$ACTION" == "labeled" && ( "$LABEL" == "trigger-evals" || "$LABEL" == "trigger-evals-guardian" ) ]] && requested=true
+          IFS=',' read -r -a labels <<< "${PR_LABELS:-}"
+          for label in "${labels[@]}"; do
+            if [[ "$label" == "trigger-evals" || "$label" == "trigger-evals-guardian" ]]; then
+              requested=true
+            fi
+          done
           should_run=false
           [[ "$gateway_ready" == "true" && ( "$RELEVANT" == "true" || "$requested" == "true" ) ]] && should_run=true
           echo "should_run=$should_run" >> "$GITHUB_OUTPUT"

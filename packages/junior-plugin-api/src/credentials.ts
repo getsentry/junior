@@ -21,6 +21,8 @@ export const pluginAuthorizationSchema = z
 /** Runtime schema for a provider account attached to stored OAuth tokens. */
 export const pluginProviderAccountSchema = z
   .object({
+    displayName: nonBlankStringSchema.optional(),
+    handle: nonBlankStringSchema.optional(),
     id: nonBlankStringSchema,
     label: nonBlankStringSchema.optional(),
     url: nonBlankStringSchema.optional(),

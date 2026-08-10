@@ -7,6 +7,7 @@ import {
   juniorAgentBindings,
   juniorAgentInvocations,
 } from "./schema/agent-invocations";
+import { juniorLocationConfigurations } from "./schema/location-configurations";
 import { juniorDestinations } from "./schema/destinations";
 import { juniorEventTasks } from "./schema/event-tasks";
 import { juniorIdentities } from "./schema/identities";
@@ -26,6 +27,7 @@ export {
   juniorConversationEvents,
   juniorConversationBindings,
   juniorConversations,
+  juniorLocationConfigurations,
   juniorDestinations,
   juniorEventTasks,
   juniorIdentities,
@@ -44,6 +46,7 @@ export const juniorSqlSchema = {
   juniorConversationEvents,
   juniorConversationBindings,
   juniorConversations,
+  juniorLocationConfigurations,
   juniorDestinations,
   juniorEventTasks,
   juniorIdentities,

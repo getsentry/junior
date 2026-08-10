@@ -17,13 +17,17 @@ function memoryDays(personal: number, publicCount: number) {
 describe("MemoryTimeline", () => {
   it("renders shared activity tooltips for stacked memory days", () => {
     const html = renderToStaticMarkup(
-      <MemoryTimeline days={memoryDays(2, 3)} />,
+      <MemoryTimeline days={memoryDays(2, 3)} range={30} />,
     );
 
     expect(html).toContain(
       'aria-label="Jul 30: 2 personal, 3 public, 5 total memories"',
     );
     expect(html).toContain("Activity over time");
+    expect(html).toContain(
+      'aria-label="Memories learned during the last 30 days"',
+    );
+    expect(html).not.toContain('aria-label="Memory timeline range"');
     expect(html).toContain('tabindex="0"');
   });
 });

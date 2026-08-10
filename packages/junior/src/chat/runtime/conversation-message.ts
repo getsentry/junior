@@ -1,5 +1,5 @@
 import type { Message } from "chat";
-import { getSlackMessageTs } from "@/chat/slack/message";
+import { getMessageTimestamp } from "@/chat/slack/message/identity";
 import type { ConversationMessage } from "@/chat/state/conversation";
 import { normalizeConversationText } from "@/chat/services/conversation-memory";
 import { getMessageActorIdentity } from "@/chat/services/message-actor-identity";
@@ -35,7 +35,7 @@ export function toConversationMessage(
   args: ConversationMessageInput,
 ): ConversationMessage {
   const actor = getMessageActorIdentity(args.entry);
-  const slackTs = getSlackMessageTs(args.entry);
+  const slackTs = getMessageTimestamp(args.entry);
   const messageHasPotentialImageAttachment = hasPotentialImageAttachment(
     args.entry.attachments,
   );

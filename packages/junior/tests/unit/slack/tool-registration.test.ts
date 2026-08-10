@@ -85,6 +85,29 @@ describe("Slack tool registration", () => {
     vi.restoreAllMocks();
   });
 
+  it("lists only plugins that can verify identity accounts", () => {
+    setPlugins([
+      resourceEventPlugin(),
+      defineJuniorPlugin({
+        manifest: {
+          name: "identity-test",
+          displayName: "Identity test",
+          description: "Verifies test accounts",
+        },
+        hooks: {
+          resolveOAuthAccount: () => ({ id: "account-1" }),
+        },
+      }),
+    ]);
+
+    const tools = createTools([], {}, ctx("D12345"));
+    expect(tools.userLookup?.inputSchema).toMatchObject({
+      properties: {
+        provider: { enum: ["slack", "identity-test"] },
+      },
+    });
+  });
+
   it("omits loadSkill when an explicit skill is already loaded", () => {
     const tools = createTools([], {}, ctx("D12345"), {
       includeLoadSkill: false,
@@ -109,12 +132,10 @@ describe("Slack tool registration", () => {
     expect(tools).not.toHaveProperty("slackChannelListMessages");
     expect(tools).toHaveProperty("addReaction");
     expect(tools).toHaveProperty("slackCanvasCreate");
-    expect(tools).not.toHaveProperty("searchConversationHistory");
-    expect(tools).toHaveProperty("queryConversationEvents");
-    expect(tools.queryConversationEvents?.exposure).toBe("deferred");
-    expect(tools.queryConversationEvents?.source?.id).toBe(
-      "conversation-events",
-    );
+    expect(tools).not.toHaveProperty("searchConversationMessages");
+    expect(tools).toHaveProperty("searchConversationEvents");
+    expect(tools.searchConversationEvents?.exposure).toBe("deferred");
+    expect(tools.searchConversationEvents?.source?.id).toBe("conversations");
   });
 
   it("registers channel-scope tools in shared channel context", () => {
@@ -126,18 +147,14 @@ describe("Slack tool registration", () => {
     expect(tools).toHaveProperty("slackPublicSearch");
     expect(tools).toHaveProperty("addReaction");
     expect(tools).toHaveProperty("slackCanvasCreate");
-    expect(tools).toHaveProperty("searchConversationHistory");
-    expect(tools).toHaveProperty("queryConversationEvents");
+    expect(tools).toHaveProperty("searchConversationMessages");
+    expect(tools).toHaveProperty("searchConversationEvents");
     expect(tools).toHaveProperty("stopWatchingResources");
     expect(tools).toHaveProperty("listResourceEventSubscriptions");
-    expect(tools.searchConversationHistory?.exposure).toBe("deferred");
-    expect(tools.searchConversationHistory?.source?.id).toBe(
-      "conversation-history",
-    );
-    expect(tools.queryConversationEvents?.exposure).toBe("deferred");
-    expect(tools.queryConversationEvents?.source?.id).toBe(
-      "conversation-events",
-    );
+    expect(tools.searchConversationMessages?.exposure).toBe("deferred");
+    expect(tools.searchConversationMessages?.source?.id).toBe("conversations");
+    expect(tools.searchConversationEvents?.exposure).toBe("deferred");
+    expect(tools.searchConversationEvents?.source?.id).toBe("conversations");
     expect(tools.stopWatchingResources?.exposure).toBe("deferred");
     expect(tools.listResourceEventSubscriptions?.exposure).toBe("deferred");
   });
@@ -153,7 +170,7 @@ describe("Slack tool registration", () => {
   it("does not register conversation search for a source-confirmed private C channel", () => {
     const tools = createTools([], {}, ctx("C12345", "private"));
 
-    expect(tools).not.toHaveProperty("searchConversationHistory");
+    expect(tools).not.toHaveProperty("searchConversationMessages");
   });
 
   it("registers tools when runtime channel ids are Junior Slack references", () => {
@@ -316,7 +333,7 @@ describe("Slack tool registration", () => {
     ).toEqual([]);
     expect(tools).not.toHaveProperty("attachFile");
     expect(tools).not.toHaveProperty("stopWatchingResources");
-    expect(tools).not.toHaveProperty("queryConversationEvents");
+    expect(tools).not.toHaveProperty("searchConversationEvents");
   });
 
   it("registers image generation only when artifact persistence is available", () => {

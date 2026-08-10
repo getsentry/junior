@@ -93,7 +93,6 @@ import {
   toPiReasoningLevel,
   type TurnRoute,
 } from "@/chat/services/turn-router";
-import { parseTurnReasoningLevel } from "@/chat/reasoning-level";
 import {
   addAgentTurnUsage,
   hasAgentTurnUsage,
@@ -104,6 +103,7 @@ import {
   AuthorizationFlowDisabledError,
   AuthorizationPauseError,
 } from "@/chat/services/auth-pause";
+import { TurnSliceLimitExceededError } from "@/chat/services/turn-limit";
 import {
   resolveConversationPrivacy,
   runWithConversationPrivacy,
@@ -121,7 +121,7 @@ import {
   type AgentRunRequest,
 } from "@/chat/agent/request";
 import { actionConfirmationRetryMessages } from "@/chat/agent/action-confirmation-retry";
-import { restoreSessionRecord } from "@/chat/agent/session";
+import { loadTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import { discoverRunSkills, restoreSkillRuntime } from "@/chat/agent/skills";
 import {
   assemblePrompt,
@@ -366,22 +366,13 @@ async function executeAgentRunInPrivacyContext(
       ? findSkillByName(skillInvocation.skillName, availableSkills)
       : null;
     const activeSkills: Skill[] = [];
-    let loadedSkillNamesForResume: string[] = [];
-    const syncLoadedSkillNamesForResume = () => {
-      loadedSkillNamesForResume = activeSkills.map((skill) => skill.name);
-    };
     const skillSandbox = new SkillSandbox(availableSkills, activeSkills);
 
-    // ── Turn session record ──────────────────────────────────────────
-    const {
-      sessionRecordState,
-      resumedFromSessionRecord,
-      currentSliceId,
-      existingSessionRecord,
-    } = await restoreSessionRecord({
-      conversationId,
-      turnId,
-    });
+    // ── Turn checkpoint (resume cursor) ──────────────────────────────
+    const checkpoint = await loadTurnCheckpoint({ conversationId, turnId });
+    const resumedFromSessionRecord = checkpoint.resumed;
+    const currentSliceId = checkpoint.sliceId;
+    const existingSessionRecord = checkpoint.record;
     // Mirror the committed provenance prefix the turn session record owns. A
     // fresh run may already include batched parked input committed before the
     // agent starts, then adds the current actor's turn-start instruction.
@@ -429,15 +420,12 @@ async function executeAgentRunInPrivacyContext(
         : {}),
       ...(routing.dispatch?.id ? { dispatchId: routing.dispatch.id } : {}),
       durability,
-      getLoadedSkillNames: () => loadedSkillNamesForResume,
-      getReasoningLevel: () => turnRoute?.reasoningLevel,
-      getModelId: () => activeModelId,
       recordActiveMcpProviders,
       actor,
       runSource,
       conversationId,
       turnId,
-      sessionRecordState,
+      checkpoint,
       startedAtMs: replyStartedAtMs,
       surface,
     });
@@ -461,8 +449,8 @@ async function executeAgentRunInPrivacyContext(
         });
       }
     };
-    const persistedConfigurationValues = policy.channelConfiguration
-      ? await policy.channelConfiguration.resolveValues()
+    const persistedConfigurationValues = policy.locationConfiguration
+      ? await policy.locationConfiguration.resolveValues()
       : {};
     const configurationValues: Record<string, unknown> = {
       ...getConfigDefaults(),
@@ -485,7 +473,6 @@ async function executeAgentRunInPrivacyContext(
       invokedSkill,
       priorPiMessages,
       skillSandbox,
-      syncLoadedSkillNamesForResume,
     });
     const explicitSkill = invokedSkill
       ? (activeSkills.find((skill) => skill.name === invokedSkill.name) ?? null)
@@ -508,14 +495,12 @@ async function executeAgentRunInPrivacyContext(
           botConfig,
           activeModelProfile,
         );
-        const resumedReasoningLevel = existingSessionRecord?.reasoningLevel
-          ? parseTurnReasoningLevel(existingSessionRecord.reasoningLevel)
-          : undefined;
+        // After handoff, profile config (else inherited old route) is authority.
+        // Handoff does not write a new turn_routed event.
         turnRoute = {
           profile: activeModelProfile,
           reasoningLevel:
             activeProfileConfig.reasoningLevel ??
-            resumedReasoningLevel ??
             storedTurnRoute.reasoningLevel,
           reason: `resumed_handoff:${storedTurnRoute.modelProfile}:${activeModelProfile}`,
         };
@@ -790,7 +775,6 @@ async function executeAgentRunInPrivacyContext(
       supportsImageInput: () =>
         resolveGatewayModel(activeModelId).input.includes("image"),
       surface,
-      syncLoadedSkillNamesForResume,
       toolCalls,
       userInput,
     });
@@ -1207,6 +1191,10 @@ async function executeAgentRunInPrivacyContext(
         runResume.setTurnStartMessageIndex(
           existingSessionRecord!.turnStartMessageIndex,
         );
+        // Timeout/retry parking needs a durable baseline even when the first
+        // mid-run checkpoint fails. Without this, an empty safe boundary can
+        // re-park the same stuck slice forever.
+        runResume.adoptCommittedBoundary([...agent.state.messages]);
       } else if (promptHistoryMessages.length > 0) {
         agent.state.messages = [...promptHistoryMessages];
       }
@@ -1597,7 +1585,10 @@ async function executeAgentRunInPrivacyContext(
       error instanceof AssistantMessageDeliveryError
         ? error.originalError
         : error;
-    if (runError instanceof AuthPausePersistenceError) {
+    if (
+      runError instanceof AuthPausePersistenceError ||
+      runError instanceof TurnSliceLimitExceededError
+    ) {
       throw runError;
     }
     if (resume && runError instanceof AuthorizationPauseError) {

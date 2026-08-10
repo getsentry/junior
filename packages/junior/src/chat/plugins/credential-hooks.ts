@@ -200,6 +200,13 @@ export interface IssueCredentialInput {
   userTokenStore: UserTokenStore;
 }
 
+/** Return providers that can verify an OAuth account for identity storage. */
+export function getOAuthAccountProviders(): string[] {
+  return getPlugins()
+    .filter((plugin) => Boolean(plugin.hooks?.resolveOAuthAccount))
+    .map((plugin) => plugin.manifest.name);
+}
+
 /** Ask a plugin which provider account belongs to an OAuth token. */
 export async function resolvePluginOAuthAccount(input: {
   provider: string;

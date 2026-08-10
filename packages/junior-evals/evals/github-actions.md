@@ -67,11 +67,11 @@ Only needed for the token-based fallback above. Create an AI Gateway key in the 
 
 Three independent workflows run on pull requests:
 
-- `Behavioral evals` runs Slack/agent evals when behavioral-related files changed or the PR has `trigger-evals-behavioral` / `trigger-evals`
-- `Integration evals` runs system evals when integration-related files changed or the PR has `trigger-evals-integration` / `trigger-evals`
-- `Guardian evals` runs isolated Guardian snapshots when Guardian-related files changed or the PR has `trigger-evals-guardian` / `trigger-evals`
+- `Behavioral evals` runs Slack/agent evals when behavioral eval files/harness changed or the PR has `trigger-evals-behavioral` / `trigger-evals`
+- `Integration evals` runs system evals when integration eval files/harness changed or the PR has `trigger-evals-integration` / `trigger-evals`
+- `Guardian evals` runs isolated Guardian snapshots when Guardian eval files/harness changed or the PR has `trigger-evals-guardian` / `trigger-evals`
 
-Suite labels follow `trigger-evals-[domain]`. Adding a trigger label fires immediately. If the label is already on the PR, future `synchronize` events still run the matching suite(s).
+Suite labels follow `trigger-evals-[domain]`. Adding a trigger label fires immediately. If the label is already on the PR, future `synchronize` events still run the matching suite(s). Product source under `packages/junior/src/**` does not auto-run evals, except Guardian policy changes in `packages/junior/src/chat/services/guardian-action-policy.ts`.
 
 Guardian evals only need gateway credentials. Behavioral and integration evals still need gateway plus sandbox access.
 

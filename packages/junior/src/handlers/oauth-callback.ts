@@ -9,19 +9,23 @@ import {
   resolveBaseUrl,
 } from "@/chat/oauth-flow";
 import { buildConversationContext } from "@/chat/services/conversation-memory";
-import {
-  markConversationMessage,
-} from "@/chat/services/conversation-memory";
+import { markConversationMessage } from "@/chat/services/conversation-memory";
 import { postSlackMessage } from "@/chat/slack/outbound";
 import {
   ResumeTurnBusyError,
   resumeSlackTurn,
 } from "@/chat/runtime/slack-resume";
 import { persistAuthPauseTurnState } from "@/chat/runtime/auth-pause-state";
-import { logException, logInfo, logWarn, withLogContext } from "@/chat/logging";
+import {
+  logException,
+  logInfo,
+  logWarn,
+  runBestEffort,
+  withLogContext,
+} from "@/chat/logging";
 import { htmlCallbackResponse } from "@/handlers/oauth-html";
 import {
-  getChannelConfigurationServiceById,
+  getLocationConfigurationService,
   getPersistedSandboxState,
   getPersistedThreadState,
   persistThreadStateById,
@@ -45,10 +49,10 @@ import { createSlackResumeActor, type Actor } from "@/chat/actor";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import {
-  failAgentTurnSessionRecord,
-  getAgentTurnSessionRecord,
-  abandonAgentTurnSessionRecord,
-} from "@/chat/state/turn-session";
+  failTurnRecord,
+  getTurnRecord,
+  abandonTurnRecord,
+} from "@/chat/task-execution/checkpoint";
 import {
   loadProjection,
   recordAuthenticationLinked,
@@ -61,7 +65,7 @@ import {
 } from "@/chat/services/pending-auth";
 import { escapeXml } from "@/chat/xml";
 import type { WaitUntilFn } from "@/handlers/types";
-import { scheduleAgentContinue } from "@/chat/services/agent-continue";
+import { wakePausedTurn } from "@/chat/task-execution/turn-wake";
 import {
   resolveTurnSessionRouting,
   type TurnSessionRouting,
@@ -70,6 +74,13 @@ import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { requireSlackDestination } from "@/chat/destination";
 import { relayLocalOAuthCallback } from "@/chat/local/oauth-relay";
+import { getSqlExecutor } from "@/chat/db";
+import {
+  upsertIdentity,
+  upsertLinkedIdentity,
+} from "@/chat/identities/sql";
+import { lookupSlackUserProfile } from "@/chat/slack/users";
+import { parseSlackUserId } from "@/chat/slack/ids";
 
 interface OAuthCallbackOptions {
   agentRunner: AgentRunner;
@@ -142,13 +153,13 @@ async function failSessionRecordBestEffort(args: {
   conversationId: string;
   errorMessage: string;
   expectedVersion: number;
-  sessionId: string;
+  turnId: string;
 }): Promise<void> {
   try {
-    await failAgentTurnSessionRecord({
+    await failTurnRecord({
       conversationId: args.conversationId,
       expectedVersion: args.expectedVersion,
-      sessionId: args.sessionId,
+      turnId: args.turnId,
       errorMessage: args.errorMessage,
     });
   } catch (error) {
@@ -157,7 +168,7 @@ async function failSessionRecordBestEffort(args: {
       "oauth.callback.session_record.failure_persistence.failed",
       {
         "app.ai.conversation_id": args.conversationId,
-        "app.ai.session_id": args.sessionId,
+        "app.ai.session_id": args.turnId,
       },
     );
   }
@@ -187,7 +198,7 @@ async function persistFailedOAuthReplyState(args: {
   await failSessionRecordBestEffort({
     conversationId: args.conversationId,
     expectedVersion: args.expectedVersion,
-    sessionId: args.sessionId,
+    turnId: args.sessionId,
     errorMessage: "OAuth-resumed turn failed",
   });
   await persistThreadStateById(args.conversationId, {
@@ -240,9 +251,9 @@ async function resumeOAuthSessionRecordTurn(
       await persistThreadStateById(stored.resumeConversationId, {
         conversation,
       });
-      await abandonAgentTurnSessionRecord({
+      await abandonTurnRecord({
         conversationId: stored.resumeConversationId,
-        sessionId: pendingAuth.sessionId,
+        turnId: pendingAuth.sessionId,
         errorMessage:
           "Auth completed after a newer thread message abandoned this blocked request.",
       });
@@ -250,7 +261,7 @@ async function resumeOAuthSessionRecordTurn(
     }
   }
 
-  const sessionRecord = await getAgentTurnSessionRecord(
+  const sessionRecord = await getTurnRecord(
     stored.resumeConversationId,
     resolvedSessionId,
   );
@@ -266,7 +277,7 @@ async function resumeOAuthSessionRecordTurn(
     return;
   }
   if (
-    sessionRecord.state !== "awaiting_resume" ||
+    sessionRecord.state !== "paused" ||
     sessionRecord.resumeReason !== "auth"
   ) {
     return;
@@ -313,13 +324,13 @@ async function resumeOAuthSessionRecordTurn(
       if (lockedSessionId !== resolvedSessionId) {
         return false;
       }
-      const lockedSessionRecord = await getAgentTurnSessionRecord(
+      const lockedSessionRecord = await getTurnRecord(
         stored.resumeConversationId!,
         lockedSessionId,
       );
       if (
         !lockedSessionRecord ||
-        lockedSessionRecord.state !== "awaiting_resume" ||
+        lockedSessionRecord.state !== "paused" ||
         lockedSessionRecord.resumeReason !== "auth"
       ) {
         return false;
@@ -332,9 +343,9 @@ async function resumeOAuthSessionRecordTurn(
           await persistThreadStateById(stored.resumeConversationId!, {
             conversation: lockedConversation,
           });
-          await abandonAgentTurnSessionRecord({
+          await abandonTurnRecord({
             conversationId: stored.resumeConversationId!,
-            sessionId: lockedPendingAuth.sessionId,
+            turnId: lockedPendingAuth.sessionId,
             errorMessage:
               "Auth completed after a newer thread message abandoned this blocked request.",
           });
@@ -360,9 +371,8 @@ async function resumeOAuthSessionRecordTurn(
           excludeMessageId: lockedUserMessage.id,
         },
       );
-      const lockedChannelConfiguration = getChannelConfigurationServiceById(
-        stored.channelId!,
-      );
+      const lockedLocationConfiguration =
+        getLocationConfigurationService(destination);
       let actor: Actor;
       try {
         actor = createSlackResumeActor({
@@ -370,10 +380,10 @@ async function resumeOAuthSessionRecordTurn(
           userId: lockedUserMessage.author.userId,
         });
       } catch {
-        await failAgentTurnSessionRecord({
+        await failTurnRecord({
           conversationId: stored.resumeConversationId!,
           expectedVersion: lockedSessionRecord.version,
-          sessionId: lockedSessionId,
+          turnId: lockedSessionId,
           errorMessage: "Unable to rebuild Slack actor for OAuth resume",
         });
         return false;
@@ -384,10 +394,10 @@ async function resumeOAuthSessionRecordTurn(
           conversationId: stored.resumeConversationId!,
         });
       } catch (error) {
-        await failAgentTurnSessionRecord({
+        await failTurnRecord({
           conversationId: stored.resumeConversationId!,
           expectedVersion: lockedSessionRecord.version,
-          sessionId: lockedSessionId,
+          turnId: lockedSessionId,
           errorMessage: error instanceof Error ? error.message : String(error),
         });
         return false;
@@ -434,7 +444,7 @@ async function resumeOAuthSessionRecordTurn(
               lockedArtifacts.assistantContextChannelId ?? stored.channelId!,
           },
           policy: {
-            channelConfiguration: lockedChannelConfiguration,
+            locationConfiguration: lockedLocationConfiguration,
           },
           state: {
             artifactState: lockedArtifacts,
@@ -463,10 +473,10 @@ async function resumeOAuthSessionRecordTurn(
           });
         },
         onPostDeliveryCommitFailure: async () => {
-          await failAgentTurnSessionRecord({
+          await failTurnRecord({
             conversationId: stored.resumeConversationId!,
             expectedVersion: lockedSessionRecord.version,
-            sessionId: lockedSessionId,
+            turnId: lockedSessionId,
             errorMessage:
               "OAuth-resumed reply was delivered but completion state did not persist",
           });
@@ -485,10 +495,10 @@ async function resumeOAuthSessionRecordTurn(
           });
         },
         onSuspend: async (resumeVersion) => {
-          await scheduleAgentContinue({
+          await wakePausedTurn({
             conversationId: stored.resumeConversationId!,
             destination,
-            sessionId: lockedSessionId,
+            turnId: lockedSessionId,
             expectedVersion: resumeVersion,
           });
         },
@@ -687,30 +697,66 @@ export async function GET(
     ...parsedTokenResponse,
     ...(account ? { account } : {}),
   });
+  const slackActor = stored.actor?.platform === "slack" ? stored.actor : undefined;
+  if (account && slackActor) {
+    await runBestEffort(
+      async () => {
+        const slackUserId = parseSlackUserId(slackActor.userId);
+        if (!slackUserId) {
+          throw new Error("OAuth Slack actor user id is invalid");
+        }
+        const profile = await lookupSlackUserProfile(slackUserId);
+        const slackIdentity = await upsertIdentity(getSqlExecutor(), {
+          kind: "user",
+          provider: "slack",
+          providerTenantId: slackActor.teamId,
+          providerSubjectId: profile.id,
+          displayName: profile.real_name || profile.display_name,
+          handle: profile.name,
+          ...(profile.email
+            ? { email: profile.email, emailVerified: true }
+            : {}),
+        });
+        if (!slackIdentity.userId) {
+          throw new Error("OAuth Slack identity is not linked to a user");
+        }
+        await upsertLinkedIdentity(getSqlExecutor(), slackIdentity.userId, {
+          kind: "user",
+          provider,
+          providerSubjectId: account.id,
+          displayName: account.displayName,
+          handle: account.handle ?? account.label,
+        });
+      },
+      "oauth.callback.identity_link.failed",
+      { "app.credential.provider": provider },
+    );
+  }
 
-  if (stored.resumeConversationId) {
-    try {
-      await recordAuthenticationLinked({
-        conversationId: stored.resumeConversationId,
-        provider,
-        actorId: stored.userId,
-        providerLabel,
-        ...(account?.label ? { accountLabel: account.label } : {}),
-        ...(stored.resumeSessionId
-          ? {
-              authorizationId: pluginAuthorizationId({
-                provider,
-                sessionId: stored.resumeSessionId,
-              }),
-              turnId: stored.resumeSessionId,
-            }
-          : {}),
-      });
-    } catch (error) {
-      logException(error, "oauth.callback.authentication_event.failed", {
-        "app.credential.provider": provider,
-      });
-    }
+  const resumeConversationId = stored.resumeConversationId;
+  if (resumeConversationId) {
+    await runBestEffort(
+      async () => {
+        await recordAuthenticationLinked({
+          conversationId: resumeConversationId,
+          provider,
+          actorId: stored.userId,
+          providerLabel,
+          ...(account?.label ? { accountLabel: account.label } : {}),
+          ...(stored.resumeSessionId
+            ? {
+                authorizationId: pluginAuthorizationId({
+                  provider,
+                  sessionId: stored.resumeSessionId,
+                }),
+                turnId: stored.resumeSessionId,
+              }
+            : {}),
+        });
+      },
+      "oauth.callback.authentication_event.failed",
+      { "app.credential.provider": provider },
+    );
   }
 
   if (stored.destination?.platform !== "local") {

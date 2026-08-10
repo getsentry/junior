@@ -8,7 +8,10 @@ describe("local conversation work", () => {
       processed = true;
     });
 
-    await localWork.queue.send({ conversationId: "deferred-start" });
+    await localWork.queue.send({
+      schemaVersion: 2,
+      conversationId: "deferred-start",
+    });
 
     expect(processed).toBe(false);
     await localWork.drain();
@@ -23,11 +26,11 @@ describe("local conversation work", () => {
 
     const [first, replay] = await Promise.all([
       localWork.queue.send(
-        { conversationId: "replayed" },
+        { schemaVersion: 2, conversationId: "replayed" },
         { idempotencyKey: "same-wake" },
       ),
       localWork.queue.send(
-        { conversationId: "replayed" },
+        { schemaVersion: 2, conversationId: "replayed" },
         { idempotencyKey: "same-wake" },
       ),
     ]);
@@ -49,8 +52,8 @@ describe("local conversation work", () => {
     });
 
     await Promise.all([
-      localWork.queue.send({ conversationId: "first" }),
-      localWork.queue.send({ conversationId: "second" }),
+      localWork.queue.send({ schemaVersion: 2, conversationId: "first" }),
+      localWork.queue.send({ schemaVersion: 2, conversationId: "second" }),
     ]);
     const draining = localWork.drain();
     await vi.waitFor(() => {
@@ -71,11 +74,14 @@ describe("local conversation work", () => {
       processed.push(message.conversationId);
       if (message.conversationId === "first") {
         await firstBlocked;
-        await localWork.queue.send({ conversationId: "follow-up" });
+        await localWork.queue.send({
+          schemaVersion: 2,
+          conversationId: "follow-up",
+        });
       }
     });
 
-    await localWork.queue.send({ conversationId: "first" });
+    await localWork.queue.send({ schemaVersion: 2, conversationId: "first" });
     const draining = localWork.drain();
     await vi.waitFor(() => {
       expect(processed).toEqual(["first"]);
@@ -99,7 +105,7 @@ describe("local conversation work", () => {
     });
 
     await expect(
-      localWork.queue.send({ conversationId: "failed" }),
+      localWork.queue.send({ schemaVersion: 2, conversationId: "failed" }),
     ).resolves.toEqual({
       messageId: "local-conversation-work:1",
     });

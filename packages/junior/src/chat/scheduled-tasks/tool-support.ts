@@ -44,6 +44,13 @@ const compactTaskResultSchema = z
     timezone: z.string(),
     recurrence: z.unknown().nullable(),
     next_run_at: z.string().nullable(),
+    destination: z
+      .object({
+        platform: z.literal("slack"),
+        team_id: z.string().min(1),
+        channel_id: z.string().min(1),
+      })
+      .strict(),
     conversation_access: z
       .object({
         audience: z.enum(["direct", "group", "channel"]),
@@ -163,7 +170,7 @@ export function getConversationAccess(
   };
 }
 
-/** Keep scheduler management operations bound to the task's original Slack destination. */
+/** Keep scheduler management operations bound to the task's current Slack destination. */
 export function sameDestination(
   task: ScheduledTask,
   destination: SlackDestination,
@@ -192,7 +199,7 @@ export async function getWritableTask(args: {
 
   if (!sameDestination(task, destination)) {
     throwToolInputError(
-      "Scheduled task can only be managed from the Slack destination where it was created.",
+      "Scheduled task can only be managed from the Slack destination where it currently delivers.",
     );
   }
   return task;
@@ -220,6 +227,11 @@ export function compactTask(task: ScheduledTask): CompactTaskResult {
     next_run_at: task.nextRunAtMs
       ? new Date(task.nextRunAtMs).toISOString()
       : null,
+    destination: {
+      platform: "slack" as const,
+      team_id: task.destination.teamId,
+      channel_id: task.destination.channelId,
+    },
     conversation_access: task.conversationAccess,
     credential_mode: task.credentialMode,
     dashboard_url: getDashboardTaskLink(task.id) ?? null,

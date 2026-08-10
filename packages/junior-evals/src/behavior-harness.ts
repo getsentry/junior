@@ -4,11 +4,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { vi } from "vitest";
 import type { SlackAdapter } from "@chat-adapter/slack";
-import {
-  Message as ChatMessage,
-  ThreadImpl,
-  type Message,
-} from "chat";
+import { Message as ChatMessage, ThreadImpl, type Message } from "chat";
 import type {
   Destination,
   PluginRegistration,
@@ -60,8 +56,8 @@ import type { PiMessage } from "@/chat/pi/messages";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { addAgentTurnUsage, type AgentTurnUsage } from "@/chat/usage";
-import { resumeAwaitingSlackContinuation } from "@/chat/runtime/agent-continue-runner";
-import { scheduleAgentContinue } from "@/chat/services/agent-continue";
+import { runNextPausedTurn } from "@/chat/task-execution/paused-turn";
+import { wakePausedTurn } from "@/chat/task-execution/turn-wake";
 import { ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX } from "@/chat/services/context-compaction-marker";
 import { TURN_CONTEXT_TAG } from "@/chat/turn-context-tag";
 import {
@@ -93,7 +89,8 @@ import { ingestEventTasks } from "@/chat/event-tasks/ingest";
 import { createEventTask } from "@/chat/event-tasks/store";
 import type { EventTask } from "@/chat/event-tasks/types";
 import { getStateAdapter } from "@/chat/state/adapter";
-import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
+import { upsertTurnRecord } from "@/chat/task-execution/turn-cursor";
+import { turnCursorKey } from "@/chat/task-execution/turn-cursor-keys";
 import { resetSkillDiscoveryCache } from "@/chat/skills";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { projectTimedOutToolResult } from "@/chat/tool-support/timed-out-tool-result";
@@ -795,15 +792,15 @@ async function cleanupHarnessThreadState(
   const runtimeThreadIds = new Set(
     events.map((event) => buildRuntimeThreadId(event.thread)),
   );
-  const turnSessionKeys = events
+  const turnCursorKeys = events
     .filter(
       (event): event is MentionEvent | SubscribedMessageEvent =>
         "message" in event,
     )
     .map((event) => {
       const messageId = event.message.id ?? "";
-      const sessionId = `turn_${messageId.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
-      return `junior:agent_turn_session:${buildRuntimeThreadId(event.thread)}:${sessionId}`;
+      const turnId = `turn_${messageId.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+      return turnCursorKey(buildRuntimeThreadId(event.thread), turnId);
     });
   const channelIds = new Set(
     events
@@ -819,7 +816,7 @@ async function cleanupHarnessThreadState(
     await stateAdapter.delete(`thread-state:${threadId}`);
     await stateAdapter.unsubscribe(threadId);
   }
-  for (const key of turnSessionKeys) {
+  for (const key of turnCursorKeys) {
     await stateAdapter.delete(key);
   }
   for (const channelId of channelIds) {
@@ -1797,13 +1794,12 @@ function buildRuntimeServices(
                 timestamp: nowMs + 2,
               },
             ] as PiMessage[];
-            const sessionRecord = await upsertAgentTurnSessionRecord({
+            const sessionRecord = await upsertTurnRecord({
               conversationId: runRequest.conversationId,
-              sessionId: runRequest.turnId,
+              turnId: runRequest.turnId,
               sliceId: 1,
-              state: "awaiting_resume",
+              state: "paused",
               piMessages,
-              modelId: standardModelId(botConfig),
               resumeReason: "yield",
               destination: runRequest.routing.destination,
               destinationVisibility: runRequest.routing.destinationVisibility,
@@ -1873,13 +1869,12 @@ function buildRuntimeServices(
                 timestamp: nowMs,
               },
             ] as PiMessage[];
-            const sessionRecord = await upsertAgentTurnSessionRecord({
+            const sessionRecord = await upsertTurnRecord({
               conversationId: runRequest.conversationId,
-              sessionId: runRequest.turnId,
+              turnId: runRequest.turnId,
               sliceId: 2,
-              state: "awaiting_resume",
+              state: "paused",
               piMessages,
-              modelId: "xai/grok-4.5",
               resumeReason: "timeout",
               resumedFromSliceId: 1,
               destination: runRequest.routing.destination,
@@ -2014,8 +2009,8 @@ function buildRuntimeServices(
           }
         },
       },
-      scheduleAgentContinue: async (request) => {
-        await scheduleAgentContinue(request, {
+      wakePausedTurn: async (request) => {
+        await wakePausedTurn(request, {
           queue: conversationWorkQueue,
           state: env.stateAdapter,
         });
@@ -2062,7 +2057,9 @@ async function processEvents(args: {
   getSlackAdapter: () => FakeSlackAdapter;
   conversationWorkQueue: ConversationWorkQueueTestAdapter;
   slackRuntime: ReturnType<typeof createSlackRuntime>;
-  getThreadRecord: (fixture: EvalEventThreadFixture) => Promise<EvalThreadRecord>;
+  getThreadRecord: (
+    fixture: EvalEventThreadFixture,
+  ) => Promise<EvalThreadRecord>;
   findEvalThread: (threadId: string) => TestThread | undefined;
   observations: RuntimeObservations;
   readyQueueDeliveries: QueueDelivery[];
@@ -2149,11 +2146,11 @@ async function processEvents(args: {
   const drainQueuedConversationWork = async (): Promise<void> => {
     const slackWorker = createSlackConversationWorker({
       getSlackAdapter: () => getSlackAdapter() as unknown as SlackAdapter,
-      resumeAwaitingContinuation: async (conversationId) =>
-        await resumeAwaitingSlackContinuation(conversationId, {
+      runNextPausedTurn: async (conversationId) =>
+        await runNextPausedTurn(conversationId, {
           agentRunner,
-          scheduleAgentContinue: async (request) => {
-            await scheduleAgentContinue(request, {
+          wakePausedTurn: async (request) => {
+            await wakePausedTurn(request, {
               queue: conversationWorkQueue,
               state: env.stateAdapter,
             });
@@ -2171,14 +2168,14 @@ async function processEvents(args: {
     });
     const dispatchWorker = createAgentDispatchConversationWorker({
       resumeTurn: async (dispatch, hooks) => {
-        await resumeAwaitingSlackContinuation(
+        await runNextPausedTurn(
           `agent-dispatch:${dispatch.id}`,
           {
             agentRunner,
             inputMessageIds: getDispatchInputMessageIds(dispatch.id),
             routingContext: buildDispatchRoutingContext(dispatch),
-            scheduleAgentContinue: async (request) => {
-              await scheduleAgentContinue(request, {
+            wakePausedTurn: async (request) => {
+              await wakePausedTurn(request, {
                 queue: conversationWorkQueue,
                 state: env.stateAdapter,
               });
@@ -2227,11 +2224,7 @@ async function processEvents(args: {
         (event.message.is_mention ?? event.type === "new_mention")
           ? ("mention" as const)
           : ("subscribed" as const);
-      const message = toSlackMessage(
-        event,
-        thread.id,
-        Date.now() + index,
-      );
+      const message = toSlackMessage(event, thread.id, Date.now() + index);
       upsertThreadTranscriptMessage(transcript, message);
       const ingressThread = new ThreadImpl({
         adapter: getSlackAdapter() as unknown as SlackAdapter,

@@ -11,7 +11,7 @@ import {
 } from "@/db/schema";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { recordAgentTurnSessionSummary } from "@/chat/state/turn-session";
+import { recordTurnSummary } from "@/chat/task-execution/turn-cursor";
 import {
   buildJuniorSqlConversation,
   createLocalJuniorSqlFixture,
@@ -807,7 +807,7 @@ CREATE TABLE junior_conversations (
       await migrateSchema(fixture.sql);
       const store = createSqlStore(fixture.sql);
 
-      await recordAgentTurnSessionSummary({
+      await recordTurnSummary({
         conversationId: "agent-dispatch:dispatch_scheduler_run",
         cumulativeDurationMs: 2400,
         cumulativeUsage: {
@@ -821,22 +821,22 @@ CREATE TABLE junior_conversations (
           teamId: "T123",
           channelId: "C123",
         },
-        sessionId: "dispatch:scheduler-run",
+        turnId: "dispatch:scheduler-run",
         sliceId: 1,
         state: "completed",
         conversationStore: store,
         surface: "scheduler",
       });
-      await recordAgentTurnSessionSummary({
+      await recordTurnSummary({
         conversationId: "agent-dispatch:dispatch_scheduler_run",
         cumulativeDurationMs: 2_600,
-        sessionId: "dispatch:scheduler-run",
+        turnId: "dispatch:scheduler-run",
         sliceId: 2,
         state: "running",
         conversationStore: store,
         surface: "scheduler",
       });
-      await recordAgentTurnSessionSummary({
+      await recordTurnSummary({
         conversationId: "agent-dispatch:dispatch_scheduler_run",
         cumulativeDurationMs: 3_000,
         cumulativeUsage: {
@@ -845,7 +845,7 @@ CREATE TABLE junior_conversations (
           reasoningTokens: 7,
           cost: { total: 0.004 },
         },
-        sessionId: "dispatch:scheduler-run",
+        turnId: "dispatch:scheduler-run",
         sliceId: 2,
         state: "completed",
         conversationStore: store,
@@ -867,7 +867,7 @@ CREATE TABLE junior_conversations (
         source: "scheduler",
         updatedAtMs: Date.now(),
       });
-      await recordAgentTurnSessionSummary({
+      await recordTurnSummary({
         conversationId: "agent-dispatch:dispatch_scheduler_run",
         cumulativeDurationMs: 500,
         cumulativeUsage: {
@@ -875,7 +875,7 @@ CREATE TABLE junior_conversations (
           reasoningTokens: 2,
           cost: { total: 0.0015 },
         },
-        sessionId: "dispatch:scheduler-run-2",
+        turnId: "dispatch:scheduler-run-2",
         sliceId: 1,
         state: "completed",
         conversationStore: store,

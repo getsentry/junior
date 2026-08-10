@@ -31,7 +31,7 @@ import {
   isVisionEnabled,
 } from "@/chat/slack/vision-context";
 import {
-  getChannelConfigurationService,
+  getLocationConfigurationService,
   getPersistedSandboxState,
 } from "@/chat/runtime/thread-state";
 import {
@@ -39,9 +39,8 @@ import {
   persistConversationMessages,
 } from "@/chat/conversations/messages";
 import { persistConversationMessageSummaries } from "@/chat/conversations/message-summaries";
-import type { ChannelConfigurationService } from "@/chat/configuration/types";
-import { appendSlackLegacyAttachmentText } from "@/chat/slack/legacy-attachments";
-import { getSlackMessageText } from "@/chat/slack/message";
+import type { LocationConfigurationService } from "@/chat/configuration/types";
+import { parseContent } from "@/chat/slack/message/content";
 import type {
   PrepareTurnStateInput,
   TurnContext,
@@ -53,7 +52,7 @@ const BACKFILL_MESSAGE_LIMIT = 80;
 export interface PreparedTurnState {
   artifacts: ThreadArtifactsState;
   configuration?: Record<string, unknown>;
-  channelConfiguration?: ChannelConfigurationService;
+  locationConfiguration?: LocationConfigurationService;
   conversation: ThreadConversationState;
   conversationContext?: string;
   sandboxRef?: SandboxRef;
@@ -82,9 +81,7 @@ function hasPendingImageHydration(
 }
 
 function getBackfillText(entry: Message): string | undefined {
-  const text = normalizeConversationText(
-    appendSlackLegacyAttachmentText(getSlackMessageText(entry), entry.raw),
-  );
+  const text = normalizeConversationText(parseContent(entry).text);
   return text || undefined;
 }
 
@@ -173,9 +170,10 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
     const conversation = coerceThreadConversationState(existingState);
     const conversationId = args.context.threadId ?? args.context.runId;
     await hydrateConversationMessages({ conversation, conversationId });
-    const channelConfiguration =
-      args.channelConfiguration ?? getChannelConfigurationService(args.thread);
-    const configuration = await channelConfiguration.resolveValues();
+    const locationConfiguration =
+      args.locationConfiguration ??
+      getLocationConfigurationService(args.destination);
+    const configuration = await locationConfiguration.resolveValues();
 
     const backfillSource = args.skipBackfill
       ? undefined
@@ -258,7 +256,7 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
     return {
       artifacts,
       configuration,
-      channelConfiguration,
+      locationConfiguration,
       conversation,
       sandboxRef,
       conversationContext,

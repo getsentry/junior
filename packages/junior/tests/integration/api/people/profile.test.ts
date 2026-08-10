@@ -292,6 +292,7 @@ describe("people profile API", () => {
         report.activityDays.find((day) => day.date === "2026-06-12"),
       ).toMatchObject({
         conversations: 1,
+        costUsd: 0.17,
         durationMs: 500,
         failed: 1,
         tokens: 50,

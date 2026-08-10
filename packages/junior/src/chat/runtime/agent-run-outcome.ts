@@ -4,7 +4,7 @@ import type { AgentTurnUsage } from "@/chat/usage";
 /**
  * How an agent run ended. `completed` carries the terminal result (success or
  * failure — `result.diagnostics` distinguishes them). `suspended` means the run
- * persisted an awaiting_resume session record and stopped at a safe boundary;
+ * persisted an paused session record and stopped at a safe boundary;
  * the caller resumes it by scheduling a continuation against `resumeVersion`,
  * the session record's optimistic-concurrency version. `awaiting_auth` means
  * the run parked for user authorization.

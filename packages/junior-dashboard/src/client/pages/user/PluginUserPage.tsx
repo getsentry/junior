@@ -1,9 +1,10 @@
-import { Boxes, Search, Trash2 } from "lucide-react";
+import { Boxes, Trash2 } from "lucide-react";
 import { Navigate, useLocation, useParams } from "react-router";
 import type { PluginUserPageLink } from "@sentry/junior-plugin-api";
 
-import { Button } from "../../components/Button";
 import { LoadingView } from "../../components/LoadingView";
+import { LoadMorePagination } from "../../components/Pagination";
+import { SearchInput } from "../../components/SearchInput";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { MemoryPage } from "../memory/MemoryPage";
@@ -101,21 +102,14 @@ export function PluginUserPage(props: { page: PluginUserPageLink }) {
           </section>
         ) : null}
         {content?.searchPlaceholder ? (
-          <label className="relative block">
-            <Search
-              aria-hidden="true"
-              className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-dashboard-text-muted"
-              size={15}
-            />
-            <span className="sr-only">{content.searchPlaceholder}</span>
-            <input
-              className="w-full rounded border border-white/15 bg-black py-2 pr-3 pl-9 text-sm text-dashboard-text placeholder:text-dashboard-text-muted focus:border-cyan-300/50 focus:outline-none"
-              onChange={(event) => setSearchText(event.target.value)}
-              placeholder={content.searchPlaceholder}
-              type="search"
-              value={searchText}
-            />
-          </label>
+          <SearchInput
+            className="w-full"
+            label={content.searchPlaceholder}
+            onChange={setSearchText}
+            placeholder={content.searchPlaceholder}
+            size="default"
+            value={searchText}
+          />
         ) : null}
         {query.error ? (
           <Card padding="md">
@@ -185,15 +179,11 @@ export function PluginUserPage(props: { page: PluginUserPageLink }) {
                 ) : null}
               </Card>
             ))}
-            {!query.isPlaceholderData && query.hasNextPage ? (
-              <Button
-                className="justify-self-center"
-                disabled={query.isFetchingNextPage}
-                onClick={() => void query.fetchNextPage()}
-              >
-                {query.isFetchingNextPage ? "Loading…" : "Load more"}
-              </Button>
-            ) : null}
+            <LoadMorePagination
+              hasMore={!query.isPlaceholderData && Boolean(query.hasNextPage)}
+              loading={query.isFetchingNextPage}
+              onLoadMore={() => void query.fetchNextPage()}
+            />
             {action.error ? (
               <p className="m-0 text-center text-sm text-rose-300">
                 Could not complete this action. Try again.

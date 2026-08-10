@@ -75,7 +75,7 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
       },
       initialEvents: [
         mention(
-          "/eval-operation The interrupted release push may already have applied. Reconcile its unknown outcome by checking release status first. Push only if that verification shows the release is not shipped, then report the observed remote state.",
+          "/eval-operation The release push timed out, so I don't know whether it landed. Please finish the release safely and tell me the final remote status.",
         ),
       ],
       criteria: rubric({
@@ -116,7 +116,7 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
       },
       initialEvents: [
         mention(
-          "/github-code Before you open a GitHub pull request from an existing branch, what credentials do you need and in what order? This is an explanation-only question: answer from the skill instructions without inspecting a repository or running tools. Keep it short.",
+          "/github-code If I ask you to open a PR from an existing branch, do I need to authorize GitHub or provide a token? Also, does the branch get pushed before or after the PR is opened? Keep it short.",
         ),
       ],
       criteria: rubric({
@@ -164,7 +164,7 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
       ],
       events: [
         threadMessage(
-          "Now tell me which GitHub repo you'd use for issue commands when I omit --repo.",
+          "Now tell me which GitHub repo you'd use for issue commands when I don't name one.",
           {
             thread: defaultRepoThread,
             is_mention: true,
@@ -193,7 +193,7 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
       },
       initialEvents: [
         threadMessage(
-          "Set the default repo to getsentry/junior-eval-bot-never-exists for this channel. Do not verify it exists.",
+          "Set the default repo to getsentry/junior-eval-bot-never-exists for this channel.",
           {
             thread: targetClassificationContextThread,
             is_mention: true,
@@ -202,7 +202,7 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
       ],
       events: [
         threadMessage(
-          "We need a tracking issue for the Junior bot. This example from getsentry/junior-eval-reference-never-exists#123 shows GitHub issue references can be mistaken for the target repo. Draft the issue I should approve with target repo, title, and body. Do not run GitHub commands.",
+          "We need a tracking issue for the Junior bot. Use getsentry/junior-eval-reference-never-exists#123 as background. Draft the target repo, title, and body for me to review—don't create anything yet.",
           {
             thread: targetClassificationContextThread,
             is_mention: true,
@@ -213,11 +213,11 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
         pass: [
           "The assistant confirms default repo setup and drafts the requested issue against getsentry/junior-eval-bot-never-exists.",
           "The foreign issue reference is treated only as context if it appears in the answer.",
-          "No GitHub issue create/comment/view command is run for this draft-only request.",
+          "No GitHub issue is created for this draft-only request.",
         ],
         fail: [
           "Do not choose getsentry/junior-eval-reference-never-exists as the action target.",
-          "Do not run GitHub commands against either fake repo.",
+          "Do not create or comment on a GitHub issue for either fake repo.",
           "Do not ask the user to provide the repo again.",
         ],
       }),
@@ -234,7 +234,7 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
       },
       initialEvents: [
         threadMessage(
-          "Set the default repo to getsentry/junior-eval-bot-never-exists for this channel. Do not verify it exists.",
+          "Set the default repo to getsentry/junior-eval-bot-never-exists for this channel.",
           {
             thread: targetClassificationExplicitThread,
             is_mention: true,
@@ -243,7 +243,7 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
       ],
       events: [
         threadMessage(
-          "Before I approve a later comment, confirm the target issue for getsentry/junior-eval-reference-never-exists#123. Do not run GitHub commands.",
+          "Before I approve a later comment, confirm the target issue for getsentry/junior-eval-reference-never-exists#123. Don't change anything yet.",
           {
             thread: targetClassificationExplicitThread,
             is_mention: true,
@@ -253,11 +253,11 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
       criteria: rubric({
         pass: [
           "After confirming default repo setup, the assistant recognizes the explicitly referenced issue as the action target.",
-          "No GitHub issue create/comment/view command is run for this confirmation-only request.",
+          "No GitHub issue is created or commented on for this confirmation-only request.",
         ],
         fail: [
           "Do not choose getsentry/junior-eval-bot-never-exists as the action target.",
-          "Do not run GitHub commands against either fake repo.",
+          "Do not create or comment on a GitHub issue for either fake repo.",
           "Do not ask the user to restate the repository or issue number.",
         ],
       }),

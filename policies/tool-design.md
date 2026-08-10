@@ -3,13 +3,13 @@
 ## Intent
 
 Model-facing tools should have stable contracts across providers and models. A
-tool schema should accept semantically equivalent argument shapes that models
-commonly produce, while deterministic validation should still reject
-contradictory or unsafe requests.
+tool schema should accept argument shapes that mean the same thing and that
+models commonly produce. Fixed validation should still reject contradictory or
+unsafe requests.
 
 ## Policy
 
-- Treat tool schemas as external input boundaries, not TypeScript call-site
+- Treat tool schemas as external input edges, not TypeScript call-site
   conveniences.
 - For optional model-facing fields, decide whether the field is omitted-only,
   nullable-as-omitted, or an explicit null command. Encode that choice in the
@@ -18,53 +18,54 @@ contradictory or unsafe requests.
   explicitly allow `null` and the executor must normalize it before applying
   business logic.
 - If `null` changes behavior, such as clearing an existing value, document that
-  behavior in the field description and cover it at the tool boundary.
-- Keep semantic contradictions in deterministic validation. For example, a
-  nullable optional field may be valid for one mode and still rejected for a
-  different mode that requires a real value.
+  behavior in the field description and cover it at the tool edge.
+- Keep semantic contradictions in fixed validation. For example, a nullable
+  optional field may be valid for one mode and still rejected for a different
+  mode that requires a real value.
 - Prefer schema and executor alignment over prompt wording when a provider or
-  model may serialize absent optional values differently.
+  model may serialize absent optional values differently. Do not restate the
+  same tool-selection rule in the system prompt; see `agent-steering.md`.
 - Author first-party model-facing tools through the local Zod tool helper for
-  their runtime boundary: `zodTool(...)` for host-owned Junior tools and the
-  plugin API's Zod helper for first-party plugin package tools. Do not add new
-  raw object tool definitions for first-party tools.
+  their runtime edge: `zodTool(...)` for host-owned Junior tools and the plugin
+  API's Zod helper for first-party plugin package tools. Do not add new raw
+  object tool definitions for first-party tools.
 - First-party tools should use structured Zod mode by default. Each
   `outputSchema` describes the tool's canonical successful value. Shared
   optional fields such as `target`, `truncated`, and `continuation` may be
-  extended when they carry real tool semantics; do not add generic `ok`,
-  `status`, or `data` envelopes.
+  extended when they carry real tool meaning. Do not add generic `ok`, `status`,
+  or `data` envelopes.
 - Return every tool-specific payload field once, at the canonical output root.
   Duplicating or generically wrapping the payload increases model context and
   transcript size without adding information.
 - Structured Zod tool executors return the schema-shaped details object
   directly. The helper and runtime adapters derive Pi-compatible model content,
   transcript details, telemetry, and success metadata from that one value.
-- Use native content Zod mode only for multimodal/provider bridge tools where
+- Use native content Zod mode only for multimodal or provider bridge tools where
   native model content is the contract, such as MCP image output. Native content
-  tools do not declare a Junior `outputSchema` and return `{ content }` only;
-  the runtime may synthesize generic base transcript details. Provider bridge
-  layers own their own tracing/logging before adapting to this content-only
+  tools do not declare a Junior `outputSchema` and return `{ content }` only.
+  The runtime may synthesize generic base transcript details. Provider bridge
+  layers own their own tracing and logging before adapting to this content-only
   result shape.
 - Runtime adapters own provider-specific wrapping. Do not treat a remote
   provider schema such as an MCP `outputSchema` as the Junior Zod helper's
   structured result schema unless the Junior wrapper itself owns that result
   contract.
 - Structured tools may declare `privateTraceResult` when part of their validated
-  result is safe to retain in private traces. The projector must select only
+  result is safe to keep in private traces. The projector must select only
   static, public, or otherwise non-conversation data. Omission keeps the default
-  metadata-only behavior; returning `undefined` records no private result.
+  metadata-only behavior. Returning `undefined` records no private result.
 - Keep reusable tool infrastructure in a `tool-support` module or another
   non-`tools` module owned by that package. In the host runtime this is
-  `packages/junior/src/chat/tool-support`; plugin packages should follow the
-  same split locally. Files under any `tools` directory must be concrete tool
+  `packages/junior/src/chat/tool-support`. Plugin packages should follow the same
+  split locally. Files under any `tools` directory must be concrete tool
   definitions or tool executors, not shared helper modules.
 - Keep runtime authority, destination, actor, credential, and durable context
-  out of model-facing arguments unless the owning module explicitly allows them;
-  see `policies/runtime-boundary-schemas.md`.
+  out of model-facing arguments unless the owning module explicitly allows them.
+  See `policies/runtime-boundary-schemas.md`.
 - Model-repairable execution failures must use the Pi tool-error channel so the
   agent receives a failed tool result and can correct its call. Throw
-  `ToolInputError` or another expected tool error for invalid arguments,
-  missing active context, unsupported values, or absent target state.
+  `ToolInputError` or another expected tool error for invalid arguments, missing
+  active context, unsupported values, or absent target state.
 - Do not return sentinel success payloads such as `{ ok: false, error }` for a
   failed model-facing tool execution. Structured result unions remain valid in
   private helpers and non-agent HTTP handlers.

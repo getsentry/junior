@@ -1,14 +1,18 @@
 # Policy Name
 
+Use ASD-STE100 English. Use common words, active voice, short sentences, and one
+idea per sentence. Keep required terms from `../TERMINOLOGY.md`. Explain them
+when the reader may not know them. Remove other jargon.
+
 ## Intent
 
-One short paragraph on why this policy exists.
+In one short paragraph, explain why this policy exists.
 
 ## Policy
 
-- Default rule
-- Second rule if needed
+- State the default rule.
+- Add another rule only when needed.
 
 ## Exceptions
 
-- Only list real exceptions
+- List only real exceptions.

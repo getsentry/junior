@@ -821,7 +821,7 @@ describe("Slack schedule tools", () => {
         },
       ),
     ).rejects.toThrow(
-      "Scheduled task can only be managed from the Slack destination where it was created.",
+      'Scheduled task can only be managed from the Slack destination where it currently delivers. Set destination to "here" to move it into this conversation.',
     );
   });
 
@@ -873,7 +873,7 @@ describe("Slack schedule tools", () => {
         { task_id: created.task.id },
       ),
     ).rejects.toThrow(
-      "Scheduled task can only be managed from the Slack destination where it was created.",
+      "Scheduled task can only be managed from the Slack destination where it currently delivers.",
     );
   });
 
@@ -1431,6 +1431,209 @@ describe("Slack schedule tools", () => {
       status: "pending",
     });
     expect(second).toBeUndefined();
+  });
+
+  it("lists the active conversation by default and requester tasks when filtered", async () => {
+    const creator = createContext({ channelId: "CSOURCE" });
+    const otherChannel = createContext({ channelId: "COTHER" });
+    const otherActor = createContext({
+      channelId: "CSOURCE",
+      actor: {
+        platform: "slack",
+        teamId: TEST_TEAM_ID,
+        userId: "U999",
+        userName: "bob",
+        fullName: "Bob Example",
+      },
+    });
+
+    const mine = (await createTask(creator, {
+      task: "Weekly planning reminder: post the agenda here.",
+    })) as { task: { id: string } };
+    await createTask(otherChannel, {
+      task: "Weekly planning reminder: post the agenda here.",
+    });
+    const theirs = (await createTask(otherActor, {
+      task: "Someone else's planning reminder.",
+    })) as { task: { id: string } };
+
+    const local = await executeTool(
+      createSlackScheduleListTasksTool(creator),
+      {},
+    );
+    // Active-channel list remains channel-scoped for every task there.
+    expect(local.tasks.map((task: { id: string }) => task.id).sort()).toEqual(
+      [mine.task.id, theirs.task.id].sort(),
+    );
+    expect(local).toMatchObject({ truncated: false });
+
+    const found = await executeTool(
+      createSlackScheduleListTasksTool(createContext({ channelId: "CTARGET" })),
+      {
+        channel_id: "CSOURCE",
+        query: "planning reminder",
+      },
+    );
+
+    expect(found).toMatchObject({
+      tasks: [
+        {
+          id: mine.task.id,
+          destination: {
+            platform: "slack",
+            team_id: TEST_TEAM_ID,
+            channel_id: "CSOURCE",
+          },
+          task: "Weekly planning reminder: post the agenda here.",
+        },
+      ],
+      truncated: false,
+    });
+  });
+
+  it("updates destination to here for a creator-owned task", async () => {
+    const source = createContext({ channelId: "CSOURCE" });
+    const created = (await createTask(source, {
+      task: "Weekly planning reminder: post the agenda here.",
+    })) as {
+      task: {
+        id: string;
+        next_run_at: string | null;
+        schedule: string;
+        credential_mode: string;
+      };
+    };
+
+    const publicTarget = createContext({ channelId: "CTARGET" });
+    const movedPublic = await executeTool(
+      createSlackScheduleUpdateTaskTool(publicTarget),
+      { task_id: created.task.id, destination: "here" },
+    );
+    expect(movedPublic).toMatchObject({
+      task: {
+        id: created.task.id,
+        task: "Weekly planning reminder: post the agenda here.",
+        schedule: created.task.schedule,
+        next_run_at: created.task.next_run_at,
+        credential_mode: "creator",
+        destination: {
+          platform: "slack",
+          team_id: TEST_TEAM_ID,
+          channel_id: "CTARGET",
+        },
+        conversation_access: {
+          audience: "channel",
+          visibility: "public",
+        },
+      },
+    });
+
+    await expect(
+      executeTool(createSlackScheduleListTasksTool(source), {}),
+    ).resolves.toMatchObject({ tasks: [] });
+    await expect(
+      executeTool(createSlackScheduleListTasksTool(publicTarget), {}),
+    ).resolves.toMatchObject({
+      tasks: [{ id: created.task.id }],
+    });
+
+    const privateTarget = createContext({ channelId: "GPRIVATE" });
+    const movedPrivate = await executeTool(
+      createSlackScheduleUpdateTaskTool(privateTarget),
+      { task_id: created.task.id, destination: "here" },
+    );
+    expect(movedPrivate).toMatchObject({
+      task: {
+        id: created.task.id,
+        destination: {
+          channel_id: "GPRIVATE",
+          team_id: TEST_TEAM_ID,
+        },
+        conversation_access: {
+          audience: "group",
+          visibility: "private",
+        },
+        credential_mode: "creator",
+        next_run_at: created.task.next_run_at,
+      },
+    });
+
+    // Replaying a destination update that already landed is a no-op success.
+    await expect(
+      executeTool(createSlackScheduleUpdateTaskTool(privateTarget), {
+        task_id: created.task.id,
+        destination: "here",
+      }),
+    ).resolves.toMatchObject({
+      task: {
+        id: created.task.id,
+        destination: { channel_id: "GPRIVATE" },
+      },
+    });
+  });
+
+  it("rejects unauthorized, cross-workspace, and in-flight destination updates", async () => {
+    const source = createContext({ channelId: "CSOURCE" });
+    const created = (await createTask(source)) as { task: { id: string } };
+    const otherActor = createContext({
+      channelId: "CTARGET",
+      actor: {
+        platform: "slack",
+        teamId: TEST_TEAM_ID,
+        userId: "U999",
+        userName: "bob",
+        fullName: "Bob Example",
+      },
+    });
+
+    await expect(
+      executeTool(createSlackScheduleUpdateTaskTool(otherActor), {
+        task_id: created.task.id,
+        destination: "here",
+      }),
+    ).rejects.toThrow("Only the scheduled task creator can move this task.");
+
+    await expect(
+      executeTool(
+        createSlackScheduleUpdateTaskTool(
+          createContext({ channelId: "CTARGET", teamId: "TOTHER" }),
+        ),
+        { task_id: created.task.id, destination: "here" },
+      ),
+    ).rejects.toThrow(
+      "Scheduled tasks can only be managed within the same Slack workspace.",
+    );
+
+    const store = schedulerStore();
+    const task = await store.getTask(created.task.id);
+    expect(task).toBeDefined();
+    await store.saveTask({
+      ...task!,
+      nextRunAtMs: 1000,
+      updatedAtMs: 1000,
+    });
+    await expect(store.claimDueRun({ nowMs: 2000 })).resolves.toMatchObject({
+      taskId: created.task.id,
+      status: "pending",
+    });
+
+    await expect(
+      executeTool(
+        createSlackScheduleUpdateTaskTool(
+          createContext({ channelId: "CTARGET" }),
+        ),
+        {
+          task_id: created.task.id,
+          destination: "here",
+        },
+      ),
+    ).rejects.toThrow(
+      "Scheduled task cannot be moved while an occurrence is already running",
+    );
+
+    await expect(store.getTask(created.task.id)).resolves.toMatchObject({
+      destination: { channelId: "CSOURCE" },
+    });
   });
 });
 

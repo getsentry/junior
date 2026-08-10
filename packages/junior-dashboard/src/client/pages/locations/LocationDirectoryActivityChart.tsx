@@ -4,6 +4,7 @@ import {
   ActivityChartDateLabels,
   ActivityChartGrid,
   ActivityTooltipRows,
+  ChartSvg,
   createActivityChartLayout,
   formatActivityDate,
 } from "../../components/charts/ActivityChart";
@@ -44,11 +45,10 @@ export function LocationDirectoryActivityChart(props: {
         }
       />
       <div className="px-2 py-3 sm:px-4 sm:py-4">
-        <svg
+        <ChartSvg
           aria-label="Public and private conversations per day"
-          className="block h-auto min-h-56 w-full overflow-visible"
-          role="img"
-          viewBox={`0 0 ${layout.width} ${layout.height}`}
+          className="min-h-56 w-full overflow-visible"
+          layout={layout}
         >
           <ActivityChartGrid layout={layout} maximum={maximum} />
           {props.days.flatMap((day, index) => {
@@ -103,7 +103,7 @@ export function LocationDirectoryActivityChart(props: {
             layout={layout}
             xPosition={(index) => layout.left + index * step + step / 2}
           />
-        </svg>
+        </ChartSvg>
       </div>
     </Card>
   );

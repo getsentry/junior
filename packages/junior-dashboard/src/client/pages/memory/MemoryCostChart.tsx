@@ -1,27 +1,27 @@
-import { useState } from "react";
-
 import {
+  ActivityChartAverageLine,
   ActivityChartDateLabels,
+  ActivityChartGrid,
+  activityChartAverage,
   ActivityTooltipRows,
+  ChartSvg,
   createActivityChartLayout,
   formatActivityDate,
 } from "../../components/charts/ActivityChart";
+import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { Tooltip } from "../../components/Tooltip";
 import { formatCostSummary } from "../../format";
-import { cn } from "../../styles";
 import type { MemoryCostDay } from "./memoryDashboard";
-
-type MemoryRange = 7 | 30 | 90;
 
 /** Render stacked memory extraction and recall cost from durable plugin events. */
 export function MemoryCostChart(props: {
   extractionDays: MemoryCostDay[];
+  range: TimeRangeDays;
   recallDays: MemoryCostDay[];
 }) {
-  const [range, setRange] = useState<MemoryRange>(30);
   const recallByDate = new Map(props.recallDays.map((day) => [day.date, day]));
-  const days = props.extractionDays.slice(-range).map((extraction) => ({
+  const days = props.extractionDays.slice(-props.range).map((extraction) => ({
     date: extraction.date,
     extraction,
     recall: recallByDate.get(extraction.date) ?? {
@@ -40,106 +40,62 @@ export function MemoryCostChart(props: {
     (sum, day) => sum + day.extraction.events + day.recall.events,
     0,
   );
-  const maximum = Math.max(
-    0.01,
-    ...days.map((day) => day.extraction.costUsd + day.recall.costUsd),
+  const dayTotals = days.map(
+    (day) => day.extraction.costUsd + day.recall.costUsd,
   );
-  const layout = createActivityChartLayout(200);
+  const maximum = Math.max(0.01, ...dayTotals);
+  const average = activityChartAverage(dayTotals);
   // Cost charts need a wider left gutter for currency tick labels.
-  const left = 64;
-  const plotWidth = layout.width - left - layout.right;
-  const step = days.length > 0 ? plotWidth / days.length : plotWidth;
+  const layout = createActivityChartLayout(200, { left: 64 });
+  const step =
+    days.length > 0 ? layout.plotWidth / days.length : layout.plotWidth;
   const barWidth = Math.max(2, Math.min(13, step * 0.68));
 
   return (
     <Card className="min-h-[17rem] p-4 sm:p-5">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h2 className="m-0 font-display text-xl font-medium text-dashboard-text">
-            {formatCostSummary({ total })}
-          </h2>
-          <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
-            System-wide estimate across {formatRunCount(runs)} spanning
-            extraction and recall.
-          </p>
-          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-xs text-dashboard-text-muted">
-            <span className="inline-flex items-center gap-1.5">
-              <span
-                aria-hidden="true"
-                className="h-2 w-2 rounded-[1px] bg-cyan-300"
-              />
-              Extraction {formatCostSummary({ total: extractionTotal })}
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <span
-                aria-hidden="true"
-                className="h-2 w-2 rounded-[1px] bg-fuchsia-400"
-              />
-              Recall {formatCostSummary({ total: recallTotal })}
-            </span>
-          </div>
-        </div>
-        <div
-          aria-label="Memory cost range"
-          className="inline-flex rounded border border-white/[0.08] bg-black/20 p-0.5"
-        >
-          {([7, 30, 90] as const).map((daysOption) => (
-            <button
-              aria-pressed={range === daysOption}
-              className={cn(
-                "cursor-pointer rounded-sm border-0 px-2.5 py-1.5 font-mono text-xs uppercase tracking-[0.1em] transition-colors",
-                range === daysOption
-                  ? "bg-cyan-300/10 text-cyan-100"
-                  : "bg-transparent text-dashboard-text-muted hover:text-dashboard-text",
-              )}
-              key={daysOption}
-              onClick={() => setRange(daysOption)}
-              type="button"
-            >
-              {daysOption}d
-            </button>
-          ))}
+      <div>
+        <h2 className="m-0 font-display text-xl font-medium text-dashboard-text">
+          {formatCostSummary({ total })}
+        </h2>
+        <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
+          System-wide estimate across {formatRunCount(runs)} spanning extraction
+          and recall.
+        </p>
+        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-xs text-dashboard-text-muted">
+          <span className="inline-flex items-center gap-1.5">
+            <span
+              aria-hidden="true"
+              className="h-2 w-2 rounded-[1px] bg-cyan-300"
+            />
+            Extraction {formatCostSummary({ total: extractionTotal })}
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span
+              aria-hidden="true"
+              className="h-2 w-2 rounded-[1px] bg-fuchsia-400"
+            />
+            Recall {formatCostSummary({ total: recallTotal })}
+          </span>
         </div>
       </div>
 
       <div className="relative mt-4 overflow-hidden">
-        <svg
-          aria-label={`Memory extraction and recall cost during the last ${range} days`}
-          className="block h-auto min-h-40 w-full"
-          role="img"
-          viewBox={`0 0 ${layout.width} ${layout.height}`}
+        <ChartSvg
+          aria-label={`Memory extraction and recall cost during the last ${props.range} days`}
+          className="min-h-40"
+          layout={layout}
         >
-          {[maximum, maximum / 2, 0].map((value, index) => {
-            const y = layout.top + index * (layout.plotHeight / 2);
-            return (
-              <g key={index}>
-                <line
-                  stroke="rgba(255,255,255,0.07)"
-                  strokeDasharray="3 5"
-                  x1={left}
-                  x2={layout.width - layout.right}
-                  y1={y}
-                  y2={y}
-                />
-                <text
-                  fill="rgba(255,255,255,0.34)"
-                  fontFamily="ui-monospace, monospace"
-                  fontSize="12"
-                  textAnchor="end"
-                  x={left - 7}
-                  y={y + 3}
-                >
-                  {formatCostSummary({ total: value })}
-                </text>
-              </g>
-            );
-          })}
+          <ActivityChartGrid
+            format={(value) => formatCostSummary({ total: value })}
+            layout={layout}
+            maximum={maximum}
+          />
           {days.map((day, index) => {
             const extractionHeight =
               (day.extraction.costUsd / maximum) * layout.plotHeight;
             const recallHeight =
               (day.recall.costUsd / maximum) * layout.plotHeight;
-            const x = left + index * step + (step - barWidth) / 2;
+            const x = layout.left + index * step + (step - barWidth) / 2;
             const dayTotal = day.extraction.costUsd + day.recall.costUsd;
             return (
               <Tooltip
@@ -199,12 +155,19 @@ export function MemoryCostChart(props: {
               </Tooltip>
             );
           })}
+          <ActivityChartAverageLine
+            average={average}
+            format={(value) => formatCostSummary({ total: value })}
+            layout={layout}
+            maximum={maximum}
+            stroke="#e2e8f0"
+          />
           <ActivityChartDateLabels
             dates={days.map((day) => day.date)}
-            layout={{ ...layout, left }}
-            xPosition={(index) => left + index * step + step / 2}
+            layout={layout}
+            xPosition={(index) => layout.left + index * step + step / 2}
           />
-        </svg>
+        </ChartSvg>
         {runs === 0 ? (
           <div className="pointer-events-none absolute inset-0 grid place-items-center pt-12 font-mono text-xs text-dashboard-text-muted">
             No memory extraction or recall ran in this period.

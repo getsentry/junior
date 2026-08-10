@@ -1127,7 +1127,9 @@ describe("dashboard canonical-event components", () => {
       html
         .slice(
           activityStart,
-          html.indexOf('aria-label="2026-01-01: 0 conversations, 0ms"'),
+          html.indexOf(
+            'aria-label="2026-01-01: 0 conversations, 0ms, $0.00 spend, 0 tokens"',
+          ),
         )
         .match(/class="size-3 border border-black\/40 bg-\[#101010\]"/g),
     ).toHaveLength(4);
@@ -1634,21 +1636,53 @@ describe("dashboard canonical-event components", () => {
     );
   });
 
-  it("preserves unknown runtime in shared activity tooltips", () => {
+  it("renders profile activity tooltips with daily spend and tokens", () => {
     const html = renderToStaticMarkup(
       <ContributionGrid
         days={[
           {
             conversations: 1,
+            costUsd: 0.42,
             date: "2026-01-01",
             durationMs: 0,
+            tokens: 1_234,
           },
         ]}
       />,
     );
 
-    expect(html).toContain('aria-label="2026-01-01: 1 conversations, unknown"');
+    expect(html).toContain(
+      'aria-label="2026-01-01: 1 conversations, unknown, $0.42 spend, 1.2k tokens"',
+    );
+    expect(html).toContain("spend");
+    expect(html).toContain("$0.42");
+    expect(html).toContain("tokens");
+    expect(html).toContain("1.2k");
   });
+  it("links a task-triggered conversation with compact source metadata", () => {
+    const detail = conversation([], {
+      sourceTask: {
+        id: "sched_source_task",
+        kind: "scheduled",
+        label: "Update getsentry/yc-scraper YC company data and open a PR.",
+        title: "Refresh YC company data",
+      },
+    });
+    client.setQueryData(
+      conversationDetailQueryKey(detail.conversationId),
+      detail,
+    );
+
+    const html = renderConversationPageWithClient(client);
+
+    expect(html).toMatch(
+      /href="\/tasks\/sched_source_task"[^>]*>Triggered by Scheduled Task<\/a>/,
+    );
+    expect(html).not.toContain(
+      "Triggered by Scheduled Task · Update getsentry/yc-scraper",
+    );
+  });
+
   it("renders cached canonical conversation detail through decoded routing", () => {
     const summary: ConversationSummaryReport = {
       conversationId: "slack:C1:123",
