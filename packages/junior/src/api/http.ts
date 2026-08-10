@@ -24,33 +24,3 @@ export function throwApiError(
     res: jsonResponse(apiErrorSchema, { error: message }, { status }),
   });
 }
-
-/** Parse route parameters and return a 400 response contract for invalid input. */
-export function parseParams<TSchema extends z.ZodType>(
-  schema: TSchema,
-  params: Record<string, string>,
-): z.infer<TSchema> {
-  const result = schema.safeParse(params);
-  if (result.success) return result.data;
-  return throwApiError(400, "Invalid route parameters.", result.error);
-}
-
-/** Parse an HTTP query and return a 400 response contract for invalid input. */
-export function parseQuery<TSchema extends z.ZodType>(
-  schema: TSchema,
-  query: unknown,
-): z.infer<TSchema> {
-  const result = schema.safeParse(query);
-  if (result.success) return result.data;
-  return throwApiError(400, "Invalid query parameters.", result.error);
-}
-
-/** Parse a JSON request body and return a 400 response contract on failure. */
-export function parseBody<TSchema extends z.ZodType>(
-  schema: TSchema,
-  body: unknown,
-): z.infer<TSchema> {
-  const result = schema.safeParse(body);
-  if (result.success) return result.data;
-  return throwApiError(400, "Invalid request body.", result.error);
-}
