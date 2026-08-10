@@ -1,5 +1,8 @@
 import { readCanvas, writeCanvasMarkdown } from "@/chat/slack/tool-support/canvas/api";
-import { resolveCanvasTarget } from "@/chat/slack/tool-support/canvas/context";
+import {
+  resolveCanvasTarget,
+  slackCanvasRefParam,
+} from "@/chat/slack/tool-support/canvas/context";
 import { normalizeCanvasMarkdown } from "@/chat/slack/tool-support/canvas/markdown";
 import { z } from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
@@ -60,10 +63,7 @@ export function createSlackCanvasEditTool(state: ToolState) {
     prepareArguments: prepareCanvasEditArguments,
     executionMode: "sequential",
     inputSchema: z.object({
-      canvas: z
-        .string()
-        .min(1)
-        .describe("Canvas/file ID (e.g. `F0ABCDEF`) or Slack canvas/docs URL."),
+      canvas: slackCanvasRefParam,
       edits: z
         .array(editReplacementSchema)
         .min(1)

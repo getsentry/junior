@@ -1,5 +1,8 @@
 import { readCanvas } from "@/chat/slack/tool-support/canvas/api";
-import { resolveCanvasTarget } from "@/chat/slack/tool-support/canvas/context";
+import {
+  resolveCanvasTarget,
+  slackCanvasRefParam,
+} from "@/chat/slack/tool-support/canvas/context";
 import { z } from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
@@ -38,12 +41,7 @@ export function createSlackCanvasReadTool() {
       readOnlyHint: true,
     },
     inputSchema: z.object({
-      canvas: z
-        .string()
-        .min(1)
-        .describe(
-          "Canvas/file ID (e.g. `F0ABCDEF`) or Slack canvas/docs URL (e.g. `https://team.slack.com/docs/T.../F...`).",
-        ),
+      canvas: slackCanvasRefParam,
       offset: z.coerce
         .number()
         .int()

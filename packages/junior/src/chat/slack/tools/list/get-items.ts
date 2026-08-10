@@ -1,4 +1,5 @@
 import { listItems } from "@/chat/slack/tool-support/list/api";
+import { slackListIdParam } from "@/chat/slack/tool-support/list/params";
 import { z } from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
@@ -14,7 +15,7 @@ export function createSlackListGetItemsTool() {
       readOnlyHint: true,
     },
     inputSchema: z.object({
-      list_id: z.string().min(1).describe("ID of the Slack list to read."),
+      list_id: slackListIdParam,
       limit: z.coerce
         .number()
         .int()

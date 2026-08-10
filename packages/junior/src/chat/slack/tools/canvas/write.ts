@@ -1,5 +1,8 @@
 import { writeCanvasMarkdown } from "@/chat/slack/tool-support/canvas/api";
-import { resolveCanvasTarget } from "@/chat/slack/tool-support/canvas/context";
+import {
+  resolveCanvasTarget,
+  slackCanvasRefParam,
+} from "@/chat/slack/tool-support/canvas/context";
 import { z } from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
@@ -20,10 +23,7 @@ export function createSlackCanvasWriteTool(state: ToolState) {
       "Write UTF-8 markdown content to a Slack canvas. Use for deliberate full-Canvas replacement after validation; use slackCanvasEdit for targeted changes to existing canvas content.",
     executionMode: "sequential",
     inputSchema: z.object({
-      canvas: z
-        .string()
-        .min(1)
-        .describe("Canvas/file ID (e.g. `F0ABCDEF`) or Slack canvas/docs URL."),
+      canvas: slackCanvasRefParam,
       content: z.string().describe("UTF-8 markdown content to write."),
     }),
     outputSchema: juniorToolOutputSchema,
