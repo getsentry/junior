@@ -79,156 +79,161 @@ describe("api turn conversation work", () => {
     });
   });
 
-  it("creates a private dashboard root when visibility is private", async () => {
-    const { actor, conversationStore, queue, state } =
-      await createApiTurnWorkFixture();
-    const accepted = await createAndEnqueueApiConversation(
-      {
-        actor,
-        idempotencyKey: "private-1",
-        message: "Keep this private.",
-        visibility: "private",
-      },
-      { conversationStore, queue, state },
-    );
-
-    await expect(
-      conversationStore.get({ conversationId: accepted.conversationId }),
-    ).resolves.toMatchObject({
-      source: "web",
-      sessionSource: createWebSource(accepted.conversationId, "private"),
-      visibility: "private",
-      destination: {
-        platform: "local",
-        conversationId: accepted.conversationId,
-      },
-    });
-
-    const createRetry = await createAndEnqueueApiConversation(
-      {
-        actor,
-        idempotencyKey: "private-1",
-        message: "Keep this private.",
-        visibility: "public",
-      },
-      { conversationStore, queue, state },
-    );
-    expect(createRetry).toMatchObject({
-      conversationId: accepted.conversationId,
-      messageId: accepted.messageId,
-      status: "duplicate",
-    });
-    await expect(
-      conversationStore.get({ conversationId: accepted.conversationId }),
-    ).resolves.toMatchObject({
-      visibility: "private",
-      sessionSource: createWebSource(accepted.conversationId, "private"),
-    });
-  });
-
-  it("enqueues public web turns with publishExternally false and runs them on the worker", async () => {
-    const { actor, conversationStore, queue, state } =
-      await createApiTurnWorkFixture();
-    const accepted = await createAndEnqueueApiConversation(
-      {
-        actor,
-        idempotencyKey: "create-1",
-        message: "Start a dashboard turn.",
-      },
-      { conversationStore, queue, state },
-    );
-    expect(accepted.status).toBe("accepted");
-    expect(accepted.conversationId.startsWith("local:web:")).toBe(true);
-
-    await expect(
-      conversationStore.get({ conversationId: accepted.conversationId }),
-    ).resolves.toMatchObject({
-      source: "web",
-      sessionSource: createWebSource(accepted.conversationId),
-      visibility: "public",
-      destination: {
-        platform: "local",
-        conversationId: accepted.conversationId,
-      },
-      actor: {
-        email: "alice@example.com",
-        fullName: "Alice Example",
-      },
-    });
-
-    const inbound = buildApiTurnInboundMessage({
-      actor,
-      conversationId: accepted.conversationId,
-      message: "Start a dashboard turn.",
-      messageId: accepted.messageId,
-    });
-    expect(inbound).toMatchObject({
-      publishExternally: false,
-      source: "web",
-    });
-
-    let observedPublishExternally: boolean | undefined;
-    let observedSourcePlatform: string | undefined;
-    let observedActorPlatform: string | undefined;
-    const worker = createApiTurnWorker({
-      agentRunner: createApiTurnScriptedRunner({
-        replyText: "Stored only in Junior.",
-        onRun: (request) => {
-          observedPublishExternally = request.routing.publishExternally;
-          observedSourcePlatform = request.routing.source.platform;
-          observedActorPlatform = request.routing.actor?.platform;
+  it.each([
+    {
+      label: "public",
+      idempotencyKey: "create-public-1",
+      message: "Start a public dashboard turn.",
+      replyText: "Public reply stays in Junior.",
+      visibility: "public" as const,
+      // Omitted visibility defaults public on create.
+      createVisibility: undefined,
+    },
+    {
+      label: "private",
+      idempotencyKey: "create-private-1",
+      message: "Start a private dashboard turn.",
+      replyText: "Private reply stays in Junior.",
+      visibility: "private" as const,
+      createVisibility: "private" as const,
+    },
+  ])(
+    "starts a $label dashboard root and feeds $label source visibility into the agent run",
+    async ({
+      createVisibility,
+      idempotencyKey,
+      message,
+      replyText,
+      visibility,
+    }) => {
+      const { actor, conversationStore, queue, state } =
+        await createApiTurnWorkFixture();
+      const accepted = await createAndEnqueueApiConversation(
+        {
+          actor,
+          idempotencyKey,
+          message,
+          ...(createVisibility ? { visibility: createVisibility } : {}),
         },
-      }),
-    });
-    const route = routeApiTurnWork({
-      apiTurnWorker: worker,
-      fallbackWorker: async () => {
-        throw new Error("fallback worker must not run for web turns");
-      },
-    });
+        { conversationStore, queue, state },
+      );
+      expect(accepted.status).toBe("accepted");
+      expect(accepted.conversationId.startsWith("local:web:")).toBe(true);
 
-    await expect(
-      processConversationQueueMessage(queue.takeMessage(), {
-        conversationStore,
-        queue,
-        run: route,
-        state,
-      }),
-    ).resolves.toMatchObject({ status: "completed" });
+      await expect(
+        conversationStore.get({ conversationId: accepted.conversationId }),
+      ).resolves.toMatchObject({
+        source: "web",
+        sessionSource: createWebSource(accepted.conversationId, visibility),
+        visibility,
+        destination: {
+          platform: "local",
+          conversationId: accepted.conversationId,
+        },
+        actor: {
+          email: "alice@example.com",
+          fullName: "Alice Example",
+        },
+      });
 
-    expect(observedPublishExternally).toBe(false);
-    expect(observedSourcePlatform).toBe("web");
-    expect(observedActorPlatform).toBe("web");
+      // Retry keeps the first root visibility even if the client flips it.
+      const createRetry = await createAndEnqueueApiConversation(
+        {
+          actor,
+          idempotencyKey,
+          message,
+          visibility: visibility === "private" ? "public" : "private",
+        },
+        { conversationStore, queue, state },
+      );
+      expect(createRetry).toMatchObject({
+        conversationId: accepted.conversationId,
+        messageId: accepted.messageId,
+        status: "duplicate",
+      });
+      await expect(
+        conversationStore.get({ conversationId: accepted.conversationId }),
+      ).resolves.toMatchObject({
+        visibility,
+        sessionSource: createWebSource(accepted.conversationId, visibility),
+      });
 
-    const messages = (
-      await getConversationEventStore().loadMessageHistory(
-        accepted.conversationId,
-      )
-    ).events.filter((event) => event.data.type === "message");
-    expect(messages.map((event) => event.data)).toEqual([
-      expect.objectContaining({
-        role: "user",
-        text: "Start a dashboard turn.",
-        meta: expect.objectContaining({ source: "web" }),
-      }),
-      expect.objectContaining({
-        role: "assistant",
-        text: "Stored only in Junior.",
-        meta: expect.objectContaining({ source: "web" }),
-      }),
-    ]);
+      const inbound = buildApiTurnInboundMessage({
+        actor,
+        conversationId: accepted.conversationId,
+        message,
+        messageId: accepted.messageId,
+      });
+      expect(inbound).toMatchObject({
+        publishExternally: false,
+        source: "web",
+      });
 
-    await expect(
-      getTurnRecord(
-        accepted.conversationId,
-        apiTurnIdForMessage(accepted.messageId),
-      ),
-    ).resolves.toMatchObject({
-      publishExternally: false,
-      state: "completed",
-      surface: "api",
-    });
-  });
+      let observedPublishExternally: boolean | undefined;
+      let observedSource: unknown;
+      let observedActorPlatform: string | undefined;
+      const worker = createApiTurnWorker({
+        agentRunner: createApiTurnScriptedRunner({
+          replyText,
+          onRun: (request) => {
+            observedPublishExternally = request.routing.publishExternally;
+            observedSource = request.routing.source;
+            observedActorPlatform = request.routing.actor?.platform;
+          },
+        }),
+      });
+      const route = routeApiTurnWork({
+        apiTurnWorker: worker,
+        fallbackWorker: async () => {
+          throw new Error("fallback worker must not run for web turns");
+        },
+      });
+
+      await expect(
+        processConversationQueueMessage(queue.takeMessage(), {
+          conversationStore,
+          queue,
+          run: route,
+          state,
+        }),
+      ).resolves.toMatchObject({ status: "completed" });
+
+      expect(observedPublishExternally).toBe(false);
+      expect(observedActorPlatform).toBe("web");
+      expect(observedSource).toEqual(
+        createWebSource(accepted.conversationId, visibility),
+      );
+
+      const messages = (
+        await getConversationEventStore().loadMessageHistory(
+          accepted.conversationId,
+        )
+      ).events.filter((event) => event.data.type === "message");
+      expect(messages.map((event) => event.data)).toEqual([
+        expect.objectContaining({
+          role: "user",
+          text: message,
+          meta: expect.objectContaining({ source: "web" }),
+        }),
+        expect.objectContaining({
+          role: "assistant",
+          text: replyText,
+          meta: expect.objectContaining({ source: "web" }),
+        }),
+      ]);
+
+      await expect(
+        getTurnRecord(
+          accepted.conversationId,
+          apiTurnIdForMessage(accepted.messageId),
+        ),
+      ).resolves.toMatchObject({
+        publishExternally: false,
+        state: "completed",
+        surface: "api",
+      });
+    },
+  );
 
   it("routes empty resume wakes to the active API turn", async () => {
     const { actor, conversationStore, queue, state } =
