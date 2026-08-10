@@ -1,8 +1,12 @@
 # Chat Runtime
 
 This folder coordinates a chat turn. It loads conversation state, calls the
-agent, delivers replies, saves the result, and schedules more work when a turn
+agent, accepts replies, saves the result, and schedules more work when a turn
 must continue later. `../agent/` owns the model and tool loop.
+
+`conversation-only.ts` accepts assistant output into the canonical conversation
+log without provider delivery. `../local/runner.ts` adapts the CLI to this path.
+Slack keeps its provider preparation and delivery in `reply-executor.ts`.
 
 ## Replies
 

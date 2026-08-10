@@ -24,8 +24,10 @@ file.
 7. The completed run result supplies diagnostics and artifacts; successful
    delivery or intentional no-reply completion commits the durable turn outcome.
 
-The local CLI uses `local/runner.ts` directly rather than pretending to be a
-mailbox-backed provider.
+The local CLI uses `runtime/conversation-only.ts` through its small
+`local/runner.ts` adapter. The shared path records assistant output in the
+canonical conversation log without provider delivery. It does not use the
+provider mailbox worker.
 
 ## Ownership
 
@@ -33,6 +35,8 @@ mailbox-backed provider.
 - `ingress/`: source parsing, classification, and routing.
 - `task-execution/`: mailbox, queue, lease, checkpoint, worker, and recovery.
 - `runtime/`: turn orchestration and provider-neutral delivery callbacks.
+  `conversation-only.ts` owns turns that accept replies into the conversation
+  log without publishing them to a provider.
 - `agent-dispatch/`: durable task and plugin dispatch authority, mailbox
   adaptation, and plugin-facing outcome projection.
 - `agent-invocations/`: durable parent/child bindings, delegated work, and

@@ -39,6 +39,7 @@ provider mailbox worker.
   loopback request so sandbox egress can issue a lease after the turn resumes;
   the credential is never sent to the sandbox.
 
-`conversation.ts` owns identity normalization and `runner.ts` owns the direct
-runtime path. Manual validation is documented in
+`conversation.ts` owns identity normalization. `runner.ts` adapts CLI identity,
+stdout, and telemetry to the shared conversation-only runtime in
+`../runtime/conversation-only.ts`. Manual validation is documented in
 `packages/docs/src/content/docs/contribute/local-agent-validation.md`.

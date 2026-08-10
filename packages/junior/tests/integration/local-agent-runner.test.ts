@@ -245,6 +245,7 @@ describe("local agent runner", () => {
             platform: "local",
             conversationId,
           },
+          publishExternally: false,
           surface: "internal",
         }),
       }),
