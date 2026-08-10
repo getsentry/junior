@@ -55,6 +55,7 @@ import {
 import { finalizeFailedTurnReplyWithEvent } from "@/chat/services/turn-failure-response";
 import { persistWithRetry } from "@/chat/services/persist-retry";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
+import { getStateAdapter } from "@/chat/state/adapter";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
 import {
   appendAndEnqueueInboundMessage,
@@ -90,6 +91,18 @@ const apiTurnMailboxMetadataSchema = z
   .strict();
 
 type ApiTurnMailboxMetadata = z.output<typeof apiTurnMailboxMetadataSchema>;
+
+const WEB_TURN_QUOTA_WINDOW_MS = 60_000;
+const WEB_TURN_QUOTA_MAX = 20;
+const WEB_TURN_QUOTA_KEY_PREFIX = "junior:web-turn-quota:v1";
+
+/** A verified viewer exhausted the bounded web-turn enqueue quota. */
+export class WebTurnQuotaExceededError extends Error {
+  constructor() {
+    super("Web conversation request quota exceeded");
+    this.name = "WebTurnQuotaExceededError";
+  }
+}
 
 type EnqueueOptions = {
   conversationStore?: ConversationStore;
@@ -150,6 +163,37 @@ function apiMessageId(args: {
   idempotencyKey: string;
 }): string {
   return `api-msg:${stableHex(args.conversationId, args.idempotencyKey)}`;
+}
+
+async function consumeWebTurnQuota(args: {
+  actorEmail: string;
+  conversationId: string;
+  idempotencyKey: string;
+  nowMs: number;
+  state?: StateAdapter;
+}): Promise<void> {
+  const state = args.state ?? getStateAdapter();
+  const viewerKey = stableHex(normalizeEmail(args.actorEmail));
+  const requestKey = stableHex(args.conversationId, args.idempotencyKey);
+  const window = Math.floor(args.nowMs / WEB_TURN_QUOTA_WINDOW_MS);
+  const ttlMs = WEB_TURN_QUOTA_WINDOW_MS * 2;
+  const admittedKey = `${WEB_TURN_QUOTA_KEY_PREFIX}:request:${viewerKey}:${requestKey}`;
+  const isNewRequest = await state.setIfNotExists(admittedKey, true, ttlMs);
+  if (!isNewRequest) {
+    return;
+  }
+  for (let slot = 0; slot < WEB_TURN_QUOTA_MAX; slot += 1) {
+    const acquired = await state.setIfNotExists(
+      `${WEB_TURN_QUOTA_KEY_PREFIX}:window:${viewerKey}:${window}:${slot}`,
+      requestKey,
+      ttlMs,
+    );
+    if (acquired) {
+      return;
+    }
+  }
+  await state.delete(admittedKey);
+  throw new WebTurnQuotaExceededError();
 }
 
 /** Stable turn id for one API mailbox message (matches getTurnUserMessage). */
@@ -315,6 +359,13 @@ export async function appendAndEnqueueApiConversationMessage(
   }
   requireLocalDestination(input.conversationId);
   const nowMs = options.nowMs ?? Date.now();
+  await consumeWebTurnQuota({
+    actorEmail: input.actor.email,
+    conversationId: input.conversationId,
+    idempotencyKey: input.idempotencyKey,
+    nowMs,
+    state: options.state,
+  });
   const messageId = apiMessageId({
     conversationId: input.conversationId,
     idempotencyKey: input.idempotencyKey,
@@ -696,7 +747,8 @@ export function createApiTurnWorker(options: {
           }
 
           reply = outcome.result;
-          modelFailureCaptureAttempted = reply.diagnostics.outcome !== "success";
+          modelFailureCaptureAttempted =
+            reply.diagnostics.outcome !== "success";
           const finalized = finalizeFailedTurnReplyWithEvent({
             reply,
             logException,
@@ -720,10 +772,7 @@ export function createApiTurnWorker(options: {
           if (reply.piMessages?.length) {
             // Prefer the live checkpoint slice after yield/resume; first
             // completion has no prior record and starts at slice 1.
-            const latest = await getTurnRecord(
-              context.conversationId,
-              turnId,
-            );
+            const latest = await getTurnRecord(context.conversationId, turnId);
             await saveTurnCheckpoint({
               mode: "completed",
               conversationId: context.conversationId,
