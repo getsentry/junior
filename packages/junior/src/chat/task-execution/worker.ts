@@ -4,6 +4,7 @@ import { getChatConfig } from "@/chat/config";
 import { logException, logInfo, logWarn, withLogContext } from "@/chat/logging";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { isProviderRetryError } from "@/chat/services/provider-error";
+import { getTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import {
   ConversationQueueMessageRejectedError,
   type ConversationQueueMessage,
@@ -416,8 +417,11 @@ async function processConversationWorkInContext(
       state: options.state,
     });
 
+  const requestDeadlineAtMs = getTurnRequestDeadline()?.deadlineAtMs;
   const shouldYield = (): boolean =>
-    leaseLost || now(options) >= softYieldDeadlineMs;
+    leaseLost ||
+    now(options) >= softYieldDeadlineMs ||
+    (requestDeadlineAtMs !== undefined && Date.now() >= requestDeadlineAtMs);
   const checkIn = async (): Promise<boolean> => {
     const checkedIn = await checkInConversationWork({
       conversationId,
@@ -669,14 +673,10 @@ async function processConversationWorkInContext(
       if (!next || next.lease?.leaseToken !== lease.leaseToken) {
         return { status: "lost_lease" };
       }
-      // A pause under this lease (timeout/retry/yield via wakePausedTurn →
-      // requestConversationWork) must leave the host request. Continuing the
-      // turn here reuses the spent request deadline and can fail a later slice
-      // with no-progress even after the boundary advanced once.
-      if (next.execution.status === "paused") {
-        return await yieldWork();
-      }
-      if (countPendingConversationMessages(next) === 0) {
+      if (
+        next.execution.status !== "paused" &&
+        countPendingConversationMessages(next) === 0
+      ) {
         break;
       }
     }

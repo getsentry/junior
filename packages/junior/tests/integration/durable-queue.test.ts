@@ -1,19 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-  createFauxCore,
-  fauxAssistantMessage,
-} from "@earendil-works/pi-ai/providers/faux";
+import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createConversationWork } from "@/chat/app/conversation-work";
 import { commitAcceptedReply } from "@/chat/conversations/projection";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
+import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import type { AgentRunSteeringMessage } from "@/chat/agent/request";
 import {
   getPersistedThreadState,
   persistThreadStateById,
 } from "@/chat/runtime/thread-state";
-import { executeAgentRun } from "@/chat/agent";
 import type { PiMessage } from "@/chat/pi/messages";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
@@ -108,12 +105,17 @@ async function slack(
         .messages()
         .map((call) => call.params.text)
         .filter((text): text is string => typeof text === "string"),
-    next: async () =>
-      await processConversationQueueMessage(wakes.takeMessage(), {
-        queue: wakes,
-        run,
-        state,
-      }),
+    next: async (requestStartedAtMs?: number) => {
+      const process = async () =>
+        await processConversationQueueMessage(wakes.takeMessage(), {
+          queue: wakes,
+          run,
+          state,
+        });
+      return requestStartedAtMs === undefined
+        ? await process()
+        : await runWithTurnRequestDeadline(process, requestStartedAtMs);
+    },
     send: async (
       input: {
         eventType?: "app_mention" | "message";
@@ -460,8 +462,8 @@ describe("durable queue contract", () => {
       const turnId = await seedTurn("paused");
       let resumes = 0;
       const q = await slack({
-        // Soft yield is not due; the worker must still release the lease so the
-        // next slice starts under a fresh host request deadline.
+        // The runner persists a timeout pause before it sees the spent host
+        // request deadline. The worker must release the lease before resume.
         shouldYield: () => false,
         pausedRunner: {
           run: async (request) => {
@@ -511,7 +513,7 @@ describe("durable queue contract", () => {
         queue: q.wakes,
       });
 
-      await expect(q.next()).resolves.toEqual({ status: "yielded" });
+      await expect(q.next(0)).resolves.toEqual({ status: "yielded" });
       expect(resumes).toBe(1);
       await expect(
         getTurnRecord(CONVERSATION_ID, turnId),
@@ -588,7 +590,7 @@ describe("durable queue contract", () => {
               conversationId: request.conversationId,
               destination: request.routing.destination,
               messages: piMessages ?? [],
-              sliceId: request.sliceId ?? 3,
+              sliceId: 3,
               source: request.routing.source,
               surface: request.routing.surface,
               turnId: request.turnId,
@@ -612,7 +614,7 @@ describe("durable queue contract", () => {
         queue: q.wakes,
       });
 
-      await expect(q.next()).resolves.toEqual({ status: "yielded" });
+      await expect(q.next(0)).resolves.toEqual({ status: "yielded" });
       expect(resumes).toBe(1);
       expect(q.wakes.hasQueuedMessages()).toBe(true);
 

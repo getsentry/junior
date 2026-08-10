@@ -21,9 +21,9 @@ The reliability rules are small:
 - A turn may run, pause at a committed boundary, complete, or fail.
 - Timeout, retry, and yield may continue only after the boundary advances;
   parking the same boundary twice fails the turn.
-- A pause that marks execution `paused` under the current lease must leave the
-  host request. The next slice starts from a fresh queue wake and request
-  deadline. The worker must not resume that turn again in the same lease loop.
+- A paused turn can continue under the current lease while the host request has
+  time left. When that deadline is spent, the worker releases the lease. The
+  next slice starts from a fresh queue wake and request deadline.
 - A process can stop while a turn runs. The next worker stops that turn and
   records the error. The user can start new work. Committed SQL history remains.
 - A paused turn does not take a second lock. OAuth can run outside the queue and
@@ -131,8 +131,8 @@ queues, and locks. The cases describe the expected product behavior:
 - **Interrupts:** an explicit instruction received during a run steers the active
   turn; an authorization request parks the turn without retrying it.
 - **Failures:** failure before input commit retries without duplicate delivery;
-  a timeout pause that advanced the boundary leaves the host request so the next
-  slice starts fresh; a timed-out turn that repeats its committed boundary
+  a timeout pause under a spent request deadline leaves the host request so the
+  next slice starts fresh; a timed-out turn that repeats its committed boundary
   stops; an expired worker lease stops its stranded running turn while
   preserving committed history; and repeated agent failure stops at the retry
   limit with at most one visible fallback. Each stopped state must allow a later
