@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { createSlackSource } from "@sentry/junior-plugin-api";
+import { closeDb, getConversationStore } from "@/chat/db";
 import { createSlackThreadReadTool } from "@/chat/slack/tools/thread-read";
 import type { SlackToolContext } from "@/chat/slack/tool-support/context";
 import { parseSlackChannelId, parseSlackTeamId } from "@/chat/slack/ids";
@@ -87,6 +88,10 @@ async function executeTool<TInput>(tool: any, input: TInput) {
 }
 
 describe("slackThreadRead", () => {
+  afterEach(async () => {
+    await closeDb();
+  });
+
   it("reads a thread from a public channel URL", async () => {
     queueSlackApiResponse("conversations.replies", {
       body: conversationsRepliesPage({
@@ -364,6 +369,33 @@ describe("slackThreadRead", () => {
         url: "https://sentry.slack.com/archives/C0UNCONFIRMED/p1700000000100000",
       }),
     ).rejects.toThrow("private");
+    expect(getCapturedSlackApiCalls("conversations.info")).toHaveLength(1);
+    expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(0);
+  });
+
+  it("does not trust stale persisted public visibility when live Slack proof fails", async () => {
+    await getConversationStore().recordActivity({
+      conversationId: "slack:C0STALE:1700000000.100000",
+      channelName: "was-public",
+      destination: {
+        platform: "slack",
+        teamId: "T123",
+        channelId: "C0STALE",
+      },
+      nowMs: Date.parse("2026-07-01T12:00:00.000Z"),
+      source: "slack",
+      visibility: "public",
+    });
+    queueSlackApiError("conversations.info", {
+      error: "channel_not_found",
+    });
+
+    const tool = createTool({ sourceChannelId: "C0CURRENT" });
+    await expect(
+      executeTool(tool, {
+        url: "https://sentry.slack.com/archives/C0STALE/p1700000000100000",
+      }),
+    ).rejects.toThrow(/not found|cannot see it/i);
     expect(getCapturedSlackApiCalls("conversations.info")).toHaveLength(1);
     expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(0);
   });

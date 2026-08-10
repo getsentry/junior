@@ -42,10 +42,10 @@ function deny(
  * Decide whether the model may read Slack content from a target channel.
  *
  * The current conversation is always readable. Any other channel first checks
- * persisted visibility in the same workspace. When visibility is unknown,
- * live `conversations.info` allows only public channels. Missing or private
- * destinations fail closed. Channel-id prefixes alone cannot prove a channel
- * public.
+ * persisted visibility in the same workspace. Cross-channel reads require live
+ * `conversations.info` proof that the destination is public. Stale persisted
+ * public rows are not enough, so a channel that later becomes private fails
+ * closed. Channel-id prefixes alone cannot prove a channel public.
  */
 export async function checkSlackChannelReadAccess(args: {
   currentChannelIds: Array<SlackChannelId | undefined>;
@@ -68,9 +68,8 @@ export async function checkSlackChannelReadAccess(args: {
     return deny("private", DENIED_PRIVATE);
   }
 
-  // Prefer live Slack metadata when available so membership and public proof
-  // stay current. Fall back to persisted public visibility only when Slack
-  // cannot answer.
+  // Live Slack metadata is the only proof a non-current channel is public.
+  // Persisted public visibility may be stale after a channel is converted.
   try {
     const info = await getConversationInfo(args.targetChannelId);
     const isPublicChannel =
@@ -85,9 +84,6 @@ export async function checkSlackChannelReadAccess(args: {
       ...(typeof info.isMember === "boolean" ? { isMember: info.isMember } : {}),
     };
   } catch (error) {
-    if (visibility === "public") {
-      return { allowed: true, isPublic: true };
-    }
     if (error instanceof SlackActionError) {
       if (error.code === "not_found") {
         return deny("not_found", DENIED_NOT_FOUND);
