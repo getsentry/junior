@@ -244,6 +244,7 @@ describe("dashboard routes", () => {
 
     const me = await app.fetch(new Request("http://localhost/api/me"));
     expect(me.status).toBe(200);
+    expect(me.headers.get("cache-control")).toBe("no-store");
     expect(await me.json()).toEqual({
       user: {
         email: "dev@example.com",
@@ -286,6 +287,7 @@ describe("dashboard routes", () => {
     ]) {
       const response = await app.fetch(new Request(`http://localhost${path}`));
       expect(response.status).toBe(401);
+      expect(response.headers.get("cache-control")).toBe("no-store");
       expect(await response.json()).toEqual({ error: "unauthenticated" });
     }
 
@@ -309,6 +311,7 @@ describe("dashboard routes", () => {
     );
 
     expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
     const body = (await response.json()) as { providers: string[] };
     expect(body.providers).toEqual(expect.any(Array));
   });
