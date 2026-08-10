@@ -24,7 +24,10 @@ const userPageQuerySchema = z.object({
     (value) => value || undefined,
     pluginUserPageInputSchema.shape.filter,
   ),
-  limit: z.coerce.number().int().min(1).max(50).default(20),
+  limit: z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z.coerce.number().int().min(1).max(50).default(20),
+  ),
   q: z.preprocess(
     (value) => value || undefined,
     pluginUserPageInputSchema.shape.query,
