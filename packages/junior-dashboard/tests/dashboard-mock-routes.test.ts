@@ -70,6 +70,11 @@ describe("dashboard canonical-event mock routes", () => {
       mockConversations: true,
     });
 
+    const me = await app.fetch(new Request("http://localhost/api/me"));
+    await expect(me.json()).resolves.toEqual({
+      user: { email: "dev@example.com", emailVerified: true },
+    });
+
     const conversations = await app.fetch(
       new Request("http://localhost/api/conversations"),
     );
@@ -103,13 +108,13 @@ describe("dashboard canonical-event mock routes", () => {
 
     const personal = await app.fetch(
       new Request(
-        "http://localhost/api/conversations?actorEmail=morgan%40sentry.io",
+        "http://localhost/api/conversations?actorEmail=dev%40example.com",
       ),
     );
     const personalBody = (await personal.json()) as typeof body;
     expect(
       personalBody.conversations.every(
-        (item) => item.actorIdentity?.email === "morgan@sentry.io",
+        (item) => item.actorIdentity?.email === "dev@example.com",
       ),
     ).toBe(true);
 

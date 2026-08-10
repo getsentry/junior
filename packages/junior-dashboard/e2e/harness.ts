@@ -50,12 +50,12 @@ export async function startDashboardE2eServer(): Promise<DashboardE2eServer> {
   process.env.DATABASE_URL ??= "postgres://localhost/junior-dashboard-e2e";
   const { createDashboardApp } = await import("../dist/app.js");
   const app = createDashboardApp({
-    allowedEmails: ["morgan@sentry.io"],
+    allowedEmails: ["dev@example.com"],
     auth: {
       async getSession() {
         return {
           user: {
-            email: "morgan@sentry.io",
+            email: "dev@example.com",
             emailVerified: true,
             name: "Dashboard User",
           },
@@ -342,7 +342,7 @@ export async function mockDashboardApis(page: Page) {
           {
             createdAt: "2026-07-28T16:00:00.000Z",
             createdBy: "Morgan",
-            createdByEmail: "morgan@sentry.io",
+            createdByEmail: "dev@example.com",
             destination: {
               channelId: "C123",
               label: "#project-updates",
@@ -365,7 +365,7 @@ export async function mockDashboardApis(page: Page) {
           {
             createdAt: "2026-07-29T16:00:00.000Z",
             createdBy: "Morgan",
-            createdByEmail: "morgan@sentry.io",
+            createdByEmail: "dev@example.com",
             destination: {
               channelId: "C123",
               label: "#project-updates",
@@ -423,7 +423,7 @@ export async function mockDashboardApis(page: Page) {
     const task = {
       createdAt: "2026-07-28T16:00:00.000Z",
       createdBy: "Morgan",
-      createdByEmail: "morgan@sentry.io",
+      createdByEmail: "dev@example.com",
       destination: {
         channelId: "C123",
         label: "#project-updates",

@@ -163,7 +163,7 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
   ).toBeVisible();
   await expect(details.getByRole("link", { name: "you" })).toHaveAttribute(
     "href",
-    "/people/morgan%40sentry.io",
+    "/people/dev%40example.com",
   );
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);

@@ -716,9 +716,7 @@ export function createDashboardApp(
   ) => {
     const pathname = new URL(c.req.url).pathname;
     if (!authRequired) {
-      const session = localAuthBypassSession(
-        options.mockConversations ? "morgan@sentry.io" : LOCAL_VIEWER_EMAIL,
-      );
+      const session = localAuthBypassSession();
       c.set("authSession", session);
       if (pathname.startsWith("/api/")) {
         const viewer = options.mockConversations

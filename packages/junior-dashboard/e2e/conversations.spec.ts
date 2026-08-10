@@ -572,10 +572,10 @@ test("groups the signed-in profile and session actions in the header", async ({
   await trigger.hover();
 
   const popover = page.locator("#profile-popover");
-  await expect(popover.getByText("morgan@sentry.io")).toBeVisible();
+  await expect(popover.getByText("dev@example.com")).toBeVisible();
   await expect(
     popover.getByRole("link", { name: "My profile" }),
-  ).toHaveAttribute("href", "/people/morgan%40sentry.io");
+  ).toHaveAttribute("href", "/people/dev%40example.com");
   await expect(popover.getByRole("button", { name: "Log out" })).toBeVisible();
   await popover.getByRole("link", { name: "My profile" }).hover();
   await page.waitForTimeout(200);
