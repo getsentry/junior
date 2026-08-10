@@ -56,4 +56,20 @@ describe("personal token create API", () => {
       error: "Invalid request body.",
     });
   });
+
+  it("rejects malformed JSON with the stable error contract", async () => {
+    const response = await authenticatedApi().request(
+      "http://localhost/api/personal-tokens",
+      {
+        body: "{not-json",
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      },
+    );
+
+    expect(response.status).toBe(400);
+    expect(apiErrorSchema.parse(await response.json())).toEqual({
+      error: "Malformed JSON in request body",
+    });
+  });
 });

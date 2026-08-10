@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { HTTPException } from "hono/http-exception";
 import { createConversationRoutes } from "./api/conversations/routes";
 import healthRoute from "./api/health";
 import { jsonResponse } from "./api/http";
@@ -19,6 +20,7 @@ import runtimeRoute from "./api/runtime";
 import { apiErrorSchema } from "./api/schema/common";
 import skillsRoute from "./api/skills";
 import statsRoute from "./api/stats";
+import { logException } from "./chat/logging";
 
 export { authenticatePersonalToken } from "./personal-tokens/store";
 export { resolveViewerUser } from "./chat/plugins/viewer";
@@ -55,6 +57,22 @@ export function createJuniorApi(): Hono<JuniorApiEnv> {
       },
     ),
   );
+  app.onError((error, _context) => {
+    if (error instanceof HTTPException) {
+      if (error.res) return error.res;
+      return jsonResponse(
+        apiErrorSchema,
+        { error: error.message || "Request failed." },
+        { status: error.status },
+      );
+    }
+    logException(error, "api.unhandled.exception");
+    return jsonResponse(
+      apiErrorSchema,
+      { error: "Internal Server Error" },
+      { status: 500 },
+    );
+  });
 
   return app;
 }
