@@ -616,7 +616,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           );
           try {
             await beforeFirstResponsePost();
-            if (options.publishExternally === false) {
+            if (options.publishExternally !== true) {
               return;
             }
             if (channelId && threadTs) {
@@ -881,7 +881,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             });
         if (configReply) {
           await beforeFirstResponsePost();
-          if (options.publishExternally !== false) {
+          if (options.publishExternally === true) {
             await thread.post(buildSlackOutputMessage(configReply.text));
           }
           markConversationMessage(
@@ -1074,23 +1074,23 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           // classified as retryable delivery errors.
           await beforeFirstResponsePost();
           try {
-            if (options.publishExternally === false) {
-              // The conversation commit below is the visible delivery boundary.
-            } else if (channelId && thread.adapter.name === "slack") {
-              slackMessageTs = await sendSlackReply({
-                channelId,
-                conversationId,
-                replyAttribution: options.execution?.dispatch?.replyAttribution,
-                text,
-                ...(threadTs ? { threadTs } : {}),
-              });
-            } else {
-              for (const part of splitSlackReplyText(text)) {
-                const postedMessageTs = (
-                  await thread.post(buildSlackOutputMessage(part))
-                ).id;
-                if (postedMessageTs) {
-                  slackMessageTs.push(postedMessageTs);
+            if (options.publishExternally === true) {
+              if (channelId && thread.adapter.name === "slack") {
+                slackMessageTs = await sendSlackReply({
+                  channelId,
+                  conversationId,
+                  replyAttribution: options.execution?.dispatch?.replyAttribution,
+                  text,
+                  ...(threadTs ? { threadTs } : {}),
+                });
+              } else {
+                for (const part of splitSlackReplyText(text)) {
+                  const postedMessageTs = (
+                    await thread.post(buildSlackOutputMessage(part))
+                  ).id;
+                  if (postedMessageTs) {
+                    slackMessageTs.push(postedMessageTs);
+                  }
                 }
               }
             }
@@ -1387,7 +1387,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               slackConversation,
               source,
               destination,
-              publishExternally: options.publishExternally ?? true,
+              publishExternally: options.publishExternally === true,
               ...(destinationVisibility ? { destinationVisibility } : {}),
               surface: options.execution?.surface ?? "slack",
               dispatch: options.execution?.dispatch,

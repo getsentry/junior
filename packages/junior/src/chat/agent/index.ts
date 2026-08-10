@@ -424,7 +424,7 @@ async function executeAgentRunInPrivacyContext(
       publishExternally:
         checkpoint.record?.publishExternally ??
         routing.publishExternally ??
-        true,
+        false,
       actor,
       runSource,
       conversationId,

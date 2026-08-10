@@ -68,6 +68,9 @@ the production singleton.
 - **Actor**: human or system principal associated with current work.
 - **Credential subject**: principal whose provider authority may be used.
 - **Destination**: platform location where output is delivered.
+- **publishExternally**: per-turn side effect. When true, also publish assistant
+  output to the conversation destination. The conversation log always stores the
+  turn. Missing or false means conversation-only.
 
 Attribution does not grant authority. `run.actors` records participating actors;
 credential issuance still requires the current actor or an explicit delegated
@@ -111,6 +114,9 @@ delegation without becoming the execution actor or a general task owner.
   explicit across asynchronous boundaries. A destinationless child
   conversation receives its bounded execution destination from its durable
   agent invocation.
+- External publish is opt-in per turn via `publishExternally`. Resume and
+  recovery read the stored flag and must not treat destination presence as
+  permission to publish.
 - Host-owned runtime context and the actor's current instruction are separate
   user messages. The context message immediately precedes the instruction,
   remains context-authority on resume, and may be replaced before a later model

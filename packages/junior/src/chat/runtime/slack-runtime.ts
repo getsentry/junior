@@ -845,7 +845,7 @@ export function createSlackTurnRuntime<
           lifecycleError = error;
         }
         await hooks.beforeFirstResponsePost?.();
-        if (hooks.publishExternally !== false) {
+        if (hooks.publishExternally === true) {
           await postFallbackErrorReplyWithLogging({
             thread,
             eventId,
@@ -1156,7 +1156,7 @@ export function createSlackTurnRuntime<
           lifecycleError = error;
         }
         await hooks.beforeFirstResponsePost?.();
-        if (hooks.publishExternally !== false) {
+        if (hooks.publishExternally === true) {
           await postFallbackErrorReplyWithLogging({
             thread,
             eventId,

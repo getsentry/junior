@@ -33,7 +33,6 @@ import {
   stripRuntimeTurnContext,
 } from "@/chat/pi/transcript";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
-import { publishExternallySchema } from "./publish-externally";
 import type {
   ConversationExecution,
   ConversationStore,
@@ -234,7 +233,7 @@ const storedTurnRecordSchema = z
     resultMessageId: z.string().min(1).optional(),
     lastProgressAtMs: nonNegativeNumberSchema,
     resumeReason: turnPauseReasonSchema.optional(),
-    publishExternally: publishExternallySchema.optional(),
+    publishExternally: z.boolean().optional(),
     resumedFromSliceId: z.number().int().nonnegative().optional(),
     turnId: z.string().min(1),
     sliceId: z.number().int().nonnegative(),

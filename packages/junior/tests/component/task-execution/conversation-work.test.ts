@@ -1016,7 +1016,7 @@ describe("conversation work execution", () => {
     expect(queue.sentRecords()).toEqual([]);
   });
 
-  it("keeps different turn delivery modes in separate attempts", async () => {
+  it("keeps different publishExternally values in separate attempts", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     const attempts: Array<{ ids: string[]; publishExternally: boolean }> = [];
     await appendInboundMessage({

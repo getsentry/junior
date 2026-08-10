@@ -140,6 +140,8 @@ describe("paused turn runner callbacks", () => {
               teamId: "T123",
               userId: "U123",
             });
+            // Missing checkpoint flag fails closed to conversation-only.
+            expect(prepared.replyContext.routing.publishExternally).toBe(false);
             const runArgs = { ...args, ...prepared };
             await runArgs.onPostDeliveryCommitFailure?.(
               new Error("completion state did not persist"),
@@ -156,6 +158,82 @@ describe("paused turn runner callbacks", () => {
       errorMessage:
         "Continued agent reply was delivered but completion state did not persist",
     });
+  });
+
+  it("keeps checkpoint publishExternally on resume routing", async () => {
+    const conversationId = "slack:C123:1712345.0006";
+    const sessionId = "turn_msg_6";
+    const sessionRecord = await upsertTurnRecord({
+      conversationId,
+      turnId: sessionId,
+      sliceId: 2,
+      state: "paused",
+      destination: SLACK_DESTINATION,
+      source: SLACK_SOURCE,
+      resumeReason: "timeout",
+      publishExternally: true,
+      piMessages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "hello" }],
+          timestamp: 1,
+        },
+      ],
+    });
+    await seedConversationRouting({
+      conversationId,
+      threadTs: "1712345.0006",
+    });
+    await persistThreadStateById(conversationId, {
+      conversation: {
+        schemaVersion: 1,
+        compactions: [],
+        messages: [
+          {
+            id: "msg.6",
+            role: "user",
+            text: "resume this request",
+            createdAtMs: 1,
+            author: {
+              userId: "U123",
+            },
+          },
+        ],
+        processing: {
+          activeTurnId: sessionId,
+        },
+        vision: {
+          byFileId: {},
+        },
+      },
+    });
+
+    const { runPausedTurn } = await import("@/chat/task-execution/paused-turn");
+    let seenPublishExternally: boolean | undefined;
+
+    await expect(
+      runPausedTurn(
+        {
+          conversationId,
+          destination: SLACK_DESTINATION,
+          turnId: sessionId,
+          expectedVersion: sessionRecord.version,
+        },
+        {
+          agentRunner: agentRunnerShouldNotRun,
+          resumeTurn: async (args) => {
+            const prepared = await args.beforeStart?.();
+            if (!prepared || !prepared.replyContext) {
+              throw new Error("Expected prepared paused-turn reply context");
+            }
+            seenPublishExternally =
+              prepared.replyContext.routing.publishExternally;
+            return true;
+          },
+        },
+      ),
+    ).resolves.toBe(true);
+    expect(seenPublishExternally).toBe(true);
   });
 
   it("fails before continuing when sql conversation source is missing", async () => {

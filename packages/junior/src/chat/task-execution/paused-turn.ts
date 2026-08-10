@@ -538,6 +538,9 @@ async function runPausedTurnInContext(
               credentialContext,
               actor,
               destination: routingDestination,
+              // Resume must keep the original turn side effect. Missing means
+              // conversation-only; never invent publish from destination.
+              publishExternally: activeTurn.publishExternally === true,
               source,
               toolChannelId:
                 artifacts.assistantContextChannelId ?? destination.channelId,

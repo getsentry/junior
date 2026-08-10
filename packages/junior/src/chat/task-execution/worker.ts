@@ -520,8 +520,9 @@ async function processConversationWorkInContext(
       attemptMessageIds = attemptMessages.map(
         (message) => message.inboundMessageId,
       );
-      const publishExternally =
-        attemptMessages[0]?.publishExternally ?? Boolean(destination);
+      // Empty batches are resume-only. Adapters read the checkpoint flag; do
+      // not invent publish from destination presence.
+      const publishExternally = attemptMessages[0]?.publishExternally ?? false;
       attemptSelectedMessageIds = new Set(attemptMessageIds);
       const ack = async (): Promise<void> => {
         const acknowledged = await ackMessages({
