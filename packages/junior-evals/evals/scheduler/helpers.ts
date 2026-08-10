@@ -14,6 +14,7 @@ export const REMINDER_ONLY_FORBIDDEN_TOOLS = [
   "callMcpTool",
   "slackThreadRead",
   "slackChannelListMessages",
+  "userLookup",
 ] as const;
 
 export function expectNoToolCalls(

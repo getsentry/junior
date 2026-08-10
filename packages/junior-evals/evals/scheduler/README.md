@@ -10,6 +10,7 @@ Hard-fail scheduler system contracts and their helpers live under `evals/integra
 This folder keeps behavioral due-occurrence delivery quality and its delivery-only helpers:
 
 - delivering due one-off and recurring scheduled task occurrences
+- addressing the known task creator without a name lookup
 
 Run the suites with:
 

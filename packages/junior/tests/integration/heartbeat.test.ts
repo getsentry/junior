@@ -6,6 +6,7 @@ import {
   type Source,
 } from "@sentry/junior-plugin-api";
 import { createHeartbeatContext } from "@/chat/agent-dispatch/context";
+import { buildDispatchRoutingContext } from "@/chat/agent-dispatch/work";
 import {
   createSchedulerSqlStore,
   type ScheduledTask,
@@ -684,8 +685,8 @@ describe("plugin heartbeat", () => {
         visibility: "public",
       }),
     );
+    expect(dispatchRecord?.creator).toEqual({ slackUserId: "U039RR91S" });
     expect(dispatchRecord?.metadata).toMatchObject({
-      creatorSlackUserId: "U039RR91S",
       runId: `sched_plugin_1:${TEST_RUN_AT_MS}`,
       schedule: "Once at noon",
       scheduleKind: "one_off",
@@ -694,8 +695,12 @@ describe("plugin heartbeat", () => {
       taskId: "sched_plugin_1",
       timezone: "UTC",
     });
+    expect(dispatchRecord?.metadata).not.toHaveProperty("creatorSlackUserId");
     expect(dispatchRecord?.metadata).not.toHaveProperty("creatorUserName");
     expect(dispatchRecord?.metadata).not.toHaveProperty("creatorFullName");
+    expect(buildDispatchRoutingContext(dispatchRecord!).dispatch.creator).toEqual(
+      { slackUserId: "U039RR91S" },
+    );
     expect(dispatchRecord?.replyAttribution).toEqual({
       label: "Scheduled task",
       detail: "One-time",

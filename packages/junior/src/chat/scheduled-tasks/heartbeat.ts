@@ -13,7 +13,6 @@ import { getDb } from "@/chat/db";
 import { logInfo } from "@/chat/logging";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { recordTaskExecution } from "@/chat/tasks/execution-stats";
-import { sanitizeScheduledTaskPrincipal } from "./identity";
 import { createSchedulerSqlStore, type SchedulerStore } from "./store";
 import {
   logScheduledTaskRunSkipped,
@@ -42,12 +41,10 @@ function buildDispatchMetadata(args: {
   run: ScheduledRun;
   task: ScheduledTask;
 }): Record<string, string> {
-  const creator = sanitizeScheduledTaskPrincipal(args.task.createdBy);
   if (!args.task.task.text?.trim()) {
     throw new Error("Scheduled task text is required");
   }
   return {
-    creatorSlackUserId: creator.slackUserId,
     runId: args.run.id,
     schedule: singleLineMetadataValue(args.task.schedule.description),
     scheduleKind: args.task.schedule.kind,
@@ -397,6 +394,7 @@ export async function runScheduledTaskHeartbeat(args: {
         conversationWorkQueue: args.conversationWorkQueue,
         nowMs: args.nowMs,
         options: {
+          creator: { slackUserId: task.createdBy.slackUserId },
           idempotencyKey: run.id,
           ...(task.credentialMode === "creator"
             ? {

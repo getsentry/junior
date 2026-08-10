@@ -30,6 +30,31 @@ describeEval("Scheduled Delivery", slackEvals, (it) => {
     expectNoToolCalls(result.session, REMINDER_ONLY_FORBIDDEN_TOOLS);
   });
 
+  it("when a reminder addresses its creator, use the known creator mention", async ({
+    run,
+  }) => {
+    const result = await run({
+      initialEvents: [
+        scheduledTaskDue("Remind me to do healthchecks.", {
+          schedule: "Once at noon UTC",
+          schedule_kind: "one_off",
+        }),
+      ],
+      criteria: rubric({
+        pass: [
+          "Junior reminds the scheduled task creator to do healthchecks.",
+          "The reminder addresses the creator with the known Slack mention for user U0TEST.",
+        ],
+        fail: [
+          "Do not address a different person.",
+          "Do not resolve the creator by name or ask which person the task means.",
+          "Do not omit the healthchecks reminder.",
+        ],
+      }),
+    });
+    expectNoToolCalls(result.session, REMINDER_ONLY_FORBIDDEN_TOOLS);
+  });
+
   it("when a recurring scheduled task becomes due, deliver that occurrence", async ({
     run,
   }) => {

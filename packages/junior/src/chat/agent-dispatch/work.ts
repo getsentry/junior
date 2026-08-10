@@ -83,6 +83,7 @@ export function buildDispatchRoutingContext(
     destinationVisibility: dispatch.destinationVisibility,
     dispatch: {
       actor: dispatch.actor,
+      ...(dispatch.creator ? { creator: dispatch.creator } : {}),
       id: dispatch.id,
       metadata: dispatch.metadata,
       plugin: dispatch.plugin,

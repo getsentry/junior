@@ -10,6 +10,7 @@ import {
 import { getDb } from "@/chat/db";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginState } from "@/chat/plugins/state";
+import { parseSlackUserId } from "@/chat/slack/ids";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   createOrGetDispatch,
@@ -169,6 +170,7 @@ export async function dispatchScheduledTask(args: {
   conversationWorkQueue: ConversationWorkQueue;
   nowMs: number;
   options: Omit<SlackDispatchOptions, "credentialSubject"> & {
+    creator: { slackUserId: string };
     credentialSubject?: {
       allowedWhen: "scheduled-task";
       taskId: string;
@@ -178,8 +180,12 @@ export async function dispatchScheduledTask(args: {
   };
 }) {
   const plugin = "scheduler";
-  const { credentialSubject, ...unboundOptions } = args.options;
+  const { credentialSubject, creator, ...unboundOptions } = args.options;
   validateDispatchOptions({ ...unboundOptions });
+  const creatorSlackUserId = parseSlackUserId(creator.slackUserId);
+  if (!creatorSlackUserId) {
+    throw new Error("Scheduled task creator must be a Slack user id");
+  }
   const boundSubject = credentialSubject
     ? bindScheduledTaskCredentialSubject({
         plugin,
@@ -191,6 +197,7 @@ export async function dispatchScheduledTask(args: {
   }
   const options: BoundDispatchOptions = {
     ...unboundOptions,
+    creator: { slackUserId: creatorSlackUserId },
     ...(boundSubject ? { credentialSubject: boundSubject } : {}),
   };
   return await dispatch({

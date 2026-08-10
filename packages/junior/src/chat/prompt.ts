@@ -481,6 +481,7 @@ function buildDispatchSection(
   params:
     | {
         actor?: SystemActor;
+        creator?: { slackUserId: string };
         destination: Destination;
         metadata?: Record<string, string>;
         plugin?: string;
@@ -511,6 +512,13 @@ function buildDispatchSection(
     ...(params.plugin
       ? [`- dispatch.plugin: ${escapeXml(params.plugin)}`]
       : []),
+    ...(params.creator
+      ? [
+          `- dispatch.creator.slack_user_id: ${escapeXml(params.creator.slackUserId)}`,
+          `- dispatch.creator.slack_mention: &lt;@${escapeXml(params.creator.slackUserId)}&gt;`,
+          "- dispatch.creator_rule: when the dispatched input addresses or notifies the task creator, use dispatch.creator.slack_mention directly; do not resolve the creator by name",
+        ]
+      : []),
     ...formatSourceLines(params.source),
     ...formatDestinationLines(params.destination),
     ...metadataLines,
@@ -522,6 +530,7 @@ function buildContextSection(params: {
   configuration?: Record<string, unknown>;
   dispatch?: {
     actor?: SystemActor;
+    creator?: { slackUserId: string };
     destination: Destination;
     metadata?: Record<string, string>;
     plugin?: string;
@@ -657,6 +666,7 @@ type TurnContextPromptInput = {
   };
   dispatch?: {
     actor?: SystemActor;
+    creator?: { slackUserId: string };
     destination: Destination;
     metadata?: Record<string, string>;
     plugin?: string;
