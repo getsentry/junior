@@ -10,7 +10,10 @@ import type { JuniorApiEnv } from "@/api/route";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { createEventTask, getEventTask } from "@/chat/event-tasks/store";
-import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
+import {
+  resolveViewerUser,
+  resolveViewerUserFromSql,
+} from "@/chat/plugins/viewer";
 import { createSchedulerSqlStore } from "@/chat/scheduled-tasks/store";
 import type { ScheduledTask } from "@/chat/scheduled-tasks/types";
 import { recordTaskExecution } from "@/chat/tasks/execution-stats";
@@ -19,7 +22,11 @@ import { createConfiguredJuniorSqlFixture } from "../../fixtures/sql";
 function authenticatedApi(email: string) {
   const app = new Hono<JuniorApiEnv>();
   app.use("*", async (context, next) => {
-    context.set("verifiedViewerEmail", email);
+    const viewer = await resolveViewerUser(email);
+    if (!viewer) {
+      throw new Error(`missing viewer for ${email}`);
+    }
+    context.set("viewer", viewer);
     await next();
   });
   app.route("/", createJuniorApi());

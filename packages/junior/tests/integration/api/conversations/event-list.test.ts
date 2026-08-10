@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { Hono } from "hono";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
+import { resolveViewerUser } from "@/chat/plugins/viewer";
 import {
   apiErrorSchema,
   conversationDetailReportSchema,
@@ -415,7 +416,11 @@ describe("conversation event list API", () => {
 
     const participantApi = new Hono<{ Variables: JuniorApiVariables }>();
     participantApi.use("*", async (context, next) => {
-      context.set("verifiedViewerEmail", "participant@example.COM");
+      const viewer = await resolveViewerUser("participant@example.COM");
+      if (!viewer) {
+        throw new Error("missing viewer for participant@example.COM");
+      }
+      context.set("viewer", viewer);
       await next();
     });
     participantApi.route("/", createJuniorApi());

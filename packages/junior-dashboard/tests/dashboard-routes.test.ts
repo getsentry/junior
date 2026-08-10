@@ -9,12 +9,18 @@ import {
   type DashboardSession,
 } from "../src/auth";
 
-const { authenticatePersonalToken } = vi.hoisted(() => ({
+const { authenticatePersonalToken, resolveViewerUser } = vi.hoisted(() => ({
   authenticatePersonalToken: vi.fn(),
+  resolveViewerUser: vi.fn(async (email: string) => ({
+    email,
+    id: `user:${email}`,
+    identities: [],
+  })),
 }));
 vi.mock("@sentry/junior/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@sentry/junior/api")>()),
   authenticatePersonalToken,
+  resolveViewerUser,
 }));
 
 const dashboardEnvNames = [
@@ -882,10 +888,10 @@ describe("dashboard routes", () => {
 
   it("does not authorize a synthetic participant when auth is disabled", async () => {
     const pluginApp = new Hono<{
-      Variables: { verifiedViewerEmail?: string };
+      Variables: { viewer?: { email: string } };
     }>();
     pluginApp.get("/viewer", (c) =>
-      c.json({ verifiedViewerEmail: c.get("verifiedViewerEmail") ?? null }),
+      c.json({ viewerEmail: c.get("viewer")?.email ?? null }),
     );
     const app = createDashboardApp({
       authRequired: false,
@@ -898,7 +904,7 @@ describe("dashboard routes", () => {
     );
 
     await expect(response.json()).resolves.toEqual({
-      verifiedViewerEmail: null,
+      viewerEmail: null,
     });
   });
 

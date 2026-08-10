@@ -1,10 +1,11 @@
 import type { Context, Hono } from "hono";
+import type { User } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { jsonResponse } from "./http";
 
 /** Authenticated viewer fields made available to Junior API route handlers. */
 export type JuniorApiVariables = {
-  verifiedViewerEmail?: string;
+  viewer?: User;
 };
 
 /** Carry authenticated viewer state through Junior REST route handlers. */

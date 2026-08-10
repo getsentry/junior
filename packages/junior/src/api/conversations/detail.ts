@@ -24,6 +24,7 @@ import type { ConversationDetailReport } from "../schema/conversation";
 import { defineApiRoute } from "../route";
 import { parseParams, parseQuery, throwApiError } from "../http";
 import { conversationParamsSchema } from "../schema/conversation";
+import { getViewer } from "../viewer";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import { readConversationSourceTask } from "@/chat/tasks/read";
 
@@ -187,10 +188,10 @@ export default defineApiRoute({
       c.req.param(),
     );
     const query = parseQuery(conversationDetailQuerySchema, c.req.query());
-    const verifiedViewerEmail = c.get("verifiedViewerEmail");
+    const viewer = getViewer(c);
     const report = await readConversationDetail(conversationId, {
       ...query,
-      ...(verifiedViewerEmail ? { verifiedViewerEmail } : {}),
+      ...(viewer ? { verifiedViewerEmail: viewer.email } : {}),
     });
     if (!report) throwApiError(404, "Conversation not found.");
     return report;

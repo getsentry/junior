@@ -6,6 +6,7 @@ import { readConversationRecordFromSql } from "./list";
 import { conversationEventHistory } from "./projection";
 import { parseParams, parseQuery, throwApiError } from "../http";
 import { defineApiRoute } from "../route";
+import { getViewer } from "../viewer";
 import {
   conversationEventPageSchema,
   conversationEventsQuerySchema,
@@ -80,10 +81,10 @@ export default defineApiRoute({
       conversationEventsQuerySchema,
       c.req.query(),
     );
-    const verifiedViewerEmail = c.get("verifiedViewerEmail");
+    const viewer = getViewer(c);
     const report = await readConversationEvents(conversationId, before, {
       limit,
-      ...(verifiedViewerEmail ? { verifiedViewerEmail } : {}),
+      ...(viewer ? { verifiedViewerEmail: viewer.email } : {}),
     });
     if (!report) throwApiError(404, "Conversation not found.");
     return report;

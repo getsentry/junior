@@ -1,7 +1,7 @@
-import { throwApiError } from "../http";
 import { defineApiRoute } from "../route";
 import { personalTokenListSchema } from "../schema/personal-token";
 import { listPersonalTokens } from "../../personal-tokens/store";
+import { requireViewer } from "../viewer";
 
 /** List active personal API tokens owned by the authenticated viewer. */
 export default defineApiRoute({
@@ -9,8 +9,7 @@ export default defineApiRoute({
   path: "/",
   responseSchema: personalTokenListSchema,
   handler: async (c) => {
-    const email = c.get("verifiedViewerEmail");
-    if (!email) throwApiError(403, "Verified viewer email required.");
-    return { tokens: await listPersonalTokens(email) };
+    const viewer = requireViewer(c);
+    return { tokens: await listPersonalTokens(viewer.email) };
   },
 });

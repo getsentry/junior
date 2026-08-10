@@ -11,6 +11,7 @@ import {
 import type { JuniorApiEnv } from "../route";
 import { apiErrorSchema } from "../schema/common";
 import { jsonResponse } from "../http";
+import { requireViewer } from "../viewer";
 
 /** Create authenticated discovery and read routes for plugin user pages. */
 export function createUserPageRoutes(): Hono<JuniorApiEnv> {
@@ -20,14 +21,7 @@ export function createUserPageRoutes(): Hono<JuniorApiEnv> {
     jsonResponse(pluginUserPageLinksSchema, readPluginUserPageLinks()),
   );
   app.get("/:pluginName/:pageId", async (context) => {
-    const email = context.get("verifiedViewerEmail")?.trim();
-    if (!email) {
-      return jsonResponse(
-        apiErrorSchema,
-        { error: "Authentication required." },
-        { status: 401 },
-      );
-    }
+    const viewer = requireViewer(context);
     const pageInput = pluginUserPageInputSchema.safeParse({
       cursor: context.req.query("cursor") || undefined,
       filter: context.req.query("filter") || undefined,
@@ -44,7 +38,7 @@ export function createUserPageRoutes(): Hono<JuniorApiEnv> {
       );
     }
     const page = await readPluginUserPage({
-      email,
+      email: viewer.email,
       pageId: context.req.param("pageId"),
       pluginName: context.req.param("pluginName"),
       query: pageInput.data,

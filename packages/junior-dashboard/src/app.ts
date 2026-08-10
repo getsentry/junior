@@ -5,6 +5,7 @@ import {
   authenticatePersonalToken,
   createJuniorApi,
   jsonResponse,
+  resolveViewerUser,
   type JuniorApiVariables,
 } from "@sentry/junior/api";
 import { apiErrorSchema } from "@sentry/junior/api/schema";
@@ -380,10 +381,10 @@ function bearerSession(email: string): DashboardSession {
   };
 }
 
-function verifiedViewerEmail(session: DashboardSession): string | undefined {
-  return session.user.emailVerified === true
-    ? session.user.email.trim().toLowerCase()
-    : undefined;
+function verifiedSessionEmail(session: DashboardSession): string | undefined {
+  if (session.user.emailVerified !== true) return undefined;
+  const email = session.user.email.trim().toLowerCase();
+  return email || undefined;
 }
 
 function readAssetUrl(url: URL): string {
@@ -736,7 +737,9 @@ export function createDashboardApp(
     }
     const sanitizedSession = sanitizeDashboardSession(session);
     c.set("authSession", sanitizedSession);
-    c.set("verifiedViewerEmail", verifiedViewerEmail(sanitizedSession));
+    const email = verifiedSessionEmail(sanitizedSession);
+    const viewer = email ? await resolveViewerUser(email) : undefined;
+    if (viewer) c.set("viewer", viewer);
     await next();
   };
 

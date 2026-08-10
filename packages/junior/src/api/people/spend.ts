@@ -1,9 +1,9 @@
-import { throwApiError } from "../http";
 import { defineApiRoute, type ApiRoute } from "../route";
 import {
   personalSpendReportSchema,
   type PersonalSpendReport,
 } from "../schema/person";
+import { requireViewer } from "../viewer";
 import { readPersonalSpendFromSql } from "./spend.query";
 
 const PERSONAL_SPEND_CACHE_TTL_MS = 5 * 60_000;
@@ -47,9 +47,8 @@ export function createPersonalSpendRoute(): ApiRoute<
     path: "/me/spend",
     responseSchema: personalSpendReportSchema,
     handler: async (context) => {
-      const email = context.get("verifiedViewerEmail");
-      if (!email) throwApiError(403, "Verified viewer email required.");
-      return read(email);
+      const viewer = requireViewer(context);
+      return read(viewer.email);
     },
   });
 }
