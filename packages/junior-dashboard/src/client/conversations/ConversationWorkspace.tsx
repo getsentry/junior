@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router";
 
@@ -33,6 +33,8 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
   const pendingArchiveUpdates = usePendingArchiveConversationUpdates();
   const createConversation = useCreateConversation();
   const [creating, setCreating] = useState(false);
+  const creatingRef = useRef(false);
+  const createSourceId = useRef<string | undefined>(undefined);
   const conversations = useMemo(
     () =>
       applyPendingArchiveUpdates(
@@ -61,13 +63,16 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
 
   useEffect(() => {
     const first = conversations[0];
-    if (desktop && !creating && !selectedId && first) {
+    if (desktop && !creatingRef.current && !creating && !selectedId && first) {
       navigate(conversationPath(first.id), { replace: true });
     }
   }, [conversations, creating, desktop, navigate, selectedId]);
 
   useEffect(() => {
-    if (selectedId) setCreating(false);
+    if (selectedId && selectedId !== createSourceId.current) {
+      creatingRef.current = false;
+      setCreating(false);
+    }
   }, [selectedId]);
 
   return (
@@ -90,6 +95,8 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
           loading={feed.isPending}
           onNewConversation={() => {
             createConversation.reset();
+            createSourceId.current = selectedId;
+            creatingRef.current = true;
             setCreating(true);
             if (selectedId) navigate("/", { replace: true });
           }}
@@ -112,7 +119,10 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
             <div className="border-b border-white/[0.07] bg-white/[0.025] px-3 py-2.5 md:hidden">
               <button
                 className="inline-flex items-center gap-2 font-mono text-xs text-dashboard-text-muted hover:text-dashboard-text"
-                onClick={() => setCreating(false)}
+                onClick={() => {
+                  creatingRef.current = false;
+                  setCreating(false);
+                }}
                 type="button"
               >
                 <ArrowLeft aria-hidden="true" size={15} />
@@ -132,7 +142,6 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
                     idempotencyKey,
                     message,
                   });
-                  setCreating(false);
                   navigate(conversationPath(accepted.conversationId));
                 }}
               />
@@ -201,7 +210,7 @@ function NewConversationView(props: {
           error={props.error}
           label="Start a conversation"
           pending={props.pending}
-          submitLabel="Start conversation"
+          submitLabel="Send"
           onSubmit={props.onSubmit}
         />
       </div>

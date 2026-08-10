@@ -194,7 +194,7 @@ test("starts and continues conversations from the dashboard", async ({
   await page
     .getByLabel("Start a conversation")
     .fill("Start from the dashboard");
-  await page.getByRole("button", { name: "Start conversation" }).click();
+  await page.getByRole("button", { name: "Send" }).click();
   await expect(page).toHaveURL(
     `${server.baseURL}/conversations/${encodeURIComponent(createdConversationId)}`,
   );
