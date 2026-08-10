@@ -4,6 +4,8 @@ import {
   CircleDot,
   CircleX,
   GitMerge,
+  Globe2,
+  LockKeyhole,
   TriangleAlert,
 } from "lucide-react";
 import { Link } from "react-router";
@@ -142,6 +144,9 @@ export function ConversationPage(props: {
                 Transcript refresh failed. Showing the latest available data.
               </div>
             ) : null}
+            <ConversationPrivacyNotice
+              visibility={conversation?.visibility}
+            />
             <Transcript
               actions={
                 <CopyMarkdownButton
@@ -181,6 +186,33 @@ export function ConversationPage(props: {
         onClose={() => setSubagentTarget(undefined)}
         target={subagentTarget}
       />
+    </div>
+  );
+}
+
+function ConversationPrivacyNotice(props: {
+  visibility: Conversation["visibility"];
+}) {
+  const isPublic = props.visibility === "public";
+  const Icon = isPublic ? Globe2 : LockKeyhole;
+  return (
+    <div
+      className={
+        isPublic
+          ? "mb-3 flex items-start gap-2.5 rounded-lg border border-emerald-300/15 bg-emerald-300/[0.045] px-3 py-2.5 text-emerald-50/75 md:mb-4 md:px-4"
+          : "mb-3 flex items-start gap-2.5 rounded-lg border border-white/[0.08] bg-white/[0.025] px-3 py-2.5 text-dashboard-text-muted md:mb-4 md:px-4"
+      }
+      role="note"
+    >
+      <Icon aria-hidden="true" className="mt-0.5 size-3.5 shrink-0" />
+      <p className="m-0 font-mono text-xs leading-relaxed">
+        <span className="font-semibold text-dashboard-text">
+          {isPublic ? "Public conversation." : "Private conversation."}
+        </span>{" "}
+        {isPublic
+          ? "Anyone in this workspace can see this transcript."
+          : "Only members of this conversation can see this transcript."}
+      </p>
     </div>
   );
 }
