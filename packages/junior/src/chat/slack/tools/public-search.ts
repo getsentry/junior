@@ -98,22 +98,49 @@ type SearchChannel = z.infer<typeof searchChannelSchema>;
 type SearchUser = z.infer<typeof searchUserSchema>;
 
 const nonEmptyString = z.string().trim().min(1);
-const blankAsUndefined = z.preprocess(
-  (value) =>
-    typeof value === "string" && value.trim() === "" ? undefined : value,
-  nonEmptyString.optional(),
+
+/** Keep valid non-empty strings; drop blank, whitespace, and non-string values. */
+const optionalWireString = z.preprocess((value) => {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed === "" ? undefined : trimmed;
+}, nonEmptyString.optional());
+
+/** Keep valid absolute URLs; drop blank, invalid, and non-string values. */
+const optionalWireUrl = z.preprocess((value) => {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  try {
+    new URL(trimmed);
+    return trimmed;
+  } catch {
+    return undefined;
+  }
+}, z.string().url().optional());
+
+/** Keep booleans; drop every other type. */
+const optionalWireBoolean = z.preprocess(
+  (value) => (typeof value === "boolean" ? value : undefined),
+  z.boolean().optional(),
 );
 
 /** Slack wire shape for one search message. */
 const slackSearchMessageWireSchema = z
   .object({
-    author_name: blankAsUndefined,
-    author_user_id: blankAsUndefined,
+    author_name: optionalWireString,
+    author_user_id: optionalWireString,
     channel_id: nonEmptyString,
-    channel_name: blankAsUndefined,
+    channel_name: optionalWireString,
     message_ts: nonEmptyString,
     content: z.string(),
-    is_author_bot: z.boolean().optional(),
+    is_author_bot: optionalWireBoolean,
     permalink: z.string().url(),
   })
   .transform(
@@ -136,21 +163,21 @@ const slackSearchMessageWireSchema = z
 /** Slack wire shape for one search file. */
 const slackSearchFileWireSchema = z
   .object({
-    id: nonEmptyString.optional(),
-    file_id: nonEmptyString.optional(),
-    title: nonEmptyString.optional(),
-    name: nonEmptyString.optional(),
-    filetype: nonEmptyString.optional(),
-    file_type: nonEmptyString.optional(),
-    user: nonEmptyString.optional(),
-    user_id: nonEmptyString.optional(),
-    username: nonEmptyString.optional(),
-    user_name: nonEmptyString.optional(),
-    channel_id: nonEmptyString.optional(),
-    channel_name: nonEmptyString.optional(),
-    permalink: z.string().url().optional(),
-    content: nonEmptyString.optional(),
-    preview: nonEmptyString.optional(),
+    id: optionalWireString,
+    file_id: optionalWireString,
+    title: optionalWireString,
+    name: optionalWireString,
+    filetype: optionalWireString,
+    file_type: optionalWireString,
+    user: optionalWireString,
+    user_id: optionalWireString,
+    username: optionalWireString,
+    user_name: optionalWireString,
+    channel_id: optionalWireString,
+    channel_name: optionalWireString,
+    permalink: optionalWireUrl,
+    content: optionalWireString,
+    preview: optionalWireString,
   })
   .transform((value): SearchFile | undefined => {
     const fileId = value.file_id ?? value.id;
@@ -182,15 +209,15 @@ const slackSearchFileWireSchema = z
 /** Slack wire shape for one search channel. */
 const slackSearchChannelWireSchema = z
   .object({
-    id: nonEmptyString.optional(),
-    channel_id: nonEmptyString.optional(),
-    name: nonEmptyString.optional(),
-    channel_name: nonEmptyString.optional(),
-    is_private: z.boolean().optional(),
-    is_member: z.boolean().optional(),
-    topic: nonEmptyString.optional(),
-    purpose: nonEmptyString.optional(),
-    permalink: z.string().url().optional(),
+    id: optionalWireString,
+    channel_id: optionalWireString,
+    name: optionalWireString,
+    channel_name: optionalWireString,
+    is_private: optionalWireBoolean,
+    is_member: optionalWireBoolean,
+    topic: optionalWireString,
+    purpose: optionalWireString,
+    permalink: optionalWireUrl,
   })
   .transform((value): SearchChannel | undefined => {
     const channelId = value.channel_id ?? value.id;
@@ -215,15 +242,15 @@ const slackSearchChannelWireSchema = z
 /** Slack wire shape for one search user. */
 const slackSearchUserWireSchema = z
   .object({
-    id: nonEmptyString.optional(),
-    user_id: nonEmptyString.optional(),
-    name: nonEmptyString.optional(),
-    username: nonEmptyString.optional(),
-    user_name: nonEmptyString.optional(),
-    real_name: nonEmptyString.optional(),
-    display_name: nonEmptyString.optional(),
-    title: nonEmptyString.optional(),
-    permalink: z.string().url().optional(),
+    id: optionalWireString,
+    user_id: optionalWireString,
+    name: optionalWireString,
+    username: optionalWireString,
+    user_name: optionalWireString,
+    real_name: optionalWireString,
+    display_name: optionalWireString,
+    title: optionalWireString,
+    permalink: optionalWireUrl,
   })
   .transform((value): SearchUser | undefined => {
     const userId = value.user_id ?? value.id;
@@ -249,7 +276,8 @@ const slackSearchResponseSchema = z.object({
       files: z.array(z.unknown()).default([]),
       channels: z.array(z.unknown()).default([]),
       users: z.array(z.unknown()).default([]),
-      next_cursor: z.string().min(1).optional(),
+      // Slack often returns "" on the final page; omit rather than fail the parse.
+      next_cursor: optionalWireString,
     })
     .default({
       messages: [],

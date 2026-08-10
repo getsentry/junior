@@ -125,6 +125,89 @@ describe("Slack public search", () => {
     expect(result.messages[0]).not.toHaveProperty("channel_name");
   });
 
+  it("omits empty next_cursor instead of failing the whole search", async () => {
+    queueSlackApiResponse("assistant.search.context", {
+      body: {
+        ok: true,
+        results: {
+          messages: [
+            {
+              channel_id: "C123",
+              message_ts: "1784000000.000100",
+              content: "final page hit",
+              permalink:
+                "https://example.slack.com/archives/C123/p1784000000000100",
+            },
+          ],
+          next_cursor: "",
+        },
+      },
+    });
+
+    const result = await executeTool(createSlackPublicSearchTool(actionToken), {
+      query: "final page",
+    });
+
+    expect(result).toMatchObject({
+      count: 1,
+      messages: [{ channel_id: "C123", content: "final page hit" }],
+    });
+    expect(result).not.toHaveProperty("next_cursor");
+  });
+
+  it("keeps file/channel/user hits when optional wire fields are blank", async () => {
+    queueSlackApiResponse("assistant.search.context", {
+      body: {
+        ok: true,
+        results: {
+          messages: [],
+          files: [
+            {
+              id: "F123",
+              title: "",
+              name: "gizmo.pdf",
+              permalink: "not-a-url",
+            },
+          ],
+          channels: [
+            {
+              id: "C9",
+              name: "announce",
+              topic: " ",
+              is_private: "nope",
+            },
+          ],
+          users: [
+            {
+              id: "U9",
+              name: "ada",
+              title: "",
+              permalink: 12,
+            },
+          ],
+        },
+      },
+    });
+
+    const result = await executeTool(createSlackPublicSearchTool(actionToken), {
+      query: "gizmo",
+      content_types: ["files", "channels", "users"],
+    });
+
+    expect(result).toMatchObject({
+      count: 3,
+      files: [{ file_id: "F123", name: "gizmo.pdf" }],
+      channels: [{ channel_id: "C9", channel_name: "announce" }],
+      users: [{ user_id: "U9", user_name: "ada" }],
+    });
+    expect(result.files[0]).not.toHaveProperty("title");
+    expect(result.files[0]).not.toHaveProperty("permalink");
+    expect(result.channels[0]).not.toHaveProperty("topic");
+    expect(result.channels[0]).not.toHaveProperty("is_private");
+    expect(result.users[0]).not.toHaveProperty("title");
+    expect(result.users[0]).not.toHaveProperty("permalink");
+  });
+
   it("searches files and users when those content types are requested", async () => {
     queueSlackApiResponse("assistant.search.context", {
       body: {
