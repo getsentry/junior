@@ -18,6 +18,14 @@ import {
 } from "@/db/schema";
 import { createConfiguredJuniorSqlFixture } from "../../../fixtures/sql";
 
+function reportingViewer(email: string) {
+  return {
+    email,
+    id: `viewer:${email.trim().toLowerCase()}`,
+    identities: [],
+  };
+}
+
 describe("conversation list API", () => {
   test("serves the route and validates its filters", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
@@ -301,7 +309,7 @@ describe("conversation list API", () => {
 
       const feed = await readConversationFeedFromSql({
         actorEmail: "morgan@example.com",
-        verifiedViewerEmail: "MORGAN@example.com",
+        viewer: reportingViewer("MORGAN@example.com"),
         limit: 1,
       });
 

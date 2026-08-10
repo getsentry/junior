@@ -1,3 +1,4 @@
+import type { User } from "@sentry/junior-plugin-api";
 import type { Conversation } from "@/chat/conversations/store";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { buildSentryConversationUrl } from "@/chat/sentry-links";
@@ -86,7 +87,7 @@ async function readConversationDetailFromSql(
   conversationId: string,
   options: {
     limit: number;
-    verifiedViewerEmail?: string;
+    viewer?: User;
   },
 ): Promise<ConversationDetailReport | undefined> {
   const record = await readConversationRecordFromSql(conversationId);
@@ -106,7 +107,7 @@ async function readConversationDetailFromSql(
     readConversationAccessFromSql(
       getDb(),
       [conversationId],
-      options.verifiedViewerEmail,
+      options.viewer?.email,
     ),
     listConversationAnnotations(getDb(), conversationId),
     readConversationAuxiliaryCostsFromSql(getDb(), [conversationId], {
@@ -124,9 +125,7 @@ async function readConversationDetailFromSql(
     ),
     readConversationSourceTask({
       conversationId,
-      ...(options.verifiedViewerEmail
-        ? { verifiedViewerEmail: options.verifiedViewerEmail }
-        : {}),
+      ...(options.viewer ? { viewer: options.viewer } : {}),
     }),
     resolveSlackTeamDomains(
       record.conversation.sessionSource?.platform === "slack"
@@ -166,7 +165,7 @@ export async function readConversationDetail(
   conversationId: string,
   options: {
     limit?: number;
-    verifiedViewerEmail?: string;
+    viewer?: User;
   } = {},
 ): Promise<ConversationDetailReport | undefined> {
   const report = await readConversationDetailFromSql(conversationId, {
@@ -190,7 +189,7 @@ export default defineApiRoute({
     const viewer = c.get("viewer");
     const report = await readConversationDetail(conversationId, {
       ...query,
-      ...(viewer ? { verifiedViewerEmail: viewer.email } : {}),
+      ...(viewer ? { viewer } : {}),
     });
     if (!report) throwApiError(404, "Conversation not found.");
     return report;

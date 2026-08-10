@@ -23,11 +23,11 @@ export interface ConversationAccess {
 export async function readConversationAccessFromSql(
   db: JuniorDatabase,
   conversationIds: readonly string[],
-  verifiedViewerEmail?: string,
+  viewerEmail?: string,
 ): Promise<Map<string, ConversationAccess>> {
   if (conversationIds.length === 0) return new Map();
   const normalizedViewerEmail =
-    verifiedViewerEmail?.trim().toLowerCase() || undefined;
+    viewerEmail?.trim().toLowerCase() || undefined;
 
   const rows = await db
     .select({

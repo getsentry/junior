@@ -1,3 +1,4 @@
+import type { User } from "@sentry/junior-plugin-api";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { readConversationAccessFromSql } from "./access";
 import { decodeConversationCursor, encodeConversationCursor } from "./cursor";
@@ -19,7 +20,7 @@ export async function readConversationEvents(
   beforeValue: string,
   options: {
     limit?: number;
-    verifiedViewerEmail?: string;
+    viewer?: User;
   } = {},
 ): Promise<ConversationEventPage | undefined> {
   const record = await readConversationRecordFromSql(conversationId);
@@ -34,7 +35,7 @@ export async function readConversationEvents(
   const accessByConversation = await readConversationAccessFromSql(
     getDb(),
     [conversationId],
-    options.verifiedViewerEmail,
+    options.viewer?.email,
   );
   const access = accessByConversation.get(conversationId);
   const canExposePayload = access?.canViewPrivateContent ?? false;
@@ -83,7 +84,7 @@ export default defineApiRoute({
     const viewer = c.get("viewer");
     const report = await readConversationEvents(conversationId, before, {
       limit,
-      ...(viewer ? { verifiedViewerEmail: viewer.email } : {}),
+      ...(viewer ? { viewer } : {}),
     });
     if (!report) throwApiError(404, "Conversation not found.");
     return report;

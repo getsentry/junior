@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, gte, isNull, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
+import type { User } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
 import {
@@ -357,7 +358,7 @@ async function recentLocationRows(db: JuniorDatabase, locationId: string) {
 /** Load one public location's complete activity while bounding only recent conversations. */
 export async function readLocationDetailFromSql(
   locationId: string,
-  options: { verifiedViewerEmail?: string } = {},
+  options: { viewer?: User } = {},
 ): Promise<LocationDetailReport | undefined> {
   const nowMs = Date.now();
   const end = new Date(nowMs);
@@ -491,7 +492,7 @@ export async function readLocationDetailFromSql(
     readConversationAccessFromSql(
       getDb(),
       recentConversationIds,
-      options.verifiedViewerEmail,
+      options.viewer?.email,
     ),
     readRootConversationMetricsFromSql(getDb(), recentConversationIds),
   ]);

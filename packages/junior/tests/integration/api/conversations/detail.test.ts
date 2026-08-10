@@ -10,6 +10,14 @@ import {
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { readConversationDetail } from "@/api/conversations/detail";
 
+function reportingViewer(email: string) {
+  return {
+    email,
+    id: `viewer:${email.trim().toLowerCase()}`,
+    identities: [],
+  };
+}
+
 describe("conversation detail API", () => {
   afterEach(async () => {
     await closeDb();
@@ -134,7 +142,7 @@ describe("conversation detail API", () => {
     );
     await expect(
       readConversationDetail(conversationId, {
-        verifiedViewerEmail: "participant@example.com",
+        viewer: reportingViewer("participant@example.com"),
       }),
     ).resolves.toMatchObject({
       annotations: [
@@ -194,7 +202,8 @@ describe("conversation detail API", () => {
         fixture.sql.db(),
         "viewer@example.com",
       );
-      const identity = user?.identities.find(
+      expect(user).toBeDefined();
+      const identity = user!.identities.find(
         (candidate) =>
           candidate.provider === "slack" &&
           candidate.providerTenantId === "T123" &&
@@ -241,7 +250,7 @@ describe("conversation detail API", () => {
 
       await expect(
         readConversationDetail(conversationId, {
-          verifiedViewerEmail: "viewer@example.com",
+          viewer: user!,
         }),
       ).resolves.toMatchObject({
         sourceTask: {

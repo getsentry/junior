@@ -14,6 +14,14 @@ import {
 } from "../../../fixtures/sql";
 import { seedDisplayNameBackfill, seedPeople } from "./fixture";
 
+function reportingViewer(email: string) {
+  return {
+    email,
+    id: `viewer:${email.trim().toLowerCase()}`,
+    identities: [],
+  };
+}
+
 describe("people profile API", () => {
   test("validates and decodes profile identifiers", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
@@ -135,7 +143,7 @@ describe("people profile API", () => {
         );
 
       const rootReport = await readPeopleProfileFromSql("owner@example.com", {
-        verifiedViewerEmail: "owner@example.com",
+        viewer: reportingViewer("owner@example.com"),
       });
       expect(rootReport.recentConversations).toHaveLength(2);
       expect(rootReport.recentConversations).toEqual(
@@ -188,7 +196,7 @@ describe("people profile API", () => {
       });
 
       const report = await readPeopleProfileFromSql("child@example.com", {
-        verifiedViewerEmail: "OWNER@example.com",
+        viewer: reportingViewer("OWNER@example.com"),
       });
 
       expect(report.recentConversations).toEqual([
@@ -205,7 +213,7 @@ describe("people profile API", () => {
       });
       expect(report.recentConversations[0]).not.toHaveProperty("locationId");
       const detail = await readConversationDetail(childConversationId, {
-        verifiedViewerEmail: "owner@example.com",
+        viewer: reportingViewer("owner@example.com"),
       });
       expect(detail).toMatchObject(report.recentConversations[0] ?? {});
 
@@ -234,7 +242,7 @@ describe("people profile API", () => {
 
       const malformed = await readPeopleProfileFromSql(
         "malformed@example.com",
-        { verifiedViewerEmail: "owner@example.com" },
+        { viewer: reportingViewer("owner@example.com") },
       );
       expect(malformed.recentConversations).toEqual([
         expect.objectContaining({

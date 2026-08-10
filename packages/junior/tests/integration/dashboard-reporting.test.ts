@@ -309,6 +309,14 @@ async function waitUntilApplicationWaitsOnLock(
   throw new Error(`${applicationName} did not reach the expected lock wait`);
 }
 
+function reportingViewer(email: string) {
+  return {
+    email,
+    id: `viewer:${email.trim().toLowerCase()}`,
+    identities: [],
+  };
+}
+
 describe("dashboard canonical event reporting", () => {
   beforeEach(async () => {
     process.env = {
@@ -679,7 +687,7 @@ describe("dashboard canonical event reporting", () => {
     });
     expect(
       await readConversationDetail(rootConversationId, {
-        verifiedViewerEmail: "other@example.com",
+        viewer: reportingViewer("other@example.com"),
       }),
     ).toMatchObject({
       eventHistory: { status: "redacted" },
@@ -687,7 +695,7 @@ describe("dashboard canonical event reporting", () => {
     });
     const rootParticipantDetail = await readConversationDetail(
       rootConversationId,
-      { verifiedViewerEmail: " owner@example.COM " },
+      { viewer: reportingViewer(" owner@example.COM ") },
     );
     expect(rootParticipantDetail).toMatchObject({
       displayTitle: "Canonical event report",
@@ -698,7 +706,7 @@ describe("dashboard canonical event reporting", () => {
     });
     const rootParticipantSummary = (
       await readConversationFeedFromSql({
-        verifiedViewerEmail: "owner@example.com",
+        viewer: reportingViewer("owner@example.com"),
       })
     ).conversations.find(
       (conversation) => conversation.conversationId === rootConversationId,
@@ -707,7 +715,7 @@ describe("dashboard canonical event reporting", () => {
     expect(rootParticipantDetail).toMatchObject(rootParticipantSummary ?? {});
     const childParticipantDetail = await readConversationDetail(
       childConversationId,
-      { verifiedViewerEmail: "owner@example.com" },
+      { viewer: reportingViewer("owner@example.com") },
     );
     expect(childParticipantDetail).toMatchObject({ isParticipant: true });
     expect(childParticipantDetail?.events[0]?.data).toMatchObject({
@@ -720,7 +728,7 @@ describe("dashboard canonical event reporting", () => {
       .where(eq(juniorIdentities.providerSubjectId, "U-owner"));
     expect(
       await readConversationDetail(rootConversationId, {
-        verifiedViewerEmail: "owner@example.com",
+        viewer: reportingViewer("owner@example.com"),
       }),
     ).toMatchObject({
       eventHistory: { status: "redacted" },
@@ -806,7 +814,7 @@ describe("dashboard canonical event reporting", () => {
 
     await expect(
       readConversationDetail(cyclicRoot, {
-        verifiedViewerEmail: "cyclic-owner@example.com",
+        viewer: reportingViewer("cyclic-owner@example.com"),
       }),
     ).resolves.toMatchObject({
       eventHistory: { status: "redacted" },
@@ -830,7 +838,7 @@ describe("dashboard canonical event reporting", () => {
 
     await expect(
       readConversationDetail(destinationlessRoot, {
-        verifiedViewerEmail: "destinationless-owner@example.com",
+        viewer: reportingViewer("destinationless-owner@example.com"),
       }),
     ).resolves.toMatchObject({
       eventHistory: { status: "available" },
@@ -838,7 +846,7 @@ describe("dashboard canonical event reporting", () => {
     });
     const destinationlessSummary = (
       await readConversationFeedFromSql({
-        verifiedViewerEmail: "destinationless-owner@example.com",
+        viewer: reportingViewer("destinationless-owner@example.com"),
       })
     ).conversations.find(
       (conversation) => conversation.conversationId === destinationlessRoot,
@@ -864,7 +872,7 @@ describe("dashboard canonical event reporting", () => {
 
     await expect(
       readConversationDetail(malformedTopLevel, {
-        verifiedViewerEmail: "foreign-owner@example.com",
+        viewer: reportingViewer("foreign-owner@example.com"),
       }),
     ).resolves.toMatchObject({
       eventHistory: { status: "redacted" },
@@ -872,7 +880,7 @@ describe("dashboard canonical event reporting", () => {
     });
     const malformedSummary = (
       await readConversationFeedFromSql({
-        verifiedViewerEmail: "foreign-owner@example.com",
+        viewer: reportingViewer("foreign-owner@example.com"),
       })
     ).conversations.find(
       (conversation) => conversation.conversationId === malformedTopLevel,

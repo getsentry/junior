@@ -1,3 +1,4 @@
+import type { User } from "@sentry/junior-plugin-api";
 import { readPeopleProfileFromSql } from "./profile.query";
 import { actorProfileReportSchema } from "../schema/person";
 import type { ActorProfileReport } from "../schema/person";
@@ -8,7 +9,7 @@ import { personParamsSchema } from "../schema/person";
 /** Load one person profile from verified user identities in SQL. */
 export async function readPeopleProfile(
   email: string,
-  options: { verifiedViewerEmail?: string } = {},
+  options: { viewer?: User } = {},
 ): Promise<ActorProfileReport> {
   return actorProfileReportSchema.parse(
     await readPeopleProfileFromSql(email, options),
@@ -23,9 +24,6 @@ export default defineApiRoute({
   handler: async (c) => {
     const { email } = parseParams(personParamsSchema, c.req.param());
     const viewer = c.get("viewer");
-    return readPeopleProfile(
-      email,
-      viewer ? { verifiedViewerEmail: viewer.email } : {},
-    );
+    return readPeopleProfile(email, viewer ? { viewer } : {});
   },
 });

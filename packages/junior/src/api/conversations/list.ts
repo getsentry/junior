@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
+import type { User } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
 import type { Conversation } from "@/chat/conversations/store";
 import { locationFromRow } from "@/chat/conversations/sql/location";
@@ -184,7 +185,7 @@ export async function readConversationFeedFromSql(
   options: {
     actorEmail?: string;
     limit?: number;
-    verifiedViewerEmail?: string;
+    viewer?: User;
   } = {},
 ): Promise<ConversationFeed> {
   const nowMs = Date.now();
@@ -207,7 +208,7 @@ export async function readConversationFeedFromSql(
       readConversationAccessFromSql(
         db,
         conversationIds,
-        options.verifiedViewerEmail,
+        options.viewer?.email,
       ),
       readConversationAuxiliaryCostsFromSql(db, conversationIds, {
         includeDescendants: true,
@@ -247,7 +248,7 @@ export async function readConversationFeedFromSql(
  * filter. This filter is not an authorization boundary.
  */
 export async function readConversationFeed(
-  options: { actorEmail?: string; verifiedViewerEmail?: string } = {},
+  options: { actorEmail?: string; viewer?: User } = {},
 ): Promise<ConversationFeed> {
   return conversationFeedSchema.parse(
     await readConversationFeedFromSql(options),
@@ -267,7 +268,7 @@ export default defineApiRoute({
     const viewer = c.get("viewer");
     return readConversationFeed({
       ...(actorEmail ? { actorEmail } : {}),
-      ...(viewer ? { verifiedViewerEmail: viewer.email } : {}),
+      ...(viewer ? { viewer } : {}),
     });
   },
 });
