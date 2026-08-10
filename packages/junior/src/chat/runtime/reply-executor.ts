@@ -432,6 +432,11 @@ interface ReplyExecutorDeps {
 }
 
 /** Build the shared reply handler that prepares, advances, and commits a turn. */
+/** Slack reply executor publishes unless a caller opts out. */
+function shouldPublishExternally(publishExternally?: boolean): boolean {
+  return publishExternally !== false;
+}
+
 export function createReplyToThread(deps: ReplyExecutorDeps) {
   return async function replyToThread(
     thread: Thread,
@@ -616,7 +621,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           );
           try {
             await beforeFirstResponsePost();
-            if (options.publishExternally !== true) {
+            if (!shouldPublishExternally(options.publishExternally)) {
               return;
             }
             if (channelId && threadTs) {
@@ -881,7 +886,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             });
         if (configReply) {
           await beforeFirstResponsePost();
-          if (options.publishExternally === true) {
+          if (shouldPublishExternally(options.publishExternally)) {
             await thread.post(buildSlackOutputMessage(configReply.text));
           }
           markConversationMessage(
@@ -1074,7 +1079,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           // classified as retryable delivery errors.
           await beforeFirstResponsePost();
           try {
-            if (options.publishExternally === true) {
+            if (shouldPublishExternally(options.publishExternally)) {
               if (channelId && thread.adapter.name === "slack") {
                 slackMessageTs = await sendSlackReply({
                   channelId,
@@ -1387,7 +1392,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               slackConversation,
               source,
               destination,
-              publishExternally: options.publishExternally === true,
+              publishExternally: shouldPublishExternally(options.publishExternally),
               ...(destinationVisibility ? { destinationVisibility } : {}),
               surface: options.execution?.surface ?? "slack",
               dispatch: options.execution?.dispatch,

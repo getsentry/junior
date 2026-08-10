@@ -39,8 +39,9 @@ Runtime and Redis status is `paused`. SQL free-text / enum rows may still say
   a destination gets its authority from its stored agent invocation.
 - `publishExternally` means the turn also publishes assistant output to the
   conversation destination. The conversation log always stores the turn.
-  Dashboard and destinationless work leave the flag false. Absence defaults to
-  false; destination presence must not invent publish.
+  Dashboard and destinationless work leave the flag false. Slack ingress and
+  Slack resume default to publish when the flag is unset. Destination presence
+  must not invent publish.
 - A lease grants one worker temporary execution ownership.
 - Dispatch projection updates take a short dispatch lock only while the
   conversation lease is already held. They never wait for conversation work,

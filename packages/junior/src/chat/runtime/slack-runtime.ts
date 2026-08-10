@@ -359,6 +359,11 @@ function actorUserName(message: Message): string | undefined {
 }
 
 /** Build the Slack event runtime that routes mentions and subscribed messages. */
+/** Slack surfaces publish unless a caller opts out. */
+function shouldPublishExternally(publishExternally?: boolean): boolean {
+  return publishExternally !== false;
+}
+
 export function createSlackTurnRuntime<
   TPreparedState,
   TAssistantEvent extends AssistantLifecycleEvent = AssistantLifecycleEvent,
@@ -780,7 +785,7 @@ export function createSlackTurnRuntime<
             conversationId: hooks.conversationId,
             destination: hooks.destination,
             queuedMessages,
-            publishExternally: hooks.publishExternally,
+            publishExternally: shouldPublishExternally(hooks.publishExternally),
             ack,
             onToolInvocation: toolInvocationHook,
             onTurnCompleted,
@@ -845,7 +850,7 @@ export function createSlackTurnRuntime<
           lifecycleError = error;
         }
         await hooks.beforeFirstResponsePost?.();
-        if (hooks.publishExternally === true) {
+        if (shouldPublishExternally(hooks.publishExternally)) {
           await postFallbackErrorReplyWithLogging({
             thread,
             eventId,
@@ -1086,7 +1091,7 @@ export function createSlackTurnRuntime<
             conversationId: hooks.conversationId,
             destination: hooks.destination,
             preparedState,
-            publishExternally: hooks.publishExternally,
+            publishExternally: shouldPublishExternally(hooks.publishExternally),
             beforeFirstResponsePost: hooks.beforeFirstResponsePost,
             queuedMessages,
             ack,
@@ -1156,7 +1161,7 @@ export function createSlackTurnRuntime<
           lifecycleError = error;
         }
         await hooks.beforeFirstResponsePost?.();
-        if (hooks.publishExternally === true) {
+        if (shouldPublishExternally(hooks.publishExternally)) {
           await postFallbackErrorReplyWithLogging({
             thread,
             eventId,

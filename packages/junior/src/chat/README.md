@@ -114,9 +114,10 @@ delegation without becoming the execution actor or a general task owner.
   explicit across asynchronous boundaries. A destinationless child
   conversation receives its bounded execution destination from its durable
   agent invocation.
-- External publish is opt-in per turn via `publishExternally`. Resume and
-  recovery read the stored flag and must not treat destination presence as
-  permission to publish.
+- External publish is controlled per turn via `publishExternally`. Slack
+  ingress/resume publish unless the flag is explicitly false. Non-Slack and
+  destinationless work stay conversation-only unless the flag is true.
+  Destination presence must not invent publish.
 - Host-owned runtime context and the actor's current instruction are separate
   user messages. The context message immediately precedes the instruction,
   remains context-authority on resume, and may be replaced before a later model

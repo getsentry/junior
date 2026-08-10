@@ -140,8 +140,8 @@ describe("paused turn runner callbacks", () => {
               teamId: "T123",
               userId: "U123",
             });
-            // Missing checkpoint flag fails closed to conversation-only.
-            expect(prepared.replyContext.routing.publishExternally).toBe(false);
+            // Slack resume defaults to publish when the checkpoint omits the flag.
+            expect(prepared.replyContext.routing.publishExternally).toBe(true);
             const runArgs = { ...args, ...prepared };
             await runArgs.onPostDeliveryCommitFailure?.(
               new Error("completion state did not persist"),

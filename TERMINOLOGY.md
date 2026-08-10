@@ -12,8 +12,9 @@ Canonical words used across Junior's code and documentation.
 - **Location**: the optional provider container associated with a conversation,
   identified by Junior and provider ids. Conversation visibility is separate.
 - **publishExternally**: whether one turn also publishes assistant output to the
-  conversation destination. The conversation log always stores the turn.
-  Missing or false means conversation-only.
+  conversation destination. The conversation log always stores the turn. Slack
+  surfaces treat missing as publish; non-Slack work treats missing as
+  conversation-only. Explicit false always means conversation-only.
 - **User**: one person-level record. A user may have several linked identities.
 - **Identity**: one provider account, such as a Slack account in one workspace,
   optionally linked to a user.
