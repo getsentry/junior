@@ -699,10 +699,10 @@ export async function runNextPausedTurn(
 }
 
 /**
- * Finish a turn whose destination reply is already durable.
+ * Finish a stranded running turn whose destination reply is already durable.
  *
- * Once Slack accepted a tool-free assistant, the turn is done. Recovery must
- * complete it instead of asking the model to continue from that assistant.
+ * Live turns complete after Slack accepts a tool-free reply. This path only
+ * covers lease loss after that accept, before the turn record is closed.
  */
 async function completeTurnWithAcceptedReply(args: {
   conversation: ReturnType<typeof coerceThreadConversationState>;
@@ -789,18 +789,6 @@ async function runNextPausedTurnInContext(
   for (const summary of summaries) {
     if (!isPausedTurn(summary)) {
       continue;
-    }
-
-    const paused = await getTurnRecord(conversationId, summary.turnId);
-    if (
-      paused &&
-      (await completeTurnWithAcceptedReply({
-        conversation,
-        conversationId,
-        turn: paused,
-      }))
-    ) {
-      return false;
     }
 
     const request = await getPausedTurnRequest({

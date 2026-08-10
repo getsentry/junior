@@ -579,12 +579,9 @@ describe("durable queue contract", () => {
     });
 
     it("completes when timeout hits after Slack accepted a tool-free reply", async () => {
-      // JUNIOR-7Y user path:
-      // 1. model finishes a tool-free assistant
-      // 2. delivery posts to Slack and dual-writes SQL on accept
-      // 3. host deadline fires during that post
-      // 4. turn completes from the accepted reply (does not park a shorter history)
-      const turnId = await seedTurn("paused");
+      // Real user path for JUNIOR-7Y:
+      // mention → model reply → Slack accept dual-writes SQL → host deadline
+      // expires during that accept → turn completes once, no second post.
       const slackSeen = deferred();
       const releaseSlack = deferred();
       queueSlackApiResponse("chat.postMessage", {
@@ -596,33 +593,25 @@ describe("durable queue contract", () => {
         (getChatConfig().functionMaxDurationSeconds -
           FUNCTION_TIMEOUT_BUFFER_SECONDS) *
         1000;
+      // Enough budget to stream and enter delivery; short enough to wait out.
       const remainingMs = 2_500;
       const startedAtMs = Date.now() - requestBudgetMs + remainingMs;
       const deadlineAtMs = startedAtMs + requestBudgetMs;
       const q = await slack({
-        // One model reply only. A second generation would fail the faux stream.
-        modelStream: streamReplies("Deploy checked."),
-      });
-      await requestConversationWork({
-        conversationId: CONVERSATION_ID,
-        destination: SLACK_DESTINATION,
-        state: q.state,
-      });
-      await ensureConversationWake({
-        conversationId: CONVERSATION_ID,
-        idempotencyKey: "timeout-after-accepted-reply",
-        queue: q.wakes,
+        // First reply is the timed-out turn. Second reply is the later user turn.
+        modelStream: streamReplies("Deploy checked.", "Deploy checked."),
       });
 
-      const firstSlice = q.next(startedAtMs);
+      await expect(q.send()).resolves.toMatchObject({ status: 200 });
+      const turn = q.next(startedAtMs);
       await slackSeen.promise;
       const waitForDeadlineMs = Math.max(0, deadlineAtMs - Date.now() + 25);
       await new Promise((resolve) => setTimeout(resolve, waitForDeadlineMs));
       releaseSlack.resolve();
-      await expect(firstSlice).resolves.toEqual({ status: "completed" });
 
+      await expect(turn).resolves.toEqual({ status: "completed" });
       await expectTerminalTurn(q, {
-        turnId,
+        turnId: "turn_1712345_0001",
         state: "completed",
         replies: ["Deploy checked."],
       });
@@ -641,6 +630,8 @@ describe("durable queue contract", () => {
           }),
         ]),
       );
+      // Later user work still runs after the accepted reply completed the turn.
+      await expectNextTurn(q, "1712345.0008");
     });
 
     it("stops a running turn after its worker disappears", async () => {

@@ -135,8 +135,8 @@ behavior:
   turn; an authorization request parks the turn without retrying it.
 - **Failures:** failure before input commit retries without duplicate delivery;
   a timeout pause under a spent request deadline leaves the host request so the
-  next slice starts fresh; a timeout after Slack accepted a tool-free reply
-  completes the turn instead of parking a shorter history; a stranded running
+  next slice starts fresh; a live mention that times out after Slack accepts a
+  tool-free reply completes once with one destination post; a stranded running
   turn with an accepted reply completes quietly without a failure fallback or
   second post; the agent runtime keeps the existing same-boundary no-progress
   check; an expired worker lease stops its stranded running turn while
