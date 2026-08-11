@@ -27,6 +27,7 @@ import {
   readMockConversationDetail,
   readMockConversationEvents,
   readMockConversationFeed,
+  readMockConversationPendingMessages,
   readMockConversationStats,
   readMockLocationDetail,
   readMockLocationDirectory,
@@ -121,14 +122,12 @@ export function createMockReportingApi(): Hono<{
     if (!params.success) {
       return errorResponse("Invalid route parameters.", 400);
     }
-    if (!readMockConversationDetail(params.data.conversationId)) {
-      return errorResponse("Conversation not found.", 404);
-    }
-    return jsonResponse(conversationPendingMessagesReportSchema, {
-      conversationId: params.data.conversationId,
-      generatedAt: new Date().toISOString(),
-      messages: [],
-    });
+    const report = readMockConversationPendingMessages(
+      params.data.conversationId,
+    );
+    return report
+      ? jsonResponse(conversationPendingMessagesReportSchema, report)
+      : errorResponse("Conversation not found.", 404);
   });
   app.get("/conversations/:conversationId", (c) => {
     const params = conversationParamsSchema.safeParse(c.req.param());

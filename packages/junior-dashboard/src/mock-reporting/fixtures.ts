@@ -8,6 +8,7 @@ import type {
   ConversationDetailReport,
   ConversationEventPage,
   ConversationFeed,
+  ConversationPendingMessagesReport,
   ConversationReportEvent,
   ConversationReportEventData,
   ConversationStatsItem,
@@ -1031,6 +1032,51 @@ export function readMockConversationFeed(
         conversation.actorIdentity?.email?.toLowerCase() ===
         actorEmail.toLowerCase(),
     ),
+  };
+}
+
+/** Return accepted mailbox rows for local dashboard visual QA. */
+export function readMockConversationPendingMessages(
+  conversationId: string,
+): ConversationPendingMessagesReport | undefined {
+  const conversation = mockConversations(Date.now()).find(
+    (candidate) => candidate.conversationId === conversationId,
+  );
+  if (!conversation) return undefined;
+
+  const nowMs = Date.now();
+  const messages =
+    conversationId === ACTIVE_CONVERSATION_ID
+      ? [
+          {
+            actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),
+            createdAt: iso(nowMs, -8_000),
+            delivery: "interrupt" as const,
+            inboundMessageId: `${conversationId}:pending-interrupt`,
+            messageId: `${conversationId}:pending-interrupt`,
+            receivedAt: iso(nowMs, -7_500),
+            role: "user" as const,
+            source: "slack" as const,
+            text: "Also check the canary traffic from the last deploy.",
+          },
+          {
+            actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),
+            createdAt: iso(nowMs, -4_000),
+            delivery: "defer" as const,
+            inboundMessageId: `${conversationId}:pending-defer`,
+            messageId: `${conversationId}:pending-defer`,
+            receivedAt: iso(nowMs, -3_500),
+            role: "user" as const,
+            source: "web" as const,
+            text: "Keep the reply in Junior. I will paste the dashboard link next.",
+          },
+        ]
+      : [];
+
+  return {
+    conversationId,
+    generatedAt: iso(nowMs),
+    messages,
   };
 }
 
