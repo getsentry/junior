@@ -11,13 +11,15 @@ import {
   createConversationWorkSlackHarness,
   loadConversationState,
   streamScript,
-  type ConversationWorkSlackHarness,
 } from "../fixtures/conversation-work";
 import {
   completeLatestMcpAuth,
+  connectSlackMcpActor,
+  EVAL_MCP_AUTH_NOTICE,
   expectMcpAuthCleared,
   expectMcpAuthCredentialsStored,
-  expectMcpAuthParked,
+  expectNoSlackMcpAuth,
+  expectSlackMcpAuthParked,
   streamMcpSearch,
   streamMcpSearchAndCall,
   streamOpenMcpSearch,
@@ -52,42 +54,6 @@ const EVAL_MCP_OPEN_PLUGIN_ROOT = path.resolve(
 );
 const ALICE = "UALICE";
 const BOB = "UBOB";
-const AUTH_NOTICE = /I need access to Eval Auth to continue/;
-
-/** Slack delivery surface: public auth notice + private connect link. */
-async function expectAuthParkedFor(
-  userId: string,
-  q: ConversationWorkSlackHarness,
-) {
-  await expectMcpAuthParked({
-    actorId: userId,
-    delivery: () => {
-      expect(q.replies().some((text) => AUTH_NOTICE.test(text))).toBe(true);
-      expect(q.authLinksFor(userId).length).toBeGreaterThan(0);
-    },
-  });
-}
-
-/** No MCP auth prompt delivered to this actor. */
-function expectNoAuthFor(userId: string, q: ConversationWorkSlackHarness) {
-  expect(q.authLinksFor(userId)).toEqual([]);
-}
-
-/** Connect Eval Auth for one actor through a real mention → park → OAuth path. */
-async function connectActor(
-  q: ConversationWorkSlackHarness,
-  userId: string,
-  replyText = "Eval Auth is connected.",
-): Promise<void> {
-  q.setModelStream(streamMcpSearch(replyText));
-  await q.mention(userId, "use eval-auth and confirm the connection");
-  await q.drain();
-  await expectAuthParkedFor(userId, q);
-  await completeLatestMcpAuth({ userId, agentRunner: q.agentRunner });
-  await expectMcpAuthCleared();
-  await expectMcpAuthCredentialsStored(userId);
-  expect(q.replies().some((text) => text.includes(replyText))).toBe(true);
-}
 
 describe("mcp auth orchestration", () => {
   let pluginApp: PluginAppFixture | undefined;
@@ -127,7 +93,7 @@ describe("mcp auth orchestration", () => {
     await q.mention(ALICE, "load eval-auth without using its tools");
     await q.drain();
 
-    expectNoAuthFor(ALICE, q);
+    expectNoSlackMcpAuth(ALICE, q);
     await expectMcpAuthCleared();
     expect(q.replies().at(-1)).toContain("Skill instructions loaded.");
     await expect(
@@ -142,8 +108,8 @@ describe("mcp auth orchestration", () => {
 
     await q.mention(ALICE, "use eval-auth and confirm the connection");
     await q.drain();
-    await expectAuthParkedFor(ALICE, q);
-    expectNoAuthFor(BOB, q);
+    await expectSlackMcpAuthParked({ userId: ALICE, harness: q });
+    expectNoSlackMcpAuth(BOB, q);
 
     await completeLatestMcpAuth({ userId: ALICE, agentRunner: q.agentRunner });
 
@@ -163,7 +129,7 @@ describe("mcp auth orchestration", () => {
     const q = await createConversationWorkSlackHarness({
       modelStream: streamMcpSearch("Eval Auth is connected."),
     });
-    await connectActor(q, ALICE);
+    await connectSlackMcpActor({ harness: q, userId: ALICE });
     const aliceLinksAfterConnect = q.authLinksFor(ALICE).length;
 
     q.setModelStream(streamMcpSearch("Connection still works."));
@@ -181,7 +147,7 @@ describe("mcp auth orchestration", () => {
     const q = await createConversationWorkSlackHarness({
       modelStream: streamMcpSearch("Eval Auth is connected."),
     });
-    await connectActor(q, ALICE);
+    await connectSlackMcpActor({ harness: q, userId: ALICE });
     await deleteMcpStoredOAuthCredentials(ALICE, EVAL_MCP_AUTH_PROVIDER);
     await expect(
       getMcpStoredOAuthCredentials(ALICE, EVAL_MCP_AUTH_PROVIDER),
@@ -192,7 +158,7 @@ describe("mcp auth orchestration", () => {
     await q.mention(ALICE, "use eval-auth again");
     await q.drain();
 
-    await expectAuthParkedFor(ALICE, q);
+    await expectSlackMcpAuthParked({ userId: ALICE, harness: q });
     expect(q.authLinksFor(ALICE).length).toBeGreaterThan(aliceLinksAfterConnect);
 
     await completeLatestMcpAuth({ userId: ALICE, agentRunner: q.agentRunner });
@@ -207,7 +173,7 @@ describe("mcp auth orchestration", () => {
     const q = await createConversationWorkSlackHarness({
       modelStream: streamMcpSearch("Eval Auth is connected."),
     });
-    await connectActor(q, ALICE);
+    await connectSlackMcpActor({ harness: q, userId: ALICE });
 
     // Bob's request never calls Eval Auth. Prior Alice MCP history must not force him to auth.
     q.setModelStream(
@@ -219,7 +185,7 @@ describe("mcp auth orchestration", () => {
     await q.mention(BOB, "what time is it for the deploy?");
     await q.drain();
 
-    expectNoAuthFor(BOB, q);
+    expectNoSlackMcpAuth(BOB, q);
     await expectMcpAuthCleared();
     expect(q.replies().at(-1)).toContain("Deploy looks fine.");
     await expect(
@@ -231,14 +197,14 @@ describe("mcp auth orchestration", () => {
     const q = await createConversationWorkSlackHarness({
       modelStream: streamMcpSearch("Eval Auth is connected."),
     });
-    await connectActor(q, ALICE);
+    await connectSlackMcpActor({ harness: q, userId: ALICE });
     const aliceLinksAfterConnect = q.authLinksFor(ALICE).length;
 
     q.setModelStream(streamMcpSearch("Bob is connected."));
     await q.mention(BOB, "use eval-auth for my own lookup");
     await q.drain();
 
-    await expectAuthParkedFor(BOB, q);
+    await expectSlackMcpAuthParked({ userId: BOB, harness: q });
     expect(q.authLinksFor(ALICE)).toHaveLength(aliceLinksAfterConnect);
     const bobCredentials = await getMcpStoredOAuthCredentials(
       BOB,
@@ -252,7 +218,7 @@ describe("mcp auth orchestration", () => {
       modelStream: streamMcpSearch("Eval Auth is connected."),
       subscribedShouldReply: false,
     });
-    await connectActor(q, ALICE);
+    await connectSlackMcpActor({ harness: q, userId: ALICE });
     const replyCountAfterConnect = q.replies().length;
     const aliceLinksAfterConnect = q.authLinksFor(ALICE).length;
 
@@ -260,7 +226,7 @@ describe("mcp auth orchestration", () => {
     await q.passive(BOB, "the record id is 42");
     await q.drain();
 
-    expectNoAuthFor(BOB, q);
+    expectNoSlackMcpAuth(BOB, q);
     expect(q.authLinksFor(ALICE)).toHaveLength(aliceLinksAfterConnect);
     expect(q.replies()).toHaveLength(replyCountAfterConnect);
     await expectMcpAuthCleared();
@@ -273,7 +239,7 @@ describe("mcp auth orchestration", () => {
     await q.mention(ALICE, "continue with the record id from the thread");
     await q.drain();
 
-    expectNoAuthFor(BOB, q);
+    expectNoSlackMcpAuth(BOB, q);
     expect(q.authLinksFor(ALICE)).toHaveLength(aliceLinksAfterConnect);
     expect(
       q.replies().some((text) => text.includes("Record 42 noted under Alice")),
@@ -286,7 +252,7 @@ describe("mcp auth orchestration", () => {
     });
     await q.mention(ALICE, "use eval-auth and confirm the connection");
     await q.drain();
-    await expectAuthParkedFor(ALICE, q);
+    await expectSlackMcpAuthParked({ userId: ALICE, harness: q });
     const aliceLinksWhilePending = q.authLinksFor(ALICE).length;
 
     // Alice never completes the link. A later plain request must answer without
@@ -297,7 +263,7 @@ describe("mcp auth orchestration", () => {
 
     expect(q.authLinksFor(ALICE)).toHaveLength(aliceLinksWhilePending);
     expect(q.replies().at(-1)).toContain("Okay, never mind.");
-    expect(q.replies().filter((text) => AUTH_NOTICE.test(text))).toHaveLength(1);
+    expect(q.replies().filter((text) => EVAL_MCP_AUTH_NOTICE.test(text))).toHaveLength(1);
   });
 
   it("does not hand pending MCP auth to a passive bystander while the owner waits", async () => {
@@ -307,7 +273,7 @@ describe("mcp auth orchestration", () => {
     });
     await q.mention(ALICE, "use eval-auth and confirm the connection");
     await q.drain();
-    await expectAuthParkedFor(ALICE, q);
+    await expectSlackMcpAuthParked({ userId: ALICE, harness: q });
     const aliceLinksWhilePending = q.authLinksFor(ALICE).length;
     const replyCountWhilePending = q.replies().length;
 
@@ -320,7 +286,7 @@ describe("mcp auth orchestration", () => {
       provider: EVAL_MCP_AUTH_PROVIDER,
       actorId: ALICE,
     });
-    expectNoAuthFor(BOB, q);
+    expectNoSlackMcpAuth(BOB, q);
     expect(q.authLinksFor(ALICE)).toHaveLength(aliceLinksWhilePending);
     expect(q.replies()).toHaveLength(replyCountWhilePending);
     await expect(listTurnSummaries(CONVERSATION_ID)).resolves.toEqual(
@@ -344,7 +310,7 @@ describe("mcp auth orchestration", () => {
       modelStream: streamMcpSearch("Eval Auth is connected."),
       subscribedShouldReply: true,
     });
-    await connectActor(q, ALICE);
+    await connectSlackMcpActor({ harness: q, userId: ALICE });
 
     // Subscribed follow-up from Bob continues the thread as Bob's turn.
     // Alice's prior MCP connection must not be restored under Bob.
@@ -352,7 +318,7 @@ describe("mcp auth orchestration", () => {
     await q.passive(BOB, "the record id is 42");
     await q.drain();
 
-    expectNoAuthFor(BOB, q);
+    expectNoSlackMcpAuth(BOB, q);
     await expectMcpAuthCleared();
     expect(q.replies().at(-1)).toContain("Got the record id");
     await expect(
@@ -365,7 +331,7 @@ describe("mcp auth orchestration", () => {
       modelStream: streamMcpSearch("Eval Auth is connected."),
     });
     // Alice owns Eval Auth in this thread.
-    await connectActor(q, ALICE);
+    await connectSlackMcpActor({ harness: q, userId: ALICE });
     const aliceLinksAfterConnect = q.authLinksFor(ALICE).length;
 
     // Bob intentionally uses a different MCP provider. Shared thread history
@@ -375,7 +341,7 @@ describe("mcp auth orchestration", () => {
     await q.mention(BOB, "use eval-mcp-open for the handbook lookup");
     await q.drain();
 
-    expectNoAuthFor(BOB, q);
+    expectNoSlackMcpAuth(BOB, q);
     expect(q.authLinksFor(ALICE)).toHaveLength(aliceLinksAfterConnect);
     await expectMcpAuthCleared();
     expect(
@@ -402,14 +368,14 @@ describe("mcp auth orchestration", () => {
     q.setModelStream(streamMcpSearch("Bob Eval Auth is connected."));
     await q.mention(BOB, "use eval-auth for my own lookup");
     await q.drain();
-    await expectAuthParkedFor(BOB, q);
+    await expectSlackMcpAuthParked({ userId: BOB, harness: q });
 
     await completeLatestMcpAuth({ userId: BOB, agentRunner: q.agentRunner });
 
     await expectMcpAuthCleared();
-    expectNoAuthFor(ALICE, q);
+    expectNoSlackMcpAuth(ALICE, q);
     // Only Bob's Eval Auth auth notice — never a second auth from restore.
-    expect(q.replies().filter((text) => AUTH_NOTICE.test(text))).toHaveLength(1);
+    expect(q.replies().filter((text) => EVAL_MCP_AUTH_NOTICE.test(text))).toHaveLength(1);
     expect(
       q.replies().some((text) => text.includes("Bob Eval Auth is connected")),
     ).toBe(true);

@@ -9,13 +9,12 @@ import { listTurnSummaries } from "@/chat/task-execution/checkpoint";
 import {
   closeApiTurnWorkFixture,
   createConversationWorkWebHarness,
-  type ConversationWorkWebHarness,
 } from "../fixtures/api-turn";
 import {
   completeLatestMcpAuth,
   expectMcpAuthCleared,
   expectMcpAuthCredentialsStored,
-  expectMcpAuthParked,
+  expectWebMcpAuthParked,
   streamMcpSearch,
   streamMcpSearchAndCall,
 } from "../fixtures/mcp-auth-orchestration";
@@ -44,25 +43,6 @@ const EVAL_MCP_PLUGIN_ROOT = path.resolve(
   import.meta.dirname,
   "../fixtures/plugins/eval-auth",
 );
-
-/** Web delivery surface: participant pending-messages authorization prompt. */
-async function expectAuthParked(
-  q: ConversationWorkWebHarness,
-  conversationId: string,
-) {
-  await expectMcpAuthParked({
-    actorId: q.actor.userId,
-    conversationId,
-    delivery: async () => {
-      const pending = await q.pendingMessages(conversationId);
-      expect(pending.authorization).toMatchObject({
-        authorizationUrl: expect.stringMatching(/^https?:\/\//),
-        label: expect.any(String),
-        completionText: expect.any(String),
-      });
-    },
-  });
-}
 
 describe("web auth orchestration", () => {
   let pluginApp: PluginAppFixture | undefined;
@@ -95,7 +75,10 @@ describe("web auth orchestration", () => {
       message: "use eval-auth and confirm the connection",
     });
     await q.drain();
-    await expectAuthParked(q, started.conversationId);
+    await expectWebMcpAuthParked({
+      harness: q,
+      conversationId: started.conversationId,
+    });
 
     await completeLatestMcpAuth({
       userId: q.actor.userId,
@@ -129,7 +112,10 @@ describe("web auth orchestration", () => {
       message: "connect eval-auth first",
     });
     await q.drain();
-    await expectAuthParked(q, started.conversationId);
+    await expectWebMcpAuthParked({
+      harness: q,
+      conversationId: started.conversationId,
+    });
     const parkedTurnId = apiTurnIdForMessage(started.messageId);
 
     q.setModelStream(streamScript("Answered without waiting for auth."));
@@ -181,7 +167,10 @@ describe("web auth orchestration", () => {
       message: "connect eval-auth first",
     });
     await q.drain();
-    await expectAuthParked(q, started.conversationId);
+    await expectWebMcpAuthParked({
+      harness: q,
+      conversationId: started.conversationId,
+    });
     const parkedSession = await getLatestMcpAuthSessionForUserProvider(
       q.actor.userId,
       EVAL_MCP_AUTH_PROVIDER,
