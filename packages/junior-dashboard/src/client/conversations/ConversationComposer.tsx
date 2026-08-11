@@ -9,7 +9,6 @@ import {
 import { Send } from "lucide-react";
 
 import { Button } from "../components/Button";
-import { cn } from "../styles";
 
 const MOBILE_COMPOSER_MAX_HEIGHT_PX = 112;
 const DESKTOP_MEDIA_QUERY = "(min-width: 768px)";
@@ -76,7 +75,7 @@ export function ConversationComposer(props: {
   return (
     <div className="grid min-w-0 gap-1.5">
       {props.error ? (
-        <div className="min-w-0 font-mono text-xs leading-relaxed text-red-300/80 md:hidden">
+        <div className="min-w-0 font-mono text-xs leading-relaxed text-red-300/80">
           {props.error}
         </div>
       ) : null}
@@ -100,15 +99,8 @@ export function ConversationComposer(props: {
           value={message}
         />
         <div className="flex min-w-0 items-center justify-end gap-3 border-l border-white/[0.07] bg-black/15 px-2 py-1.5 md:justify-between md:border-l-0 md:border-t md:px-3 md:py-2">
-          <div
-            className={cn(
-              "min-w-0 font-mono text-xs leading-relaxed",
-              props.error
-                ? "hidden text-red-300/80 md:block"
-                : "hidden text-dashboard-text-muted md:block",
-            )}
-          >
-            {props.error ?? "Enter to send · Shift+Enter for a new line"}
+          <div className="hidden min-w-0 font-mono text-xs leading-relaxed text-dashboard-text-muted md:block">
+            Enter to send · Shift+Enter for a new line
           </div>
           <Button
             aria-label={props.pending ? "Sending message" : props.submitLabel}
