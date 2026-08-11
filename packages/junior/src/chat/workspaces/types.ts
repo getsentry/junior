@@ -1,6 +1,7 @@
 export interface WorkspaceRepo {
   provider: string;
   repo: string;
+  checkoutPath: string;
   isPrimary: boolean;
 }
 

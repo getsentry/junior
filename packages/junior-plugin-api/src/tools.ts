@@ -141,7 +141,10 @@ export interface PluginMcp {
 }
 
 export interface WorkspacePrepareHookContext extends PluginContext {
-  repos: string[];
+  repos: Array<{
+    path: string;
+    repo: string;
+  }>;
   sandbox: PluginSandbox;
 }
 

@@ -912,13 +912,57 @@ export function createSandboxRuntime(
       return sandboxRef ? { ...sandboxRef } : undefined;
     },
     async switchWorkspace(workspace, signal) {
-      if (activeWorkspace?.id === workspace.id && activeSandbox) return;
-      await activeSandbox?.session.stop();
+      if (activeWorkspace?.id === workspace.id && activeSandbox) {
+        return;
+      }
+
+      const previousWorkspace = activeWorkspace;
+      const previousProfileHash = dependencyProfileHash;
+
+      // Point the recipe at the target first so any concurrent re-acquire after
+      // an aborted boot uses the new workspace instead of the old one.
       activeWorkspace = workspace;
       dependencyProfileHash = profileHash(SANDBOX_RUNTIME, workspace);
-      activeSandbox = null;
       sandboxRef = undefined;
-      await getOrAcquireSandbox(signal);
+
+      const inFlight = acquiringSandbox;
+      if (inFlight) {
+        acquiringSandbox = undefined;
+        inFlight.controller.abort(
+          signal?.aborted ? signal.reason : new Error("workspace switch"),
+        );
+        try {
+          await inFlight.promise;
+        } catch {
+          // The aborted acquisition is expected to reject.
+        }
+      }
+
+      const previousSandbox = activeSandbox;
+      activeSandbox = null;
+      if (keepAliveTimer) {
+        clearTimeout(keepAliveTimer);
+        keepAliveTimer = undefined;
+      }
+      if (previousSandbox) {
+        try {
+          await previousSandbox.session.stop();
+        } catch {
+          // Best-effort stop of the sandbox being replaced.
+        }
+      }
+
+      try {
+        await getOrAcquireSandbox(signal);
+      } catch (error) {
+        // Roll back recipe identity so AGENTS.md selection and the next boot
+        // stay aligned. The previous live sandbox is gone, so drop its id hint.
+        activeWorkspace = previousWorkspace;
+        dependencyProfileHash = previousProfileHash;
+        activeSandbox = null;
+        sandboxRef = undefined;
+        throw error;
+      }
     },
     async acquire(signal) {
       return await getOrAcquireSandbox(signal);

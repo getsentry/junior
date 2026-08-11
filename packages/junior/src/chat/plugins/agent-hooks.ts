@@ -91,7 +91,7 @@ export interface PluginHookRunner {
   afterMcpTool(input: AfterMcpToolHookInput): Promise<void>;
   beforeToolExecute(input: ToolHookInput): Promise<ToolHookResult>;
   prepareSandbox(workspace: SandboxWorkspace): Promise<void>;
-  prepareWorkspace?(workspace: SandboxWorkspace, repos: Array<{ provider: string; repo: string }>): Promise<void>;
+  prepareWorkspace?(workspace: SandboxWorkspace, repos: Array<{ provider: string; repo: string; checkoutPath: string }>): Promise<void>;
 }
 
 let registeredPlugins: PluginRegistration[] = [];
@@ -1384,7 +1384,10 @@ export function createPluginHookRunner(
         if (!hook) continue;
         const selected = repos
           .filter((repo) => repo.provider === plugin.manifest.name)
-          .map((repo) => repo.repo);
+          .map((repo) => ({
+            path: repo.checkoutPath,
+            repo: repo.repo,
+          }));
         if (selected.length === 0) continue;
         await hook({
           ...basePluginContext(plugin),

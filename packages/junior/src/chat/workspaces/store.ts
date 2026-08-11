@@ -15,6 +15,7 @@ function workspaceFromRows(
     repos: repos.map((repo) => ({
       provider: repo.provider,
       repo: repo.repo,
+      checkoutPath: repo.checkoutPath,
       isPrimary: repo.isPrimary,
     })),
   };

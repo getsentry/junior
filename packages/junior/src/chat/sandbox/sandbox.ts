@@ -796,7 +796,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       const { fs } = await runtime.tools();
       const primary = activeWorkspace?.repos.find((repo) => repo.isPrimary);
       const selected = primary
-        ? `${SANDBOX_WORKSPACE_ROOT}/${primary.repo.split("/").at(-1)}`
+        ? `${SANDBOX_WORKSPACE_ROOT}/${primary.checkoutPath}`
         : await findSingleRepositoryDirectory(fs);
       if (!selected) return undefined;
       return await resolveRepositoryInstructions({

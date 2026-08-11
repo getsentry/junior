@@ -21,7 +21,12 @@ const workspace = {
   setupScript: "pnpm install",
   updatedAt: new Date("2026-03-10T00:00:00.000Z"),
   repos: [
-    { provider: "github", repo: "getsentry/sentry", isPrimary: true },
+    {
+      provider: "github",
+      repo: "getsentry/sentry",
+      checkoutPath: "sentry",
+      isPrimary: true,
+    },
   ],
 };
 

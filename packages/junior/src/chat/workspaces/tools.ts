@@ -10,6 +10,7 @@ import { getWorkspaceByName, listWorkspaces } from "./store";
 const repoSchema = z.object({
   provider: z.string(),
   repo: z.string(),
+  checkout_path: z.string(),
   is_primary: z.boolean(),
 });
 const workspaceSchema = z.object({
@@ -25,6 +26,7 @@ function view(workspace: Awaited<ReturnType<typeof listWorkspaces>>[number]) {
     repos: workspace.repos.map((repo) => ({
       provider: repo.provider,
       repo: repo.repo,
+      checkout_path: repo.checkoutPath,
       is_primary: repo.isPrimary,
     })),
   };

@@ -837,12 +837,15 @@ export function githubPlugin(
         return createGitHubTools(ctx);
       },
       async workspacePrepare(ctx) {
-        const repos = ctx.repos.map((repo) => {
-          const [owner, name, ...rest] = repo.split("/");
+        const repos = ctx.repos.map((entry) => {
+          const [owner, name, ...rest] = entry.repo.split("/");
           if (!owner || !name || rest.length > 0) {
-            throw new Error(`Invalid GitHub repository: ${repo}`);
+            throw new Error(`Invalid GitHub repository: ${entry.repo}`);
           }
-          return { owner, name, repo };
+          if (!/^[A-Za-z0-9._-]+$/.test(entry.path) || entry.path === "." || entry.path === "..") {
+            throw new Error(`Invalid workspace checkout path: ${entry.path}`);
+          }
+          return { owner, name, path: entry.path, repo: entry.repo };
         });
         const token = await issueInstallationToken({
           appIdEnv,
@@ -851,7 +854,7 @@ export function githubPlugin(
           permissions: { contents: "read" },
           repositories: repos.map(({ name }) => name),
         });
-        for (const { owner, name, repo } of repos) {
+        for (const { owner, name, path, repo } of repos) {
           const result = await ctx.sandbox.run({
             cmd: "git",
             args: [
@@ -860,7 +863,7 @@ export function githubPlugin(
               "--depth=1",
               "--",
               `https://github.com/${owner}/${name}.git`,
-              name,
+              path,
             ],
             cwd: ctx.sandbox.root,
             env: {

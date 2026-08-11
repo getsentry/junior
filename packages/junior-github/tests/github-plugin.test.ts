@@ -2841,7 +2841,10 @@ Conversation: \`local:test:old-conversation\`
       db,
       log: pluginLog,
       plugin: { name: "github" },
-      repos: ["getsentry/sentry", "getsentry/junior"],
+      repos: [
+        { repo: "getsentry/sentry", path: "sentry" },
+        { repo: "getsentry/junior", path: "junior" },
+      ],
       sandbox: {
         juniorRoot: "/vercel/sandbox/.junior",
         root: "/vercel/sandbox",
