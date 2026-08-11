@@ -23,6 +23,7 @@ import {
   createApiTurnWorkFixture,
   emptyApiTurnAttempt,
 } from "../fixtures/api-turn";
+import { deliverAssistantMessagesForTest } from "../fixtures/agent-runner";
 
 describe("api turn conversation work", () => {
   afterEach(async () => {
@@ -351,10 +352,32 @@ describe("api turn conversation work", () => {
       },
       { conversationStore, queue, state },
     );
+    // Avoid another scripted-runner helper: this case only needs a completed
+    // follow-up so supersede can clear the parked auth turn.
     const followUpWorker = createApiTurnWorker({
-      agentRunner: createApiTurnScriptedRunner({
-        replyText: "Answered the newer message.",
-      }),
+      agentRunner: {
+        run: async (request) => {
+          const piMessages = await deliverAssistantMessagesForTest(request, [
+            { text: "Answered the newer message." },
+          ]);
+          return {
+            status: "completed" as const,
+            result: {
+              text: "Answered the newer message.",
+              piMessages,
+              diagnostics: {
+                assistantMessageCount: 1,
+                modelId: "fake-api-turn",
+                outcome: "success" as const,
+                toolCalls: [],
+                toolErrorCount: 0,
+                toolResultCount: 0,
+                usedPrimaryText: true,
+              },
+            },
+          };
+        },
+      },
     });
 
     await expect(
