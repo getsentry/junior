@@ -408,11 +408,7 @@ describe("dashboard canonical event reporting", () => {
         state: "started",
         inputMessageIds: [`${conversationId}:visible`],
       },
-      {
-        type: "turn_lifecycle",
-        turnId: `${conversationId}:turn`,
-        state: "succeeded",
-      },
+      { type: "turn_lifecycle", turnId: `${conversationId}:turn`, state: "succeeded" },
       {
         type: "subagent",
         startedSeq: 7,
