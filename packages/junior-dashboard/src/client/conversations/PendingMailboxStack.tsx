@@ -51,7 +51,7 @@ function PendingMetaIcons(props: {
   const showSlack = props.source === "slack";
 
   return (
-    <TranscriptHeadingMeta className="flex min-w-0 items-center justify-end gap-2 text-[11px] leading-none text-dashboard-text-muted">
+    <TranscriptHeadingMeta className="flex min-w-0 items-center justify-end gap-2 text-xs leading-none text-dashboard-text-muted">
       <span className="inline-flex shrink-0 items-center gap-1.5">
         {showSlack ? (
           <span
