@@ -45,16 +45,16 @@ import type { ThreadConversationState } from "@/chat/state/conversation";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { appendConversationMessages } from "./messages";
 
-/** Distinct MCP providers one actor connected in the given events, sorted. */
+/** Distinct MCP providers one credential subject connected in the given events, sorted. */
 function connectedMcpProvidersFromEvents(
   events: ConversationEvent[],
-  actorId: string,
+  credentialSubjectId: string,
 ): string[] {
   const providers = new Set<string>();
   for (const event of events) {
     if (
       event.data.type === "mcp_provider_connected" &&
-      event.data.actorId === actorId
+      event.data.credentialSubjectId === credentialSubjectId
     ) {
       providers.add(event.data.provider);
     }
@@ -285,15 +285,15 @@ export async function loadTurnProjection(args: {
   return projectConversationEvents(historyEvents);
 }
 
-/** Load MCP providers the actor connected in the current agent-history version. */
+/** Load MCP providers the credential subject connected in the current agent-history version. */
 export async function loadConnectedMcpProviders(args: {
   conversationId: string;
-  actorId: string;
+  credentialSubjectId: string;
 }): Promise<string[]> {
   const events = await getConversationEventStore().loadCurrentHistory(
     args.conversationId,
   );
-  return connectedMcpProvidersFromEvents(events, args.actorId);
+  return connectedMcpProvidersFromEvents(events, args.credentialSubjectId);
 }
 
 function messageTimestamp(message: PiMessage): number {
@@ -474,16 +474,16 @@ async function commitMessagesLocked(
   };
 }
 
-/** Record a successful MCP provider connection for one actor without duplicating it. */
+/** Record a successful MCP provider connection for one credential subject without duplicating it. */
 export async function recordMcpProviderConnected(args: {
   conversationId: string;
   provider: string;
-  actorId: string;
+  credentialSubjectId: string;
 }): Promise<void> {
   const eventStore = getConversationEventStore();
   const events = await eventStore.loadCurrentHistory(args.conversationId);
   if (
-    connectedMcpProvidersFromEvents(events, args.actorId).includes(
+    connectedMcpProvidersFromEvents(events, args.credentialSubjectId).includes(
       args.provider,
     )
   ) {
@@ -494,7 +494,7 @@ export async function recordMcpProviderConnected(args: {
       data: {
         type: "mcp_provider_connected",
         provider: args.provider,
-        actorId: args.actorId,
+        credentialSubjectId: args.credentialSubjectId,
       },
       createdAtMs: Date.now(),
     },

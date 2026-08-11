@@ -2,7 +2,8 @@
  * Run tool wiring.
  *
  * Builds everything the agent can act through for one run slice: the sandbox
- * access, MCP and plugin auth orchestration, actor-owned MCP provider
+ * access, MCP and plugin auth orchestration, credential-subject-owned MCP
+ * provider
  * restoration, and the Pi-facing tool surfaces (main-agent tools plus runtime
  * control tools). Auth pauses raised while restoring providers are thrown
  * here so the run parks before prompting.
@@ -441,11 +442,10 @@ export async function wireAgentTools(
       : undefined;
 
   // Conversation history records prior capability use, not authority for the
-  // current turn. Restore only providers this actor previously connected.
-  // Shared Pi history and skills reloaded from that history mix people and
-  // must not warm another person's MCP servers under the current actor.
+  // current turn. Restore only providers this credential subject connected.
+  // Shared Pi history mixes people and must not grant provider authority.
   // Intentional use still connects on demand through searchMcpTools under the
-  // current actor.
+  // current credential subject.
   if (credentialUserId) {
     for (const provider of args.connectedMcpProviders) {
       if (provider === pendingMcpProvider) {

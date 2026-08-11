@@ -200,7 +200,7 @@ it("rejects unsupported conversation event schema versions", () => {
       seq: 0,
       historyVersion: 0,
       createdAtMs: 1_000,
-      data: { type: "mcp_provider_connected", provider: "github" },
+      data: { type: "mcp_provider_connected", provider: "github", credentialSubjectId: "U123" },
     }).success,
   ).toBe(false);
 });
@@ -259,7 +259,7 @@ it("does not require an initial-history event", async () => {
   await recordMcpProviderConnected({
     conversationId,
     provider: "linear",
-    actorId: "UALICE",
+    credentialSubjectId: "UALICE",
   });
 
   await expect(
@@ -272,10 +272,10 @@ it("does not require an initial-history event", async () => {
     modelId: undefined,
   });
   await expect(
-    loadConnectedMcpProviders({ conversationId, actorId: "UALICE" }),
+    loadConnectedMcpProviders({ conversationId, credentialSubjectId: "UALICE" }),
   ).resolves.toEqual(["linear"]);
   await expect(
-    loadConnectedMcpProviders({ conversationId, actorId: "UBOB" }),
+    loadConnectedMcpProviders({ conversationId, credentialSubjectId: "UBOB" }),
   ).resolves.toEqual([]);
   expect(await getConversationEventStore().loadHistory(conversationId)).toEqual(
     [
@@ -284,7 +284,7 @@ it("does not require an initial-history event", async () => {
         data: {
           type: "mcp_provider_connected",
           provider: "linear",
-          actorId: "UALICE",
+          credentialSubjectId: "UALICE",
         },
       }),
     ],
@@ -395,7 +395,7 @@ describe("SQL conversation storage", () => {
       ]);
       await store.append(CONVERSATION_ID, [
         {
-          data: { type: "mcp_provider_connected", provider: "github" },
+          data: { type: "mcp_provider_connected", provider: "github", credentialSubjectId: "U123" },
           createdAtMs: 3_000,
         },
       ]);
@@ -502,7 +502,7 @@ describe("SQL conversation storage", () => {
           createdAtMs: 2_000,
         },
         {
-          data: { type: "mcp_provider_connected", provider: "github" },
+          data: { type: "mcp_provider_connected", provider: "github", credentialSubjectId: "U123" },
           createdAtMs: 3_000,
         },
         {
@@ -605,17 +605,17 @@ describe("SQL conversation storage", () => {
         {
           idempotencyKey: "event:repeated",
           createdAtMs: 1_000,
-          data: { type: "mcp_provider_connected", provider: "github" },
+          data: { type: "mcp_provider_connected", provider: "github", credentialSubjectId: "U123" },
         },
         {
           idempotencyKey: "event:repeated",
           createdAtMs: 2_000,
-          data: { type: "mcp_provider_connected", provider: "linear" },
+          data: { type: "mcp_provider_connected", provider: "linear", credentialSubjectId: "U123" },
         },
         {
           idempotencyKey: "event:next",
           createdAtMs: 3_000,
-          data: { type: "mcp_provider_connected", provider: "sentry" },
+          data: { type: "mcp_provider_connected", provider: "sentry", credentialSubjectId: "U123" },
         },
       ]);
 
@@ -776,7 +776,7 @@ describe("SQL conversation storage", () => {
       });
       await store.append(CONVERSATION_ID, [
         {
-          data: { type: "mcp_provider_connected", provider: "github" },
+          data: { type: "mcp_provider_connected", provider: "github", credentialSubjectId: "U123" },
           createdAtMs: 4_000,
         },
       ]);
@@ -829,7 +829,7 @@ describe("SQL conversation storage", () => {
           createdAtMs: 1_000,
         },
         {
-          data: { type: "mcp_provider_connected", provider: "github" },
+          data: { type: "mcp_provider_connected", provider: "github", credentialSubjectId: "U123" },
           createdAtMs: 2_000,
         },
       ]);
@@ -1155,7 +1155,11 @@ INSERT INTO junior_conversation_events (
           0,
           1,
           "mcp_provider_connected",
-          JSON.stringify({ type: "message", provider: "github" }),
+          JSON.stringify({
+            type: "message",
+            provider: "github",
+            credentialSubjectId: "U123",
+          }),
           new Date(1_000).toISOString(),
         ],
       );
@@ -1166,7 +1170,11 @@ INSERT INTO junior_conversation_events (
           seq: 0,
           historyVersion: 0,
           createdAtMs: 1_000,
-          data: { type: "mcp_provider_connected", provider: "github" },
+          data: {
+            type: "mcp_provider_connected",
+            provider: "github",
+            credentialSubjectId: "U123",
+          },
         },
       ]);
     } finally {

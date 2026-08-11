@@ -1075,7 +1075,7 @@ describe("executeAgentRun progressive MCP loading", () => {
     await recordMcpProviderConnected({
       conversationId: "conversation-restored-provider",
       provider: "demo",
-      actorId: "U123",
+      credentialSubjectId: "U123",
     });
 
     await executeAgentRun(
@@ -1099,7 +1099,7 @@ describe("executeAgentRun progressive MCP loading", () => {
     await recordMcpProviderConnected({
       conversationId: "conversation-delegated-provider",
       provider: "demo",
-      actorId: "U123",
+      credentialSubjectId: "U123",
     });
 
     await executeAgentRun(
@@ -1201,7 +1201,7 @@ describe("executeAgentRun progressive MCP loading", () => {
     await recordMcpProviderConnected({
       conversationId: "conversation-restore-auth",
       provider: "demo",
-      actorId: "U123",
+      credentialSubjectId: "U123",
     });
 
     const firstError = await executeAgentRun(
@@ -1594,7 +1594,7 @@ describe("executeAgentRun progressive MCP loading", () => {
     await recordMcpProviderConnected({
       conversationId: "conversation-5",
       provider: "demo",
-      actorId: "U123",
+      credentialSubjectId: "U123",
     });
     await upsertTurnRecord({
       conversationId: "conversation-5",

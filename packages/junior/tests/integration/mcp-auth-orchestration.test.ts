@@ -27,7 +27,7 @@ import {
 import { resetSlackApiMockState } from "../msw/handlers/slack-api";
 
 /**
- * Actor-scoped MCP auth UX through the durable queue.
+ * MCP auth behavior through the durable queue.
  * See https://github.com/getsentry/junior/issues/1377
  *
  * Common user behaviors only. Fake model stream + Slack HTTP. Real ingress,

@@ -122,7 +122,7 @@ import {
 } from "@/chat/agent/types";
 import { actionConfirmationRetryMessages } from "@/chat/agent/action-confirmation-retry";
 import { loadTurnCheckpoint } from "@/chat/task-execution/checkpoint";
-import { discoverRunSkills, loadInvokedSkill } from "@/chat/agent/skills";
+import { discoverRunSkills, loadRunSkill } from "@/chat/agent/skills";
 import {
   assemblePrompt,
   buildPromptInput,
@@ -398,12 +398,12 @@ async function executeAgentRunInPrivacyContext(
       return;
     }
     // Only durable when we know who owns the connection. Restore filters by
-    // this actor id on later turns.
+    // this credential subject on later turns.
     if (credentialUserId) {
       await recordMcpProviderConnected({
         conversationId,
         provider,
-        actorId: credentialUserId,
+        credentialSubjectId: credentialUserId,
       });
     }
     connectedMcpProviders.add(provider);
@@ -548,22 +548,24 @@ async function executeAgentRunInPrivacyContext(
     const priorPiMessages = resumedFromSessionRecord
       ? existingSessionRecord?.piMessages
       : input.piMessages;
-    // Load only providers this actor connected. Shared thread history is not
-    // ownership and must not warm another person's MCP servers under them.
+    // Load only providers this credential subject connected. Shared thread
+    // history is not authority and must not warm another person's MCP servers.
     connectedMcpProviders = new Set(
       credentialUserId
         ? await loadConnectedMcpProviders({
             conversationId,
-            actorId: credentialUserId,
+            credentialSubjectId: credentialUserId,
           })
         : [],
     );
 
-    // Skill state belongs to this run. Saved conversation history must not
-    // reactivate a skill; only the current instruction may invoke one.
-    const explicitSkill = await loadInvokedSkill({
+    // A new turn starts with no active skill. A resumed turn recovers only its
+    // last successful loadSkill result, never skill state from older turns.
+    const explicitSkill = await loadRunSkill({
       activeSkills,
+      currentTurnMessages,
       invokedSkill,
+      resumed: resumedFromSessionRecord,
       skillSandbox,
     });
     // ── Prompt input ─────────────────────────────────────────────────

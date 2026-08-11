@@ -122,9 +122,7 @@ const mcpProviderConnectedEventDataSchema = z
   .object({
     type: z.literal("mcp_provider_connected"),
     provider: z.string().min(1),
-    // Who connected the provider. Missing on older events; those are not used
-    // for restore because ownership is unknown.
-    actorId: z.string().min(1).optional(),
+    credentialSubjectId: z.string().min(1),
   })
   .strict();
 
