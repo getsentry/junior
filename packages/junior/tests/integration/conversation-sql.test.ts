@@ -148,7 +148,7 @@ ORDER BY conversation_id
     }
   });
 
-  it("keeps unowned MCP connection events readable but inactive", async () => {
+  it("migrates unowned MCP connection events into replayable facts", async () => {
     const fixture = await createLocalJuniorSqlFixture();
     const ownershipMigrationIndex = coreMigrations.findIndex((migration) =>
       migration.sql.some((statement) =>
@@ -189,20 +189,6 @@ ORDER BY conversation_id
       for (const statement of ownershipMigration.sql) {
         await fixture.sql.execute(statement);
       }
-
-      const [event] = await fixture.sql.query<{
-        payload: unknown;
-        type: string;
-      }>(
-        `SELECT type, payload
-         FROM junior_conversation_events
-         WHERE conversation_id = $1`,
-        [conversationId],
-      );
-      expect(event).toEqual({
-        type: "mcp_provider_connected_unowned",
-        payload: { provider: "github" },
-      });
 
       const history = await createSqlConversationEventStore(
         fixture.sql,
