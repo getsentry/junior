@@ -176,17 +176,14 @@ function transcriptRoleLabel(
   return transcriptMessageActorLabel(conversation, message);
 }
 
-function transcriptMessageClass(role: string, pending?: boolean): string {
+function transcriptMessageClass(role: string): string {
   const kind = transcriptRoleKind(role);
 
   return cn(
     "grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 rounded-lg px-3 py-2.5 shadow-[0_12px_40px_rgba(0,0,0,0.12)] md:px-4 md:py-3",
     kind === "assistant" &&
       "md:mr-6 bg-cyan-300/[0.055] text-dashboard-text",
-    kind === "user" &&
-      (pending
-        ? "md:ml-6 bg-cyan-300/[0.07] text-dashboard-text opacity-90"
-        : "md:ml-6 bg-white/[0.055] text-dashboard-text"),
+    kind === "user" && "md:ml-6 bg-white/[0.055] text-dashboard-text",
     kind === "system" && "bg-amber-300/[0.045] text-dashboard-text",
     kind === "tool" && "bg-black/15 text-dashboard-text-muted shadow-none",
     kind === "other" && "bg-white/[0.03] text-dashboard-text",
@@ -230,12 +227,11 @@ function transcriptRoleLabelClass(role: string): string {
 function TranscriptMessageShell(props: {
   children: ReactNode;
   onCopy?: ClipboardEventHandler<HTMLElement>;
-  pending?: boolean;
   role: string;
 }) {
   return (
     <article
-      className={transcriptMessageClass(props.role, props.pending)}
+      className={transcriptMessageClass(props.role)}
       onCopy={props.onCopy}
     >
       {props.children}
@@ -335,21 +331,87 @@ function PendingTranscriptEntries(props: {
   messages: TranscriptViewMessage[];
   view: TranscriptViewMode;
 }) {
+  // One continuous stack above the composer: shared fill, no gaps, only outer
+  // corners rounded — same shape as ChatGPT's queued follow-up rows.
   return (
-    <div aria-label="Pending messages" className="mt-4 grid gap-2">
-      {props.conversation.eventHistory.status === "redacted" ? (
-        <RedactedTranscriptView
+    <div
+      aria-label="Pending messages"
+      className="mt-6 overflow-hidden rounded-lg bg-cyan-300/[0.07]"
+    >
+      {props.messages.map((message, index) => (
+        <PendingTranscriptMessage
           conversation={props.conversation}
-          messages={props.messages}
-        />
-      ) : (
-        <VisibleTranscriptEntries
-          conversation={props.conversation}
-          transcript={props.messages}
+          key={message.messageId ?? `${message.sourceSeq}:${index}`}
+          message={message}
+          showDivider={index > 0}
           view={props.view}
         />
-      )}
+      ))}
     </div>
+  );
+}
+
+function PendingTranscriptMessage(props: {
+  conversation: ConversationTranscript;
+  message: TranscriptViewMessage;
+  showDivider: boolean;
+  view: TranscriptViewMode;
+}) {
+  const rawText = messageRawText(props.message);
+  const redacted = props.message.parts.some(
+    (part) => part.type === "text" && part.redacted,
+  );
+
+  return (
+    <article
+      className={cn(
+        "grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 px-3 py-2.5 text-dashboard-text md:px-4 md:py-3",
+        props.showDivider && "border-t border-white/[0.06]",
+      )}
+      onCopy={(event) => {
+        const selection = event.currentTarget.ownerDocument.getSelection();
+        if (
+          !shouldCopyRawTranscript(
+            props.view,
+            rawText,
+            selection,
+            event.currentTarget,
+          )
+        ) {
+          return;
+        }
+        event.clipboardData.setData("text/plain", rawText);
+        event.preventDefault();
+      }}
+    >
+      <TranscriptMessageHeader
+        meta={[formatMessageTimestamp(props.message.timestamp)]}
+        message={props.message}
+        conversation={props.conversation}
+      />
+      {props.view === "raw" ? (
+        <HighlightedCode
+          code={rawText || "{}"}
+          language={detectLanguage(rawText)}
+        />
+      ) : redacted ? (
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 font-mono text-base leading-snug text-dashboard-text-muted">
+          <RedactedMarker />
+        </div>
+      ) : (
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
+          {props.message.parts.map((part, index) =>
+            part.type === "text" ? (
+              <TranscriptText
+                key={index}
+                role={props.message.role}
+                text={part.text ?? ""}
+              />
+            ) : null,
+          )}
+        </div>
+      )}
+    </article>
   );
 }
 
@@ -743,10 +805,7 @@ function RedactedMessageView(props: {
   );
 
   return (
-    <TranscriptMessageShell
-      pending={props.message.pending}
-      role={props.message.role}
-    >
+    <TranscriptMessageShell role={props.message.role}>
       <TranscriptMessageHeader
         meta={meta}
         message={props.message}
@@ -817,7 +876,6 @@ function TranscriptMessageView(props: {
 
   return (
     <TranscriptMessageShell
-      pending={props.message.pending}
       role={props.message.role}
       onCopy={(event) => {
         const selection = event.currentTarget.ownerDocument.getSelection();
