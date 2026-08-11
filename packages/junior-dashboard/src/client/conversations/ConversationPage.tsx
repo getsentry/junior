@@ -1,5 +1,7 @@
 import { useState } from "react";
 import {
+  Archive,
+  ArchiveRestore,
   CircleDashed,
   CircleDot,
   CircleX,
@@ -116,23 +118,17 @@ export function ConversationPage(props: {
                   </span>
                 </div>
               </div>
-              <Button
-                className="h-auto shrink-0 px-2.5 py-1 font-sans text-xs font-normal text-dashboard-text-muted"
+              <ArchiveConversationButton
+                archived={Boolean(conversation?.archivedAt)}
                 disabled={!conversation || archive.isPending}
+                pending={archive.isPending}
                 onClick={() =>
                   archive.mutate({
                     archived: !conversation?.archivedAt,
                     lastSeenAt: conversation!.lastSeenAt,
                   })
                 }
-                type="button"
-              >
-                {archive.isPending
-                  ? "Saving…"
-                  : conversation?.archivedAt
-                    ? "Unarchive"
-                    : "Archive"}
-              </Button>
+              />
             </div>
             {archive.error ? (
               <div className="mt-1.5 text-xs text-red-300/80">
@@ -233,6 +229,33 @@ export function ConversationPage(props: {
         target={subagentTarget}
       />
     </div>
+  );
+}
+
+function ArchiveConversationButton(props: {
+  archived: boolean;
+  disabled: boolean;
+  onClick(): void;
+  pending: boolean;
+}) {
+  const label = props.pending
+    ? "Saving archive state"
+    : props.archived
+      ? "Unarchive"
+      : "Archive";
+  const Icon = props.archived ? ArchiveRestore : Archive;
+  return (
+    <Button
+      aria-label={label}
+      className="shrink-0 text-dashboard-text-muted"
+      disabled={props.disabled}
+      onClick={props.onClick}
+      size="icon"
+      title={label}
+      type="button"
+    >
+      <Icon aria-hidden="true" size={16} strokeWidth={2} />
+    </Button>
   );
 }
 
