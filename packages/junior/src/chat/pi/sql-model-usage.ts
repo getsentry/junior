@@ -115,22 +115,6 @@ function usageFromRow(row: ModelUsageRow): AgentTurnUsage | undefined {
 }
 
 /**
- * Resolve the gateway model id stored on an assistant message.
- *
- * Vercel AI Gateway messages keep `provider` as the transport (`vercel-ai-gateway`)
- * and `model` as the vendor id (`openai/gpt-5.6-sol`). Older fixtures may store a
- * bare model name with a vendor provider; those still need `provider/model`.
- */
-export function conversationModelIdFromAssistantFields(args: {
-  model: string;
-  provider: string;
-}): string {
-  return args.model.includes("/")
-    ? args.model
-    : `${args.provider}/${args.model}`;
-}
-
-/**
  * Aggregate real assistant calls by provider/model in SQL. Replayed history is
  * not another call; its tokens appear in the next call's input usage.
  */

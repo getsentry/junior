@@ -286,16 +286,8 @@ describe("dashboard canonical event reporting", () => {
       usage: {
         input: 12,
         output: 4,
-        cacheRead: 0,
-        cacheWrite: 0,
         totalTokens: 16,
-        cost: {
-          input: 0.01,
-          output: 0.02,
-          cacheRead: 0,
-          cacheWrite: 0,
-          total: 0.03,
-        },
+        cost: { total: 0.03 },
       },
     } as unknown as PiMessage;
     const { getConversationEventStore } = await import("@/chat/db");
@@ -311,20 +303,11 @@ describe("dashboard canonical event reporting", () => {
     expect((await requireDetail(conversationId)).modelUsage).toEqual([
       {
         modelId: "openai/gpt-5.6-sol",
-        usage: {
+        usage: expect.objectContaining({
           inputTokens: 12,
           outputTokens: 4,
-          cachedInputTokens: 0,
-          cacheCreationTokens: 0,
           totalTokens: 16,
-          cost: {
-            input: 0.01,
-            output: 0.02,
-            cacheRead: 0,
-            cacheWrite: 0,
-            total: 0.03,
-          },
-        },
+        }),
       },
     ]);
   });

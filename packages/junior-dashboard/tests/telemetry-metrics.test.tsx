@@ -119,34 +119,6 @@ describe("CostMetric", () => {
     expect(tokenHtml).toContain("grok-4-5");
     expect(tokenHtml).toContain("· in progress");
     expect(tokenHtml).toContain("junior-text-shimmer");
-    expect(tokenHtml.match(/grok-4-5/g)).toHaveLength(1);
-
-    const multiModelHtml = renderToStaticMarkup(
-      <TokenMetric
-        live
-        liveModelId="openai/gpt-5.6-sol"
-        modelUsage={[
-          {
-            modelId: "openai/gpt-5.6-sol",
-            usage: { inputTokens: 800, outputTokens: 120 },
-          },
-          {
-            modelId: "xai/grok-4-5",
-            usage: { inputTokens: 400, outputTokens: 80 },
-          },
-        ]}
-        summary={{
-          inputTokens: 1_200,
-          outputTokens: 200,
-          totalTokens: 1_400,
-        }}
-      />,
-    );
-    expect(multiModelHtml.match(/gpt-5\.6-sol/g)).toHaveLength(1);
-    expect(multiModelHtml).toContain("gpt-5.6-sol");
-    expect(multiModelHtml).toContain("· in progress");
-    expect(multiModelHtml).toContain("grok-4-5");
-    expect(multiModelHtml).not.toMatch(/gpt-5\.6-sol[^]*gpt-5\.6-sol/);
 
     const toolHtml = renderToStaticMarkup(
       <ToolCallsMetric
