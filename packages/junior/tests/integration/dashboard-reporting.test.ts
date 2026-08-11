@@ -406,6 +406,7 @@ describe("dashboard canonical event reporting", () => {
         type: "turn_lifecycle",
         turnId: `${conversationId}:turn`,
         state: "started",
+        inputMessageIds: [`${conversationId}:visible`],
       },
       {
         type: "turn_lifecycle",

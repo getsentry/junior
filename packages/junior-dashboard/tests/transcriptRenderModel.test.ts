@@ -92,48 +92,6 @@ describe("canonical event transcript reduction", () => {
     expect(messages[1]?.parts).toEqual([{ type: "text", redacted: true }]);
   });
 
-  it("hides unused non-mentions and marks turn inputs as context", () => {
-    const messages = conversationTranscriptMessages(
-      conversation([
-        event(0, "2026-01-01T00:00:00.000Z", {
-          type: "message",
-          messageId: "unused-context",
-          role: "user",
-          text: "ambient thread chatter",
-          explicitMention: false,
-        }),
-        event(1, "2026-01-01T00:00:01.000Z", {
-          type: "message",
-          messageId: "used-context",
-          role: "user",
-          text: "can you clarify that?",
-          explicitMention: false,
-        }),
-        event(2, "2026-01-01T00:00:02.000Z", {
-          type: "turn_lifecycle",
-          turnId: "turn-context",
-          state: "started",
-          inputMessageIds: ["used-context"],
-        }),
-        event(3, "2026-01-01T00:00:03.000Z", {
-          type: "message",
-          messageId: "answer",
-          role: "assistant",
-          text: "Here is the clarification.",
-        }),
-      ]),
-    );
-
-    expect(messages).toHaveLength(2);
-    expect(messages[0]).toMatchObject({
-      context: true,
-      explicitMention: false,
-      messageId: "used-context",
-    });
-    expect(messageRawText(messages[0]!)).toBe("can you clarify that?");
-    expect(messages[1]?.messageId).toBe("answer");
-  });
-
   it("preserves ordered reasoning and tool activity", () => {
     const messages = conversationTranscriptMessages(
       conversation([
