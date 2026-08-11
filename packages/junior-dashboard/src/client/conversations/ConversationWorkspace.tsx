@@ -216,11 +216,6 @@ function NewConversationView(props: {
           <h2 className="m-0 font-display text-2xl font-medium tracking-[-0.03em] text-dashboard-text md:text-3xl">
             New conversation
           </h2>
-          <p className="mt-2 font-mono text-xs leading-relaxed text-dashboard-text-muted">
-            {isPublic
-              ? "This conversation is public. Anyone in this workspace can open its link. Only participants can send messages."
-              : "This conversation is private. Only you can open its transcript and send messages."}
-          </p>
           <div className="mt-3 flex flex-wrap gap-2">
             <ToggleButton
               onClick={() => setVisibility("public")}

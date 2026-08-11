@@ -194,9 +194,7 @@ test("starts and continues conversations from the dashboard", async ({
   await expect(
     page.getByRole("heading", { name: "New conversation" }),
   ).toBeVisible();
-  await expect(page.getByText("This conversation is public.")).toBeVisible();
   await page.getByRole("button", { name: "Private" }).click();
-  await expect(page.getByText("This conversation is private.")).toBeVisible();
   await page
     .getByLabel("Start a conversation")
     .fill("Start from the dashboard");
