@@ -6,7 +6,6 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai/providers/faux";
 import { createSlackSource } from "@sentry/junior-plugin-api";
-import { createConversationWork } from "@/chat/app/conversation-work";
 import { FUNCTION_TIMEOUT_BUFFER_SECONDS, getChatConfig } from "@/chat/config";
 import {
   commitAcceptedReply,
@@ -14,8 +13,6 @@ import {
 } from "@/chat/conversations/projection";
 import { executeAgentRun } from "@/chat/agent";
 import type { AgentSteeringMessage } from "@/chat/agent/types";
-import type { AgentRunner } from "@/chat/runtime/agent-runner";
-import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import {
   getPersistedThreadState,
   persistThreadStateById,
@@ -23,8 +20,7 @@ import {
 import type { PiMessage } from "@/chat/pi/messages";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
-import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
-import { getConversationStore } from "@/chat/db";
+import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
 import {
   CONVERSATION_WORK_LEASE_TTL_MS,
@@ -38,20 +34,17 @@ import {
   listTurnSummaries,
   saveTurnCheckpoint,
 } from "@/chat/task-execution/checkpoint";
-import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import {
   CONVERSATION_ID,
   SLACK_DESTINATION,
-  createConversationWorkQueueTestAdapter,
   SLACK_BOT_USER_ID,
-  createSlackAdapterFixture,
+  THREAD_TS,
+  createConversationWorkSlackHarness,
   deferred,
-  handleSlackWebhookAndFlush,
-  slackEnvelope,
-  slackWebhookRequest,
+  streamReplies,
+  type ConversationWorkSlackHarness,
 } from "../fixtures/conversation-work";
 import { chatPostMessageOk } from "../fixtures/slack/factories/api";
-import { slackApiOutbox } from "../fixtures/slack-api-outbox";
 import {
   queueSlackApiResponse,
   resetSlackApiMockState,
@@ -80,13 +73,6 @@ function almostSpentStartedAtMs(remainingMs: number): number {
   return Date.now() - requestBudgetMs() + remainingMs;
 }
 
-/** Model stream that returns one completed assistant reply per call. */
-function streamReplies(...texts: string[]): StreamFn {
-  const faux = createFauxCore({ api: "test", provider: "test" });
-  faux.setResponses(texts.map((text) => fauxAssistantMessage(text)));
-  return faux.stream;
-}
-
 /**
  * First model step calls a real no-side-effect tool so the agent reaches a
  * safe mid-work boundary. The next model step waits on `holdAfterTool` so the
@@ -102,99 +88,25 @@ function streamMidWorkThenReplies(
   if (!firstFinal) {
     throw new Error("streamMidWorkThenReplies requires at least one final text");
   }
+  // Exact response list (no padding): reply-count assertions depend on it.
   faux.setResponses([
     fauxAssistantMessage([fauxToolCall("systemTime", {})], {
       stopReason: "toolUse",
     }),
-    // Held long enough for the host deadline to force park at the tool boundary.
     async () => {
       await holdAfterTool;
       return fauxAssistantMessage(firstFinal);
     },
-    // Resume after park (and any aborted in-flight call) still has a final reply.
     fauxAssistantMessage(firstFinal),
     ...restFinals.map((text) => fauxAssistantMessage(text)),
   ]);
   return faux.stream;
 }
 
-/**
- * Compose the same ingress, runtime, worker, resume, SQL, and delivery path used
- * in production. These tests must not replace Junior-owned runtime behavior.
- * They may fake only model generation at the `executeAgentRun` stream boundary
- * and Slack I/O at the adapter boundary.
- *
- * Custom `agentRunner` is reserved for agent-edge outcomes the stream cannot
- * express: throw before input commit, or mid-run coordination for steering.
- */
-async function slack(
-  options: {
-    agentRunner?: AgentRunner;
-    modelStream?: StreamFn;
-  } = {},
-) {
-  const state = getStateAdapter();
-  await state.connect();
-  const wakes = createConversationWorkQueueTestAdapter();
-  const adapter = createSlackAdapterFixture();
-  const modelStream = options.modelStream ?? streamReplies("Deploy checked.");
-  const agentRunner: AgentRunner = options.agentRunner ?? {
-    run: async (request) => await executeAgentRun(request, modelStream),
-  };
-  const work = createConversationWork({
-    agentRunner,
-    conversationStore: getConversationStore(),
-    getSlackAdapter: () => adapter,
-    queue: wakes,
-    services: { replyExecutor: { agentRunner } },
-    state,
-  });
-  return {
-    state,
-    wakes,
-    replies: () =>
-      slackApiOutbox
-        .messages()
-        .map((call) => call.params.text)
-        .filter((text): text is string => typeof text === "string"),
-    next: async (requestStartedAtMs?: number) => {
-      // Use production worker shouldYield (lease + host request deadline).
-      const process = async () =>
-        await processConversationQueueMessage(wakes.takeMessage(), {
-          queue: wakes,
-          run: work.run,
-          state,
-        });
-      return requestStartedAtMs === undefined
-        ? await process()
-        : await runWithTurnRequestDeadline(process, requestStartedAtMs);
-    },
-    send: async (
-      input: {
-        eventType?: "app_mention" | "message";
-        text?: string;
-        threadTs?: string;
-        ts?: string;
-      } = {},
-    ) =>
-      await handleSlackWebhookAndFlush({
-        request: slackWebhookRequest(
-          slackEnvelope({
-            text: `<@${SLACK_BOT_USER_ID}> inspect the deploy`,
-            ...input,
-          }),
-        ),
-        services: {
-          getSlackAdapter: () => adapter,
-          queue: wakes,
-          runtime: work.runtime,
-          state,
-        },
-      }),
-  };
-}
+/** Shared production Slack ingress → durable queue → agent harness. */
+const slack = createConversationWorkSlackHarness;
 
-type QueueTest = Awaited<ReturnType<typeof slack>>;
+type QueueTest = ConversationWorkSlackHarness;
 
 /** Assert the durable state left by a turn that cannot run again. */
 async function expectTerminalTurn(
@@ -257,7 +169,7 @@ async function expectNextTurn(q: QueueTest, ts: string): Promise<void> {
   const priorReplies = q.replies();
   await q.send({
     text: `<@${SLACK_BOT_USER_ID}> check the next deploy`,
-    threadTs: "1712345.0001",
+    threadTs: THREAD_TS,
     ts,
   });
   await expect(q.next()).resolves.toEqual({ status: "completed" });
@@ -332,7 +244,7 @@ async function seedDeadWorkerResidue(mode: "paused" | "running") {
     source: createSlackSource({
       teamId: SLACK_DESTINATION.teamId,
       channelId: SLACK_DESTINATION.channelId,
-      threadTs: "1712345.0001",
+      threadTs: THREAD_TS,
       visibility: "private",
     }),
     surface: "slack" as const,
@@ -674,7 +586,7 @@ describe("durable queue contract", () => {
       await entered.promise;
       await q.send({
         text: `<@${SLACK_BOT_USER_ID}> include the rollback owner`,
-        threadTs: "1712345.0001",
+        threadTs: THREAD_TS,
         ts: "1712345.0002",
       });
       release.resolve(undefined);
