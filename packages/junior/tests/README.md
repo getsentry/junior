@@ -41,6 +41,10 @@ Slack HTTP tests use the global MSW setup in `msw/setup.ts`, handlers in
 Do not create per-test MSW servers or mock the Slack SDK for outbound contract
 tests.
 
+Agent integration tests use `fixtures/model-stream.ts` to set fixed model
+output. Use it with the real agent. Do not replace the agent runner only to
+control model output.
+
 ## Postgres Harness
 
 When `JUNIOR_TEST_DATABASE_URL` is configured, global setup creates a migrated

@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  createFauxCore,
   fauxAssistantMessage,
   fauxText,
   fauxThinking,
@@ -49,6 +48,7 @@ import * as piClient from "@/chat/pi/client";
 import {
   deliverAssistantMessagesForTest,
 } from "../../fixtures/agent-runner";
+import { createModelStream } from "../../fixtures/model-stream";
 
 const emptyThreadReplies = async () => [];
 
@@ -708,17 +708,16 @@ describe("bot handlers (integration)", () => {
                 reasoningLevel: "medium",
                 source: "configured",
               });
-              const faux = createFauxCore({
-                api: "test",
-                provider: "test",
-              });
-              faux.setResponses([
-                fauxAssistantMessage([
-                  fauxThinking("Check the final answer."),
-                  fauxText(finalText),
-                ]),
+              const modelStream = createModelStream([
+                {
+                  type: "message",
+                  message: fauxAssistantMessage([
+                    fauxThinking("Check the final answer."),
+                    fauxText(finalText),
+                  ]),
+                },
               ]);
-              return executeAgentRun(request, faux.stream);
+              return executeAgentRun(request, modelStream);
             },
           },
         },
