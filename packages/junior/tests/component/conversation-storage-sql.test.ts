@@ -254,12 +254,21 @@ it("rejects incomplete handoffs through the replacement boundary", async () => {
   ).resolves.toEqual([]);
 });
 
-it("does not require an initial-history event", async () => {
+it("keeps actor-owned MCP connections across history replacement", async () => {
   const conversationId = "local:test:host-fact-before-model";
   await recordMcpProviderConnected({
     conversationId,
     provider: "linear",
     credentialSubjectId: "UALICE",
+  });
+  await getConversationEventStore().replaceHistory(conversationId, {
+    createdAtMs: 2,
+    data: {
+      type: "compaction",
+      modelProfile: "standard",
+      modelId: "test-model",
+      replacementHistory: [],
+    },
   });
 
   await expect(
@@ -269,7 +278,7 @@ it("does not require an initial-history event", async () => {
   ).resolves.toMatchObject({
     messages: [],
     modelProfile: "standard",
-    modelId: undefined,
+    modelId: "test-model",
   });
   await expect(
     loadConnectedMcpProviders({ conversationId, credentialSubjectId: "UALICE" }),
@@ -277,18 +286,6 @@ it("does not require an initial-history event", async () => {
   await expect(
     loadConnectedMcpProviders({ conversationId, credentialSubjectId: "UBOB" }),
   ).resolves.toEqual([]);
-  expect(await getConversationEventStore().loadHistory(conversationId)).toEqual(
-    [
-      expect.objectContaining({
-        historyVersion: 0,
-        data: {
-          type: "mcp_provider_connected",
-          provider: "linear",
-          credentialSubjectId: "UALICE",
-        },
-      }),
-    ],
-  );
 });
 
 async function seedConversation(

@@ -285,12 +285,12 @@ export async function loadTurnProjection(args: {
   return projectConversationEvents(historyEvents);
 }
 
-/** Load MCP providers the credential subject connected in the current agent-history version. */
+/** Load MCP providers the credential subject connected in this conversation. */
 export async function loadConnectedMcpProviders(args: {
   conversationId: string;
   credentialSubjectId: string;
 }): Promise<string[]> {
-  const events = await getConversationEventStore().loadCurrentHistory(
+  const events = await getConversationEventStore().loadHistory(
     args.conversationId,
   );
   return connectedMcpProvidersFromEvents(events, args.credentialSubjectId);
