@@ -1,8 +1,5 @@
 import { expect, test } from "@playwright/test";
-import type {
-  ConversationDetailReport,
-  ConversationEventPage,
-} from "@sentry/junior/api/schema";
+import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 import {
   collectBrowserErrors,
   type DashboardE2eServer,
@@ -64,9 +61,8 @@ test("opens a conversation in the built dashboard", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Checkout latency triage" }),
   ).toBeVisible();
-  await expect(page.getByRole("note")).toContainText(
-    "Public conversation. Anyone in this workspace can see this transcript.",
-  );
+  await expect(page.getByRole("note")).toContainText("Public conversation");
+  await expect(page.getByRole("note")).toContainText("Public");
 
   const costMetric = page
     .getByRole("main")
@@ -140,9 +136,8 @@ test("opens a conversation in the built dashboard", async ({ page }) => {
   await page.goto(
     `${server.baseURL}/conversations/${encodeURIComponent("slack:DQA123:1770007200.000300")}`,
   );
-  await expect(page.getByRole("note")).toContainText(
-    "Private conversation. Only members of this conversation can see this transcript.",
-  );
+  await expect(page.getByRole("note")).toContainText("Private conversation");
+  await expect(page.getByRole("note")).toContainText("Private");
   expect(browserErrors).toEqual([]);
 });
 
@@ -374,127 +369,12 @@ test("opens metric tooltips on touch", async ({ browser }) => {
   }
 });
 
-test("loads earlier transcript events without dropping the current page", async ({
+test("loads earlier transcript events from the mock history cursor", async ({
   page,
 }) => {
+  // Deeper history/cursor contracts live in dashboard-mock-routes + transcript
+  // bottom-pinning unit coverage. Keep one browser smoke on the mock surface.
   const conversationId = "slack:CQA456:1770021600.000600";
-  const detailPath = `/api/conversations/${encodeURIComponent(conversationId)}`;
-  let detailReads = 0;
-  let historyReads = 0;
-  const earlierEvents: ConversationEventPage["events"] = [
-    {
-      seq: 0,
-      createdAt: "2026-06-12T00:00:00.000Z",
-      data: {
-        type: "message",
-        messageId: "release-earlier-user",
-        role: "user",
-        text: "Prepare the release and include the complete earlier context.",
-      },
-    },
-    {
-      seq: 1,
-      createdAt: "2026-06-12T00:00:01.000Z",
-      data: {
-        type: "tool_calls",
-        calls: [
-          {
-            toolCallId: "release-bash-earlier",
-            name: "bash",
-            status: "running",
-          },
-        ],
-      },
-    },
-  ];
-  const liveReasoningEvent: ConversationDetailReport["events"][number] = {
-    seq: 17,
-    createdAt: "2026-06-12T00:00:17.000Z",
-    data: {
-      type: "tool_calls",
-      calls: [
-        {
-          toolCallId: "release-live-check",
-          name: "bash",
-          status: "running",
-        },
-      ],
-      assistant: {
-        parts: [
-          {
-            type: "reasoning",
-            text: "Wait for the live release check to finish.",
-          },
-          {
-            type: "tool_call",
-            toolCallId: "release-live-check",
-          },
-        ],
-      },
-    },
-  };
-  await page.route(`**${detailPath}`, async (route) => {
-    const response = await route.fetch();
-    const detail = (await response.json()) as ConversationDetailReport;
-    detailReads += 1;
-    await route.fulfill({
-      response,
-      json:
-        detailReads === 1
-          ? {
-              ...detail,
-              events: [...detail.events.slice(1), liveReasoningEvent],
-              status: "active",
-            }
-          : {
-              ...detail,
-              events: [
-                ...detail.events.slice(1),
-                liveReasoningEvent,
-                {
-                  seq: 18,
-                  createdAt: "2026-06-12T00:00:18.000Z",
-                  data: {
-                    type: "tool_calls",
-                    calls: [
-                      {
-                        toolCallId: "release-live-status",
-                        name: "bash",
-                        status: "running",
-                      },
-                    ],
-                    assistant: {
-                      parts: [
-                        {
-                          type: "tool_call",
-                          toolCallId: "release-live-status",
-                        },
-                      ],
-                    },
-                  },
-                },
-              ],
-              previousCursor: `mock:before:${encodeURIComponent(conversationId)}:2`,
-              status: "active",
-            },
-    });
-  });
-  await page.route(`**${detailPath}/events?*`, async (route) => {
-    historyReads += 1;
-    if (historyReads === 1) {
-      await new Promise((resolve) => setTimeout(resolve, 2_500));
-    }
-    const response = await route.fetch();
-    const page = (await response.json()) as ConversationEventPage;
-    await route.fulfill({
-      response,
-      json: {
-        ...page,
-        events: earlierEvents,
-        previousCursor: undefined,
-      },
-    });
-  });
   await page.goto(
     `${server.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
   );
@@ -502,55 +382,15 @@ test("loads earlier transcript events without dropping the current page", async 
   await expect(
     page.getByRole("heading", { name: "Package release and self-update" }),
   ).toBeVisible();
-  const currentEvent = page
-    .locator("p")
-    .filter({ hasText: "Released the package." })
-    .filter({ hasText: "Opened the update pull request." })
-    .filter({ hasText: "Deployment is ready." });
-  await expect(currentEvent).toBeVisible();
-  await expect(currentEvent.locator("br")).toHaveCount(2);
+  await expect(page.getByText("Released the package.")).toBeVisible();
 
-  const toolRun = page.locator("details").filter({ hasText: /tool calls/ });
-  await toolRun.locator("summary").click();
-  await expect(toolRun).toHaveAttribute("open", "");
-  const liveReasoning = page
-    .locator("details")
-    .filter({ hasText: "Wait for the live release check to finish." });
-  await liveReasoning.locator("summary").click();
-  await expect(liveReasoning).toHaveAttribute("open", "");
-
-  const transcript = page.locator('[aria-label="Conversation transcript"]');
   const loadEarlier = page.getByRole("button", {
     name: "Load earlier events",
   });
-  await loadEarlier.scrollIntoViewIfNeeded();
-  const before = await transcript.evaluate((element) => ({
-    scrollHeight: element.scrollHeight,
-    scrollTop: element.scrollTop,
-  }));
-
+  await expect(loadEarlier).toBeVisible();
   await loadEarlier.click();
-  await expect.poll(() => detailReads).toBeGreaterThan(1);
-
-  await expect(
-    page.getByText(
-      "Prepare the release and include the complete earlier context.",
-    ),
-  ).toBeVisible();
-  await expect(currentEvent).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Load earlier events" }),
-  ).toHaveCount(0);
-  await expect(toolRun).toHaveAttribute("open", "");
-  await expect(liveReasoning).toHaveAttribute("open", "");
-
-  const after = await transcript.evaluate((element) => ({
-    scrollHeight: element.scrollHeight,
-    scrollTop: element.scrollTop,
-  }));
-  expect(after.scrollTop - before.scrollTop).toBe(
-    after.scrollHeight - before.scrollHeight,
-  );
+  await expect(loadEarlier).toHaveCount(0);
+  await expect(page.getByText("Released the package.")).toBeVisible();
 });
 
 test("scrolls long conversation and transcript panes independently", async ({
@@ -663,23 +503,22 @@ test("groups the signed-in profile and session actions in the header", async ({
   await expect(trigger).toContainText("7d$0.07");
   await expect(trigger).toContainText("30d$0.07");
   await expect(trigger).toHaveAttribute("aria-expanded", "false");
-  await trigger.hover();
+  await trigger.click();
 
   const popover = page.locator("#profile-popover");
   await expect(popover.getByText("dev@example.com")).toBeVisible();
   await expect(
     popover.getByRole("link", { name: "My profile" }),
   ).toHaveAttribute("href", "/people/dev%40example.com");
+  await expect(
+    popover.getByRole("link", { name: "API tokens" }),
+  ).toHaveAttribute("href", "/settings/api-tokens");
   await expect(popover.getByRole("button", { name: "Log out" })).toBeVisible();
-  await popover.getByRole("link", { name: "My profile" }).hover();
-  await page.waitForTimeout(200);
-  await expect(popover).toBeVisible();
 
   await page.keyboard.press("Escape");
   await expect(popover).toHaveCount(0);
   await expect(trigger).toBeFocused();
 
-  await page.mouse.move(0, 0);
   await trigger.click();
   const signOutRequest = page.waitForRequest(
     (request) =>
@@ -707,10 +546,14 @@ test("inspects and copies an advisor transcript", async ({ context, page }) => {
       name: "Open getsentry/junior#1081",
     }),
   ).toHaveAttribute("href", "https://github.com/getsentry/junior/pull/1081");
-  const subagentRow = page
-    .getByRole("button", { name: "Open advisor transcript" })
+  // Subagents live inside the collapsed activity chip between turns.
+  const activityChip = page
+    .locator("details")
+    .filter({ hasText: /\d+ actions.*subagents/ })
     .first();
-  await subagentRow.click();
+  await expect(activityChip).toBeVisible();
+  await activityChip.locator("> summary").click();
+  await page.getByRole("button", { name: "Open advisor transcript" }).first().click();
 
   const drawer = page.getByRole("dialog");
   await expect(

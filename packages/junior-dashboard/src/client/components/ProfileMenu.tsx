@@ -175,7 +175,7 @@ export function ProfileMenu({
 
       {open ? (
         <div
-          className="absolute right-0 top-[calc(100%+0.5rem)] z-20 w-64 rounded-xl bg-dashboard-surface-raised/95 p-1.5 shadow-2xl shadow-black/75 backdrop-blur-xl"
+          className="absolute right-0 top-[calc(100%+0.5rem)] z-40 w-64 rounded-xl bg-dashboard-surface-raised/95 p-1.5 shadow-2xl shadow-black/75 backdrop-blur-xl"
           id="profile-popover"
         >
           <div className="border-b border-white/10 px-2.5 py-2.5">

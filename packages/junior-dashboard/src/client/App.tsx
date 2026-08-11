@@ -114,7 +114,8 @@ export function DashboardShell() {
     >
       <header
         className={cn(
-          "sticky top-0 z-10 border-b border-white/[0.05] bg-[#050507]/95",
+          // Stay above conversation sticky chrome so profile menus remain clickable.
+          "sticky top-0 z-30 border-b border-white/[0.05] bg-[#050507]/95",
           conversationDetail && "max-md:hidden",
         )}
       >
