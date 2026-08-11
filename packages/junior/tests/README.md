@@ -41,6 +41,11 @@ Slack HTTP tests use the global MSW setup in `msw/setup.ts`, handlers in
 Do not create per-test MSW servers or mock the Slack SDK for outbound contract
 tests.
 
+Use `fixtures/slack-harness.ts` to build Slack messages and threads. Messages
+use the Chat SDK `Message`. Threads and sent messages include the required Chat
+SDK fields and methods. Do not cast partial objects to `SlackAdapter`, `Thread`,
+or `Message`.
+
 Agent integration tests use `fixtures/model-stream.ts` to set fixed model
 output. Use it with the real agent. Do not replace the agent runner only to
 control model output.

@@ -1,4 +1,3 @@
-import type { SlackAdapter } from "@chat-adapter/slack";
 import {
   createSlackRuntime,
   type CreateSlackRuntimeOptions,
@@ -18,7 +17,7 @@ export function createTestChatRuntime(
   return {
     slackAdapter,
     slackRuntime: createSlackRuntime({
-      getSlackAdapter: () => slackAdapter as unknown as SlackAdapter,
+      getSlackAdapter: () => slackAdapter,
       now: args.now,
       services: args.services,
     }),

@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Message, ThreadImpl, type StateAdapter, type Thread } from "chat";
-import type { SlackAdapter } from "@chat-adapter/slack";
+import { ThreadImpl, type Message, type StateAdapter, type Thread } from "chat";
 import {
   CooperativeTurnYieldError,
   TurnInputDeferredError,
 } from "@/chat/runtime/turn";
 import { getSlackClient } from "@/chat/slack/client";
+import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
 import {
   appendAndEnqueueInboundMessage,
@@ -38,6 +38,7 @@ import {
   persistThreadStateById,
 } from "@/chat/runtime/thread-state";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
+import { createTestMessage } from "../../fixtures/slack-harness";
 import {
   getCapturedSlackApiCalls,
   resetSlackApiMockState,
@@ -158,17 +159,18 @@ describe("Slack conversation work execution", () => {
     const state = getStateAdapter();
     await state.connect();
     const slackAdapter = createSlackAdapterFixture();
-    const message = new Message({
+    const message = createTestMessage({
       id: "1712345.0002",
       threadId: CONVERSATION_ID,
       text: "",
+      dateSent: new Date(1_000),
+      isMention: true,
       attachments: [
         {
           type: "image",
           url: "https://example.com/attachment-only.png",
         },
       ],
-      metadata: { dateSent: new Date(1_000), edited: false },
       formatted: {
         type: "root",
         children: [
@@ -212,7 +214,6 @@ describe("Slack conversation work execution", () => {
         isMe: false,
       },
     });
-    message.isMention = true;
     const thread = new ThreadImpl({
       adapter: slackAdapter,
       stateAdapter: state,
@@ -1087,12 +1088,12 @@ describe("Slack conversation work execution", () => {
     const runtime: SlackWorkerOptions["runtime"] = {
       handleNewMention: async (_thread, _message, hooks) => {
         await hooks.ack?.();
-        const followUp = new Message({
+        const followUp = createTestMessage({
           id: "1712345.1002",
           threadId: conversationId,
           text: "steer this assistant thread",
           attachments: [],
-          metadata: { dateSent: new Date(1_000), edited: false },
+          dateSent: new Date(1_000),
           formatted: { type: "root", children: [] },
           raw: {
             channel: dmChannelId,
@@ -1303,23 +1304,17 @@ describe("Slack conversation work execution", () => {
     const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();
     await state.connect();
-    const resolveTokenForTeam = vi.fn(
-      async (teamId: string, isEnterpriseInstall?: boolean) => ({
+    const getInstallation = vi.fn(
+      async (teamId: string, isEnterpriseInstall: boolean) => ({
         botUserId: SLACK_BOT_USER_ID,
-        token: `xoxb-${isEnterpriseInstall ? "enterprise" : teamId}`,
+        botToken: `xoxb-${isEnterpriseInstall ? "enterprise" : teamId}`,
       }),
     );
-    const requestContextRun = vi.fn(
-      async (_context: unknown, fn: () => Promise<void>) => await fn(),
-    );
-    const slackAdapter = {
-      botUserId: SLACK_BOT_USER_ID,
-      initialize: vi.fn(async () => {}),
-      requestContext: {
-        run: requestContextRun,
+    const slackAdapter = createJuniorSlackAdapter({
+      installationProvider: {
+        getInstallation,
       },
-      resolveTokenForTeam,
-    } as unknown as SlackAdapter;
+    });
 
     await requestConversationWork({
       conversationId: CONVERSATION_ID,
@@ -1352,11 +1347,7 @@ describe("Slack conversation work execution", () => {
       }),
     ).resolves.toEqual({ status: "completed" });
 
-    expect(resolveTokenForTeam).toHaveBeenCalledWith("T123", undefined);
-    expect(requestContextRun).toHaveBeenCalledWith(
-      expect.objectContaining({ token: "xoxb-T123" }),
-      expect.any(Function),
-    );
+    expect(getInstallation).toHaveBeenCalledWith("T123", false);
     expect(observedToken).toBe("xoxb-T123");
   });
 

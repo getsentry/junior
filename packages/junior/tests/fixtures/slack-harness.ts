@@ -1,11 +1,16 @@
 import type {
   Adapter,
   Author,
+  ChatElement,
   Channel,
-  Message,
+  PostableMessage,
+  PostableObject,
+  ScheduledMessage,
   SentMessage,
   Thread,
 } from "chat";
+import { isPostableObject, Message } from "chat";
+import { SlackAdapter } from "@chat-adapter/slack";
 import type { Destination } from "@sentry/junior-plugin-api";
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -64,6 +69,15 @@ export function createTestAuthor(overrides?: Partial<Author>): Author {
 
 // ── Test Message ─────────────────────────────────────────────────────
 
+export interface SlackRawMessage {
+  channel?: string;
+  event_ts?: string;
+  thread_ts?: string;
+  ts?: string;
+  [key: string]: unknown;
+}
+
+/** Create a Chat SDK message with fixed Slack data. */
 export function createTestMessage(args: {
   text?: string;
   id?: string;
@@ -71,50 +85,152 @@ export function createTestMessage(args: {
   author?: Partial<Author>;
   isMention?: boolean;
   attachments?: Message["attachments"];
+  dateSent?: Date;
   formatted?: Message["formatted"];
-  raw?: Record<string, unknown>;
-}): Message {
+  raw?: SlackRawMessage;
+}): Message<SlackRawMessage> {
   const threadId = args.threadId ?? "slack:C0TEST:1700000000.000";
   const threadParts = threadId.split(":");
   const inferredChannel = threadParts.length === 3 ? threadParts[1] : undefined;
   const inferredTs = threadParts.length === 3 ? threadParts[2] : undefined;
-  return {
+  return new Message({
     id: args.id ?? "msg-1",
     threadId,
     text: args.text ?? "hello",
     author: createTestAuthor(args.author),
     isMention: args.isMention,
     attachments: args.attachments ?? [],
-    metadata: { dateSent: new Date(), edited: false },
+    metadata: { dateSent: args.dateSent ?? new Date(), edited: false },
     formatted: args.formatted ?? { type: "root", children: [] },
     raw: args.raw ?? {
       ...(inferredChannel ? { channel: inferredChannel } : {}),
       ...(inferredTs ? { ts: inferredTs, thread_ts: inferredTs } : {}),
     },
-    toJSON() {
-      return {} as ReturnType<Message["toJSON"]>;
+  });
+}
+
+function createTestSentMessage<TRawMessage>(
+  message: Message<TRawMessage>,
+  callbacks: {
+    onDelete?: () => void;
+    onEdit?: (value: unknown) => void;
+  } = {},
+): SentMessage<TRawMessage> {
+  let sentMessage: SentMessage<TRawMessage>;
+  const methods: Pick<
+    SentMessage<TRawMessage>,
+    "addReaction" | "delete" | "edit" | "removeReaction"
+  > = {
+    async addReaction() {},
+    async delete() {
+      callbacks.onDelete?.();
     },
-  } as unknown as Message;
+    async edit(newContent) {
+      message.text = postedText(newContent);
+      callbacks.onEdit?.(newContent);
+      return sentMessage;
+    },
+    async removeReaction() {},
+  };
+  sentMessage = Object.assign(message, methods);
+  return sentMessage;
+}
+
+function postedText(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (value && typeof value === "object" && "markdown" in value) {
+    const { markdown } = value as { markdown?: unknown };
+    if (typeof markdown === "string") {
+      return markdown;
+    }
+  }
+  return String(value);
+}
+
+function createSchedule(channelId: string): Thread["schedule"] {
+  return async (_message, options): Promise<ScheduledMessage> => ({
+    scheduledMessageId: "scheduled-1",
+    channelId,
+    postAt: options.postAt,
+    raw: {},
+    async cancel() {},
+  });
+}
+
+function createPost(args: {
+  adapter: Adapter;
+  record?: (
+    value: unknown,
+    kind: "stream" | "value",
+  ) => {
+    id: string;
+    onDelete: () => void;
+    onEdit: (value: unknown) => void;
+  };
+  threadId: string;
+}): Thread["post"] {
+  function post<T extends PostableObject>(message: T): Promise<T>;
+  function post(
+    message: string | PostableMessage | ChatElement,
+  ): Promise<SentMessage>;
+  async function post(message: unknown): Promise<unknown> {
+    if (isPostableObject(message)) {
+      const recorded = args.record?.(message, "value");
+      message.onPosted({
+        adapter: args.adapter,
+        messageId: recorded?.id ?? "sent-1",
+        threadId: args.threadId,
+      });
+      return message;
+    }
+
+    let value = message;
+    let kind: "stream" | "value" = "value";
+    if (
+      message &&
+      typeof message === "object" &&
+      Symbol.asyncIterator in message
+    ) {
+      kind = "stream";
+      let text = "";
+      for await (const chunk of message as AsyncIterable<string>) {
+        text += chunk;
+      }
+      value = text;
+    }
+
+    const recorded = args.record?.(value, kind);
+    return createTestSentMessage(
+      createTestMessage({
+        id: recorded?.id ?? "sent-1",
+        text: postedText(value),
+        threadId: args.threadId,
+      }),
+      recorded,
+    );
+  }
+  return post;
 }
 
 // ── Fake Slack Adapter ───────────────────────────────────────────────
 
-export class FakeSlackAdapter {
-  readonly name = "slack";
-
+export class FakeSlackAdapter extends SlackAdapter {
   // Providing a bot user id opts this fixture into single-workspace install
   // mode: runWithSlackInstallation requires defaultBotTokenProvider (and a
   // resolved bot user id) before it runs worker-claimed Slack turns. Leaving
   // it unset keeps the legacy behavior, including generic leading-mention
   // stripping instead of exact bot-id stripping.
-  readonly botUserId?: string;
-  readonly defaultBotTokenProvider?: () => string;
-
   constructor(options?: { botUserId?: string }) {
-    if (options?.botUserId) {
-      this.botUserId = options.botUserId;
-      this.defaultBotTokenProvider = () => "xoxb-test-token";
-    }
+    super(
+      options?.botUserId
+        ? {
+            botToken: "xoxb-test-token",
+            botUserId: options.botUserId,
+          }
+        : {},
+    );
   }
 
   readonly statusCalls: Array<{
@@ -134,9 +250,9 @@ export class FakeSlackAdapter {
     title: string;
   }> = [];
 
-  async initialize(): Promise<void> {}
+  override async initialize(): Promise<void> {}
 
-  async setAssistantTitle(
+  override async setAssistantTitle(
     channelId: string,
     threadTs: string,
     title: string,
@@ -144,7 +260,7 @@ export class FakeSlackAdapter {
     this.titleCalls.push({ channelId, threadTs, title });
   }
 
-  async setSuggestedPrompts(
+  override async setSuggestedPrompts(
     channelId: string,
     threadTs: string,
     prompts: Array<{ message: string; title: string }>,
@@ -152,7 +268,7 @@ export class FakeSlackAdapter {
     this.promptCalls.push({ channelId, threadTs, prompts });
   }
 
-  async setAssistantStatus(
+  override async setAssistantStatus(
     channelId: string,
     threadTs: string,
     text: string,
@@ -160,6 +276,19 @@ export class FakeSlackAdapter {
   ): Promise<void> {
     this.statusCalls.push({ channelId, threadTs, text, loadingMessages });
   }
+}
+
+function createThreadAdapter(): Adapter {
+  const adapter = new FakeSlackAdapter();
+  return new Proxy(adapter, {
+    get(target, property, receiver) {
+      if (property === "name") {
+        return "test";
+      }
+      const value = Reflect.get(target, property, receiver);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
 }
 
 // ── Test Thread ──────────────────────────────────────────────────────
@@ -235,7 +364,7 @@ export async function createTestThread(args: {
   let seededThreadState = false;
   let seededChannelState = false;
 
-  const stubAdapter = { name: "test" } as Adapter;
+  const stubAdapter = createThreadAdapter();
   const channelRef = args.channelStateRef ?? { value: {} };
 
   // Constructor args own the fixture snapshot for this id. Always apply them so
@@ -301,12 +430,11 @@ export async function createTestThread(args: {
     mentionUser(userId: string) {
       return `<@${userId}>`;
     },
-    post: (async () => undefined) as unknown as Channel["post"],
-    postEphemeral: (async () => null) as unknown as Channel["postEphemeral"],
-    schedule: (async () => ({
-      id: "scheduled-1",
-      cancel: async () => undefined,
-    })) as unknown as Channel["schedule"],
+    post: createPost({ adapter: stubAdapter, threadId: channelId }),
+    async postEphemeral() {
+      return null;
+    },
+    schedule: createSchedule(channelId),
     get state(): Promise<Record<string, unknown>> {
       return loadChannelState();
     },
@@ -323,17 +451,19 @@ export async function createTestThread(args: {
       await writeAdapterState(channelStateKey(channelId), channelRef.value);
     },
     async startTyping(): Promise<void> {},
-    fetchMetadata: (async () => ({
-      id: channelId,
-      metadata: {},
-    })) as unknown as Channel["fetchMetadata"],
+    async fetchMetadata() {
+      return {
+        id: channelId,
+        metadata: {},
+      };
+    },
     threads(): AsyncIterable<never> {
       return (async function* () {})();
     },
     toJSON() {
       return {
         _type: "chat:Channel" as const,
-        adapterName: "test",
+        adapterName: stubAdapter.name,
         id: channelId,
         isDM: false,
       };
@@ -359,46 +489,36 @@ export async function createTestThread(args: {
     get state(): Promise<Record<string, unknown>> {
       return loadThreadState();
     },
-    async post(message: unknown): Promise<SentMessage> {
-      let entry: unknown;
-      let kind: "stream" | "value";
-      if (
-        message &&
-        typeof message === "object" &&
-        Symbol.asyncIterator in (message as Record<PropertyKey, unknown>)
-      ) {
-        kind = "stream";
-        let text = "";
-        for await (const chunk of message as AsyncIterable<string>) {
-          text += chunk;
-        }
-        entry = text;
-      } else {
-        kind = "value";
-        entry = message;
-      }
-      const postId = Symbol("post");
-      posts.push(entry);
-      postKinds.push(kind);
-      postIds.push(postId);
-      const sent = {
-        id: `sent-${posts.length}`,
-        text: String(entry),
-        async delete() {
-          const idx = postIds.indexOf(postId);
-          if (idx === -1) return;
-          posts.splice(idx, 1);
-          postKinds.splice(idx, 1);
-          postIds.splice(idx, 1);
-        },
-      } as unknown as SentMessage;
-      return sent;
+    post: createPost({
+      adapter: stubAdapter,
+      threadId: id,
+      record(entry, kind) {
+        const postId = Symbol("post");
+        posts.push(entry);
+        postKinds.push(kind);
+        postIds.push(postId);
+        return {
+          id: `sent-${posts.length}`,
+          onDelete() {
+            const idx = postIds.indexOf(postId);
+            if (idx === -1) return;
+            posts.splice(idx, 1);
+            postKinds.splice(idx, 1);
+            postIds.splice(idx, 1);
+          },
+          onEdit(value) {
+            const idx = postIds.indexOf(postId);
+            if (idx === -1) return;
+            posts[idx] = value;
+            postKinds[idx] = "value";
+          },
+        };
+      },
+    }),
+    async postEphemeral() {
+      return null;
     },
-    postEphemeral: (async () => null) as unknown as Thread["postEphemeral"],
-    schedule: (async () => ({
-      id: "scheduled-1",
-      cancel: async () => undefined,
-    })) as unknown as Thread["schedule"],
+    schedule: createSchedule(channelId),
     async startTyping(): Promise<void> {},
     async subscribe(): Promise<void> {
       subscribed = true;
@@ -427,7 +547,7 @@ export async function createTestThread(args: {
       await writeAdapterState(threadStateKey(id), stateData);
     },
     createSentMessageFromMessage(message: Message): SentMessage {
-      return message as unknown as SentMessage;
+      return createTestSentMessage(message);
     },
     async getParticipants(): Promise<Author[]> {
       return [];
@@ -450,7 +570,7 @@ export async function createTestThread(args: {
     toJSON() {
       return {
         _type: "chat:Thread" as const,
-        adapterName: "test",
+        adapterName: stubAdapter.name,
         id,
         channelId,
         isDM: false,
@@ -473,11 +593,6 @@ type AssertAssignable<_TSub extends TSuper, TSuper> = true;
 
 type _ThreadCheck = AssertAssignable<TestThread, Thread>;
 
-type _MessageCheck = AssertAssignable<
-  ReturnType<typeof createTestMessage>,
-  Message
->;
-
 // Prevent unused-type warnings
-void (0 as unknown as _ThreadCheck);
-void (0 as unknown as _MessageCheck);
+const threadCheck: _ThreadCheck = true;
+void threadCheck;

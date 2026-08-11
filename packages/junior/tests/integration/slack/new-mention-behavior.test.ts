@@ -131,17 +131,15 @@ describe("Slack behavior: new mention", () => {
       text: "<@U0APP> first queued request",
       isMention: true,
       threadId: thread.id,
+      dateSent: new Date(1700001234000),
     });
     const latest = createTestMessage({
       id: "m-latest",
       text: "<@U0APP> latest request",
       isMention: true,
       threadId: thread.id,
+      dateSent: new Date(1700001235000),
     });
-    // The transcript is ordered by created_at; the queued message genuinely
-    // arrived before the triggering mention.
-    (queued.metadata as { dateSent: Date }).dateSent = new Date(1700001234000);
-    (latest.metadata as { dateSent: Date }).dateSent = new Date(1700001235000);
 
     await slackRuntime.handleNewMention(thread, latest, {
       destination: createTestDestination(thread),
