@@ -24,7 +24,6 @@ import { ConversationPage } from "./ConversationPage";
 /** Render the personal split-pane conversation workspace at the dashboard root. */
 export function ConversationWorkspace(props: { data: DashboardCoreData }) {
   const [query, setQuery] = useState("");
-  const [desktop, setDesktop] = useState(false);
   const params = useParams();
   const navigate = useNavigate();
   const selectedId = params.conversationId;
@@ -33,8 +32,7 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
   );
   const pendingArchiveUpdates = usePendingArchiveConversationUpdates();
   const createConversation = useCreateConversation();
-  const [creating, setCreating] = useState(false);
-  const creatingRef = useRef(false);
+  const [creating, setCreating] = useState(!selectedId);
   const createSourceId = useRef<string | undefined>(undefined);
   const conversations = useMemo(
     () =>
@@ -55,28 +53,13 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
   );
 
   useEffect(() => {
-    const media = window.matchMedia("(min-width: 768px)");
-    const update = () => setDesktop(media.matches);
-    update();
-    media.addEventListener("change", update);
-    return () => media.removeEventListener("change", update);
-  }, []);
-
-  useEffect(() => {
-    const first = conversations[0];
-    if (desktop && !creatingRef.current && !creating && !selectedId && first) {
-      navigate(conversationPath(first.id), { replace: true });
-    }
-  }, [conversations, creating, desktop, navigate, selectedId]);
-
-  useEffect(() => {
     if (!selectedId) {
-      // Left the route we opened New from. Later selections should exit create.
+      // The dashboard root starts a new conversation. Later selections exit create.
       createSourceId.current = undefined;
+      setCreating(true);
       return;
     }
     if (selectedId === createSourceId.current) return;
-    creatingRef.current = false;
     setCreating(false);
   }, [selectedId]);
 
@@ -101,7 +84,6 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
           onNewConversation={() => {
             createConversation.reset();
             createSourceId.current = selectedId;
-            creatingRef.current = true;
             setCreating(true);
             if (selectedId) navigate("/", { replace: true });
           }}
@@ -125,7 +107,6 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
               <button
                 className="inline-flex items-center gap-2 font-mono text-xs text-dashboard-text-muted hover:text-dashboard-text"
                 onClick={() => {
-                  creatingRef.current = false;
                   createSourceId.current = undefined;
                   setCreating(false);
                 }}
