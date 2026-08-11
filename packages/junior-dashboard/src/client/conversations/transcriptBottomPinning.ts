@@ -118,6 +118,7 @@ export function prependViewportIntent(input: {
 
 /** Keep live transcript updates visually pinned only while the reader intends to follow them. */
 export function usePinnedTranscriptBottom(input: {
+  conversationId?: string;
   enabled: boolean;
   historyVersion: string;
   loadingPreviousPage: boolean;
@@ -128,6 +129,7 @@ export function usePinnedTranscriptBottom(input: {
   const enabledRef = useRef(input.enabled);
   const followingRef = useRef(false);
   const initializedRef = useRef(false);
+  const initializedConversationRef = useRef<string | null>(null);
   const previousScrollTopRef = useRef<number | null>(null);
   const prependSnapshotRef = useRef<PrependSnapshot | null>(null);
   const [following, setFollowing] = useState(false);
@@ -197,6 +199,20 @@ export function usePinnedTranscriptBottom(input: {
       scrollTop: snapshot.scrollTop,
     };
   }, [input.historyVersion]);
+
+  useBrowserLayoutEffect(() => {
+    if (!contentElement || !input.conversationId) return;
+    if (initializedConversationRef.current === input.conversationId) return;
+
+    const root = scrollRootFor(contentElement);
+    if (!root) return;
+
+    initializedConversationRef.current = input.conversationId;
+    setScrollTop(root, scrollSnapshot(root).scrollHeight);
+    previousScrollTopRef.current = scrollSnapshot(root).scrollTop;
+    setFollowingIntent(input.enabled);
+    setHasPendingUpdate(false);
+  }, [contentElement, input.conversationId, input.enabled, setFollowingIntent]);
 
   useBrowserLayoutEffect(() => {
     const previous = prependSnapshotRef.current;

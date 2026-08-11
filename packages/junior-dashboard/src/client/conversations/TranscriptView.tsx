@@ -37,6 +37,7 @@ export function Transcript(props: {
 
   const redacted = props.transcript?.eventHistory.status === "redacted";
   const bottomPinning = usePinnedTranscriptBottom({
+    conversationId: props.transcript?.conversationId,
     enabled: props.live ?? false,
     historyVersion: props.historyVersion ?? "empty",
     loadingPreviousPage: props.loadingPreviousPage ?? false,

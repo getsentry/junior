@@ -478,7 +478,11 @@ test("scrolls long conversation and transcript panes independently", async ({
   expect(await conversationList.evaluate((element) => element.scrollTop)).toBe(
     240,
   );
-  expect(await transcript.evaluate((element) => element.scrollTop)).toBe(0);
+  expect(
+    await transcript.evaluate(
+      (element) => element.scrollTop + element.clientHeight >= element.scrollHeight - 1,
+    ),
+  ).toBe(true);
   expect(await page.evaluate(() => window.scrollY)).toBe(0);
 
   await transcript.evaluate((element) => {
