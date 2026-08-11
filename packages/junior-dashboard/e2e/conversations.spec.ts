@@ -352,6 +352,10 @@ test("opens and closes a conversation in the mobile workspace", async ({
   await page.getByRole("button", { name: "Show transcript tools" }).click();
   await expect(page.getByPlaceholder("Search transcript…")).toBeVisible();
   await expect(page.getByRole("group", { name: "Transcript view" })).toBeVisible();
+  await page.getByRole("button", { name: "Event log" }).click();
+  await page.getByRole("button", { name: "Hide transcript tools" }).click();
+  await expect(page.getByPlaceholder("Search transcript…")).toBeHidden();
+  await expect(page.getByRole("group", { name: "Transcript view" })).toBeHidden();
 
   await page.getByRole("link", { name: "Your conversations" }).click();
   await expect(page).toHaveURL(`${server.baseURL}/`);

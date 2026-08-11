@@ -24,7 +24,18 @@ export function TranscriptHeader(props: {
   value: TranscriptViewMode;
 }) {
   const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
-  const toolsOpen = mobileToolsOpen || props.search.length > 0 || props.value !== "rich";
+  const toolsOpen =
+    mobileToolsOpen || props.search.length > 0 || props.value !== "rich";
+
+  const toggleMobileTools = () => {
+    if (toolsOpen) {
+      setMobileToolsOpen(false);
+      if (props.search.length > 0) props.onSearchChange("");
+      if (props.value !== "rich") props.onChange("rich");
+      return;
+    }
+    setMobileToolsOpen(true);
+  };
 
   return (
     <div className="mb-2 grid min-w-0 gap-2 md:mb-4">
@@ -36,9 +47,11 @@ export function TranscriptHeader(props: {
       <div className="flex min-w-0 items-center justify-end gap-1 md:hidden">
         <Button
           aria-expanded={toolsOpen}
-          aria-label={toolsOpen ? "Hide transcript tools" : "Show transcript tools"}
+          aria-label={
+            toolsOpen ? "Hide transcript tools" : "Show transcript tools"
+          }
           className="text-dashboard-text-muted"
-          onClick={() => setMobileToolsOpen((open) => !open)}
+          onClick={toggleMobileTools}
           size="icon"
           type="button"
         >
