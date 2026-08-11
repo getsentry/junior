@@ -89,7 +89,7 @@ export function DashboardShell() {
 
   const navLinkClass = ({ isActive }: { isActive: boolean }) =>
     cn(
-      "shrink-0 whitespace-nowrap rounded-md px-2.5 py-2 font-mono text-xs font-medium uppercase tracking-[0.08em] no-underline transition-colors sm:tracking-[0.12em]",
+      "shrink-0 whitespace-nowrap rounded-md px-2.5 py-2 font-mono text-xs font-medium tracking-normal no-underline transition-colors",
       isActive
         ? "bg-cyan-300/[0.1] text-cyan-50"
         : cn("hover:bg-white/[0.035]", dashboardInteractiveTextClass),

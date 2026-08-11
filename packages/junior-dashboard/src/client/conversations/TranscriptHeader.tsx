@@ -100,7 +100,7 @@ function TranscriptViewToggle(props: {
       {TRANSCRIPT_VIEW_OPTIONS.map((option) => (
         <ToggleButton
           className={cn(
-            "!normal-case rounded-md px-2 py-1 font-sans text-xs font-medium tracking-normal no-underline",
+            "!normal-case !no-underline rounded-md px-2 py-1 font-sans text-xs font-medium tracking-normal",
             props.value === option.value &&
               "bg-white/[0.08] text-dashboard-text",
           )}
