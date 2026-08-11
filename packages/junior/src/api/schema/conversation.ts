@@ -195,6 +195,7 @@ export const conversationSummaryReportSchema = z
     sentryTraceUrl: z.string().optional(),
     sourceUrl: z.string().url().optional(),
     traceId: z.string().optional(),
+    unfinishedWork: z.boolean().optional(),
   })
   .strict();
 

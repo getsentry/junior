@@ -18,6 +18,7 @@ import { conversationFeedSchema } from "../schema/conversation";
 import type { ConversationFeed } from "../schema/conversation";
 import { readRootConversationMetricsFromSql } from "./usage";
 import { readConversationAuxiliaryCostsFromSql } from "./auxiliary-costs";
+import { listUnfinishedWork } from "@/chat/plugins/unfinished-work";
 
 const CONVERSATION_FEED_LIMIT = 50;
 
@@ -201,6 +202,7 @@ export async function readConversationFeedFromSql(
     auxiliaryCostsByRoot,
     metricsByRoot,
     teamDomainByTeamId,
+    unfinishedWorkIds,
   ] = await Promise.all([
     readConversationAccessFromSql(db, conversationIds, options.viewer),
     readConversationAuxiliaryCostsFromSql(db, conversationIds, {
@@ -214,22 +216,29 @@ export async function readConversationFeedFromSql(
           : [],
       ),
     ),
+    listUnfinishedWork(conversationIds),
   ]);
+  const unfinishedWork = new Set(unfinishedWorkIds);
   return {
     conversations: conversations.map((conversation, index) => {
       const row = rows[index]!;
       const metrics = metricsByRoot.get(conversation.conversationId);
-      return conversationSummaryFromStoredConversation({
-        conversation,
-        access: accessByConversation.get(conversation.conversationId),
-        auxiliaryCosts: auxiliaryCostsByRoot.get(conversation.conversationId),
-        durationMs: metrics?.durationMs ?? row.conversation.durationMs,
-        teamDomainByTeamId,
-        ...(row.destination?.visibility === "public"
-          ? { locationId: row.destination.id }
+      return {
+        ...conversationSummaryFromStoredConversation({
+          conversation,
+          access: accessByConversation.get(conversation.conversationId),
+          auxiliaryCosts: auxiliaryCostsByRoot.get(conversation.conversationId),
+          durationMs: metrics?.durationMs ?? row.conversation.durationMs,
+          teamDomainByTeamId,
+          ...(row.destination?.visibility === "public"
+            ? { locationId: row.destination.id }
+            : {}),
+          usage: metrics?.usage ?? row.conversation.usage ?? undefined,
+        }),
+        ...(unfinishedWork.has(conversation.conversationId)
+          ? { unfinishedWork: true }
           : {}),
-        usage: metrics?.usage ?? row.conversation.usage ?? undefined,
-      });
+      };
     }),
     generatedAt: new Date(nowMs).toISOString(),
     source: "conversation_index",
