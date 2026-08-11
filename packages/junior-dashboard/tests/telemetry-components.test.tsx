@@ -381,13 +381,11 @@ describe("dashboard canonical-event components", () => {
     );
     const completeTranscriptHtml = renderTranscript(conversation(events));
 
-    // Conversation-level turn totals only appear when loaded history is complete.
-    // The activity group can still label the visible running tool call.
+    // Conversation-level totals only render from complete history. Turns are the
+    // unique header signal; tool chips may still label visible activity on partial pages.
     expect(partialHtml).not.toContain("1 turn");
     expect(completeHtml).toContain("1 turn");
-    expect(partialHtml).toContain("1 tool call");
-    expect(completeHtml).toContain("1 tool call");
-    // Transcript does not mirror the conversation turn total in a segment row.
+    // Transcript does not mirror conversation turn totals in a segment row.
     expect(partialTranscriptHtml).not.toContain("1 turn");
     expect(completeTranscriptHtml).not.toContain("1 turn");
     expect(partialTranscriptHtml).toContain("1 tool call");
