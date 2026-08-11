@@ -1,15 +1,17 @@
-@import url("https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@300;400;500;600;700&display=swap");
 @import "tailwindcss";
 
 @theme {
   --font-display:
     "Outfit", "Avenir Next", Avenir, "Segoe UI", -apple-system,
     BlinkMacSystemFont, sans-serif;
+  /* Primary UI/body face. Prefer Inter over the previous mono-first shell. */
   --font-sans:
-    -apple-system, "system-ui", "Segoe UI", Roboto, Oxygen, Ubuntu, sans-serif;
+    "Inter", -apple-system, "system-ui", "Segoe UI", Roboto, Oxygen, Ubuntu,
+    sans-serif;
   --font-mono:
-    "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-    "Liberation Mono", monospace;
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    monospace;
 
   /*
    * Dashboard type scale.

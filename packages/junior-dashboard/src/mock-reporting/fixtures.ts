@@ -224,6 +224,54 @@ function activeConversation(nowMs: number): ConversationDetailReport {
           },
         ],
       }),
+      reportEvent(5, iso(Date.parse(startedAt), 14_000), {
+        type: "tool_calls",
+        calls: [
+          {
+            toolCallId: "active-search",
+            name: "webSearch",
+            status: "completed",
+            startedSeq: 4,
+            startedAt: iso(Date.parse(startedAt), 10_000),
+            input: { query: "checkout latency last deployment" },
+            output: {
+              results: [
+                {
+                  title: "payments-v42 deploy notes",
+                  url: "https://docs.sentry.io",
+                },
+              ],
+            },
+          },
+        ],
+      }),
+      // Mixed markdown keeps font/legibility QA honest for long assistant replies.
+      reportEvent(6, iso(Date.parse(startedAt), 22_000), {
+        type: "message",
+        messageId: "active-assistant",
+        role: "assistant",
+        text: [
+          "Checkout p95 jumped after **payments-v42** landed.",
+          "",
+          "What I checked:",
+          "- deploy marker `payments-v42` correlates with the spike",
+          "- canary hosts show the same `checkout.latency` shape",
+          "- error volume is flat, so this looks like slow path not hard fail",
+          "",
+          "Useful query:",
+          "```sql",
+          "SELECT percentile(duration, 0.95) AS p95",
+          "FROM transactions",
+          "WHERE transaction = 'checkout.complete'",
+          "  AND timestamp > now() - interval '2 hours'",
+          "GROUP BY 1",
+          "ORDER BY p95 DESC;",
+          "```",
+          "",
+          "Next step: compare the pre/post deploy spans, then decide whether to",
+          "roll back or patch the slow serializer path.",
+        ].join("\n"),
+      }),
     ],
   });
 }

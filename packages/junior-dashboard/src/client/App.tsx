@@ -98,7 +98,7 @@ export function DashboardShell() {
   return (
     <main
       className={cn(
-        "relative grid font-mono text-dashboard-text",
+        "relative grid font-sans text-dashboard-text",
         workspace
           ? cn(
               "h-dvh min-h-0 overflow-hidden",
