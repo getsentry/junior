@@ -3,16 +3,23 @@ import { createDashboardApp } from "../src/app";
 import { createDashboardAuth, type DashboardSession } from "../src/auth";
 import { auth, resetDashboardEnv } from "./dashboard-test-helpers";
 
-const { resolveViewerUser } = vi.hoisted(() => ({
+const { resolveViewerUser, updateViewerDisplayName } = vi.hoisted(() => ({
   resolveViewerUser: vi.fn(async (email: string) => ({
     email,
     id: `user:${email}`,
+    identities: [] as [],
+  })),
+  updateViewerDisplayName: vi.fn(async (id: string, displayName: string) => ({
+    displayName,
+    email: id.slice("user:".length),
+    id,
     identities: [] as [],
   })),
 }));
 vi.mock("@sentry/junior/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@sentry/junior/api")>()),
   resolveViewerUser,
+  updateViewerDisplayName,
 }));
 
 function dashboard(session: DashboardSession | null) {
@@ -63,6 +70,8 @@ describe("dashboard routes", () => {
       "/tasks/scheduled/task-1/executions",
       "/memories",
       "/memories/memory-1",
+      "/settings",
+      "/settings/api-tokens",
     ]) {
       const response = await app.fetch(new Request(`http://localhost${path}`));
       expect(response.status).toBe(302);
@@ -415,6 +424,7 @@ describe("dashboard routes", () => {
       "/tasks/scheduled/task-1/executions",
       "/memories",
       "/memories/memory-1",
+      "/settings",
       "/settings/api-tokens",
       "/plugins/memory/memories",
       "/plugins/memory/memories/library",
@@ -426,6 +436,57 @@ describe("dashboard routes", () => {
       const html = await response.text();
       expect(html).toContain("<title>Junior</title>");
     }
+  });
+
+  it("updates the signed-in viewer display name", async () => {
+    const app = dashboard({
+      user: {
+        email: "person@sentry.io",
+        emailVerified: true,
+        name: "Person",
+      },
+    });
+
+    const response = await app.fetch(
+      new Request("http://localhost/api/me", {
+        body: JSON.stringify({ displayName: "New Name" }),
+        headers: { "content-type": "application/json" },
+        method: "PATCH",
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      user: {
+        email: "person@sentry.io",
+        emailVerified: true,
+        name: "New Name",
+      },
+    });
+    expect(updateViewerDisplayName).toHaveBeenCalledWith(
+      "user:person@sentry.io",
+      "New Name",
+    );
+  });
+
+  it("rejects an empty display name", async () => {
+    const app = dashboard({
+      user: {
+        email: "person@sentry.io",
+        emailVerified: true,
+      },
+    });
+
+    const response = await app.fetch(
+      new Request("http://localhost/api/me", {
+        body: JSON.stringify({ displayName: "   " }),
+        headers: { "content-type": "application/json" },
+        method: "PATCH",
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(updateViewerDisplayName).not.toHaveBeenCalled();
   });
 
   it("does not serve retired dashboard page routes", async () => {

@@ -25,6 +25,7 @@ import { LocationsPage } from "./pages/locations/LocationsPage";
 import { PeoplePage } from "./pages/people/PeoplePage";
 import { PersonalTokensPage } from "./pages/PersonalTokensPage";
 import { PersonProfilePage } from "./pages/people/PersonProfilePage";
+import { SettingsPage } from "./pages/SettingsPage";
 import { SystemPage } from "./pages/system/SystemPage";
 import { TaskExecutionsPage } from "./pages/tasks/TaskExecutionsPage";
 import { TaskRunsPage } from "./pages/tasks/TaskRunsPage";
@@ -337,6 +338,18 @@ export function DashboardShell() {
             )
           }
           path="/system/*"
+        />
+        <Route
+          element={
+            loading ? (
+              <LoadingView label="Loading settings" />
+            ) : loggedIn ? (
+              <SettingsPage identity={data!.me} />
+            ) : (
+              <Navigate replace to="/" />
+            )
+          }
+          path="/settings"
         />
         <Route
           element={

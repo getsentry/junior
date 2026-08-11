@@ -6,6 +6,7 @@ import {
   createJuniorApi,
   jsonResponse,
   resolveViewerUser,
+  updateViewerDisplayName,
   type JuniorApiVariables,
 } from "@sentry/junior/api";
 import { apiErrorSchema } from "@sentry/junior/api/schema";
@@ -15,7 +16,11 @@ import type {
   PluginRouteApp,
 } from "@sentry/junior-plugin-api";
 import { pluginApiRouteRequestContextSchema } from "@sentry/junior-plugin-api";
-import { dashboardConfigSchema, dashboardIdentitySchema } from "./api/schema";
+import {
+  dashboardConfigSchema,
+  dashboardIdentitySchema,
+  dashboardProfileUpdateSchema,
+} from "./api/schema";
 import {
   dashboardAvatarHeaderAsset,
   dashboardClientAsset,
@@ -355,9 +360,7 @@ function forbidden(request: Request, agentName: string): Response {
   return jsonResponse(apiErrorSchema, { error: "forbidden" }, { status: 403 });
 }
 
-function localAuthBypassSession(
-  email = LOCAL_VIEWER_EMAIL,
-): DashboardSession {
+function localAuthBypassSession(email = LOCAL_VIEWER_EMAIL): DashboardSession {
   return {
     user: {
       email,
@@ -491,10 +494,8 @@ function dashboardPagePaths(
       path: basePath === "/" ? "/memories" : `${basePath}/memories`,
     },
     {
-      path:
-        basePath === "/"
-          ? "/settings/api-tokens"
-          : `${basePath}/settings/api-tokens`,
+      nested: true,
+      path: basePath === "/" ? "/settings" : `${basePath}/settings`,
     },
     {
       nested: true,
@@ -817,7 +818,62 @@ export function createDashboardApp(
     });
   });
   app.get("/api/me", (c) => {
-    return jsonResponse(dashboardIdentitySchema, c.get("authSession"));
+    const session = c.get("authSession");
+    const viewer = c.get("viewer");
+    return jsonResponse(dashboardIdentitySchema, {
+      user: {
+        email: session.user.email,
+        emailVerified: session.user.emailVerified,
+        name: viewer?.displayName ?? session.user.name,
+      },
+    });
+  });
+  app.patch("/api/me", async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return jsonResponse(
+        apiErrorSchema,
+        { error: "Invalid request body." },
+        { status: 400 },
+      );
+    }
+    const parsed = dashboardProfileUpdateSchema.safeParse(body);
+    if (!parsed.success) {
+      return jsonResponse(
+        apiErrorSchema,
+        { error: "Display name must be between 1 and 80 characters." },
+        { status: 400 },
+      );
+    }
+    const viewer = c.get("viewer");
+    if (!viewer) {
+      return jsonResponse(
+        apiErrorSchema,
+        { error: "Authentication required." },
+        { status: 401 },
+      );
+    }
+    const updated = await updateViewerDisplayName(
+      viewer.id,
+      parsed.data.displayName,
+    );
+    if (!updated) {
+      return jsonResponse(
+        apiErrorSchema,
+        { error: "User not found." },
+        { status: 404 },
+      );
+    }
+    const session = c.get("authSession");
+    return jsonResponse(dashboardIdentitySchema, {
+      user: {
+        email: session.user.email,
+        emailVerified: session.user.emailVerified,
+        name: updated.displayName,
+      },
+    });
   });
   app.get(DASHBOARD_CLIENT_PATH, () => {
     return new Response(readDashboardClient(), {

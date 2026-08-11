@@ -1,4 +1,11 @@
-import { Boxes, ChevronDown, KeyRound, LogOut, UserRound } from "lucide-react";
+import {
+  Boxes,
+  ChevronDown,
+  KeyRound,
+  LogOut,
+  Settings,
+  UserRound,
+} from "lucide-react";
 import {
   useEffect,
   useRef,
@@ -195,6 +202,14 @@ export function ProfileMenu({
           >
             <UserRound aria-hidden="true" size={16} strokeWidth={2} />
             My profile
+          </Link>
+          <Link
+            className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-semibold text-dashboard-text no-underline transition-colors hover:bg-white/10 hover:text-dashboard-text focus-visible:bg-white/10 focus-visible:text-dashboard-text focus-visible:outline-none"
+            onClick={() => setOpen(false)}
+            to="/settings"
+          >
+            <Settings aria-hidden="true" size={16} strokeWidth={2} />
+            Settings
           </Link>
           <Link
             className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-semibold text-dashboard-text no-underline transition-colors hover:bg-white/10 hover:text-dashboard-text focus-visible:bg-white/10 focus-visible:text-dashboard-text focus-visible:outline-none"

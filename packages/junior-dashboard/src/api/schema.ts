@@ -12,6 +12,12 @@ export const dashboardIdentitySchema = z
   })
   .strict();
 
+export const dashboardProfileUpdateSchema = z
+  .object({
+    displayName: z.string().trim().min(1).max(80),
+  })
+  .strict();
+
 export const dashboardConfigSchema = z
   .object({
     allowedEmailCount: z.number(),
