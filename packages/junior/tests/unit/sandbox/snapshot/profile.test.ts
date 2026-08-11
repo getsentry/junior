@@ -77,6 +77,27 @@ describe("snapshot dependency profile", () => {
     expect(profile?.floating).toBe(true);
   });
 
+  it("includes workspace contents in the profile hash", () => {
+    const workspace = {
+      id: "workspace-1",
+      name: "sentry",
+      setupScript: "pnpm install",
+      updatedAt: new Date("2026-03-10T00:00:00.000Z"),
+      repos: [
+        { provider: "github", repo: "getsentry/sentry", isPrimary: true },
+      ],
+    };
+
+    const first = create("node22", workspace);
+    const changed = create("node22", {
+      ...workspace,
+      setupScript: "pnpm install --frozen-lockfile",
+    });
+
+    expect(first).not.toBeNull();
+    expect(first?.hash).not.toBe(changed?.hash);
+  });
+
   it("changes the hash when the rebuild epoch changes", () => {
     dependenciesMock.mockReturnValue([
       { type: "npm", package: "example", version: "1.2.3" },

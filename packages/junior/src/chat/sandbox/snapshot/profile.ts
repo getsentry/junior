@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { Workspace } from "@/chat/workspaces/types";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import type {
   PluginRuntimeDependency,
@@ -78,14 +79,14 @@ function floatingMaxAgeMs(): number {
 }
 
 /** Build the dependency profile that selects a reusable sandbox snapshot. */
-export function create(runtime: string): Profile | null {
+export function create(runtime: string, workspace?: Workspace): Profile | null {
   const dependencies = mergeDependencies([
     ...GLOBAL_RUNTIME_DEPENDENCIES,
     ...pluginCatalogRuntime.getRuntimeDependencies(),
   ]);
   const pluginPostinstall = pluginCatalogRuntime.getRuntimePostinstall();
   const postinstall = [...GLOBAL_RUNTIME_POSTINSTALL, ...pluginPostinstall];
-  if (dependencies.length === 0 && postinstall.length === 0) {
+  if (dependencies.length === 0 && postinstall.length === 0 && !workspace) {
     return null;
   }
 
@@ -94,7 +95,8 @@ export function create(runtime: string): Profile | null {
   // containing them expire on the same schedule as floating npm selectors.
   const floating =
     dependencies.some((dependency) => isFloating(dependency)) ||
-    pluginPostinstall.length > 0;
+    pluginPostinstall.length > 0 ||
+    Boolean(workspace);
   const hash = createHash("sha256")
     .update(
       JSON.stringify({
@@ -103,6 +105,14 @@ export function create(runtime: string): Profile | null {
         rebuildEpoch,
         dependencies,
         postinstall,
+        workspace: workspace
+          ? {
+              id: workspace.id,
+              updatedAt: workspace.updatedAt.toISOString(),
+              repos: workspace.repos,
+              setupScript: workspace.setupScript,
+            }
+          : undefined,
       }),
     )
     .digest("hex");
@@ -117,8 +127,8 @@ export function create(runtime: string): Profile | null {
 }
 
 /** Return the current dependency profile hash without building its snapshot. */
-export function hash(runtime: string): string | undefined {
-  return create(runtime)?.hash;
+export function hash(runtime: string, workspace?: Workspace): string | undefined {
+  return create(runtime, workspace)?.hash;
 }
 
 /** Decide whether a cached snapshot has outlived a floating profile. */

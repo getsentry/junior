@@ -91,6 +91,7 @@ export interface PluginHookRunner {
   afterMcpTool(input: AfterMcpToolHookInput): Promise<void>;
   beforeToolExecute(input: ToolHookInput): Promise<ToolHookResult>;
   prepareSandbox(workspace: SandboxWorkspace): Promise<void>;
+  prepareWorkspace?(workspace: SandboxWorkspace, repos: Array<{ provider: string; repo: string }>): Promise<void>;
 }
 
 let registeredPlugins: PluginRegistration[] = [];
@@ -1374,6 +1375,22 @@ export function createPluginHookRunner(
               error instanceof Error ? error.message : String(error),
           });
         }
+      }
+    },
+    async prepareWorkspace(sandbox, repos) {
+      const sandboxCapability = createSandboxCapability(sandbox);
+      for (const plugin of loaded) {
+        const hook = plugin.hooks?.workspacePrepare;
+        if (!hook) continue;
+        const selected = repos
+          .filter((repo) => repo.provider === plugin.manifest.name)
+          .map((repo) => repo.repo);
+        if (selected.length === 0) continue;
+        await hook({
+          ...basePluginContext(plugin),
+          repos: selected,
+          sandbox: sandboxCapability,
+        });
       }
     },
     async prepareSandbox(sandbox) {

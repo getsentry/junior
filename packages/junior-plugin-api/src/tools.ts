@@ -140,6 +140,11 @@ export interface PluginMcp {
   prepare(): Promise<"authorization_pending" | "ready">;
 }
 
+export interface WorkspacePrepareHookContext extends PluginContext {
+  repos: string[];
+  sandbox: PluginSandbox;
+}
+
 export interface SandboxPrepareHookContext extends PluginContext {
   actor?: Actor;
   sandbox: PluginSandbox;

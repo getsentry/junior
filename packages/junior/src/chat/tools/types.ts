@@ -22,6 +22,7 @@ import type { ModelProfile } from "@/chat/model-profile";
 import type { GeneratedArtifactFileRef } from "@/chat/tools/sandbox/file-uploads";
 import type { SpawnAgent } from "@/chat/agent/types";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
+import type { Workspace } from "@/chat/workspaces/types";
 
 interface HandoffControl {
   /** Non-empty catalog of configured targets. */
@@ -100,6 +101,10 @@ interface BaseToolRuntimeContext {
   egress: PluginEgress;
   mcpToolManager?: McpToolManager;
   workspace: SandboxWorkspace;
+  workspaces?: {
+    activeWorkspaceId(): string | undefined;
+    switch(workspace: Workspace, signal?: AbortSignal): Promise<void>;
+  };
   /** Report whether the model currently executing the turn accepts images. */
   supportsImageInput?: () => boolean;
 }

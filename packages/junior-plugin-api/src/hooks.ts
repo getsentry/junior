@@ -32,6 +32,7 @@ import type {
   PluginToolDefinition,
   SandboxPrepareHookContext,
   ToolRegistrationHookContext,
+  WorkspacePrepareHookContext,
 } from "./tools";
 import type {
   PromptMessage,
@@ -105,6 +106,7 @@ export interface PluginHooks {
     | undefined;
   routes?(ctx: RouteRegistrationHookContext): PluginRoute[];
   sandboxPrepare?(ctx: SandboxPrepareHookContext): Promise<void> | void;
+  workspacePrepare?(ctx: WorkspacePrepareHookContext): Promise<void> | void;
   slackConversationLink?(
     ctx: SlackConversationLinkHookContext,
   ): SlackConversationLink | undefined;

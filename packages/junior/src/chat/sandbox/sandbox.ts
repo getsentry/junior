@@ -47,6 +47,7 @@ import {
   type SandboxWorkspace,
 } from "@/chat/sandbox/workspace";
 import type { SkillMetadata } from "@/chat/skills";
+import type { Workspace } from "@/chat/workspaces/types";
 import { editFile } from "@/chat/tools/sandbox/edit-file";
 import { findFiles } from "@/chat/tools/sandbox/find-files";
 import {
@@ -85,11 +86,13 @@ export interface SandboxAccess {
   readonly tools: SandboxTools;
   readonly workspace: SandboxWorkspace;
   sandboxRef(): SandboxRef | undefined;
+  switchWorkspace(workspace: Workspace, signal?: AbortSignal): Promise<void>;
   close(): void;
 }
 
 export interface SandboxOptions {
   sandboxRef?: SandboxRef;
+  workspace?: Workspace;
   skills: SkillMetadata[];
   referenceFiles: string[];
   timeoutMs?: number;
@@ -98,6 +101,7 @@ export interface SandboxOptions {
   credentialEgress?: CredentialContext;
   egressSignals?: SandboxEgressSignalTransport;
   prepare?: (workspace: SandboxWorkspace) => void | Promise<void>;
+  prepareWorkspace?: (workspace: SandboxWorkspace, recipe: Workspace) => Promise<void>;
   onSandboxRefChanged?: (sandboxRef: SandboxRef) => void | Promise<void>;
 }
 
@@ -200,8 +204,10 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       ...(permissionDenied ? { permissionDenied } : {}),
     };
   };
+  let activeWorkspace = options.workspace;
   const runtime = createSandboxRuntime({
     sandboxRef: options.sandboxRef,
+    workspace: options.workspace,
     skills: options.skills,
     referenceFiles: options.referenceFiles,
     timeoutMs: options.timeoutMs,
@@ -221,6 +227,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
             })
         : undefined,
     onSandboxPrepare: options.prepare,
+    onWorkspacePrepare: options.prepareWorkspace,
     onSandboxRefChanged: options.onSandboxRefChanged,
   });
   const createToolCallContext = (
@@ -787,7 +794,10 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
         return undefined;
       }
       const { fs } = await runtime.tools();
-      const selected = await findSingleRepositoryDirectory(fs);
+      const primary = activeWorkspace?.repos.find((repo) => repo.isPrimary);
+      const selected = primary
+        ? `${SANDBOX_WORKSPACE_ROOT}/${primary.repo.split("/").at(-1)}`
+        : await findSingleRepositoryDirectory(fs);
       if (!selected) return undefined;
       return await resolveRepositoryInstructions({
         cwd: selected,
@@ -795,6 +805,10 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       });
     },
     workspace,
+    async switchWorkspace(recipe, signal) {
+      await runtime.switchWorkspace(recipe, signal);
+      activeWorkspace = recipe;
+    },
     tools: {
       supports(toolName: string) {
         return SANDBOX_TOOL_NAMES.has(toolName);

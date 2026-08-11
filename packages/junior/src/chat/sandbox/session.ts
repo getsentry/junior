@@ -17,7 +17,6 @@ import {
   wrapSandboxSetupError,
 } from "@/chat/sandbox/errors";
 import { buildNonInteractiveShellScript } from "@/chat/sandbox/noninteractive-command";
-import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import { getSandboxResources } from "@/chat/sandbox/resources";
 import { hash as profileHash } from "@/chat/sandbox/snapshot/profile";
 import {
@@ -35,6 +34,8 @@ import {
 import { sleep } from "@/chat/sleep";
 import type { SkillMetadata } from "@/chat/skills";
 import type { SandboxRef } from "@/chat/sandbox/ref";
+import type { Workspace } from "@/chat/workspaces/types";
+import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 
 const DEFAULT_MAX_OUTPUT_LENGTH = 30_000;
 const DEFAULT_BASH_COMMAND_TIMEOUT_MS = 5 * 60 * 1000;
@@ -103,6 +104,7 @@ interface SandboxToolExecutors {
 
 interface SandboxRuntime {
   sandboxRef(): SandboxRef | undefined;
+  switchWorkspace(workspace: Workspace, signal?: AbortSignal): Promise<void>;
   acquire(signal?: AbortSignal): Promise<SandboxSession>;
   tools(signal?: AbortSignal): Promise<SandboxToolExecutors>;
   refreshNetworkPolicy(traceHeaders?: TracePropagationHeaders): Promise<void>;
@@ -116,6 +118,7 @@ interface ActiveSandbox {
 
 interface SandboxRuntimeOptions {
   sandboxRef?: SandboxRef;
+  workspace?: Workspace;
   skills: SkillMetadata[];
   referenceFiles: string[];
   timeoutMs?: number;
@@ -126,6 +129,7 @@ interface SandboxRuntimeOptions {
     traceHeaders?: TracePropagationHeaders,
   ) => NetworkPolicy | undefined;
   onSandboxPrepare?: (sandbox: SandboxSession) => void | Promise<void>;
+  onWorkspacePrepare?: (sandbox: SandboxSession, workspace: Workspace) => Promise<void>;
   onSandboxRefChanged?: (sandboxRef: SandboxRef) => void | Promise<void>;
 }
 
@@ -184,7 +188,8 @@ export function createSandboxRuntime(
 
   const timeoutMs = options.timeoutMs ?? 1000 * 60 * 30;
   const traceContext = options.traceContext ?? {};
-  const dependencyProfileHash = profileHash(SANDBOX_RUNTIME);
+  let activeWorkspace = options.workspace;
+  let dependencyProfileHash = profileHash(SANDBOX_RUNTIME, activeWorkspace);
   const resolveCommandEnv =
     options.commandEnv ?? (async () => ({}) as Record<string, string>);
 
@@ -235,11 +240,13 @@ export function createSandboxRuntime(
     const nextRef: SandboxRef = {
       id: nextSandbox.sandboxId,
       ...(dependencyProfileHash ? { profileHash: dependencyProfileHash } : {}),
+      ...(activeWorkspace ? { workspaceId: activeWorkspace.id } : {}),
     };
     sandboxRef = nextRef;
     if (
       reportedSandboxRef?.id === nextRef.id &&
-      reportedSandboxRef.profileHash === nextRef.profileHash
+      reportedSandboxRef.profileHash === nextRef.profileHash &&
+      reportedSandboxRef.workspaceId === nextRef.workspaceId
     ) {
       return;
     }
@@ -442,6 +449,10 @@ export function createSandboxRuntime(
         forceRebuild: true,
         staleSnapshotId: snapshot.snapshotId,
         signal,
+        workspace: activeWorkspace,
+        prepareWorkspace: activeWorkspace
+          ? async (sandbox) => await prepareWorkspaceSnapshot(sandbox, activeWorkspace!)
+          : undefined,
       });
       if (!rebuiltSnapshot.snapshotId) {
         throw error;
@@ -453,6 +464,24 @@ export function createSandboxRuntime(
         sandboxCredentials,
         sandboxName,
         signal,
+      );
+    }
+  };
+
+  const prepareWorkspaceSnapshot = async (
+    sandbox: SandboxSession,
+    workspace: Workspace,
+  ): Promise<void> => {
+    await options.onWorkspacePrepare?.(sandbox, workspace);
+    if (!workspace.setupScript.trim()) return;
+    const result = await sandbox.runCommand({
+      cmd: "bash",
+      args: ["-euo", "pipefail", "-c", workspace.setupScript],
+      cwd: SANDBOX_WORKSPACE_ROOT,
+    });
+    if (result.exitCode !== 0) {
+      throw new Error(
+        `Workspace setup failed: ${result.stderr.trim() || `exit ${result.exitCode}`}`,
       );
     }
   };
@@ -479,6 +508,10 @@ export function createSandboxRuntime(
             runtime,
             timeoutMs,
             signal,
+            workspace: activeWorkspace,
+            prepareWorkspace: activeWorkspace
+              ? async (sandbox) => await prepareWorkspaceSnapshot(sandbox, activeWorkspace!)
+              : undefined,
           });
           signal?.throwIfAborted();
           setSnapshotAttributes(snapshot);
@@ -877,6 +910,15 @@ export function createSandboxRuntime(
   return {
     sandboxRef() {
       return sandboxRef ? { ...sandboxRef } : undefined;
+    },
+    async switchWorkspace(workspace, signal) {
+      if (activeWorkspace?.id === workspace.id && activeSandbox) return;
+      await activeSandbox?.session.stop();
+      activeWorkspace = workspace;
+      dependencyProfileHash = profileHash(SANDBOX_RUNTIME, workspace);
+      activeSandbox = null;
+      sandboxRef = undefined;
+      await getOrAcquireSandbox(signal);
     },
     async acquire(signal) {
       return await getOrAcquireSandbox(signal);

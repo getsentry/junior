@@ -54,6 +54,7 @@ import { getOAuthAccountProviders } from "@/chat/plugins/credential-hooks";
 import { createWebFetchTool } from "@/chat/tools/web/fetch-tool";
 import { createWebSearchTool } from "@/chat/tools/web/search";
 import { createWriteFileTool } from "@/chat/tools/sandbox/write-file";
+import { createWorkspaceTools } from "@/chat/workspaces/tools";
 
 function createToolState(): ToolState {
   const operationResultCache = new Map<string, unknown>();
@@ -116,6 +117,7 @@ export function createTools(
     ...createResourceEventTools(context, resourceEventCatalog),
     ...createEventTaskTools(context, resourceEventCatalog),
     ...createScheduledTaskTools(context),
+    ...createWorkspaceTools(context),
   };
   if (context.conversationId) {
     tools.searchConversationEvents =

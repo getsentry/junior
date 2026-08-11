@@ -836,6 +836,46 @@ export function githubPlugin(
       tools(ctx) {
         return createGitHubTools(ctx);
       },
+      async workspacePrepare(ctx) {
+        const repos = ctx.repos.map((repo) => {
+          const [owner, name, ...rest] = repo.split("/");
+          if (!owner || !name || rest.length > 0) {
+            throw new Error(`Invalid GitHub repository: ${repo}`);
+          }
+          return { owner, name, repo };
+        });
+        const token = await issueInstallationToken({
+          appIdEnv,
+          privateKeyEnv,
+          installationIdEnv,
+          permissions: { contents: "read" },
+          repositories: repos.map(({ name }) => name),
+        });
+        for (const { owner, name, repo } of repos) {
+          const result = await ctx.sandbox.run({
+            cmd: "git",
+            args: [
+              "clone",
+              "--quiet",
+              "--depth=1",
+              "--",
+              `https://github.com/${owner}/${name}.git`,
+              name,
+            ],
+            cwd: ctx.sandbox.root,
+            env: {
+              GIT_CONFIG_COUNT: "1",
+              GIT_CONFIG_KEY_0: "http.extraHeader",
+              GIT_CONFIG_VALUE_0: `Authorization: Bearer ${token.token}`,
+            },
+          });
+          if (result.exitCode !== 0) {
+            throw new Error(
+              `GitHub workspace clone failed for ${repo}: ${result.stderr.trim() || `exit ${result.exitCode}`}`,
+            );
+          }
+        }
+      },
       async sandboxPrepare(ctx) {
         const hooksPath = `${ctx.sandbox.juniorRoot}/git-hooks`;
         await ctx.sandbox.writeFile({

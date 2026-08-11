@@ -35,6 +35,7 @@ function buildThreadStatePayload(
     payload.app_sandbox_id = patch.sandboxRef?.id ?? "";
     payload.app_sandbox_dependency_profile_hash =
       patch.sandboxRef?.profileHash ?? "";
+    payload.app_sandbox_workspace_id = patch.sandboxRef?.workspaceId ?? "";
   }
   return payload;
 }
@@ -74,9 +75,11 @@ export function getPersistedSandboxState(
   const profileHash = toOptionalString(
     state.app_sandbox_dependency_profile_hash,
   );
+  const workspaceId = toOptionalString(state.app_sandbox_workspace_id);
   return {
     id,
     ...(profileHash ? { profileHash } : {}),
+    ...(workspaceId ? { workspaceId } : {}),
   };
 }
 

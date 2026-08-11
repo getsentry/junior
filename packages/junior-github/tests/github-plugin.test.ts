@@ -5,6 +5,7 @@ import {
   type PluginStoredTokens,
   type SandboxPrepareHookContext,
   type ToolRegistrationHookContext,
+  type WorkspacePrepareHookContext,
 } from "@sentry/junior-plugin-api";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -2824,6 +2825,48 @@ Conversation: \`local:test:old-conversation\`
       "credential.helper",
       "http.emptyAuth",
     ]);
+  });
+
+  it("preloads workspace repositories with an installation token", async () => {
+    const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+    process.env.GITHUB_APP_ID = "123";
+    process.env.GITHUB_INSTALLATION_ID = "456";
+    process.env.GITHUB_APP_PRIVATE_KEY = privateKey.export({
+      type: "pkcs8",
+      format: "pem",
+    }).toString();
+    const requests = mockGitHubInstallationApi();
+    const runs: Array<{ args?: string[]; env?: Record<string, string> }> = [];
+    const ctx = {
+      db,
+      log: pluginLog,
+      plugin: { name: "github" },
+      repos: ["getsentry/sentry", "getsentry/junior"],
+      sandbox: {
+        juniorRoot: "/vercel/sandbox/.junior",
+        root: "/vercel/sandbox",
+        async readFile() {
+          return null;
+        },
+        async run(input: { args?: string[]; env?: Record<string, string> }) {
+          runs.push(input);
+          return { exitCode: 0, stderr: "", stdout: "" };
+        },
+        async writeFile() {},
+      },
+    } as WorkspacePrepareHookContext;
+
+    await githubPlugin().hooks?.workspacePrepare?.(ctx);
+
+    expect(requests[0]?.body).toEqual({
+      permissions: { contents: "read" },
+      repositories: ["sentry", "junior"],
+    });
+    expect(runs.map((run) => run.args?.at(-1))).toEqual(["sentry", "junior"]);
+    expect(runs[0]?.env).toMatchObject({
+      GIT_CONFIG_VALUE_0: "Authorization: Bearer installation-token",
+    });
+    expect(runs[0]?.args?.join(" ")).not.toContain("installation-token");
   });
 
   it("injects Junior author and committer identity", () => {

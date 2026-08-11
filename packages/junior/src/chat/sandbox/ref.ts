@@ -2,4 +2,5 @@
 export interface SandboxRef {
   id: string;
   profileHash?: string;
+  workspaceId?: string;
 }

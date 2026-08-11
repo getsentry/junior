@@ -23,12 +23,14 @@ import type { RepositoryInstructions } from "@/chat/repository-instructions";
 import { createSandbox, type SandboxTools } from "@/chat/sandbox/sandbox";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import type { Skill, SkillMetadata } from "@/chat/skills";
+import type { Workspace } from "@/chat/workspaces/types";
 import { writeSandboxGeneratedArtifacts } from "@/chat/tools/sandbox/generated-artifacts";
 import type { GeneratedArtifactFileRef } from "@/chat/tools/sandbox/file-uploads";
 import { normalizeToolResult } from "@/chat/tool-support/normalize-result";
 
 export interface AgentSandboxOptions {
   sandboxRef?: SandboxRef;
+  workspace?: Workspace;
   skills: SkillMetadata[];
   traceContext: LogContext;
   tracePropagation?: SandboxEgressTracePropagationConfig;
@@ -39,6 +41,7 @@ export interface AgentSandboxOptions {
   configurationValues: Record<string, unknown>;
   getActiveSkill(): Skill | null;
   prepareSandbox(workspace: SandboxWorkspace): void | Promise<void>;
+  prepareWorkspace?(workspace: SandboxWorkspace, recipe: Workspace): Promise<void>;
   onSandboxRefChanged(sandboxRef: SandboxRef): void;
   persistSandboxRef?(sandboxRef: SandboxRef): void | Promise<void>;
 }
@@ -49,6 +52,7 @@ export interface AgentSandbox {
   readonly tools: SandboxTools;
   readonly workspace: SandboxWorkspace;
   sandboxRef(): SandboxRef | undefined;
+  switchWorkspace(workspace: Workspace, signal?: AbortSignal): Promise<void>;
   close(): void;
   writeGeneratedArtifacts(
     files: FileUpload[],
@@ -139,6 +143,7 @@ function bashCommand(input: unknown): string | undefined {
 export function createAgentSandbox(options: AgentSandboxOptions): AgentSandbox {
   const sandbox = createSandbox({
     sandboxRef: options.sandboxRef,
+    workspace: options.workspace,
     skills: options.skills,
     referenceFiles: listReferenceFiles(),
     traceContext: options.traceContext,
@@ -146,6 +151,7 @@ export function createAgentSandbox(options: AgentSandboxOptions): AgentSandbox {
     egressSignals: options.egressSignals,
     credentialEgress: options.credentialEgress,
     prepare: options.prepareSandbox,
+    prepareWorkspace: options.prepareWorkspace,
     onSandboxRefChanged: async (sandboxRef) => {
       options.onSandboxRefChanged(sandboxRef);
       await options.persistSandboxRef?.(sandboxRef);
@@ -156,6 +162,7 @@ export function createAgentSandbox(options: AgentSandboxOptions): AgentSandbox {
     captureRepositoryInstructions: sandbox.captureRepositoryInstructions,
     workspace: sandbox.workspace,
     sandboxRef: sandbox.sandboxRef,
+    switchWorkspace: sandbox.switchWorkspace,
     close: sandbox.close,
     tools: {
       supports: sandbox.tools.supports,
