@@ -151,7 +151,7 @@ export function PendingMailboxStack(props: {
   return (
     <div
       aria-label="Pending messages"
-      className="overflow-hidden rounded-t-lg border border-b-0 border-white/[0.09] bg-cyan-300/[0.07]"
+      className="mx-3 overflow-hidden rounded-t-lg border border-b-0 border-white/[0.09] bg-cyan-300/[0.07]"
     >
       {rows.map((message, index) => (
         <PendingRow

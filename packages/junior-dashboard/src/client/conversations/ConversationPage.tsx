@@ -210,7 +210,6 @@ export function ConversationPage(props: {
               />
             ) : null}
             <ConversationComposer
-              attached={detail.pendingMessages.length > 0}
               error={
                 appendMessage.error
                   ? "Could not send the message. Try again."
