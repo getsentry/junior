@@ -103,6 +103,68 @@ describe("snapshot dependency profile", () => {
     expect(first?.hash).not.toBe(changed?.hash);
   });
 
+  it("layers workspace profiles on the base hash without reinstall deps", () => {
+    dependenciesMock.mockReturnValue([
+      { type: "npm", package: "example", version: "1.2.3" },
+    ]);
+    const workspace = {
+      id: "workspace-1",
+      name: "sentry",
+      setupScript: "pnpm install",
+      updatedAt: new Date("2026-03-10T00:00:00.000Z"),
+      repos: [
+        {
+          provider: "github",
+          repo: "getsentry/sentry",
+          checkoutPath: "sentry",
+          isPrimary: true,
+        },
+      ],
+    };
+
+    const base = create("node22");
+    const layered = create("node22", workspace);
+
+    expect(base).not.toBeNull();
+    expect(layered).not.toBeNull();
+    expect(layered?.baseHash).toBe(base?.hash);
+    expect(layered?.hash).not.toBe(base?.hash);
+    expect(layered?.dependencies).toEqual([]);
+    expect(layered?.postinstall).toEqual([]);
+    expect(layered?.floating).toBe(true);
+    expect(layered?.dependencyCount).toBe(base?.dependencyCount);
+  });
+
+  it("busts workspace hashes when the base dependency profile changes", () => {
+    const workspace = {
+      id: "workspace-1",
+      name: "sentry",
+      setupScript: "pnpm install",
+      updatedAt: new Date("2026-03-10T00:00:00.000Z"),
+      repos: [
+        {
+          provider: "github",
+          repo: "getsentry/sentry",
+          checkoutPath: "sentry",
+          isPrimary: true,
+        },
+      ],
+    };
+
+    dependenciesMock.mockReturnValue([
+      { type: "npm", package: "example", version: "1.2.3" },
+    ]);
+    const first = create("node22", workspace);
+
+    dependenciesMock.mockReturnValue([
+      { type: "npm", package: "example", version: "2.0.0" },
+    ]);
+    const second = create("node22", workspace);
+
+    expect(first?.baseHash).not.toBe(second?.baseHash);
+    expect(first?.hash).not.toBe(second?.hash);
+  });
+
   it("changes the hash when the rebuild epoch changes", () => {
     dependenciesMock.mockReturnValue([
       { type: "npm", package: "example", version: "1.2.3" },
