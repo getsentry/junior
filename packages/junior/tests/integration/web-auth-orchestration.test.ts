@@ -89,8 +89,8 @@ async function completeAuth(
   });
 }
 
-/** Participant pending-messages exposes a connect prompt for the parked turn. */
-async function expectWebAuthParked(
+/** Auth is parked for this actor; delivery surface is the web pending-messages prompt. */
+async function expectAuthParked(
   q: ConversationWorkWebHarness,
   conversationId: string,
 ) {
@@ -145,7 +145,7 @@ describe("web auth orchestration", () => {
       message: "use eval-auth and confirm the connection",
     });
     await q.drain();
-    await expectWebAuthParked(q, started.conversationId);
+    await expectAuthParked(q, started.conversationId);
 
     await completeAuth(q.actor.userId, q.agentRunner, q.queue);
     await q.drain();
@@ -182,7 +182,7 @@ describe("web auth orchestration", () => {
       message: "connect eval-auth first",
     });
     await q.drain();
-    await expectWebAuthParked(q, started.conversationId);
+    await expectAuthParked(q, started.conversationId);
     const parkedTurnId = apiTurnIdForMessage(started.messageId);
 
     q.setModelStream(streamScript("Answered without waiting for auth."));
@@ -234,7 +234,7 @@ describe("web auth orchestration", () => {
       message: "connect eval-auth first",
     });
     await q.drain();
-    await expectWebAuthParked(q, started.conversationId);
+    await expectAuthParked(q, started.conversationId);
     const parkedSession = await getLatestMcpAuthSessionForUserProvider(
       q.actor.userId,
       EVAL_MCP_AUTH_PROVIDER,
