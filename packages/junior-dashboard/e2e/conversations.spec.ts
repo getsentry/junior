@@ -220,7 +220,7 @@ test("starts and continues conversations from the dashboard", async ({
     page.getByText(
       "This reply stays in Junior. It will not be posted to Slack.",
     ),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await page
     .getByLabel("Continue this conversation")
     .fill("Continue in Junior");
@@ -328,9 +328,6 @@ test("opens and closes a conversation in the mobile workspace", async ({
   const transcript = page.getByLabel("Conversation transcript");
   await expect(transcript.getByText("1.9k tokens")).toBeHidden();
   await expect(page.getByRole("button", { name: "Archive" })).toBeHidden();
-  await expect(
-    page.getByText("This reply stays in Junior. It will not be posted to Slack."),
-  ).toBeHidden();
   await expect(page.getByPlaceholder("Search transcript…")).toBeHidden();
   await expect(page.getByRole("group", { name: "Transcript view" })).toBeHidden();
   await expect(page.getByRole("note")).toBeHidden();

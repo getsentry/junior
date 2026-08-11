@@ -213,11 +213,6 @@ export function ConversationPage(props: {
               <span>Junior is working…</span>
             </div>
           ) : null}
-          <p className="mb-2 mt-0 hidden font-mono text-xs leading-relaxed text-dashboard-text-muted md:block">
-            {conversation?.surface === "slack"
-              ? "This reply stays in Junior. It will not be posted to Slack."
-              : "This reply stays in this conversation."}
-          </p>
           <div className="grid min-w-0">
             {detail.data ? (
               <PendingMailboxStack
