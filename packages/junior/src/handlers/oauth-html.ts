@@ -1,3 +1,5 @@
+import { botConfig } from "@/chat/config";
+
 /** Build pre-escaped callback HTML with the shared response security policy. */
 export function htmlCallbackResponse(
   title: string,
@@ -6,7 +8,8 @@ export function htmlCallbackResponse(
   options: { footerMessage?: string } = {},
 ): Response {
   const footerMessage =
-    options.footerMessage ?? "You can close this tab and return to Junior.";
+    options.footerMessage ??
+    `You can close this tab and return to ${botConfig.userName}.`;
   const html = `<!DOCTYPE html>
 <html>
 <head><title>${title}</title></head>

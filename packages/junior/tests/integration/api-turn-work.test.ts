@@ -372,6 +372,12 @@ describe("api turn conversation work", () => {
       state: "abandoned",
     });
     await expect(
+      getWebAuthorization({
+        actorId: actor.userId,
+        conversationId: accepted.conversationId,
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
       getTurnRecord(
         accepted.conversationId,
         apiTurnIdForMessage(followUp.messageId),

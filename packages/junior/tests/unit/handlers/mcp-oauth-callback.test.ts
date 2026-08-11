@@ -47,6 +47,7 @@ vi.mock("@/chat/oauth-flow", async (importOriginal) => ({
 }));
 
 import { GET } from "@/handlers/mcp-oauth-callback";
+import { botConfig } from "@/chat/config";
 import { McpProviderError } from "@/chat/mcp/errors";
 import {
   createWaitUntilCollector,
@@ -162,7 +163,7 @@ describe("mcp oauth callback handler", () => {
     expect(response.status).toBe(500);
     const body = await response.text();
     expect(body).toContain(
-      "Junior could not finish the authorization callback. Return to Junior and retry the original request.",
+      `${botConfig.userName} could not finish the authorization callback. Return to ${botConfig.userName} and retry the original request.`,
     );
     expect(logExceptionMock).toHaveBeenCalledWith(
       expect.any(McpProviderError),
@@ -290,7 +291,9 @@ describe("mcp oauth callback handler", () => {
     const body = await response.text();
     expect(body).toContain("Your MCP access is connected");
     expect(body).toContain("in the local client");
-    expect(body).toContain("You can close this tab and return to Junior.");
+    expect(body).toContain(
+      `You can close this tab and return to ${botConfig.userName}.`,
+    );
     expect(body).not.toContain("You can close this tab and return to Slack.");
     expect(waitUntil.pendingCount()).toBe(0);
   });
@@ -339,6 +342,8 @@ describe("mcp oauth callback handler", () => {
     const body = await response.text();
     expect(body).toContain("Your MCP access is connected");
     expect(body).not.toContain("in the local client");
-    expect(body).toContain("You can close this tab and return to Junior.");
+    expect(body).toContain(
+      `You can close this tab and return to ${botConfig.userName}.`,
+    );
   });
 });

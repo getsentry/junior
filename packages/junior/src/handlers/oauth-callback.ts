@@ -78,6 +78,7 @@ import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
 import { lookupSlackUserProfile } from "@/chat/slack/users";
 import { parseSlackUserId } from "@/chat/slack/ids";
 import { deleteWebAuthorization } from "@/chat/api-turns/authorization";
+import { botConfig } from "@/chat/config";
 
 interface OAuthCallbackOptions {
   agentRunner: AgentRunner;
@@ -785,6 +786,12 @@ export async function GET(
         stored.resumeConversationId!,
         stored.resumeSessionId!,
       );
+      // Always clear the dashboard prompt. A superseded/abandoned turn must
+      // not leave a stale connect banner after OAuth completes late.
+      await deleteWebAuthorization({
+        actorId: stored.userId,
+        conversationId: stored.resumeConversationId!,
+      });
       if (!turn || turn.state !== "paused" || turn.resumeReason !== "auth") {
         return;
       }
@@ -797,10 +804,6 @@ export async function GET(
           provider: stored.provider,
           sessionId: stored.resumeSessionId!,
         }),
-      });
-      await deleteWebAuthorization({
-        actorId: stored.userId,
-        conversationId: stored.resumeConversationId!,
       });
       await wakePausedTurn({
         conversationId: stored.resumeConversationId!,
@@ -845,17 +848,18 @@ export async function GET(
     );
   }
 
+  const botName = botConfig.userName;
   const statusMessage =
     stored.destination?.platform === "local" && !resumesWebTurn
-      ? "Your request is continuing in the local Junior client."
+      ? `Your request is continuing in the local ${botName} client.`
       : resumesWebTurn
-        ? "Your request is continuing in Junior."
+        ? `Your request is continuing in ${botName}.`
         : resumesAgentTurn
           ? "Your request is being processed in Slack."
           : `Your ${providerLabel} account is connected.`;
   const footerMessage =
     stored.destination?.platform === "local" || resumesWebTurn
-      ? "You can close this tab and return to Junior."
+      ? `You can close this tab and return to ${botName}.`
       : "You can close this tab and return to Slack.";
   return htmlCallbackResponse(
     escapeXml(`${providerLabel} account connected`),

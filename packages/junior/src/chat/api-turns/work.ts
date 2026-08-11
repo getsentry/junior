@@ -85,7 +85,11 @@ import {
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { StoredSlackActor } from "@/chat/actor";
-import { createWebAuthorization } from "@/chat/api-turns/authorization";
+import {
+  createWebAuthorization,
+  deleteWebAuthorization,
+} from "@/chat/api-turns/authorization";
+import { clearPendingAuth } from "@/chat/services/pending-auth";
 
 const apiTurnMailboxMetadataSchema = z
   .object({
@@ -653,10 +657,19 @@ export function createApiTurnWorker(options: {
               errorMessage:
                 "Auth-parked session superseded by a new user message",
             });
+            clearPendingAuth(conversation, parked.turnId);
             markTurnClosed({
               conversation,
               nowMs: Date.now(),
               sessionId: parked.turnId,
+            });
+          }
+          if (authParked.length > 0) {
+            // Drop the dashboard connect prompt so a superseded OAuth flow
+            // cannot leave a stale banner after the user moves on.
+            await deleteWebAuthorization({
+              actorId: actor.userId,
+              conversationId: context.conversationId,
             });
           }
           upsertConversationMessage(conversation, {
