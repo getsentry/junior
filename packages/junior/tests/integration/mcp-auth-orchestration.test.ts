@@ -28,10 +28,7 @@ import {
   createPluginAppFixture,
   type PluginAppFixture,
 } from "../fixtures/plugin-app";
-import {
-  EVAL_MCP_AUTH_PROVIDER,
-  EVAL_MCP_NO_AUTH_PROVIDER,
-} from "../msw/handlers/eval-mcp-auth";
+import { EVAL_MCP_AUTH_PROVIDER } from "../msw/handlers/eval-mcp-auth";
 import { resetSlackApiMockState } from "../msw/handlers/slack-api";
 
 /**
