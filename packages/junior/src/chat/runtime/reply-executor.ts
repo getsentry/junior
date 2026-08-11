@@ -1426,10 +1426,14 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           }
           if (outcome.status === "suspended") {
             options.onTurnOutcome?.({ outcome: "awaiting_resume" });
-            // Soft yield follows shouldYield(). Hard timeout always hands the
-            // lease back so the next slice gets a fresh host request budget
-            // instead of burning leftover scraps on another model call.
-            if (options.shouldYield?.() || outcome.reason === "timeout") {
+            // Soft yield follows shouldYield(). Hard timeout under a worker that
+            // can hand the lease back also yields so the next wake gets a full
+            // host budget. Live webhook paths have no shouldYield and schedule a
+            // wake instead.
+            if (
+              options.shouldYield &&
+              (options.shouldYield() || outcome.reason === "timeout")
+            ) {
               shouldPersistFailureState = false;
               throw new CooperativeTurnYieldError();
             }
