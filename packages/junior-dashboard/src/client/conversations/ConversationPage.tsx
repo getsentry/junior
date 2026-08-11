@@ -97,7 +97,7 @@ export function ConversationPage(props: {
             <div className="flex min-w-0 items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-                  <h2 className="m-0 line-clamp-2 min-w-0 font-display text-lg font-medium leading-tight tracking-[-0.03em] md:line-clamp-1 md:text-2xl">
+                  <h2 className="m-0 line-clamp-2 min-w-0 font-display text-base font-medium leading-tight tracking-[-0.03em] md:line-clamp-1 md:text-2xl">
                     {conversationDisplayTitle(conversation)}
                   </h2>
                   <ConversationPrivacyChip
