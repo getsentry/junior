@@ -36,11 +36,13 @@ import { deliverAssistantMessagesForTest } from "./agent-runner";
 import { testViewer } from "./user";
 
 /** Default verified dashboard viewer for web turn tests. */
+const API_TURN_TEST_EMAIL = "alice@example.com";
 export const apiTurnTestActor = {
-  ...webActorFromEmail("alice@example.com", {
-    fullName: "Alice Example",
-    userName: "alice",
-  }),
+  platform: "web" as const,
+  userId: webActorFromEmail(API_TURN_TEST_EMAIL).userId,
+  email: API_TURN_TEST_EMAIL,
+  fullName: "Alice Example",
+  userName: "alice",
 } as const satisfies WebActor;
 
 export type ApiTurnWorkFixture = {
