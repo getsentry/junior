@@ -203,7 +203,7 @@ export function ConversationPage(props: {
         </section>
       </div>
       {detail.data?.isParticipant ? (
-        <div className="border-t border-white/[0.07] bg-[#050507]/95 px-2 py-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] backdrop-blur md:px-7 md:py-4 md:pb-4">
+        <div className="px-2 py-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] md:px-7 md:py-4 md:pb-4">
           {conversationIsLive(visualStatus, detail.data) ? (
             <div className="mb-1.5 flex items-center gap-2 font-sans text-xs text-dashboard-text-muted md:hidden">
               <span
