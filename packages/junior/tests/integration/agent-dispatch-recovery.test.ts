@@ -181,7 +181,7 @@ describe("agent dispatch recovery", () => {
           }
           return {
             status: "suspended" as const,
-            reason: "timeout" as const,
+            reason: "yield" as const,
             resumeVersion: session.version,
           };
         }

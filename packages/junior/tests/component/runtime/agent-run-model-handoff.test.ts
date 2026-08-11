@@ -722,7 +722,7 @@ describe("model handoff composition", () => {
 
     expect(suspended).toMatchObject({
       status: "suspended",
-      reason: expect.stringMatching(/timeout|yield|retry/),
+      reason: "retry",
       resumeVersion: expect.any(Number),
     });
     const suspendedRecord = await getTurnRecord(conversationId, turnId);

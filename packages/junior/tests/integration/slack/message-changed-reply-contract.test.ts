@@ -202,7 +202,7 @@ describe("Slack contract: edited-message reply delivery", () => {
           await expect(
             deliverAssistantMessagesForTest(request, [{ text: "Hello world" }]),
           ).rejects.toBeInstanceOf(RetryableDeliveryError);
-          return { status: "suspended", reason: "timeout", resumeVersion: 2 };
+          return { status: "suspended", reason: "retry", resumeVersion: 2 };
         },
       },
       wakePausedTurn,

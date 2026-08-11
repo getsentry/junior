@@ -341,7 +341,7 @@ describe("paused turn composition", () => {
     expect(promptAborted.value).toBe(true);
     expect(outcome).toMatchObject({
       status: "suspended",
-      reason: expect.stringMatching(/timeout|yield|retry/),
+      reason: "timeout",
       resumeVersion: expect.any(Number),
     });
 
@@ -503,7 +503,7 @@ describe("paused turn composition", () => {
     expect(promptAborted.value).toBe(true);
     expect(outcome).toMatchObject({
       status: "suspended",
-      reason: expect.stringMatching(/timeout|yield|retry/),
+      reason: "timeout",
       resumeVersion: expect.any(Number),
     });
 

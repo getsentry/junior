@@ -114,53 +114,30 @@ let turnWakeModule: TurnWakeModule;
 let taskExecutionStoreModule: TaskExecutionStoreModule;
 let queue: ConversationWorkQueueTestAdapter;
 
-async function continueAgentRun(args: {
+function continueAgentRun(args: {
   conversationId: string;
   sessionId: string;
   expectedVersion: number;
 }): Promise<boolean> {
-  const { isCooperativeTurnYieldError } = await import("@/chat/runtime/turn");
-  try {
-    return await requestDeadlineModule.runWithTurnRequestDeadline(() =>
-      pausedTurnModule.runPausedTurn(
-        {
-          conversationId: args.conversationId,
-          destination: SLACK_DESTINATION,
-          expectedVersion: args.expectedVersion,
-          turnId: args.sessionId,
-        },
-        {
-          agentRunner: { run: executeAgentRunMock },
-          wakePausedTurn: (request) =>
-            turnWakeModule.wakePausedTurn(request, {
-              queue,
-            }),
-        },
-      ),
-    );
-  } catch (error) {
-    // Worker continue converts hard-timeout yield into another queue wake.
-    if (!isCooperativeTurnYieldError(error)) {
-      throw error;
-    }
-    const latest = await turnSessionStoreModule.getTurnRecord(
-      args.conversationId,
-      args.sessionId,
-    );
-    if (!latest || latest.state !== "paused") {
-      throw error;
-    }
-    await turnWakeModule.wakePausedTurn(
+  // Direct resume only. Worker-owned timeout lease handback is covered by
+  // durable-queue, not reimplemented here.
+  return requestDeadlineModule.runWithTurnRequestDeadline(() =>
+    pausedTurnModule.runPausedTurn(
       {
         conversationId: args.conversationId,
         destination: SLACK_DESTINATION,
-        expectedVersion: latest.version,
+        expectedVersion: args.expectedVersion,
         turnId: args.sessionId,
       },
-      { queue },
-    );
-    return true;
-  }
+      {
+        agentRunner: { run: executeAgentRunMock },
+        wakePausedTurn: (request) =>
+          turnWakeModule.wakePausedTurn(request, {
+            queue,
+          }),
+      },
+    ),
+  );
 }
 
 describe("paused turn Slack integration", () => {
@@ -676,9 +653,11 @@ describe("paused turn Slack integration", () => {
       },
     });
 
+    // retry (not timeout): leased timeout hands the lease back via yield error.
+    // This case covers the onSuspend → wake path for another continuation.
     executeAgentRunMock.mockResolvedValueOnce({
       status: "suspended",
-      reason: "timeout",
+      reason: "retry",
       resumeVersion: sessionRecord.version + 1,
     });
 

@@ -1090,7 +1090,7 @@ describe("agent run continuation", () => {
 
     expect(outcome).toMatchObject({
       status: "suspended",
-      reason: expect.stringMatching(/timeout|yield|retry/),
+      reason: "yield",
       resumeVersion: expect.any(Number),
     });
     const sessionRecord = await turnSessionState.getTurnRecord(
@@ -1245,7 +1245,7 @@ describe("agent run continuation", () => {
 
     expect(outcome).toMatchObject({
       status: "suspended",
-      reason: expect.stringMatching(/timeout|yield|retry/),
+      reason: "yield",
       resumeVersion: expect.any(Number),
     });
     const sessionRecord = await turnSessionState.getTurnRecord(
