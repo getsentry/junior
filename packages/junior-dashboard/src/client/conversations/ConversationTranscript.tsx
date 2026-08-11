@@ -739,7 +739,7 @@ function TranscriptMessageContextView(props: {
   return (
     <>
       <details
-        className="group/message-context min-w-0 rounded-lg border border-white/[0.07] bg-white/[0.025] px-3 py-2.5 md:hidden"
+        className="group/message-context min-w-0 rounded-lg bg-white/[0.025] px-3 py-2.5 md:hidden"
         data-transcript-message-context
       >
         <summary className="flex cursor-pointer list-none items-center justify-between gap-2 font-display text-xs font-semibold text-dashboard-text-muted [&::-webkit-details-marker]:hidden">
@@ -750,12 +750,12 @@ function TranscriptMessageContextView(props: {
             size={14}
           />
         </summary>
-        <div className="mt-2 whitespace-pre-wrap border-t border-white/[0.06] pt-2 text-sm leading-relaxed text-dashboard-text/75">
+        <div className="mt-2 whitespace-pre-wrap pt-2 text-sm leading-relaxed text-dashboard-text/75">
           {content}
         </div>
       </details>
       <article
-        className="hidden min-w-0 rounded-lg border border-white/[0.07] bg-white/[0.025] px-3 py-2.5 md:block"
+        className="hidden min-w-0 rounded-lg bg-white/[0.025] px-3 py-2.5 md:block"
         data-transcript-message-context
       >
         <TranscriptHeadingRow
