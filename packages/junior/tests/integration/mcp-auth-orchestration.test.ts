@@ -1,9 +1,7 @@
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import {
   deleteMcpStoredOAuthCredentials,
-  getLatestMcpAuthSessionForUserProvider,
   getMcpStoredOAuthCredentials,
 } from "@/chat/mcp/auth-store";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
@@ -15,7 +13,15 @@ import {
   streamScript,
   type ConversationWorkSlackHarness,
 } from "../fixtures/conversation-work";
-import { completeMcpOauthCallbackRoute } from "../fixtures/mcp-oauth-callback-harness";
+import {
+  completeLatestMcpAuth,
+  expectMcpAuthCleared,
+  expectMcpAuthCredentialsStored,
+  expectMcpAuthParked,
+  streamMcpSearch,
+  streamMcpSearchAndCall,
+  streamOpenMcpSearch,
+} from "../fixtures/mcp-auth-orchestration";
 import {
   createPluginAppFixture,
   type PluginAppFixture,
@@ -47,79 +53,19 @@ const EVAL_MCP_OPEN_PLUGIN_ROOT = path.resolve(
 const ALICE = "UALICE";
 const BOB = "UBOB";
 const AUTH_NOTICE = /I need access to Eval Auth to continue/;
-const EVAL_AUTH_TOOL_NAME = "mcp__eval-auth__budget-echo";
 
-/** Search connects the auth MCP provider; missing credentials park for auth. */
-function streamMcpSearch(replyAfterConnect: string) {
-  return streamScript(
-    {
-      tool: "searchMcpTools",
-      args: { provider: EVAL_MCP_AUTH_PROVIDER, query: "budget echo" },
-    },
-    replyAfterConnect,
-  );
-}
-
-/** Search discloses the tool before the same turn calls it. */
-function streamMcpSearchAndCall(replyAfterCall: string) {
-  return streamScript(
-    {
-      tool: "searchMcpTools",
-      args: { provider: EVAL_MCP_AUTH_PROVIDER, query: "budget echo" },
-    },
-    {
-      tool: "callMcpTool",
-      args: {
-        tool_name: EVAL_AUTH_TOOL_NAME,
-        arguments: { query: "budget" },
-      },
-    },
-    replyAfterCall,
-  );
-}
-
-/** Search connects the open MCP provider without auth. */
-function streamOpenMcpSearch(replyAfterConnect: string) {
-  return streamScript(
-    {
-      tool: "searchMcpTools",
-      args: { provider: EVAL_MCP_NO_AUTH_PROVIDER, query: "handbook" },
-    },
-    replyAfterConnect,
-  );
-}
-
-/** Complete the latest MCP OAuth session for one actor through the real callback. */
-async function completeAuth(userId: string, agentRunner: AgentRunner) {
-  const session = await getLatestMcpAuthSessionForUserProvider(
-    userId,
-    EVAL_MCP_AUTH_PROVIDER,
-  );
-  expect(session?.authSessionId).toEqual(expect.any(String));
-  await completeMcpOauthCallbackRoute({
-    provider: EVAL_MCP_AUTH_PROVIDER,
-    authSessionId: session!.authSessionId,
-    agentRunner,
-  });
-}
-
-/** Visible MCP auth pause owned by the requesting actor. */
+/** Slack delivery surface: public auth notice + private connect link. */
 async function expectAuthParkedFor(
   userId: string,
   q: ConversationWorkSlackHarness,
 ) {
-  expect(q.replies().some((text) => AUTH_NOTICE.test(text))).toBe(true);
-  expect(q.authLinksFor(userId).length).toBeGreaterThan(0);
-  expect((await loadConversationState()).processing.pendingAuth).toMatchObject({
-    kind: "mcp",
-    provider: EVAL_MCP_AUTH_PROVIDER,
+  await expectMcpAuthParked({
     actorId: userId,
+    delivery: () => {
+      expect(q.replies().some((text) => AUTH_NOTICE.test(text))).toBe(true);
+      expect(q.authLinksFor(userId).length).toBeGreaterThan(0);
+    },
   });
-  await expect(listTurnSummaries(CONVERSATION_ID)).resolves.toEqual(
-    expect.arrayContaining([
-      expect.objectContaining({ state: "paused", resumeReason: "auth" }),
-    ]),
-  );
 }
 
 /** No MCP auth prompt delivered to this actor. */
@@ -137,13 +83,9 @@ async function connectActor(
   await q.mention(userId, "use eval-auth and confirm the connection");
   await q.drain();
   await expectAuthParkedFor(userId, q);
-  await completeAuth(userId, q.agentRunner);
-  expect((await loadConversationState()).processing.pendingAuth).toBeUndefined();
-  await expect(
-    getMcpStoredOAuthCredentials(userId, EVAL_MCP_AUTH_PROVIDER),
-  ).resolves.toMatchObject({
-    tokens: expect.objectContaining({ access_token: expect.any(String) }),
-  });
+  await completeLatestMcpAuth({ userId, agentRunner: q.agentRunner });
+  await expectMcpAuthCleared();
+  await expectMcpAuthCredentialsStored(userId);
   expect(q.replies().some((text) => text.includes(replyText))).toBe(true);
 }
 
@@ -186,7 +128,7 @@ describe("mcp auth orchestration", () => {
     await q.drain();
 
     expectNoAuthFor(ALICE, q);
-    expect((await loadConversationState()).processing.pendingAuth).toBeUndefined();
+    await expectMcpAuthCleared();
     expect(q.replies().at(-1)).toContain("Skill instructions loaded.");
     await expect(
       getMcpStoredOAuthCredentials(ALICE, EVAL_MCP_AUTH_PROVIDER),
@@ -203,14 +145,10 @@ describe("mcp auth orchestration", () => {
     await expectAuthParkedFor(ALICE, q);
     expectNoAuthFor(BOB, q);
 
-    await completeAuth(ALICE, q.agentRunner);
+    await completeLatestMcpAuth({ userId: ALICE, agentRunner: q.agentRunner });
 
-    expect((await loadConversationState()).processing.pendingAuth).toBeUndefined();
-    await expect(
-      getMcpStoredOAuthCredentials(ALICE, EVAL_MCP_AUTH_PROVIDER),
-    ).resolves.toMatchObject({
-      tokens: expect.objectContaining({ access_token: expect.any(String) }),
-    });
+    await expectMcpAuthCleared();
+    await expectMcpAuthCredentialsStored(ALICE);
     expect(
       q.replies().some((text) => text.includes("Eval Auth tool completed")),
     ).toBe(true);
@@ -233,7 +171,7 @@ describe("mcp auth orchestration", () => {
     await q.drain();
 
     expect(q.authLinksFor(ALICE)).toHaveLength(aliceLinksAfterConnect);
-    expect((await loadConversationState()).processing.pendingAuth).toBeUndefined();
+    await expectMcpAuthCleared();
     expect(
       q.replies().some((text) => text.includes("Connection still works")),
     ).toBe(true);
@@ -257,7 +195,7 @@ describe("mcp auth orchestration", () => {
     await expectAuthParkedFor(ALICE, q);
     expect(q.authLinksFor(ALICE).length).toBeGreaterThan(aliceLinksAfterConnect);
 
-    await completeAuth(ALICE, q.agentRunner);
+    await completeLatestMcpAuth({ userId: ALICE, agentRunner: q.agentRunner });
     expect(
       q.replies().some((text) =>
         text.includes("Reconnected after missing credentials"),
@@ -282,7 +220,7 @@ describe("mcp auth orchestration", () => {
     await q.drain();
 
     expectNoAuthFor(BOB, q);
-    expect((await loadConversationState()).processing.pendingAuth).toBeUndefined();
+    await expectMcpAuthCleared();
     expect(q.replies().at(-1)).toContain("Deploy looks fine.");
     await expect(
       getMcpStoredOAuthCredentials(BOB, EVAL_MCP_AUTH_PROVIDER),
@@ -325,7 +263,7 @@ describe("mcp auth orchestration", () => {
     expectNoAuthFor(BOB, q);
     expect(q.authLinksFor(ALICE)).toHaveLength(aliceLinksAfterConnect);
     expect(q.replies()).toHaveLength(replyCountAfterConnect);
-    expect((await loadConversationState()).processing.pendingAuth).toBeUndefined();
+    await expectMcpAuthCleared();
     await expect(
       getMcpStoredOAuthCredentials(BOB, EVAL_MCP_AUTH_PROVIDER),
     ).resolves.toBeUndefined();
@@ -391,8 +329,8 @@ describe("mcp auth orchestration", () => {
       ]),
     );
 
-    await completeAuth(ALICE, q.agentRunner);
-    expect((await loadConversationState()).processing.pendingAuth).toBeUndefined();
+    await completeLatestMcpAuth({ userId: ALICE, agentRunner: q.agentRunner });
+    await expectMcpAuthCleared();
     await expect(
       getMcpStoredOAuthCredentials(BOB, EVAL_MCP_AUTH_PROVIDER),
     ).resolves.toBeUndefined();
@@ -415,7 +353,7 @@ describe("mcp auth orchestration", () => {
     await q.drain();
 
     expectNoAuthFor(BOB, q);
-    expect((await loadConversationState()).processing.pendingAuth).toBeUndefined();
+    await expectMcpAuthCleared();
     expect(q.replies().at(-1)).toContain("Got the record id");
     await expect(
       getMcpStoredOAuthCredentials(BOB, EVAL_MCP_AUTH_PROVIDER),
@@ -439,7 +377,7 @@ describe("mcp auth orchestration", () => {
 
     expectNoAuthFor(BOB, q);
     expect(q.authLinksFor(ALICE)).toHaveLength(aliceLinksAfterConnect);
-    expect((await loadConversationState()).processing.pendingAuth).toBeUndefined();
+    await expectMcpAuthCleared();
     expect(
       q.replies().some((text) => text.includes("Open handbook lookup done")),
     ).toBe(true);
@@ -466,19 +404,15 @@ describe("mcp auth orchestration", () => {
     await q.drain();
     await expectAuthParkedFor(BOB, q);
 
-    await completeAuth(BOB, q.agentRunner);
+    await completeLatestMcpAuth({ userId: BOB, agentRunner: q.agentRunner });
 
-    expect((await loadConversationState()).processing.pendingAuth).toBeUndefined();
+    await expectMcpAuthCleared();
     expectNoAuthFor(ALICE, q);
     // Only Bob's Eval Auth auth notice — never a second auth from restore.
     expect(q.replies().filter((text) => AUTH_NOTICE.test(text))).toHaveLength(1);
     expect(
       q.replies().some((text) => text.includes("Bob Eval Auth is connected")),
     ).toBe(true);
-    await expect(
-      getMcpStoredOAuthCredentials(BOB, EVAL_MCP_AUTH_PROVIDER),
-    ).resolves.toMatchObject({
-      tokens: expect.objectContaining({ access_token: expect.any(String) }),
-    });
+    await expectMcpAuthCredentialsStored(BOB);
   });
 });

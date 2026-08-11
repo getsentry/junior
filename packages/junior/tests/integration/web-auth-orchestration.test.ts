@@ -1,19 +1,24 @@
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { apiTurnIdForMessage } from "@/chat/api-turns/work";
-import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import {
   getLatestMcpAuthSessionForUserProvider,
-  getMcpStoredOAuthCredentials,
 } from "@/chat/mcp/auth-store";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { listTurnSummaries } from "@/chat/task-execution/checkpoint";
-import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   closeApiTurnWorkFixture,
   createConversationWorkWebHarness,
   type ConversationWorkWebHarness,
 } from "../fixtures/api-turn";
+import {
+  completeLatestMcpAuth,
+  expectMcpAuthCleared,
+  expectMcpAuthCredentialsStored,
+  expectMcpAuthParked,
+  streamMcpSearch,
+  streamMcpSearchAndCall,
+} from "../fixtures/mcp-auth-orchestration";
 import { completeMcpOauthCallbackRoute } from "../fixtures/mcp-oauth-callback-harness";
 import {
   createPluginAppFixture,
@@ -39,79 +44,24 @@ const EVAL_MCP_PLUGIN_ROOT = path.resolve(
   import.meta.dirname,
   "../fixtures/plugins/eval-auth",
 );
-const EVAL_AUTH_TOOL_NAME = "mcp__eval-auth__budget-echo";
 
-/** Search connects the auth MCP provider; missing credentials park for auth. */
-function streamMcpSearch(replyAfterConnect: string) {
-  return streamScript(
-    {
-      tool: "searchMcpTools",
-      args: { provider: EVAL_MCP_AUTH_PROVIDER, query: "budget echo" },
-    },
-    replyAfterConnect,
-  );
-}
-
-/** Search discloses the tool before the same turn calls it. */
-function streamMcpSearchAndCall(replyAfterCall: string) {
-  return streamScript(
-    {
-      tool: "searchMcpTools",
-      args: { provider: EVAL_MCP_AUTH_PROVIDER, query: "budget echo" },
-    },
-    {
-      tool: "callMcpTool",
-      args: {
-        tool_name: EVAL_AUTH_TOOL_NAME,
-        arguments: { query: "budget" },
-      },
-    },
-    replyAfterCall,
-  );
-}
-
-/** Complete the latest MCP OAuth session for the web actor through the real callback. */
-async function completeAuth(
-  userId: string,
-  agentRunner: AgentRunner,
-  conversationWorkQueue: ConversationWorkQueue,
-): Promise<void> {
-  const session = await getLatestMcpAuthSessionForUserProvider(
-    userId,
-    EVAL_MCP_AUTH_PROVIDER,
-  );
-  expect(session?.authSessionId).toEqual(expect.any(String));
-  await completeMcpOauthCallbackRoute({
-    provider: EVAL_MCP_AUTH_PROVIDER,
-    authSessionId: session!.authSessionId,
-    agentRunner,
-    conversationWorkQueue,
-  });
-}
-
-/** Auth is parked for this actor; delivery surface is the web pending-messages prompt. */
+/** Web delivery surface: participant pending-messages authorization prompt. */
 async function expectAuthParked(
   q: ConversationWorkWebHarness,
   conversationId: string,
 ) {
-  const pending = await q.pendingMessages(conversationId);
-  expect(pending.authorization).toMatchObject({
-    authorizationUrl: expect.stringMatching(/^https?:\/\//),
-    label: expect.any(String),
-    completionText: expect.any(String),
-  });
-  expect(
-    (await loadConversationState(conversationId)).processing.pendingAuth,
-  ).toMatchObject({
-    kind: "mcp",
-    provider: EVAL_MCP_AUTH_PROVIDER,
+  await expectMcpAuthParked({
     actorId: q.actor.userId,
+    conversationId,
+    delivery: async () => {
+      const pending = await q.pendingMessages(conversationId);
+      expect(pending.authorization).toMatchObject({
+        authorizationUrl: expect.stringMatching(/^https?:\/\//),
+        label: expect.any(String),
+        completionText: expect.any(String),
+      });
+    },
   });
-  await expect(listTurnSummaries(conversationId)).resolves.toEqual(
-    expect.arrayContaining([
-      expect.objectContaining({ state: "paused", resumeReason: "auth" }),
-    ]),
-  );
 }
 
 describe("web auth orchestration", () => {
@@ -147,18 +97,15 @@ describe("web auth orchestration", () => {
     await q.drain();
     await expectAuthParked(q, started.conversationId);
 
-    await completeAuth(q.actor.userId, q.agentRunner, q.queue);
+    await completeLatestMcpAuth({
+      userId: q.actor.userId,
+      agentRunner: q.agentRunner,
+      conversationWorkQueue: q.queue,
+    });
     await q.drain();
 
-    expect(
-      (await loadConversationState(started.conversationId)).processing
-        .pendingAuth,
-    ).toBeUndefined();
-    await expect(
-      getMcpStoredOAuthCredentials(q.actor.userId, EVAL_MCP_AUTH_PROVIDER),
-    ).resolves.toMatchObject({
-      tokens: expect.objectContaining({ access_token: expect.any(String) }),
-    });
+    await expectMcpAuthCleared(started.conversationId);
+    await expectMcpAuthCredentialsStored(q.actor.userId);
     await expect(
       q.pendingMessages(started.conversationId),
     ).resolves.not.toHaveProperty("authorization");
@@ -265,11 +212,7 @@ describe("web auth orchestration", () => {
     ).resolves.not.toHaveProperty("authorization");
     // Late OAuth after supersede still stores credentials (pendingAuth kept),
     // but must not resume the abandoned parked turn.
-    await expect(
-      getMcpStoredOAuthCredentials(q.actor.userId, EVAL_MCP_AUTH_PROVIDER),
-    ).resolves.toMatchObject({
-      tokens: expect.objectContaining({ access_token: expect.any(String) }),
-    });
+    await expectMcpAuthCredentialsStored(q.actor.userId);
     const history = await q.historyTexts(started.conversationId);
     expect(history.some((text) => text.includes("Moved on without auth"))).toBe(
       true,
