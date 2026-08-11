@@ -14,6 +14,11 @@ export function isCollapsibleActivityEntry(
 ): boolean {
   if (entry.kind === "failure") return false;
   if (entry.kind === "message") return Boolean(entry.message.eventType);
+  // Keep terminal failures visible; collapsed chips hide the red tool status.
+  if (entry.kind === "tool") return entry.part.status !== "error";
+  if (entry.kind === "subagent") {
+    return entry.part.status !== "error" && entry.part.status !== "aborted";
+  }
   return true;
 }
 

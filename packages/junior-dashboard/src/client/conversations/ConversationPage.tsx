@@ -430,8 +430,12 @@ function ConversationIdentity(props: {
       ) : null}
       {sentryLink ? (
         <span className="inline-flex min-w-0 items-center gap-x-1.5">
-          {ownerNode || id ? (
+          {ownerNode ? (
             <span className="text-dashboard-text-muted/50">·</span>
+          ) : id ? (
+            <span className="hidden text-dashboard-text-muted/50 md:inline">
+              ·
+            </span>
           ) : null}
           {sentryLink}
         </span>

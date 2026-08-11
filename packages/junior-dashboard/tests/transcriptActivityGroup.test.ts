@@ -8,7 +8,7 @@ import type { RenderedTranscriptEntry } from "../src/client/conversations/transc
 
 function tool(
   id: string,
-  status: "running" | "completed" = "completed",
+  status: "running" | "completed" | "error" = "completed",
 ): RenderedTranscriptEntry {
   return {
     key: `tool:${id}`,
@@ -19,6 +19,24 @@ function tool(
       name: "bash",
       status,
       type: "tool_call",
+    },
+    timestamp: 1,
+  };
+}
+
+function subagent(
+  id: string,
+  status: "aborted" | "completed" | "error" | "running" = "completed",
+): RenderedTranscriptEntry {
+  return {
+    key: `subagent:${id}`,
+    kind: "subagent",
+    part: {
+      childConversationId: `child:${id}`,
+      id,
+      status,
+      subagentKind: "explore",
+      type: "subagent",
     },
     timestamp: 1,
   };
@@ -89,6 +107,10 @@ function failure(): RenderedTranscriptEntry {
 describe("transcript activity group", () => {
   it("collapses non-message activity and keeps failures and chat messages open", () => {
     expect(isCollapsibleActivityEntry(tool("1"))).toBe(true);
+    expect(isCollapsibleActivityEntry(tool("err", "error"))).toBe(false);
+    expect(isCollapsibleActivityEntry(subagent("ok"))).toBe(true);
+    expect(isCollapsibleActivityEntry(subagent("err", "error"))).toBe(false);
+    expect(isCollapsibleActivityEntry(subagent("stop", "aborted"))).toBe(false);
     expect(isCollapsibleActivityEntry(reasoning("r1"))).toBe(true);
     expect(isCollapsibleActivityEntry(compaction())).toBe(true);
     expect(isCollapsibleActivityEntry(handoff())).toBe(true);
