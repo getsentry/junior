@@ -46,7 +46,10 @@ import { TranscriptText } from "./TranscriptText";
 import { TranscriptSubagentView } from "./TranscriptSubagentView";
 import { TranscriptContextEventView } from "./TranscriptContextEventView";
 import { TranscriptTurnContextView } from "./TranscriptTurnContextView";
-import { TranscriptToolRun } from "./TranscriptToolRun";
+import {
+  isCollapsibleActivityEntry,
+  TranscriptActivityGroup,
+} from "./TranscriptActivityGroup";
 import { TranscriptToolView } from "./TranscriptToolView";
 import { TranscriptReasoningView } from "./TranscriptReasoningView";
 import { TranscriptStructuredEventView } from "./TranscriptStructuredEventView";
@@ -55,8 +58,7 @@ import { shouldCopyRawTranscript } from "./transcriptCopy";
 import {
   groupTranscriptMessages,
   messageRawText,
-  type RenderedReasoningEntry,
-  type RenderedToolEntry,
+  type RenderedTranscriptEntry,
   type TranscriptViewMode,
 } from "./transcriptRenderModel";
 import { transcriptEmptyClass } from "./transcriptStyles";
@@ -358,42 +360,51 @@ function TranscriptEntryList(props: {
   renderTool: (entry: TranscriptToolEntry) => ReactNode;
 }) {
   const search = useTranscriptSearch();
-  const toolRunKeys = useRef(new Map<string, string>());
-  const claimedToolRunKeys = new Set<string>();
+  const activityKeys = useRef(new Map<string, string>());
+  const claimedActivityKeys = new Set<string>();
   const rows: ReactNode[] = [];
+
+  const renderEntry = (entry: TranscriptEntry): ReactNode => {
+    if (entry.kind === "subagent") return props.renderSubagent(entry);
+    if (entry.kind === "context") return props.renderContext(entry);
+    if (entry.kind === "structured_event") {
+      return props.renderStructuredEvent(entry);
+    }
+    if (entry.kind === "failure") return props.renderFailure(entry);
+    if (entry.kind === "reasoning") return props.renderReasoning(entry);
+    if (entry.kind === "tool") return props.renderTool(entry);
+    return props.renderMessage(entry);
+  };
 
   for (let index = 0; index < props.entries.length; ) {
     const entry = props.entries[index]!;
 
-    if (entry.kind === "tool" || entry.kind === "reasoning") {
-      const runEntries: Array<RenderedReasoningEntry | RenderedToolEntry> = [];
+    if (isCollapsibleActivityEntry(entry)) {
+      const activityEntries: RenderedTranscriptEntry[] = [];
       while (
-        props.entries[index]?.kind === "tool" ||
-        props.entries[index]?.kind === "reasoning"
+        index < props.entries.length &&
+        isCollapsibleActivityEntry(props.entries[index]!)
       ) {
-        runEntries.push(
-          props.entries[index] as RenderedReasoningEntry | RenderedToolEntry,
-        );
+        activityEntries.push(props.entries[index]!);
         index += 1;
       }
       const visibleEntries = search.active
-        ? runEntries.filter((e) =>
-            entryMatchesSearch(e, search.normalizedQuery),
+        ? activityEntries.filter((candidate) =>
+            entryMatchesSearch(candidate, search.normalizedQuery),
           )
-        : runEntries;
+        : activityEntries;
       if (visibleEntries.length > 0) {
-        const toolRunKey = stableToolRunKey({
-          claimedKeys: claimedToolRunKeys,
-          entries: runEntries,
+        const activityKey = stableActivityGroupKey({
+          claimedKeys: claimedActivityKeys,
+          entries: activityEntries,
           keyPrefix: props.keyPrefix,
-          knownKeys: toolRunKeys.current,
+          knownKeys: activityKeys.current,
         });
         rows.push(
-          <TranscriptToolRun
+          <TranscriptActivityGroup
             entries={visibleEntries}
-            key={toolRunKey}
-            renderReasoning={props.renderReasoning}
-            renderTool={props.renderTool}
+            key={activityKey}
+            renderEntry={renderEntry}
           />,
         );
       }
@@ -403,15 +414,7 @@ function TranscriptEntryList(props: {
     if (!search.active || entryMatchesSearch(entry, search.normalizedQuery)) {
       rows.push(
         <Fragment key={`${props.keyPrefix}:${entry.key}`}>
-          {entry.kind === "subagent"
-            ? props.renderSubagent(entry)
-            : entry.kind === "context"
-              ? props.renderContext(entry)
-              : entry.kind === "structured_event"
-                ? props.renderStructuredEvent(entry)
-                : entry.kind === "failure"
-                  ? props.renderFailure(entry)
-                  : props.renderMessage(entry)}
+          {renderEntry(entry)}
         </Fragment>,
       );
     }
@@ -427,10 +430,10 @@ function TranscriptEntryList(props: {
   return <div className="grid min-w-0 gap-3">{rows}</div>;
 }
 
-/** Keep one tool run mounted while new or historical events extend either edge. */
-function stableToolRunKey(args: {
+/** Keep one activity group mounted while new or historical events extend either edge. */
+function stableActivityGroupKey(args: {
   claimedKeys: Set<string>;
-  entries: Array<RenderedReasoningEntry | RenderedToolEntry>;
+  entries: RenderedTranscriptEntry[];
   keyPrefix: string;
   knownKeys: Map<string, string>;
 }): string {
@@ -440,12 +443,12 @@ function stableToolRunKey(args: {
   const knownKey = entryKeys
     .map((entryKey) => args.knownKeys.get(entryKey))
     .find((key) => key !== undefined && !args.claimedKeys.has(key));
-  const runKey =
-    knownKey ?? `${args.keyPrefix}:tool-run:${args.entries[0]!.key}`;
+  const groupKey =
+    knownKey ?? `${args.keyPrefix}:activity:${args.entries[0]!.key}`;
 
-  args.claimedKeys.add(runKey);
-  entryKeys.forEach((entryKey) => args.knownKeys.set(entryKey, runKey));
-  return runKey;
+  args.claimedKeys.add(groupKey);
+  entryKeys.forEach((entryKey) => args.knownKeys.set(entryKey, groupKey));
+  return groupKey;
 }
 
 function TranscriptFailureView(props: {
