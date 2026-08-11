@@ -185,7 +185,7 @@ test("starts and continues conversations from the dashboard", async ({
   });
 
   await page.goto(server.baseURL);
-  await page.getByRole("button", { name: "New" }).click();
+  await expect(page).toHaveURL(`${server.baseURL}/`);
   await expect(
     page.getByRole("heading", { name: "New conversation" }),
   ).toBeVisible();
@@ -633,6 +633,10 @@ test("archives and restores a conversation from the sidebar", async ({
     await route.fulfill({ json: { archived } });
   });
   await page.goto(server.baseURL);
+  const selectedConversation = page.getByRole("link", {
+    name: /Investigate checkout latency/,
+  });
+  await selectedConversation.click();
   await expect(
     page.getByRole("heading", { name: "Investigate checkout latency" }),
   ).toBeVisible();

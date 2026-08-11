@@ -1,4 +1,32 @@
 # Changelog
+## 0.151.0
+
+### New Features ✨
+
+- (dashboard) Make mobile chat a read-reply surface by @sentry-junior in [#1413](https://github.com/getsentry/junior/pull/1413)
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Default to new conversation by @sentry-junior in [#1432](https://github.com/getsentry/junior/pull/1432)
+- Remove reply destination note by @sentry-junior in [#1431](https://github.com/getsentry/junior/pull/1431)
+- Key gateway model usage by vendor id by @sentry-junior in [#1426](https://github.com/getsentry/junior/pull/1426)
+- Collapse long pending message stacks by @sentry-junior in [#1429](https://github.com/getsentry/junior/pull/1429)
+- Distinguish transcript context messages by @sentry-junior in [#1418](https://github.com/getsentry/junior/pull/1418)
+- Stabilize transcript activity expansion by @sentry-junior in [#1416](https://github.com/getsentry/junior/pull/1416)
+
+#### Other
+
+- (api) Resolve Slack mailbox identities by @sentry-junior in [#1430](https://github.com/getsentry/junior/pull/1430)
+- (auth) Restore MCP connections per turn actor only by @sentry-junior in [#1414](https://github.com/getsentry/junior/pull/1414)
+- (task-execution) Re-park slow timeouts on a fresh wake by @sentry-junior in [#1415](https://github.com/getsentry/junior/pull/1415)
+
+### Internal Changes 🔧
+
+- (agent) Add fixed model output fixture by @dcramer in [#1427](https://github.com/getsentry/junior/pull/1427)
+- (slack) Use typed Chat SDK fixtures by @dcramer in [#1428](https://github.com/getsentry/junior/pull/1428)
+
 ## 0.150.1
 
 - No documented changes.
