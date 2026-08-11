@@ -97,6 +97,12 @@ interface ToolWiringArgs {
   preAgentPromptMessages: () => PiMessage[];
   priorPiMessages: PiMessage[] | undefined;
   recordConnectedMcpProvider: (provider: string) => Promise<void>;
+  /**
+   * When true, also rebuild live MCP clients from this turn's Pi history and
+   * restored skills (same-turn resume / later slices). New turns leave this
+   * false and restore only actor-owned connections from connectedMcpProviders.
+   */
+  restoreFromTurnHistory?: boolean;
   requestHandoff?: ToolRuntimeContext["handoff"];
   resume: ResumeState;
   run: AgentRun;
@@ -470,17 +476,25 @@ export async function wireAgentTools(
   // Conversation history records prior capability use, not authority for the
   // current turn. Credentialless system turns must not reconnect user-owned
   // MCP providers merely because an earlier user turn activated them.
+  //
+  // New turns restore only providers this actor previously connected
+  // (connectedMcpProviders is already actor-filtered by the caller). Same-turn
+  // resume may also rebuild from this turn's Pi history and restored skills so
+  // later slices keep live MCP clients after a fresh process start.
   if (credentialUserId) {
-    // Restore providers visible in durable Pi session history. In serverless
-    // runtimes, later slices and follow-up turns usually run in a fresh
-    // process, so in-memory MCP clients cannot be reused.
-    const providersToRestore = new Set([
-      ...args.connectedMcpProviders,
-      ...inferActiveMcpProvidersFromPiMessages(args.priorPiMessages),
-      ...args.activeSkills.flatMap((skill) =>
-        skill.pluginProvider ? [skill.pluginProvider] : [],
-      ),
-    ]);
+    const providersToRestore = new Set(args.connectedMcpProviders);
+    if (args.restoreFromTurnHistory) {
+      for (const provider of inferActiveMcpProvidersFromPiMessages(
+        args.priorPiMessages,
+      )) {
+        providersToRestore.add(provider);
+      }
+      for (const skill of args.activeSkills) {
+        if (skill.pluginProvider) {
+          providersToRestore.add(skill.pluginProvider);
+        }
+      }
+    }
     for (const provider of providersToRestore) {
       if (provider === pendingMcpProvider) {
         continue; // awaiting user authorization — skip to avoid aborting unrelated turns

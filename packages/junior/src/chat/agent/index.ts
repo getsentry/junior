@@ -55,6 +55,7 @@ import {
   type ConversationMessageProvenance,
 } from "@/chat/conversations/provenance";
 import type { Actor } from "@/chat/actor";
+import { credentialUserSubjectId } from "@/chat/credentials/context";
 import {
   GEN_AI_PROVIDER_NAME,
   completeObject,
@@ -389,14 +390,22 @@ async function executeAgentRunInPrivacyContext(
     routing.destination.platform === "slack" ? routing.destination : undefined;
   const slackActor = actor?.platform === "slack" ? actor : undefined;
   const userInput = input.messageText;
+  const credentialUserId = run.credentialContext
+    ? credentialUserSubjectId(run.credentialContext)
+    : undefined;
   const recordConnectedMcpProvider = async (provider: string) => {
     if (connectedMcpProviders.has(provider)) {
       return;
     }
-    await recordMcpProviderConnected({
-      conversationId,
-      provider,
-    });
+    // Only durable when we know who owns the connection. Restore filters by
+    // this actor id on later turns.
+    if (credentialUserId) {
+      await recordMcpProviderConnected({
+        conversationId,
+        provider,
+        actorId: credentialUserId,
+      });
+    }
     connectedMcpProviders.add(provider);
   };
   const recordActiveMcpProviders = async () => {
@@ -539,8 +548,15 @@ async function executeAgentRunInPrivacyContext(
     const priorPiMessages = resumedFromSessionRecord
       ? existingSessionRecord?.piMessages
       : input.piMessages;
+    // Load only providers this actor connected. Shared thread history is not
+    // ownership and must not warm another person's MCP servers under them.
     connectedMcpProviders = new Set(
-      await loadConnectedMcpProviders({ conversationId }),
+      credentialUserId
+        ? await loadConnectedMcpProviders({
+            conversationId,
+            actorId: credentialUserId,
+          })
+        : [],
     );
 
     // ── Restore skill runtime handles from durable Pi history ────────
@@ -840,6 +856,9 @@ async function executeAgentRunInPrivacyContext(
       preAgentPromptMessages,
       priorPiMessages,
       recordConnectedMcpProvider,
+      // Same-turn resume may rebuild live MCP clients from this turn's history.
+      // New turns only restore actor-owned connections above.
+      restoreFromTurnHistory: resumedFromSessionRecord,
       requestHandoff,
       resume: runResume,
       run,

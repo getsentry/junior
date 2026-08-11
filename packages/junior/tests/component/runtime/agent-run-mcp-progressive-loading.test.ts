@@ -662,6 +662,7 @@ vi.mock("@/chat/mcp/client", () => {
 import { executeAgentRun } from "@/chat/agent";
 import type { AgentRun } from "@/chat/agent/types";
 import { botConfig } from "@/chat/config";
+import { recordMcpProviderConnected } from "@/chat/conversations/projection";
 import { TurnSliceLimitExceededError } from "@/chat/services/turn-limit";
 import {
   getTurnRecord,
@@ -1092,35 +1093,21 @@ describe("executeAgentRun progressive MCP loading", () => {
     expect(callToolMock).not.toHaveBeenCalled();
   });
 
-  it("restores MCP providers inferred from prior Pi history before building a follow-up turn prompt", async () => {
+  it("restores MCP providers this actor previously connected before building a follow-up turn prompt", async () => {
     listToolsMock.mockReset();
     listToolsMock.mockResolvedValue(makeDemoMcpTools());
+    await recordMcpProviderConnected({
+      conversationId: "conversation-restored-provider",
+      provider: "demo",
+      actorId: "U123",
+    });
 
     await executeAgentRun(
-      makeAgentRun(
-        "help me",
-        {
-          conversationId: "conversation-restored-provider",
-          threadTs: "1712345.0090",
-          turnId: "turn-restored-provider",
-        },
-        {
-          history: [
-            {
-              input: {
-                tool_name: "mcp__demo__ping",
-                arguments: { query: "prior" },
-              },
-              role: "toolResult",
-              toolCallId: "prior-call",
-              toolName: "callMcpTool",
-              isError: false,
-              content: [{ type: "text", text: "pong" }],
-              timestamp: 1,
-            },
-          ] as unknown as PiMessage[],
-        },
-      ),
+      makeAgentRun("help me", {
+        conversationId: "conversation-restored-provider",
+        threadTs: "1712345.0090",
+        turnId: "turn-restored-provider",
+      }),
     );
 
     expect(turnContextInputs[0]?.activeMcpCatalogs).toEqual([
@@ -1132,6 +1119,12 @@ describe("executeAgentRun progressive MCP loading", () => {
   it("restores prior MCP providers for a system actor with a delegated credential subject", async () => {
     listToolsMock.mockReset();
     listToolsMock.mockResolvedValue(makeDemoMcpTools());
+    // Ownership is the credential subject (U123), not the system scheduler actor.
+    await recordMcpProviderConnected({
+      conversationId: "conversation-delegated-provider",
+      provider: "demo",
+      actorId: "U123",
+    });
 
     await executeAgentRun(
       makeAgentRun(
@@ -1142,20 +1135,6 @@ describe("executeAgentRun progressive MCP loading", () => {
           turnId: "turn-delegated-provider",
         },
         {
-          history: [
-            {
-              input: {
-                tool_name: "mcp__demo__ping",
-                arguments: { query: "prior" },
-              },
-              role: "toolResult",
-              toolCallId: "prior-call",
-              toolName: "callMcpTool",
-              isError: false,
-              content: [{ type: "text", text: "pong" }],
-              timestamp: 1,
-            },
-          ] as unknown as PiMessage[],
           actor: { platform: "system", name: "scheduler" },
           credentialContext: {
             actor: { platform: "system", name: "scheduler" },
@@ -1223,7 +1202,7 @@ describe("executeAgentRun progressive MCP loading", () => {
     });
   });
 
-  it("adds missing bootstrap context when inferred provider restore pauses before prompt", async () => {
+  it("adds missing bootstrap context when actor-owned provider restore pauses before prompt", async () => {
     const priorMessages = [
       {
         role: "user",
@@ -1243,6 +1222,11 @@ describe("executeAgentRun progressive MCP loading", () => {
         timestamp: 2,
       },
     ] as unknown as PiMessage[];
+    await recordMcpProviderConnected({
+      conversationId: "conversation-restore-auth",
+      provider: "demo",
+      actorId: "U123",
+    });
 
     const firstError = await executeAgentRun(
       makeAgentRun(

@@ -256,7 +256,11 @@ it("rejects incomplete handoffs through the replacement boundary", async () => {
 
 it("does not require an initial-history event", async () => {
   const conversationId = "local:test:host-fact-before-model";
-  await recordMcpProviderConnected({ conversationId, provider: "linear" });
+  await recordMcpProviderConnected({
+    conversationId,
+    provider: "linear",
+    actorId: "UALICE",
+  });
 
   await expect(
     openConversationProjection({
@@ -267,14 +271,21 @@ it("does not require an initial-history event", async () => {
     modelProfile: "standard",
     modelId: undefined,
   });
-  await expect(loadConnectedMcpProviders({ conversationId })).resolves.toEqual([
-    "linear",
-  ]);
+  await expect(
+    loadConnectedMcpProviders({ conversationId, actorId: "UALICE" }),
+  ).resolves.toEqual(["linear"]);
+  await expect(
+    loadConnectedMcpProviders({ conversationId, actorId: "UBOB" }),
+  ).resolves.toEqual([]);
   expect(await getConversationEventStore().loadHistory(conversationId)).toEqual(
     [
       expect.objectContaining({
         historyVersion: 0,
-        data: expect.objectContaining({ type: "mcp_provider_connected" }),
+        data: {
+          type: "mcp_provider_connected",
+          provider: "linear",
+          actorId: "UALICE",
+        },
       }),
     ],
   );
