@@ -280,6 +280,26 @@ describe("mcp auth orchestration", () => {
     ).toBe(true);
   });
 
+  it("does not request auth again when the same person cancels with a later message", async () => {
+    const q = await createConversationWorkSlackHarness({
+      modelStream: streamMcpLoad("Eval Auth is connected."),
+    });
+    await q.mention(ALICE, "use eval-auth and confirm the connection");
+    await q.drain();
+    await expectAuthParkedFor(ALICE, q);
+    const aliceLinksWhilePending = q.authLinksFor(ALICE).length;
+
+    // Alice never completes the link. A later plain request must answer without
+    // another auth prompt.
+    q.setModelStream(streamScript("Okay, never mind."));
+    await q.mention(ALICE, "never mind");
+    await q.drain();
+
+    expect(q.authLinksFor(ALICE)).toHaveLength(aliceLinksWhilePending);
+    expect(q.replies().at(-1)).toContain("Okay, never mind.");
+    expect(q.replies().filter((text) => AUTH_NOTICE.test(text))).toHaveLength(1);
+  });
+
   it("does not hand pending MCP auth to a passive bystander while the owner waits", async () => {
     const q = await createConversationWorkSlackHarness({
       modelStream: streamMcpLoad("Eval Auth is connected."),
