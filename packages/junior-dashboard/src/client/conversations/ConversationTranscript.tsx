@@ -100,6 +100,12 @@ export function ConversationTranscriptView(props: {
   view: TranscriptViewMode;
 }) {
   const status = visualStatusForSummary(props.conversation);
+  const committedMessages = conversationTranscriptMessages(props.conversation);
+  const messages = conversationTranscriptMessages(
+    props.conversation,
+    props.pendingMessages,
+  );
+  const pendingMessages = messages.slice(committedMessages.length);
 
   return (
     <section className="grid min-w-0 grid-cols-[0.875rem_minmax(0,1fr)] gap-3 py-3">
@@ -111,10 +117,17 @@ export function ConversationTranscriptView(props: {
         <SegmentEvents
           onOpenSubagentTranscript={props.onOpenSubagentTranscript}
           conversation={props.conversation}
-          pendingMessages={props.pendingMessages}
+          messages={committedMessages}
           view={props.view}
         />
         {props.responding ? <TypingIndicator /> : null}
+        {pendingMessages.length > 0 ? (
+          <PendingTranscriptEntries
+            conversation={props.conversation}
+            messages={pendingMessages}
+            view={props.view}
+          />
+        ) : null}
       </div>
     </section>
   );
@@ -124,7 +137,7 @@ function TypingIndicator() {
   return (
     <div aria-live="polite" className="mt-2 flex items-center" role="status">
       <span className="sr-only">{getDashboardAgentName()} is responding</span>
-      <span className="flex items-center gap-1 rounded-lg border border-cyan-300/15 bg-cyan-300/[0.055] px-4 py-3 shadow-[0_12px_40px_rgba(0,0,0,0.12)]">
+      <span className="flex items-center gap-1 rounded-lg bg-cyan-300/[0.055] px-4 py-3 shadow-[0_12px_40px_rgba(0,0,0,0.12)]">
         {[0, 1, 2].map((dot) => (
           <span
             aria-hidden="true"
@@ -167,18 +180,16 @@ function transcriptMessageClass(role: string, pending?: boolean): string {
   const kind = transcriptRoleKind(role);
 
   return cn(
-    "grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 rounded-lg border px-3 py-2.5 shadow-[0_12px_40px_rgba(0,0,0,0.12)] md:px-4 md:py-3",
+    "grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 rounded-lg px-3 py-2.5 shadow-[0_12px_40px_rgba(0,0,0,0.12)] md:px-4 md:py-3",
     kind === "assistant" &&
-      "md:mr-6 border-cyan-300/15 bg-cyan-300/[0.055] text-dashboard-text",
+      "md:mr-6 bg-cyan-300/[0.055] text-dashboard-text",
     kind === "user" &&
-      "md:ml-6 border-white/[0.09] bg-white/[0.055] text-dashboard-text",
-    kind === "system" &&
-      "border-amber-300/15 bg-amber-300/[0.045] text-dashboard-text",
-    kind === "tool" &&
-      "border-white/[0.06] bg-black/15 text-dashboard-text-muted shadow-none",
-    kind === "other" &&
-      "border-white/[0.08] bg-white/[0.03] text-dashboard-text",
-    pending && "border-dashed opacity-90",
+      (pending
+        ? "md:ml-6 bg-cyan-300/[0.07] text-dashboard-text opacity-90"
+        : "md:ml-6 bg-white/[0.055] text-dashboard-text"),
+    kind === "system" && "bg-amber-300/[0.045] text-dashboard-text",
+    kind === "tool" && "bg-black/15 text-dashboard-text-muted shadow-none",
+    kind === "other" && "bg-white/[0.03] text-dashboard-text",
   );
 }
 
@@ -284,34 +295,29 @@ function SegmentEvents(props: {
     conversation: ConversationTranscript;
   }) => void;
   conversation: ConversationTranscript;
-  pendingMessages?: readonly ConversationPendingMessage[];
+  messages: TranscriptViewMessage[];
   view: TranscriptViewMode;
 }) {
-  const messages = conversationTranscriptMessages(
-    props.conversation,
-    props.pendingMessages,
-  );
-
   return (
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 pt-3">
       {props.conversation.eventHistory.status === "available" ? (
         <VisibleTranscriptEntries
           onOpenSubagentTranscript={props.onOpenSubagentTranscript}
-          transcript={messages}
+          transcript={props.messages}
           conversation={props.conversation}
           view={props.view}
         />
       ) : props.conversation.eventHistory.status === "redacted" &&
-        messages.length > 0 ? (
+        props.messages.length > 0 ? (
         <RedactedTranscriptView
           onOpenSubagentTranscript={props.onOpenSubagentTranscript}
           conversation={props.conversation}
-          pendingMessages={props.pendingMessages}
+          messages={props.messages}
         />
-      ) : messages.length > 0 ? (
+      ) : props.messages.length > 0 ? (
         <VisibleTranscriptEntries
           onOpenSubagentTranscript={props.onOpenSubagentTranscript}
-          transcript={messages}
+          transcript={props.messages}
           conversation={props.conversation}
           view={props.view}
         />
@@ -319,6 +325,29 @@ function SegmentEvents(props: {
         <div className={transcriptEmptyClass()}>
           {unavailableTranscriptLabel(props.conversation)}
         </div>
+      )}
+    </div>
+  );
+}
+
+function PendingTranscriptEntries(props: {
+  conversation: ConversationTranscript;
+  messages: TranscriptViewMessage[];
+  view: TranscriptViewMode;
+}) {
+  return (
+    <div aria-label="Pending messages" className="mt-4 grid gap-2">
+      {props.conversation.eventHistory.status === "redacted" ? (
+        <RedactedTranscriptView
+          conversation={props.conversation}
+          messages={props.messages}
+        />
+      ) : (
+        <VisibleTranscriptEntries
+          conversation={props.conversation}
+          transcript={props.messages}
+          view={props.view}
+        />
       )}
     </div>
   );
@@ -638,16 +667,11 @@ function RedactedTranscriptView(props: {
     conversation: ConversationTranscript;
   }) => void;
   conversation: ConversationTranscript;
-  pendingMessages?: readonly ConversationPendingMessage[];
+  messages: TranscriptViewMessage[];
 }) {
   return (
     <TranscriptEntryList
-      entries={groupTranscriptMessages(
-        conversationTranscriptMessages(
-          props.conversation,
-          props.pendingMessages,
-        ),
-      )}
+      entries={groupTranscriptMessages(props.messages)}
       keyPrefix={`${props.conversation.conversationId}:redacted`}
       renderContext={(entry) => (
         <TranscriptRailEvent
