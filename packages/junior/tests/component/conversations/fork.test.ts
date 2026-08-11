@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import {
   createForkConversationId,
@@ -11,8 +12,13 @@ import {
   contextProvenance,
   instructionProvenanceFor,
 } from "@/chat/conversations/provenance";
-import { getConversationEventStore, getConversationStore } from "@/chat/db";
+import {
+  getConversationEventStore,
+  getConversationStore,
+  getSqlExecutor,
+} from "@/chat/db";
 import type { PiMessage } from "@/chat/pi/messages";
+import { juniorConversations } from "@/db/schema";
 
 const SOURCE_ID = "local:web:fork-source-1";
 const instructionProvenance = instructionProvenanceFor(undefined);
@@ -130,10 +136,18 @@ describe("conversation fork", () => {
     expect(forkRow).toMatchObject({
       conversationId: forked.conversationId,
       source: "internal",
+      forkedFromConversationId: SOURCE_ID,
       title: "Source thread",
       visibility: "private",
     });
     expect(forkRow?.lineage).toBeUndefined();
+
+    const forks = await getSqlExecutor()
+      .db()
+      .select({ conversationId: juniorConversations.conversationId })
+      .from(juniorConversations)
+      .where(eq(juniorConversations.forkedFromConversationId, SOURCE_ID));
+    expect(forks).toEqual([{ conversationId: forked.conversationId }]);
 
     const projection = await openConversationProjection({
       conversationId: forked.conversationId,

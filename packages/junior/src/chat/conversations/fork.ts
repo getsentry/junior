@@ -262,6 +262,7 @@ export async function forkConversation(
   await conversationStore.recordActivity({
     conversationId,
     destination,
+    forkedFromConversationId: sourceConversationId,
     nowMs,
     source: "internal",
     sessionSource: createWebSource(conversationId, visibility),
