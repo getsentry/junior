@@ -21,7 +21,6 @@ import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { loadProjection } from "@/chat/conversations/projection";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
-import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { recoverPendingAgentInvocationMailboxAppends } from "@/chat/agent-dispatch/heartbeat";
 import { CONVERSATION_WORK_MAX_DELIVERY_ATTEMPTS } from "@/chat/task-execution/store";
@@ -363,33 +362,15 @@ describe("agent invocation conversation work", () => {
           state,
         },
       );
-      let runCount = 0;
+      const agentRunner = createModelAgentRunner(
+        createModelStream([
+          { type: "toolCall", name: "systemTime", arguments: {} },
+          { type: "text", text: "Resumed child result" },
+        ]),
+      );
+      const run = vi.spyOn(agentRunner, "run");
       const invocationWorker = createAgentInvocationWorker({
-        agentRunner: {
-          run: vi.fn(async (request) => {
-            runCount += 1;
-            await request.durability.onInputCommitted?.();
-            if (runCount === 1) {
-              return {
-                resumeVersion: 1,
-                status: "suspended" as const,
-                reason: "timeout" as const,
-              };
-            }
-            return completedAgentRun({
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "test-model",
-                outcome: "success",
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-              text: "Resumed child result",
-            });
-          }),
-        },
+        agentRunner,
       });
       const route = routeAgentInvocationWork({
         fallbackWorker: vi.fn(async () => ({ status: "completed" as const })),
@@ -401,12 +382,28 @@ describe("agent invocation conversation work", () => {
           conversationStore,
           queue,
           run: route,
+          softYieldAfterMs: 0,
           state,
         }),
       ).resolves.toMatchObject({ status: "yielded" });
       await expect(
         getAgentInvocation(created.invocationId),
       ).resolves.toMatchObject({ status: "awaiting_resume" });
+      await expect(
+        getTurnRecord(
+          created.childConversationId,
+          getAgentInvocationTurnId(created.invocationId),
+        ),
+      ).resolves.toMatchObject({
+        state: "paused",
+        resumeReason: "yield",
+        piMessages: expect.arrayContaining([
+          expect.objectContaining({
+            role: "toolResult",
+            toolName: "systemTime",
+          }),
+        ]),
+      });
 
       await expect(
         processConversationQueueMessage(queue.takeMessage(), {
@@ -416,13 +413,35 @@ describe("agent invocation conversation work", () => {
           state,
         }),
       ).resolves.toMatchObject({ status: "completed" });
-      expect(runCount).toBe(2);
+      expect(run).toHaveBeenCalledTimes(2);
       await expect(
         getAgentInvocation(created.invocationId),
       ).resolves.toMatchObject({
         result: "Resumed child result",
         status: "completed",
       });
+      const projection = await loadProjection({
+        conversationId: created.childConversationId,
+      });
+      expect(
+        projection.filter(
+          (message) =>
+            message.role === "toolResult" && message.toolName === "systemTime",
+        ),
+      ).toHaveLength(1);
+      expect(projection).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            role: "assistant",
+            content: expect.arrayContaining([
+              expect.objectContaining({
+                type: "text",
+                text: "Resumed child result",
+              }),
+            ]),
+          }),
+        ]),
+      );
     } finally {
       await fixture.close();
     }
