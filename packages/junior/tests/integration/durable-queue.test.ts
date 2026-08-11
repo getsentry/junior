@@ -1,10 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { StreamFn } from "@earendil-works/pi-agent-core";
-import {
-  createFauxCore,
-  fauxAssistantMessage,
-  fauxToolCall,
-} from "@earendil-works/pi-ai/providers/faux";
+import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createConversationWork } from "@/chat/app/conversation-work";
 import { FUNCTION_TIMEOUT_BUFFER_SECONDS, getChatConfig } from "@/chat/config";
@@ -56,6 +52,7 @@ import {
   queueSlackApiResponse,
   resetSlackApiMockState,
 } from "../msw/handlers/slack-api";
+import { createModelStream } from "../fixtures/model-stream";
 
 /**
  * Turn-lifecycle product outcomes for one conversation under the durable queue.
@@ -80,13 +77,6 @@ function almostSpentStartedAtMs(remainingMs: number): number {
   return Date.now() - requestBudgetMs() + remainingMs;
 }
 
-/** Model stream that returns one completed assistant reply per call. */
-function streamReplies(...texts: string[]): StreamFn {
-  const faux = createFauxCore({ api: "test", provider: "test" });
-  faux.setResponses(texts.map((text) => fauxAssistantMessage(text)));
-  return faux.stream;
-}
-
 /**
  * First model step calls a real no-side-effect tool so the agent reaches a
  * safe mid-work boundary. The next model step waits on `holdAfterTool` so the
@@ -97,25 +87,18 @@ function streamMidWorkThenReplies(
   holdAfterTool: Promise<void>,
   ...finalTexts: string[]
 ): StreamFn {
-  const faux = createFauxCore({ api: "test", provider: "test" });
   const [firstFinal, ...restFinals] = finalTexts;
   if (!firstFinal) {
     throw new Error("streamMidWorkThenReplies requires at least one final text");
   }
-  faux.setResponses([
-    fauxAssistantMessage([fauxToolCall("systemTime", {})], {
-      stopReason: "toolUse",
-    }),
+  return createModelStream([
+    { type: "toolCall", name: "systemTime", arguments: {} },
     // Held long enough for the host deadline to force park at the tool boundary.
-    async () => {
-      await holdAfterTool;
-      return fauxAssistantMessage(firstFinal);
-    },
+    { type: "text", text: firstFinal, waitFor: holdAfterTool },
     // Resume after park (and any aborted in-flight call) still has a final reply.
-    fauxAssistantMessage(firstFinal),
-    ...restFinals.map((text) => fauxAssistantMessage(text)),
+    { type: "text", text: firstFinal },
+    ...restFinals.map((text) => ({ type: "text" as const, text })),
   ]);
-  return faux.stream;
 }
 
 /**
@@ -128,36 +111,23 @@ function streamMidWorkThenHoldOnResume(
   holdOnResume: Promise<void>,
   ...finalTexts: string[]
 ): StreamFn {
-  const faux = createFauxCore({ api: "test", provider: "test" });
   const [firstFinal, ...restFinals] = finalTexts;
   if (!firstFinal) {
     throw new Error(
       "streamMidWorkThenHoldOnResume requires at least one final text",
     );
   }
-  faux.setResponses([
-    fauxAssistantMessage([fauxToolCall("systemTime", {})], {
-      stopReason: "toolUse",
-    }),
-    async () => {
-      await holdAfterTool;
-      return fauxAssistantMessage(firstFinal);
-    },
+  return createModelStream([
+    { type: "toolCall", name: "systemTime", arguments: {} },
+    { type: "text", text: firstFinal, waitFor: holdAfterTool },
     // Aborted first-slice model call may still consume a slot.
-    async () => {
-      await holdOnResume;
-      return fauxAssistantMessage(firstFinal);
-    },
+    { type: "text", text: firstFinal, waitFor: holdOnResume },
     // Fresh resume model call: hold until the second host deadline is spent.
-    async () => {
-      await holdOnResume;
-      return fauxAssistantMessage(firstFinal);
-    },
+    { type: "text", text: firstFinal, waitFor: holdOnResume },
     // Leftover replies if the turn somehow continues, plus later mentions.
-    fauxAssistantMessage(firstFinal),
-    ...restFinals.map((text) => fauxAssistantMessage(text)),
+    { type: "text", text: firstFinal },
+    ...restFinals.map((text) => ({ type: "text" as const, text })),
   ]);
-  return faux.stream;
 }
 
 /**
@@ -179,7 +149,9 @@ async function slack(
   await state.connect();
   const wakes = createConversationWorkQueueTestAdapter();
   const adapter = createSlackAdapterFixture();
-  const modelStream = options.modelStream ?? streamReplies("Deploy checked.");
+  const modelStream =
+    options.modelStream ??
+    createModelStream([{ type: "text", text: "Deploy checked." }]);
   const agentRunner: AgentRunner = options.agentRunner ?? {
     run: async (request) => await executeAgentRun(request, modelStream),
   };
@@ -418,7 +390,10 @@ describe("durable queue contract", () => {
     it("runs one mention to one reply and leaves the conversation free", async () => {
       const q = await slack({
         // Second reply is for the later user mention in expectNextTurn.
-        modelStream: streamReplies("Deploy checked.", "Deploy checked."),
+        modelStream: createModelStream([
+          { type: "text", text: "Deploy checked." },
+          { type: "text", text: "Deploy checked." },
+        ]),
       });
       await expect(q.send()).resolves.toMatchObject({ status: 200 });
       await expect(q.next()).resolves.toEqual({ status: "completed" });
@@ -587,7 +562,10 @@ describe("durable queue contract", () => {
       const startedAtMs = almostSpentStartedAtMs(remainingMs);
       const deadlineAtMs = startedAtMs + requestBudgetMs();
       const q = await slack({
-        modelStream: streamReplies("Deploy checked.", "Deploy checked."),
+        modelStream: createModelStream([
+          { type: "text", text: "Deploy checked." },
+          { type: "text", text: "Deploy checked." },
+        ]),
       });
 
       await expect(q.send()).resolves.toMatchObject({ status: 200 });
@@ -715,7 +693,9 @@ describe("durable queue contract", () => {
             if (attempts === 1) throw new Error("agent unavailable");
             return await executeAgentRun(
               request,
-              streamReplies("Deploy checked."),
+              createModelStream([
+                { type: "text", text: "Deploy checked." },
+              ]),
             );
           },
         },
@@ -743,7 +723,9 @@ describe("durable queue contract", () => {
             }
             return await executeAgentRun(
               request,
-              streamReplies("Deploy checked."),
+              createModelStream([
+                { type: "text", text: "Deploy checked." },
+              ]),
             );
           },
         },
@@ -785,7 +767,9 @@ describe("durable queue contract", () => {
             );
             return await executeAgentRun(
               request,
-              streamReplies("Deploy checked."),
+              createModelStream([
+                { type: "text", text: "Deploy checked." },
+              ]),
             );
           },
         },
