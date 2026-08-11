@@ -1,7 +1,5 @@
 import { useState } from "react";
 import {
-  Archive,
-  ArchiveRestore,
   CircleDashed,
   CircleDot,
   CircleX,
@@ -23,6 +21,7 @@ import {
 import { buildConversationMarkdown } from "../markdownExport";
 import { CopyMarkdownButton } from "./CopyMarkdownButton";
 import { ConversationComposer } from "./ConversationComposer";
+import { ConversationHeader } from "./ConversationHeader";
 import { PendingMailboxStack } from "./PendingMailboxStack";
 import {
   buildConversations,
@@ -40,7 +39,6 @@ import {
   taskPath,
   visualStatusForConversation,
 } from "../format";
-import { Button } from "../components/Button";
 import { Tooltip } from "../components/Tooltip";
 import { Card } from "../components/layout/Card";
 import { MetricList, type MetricListItem } from "../components/Metric";
@@ -93,67 +91,41 @@ export function ConversationPage(props: {
         tabIndex={0}
       >
         <section className="min-w-0">
-          {/* Keep top spacing on the sticky header itself so scrolled content
-              cannot show through a padded gap above the stuck bar. */}
-          <header className="sticky top-0 z-10 -mx-3 mb-2 border-b border-white/[0.07] bg-[#050507]/92 px-3 pb-1.5 pt-3 backdrop-blur md:-mx-7 md:mb-4 md:px-7 md:pb-3 md:pt-5">
-            <div className="flex min-w-0 items-center justify-between gap-2 md:items-start md:gap-3">
-              <div className="min-w-0">
-                <div className="flex min-w-0 items-center gap-x-2 gap-y-1">
-                  <h2 className="m-0 line-clamp-1 min-w-0 font-display text-sm font-medium leading-tight tracking-[-0.03em] md:text-2xl">
-                    {conversationDisplayTitle(conversation)}
-                  </h2>
-                  {conversationIsLive(visualStatus, detail.data) ? (
-                    <span
-                      aria-label="Conversation is live"
-                      className="inline-flex size-2 shrink-0 rounded-full bg-emerald-300 md:hidden"
-                      title="Live"
-                    />
-                  ) : null}
-                  <span className="hidden md:inline-flex">
-                    <ConversationPrivacyChip
-                      visibility={conversation?.visibility}
-                    />
-                  </span>
-                </div>
-                <div className="mt-1 hidden min-w-0 gap-0.5 font-sans text-xs leading-snug text-dashboard-text-muted md:grid">
-                  <ConversationIdentity
-                    conversation={conversation}
-                    conversationId={conversationId}
-                    detail={detail.data}
-                  />
-                  <span>
-                    updated{" "}
-                    {formatRelativeTime(
-                      conversation?.lastSeenAt ?? detail.data?.generatedAt,
-                    )}
-                  </span>
-                </div>
-              </div>
-              <ArchiveConversationButton
-                archived={Boolean(conversation?.archivedAt)}
-                disabled={!conversation || archive.isPending}
-                pending={archive.isPending}
-                onClick={() =>
-                  archive.mutate({
-                    archived: !conversation?.archivedAt,
-                    lastSeenAt: conversation!.lastSeenAt,
-                  })
-                }
+          <ConversationHeader
+            annotations={<ConversationAnnotations detail={detail.data} />}
+            archive={{
+              archived: Boolean(conversation?.archivedAt),
+              disabled: !conversation || archive.isPending,
+              error: Boolean(archive.error),
+              onClick: () =>
+                archive.mutate({
+                  archived: !conversation?.archivedAt,
+                  lastSeenAt: conversation!.lastSeenAt,
+                }),
+              pending: archive.isPending,
+            }}
+            identity={
+              <ConversationIdentity
+                conversation={conversation}
+                conversationId={conversationId}
+                detail={detail.data}
               />
-            </div>
-            {archive.error ? (
-              <div className="mt-1.5 text-xs text-red-300/80">
-                Could not update archive state.
-              </div>
-            ) : null}
-            <ConversationStats
-              conversation={conversation}
-              detail={detail.data}
-            />
-            <div className="hidden md:block">
-              <ConversationAnnotations detail={detail.data} />
-            </div>
-          </header>
+            }
+            live={conversationIsLive(visualStatus, detail.data)}
+            privacy={
+              <ConversationPrivacyChip visibility={conversation?.visibility} />
+            }
+            stats={
+              <ConversationStats
+                conversation={conversation}
+                detail={detail.data}
+              />
+            }
+            title={conversationDisplayTitle(conversation)}
+            updatedLabel={formatRelativeTime(
+              conversation?.lastSeenAt ?? detail.data?.generatedAt,
+            )}
+          />
 
           {detail.isPending ? (
             <TranscriptLoading />
@@ -246,33 +218,6 @@ export function ConversationPage(props: {
         target={subagentTarget}
       />
     </div>
-  );
-}
-
-function ArchiveConversationButton(props: {
-  archived: boolean;
-  disabled: boolean;
-  onClick(): void;
-  pending: boolean;
-}) {
-  const label = props.pending
-    ? "Saving archive state"
-    : props.archived
-      ? "Unarchive"
-      : "Archive";
-  const Icon = props.archived ? ArchiveRestore : Archive;
-  return (
-    <Button
-      aria-label={label}
-      className="hidden shrink-0 text-dashboard-text-muted md:grid"
-      disabled={props.disabled}
-      onClick={props.onClick}
-      size="icon"
-      title={label}
-      type="button"
-    >
-      <Icon aria-hidden="true" size={16} strokeWidth={2} />
-    </Button>
   );
 }
 
