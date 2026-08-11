@@ -15,8 +15,13 @@ documents the package-local harness and commands.
 
 Integration tests may fake an external boundary through the shared harnesses,
 but may not mock Junior-owned `@/` modules. `pnpm test-architecture:check`
-enforces this rule. A test that needs internal module replacement belongs in
-`component/` unless it is rewritten to use real wiring.
+also blocks Pi agent mocks, manufactured agent outcomes, scripted agent runners,
+and unsafe Slack double casts. Existing exceptions and their exact counts live
+in `../../../scripts/test-architecture-debt.json`. Do not increase them. Lower
+or remove an exception when its test moves to real wiring.
+
+A test that needs internal module replacement belongs in `component/` unless it
+is rewritten to use real wiring.
 
 Use `../../junior-evals/README.md` for model-dependent behavior and
 `../../docs/src/content/docs/contribute/local-agent-validation.md` for local
