@@ -265,15 +265,6 @@ export async function requireDetail(conversationId: string) {
   return detail;
 }
 
-/** Create a deferred promise for lock-ordering tests. */
-export function deferred(): { promise: Promise<void>; resolve: () => void } {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
-}
-
 /** Wait until another application is blocked on a lock for the given query. */
 export async function waitUntilApplicationWaitsOnLock(
   observer: ReturnType<typeof createPostgresJuniorSqlExecutor>,

@@ -14,10 +14,10 @@ import {
   juniorDestinations,
   juniorIdentities,
 } from "@/db/schema";
+import { deferred } from "../fixtures/conversation-work";
 import {
   appendVisibleHistory,
   createChild,
-  deferred,
   recordRoot,
   replacement,
   requireDetail,
