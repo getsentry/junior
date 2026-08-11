@@ -73,6 +73,7 @@ export function Transcript(props: {
                 bottomPinning.preserveViewportForPrepend();
                 props.onLoadPreviousPage?.();
               }}
+              title="Load earlier events"
               type="button"
             >
               {props.loadingPreviousPage

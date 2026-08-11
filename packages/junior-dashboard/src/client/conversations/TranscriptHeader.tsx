@@ -53,6 +53,7 @@ export function TranscriptHeader(props: {
           className="text-dashboard-text-muted"
           onClick={toggleMobileTools}
           size="icon"
+          title={toolsOpen ? "Hide transcript tools" : "Show transcript tools"}
           type="button"
         >
           {toolsOpen ? (
@@ -107,6 +108,7 @@ function TranscriptViewToggle(props: {
           key={option.value}
           onClick={() => props.onChange(option.value)}
           pressed={props.value === option.value}
+          title={option.label}
           variant="text"
         >
           {option.label}

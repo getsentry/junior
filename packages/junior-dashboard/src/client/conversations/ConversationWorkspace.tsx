@@ -123,12 +123,13 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
           <>
             <div className="border-b border-white/[0.07] bg-white/[0.025] px-3 py-2.5 md:hidden">
               <button
-                className="inline-flex items-center gap-2 font-mono text-xs text-dashboard-text-muted hover:text-dashboard-text"
+                className="inline-flex cursor-pointer items-center gap-2 font-mono text-xs text-dashboard-text-muted hover:text-dashboard-text"
                 onClick={() => {
                   creatingRef.current = false;
                   createSourceId.current = undefined;
                   setCreating(false);
                 }}
+                title="Your conversations"
                 type="button"
               >
                 <ArrowLeft aria-hidden="true" size={15} />

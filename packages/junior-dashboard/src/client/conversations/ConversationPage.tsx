@@ -89,11 +89,13 @@ export function ConversationPage(props: {
     <div className="grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_auto]">
       <div
         aria-label="Conversation transcript"
-        className="min-h-0 overflow-y-auto overscroll-contain px-3 py-3 md:px-7 md:py-5"
+        className="min-h-0 overflow-y-auto overscroll-contain px-3 pb-3 md:px-7 md:pb-5"
         tabIndex={0}
       >
         <section className="min-w-0">
-          <header className="sticky top-0 z-10 -mx-3 mb-2 border-b border-white/[0.07] bg-[#050507]/92 px-3 py-1.5 backdrop-blur md:-mx-7 md:mb-4 md:px-7 md:py-3">
+          {/* Keep top spacing on the sticky header itself so scrolled content
+              cannot show through a padded gap above the stuck bar. */}
+          <header className="sticky top-0 z-10 -mx-3 mb-2 border-b border-white/[0.07] bg-[#050507]/92 px-3 pb-1.5 pt-3 backdrop-blur md:-mx-7 md:mb-4 md:px-7 md:pb-3 md:pt-5">
             <div className="flex min-w-0 items-center justify-between gap-2 md:items-start md:gap-3">
               <div className="min-w-0">
                 <div className="flex min-w-0 items-center gap-x-2 gap-y-1">
@@ -262,7 +264,7 @@ function ArchiveConversationButton(props: {
   return (
     <Button
       aria-label={label}
-      className="hidden shrink-0 text-dashboard-text-muted md:inline-flex"
+      className="hidden shrink-0 text-dashboard-text-muted md:grid"
       disabled={props.disabled}
       onClick={props.onClick}
       size="icon"

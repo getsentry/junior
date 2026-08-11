@@ -55,7 +55,7 @@ export function ConversationSidebar(props: {
           </h2>
           <button
             aria-label="New conversation"
-            className="grid size-8 place-items-center rounded-md text-dashboard-text-muted transition hover:bg-white/[0.05] hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-cyan-300/35"
+            className="grid size-8 cursor-pointer place-items-center rounded-md text-dashboard-text-muted transition hover:bg-white/[0.05] hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-cyan-300/35"
             onClick={props.onNewConversation}
             title="New conversation"
             type="button"
@@ -205,7 +205,7 @@ function ConversationSidebarRow(props: {
       </Link>
       <button
         aria-label={`Archive ${title}`}
-        className="pointer-events-none absolute right-2 top-1/2 z-10 grid size-8 -translate-y-1/2 place-items-center rounded-md bg-[#111719] text-dashboard-text-muted opacity-0 shadow-[-8px_0_12px_rgba(9,12,14,0.8)] transition hover:text-dashboard-text focus:pointer-events-auto focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-cyan-300/35 group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
+        className="pointer-events-none absolute right-2 top-1/2 z-10 grid size-8 -translate-y-1/2 cursor-pointer place-items-center rounded-md bg-[#111719] text-dashboard-text-muted opacity-0 shadow-[-8px_0_12px_rgba(9,12,14,0.8)] transition hover:text-dashboard-text focus:pointer-events-auto focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-cyan-300/35 group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100 disabled:cursor-not-allowed"
         disabled={archive.isPending}
         onClick={() =>
           archive.mutate({
@@ -237,8 +237,9 @@ function ArchiveConversationErrorNotice(props: {
           Could not archive {title}.
         </div>
         <button
-          className="shrink-0 rounded border border-white/15 px-2 py-1 font-mono text-xs text-dashboard-text-muted transition hover:border-white/30 hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-cyan-300/35"
+          className="shrink-0 cursor-pointer rounded border border-white/15 px-2 py-1 font-mono text-xs text-dashboard-text-muted transition hover:border-white/30 hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-cyan-300/35"
           onClick={props.onDismiss}
+          title="Dismiss"
           type="button"
         >
           Dismiss
@@ -269,7 +270,7 @@ function ArchivedConversationNotice(props: {
         </div>
         <button
           aria-label={`Undo archive for ${title}`}
-          className="shrink-0 rounded border border-white/15 px-2 py-1 font-mono text-xs text-cyan-100/75 transition hover:border-white/30 hover:text-cyan-50 focus:outline-none focus:ring-2 focus:ring-cyan-300/35 disabled:opacity-40"
+          className="shrink-0 cursor-pointer rounded border border-white/15 px-2 py-1 font-mono text-xs text-cyan-100/75 transition hover:border-white/30 hover:text-cyan-50 focus:outline-none focus:ring-2 focus:ring-cyan-300/35 disabled:cursor-not-allowed disabled:opacity-40"
           disabled={restore.isPending}
           onClick={() =>
             restore.mutate({
@@ -277,6 +278,7 @@ function ArchivedConversationNotice(props: {
               lastSeenAt: props.conversation.lastSeenAt,
             })
           }
+          title={`Undo archive for ${title}`}
           type="button"
         >
           {restore.isPending ? "Restoring…" : "Undo"}

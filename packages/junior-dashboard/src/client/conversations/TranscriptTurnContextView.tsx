@@ -109,6 +109,7 @@ function TurnContextPanel(props: {
             autoFocus
             className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-md border-0 bg-transparent text-dashboard-text-muted transition-colors hover:bg-white/10 hover:text-dashboard-text"
             onClick={props.onClose}
+            title="Close turn context"
             type="button"
           >
             <X aria-hidden="true" size={17} />

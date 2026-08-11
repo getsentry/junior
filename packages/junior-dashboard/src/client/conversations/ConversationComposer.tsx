@@ -105,6 +105,7 @@ export function ConversationComposer(props: {
           <Button
             aria-label={props.pending ? "Sending message" : props.submitLabel}
             disabled={!message.trim() || props.pending}
+            title={props.pending ? "Sending message" : props.submitLabel}
             type="submit"
           >
             <Send aria-hidden="true" size={14} />
