@@ -9,7 +9,9 @@ import {
   juniorConversationEvents,
   juniorSqlSchema as schema,
 } from "@/db/schema";
+import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { createSqlStore } from "@/chat/conversations/sql/store";
+import { projectConversationEvents } from "@/chat/pi/conversation-events";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { recordTurnSummary } from "@/chat/task-execution/turn-cursor";
 import {
@@ -201,6 +203,17 @@ ORDER BY conversation_id
         type: "mcp_provider_connected_unowned",
         payload: { provider: "github" },
       });
+
+      const history = await createSqlConversationEventStore(
+        fixture.sql,
+      ).loadCurrentHistory(conversationId);
+      expect(history.map(({ data }) => data)).toEqual([
+        {
+          type: "mcp_provider_connected_unowned",
+          provider: "github",
+        },
+      ]);
+      expect(projectConversationEvents(history).messages).toEqual([]);
     } finally {
       await fixture.close();
     }

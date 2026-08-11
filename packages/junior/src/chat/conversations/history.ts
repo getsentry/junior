@@ -126,6 +126,15 @@ const mcpProviderConnectedEventDataSchema = z
   })
   .strict();
 
+// Migration-only fact for connections recorded before credential ownership.
+// Readers keep it replayable, but writers cannot append it and restore ignores it.
+const unownedMcpProviderConnectedEventDataSchema = z
+  .object({
+    type: z.literal("mcp_provider_connected_unowned"),
+    provider: z.string().min(1),
+  })
+  .strict();
+
 export const authorizationKindSchema = z.union([
   z.literal("plugin"),
   z.literal("mcp"),
@@ -367,6 +376,7 @@ const appendableConversationEventDataSchema = z.union([
 export const conversationEventDataSchema = z.union([
   appendableConversationEventDataSchema,
   historyReplacementEventDataSchema,
+  unownedMcpProviderConnectedEventDataSchema,
 ]);
 
 /** One durable conversation event's validated data. */
@@ -384,6 +394,7 @@ export const KNOWN_CONVERSATION_EVENT_TYPES = [
   "assistant_message",
   "tool_result",
   "mcp_provider_connected",
+  "mcp_provider_connected_unowned",
   "authorization_requested",
   "authorization_completed",
   "tool_execution_started",
