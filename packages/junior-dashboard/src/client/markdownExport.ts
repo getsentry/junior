@@ -109,6 +109,13 @@ function appendTranscriptMessages(
           entry.message,
           redacted,
         );
+      } else if (entry.message.context) {
+        appendMessageContext(
+          lines,
+          conversationTranscript,
+          entry.message,
+          redacted,
+        );
       } else {
         appendMessage(lines, conversationTranscript, entry.message, redacted);
       }
@@ -284,6 +291,23 @@ function appendResourceEvent(
 
   const rawText = messageRawText(message);
   lines.push("", rawText.trim().length ? rawText : "_No content._");
+}
+
+function appendMessageContext(
+  lines: string[],
+  conversationTranscript: ConversationTranscript,
+  message: TranscriptViewMessage,
+  redacted: boolean,
+): void {
+  lines.push(
+    "",
+    `### Context from ${messageRoleLabel(message, conversationTranscript)}`,
+  );
+  addEventMeta(lines, conversationTranscript, message.timestamp);
+  lines.push("", redacted ? "<redacted>" : messageRawText(message));
+  if (!redacted) {
+    appendTurnContexts(lines, message.contexts);
+  }
 }
 
 function appendMessage(

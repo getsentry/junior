@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   activityGroupLabel,
+  activityGroupOpen,
   isCollapsibleActivityEntry,
 } from "../src/client/conversations/TranscriptActivityGroup";
 import type { RenderedTranscriptEntry } from "../src/client/conversations/transcriptRenderModel";
@@ -105,6 +106,44 @@ function failure(): RenderedTranscriptEntry {
 }
 
 describe("transcript activity group", () => {
+  it("uses activity state until the user makes an explicit choice", () => {
+    expect(
+      activityGroupOpen({
+        activeTail: false,
+        hasLiveActivity: false,
+        userOpen: null,
+      }),
+    ).toBe(false);
+    expect(
+      activityGroupOpen({
+        activeTail: true,
+        hasLiveActivity: false,
+        userOpen: null,
+      }),
+    ).toBe(true);
+    expect(
+      activityGroupOpen({
+        activeTail: false,
+        hasLiveActivity: true,
+        userOpen: null,
+      }),
+    ).toBe(true);
+    expect(
+      activityGroupOpen({
+        activeTail: false,
+        hasLiveActivity: false,
+        userOpen: true,
+      }),
+    ).toBe(true);
+    expect(
+      activityGroupOpen({
+        activeTail: true,
+        hasLiveActivity: true,
+        userOpen: false,
+      }),
+    ).toBe(false);
+  });
+
   it("collapses non-message activity and keeps failures and chat messages open", () => {
     expect(isCollapsibleActivityEntry(tool("1"))).toBe(true);
     expect(isCollapsibleActivityEntry(tool("err", "error"))).toBe(false);
@@ -129,12 +168,7 @@ describe("transcript activity group", () => {
 
   it("labels mixed activity groups with an action count and key highlights", () => {
     expect(
-      activityGroupLabel([
-        tool("1"),
-        tool("2"),
-        compaction(),
-        handoff(),
-      ]),
+      activityGroupLabel([tool("1"), tool("2"), compaction(), handoff()]),
     ).toBe("4 actions · 2 tool calls · context compacted · model handoff");
     expect(activityGroupLabel([compaction()])).toBe("context compacted");
     expect(activityGroupLabel([handoff()])).toBe("model handoff");

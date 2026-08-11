@@ -1045,7 +1045,7 @@ describe("bot handlers (integration)", () => {
           wakePausedTurn,
           agentRunner: {
             run: async () => {
-              return { status: "suspended", resumeVersion: 3 };
+              return { status: "suspended", reason: "timeout", resumeVersion: 3 };
             },
           },
         },
@@ -1097,7 +1097,7 @@ describe("bot handlers (integration)", () => {
           wakePausedTurn,
           agentRunner: {
             run: async () => {
-              return { status: "suspended", resumeVersion: 4 };
+              return { status: "suspended", reason: "timeout", resumeVersion: 4 };
             },
           },
         },
@@ -1142,7 +1142,7 @@ describe("bot handlers (integration)", () => {
           wakePausedTurn,
           agentRunner: {
             run: async () => {
-              return { status: "suspended", resumeVersion: 3 };
+              return { status: "suspended", reason: "timeout", resumeVersion: 3 };
             },
           },
         },

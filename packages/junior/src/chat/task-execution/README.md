@@ -19,11 +19,15 @@ The reliability rules are small:
 
 - The conversation lease is the only owner for queue-driven execution.
 - A turn may run, pause at a committed boundary, complete, or fail.
-- Timeout, retry, and yield may continue only after the boundary advances;
-  parking the same boundary twice fails the turn.
+- Soft yield and retry may continue only after the boundary advances; parking
+  the same boundary twice fails the turn. Hard timeout may re-park without new
+  work so a slow model call can try again on a later wake. The slice limit still
+  stops endless attempts.
+- After a hard timeout park, the worker hands the lease back. The next slice
+  starts from a fresh queue wake and full request deadline, not leftover scraps.
 - A paused turn can continue under the current lease while the host request has
-  time left. When that deadline is spent, the worker releases the lease. The
-  next slice starts from a fresh queue wake and request deadline.
+  time left for soft yield or retry. When that deadline is spent, the worker
+  releases the lease.
 - A process can stop while a turn runs. The next worker stops that turn and
   records the error. The user can start new work. Committed SQL history remains.
 - A paused turn does not take a second lock. OAuth can run outside the queue and

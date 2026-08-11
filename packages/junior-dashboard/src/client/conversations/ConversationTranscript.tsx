@@ -10,12 +10,14 @@ import {
   Brain,
   Calendar,
   Check,
+  ChevronRight,
   CircleAlert,
   Database,
   Diff,
   Info,
   KeyRound,
   Link,
+  MessageSquareText,
   Minimize2,
   Send,
   Sparkles,
@@ -105,6 +107,7 @@ export function ConversationTranscriptView(props: {
           onOpenSubagentTranscript={props.onOpenSubagentTranscript}
           conversation={props.conversation}
           messages={messages}
+          responding={props.responding ?? false}
           view={props.view}
         />
         {props.responding ? <TypingIndicator /> : null}
@@ -145,8 +148,7 @@ function transcriptMessageClass(role: string): string {
     "grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 rounded-2xl px-3 py-2 md:gap-1.5 md:px-3.5 md:py-2.5",
     kind === "assistant" &&
       "mr-6 bg-cyan-300/[0.04] text-dashboard-text md:mr-[18%]",
-    kind === "user" &&
-      "ml-6 bg-white/[0.055] text-dashboard-text md:ml-[22%]",
+    kind === "user" && "ml-6 bg-white/[0.055] text-dashboard-text md:ml-[22%]",
     kind === "system" &&
       "rounded-xl border border-amber-300/10 bg-amber-300/[0.04] text-dashboard-text",
     kind === "tool" && "rounded-none px-0 text-dashboard-text-muted",
@@ -235,6 +237,7 @@ function SegmentEvents(props: {
   }) => void;
   conversation: ConversationTranscript;
   messages: TranscriptViewMessage[];
+  responding: boolean;
   view: TranscriptViewMode;
 }) {
   return (
@@ -244,6 +247,7 @@ function SegmentEvents(props: {
           onOpenSubagentTranscript={props.onOpenSubagentTranscript}
           transcript={props.messages}
           conversation={props.conversation}
+          responding={props.responding}
           view={props.view}
         />
       ) : props.conversation.eventHistory.status === "redacted" &&
@@ -258,6 +262,7 @@ function SegmentEvents(props: {
           onOpenSubagentTranscript={props.onOpenSubagentTranscript}
           transcript={props.messages}
           conversation={props.conversation}
+          responding={props.responding}
           view={props.view}
         />
       ) : (
@@ -276,12 +281,14 @@ function VisibleTranscriptEntries(props: {
   }) => void;
   transcript: TranscriptViewMessage[];
   conversation: ConversationTranscript;
+  responding: boolean;
   view: TranscriptViewMode;
 }) {
   return (
     <TranscriptEntryList
       entries={groupTranscriptMessages(props.transcript)}
       keyPrefix={props.conversation.conversationId}
+      responding={props.responding}
       renderContext={(entry) => (
         <TranscriptRailEvent
           kind={entry.part.event.type === "handoff" ? "handoff" : "compaction"}
@@ -302,6 +309,13 @@ function VisibleTranscriptEntries(props: {
         entry.message.eventType ? (
           <TranscriptRailEvent kind="resource_event">
             <TranscriptResourceEventView message={entry.message} />
+          </TranscriptRailEvent>
+        ) : entry.message.context ? (
+          <TranscriptRailEvent kind="message_context">
+            <TranscriptMessageContextView
+              message={entry.message}
+              conversation={props.conversation}
+            />
           </TranscriptRailEvent>
         ) : (
           <TranscriptMessageView
@@ -351,6 +365,7 @@ function VisibleTranscriptEntries(props: {
 function TranscriptEntryList(props: {
   entries: TranscriptEntry[];
   keyPrefix: string;
+  responding?: boolean;
   renderContext: (entry: TranscriptContextEntry) => ReactNode;
   renderFailure: (entry: TranscriptFailureEntry) => ReactNode;
   renderMessage: (entry: TranscriptMessageEntry) => ReactNode;
@@ -402,6 +417,9 @@ function TranscriptEntryList(props: {
         });
         rows.push(
           <TranscriptActivityGroup
+            activeTail={
+              Boolean(props.responding) && index === props.entries.length
+            }
             entries={visibleEntries}
             key={activityKey}
             renderEntry={renderEntry}
@@ -491,6 +509,7 @@ function TranscriptFailureView(props: {
 type TranscriptRailEventKind =
   | "compaction"
   | "handoff"
+  | "message_context"
   | "resource_event"
   | "structured_event"
   | "subagent";
@@ -527,6 +546,12 @@ function transcriptRailMarker(kind: TranscriptRailEventKind): {
   className: string;
   icon: LucideIcon;
 } {
+  if (kind === "message_context") {
+    return {
+      className: "border-white/20 text-dashboard-text-muted",
+      icon: MessageSquareText,
+    };
+  }
   if (kind === "resource_event") {
     return {
       className: "border-violet-300/35 text-violet-200",
@@ -612,6 +637,14 @@ function RedactedTranscriptView(props: {
           <TranscriptRailEvent kind="resource_event">
             <TranscriptResourceEventView message={entry.message} />
           </TranscriptRailEvent>
+        ) : entry.message.context ? (
+          <TranscriptRailEvent kind="message_context">
+            <TranscriptMessageContextView
+              message={entry.message}
+              conversation={props.conversation}
+              redacted
+            />
+          </TranscriptRailEvent>
         ) : (
           <RedactedMessageView
             message={entry.message}
@@ -694,6 +727,76 @@ function RedactedMarker() {
     <code className="inline-flex w-fit font-mono text-sm leading-tight text-dashboard-text-muted">
       {"<redacted>"}
     </code>
+  );
+}
+
+function TranscriptMessageContextView(props: {
+  conversation: ConversationTranscript;
+  message: TranscriptMessageEntry["message"];
+  redacted?: boolean;
+}) {
+  const actor = transcriptRoleLabel(props.message, props.conversation);
+  const timestamp = formatMessageTimestamp(props.message.timestamp);
+  const text = messageRawText(props.message);
+
+  const content = props.redacted ? (
+    <RedactedMarker />
+  ) : (
+    <HighlightText text={text} />
+  );
+
+  return (
+    <>
+      <details
+        className="group/message-context min-w-0 rounded-lg bg-white/[0.025] px-3 py-2.5 md:hidden"
+        data-transcript-message-context
+      >
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-2 font-display text-xs font-semibold text-dashboard-text-muted [&::-webkit-details-marker]:hidden">
+          <span className="min-w-0 truncate">Context from {actor}</span>
+          <ChevronRight
+            aria-hidden="true"
+            className="shrink-0 transition-transform group-open/message-context:rotate-90"
+            size={14}
+          />
+        </summary>
+        <div className="mt-2 whitespace-pre-wrap pt-2 text-sm leading-relaxed text-dashboard-text/75">
+          {content}
+        </div>
+        {!props.redacted && props.message.contexts?.length ? (
+          <div className="mt-2">
+            <TranscriptTurnContextView contexts={props.message.contexts} />
+          </div>
+        ) : null}
+      </details>
+      <article
+        className="hidden min-w-0 rounded-lg bg-white/[0.025] px-3 py-2.5 md:block"
+        data-transcript-message-context
+      >
+        <TranscriptHeadingRow
+          left={
+            <span className="font-display text-xs font-semibold text-dashboard-text-muted">
+              Context from {actor}
+            </span>
+          }
+          leftClassName="min-w-0"
+          right={
+            timestamp ? (
+              <TranscriptHeadingMeta className="font-mono text-2xs text-dashboard-text-muted/70">
+                {timestamp}
+              </TranscriptHeadingMeta>
+            ) : undefined
+          }
+        />
+        <div className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-dashboard-text/75">
+          {content}
+        </div>
+        {!props.redacted && props.message.contexts?.length ? (
+          <div className="mt-2">
+            <TranscriptTurnContextView contexts={props.message.contexts} />
+          </div>
+        ) : null}
+      </article>
+    </>
   );
 }
 

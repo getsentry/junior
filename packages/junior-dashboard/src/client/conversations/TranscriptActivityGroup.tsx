@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import { ChevronRight, Layers } from "lucide-react";
 
 import type { RenderedTranscriptEntry } from "./transcriptRenderModel";
@@ -100,24 +100,47 @@ function hasLiveActivity(entries: RenderedTranscriptEntry[]): boolean {
   });
 }
 
+/** Resolve automatic activity visibility without overriding a user choice. */
+export function activityGroupOpen(args: {
+  activeTail: boolean;
+  hasLiveActivity: boolean;
+  userOpen: boolean | null;
+}): boolean {
+  return args.userOpen ?? (args.activeTail || args.hasLiveActivity);
+}
+
 /** Collapse completed non-message activity so chat messages stay primary. */
 export function TranscriptActivityGroup(props: {
+  activeTail: boolean;
   entries: RenderedTranscriptEntry[];
   renderEntry: (entry: RenderedTranscriptEntry) => ReactNode;
 }) {
   const { active: searchActive } = useTranscriptSearch();
+  const [userOpen, setUserOpen] = useState<boolean | null>(null);
   const rows = props.entries.map((entry) => (
     <Fragment key={entry.key}>{props.renderEntry(entry)}</Fragment>
   ));
   const label = activityGroupLabel(props.entries);
 
-  if (searchActive || hasLiveActivity(props.entries)) {
+  if (searchActive) {
     return <>{rows}</>;
   }
 
+  const open = activityGroupOpen({
+    activeTail: props.activeTail,
+    hasLiveActivity: hasLiveActivity(props.entries),
+    userOpen,
+  });
+
   return (
-    <details className="group/activity-run min-w-0">
-      <summary className="group flex w-fit max-w-full cursor-pointer list-none items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-left text-xs leading-tight text-dashboard-text-muted transition-colors hover:border-white/[0.14] hover:bg-white/[0.05] hover:text-dashboard-text focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55 [&::-webkit-details-marker]:hidden">
+    <details className="group/activity-run min-w-0" open={open}>
+      <summary
+        className="group flex w-fit max-w-full cursor-pointer list-none items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-left text-xs leading-tight text-dashboard-text-muted transition-colors hover:border-white/[0.14] hover:bg-white/[0.05] hover:text-dashboard-text focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55 [&::-webkit-details-marker]:hidden"
+        onClick={(event) => {
+          event.preventDefault();
+          setUserOpen(!open);
+        }}
+      >
         <Layers
           aria-hidden="true"
           className="size-3 shrink-0 opacity-70"

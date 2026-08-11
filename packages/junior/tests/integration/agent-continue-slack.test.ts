@@ -119,6 +119,8 @@ function continueAgentRun(args: {
   sessionId: string;
   expectedVersion: number;
 }): Promise<boolean> {
+  // Direct resume only. Worker-owned timeout lease handback is covered by
+  // durable-queue, not reimplemented here.
   return requestDeadlineModule.runWithTurnRequestDeadline(() =>
     pausedTurnModule.runPausedTurn(
       {
@@ -651,8 +653,11 @@ describe("paused turn Slack integration", () => {
       },
     });
 
+    // retry (not timeout): leased timeout hands the lease back via yield error.
+    // This case covers the onSuspend → wake path for another continuation.
     executeAgentRunMock.mockResolvedValueOnce({
       status: "suspended",
+      reason: "retry",
       resumeVersion: sessionRecord.version + 1,
     });
 

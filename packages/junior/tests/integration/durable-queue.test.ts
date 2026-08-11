@@ -103,6 +103,41 @@ function streamMidWorkThenReplies(
   return faux.stream;
 }
 
+/** Hold both the first model continuation and the first resumed attempt. */
+function streamMidWorkThenHoldOnResume(
+  holdAfterTool: Promise<void>,
+  holdOnResume: Promise<void>,
+  ...finalTexts: string[]
+): StreamFn {
+  const faux = createFauxCore({ api: "test", provider: "test" });
+  const [firstFinal, ...restFinals] = finalTexts;
+  if (!firstFinal) {
+    throw new Error(
+      "streamMidWorkThenHoldOnResume requires at least one final text",
+    );
+  }
+  faux.setResponses([
+    fauxAssistantMessage([fauxToolCall("systemTime", {})], {
+      stopReason: "toolUse",
+    }),
+    async () => {
+      await holdAfterTool;
+      return fauxAssistantMessage(firstFinal);
+    },
+    async () => {
+      await holdOnResume;
+      return fauxAssistantMessage(firstFinal);
+    },
+    async () => {
+      await holdOnResume;
+      return fauxAssistantMessage(firstFinal);
+    },
+    fauxAssistantMessage(firstFinal),
+    ...restFinals.map((text) => fauxAssistantMessage(text)),
+  ]);
+  return faux.stream;
+}
+
 /** Shared production Slack ingress → durable queue → agent harness. */
 const slack = createConversationWorkSlackHarness;
 
@@ -360,6 +395,79 @@ describe("durable queue contract", () => {
       await expectAssistantInSql("Deploy checked.");
       await expectNextTurn(q, "1712345.0011");
     });
+
+    it(
+      "re-parks when a later attempt times out before any new work is saved",
+      async () => {
+        const releaseAfterTool = deferred<void>();
+        const releaseOnResume = deferred<void>();
+        const remainingMs = 2_500;
+        const firstStartedAtMs = almostSpentStartedAtMs(remainingMs);
+        const firstDeadlineAtMs = firstStartedAtMs + requestBudgetMs();
+        const q = await slack({
+          modelStream: streamMidWorkThenHoldOnResume(
+            releaseAfterTool.promise,
+            releaseOnResume.promise,
+            "Deploy checked.",
+            "Deploy checked.",
+          ),
+        });
+
+        await expect(q.send()).resolves.toMatchObject({ status: 200 });
+        const firstSlice = q.next(firstStartedAtMs);
+        await new Promise((resolve) =>
+          setTimeout(
+            resolve,
+            Math.max(0, firstDeadlineAtMs - Date.now() + 50),
+          ),
+        );
+        releaseAfterTool.resolve(undefined);
+        await expect(firstSlice).resolves.toEqual({ status: "yielded" });
+
+        const turnId = "turn_1712345_0001";
+        await expect(
+          getTurnRecord(CONVERSATION_ID, turnId),
+        ).resolves.toMatchObject({
+          state: "paused",
+          resumeReason: "timeout",
+          turnId,
+        });
+        expect(q.replies()).toHaveLength(0);
+        expect(q.wakes.hasQueuedMessages()).toBe(true);
+
+        const secondStartedAtMs = almostSpentStartedAtMs(remainingMs);
+        const secondDeadlineAtMs = secondStartedAtMs + requestBudgetMs();
+        const secondSlice = q.next(secondStartedAtMs);
+        await new Promise((resolve) =>
+          setTimeout(
+            resolve,
+            Math.max(0, secondDeadlineAtMs - Date.now() + 50),
+          ),
+        );
+        releaseOnResume.resolve(undefined);
+
+        await expect(secondSlice).resolves.toEqual({ status: "yielded" });
+        await expect(
+          getTurnRecord(CONVERSATION_ID, turnId),
+        ).resolves.toMatchObject({
+          state: "paused",
+          resumeReason: "timeout",
+          turnId,
+        });
+        expect(q.replies()).toHaveLength(0);
+        expect(q.wakes.hasQueuedMessages()).toBe(true);
+
+        await expect(q.next()).resolves.toEqual({ status: "completed" });
+        await expectTerminalTurn(q, {
+          turnId,
+          state: "completed",
+          replies: ["Deploy checked."],
+        });
+        await expectAssistantInSql("Deploy checked.");
+        await expectNextTurn(q, "1712345.0012");
+      },
+      30_000,
+    );
   });
 
   describe("accepted reply is terminal", () => {

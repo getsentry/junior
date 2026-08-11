@@ -100,6 +100,10 @@ export type TranscriptViewMessage = {
   /** Mailbox delivery mode while the message is still pending history commit. */
   delivery?: "defer" | "interrupt";
   eventType?: string;
+  /** Whether the source message addressed Junior directly. */
+  explicitMention?: boolean;
+  /** Whether a non-mention message was used as input to a turn. */
+  context?: boolean;
   /** Stable history/message id used to drop pending rows after commit. */
   messageId?: string;
   /** True while the message is accepted in the mailbox but not yet in history. */

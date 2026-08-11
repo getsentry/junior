@@ -1,6 +1,7 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import { Search, X } from "lucide-react";
 
-import { ToggleButton } from "../components/Button";
+import { Button, ToggleButton } from "../components/Button";
 import { SearchInput } from "../components/SearchInput";
 import { cn } from "../styles";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
@@ -22,14 +23,53 @@ export function TranscriptHeader(props: {
   search: string;
   value: TranscriptViewMode;
 }) {
+  const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
+  const toolsOpen =
+    mobileToolsOpen || props.search.length > 0 || props.value !== "rich";
+
+  const toggleMobileTools = () => {
+    if (toolsOpen) {
+      setMobileToolsOpen(false);
+      if (props.search.length > 0) props.onSearchChange("");
+      if (props.value !== "rich") props.onChange("rich");
+      return;
+    }
+    setMobileToolsOpen(true);
+  };
+
   return (
-    <div className="mb-3 grid min-w-0 gap-2 md:mb-4">
+    <div className="mb-2 grid min-w-0 gap-2 md:mb-4">
       {props.redacted ? (
         <div className="min-w-0 break-words text-sm leading-relaxed text-dashboard-text-muted">
           Hidden because this conversation is not public.
         </div>
       ) : null}
-      <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
+      <div className="flex min-w-0 items-center justify-end gap-1 md:hidden">
+        <Button
+          aria-expanded={toolsOpen}
+          aria-label={
+            toolsOpen ? "Hide transcript tools" : "Show transcript tools"
+          }
+          className="text-dashboard-text-muted"
+          onClick={toggleMobileTools}
+          size="icon"
+          type="button"
+        >
+          {toolsOpen ? (
+            <X aria-hidden="true" size={16} strokeWidth={2} />
+          ) : (
+            <Search aria-hidden="true" size={16} strokeWidth={2} />
+          )}
+        </Button>
+        {props.actions}
+      </div>
+      <div
+        className={cn(
+          "min-w-0 flex-col gap-2 sm:flex-row sm:items-center",
+          toolsOpen ? "flex" : "hidden",
+          "md:flex",
+        )}
+      >
         <SearchInput
           className="min-w-0 flex-1"
           label="Search transcript"
@@ -40,7 +80,7 @@ export function TranscriptHeader(props: {
         />
         <div className="flex shrink-0 items-center gap-2 self-end sm:self-auto">
           <TranscriptViewToggle value={props.value} onChange={props.onChange} />
-          {props.actions}
+          <span className="hidden md:inline-flex">{props.actions}</span>
         </div>
       </div>
     </div>

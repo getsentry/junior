@@ -1814,6 +1814,7 @@ function buildRuntimeServices(
             });
             return {
               status: "suspended",
+              reason: "yield" as const,
               resumeVersion: sessionRecord.version,
             };
           }
@@ -1887,6 +1888,7 @@ function buildRuntimeServices(
             });
             return {
               status: "suspended",
+              reason: "timeout" as const,
               resumeVersion: sessionRecord.version,
             };
           }

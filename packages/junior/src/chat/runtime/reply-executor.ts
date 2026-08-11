@@ -1426,11 +1426,14 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           }
           if (outcome.status === "suspended") {
             options.onTurnOutcome?.({ outcome: "awaiting_resume" });
-            // A cooperative yield only occurs when this caller's own
-            // shouldYield() fired, so the predicate — not the outcome —
-            // decides the resume route: hand the lease back to the queue
-            // worker, or schedule a direct continuation.
-            if (options.shouldYield?.()) {
+            // Soft yield follows shouldYield(). Hard timeout under a worker that
+            // can hand the lease back also yields so the next wake gets a full
+            // host budget. Live webhook paths have no shouldYield and schedule a
+            // wake instead.
+            if (
+              options.shouldYield &&
+              (options.shouldYield() || outcome.reason === "timeout")
+            ) {
               shouldPersistFailureState = false;
               throw new CooperativeTurnYieldError();
             }

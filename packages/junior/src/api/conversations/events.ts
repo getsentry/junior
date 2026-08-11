@@ -322,6 +322,9 @@ function reportEventData(args: {
         ...(typeof data.meta?.eventType === "string"
           ? { eventType: data.meta.eventType }
           : {}),
+        ...(typeof data.meta?.explicitMention === "boolean"
+          ? { explicitMention: data.meta.explicitMention }
+          : {}),
         ...(args.canExposePayload
           ? { text: data.text }
           : { redacted: true as const }),
@@ -337,6 +340,9 @@ function reportEventData(args: {
         type: "turn_lifecycle",
         turnId: data.turnId,
         state: "started",
+        ...(data.inputMessageIds.length > 0
+          ? { inputMessageIds: data.inputMessageIds }
+          : {}),
       };
     case "turn_context":
       if (!args.canExposePayload) {

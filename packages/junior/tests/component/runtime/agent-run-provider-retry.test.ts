@@ -1090,6 +1090,7 @@ describe("agent run continuation", () => {
 
     expect(outcome).toMatchObject({
       status: "suspended",
+      reason: "yield",
       resumeVersion: expect.any(Number),
     });
     const sessionRecord = await turnSessionState.getTurnRecord(
@@ -1244,6 +1245,7 @@ describe("agent run continuation", () => {
 
     expect(outcome).toMatchObject({
       status: "suspended",
+      reason: "yield",
       resumeVersion: expect.any(Number),
     });
     const sessionRecord = await turnSessionState.getTurnRecord(

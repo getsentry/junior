@@ -93,18 +93,27 @@ export function ConversationPage(props: {
         tabIndex={0}
       >
         <section className="min-w-0">
-          <header className="sticky top-0 z-10 -mx-3 mb-3 border-b border-white/[0.07] bg-[#050507]/92 px-3 py-2.5 backdrop-blur md:-mx-7 md:mb-4 md:px-7 md:py-3">
-            <div className="flex min-w-0 items-start justify-between gap-3">
+          <header className="sticky top-0 z-10 -mx-3 mb-2 border-b border-white/[0.07] bg-[#050507]/92 px-3 py-1.5 backdrop-blur md:-mx-7 md:mb-4 md:px-7 md:py-3">
+            <div className="flex min-w-0 items-center justify-between gap-2 md:items-start md:gap-3">
               <div className="min-w-0">
-                <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-                  <h2 className="m-0 line-clamp-2 min-w-0 font-display text-base font-medium leading-tight tracking-[-0.03em] md:line-clamp-1 md:text-2xl">
+                <div className="flex min-w-0 items-center gap-x-2 gap-y-1">
+                  <h2 className="m-0 line-clamp-1 min-w-0 font-display text-sm font-medium leading-tight tracking-[-0.03em] md:text-2xl">
                     {conversationDisplayTitle(conversation)}
                   </h2>
-                  <ConversationPrivacyChip
-                    visibility={conversation?.visibility}
-                  />
+                  {conversationIsLive(visualStatus, detail.data) ? (
+                    <span
+                      aria-label="Conversation is live"
+                      className="inline-flex size-2 shrink-0 rounded-full bg-emerald-300 md:hidden"
+                      title="Live"
+                    />
+                  ) : null}
+                  <span className="hidden md:inline-flex">
+                    <ConversationPrivacyChip
+                      visibility={conversation?.visibility}
+                    />
+                  </span>
                 </div>
-                <div className="mt-1 grid min-w-0 gap-0.5 font-sans text-xs leading-snug text-dashboard-text-muted">
+                <div className="mt-1 hidden min-w-0 gap-0.5 font-sans text-xs leading-snug text-dashboard-text-muted md:grid">
                   <ConversationIdentity
                     conversation={conversation}
                     conversationId={conversationId}
@@ -139,7 +148,9 @@ export function ConversationPage(props: {
               conversation={conversation}
               detail={detail.data}
             />
-            <ConversationAnnotations detail={detail.data} />
+            <div className="hidden md:block">
+              <ConversationAnnotations detail={detail.data} />
+            </div>
           </header>
 
           {detail.isPending ? (
@@ -192,8 +203,17 @@ export function ConversationPage(props: {
         </section>
       </div>
       {detail.data?.isParticipant ? (
-        <div className="border-t border-white/[0.07] bg-[#050507]/95 px-3 py-3 backdrop-blur md:px-7 md:py-4">
-          <p className="mb-2 mt-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
+        <div className="border-t border-white/[0.07] bg-[#050507]/95 px-2 py-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] backdrop-blur md:px-7 md:py-4 md:pb-4">
+          {conversationIsLive(visualStatus, detail.data) ? (
+            <div className="mb-1.5 flex items-center gap-2 font-sans text-xs text-dashboard-text-muted md:hidden">
+              <span
+                aria-hidden="true"
+                className="size-1.5 shrink-0 animate-pulse rounded-full bg-emerald-300"
+              />
+              <span>Junior is working…</span>
+            </div>
+          ) : null}
+          <p className="mb-2 mt-0 hidden font-mono text-xs leading-relaxed text-dashboard-text-muted md:block">
             {conversation?.surface === "slack"
               ? "This reply stays in Junior. It will not be posted to Slack."
               : "This reply stays in this conversation."}
@@ -247,7 +267,7 @@ function ArchiveConversationButton(props: {
   return (
     <Button
       aria-label={label}
-      className="shrink-0 text-dashboard-text-muted"
+      className="hidden shrink-0 text-dashboard-text-muted md:inline-flex"
       disabled={props.disabled}
       onClick={props.onClick}
       size="icon"
@@ -651,7 +671,7 @@ function ConversationStats(props: {
   );
 
   return (
-    <div className="mt-2">
+    <div className="mt-2 hidden md:block">
       <MetricList
         className="break-words text-xs leading-[1.45] text-dashboard-text-muted"
         items={stats}

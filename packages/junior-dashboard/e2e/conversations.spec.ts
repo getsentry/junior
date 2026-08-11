@@ -316,57 +316,52 @@ test("opens and closes a conversation in the mobile workspace", async ({
     page.getByRole("heading", { name: "Conversations" }),
   ).toBeVisible();
 
-  await page.getByRole("link", { name: /Checkout latency triage/ }).click();
+  // Participant fixture so the compact mobile composer is present.
+  await page.getByRole("link", { name: /Investigate checkout latency/ }).click();
   await expect(page).toHaveURL(
-    `${server.baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770000000.000100")}`,
+    `${server.baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770003600.000200")}`,
   );
   await expect(
-    page.getByRole("heading", { name: "Checkout latency triage" }),
+    page.getByRole("heading", { name: "Investigate checkout latency" }),
   ).toBeVisible();
+
+  const transcript = page.getByLabel("Conversation transcript");
+  await expect(transcript.getByText("1.9k tokens")).toBeHidden();
+  await expect(page.getByRole("button", { name: "Archive" })).toBeHidden();
+  await expect(
+    page.getByText("This reply stays in Junior. It will not be posted to Slack."),
+  ).toBeHidden();
+  await expect(page.getByPlaceholder("Search transcript…")).toBeHidden();
+  await expect(page.getByRole("group", { name: "Transcript view" })).toBeHidden();
+  await expect(page.getByRole("note")).toBeHidden();
+
+  const pending = page.getByLabel("Pending messages");
+  await expect(pending).toBeVisible();
+  await expect(pending.getByText("2 queued messages")).toBeVisible();
+  await expect(
+    pending.getByText("Also check the canary traffic from the last deploy."),
+  ).toBeHidden();
+
+  const composer = page.getByPlaceholder("Message Junior…");
+  await expect(composer).toBeVisible();
+  await expect(composer).toHaveCSS("min-height", "44px");
+  await expect(page.getByRole("button", { name: "Send" })).toBeVisible();
+  // One-row mobile composer; leave headroom for font metrics / padding.
+  expect((await composer.boundingBox())?.height).toBeLessThan(80);
+
+  await page.getByRole("button", { name: "Show transcript tools" }).click();
+  await expect(page.getByPlaceholder("Search transcript…")).toBeVisible();
+  await expect(page.getByRole("group", { name: "Transcript view" })).toBeVisible();
+  await page.getByRole("button", { name: "Event log" }).click();
+  await page.getByRole("button", { name: "Hide transcript tools" }).click();
+  await expect(page.getByPlaceholder("Search transcript…")).toBeHidden();
+  await expect(page.getByRole("group", { name: "Transcript view" })).toBeHidden();
 
   await page.getByRole("link", { name: "Your conversations" }).click();
   await expect(page).toHaveURL(`${server.baseURL}/`);
   await expect(
     page.getByRole("heading", { name: "Conversations" }),
   ).toBeVisible();
-});
-
-test("opens metric tooltips on touch", async ({ browser }) => {
-  const context = await browser.newContext({
-    hasTouch: true,
-    isMobile: true,
-    viewport: { height: 844, width: 390 },
-  });
-  const page = await context.newPage();
-  await mockDashboardApis(page);
-
-  try {
-    await page.goto(
-      `${server.baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770000000.000100")}`,
-    );
-    await expect(
-      page.getByRole("heading", { name: "Checkout latency triage" }),
-    ).toBeVisible();
-
-    const costMetric = page
-      .locator('span[tabindex="0"]')
-      .filter({ hasText: /^\$0\.03$/, visible: true });
-    await expect(costMetric).toHaveCount(1);
-
-    await costMetric.tap();
-    await expect(page.getByRole("tooltip")).toBeVisible();
-
-    // Close outside the metric/tooltip. Heading can sit under an above-placed tip.
-    await page.getByRole("searchbox", { name: "Search transcript" }).tap();
-    await expect(page.getByRole("tooltip")).toBeHidden();
-
-    await costMetric.tap();
-    await expect(page.getByRole("tooltip")).toBeVisible();
-    await page.getByRole("searchbox", { name: "Search transcript" }).tap();
-    await expect(page.getByRole("tooltip")).toBeHidden();
-  } finally {
-    await context.close();
-  }
 });
 
 test("loads earlier transcript events from the mock history cursor", async ({

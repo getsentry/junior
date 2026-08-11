@@ -363,7 +363,7 @@ describe("agent invocation conversation work", () => {
             runCount += 1;
             await request.durability.onInputCommitted?.();
             if (runCount === 1) {
-              return { resumeVersion: 1, status: "suspended" as const };
+              return { resumeVersion: 1, status: "suspended" as const, reason: "timeout" as const };
             }
             return completedAgentRun({
               diagnostics: {

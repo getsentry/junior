@@ -760,16 +760,23 @@ export function createSlackConversationWorker(
         context.destination,
         "Slack paused-turn recovery",
       );
-      await runWithSlackInstallation({
-        adapter,
-        installation: { teamId: destination.teamId },
-        state,
-        task: async () => {
-          await options.runNextPausedTurn(context.conversationId, {
-            shouldYield: context.shouldYield,
-          });
-        },
-      });
+      try {
+        await runWithSlackInstallation({
+          adapter,
+          installation: { teamId: destination.teamId },
+          state,
+          task: async () => {
+            await options.runNextPausedTurn(context.conversationId, {
+              shouldYield: context.shouldYield,
+            });
+          },
+        });
+      } catch (error) {
+        if (isCooperativeTurnYieldError(error)) {
+          return { status: "yielded" } satisfies ConversationWorkerResult;
+        }
+        throw error;
+      }
       return { status: "completed" };
     }
 
