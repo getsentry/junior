@@ -739,12 +739,14 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   app.get("/api/oauth/callback/mcp/:provider", (c) => {
     return mcpOauthCallbackGET(c.req.raw, c.req.param("provider"), waitUntil, {
       agentRunner,
+      conversationWorkQueue: getVercelConversationWorkQueue(),
     });
   });
 
   app.get("/api/oauth/callback/:provider", (c) => {
     return oauthCallbackGET(c.req.raw, c.req.param("provider"), waitUntil, {
       agentRunner,
+      conversationWorkQueue: getVercelConversationWorkQueue(),
     });
   });
 

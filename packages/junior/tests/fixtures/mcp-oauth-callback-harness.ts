@@ -1,4 +1,5 @@
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   waitUntilCallbacks,
   testWaitUntil,
@@ -10,6 +11,7 @@ export async function runMcpOauthCallbackRoute(args: {
   state: string;
   code: string;
   agentRunner?: AgentRunner;
+  conversationWorkQueue?: ConversationWorkQueue;
   expectBackgroundWork?: boolean;
   relayed?: boolean;
 }) {
@@ -22,7 +24,12 @@ export async function runMcpOauthCallbackRoute(args: {
     ),
     args.provider,
     testWaitUntil,
-    { agentRunner: args.agentRunner ?? realAgentRunner },
+    {
+      agentRunner: args.agentRunner ?? realAgentRunner,
+      ...(args.conversationWorkQueue
+        ? { conversationWorkQueue: args.conversationWorkQueue }
+        : {}),
+    },
   );
   const callbacks = waitUntilCallbacks.splice(0, waitUntilCallbacks.length);
   if (args.expectBackgroundWork === false && callbacks.length > 0) {
@@ -50,6 +57,7 @@ export async function completeMcpOauthCallbackRoute(args: {
   provider: string;
   authSessionId: string;
   agentRunner?: AgentRunner;
+  conversationWorkQueue?: ConversationWorkQueue;
   expectBackgroundWork?: boolean;
   relayed?: boolean;
 }) {
@@ -76,6 +84,9 @@ export async function completeMcpOauthCallbackRoute(args: {
     state,
     code,
     ...(args.agentRunner ? { agentRunner: args.agentRunner } : {}),
+    ...(args.conversationWorkQueue
+      ? { conversationWorkQueue: args.conversationWorkQueue }
+      : {}),
     ...(args.expectBackgroundWork === false
       ? { expectBackgroundWork: false }
       : {}),

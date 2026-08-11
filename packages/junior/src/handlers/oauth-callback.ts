@@ -64,6 +64,7 @@ import {
 } from "@/chat/services/pending-auth";
 import { escapeXml } from "@/chat/xml";
 import type { WaitUntilFn } from "@/handlers/types";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { wakePausedTurn } from "@/chat/task-execution/turn-wake";
 import {
   resolveTurnSessionRouting,
@@ -82,6 +83,8 @@ import { botConfig } from "@/chat/config";
 
 interface OAuthCallbackOptions {
   agentRunner: AgentRunner;
+  /** Queue used to wake parked web turns after authorization completes. */
+  conversationWorkQueue?: ConversationWorkQueue;
 }
 
 /**
@@ -805,12 +808,17 @@ export async function GET(
           sessionId: stored.resumeSessionId!,
         }),
       });
-      await wakePausedTurn({
-        conversationId: stored.resumeConversationId!,
-        destination: stored.destination!,
-        turnId: stored.resumeSessionId!,
-        expectedVersion: turn.version,
-      });
+      await wakePausedTurn(
+        {
+          conversationId: stored.resumeConversationId!,
+          destination: stored.destination!,
+          turnId: stored.resumeSessionId!,
+          expectedVersion: turn.version,
+        },
+        options.conversationWorkQueue
+          ? { queue: options.conversationWorkQueue }
+          : undefined,
+      );
     });
   } else if (resumesAgentTurn) {
     waitUntil(() =>

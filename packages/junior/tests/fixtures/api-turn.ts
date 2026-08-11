@@ -1,25 +1,46 @@
 import type { StateAdapter } from "chat";
+import type { StreamFn } from "@earendil-works/pi-agent-core";
 import type { Destination } from "@sentry/junior-plugin-api";
+import { Hono } from "hono";
+import { createJuniorApi, type JuniorApiVariables } from "@/api";
+import {
+  conversationPendingMessagesReportSchema,
+  type ConversationPendingMessagesReport,
+} from "@/api/schema";
 import type { WebActor } from "@/chat/actor";
+import { executeAgentRun } from "@/chat/agent";
+import {
+  appendAndEnqueueApiConversationMessage,
+  createAndEnqueueApiConversation,
+  webActorFromEmail,
+} from "@/chat/api-turns/work";
+import { createConversationWork } from "@/chat/app/conversation-work";
 import type { ConversationStore } from "@/chat/conversations/store";
-import { closeDb, getConversationStore } from "@/chat/db";
+import {
+  closeDb,
+  getConversationEventStore,
+  getConversationStore,
+} from "@/chat/db";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
+import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
 import {
   createConversationWorkQueueTestAdapter,
+  createSlackAdapterFixture,
+  streamReplies,
   type ConversationWorkQueueTestAdapter,
 } from "./conversation-work";
 import { deliverAssistantMessagesForTest } from "./agent-runner";
+import { testViewer } from "./user";
 
 /** Default verified dashboard viewer for web turn tests. */
 export const apiTurnTestActor = {
-  platform: "web",
-  userId: "dashboard:alice",
-  email: "alice@example.com",
-  fullName: "Alice Example",
-  userName: "alice",
+  ...webActorFromEmail("alice@example.com", {
+    fullName: "Alice Example",
+    userName: "alice",
+  }),
 } as const satisfies WebActor;
 
 export type ApiTurnWorkFixture = {
@@ -94,6 +115,145 @@ export function createApiTurnScriptedRunner(args: {
           usedPrimaryText: true,
         },
       });
+    },
+  };
+}
+
+export type ConversationWorkWebHarness = {
+  actor: typeof apiTurnTestActor;
+  agentRunner: AgentRunner;
+  conversationStore: ConversationStore;
+  queue: ConversationWorkQueueTestAdapter;
+  state: StateAdapter;
+  setModelStream: (next: StreamFn) => void;
+  /** Create a new web root conversation and enqueue the first message. */
+  start: (args: {
+    idempotencyKey: string;
+    message: string;
+  }) => Promise<{ conversationId: string; messageId: string }>;
+  /** Append one web follow-up to an existing conversation. */
+  continue: (args: {
+    conversationId: string;
+    idempotencyKey: string;
+    message: string;
+  }) => Promise<{ messageId: string }>;
+  /** Drain the durable queue through the production web/API turn router. */
+  drain: () => Promise<void>;
+  /** Read participant pending-messages, including authorization prompts. */
+  pendingMessages: (
+    conversationId: string,
+  ) => Promise<ConversationPendingMessagesReport>;
+  /** Load durable assistant/user history for one conversation. */
+  historyTexts: (conversationId: string) => Promise<string[]>;
+};
+
+/**
+ * Compose the production web ingress → durable queue → API turn → agent path.
+ * Fake only model generation at the executeAgentRun stream boundary.
+ */
+export async function createConversationWorkWebHarness(
+  options: {
+    agentRunner?: AgentRunner;
+    modelStream?: StreamFn;
+  } = {},
+): Promise<ConversationWorkWebHarness> {
+  const conversationStore = getConversationStore();
+  const queue = createConversationWorkQueueTestAdapter();
+  const state = getStateAdapter();
+  await state.connect();
+  let modelStream = options.modelStream ?? streamReplies("Web turn complete.");
+  const agentRunner: AgentRunner = options.agentRunner ?? {
+    run: async (request) => await executeAgentRun(request, modelStream),
+  };
+  const work = createConversationWork({
+    agentRunner,
+    conversationStore,
+    getSlackAdapter: () => createSlackAdapterFixture(),
+    queue,
+    services: {
+      replyExecutor: { agentRunner },
+    },
+    state,
+  });
+  const actor = apiTurnTestActor;
+  const app = new Hono<{ Variables: JuniorApiVariables }>();
+  app.use("*", async (context, next) => {
+    context.set("viewer", testViewer(actor.email));
+    await next();
+  });
+  app.route("/", createJuniorApi());
+
+  return {
+    actor,
+    agentRunner,
+    conversationStore,
+    queue,
+    state,
+    setModelStream(next: StreamFn) {
+      modelStream = next;
+    },
+    start: async ({ idempotencyKey, message }) => {
+      const accepted = await createAndEnqueueApiConversation(
+        {
+          actor,
+          idempotencyKey,
+          message,
+        },
+        { conversationStore, queue, state },
+      );
+      return {
+        conversationId: accepted.conversationId,
+        messageId: accepted.messageId,
+      };
+    },
+    continue: async ({ conversationId, idempotencyKey, message }) => {
+      const accepted = await appendAndEnqueueApiConversationMessage(
+        {
+          actor,
+          conversationId,
+          idempotencyKey,
+          message,
+        },
+        { conversationStore, queue, state },
+      );
+      return { messageId: accepted.messageId };
+    },
+    drain: async () => {
+      for (let i = 0; i < 12 && queue.hasQueuedMessages(); i += 1) {
+        await processConversationQueueMessage(queue.takeMessage(), {
+          conversationStore,
+          queue,
+          run: work.run,
+          state,
+        });
+      }
+      if (queue.hasQueuedMessages()) {
+        throw new Error("queue still has work after drain");
+      }
+    },
+    pendingMessages: async (conversationId) => {
+      const response = await app.request(
+        `http://localhost/api/conversations/${encodeURIComponent(conversationId)}/pending-messages`,
+      );
+      if (response.status !== 200) {
+        throw new Error(
+          `pending-messages failed: ${response.status} ${await response.text()}`,
+        );
+      }
+      return conversationPendingMessagesReportSchema.parse(
+        await response.json(),
+      );
+    },
+    historyTexts: async (conversationId) => {
+      const history =
+        await getConversationEventStore().loadMessageHistory(conversationId);
+      return history.events
+        .filter((event) => event.data.type === "message")
+        .map((event) => {
+          const data = event.data as { text?: string };
+          return typeof data.text === "string" ? data.text : "";
+        })
+        .filter(Boolean);
     },
   };
 }

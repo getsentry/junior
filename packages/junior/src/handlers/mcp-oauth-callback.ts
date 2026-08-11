@@ -58,6 +58,7 @@ import {
 import { botConfig } from "@/chat/config";
 import { formatProviderLabel } from "@/chat/oauth-flow";
 import { markTurnFailed } from "@/chat/runtime/turn";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { wakePausedTurn } from "@/chat/task-execution/turn-wake";
 import {
   resolveTurnSessionRouting,
@@ -107,6 +108,8 @@ function callbackPages(botName: string) {
 
 interface McpOAuthCallbackOptions {
   agentRunner: AgentRunner;
+  /** Queue used to wake parked web turns after authorization completes. */
+  conversationWorkQueue?: ConversationWorkQueue;
 }
 
 class McpOAuthAttemptExpiredError extends Error {
@@ -651,12 +654,17 @@ export async function GET(
             sessionId: authSession.sessionId,
           }),
         });
-        await wakePausedTurn({
-          conversationId: authSession.conversationId,
-          destination: authSession.destination!,
-          turnId: authSession.sessionId,
-          expectedVersion: turn.version,
-        });
+        await wakePausedTurn(
+          {
+            conversationId: authSession.conversationId,
+            destination: authSession.destination!,
+            turnId: authSession.sessionId,
+            expectedVersion: turn.version,
+          },
+          options.conversationWorkQueue
+            ? { queue: options.conversationWorkQueue }
+            : undefined,
+        );
       });
     } else if (authSession.destination?.platform !== "local") {
       waitUntil(() =>
