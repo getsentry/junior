@@ -12,6 +12,8 @@ import { cn } from "../styles";
 
 /** Render the dashboard message composer for a new or existing conversation. */
 export function ConversationComposer(props: {
+  /** Squash top corners when a pending mailbox stack sits flush above. */
+  attached?: boolean;
   error?: string;
   label: string;
   pending: boolean;
@@ -47,7 +49,10 @@ export function ConversationComposer(props: {
 
   return (
     <form
-      className="overflow-hidden rounded-lg border border-white/[0.09] bg-white/[0.035] focus-within:border-cyan-300/35 focus-within:ring-1 focus-within:ring-cyan-300/25"
+      className={cn(
+        "overflow-hidden border border-white/[0.09] bg-white/[0.035] focus-within:border-cyan-300/35 focus-within:ring-1 focus-within:ring-cyan-300/25",
+        props.attached ? "rounded-b-lg rounded-t-none" : "rounded-lg",
+      )}
       onSubmit={submit}
     >
       <label className="sr-only" htmlFor={id}>

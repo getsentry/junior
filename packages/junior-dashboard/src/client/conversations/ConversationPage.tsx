@@ -21,6 +21,7 @@ import {
 import { buildConversationMarkdown } from "../markdownExport";
 import { CopyMarkdownButton } from "./CopyMarkdownButton";
 import { ConversationComposer } from "./ConversationComposer";
+import { PendingMailboxStack } from "./PendingMailboxStack";
 import {
   buildConversations,
   conversationDisplayTitle,
@@ -179,7 +180,6 @@ export function ConversationPage(props: {
                 live={conversationIsLive(visualStatus, detail.data)}
                 loadingPreviousPage={detail.isLoadingPreviousPage}
                 onLoadPreviousPage={detail.loadPreviousPage}
-                pendingMessages={detail.pendingMessages}
                 responding={
                   !detail.error && conversationIsLive(visualStatus, detail.data)
                 }
@@ -202,22 +202,31 @@ export function ConversationPage(props: {
               ? "This reply stays in Junior. It will not be posted to Slack."
               : "This reply stays in this conversation."}
           </p>
-          <ConversationComposer
-            error={
-              appendMessage.error
-                ? "Could not send the message. Try again."
-                : undefined
-            }
-            label="Continue this conversation"
-            pending={appendMessage.isPending}
-            submitLabel="Send"
-            onSubmit={async (message, idempotencyKey) => {
-              await appendMessage.mutateAsync({
-                idempotencyKey,
-                message,
-              });
-            }}
-          />
+          <div className="grid min-w-0">
+            {detail.data ? (
+              <PendingMailboxStack
+                conversation={detail.data}
+                messages={detail.pendingMessages}
+              />
+            ) : null}
+            <ConversationComposer
+              attached={detail.pendingMessages.length > 0}
+              error={
+                appendMessage.error
+                  ? "Could not send the message. Try again."
+                  : undefined
+              }
+              label="Continue this conversation"
+              pending={appendMessage.isPending}
+              submitLabel="Send"
+              onSubmit={async (message, idempotencyKey) => {
+                await appendMessage.mutateAsync({
+                  idempotencyKey,
+                  message,
+                });
+              }}
+            />
+          </div>
         </div>
       ) : null}
       <SubagentTranscriptDrawer

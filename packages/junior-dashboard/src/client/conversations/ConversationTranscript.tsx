@@ -16,15 +16,12 @@ import {
   Info,
   KeyRound,
   Link,
-  ListOrdered,
   Minimize2,
   Send,
   Sparkles,
   TriangleAlert,
-  Zap,
   type LucideIcon,
 } from "lucide-react";
-import type { ConversationPendingMessage } from "@sentry/junior/api/schema";
 
 import { HighlightedCode } from "../code";
 import {
@@ -36,7 +33,6 @@ import {
   visualStatusForSummary,
 } from "../format";
 import { cn } from "../styles";
-import { ShimmerText } from "../components/ShimmerText";
 import { conversationTranscriptMessages } from "./eventTranscript";
 import type {
   ConversationTranscript,
@@ -97,17 +93,11 @@ export function ConversationTranscriptView(props: {
     conversation: ConversationTranscript;
   }) => void;
   conversation: ConversationTranscript;
-  pendingMessages?: readonly ConversationPendingMessage[];
   responding?: boolean;
   view: TranscriptViewMode;
 }) {
   const status = visualStatusForSummary(props.conversation);
-  const committedMessages = conversationTranscriptMessages(props.conversation);
-  const messages = conversationTranscriptMessages(
-    props.conversation,
-    props.pendingMessages,
-  );
-  const pendingMessages = messages.slice(committedMessages.length);
+  const messages = conversationTranscriptMessages(props.conversation);
 
   return (
     <section className="grid min-w-0 grid-cols-[0.875rem_minmax(0,1fr)] gap-3 py-3">
@@ -119,17 +109,10 @@ export function ConversationTranscriptView(props: {
         <SegmentEvents
           onOpenSubagentTranscript={props.onOpenSubagentTranscript}
           conversation={props.conversation}
-          messages={committedMessages}
+          messages={messages}
           view={props.view}
         />
         {props.responding ? <TypingIndicator /> : null}
-        {pendingMessages.length > 0 ? (
-          <PendingTranscriptEntries
-            conversation={props.conversation}
-            messages={pendingMessages}
-            view={props.view}
-          />
-        ) : null}
       </div>
     </section>
   );
@@ -192,32 +175,6 @@ function transcriptMessageClass(role: string): string {
   );
 }
 
-function pendingDeliveryMeta(
-  delivery: TranscriptViewMessage["delivery"],
-): { icon: LucideIcon; label: string } | undefined {
-  if (delivery === "interrupt") {
-    return { icon: Zap, label: "Interrupts current turn" };
-  }
-  if (delivery === "defer") {
-    return { icon: ListOrdered, label: "Queued after current turn" };
-  }
-  return undefined;
-}
-
-/** Compact monochrome Slack mark for pending mailbox source. */
-function SlackMark(props: { className?: string }) {
-  return (
-    <svg
-      aria-hidden="true"
-      className={props.className}
-      fill="currentColor"
-      viewBox="0 0 24 24"
-    >
-      <path d="M6.2 15.3c0 1.4-1.1 2.5-2.5 2.5S1.2 16.7 1.2 15.3s1.1-2.5 2.5-2.5h2.5v2.5zm1.3 0c0-1.4 1.1-2.5 2.5-2.5s2.5 1.1 2.5 2.5v6.2c0 1.4-1.1 2.5-2.5 2.5s-2.5-1.1-2.5-2.5v-6.2zM8.7 6.2c-1.4 0-2.5-1.1-2.5-2.5S7.3 1.2 8.7 1.2s2.5 1.1 2.5 2.5v2.5H8.7zm0 1.3c1.4 0 2.5 1.1 2.5 2.5s-1.1 2.5-2.5 2.5H2.5C1.1 12.5 0 11.4 0 10s1.1-2.5 2.5-2.5h6.2zM17.8 8.7c0-1.4 1.1-2.5 2.5-2.5s2.5 1.1 2.5 2.5-1.1 2.5-2.5 2.5h-2.5V8.7zm-1.3 0c0 1.4-1.1 2.5-2.5 2.5s-2.5-1.1-2.5-2.5V2.5C11.5 1.1 12.6 0 14 0s2.5 1.1 2.5 2.5v6.2zM14 17.8c1.4 0 2.5 1.1 2.5 2.5s-1.1 2.5-2.5 2.5-2.5-1.1-2.5-2.5v-2.5H14zm0-1.3c-1.4 0-2.5-1.1-2.5-2.5s1.1-2.5 2.5-2.5h6.2c1.4 0 2.5 1.1 2.5 2.5s-1.1 2.5-2.5 2.5H14z" />
-    </svg>
-  );
-}
-
 function transcriptRoleClass(role: string): string {
   const kind = transcriptRoleKind(role);
 
@@ -267,59 +224,11 @@ function TranscriptMessageHeader(props: {
   const source =
     props.message.source ??
     (props.conversation.surface === "slack" ? "slack" : undefined);
-  const roleLabel = transcriptRoleLabel(props.message, props.conversation);
-  const timestamp = (props.meta ?? []).filter(isString).join(" · ") || undefined;
-
-  // Pending mailbox rows use icons for source/delivery — text labels wrap badly
-  // and fight the stack treatment. Dashboard is the default, so no web mark.
-  if (props.message.pending) {
-    const delivery = pendingDeliveryMeta(props.message.delivery);
-    const DeliveryIcon = delivery?.icon;
-    const showSlack = source === "slack";
-
-    return (
-      <TranscriptHeadingRow
-        left={
-          <span className={transcriptRoleLabelClass(props.message.role)}>
-            <ShimmerText active>{roleLabel}</ShimmerText>
-          </span>
-        }
-        leftClassName={transcriptRoleClass(props.message.role)}
-        right={
-          <TranscriptHeadingMeta className="flex min-w-0 items-center justify-end gap-2 text-xs leading-none text-dashboard-text-muted">
-            {showSlack || DeliveryIcon ? (
-              <span className="inline-flex shrink-0 items-center gap-1.5">
-                {showSlack ? (
-                  <span
-                    aria-label="Slack"
-                    className="inline-flex text-dashboard-text-muted"
-                    title="Slack"
-                  >
-                    <SlackMark className="size-3.5" />
-                  </span>
-                ) : null}
-                {DeliveryIcon && delivery ? (
-                  <span
-                    aria-label={delivery.label}
-                    className="inline-flex text-dashboard-text-muted"
-                    title={delivery.label}
-                  >
-                    <DeliveryIcon aria-hidden="true" size={13} strokeWidth={2.2} />
-                  </span>
-                ) : null}
-              </span>
-            ) : null}
-            {timestamp ? <span className="min-w-0 truncate">{timestamp}</span> : null}
-          </TranscriptHeadingMeta>
-        }
-      />
-    );
-  }
-
   const sourceLabel =
     source === "slack" ? "Slack" : source === "web" ? "Dashboard" : undefined;
   const metaParts = [sourceLabel, ...(props.meta ?? [])].filter(isString);
   const metaText = metaParts.join(" · ");
+  const roleLabel = transcriptRoleLabel(props.message, props.conversation);
 
   return (
     <TranscriptHeadingRow
@@ -378,95 +287,6 @@ function SegmentEvents(props: {
         </div>
       )}
     </div>
-  );
-}
-
-function PendingTranscriptEntries(props: {
-  conversation: ConversationTranscript;
-  messages: TranscriptViewMessage[];
-  view: TranscriptViewMode;
-}) {
-  // One continuous stack above the composer: shared fill, no gaps, only outer
-  // corners rounded — same shape as ChatGPT's queued follow-up rows.
-  return (
-    <div
-      aria-label="Pending messages"
-      className="mt-6 overflow-hidden rounded-lg bg-cyan-300/[0.07]"
-    >
-      {props.messages.map((message, index) => (
-        <PendingTranscriptMessage
-          conversation={props.conversation}
-          key={message.messageId ?? `${message.sourceSeq}:${index}`}
-          message={message}
-          showDivider={index > 0}
-          view={props.view}
-        />
-      ))}
-    </div>
-  );
-}
-
-function PendingTranscriptMessage(props: {
-  conversation: ConversationTranscript;
-  message: TranscriptViewMessage;
-  showDivider: boolean;
-  view: TranscriptViewMode;
-}) {
-  const rawText = messageRawText(props.message);
-  const redacted = props.message.parts.some(
-    (part) => part.type === "text" && part.redacted,
-  );
-
-  return (
-    <article
-      className={cn(
-        "grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 px-3 py-2.5 text-dashboard-text md:px-4 md:py-3",
-        props.showDivider && "border-t border-white/[0.06]",
-      )}
-      onCopy={(event) => {
-        const selection = event.currentTarget.ownerDocument.getSelection();
-        if (
-          !shouldCopyRawTranscript(
-            props.view,
-            rawText,
-            selection,
-            event.currentTarget,
-          )
-        ) {
-          return;
-        }
-        event.clipboardData.setData("text/plain", rawText);
-        event.preventDefault();
-      }}
-    >
-      <TranscriptMessageHeader
-        meta={[formatMessageTimestamp(props.message.timestamp)]}
-        message={props.message}
-        conversation={props.conversation}
-      />
-      {props.view === "raw" ? (
-        <HighlightedCode
-          code={rawText || "{}"}
-          language={detectLanguage(rawText)}
-        />
-      ) : redacted ? (
-        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 font-mono text-base leading-snug text-dashboard-text-muted">
-          <RedactedMarker />
-        </div>
-      ) : (
-        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
-          {props.message.parts.map((part, index) =>
-            part.type === "text" ? (
-              <TranscriptText
-                key={index}
-                role={props.message.role}
-                text={part.text ?? ""}
-              />
-            ) : null,
-          )}
-        </div>
-      )}
-    </article>
   );
 }
 

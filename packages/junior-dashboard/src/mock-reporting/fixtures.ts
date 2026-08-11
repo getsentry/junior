@@ -119,6 +119,8 @@ function activeConversation(nowMs: number): ConversationDetailReport {
   return detail(nowMs, {
     conversationId: ACTIVE_CONVERSATION_ID,
     displayTitle: "Investigate checkout latency",
+    // Visual QA needs the composer + pending mailbox stack attached above it.
+    isParticipant: true,
     startedAt,
     lastProgressAt: iso(nowMs, -20_000),
     lastSeenAt: iso(nowMs, -10_000),

@@ -1,8 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { ArrowDownToLine } from "lucide-react";
 
-import type { ConversationPendingMessage } from "@sentry/junior/api/schema";
-
 import type {
   ConversationTranscript,
   TranscriptViewSubagentPart,
@@ -28,7 +26,6 @@ export function Transcript(props: {
   live?: boolean;
   loadingPreviousPage?: boolean;
   onLoadPreviousPage?: () => void;
-  pendingMessages?: readonly ConversationPendingMessage[];
   responding?: boolean;
   onOpenSubagentTranscript?: (args: {
     part: TranscriptViewSubagentPart;
@@ -96,7 +93,6 @@ export function Transcript(props: {
         <ConversationTranscriptView
           onOpenSubagentTranscript={props.onOpenSubagentTranscript}
           conversation={props.transcript}
-          pendingMessages={props.pendingMessages}
           responding={props.responding ?? props.live ?? false}
           view={view}
         />
