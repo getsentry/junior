@@ -1,15 +1,7 @@
-/**
- * Run-scoped skill discovery and restore.
- *
- * Discovers the skills available to one run slice and rehydrates active skill
- * handles from durable Pi history and explicit invocation, so resumed slices
- * keep the skill state the conversation already established.
- */
+/** Run-scoped skill discovery and explicit invocation. */
 import { logInfo } from "@/chat/logging";
 import { discoverSkills, type Skill, type SkillMetadata } from "@/chat/skills";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
-import { inferLoadedSkillNamesFromPiMessages } from "@/chat/pi/derived-state";
-import type { PiMessage } from "@/chat/pi/messages";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 
 let startupDiscoveryLogged = false;
@@ -53,27 +45,18 @@ export async function discoverRunSkills(args: {
   return availableSkills;
 }
 
-/** Rehydrate active skill handles from durable Pi history and explicit invocation. */
-export async function restoreSkillRuntime(args: {
+/** Load the skill explicitly invoked by the current instruction. */
+export async function loadInvokedSkill(args: {
   activeSkills: Skill[];
   invokedSkill: SkillMetadata | null;
-  priorPiMessages: PiMessage[] | undefined;
   skillSandbox: SkillSandbox;
-}): Promise<void> {
-  for (const skillName of inferLoadedSkillNamesFromPiMessages(
-    args.priorPiMessages,
-  )) {
-    const restoredSkill = await args.skillSandbox.loadSkill(skillName);
-    if (restoredSkill) {
-      upsertActiveSkill(args.activeSkills, restoredSkill);
-    }
+}): Promise<Skill | null> {
+  if (!args.invokedSkill) {
+    return null;
   }
-  if (args.invokedSkill) {
-    const restoredSkill = await args.skillSandbox.loadSkill(
-      args.invokedSkill.name,
-    );
-    if (restoredSkill) {
-      upsertActiveSkill(args.activeSkills, restoredSkill);
-    }
+  const loadedSkill = await args.skillSandbox.loadSkill(args.invokedSkill.name);
+  if (loadedSkill) {
+    upsertActiveSkill(args.activeSkills, loadedSkill);
   }
+  return loadedSkill;
 }

@@ -827,7 +827,7 @@ describe("executeAgentRun progressive MCP loading", () => {
     vi.restoreAllMocks();
   });
 
-  it("persists loaded plugin skills across auth pause and resume", async () => {
+  it("continues an MCP skill call across auth pause and resume", async () => {
     const context = makeAgentRun("help me", {
       conversationId: "conversation-1",
       threadTs: "1712345.0001",

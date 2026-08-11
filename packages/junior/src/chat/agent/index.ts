@@ -122,7 +122,7 @@ import {
 } from "@/chat/agent/types";
 import { actionConfirmationRetryMessages } from "@/chat/agent/action-confirmation-retry";
 import { loadTurnCheckpoint } from "@/chat/task-execution/checkpoint";
-import { discoverRunSkills, restoreSkillRuntime } from "@/chat/agent/skills";
+import { discoverRunSkills, loadInvokedSkill } from "@/chat/agent/skills";
 import {
   assemblePrompt,
   buildPromptInput,
@@ -559,16 +559,13 @@ async function executeAgentRunInPrivacyContext(
         : [],
     );
 
-    // ── Restore skill runtime handles from durable Pi history ────────
-    await restoreSkillRuntime({
+    // Skill state belongs to this run. Saved conversation history must not
+    // reactivate a skill; only the current instruction may invoke one.
+    const explicitSkill = await loadInvokedSkill({
       activeSkills,
       invokedSkill,
-      priorPiMessages,
       skillSandbox,
     });
-    const explicitSkill = invokedSkill
-      ? (activeSkills.find((skill) => skill.name === invokedSkill.name) ?? null)
-      : null;
     // ── Prompt input ─────────────────────────────────────────────────
     const { contextContentParts, routerBlocks, userContentParts } =
       buildPromptInput({
