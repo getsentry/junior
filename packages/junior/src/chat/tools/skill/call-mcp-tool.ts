@@ -7,7 +7,6 @@ import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 
 interface CallMcpToolManager {
-  activateProvider(provider: string): Promise<boolean>;
   getResolvedActiveTools(): ManagedMcpTool[];
 }
 
@@ -102,9 +101,6 @@ export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
     execute: async (input, options) => {
       const { tool_name } = input;
       const provider = parseMcpProviderFromToolName(tool_name);
-      if (provider) {
-        await mcpToolManager.activateProvider(provider);
-      }
       const activeTools = mcpToolManager.getResolvedActiveTools();
       const mcpTool = activeTools.find(
         (candidate) => candidate.name === tool_name,

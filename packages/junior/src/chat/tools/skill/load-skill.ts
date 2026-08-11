@@ -21,14 +21,7 @@ export type LoadSkillResult = {
   location?: string;
   path_resolution?: string;
   instructions?: string;
-  mcp_provider?: string;
-  available_tool_count?: number;
 } & Record<string, unknown>;
-
-export type LoadSkillMetadata = Pick<
-  LoadSkillResult,
-  "mcp_provider" | "available_tool_count"
->;
 
 function toLoadedSkill(
   result: LoadSkillResult,
@@ -92,13 +85,11 @@ async function loadSkillFromHost(
   };
 }
 
-/** Create the skill-loading tool that injects skill instructions and activates provider catalogs. */
+/** Create the tool that loads skill instructions for the current turn. */
 export function createLoadSkillTool(
   availableSkills: SkillMetadata[],
   options?: {
-    onSkillLoaded?: (
-      skill: Skill,
-    ) => void | LoadSkillMetadata | Promise<void | LoadSkillMetadata>;
+    onSkillLoaded?: (skill: Skill) => void | Promise<void>;
   },
 ) {
   return zodTool({
@@ -109,7 +100,7 @@ export function createLoadSkillTool(
       readOnlyHint: false,
     },
     description:
-      "Load a skill by name for this turn. The result includes working_directory; resolve skill paths there and run skill-owned bash commands from there or with absolute paths. When the result includes mcp_provider, use searchMcpTools before callMcpTool. Use when a request clearly matches a known skill.",
+      "Load a skill by name for this turn. The result includes working_directory; resolve skill paths there and run skill-owned bash commands from there or with absolute paths. When the skill instructions name an MCP provider, use searchMcpTools before callMcpTool. Use when a request clearly matches a known skill.",
     inputSchema: z.object({
       skill_name: z
         .string()
@@ -121,10 +112,7 @@ export function createLoadSkillTool(
       const result = await loadSkillFromHost(availableSkills, skill_name);
       const loadedSkill = toLoadedSkill(result, availableSkills);
       if (loadedSkill) {
-        const metadata = await options?.onSkillLoaded?.(loadedSkill);
-        if (metadata) {
-          Object.assign(result, metadata);
-        }
+        await options?.onSkillLoaded?.(loadedSkill);
       }
       return result;
     },

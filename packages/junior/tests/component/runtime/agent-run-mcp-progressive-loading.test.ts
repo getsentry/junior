@@ -236,16 +236,16 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
       this.state.messages.push(message);
 
       if (directMcpProviderFailure.value) {
-        const callMcpTool = this.state.tools.find(
-          (tool) => tool.name === "callMcpTool",
+        const searchMcpTools = this.state.tools.find(
+          (tool) => tool.name === "searchMcpTools",
         );
-        if (!callMcpTool) {
-          throw new Error("callMcpTool missing");
+        if (!searchMcpTools) {
+          throw new Error("searchMcpTools missing");
         }
         try {
-          await this.executeTool(callMcpTool, "tool-call-provider-failure", {
-            tool_name: "mcp__demo__ping",
-            arguments: { query: "hello" },
+          await this.executeTool(searchMcpTools, "tool-search-provider-failure", {
+            provider: "demo",
+            query: "ping query",
           });
         } catch {
           if (!this.aborted) {
@@ -264,21 +264,11 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
         throw new Error("loadSkill tool missing");
       }
 
-      let loadSkillResult: {
-        details?: {
-          mcp_provider?: string;
-          available_tool_count?: number;
-        };
-      };
+      let loadSkillResult: { details?: unknown };
       try {
         loadSkillResult = (await loadSkillTool.execute("tool-call-1", {
           skill_name: DEMO_SKILL.name,
-        })) as {
-          details?: {
-            mcp_provider?: string;
-            available_tool_count?: number;
-          };
-        };
+        })) as { details?: unknown };
       } catch (error) {
         loadSkillExecutionErrorCount.value += 1;
         this.state.messages.push(assistantMessage("loading demo skill"));
@@ -301,23 +291,21 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
         );
         return {};
       }
-      if (loadSkillResult.details?.mcp_provider) {
-        const searchMcpTools = this.state.tools.find(
-          (tool) => tool.name === "searchMcpTools",
-        );
-        if (!searchMcpTools) {
-          throw new Error("searchMcpTools missing");
-        }
-        const searchResult = (await searchMcpTools.execute("tool-call-search", {
-          provider: loadSkillResult.details.mcp_provider,
-          query: "ping query",
-        })) as {
-          details?: { tools?: Array<{ tool_name: string }> };
-        };
-        searchMcpToolNames.push(
-          (searchResult.details?.tools ?? []).map((tool) => tool.tool_name),
-        );
+      const searchMcpTools = this.state.tools.find(
+        (tool) => tool.name === "searchMcpTools",
+      );
+      if (!searchMcpTools) {
+        throw new Error("searchMcpTools missing");
       }
+      const searchResult = (await searchMcpTools.execute("tool-call-search", {
+        provider: "demo",
+        query: "ping query",
+      })) as {
+        details?: { tools?: Array<{ tool_name: string }> };
+      };
+      searchMcpToolNames.push(
+        (searchResult.details?.tools ?? []).map((tool) => tool.tool_name),
+      );
       const callMcpTool = this.state.tools.find(
         (tool) => tool.name === "callMcpTool",
       );
@@ -359,6 +347,16 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
       if (lastMessage?.role === "assistant") {
         throw new Error("Cannot continue from message role: assistant");
       }
+      const searchMcpTools = this.state.tools.find(
+        (tool) => tool.name === "searchMcpTools",
+      );
+      if (!searchMcpTools) {
+        throw new Error("searchMcpTools missing on continue");
+      }
+      await this.executeTool(searchMcpTools, "tool-search-continue", {
+        provider: "demo",
+        query: "ping query",
+      });
       const callMcpTool = this.state.tools.find(
         (tool) => tool.name === "callMcpTool",
       );
@@ -891,7 +889,7 @@ describe("executeAgentRun progressive MCP loading", () => {
     expect(resumeTurnContextCounts).toEqual([1]);
     expect(turnContextInputs[0]?.includeSessionContext).toBe(true);
     expect(turnContextInputs).toHaveLength(1);
-    expect(searchMcpToolNames).toEqual([]);
+    expect(searchMcpToolNames).toEqual([[]]);
     expect(callToolMock).toHaveBeenCalledWith(
       expect.objectContaining({
         manifest: expect.objectContaining({ name: "demo" }),
@@ -964,11 +962,11 @@ describe("executeAgentRun progressive MCP loading", () => {
     });
   });
 
-  it("keeps MCP activation failures outside the fatal action-review boundary", async () => {
+  it("keeps MCP search failures outside the action-review boundary", async () => {
     directMcpProviderFailure.value = true;
     listToolsMock.mockReset();
     listToolsMock.mockImplementation(async () => {
-      expect(guardianProposals).toHaveLength(1);
+      expect(guardianProposals).toHaveLength(0);
       throw new McpProviderError({
         phase: "connect",
         provider: "demo",
@@ -986,32 +984,10 @@ describe("executeAgentRun progressive MCP loading", () => {
     );
 
     expect(reply.text).toBe("I couldn't connect to the demo provider.");
-    expect(guardianProposals).toEqual([
-      expect.objectContaining({
-        input: {
-          arguments: { query: "hello" },
-          tool_name: "mcp__demo__ping",
-        },
-        tool: expect.objectContaining({
-          name: "callMcpTool",
-        }),
-      }),
-    ]);
+    expect(guardianProposals).toEqual([]);
     expect(listToolsMock).toHaveBeenCalledOnce();
     expect(callToolMock).not.toHaveBeenCalled();
     expect(agentAfterToolResults).toHaveLength(1);
-    const events = await getConversationEventStore().loadCurrentHistory(
-      "conversation-provider-failure",
-    );
-    expect(events.map((event) => event.data)).toContainEqual({
-      type: "guardian_action_reviewed",
-      turnId: "turn-provider-failure",
-      toolCallId: "tool-call-provider-failure",
-      toolName: "callMcpTool",
-      decision: "allow",
-      riskLevel: "low",
-      userAuthorization: "high",
-    });
   });
 
   it("wires Guardian denial through the runtime before MCP execution", async () => {

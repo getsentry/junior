@@ -403,32 +403,7 @@ export async function wireAgentTools(
         );
         const effective = resolvedSkill ?? loadedSkill;
         upsertActiveSkill(args.activeSkills, effective);
-        if (await mcpToolManager.activateForSkill(effective)) {
-          await args.recordConnectedMcpProvider(effective.pluginProvider!);
-        }
         await tryRecordSkillLoadStat(effective);
-        if (mcpAuth.getPendingPause()) {
-          // Auth pause requested — suppress loadSkill failure and let the
-          // aborted run park cleanly.
-          return undefined;
-        }
-        if (!effective.pluginProvider) {
-          return undefined;
-        }
-        if (
-          !mcpToolManager
-            .getActiveProviders()
-            .includes(effective.pluginProvider)
-        ) {
-          return undefined;
-        }
-        const availableToolCount = mcpToolManager.getActiveToolCatalog({
-          provider: effective.pluginProvider,
-        }).length;
-        return {
-          mcp_provider: effective.pluginProvider,
-          available_tool_count: availableToolCount,
-        };
       },
     },
     toolRuntimeContext,
@@ -458,7 +433,7 @@ export async function wireAgentTools(
   // abort before the agent sees the user's request.
   //
   // Skipping only suppresses the eager-restore path. The agent can still
-  // trigger the auth flow intentionally (via loadSkill + searchMcpTools)
+  // trigger the auth flow intentionally through searchMcpTools
   // when the user's request genuinely requires that provider.
   const pendingMcpProvider =
     args.state.pendingAuth?.kind === "mcp"
@@ -469,8 +444,8 @@ export async function wireAgentTools(
   // current turn. Restore only providers this actor previously connected.
   // Shared Pi history and skills reloaded from that history mix people and
   // must not warm another person's MCP servers under the current actor.
-  // Intentional use still connects on demand through loadSkill / searchMcpTools
-  // / callMcpTool under the current actor.
+  // Intentional use still connects on demand through searchMcpTools under the
+  // current actor.
   if (credentialUserId) {
     for (const provider of args.connectedMcpProviders) {
       if (provider === pendingMcpProvider) {
