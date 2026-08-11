@@ -28,7 +28,6 @@ import {
 const {
   agentProbe,
   MCP_TOOL_NAME,
-  SKILL_NAME,
   assistantReplyWithoutContext,
   assistantReplyWithContext,
   priorBudgetContext,
@@ -42,7 +41,6 @@ const {
     shouldBypassSkill: false,
   },
   MCP_TOOL_NAME: "mcp__eval-auth__budget-echo",
-  SKILL_NAME: "eval-auth",
   assistantReplyWithoutContext: "I need the earlier budget context first.",
   assistantReplyWithContext:
     "The budget deadline you mentioned earlier was Friday.",
@@ -232,36 +230,20 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
         throw new Error("Expected MCP auth pause while searching eval-auth");
       }
 
-      const loadSkillTool = this.state.tools.find(
-        (tool) => tool.name === "loadSkill",
+      const searchMcpTools = this.state.tools.find(
+        (tool) => tool.name === "searchMcpTools",
       );
-      if (!loadSkillTool) {
-        throw new Error("loadSkill tool missing");
+      if (!searchMcpTools) {
+        throw new Error("searchMcpTools missing");
       }
-
-      const loadSkillResult = (await loadSkillTool.execute("tool-load-skill", {
-        skill_name: SKILL_NAME,
-      })) as {
-        ok?: boolean;
-        skill_name?: string;
-      };
-      this.state.messages.push({
-        role: "toolResult",
-        toolCallId: "tool-load-skill",
-        toolName: "loadSkill",
-        skill_name: loadSkillResult.skill_name,
-        ok: loadSkillResult.ok,
-        details: loadSkillResult,
-        isError: false,
-        content: [],
-        timestamp: Date.now(),
+      await searchMcpTools.execute("tool-search-provider", {
+        provider: EVAL_MCP_AUTH_PROVIDER,
+        query: "budget echo query",
       });
-
       if (this.aborted) {
         return {};
       }
-
-      throw new Error("Expected MCP auth pause while loading eval-auth");
+      throw new Error("Expected MCP auth pause while searching eval-auth");
     }
 
     async continue() {
