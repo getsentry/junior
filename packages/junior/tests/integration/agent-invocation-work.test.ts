@@ -19,6 +19,7 @@ import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
 import type { AgentRun } from "@/chat/agent/types";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
+import { loadProjection } from "@/chat/conversations/projection";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
@@ -31,6 +32,8 @@ import {
 } from "@/chat/task-execution/turn-cursor";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import { createConfiguredJuniorSqlFixture } from "../fixtures/sql";
+import { createModelAgentRunner } from "../fixtures/agent-runner";
+import { createModelStream } from "../fixtures/model-stream";
 
 const parentConversationId = "local:test:parent-agent";
 const destination = {
@@ -179,12 +182,12 @@ describe("agent invocation conversation work", () => {
       const request = {
         conversationId: parentConversationId,
         turnId: "parent-turn",
-        instruction: { text: "Delegate the investigation.", },
+        instruction: { text: "Delegate the investigation." },
         actor: { platform: "local", userId: "local-user" },
         credentialContext: {
           actor: { type: "user", userId: "local-user" },
         },
-          destination,
+        destination,
         destinationVisibility: "private",
         source: createLocalSource(parentConversationId),
       } satisfies AgentRun;
@@ -258,40 +261,17 @@ describe("agent invocation conversation work", () => {
           state,
         },
       );
-      const run = vi.fn(async (request) => {
-        expect(request).toMatchObject({
-          conversationId: created.childConversationId,
-          instruction: { text: invocationInput.input },
-          disabledFeatures: ["handoff", "interactive-auth", "subagents"],
-          reasoning: "medium",
-          actor: invocationInput.actor,
-          destination,
-          destinationVisibility: "private",
-          source: invocationInput.source,
-          surface: "internal",
-          runId: created.invocationId,
-        });
-        await request.durability.onInputCommitted?.();
-        return completedAgentRun({
-          diagnostics: {
-            assistantMessageCount: 1,
-            modelId: "test-model",
-            outcome: "success",
-            toolCalls: [],
-            toolErrorCount: 0,
-            toolResultCount: 0,
-            usedPrimaryText: true,
-          },
-          text: "Durable child result",
-        });
-      });
+      const agentRunner = createModelAgentRunner(
+        createModelStream([{ type: "text", text: "Durable child result" }]),
+      );
+      const run = vi.spyOn(agentRunner, "run");
       const fallbackWorker = vi.fn(async () => ({
         status: "completed" as const,
       }));
       const route = routeAgentInvocationWork({
         fallbackWorker,
         invocationWorker: createAgentInvocationWorker({
-          agentRunner: { run },
+          agentRunner,
         }),
       });
       const queueMessage = queue.takeMessage();
@@ -313,8 +293,6 @@ describe("agent invocation conversation work", () => {
         }),
       ).resolves.toMatchObject({ status: "no_work" });
 
-      expect(run).toHaveBeenCalledOnce();
-      expect(fallbackWorker).not.toHaveBeenCalled();
       await expect(
         getAgentInvocation(created.invocationId),
       ).resolves.toMatchObject({
@@ -333,6 +311,35 @@ describe("agent invocation conversation work", () => {
       await expect(getAgentInvocation(created.invocationId)).resolves.toEqual(
         completed,
       );
+      await expect(
+        loadProjection({ conversationId: created.childConversationId }),
+      ).resolves.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            role: "assistant",
+            content: expect.arrayContaining([
+              expect.objectContaining({
+                type: "text",
+                text: "Durable child result",
+              }),
+            ]),
+          }),
+        ]),
+      );
+      expect(run).toHaveBeenCalledOnce();
+      expect(run.mock.calls[0]?.[0]).toMatchObject({
+        conversationId: created.childConversationId,
+        instruction: { text: invocationInput.input },
+        disabledFeatures: ["handoff", "interactive-auth", "subagents"],
+        reasoning: "medium",
+        actor: invocationInput.actor,
+        destination,
+        destinationVisibility: "private",
+        source: invocationInput.source,
+        surface: "internal",
+        runId: created.invocationId,
+      });
+      expect(fallbackWorker).not.toHaveBeenCalled();
     } finally {
       await fixture.close();
     }
@@ -363,7 +370,11 @@ describe("agent invocation conversation work", () => {
             runCount += 1;
             await request.durability.onInputCommitted?.();
             if (runCount === 1) {
-              return { resumeVersion: 1, status: "suspended" as const, reason: "timeout" as const };
+              return {
+                resumeVersion: 1,
+                status: "suspended" as const,
+                reason: "timeout" as const,
+              };
             }
             return completedAgentRun({
               diagnostics: {

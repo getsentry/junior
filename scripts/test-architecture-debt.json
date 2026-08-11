@@ -3,7 +3,7 @@
     "packages/junior/tests/integration/agent-continue-slack.test.ts": 3,
     "packages/junior/tests/integration/agent-dispatch-recovery.test.ts": 2,
     "packages/junior/tests/integration/agent-invocation-concurrency.test.ts": 4,
-    "packages/junior/tests/integration/agent-invocation-work.test.ts": 3,
+    "packages/junior/tests/integration/agent-invocation-work.test.ts": 2,
     "packages/junior/tests/integration/local-agent-runner.test.ts": 18,
     "packages/junior/tests/integration/mcp-oauth-callback.test.ts": 2,
     "packages/junior/tests/integration/oauth-callback.test.ts": 3,

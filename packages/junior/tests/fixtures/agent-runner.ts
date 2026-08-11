@@ -1,4 +1,8 @@
-import type { AgentRunner } from "@/chat/runtime/agent-runner";
+import {
+  createAgentRunner,
+  type AgentRunner,
+} from "@/chat/runtime/agent-runner";
+import type { StreamFn } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import type { AgentRunResult } from "@/chat/services/turn-result";
@@ -23,6 +27,17 @@ export const realAgentRunner: AgentRunner = {
     return await executeAgentRun(run);
   },
 };
+
+/** Run the real agent while replacing only model output. */
+export function createModelAgentRunner(streamFn: StreamFn): AgentRunner {
+  return createAgentRunner(
+    async (run, boundStreamFn) => {
+      const { executeAgentRun } = await import("@/chat/agent");
+      return await executeAgentRun(run, boundStreamFn);
+    },
+    { streamFn },
+  );
+}
 
 /**
  * Guard runner for paths that must never reach agent execution; failing loud
