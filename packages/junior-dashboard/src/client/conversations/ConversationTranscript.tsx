@@ -105,6 +105,7 @@ export function ConversationTranscriptView(props: {
           onOpenSubagentTranscript={props.onOpenSubagentTranscript}
           conversation={props.conversation}
           messages={messages}
+          responding={props.responding ?? false}
           view={props.view}
         />
         {props.responding ? <TypingIndicator /> : null}
@@ -145,8 +146,7 @@ function transcriptMessageClass(role: string): string {
     "grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 rounded-2xl px-3 py-2 md:gap-1.5 md:px-3.5 md:py-2.5",
     kind === "assistant" &&
       "mr-6 bg-cyan-300/[0.04] text-dashboard-text md:mr-[18%]",
-    kind === "user" &&
-      "ml-6 bg-white/[0.055] text-dashboard-text md:ml-[22%]",
+    kind === "user" && "ml-6 bg-white/[0.055] text-dashboard-text md:ml-[22%]",
     kind === "system" &&
       "rounded-xl border border-amber-300/10 bg-amber-300/[0.04] text-dashboard-text",
     kind === "tool" && "rounded-none px-0 text-dashboard-text-muted",
@@ -235,6 +235,7 @@ function SegmentEvents(props: {
   }) => void;
   conversation: ConversationTranscript;
   messages: TranscriptViewMessage[];
+  responding: boolean;
   view: TranscriptViewMode;
 }) {
   return (
@@ -244,6 +245,7 @@ function SegmentEvents(props: {
           onOpenSubagentTranscript={props.onOpenSubagentTranscript}
           transcript={props.messages}
           conversation={props.conversation}
+          responding={props.responding}
           view={props.view}
         />
       ) : props.conversation.eventHistory.status === "redacted" &&
@@ -258,6 +260,7 @@ function SegmentEvents(props: {
           onOpenSubagentTranscript={props.onOpenSubagentTranscript}
           transcript={props.messages}
           conversation={props.conversation}
+          responding={props.responding}
           view={props.view}
         />
       ) : (
@@ -276,12 +279,14 @@ function VisibleTranscriptEntries(props: {
   }) => void;
   transcript: TranscriptViewMessage[];
   conversation: ConversationTranscript;
+  responding: boolean;
   view: TranscriptViewMode;
 }) {
   return (
     <TranscriptEntryList
       entries={groupTranscriptMessages(props.transcript)}
       keyPrefix={props.conversation.conversationId}
+      responding={props.responding}
       renderContext={(entry) => (
         <TranscriptRailEvent
           kind={entry.part.event.type === "handoff" ? "handoff" : "compaction"}
@@ -351,6 +356,7 @@ function VisibleTranscriptEntries(props: {
 function TranscriptEntryList(props: {
   entries: TranscriptEntry[];
   keyPrefix: string;
+  responding?: boolean;
   renderContext: (entry: TranscriptContextEntry) => ReactNode;
   renderFailure: (entry: TranscriptFailureEntry) => ReactNode;
   renderMessage: (entry: TranscriptMessageEntry) => ReactNode;
@@ -402,6 +408,9 @@ function TranscriptEntryList(props: {
         });
         rows.push(
           <TranscriptActivityGroup
+            activeTail={
+              Boolean(props.responding) && index === props.entries.length
+            }
             entries={visibleEntries}
             key={activityKey}
             renderEntry={renderEntry}
