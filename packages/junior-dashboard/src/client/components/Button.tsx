@@ -25,10 +25,10 @@ export function Button({
     <button
       {...props}
       className={cn(
-        "rounded border border-white/15 bg-dashboard-surface-raised font-mono text-dashboard-text transition-colors hover:border-white/30 hover:bg-dashboard-surface-hover hover:text-dashboard-text disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-white/15 disabled:hover:bg-dashboard-surface-raised disabled:hover:text-dashboard-text",
+        "font-mono transition-colors disabled:cursor-not-allowed disabled:opacity-50",
         size === "icon"
-          ? "grid size-9 place-items-center p-0"
-          : "inline-flex h-9 max-w-full items-center gap-2 px-3 text-sm font-semibold leading-none",
+          ? "grid size-9 place-items-center rounded-md border-0 bg-transparent p-0 text-dashboard-text-muted hover:!bg-white/10 hover:!text-dashboard-text focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55 disabled:hover:!bg-transparent disabled:hover:!text-dashboard-text-muted"
+          : "inline-flex h-9 max-w-full items-center gap-2 rounded border border-white/15 bg-dashboard-surface-raised px-3 text-sm font-semibold leading-none text-dashboard-text hover:border-white/30 hover:bg-dashboard-surface-hover hover:text-dashboard-text disabled:hover:border-white/15 disabled:hover:bg-dashboard-surface-raised disabled:hover:text-dashboard-text",
         props.disabled ? "" : "cursor-pointer",
         className,
       )}

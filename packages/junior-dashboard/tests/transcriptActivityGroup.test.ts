@@ -28,7 +28,7 @@ function reasoning(key: string): RenderedTranscriptEntry {
   return {
     key,
     kind: "reasoning",
-    part: { redacted: false, text: "thinking", type: "reasoning" },
+    part: { text: "thinking", type: "reasoning" },
     timestamp: 1,
   };
 }
@@ -38,7 +38,10 @@ function compaction(): RenderedTranscriptEntry {
     key: "context:1",
     kind: "context",
     part: {
-      event: { type: "compaction" },
+      event: {
+        createdAt: "2026-01-01T00:00:00.000Z",
+        type: "compaction",
+      },
       type: "context_event",
     },
     timestamp: 1,
@@ -51,6 +54,7 @@ function handoff(): RenderedTranscriptEntry {
     kind: "context",
     part: {
       event: {
+        createdAt: "2026-01-01T00:00:00.000Z",
         modelId: "openai/gpt-5-mini",
         modelProfile: "fast",
         type: "handoff",
