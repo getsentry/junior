@@ -118,10 +118,12 @@ function systemData(): SystemData {
       },
       metricDays: [
         {
+          cachedInputTokens: 9_000,
           conversations: 2,
           costUsd: 4.56,
           date: "2026-01-01",
           durationMs: 12_000,
+          inputTokens: 3_000,
           tokens: 12_345,
         },
       ],
@@ -1324,7 +1326,9 @@ describe("dashboard canonical-event components", () => {
     expect(systemHtml).not.toContain("Usage over time");
     expect(systemHtml).toContain("Conversation activity");
     expect(systemHtml).toContain('aria-label="Conversations per day"');
-    expect(systemHtml).toContain("Token usage");
+    expect(systemHtml).toContain("Cache hit rate");
+    expect(systemHtml).toContain("75.0%");
+    expect(systemHtml).toContain("Input token cache");
     expect(systemHtml).toContain("Model spend");
     expect(systemHtml).toContain("Runtime");
     expect(systemHtml).toContain("Guardian reviews");
@@ -1337,7 +1341,7 @@ describe("dashboard canonical-event components", () => {
       'class="flex w-full min-w-0 flex-col justify-end',
     );
     expect(systemHtml.indexOf("Conversation activity")).toBeLessThan(
-      systemHtml.indexOf("Token usage"),
+      systemHtml.indexOf("Input token cache"),
     );
     expect(
       systemHtml.match(/aria-label="Reporting period"/g) ?? [],

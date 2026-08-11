@@ -65,6 +65,7 @@ describe("conversation stats API", () => {
         metrics: {
           durationMs: 1_500,
           usage: {
+            cachedInputTokens: 300,
             inputTokens: 100,
             outputTokens: 20,
             reasoningTokens: 5,
@@ -79,6 +80,7 @@ describe("conversation stats API", () => {
         .update(juniorConversations)
         .set({
           usage: {
+            cachedInputTokens: 300,
             inputTokens: 100,
             outputTokens: 20,
             reasoningTokens: 5,
@@ -215,10 +217,12 @@ describe("conversation stats API", () => {
 
       expect(report).toMatchObject({
         active: 1,
+        cachedInputTokens: 300,
         conversations: 3,
         costUsd: 0.0045,
         durationMs: 2_004,
         failed: 1,
+        inputTokens: 100,
         guardian: {
           allow: 1,
           ask: 1,
@@ -226,7 +230,7 @@ describe("conversation stats API", () => {
           deny: 1,
           requests: 3,
         },
-        tokens: 157,
+        tokens: 457,
         source: "conversation_index",
       });
       expect(report.actors).toEqual(
@@ -236,7 +240,7 @@ describe("conversation stats API", () => {
             costUsd: 0.003,
             durationMs: 1_504,
             label: "alice@example.com",
-            tokens: 127,
+            tokens: 427,
           }),
           expect.objectContaining({
             conversations: 1,
@@ -269,11 +273,13 @@ describe("conversation stats API", () => {
       });
       expect(report.metricDays.at(-1)).toEqual(
         expect.objectContaining({
+          cachedInputTokens: 300,
           conversations: 3,
           costUsd: 0.0045,
           date: "2026-06-15",
           durationMs: 2_004,
-          tokens: 157,
+          inputTokens: 100,
+          tokens: 457,
         }),
       );
     } finally {

@@ -608,10 +608,12 @@ export const conversationStatsItemSchema = z
 
 export const conversationMetricDaySchema = z
   .object({
+    cachedInputTokens: z.number().optional(),
     conversations: z.number(),
     costUsd: z.number().optional(),
     date: z.string(),
     durationMs: z.number(),
+    inputTokens: z.number().optional(),
     tokens: z.number().optional(),
   })
   .strict();
@@ -641,6 +643,7 @@ export const guardianStatsSchema = z
 export const conversationStatsReportSchema = z
   .object({
     active: z.number(),
+    cachedInputTokens: z.number().optional(),
     conversations: z.number(),
     durationMs: z.number(),
     failed: z.number(),
@@ -651,6 +654,7 @@ export const conversationStatsReportSchema = z
     actors: z.array(conversationStatsItemSchema),
     source: z.literal("conversation_index"),
     costUsd: z.number().optional(),
+    inputTokens: z.number().optional(),
     tokens: z.number().optional(),
     windowEnd: z.string(),
     windowStart: z.string(),

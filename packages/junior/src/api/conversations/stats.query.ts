@@ -91,10 +91,12 @@ function locationLabel(row: {
 
 type AggregateRow = {
   active: number;
+  cachedInputTokens: number | null;
   conversations: number;
   costUsd: number | null;
   durationMs: number;
   failed: number;
+  inputTokens: number | null;
   tokens: number | null;
 };
 
@@ -143,10 +145,12 @@ function statsWindow(nowMs: number) {
 
 function metricDays(
   rows: Array<{
+    cachedInputTokens: number | null;
     conversations: number;
     costUsd: number | null;
     date: string;
     durationMs: number;
+    inputTokens: number | null;
     tokens: number | null;
   }>,
   endMs: number,
@@ -168,8 +172,15 @@ function metricDays(
       conversations: row?.conversations ?? 0,
       date,
       durationMs: row?.durationMs ?? 0,
+      ...(row?.cachedInputTokens !== null &&
+      row?.cachedInputTokens !== undefined
+        ? { cachedInputTokens: row.cachedInputTokens }
+        : {}),
       ...(row?.costUsd !== null && row?.costUsd !== undefined
         ? { costUsd: addUsd(undefined, row.costUsd) }
+        : {}),
+      ...(row?.inputTokens !== null && row?.inputTokens !== undefined
+        ? { inputTokens: row.inputTokens }
         : {}),
       ...(row?.tokens !== null && row?.tokens !== undefined
         ? { tokens: row.tokens }
@@ -321,10 +332,12 @@ async function aggregateStats(db: JuniorDatabase, start: Date, end: Date) {
       ),
     db
       .select({
+        cachedInputTokens: treeAggregateColumns.cachedInputTokens,
         conversations: treeAggregateColumns.conversations,
         costUsd: treeAggregateColumns.costUsd,
         date: activityDate,
         durationMs: treeAggregateColumns.durationMs,
+        inputTokens: treeAggregateColumns.inputTokens,
         tokens: treeAggregateColumns.tokens,
       })
       .from(juniorConversations)
@@ -398,6 +411,10 @@ export async function readConversationStatsFromSql(): Promise<ConversationStatsR
 
   return {
     active: totals?.active ?? 0,
+    ...(totals?.cachedInputTokens !== null &&
+    totals?.cachedInputTokens !== undefined
+      ? { cachedInputTokens: totals.cachedInputTokens }
+      : {}),
     conversations: totals?.conversations ?? 0,
     durationMs: totals?.durationMs ?? 0,
     failed: totals?.failed ?? 0,
@@ -409,6 +426,9 @@ export async function readConversationStatsFromSql(): Promise<ConversationStatsR
     source: "conversation_index",
     ...(totals?.costUsd !== null && totals?.costUsd !== undefined
       ? { costUsd: addUsd(undefined, totals.costUsd) }
+      : {}),
+    ...(totals?.inputTokens !== null && totals?.inputTokens !== undefined
+      ? { inputTokens: totals.inputTokens }
       : {}),
     ...(totals?.tokens !== null && totals?.tokens !== undefined
       ? { tokens: totals.tokens }

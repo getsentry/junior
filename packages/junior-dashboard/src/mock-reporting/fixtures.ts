@@ -978,6 +978,14 @@ function conversationMetricDays(
     day.durationMs += summary.cumulativeDurationMs;
     const tokens = summaryTokenTotal(summary);
     if (tokens) day.tokens = (day.tokens ?? 0) + tokens;
+    const inputTokens = summary.cumulativeUsage?.inputTokens;
+    if (inputTokens !== undefined) {
+      day.inputTokens = (day.inputTokens ?? 0) + inputTokens;
+    }
+    const cachedInputTokens = summary.cumulativeUsage?.cachedInputTokens;
+    if (cachedInputTokens !== undefined) {
+      day.cachedInputTokens = (day.cachedInputTokens ?? 0) + cachedInputTokens;
+    }
     const costUsd = summary.cumulativeUsage?.cost?.total;
     if (costUsd !== undefined) {
       day.costUsd = (day.costUsd ?? 0) + costUsd;
@@ -1140,15 +1148,25 @@ export function readMockConversationStats(): ConversationStatsReport {
     addSummary(locationItem, summary);
     locationItems.set(place, locationItem);
   }
+  const inputTokens = summaries.reduce(
+    (sum, summary) => sum + (summary.cumulativeUsage?.inputTokens ?? 0),
+    0,
+  );
+  const cachedInputTokens = summaries.reduce(
+    (sum, summary) => sum + (summary.cumulativeUsage?.cachedInputTokens ?? 0),
+    0,
+  );
   return {
     active: total.active,
     actors: [...actorItems.values()],
+    ...(cachedInputTokens ? { cachedInputTokens } : {}),
     conversations: total.conversations,
     costUsd: total.costUsd,
     durationMs: total.durationMs,
     failed: total.failed,
     generatedAt: iso(nowMs),
     guardian: mockGuardianStats(nowMs),
+    ...(inputTokens ? { inputTokens } : {}),
     locations: [...locationItems.values()],
     metricDays: conversationMetricDays(nowMs, summaries),
     source: "conversation_index",

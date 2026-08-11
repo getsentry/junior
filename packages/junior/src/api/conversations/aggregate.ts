@@ -9,6 +9,17 @@ interface ConversationAggregateSource {
   usage: AnyPgColumn;
 }
 
+function usageTokenValue(
+  source: ConversationAggregateSource,
+  field: "cachedInputTokens" | "inputTokens",
+) {
+  return sql<number | null>`CASE
+    WHEN ${source.usage}->>${field} IS NOT NULL
+      THEN (${source.usage}->>${field})::double precision
+    ELSE NULL
+  END`;
+}
+
 function tokenValue(source: ConversationAggregateSource) {
   return sql<number | null>`
     CASE
@@ -64,11 +75,17 @@ export function conversationAggregateColumns(sources?: {
       WHERE ${roots.executionStatus} NOT IN ('idle', 'failed')
     )::integer`,
     conversations: sql<number>`${conversationCount}::integer`,
+    cachedInputTokens: sql<
+      number | null
+    >`SUM(${usageTokenValue(metrics, "cachedInputTokens")})::double precision`,
     costUsd: sql<number | null>`SUM(${costValue(metrics)})::double precision`,
     durationMs: sql<number>`COALESCE(SUM(${metrics.durationMs}), 0)::double precision`,
     failed: sql<number>`${conversationCount} FILTER (
       WHERE ${roots.executionStatus} = 'failed'
     )::integer`,
+    inputTokens: sql<
+      number | null
+    >`SUM(${usageTokenValue(metrics, "inputTokens")})::double precision`,
     tokens: sql<number | null>`SUM(${tokenValue(metrics)})::double precision`,
   };
 }
