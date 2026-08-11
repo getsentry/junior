@@ -140,14 +140,15 @@ function transcriptMessageClass(role: string): string {
   const kind = transcriptRoleKind(role);
 
   return cn(
-    "grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1.5 py-2",
-    kind === "assistant" && "text-dashboard-text",
+    "grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1.5 rounded-2xl px-3.5 py-2.5",
+    kind === "assistant" &&
+      "mr-8 bg-cyan-300/[0.04] text-dashboard-text md:mr-[18%]",
     kind === "user" &&
-      "rounded-2xl bg-white/[0.045] px-3.5 py-2.5 text-dashboard-text md:max-w-[min(42rem,86%)]",
+      "ml-8 bg-white/[0.055] text-dashboard-text md:ml-[22%]",
     kind === "system" &&
-      "rounded-xl border border-amber-300/10 bg-amber-300/[0.04] px-3.5 py-2.5 text-dashboard-text",
-    kind === "tool" && "text-dashboard-text-muted",
-    kind === "other" && "text-dashboard-text",
+      "rounded-xl border border-amber-300/10 bg-amber-300/[0.04] text-dashboard-text",
+    kind === "tool" && "rounded-none px-0 text-dashboard-text-muted",
+    kind === "other" && "bg-white/[0.03] text-dashboard-text",
   );
 }
 
