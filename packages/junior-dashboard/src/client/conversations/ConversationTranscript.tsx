@@ -146,13 +146,12 @@ function transcriptMessageClass(role: string): string {
 
   return cn(
     "grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 rounded-2xl px-3 py-2 md:gap-1.5 md:px-3.5 md:py-2.5",
-    kind === "assistant" &&
-      "mr-6 bg-cyan-300/[0.04] text-dashboard-text md:mr-[18%]",
-    kind === "user" && "ml-6 bg-white/[0.055] text-dashboard-text md:ml-[22%]",
+    kind === "assistant" && "mr-6 text-dashboard-text md:mr-[18%]",
+    kind === "user" && "ml-6 text-dashboard-text md:ml-[22%]",
     kind === "system" &&
-      "rounded-xl border border-amber-300/10 bg-amber-300/[0.04] text-dashboard-text",
+      "rounded-xl border border-amber-300/10 text-dashboard-text",
     kind === "tool" && "rounded-none px-0 text-dashboard-text-muted",
-    kind === "other" && "bg-white/[0.03] text-dashboard-text",
+    kind === "other" && "text-dashboard-text",
   );
 }
 
