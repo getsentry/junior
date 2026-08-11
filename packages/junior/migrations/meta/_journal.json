@@ -183,13 +183,6 @@
       "when": 1786477029866,
       "tag": "0025_mcp_credential_subject",
       "breakpoints": true
-    },
-    {
-      "idx": 26,
-      "version": "7",
-      "when": 1786486520676,
-      "tag": "0026_dear_bug",
-      "breakpoints": true
     }
   ]
 }

@@ -15,7 +15,6 @@ import {
   markDispatchFailed,
 } from "./store";
 import { AGENT_DISPATCH_MAX_AGE_MS, enqueueAgentDispatch } from "./work";
-import { archiveInactiveConversations } from "@/chat/conversations/archive-inactive";
 
 const DEFAULT_PLUGIN_LIMIT = 25;
 const PLUGIN_HEARTBEAT_TIMEOUT_MS = 25_000;
@@ -187,9 +186,4 @@ export async function runHeartbeat(args: {
     conversationWorkQueue: queue,
     nowMs: args.nowMs,
   });
-  try {
-    await archiveInactiveConversations(args.nowMs);
-  } catch (error) {
-    logException(error, "conversation.inactive_archive.failed");
-  }
 }

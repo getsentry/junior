@@ -21,12 +21,12 @@ export interface HeartbeatResult {
 }
 
 export interface UnfinishedWorkHookContext extends PluginContext {
-  /** Bounded inactive conversation candidates selected by core. */
+  /** Bounded conversation candidates selected by the host. */
   conversationIds: string[];
 }
 
 export interface UnfinishedWorkResult {
-  /** Candidate conversations that still have plugin-owned work to finish. */
+  /** Candidate conversations that have plugin-owned work to finish. */
   conversationIds: string[];
 }
 

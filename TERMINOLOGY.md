@@ -65,7 +65,7 @@ Canonical words used across Junior's code and documentation.
 - **Conversation execution**: mutable operational state for a conversation,
   such as mailbox state, worker lease, checkpoints, and activity status.
 - **Unfinished work**: plugin-owned work associated with a conversation that
-  must finish before core may archive the conversation.
+  is not complete.
 - **Agent binding**: a named reference, scoped to one parent agent
   conversation, that reuses one child conversation and its history.
 - **Agent invocation**: one retry-safe delegated task sent from a parent agent

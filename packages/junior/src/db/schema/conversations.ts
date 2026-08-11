@@ -79,11 +79,6 @@ export const juniorConversations = pgTable(
       table.lastActivityAt.desc(),
       table.conversationId,
     ),
-    index("junior_conversations_inactive_roots_idx")
-      .on(table.lastActivityAt, table.conversationId)
-      .where(
-        sql`${table.archivedAt} IS NULL AND ${table.parentConversationId} IS NULL AND ${table.executionStatus} = 'idle'`,
-      ),
     index("junior_conversations_active_idx")
       .using(
         "btree",
