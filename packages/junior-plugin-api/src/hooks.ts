@@ -18,6 +18,8 @@ import type {
   RouteRegistrationHookContext,
   SlackConversationLink,
   SlackConversationLinkHookContext,
+  UnfinishedWorkHookContext,
+  UnfinishedWorkResult,
 } from "./operations";
 import type {
   AfterMcpToolHookContext,
@@ -57,6 +59,9 @@ export interface PluginHooks {
   heartbeat?(
     ctx: HeartbeatHookContext,
   ): Promise<HeartbeatResult | void> | HeartbeatResult | void;
+  unfinishedWork?(
+    ctx: UnfinishedWorkHookContext,
+  ): Promise<UnfinishedWorkResult> | UnfinishedWorkResult;
   issueCredential?(
     ctx: IssueCredentialHookContext,
   ): Promise<PluginCredentialResult> | PluginCredentialResult;

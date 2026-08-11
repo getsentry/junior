@@ -37,6 +37,7 @@ import {
 import type { GitHubDb } from "./db/database.js";
 import { buildGitHubOutcomeReport } from "./outcomes/report.js";
 import { classifyGitHubPullRequestCommitComposition } from "./pull-request-outcomes/commit-composition.js";
+import { listGitHubUnfinishedWork } from "./pull-request-outcomes/store.js";
 import { loadFailingChecksForSuite } from "./webhooks/check-suite-enrichment.js";
 import {
   additionalActorCoauthorTrailers,
@@ -743,6 +744,14 @@ export function githubPlugin(
       ],
     },
     hooks: {
+      async unfinishedWork(ctx) {
+        return {
+          conversationIds: await listGitHubUnfinishedWork(
+            ctx.db as GitHubDb,
+            ctx.conversationIds,
+          ),
+        };
+      },
       routes(ctx) {
         return [
           createGitHubWebhookRoute({

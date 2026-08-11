@@ -20,6 +20,16 @@ export interface HeartbeatResult {
   dispatchCount?: number;
 }
 
+export interface UnfinishedWorkHookContext extends PluginContext {
+  /** Bounded inactive conversation candidates selected by core. */
+  conversationIds: string[];
+}
+
+export interface UnfinishedWorkResult {
+  /** Candidate conversations that still have plugin-owned work to finish. */
+  conversationIds: string[];
+}
+
 export type PluginOperationalTone = "danger" | "good" | "neutral" | "warning";
 
 export interface PluginOperationalMetric {

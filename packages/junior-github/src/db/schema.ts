@@ -97,6 +97,9 @@ export const juniorGitHubPullRequests = pgTable(
     index("junior_github_pull_requests_open_idx")
       .on(table.pullRequestId)
       .where(sql`${table.state} = 'open'`),
+    index("junior_github_pull_requests_unmerged_conversations_idx")
+      .using("gin", table.conversationIds)
+      .where(sql`${table.state} <> 'merged'`),
   ],
 );
 

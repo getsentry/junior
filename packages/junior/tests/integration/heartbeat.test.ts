@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { eq } from "drizzle-orm";
 import {
   createSlackSource,
   defineJuniorPlugin,
@@ -12,6 +13,7 @@ import {
   type SchedulerDb,
 } from "@/chat/scheduled-tasks";
 import { getDb } from "@/chat/db";
+import { juniorConversations } from "@/db/schema";
 import {
   getDispatchRecord,
   getDispatchStorageKey,
@@ -240,6 +242,83 @@ describe("plugin heartbeat", () => {
     expect(response.status).toBe(202);
     await waitUntil.flush();
     expect(seen).toHaveLength(1);
+  });
+
+  it("archives inactive conversations without unfinished plugin work", async () => {
+    const inactiveId = "slack:C123:inactive";
+    const unfinishedId = "slack:C123:unfinished";
+    const activeId = "slack:C123:active";
+    const at = new Date(TEST_NOW_MS - 2 * 60 * 60 * 1000);
+    await getDb()
+      .insert(juniorConversations)
+      .values([
+        {
+          conversationId: inactiveId,
+          createdAt: at,
+          executionStatus: "idle",
+          lastActivityAt: at,
+          updatedAt: at,
+        },
+        {
+          conversationId: unfinishedId,
+          createdAt: at,
+          executionStatus: "idle",
+          lastActivityAt: at,
+          updatedAt: at,
+        },
+        {
+          conversationId: activeId,
+          createdAt: at,
+          executionStatus: "running",
+          lastActivityAt: at,
+          updatedAt: at,
+        },
+      ]);
+    setPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "work",
+          displayName: "Work",
+          description: "Unfinished work test plugin",
+        },
+        hooks: {
+          unfinishedWork(ctx) {
+            expect(ctx.conversationIds).toEqual([inactiveId, unfinishedId]);
+            return { conversationIds: [unfinishedId] };
+          },
+        },
+      }),
+    ]);
+
+    const waitUntil = createWaitUntilCollector();
+    const response = await testHeartbeat(
+      new Request("https://example.invalid/api/internal/heartbeat", {
+        headers: { authorization: "Bearer heartbeat-secret" },
+      }),
+      waitUntil.fn,
+    );
+    expect(response.status).toBe(202);
+    await waitUntil.flush();
+
+    const rows = await getDb()
+      .select({
+        archivedAt: juniorConversations.archivedAt,
+        conversationId: juniorConversations.conversationId,
+      })
+      .from(juniorConversations)
+      .where(eq(juniorConversations.conversationId, inactiveId));
+    const archived = rows[0];
+    expect(archived?.archivedAt).toEqual(new Date(TEST_NOW_MS));
+    const retained = await getDb()
+      .select({ archivedAt: juniorConversations.archivedAt })
+      .from(juniorConversations)
+      .where(eq(juniorConversations.conversationId, unfinishedId));
+    expect(retained[0]?.archivedAt).toBeNull();
+    const active = await getDb()
+      .select({ archivedAt: juniorConversations.archivedAt })
+      .from(juniorConversations)
+      .where(eq(juniorConversations.conversationId, activeId));
+    expect(active[0]?.archivedAt).toBeNull();
   });
 
   it("reschedules stale paused turn records", async () => {

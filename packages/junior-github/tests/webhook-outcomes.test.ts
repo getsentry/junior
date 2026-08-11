@@ -22,6 +22,7 @@ import {
 import type { GitHubDb } from "../src/db/database";
 import { githubPlugin } from "../src/index";
 import { buildGitHubOutcomeReport } from "../src/outcomes/report";
+import { listGitHubUnfinishedWork } from "../src/pull-request-outcomes/store";
 import { createGitHubWebhookRoute } from "../src/webhooks/handler";
 import {
   buildCheckSuiteUrl,
@@ -43,6 +44,7 @@ async function createGitHubFixture(): Promise<GitHubFixture> {
     "0004_marvelous_toad_men.sql",
     "0005_github_cost_associations.sql",
     "0006_fat_korvac.sql",
+    "0007_shallow_millenium_guard.sql",
   ]) {
     await fixture.execute(await migrationSql(migrationFile));
   }
@@ -52,6 +54,50 @@ async function createGitHubFixture(): Promise<GitHubFixture> {
 async function migrationSql(name: string): Promise<string> {
   return await readFile(resolve(__dirname, `../migrations/${name}`), "utf8");
 }
+
+it("returns only candidate conversations with unmerged pull requests", async () => {
+  const fixture = await createGitHubFixture();
+  const at = new Date("2026-07-01T12:00:00.000Z");
+  try {
+    await fixture
+      .db()
+      .insert(juniorGitHubPullRequests)
+      .values([
+        {
+          pullRequestId: "open-pr",
+          repositoryId: "repo-1",
+          repositoryFullName: "getsentry/junior",
+          number: 1,
+          state: "open",
+          conversationIds: ["conversation-open", "conversation-shared"],
+          openedAt: at,
+          updatedAt: at,
+        },
+        {
+          pullRequestId: "merged-pr",
+          repositoryId: "repo-1",
+          repositoryFullName: "getsentry/junior",
+          number: 2,
+          state: "merged",
+          conversationIds: ["conversation-merged", "conversation-shared"],
+          openedAt: at,
+          mergedAt: at,
+          updatedAt: at,
+        },
+      ]);
+
+    await expect(
+      listGitHubUnfinishedWork(fixture.db(), [
+        "conversation-open",
+        "conversation-merged",
+        "conversation-shared",
+        "conversation-unrelated",
+      ]),
+    ).resolves.toEqual(["conversation-open", "conversation-shared"]);
+  } finally {
+    await fixture.close();
+  }
+});
 
 function pullRequestPayload(overrides: Record<string, unknown> = {}) {
   return {

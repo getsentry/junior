@@ -1,0 +1,1 @@
+CREATE INDEX "junior_conversations_inactive_roots_idx" ON "junior_conversations" USING btree ("last_activity_at","conversation_id") WHERE "junior_conversations"."archived_at" IS NULL AND "junior_conversations"."parent_conversation_id" IS NULL AND "junior_conversations"."execution_status" = 'idle';
