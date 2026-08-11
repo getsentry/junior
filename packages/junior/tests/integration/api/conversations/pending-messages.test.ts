@@ -15,7 +15,9 @@ import {
   closeApiTurnWorkFixture,
   createApiTurnWorkFixture,
 } from "../../../fixtures/api-turn";
+import { usersInfoOk } from "../../../fixtures/slack/factories/api";
 import { testViewer } from "../../../fixtures/user";
+import { queueSlackApiResponse } from "../../../msw/handlers/slack-api";
 
 describe("conversation pending messages API", () => {
   afterEach(async () => {
@@ -65,6 +67,14 @@ describe("conversation pending messages API", () => {
 
   it("returns accepted slack interrupt mailbox rows before history commit", async () => {
     const { state } = await createApiTurnWorkFixture();
+    queueSlackApiResponse("users.info", {
+      body: usersInfoOk({
+        userId: "U123",
+        userName: "slack.person",
+        realName: "Slack Person",
+        email: "slack.person@example.com",
+      }),
+    });
     const conversationId = "slack:C123:1712345.0001";
     await getConversationStore().recordActivity({
       actor: {
@@ -149,6 +159,7 @@ describe("conversation pending messages API", () => {
     expect(report.messages).toEqual([
       {
         actorIdentity: {
+          email: "slack.person@example.com",
           fullName: "Slack Person",
           slackUserId: "U123",
           slackUserName: "slack.person",

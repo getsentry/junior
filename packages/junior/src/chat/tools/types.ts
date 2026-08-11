@@ -15,7 +15,6 @@ import type { McpToolManager } from "@/chat/mcp/tool-manager";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import type { AgentTurnSurface } from "@/chat/task-execution/checkpoint";
 import type { Skill } from "@/chat/skills";
-import type { LoadSkillMetadata } from "@/chat/tools/skill/load-skill";
 import type { JuniorToolOutput } from "@/chat/tool-support/structured-result";
 import type { WebActor, LocalActor, Actor, SlackActor } from "@/chat/actor";
 import type { SlackActionToken } from "@/chat/slack/action-token";
@@ -63,9 +62,7 @@ export interface ToolHooks {
   writeGeneratedArtifacts?: (
     files: FileUpload[],
   ) => GeneratedArtifactFileRef[] | Promise<GeneratedArtifactFileRef[]>;
-  onSkillLoaded?: (
-    skill: Skill,
-  ) => void | LoadSkillMetadata | Promise<void | LoadSkillMetadata>;
+  onSkillLoaded?: (skill: Skill) => void | Promise<void>;
   toolOverrides?: {
     imageGenerate?: ImageGenerateToolDeps;
     viewImage?: ViewImageToolDeps;

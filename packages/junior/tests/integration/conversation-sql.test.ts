@@ -9,7 +9,9 @@ import {
   juniorConversationEvents,
   juniorSqlSchema as schema,
 } from "@/db/schema";
+import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { createSqlStore } from "@/chat/conversations/sql/store";
+import { projectConversationEvents } from "@/chat/pi/conversation-events";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { recordTurnSummary } from "@/chat/task-execution/turn-cursor";
 import {
@@ -141,6 +143,63 @@ ORDER BY conversation_id
           threadTs: "1700000000.003",
         },
       });
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("migrates unowned MCP connection events into replayable facts", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+    const ownershipMigrationIndex = coreMigrations.findIndex((migration) =>
+      migration.sql.some((statement) =>
+        statement.includes("mcp_provider_connected_unowned"),
+      ),
+    );
+    const ownershipMigration = coreMigrations[ownershipMigrationIndex];
+    if (!ownershipMigration) {
+      throw new Error("MCP credential subject migration not found");
+    }
+
+    try {
+      for (const migration of coreMigrations.slice(0, ownershipMigrationIndex)) {
+        for (const statement of migration.sql) {
+          await fixture.sql.execute(statement);
+        }
+      }
+
+      const conversationId = "internal:legacy-mcp-connection";
+      const conversation = buildJuniorSqlConversation({ conversationId });
+      await fixture.sql
+        .db()
+        .insert(schema.juniorConversations)
+        .values(conversation);
+      await fixture.sql
+        .db()
+        .insert(juniorConversationEvents)
+        .values({
+          conversationId,
+          seq: 0,
+          historyVersion: 0,
+          schemaVersion: 1,
+          type: "mcp_provider_connected",
+          payload: { provider: "github" },
+          createdAt: new Date(1_000),
+        });
+
+      for (const statement of ownershipMigration.sql) {
+        await fixture.sql.execute(statement);
+      }
+
+      const history = await createSqlConversationEventStore(
+        fixture.sql,
+      ).loadCurrentHistory(conversationId);
+      expect(history.map(({ data }) => data)).toEqual([
+        {
+          type: "mcp_provider_connected_unowned",
+          provider: "github",
+        },
+      ]);
+      expect(projectConversationEvents(history).messages).toEqual([]);
     } finally {
       await fixture.close();
     }

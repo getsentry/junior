@@ -21,7 +21,6 @@ import {
 } from "@/chat/logging";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { toGenAiPayloadMetadata } from "@/chat/conversation-privacy";
-import type { SkillMetadata } from "@/chat/skills";
 import type { PluginDefinition } from "@/chat/plugins/types";
 import {
   McpAuthorizationRequiredError,
@@ -307,8 +306,6 @@ export interface ManagedMcpToolDescriptor {
   provider: string;
 }
 
-type ActiveMcpSkill = Pick<SkillMetadata, "name" | "pluginProvider">;
-
 export interface ManagedMcpTool extends ManagedMcpToolDescriptor {
   execute: (
     args: Record<string, unknown>,
@@ -360,14 +357,6 @@ export class McpToolManager {
         description: plugin.manifest.description,
         active: this.activeProviders.has(provider),
       }));
-  }
-
-  async activateForSkill(skill: ActiveMcpSkill): Promise<boolean> {
-    if (!skill.pluginProvider) {
-      return false;
-    }
-
-    return await this.activateProvider(skill.pluginProvider);
   }
 
   async activateProvider(provider: string): Promise<boolean> {

@@ -53,7 +53,7 @@ describe("projectConversationEvents", () => {
       triggeringToolCallId: "handoff-call",
       replacementHistory: [],
     }),
-    event(1, { type: "mcp_provider_connected", provider: "github" }),
+    event(1, { type: "mcp_provider_connected", provider: "github", credentialSubjectId: "U123" }),
     event(2, {
       type: "user_message",
       content: firstMessage.content,

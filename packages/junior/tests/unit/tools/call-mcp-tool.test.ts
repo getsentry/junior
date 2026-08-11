@@ -295,6 +295,6 @@ describe("callMcpTool", () => {
     expect(error.message).toContain(
       'Call searchMcpTools with provider "demo" to refresh the catalog',
     );
-    expect(manager.activateProvider).toHaveBeenCalledWith("demo");
+    expect(manager.activateProvider).not.toHaveBeenCalled();
   });
 });

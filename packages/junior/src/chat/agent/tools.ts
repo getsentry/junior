@@ -2,10 +2,11 @@
  * Run tool wiring.
  *
  * Builds everything the agent can act through for one run slice: the sandbox
- * access, MCP and plugin auth orchestration, MCP
- * provider restoration from durable history, and the Pi-facing tool surfaces
- * (main-agent tools plus runtime control tools). Auth pauses raised while
- * restoring providers are thrown here so the run parks before prompting.
+ * access, MCP and plugin auth orchestration, credential-subject-owned MCP
+ * provider
+ * restoration, and the Pi-facing tool surfaces (main-agent tools plus runtime
+ * control tools). Auth pauses raised while restoring providers are thrown
+ * here so the run parks before prompting.
  */
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { FileUpload } from "chat";
@@ -26,7 +27,6 @@ import {
   getMcpAwareTelemetryMessage,
   getMcpProviderErrorAttributes,
 } from "@/chat/mcp/errors";
-import { inferActiveMcpProvidersFromPiMessages } from "@/chat/pi/derived-state";
 import { createTools } from "@/chat/tools";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
@@ -95,7 +95,6 @@ interface ToolWiringArgs {
   onFatalToolError(error: Error): void;
   onSandboxRefChanged: (sandboxRef: SandboxRef) => void;
   preAgentPromptMessages: () => PiMessage[];
-  priorPiMessages: PiMessage[] | undefined;
   recordConnectedMcpProvider: (provider: string) => Promise<void>;
   requestHandoff?: ToolRuntimeContext["handoff"];
   resume: ResumeState;
@@ -405,32 +404,7 @@ export async function wireAgentTools(
         );
         const effective = resolvedSkill ?? loadedSkill;
         upsertActiveSkill(args.activeSkills, effective);
-        if (await mcpToolManager.activateForSkill(effective)) {
-          await args.recordConnectedMcpProvider(effective.pluginProvider!);
-        }
         await tryRecordSkillLoadStat(effective);
-        if (mcpAuth.getPendingPause()) {
-          // Auth pause requested — suppress loadSkill failure and let the
-          // aborted run park cleanly.
-          return undefined;
-        }
-        if (!effective.pluginProvider) {
-          return undefined;
-        }
-        if (
-          !mcpToolManager
-            .getActiveProviders()
-            .includes(effective.pluginProvider)
-        ) {
-          return undefined;
-        }
-        const availableToolCount = mcpToolManager.getActiveToolCatalog({
-          provider: effective.pluginProvider,
-        }).length;
-        return {
-          mcp_provider: effective.pluginProvider,
-          available_tool_count: availableToolCount,
-        };
       },
     },
     toolRuntimeContext,
@@ -460,7 +434,7 @@ export async function wireAgentTools(
   // abort before the agent sees the user's request.
   //
   // Skipping only suppresses the eager-restore path. The agent can still
-  // trigger the auth flow intentionally (via loadSkill + searchMcpTools)
+  // trigger the auth flow intentionally through searchMcpTools
   // when the user's request genuinely requires that provider.
   const pendingMcpProvider =
     args.state.pendingAuth?.kind === "mcp"
@@ -468,20 +442,12 @@ export async function wireAgentTools(
       : undefined;
 
   // Conversation history records prior capability use, not authority for the
-  // current turn. Credentialless system turns must not reconnect user-owned
-  // MCP providers merely because an earlier user turn activated them.
+  // current turn. Restore only providers this credential subject connected.
+  // Shared Pi history mixes people and must not grant provider authority.
+  // Intentional use still connects on demand through searchMcpTools under the
+  // current credential subject.
   if (credentialUserId) {
-    // Restore providers visible in durable Pi session history. In serverless
-    // runtimes, later slices and follow-up turns usually run in a fresh
-    // process, so in-memory MCP clients cannot be reused.
-    const providersToRestore = new Set([
-      ...args.connectedMcpProviders,
-      ...inferActiveMcpProvidersFromPiMessages(args.priorPiMessages),
-      ...args.activeSkills.flatMap((skill) =>
-        skill.pluginProvider ? [skill.pluginProvider] : [],
-      ),
-    ]);
-    for (const provider of providersToRestore) {
+    for (const provider of args.connectedMcpProviders) {
       if (provider === pendingMcpProvider) {
         continue; // awaiting user authorization — skip to avoid aborting unrelated turns
       }

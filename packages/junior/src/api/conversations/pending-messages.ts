@@ -1,6 +1,7 @@
 import type { User } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { getConversationStore, getDb } from "@/chat/db";
+import { lookupSlackUser } from "@/chat/slack/user";
 import {
   getConversation,
   type InboundMessage,
@@ -61,25 +62,31 @@ function actorIdentityFromApiMetadata(
   };
 }
 
-function actorIdentityFromSlackMetadata(
+async function actorIdentityFromSlackMetadata(
   metadata: z.output<typeof slackMailboxMetadataSchema>,
-): ActorIdentity | undefined {
+  teamId: string | undefined,
+): Promise<ActorIdentity | undefined> {
   if (metadata.message.author.isMe === true) return undefined;
   const slackUserId = metadata.message.author.userId.trim();
   if (!slackUserId) return undefined;
-  const slackUserName = metadata.message.author.userName?.trim();
-  const fullName = metadata.message.author.fullName?.trim();
+  const profile = teamId ? await lookupSlackUser(teamId, slackUserId) : null;
+  const slackUserName =
+    profile?.userName?.trim() || metadata.message.author.userName?.trim();
+  const fullName =
+    profile?.fullName?.trim() || metadata.message.author.fullName?.trim();
+  const email = profile?.email?.trim().toLowerCase();
   return {
     slackUserId,
     ...(slackUserName ? { slackUserName } : {}),
     ...(fullName ? { fullName } : {}),
+    ...(email ? { email } : {}),
   };
 }
 
-function projectPendingMessage(
+async function projectPendingMessage(
   message: InboundMessage,
   canExposePayload: boolean,
-): ConversationPendingMessage | undefined {
+): Promise<ConversationPendingMessage | undefined> {
   if (message.source === "web") {
     const metadata = apiTurnMailboxMetadataSchema.safeParse(
       message.input.metadata,
@@ -112,7 +119,24 @@ function projectPendingMessage(
     if (metadata.data.message.author.isMe === true) return undefined;
     const text = message.input.text.trim();
     if (!text) return undefined;
-    const actorIdentity = actorIdentityFromSlackMetadata(metadata.data);
+    if (!canExposePayload) {
+      return {
+        createdAt: isoFromMs(message.createdAtMs),
+        delivery: message.delivery,
+        inboundMessageId: message.inboundMessageId,
+        messageId: metadata.data.message.id,
+        receivedAt: isoFromMs(message.receivedAtMs),
+        redacted: true,
+        role: "user",
+        source: "slack",
+      };
+    }
+    const actorIdentity = await actorIdentityFromSlackMetadata(
+      metadata.data,
+      message.destination?.platform === "slack"
+        ? message.destination.teamId
+        : undefined,
+    );
     return {
       createdAt: isoFromMs(message.createdAtMs),
       delivery: message.delivery,
@@ -121,12 +145,8 @@ function projectPendingMessage(
       receivedAt: isoFromMs(message.receivedAtMs),
       role: "user",
       source: "slack",
-      ...(canExposePayload
-        ? {
-            ...(actorIdentity ? { actorIdentity } : {}),
-            text,
-          }
-        : { redacted: true as const }),
+      ...(actorIdentity ? { actorIdentity } : {}),
+      text,
     };
   }
 
@@ -152,11 +172,14 @@ export async function readConversationPendingMessages(
   const canExposePayload = access?.canViewPrivateContent ?? false;
 
   const work = await getConversation({ conversationId });
-  const messages = (work?.execution.pendingMessages ?? [])
-    .map((message) => projectPendingMessage(message, canExposePayload))
-    .filter((message): message is ConversationPendingMessage =>
-      Boolean(message),
-    );
+  const projectedMessages = await Promise.all(
+    (work?.execution.pendingMessages ?? []).map((message) =>
+      projectPendingMessage(message, canExposePayload),
+    ),
+  );
+  const messages = projectedMessages.filter(
+    (message): message is ConversationPendingMessage => Boolean(message),
+  );
 
   return conversationPendingMessagesReportSchema.parse({
     conversationId,

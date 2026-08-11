@@ -176,6 +176,13 @@
       "when": 1786313061094,
       "tag": "0024_misty_typhoid_mary",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1786477029866,
+      "tag": "0025_mcp_credential_subject",
+      "breakpoints": true
     }
   ]
 }

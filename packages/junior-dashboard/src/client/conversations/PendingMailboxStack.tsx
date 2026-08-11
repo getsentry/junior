@@ -5,14 +5,8 @@ import type { ConversationPendingMessage } from "@sentry/junior/api/schema";
 import { cn } from "../styles";
 import { ShimmerText } from "../components/ShimmerText";
 import { Tooltip } from "../components/Tooltip";
-import {
-  formatMessageTimestamp,
-  transcriptMessageActorLabel,
-} from "../format";
-import type {
-  ConversationTranscript,
-  TranscriptViewMessage,
-} from "../types";
+import { formatMessageTimestamp, transcriptMessageActorLabel } from "../format";
+import type { ConversationTranscript, TranscriptViewMessage } from "../types";
 import {
   TranscriptHeadingMeta,
   TranscriptHeadingRow,
@@ -21,6 +15,9 @@ import {
   conversationTranscriptMessages,
   unresolvedPendingTranscriptMessages,
 } from "./eventTranscript";
+
+const MAX_EXPANDED_PENDING_ROWS = 3;
+const COLLAPSED_PENDING_ROW_COUNT = 2;
 
 /** Compact monochrome Slack mark for pending mailbox source. */
 function SlackMark(props: { className?: string }) {
@@ -103,7 +100,9 @@ function PendingRow(props: {
   showDivider: boolean;
 }) {
   const textPart = props.message.parts.find((part) => part.type === "text");
-  const redacted = Boolean(textPart && "redacted" in textPart && textPart.redacted);
+  const redacted = Boolean(
+    textPart && "redacted" in textPart && textPart.redacted,
+  );
   const text =
     textPart && "text" in textPart && typeof textPart.text === "string"
       ? textPart.text
@@ -165,6 +164,11 @@ export function PendingMailboxStack(props: {
 
   const countLabel =
     rows.length === 1 ? "1 queued message" : `${rows.length} queued messages`;
+  const visibleRows =
+    rows.length > MAX_EXPANDED_PENDING_ROWS
+      ? rows.slice(0, COLLAPSED_PENDING_ROW_COUNT)
+      : rows;
+  const collapsedCount = rows.length - visibleRows.length;
 
   return (
     <div
@@ -175,7 +179,7 @@ export function PendingMailboxStack(props: {
         {countLabel}
       </div>
       <div className="hidden md:block">
-        {rows.map((message, index) => (
+        {visibleRows.map((message, index) => (
           <PendingRow
             conversation={props.conversation}
             key={message.messageId ?? `${message.sourceSeq}:${index}`}
@@ -183,6 +187,11 @@ export function PendingMailboxStack(props: {
             showDivider={index > 0}
           />
         ))}
+        {collapsedCount > 0 ? (
+          <div className="border-t border-white/[0.06] px-3 py-2 font-sans text-xs font-medium text-cyan-50/70 md:px-3.5">
+            {collapsedCount} more queued messages
+          </div>
+        ) : null}
       </div>
     </div>
   );

@@ -55,6 +55,7 @@ import {
   type ConversationMessageProvenance,
 } from "@/chat/conversations/provenance";
 import type { Actor } from "@/chat/actor";
+import { credentialUserSubjectId } from "@/chat/credentials/context";
 import {
   GEN_AI_PROVIDER_NAME,
   completeObject,
@@ -121,7 +122,7 @@ import {
 } from "@/chat/agent/types";
 import { actionConfirmationRetryMessages } from "@/chat/agent/action-confirmation-retry";
 import { loadTurnCheckpoint } from "@/chat/task-execution/checkpoint";
-import { discoverRunSkills, restoreSkillRuntime } from "@/chat/agent/skills";
+import { discoverRunSkills, loadRunSkill } from "@/chat/agent/skills";
 import {
   assemblePrompt,
   buildPromptInput,
@@ -389,14 +390,22 @@ async function executeAgentRunInPrivacyContext(
     routing.destination.platform === "slack" ? routing.destination : undefined;
   const slackActor = actor?.platform === "slack" ? actor : undefined;
   const userInput = input.messageText;
+  const credentialUserId = run.credentialContext
+    ? credentialUserSubjectId(run.credentialContext)
+    : undefined;
   const recordConnectedMcpProvider = async (provider: string) => {
     if (connectedMcpProviders.has(provider)) {
       return;
     }
-    await recordMcpProviderConnected({
-      conversationId,
-      provider,
-    });
+    // Only durable when we know who owns the connection. Restore filters by
+    // this credential subject on later turns.
+    if (credentialUserId) {
+      await recordMcpProviderConnected({
+        conversationId,
+        provider,
+        credentialSubjectId: credentialUserId,
+      });
+    }
     connectedMcpProviders.add(provider);
   };
   const recordActiveMcpProviders = async () => {
@@ -539,20 +548,26 @@ async function executeAgentRunInPrivacyContext(
     const priorPiMessages = resumedFromSessionRecord
       ? existingSessionRecord?.piMessages
       : input.piMessages;
+    // Load only providers this credential subject connected. Shared thread
+    // history is not authority and must not warm another person's MCP servers.
     connectedMcpProviders = new Set(
-      await loadConnectedMcpProviders({ conversationId }),
+      credentialUserId
+        ? await loadConnectedMcpProviders({
+            conversationId,
+            credentialSubjectId: credentialUserId,
+          })
+        : [],
     );
 
-    // ── Restore skill runtime handles from durable Pi history ────────
-    await restoreSkillRuntime({
+    // A new turn starts with no active skill. A resumed turn recovers only its
+    // last successful loadSkill result, never skill state from older turns.
+    const explicitSkill = await loadRunSkill({
       activeSkills,
+      currentTurnMessages,
       invokedSkill,
-      priorPiMessages,
+      resumed: resumedFromSessionRecord,
       skillSandbox,
     });
-    const explicitSkill = invokedSkill
-      ? (activeSkills.find((skill) => skill.name === invokedSkill.name) ?? null)
-      : null;
     // ── Prompt input ─────────────────────────────────────────────────
     const { contextContentParts, routerBlocks, userContentParts } =
       buildPromptInput({
@@ -838,7 +853,6 @@ async function executeAgentRunInPrivacyContext(
         lastKnownSandboxRef = sandboxRef;
       },
       preAgentPromptMessages,
-      priorPiMessages,
       recordConnectedMcpProvider,
       requestHandoff,
       resume: runResume,
