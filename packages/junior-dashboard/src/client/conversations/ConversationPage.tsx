@@ -87,34 +87,37 @@ export function ConversationPage(props: {
     <div className="grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_auto]">
       <div
         aria-label="Conversation transcript"
-        className="min-h-0 overflow-y-auto overscroll-contain px-3 py-3 md:px-7 md:py-6"
+        className="min-h-0 overflow-y-auto overscroll-contain px-3 py-3 md:px-7 md:py-5"
         tabIndex={0}
       >
         <section className="min-w-0">
-          <Card className="relative mb-3 grid gap-2 border-white/[0.07] bg-white/[0.025] p-3 md:mb-5 md:grid-cols-[minmax(0,1fr)_auto] md:gap-3 md:p-5">
-            <div className="min-w-0">
+          <header className="sticky top-0 z-10 -mx-3 mb-3 border-b border-white/[0.07] bg-[#050507]/92 px-3 py-2.5 backdrop-blur md:-mx-7 md:mb-4 md:px-7 md:py-3">
+            <div className="flex min-w-0 items-start justify-between gap-3">
               <div className="min-w-0">
-                <h2 className="m-0 line-clamp-2 font-display text-xl font-medium leading-tight tracking-[-0.03em] md:line-clamp-none md:truncate md:text-3xl">
-                  {conversationDisplayTitle(conversation)}
-                </h2>
-              </div>
-              <div className="mt-1.5 min-w-0 font-mono text-xs leading-snug text-dashboard-text-muted md:mt-2">
-                <ConversationIdentity
-                  conversation={conversation}
-                  conversationId={conversationId}
-                  detail={detail.data}
-                />
-              </div>
-            </div>
-            <div className="flex min-w-0 flex-row flex-wrap items-center gap-x-3 gap-y-2 self-start font-mono text-xs leading-snug text-dashboard-text-muted md:flex-col md:items-end md:text-right">
-              <div className="break-words">
-                updated{" "}
-                {formatRelativeTime(
-                  conversation?.lastSeenAt ?? detail.data?.generatedAt,
-                )}
+                <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                  <h2 className="m-0 line-clamp-2 min-w-0 font-display text-lg font-medium leading-tight tracking-[-0.03em] md:line-clamp-1 md:text-2xl">
+                    {conversationDisplayTitle(conversation)}
+                  </h2>
+                  <ConversationPrivacyChip
+                    visibility={conversation?.visibility}
+                  />
+                </div>
+                <div className="mt-1 grid min-w-0 gap-0.5 font-sans text-xs leading-snug text-dashboard-text-muted">
+                  <ConversationIdentity
+                    conversation={conversation}
+                    conversationId={conversationId}
+                    detail={detail.data}
+                  />
+                  <span>
+                    updated{" "}
+                    {formatRelativeTime(
+                      conversation?.lastSeenAt ?? detail.data?.generatedAt,
+                    )}
+                  </span>
+                </div>
               </div>
               <Button
-                className="h-auto px-2.5 py-1 text-xs font-normal text-dashboard-text-muted"
+                className="h-auto shrink-0 px-2.5 py-1 font-sans text-xs font-normal text-dashboard-text-muted"
                 disabled={!conversation || archive.isPending}
                 onClick={() =>
                   archive.mutate({
@@ -130,35 +133,32 @@ export function ConversationPage(props: {
                     ? "Unarchive"
                     : "Archive"}
               </Button>
-              {archive.error ? (
-                <div className="basis-full text-red-300/80 md:basis-auto">
-                  Could not update archive state.
-                </div>
-              ) : null}
             </div>
+            {archive.error ? (
+              <div className="mt-1.5 text-xs text-red-300/80">
+                Could not update archive state.
+              </div>
+            ) : null}
             <ConversationStats
               conversation={conversation}
               detail={detail.data}
             />
             <ConversationAnnotations detail={detail.data} />
-          </Card>
+          </header>
 
           {detail.isPending ? (
             <TranscriptLoading />
           ) : detail.error && !detail.data ? (
-            <Card className="border-white/[0.07] bg-white/[0.025] p-4 font-mono text-xs leading-relaxed text-dashboard-text-muted">
+            <Card className="border-white/[0.07] bg-white/[0.025] p-4 font-sans text-xs leading-relaxed text-dashboard-text-muted">
               {detail.error.message}
             </Card>
           ) : (
             <>
               {detail.error ? (
-                <div className="mb-3 rounded-lg border border-amber-300/15 bg-amber-300/[0.045] px-4 py-2 font-mono text-xs text-amber-100/65">
+                <div className="mb-3 rounded-lg border border-amber-300/15 bg-amber-300/[0.045] px-3 py-2 font-sans text-xs text-amber-100/65">
                   Transcript refresh failed. Showing the latest available data.
                 </div>
               ) : null}
-              <ConversationPrivacyNotice
-                visibility={conversation?.visibility}
-              />
               <Transcript
                 actions={
                   <CopyMarkdownButton
@@ -236,30 +236,30 @@ export function ConversationPage(props: {
   );
 }
 
-function ConversationPrivacyNotice(props: {
+function ConversationPrivacyChip(props: {
   visibility: Conversation["visibility"];
 }) {
+  if (!props.visibility) return null;
   const isPublic = props.visibility === "public";
   const Icon = isPublic ? Globe2 : LockKeyhole;
+  const label = isPublic ? "Public conversation" : "Private conversation";
+  const detail = isPublic
+    ? "Anyone in this workspace can see this transcript."
+    : "Only members of this conversation can see this transcript.";
   return (
-    <div
+    <span
       className={
         isPublic
-          ? "mb-3 flex items-start gap-2.5 rounded-lg border border-emerald-300/15 bg-emerald-300/[0.045] px-3 py-2.5 text-emerald-50/75 md:mb-4 md:px-4"
-          : "mb-3 flex items-start gap-2.5 rounded-lg border border-white/[0.08] bg-white/[0.025] px-3 py-2.5 text-dashboard-text-muted md:mb-4 md:px-4"
+          ? "inline-flex max-w-full items-center gap-1 rounded-full border border-emerald-300/20 bg-emerald-300/[0.08] px-2 py-0.5 font-sans text-2xs font-medium text-emerald-50/85"
+          : "inline-flex max-w-full items-center gap-1 rounded-full border border-white/[0.1] bg-white/[0.04] px-2 py-0.5 font-sans text-2xs font-medium text-dashboard-text-muted"
       }
       role="note"
+      title={`${label}. ${detail}`}
     >
-      <Icon aria-hidden="true" className="mt-0.5 size-3.5 shrink-0" />
-      <p className="m-0 font-mono text-xs leading-relaxed">
-        <span className="font-semibold text-dashboard-text">
-          {isPublic ? "Public conversation." : "Private conversation."}
-        </span>{" "}
-        {isPublic
-          ? "Anyone in this workspace can see this transcript."
-          : "Only members of this conversation can see this transcript."}
-      </p>
-    </div>
+      <Icon aria-hidden="true" className="size-3 shrink-0" />
+      <span className="truncate">{label}.</span>
+      <span className="sr-only">{detail}</span>
+    </span>
   );
 }
 
@@ -289,21 +289,19 @@ function ConversationAnnotations(props: {
   );
   if (!links?.length) return null;
   return (
-    <div className="md:col-span-2">
-      <div className="flex flex-wrap gap-2">
-        {links.map((link) => (
-          <a
-            className="inline-flex items-center gap-1.5 rounded border border-cyan-300/15 bg-cyan-300/[0.055] px-2 py-1 font-mono text-xs leading-snug text-cyan-50 no-underline"
-            href={link.url}
-            key={`${link.plugin}:${link.key}`}
-            rel="noreferrer"
-            target="_blank"
-          >
-            {link.status ? <ResourceStatus status={link.status} /> : null}
-            <span>{link.label}</span>
-          </a>
-        ))}
-      </div>
+    <div className="mt-2 flex flex-wrap gap-1.5">
+      {links.map((link) => (
+        <a
+          className="inline-flex items-center gap-1.5 rounded border border-cyan-300/15 bg-cyan-300/[0.055] px-2 py-0.5 font-sans text-2xs leading-snug text-cyan-50 no-underline"
+          href={link.url}
+          key={`${link.plugin}:${link.key}`}
+          rel="noreferrer"
+          target="_blank"
+        >
+          {link.status ? <ResourceStatus status={link.status} /> : null}
+          <span>{link.label}</span>
+        </a>
+      ))}
     </div>
   );
 }
@@ -387,36 +385,30 @@ function ConversationIdentity(props: {
   ) : null;
 
   return (
-    <>
-      <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 md:hidden">
-        {ownerNode ? (
-          <span className="min-w-0 max-w-full truncate">{ownerNode}</span>
-        ) : null}
-        {sentryLink ? (
-          <>
-            {ownerNode ? (
-              <span className="text-dashboard-text-muted">·</span>
-            ) : null}
-            {sentryLink}
-          </>
-        ) : null}
-      </div>
-      <div className="hidden min-w-0 break-words md:block">
-        {ownerNode}
-        {ownerNode && id ? <>{" · "}</> : null}
-        {id ? (
-          <span className="break-all" title={id}>
-            {id}
-          </span>
-        ) : null}
-        {sentryLink ? (
-          <>
-            {" · "}
-            {sentryLink}
-          </>
-        ) : null}
-      </div>
-    </>
+    <span className="inline-flex min-w-0 max-w-full flex-wrap items-center gap-x-1.5 gap-y-1">
+      {ownerNode ? (
+        <span className="min-w-0 max-w-full truncate">{ownerNode}</span>
+      ) : null}
+      {id ? (
+        <span
+          className="hidden min-w-0 items-center gap-x-1.5 md:inline-flex"
+          title={id}
+        >
+          {ownerNode ? (
+            <span className="text-dashboard-text-muted/50">·</span>
+          ) : null}
+          <span className="min-w-0 max-w-[18rem] truncate">{id}</span>
+        </span>
+      ) : null}
+      {sentryLink ? (
+        <span className="inline-flex min-w-0 items-center gap-x-1.5">
+          {ownerNode || id ? (
+            <span className="text-dashboard-text-muted/50">·</span>
+          ) : null}
+          {sentryLink}
+        </span>
+      ) : null}
+    </span>
   );
 }
 
@@ -627,9 +619,9 @@ function ConversationStats(props: {
   );
 
   return (
-    <div className="col-span-full mt-1 border-t border-white/[0.07] pt-3">
+    <div className="mt-2">
       <MetricList
-        className="break-words text-xs leading-[1.5] text-dashboard-text-muted"
+        className="break-words text-xs leading-[1.45] text-dashboard-text-muted"
         items={stats}
       />
     </div>

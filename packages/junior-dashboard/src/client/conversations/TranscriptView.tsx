@@ -6,7 +6,6 @@ import type {
   TranscriptViewSubagentPart,
 } from "../types";
 import { Button } from "../components/Button";
-import { SearchInput } from "../components/SearchInput";
 import { TranscriptHeader } from "./TranscriptHeader";
 import { ConversationTranscriptView } from "./ConversationTranscript";
 import {
@@ -57,35 +56,36 @@ export function Transcript(props: {
       <div className="grid min-w-0" ref={bottomPinning.contentRef}>
         <TranscriptHeader
           actions={props.actions}
-          redacted={redacted}
-          value={view}
           onChange={setView}
-        />
-        <SearchInput
-          className="mb-3 mt-2 md:mb-5 md:mt-3"
-          label="Search transcript"
-          onChange={setSearch}
-          placeholder="Search transcript…"
-          size="default"
-          value={search}
+          onSearchChange={setSearch}
+          redacted={redacted}
+          search={search}
+          value={view}
         />
         {props.hasPreviousPage || props.loadingPreviousPage ? (
-          <div className="mb-2 flex justify-center">
-            <Button
+          <div className="mb-3 flex items-center gap-3">
+            <span className="h-px min-w-4 flex-1 bg-white/[0.08]" />
+            <button
+              aria-label="Load earlier events"
+              className="shrink-0 cursor-pointer border-0 bg-transparent px-1 py-0.5 font-sans text-xs font-medium text-dashboard-text-muted transition-colors hover:text-dashboard-text focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55 disabled:cursor-not-allowed disabled:opacity-50"
               disabled={props.loadingPreviousPage}
               onClick={() => {
                 bottomPinning.preserveViewportForPrepend();
                 props.onLoadPreviousPage?.();
               }}
+              type="button"
             >
-              {props.loadingPreviousPage ? "Loading…" : "Load earlier events"}
-            </Button>
+              {props.loadingPreviousPage
+                ? "Loading earlier messages…"
+                : "Show earlier messages"}
+            </button>
+            <span className="h-px min-w-4 flex-1 bg-white/[0.08]" />
           </div>
         ) : null}
         {props.historyError ? (
           <div
             aria-live="polite"
-            className="mb-2 text-center font-mono text-xs text-amber-100/65"
+            className="mb-2 text-center font-sans text-xs text-amber-100/65"
           >
             Earlier events could not be loaded.
           </div>

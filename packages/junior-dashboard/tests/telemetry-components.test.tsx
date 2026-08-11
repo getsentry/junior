@@ -304,10 +304,19 @@ describe("dashboard canonical-event components", () => {
 
   it("exposes pressed state for transcript view controls", () => {
     const html = renderToStaticMarkup(
-      <TranscriptHeader redacted={false} value="raw" onChange={() => {}} />,
+      <TranscriptHeader
+        onChange={() => {}}
+        onSearchChange={() => {}}
+        redacted={false}
+        search=""
+        value="raw"
+      />,
     );
     expect(html.match(/aria-pressed="true"/g) ?? []).toHaveLength(1);
     expect(html.match(/aria-pressed="false"/g) ?? []).toHaveLength(1);
+    expect(html).toContain("Conversation");
+    expect(html).toContain("Event log");
+    expect(html).toContain('aria-label="Search transcript"');
   });
 
   it("shows responding state independently from live transcript following", () => {
