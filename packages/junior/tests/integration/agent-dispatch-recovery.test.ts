@@ -39,7 +39,9 @@ import { slackApiOutbox } from "../fixtures/slack-api-outbox";
 import { resetSlackApiMockState } from "../msw/handlers/slack-api";
 import { turnCursorKey } from "@/chat/task-execution/turn-cursor-keys";
 import { deliverAssistantMessagesForTest } from "../fixtures/agent-runner";
+import { createModelStream } from "../fixtures/model-stream";
 import {
+  createAgentDispatchModelHarness as createModelHarness,
   createAgentDispatchTestRecord as createDispatch,
   createAgentDispatchTestRuntime as createDispatchRuntime,
   createAgentDispatchWorkerContext as createContext,
@@ -62,33 +64,14 @@ describe("agent dispatch recovery", () => {
 
   it("projects the diagnostic from a terminal model failure", async () => {
     const dispatch = await createDispatch("model-failure-detail");
-    const runtime = createDispatchRuntime({
-      agentRunner: {
-        run: vi.fn(async (request) => {
-          await request.durability.onInputCommitted?.();
-          return completedAgentRun({
-            text: "",
-            piMessages: [
-              {
-                role: "user",
-                content: [{ type: "text", text: dispatch.input }],
-                timestamp: dispatch.createdAtMs,
-              },
-            ],
-            diagnostics: {
-              assistantMessageCount: 0,
-              errorMessage: "Model provider quota exhausted",
-              modelId: "test-model",
-              outcome: "provider_error",
-              toolCalls: [],
-              toolErrorCount: 0,
-              toolResultCount: 0,
-              usedPrimaryText: false,
-            },
-          });
-        }),
-      },
-    });
+    const { runtime } = createModelHarness(
+      createModelStream([
+        {
+          type: "error",
+          errorMessage: "Model provider quota exhausted",
+        },
+      ]),
+    );
     await expect(
       runtime.runDispatchTurn(dispatch, { ack: vi.fn(async () => {}) }),
     ).resolves.toMatchObject({

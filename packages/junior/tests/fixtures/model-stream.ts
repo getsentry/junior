@@ -20,6 +20,11 @@ type FixedModelOutput =
       waitFor?: Promise<unknown>;
     }
   | {
+      type: "error";
+      errorMessage: string;
+      waitFor?: Promise<unknown>;
+    }
+  | {
       type: "message";
       message: AssistantMessage;
       waitFor?: Promise<unknown>;
@@ -32,6 +37,12 @@ function createAssistantMessage(output: FixedModelOutput): AssistantMessage {
   if (output.type === "toolCall") {
     return fauxAssistantMessage([fauxToolCall(output.name, output.arguments)], {
       stopReason: "toolUse",
+    });
+  }
+  if (output.type === "error") {
+    return fauxAssistantMessage("", {
+      stopReason: "error",
+      errorMessage: output.errorMessage,
     });
   }
   return output.message;
