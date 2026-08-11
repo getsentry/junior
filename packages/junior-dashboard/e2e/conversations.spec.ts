@@ -306,6 +306,27 @@ test("positions a long cost tooltip clear of its metric", async ({ page }) => {
   expect(totalBounds!.y - headingBounds!.y).toBeLessThan(40);
 });
 
+test("collapses long pending message stacks", async ({ page }) => {
+  const conversationId = "slack:CQA123:1770003600.000200";
+  await page.setViewportSize({ height: 900, width: 1600 });
+  await page.goto(
+    `${server.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
+  );
+
+  const pending = page.getByLabel("Pending messages");
+  await expect(pending).toBeVisible();
+  await expect(
+    pending.getByText("Also check the canary traffic from the last deploy."),
+  ).toBeVisible();
+  await expect(
+    pending.getByText(
+      "Keep the reply in Junior. I will paste the dashboard link next.",
+    ),
+  ).toBeVisible();
+  await expect(pending.getByText("3 more queued messages")).toBeVisible();
+  await expect(pending.getByText("Third queued message.")).toBeHidden();
+});
+
 test("opens and closes a conversation in the mobile workspace", async ({
   page,
 }) => {
@@ -317,7 +338,9 @@ test("opens and closes a conversation in the mobile workspace", async ({
   ).toBeVisible();
 
   // Participant fixture so the compact mobile composer is present.
-  await page.getByRole("link", { name: /Investigate checkout latency/ }).click();
+  await page
+    .getByRole("link", { name: /Investigate checkout latency/ })
+    .click();
   await expect(page).toHaveURL(
     `${server.baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770003600.000200")}`,
   );
@@ -329,15 +352,19 @@ test("opens and closes a conversation in the mobile workspace", async ({
   await expect(transcript.getByText("1.9k tokens")).toBeHidden();
   await expect(page.getByRole("button", { name: "Archive" })).toBeHidden();
   await expect(
-    page.getByText("This reply stays in Junior. It will not be posted to Slack."),
+    page.getByText(
+      "This reply stays in Junior. It will not be posted to Slack.",
+    ),
   ).toBeHidden();
   await expect(page.getByPlaceholder("Search transcript…")).toBeHidden();
-  await expect(page.getByRole("group", { name: "Transcript view" })).toBeHidden();
+  await expect(
+    page.getByRole("group", { name: "Transcript view" }),
+  ).toBeHidden();
   await expect(page.getByRole("note")).toBeHidden();
 
   const pending = page.getByLabel("Pending messages");
   await expect(pending).toBeVisible();
-  await expect(pending.getByText("2 queued messages")).toBeVisible();
+  await expect(pending.getByText("5 queued messages")).toBeVisible();
   await expect(
     pending.getByText("Also check the canary traffic from the last deploy."),
   ).toBeHidden();
@@ -351,11 +378,15 @@ test("opens and closes a conversation in the mobile workspace", async ({
 
   await page.getByRole("button", { name: "Show transcript tools" }).click();
   await expect(page.getByPlaceholder("Search transcript…")).toBeVisible();
-  await expect(page.getByRole("group", { name: "Transcript view" })).toBeVisible();
+  await expect(
+    page.getByRole("group", { name: "Transcript view" }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Event log" }).click();
   await page.getByRole("button", { name: "Hide transcript tools" }).click();
   await expect(page.getByPlaceholder("Search transcript…")).toBeHidden();
-  await expect(page.getByRole("group", { name: "Transcript view" })).toBeHidden();
+  await expect(
+    page.getByRole("group", { name: "Transcript view" }),
+  ).toBeHidden();
 
   await page.getByRole("link", { name: "Your conversations" }).click();
   await expect(page).toHaveURL(`${server.baseURL}/`);
@@ -548,7 +579,10 @@ test("inspects and copies an advisor transcript", async ({ context, page }) => {
     .first();
   await expect(activityChip).toBeVisible();
   await activityChip.locator("> summary").click();
-  await page.getByRole("button", { name: "Open advisor transcript" }).first().click();
+  await page
+    .getByRole("button", { name: "Open advisor transcript" })
+    .first()
+    .click();
 
   const drawer = page.getByRole("dialog");
   await expect(
