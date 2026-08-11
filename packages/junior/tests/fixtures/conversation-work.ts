@@ -418,6 +418,7 @@ export type ConversationWorkSlackHarness = {
   replies: () => string[];
   authLinksFor: (userId: string) => ReturnType<typeof getCapturedSlackApiCalls>;
   setModelStream: (next: StreamFn) => void;
+  setSubscribedShouldReply: (shouldReply: boolean) => void;
   next: (requestStartedAtMs?: number) => Promise<
     Awaited<ReturnType<typeof processConversationQueueMessage>>
   >;
@@ -430,6 +431,8 @@ export type ConversationWorkSlackHarness = {
     user?: string;
   }) => Promise<Response>;
   mention: (user: string, text: string) => Promise<string>;
+  /** Non-mention thread message (subscribed path). */
+  passive: (user: string, text: string) => Promise<string>;
 };
 
 /**
@@ -441,6 +444,8 @@ export async function createConversationWorkSlackHarness(
   options: {
     agentRunner?: AgentRunner;
     modelStream?: StreamFn;
+    /** Default subscribed-message classifier outcome. */
+    subscribedShouldReply?: boolean;
   } = {},
 ): Promise<ConversationWorkSlackHarness> {
   const state = getStateAdapter();
@@ -448,6 +453,7 @@ export async function createConversationWorkSlackHarness(
   const wakes = createConversationWorkQueueTestAdapter();
   const adapter = createSlackAdapterFixture();
   let modelStream = options.modelStream ?? streamReplies("Deploy checked.");
+  let subscribedShouldReply = options.subscribedShouldReply ?? false;
   const agentRunner: AgentRunner = options.agentRunner ?? {
     run: async (request) => await executeAgentRun(request, modelStream),
   };
@@ -456,7 +462,24 @@ export async function createConversationWorkSlackHarness(
     conversationStore: getConversationStore(),
     getSlackAdapter: () => adapter,
     queue: wakes,
-    services: { replyExecutor: { agentRunner } },
+    services: {
+      replyExecutor: { agentRunner },
+      subscribedReplyPolicy: {
+        completeObject: async ({ schema }) => ({
+          object: schema.parse({
+            should_reply: subscribedShouldReply,
+            should_unsubscribe: false,
+            confidence: 1,
+            reason: subscribedShouldReply
+              ? "test_follow_up"
+              : "side_conversation",
+          }),
+        }),
+      },
+      visionContext: {
+        listThreadReplies: async () => [],
+      },
+    },
     state,
   });
 
@@ -473,12 +496,39 @@ export async function createConversationWorkSlackHarness(
     state,
   };
 
+  const post = async (input: {
+    eventType: "app_mention" | "message";
+    user: string;
+    text: string;
+  }) => {
+    const ts = nextTs();
+    const mention = input.eventType === "app_mention";
+    await handleSlackWebhookAndFlush({
+      request: slackWebhookRequest(
+        slackEnvelope({
+          eventType: input.eventType,
+          text: mention
+            ? `<@${SLACK_BOT_USER_ID}> ${input.text}`
+            : input.text,
+          threadTs: THREAD_TS,
+          ts,
+          user: input.user,
+        }),
+      ),
+      services,
+    });
+    return ts;
+  };
+
   return {
     agentRunner,
     state,
     wakes,
     setModelStream(next: StreamFn) {
       modelStream = next;
+    },
+    setSubscribedShouldReply(shouldReply: boolean) {
+      subscribedShouldReply = shouldReply;
     },
     replies: () =>
       slackApiOutbox
@@ -522,22 +572,10 @@ export async function createConversationWorkSlackHarness(
         ),
         services,
       }),
-    mention: async (user: string, text: string) => {
-      const ts = nextTs();
-      await handleSlackWebhookAndFlush({
-        request: slackWebhookRequest(
-          slackEnvelope({
-            eventType: "app_mention",
-            text: `<@${SLACK_BOT_USER_ID}> ${text}`,
-            threadTs: THREAD_TS,
-            ts,
-            user,
-          }),
-        ),
-        services,
-      });
-      return ts;
-    },
+    mention: async (user: string, text: string) =>
+      await post({ eventType: "app_mention", user, text }),
+    passive: async (user: string, text: string) =>
+      await post({ eventType: "message", user, text }),
   };
 }
 
