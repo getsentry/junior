@@ -378,6 +378,7 @@ describe("dashboard canonical-event components", () => {
     expect(completeHtml).toContain("1 turn");
     expect(completeHtml).toContain("1 tool call");
     // Transcript no longer mirrors those conversation totals in a segment row.
+    // Live tool runs stay expanded, so the collapse chip label is absent here.
     expect(partialTranscriptHtml).not.toContain("1 turn");
     expect(partialTranscriptHtml).not.toContain("1 tool call");
     expect(completeTranscriptHtml).not.toContain("1 turn");

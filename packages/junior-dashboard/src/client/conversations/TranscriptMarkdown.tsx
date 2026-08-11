@@ -25,8 +25,8 @@ export function TranscriptMarkdown(props: {
       className={cn(
         "min-w-0 break-words text-dashboard-text [overflow-wrap:anywhere]",
         props.compact
-          ? "font-display text-base leading-[1.6rem]"
-          : "font-display text-base leading-7",
+          ? "font-sans text-base leading-[1.6rem]"
+          : "font-sans text-base leading-7",
       )}
     >
       <div className="grid min-w-0 gap-2">

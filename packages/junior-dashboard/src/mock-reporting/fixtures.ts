@@ -526,26 +526,43 @@ function longConversation(nowMs: number): ConversationDetailReport {
       text: "Release the package, update the example app, and open a PR.",
     }),
   ];
+  let nextSeq = 2;
   for (let index = 0; index < 12; index += 1) {
+    const startedAtMs = Date.parse(startedAt) + 2_000 + index * 4_000;
+    const startedSeq = nextSeq;
+    nextSeq += 1;
     events.push(
-      reportEvent(
-        index + 2,
-        iso(Date.parse(startedAt), 2_000 + index * 4_000),
-        {
-          type: "tool_calls",
-          calls: [
-            {
-              toolCallId: `release-bash-${index}`,
-              name: "bash",
-              status: "running",
-            },
-          ],
-        },
-      ),
+      reportEvent(startedSeq, iso(startedAtMs), {
+        type: "tool_calls",
+        calls: [
+          {
+            toolCallId: `release-bash-${index}`,
+            name: "bash",
+            status: "running",
+          },
+        ],
+      }),
     );
+    events.push(
+      reportEvent(nextSeq, iso(startedAtMs, 1_500), {
+        type: "tool_calls",
+        calls: [
+          {
+            toolCallId: `release-bash-${index}`,
+            name: "bash",
+            status: "completed",
+            startedSeq,
+            startedAt: iso(startedAtMs),
+            input: { command: `step-${index}` },
+            output: { exitCode: 0 },
+          },
+        ],
+      }),
+    );
+    nextSeq += 1;
   }
   events.push(
-    reportEvent(14, iso(Date.parse(startedAt), 53_000), {
+    reportEvent(nextSeq, iso(Date.parse(startedAt), 53_000), {
       type: "compaction",
       modelProfile: "standard",
       modelId: "openai/gpt-5.4",
@@ -562,7 +579,10 @@ function longConversation(nowMs: number): ConversationDetailReport {
         summaryChars: 980,
       },
     }),
-    reportEvent(15, iso(Date.parse(startedAt), 90_000), {
+  );
+  nextSeq += 1;
+  events.push(
+    reportEvent(nextSeq, iso(Date.parse(startedAt), 90_000), {
       type: "handoff",
       modelProfile: "fast",
       modelId: "openai/gpt-5-mini",
@@ -570,7 +590,10 @@ function longConversation(nowMs: number): ConversationDetailReport {
       summary:
         "Investigate the remaining deployment checks and report any actionable failure.",
     }),
-    reportEvent(16, iso(Date.parse(startedAt), 166_000), {
+  );
+  nextSeq += 1;
+  events.push(
+    reportEvent(nextSeq, iso(Date.parse(startedAt), 166_000), {
       type: "message",
       messageId: "release-assistant",
       role: "assistant",

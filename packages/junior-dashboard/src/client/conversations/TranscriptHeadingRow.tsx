@@ -48,7 +48,7 @@ export function TranscriptHeadingMeta(props: {
   className?: string;
 }) {
   return (
-    <span className={cn("font-mono leading-none", props.className)}>
+    <span className={cn("font-sans leading-none", props.className)}>
       {props.children}
     </span>
   );
