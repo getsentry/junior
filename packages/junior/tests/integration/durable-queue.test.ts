@@ -119,6 +119,48 @@ function streamMidWorkThenReplies(
 }
 
 /**
+ * Same first-slice park as `streamMidWorkThenReplies`, then the resume model
+ * step waits on `holdOnResume`. Use this when the second host request should
+ * time out before any new work is saved.
+ */
+function streamMidWorkThenHoldOnResume(
+  holdAfterTool: Promise<void>,
+  holdOnResume: Promise<void>,
+  ...finalTexts: string[]
+): StreamFn {
+  const faux = createFauxCore({ api: "test", provider: "test" });
+  const [firstFinal, ...restFinals] = finalTexts;
+  if (!firstFinal) {
+    throw new Error(
+      "streamMidWorkThenHoldOnResume requires at least one final text",
+    );
+  }
+  faux.setResponses([
+    fauxAssistantMessage([fauxToolCall("systemTime", {})], {
+      stopReason: "toolUse",
+    }),
+    async () => {
+      await holdAfterTool;
+      return fauxAssistantMessage(firstFinal);
+    },
+    // Aborted first-slice model call may still consume a slot.
+    async () => {
+      await holdOnResume;
+      return fauxAssistantMessage(firstFinal);
+    },
+    // Fresh resume model call: hold until the second host deadline is spent.
+    async () => {
+      await holdOnResume;
+      return fauxAssistantMessage(firstFinal);
+    },
+    // Leftover replies if the turn somehow continues, plus later mentions.
+    fauxAssistantMessage(firstFinal),
+    ...restFinals.map((text) => fauxAssistantMessage(text)),
+  ]);
+  return faux.stream;
+}
+
+/**
  * Compose the same ingress, runtime, worker, resume, SQL, and delivery path used
  * in production. These tests must not replace Junior-owned runtime behavior.
  * They may fake only model generation at the `executeAgentRun` stream boundary
@@ -448,6 +490,77 @@ describe("durable queue contract", () => {
       await expectAssistantInSql("Deploy checked.");
       await expectNextTurn(q, "1712345.0011");
     });
+
+    it(
+      "fails when a later attempt times out before any new work is saved",
+      async () => {
+        // JUNIOR-7G: first attempt parks after real tool work. The next wake
+        // spends the whole host budget on the model call and saves nothing new.
+        // Today that ends the turn with "Turn made no progress" and the internal
+        // error reply. This test locks the desired product path so we can see
+        // current behavior fail and decide the right outcome.
+        const releaseAfterTool = deferred<void>();
+        const releaseOnResume = deferred<void>();
+        const remainingMs = 2_500;
+        const firstStartedAtMs = almostSpentStartedAtMs(remainingMs);
+        const firstDeadlineAtMs = firstStartedAtMs + requestBudgetMs();
+        const q = await slack({
+          modelStream: streamMidWorkThenHoldOnResume(
+            releaseAfterTool.promise,
+            releaseOnResume.promise,
+            "Deploy checked.",
+            "Deploy checked.",
+          ),
+        });
+
+        await expect(q.send()).resolves.toMatchObject({ status: 200 });
+        const firstSlice = q.next(firstStartedAtMs);
+        const waitForFirstDeadlineMs = Math.max(
+          0,
+          firstDeadlineAtMs - Date.now() + 50,
+        );
+        await new Promise((resolve) =>
+          setTimeout(resolve, waitForFirstDeadlineMs),
+        );
+        releaseAfterTool.resolve(undefined);
+        await expect(firstSlice).resolves.toEqual({ status: "yielded" });
+
+        const turnId = "turn_1712345_0001";
+        await expect(
+          getTurnRecord(CONVERSATION_ID, turnId),
+        ).resolves.toMatchObject({
+          state: "paused",
+          resumeReason: "timeout",
+          turnId,
+        });
+        expect(q.replies()).toHaveLength(0);
+        expect(q.wakes.hasQueuedMessages()).toBe(true);
+
+        const secondStartedAtMs = almostSpentStartedAtMs(remainingMs);
+        const secondDeadlineAtMs = secondStartedAtMs + requestBudgetMs();
+        const secondSlice = q.next(secondStartedAtMs);
+        const waitForSecondDeadlineMs = Math.max(
+          0,
+          secondDeadlineAtMs - Date.now() + 50,
+        );
+        await new Promise((resolve) =>
+          setTimeout(resolve, waitForSecondDeadlineMs),
+        );
+        releaseOnResume.resolve(undefined);
+
+        // Desired outcome once fixed: finish the same turn with one reply.
+        // Current behavior fails the turn with "Turn made no progress".
+        await expect(secondSlice).resolves.toEqual({ status: "completed" });
+        await expectTerminalTurn(q, {
+          turnId,
+          state: "completed",
+          replies: ["Deploy checked."],
+        });
+        await expectAssistantInSql("Deploy checked.");
+        await expectNextTurn(q, "1712345.0012");
+      },
+      20_000,
+    );
   });
 
   describe("accepted reply is terminal", () => {
