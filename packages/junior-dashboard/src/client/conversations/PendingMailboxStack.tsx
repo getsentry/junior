@@ -1,9 +1,10 @@
-import type { ReactNode } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { Clock3, SkipForward, type LucideIcon } from "lucide-react";
 import type { ConversationPendingMessage } from "@sentry/junior/api/schema";
 
 import { cn } from "../styles";
 import { ShimmerText } from "../components/ShimmerText";
+import { Tooltip } from "../components/Tooltip";
 import {
   formatMessageTimestamp,
   transcriptMessageActorLabel,
@@ -36,9 +37,26 @@ function pendingDeliveryMeta(
   delivery: ConversationPendingMessage["delivery"],
 ): { icon: LucideIcon; label: string } {
   if (delivery === "interrupt") {
-    return { icon: SkipForward, label: "Interrupts current turn" };
+    return { icon: SkipForward, label: "Interrupt" };
   }
-  return { icon: Clock3, label: "Queued after current turn" };
+  return { icon: Clock3, label: "Queued" };
+}
+
+function PendingMetaIcon(props: {
+  children: ReactElement;
+  className?: string;
+  label: string;
+}) {
+  return (
+    <Tooltip content={props.label} placement="above">
+      <span
+        aria-label={props.label}
+        className={cn("inline-flex", props.className)}
+      >
+        {props.children}
+      </span>
+    </Tooltip>
+  );
 }
 
 function PendingMetaIcons(props: {
@@ -54,26 +72,20 @@ function PendingMetaIcons(props: {
     <TranscriptHeadingMeta className="flex min-w-0 items-center justify-end gap-2 text-xs leading-none text-dashboard-text-muted">
       <span className="inline-flex shrink-0 items-center gap-1.5">
         {showSlack ? (
-          <span
-            aria-label="Slack"
-            className="inline-flex text-dashboard-text-muted"
-            title="Slack"
-          >
+          <PendingMetaIcon className="text-dashboard-text-muted" label="Slack">
             <SlackMark className="size-3.5" />
-          </span>
+          </PendingMetaIcon>
         ) : null}
-        <span
-          aria-label={delivery.label}
-          className={cn(
-            "inline-flex",
+        <PendingMetaIcon
+          className={
             props.delivery === "interrupt"
               ? "text-amber-200/85"
-              : "text-dashboard-text-muted",
-          )}
-          title={delivery.label}
+              : "text-dashboard-text-muted"
+          }
+          label={delivery.label}
         >
           <DeliveryIcon aria-hidden="true" size={13} strokeWidth={2.2} />
-        </span>
+        </PendingMetaIcon>
       </span>
       {props.timestamp ? (
         <span className="min-w-0 truncate">{props.timestamp}</span>
