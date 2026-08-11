@@ -272,6 +272,63 @@ describe("dashboard canonical event reporting", () => {
     ]);
   });
 
+  it("keys gateway assistant usage by the vendor model id", async () => {
+    const conversationId = "slack:C-reporting:gateway-model-usage";
+    await recordRoot(conversationId, "public");
+    const gatewayUsageMessage = {
+      role: "assistant",
+      api: "responses",
+      provider: "vercel-ai-gateway",
+      model: "openai/gpt-5.6-sol",
+      content: [],
+      stopReason: "stop",
+      timestamp: 10,
+      usage: {
+        input: 12,
+        output: 4,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 16,
+        cost: {
+          input: 0.01,
+          output: 0.02,
+          cacheRead: 0,
+          cacheWrite: 0,
+          total: 0.03,
+        },
+      },
+    } as unknown as PiMessage;
+    const { getConversationEventStore } = await import("@/chat/db");
+    await getConversationEventStore().append(conversationId, [
+      {
+        data: historyItemFromPiMessage(gatewayUsageMessage, {
+          authority: "context",
+        }),
+        createdAtMs: 10,
+      },
+    ]);
+
+    expect((await requireDetail(conversationId)).modelUsage).toEqual([
+      {
+        modelId: "openai/gpt-5.6-sol",
+        usage: {
+          inputTokens: 12,
+          outputTokens: 4,
+          cachedInputTokens: 0,
+          cacheCreationTokens: 0,
+          totalTokens: 16,
+          cost: {
+            input: 0.01,
+            output: 0.02,
+            cacheRead: 0,
+            cacheWrite: 0,
+            total: 0.03,
+          },
+        },
+      },
+    ]);
+  });
+
   it("rolls unprojected child usage into a root conversation", async () => {
     const rootConversationId = "slack:C-reporting:tree-usage";
     const childConversationId = "child:reporting-unprojected-usage";

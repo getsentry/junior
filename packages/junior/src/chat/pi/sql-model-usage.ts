@@ -115,6 +115,22 @@ function usageFromRow(row: ModelUsageRow): AgentTurnUsage | undefined {
 }
 
 /**
+ * Resolve the gateway model id stored on an assistant message.
+ *
+ * Vercel AI Gateway messages keep `provider` as the transport (`vercel-ai-gateway`)
+ * and `model` as the vendor id (`openai/gpt-5.6-sol`). Older fixtures may store a
+ * bare model name with a vendor provider; those still need `provider/model`.
+ */
+export function conversationModelIdFromAssistantFields(args: {
+  model: string;
+  provider: string;
+}): string {
+  return args.model.includes("/")
+    ? args.model
+    : `${args.provider}/${args.model}`;
+}
+
+/**
  * Aggregate real assistant calls by provider/model in SQL. Replayed history is
  * not another call; its tokens appear in the next call's input usage.
  */
@@ -122,7 +138,14 @@ export async function readConversationModelUsageFromSql(
   executor: JuniorSqlDatabase,
   options: { conversationId: string; includeDescendants?: boolean },
 ): Promise<Array<{ modelId: string; usage: AgentTurnUsage }>> {
-  const modelId = sql<string>`concat(${message}->>'provider', '/', ${message}->>'model')`;
+  // Prefer the model field when it already carries a vendor prefix so usage keys
+  // match turn_routed/handoff model ids (openai/gpt-5.6-sol), not the transport
+  // provider concatenated onto that id (vercel-ai-gateway/openai/gpt-5.6-sol).
+  const modelId = sql<string>`case
+    when position('/' in coalesce(${message}->>'model', '')) > 0
+      then ${message}->>'model'
+    else concat(${message}->>'provider', '/', ${message}->>'model')
+  end`;
   const inputTokens = token("input", "inputTokens");
   const outputTokens = token("output", "outputTokens");
   const cachedInputTokens = token("cacheRead", "cachedInputTokens");
