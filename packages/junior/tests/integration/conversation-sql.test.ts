@@ -146,6 +146,66 @@ ORDER BY conversation_id
     }
   });
 
+  it("keeps unowned MCP connection events readable but inactive", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+    const ownershipMigrationIndex = coreMigrations.findIndex((migration) =>
+      migration.sql.some((statement) =>
+        statement.includes("mcp_provider_connected_unowned"),
+      ),
+    );
+    const ownershipMigration = coreMigrations[ownershipMigrationIndex];
+    if (!ownershipMigration) {
+      throw new Error("MCP credential subject migration not found");
+    }
+
+    try {
+      for (const migration of coreMigrations.slice(0, ownershipMigrationIndex)) {
+        for (const statement of migration.sql) {
+          await fixture.sql.execute(statement);
+        }
+      }
+
+      const conversationId = "internal:legacy-mcp-connection";
+      const conversation = buildJuniorSqlConversation({ conversationId });
+      await fixture.sql
+        .db()
+        .insert(schema.juniorConversations)
+        .values(conversation);
+      await fixture.sql
+        .db()
+        .insert(juniorConversationEvents)
+        .values({
+          conversationId,
+          seq: 0,
+          historyVersion: 0,
+          schemaVersion: 1,
+          type: "mcp_provider_connected",
+          payload: { provider: "github" },
+          createdAt: new Date(1_000),
+        });
+
+      for (const statement of ownershipMigration.sql) {
+        await fixture.sql.execute(statement);
+      }
+
+      const [event] = await fixture.sql.query<{
+        payload: unknown;
+        type: string;
+      }>(
+        `SELECT type, payload
+         FROM junior_conversation_events
+         WHERE conversation_id = $1`,
+        [conversationId],
+      );
+      expect(event).toEqual({
+        type: "mcp_provider_connected_unowned",
+        payload: { provider: "github" },
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("migrates legacy agent history to native event types", async () => {
     const fixture = await createLocalJuniorSqlFixture();
     const nativeHistoryMigrationIndex = coreMigrations.findIndex((migration) =>
