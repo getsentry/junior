@@ -753,6 +753,11 @@ function TranscriptMessageContextView(props: {
         <div className="mt-2 whitespace-pre-wrap pt-2 text-sm leading-relaxed text-dashboard-text/75">
           {content}
         </div>
+        {!props.redacted && props.message.contexts?.length ? (
+          <div className="mt-2">
+            <TranscriptTurnContextView contexts={props.message.contexts} />
+          </div>
+        ) : null}
       </details>
       <article
         className="hidden min-w-0 rounded-lg bg-white/[0.025] px-3 py-2.5 md:block"
@@ -776,6 +781,11 @@ function TranscriptMessageContextView(props: {
         <div className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-dashboard-text/75">
           {content}
         </div>
+        {!props.redacted && props.message.contexts?.length ? (
+          <div className="mt-2">
+            <TranscriptTurnContextView contexts={props.message.contexts} />
+          </div>
+        ) : null}
       </article>
     </>
   );

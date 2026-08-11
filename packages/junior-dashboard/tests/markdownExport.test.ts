@@ -133,6 +133,53 @@ describe("dashboard canonical-event Markdown export", () => {
     expect(markdown).toContain("Scope: conversation");
   });
 
+  it("exports recalled memory context on acted-on non-mention inputs", () => {
+    const markdown = buildConversationMarkdown(
+      conversation([
+        event(0, {
+          type: "message",
+          messageId: "context-1",
+          role: "user",
+          text: "can you clarify that?",
+          explicitMention: false,
+          actorIdentity: {
+            fullName: "Taylor Chen",
+            slackUserName: "taylor",
+          },
+        }),
+        event(1, {
+          type: "turn_lifecycle",
+          turnId: "turn-context",
+          state: "started",
+          inputMessageIds: ["context-1"],
+        }),
+        event(2, {
+          type: "turn_context",
+          turnId: "turn-context",
+          pluginName: "memory",
+          kind: "recall",
+          version: 1,
+          content: {
+            memories: [
+              {
+                id: "memory-1",
+                content: "Release notes live in Notion.",
+                observedAtMs: Date.parse("2026-01-01T00:00:00.000Z"),
+                scope: "conversation",
+                kind: "knowledge",
+              },
+            ],
+          },
+        }),
+      ]),
+    );
+
+    expect(markdown).toContain("### Context from Taylor Chen");
+    expect(markdown).toContain("can you clarify that?");
+    expect(markdown).toContain("#### Recalled memories");
+    expect(markdown).toContain("Release notes live in Notion.");
+  });
+
   it("exports resource events without attributing them to the actor", () => {
     const markdown = buildConversationMarkdown(
       conversation([

@@ -340,6 +340,9 @@ function reportEventData(args: {
         type: "turn_lifecycle",
         turnId: data.turnId,
         state: "started",
+        ...(data.inputMessageIds.length > 0
+          ? { inputMessageIds: data.inputMessageIds }
+          : {}),
       };
     case "turn_context":
       if (!args.canExposePayload) {
@@ -449,11 +452,6 @@ export function projectConversationReportEventPage(args: {
     }
   }
   const projected: ConversationReportEvent[] = [];
-  const visibleMessageIds = new Set(
-    args.events.flatMap((event) =>
-      event.data.type === "message" ? [event.data.messageId] : [],
-    ),
-  );
 
   for (const event of args.events) {
     let data: ConversationReportEventData | undefined;
@@ -478,16 +476,6 @@ export function projectConversationReportEventPage(args: {
           message: event.data,
           ...(start && start.seq < event.seq ? { start } : {}),
         });
-    } else if (event.data.type === "turn_started") {
-      const inputMessageIds = event.data.inputMessageIds.filter((messageId) =>
-        visibleMessageIds.has(messageId),
-      );
-      data = {
-        type: "turn_lifecycle",
-        turnId: event.data.turnId,
-        state: "started",
-        ...(inputMessageIds.length > 0 ? { inputMessageIds } : {}),
-      };
     } else if (event.data.type === "tool_execution_started") {
       toolStarts.set(event.data.toolCallId, {
         createdAtMs: event.createdAtMs,

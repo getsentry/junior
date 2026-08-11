@@ -305,6 +305,9 @@ function appendMessageContext(
   );
   addEventMeta(lines, conversationTranscript, message.timestamp);
   lines.push("", redacted ? "<redacted>" : messageRawText(message));
+  if (!redacted) {
+    appendTurnContexts(lines, message.contexts);
+  }
 }
 
 function appendMessage(
