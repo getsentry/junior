@@ -47,14 +47,14 @@ export function ConversationComposer(props: {
 
   return (
     <form
-      className="overflow-hidden rounded-lg border border-white/[0.09] bg-white/[0.035] focus-within:border-cyan-300/35 focus-within:ring-1 focus-within:ring-cyan-300/25"
+      className="grid grid-cols-[minmax(0,1fr)_auto] overflow-hidden rounded-lg border border-white/[0.09] bg-white/[0.035] focus-within:border-cyan-300/35 focus-within:ring-1 focus-within:ring-cyan-300/25 md:block"
       onSubmit={submit}
     >
       <label className="sr-only" htmlFor={id}>
         {props.label}
       </label>
       <textarea
-        className="min-h-24 w-full resize-y border-0 bg-transparent px-3.5 py-3 font-mono text-sm leading-relaxed text-dashboard-text outline-none placeholder:text-dashboard-text-muted/65 disabled:opacity-60"
+        className="min-h-11 max-h-32 w-full resize-none border-0 bg-transparent px-3 py-2.5 font-mono text-sm leading-relaxed text-dashboard-text outline-none placeholder:text-dashboard-text-muted/65 disabled:opacity-60 md:min-h-24 md:max-h-none md:resize-y md:px-3.5 md:py-3"
         disabled={props.pending}
         id={id}
         maxLength={32_000}
@@ -63,10 +63,11 @@ export function ConversationComposer(props: {
         placeholder="Message Junior…"
         value={message}
       />
-      <div className="flex min-w-0 items-center justify-between gap-3 border-t border-white/[0.07] bg-black/15 px-3 py-2">
+      <div className="flex min-w-0 items-center justify-end gap-3 border-l border-white/[0.07] bg-black/15 px-2 py-1.5 md:justify-between md:border-l-0 md:border-t md:px-3 md:py-2">
         <div
           className={cn(
             "min-w-0 font-mono text-xs leading-relaxed",
+            props.error ? "block" : "hidden md:block",
             props.error
               ? "text-red-300/80"
               : "text-dashboard-text-muted",
@@ -74,9 +75,15 @@ export function ConversationComposer(props: {
         >
           {props.error ?? "Enter to send · Shift+Enter for a new line"}
         </div>
-        <Button disabled={!message.trim() || props.pending} type="submit">
+        <Button
+          aria-label={props.pending ? "Sending message" : props.submitLabel}
+          disabled={!message.trim() || props.pending}
+          type="submit"
+        >
           <Send aria-hidden="true" size={14} />
-          {props.pending ? "Sending…" : props.submitLabel}
+          <span className="hidden md:inline">
+            {props.pending ? "Sending…" : props.submitLabel}
+          </span>
         </Button>
       </div>
     </form>
