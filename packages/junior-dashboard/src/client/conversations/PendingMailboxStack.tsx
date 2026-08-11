@@ -163,19 +163,27 @@ export function PendingMailboxStack(props: {
   );
   if (rows.length === 0) return null;
 
+  const countLabel =
+    rows.length === 1 ? "1 queued message" : `${rows.length} queued messages`;
+
   return (
     <div
       aria-label="Pending messages"
-      className="mx-3 overflow-hidden rounded-t-lg border border-b-0 border-white/[0.09] bg-cyan-300/[0.07]"
+      className="mx-2 overflow-hidden rounded-t-lg border border-b-0 border-white/[0.09] bg-cyan-300/[0.07] md:mx-3"
     >
-      {rows.map((message, index) => (
-        <PendingRow
-          conversation={props.conversation}
-          key={message.messageId ?? `${message.sourceSeq}:${index}`}
-          message={message}
-          showDivider={index > 0}
-        />
-      ))}
+      <div className="px-3 py-2 font-sans text-xs font-medium text-cyan-50/85 md:hidden">
+        {countLabel}
+      </div>
+      <div className="hidden md:block">
+        {rows.map((message, index) => (
+          <PendingRow
+            conversation={props.conversation}
+            key={message.messageId ?? `${message.sourceSeq}:${index}`}
+            message={message}
+            showDivider={index > 0}
+          />
+        ))}
+      </div>
     </div>
   );
 }

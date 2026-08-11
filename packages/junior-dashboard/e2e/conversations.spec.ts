@@ -331,6 +331,16 @@ test("opens and closes a conversation in the mobile workspace", async ({
   await expect(
     page.getByText("This reply stays in Junior. It will not be posted to Slack."),
   ).toBeHidden();
+  await expect(page.getByPlaceholder("Search transcript…")).toBeHidden();
+  await expect(page.getByRole("group", { name: "Transcript view" })).toBeHidden();
+  await expect(page.getByRole("note")).toBeHidden();
+
+  const pending = page.getByLabel("Pending messages");
+  await expect(pending).toBeVisible();
+  await expect(pending.getByText("2 queued messages")).toBeVisible();
+  await expect(
+    pending.getByText("Also check the canary traffic from the last deploy."),
+  ).toBeHidden();
 
   const composer = page.getByPlaceholder("Message Junior…");
   await expect(composer).toBeVisible();
@@ -338,6 +348,10 @@ test("opens and closes a conversation in the mobile workspace", async ({
   await expect(page.getByRole("button", { name: "Send" })).toBeVisible();
   // One-row mobile composer; leave headroom for font metrics / padding.
   expect((await composer.boundingBox())?.height).toBeLessThan(80);
+
+  await page.getByRole("button", { name: "Show transcript tools" }).click();
+  await expect(page.getByPlaceholder("Search transcript…")).toBeVisible();
+  await expect(page.getByRole("group", { name: "Transcript view" })).toBeVisible();
 
   await page.getByRole("link", { name: "Your conversations" }).click();
   await expect(page).toHaveURL(`${server.baseURL}/`);
