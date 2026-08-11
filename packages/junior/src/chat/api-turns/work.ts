@@ -794,7 +794,7 @@ export function createApiTurnWorker(options: {
               onInputCommitted: acknowledge,
               shouldYield: context.shouldYield,
               onSandboxRefChanged: async (nextSandboxRef) => {
-                sandboxRef = nextSandboxRef;
+                sandboxRef = nextSandboxRef ?? undefined;
                 await persistThreadStateById(context.conversationId, {
                   conversation,
                   sandboxRef,

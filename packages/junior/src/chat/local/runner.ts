@@ -371,7 +371,7 @@ async function runLocalAgentTurnInContext(
         delivery: deliverAssistantMessage,
         durability: {
           onSandboxRefChanged: async (nextSandboxRef) => {
-            sandboxRef = nextSandboxRef;
+            sandboxRef = nextSandboxRef ?? undefined;
             await persistThreadStateById(input.conversationId, {
               conversation,
               sandboxRef,

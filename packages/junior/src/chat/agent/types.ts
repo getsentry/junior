@@ -157,7 +157,7 @@ export type AgentDurability = {
   recordPendingAuth?: (
     pendingAuth: ConversationPendingAuthState | undefined,
   ) => void | Promise<void>;
-  onSandboxRefChanged?: (sandboxRef: SandboxRef) => void | Promise<void>;
+  onSandboxRefChanged?: (sandboxRef: SandboxRef | null) => void | Promise<void>;
 };
 
 /** Best-effort progress events. Failures here never affect the run. */

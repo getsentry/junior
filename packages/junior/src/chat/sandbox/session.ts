@@ -130,7 +130,7 @@ interface SandboxRuntimeOptions {
   ) => NetworkPolicy | undefined;
   onSandboxPrepare?: (sandbox: SandboxSession) => void | Promise<void>;
   onWorkspacePrepare?: (sandbox: SandboxSession, workspace: Workspace) => Promise<void>;
-  onSandboxRefChanged?: (sandboxRef: SandboxRef) => void | Promise<void>;
+  onSandboxRefChanged?: (sandboxRef: SandboxRef | null) => void | Promise<void>;
 }
 
 function truncateOutput(
@@ -961,6 +961,8 @@ export function createSandboxRuntime(
         dependencyProfileHash = previousProfileHash;
         activeSandbox = null;
         sandboxRef = undefined;
+        reportedSandboxRef = undefined;
+        await options.onSandboxRefChanged?.(null);
         throw error;
       }
     },

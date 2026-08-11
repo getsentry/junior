@@ -194,6 +194,7 @@ function createTestSandboxRuntime(options: SandboxFixtureOptions = {}) {
       createNetworkPolicy: options.createNetworkPolicy,
       onSandboxPrepare: options.onSandboxPrepare,
       onSandboxRefChanged: async (ref) => {
+        if (!ref) return;
         await options.onSandboxAcquired?.({
           sandboxId: ref.id,
           ...(ref.profileHash
@@ -247,6 +248,7 @@ function createTestSandbox(options: SandboxFixtureOptions = {}) {
             await options.agentHooks?.prepareSandbox(workspace)
         : undefined,
       onSandboxRefChanged: async (ref) => {
+        if (!ref) return;
         await options.onSandboxAcquired?.({
           sandboxId: ref.id,
           ...(ref.profileHash
@@ -1004,6 +1006,54 @@ describe("createTestSandbox", () => {
     await expectWorkspaceToDelegate(sandbox, freshSandbox);
     expect(sandboxGetMock).not.toHaveBeenCalled();
     expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears a durably reported workspace when its switch fails", async () => {
+    const initialSandbox = makeSandbox("sbx_workspace_initial");
+    const failedSandbox = makeSandbox("sbx_workspace_failed");
+    sandboxCreateMock
+      .mockResolvedValueOnce(initialSandbox)
+      .mockResolvedValueOnce(failedSandbox);
+    let prepareCount = 0;
+    const refs: Array<{ id: string; workspaceId?: string } | null> = [];
+    const initialWorkspace = {
+      id: "workspace-initial",
+      name: "initial",
+      setupScript: "",
+      updatedAt: new Date("2026-08-11T00:00:00.000Z"),
+      repos: [],
+    };
+    const nextWorkspace = {
+      ...initialWorkspace,
+      id: "workspace-next",
+      name: "next",
+    };
+    const runtime = createSandboxRuntime({
+      workspace: initialWorkspace,
+      skills: [],
+      referenceFiles: [],
+      onSandboxPrepare: () => {
+        prepareCount += 1;
+        if (prepareCount === 2) {
+          throw new Error("prepare failed");
+        }
+      },
+      onSandboxRefChanged: (ref) => {
+        refs.push(ref);
+      },
+    });
+
+    await runtime.acquire();
+    await expect(runtime.switchWorkspace(nextWorkspace)).rejects.toThrow(
+      "sandbox setup failed",
+    );
+
+    expect(refs).toEqual([
+      { id: "sbx_workspace_initial", workspaceId: "workspace-initial" },
+      { id: "sbx_workspace_failed", workspaceId: "workspace-next" },
+      null,
+    ]);
+    expect(runtime.sandboxRef()).toBeUndefined();
   });
 
   it("surfaces a generic sandbox setup failure for non-recoverable sync errors", async () => {

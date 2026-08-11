@@ -382,7 +382,7 @@ export function createAgentInvocationWorker(options: {
           onInputCommitted: acknowledge,
           shouldYield: context.shouldYield,
           onSandboxRefChanged: async (nextSandboxRef) => {
-            sandboxRef = nextSandboxRef;
+            sandboxRef = nextSandboxRef ?? undefined;
             await persistThreadStateById(invocation.childConversationId, {
               sandboxRef,
             });

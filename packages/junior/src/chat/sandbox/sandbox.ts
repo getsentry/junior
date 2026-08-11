@@ -102,7 +102,7 @@ export interface SandboxOptions {
   egressSignals?: SandboxEgressSignalTransport;
   prepare?: (workspace: SandboxWorkspace) => void | Promise<void>;
   prepareWorkspace?: (workspace: SandboxWorkspace, recipe: Workspace) => Promise<void>;
-  onSandboxRefChanged?: (sandboxRef: SandboxRef) => void | Promise<void>;
+  onSandboxRefChanged?: (sandboxRef: SandboxRef | null) => void | Promise<void>;
 }
 
 interface SandboxToolCallContext {
