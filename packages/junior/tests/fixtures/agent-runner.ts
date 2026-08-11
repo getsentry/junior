@@ -30,13 +30,17 @@ export const realAgentRunner: AgentRunner = {
 
 /** Run the real agent while replacing only model output. */
 export function createModelAgentRunner(streamFn: StreamFn): AgentRunner {
-  return createAgentRunner(
-    async (run, boundStreamFn) => {
-      const { executeAgentRun } = await import("@/chat/agent");
-      return await executeAgentRun(run, boundStreamFn);
-    },
-    { streamFn },
-  );
+  return createModelAgentRunnerForRun(() => streamFn);
+}
+
+/** Run the real agent while choosing a fixed model stream for each run. */
+export function createModelAgentRunnerForRun(
+  streamForRun: (run: AgentRun) => StreamFn,
+): AgentRunner {
+  return createAgentRunner(async (run) => {
+    const { executeAgentRun } = await import("@/chat/agent");
+    return await executeAgentRun(run, streamForRun(run));
+  });
 }
 
 /**

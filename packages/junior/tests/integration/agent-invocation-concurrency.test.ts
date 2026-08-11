@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { StreamFn } from "@earendil-works/pi-agent-core";
 import { createLocalSource } from "@sentry/junior-plugin-api";
 import type { AgentRun } from "@/chat/agent/types";
-import type { PiMessage } from "@/chat/pi/messages";
 import { AgentInvocationLimitError } from "@/chat/agent-invocations/errors";
 import {
   getAgentInvocation,
@@ -13,15 +13,17 @@ import {
   createAndEnqueueAgentInvocation,
 } from "@/chat/agent-invocations/work";
 import type { CreateAgentInvocationInput } from "@/chat/agent-invocations/types";
-import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
-import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
-import { CONVERSATION_WORK_MAX_DELIVERY_ATTEMPTS } from "@/chat/task-execution/store";
-import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
+import {
+  createConversationWorkQueueTestAdapter,
+  deferred,
+} from "../fixtures/conversation-work";
 import { createConfiguredJuniorSqlFixture } from "../fixtures/sql";
+import { createModelAgentRunnerForRun } from "../fixtures/agent-runner";
+import { createModelStream } from "../fixtures/model-stream";
 
 const parentConversationId = "local:test:agent-invocation-concurrency";
 const destination = {
@@ -37,61 +39,13 @@ const baseInput = {
   source: createLocalSource(parentConversationId),
 };
 
-async function successfulRun(
-  request: AgentRun,
-  result: string,
-): Promise<ReturnType<typeof completedAgentRun>> {
-  const timestamp = Date.now();
-  const runningMessages = [
-    ...(request.history ?? []),
-    {
-      role: "user",
-      content: [{ type: "text", text: request.instruction.text }],
-      timestamp,
-    },
-  ] as PiMessage[];
-  const persisted = await saveTurnCheckpoint({
-    mode: "running",
-    conversationId: request.conversationId,
-    destination: request.destination,
-    messages: runningMessages,
-    actor: request.actor,
-    turnId: request.turnId,
-    sliceId: 1,
-    source: request.source,
-    surface: "internal",
-  });
-  if (!persisted) {
-    throw new Error("Expected running child session to persist");
-  }
-  const piMessages = [
-    ...runningMessages,
-    {
-      role: "assistant",
-      content: [{ type: "text", text: result }],
-      timestamp: timestamp + 1,
-    },
-  ] as PiMessage[];
-  return completedAgentRun({
-    diagnostics: {
-      assistantMessageCount: 1,
-      modelId: "integration-agent",
-      outcome: "success",
-      toolCalls: [],
-      toolErrorCount: 0,
-      toolResultCount: 0,
-      usedPrimaryText: true,
-    },
-    piMessages,
-    text: result,
-  });
+function taskModel(request: AgentRun): StreamFn {
+  return createModelStream([
+    { type: "text", text: `result:${request.instruction.text}` },
+  ]);
 }
 
-async function createHarness(
-  run: (
-    request: AgentRun,
-  ) => Promise<ReturnType<typeof completedAgentRun>>,
-) {
+async function createHarness(streamForRun: (request: AgentRun) => StreamFn) {
   const fixture = createConfiguredJuniorSqlFixture();
   await migrateSchema(fixture.sql);
   const conversationStore = createSqlStore(fixture.sql);
@@ -104,10 +58,12 @@ async function createHarness(
   const state = getStateAdapter();
   await state.connect();
   const queue = createConversationWorkQueueTestAdapter();
+  const agentRunner = createModelAgentRunnerForRun(streamForRun);
+  const run = vi.spyOn(agentRunner, "run");
   const route = routeAgentInvocationWork({
     fallbackWorker: vi.fn(async () => ({ status: "completed" as const })),
     invocationWorker: createAgentInvocationWorker({
-      agentRunner: { run },
+      agentRunner,
     }),
   });
 
@@ -144,6 +100,7 @@ async function createHarness(
       );
     },
     queue,
+    requests: (): AgentRun[] => run.mock.calls.map(([request]) => request),
     spawn: async (
       overrides: Partial<CreateAgentInvocationInput> & {
         idempotencyKey: string;
@@ -163,15 +120,7 @@ describe("agent invocation identity and concurrency", () => {
   });
 
   it("gives each unnamed invocation a fresh child without inherited history", async () => {
-    const requests: AgentRun[] = [];
-    const harness = await createHarness(async (request) => {
-      requests.push(request);
-      await request.durability?.onInputCommitted?.();
-      return await successfulRun(
-        request,
-        `result:${request.instruction.text}`,
-      );
-    });
+    const harness = await createHarness(taskModel);
     try {
       const first = await harness.spawn({
         idempotencyKey: "fresh-1",
@@ -185,11 +134,9 @@ describe("agent invocation identity and concurrency", () => {
       await harness.drainQueuedWork();
 
       expect(second.childConversationId).not.toBe(first.childConversationId);
+      const requests = harness.requests();
       expect(requests).toHaveLength(2);
-      expect(requests.map((request) => request.history)).toEqual([
-        [],
-        [],
-      ]);
+      expect(requests.map((request) => request.history)).toEqual([[], []]);
       await expect(
         getAgentInvocation(first.invocationId),
       ).resolves.toMatchObject({
@@ -208,15 +155,7 @@ describe("agent invocation identity and concurrency", () => {
   });
 
   it("reuses one named child and supplies its completed history", async () => {
-    const requests: AgentRun[] = [];
-    const harness = await createHarness(async (request) => {
-      requests.push(request);
-      await request.durability?.onInputCommitted?.();
-      return await successfulRun(
-        request,
-        `result:${request.instruction.text}`,
-      );
-    });
+    const harness = await createHarness(taskModel);
     try {
       const first = await harness.spawn({
         agentName: "researcher",
@@ -234,6 +173,7 @@ describe("agent invocation identity and concurrency", () => {
       await harness.drainQueuedWork();
 
       expect(second.childConversationId).toBe(first.childConversationId);
+      const requests = harness.requests();
       expect(requests).toHaveLength(2);
       expect(requests[0]?.history).toEqual([]);
       expect(requests[0]?.reasoning).toBe("high");
@@ -271,32 +211,21 @@ describe("agent invocation identity and concurrency", () => {
 
   it("runs different named children in parallel without sharing history", async () => {
     const started = new Set<string>();
-    const histories = new Map<string, PiMessage[] | undefined>();
-    let active = 0;
-    let maxActive = 0;
-    let release: (() => void) | undefined;
-    const blocked = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    let bothStarted: (() => void) | undefined;
-    const startedPromise = new Promise<void>((resolve) => {
-      bothStarted = resolve;
-    });
-    const harness = await createHarness(async (request) => {
-      started.add(request.instruction.text);
-      histories.set(request.instruction.text, request.history ? [...request.history] : undefined);
-      active += 1;
-      maxActive = Math.max(maxActive, active);
+    const release = deferred<void>();
+    const bothStarted = deferred<void>();
+    const harness = await createHarness((request) => {
+      const task = request.instruction.text;
+      started.add(task);
       if (started.size === 2) {
-        bothStarted?.();
+        bothStarted.resolve(undefined);
       }
-      await blocked;
-      active -= 1;
-      await request.durability?.onInputCommitted?.();
-      return await successfulRun(
-        request,
-        `result:${request.instruction.text}`,
-      );
+      return createModelStream([
+        {
+          type: "text",
+          text: `result:${task}`,
+          waitFor: release.promise,
+        },
+      ]);
     });
     try {
       const [first, second] = await Promise.all([
@@ -312,15 +241,21 @@ describe("agent invocation identity and concurrency", () => {
         }),
       ]);
       const processing = harness.processQueuedBatch();
-      await startedPromise;
+      await bothStarted.promise;
 
-      expect(maxActive).toBe(2);
-      expect(Object.fromEntries(histories)).toEqual({
+      expect(started).toEqual(new Set(["parallel first", "parallel second"]));
+      expect(
+        Object.fromEntries(
+          harness
+            .requests()
+            .map((request) => [request.instruction.text, request.history]),
+        ),
+      ).toEqual({
         "parallel first": [],
         "parallel second": [],
       });
       expect(first.childConversationId).not.toBe(second.childConversationId);
-      release?.();
+      release.resolve(undefined);
       await processing;
       await expect(
         getAgentInvocation(first.invocationId),
@@ -335,17 +270,13 @@ describe("agent invocation identity and concurrency", () => {
         status: "completed",
       });
     } finally {
-      release?.();
+      release.resolve(undefined);
       await harness.close();
     }
   });
 
   it("coalesces concurrent replay and rejects overlapping work for one name", async () => {
-    const run = vi.fn(async (request: AgentRun) => {
-      await request.durability?.onInputCommitted?.();
-      return await successfulRun(request, "completed once");
-    });
-    const harness = await createHarness(run);
+    const harness = await createHarness(taskModel);
     try {
       const replayInput = {
         agentName: "replayed",
@@ -386,20 +317,14 @@ describe("agent invocation identity and concurrency", () => {
       });
 
       await harness.drainQueuedWork();
-      expect(run).toHaveBeenCalledTimes(2);
+      expect(harness.requests()).toHaveLength(2);
     } finally {
       await harness.close();
     }
   });
 
   it("rejects new children once the parent concurrent active limit is reached", async () => {
-    const harness = await createHarness(async (request) => {
-      await request.durability?.onInputCommitted?.();
-      return await successfulRun(
-        request,
-        `result:${request.instruction.text}`,
-      );
-    });
+    const harness = await createHarness(taskModel);
     try {
       const active = await Promise.all(
         Array.from(
@@ -447,16 +372,13 @@ describe("agent invocation identity and concurrency", () => {
   });
 
   it("keeps a successful parallel child independent from a failing sibling", async () => {
-    const attempts = new Map<string, number>();
-    const harness = await createHarness(async (request) => {
-      const task = request.instruction.text;
-      attempts.set(task, (attempts.get(task) ?? 0) + 1);
-      if (task === "failing sibling") {
-        throw new Error("sibling failed");
-      }
-      await request.durability?.onInputCommitted?.();
-      return await successfulRun(request, "successful sibling result");
-    });
+    const harness = await createHarness((request) =>
+      createModelStream([
+        request.instruction.text === "failing sibling"
+          ? { type: "error", errorMessage: "sibling failed" }
+          : { type: "text", text: "successful sibling result" },
+      ]),
+    );
     try {
       const [successful, failing] = await Promise.all([
         harness.spawn({
@@ -470,10 +392,12 @@ describe("agent invocation identity and concurrency", () => {
       ]);
       await harness.drainQueuedWork();
 
-      expect(attempts.get("successful sibling")).toBe(1);
-      expect(attempts.get("failing sibling")).toBe(
-        CONVERSATION_WORK_MAX_DELIVERY_ATTEMPTS,
-      );
+      expect(
+        harness
+          .requests()
+          .map((request) => request.instruction.text)
+          .sort(),
+      ).toEqual(["failing sibling", "successful sibling"].sort());
       await expect(
         getAgentInvocation(successful.invocationId),
       ).resolves.toMatchObject({
