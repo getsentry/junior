@@ -16,6 +16,23 @@ describe("slack harness fixture", () => {
     expect(new FakeSlackAdapter().name).toBe("slack");
   });
 
+  it("ignores the environment bot token when no bot user is requested", () => {
+    const previousToken = process.env.SLACK_BOT_TOKEN;
+    process.env.SLACK_BOT_TOKEN = "xoxb-environment-token";
+
+    try {
+      const adapter = new FakeSlackAdapter();
+
+      expect(() => adapter.webClient).toThrow("No bot token available");
+    } finally {
+      if (previousToken === undefined) {
+        delete process.env.SLACK_BOT_TOKEN;
+      } else {
+        process.env.SLACK_BOT_TOKEN = previousToken;
+      }
+    }
+  });
+
   it("creates a Chat SDK message with typed Slack data", () => {
     const dateSent = new Date("2026-08-11T12:00:00.000Z");
     const message = createTestMessage({

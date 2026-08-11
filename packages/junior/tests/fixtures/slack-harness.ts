@@ -223,14 +223,15 @@ export class FakeSlackAdapter extends SlackAdapter {
   // it unset keeps the legacy behavior, including generic leading-mention
   // stripping instead of exact bot-id stripping.
   constructor(options?: { botUserId?: string }) {
-    super(
-      options?.botUserId
+    super({
+      signingSecret: "test-signing-secret",
+      ...(options?.botUserId
         ? {
             botToken: "xoxb-test-token",
             botUserId: options.botUserId,
           }
-        : {},
-    );
+        : {}),
+    });
   }
 
   readonly statusCalls: Array<{
