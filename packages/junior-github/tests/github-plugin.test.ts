@@ -135,7 +135,9 @@ async function prepareCommitMsgHookFixture(initialMessage: string) {
         return { exitCode: 0, stderr: "", stdout: "" };
       },
       async writeFile(input) {
-        hookScript = String(input.content);
+        if (input.path.endsWith("/prepare-commit-msg")) {
+          hookScript = String(input.content);
+        }
       },
     },
   } as SandboxPrepareHookContext);
@@ -2585,16 +2587,30 @@ Conversation: \`local:test:old-conversation\`
 
     await plugin.hooks?.sandboxPrepare?.(ctx);
 
-    expect(writes).toHaveLength(1);
-    expect(writes[0]?.path).toBe(
+    const prepareHook = writes.find((entry) =>
+      entry.path.endsWith("/prepare-commit-msg"),
+    );
+    const preCommitHook = writes.find((entry) =>
+      entry.path.endsWith("/pre-commit"),
+    );
+    expect(writes.length).toBeGreaterThan(1);
+    expect(prepareHook?.path).toBe(
       "/vercel/sandbox/.junior/git-hooks/prepare-commit-msg",
     );
-    expect(String(writes[0]?.content)).toContain(
+    expect(String(prepareHook?.content)).toContain(
       "JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS",
     );
-    expect(String(writes[0]?.content)).not.toContain("JUNIOR_GIT_COAUTHOR");
-    expect(String(writes[0]?.content)).toContain(
+    expect(String(prepareHook?.content)).toContain("forward_repo_hook");
+    expect(String(prepareHook?.content)).not.toContain("JUNIOR_GIT_COAUTHOR");
+    expect(String(prepareHook?.content)).toContain(
       "Git author was not set to the Junior identity",
+    );
+    expect(preCommitHook?.path).toBe(
+      "/vercel/sandbox/.junior/git-hooks/pre-commit",
+    );
+    expect(String(preCommitHook?.content)).toContain("forward_repo_hook");
+    expect(String(preCommitHook?.content)).not.toContain(
+      "JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS",
     );
     expect(started).toEqual([
       "core.hooksPath",
@@ -2700,6 +2716,105 @@ Conversation: \`local:test:old-conversation\`
       expect(readFileSync(join(repoDir, "README.md"), "utf8")).toBe("test\n");
     } finally {
       rmSync(hook.dir, { recursive: true, force: true });
+      rmSync(repoDir, { recursive: true, force: true });
+    }
+  });
+
+  it("forwards repository hooks while keeping Junior commit trailers", async () => {
+    const {
+      chmodSync,
+      mkdirSync,
+      mkdtempSync,
+      readFileSync,
+      rmSync,
+      writeFileSync,
+    } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const { spawnSync } = await import("node:child_process");
+
+    process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
+    process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
+
+    const before = beforeToolContext({
+      email: "david@example.com",
+      fullName: "David Cramer",
+      userId: "U039RR91S",
+      userName: "dcramer",
+    });
+    githubPlugin().hooks?.beforeToolExecute?.(before.ctx as never);
+
+    const juniorRoot = mkdtempSync(join(tmpdir(), "junior-root-"));
+    const juniorHooksDir = join(juniorRoot, "git-hooks");
+    const repoDir = mkdtempSync(join(tmpdir(), "junior-github-forward-"));
+    const markerPath = join(repoDir, "hook-ran.txt");
+    mkdirSync(juniorHooksDir, { recursive: true });
+
+    await githubPlugin().hooks?.sandboxPrepare?.({
+      db,
+      log: pluginLog,
+      plugin: { name: "github" },
+      sandbox: {
+        juniorRoot,
+        root: repoDir,
+        async readFile() {
+          return null;
+        },
+        async run() {
+          return { exitCode: 0, stderr: "", stdout: "" };
+        },
+        async writeFile(input) {
+          writeFileSync(input.path, String(input.content));
+          chmodSync(input.path, 0o755);
+        },
+      },
+    } as SandboxPrepareHookContext);
+
+    const runGit = (...args: string[]) =>
+      spawnSync("git", args, {
+        cwd: repoDir,
+        env: { ...process.env, ...before.env },
+      });
+
+    try {
+      expect(runGit("init").status).toBe(0);
+      expect(
+        runGit("config", "core.hooksPath", juniorHooksDir).status,
+      ).toBe(0);
+      mkdirSync(join(repoDir, ".git", "hooks"), { recursive: true });
+      writeFileSync(
+        join(repoDir, ".git", "hooks", "pre-commit"),
+        `#!/bin/sh\nprintf 'pre-commit\\n' >> "${markerPath}"\n`,
+      );
+      chmodSync(join(repoDir, ".git", "hooks", "pre-commit"), 0o755);
+      writeFileSync(
+        join(repoDir, ".git", "hooks", "prepare-commit-msg"),
+        `#!/bin/sh\nprintf 'prepare\\n' >> "${markerPath}"\ntmp=$(mktemp)\nprintf 'repo-prefix: ' > "$tmp"\ncat "$1" >> "$tmp"\nmv "$tmp" "$1"\n`,
+      );
+      chmodSync(join(repoDir, ".git", "hooks", "prepare-commit-msg"), 0o755);
+
+      writeFileSync(join(repoDir, "README.md"), "test\n");
+      expect(runGit("add", "README.md").status).toBe(0);
+
+      const commit = runGit(
+        "-c",
+        "commit.gpgsign=false",
+        "commit",
+        "-m",
+        "test commit",
+      );
+      expect(commit.stderr.toString()).toBe("");
+      expect(commit.status).toBe(0);
+      expect(readFileSync(markerPath, "utf8")).toBe("pre-commit\nprepare\n");
+
+      const metadata = runGit("log", "-1", "--format=%B");
+      expect(metadata.status).toBe(0);
+      expect(metadata.stdout.toString()).toContain("repo-prefix: test commit");
+      expect(metadata.stdout.toString()).toContain(
+        "Co-Authored-By: David Cramer <david@example.com>",
+      );
+    } finally {
+      rmSync(juniorRoot, { recursive: true, force: true });
       rmSync(repoDir, { recursive: true, force: true });
     }
   });

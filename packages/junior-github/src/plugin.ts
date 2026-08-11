@@ -40,8 +40,7 @@ import { classifyGitHubPullRequestCommitComposition } from "./pull-request-outco
 import { loadFailingChecksForSuite } from "./webhooks/check-suite-enrichment.js";
 import {
   additionalActorCoauthorTrailers,
-  configureGit,
-  prepareCommitMsgHook,
+  installSandboxGitHooks,
 } from "./git-config.js";
 import {
   CREATE_TOOL_ROUTING_GUIDANCE,
@@ -800,16 +799,7 @@ export function githubPlugin(
         return createGitHubTools(ctx);
       },
       async sandboxPrepare(ctx) {
-        const hooksPath = `${ctx.sandbox.juniorRoot}/git-hooks`;
-        await ctx.sandbox.writeFile({
-          path: `${hooksPath}/prepare-commit-msg`,
-          mode: 0o755,
-          content: prepareCommitMsgHook(),
-        });
-        await configureGit(ctx, "core.hooksPath", hooksPath);
-        await configureGit(ctx, "commit.gpgsign", "false");
-        await configureGit(ctx, "credential.helper", "");
-        await configureGit(ctx, "http.emptyAuth", "true");
+        await installSandboxGitHooks(ctx);
       },
       beforeToolExecute(ctx) {
         if (ctx.tool.name !== "bash") {

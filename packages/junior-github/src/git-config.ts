@@ -110,10 +110,82 @@ export function additionalActorCoauthorTrailers(args: {
   return trailers;
 }
 
-/** Build the hook that replaces model-supplied commit attribution. */
+/**
+ * Client-side hook names Git may invoke.
+ *
+ * When `core.hooksPath` replaces `.git/hooks`, Junior must provide a forwarder
+ * for each name so repository hooks still run.
+ */
+export const FORWARDED_GIT_HOOK_NAMES = [
+  "applypatch-msg",
+  "pre-applypatch",
+  "post-applypatch",
+  "pre-commit",
+  "pre-merge-commit",
+  "prepare-commit-msg",
+  "commit-msg",
+  "post-commit",
+  "pre-rebase",
+  "post-rewrite",
+  "post-checkout",
+  "post-merge",
+  "pre-push",
+  "pre-auto-gc",
+] as const;
+
+/**
+ * Resolve the repository's native hooks dir.
+ *
+ * Do not use `git rev-parse --git-path hooks` here: with `core.hooksPath` set,
+ * that path is the Junior hooks dir, not `$GIT_DIR/hooks`.
+ */
+function repoHookForwardBash(): string {
+  return `
+# Forward to the repository hook of the same name, if present and distinct.
+# core.hooksPath replaces .git/hooks entirely, so Junior must chain explicitly.
+forward_repo_hook() {
+  local hook_name git_common_dir repo_hook this_hook target_hook
+  hook_name=$(basename "$0")
+  git_common_dir=$(git rev-parse --git-common-dir 2>/dev/null || true)
+  if [ -z "\${git_common_dir:-}" ]; then
+    return 0
+  fi
+  repo_hook="\${git_common_dir}/hooks/\${hook_name}"
+  if [ ! -f "$repo_hook" ] || [ ! -x "$repo_hook" ]; then
+    return 0
+  fi
+  this_hook=$(realpath "$0" 2>/dev/null || printf '%s' "$0")
+  target_hook=$(realpath "$repo_hook" 2>/dev/null || printf '%s' "$repo_hook")
+  if [ "$this_hook" = "$target_hook" ]; then
+    return 0
+  fi
+  "$repo_hook" "$@"
+}
+`;
+}
+
+/** Build a hooksPath entry that only forwards to the repository hook. */
+export function forwardGitHookScript(): string {
+  return `#!/usr/bin/env bash
+set -eu
+${repoHookForwardBash()}
+forward_repo_hook "$@"
+`;
+}
+
+/**
+ * Build the prepare-commit-msg hook.
+ *
+ * Runs the repository hook first (so templates and local edits apply), then
+ * replaces model-supplied co-author attribution with host-owned trailers.
+ */
 export function prepareCommitMsgHook(): string {
   return `#!/usr/bin/env bash
 set -eu
+${repoHookForwardBash()}
+
+# Let the repository edit the message before Junior enforces attribution.
+forward_repo_hook "$@"
 
 message_file="\${1:-}"
 if [ -z "$message_file" ]; then
@@ -261,4 +333,31 @@ export async function configureGit(
       `Failed to configure git ${key}: ${result.stderr || result.stdout}`,
     );
   }
+}
+
+/**
+ * Install Junior's hooksPath directory.
+ *
+ * Writes the attribution hook plus forwarders for other client-side hooks, then
+ * points global `core.hooksPath` at that directory.
+ */
+export async function installSandboxGitHooks(
+  ctx: SandboxPrepareHookContext,
+): Promise<void> {
+  const hooksPath = `${ctx.sandbox.juniorRoot}/git-hooks`;
+  for (const hookName of FORWARDED_GIT_HOOK_NAMES) {
+    const content =
+      hookName === "prepare-commit-msg"
+        ? prepareCommitMsgHook()
+        : forwardGitHookScript();
+    await ctx.sandbox.writeFile({
+      path: `${hooksPath}/${hookName}`,
+      mode: 0o755,
+      content,
+    });
+  }
+  await configureGit(ctx, "core.hooksPath", hooksPath);
+  await configureGit(ctx, "commit.gpgsign", "false");
+  await configureGit(ctx, "credential.helper", "");
+  await configureGit(ctx, "http.emptyAuth", "true");
 }
