@@ -242,7 +242,8 @@ function ConversationPrivacyChip(props: {
   if (!props.visibility) return null;
   const isPublic = props.visibility === "public";
   const Icon = isPublic ? Globe2 : LockKeyhole;
-  const label = isPublic ? "Public conversation" : "Private conversation";
+  const shortLabel = isPublic ? "Public" : "Private";
+  const fullLabel = isPublic ? "Public conversation" : "Private conversation";
   const detail = isPublic
     ? "Anyone in this workspace can see this transcript."
     : "Only members of this conversation can see this transcript.";
@@ -254,11 +255,15 @@ function ConversationPrivacyChip(props: {
           : "inline-flex max-w-full items-center gap-1 rounded-full border border-white/[0.1] bg-white/[0.04] px-2 py-0.5 font-sans text-2xs font-medium text-dashboard-text-muted"
       }
       role="note"
-      title={`${label}. ${detail}`}
+      title={`${fullLabel}. ${detail}`}
     >
       <Icon aria-hidden="true" className="size-3 shrink-0" />
-      <span className="truncate">{label}.</span>
-      <span className="sr-only">{detail}</span>
+      <span aria-hidden="true" className="truncate">
+        {shortLabel}
+      </span>
+      <span className="sr-only">
+        {fullLabel}. {detail}
+      </span>
     </span>
   );
 }
