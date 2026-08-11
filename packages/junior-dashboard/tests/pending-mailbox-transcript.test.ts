@@ -7,6 +7,7 @@ import type {
 import {
   conversationTranscriptMessages,
   mergePendingTranscriptMessages,
+  unresolvedPendingTranscriptMessages,
 } from "../src/client/conversations/eventTranscript";
 
 function detail(
@@ -78,22 +79,27 @@ describe("pending mailbox transcript merge", () => {
   });
 
   it("drops mailbox rows once the same message id is committed", () => {
-    const messages = mergePendingTranscriptMessages(
-      [
-        {
-          messageId: "msg-pending-1",
-          parts: [{ type: "text", text: "already committed" }],
-          role: "user",
-          source: "web",
-          sourceSeq: 0,
-          timestamp: 1_000,
-        },
-      ],
-      [pending({ text: "duplicate mailbox copy" })],
-    );
+    const history = [
+      {
+        messageId: "msg-pending-1",
+        parts: [{ type: "text" as const, text: "already committed" }],
+        role: "user" as const,
+        source: "web" as const,
+        sourceSeq: 0,
+        timestamp: 1_000,
+      },
+    ];
+    const messages = mergePendingTranscriptMessages(history, [
+      pending({ text: "duplicate mailbox copy" }),
+    ]);
 
     expect(messages).toHaveLength(1);
     expect(messages[0]?.pending).toBeUndefined();
+    expect(
+      unresolvedPendingTranscriptMessages(history, [
+        pending({ text: "duplicate mailbox copy" }),
+      ]),
+    ).toEqual([]);
   });
 
   it("preserves interrupt vs defer delivery on pending rows", () => {

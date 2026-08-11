@@ -17,7 +17,10 @@ import {
   TranscriptHeadingMeta,
   TranscriptHeadingRow,
 } from "./TranscriptHeadingRow";
-import { pendingTranscriptMessage } from "./eventTranscript";
+import {
+  conversationTranscriptMessages,
+  unresolvedPendingTranscriptMessages,
+} from "./eventTranscript";
 
 /** Compact monochrome Slack mark for pending mailbox source. */
 function SlackMark(props: { className?: string }) {
@@ -154,11 +157,11 @@ export function PendingMailboxStack(props: {
   conversation: ConversationTranscript;
   messages: readonly ConversationPendingMessage[];
 }): ReactNode {
-  if (props.messages.length === 0) return null;
-
-  const rows = props.messages.map((message, index) =>
-    pendingTranscriptMessage(message, index),
+  const rows = unresolvedPendingTranscriptMessages(
+    conversationTranscriptMessages(props.conversation),
+    props.messages,
   );
+  if (rows.length === 0) return null;
 
   return (
     <div

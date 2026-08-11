@@ -95,11 +95,25 @@ export function mergePendingTranscriptMessages(
   pending: readonly ConversationPendingMessage[] | undefined,
 ): TranscriptViewMessage[] {
   if (!pending?.length) return messages;
+  const extras = unresolvedPendingTranscriptMessages(messages, pending);
+  return extras.length === 0 ? messages : [...messages, ...extras];
+}
+
+/**
+ * Project mailbox rows that are not already committed in history.
+ *
+ * History wins on `messageId`. Use this for the composer-attached stack so a
+ * send does not appear twice once workers persist the user message.
+ */
+export function unresolvedPendingTranscriptMessages(
+  messages: readonly TranscriptViewMessage[],
+  pending: readonly ConversationPendingMessage[] | undefined,
+): TranscriptViewMessage[] {
+  if (!pending?.length) return [];
   const committedIds = historyMessageIds(messages);
-  const extras = pending
+  return pending
     .filter((message) => !committedIds.has(message.messageId))
     .map((message, index) => pendingTranscriptMessage(message, index));
-  return extras.length === 0 ? messages : [...messages, ...extras];
 }
 
 /** Reduce the ordered reporting event API into dashboard-only transcript rows. */
