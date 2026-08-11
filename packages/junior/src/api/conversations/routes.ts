@@ -160,7 +160,7 @@ export function createConversationRoutes(): Hono<JuniorApiEnv> {
       return jsonResponse(
         conversationPendingMessagesReportSchema,
         await requireConversationPendingMessages(conversationId, {
-          ...(viewer ? { viewer } : {}),
+          viewer,
         }),
       );
     },
