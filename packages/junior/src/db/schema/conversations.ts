@@ -61,6 +61,12 @@ export const juniorConversations = pgTable(
     parentConversationId: text("parent_conversation_id").references(
       (): AnyPgColumn => juniorConversations.conversationId,
     ),
+    // Forks are independent roots. This edge supports source/fork lookup and
+    // does not affect root ownership or child conversation traversal.
+    forkedFromConversationId: text("forked_from_conversation_id").references(
+      (): AnyPgColumn => juniorConversations.conversationId,
+      { onDelete: "set null" },
+    ),
     // Roots reference themselves; descendants reference the root whose actor
     // and destination own their privacy boundary.
     rootConversationId: text("root_conversation_id").references(
@@ -100,6 +106,9 @@ export const juniorConversations = pgTable(
       table.lastActivityAt.desc(),
     ),
     index("junior_conversations_parent_idx").on(table.parentConversationId),
+    index("junior_conversations_forked_from_idx").on(
+      table.forkedFromConversationId,
+    ),
     index("junior_conversations_root_idx").on(table.rootConversationId),
   ],
 );

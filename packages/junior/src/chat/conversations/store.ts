@@ -49,6 +49,8 @@ export interface Conversation {
   };
   lastActivityAtMs: number;
   lineage?: ConversationLineage;
+  /** Source conversation for an independent fork root. */
+  forkedFromConversationId?: string;
   location?: Location;
   actor?: StoredSlackActor;
   schemaVersion: 1;
@@ -107,6 +109,8 @@ export interface ConversationStore {
     channelName?: string;
     conversationId: string;
     destination?: Destination;
+    /** Set only when creating an independent fork root. */
+    forkedFromConversationId?: string;
     nowMs?: number;
     actor?: StoredSlackActor;
     source?: ConversationSource;

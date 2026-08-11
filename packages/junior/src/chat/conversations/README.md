@@ -59,6 +59,18 @@ events append to it. The internal `history_version` column makes loading that
 active history efficient. There is no initial-history event. Database migrations
 normalize older history shapes before the runtime reads them.
 
+## Conversation Fork
+
+`fork.ts` owns the internal fork path. A fork creates a **new root** conversation
+(not a subagent child via `parent_conversation_id`) and seeds it with the source
+conversation's active agent history through a cutoff seq or platform message id.
+The fork row stores `forked_from_conversation_id` as an indexed self-reference,
+so callers can resolve fork → source and source → forks without scanning events.
+It also records a `junior/conversation_forked` structured event with the cutoff
+for transcript display. The fork inherits source destination visibility and
+never widens private or unknown sources to public. It does not clone execution
+state, mailbox, schedules, watches, approvals, or live tool side effects.
+
 Volatile `<runtime-turn-context>` bootstrap is kept only in an unfinished turn's
 session record. It is removed before SQL history is written and restored for an
 auth or timeout resume, so agent replay does not need an automatic rollback.

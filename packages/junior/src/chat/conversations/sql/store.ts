@@ -282,6 +282,9 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
           },
         }
       : {}),
+    ...(row.forkedFromConversationId
+      ? { forkedFromConversationId: row.forkedFromConversationId }
+      : {}),
     ...(destination ? { destination } : {}),
     ...(location ? { location } : {}),
     ...(actor ? { actor } : {}),
@@ -477,6 +480,7 @@ export class SqlStore implements ConversationStore {
     channelName?: string;
     conversationId: string;
     destination?: Destination;
+    forkedFromConversationId?: string;
     nowMs?: number;
     actor?: StoredSlackActor;
     source?: ConversationSource;
@@ -497,6 +501,15 @@ export class SqlStore implements ConversationStore {
           current: existing.destination,
           next: args.destination,
         });
+      }
+      if (
+        existing?.forkedFromConversationId &&
+        args.forkedFromConversationId &&
+        existing.forkedFromConversationId !== args.forkedFromConversationId
+      ) {
+        throw new Error(
+          `Conversation fork source changed for ${args.conversationId}`,
+        );
       }
       const current =
         existing ??
@@ -519,6 +532,8 @@ export class SqlStore implements ConversationStore {
           ...currentWithoutPersistedSignals,
           destination: current.destination ?? args.destination,
           source: current.source ?? args.source,
+          forkedFromConversationId:
+            current.forkedFromConversationId ?? args.forkedFromConversationId,
           ...(sessionSource ? { sessionSource } : {}),
           channelName: current.channelName ?? args.channelName,
           actor: mergeActor(current.actor, args.actor),
@@ -796,6 +811,8 @@ export class SqlStore implements ConversationStore {
             : dateFromMs(conversation.execution.lastEnqueuedAtMs),
         parentConversationId:
           conversation.lineage?.parentConversationId ?? null,
+        forkedFromConversationId:
+          conversation.forkedFromConversationId ?? null,
         rootConversationId,
       })
       .onConflictDoUpdate({
@@ -821,6 +838,7 @@ export class SqlStore implements ConversationStore {
           runId: sql`case when ${incomingExecutionIsFresh} then excluded.run_id else ${juniorConversations.runId} end`,
           lastCheckpointAt: sql`case when ${incomingExecutionIsFresh} then coalesce(excluded.last_checkpoint_at, ${juniorConversations.lastCheckpointAt}) else ${juniorConversations.lastCheckpointAt} end`,
           lastEnqueuedAt: sql`case when ${incomingExecutionIsFresh} then coalesce(excluded.last_enqueued_at, ${juniorConversations.lastEnqueuedAt}) else ${juniorConversations.lastEnqueuedAt} end`,
+          forkedFromConversationId: sql`coalesce(${juniorConversations.forkedFromConversationId}, excluded.forked_from_conversation_id)`,
           rootConversationId: sql`coalesce(${juniorConversations.rootConversationId}, excluded.root_conversation_id)`,
         },
       })
