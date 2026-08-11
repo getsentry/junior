@@ -47,19 +47,44 @@ const EVAL_MCP_OPEN_PLUGIN_ROOT = path.resolve(
 const ALICE = "UALICE";
 const BOB = "UBOB";
 const AUTH_NOTICE = /I need access to Eval Auth to continue/;
+const EVAL_AUTH_TOOL_NAME = "mcp__eval-auth__budget-echo";
 
-/** loadSkill activates the MCP provider; missing credentials park for auth. */
-function streamMcpLoad(replyAfterConnect: string) {
+/** Search connects the auth MCP provider; missing credentials park for auth. */
+function streamMcpSearch(replyAfterConnect: string) {
   return streamScript(
-    { tool: "loadSkill", args: { skill_name: EVAL_MCP_AUTH_PROVIDER } },
+    {
+      tool: "searchMcpTools",
+      args: { provider: EVAL_MCP_AUTH_PROVIDER, query: "budget echo" },
+    },
     replyAfterConnect,
   );
 }
 
-/** loadSkill for the open (no-auth) MCP fixture. */
-function streamOpenMcpLoad(replyAfterConnect: string) {
+/** Search discloses the tool before the same turn calls it. */
+function streamMcpSearchAndCall(replyAfterCall: string) {
   return streamScript(
-    { tool: "loadSkill", args: { skill_name: EVAL_MCP_NO_AUTH_PROVIDER } },
+    {
+      tool: "searchMcpTools",
+      args: { provider: EVAL_MCP_AUTH_PROVIDER, query: "budget echo" },
+    },
+    {
+      tool: "callMcpTool",
+      args: {
+        tool_name: EVAL_AUTH_TOOL_NAME,
+        arguments: { query: "budget" },
+      },
+    },
+    replyAfterCall,
+  );
+}
+
+/** Search connects the open MCP provider without auth. */
+function streamOpenMcpSearch(replyAfterConnect: string) {
+  return streamScript(
+    {
+      tool: "searchMcpTools",
+      args: { provider: EVAL_MCP_NO_AUTH_PROVIDER, query: "handbook" },
+    },
     replyAfterConnect,
   );
 }
@@ -108,7 +133,7 @@ async function connectActor(
   userId: string,
   replyText = "Eval Auth is connected.",
 ): Promise<void> {
-  q.setModelStream(streamMcpLoad(replyText));
+  q.setModelStream(streamMcpSearch(replyText));
   await q.mention(userId, "use eval-auth and confirm the connection");
   await q.drain();
   await expectAuthParkedFor(userId, q);
@@ -149,9 +174,28 @@ describe("mcp auth orchestration", () => {
     resetSlackApiMockState();
   });
 
-  it("parks first MCP use for the requesting actor and resumes after OAuth", async () => {
+  it("loads an MCP-owned skill without connecting or prompting for auth", async () => {
     const q = await createConversationWorkSlackHarness({
-      modelStream: streamMcpLoad("Eval Auth is connected."),
+      modelStream: streamScript(
+        { tool: "loadSkill", args: { skill_name: EVAL_MCP_AUTH_PROVIDER } },
+        "Skill instructions loaded.",
+      ),
+    });
+
+    await q.mention(ALICE, "load eval-auth without using its tools");
+    await q.drain();
+
+    expectNoAuthFor(ALICE, q);
+    expect((await loadConversationState()).processing.pendingAuth).toBeUndefined();
+    expect(q.replies().at(-1)).toContain("Skill instructions loaded.");
+    await expect(
+      getMcpStoredOAuthCredentials(ALICE, EVAL_MCP_AUTH_PROVIDER),
+    ).resolves.toBeUndefined();
+  });
+
+  it("searches before calling, parks for OAuth, and resumes the same turn", async () => {
+    const q = await createConversationWorkSlackHarness({
+      modelStream: streamMcpSearchAndCall("Eval Auth tool completed."),
     });
 
     await q.mention(ALICE, "use eval-auth and confirm the connection");
@@ -168,7 +212,7 @@ describe("mcp auth orchestration", () => {
       tokens: expect.objectContaining({ access_token: expect.any(String) }),
     });
     expect(
-      q.replies().some((text) => text.includes("Eval Auth is connected")),
+      q.replies().some((text) => text.includes("Eval Auth tool completed")),
     ).toBe(true);
     await expect(listTurnSummaries(CONVERSATION_ID)).resolves.toEqual(
       expect.arrayContaining([
@@ -179,12 +223,12 @@ describe("mcp auth orchestration", () => {
 
   it("reuses the same actor's MCP connection on a later turn without another prompt", async () => {
     const q = await createConversationWorkSlackHarness({
-      modelStream: streamMcpLoad("Eval Auth is connected."),
+      modelStream: streamMcpSearch("Eval Auth is connected."),
     });
     await connectActor(q, ALICE);
     const aliceLinksAfterConnect = q.authLinksFor(ALICE).length;
 
-    q.setModelStream(streamMcpLoad("Connection still works."));
+    q.setModelStream(streamMcpSearch("Connection still works."));
     await q.mention(ALICE, "use eval-auth again");
     await q.drain();
 
@@ -197,7 +241,7 @@ describe("mcp auth orchestration", () => {
 
   it("re-prompts the same actor when stored MCP credentials are gone", async () => {
     const q = await createConversationWorkSlackHarness({
-      modelStream: streamMcpLoad("Eval Auth is connected."),
+      modelStream: streamMcpSearch("Eval Auth is connected."),
     });
     await connectActor(q, ALICE);
     await deleteMcpStoredOAuthCredentials(ALICE, EVAL_MCP_AUTH_PROVIDER);
@@ -206,7 +250,7 @@ describe("mcp auth orchestration", () => {
     ).resolves.toBeUndefined();
     const aliceLinksAfterConnect = q.authLinksFor(ALICE).length;
 
-    q.setModelStream(streamMcpLoad("Reconnected after missing credentials."));
+    q.setModelStream(streamMcpSearch("Reconnected after missing credentials."));
     await q.mention(ALICE, "use eval-auth again");
     await q.drain();
 
@@ -223,7 +267,7 @@ describe("mcp auth orchestration", () => {
 
   it("does not prompt another actor after prior MCP use on an unrelated request", async () => {
     const q = await createConversationWorkSlackHarness({
-      modelStream: streamMcpLoad("Eval Auth is connected."),
+      modelStream: streamMcpSearch("Eval Auth is connected."),
     });
     await connectActor(q, ALICE);
 
@@ -247,12 +291,12 @@ describe("mcp auth orchestration", () => {
 
   it("prompts only the new actor when that actor intentionally uses MCP", async () => {
     const q = await createConversationWorkSlackHarness({
-      modelStream: streamMcpLoad("Eval Auth is connected."),
+      modelStream: streamMcpSearch("Eval Auth is connected."),
     });
     await connectActor(q, ALICE);
     const aliceLinksAfterConnect = q.authLinksFor(ALICE).length;
 
-    q.setModelStream(streamMcpLoad("Bob is connected."));
+    q.setModelStream(streamMcpSearch("Bob is connected."));
     await q.mention(BOB, "use eval-auth for my own lookup");
     await q.drain();
 
@@ -267,7 +311,7 @@ describe("mcp auth orchestration", () => {
 
   it("keeps passive cross-actor context from flipping authority or prompting auth", async () => {
     const q = await createConversationWorkSlackHarness({
-      modelStream: streamMcpLoad("Eval Auth is connected."),
+      modelStream: streamMcpSearch("Eval Auth is connected."),
       subscribedShouldReply: false,
     });
     await connectActor(q, ALICE);
@@ -287,7 +331,7 @@ describe("mcp auth orchestration", () => {
     ).resolves.toBeUndefined();
 
     // Alice continues under her own connection; Bob never becomes credential authority.
-    q.setModelStream(streamMcpLoad("Record 42 noted under Alice."));
+    q.setModelStream(streamMcpSearch("Record 42 noted under Alice."));
     await q.mention(ALICE, "continue with the record id from the thread");
     await q.drain();
 
@@ -300,7 +344,7 @@ describe("mcp auth orchestration", () => {
 
   it("does not request auth again when the same person cancels with a later message", async () => {
     const q = await createConversationWorkSlackHarness({
-      modelStream: streamMcpLoad("Eval Auth is connected."),
+      modelStream: streamMcpSearch("Eval Auth is connected."),
     });
     await q.mention(ALICE, "use eval-auth and confirm the connection");
     await q.drain();
@@ -320,7 +364,7 @@ describe("mcp auth orchestration", () => {
 
   it("does not hand pending MCP auth to a passive bystander while the owner waits", async () => {
     const q = await createConversationWorkSlackHarness({
-      modelStream: streamMcpLoad("Eval Auth is connected."),
+      modelStream: streamMcpSearch("Eval Auth is connected."),
       subscribedShouldReply: false,
     });
     await q.mention(ALICE, "use eval-auth and confirm the connection");
@@ -359,7 +403,7 @@ describe("mcp auth orchestration", () => {
 
   it("does not restore another actor's MCP connection for a passive continuation reply", async () => {
     const q = await createConversationWorkSlackHarness({
-      modelStream: streamMcpLoad("Eval Auth is connected."),
+      modelStream: streamMcpSearch("Eval Auth is connected."),
       subscribedShouldReply: true,
     });
     await connectActor(q, ALICE);
@@ -380,7 +424,7 @@ describe("mcp auth orchestration", () => {
 
   it("does not restore another actor's MCP provider when this actor uses a different one", async () => {
     const q = await createConversationWorkSlackHarness({
-      modelStream: streamMcpLoad("Eval Auth is connected."),
+      modelStream: streamMcpSearch("Eval Auth is connected."),
     });
     // Alice owns Eval Auth in this thread.
     await connectActor(q, ALICE);
@@ -389,7 +433,7 @@ describe("mcp auth orchestration", () => {
     // Bob intentionally uses a different MCP provider. Shared thread history
     // still shows Alice's Eval Auth use, but Bob must not inherit it or get
     // an Eval Auth prompt while connecting his own provider.
-    q.setModelStream(streamOpenMcpLoad("Open handbook lookup done."));
+    q.setModelStream(streamOpenMcpSearch("Open handbook lookup done."));
     await q.mention(BOB, "use eval-mcp-open for the handbook lookup");
     await q.drain();
 
@@ -406,7 +450,7 @@ describe("mcp auth orchestration", () => {
 
   it("does not restore another actor's MCP provider across OAuth resume for a different provider", async () => {
     const q = await createConversationWorkSlackHarness({
-      modelStream: streamOpenMcpLoad("Open handbook is connected."),
+      modelStream: streamOpenMcpSearch("Open handbook is connected."),
     });
     // Alice first leaves open-MCP history in the thread (no auth).
     await q.mention(ALICE, "use eval-mcp-open and confirm");
@@ -417,7 +461,7 @@ describe("mcp auth orchestration", () => {
 
     // Bob parks for Eval Auth. Resume must reconnect only Bob's provider,
     // not warm Alice's open MCP (or any other shared-history provider) under Bob.
-    q.setModelStream(streamMcpLoad("Bob Eval Auth is connected."));
+    q.setModelStream(streamMcpSearch("Bob Eval Auth is connected."));
     await q.mention(BOB, "use eval-auth for my own lookup");
     await q.drain();
     await expectAuthParkedFor(BOB, q);

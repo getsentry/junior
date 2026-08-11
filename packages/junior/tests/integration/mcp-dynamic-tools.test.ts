@@ -1,10 +1,18 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { Type } from "@sinclair/typebox";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
+import { http } from "msw";
+import { z } from "zod";
 import {
   Agent,
   type AgentTool,
   type StreamFn,
 } from "@earendil-works/pi-agent-core";
+import { createCallMcpToolTool } from "@/chat/tools/skill/call-mcp-tool";
+import { McpToolManager } from "@/chat/mcp/tool-manager";
+import type { PluginDefinition } from "@/chat/plugins/types";
+import { mswServer } from "../msw/server";
 import {
   createEchoMcpTestServer,
   type EchoMcpTestServer,
@@ -63,10 +71,66 @@ function responseFor(message: ReturnType<typeof assistantMessage>) {
 
 describe("MCP tools loaded mid-turn", () => {
   let mcp: EchoMcpTestServer | undefined;
+  let manager: McpToolManager | undefined;
+  let transport: WebStandardStreamableHTTPServerTransport | undefined;
 
   afterEach(async () => {
+    await manager?.close();
+    await transport?.close();
     await mcp?.close();
+    manager = undefined;
+    transport = undefined;
     mcp = undefined;
+  });
+
+  it("rejects a direct MCP call until search has disclosed the tool", async () => {
+    const provider = "direct-call";
+    const serverUrl = "https://direct-call.example.test/mcp";
+    const server = new McpServer({ name: provider, version: "1.0.0" });
+    server.registerTool(
+      "echo",
+      {
+        description: "Echo text",
+        inputSchema: { value: z.string() },
+      },
+      ({ value }) => ({
+        content: [{ type: "text", text: `echo:${value}` }],
+      }),
+    );
+    transport = new WebStandardStreamableHTTPServerTransport({
+      enableJsonResponse: true,
+      sessionIdGenerator: () => "direct-call-session",
+    });
+    await server.connect(transport);
+    mswServer.use(
+      http.all(serverUrl, async ({ request }) =>
+        transport!.handleRequest(request),
+      ),
+    );
+    const plugin: PluginDefinition = {
+      dir: `/plugins/${provider}`,
+      skillsDir: `/plugins/${provider}/skills`,
+      manifest: {
+        name: provider,
+        displayName: "Direct Call",
+        description: "Direct-call integration fixture",
+        configKeys: [],
+        mcp: { transport: "http", url: serverUrl },
+      },
+    };
+    manager = new McpToolManager([plugin]);
+    const callMcpTool = createCallMcpToolTool(manager);
+
+    await expect(
+      callMcpTool.execute!(
+        {
+          tool_name: `mcp__${provider}__echo`,
+          arguments: { value: "hello" },
+        },
+        {},
+      ),
+    ).rejects.toThrow("Call searchMcpTools");
+    expect(manager.getActiveProviders()).toEqual([]);
   });
 
   it("loads MCP tools mid-run and executes them through static bridge tools", async () => {

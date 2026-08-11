@@ -53,6 +53,8 @@ function missingToolMessage(toolName: string, provider: string | undefined) {
 }
 
 /** Create the stable dispatcher for active MCP provider tools. */
+// TODO(future): Fold MCP execution into executeTool once searchTools can
+// disclose MCP tool schemas and the execution catalog keeps them active.
 export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
   return zodTool({
     approvalMode: "auto",
