@@ -89,7 +89,6 @@ import {
   createWebAuthorization,
   deleteWebAuthorization,
 } from "@/chat/api-turns/authorization";
-import { clearPendingAuth } from "@/chat/services/pending-auth";
 
 const apiTurnMailboxMetadataSchema = z
   .object({
@@ -657,7 +656,9 @@ export function createApiTurnWorker(options: {
               errorMessage:
                 "Auth-parked session superseded by a new user message",
             });
-            clearPendingAuth(conversation, parked.turnId);
+            // Keep pendingAuth: MCP OAuth still needs it to accept an in-flight
+            // connect and store credentials. The abandoned turn record makes a
+            // late callback a resume no-op, matching Slack supersede behavior.
             markTurnClosed({
               conversation,
               nowMs: Date.now(),

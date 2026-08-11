@@ -209,10 +209,16 @@ describe("web auth orchestration", () => {
     await expect(
       q.pendingMessages(started.conversationId),
     ).resolves.not.toHaveProperty("authorization");
+    // pendingAuth stays so a still-in-flight OAuth connect can store tokens;
+    // only the dashboard banner and parked turn are cleared/abandoned.
     expect(
       (await loadConversationState(started.conversationId)).processing
         .pendingAuth,
-    ).toBeUndefined();
+    ).toMatchObject({
+      kind: "mcp",
+      provider: EVAL_MCP_AUTH_PROVIDER,
+      actorId: q.actor.userId,
+    });
     const history = await q.historyTexts(started.conversationId);
     expect(
       history.some((text) => text.includes("Answered without waiting for auth")),
@@ -257,11 +263,17 @@ describe("web auth orchestration", () => {
     await expect(
       q.pendingMessages(started.conversationId),
     ).resolves.not.toHaveProperty("authorization");
+    // Late OAuth after supersede still stores credentials (pendingAuth kept),
+    // but must not resume the abandoned parked turn.
+    await expect(
+      getMcpStoredOAuthCredentials(q.actor.userId, EVAL_MCP_AUTH_PROVIDER),
+    ).resolves.toMatchObject({
+      tokens: expect.objectContaining({ access_token: expect.any(String) }),
+    });
     const history = await q.historyTexts(started.conversationId);
     expect(history.some((text) => text.includes("Moved on without auth"))).toBe(
       true,
     );
-    // Superseded auth must not resume the abandoned turn after a late callback.
     expect(
       history.some((text) => text.includes("Eval Auth is connected")),
     ).toBe(false);
