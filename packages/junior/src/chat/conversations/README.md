@@ -64,9 +64,10 @@ normalize older history shapes before the runtime reads them.
 `fork.ts` owns the internal fork path. A fork creates a **new root** conversation
 (not a subagent child via `parent_conversation_id`) and seeds it with the source
 conversation's active agent history through a cutoff seq or platform message id.
-It records a `junior/conversation_forked` structured event as the backlink. It
-does not clone execution state, mailbox, schedules, watches, approvals, or live
-tool side effects.
+It records a `junior/conversation_forked` structured event as the backlink. The
+fork inherits the source destination visibility and never widens private or
+unknown sources to public. It does not clone execution state, mailbox, schedules,
+watches, approvals, or live tool side effects.
 
 Volatile `<runtime-turn-context>` bootstrap is kept only in an unfinished turn's
 session record. It is removed before SQL history is written and restored for an

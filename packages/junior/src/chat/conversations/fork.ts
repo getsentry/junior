@@ -4,6 +4,9 @@
  * Creates a new root conversation and seeds it with the source conversation's
  * active agent history through a cutoff. Does not clone execution state,
  * mailbox, schedules, watches, approvals, or live tool side effects.
+ *
+ * Fork roots inherit source destination visibility and never widen it.
+ * They are not subagent children (`parentConversationId` stays for delegation).
  */
 import { createHash } from "node:crypto";
 import {
@@ -11,15 +14,12 @@ import {
   localDestinationSchema,
 } from "@sentry/junior-plugin-api";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
-import type {
-  ConversationEvent,
-  ConversationEventStore,
-} from "@/chat/conversations/history";
+import type { ConversationEvent } from "@/chat/conversations/history";
 import {
   commitMessages,
   loadTurnProjection,
 } from "@/chat/conversations/projection";
-import type { ConversationStore } from "@/chat/conversations/store";
+import type { Conversation } from "@/chat/conversations/store";
 import {
   conversationForkedEvent,
   JUNIOR_NATIVE_EVENT_NAMESPACE,
@@ -38,8 +38,6 @@ export interface ForkConversationInput {
   cutoff: ForkConversationCutoff;
   /** Client-supplied key; retries with the same key return the same fork. */
   idempotencyKey: string;
-  /** New fork root visibility. Defaults to public. */
-  visibility?: ConversationPrivacy;
 }
 
 export interface ForkConversationResult {
@@ -48,12 +46,6 @@ export interface ForkConversationResult {
   throughSeq: number;
   sourceMessageId?: string;
   status: "created" | "duplicate";
-}
-
-export interface ForkConversationDeps {
-  conversationStore?: ConversationStore;
-  eventStore?: ConversationEventStore;
-  nowMs?: number;
 }
 
 function stableHex(...parts: string[]): string {
@@ -89,13 +81,25 @@ function requireLocalDestination(conversationId: string) {
   return parsed.data;
 }
 
-/** Resolve a platform message id to the agent-history seq at that cutoff. */
-export async function resolveForkCutoffSeq(args: {
+/**
+ * Inherit source visibility. Missing or unknown visibility stays private so a
+ * fork never widens access.
+ */
+function forkVisibility(source: Conversation): ConversationPrivacy {
+  return source.visibility === "public" ? "public" : "private";
+}
+
+type ForkCutoffResolution = {
+  throughSeq: number;
+  sourceMessageId?: string;
+};
+
+/** Resolve a cutoff to the agent-history seq included in the fork. */
+async function resolveForkCutoff(args: {
   sourceConversationId: string;
   cutoff: ForkConversationCutoff;
-  eventStore?: ConversationEventStore;
-}): Promise<{ throughSeq: number; sourceMessageId?: string }> {
-  const eventStore = args.eventStore ?? getConversationEventStore();
+}): Promise<ForkCutoffResolution> {
+  const eventStore = getConversationEventStore();
   if (args.cutoff.kind === "seq") {
     if (args.cutoff.throughSeq < 0) {
       throw new Error("Fork cutoff seq must be non-negative");
@@ -118,9 +122,8 @@ export async function resolveForkCutoffSeq(args: {
     throw new Error("Fork cutoff message id must not be empty");
   }
 
-  // Walk the full log so the cutoff can sit on a platform message that is not
-  // itself an agent-history item. Agent history is then cut at the latest
-  // history-bearing seq at or before that message.
+  // Platform messages are not agent-history items. Cut agent history at the
+  // latest history-bearing seq at or before the selected message.
   const events = await eventStore.loadHistory(args.sourceConversationId);
   let messageSeq: number | undefined;
   for (const event of events) {
@@ -169,6 +172,16 @@ function latestAgentHistorySeqAtOrBefore(
   return throughSeq;
 }
 
+type ForkEventContent = {
+  sourceConversationId: string;
+  throughSeq: number;
+  sourceMessageId?: string;
+};
+
+function parseForkEventContent(content: unknown): ForkEventContent {
+  return conversationForkedEvent.parse(content) as ForkEventContent;
+}
+
 /**
  * Fork a conversation into a new root at an agent-history cutoff.
  *
@@ -177,7 +190,6 @@ function latestAgentHistorySeqAtOrBefore(
  */
 export async function forkConversation(
   input: ForkConversationInput,
-  deps: ForkConversationDeps = {},
 ): Promise<ForkConversationResult> {
   const sourceConversationId = input.sourceConversationId.trim();
   const idempotencyKey = input.idempotencyKey.trim();
@@ -188,9 +200,9 @@ export async function forkConversation(
     throw new Error("Fork idempotency key must not be empty");
   }
 
-  const conversationStore = deps.conversationStore ?? getConversationStore();
-  const eventStore = deps.eventStore ?? getConversationEventStore();
-  const nowMs = deps.nowMs ?? Date.now();
+  const conversationStore = getConversationStore();
+  const eventStore = getConversationEventStore();
+  const nowMs = Date.now();
 
   const source = await conversationStore.get({
     conversationId: sourceConversationId,
@@ -211,10 +223,9 @@ export async function forkConversation(
     sourceConversationId,
     idempotencyKey,
   });
-  const cutoff = await resolveForkCutoffSeq({
+  const cutoff = await resolveForkCutoff({
     sourceConversationId,
     cutoff: input.cutoff,
-    eventStore,
   });
 
   const prior = await eventStore.loadLatestStructuredEvent(
@@ -223,11 +234,7 @@ export async function forkConversation(
     conversationForkedEvent.eventName,
   );
   if (prior?.data.type === "structured_event") {
-    const content = conversationForkedEvent.parse(prior.data.content) as {
-      sourceConversationId: string;
-      throughSeq: number;
-      sourceMessageId?: string;
-    };
+    const content = parseForkEventContent(prior.data.content);
     return {
       conversationId,
       sourceConversationId,
@@ -250,7 +257,7 @@ export async function forkConversation(
     );
   }
 
-  const visibility = input.visibility === "private" ? "private" : "public";
+  const visibility = forkVisibility(source);
   const destination = requireLocalDestination(conversationId);
   await conversationStore.recordActivity({
     conversationId,
@@ -276,7 +283,7 @@ export async function forkConversation(
     }
   }
 
-  const forkContent = conversationForkedEvent.parse({
+  const forkContent = parseForkEventContent({
     sourceConversationId,
     throughSeq: cutoff.throughSeq,
     ...(cutoff.sourceMessageId

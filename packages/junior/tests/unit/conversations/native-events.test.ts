@@ -3,6 +3,7 @@ import {
   agentsInstructionsUpdatedEvent,
   authenticationLinkedEvent,
   authenticationUnlinkedEvent,
+  conversationForkedEvent,
   renderJuniorNativeConversationEvent,
 } from "@/chat/conversations/structured-events";
 import {
@@ -162,6 +163,51 @@ describe("junior native authentication events", () => {
         historyVersion: 0,
         idempotencyKey: "native-agents-1",
         createdAtMs: 2_000,
+        data,
+      }).data,
+    ).toEqual(data);
+  });
+
+  it("renders and accepts conversation fork backlinks", () => {
+    expect(
+      conversationForkedEvent.renderEvent({
+        sourceConversationId: "local:web:source-1",
+        throughSeq: 2,
+        sourceMessageId: "msg-1",
+      }),
+    ).toEqual({
+      icon: "activity",
+      title: "Forked conversation",
+      preview: "From local:web:source-1 through seq 2",
+      details: [
+        {
+          title: "Forked conversation",
+          description:
+            "Source message `msg-1` in `local:web:source-1`",
+          metadata: ["seq 2"],
+        },
+      ],
+    });
+
+    const data: ConversationEventData = {
+      type: "structured_event",
+      namespace: "junior",
+      name: "conversation_forked",
+      version: 1,
+      content: {
+        sourceConversationId: "local:web:source-1",
+        throughSeq: 2,
+        sourceMessageId: "msg-1",
+      },
+    };
+
+    expect(
+      conversationEventSchema.parse({
+        schemaVersion: 1,
+        seq: 3,
+        historyVersion: 0,
+        idempotencyKey: "native-fork-1",
+        createdAtMs: 3_000,
         data,
       }).data,
     ).toEqual(data);

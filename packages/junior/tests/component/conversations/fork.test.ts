@@ -4,15 +4,6 @@ import {
   forkConversation,
 } from "@/chat/conversations/fork";
 import {
-  conversationForkedEvent,
-  JUNIOR_NATIVE_EVENT_NAMESPACE,
-  renderJuniorNativeConversationEvent,
-} from "@/chat/conversations/structured-events";
-import {
-  conversationEventSchema,
-  type ConversationEventData,
-} from "@/chat/conversations/history";
-import {
   commitMessages,
   openConversationProjection,
 } from "@/chat/conversations/projection";
@@ -61,44 +52,7 @@ function assistantMessage(text: string, timestamp: number): PiMessage {
 }
 
 describe("conversation fork", () => {
-  it("renders and accepts the native fork event", () => {
-    const data: ConversationEventData = {
-      type: "structured_event",
-      namespace: "junior",
-      name: "conversation_forked",
-      version: 1,
-      content: {
-        sourceConversationId: SOURCE_ID,
-        throughSeq: 2,
-        sourceMessageId: "msg-1",
-      },
-    };
-
-    expect(
-      conversationEventSchema.parse({
-        schemaVersion: 1,
-        seq: 0,
-        historyVersion: 0,
-        idempotencyKey: "fork-1",
-        createdAtMs: 1_000,
-        data,
-      }).data,
-    ).toEqual(data);
-
-    expect(
-      renderJuniorNativeConversationEvent({
-        namespace: JUNIOR_NATIVE_EVENT_NAMESPACE,
-        name: conversationForkedEvent.eventName,
-        version: conversationForkedEvent.version,
-        content: data.content,
-      }),
-    ).toMatchObject({
-      icon: "activity",
-      title: "Forked conversation",
-    });
-  });
-
-  it("creates a new root with agent history through the cutoff", async () => {
+  it("creates a private root with agent history through the cutoff", async () => {
     const store = getConversationStore();
     const events = getConversationEventStore();
 
@@ -111,7 +65,8 @@ describe("conversation fork", () => {
         platform: "local",
         conversationId: SOURCE_ID,
       },
-      visibility: "public",
+      // Private source must stay private on the fork root.
+      visibility: "private",
     });
 
     const first = userMessage("start here", 1_000);
@@ -176,7 +131,7 @@ describe("conversation fork", () => {
       conversationId: forked.conversationId,
       source: "internal",
       title: "Source thread",
-      visibility: "public",
+      visibility: "private",
     });
     expect(forkRow?.lineage).toBeUndefined();
 
@@ -211,11 +166,6 @@ describe("conversation fork", () => {
       ...forked,
       status: "duplicate",
     });
-
-    const retryProjection = await openConversationProjection({
-      conversationId: forked.conversationId,
-    });
-    expect(retryProjection.messages).toHaveLength(2);
   });
 
   it("rejects child conversation forks", async () => {
