@@ -492,13 +492,11 @@ describe("durable queue contract", () => {
     });
 
     it(
-      "fails when a later attempt times out before any new work is saved",
+      "re-parks when a later attempt times out before any new work is saved",
       async () => {
         // JUNIOR-7G: first attempt parks after real tool work. The next wake
         // spends the whole host budget on the model call and saves nothing new.
-        // Today that ends the turn with "Turn made no progress" and the internal
-        // error reply. This test locks the desired product path so we can see
-        // current behavior fail and decide the right outcome.
+        // That attempt must re-park (not fail), then a full-budget wake finishes.
         const releaseAfterTool = deferred<void>();
         const releaseOnResume = deferred<void>();
         const remainingMs = 2_500;
@@ -548,9 +546,20 @@ describe("durable queue contract", () => {
         );
         releaseOnResume.resolve(undefined);
 
-        // Desired outcome once fixed: finish the same turn with one reply.
-        // Current behavior fails the turn with "Turn made no progress".
-        await expect(secondSlice).resolves.toEqual({ status: "completed" });
+        // Short leftover budget still parks cleanly instead of failing the turn.
+        await expect(secondSlice).resolves.toEqual({ status: "yielded" });
+        await expect(
+          getTurnRecord(CONVERSATION_ID, turnId),
+        ).resolves.toMatchObject({
+          state: "paused",
+          resumeReason: "timeout",
+          turnId,
+        });
+        expect(q.replies()).toHaveLength(0);
+        expect(q.wakes.hasQueuedMessages()).toBe(true);
+
+        // Fresh full-budget wake finishes the same turn with one reply.
+        await expect(q.next()).resolves.toEqual({ status: "completed" });
         await expectTerminalTurn(q, {
           turnId,
           state: "completed",
@@ -559,7 +568,7 @@ describe("durable queue contract", () => {
         await expectAssistantInSql("Deploy checked.");
         await expectNextTurn(q, "1712345.0012");
       },
-      20_000,
+      30_000,
     );
   });
 

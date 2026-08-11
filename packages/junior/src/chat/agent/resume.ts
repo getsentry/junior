@@ -298,7 +298,11 @@ export function createResumeState(args: ResumeStateArgs) {
           ? [...resumeMessages]
           : continuableMessages(resumeMessages, latestSafeBoundaryMessages);
       const parkKey = boundaryKey(parkMessages);
+      // Soft yield / retry with no new boundary is a stuck loop. Hard timeout
+      // may burn a whole slice on one model call without new work; re-park and
+      // let the slice limit stop endless slow attempts.
       if (
+        reason !== "timeout" &&
         !advancedPastResume &&
         resumedBoundaryKey.length > 0 &&
         parkKey === resumedBoundaryKey
@@ -345,6 +349,7 @@ export function createResumeState(args: ResumeStateArgs) {
       if (record.state === "paused") {
         return {
           status: "suspended",
+          reason,
           resumeVersion: record.version,
           ...(usage ? { usage } : {}),
         };

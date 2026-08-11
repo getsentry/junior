@@ -114,28 +114,53 @@ let turnWakeModule: TurnWakeModule;
 let taskExecutionStoreModule: TaskExecutionStoreModule;
 let queue: ConversationWorkQueueTestAdapter;
 
-function continueAgentRun(args: {
+async function continueAgentRun(args: {
   conversationId: string;
   sessionId: string;
   expectedVersion: number;
 }): Promise<boolean> {
-  return requestDeadlineModule.runWithTurnRequestDeadline(() =>
-    pausedTurnModule.runPausedTurn(
+  const { isCooperativeTurnYieldError } = await import("@/chat/runtime/turn");
+  try {
+    return await requestDeadlineModule.runWithTurnRequestDeadline(() =>
+      pausedTurnModule.runPausedTurn(
+        {
+          conversationId: args.conversationId,
+          destination: SLACK_DESTINATION,
+          expectedVersion: args.expectedVersion,
+          turnId: args.sessionId,
+        },
+        {
+          agentRunner: { run: executeAgentRunMock },
+          wakePausedTurn: (request) =>
+            turnWakeModule.wakePausedTurn(request, {
+              queue,
+            }),
+        },
+      ),
+    );
+  } catch (error) {
+    // Worker continue converts hard-timeout yield into another queue wake.
+    if (!isCooperativeTurnYieldError(error)) {
+      throw error;
+    }
+    const latest = await turnSessionStoreModule.getTurnRecord(
+      args.conversationId,
+      args.sessionId,
+    );
+    if (!latest || latest.state !== "paused") {
+      throw error;
+    }
+    await turnWakeModule.wakePausedTurn(
       {
         conversationId: args.conversationId,
         destination: SLACK_DESTINATION,
-        expectedVersion: args.expectedVersion,
+        expectedVersion: latest.version,
         turnId: args.sessionId,
       },
-      {
-        agentRunner: { run: executeAgentRunMock },
-        wakePausedTurn: (request) =>
-          turnWakeModule.wakePausedTurn(request, {
-            queue,
-          }),
-      },
-    ),
-  );
+      { queue },
+    );
+    return true;
+  }
 }
 
 describe("paused turn Slack integration", () => {
@@ -653,6 +678,7 @@ describe("paused turn Slack integration", () => {
 
     executeAgentRunMock.mockResolvedValueOnce({
       status: "suspended",
+      reason: "timeout",
       resumeVersion: sessionRecord.version + 1,
     });
 

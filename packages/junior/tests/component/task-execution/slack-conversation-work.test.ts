@@ -1930,7 +1930,7 @@ describe("Slack conversation work execution", () => {
               await context?.durability?.onInputCommitted?.();
               currentNowMs = 242_000;
               yieldedSessionId = context?.turnId;
-              return { status: "suspended", resumeVersion: 1 };
+              return { status: "suspended", reason: "timeout", resumeVersion: 1 };
             },
           },
         },

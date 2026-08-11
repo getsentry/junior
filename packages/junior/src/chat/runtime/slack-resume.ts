@@ -62,6 +62,10 @@ import type { SlackMessageTs } from "@/chat/slack/timestamp";
 import { buildAuthPauseResponse } from "@/chat/services/auth-pause-response";
 import { getTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import {
+  CooperativeTurnYieldError,
+  isCooperativeTurnYieldError,
+} from "@/chat/runtime/turn";
+import {
   TurnSliceLimitExceededError,
   buildTurnLimitResponse,
 } from "@/chat/services/turn-limit";
@@ -719,10 +723,35 @@ async function resumeSlackTurnInContext(
             providerDisplayName: outcome.providerDisplayName,
           });
         };
-      } else if (outcome.status === "suspended" && onSuspend) {
-        deferredPauseHandler = async () => {
-          await onSuspend(outcome.resumeVersion);
-        };
+      } else if (outcome.status === "suspended") {
+        // Queue continue already owns the lease. After a hard timeout, return
+        // the lease so the next wake starts with a full request budget.
+        if (
+          runArgs.ownsConversationLease &&
+          (outcome.reason === "timeout" ||
+            activeReplyContext.durability?.shouldYield?.())
+        ) {
+          throw new CooperativeTurnYieldError();
+        }
+        if (onSuspend) {
+          deferredPauseHandler = async () => {
+            await onSuspend(outcome.resumeVersion);
+          };
+        } else {
+          deferredFailureHandler = async () => {
+            await handleResumeFailure({
+              body: "Failed to resume Slack turn",
+              error: new Error(
+                `Resumed run ended suspended without a pause handler`,
+              ),
+              eventName: "slack.resume.turn.failed",
+              failureCode: "agent_run_failed",
+              turnLifecycle,
+              lockKey,
+              resumeArgs: runArgs,
+            });
+          };
+        }
       } else {
         deferredFailureHandler = async () => {
           await handleResumeFailure({
@@ -841,6 +870,16 @@ async function resumeSlackTurnInContext(
     }
   } catch (error) {
     await status.clear();
+
+    // Lease owner must requeue after a hard timeout park. Do not convert this
+    // into a user-visible resume failure.
+    if (isCooperativeTurnYieldError(error)) {
+      if (lock) {
+        await stateAdapter.releaseLock(lock);
+      }
+      await processingReaction?.stop();
+      throw error;
+    }
 
     if (runResultHandled) {
       postDeliveryCommitError = error;

@@ -632,6 +632,7 @@ describe("oauth resume slack integration", () => {
       agentRunner: {
         run: async () => ({
           status: "suspended" as const,
+          reason: "timeout" as const,
           resumeVersion: 3,
         }),
       },
@@ -664,6 +665,7 @@ describe("oauth resume slack integration", () => {
       agentRunner: {
         run: async () => ({
           status: "suspended" as const,
+          reason: "timeout" as const,
           resumeVersion: 3,
         }),
       },
