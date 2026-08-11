@@ -1,4 +1,7 @@
-import type { ConversationReportEvent } from "@sentry/junior/api/schema";
+import type {
+  ConversationPendingMessage,
+  ConversationReportEvent,
+} from "@sentry/junior/api/schema";
 
 import type {
   ConversationTranscript,
@@ -50,9 +53,59 @@ function specialToolIds(events: ConversationReportEvent[]): Set<string> {
   return ids;
 }
 
+function historyMessageIds(
+  messages: readonly TranscriptViewMessage[],
+): Set<string> {
+  const ids = new Set<string>();
+  for (const message of messages) {
+    if (message.messageId) ids.add(message.messageId);
+  }
+  return ids;
+}
+
+/** Project one accepted mailbox row into a pending transcript message. */
+export function pendingTranscriptMessage(
+  message: ConversationPendingMessage,
+  index: number,
+): TranscriptViewMessage {
+  return {
+    delivery: message.delivery,
+    messageId: message.messageId,
+    parts: message.redacted
+      ? [{ type: "text", redacted: true }]
+      : [{ type: "text", text: message.text ?? "" }],
+    pending: true,
+    role: "user",
+    source: message.source,
+    // Keep pending rows after history without colliding with real event seqs.
+    sourceSeq: Number.MAX_SAFE_INTEGER - 1_000_000 + index,
+    timestamp: Date.parse(message.createdAt),
+    ...(message.actorIdentity ? { actorIdentity: message.actorIdentity } : {}),
+  };
+}
+
+/**
+ * Append mailbox-pending rows that are not already present in committed history.
+ *
+ * History wins on `messageId`. Pending rows keep mailbox order after the latest
+ * committed transcript content.
+ */
+export function mergePendingTranscriptMessages(
+  messages: TranscriptViewMessage[],
+  pending: readonly ConversationPendingMessage[] | undefined,
+): TranscriptViewMessage[] {
+  if (!pending?.length) return messages;
+  const committedIds = historyMessageIds(messages);
+  const extras = pending
+    .filter((message) => !committedIds.has(message.messageId))
+    .map((message, index) => pendingTranscriptMessage(message, index));
+  return extras.length === 0 ? messages : [...messages, ...extras];
+}
+
 /** Reduce the ordered reporting event API into dashboard-only transcript rows. */
 export function conversationTranscriptMessages(
   conversation: ConversationTranscript,
+  pendingMessages?: readonly ConversationPendingMessage[],
 ): TranscriptViewMessage[] {
   const replacedToolIds = specialToolIds(conversation.events);
   const tools = new Map<
@@ -120,6 +173,7 @@ export function conversationTranscriptMessages(
             ? { type: "text", redacted: true }
             : { type: "text", text: data.text! },
         ]),
+        messageId: data.messageId,
         ...(data.actorIdentity ? { actorIdentity: data.actorIdentity } : {}),
         ...(data.eventType ? { eventType: data.eventType } : {}),
         ...(data.source ? { source: data.source } : {}),
@@ -300,5 +354,8 @@ export function conversationTranscriptMessages(
     }
   }
 
-  return messages.sort((left, right) => left.sourceSeq - right.sourceSeq);
+  const ordered = messages.sort(
+    (left, right) => left.sourceSeq - right.sourceSeq,
+  );
+  return mergePendingTranscriptMessages(ordered, pendingMessages);
 }

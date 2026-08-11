@@ -11,6 +11,7 @@ import {
   conversationFeedQuerySchema,
   conversationFeedSchema,
   conversationParamsSchema,
+  conversationPendingMessagesReportSchema,
   conversationStatsReportSchema,
   locationDetailReportSchema,
   locationDirectoryReportSchema,
@@ -114,6 +115,20 @@ export function createMockReportingApi(): Hono<{
     return report
       ? jsonResponse(conversationEventPageSchema, report)
       : errorResponse("Invalid conversation cursor.", 400);
+  });
+  app.get("/conversations/:conversationId/pending-messages", (c) => {
+    const params = conversationParamsSchema.safeParse(c.req.param());
+    if (!params.success) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    if (!readMockConversationDetail(params.data.conversationId)) {
+      return errorResponse("Conversation not found.", 404);
+    }
+    return jsonResponse(conversationPendingMessagesReportSchema, {
+      conversationId: params.data.conversationId,
+      generatedAt: new Date().toISOString(),
+      messages: [],
+    });
   });
   app.get("/conversations/:conversationId", (c) => {
     const params = conversationParamsSchema.safeParse(c.req.param());

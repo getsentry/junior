@@ -12,6 +12,7 @@ import {
   conversationFeedQuerySchema,
   conversationFeedSchema,
   conversationParamsSchema,
+  conversationPendingMessagesReportSchema,
   conversationStatsReportSchema,
   createConversationBodySchema,
   createConversationMessageBodySchema,
@@ -26,6 +27,7 @@ import {
 import { readConversationDetail } from "./detail";
 import { readConversationEvents } from "./event-list";
 import { readConversationFeed } from "./list";
+import { requireConversationPendingMessages } from "./pending-messages";
 import { readConversationStats } from "./stats";
 
 /** Create the HTTP routes owned by the conversations API. */
@@ -142,6 +144,25 @@ export function createConversationRoutes(): Hono<JuniorApiEnv> {
       });
       if (!report) throwApiError(404, "Conversation not found.");
       return jsonResponse(conversationEventPageSchema, report);
+    },
+  );
+
+  app.get(
+    "/:conversationId/pending-messages",
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    async (context) => {
+      const { conversationId } = context.req.valid("param");
+      const viewer = context.get("viewer");
+      return jsonResponse(
+        conversationPendingMessagesReportSchema,
+        await requireConversationPendingMessages(conversationId, {
+          ...(viewer ? { viewer } : {}),
+        }),
+      );
     },
   );
 

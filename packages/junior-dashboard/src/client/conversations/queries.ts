@@ -11,6 +11,7 @@ import type {
   ConversationDetailReport,
   ConversationEventPage,
   ConversationFeed,
+  ConversationPendingMessagesReport,
   ConversationSummaryReport,
 } from "@sentry/junior/api/schema";
 import {
@@ -18,6 +19,7 @@ import {
   archiveConversationResponseSchema,
   conversationDetailReportSchema,
   conversationEventPageSchema,
+  conversationPendingMessagesReportSchema,
 } from "@sentry/junior/api/schema";
 
 import { DashboardApiError, fetchDashboardJson, patch, post } from "../http";
@@ -94,6 +96,13 @@ export function usePendingArchiveConversationUpdates() {
   });
 }
 
+/** Return the stable cache key for one conversation mailbox snapshot. */
+export function conversationPendingMessagesQueryKey(
+  conversationId: string | undefined,
+) {
+  return ["conversation", conversationId, "pending-messages"] as const;
+}
+
 /** Define the bounded, polling conversation-detail resource. */
 export function conversationDetailQueryOptions(
   conversationId: string | undefined,
@@ -108,6 +117,24 @@ export function conversationDetailQueryOptions(
   });
 }
 
+/** Define the bounded mailbox snapshot polled while work may still be queued. */
+export function conversationPendingMessagesQueryOptions(
+  conversationId: string | undefined,
+  options?: { activeConversation?: boolean },
+) {
+  return queryOptions({
+    enabled: Boolean(conversationId),
+    queryKey: conversationPendingMessagesQueryKey(conversationId),
+    queryFn: ({ signal }) =>
+      readConversationPendingMessages(conversationId!, signal),
+    refetchInterval: (query) =>
+      options?.activeConversation || Boolean(query.state.data?.messages.length)
+        ? 2_000
+        : false,
+    retry: false,
+  });
+}
+
 /** Create one dashboard conversation and refresh the personal feed. */
 export function useCreateConversation() {
   const queryClient = useQueryClient();
@@ -117,10 +144,16 @@ export function useCreateConversation() {
       message: string;
       visibility?: "private" | "public";
     }) => post(acceptedConversationMessageSchema, "/api/conversations", args),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: ["dashboard", "conversations"],
-      });
+    onSuccess: async (accepted) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["dashboard", "conversations"],
+        }),
+        queryClient.invalidateQueries({
+          exact: true,
+          queryKey: conversationPendingMessagesQueryKey(accepted.conversationId),
+        }),
+      ]);
     },
   });
 }
@@ -143,6 +176,10 @@ export function useAppendConversationMessage(conversationId: string) {
         queryClient.invalidateQueries({
           exact: true,
           queryKey: conversationDetailQueryKey(conversationId),
+        }),
+        queryClient.invalidateQueries({
+          exact: true,
+          queryKey: conversationPendingMessagesQueryKey(conversationId),
         }),
       ]);
     },
@@ -303,6 +340,11 @@ function buildArchivedConversationSnapshot(
 export function useConversationData(conversationId: string | undefined) {
   const queryClient = useQueryClient();
   const detail = useQuery(conversationDetailQueryOptions(conversationId));
+  const pending = useQuery(
+    conversationPendingMessagesQueryOptions(conversationId, {
+      activeConversation: detail.data?.status === "active",
+    }),
+  );
   const historyStatus = detail.data?.eventHistory.status;
   const historyQueryKey = useMemo(
     () => ["conversation", conversationId, "history", historyStatus] as const,
@@ -332,6 +374,7 @@ export function useConversationData(conversationId: string | undefined) {
         : undefined,
     [detail.data, historyPages],
   );
+  const pendingMessages = pending.data?.messages ?? [];
   const invalidHistoryCursor = isInvalidCursorError(history.error);
   const shouldRefreshDetail = Boolean(
     detail.data &&
@@ -382,6 +425,7 @@ export function useConversationData(conversationId: string | undefined) {
       : Boolean(detail.data?.previousCursor),
     isPending: detail.isPending,
     isLoadingPreviousPage,
+    pendingMessages,
     loadCompleteTranscript: () => {
       if (!conversationId || !detail.data) {
         throw new Error("Cannot load a conversation without an id");
@@ -411,6 +455,18 @@ export function readConversationData(
   return fetchDashboardJson(
     conversationDetailReportSchema,
     `/api/conversations/${encodeURIComponent(conversationId)}`,
+    signal,
+  );
+}
+
+/** Read accepted mailbox messages that have not reached durable history yet. */
+export function readConversationPendingMessages(
+  conversationId: string,
+  signal?: AbortSignal,
+): Promise<ConversationPendingMessagesReport> {
+  return fetchDashboardJson(
+    conversationPendingMessagesReportSchema,
+    `/api/conversations/${encodeURIComponent(conversationId)}/pending-messages`,
     signal,
   );
 }

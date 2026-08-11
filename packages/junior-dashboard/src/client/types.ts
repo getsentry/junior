@@ -97,7 +97,13 @@ export type TranscriptViewTurnContext = {
 export type TranscriptViewMessage = {
   actorIdentity?: ActorIdentity;
   contexts?: TranscriptViewTurnContext[];
+  /** Mailbox delivery mode while the message is still pending history commit. */
+  delivery?: "defer" | "interrupt";
   eventType?: string;
+  /** Stable history/message id used to drop pending rows after commit. */
+  messageId?: string;
+  /** True while the message is accepted in the mailbox but not yet in history. */
+  pending?: boolean;
   route?: {
     confidence?: number;
     modelId: string;
@@ -108,7 +114,7 @@ export type TranscriptViewMessage = {
   outcome?: "error" | "delivery_failed";
   parts: TranscriptViewPart[];
   role: "assistant" | "system" | "tool" | "user";
-  source?: "web";
+  source?: "slack" | "web";
   sourceSeq: number;
   timestamp?: number;
 };

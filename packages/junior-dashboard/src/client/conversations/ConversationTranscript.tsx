@@ -22,6 +22,7 @@ import {
   TriangleAlert,
   type LucideIcon,
 } from "lucide-react";
+import type { ConversationPendingMessage } from "@sentry/junior/api/schema";
 
 import { HighlightedCode } from "../code";
 import {
@@ -33,6 +34,7 @@ import {
   visualStatusForSummary,
 } from "../format";
 import { cn } from "../styles";
+import { ShimmerText } from "../components/ShimmerText";
 import { conversationTranscriptMessages } from "./eventTranscript";
 import type {
   ConversationTranscript,
@@ -93,6 +95,7 @@ export function ConversationTranscriptView(props: {
     conversation: ConversationTranscript;
   }) => void;
   conversation: ConversationTranscript;
+  pendingMessages?: readonly ConversationPendingMessage[];
   responding?: boolean;
   view: TranscriptViewMode;
 }) {
@@ -108,6 +111,7 @@ export function ConversationTranscriptView(props: {
         <SegmentEvents
           onOpenSubagentTranscript={props.onOpenSubagentTranscript}
           conversation={props.conversation}
+          pendingMessages={props.pendingMessages}
           view={props.view}
         />
         {props.responding ? <TypingIndicator /> : null}
@@ -159,7 +163,7 @@ function transcriptRoleLabel(
   return transcriptMessageActorLabel(conversation, message);
 }
 
-function transcriptMessageClass(role: string): string {
+function transcriptMessageClass(role: string, pending?: boolean): string {
   const kind = transcriptRoleKind(role);
 
   return cn(
@@ -174,7 +178,16 @@ function transcriptMessageClass(role: string): string {
       "border-white/[0.06] bg-black/15 text-dashboard-text-muted shadow-none",
     kind === "other" &&
       "border-white/[0.08] bg-white/[0.03] text-dashboard-text",
+    pending && "border-dashed opacity-90",
   );
+}
+
+function pendingDeliveryLabel(
+  delivery: TranscriptViewMessage["delivery"],
+): string | undefined {
+  if (delivery === "interrupt") return "Interrupts current turn";
+  if (delivery === "defer") return "Queued after current turn";
+  return undefined;
 }
 
 function transcriptRoleClass(role: string): string {
@@ -206,11 +219,12 @@ function transcriptRoleLabelClass(role: string): string {
 function TranscriptMessageShell(props: {
   children: ReactNode;
   onCopy?: ClipboardEventHandler<HTMLElement>;
+  pending?: boolean;
   role: string;
 }) {
   return (
     <article
-      className={transcriptMessageClass(props.role)}
+      className={transcriptMessageClass(props.role, props.pending)}
       onCopy={props.onCopy}
     >
       {props.children}
@@ -228,14 +242,28 @@ function TranscriptMessageHeader(props: {
     (props.conversation.surface === "slack" ? "slack" : undefined);
   const sourceLabel =
     source === "slack" ? "Slack" : source === "web" ? "Dashboard" : undefined;
-  const metaParts = [sourceLabel, ...(props.meta ?? [])].filter(isString);
+  const pendingLabel = props.message.pending ? "Pending" : undefined;
+  const deliveryLabel = props.message.pending
+    ? pendingDeliveryLabel(props.message.delivery)
+    : undefined;
+  const metaParts = [
+    sourceLabel,
+    pendingLabel,
+    deliveryLabel,
+    ...(props.meta ?? []),
+  ].filter(isString);
   const metaText = metaParts.join(" · ");
+  const roleLabel = transcriptRoleLabel(props.message, props.conversation);
 
   return (
     <TranscriptHeadingRow
       left={
         <span className={transcriptRoleLabelClass(props.message.role)}>
-          {transcriptRoleLabel(props.message, props.conversation)}
+          {props.message.pending ? (
+            <ShimmerText active>{roleLabel}</ShimmerText>
+          ) : (
+            roleLabel
+          )}
         </span>
       }
       leftClassName={transcriptRoleClass(props.message.role)}
@@ -256,9 +284,13 @@ function SegmentEvents(props: {
     conversation: ConversationTranscript;
   }) => void;
   conversation: ConversationTranscript;
+  pendingMessages?: readonly ConversationPendingMessage[];
   view: TranscriptViewMode;
 }) {
-  const messages = conversationTranscriptMessages(props.conversation);
+  const messages = conversationTranscriptMessages(
+    props.conversation,
+    props.pendingMessages,
+  );
 
   return (
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 pt-3">
@@ -274,6 +306,7 @@ function SegmentEvents(props: {
         <RedactedTranscriptView
           onOpenSubagentTranscript={props.onOpenSubagentTranscript}
           conversation={props.conversation}
+          pendingMessages={props.pendingMessages}
         />
       ) : messages.length > 0 ? (
         <VisibleTranscriptEntries
@@ -605,11 +638,15 @@ function RedactedTranscriptView(props: {
     conversation: ConversationTranscript;
   }) => void;
   conversation: ConversationTranscript;
+  pendingMessages?: readonly ConversationPendingMessage[];
 }) {
   return (
     <TranscriptEntryList
       entries={groupTranscriptMessages(
-        conversationTranscriptMessages(props.conversation),
+        conversationTranscriptMessages(
+          props.conversation,
+          props.pendingMessages,
+        ),
       )}
       keyPrefix={`${props.conversation.conversationId}:redacted`}
       renderContext={(entry) => (
@@ -682,7 +719,10 @@ function RedactedMessageView(props: {
   );
 
   return (
-    <TranscriptMessageShell role={props.message.role}>
+    <TranscriptMessageShell
+      pending={props.message.pending}
+      role={props.message.role}
+    >
       <TranscriptMessageHeader
         meta={meta}
         message={props.message}
@@ -753,6 +793,7 @@ function TranscriptMessageView(props: {
 
   return (
     <TranscriptMessageShell
+      pending={props.message.pending}
       role={props.message.role}
       onCopy={(event) => {
         const selection = event.currentTarget.ownerDocument.getSelection();

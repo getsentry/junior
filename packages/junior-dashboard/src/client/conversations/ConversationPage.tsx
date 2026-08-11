@@ -179,6 +179,7 @@ export function ConversationPage(props: {
                 live={conversationIsLive(visualStatus, detail.data)}
                 loadingPreviousPage={detail.isLoadingPreviousPage}
                 onLoadPreviousPage={detail.loadPreviousPage}
+                pendingMessages={detail.pendingMessages}
                 responding={
                   !detail.error && conversationIsLive(visualStatus, detail.data)
                 }

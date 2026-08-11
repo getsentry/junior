@@ -91,6 +91,51 @@ export const actorIdentitySchema = z
   })
   .strict();
 
+/** Mailbox delivery mode for one accepted inbound message. */
+export const conversationPendingMessageDeliverySchema = z.enum([
+  "defer",
+  "interrupt",
+]);
+
+/** One accepted mailbox message that has not reached durable history yet. */
+export const conversationPendingMessageSchema = z
+  .object({
+    actorIdentity: actorIdentitySchema.optional(),
+    createdAt: z.string().datetime(),
+    delivery: conversationPendingMessageDeliverySchema,
+    inboundMessageId: z.string().min(1),
+    messageId: z.string().min(1),
+    receivedAt: z.string().datetime(),
+    role: z.literal("user"),
+    source: z.enum(["slack", "web"]),
+    text: z.string().optional(),
+    redacted: z.literal(true).optional(),
+  })
+  .strict()
+  .superRefine((data, context) => {
+    if ((data.text === undefined) === (data.redacted !== true)) {
+      context.addIssue({
+        code: "custom",
+        message: "pending message content must be text or explicitly redacted",
+      });
+    }
+    if (data.redacted && data.actorIdentity) {
+      context.addIssue({
+        code: "custom",
+        message: "redacted pending messages must not expose actor identity",
+      });
+    }
+  });
+
+/** Bounded mailbox snapshot for one conversation transcript. */
+export const conversationPendingMessagesReportSchema = z
+  .object({
+    conversationId: z.string().min(1),
+    generatedAt: z.string().datetime(),
+    messages: z.array(conversationPendingMessageSchema),
+  })
+  .strict();
+
 export const conversationAuxiliaryCostsSchema = z
   .object({
     costUsd: z.number().finite().nonnegative(),
@@ -712,4 +757,13 @@ export type CreateConversationMessageBody = z.infer<
 >;
 export type AcceptedConversationMessage = z.infer<
   typeof acceptedConversationMessageSchema
+>;
+export type ConversationPendingMessageDelivery = z.infer<
+  typeof conversationPendingMessageDeliverySchema
+>;
+export type ConversationPendingMessage = z.infer<
+  typeof conversationPendingMessageSchema
+>;
+export type ConversationPendingMessagesReport = z.infer<
+  typeof conversationPendingMessagesReportSchema
 >;
