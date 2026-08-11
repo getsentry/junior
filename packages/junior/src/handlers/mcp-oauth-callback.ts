@@ -67,6 +67,7 @@ import type { WaitUntilFn } from "@/handlers/types";
 import { createSlackResumeActor, type Actor } from "@/chat/actor";
 import { requireSlackDestination } from "@/chat/destination";
 import { relayLocalOAuthCallback } from "@/chat/local/oauth-relay";
+import { deleteWebAuthorization } from "@/chat/api-turns/authorization";
 
 const CALLBACK_PAGES = {
   missing_state: {
@@ -93,7 +94,7 @@ const CALLBACK_PAGES = {
   success: {
     title: "Authorization complete",
     message:
-      "Your MCP access is connected. Junior will continue the paused request in Slack.",
+      "Your MCP access is connected. Junior will continue the paused request.",
     status: 200,
   },
   failure: {
@@ -136,7 +137,7 @@ function htmlResponse(
       : CALLBACK_PAGES[kind];
   const footerMessage =
     kind === "success" && !options?.local
-      ? "You can close this tab and return to Slack."
+      ? "You can close this tab and return to Junior."
       : undefined;
   return htmlCallbackResponse(page.title, page.message, page.status, {
     footerMessage,
@@ -503,7 +504,10 @@ async function isCurrentMcpAuthorizationAttempt(
 function mcpConversationId(
   authSession: McpAuthSessionState,
 ): string | undefined {
-  if (authSession.destination?.platform === "local") {
+  if (
+    authSession.destination?.platform === "local" ||
+    authSession.source?.platform === "web"
+  ) {
     return authSession.conversationId;
   }
   if (authSession.channelId && authSession.threadTs) {
@@ -621,7 +625,37 @@ export async function GET(
       });
     }
 
-    if (authSession.destination?.platform !== "local") {
+    if (authSession.source?.platform === "web" && authSession.destination) {
+      waitUntil(async () => {
+        const turn = await getTurnRecord(
+          authSession.conversationId,
+          authSession.sessionId,
+        );
+        if (!turn || turn.state !== "paused" || turn.resumeReason !== "auth") {
+          return;
+        }
+        await recordAuthorizationCompleted({
+          conversationId: authSession.conversationId,
+          kind: "mcp",
+          provider,
+          actorId: authSession.userId,
+          authorizationId: mcpAuthorizationId({
+            provider,
+            sessionId: authSession.sessionId,
+          }),
+        });
+        await deleteWebAuthorization({
+          actorId: authSession.userId,
+          conversationId: authSession.conversationId,
+        });
+        await wakePausedTurn({
+          conversationId: authSession.conversationId,
+          destination: authSession.destination!,
+          turnId: authSession.sessionId,
+          expectedVersion: turn.version,
+        });
+      });
+    } else if (authSession.destination?.platform !== "local") {
       waitUntil(() =>
         resumeAuthorizedMcpTurn({
           authSession,

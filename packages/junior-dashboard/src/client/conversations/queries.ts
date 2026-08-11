@@ -128,7 +128,9 @@ export function conversationPendingMessagesQueryOptions(
     queryFn: ({ signal }) =>
       readConversationPendingMessages(conversationId!, signal),
     refetchInterval: (query) =>
-      options?.activeConversation || Boolean(query.state.data?.messages.length)
+      options?.activeConversation ||
+      Boolean(query.state.data?.messages.length) ||
+      Boolean(query.state.data?.authorization)
         ? 2_000
         : false,
     retry: false,
@@ -151,7 +153,9 @@ export function useCreateConversation() {
         }),
         queryClient.invalidateQueries({
           exact: true,
-          queryKey: conversationPendingMessagesQueryKey(accepted.conversationId),
+          queryKey: conversationPendingMessagesQueryKey(
+            accepted.conversationId,
+          ),
         }),
       ]);
     },
@@ -425,6 +429,7 @@ export function useConversationData(conversationId: string | undefined) {
       : Boolean(detail.data?.previousCursor),
     isPending: detail.isPending,
     isLoadingPreviousPage,
+    pendingAuthorization: pending.data?.authorization,
     pendingMessages,
     loadCompleteTranscript: () => {
       if (!conversationId || !detail.data) {

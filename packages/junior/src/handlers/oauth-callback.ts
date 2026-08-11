@@ -77,6 +77,7 @@ import { getSqlExecutor } from "@/chat/db";
 import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
 import { lookupSlackUserProfile } from "@/chat/slack/users";
 import { parseSlackUserId } from "@/chat/slack/ids";
+import { deleteWebAuthorization } from "@/chat/api-turns/authorization";
 
 interface OAuthCallbackOptions {
   agentRunner: AgentRunner;
@@ -750,7 +751,10 @@ export async function GET(
     );
   }
 
-  if (stored.destination?.platform !== "local") {
+  if (
+    stored.destination?.platform !== "local" &&
+    stored.source?.platform !== "web"
+  ) {
     waitUntil(async () => {
       try {
         await publishAppHomeView(
@@ -764,12 +768,48 @@ export async function GET(
     });
   }
 
+  const resumesWebTurn = Boolean(
+    stored.source?.platform === "web" &&
+    stored.destination &&
+    stored.resumeConversationId &&
+    stored.resumeSessionId,
+  );
   const resumesAgentTurn = Boolean(
     stored.destination?.platform !== "local" &&
     stored.resumeConversationId &&
     stored.resumeSessionId,
   );
-  if (resumesAgentTurn) {
+  if (resumesWebTurn) {
+    waitUntil(async () => {
+      const turn = await getTurnRecord(
+        stored.resumeConversationId!,
+        stored.resumeSessionId!,
+      );
+      if (!turn || turn.state !== "paused" || turn.resumeReason !== "auth") {
+        return;
+      }
+      await recordAuthorizationCompleted({
+        conversationId: stored.resumeConversationId!,
+        kind: "plugin",
+        provider: stored.provider,
+        actorId: stored.userId,
+        authorizationId: pluginAuthorizationId({
+          provider: stored.provider,
+          sessionId: stored.resumeSessionId!,
+        }),
+      });
+      await deleteWebAuthorization({
+        actorId: stored.userId,
+        conversationId: stored.resumeConversationId!,
+      });
+      await wakePausedTurn({
+        conversationId: stored.resumeConversationId!,
+        destination: stored.destination!,
+        turnId: stored.resumeSessionId!,
+        expectedVersion: turn.version,
+      });
+    });
+  } else if (resumesAgentTurn) {
     waitUntil(() =>
       withLogContext(
         { conversationId: stored.resumeConversationId },
@@ -806,13 +846,15 @@ export async function GET(
   }
 
   const statusMessage =
-    stored.destination?.platform === "local"
+    stored.destination?.platform === "local" && !resumesWebTurn
       ? "Your request is continuing in the local Junior client."
-      : resumesAgentTurn
-        ? "Your request is being processed in Slack."
-        : `Your ${providerLabel} account is connected.`;
+      : resumesWebTurn
+        ? "Your request is continuing in Junior."
+        : resumesAgentTurn
+          ? "Your request is being processed in Slack."
+          : `Your ${providerLabel} account is connected.`;
   const footerMessage =
-    stored.destination?.platform === "local"
+    stored.destination?.platform === "local" || resumesWebTurn
       ? "You can close this tab and return to Junior."
       : "You can close this tab and return to Slack.";
   return htmlCallbackResponse(

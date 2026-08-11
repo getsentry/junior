@@ -82,6 +82,7 @@ import {
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { StoredSlackActor } from "@/chat/actor";
+import { createWebAuthorization } from "@/chat/api-turns/authorization";
 
 const apiTurnMailboxMetadataSchema = z
   .object({
@@ -737,7 +738,10 @@ export function createApiTurnWorker(options: {
             publishExternally: false,
             source,
             surface: "api",
-            disabledFeatures: ["interactive-auth"] as const,
+            authorization: createWebAuthorization({
+              actorId: actor.userId,
+              conversationId: context.conversationId,
+            }),
             state: {
               pendingAuth: conversation.processing.pendingAuth,
               sandboxRef,
@@ -753,16 +757,23 @@ export function createApiTurnWorker(options: {
                   sandboxRef,
                 });
               },
+              recordPendingAuth: async (pendingAuth) => {
+                conversation.processing.pendingAuth = pendingAuth;
+                await persistThreadStateById(context.conversationId, {
+                  conversation,
+                  sandboxRef,
+                });
+              },
             },
           });
 
           if (outcome.status === "suspended") {
             return { status: "yielded" };
           }
-          if (outcome.status !== "completed") {
-            throw new Error(`API agent run ended with ${outcome.status}`);
+          if (outcome.status === "awaiting_auth") {
+            await acknowledge();
+            return { status: "completed" };
           }
-
           reply = outcome.result;
           modelFailureCaptureAttempted =
             reply.diagnostics.outcome !== "success";

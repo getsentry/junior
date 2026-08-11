@@ -127,9 +127,19 @@ export const conversationPendingMessageSchema = z
     }
   });
 
+/** Participant-only authorization prompt for a parked web turn. */
+export const conversationPendingAuthorizationSchema = z
+  .object({
+    authorizationUrl: z.string().url(),
+    completionText: z.string().min(1),
+    label: z.string().min(1),
+  })
+  .strict();
+
 /** Bounded mailbox snapshot for one conversation transcript. */
 export const conversationPendingMessagesReportSchema = z
   .object({
+    authorization: conversationPendingAuthorizationSchema.optional(),
     conversationId: z.string().min(1),
     generatedAt: z.string().datetime(),
     messages: z.array(conversationPendingMessageSchema),

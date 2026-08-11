@@ -188,6 +188,11 @@ export function ConversationPage(props: {
             </div>
           ) : null}
           <div className="grid min-w-0">
+            {detail.pendingAuthorization ? (
+              <PendingAuthorization
+                authorization={detail.pendingAuthorization}
+              />
+            ) : null}
             {detail.data ? (
               <PendingMailboxStack
                 conversation={detail.data}
@@ -217,6 +222,30 @@ export function ConversationPage(props: {
         onClose={() => setSubagentTarget(undefined)}
         target={subagentTarget}
       />
+    </div>
+  );
+}
+
+function PendingAuthorization(props: {
+  authorization: {
+    authorizationUrl: string;
+    completionText: string;
+    label: string;
+  };
+}) {
+  return (
+    <div className="mb-2 rounded-lg border border-cyan-300/20 bg-cyan-300/[0.07] px-3 py-2.5 font-sans text-sm text-dashboard-text">
+      <a
+        className="font-medium text-cyan-200 underline decoration-cyan-300/40 underline-offset-2 hover:text-cyan-100"
+        href={props.authorization.authorizationUrl}
+        rel="noreferrer"
+        target="_blank"
+      >
+        {props.authorization.label}
+      </a>
+      <p className="mb-0 mt-1 text-xs text-dashboard-text-muted">
+        {props.authorization.completionText}
+      </p>
     </div>
   );
 }

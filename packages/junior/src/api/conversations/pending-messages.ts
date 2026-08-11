@@ -14,6 +14,8 @@ import {
   type ConversationPendingMessagesReport,
 } from "../schema/conversation";
 import { readConversationAccessFromSql } from "./access";
+import { webActorFromEmail } from "@/chat/api-turns/work";
+import { getWebAuthorization } from "@/chat/api-turns/authorization";
 
 const apiTurnMailboxMetadataSchema = z
   .object({
@@ -167,9 +169,21 @@ export async function readConversationPendingMessages(
   if (!conversation) return undefined;
 
   const access = (
-    await readConversationAccessFromSql(getDb(), [conversationId], options.viewer)
+    await readConversationAccessFromSql(
+      getDb(),
+      [conversationId],
+      options.viewer,
+    )
   ).get(conversationId);
   const canExposePayload = access?.canViewPrivateContent ?? false;
+  const isParticipant = access?.isParticipant ?? false;
+  const actorId = options.viewer?.email
+    ? webActorFromEmail(options.viewer.email).userId
+    : undefined;
+  const authorization =
+    isParticipant && actorId
+      ? await getWebAuthorization({ actorId, conversationId })
+      : undefined;
 
   const work = await getConversation({ conversationId });
   const projectedMessages = await Promise.all(
@@ -182,6 +196,15 @@ export async function readConversationPendingMessages(
   );
 
   return conversationPendingMessagesReportSchema.parse({
+    ...(authorization
+      ? {
+          authorization: {
+            authorizationUrl: authorization.authorizationUrl,
+            completionText: authorization.completionText,
+            label: authorization.label,
+          },
+        }
+      : {}),
     conversationId,
     generatedAt: new Date().toISOString(),
     messages,
