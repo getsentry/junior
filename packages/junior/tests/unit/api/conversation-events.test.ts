@@ -230,6 +230,45 @@ describe("conversation report event projection", () => {
     ]);
   });
 
+  it("projects routing facts for messages present in the report page", () => {
+    const events = [
+      event(1, {
+        type: "message",
+        messageId: "context-1",
+        role: "user",
+        text: "can you clarify that?",
+        meta: { explicitMention: false },
+      }),
+      event(2, {
+        type: "turn_started",
+        turnId: "turn-1",
+        inputMessageIds: ["context-1", "private-input-id"],
+        surface: "slack",
+      }),
+    ];
+
+    expect(
+      projectConversationReportEventPage({
+        canExposePayload: true,
+        events,
+      }).map((entry) => entry.data),
+    ).toEqual([
+      {
+        type: "message",
+        messageId: "context-1",
+        role: "user",
+        text: "can you clarify that?",
+        explicitMention: false,
+      },
+      {
+        type: "turn_lifecycle",
+        turnId: "turn-1",
+        state: "started",
+        inputMessageIds: ["context-1"],
+      },
+    ]);
+  });
+
   it("projects turn context only across the authorized payload boundary", () => {
     const context = event(1, {
       type: "turn_context",

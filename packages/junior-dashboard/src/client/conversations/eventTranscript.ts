@@ -132,6 +132,7 @@ export function conversationTranscriptMessages(
     Extract<TranscriptViewPart, { type: "subagent" }>
   >();
   const messages: TranscriptViewMessage[] = [];
+  const messagesById = new Map<string, TranscriptViewMessage>();
   const latestUserMessageByTurn = new Map<string, TranscriptViewMessage>();
   let latestUserMessage: TranscriptViewMessage | undefined;
 
@@ -190,10 +191,26 @@ export function conversationTranscriptMessages(
         messageId: data.messageId,
         ...(data.actorIdentity ? { actorIdentity: data.actorIdentity } : {}),
         ...(data.eventType ? { eventType: data.eventType } : {}),
+        ...(data.explicitMention !== undefined
+          ? { explicitMention: data.explicitMention }
+          : {}),
         ...(data.source ? { source: data.source } : {}),
       };
       messages.push(message);
+      messagesById.set(message.messageId, message);
       if (message.role === "user") latestUserMessage = message;
+      continue;
+    }
+
+    if (data.type === "message_handled") {
+      const message = messagesById.get(data.messageId);
+      if (
+        message?.role === "user" &&
+        message.explicitMention === false &&
+        !message.eventType
+      ) {
+        message.context = true;
+      }
       continue;
     }
 
@@ -213,8 +230,26 @@ export function conversationTranscriptMessages(
     }
 
     if (data.type === "turn_lifecycle" && data.state === "started") {
-      if (latestUserMessage) {
+      const inputMessages = data.inputMessageIds
+        ?.map((messageId) => messagesById.get(messageId))
+        .filter((message) => message !== undefined);
+      const turnUserMessage = inputMessages
+        ?.slice()
+        .reverse()
+        .find((message) => message.role === "user");
+      if (turnUserMessage) {
+        latestUserMessageByTurn.set(data.turnId, turnUserMessage);
+      } else if (latestUserMessage) {
         latestUserMessageByTurn.set(data.turnId, latestUserMessage);
+      }
+      for (const message of inputMessages ?? []) {
+        if (
+          message.role === "user" &&
+          message.explicitMention === false &&
+          !message.eventType
+        ) {
+          message.context = true;
+        }
       }
       continue;
     }
@@ -368,8 +403,14 @@ export function conversationTranscriptMessages(
     }
   }
 
-  const ordered = messages.sort(
-    (left, right) => left.sourceSeq - right.sourceSeq,
-  );
+  const ordered = messages
+    .filter(
+      (message) =>
+        message.role !== "user" ||
+        message.eventType !== undefined ||
+        message.explicitMention !== false ||
+        message.context === true,
+    )
+    .sort((left, right) => left.sourceSeq - right.sourceSeq);
   return mergePendingTranscriptMessages(ordered, pendingMessages);
 }

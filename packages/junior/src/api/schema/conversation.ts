@@ -206,6 +206,7 @@ const conversationReportMessageEventDataSchema = z
     source: z.literal("web").optional(),
     actorIdentity: actorIdentitySchema.optional(),
     eventType: z.string().min(1).optional(),
+    explicitMention: z.boolean().optional(),
     text: z.string().optional(),
     redacted: z.literal(true).optional(),
   })
@@ -340,7 +341,15 @@ const conversationReportTurnLifecycleEventDataSchema = z.discriminatedUnion(
       .object({
         type: z.literal("turn_lifecycle"),
         turnId: z.string().min(1),
-        state: z.enum(["started", "succeeded", "no_reply"]),
+        state: z.enum(["succeeded", "no_reply"]),
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("turn_lifecycle"),
+        turnId: z.string().min(1),
+        state: z.literal("started"),
+        inputMessageIds: z.array(z.string().min(1)).min(1).optional(),
       })
       .strict(),
     z
