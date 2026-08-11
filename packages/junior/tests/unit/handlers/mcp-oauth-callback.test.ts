@@ -289,8 +289,56 @@ describe("mcp oauth callback handler", () => {
     expect(response.status).toBe(200);
     const body = await response.text();
     expect(body).toContain("Your MCP access is connected");
+    expect(body).toContain("in the local client");
     expect(body).toContain("You can close this tab and return to Junior.");
     expect(body).not.toContain("You can close this tab and return to Slack.");
     expect(waitUntil.pendingCount()).toBe(0);
+  });
+
+  it("keeps web success copy when destination is local", async () => {
+    const webSession = {
+      schemaVersion: 2,
+      authSessionId: "state-123",
+      provider: "demo",
+      userId: "dashboard:alice",
+      conversationId: "local:web:alice",
+      destination: { platform: "local", conversationId: "local:web:alice" },
+      source: { platform: "web", conversationId: "local:web:alice" },
+      sessionId: "turn-1",
+      userMessage: "use MCP",
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    };
+    getMcpAuthSessionMock.mockResolvedValue(webSession);
+    finalizeMcpAuthorizationMock.mockResolvedValueOnce(webSession);
+    getPersistedThreadStateMock.mockResolvedValue({
+      conversation: {
+        processing: {
+          pendingAuth: {
+            authSessionId: "state-123",
+            kind: "mcp",
+            provider: "demo",
+            actorId: "dashboard:alice",
+            sessionId: "turn-1",
+            linkSentAtMs: 1,
+          },
+        },
+      },
+    });
+
+    const response = await GET(
+      makeRequest(
+        "https://example.com/api/oauth/callback/mcp/demo?code=auth-code&state=state-123",
+      ),
+      "demo",
+      waitUntil.fn,
+      { agentRunner: testAgentRunner },
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(body).toContain("Your MCP access is connected");
+    expect(body).not.toContain("in the local client");
+    expect(body).toContain("You can close this tab and return to Junior.");
   });
 });

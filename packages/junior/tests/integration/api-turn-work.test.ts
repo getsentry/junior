@@ -224,6 +224,25 @@ describe("api turn conversation work", () => {
             completionText: "Junior will continue automatically.",
             label: "Connect Hex",
           });
+          await saveTurnCheckpoint({
+            mode: "paused",
+            conversationId: request.conversationId,
+            turnId: request.turnId,
+            sliceId: 1,
+            reason: "auth",
+            messages: [
+              {
+                role: "user",
+                content: [{ type: "text", text: "Use Hex." }],
+                timestamp: Date.now(),
+              },
+            ],
+            destination: request.destination,
+            publishExternally: false,
+            source: request.source,
+            actor: request.actor,
+            surface: "api",
+          });
           return {
             status: "awaiting_auth",
             providerDisplayName: "Hex",
@@ -248,6 +267,118 @@ describe("api turn conversation work", () => {
     ).resolves.toMatchObject({
       authorizationUrl: "https://example.com/authorize",
       label: "Connect Hex",
+    });
+    await expect(
+      getTurnRecord(
+        accepted.conversationId,
+        apiTurnIdForMessage(accepted.messageId),
+      ),
+    ).resolves.toMatchObject({
+      resumeReason: "auth",
+      state: "paused",
+      surface: "api",
+    });
+  });
+
+  it("supersedes an auth-parked web turn when a newer message arrives", async () => {
+    const { actor, conversationStore, queue, state } =
+      await createApiTurnWorkFixture();
+    const accepted = await createAndEnqueueApiConversation(
+      {
+        actor,
+        idempotencyKey: "web-auth-supersede-1",
+        message: "Connect Hex first.",
+      },
+      { conversationStore, queue, state },
+    );
+    const parkedTurnId = apiTurnIdForMessage(accepted.messageId);
+    const authWorker = createApiTurnWorker({
+      agentRunner: {
+        run: async (request) => {
+          await request.authorization?.deliver({
+            authorizationUrl: "https://example.com/authorize",
+            completionText: "Junior will continue automatically.",
+            label: "Connect Hex",
+          });
+          await saveTurnCheckpoint({
+            mode: "paused",
+            conversationId: request.conversationId,
+            turnId: request.turnId,
+            sliceId: 1,
+            reason: "auth",
+            messages: [
+              {
+                role: "user",
+                content: [{ type: "text", text: "Connect Hex first." }],
+                timestamp: Date.now(),
+              },
+            ],
+            destination: request.destination,
+            publishExternally: false,
+            source: request.source,
+            actor: request.actor,
+            surface: "api",
+          });
+          return {
+            status: "awaiting_auth",
+            providerDisplayName: "Hex",
+          };
+        },
+      },
+    });
+
+    await expect(
+      processConversationQueueMessage(queue.takeMessage(), {
+        conversationStore,
+        queue,
+        run: authWorker,
+        state,
+      }),
+    ).resolves.toMatchObject({ status: "completed" });
+    await expect(
+      getTurnRecord(accepted.conversationId, parkedTurnId),
+    ).resolves.toMatchObject({
+      resumeReason: "auth",
+      state: "paused",
+    });
+
+    const followUp = await appendAndEnqueueApiConversationMessage(
+      {
+        actor,
+        conversationId: accepted.conversationId,
+        idempotencyKey: "web-auth-supersede-2",
+        message: "Skip auth and answer this instead.",
+      },
+      { conversationStore, queue, state },
+    );
+    const followUpWorker = createApiTurnWorker({
+      agentRunner: createApiTurnScriptedRunner({
+        replyText: "Answered the newer message.",
+      }),
+    });
+
+    await expect(
+      processConversationQueueMessage(queue.takeMessage(), {
+        conversationStore,
+        queue,
+        run: followUpWorker,
+        state,
+      }),
+    ).resolves.toMatchObject({ status: "completed" });
+
+    await expect(
+      getTurnRecord(accepted.conversationId, parkedTurnId),
+    ).resolves.toMatchObject({
+      state: "abandoned",
+    });
+    await expect(
+      getTurnRecord(
+        accepted.conversationId,
+        apiTurnIdForMessage(followUp.messageId),
+      ),
+    ).resolves.toMatchObject({
+      state: "completed",
+      surface: "api",
     });
   });
 

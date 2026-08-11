@@ -666,7 +666,11 @@ export async function GET(
     }
 
     return htmlResponse("success", {
-      local: authSession.destination?.platform === "local",
+      // Web roots keep a local destination for conversation-only delivery.
+      // Only the CLI path should get the local-client success copy.
+      local:
+        authSession.destination?.platform === "local" &&
+        authSession.source?.platform !== "web",
     });
   } catch (callbackError) {
     if (callbackError instanceof McpOAuthAttemptExpiredError) {
