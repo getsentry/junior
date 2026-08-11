@@ -104,30 +104,37 @@ function ToolSignature(props: {
 }) {
   const { active: searchActive } = useTranscriptSearch();
   const running = props.status === "running";
+  const failed = props.status === "error";
   const shimmering = running && !searchActive;
+  const statusLabel = running
+    ? `${props.name} (running)`
+    : failed
+      ? `${props.name} (failed)`
+      : undefined;
 
   return (
     <>
+      {failed ? (
+        <TriangleAlert
+          aria-hidden="true"
+          className="shrink-0 !text-rose-300"
+          size={12}
+          strokeWidth={2.2}
+        />
+      ) : null}
       <ShimmerText
         active={shimmering}
-        aria-label={running ? `${props.name} (running)` : undefined}
+        aria-label={statusLabel}
         as="strong"
         className={cn(
           "shrink-0 font-bold",
-          !shimmering && "text-dashboard-text",
+          failed
+            ? "!text-rose-300"
+            : !shimmering && "text-dashboard-text",
         )}
       >
         <HighlightText text={props.name} />
       </ShimmerText>
-      {props.status === "error" ? (
-        <span
-          aria-label="Tool failed"
-          className="inline-flex shrink-0 items-center gap-1 text-rose-300"
-        >
-          <TriangleAlert aria-hidden="true" size={12} strokeWidth={2.2} />
-          <span>failed</span>
-        </span>
-      ) : null}
       {props.preview && !searchActive ? (
         <code className="min-w-0 truncate font-[inherit] text-dashboard-text-muted group-open:hidden">
           (<HighlightText text={props.preview} />)

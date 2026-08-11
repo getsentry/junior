@@ -254,7 +254,7 @@ describe("dashboard canonical-event components", () => {
     );
     expect(html).toContain("jr-rpc config get github.repo");
     expect(html).toContain("junior-qa");
-    expect(html).toContain('aria-label="Tool failed"');
+    expect(html).toContain('aria-label="bash (failed)"');
   });
 
   it("keeps a running tool name searchable and accessible", () => {

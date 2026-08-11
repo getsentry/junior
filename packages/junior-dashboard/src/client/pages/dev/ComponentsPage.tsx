@@ -142,7 +142,7 @@ const TOOL_CALL_FIXTURES = [
     timestamp: TOOL_CALL_TIMESTAMP + 3_000,
   },
   {
-    description: "Failed tool with warning rail marker",
+    description: "Failed tool",
     part: {
       id: "gallery-error",
       input: {
