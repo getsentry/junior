@@ -32,7 +32,7 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
   );
   const pendingArchiveUpdates = usePendingArchiveConversationUpdates();
   const createConversation = useCreateConversation();
-  const [creating, setCreating] = useState(!selectedId);
+  const [creating, setCreating] = useState(false);
   const createSourceId = useRef<string | undefined>(undefined);
   const conversations = useMemo(
     () =>
@@ -54,9 +54,8 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
 
   useEffect(() => {
     if (!selectedId) {
-      // The dashboard root starts a new conversation. Later selections exit create.
+      // Root has no selection. Keep create mode only when New set it.
       createSourceId.current = undefined;
-      setCreating(true);
       return;
     }
     if (selectedId === createSourceId.current) return;
@@ -98,44 +97,10 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
         className={
           selectedId || creating
             ? "grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-white/[0.012]"
-            : "hidden min-h-0 overflow-hidden bg-white/[0.012] md:grid"
+            : "hidden min-h-0 overflow-hidden bg-white/[0.012] md:grid md:grid-rows-[minmax(0,1fr)]"
         }
       >
-        {creating ? (
-          <>
-            <div className="border-b border-white/[0.07] bg-white/[0.025] px-3 py-2.5 md:hidden">
-              <button
-                className="inline-flex items-center gap-2 font-mono text-xs text-dashboard-text-muted hover:text-dashboard-text"
-                onClick={() => {
-                  createSourceId.current = undefined;
-                  setCreating(false);
-                }}
-                type="button"
-              >
-                <ArrowLeft aria-hidden="true" size={15} />
-                Your conversations
-              </button>
-            </div>
-            <div className="min-h-0 overflow-y-auto">
-              <NewConversationView
-                error={
-                  createConversation.error
-                    ? "Could not create the conversation. Try again."
-                    : undefined
-                }
-                pending={createConversation.isPending}
-                onSubmit={async (message, idempotencyKey, visibility) => {
-                  const accepted = await createConversation.mutateAsync({
-                    idempotencyKey,
-                    message,
-                    visibility,
-                  });
-                  navigate(conversationPath(accepted.conversationId));
-                }}
-              />
-            </div>
-          </>
-        ) : selectedId ? (
+        {selectedId && !creating ? (
           <>
             <div className="border-b border-white/[0.07] bg-white/[0.025] px-3 py-2.5 md:hidden">
               <Link
@@ -162,16 +127,41 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
             />
           </>
         ) : (
-          <div className="grid min-h-0 place-items-center px-6 text-center">
-            <div>
-              <div className="font-display text-lg font-medium text-dashboard-text">
-                Select a conversation
+          <>
+            {creating ? (
+              <div className="border-b border-white/[0.07] bg-white/[0.025] px-3 py-2.5 md:hidden">
+                <button
+                  className="inline-flex items-center gap-2 font-mono text-xs text-dashboard-text-muted hover:text-dashboard-text"
+                  onClick={() => {
+                    createSourceId.current = undefined;
+                    setCreating(false);
+                  }}
+                  type="button"
+                >
+                  <ArrowLeft aria-hidden="true" size={15} />
+                  Your conversations
+                </button>
               </div>
-              <div className="mt-1 font-mono text-xs text-dashboard-text-muted">
-                Choose one of your conversations to view its history.
-              </div>
+            ) : null}
+            <div className="min-h-0 overflow-y-auto">
+              <NewConversationView
+                error={
+                  createConversation.error
+                    ? "Could not create the conversation. Try again."
+                    : undefined
+                }
+                pending={createConversation.isPending}
+                onSubmit={async (message, idempotencyKey, visibility) => {
+                  const accepted = await createConversation.mutateAsync({
+                    idempotencyKey,
+                    message,
+                    visibility,
+                  });
+                  navigate(conversationPath(accepted.conversationId));
+                }}
+              />
             </div>
-          </div>
+          </>
         )}
       </section>
     </div>

@@ -334,10 +334,6 @@ test("opens and closes a conversation in the mobile workspace", async ({
   await page.goto(`${server.baseURL}/conversations`);
   await expect(page).toHaveURL(`${server.baseURL}/`);
   await expect(
-    page.getByRole("heading", { name: "New conversation" }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Your conversations" }).click();
-  await expect(
     page.getByRole("heading", { name: "Conversations" }),
   ).toBeVisible();
 
