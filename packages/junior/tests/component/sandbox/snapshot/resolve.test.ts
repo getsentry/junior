@@ -473,6 +473,61 @@ describe("snapshot resolution", () => {
     expect(prepareWorkspace).toHaveBeenCalledTimes(1);
   });
 
+  it("rebuilds a workspace snapshot when its base snapshot changes", async () => {
+    getRuntimeDependenciesMock.mockReturnValue([
+      { type: "npm", package: "sentry", version: "latest" },
+    ]);
+    sandboxCreateMock
+      .mockResolvedValueOnce(makeSandbox("snap_base"))
+      .mockResolvedValueOnce(makeSandbox("snap_workspace"))
+      .mockResolvedValueOnce(makeSandbox("snap_base_rebuilt"))
+      .mockResolvedValueOnce(makeSandbox("snap_workspace_rebuilt"));
+    const workspace = {
+      id: "workspace-1",
+      name: "sentry",
+      setupScript: "pnpm install",
+      updatedAt: new Date("2026-03-01T00:00:00.000Z"),
+      repos: [
+        {
+          provider: "github",
+          repo: "getsentry/sentry",
+          checkoutPath: "sentry",
+          isPrimary: true,
+        },
+      ],
+    };
+
+    const first = await resolveSnapshot({
+      runtime: "node22",
+      timeoutMs: 60_000,
+      workspace,
+      prepareWorkspace: async () => {},
+    });
+    const rebuiltBase = await resolveSnapshot({
+      runtime: "node22",
+      timeoutMs: 60_000,
+      forceRebuild: true,
+      staleSnapshotId: "snap_base",
+    });
+    const rebuiltWorkspace = await resolveSnapshot({
+      runtime: "node22",
+      timeoutMs: 60_000,
+      workspace,
+      prepareWorkspace: async () => {},
+    });
+
+    expect(first.snapshotId).toBe("snap_workspace");
+    expect(rebuiltBase.snapshotId).toBe("snap_base_rebuilt");
+    expect(rebuiltWorkspace.snapshotId).toBe("snap_workspace_rebuilt");
+    expect(rebuiltWorkspace.cacheHit).toBe(false);
+    expect(sandboxCreateMock).toHaveBeenNthCalledWith(
+      4,
+      expect.objectContaining({
+        source: { type: "snapshot", snapshotId: "snap_base_rebuilt" },
+      }),
+    );
+  });
+
   it("rebuilds the base snapshot when workspace extend finds it missing", async () => {
     getRuntimeDependenciesMock.mockReturnValue([
       { type: "npm", package: "sentry", version: "latest" },

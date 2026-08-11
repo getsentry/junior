@@ -1008,6 +1008,39 @@ describe("createTestSandbox", () => {
     expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
   });
 
+  it("replaces a live workspace when the same recipe id has a new profile", async () => {
+    const initialSandbox = makeSandbox("sbx_workspace_initial");
+    const refreshedSandbox = makeSandbox("sbx_workspace_refreshed");
+    sandboxCreateMock
+      .mockResolvedValueOnce(initialSandbox)
+      .mockResolvedValueOnce(refreshedSandbox);
+    hashMock
+      .mockReturnValueOnce("profile-initial")
+      .mockReturnValueOnce("profile-refreshed");
+    const workspace = {
+      id: "workspace-1",
+      name: "sentry",
+      setupScript: "",
+      updatedAt: new Date("2026-08-11T00:00:00.000Z"),
+      repos: [],
+    };
+    const runtime = createSandboxRuntime({
+      workspace,
+      skills: [],
+      referenceFiles: [],
+    });
+
+    await runtime.acquire();
+    await runtime.switchWorkspace({
+      ...workspace,
+      updatedAt: new Date("2026-08-12T00:00:00.000Z"),
+    });
+
+    expect(sandboxCreateMock).toHaveBeenCalledTimes(2);
+    expect(initialSandbox.stop).toHaveBeenCalledTimes(1);
+    expect(runtime.sandboxRef()?.id).toBe("sbx_workspace_refreshed");
+  });
+
   it("clears a durably reported workspace when its switch fails", async () => {
     const initialSandbox = makeSandbox("sbx_workspace_initial");
     const failedSandbox = makeSandbox("sbx_workspace_failed");

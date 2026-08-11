@@ -912,7 +912,12 @@ export function createSandboxRuntime(
       return sandboxRef ? { ...sandboxRef } : undefined;
     },
     async switchWorkspace(workspace, signal) {
-      if (activeWorkspace?.id === workspace.id && activeSandbox) {
+      const nextProfileHash = profileHash(SANDBOX_RUNTIME, workspace);
+      if (
+        activeWorkspace?.id === workspace.id &&
+        dependencyProfileHash === nextProfileHash &&
+        activeSandbox
+      ) {
         return;
       }
 
@@ -922,7 +927,7 @@ export function createSandboxRuntime(
       // Point the recipe at the target first so any concurrent re-acquire after
       // an aborted boot uses the new workspace instead of the old one.
       activeWorkspace = workspace;
-      dependencyProfileHash = profileHash(SANDBOX_RUNTIME, workspace);
+      dependencyProfileHash = nextProfileHash;
       sandboxRef = undefined;
 
       const inFlight = acquiringSandbox;

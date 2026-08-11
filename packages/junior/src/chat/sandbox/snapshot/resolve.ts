@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { Sandbox } from "@vercel/sandbox";
 import { z } from "zod";
 import { getVercelSandboxCredentials } from "@/chat/sandbox/credentials";
@@ -80,17 +81,27 @@ function profileCacheKey(profileHash: string): string {
   return `${SNAPSHOT_CACHE_PREFIX}:${profileHash}`;
 }
 
-function profileLockKey(profileHash: string): string {
-  return `${SNAPSHOT_LOCK_PREFIX}:${profileHash}`;
+function profileLockKey(cacheIdentity: string): string {
+  return `${SNAPSHOT_LOCK_PREFIX}:${cacheIdentity}`;
+}
+
+function workspaceCacheIdentity(
+  profileHash: string,
+  baseSnapshotId: string,
+): string {
+  return createHash("sha256")
+    .update(JSON.stringify({ profileHash, baseSnapshotId }))
+    .digest("hex");
 }
 
 /** Read one cached snapshot pointer; only a missing key is a cache miss. */
 async function getCachedSnapshot(
-  profileHash: string,
+  cacheIdentity: string,
+  profileHash = cacheIdentity,
 ): Promise<CachedSnapshot | null> {
   const state = getStateAdapter();
   await state.connect();
-  const raw = await state.get(profileCacheKey(profileHash));
+  const raw = await state.get(profileCacheKey(cacheIdentity));
   if (typeof raw !== "string") {
     return null;
   }
@@ -108,11 +119,14 @@ async function getCachedSnapshot(
 }
 
 /** Persist one dependency profile's reusable snapshot pointer. */
-async function setCachedSnapshot(entry: CachedSnapshot): Promise<void> {
+async function setCachedSnapshot(
+  cacheIdentity: string,
+  entry: CachedSnapshot,
+): Promise<void> {
   const state = getStateAdapter();
   await state.connect();
   await state.set(
-    profileCacheKey(entry.profileHash),
+    profileCacheKey(cacheIdentity),
     JSON.stringify(entry),
     SNAPSHOT_CACHE_TTL_MS,
   );
@@ -217,10 +231,17 @@ async function buildBase(
   );
 }
 
-/**
- * Boot from a base dependency snapshot, run workspace prepare, and capture.
- * Retries once after rebuilding the base when the parent snapshot is missing.
- */
+class MissingBaseSnapshotError extends Error {
+  constructor(
+    readonly snapshotId: string,
+    cause: unknown,
+  ) {
+    super(`Base sandbox snapshot not found: ${snapshotId}`, { cause });
+    this.name = "MissingBaseSnapshotError";
+  }
+}
+
+/** Boot from a base snapshot, run workspace prepare, and capture the result. */
 async function buildWorkspaceFromBase(params: {
   value: profile.Profile;
   runtime: string;
@@ -228,7 +249,6 @@ async function buildWorkspaceFromBase(params: {
   baseSnapshotId: string;
   signal?: AbortSignal;
   prepare?: (sandbox: SandboxSession) => Promise<void>;
-  rebuildBase: () => Promise<string>;
 }): Promise<string> {
   return await trace(
     "sandbox.snapshot.build",
@@ -240,38 +260,35 @@ async function buildWorkspaceFromBase(params: {
       "app.sandbox.snapshot.base_hash": params.value.baseHash,
     },
     async () => {
-      let sourceSnapshotId = params.baseSnapshotId;
-      for (let attempt = 0; attempt < 2; attempt += 1) {
-        params.signal?.throwIfAborted();
-        try {
-          const sandbox = await createBuildSandbox({
-            runtime: params.runtime,
-            timeoutMs: params.timeoutMs,
-            signal: params.signal,
-            sourceSnapshotId,
-          });
-          return await withBuildSandbox(sandbox, async (active) => {
-            await params.prepare?.(active);
-            return await captureSnapshot(
-              active,
-              params.value.dependencyCount,
-              params.signal,
-            );
-          });
-        } catch (error) {
-          if (attempt > 0 || !isMissingError(error)) {
-            throw error;
-          }
-          sourceSnapshotId = await params.rebuildBase();
+      let sandbox: SandboxSession;
+      try {
+        sandbox = await createBuildSandbox({
+          runtime: params.runtime,
+          timeoutMs: params.timeoutMs,
+          signal: params.signal,
+          sourceSnapshotId: params.baseSnapshotId,
+        });
+      } catch (error) {
+        if (isMissingError(error)) {
+          throw new MissingBaseSnapshotError(params.baseSnapshotId, error);
         }
+        throw error;
       }
-      throw new Error("Failed to build workspace snapshot from base");
+      return await withBuildSandbox(sandbox, async (active) => {
+        await params.prepare?.(active);
+        return await captureSnapshot(
+          active,
+          params.value.dependencyCount,
+          params.signal,
+        );
+      });
     },
   );
 }
 
 /** Run one profile build under a timeout-buffered lock or reuse its result. */
 async function withBuildLock(
+  cacheIdentity: string,
   profileHash: string,
   timeoutMs: number,
   callback: () => Promise<{
@@ -285,7 +302,7 @@ async function withBuildLock(
   signal?.throwIfAborted();
   const state = getStateAdapter();
   await state.connect();
-  const lockKey = profileLockKey(profileHash);
+  const lockKey = profileLockKey(cacheIdentity);
   const lockTtlMs = timeoutMs + SNAPSHOT_BUILD_LOCK_BUFFER_MS;
   const tryAcquireLock = async () =>
     await state.acquireLock(lockKey, lockTtlMs);
@@ -311,7 +328,7 @@ async function withBuildLock(
         Date.now() + lockTtlMs + SNAPSHOT_WAIT_FOR_LOCK_BUFFER_MS;
       while (Date.now() < waitUntil) {
         signal?.throwIfAborted();
-        const cached = await getCachedSnapshot(profileHash);
+        const cached = await getCachedSnapshot(cacheIdentity, profileHash);
         if (cached?.snapshotId && canUseCachedSnapshot(cached)) {
           return {
             snapshotId: cached.snapshotId,
@@ -339,7 +356,7 @@ async function withBuildLock(
       }
 
       signal?.throwIfAborted();
-      const cached = await getCachedSnapshot(profileHash);
+      const cached = await getCachedSnapshot(cacheIdentity, profileHash);
       if (cached?.snapshotId && canUseCachedSnapshot(cached)) {
         return {
           snapshotId: cached.snapshotId,
@@ -383,8 +400,13 @@ function getRebuildReason(params: {
 async function resolveProfile(
   params: ResolveParams,
   currentProfile: profile.Profile,
+  options: {
+    build?: () => Promise<string>;
+    cacheIdentity?: string;
+  } = {},
 ): Promise<Snapshot> {
-  const cached = await getCachedSnapshot(currentProfile.hash);
+  const cacheIdentity = options.cacheIdentity ?? currentProfile.hash;
+  const cached = await getCachedSnapshot(cacheIdentity, currentProfile.hash);
   const cachedNeedsRebuild = Boolean(
     cached?.snapshotId &&
       profile.isStale(currentProfile, cached.createdAtMs),
@@ -421,10 +443,14 @@ async function resolveProfile(
   };
 
   const lockResult = await withBuildLock(
+    cacheIdentity,
     currentProfile.hash,
     params.timeoutMs,
     async () => {
-      const latest = await getCachedSnapshot(currentProfile.hash);
+      const latest = await getCachedSnapshot(
+        cacheIdentity,
+        currentProfile.hash,
+      );
       if (latest?.snapshotId && canUseCachedSnapshot(latest)) {
         await params.onProgress?.("cache_hit");
         return {
@@ -434,11 +460,16 @@ async function resolveProfile(
       }
 
       await params.onProgress?.("building_snapshot");
-      const nextSnapshotId = await buildProfileSnapshot(
-        params,
-        currentProfile,
-      );
-      await setCachedSnapshot({
+      const nextSnapshotId = options.build
+        ? await options.build()
+        : await buildBase(
+            currentProfile,
+            params.runtime,
+            params.timeoutMs,
+            params.signal,
+            params.prepareWorkspace,
+          );
+      await setCachedSnapshot(cacheIdentity, {
         profileHash: currentProfile.hash,
         snapshotId: nextSnapshotId,
         runtime: params.runtime,
@@ -468,63 +499,52 @@ async function resolveProfile(
   };
 }
 
-async function buildProfileSnapshot(
+async function resolveWorkspaceProfile(
   params: ResolveParams,
   currentProfile: profile.Profile,
-): Promise<string> {
-  // Base profiles install deps from a fresh runtime. Workspace profiles extend
-  // the cached base snapshot when one exists; otherwise prepare on fresh runtime.
-  if (!currentProfile.baseHash) {
-    return await buildBase(
-      currentProfile,
-      params.runtime,
-      params.timeoutMs,
-      params.signal,
-      params.prepareWorkspace,
-    );
-  }
+): Promise<Snapshot> {
+  let staleBaseSnapshotId: string | undefined;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const baseSnapshot = await resolve({
+      runtime: params.runtime,
+      timeoutMs: params.timeoutMs,
+      ...(staleBaseSnapshotId
+        ? {
+            forceRebuild: true,
+            staleSnapshotId: staleBaseSnapshotId,
+          }
+        : {}),
+      signal: params.signal,
+      onProgress: params.onProgress,
+    });
+    if (!baseSnapshot.snapshotId) {
+      throw new Error("Workspace profile requires a base sandbox snapshot");
+    }
 
-  const baseSnapshot = await resolve({
-    runtime: params.runtime,
-    timeoutMs: params.timeoutMs,
-    // Workspace force-rebuild should still reuse a healthy base when possible.
-    // A missing parent snapshot rebuilds base via the normal missing path.
-    signal: params.signal,
-    onProgress: params.onProgress,
-  });
-
-  if (!baseSnapshot.snapshotId) {
-    return await buildBase(
-      currentProfile,
-      params.runtime,
-      params.timeoutMs,
-      params.signal,
-      params.prepareWorkspace,
-    );
-  }
-
-  return await buildWorkspaceFromBase({
-    value: currentProfile,
-    runtime: params.runtime,
-    timeoutMs: params.timeoutMs,
-    baseSnapshotId: baseSnapshot.snapshotId,
-    signal: params.signal,
-    prepare: params.prepareWorkspace,
-    rebuildBase: async () => {
-      const rebuilt = await resolve({
-        runtime: params.runtime,
-        timeoutMs: params.timeoutMs,
-        forceRebuild: true,
-        staleSnapshotId: baseSnapshot.snapshotId,
-        signal: params.signal,
-        onProgress: params.onProgress,
+    try {
+      return await resolveProfile(params, currentProfile, {
+        cacheIdentity: workspaceCacheIdentity(
+          currentProfile.hash,
+          baseSnapshot.snapshotId,
+        ),
+        build: async () =>
+          await buildWorkspaceFromBase({
+            value: currentProfile,
+            runtime: params.runtime,
+            timeoutMs: params.timeoutMs,
+            baseSnapshotId: baseSnapshot.snapshotId!,
+            signal: params.signal,
+            prepare: params.prepareWorkspace,
+          }),
       });
-      if (!rebuilt.snapshotId) {
-        throw new Error("Failed to rebuild base snapshot for workspace");
+    } catch (error) {
+      if (attempt > 0 || !(error instanceof MissingBaseSnapshotError)) {
+        throw error;
       }
-      return rebuilt.snapshotId;
-    },
-  });
+      staleBaseSnapshotId = error.snapshotId;
+    }
+  }
+  throw new Error("Failed to resolve workspace sandbox snapshot");
 }
 
 /** Resolve or build the reusable snapshot for the current dependency profile. */
@@ -549,7 +569,9 @@ export async function resolve(params: ResolveParams): Promise<Snapshot> {
         };
       }
 
-      return await resolveProfile(params, currentProfile);
+      return currentProfile.baseHash
+        ? await resolveWorkspaceProfile(params, currentProfile)
+        : await resolveProfile(params, currentProfile);
     },
   );
 }

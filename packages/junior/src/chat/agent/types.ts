@@ -157,6 +157,7 @@ export type AgentDurability = {
   recordPendingAuth?: (
     pendingAuth: ConversationPendingAuthState | undefined,
   ) => void | Promise<void>;
+  /** Persist a replacement sandbox reference; null clears the durable reference. */
   onSandboxRefChanged?: (sandboxRef: SandboxRef | null) => void | Promise<void>;
 };
 

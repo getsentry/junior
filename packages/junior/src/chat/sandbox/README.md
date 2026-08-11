@@ -8,9 +8,10 @@ traffic through verified host egress.
 
 - Sandboxes are ephemeral execution environments associated with a durable
   conversation or run.
-- Runtime state persists only an opaque `SandboxRef` (`id` and dependency
-  profile hash). The provider adapter maps that reference to Vercel's named
-  sandbox API; callers do not depend on provider names or VM session ids.
+- Runtime state persists only an opaque `SandboxRef` (`id`, dependency profile
+  hash, and optional workspace id). The provider adapter maps that reference to
+  Vercel's named sandbox API; callers do not depend on provider names or VM
+  session ids.
 - Each agent run creates lazy sandbox access from the persisted reference.
   `workspace` serves non-sandbox tools and generated artifacts, while `tools`
   serves the Pi sandbox tool adapter. The live provider session stays private
@@ -45,6 +46,10 @@ traffic through verified host egress.
 - A deterministic profile hash selects a reusable snapshot.
 - Snapshot creation installs only the declared dependencies and post-install
   steps for that profile.
+- A workspace profile selects a snapshot that starts from the resolved base
+  dependency snapshot, then runs repository and setup preparation.
+- A workspace snapshot cache key includes the base snapshot id. Rebuilding the
+  base therefore rebuilds each workspace snapshot on its next use.
 - Missing or invalid snapshots rebuild through the owning snapshot path;
   callers do not mutate a cached snapshot in place.
 - Snapshot state never contains real provider credentials.

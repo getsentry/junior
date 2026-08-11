@@ -794,8 +794,6 @@ export function createApiTurnWorker(options: {
               onInputCommitted: acknowledge,
               shouldYield: context.shouldYield,
               onSandboxRefChanged: async (nextSandboxRef) => {
-                // Keep the in-memory run hint optional, but pass null through so
-                // ThreadStatePatch can clear durable sandbox/workspace ids.
                 sandboxRef = nextSandboxRef ?? undefined;
                 await persistThreadStateById(context.conversationId, {
                   conversation,
