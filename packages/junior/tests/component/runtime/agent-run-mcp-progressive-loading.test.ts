@@ -1614,6 +1614,12 @@ describe("executeAgentRun progressive MCP loading", () => {
       },
     ];
     const expectedResumeMessages = priorMessages.slice(0, 2);
+    // Actor-owned connection drives pre-prompt restore; shared Pi history does not.
+    await recordMcpProviderConnected({
+      conversationId: "conversation-5",
+      provider: "demo",
+      actorId: "U123",
+    });
     await upsertTurnRecord({
       conversationId: "conversation-5",
       turnId: "turn-5",

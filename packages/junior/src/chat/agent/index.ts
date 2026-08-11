@@ -854,11 +854,7 @@ async function executeAgentRunInPrivacyContext(
         lastKnownSandboxRef = sandboxRef;
       },
       preAgentPromptMessages,
-      priorPiMessages,
       recordConnectedMcpProvider,
-      // Same-turn resume may rebuild live MCP clients from this turn's history.
-      // New turns only restore actor-owned connections above.
-      restoreFromTurnHistory: resumedFromSessionRecord,
       requestHandoff,
       resume: runResume,
       run,

@@ -5,7 +5,9 @@ export const EVAL_MCP_AUTH_PROVIDER = "eval-auth";
 export const EVAL_MCP_AUTH_CODE = "eval-auth-code";
 export const EVAL_MCP_AUTH_ORIGIN = "https://eval-auth.example.test";
 export const EVAL_MCP_SERVER_URL = `${EVAL_MCP_AUTH_ORIGIN}/mcp`;
-const EVAL_MCP_NO_AUTH_ORIGIN = "https://eval-mcp.example.test";
+/** Open MCP fixture host used by multi-provider isolation tests. */
+export const EVAL_MCP_NO_AUTH_ORIGIN = "https://eval-mcp.example.test";
+export const EVAL_MCP_NO_AUTH_PROVIDER = "eval-mcp-open";
 const EVAL_MCP_NO_AUTH_SERVER_URL = `${EVAL_MCP_NO_AUTH_ORIGIN}/mcp`;
 const EVAL_MCP_RESOURCE_METADATA_URL = `${EVAL_MCP_AUTH_ORIGIN}/.well-known/oauth-protected-resource/mcp`;
 export const EVAL_MCP_AUTHORIZATION_ENDPOINT = `${EVAL_MCP_AUTH_ORIGIN}/oauth/authorize`;

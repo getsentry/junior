@@ -20,7 +20,10 @@ import {
   createPluginAppFixture,
   type PluginAppFixture,
 } from "../fixtures/plugin-app";
-import { EVAL_MCP_AUTH_PROVIDER } from "../msw/handlers/eval-mcp-auth";
+import {
+  EVAL_MCP_AUTH_PROVIDER,
+  EVAL_MCP_NO_AUTH_PROVIDER,
+} from "../msw/handlers/eval-mcp-auth";
 import { resetSlackApiMockState } from "../msw/handlers/slack-api";
 
 /**
@@ -37,6 +40,10 @@ const EVAL_MCP_PLUGIN_ROOT = path.resolve(
   import.meta.dirname,
   "../fixtures/plugins/eval-auth",
 );
+const EVAL_MCP_OPEN_PLUGIN_ROOT = path.resolve(
+  import.meta.dirname,
+  "../fixtures/plugins/eval-mcp-open",
+);
 const ALICE = "UALICE";
 const BOB = "UBOB";
 const AUTH_NOTICE = /I need access to Eval Auth to continue/;
@@ -45,6 +52,14 @@ const AUTH_NOTICE = /I need access to Eval Auth to continue/;
 function streamMcpLoad(replyAfterConnect: string) {
   return streamScript(
     { tool: "loadSkill", args: { skill_name: EVAL_MCP_AUTH_PROVIDER } },
+    replyAfterConnect,
+  );
+}
+
+/** loadSkill for the open (no-auth) MCP fixture. */
+function streamOpenMcpLoad(replyAfterConnect: string) {
+  return streamScript(
+    { tool: "loadSkill", args: { skill_name: EVAL_MCP_NO_AUTH_PROVIDER } },
     replyAfterConnect,
   );
 }
@@ -120,7 +135,10 @@ describe("mcp auth orchestration", () => {
       JUNIOR_STATE_ADAPTER: "memory",
       SLACK_BOT_TOKEN: "xoxb-test-token",
     };
-    pluginApp = await createPluginAppFixture([EVAL_MCP_PLUGIN_ROOT]);
+    pluginApp = await createPluginAppFixture([
+      EVAL_MCP_PLUGIN_ROOT,
+      EVAL_MCP_OPEN_PLUGIN_ROOT,
+    ]);
   });
 
   afterEach(async () => {
@@ -358,5 +376,65 @@ describe("mcp auth orchestration", () => {
     await expect(
       getMcpStoredOAuthCredentials(BOB, EVAL_MCP_AUTH_PROVIDER),
     ).resolves.toBeUndefined();
+  });
+
+  it("does not restore another actor's MCP provider when this actor uses a different one", async () => {
+    const q = await createConversationWorkSlackHarness({
+      modelStream: streamMcpLoad("Eval Auth is connected."),
+    });
+    // Alice owns Eval Auth in this thread.
+    await connectActor(q, ALICE);
+    const aliceLinksAfterConnect = q.authLinksFor(ALICE).length;
+
+    // Bob intentionally uses a different MCP provider. Shared thread history
+    // still shows Alice's Eval Auth use, but Bob must not inherit it or get
+    // an Eval Auth prompt while connecting his own provider.
+    q.setModelStream(streamOpenMcpLoad("Open handbook lookup done."));
+    await q.mention(BOB, "use eval-mcp-open for the handbook lookup");
+    await q.drain();
+
+    expectNoAuthFor(BOB, q);
+    expect(q.authLinksFor(ALICE)).toHaveLength(aliceLinksAfterConnect);
+    expect((await loadConversationState()).processing.pendingAuth).toBeUndefined();
+    expect(
+      q.replies().some((text) => text.includes("Open handbook lookup done")),
+    ).toBe(true);
+    await expect(
+      getMcpStoredOAuthCredentials(BOB, EVAL_MCP_AUTH_PROVIDER),
+    ).resolves.toBeUndefined();
+  });
+
+  it("does not restore another actor's MCP provider across OAuth resume for a different provider", async () => {
+    const q = await createConversationWorkSlackHarness({
+      modelStream: streamOpenMcpLoad("Open handbook is connected."),
+    });
+    // Alice first leaves open-MCP history in the thread (no auth).
+    await q.mention(ALICE, "use eval-mcp-open and confirm");
+    await q.drain();
+    expect(
+      q.replies().some((text) => text.includes("Open handbook is connected")),
+    ).toBe(true);
+
+    // Bob parks for Eval Auth. Resume must reconnect only Bob's provider,
+    // not warm Alice's open MCP (or any other shared-history provider) under Bob.
+    q.setModelStream(streamMcpLoad("Bob Eval Auth is connected."));
+    await q.mention(BOB, "use eval-auth for my own lookup");
+    await q.drain();
+    await expectAuthParkedFor(BOB, q);
+
+    await completeAuth(BOB, q.agentRunner);
+
+    expect((await loadConversationState()).processing.pendingAuth).toBeUndefined();
+    expectNoAuthFor(ALICE, q);
+    // Only Bob's Eval Auth auth notice — never a second auth from restore.
+    expect(q.replies().filter((text) => AUTH_NOTICE.test(text))).toHaveLength(1);
+    expect(
+      q.replies().some((text) => text.includes("Bob Eval Auth is connected")),
+    ).toBe(true);
+    await expect(
+      getMcpStoredOAuthCredentials(BOB, EVAL_MCP_AUTH_PROVIDER),
+    ).resolves.toMatchObject({
+      tokens: expect.objectContaining({ access_token: expect.any(String) }),
+    });
   });
 });

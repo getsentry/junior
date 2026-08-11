@@ -2,10 +2,10 @@
  * Run tool wiring.
  *
  * Builds everything the agent can act through for one run slice: the sandbox
- * access, MCP and plugin auth orchestration, MCP
- * provider restoration from durable history, and the Pi-facing tool surfaces
- * (main-agent tools plus runtime control tools). Auth pauses raised while
- * restoring providers are thrown here so the run parks before prompting.
+ * access, MCP and plugin auth orchestration, actor-owned MCP provider
+ * restoration, and the Pi-facing tool surfaces (main-agent tools plus runtime
+ * control tools). Auth pauses raised while restoring providers are thrown
+ * here so the run parks before prompting.
  */
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { FileUpload } from "chat";
@@ -26,7 +26,6 @@ import {
   getMcpAwareTelemetryMessage,
   getMcpProviderErrorAttributes,
 } from "@/chat/mcp/errors";
-import { inferActiveMcpProvidersFromPiMessages } from "@/chat/pi/derived-state";
 import { createTools } from "@/chat/tools";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
@@ -95,14 +94,7 @@ interface ToolWiringArgs {
   onFatalToolError(error: Error): void;
   onSandboxRefChanged: (sandboxRef: SandboxRef) => void;
   preAgentPromptMessages: () => PiMessage[];
-  priorPiMessages: PiMessage[] | undefined;
   recordConnectedMcpProvider: (provider: string) => Promise<void>;
-  /**
-   * When true, also rebuild live MCP clients from this turn's Pi history and
-   * restored skills (same-turn resume / later slices). New turns leave this
-   * false and restore only actor-owned connections from connectedMcpProviders.
-   */
-  restoreFromTurnHistory?: boolean;
   requestHandoff?: ToolRuntimeContext["handoff"];
   resume: ResumeState;
   run: AgentRun;
@@ -474,28 +466,13 @@ export async function wireAgentTools(
       : undefined;
 
   // Conversation history records prior capability use, not authority for the
-  // current turn. Credentialless system turns must not reconnect user-owned
-  // MCP providers merely because an earlier user turn activated them.
-  //
-  // New turns restore only providers this actor previously connected
-  // (connectedMcpProviders is already actor-filtered by the caller). Same-turn
-  // resume may also rebuild from this turn's Pi history and restored skills so
-  // later slices keep live MCP clients after a fresh process start.
+  // current turn. Restore only providers this actor previously connected.
+  // Shared Pi history and skills reloaded from that history mix people and
+  // must not warm another person's MCP servers under the current actor.
+  // Intentional use still connects on demand through loadSkill / searchMcpTools
+  // / callMcpTool under the current actor.
   if (credentialUserId) {
-    const providersToRestore = new Set(args.connectedMcpProviders);
-    if (args.restoreFromTurnHistory) {
-      for (const provider of inferActiveMcpProvidersFromPiMessages(
-        args.priorPiMessages,
-      )) {
-        providersToRestore.add(provider);
-      }
-      for (const skill of args.activeSkills) {
-        if (skill.pluginProvider) {
-          providersToRestore.add(skill.pluginProvider);
-        }
-      }
-    }
-    for (const provider of providersToRestore) {
+    for (const provider of args.connectedMcpProviders) {
       if (provider === pendingMcpProvider) {
         continue; // awaiting user authorization — skip to avoid aborting unrelated turns
       }
