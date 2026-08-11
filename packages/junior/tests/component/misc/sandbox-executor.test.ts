@@ -1041,6 +1041,37 @@ describe("createTestSandbox", () => {
     expect(runtime.sandboxRef()?.id).toBe("sbx_workspace_refreshed");
   });
 
+  it("keeps a durable same-recipe sandbox when switch is repeated cold", async () => {
+    hashMock.mockReturnValue("profile-same");
+    const workspace = {
+      id: "workspace-1",
+      name: "sentry",
+      setupScript: "",
+      updatedAt: new Date("2026-08-11T00:00:00.000Z"),
+      repos: [],
+    };
+    const runtime = createSandboxRuntime({
+      sandboxRef: {
+        id: "sbx_workspace_same",
+        profileHash: "profile-same",
+        workspaceId: "workspace-1",
+      },
+      workspace,
+      skills: [],
+      referenceFiles: [],
+    });
+
+    await runtime.switchWorkspace(workspace);
+
+    expect(sandboxCreateMock).not.toHaveBeenCalled();
+    expect(sandboxGetMock).not.toHaveBeenCalled();
+    expect(runtime.sandboxRef()).toEqual({
+      id: "sbx_workspace_same",
+      profileHash: "profile-same",
+      workspaceId: "workspace-1",
+    });
+  });
+
   it("clears a durably reported workspace when its switch fails", async () => {
     const initialSandbox = makeSandbox("sbx_workspace_initial");
     const failedSandbox = makeSandbox("sbx_workspace_failed");

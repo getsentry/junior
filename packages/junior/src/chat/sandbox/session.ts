@@ -913,10 +913,11 @@ export function createSandboxRuntime(
     },
     async switchWorkspace(workspace, signal) {
       const nextProfileHash = profileHash(SANDBOX_RUNTIME, workspace);
+      // Same recipe is a no-op even when the provider session is cold. Clearing
+      // sandboxRef here would force a fresh boot and drop durable working state.
       if (
         activeWorkspace?.id === workspace.id &&
-        dependencyProfileHash === nextProfileHash &&
-        activeSandbox
+        dependencyProfileHash === nextProfileHash
       ) {
         return;
       }
