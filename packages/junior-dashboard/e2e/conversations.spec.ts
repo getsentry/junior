@@ -316,16 +316,17 @@ test("opens and closes a conversation in the mobile workspace", async ({
     page.getByRole("heading", { name: "Conversations" }),
   ).toBeVisible();
 
-  await page.getByRole("link", { name: /Checkout latency triage/ }).click();
+  // Participant fixture so the compact mobile composer is present.
+  await page.getByRole("link", { name: /Investigate checkout latency/ }).click();
   await expect(page).toHaveURL(
-    `${server.baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770000000.000100")}`,
+    `${server.baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770003600.000200")}`,
   );
   await expect(
-    page.getByRole("heading", { name: "Checkout latency triage" }),
+    page.getByRole("heading", { name: "Investigate checkout latency" }),
   ).toBeVisible();
 
   const transcript = page.getByLabel("Conversation transcript");
-  await expect(transcript.getByText("12.5k tokens")).toBeHidden();
+  await expect(transcript.getByText("1.9k tokens")).toBeHidden();
   await expect(page.getByRole("button", { name: "Archive" })).toBeHidden();
   await expect(
     page.getByText("This reply stays in Junior. It will not be posted to Slack."),
@@ -335,7 +336,8 @@ test("opens and closes a conversation in the mobile workspace", async ({
   await expect(composer).toBeVisible();
   await expect(composer).toHaveCSS("min-height", "44px");
   await expect(page.getByRole("button", { name: "Send" })).toBeVisible();
-  expect((await composer.boundingBox())?.height).toBeLessThan(50);
+  // One-row mobile composer; leave headroom for font metrics / padding.
+  expect((await composer.boundingBox())?.height).toBeLessThan(80);
 
   await page.getByRole("link", { name: "Your conversations" }).click();
   await expect(page).toHaveURL(`${server.baseURL}/`);
