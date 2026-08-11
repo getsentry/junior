@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Archive, Plus } from "lucide-react";
+import { Archive, SquarePen } from "lucide-react";
 import { Link } from "react-router";
 
 import { useArchiveConversation } from "./queries";
@@ -54,12 +54,13 @@ export function ConversationSidebar(props: {
             Conversations
           </h2>
           <button
-            className="inline-flex items-center gap-1.5 rounded border border-cyan-300/20 bg-cyan-300/[0.07] px-2.5 py-1.5 font-mono text-xs font-semibold text-cyan-50 transition hover:border-cyan-300/40 hover:bg-cyan-300/[0.12] focus:outline-none focus:ring-2 focus:ring-cyan-300/35"
+            aria-label="New conversation"
+            className="grid size-8 place-items-center rounded-md text-dashboard-text-muted transition hover:bg-white/[0.05] hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-cyan-300/35"
             onClick={props.onNewConversation}
+            title="New conversation"
             type="button"
           >
-            <Plus aria-hidden="true" size={14} />
-            New
+            <SquarePen aria-hidden="true" size={17} />
           </button>
         </div>
       </div>
