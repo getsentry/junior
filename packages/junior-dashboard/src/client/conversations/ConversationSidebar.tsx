@@ -193,7 +193,7 @@ function ConversationSidebarRow(props: {
               )}
             />
           )}
-          <div className="truncate font-display text-base font-medium leading-tight text-dashboard-text">
+          <div className="truncate font-display text-sm font-medium leading-tight text-dashboard-text">
             {title}
           </div>
         </div>

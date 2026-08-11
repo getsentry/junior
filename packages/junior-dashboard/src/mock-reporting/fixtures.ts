@@ -229,13 +229,14 @@ function activeConversation(nowMs: number): ConversationDetailReport {
 }
 
 function dashboardQaConversation(nowMs: number): ConversationDetailReport {
-  const startedAt = iso(nowMs, -11 * 60_000);
+  // Keep outside the 3h Priority window so the personal sidebar shows Today too.
+  const startedAt = iso(nowMs, -5 * 60 * 60_000);
   return detail(nowMs, {
     conversationId: DASHBOARD_QA_CONVERSATION_ID,
     displayTitle: "Dashboard QA edge cases",
     startedAt,
-    lastSeenAt: iso(nowMs, -8 * 60_000),
-    lastProgressAt: iso(nowMs, -8 * 60_000),
+    lastSeenAt: iso(nowMs, -4 * 60 * 60_000),
+    lastProgressAt: iso(nowMs, -4 * 60 * 60_000),
     actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),
     annotations: [
       {
@@ -849,12 +850,13 @@ function simpleConversation(
     sourceTask?: ConversationDetailReport["sourceTask"];
   },
 ): ConversationDetailReport {
-  const startedAt = iso(nowMs, -2 * 60 * 60_000);
+  // Keep these outside the 3h Priority window so the sidebar still shows Today.
+  const startedAt = iso(nowMs, -5 * 60 * 60_000);
   return detail(nowMs, {
     ...options,
     startedAt,
-    lastSeenAt: iso(nowMs, -110 * 60_000),
-    lastProgressAt: iso(nowMs, -110 * 60_000),
+    lastSeenAt: iso(nowMs, -4 * 60 * 60_000),
+    lastProgressAt: iso(nowMs, -4 * 60 * 60_000),
     actorIdentity: actor("ops@sentry.io", "Ops Bot", "ops"),
     cumulativeDurationMs: 12_000,
     events: [

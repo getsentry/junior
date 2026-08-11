@@ -22,9 +22,9 @@ describe("conversation activity sections", () => {
       [
         conversation("older", "2026-06-20T12:00:00-07:00"),
         conversation("two-weeks", "2026-07-19T12:00:00-07:00"),
-        conversation("today-later", "2026-08-03T11:00:00-07:00"),
+        conversation("priority", "2026-08-03T11:00:00-07:00"),
         conversation("last-week", "2026-07-26T12:00:00-07:00"),
-        conversation("today-earlier", "2026-08-03T09:00:00-07:00"),
+        conversation("today-earlier", "2026-08-03T08:00:00-07:00"),
         conversation("yesterday", "2026-08-02T12:00:00-07:00"),
         conversation("weekday", "2026-08-01T12:00:00-07:00"),
         conversation("three-weeks", "2026-07-12T12:00:00-07:00"),
@@ -42,7 +42,11 @@ describe("conversation activity sections", () => {
       })),
     ).toEqual([
       {
-        conversations: ["today-later", "today-earlier"],
+        conversations: ["priority"],
+        label: "Priority",
+      },
+      {
+        conversations: ["today-earlier"],
         label: "Today",
       },
       { conversations: ["yesterday"], label: "Yesterday" },

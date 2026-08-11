@@ -7,6 +7,18 @@ export type ConversationSection = {
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+// Priority is intentionally a short recent window for now. Expand later when
+// urgency signals (mentions, failures, active work) can rank above recency.
+const PRIORITY_WINDOW_MS = 3 * 60 * 60 * 1000;
+const SECTION_ORDER = [
+  "priority",
+  "today",
+  "yesterday",
+  "last-week",
+  "2-weeks",
+  "3-weeks",
+  "older",
+] as const;
 
 /** Group conversations into progressively broader activity sections. */
 export function buildConversationSections(
@@ -21,7 +33,12 @@ export function buildConversationSections(
 
   for (const conversation of sorted) {
     const time = activityTime(conversation);
-    const section = conversationSection(time, nowDay, options.timeZone);
+    const section = conversationSection(
+      time,
+      options.nowMs,
+      nowDay,
+      options.timeZone,
+    );
     const existing = sections.get(section.key);
     if (existing) {
       existing.conversations.push(conversation);
@@ -30,7 +47,9 @@ export function buildConversationSections(
     }
   }
 
-  return [...sections.values()];
+  return [...sections.values()].sort(
+    (left, right) => sectionRank(left.key) - sectionRank(right.key),
+  );
 }
 
 function activityTime(conversation: Conversation): number {
@@ -40,10 +59,16 @@ function activityTime(conversation: Conversation): number {
 
 function conversationSection(
   time: number,
+  nowMs: number,
   nowDay: number,
   timeZone: string,
 ): Pick<ConversationSection, "key" | "label"> {
   if (!Number.isFinite(time)) return { key: "older", label: "Older" };
+
+  // Keep Priority above Today so the freshest work stays easy to find.
+  if (nowMs - time <= PRIORITY_WINDOW_MS) {
+    return { key: "priority", label: "Priority" };
+  }
 
   const day = calendarDay(time, timeZone);
   const ageInDays = Math.max(0, Math.floor((nowDay - day) / DAY_MS));
@@ -62,6 +87,16 @@ function conversationSection(
   if (ageInDays < 21) return { key: "2-weeks", label: "2 weeks ago" };
   if (ageInDays < 28) return { key: "3-weeks", label: "3 weeks ago" };
   return { key: "older", label: "Older" };
+}
+
+function sectionRank(key: string): number {
+  const known = SECTION_ORDER.indexOf(
+    key as (typeof SECTION_ORDER)[number],
+  );
+  if (known >= 0) return known;
+  // Weekday buckets sit between Yesterday and Last week.
+  if (key.startsWith("day-")) return SECTION_ORDER.indexOf("yesterday") + 0.5;
+  return SECTION_ORDER.length;
 }
 
 function calendarDay(time: number, timeZone: string): number {
