@@ -2,7 +2,8 @@
 
 The dashboard is an authenticated reporting surface over Junior conversation
 read models. It does not participate in agent execution or mutate conversation
-state.
+state. Signed-in users may update their own profile fields, such as display
+name, through dashboard settings.
 
 ## Boundaries
 
@@ -25,8 +26,9 @@ state.
   one row without interpreting Pi messages or host-only lifecycle shapes.
 - Private conversation access requires authenticated authorization at the
   server boundary. Client-side route hiding is not authorization.
-- The package remains stateless apart from normal auth/session infrastructure;
-  Junior conversation storage is the reporting authority.
+- The package remains stateless apart from normal auth/session infrastructure
+  and signed-in profile settings. Junior conversation storage is the reporting
+  authority; canonical user rows own profile fields such as display name.
 
 Mock reporting data exists for local UI development only and must not be
 reachable as a production fallback.

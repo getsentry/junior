@@ -22,29 +22,12 @@ test.beforeEach(async ({ page }) => {
 
 test("updates the signed-in user's display name", async ({ page }) => {
   const browserErrors = collectBrowserErrors(page);
-  await page.route("**/api/me", async (route) => {
-    if (route.request().method() !== "PATCH") {
-      await route.fallback();
-      return;
-    }
-    expect(route.request().postDataJSON()).toEqual({
-      displayName: "Cramer Jr.",
-    });
-    await route.fulfill({
-      json: {
-        user: {
-          email: "dev@example.com",
-          emailVerified: true,
-          name: "Cramer Jr.",
-        },
-      },
-    });
-  });
 
   await page.goto(server.baseURL);
   await page.getByRole("button", { name: /Open profile menu/ }).click();
   await page.getByRole("link", { name: "Settings", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+  await expect(page.getByLabel("Display name")).toHaveValue("Dashboard User");
 
   await page.getByLabel("Display name").fill("Cramer Jr.");
   await page.getByRole("button", { name: "Save changes" }).click();

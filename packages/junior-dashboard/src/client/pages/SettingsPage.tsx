@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 
 import {
   dashboardIdentitySchema,
@@ -20,6 +20,9 @@ type SettingsPageProps = {
 export function SettingsPage({ identity }: SettingsPageProps) {
   const queryClient = useQueryClient();
   const [displayName, setDisplayName] = useState(identity.user.name ?? "");
+  useEffect(() => {
+    setDisplayName(identity.user.name ?? "");
+  }, [identity.user.name]);
   const updateProfile = useMutation({
     mutationFn: (name: string) =>
       patch(dashboardIdentitySchema, "/api/me", { displayName: name }),

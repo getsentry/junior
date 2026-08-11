@@ -486,7 +486,49 @@ describe("dashboard routes", () => {
     );
 
     expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "Invalid request body." });
     expect(updateViewerDisplayName).not.toHaveBeenCalled();
+  });
+
+  it("keeps mock profile edits process-local", async () => {
+    const app = createDashboardApp({
+      allowedGoogleDomains: ["sentry.io"],
+      auth: auth({
+        user: {
+          email: "person@sentry.io",
+          emailVerified: true,
+          name: "Person",
+        },
+      }),
+      mockConversations: true,
+    });
+
+    const response = await app.fetch(
+      new Request("http://localhost/api/me", {
+        body: JSON.stringify({ displayName: "Mock Name" }),
+        headers: { "content-type": "application/json" },
+        method: "PATCH",
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      user: {
+        email: "person@sentry.io",
+        emailVerified: true,
+        name: "Mock Name",
+      },
+    });
+    expect(updateViewerDisplayName).not.toHaveBeenCalled();
+
+    const me = await app.fetch(new Request("http://localhost/api/me"));
+    expect(await me.json()).toEqual({
+      user: {
+        email: "person@sentry.io",
+        emailVerified: true,
+        name: "Mock Name",
+      },
+    });
   });
 
   it("does not serve retired dashboard page routes", async () => {

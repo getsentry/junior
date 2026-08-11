@@ -44,6 +44,8 @@ const DASHBOARD_CLIENT_PATH = "/_junior/dashboard/client.js";
 const DASHBOARD_AVATAR_HEADER_PATH = "/_junior/dashboard/avatar.png";
 const LOGIN_NEXT_PARAM = "next";
 const LOCAL_VIEWER_EMAIL = "dev@example.com";
+/** Process-local display names for mock reporting only. */
+const mockDisplayNamesByEmail = new Map<string, string>();
 
 export interface JuniorDashboardOptions {
   agentName?: string;
@@ -395,11 +397,15 @@ function verifiedSessionEmail(session: DashboardSession): string | undefined {
 function mockViewerFromSession(session: DashboardSession) {
   const email = verifiedSessionEmail(session);
   if (!email) return undefined;
+  const displayName =
+    mockDisplayNamesByEmail.get(email) ??
+    session.user.name?.trim() ??
+    undefined;
   return {
     email,
     id: `mock-user:${email}`,
     identities: [],
-    ...(session.user.name?.trim() ? { displayName: session.user.name } : {}),
+    ...(displayName ? { displayName } : {}),
   };
 }
 
@@ -843,7 +849,7 @@ export function createDashboardApp(
     if (!parsed.success) {
       return jsonResponse(
         apiErrorSchema,
-        { error: "Display name must be between 1 and 80 characters." },
+        { error: "Invalid request body." },
         { status: 400 },
       );
     }
@@ -854,6 +860,18 @@ export function createDashboardApp(
         { error: "Authentication required." },
         { status: 401 },
       );
+    }
+    const session = c.get("authSession");
+    // Mock reporting keeps profile edits process-local and out of SQL.
+    if (options.mockConversations) {
+      mockDisplayNamesByEmail.set(viewer.email, parsed.data.displayName);
+      return jsonResponse(dashboardIdentitySchema, {
+        user: {
+          email: session.user.email,
+          emailVerified: session.user.emailVerified,
+          name: parsed.data.displayName,
+        },
+      });
     }
     const updated = await updateViewerDisplayName(
       viewer.id,
@@ -866,7 +884,6 @@ export function createDashboardApp(
         { status: 404 },
       );
     }
-    const session = c.get("authSession");
     return jsonResponse(dashboardIdentitySchema, {
       user: {
         email: session.user.email,
