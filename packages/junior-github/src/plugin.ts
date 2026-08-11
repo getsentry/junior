@@ -746,6 +746,7 @@ export function githubPlugin(
       routes(ctx) {
         return [
           createGitHubWebhookRoute({
+            annotations: ctx.annotations,
             botEmail: () => readEnv(botEmailEnv),
             classifyPullRequestCommits: async ({
               number,

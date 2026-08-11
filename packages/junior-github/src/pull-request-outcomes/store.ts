@@ -89,6 +89,7 @@ export async function recordGitHubPullRequestOutcome(
 ): Promise<{
   applied: boolean;
   commitComposition: GitHubPullRequestCommitComposition | undefined;
+  conversationIds: string[];
 }> {
   const outcome = githubPullRequestOutcomeInputSchema.parse(input);
   const values = projectionValues(outcome);
@@ -104,10 +105,12 @@ export async function recordGitHubPullRequestOutcome(
       )
       .returning({
         commitComposition: juniorGitHubPullRequests.commitComposition,
+        conversationIds: juniorGitHubPullRequests.conversationIds,
       });
     return {
       applied: updated.length > 0,
       commitComposition: updated[0]?.commitComposition ?? undefined,
+      conversationIds: updated[0]?.conversationIds ?? [],
     };
   }
 
@@ -121,10 +124,12 @@ export async function recordGitHubPullRequestOutcome(
     })
     .returning({
       commitComposition: juniorGitHubPullRequests.commitComposition,
+      conversationIds: juniorGitHubPullRequests.conversationIds,
     });
   return {
     applied: inserted.length > 0,
     commitComposition: inserted[0]?.commitComposition ?? undefined,
+    conversationIds: inserted[0]?.conversationIds ?? [],
   };
 }
 

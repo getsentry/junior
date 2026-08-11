@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type {
+  PluginConversationAnnotations,
   PluginLogger,
   PluginRoute,
   ResourceEventPublisher,
@@ -81,6 +82,7 @@ function webhookInstallationId(body: unknown): number | undefined {
 
 /** Create the public, signed GitHub webhook route owned by the plugin. */
 export function createGitHubWebhookRoute(args: {
+  annotations: PluginConversationAnnotations;
   botEmail(): string | undefined;
   classifyPullRequestCommits?(input: {
     number: number;
@@ -144,6 +146,21 @@ export function createGitHubWebhookRoute(args: {
           args.db,
           pullRequestOutcome,
         );
+        if (recordedOutcome.applied && pullRequestOutcome.state !== "open") {
+          const status =
+            pullRequestOutcome.state === "merged" ? "merged" : "closed";
+          await Promise.all(
+            recordedOutcome.conversationIds.map((conversationId) =>
+              args.annotations.forConversation(conversationId).upsert({
+                kind: "resource_link",
+                key: `${pullRequestOutcome.repositoryFullName.toLowerCase()}#${pullRequestOutcome.number}`,
+                label: `${pullRequestOutcome.repositoryFullName}#${pullRequestOutcome.number}`,
+                url: `https://github.com/${pullRequestOutcome.repositoryFullName}/pull/${pullRequestOutcome.number}`,
+                status,
+              }),
+            ),
+          );
+        }
         if (
           recordedOutcome.applied &&
           !recordedOutcome.commitComposition &&

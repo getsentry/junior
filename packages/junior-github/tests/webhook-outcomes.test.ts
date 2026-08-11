@@ -2,7 +2,10 @@ import { createHmac, generateKeyPairSync } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ResourceEventInput } from "@sentry/junior-plugin-api";
+import type {
+  ConversationAnnotationInput,
+  ResourceEventInput,
+} from "@sentry/junior-plugin-api";
 import {
   createLocalPgliteFixture,
   type LocalPgliteFixture,
@@ -163,8 +166,25 @@ function webhookRoute(
     message: string,
     metadata?: Record<string, unknown>,
   ) => void = () => {},
+  annotations: Array<{
+    annotation: ConversationAnnotationInput;
+    conversationId: string;
+  }> = [],
 ) {
   return createGitHubWebhookRoute({
+    annotations: {
+      forConversation(conversationId) {
+        return {
+          async upsert(annotation) {
+            annotations.push({ annotation, conversationId });
+          },
+          async remove() {},
+          async list() {
+            return [];
+          },
+        };
+      },
+    },
     botEmail,
     classifyPullRequestCommits,
     db: fixture.db(),
@@ -1071,6 +1091,17 @@ describe("GitHub-owned pull request outcomes", () => {
         botEmailEnv: "CUSTOM_GITHUB_BOT_EMAIL",
       });
       const [route] = plugin.hooks!.routes!({
+        annotations: {
+          forConversation() {
+            return {
+              async upsert() {},
+              async remove() {},
+              async list() {
+                return [];
+              },
+            };
+          },
+        },
         db: fixture.db(),
         log: { error() {}, info() {}, warn() {} },
         plugin: { name: "github" },
@@ -1133,6 +1164,17 @@ describe("GitHub-owned pull request outcomes", () => {
     try {
       const plugin = githubPlugin();
       const [route] = plugin.hooks!.routes!({
+        annotations: {
+          forConversation() {
+            return {
+              async upsert() {},
+              async remove() {},
+              async list() {
+                return [];
+              },
+            };
+          },
+        },
         db: fixture.db(),
         log: { error() {}, info() {}, warn() {} },
         plugin: { name: "github" },
@@ -1182,11 +1224,17 @@ describe("GitHub-owned pull request outcomes", () => {
     const fixture = await createGitHubFixture();
     const published: ResourceEventInput[] = [];
     try {
+      const annotations: Array<{
+        annotation: ConversationAnnotationInput;
+        conversationId: string;
+      }> = [];
       const route = webhookRoute(
         fixture,
         published,
         undefined,
         async () => "mixed",
+        undefined,
+        annotations,
       );
       const opened = pullRequestPayload();
       expect((await route.handler(signedRequest(opened))).status).toBe(202);
@@ -1251,6 +1299,30 @@ describe("GitHub-owned pull request outcomes", () => {
         state: "merged",
       });
       expect(rows[0]?.updatedAt.toISOString()).toBe("2026-07-03T12:00:00.000Z");
+      expect(annotations.slice(-2)).toEqual(
+        expect.arrayContaining([
+          {
+            annotation: {
+              kind: "resource_link",
+              key: "getsentry/junior#946",
+              label: "getsentry/junior#946",
+              status: "merged",
+              url: "https://github.com/getsentry/junior/pull/946",
+            },
+            conversationId: "slack:C123:1712345.0001",
+          },
+          {
+            annotation: {
+              kind: "resource_link",
+              key: "getsentry/junior#946",
+              label: "getsentry/junior#946",
+              status: "merged",
+              url: "https://github.com/getsentry/junior/pull/946",
+            },
+            conversationId: "slack:C456:1719999.0002",
+          },
+        ]),
+      );
       expect(published).toEqual([
         expect.objectContaining({
           eventType: "pull_request.opened",
