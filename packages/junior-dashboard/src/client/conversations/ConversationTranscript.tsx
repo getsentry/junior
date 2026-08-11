@@ -10,6 +10,7 @@ import {
   Brain,
   Calendar,
   Check,
+  ChevronRight,
   CircleAlert,
   Database,
   Diff,
@@ -729,30 +730,54 @@ function TranscriptMessageContextView(props: {
   const timestamp = formatMessageTimestamp(props.message.timestamp);
   const text = messageRawText(props.message);
 
+  const content = props.redacted ? (
+    <RedactedMarker />
+  ) : (
+    <HighlightText text={text} />
+  );
+
   return (
-    <article
-      className="min-w-0 rounded-lg border border-white/[0.07] bg-white/[0.025] px-3 py-2.5"
-      data-transcript-message-context
-    >
-      <TranscriptHeadingRow
-        left={
-          <span className="font-display text-xs font-semibold text-dashboard-text-muted">
-            Context from {actor}
-          </span>
-        }
-        leftClassName="min-w-0"
-        right={
-          timestamp ? (
-            <TranscriptHeadingMeta className="font-mono text-2xs text-dashboard-text-muted/70">
-              {timestamp}
-            </TranscriptHeadingMeta>
-          ) : undefined
-        }
-      />
-      <div className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-dashboard-text/75">
-        {props.redacted ? <RedactedMarker /> : <HighlightText text={text} />}
-      </div>
-    </article>
+    <>
+      <details
+        className="group/message-context min-w-0 rounded-lg border border-white/[0.07] bg-white/[0.025] px-3 py-2.5 md:hidden"
+        data-transcript-message-context
+      >
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-2 font-display text-xs font-semibold text-dashboard-text-muted [&::-webkit-details-marker]:hidden">
+          <span className="min-w-0 truncate">Context from {actor}</span>
+          <ChevronRight
+            aria-hidden="true"
+            className="shrink-0 transition-transform group-open/message-context:rotate-90"
+            size={14}
+          />
+        </summary>
+        <div className="mt-2 whitespace-pre-wrap border-t border-white/[0.06] pt-2 text-sm leading-relaxed text-dashboard-text/75">
+          {content}
+        </div>
+      </details>
+      <article
+        className="hidden min-w-0 rounded-lg border border-white/[0.07] bg-white/[0.025] px-3 py-2.5 md:block"
+        data-transcript-message-context
+      >
+        <TranscriptHeadingRow
+          left={
+            <span className="font-display text-xs font-semibold text-dashboard-text-muted">
+              Context from {actor}
+            </span>
+          }
+          leftClassName="min-w-0"
+          right={
+            timestamp ? (
+              <TranscriptHeadingMeta className="font-mono text-2xs text-dashboard-text-muted/70">
+                {timestamp}
+              </TranscriptHeadingMeta>
+            ) : undefined
+          }
+        />
+        <div className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-dashboard-text/75">
+          {content}
+        </div>
+      </article>
+    </>
   );
 }
 
