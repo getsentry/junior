@@ -371,10 +371,12 @@ async function runLocalAgentTurnInContext(
         delivery: deliverAssistantMessage,
         durability: {
           onSandboxRefChanged: async (nextSandboxRef) => {
+            // Keep the in-memory run hint optional, but pass null through so
+            // ThreadStatePatch can clear durable sandbox/workspace ids.
             sandboxRef = nextSandboxRef ?? undefined;
             await persistThreadStateById(input.conversationId, {
               conversation,
-              sandboxRef,
+              sandboxRef: nextSandboxRef,
             });
           },
           recordPendingAuth: async (pendingAuth) => {
