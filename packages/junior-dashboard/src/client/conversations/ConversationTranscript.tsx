@@ -16,10 +16,12 @@ import {
   Info,
   KeyRound,
   Link,
+  ListOrdered,
   Minimize2,
   Send,
   Sparkles,
   TriangleAlert,
+  Zap,
   type LucideIcon,
 } from "lucide-react";
 import type { ConversationPendingMessage } from "@sentry/junior/api/schema";
@@ -190,12 +192,30 @@ function transcriptMessageClass(role: string): string {
   );
 }
 
-function pendingDeliveryLabel(
+function pendingDeliveryMeta(
   delivery: TranscriptViewMessage["delivery"],
-): string | undefined {
-  if (delivery === "interrupt") return "Interrupts current turn";
-  if (delivery === "defer") return "Queued after current turn";
+): { icon: LucideIcon; label: string } | undefined {
+  if (delivery === "interrupt") {
+    return { icon: Zap, label: "Interrupts current turn" };
+  }
+  if (delivery === "defer") {
+    return { icon: ListOrdered, label: "Queued after current turn" };
+  }
   return undefined;
+}
+
+/** Compact monochrome Slack mark for pending mailbox source. */
+function SlackMark(props: { className?: string }) {
+  return (
+    <svg
+      aria-hidden="true"
+      className={props.className}
+      fill="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path d="M6.2 15.3c0 1.4-1.1 2.5-2.5 2.5S1.2 16.7 1.2 15.3s1.1-2.5 2.5-2.5h2.5v2.5zm1.3 0c0-1.4 1.1-2.5 2.5-2.5s2.5 1.1 2.5 2.5v6.2c0 1.4-1.1 2.5-2.5 2.5s-2.5-1.1-2.5-2.5v-6.2zM8.7 6.2c-1.4 0-2.5-1.1-2.5-2.5S7.3 1.2 8.7 1.2s2.5 1.1 2.5 2.5v2.5H8.7zm0 1.3c1.4 0 2.5 1.1 2.5 2.5s-1.1 2.5-2.5 2.5H2.5C1.1 12.5 0 11.4 0 10s1.1-2.5 2.5-2.5h6.2zM17.8 8.7c0-1.4 1.1-2.5 2.5-2.5s2.5 1.1 2.5 2.5-1.1 2.5-2.5 2.5h-2.5V8.7zm-1.3 0c0 1.4-1.1 2.5-2.5 2.5s-2.5-1.1-2.5-2.5V2.5C11.5 1.1 12.6 0 14 0s2.5 1.1 2.5 2.5v6.2zM14 17.8c1.4 0 2.5 1.1 2.5 2.5s-1.1 2.5-2.5 2.5-2.5-1.1-2.5-2.5v-2.5H14zm0-1.3c-1.4 0-2.5-1.1-2.5-2.5s1.1-2.5 2.5-2.5h6.2c1.4 0 2.5 1.1 2.5 2.5s-1.1 2.5-2.5 2.5H14z" />
+    </svg>
+  );
 }
 
 function transcriptRoleClass(role: string): string {
@@ -247,30 +267,65 @@ function TranscriptMessageHeader(props: {
   const source =
     props.message.source ??
     (props.conversation.surface === "slack" ? "slack" : undefined);
+  const roleLabel = transcriptRoleLabel(props.message, props.conversation);
+  const timestamp = (props.meta ?? []).filter(isString).join(" · ") || undefined;
+
+  // Pending mailbox rows use icons for source/delivery — text labels wrap badly
+  // and fight the stack treatment. Dashboard is the default, so no web mark.
+  if (props.message.pending) {
+    const delivery = pendingDeliveryMeta(props.message.delivery);
+    const DeliveryIcon = delivery?.icon;
+    const showSlack = source === "slack";
+
+    return (
+      <TranscriptHeadingRow
+        left={
+          <span className={transcriptRoleLabelClass(props.message.role)}>
+            <ShimmerText active>{roleLabel}</ShimmerText>
+          </span>
+        }
+        leftClassName={transcriptRoleClass(props.message.role)}
+        right={
+          <TranscriptHeadingMeta className="flex min-w-0 items-center justify-end gap-2 text-xs leading-none text-dashboard-text-muted">
+            {showSlack || DeliveryIcon ? (
+              <span className="inline-flex shrink-0 items-center gap-1.5">
+                {showSlack ? (
+                  <span
+                    aria-label="Slack"
+                    className="inline-flex text-dashboard-text-muted"
+                    title="Slack"
+                  >
+                    <SlackMark className="size-3.5" />
+                  </span>
+                ) : null}
+                {DeliveryIcon && delivery ? (
+                  <span
+                    aria-label={delivery.label}
+                    className="inline-flex text-dashboard-text-muted"
+                    title={delivery.label}
+                  >
+                    <DeliveryIcon aria-hidden="true" size={13} strokeWidth={2.2} />
+                  </span>
+                ) : null}
+              </span>
+            ) : null}
+            {timestamp ? <span className="min-w-0 truncate">{timestamp}</span> : null}
+          </TranscriptHeadingMeta>
+        }
+      />
+    );
+  }
+
   const sourceLabel =
     source === "slack" ? "Slack" : source === "web" ? "Dashboard" : undefined;
-  const pendingLabel = props.message.pending ? "Pending" : undefined;
-  const deliveryLabel = props.message.pending
-    ? pendingDeliveryLabel(props.message.delivery)
-    : undefined;
-  const metaParts = [
-    sourceLabel,
-    pendingLabel,
-    deliveryLabel,
-    ...(props.meta ?? []),
-  ].filter(isString);
+  const metaParts = [sourceLabel, ...(props.meta ?? [])].filter(isString);
   const metaText = metaParts.join(" · ");
-  const roleLabel = transcriptRoleLabel(props.message, props.conversation);
 
   return (
     <TranscriptHeadingRow
       left={
         <span className={transcriptRoleLabelClass(props.message.role)}>
-          {props.message.pending ? (
-            <ShimmerText active>{roleLabel}</ShimmerText>
-          ) : (
-            roleLabel
-          )}
+          {roleLabel}
         </span>
       }
       leftClassName={transcriptRoleClass(props.message.role)}
