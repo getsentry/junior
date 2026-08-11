@@ -27,7 +27,11 @@ test("shows system usage and plugin details", async ({ page }) => {
 
   await expect(page.getByText("Conversation activity")).toBeVisible();
   await expect(page.getByLabel("Conversations per day")).toBeVisible();
-  await expect(page.getByText("Model spend")).toBeVisible();
+  await expect(page.getByText("Cache hit rate")).toBeVisible();
+  await expect(page.getByText("Input token cache")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Model spend", exact: true }),
+  ).toBeVisible();
   await expect(page.getByRole("region", { name: "Plugins" })).toHaveCount(0);
 
   const systemNavigation = page.getByLabel("System navigation");

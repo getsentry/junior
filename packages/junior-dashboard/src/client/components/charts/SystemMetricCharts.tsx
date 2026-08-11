@@ -221,7 +221,7 @@ function MetricChart(props: {
                 key={day.date}
                 label={formatActivityDate(day.date)}
               >
-                {chart.type === "bar" ? (
+                {chart.type === "bar" && chart.metric === "inputTokens" ? (
                   <g
                     aria-label={`${formatActivityDate(day.date)}: ${chart.format(value)} input tokens`}
                     tabIndex={0}
@@ -250,6 +250,18 @@ function MetricChart(props: {
                       y={layout.top + layout.plotHeight - renderedBarHeight}
                     />
                   </g>
+                ) : chart.type === "bar" ? (
+                  <rect
+                    aria-label={`${formatActivityDate(day.date)}: ${chart.format(value)}`}
+                    fill={chart.color}
+                    height={renderedBarHeight}
+                    opacity={value ? 0.8 : 0.1}
+                    rx="1.5"
+                    tabIndex={0}
+                    width={barWidth}
+                    x={point.x - barWidth / 2}
+                    y={layout.top + layout.plotHeight - renderedBarHeight}
+                  />
                 ) : (
                   <circle
                     aria-label={`${formatActivityDate(day.date)}: ${chart.format(value)}`}
@@ -267,7 +279,7 @@ function MetricChart(props: {
           <ActivityChartAverageLine
             average={average}
             format={
-              chart.metric === "inputTokens"
+              chart.metric === "inputTokens" || chart.metric === "tokens"
                 ? formatActivityChartAverage
                 : chart.format
             }
