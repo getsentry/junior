@@ -44,10 +44,23 @@ test("reuses the fresh conversation feed after window focus", async ({
   ).toBeVisible();
   expect(requests).toBe(1);
 
+  // Fresh feeds must not refetch on focus. Fail if another list fetch starts.
+  const extraFeedFetch = page
+    .waitForRequest(
+      (request) => {
+        if (request.method() !== "GET") return false;
+        return new URL(request.url()).pathname === "/api/conversations";
+      },
+      { timeout: 500 },
+    )
+    .then(() => true)
+    .catch(() => false);
+
   await page.evaluate(() => {
     window.dispatchEvent(new Event("visibilitychange"));
   });
 
+  expect(await extraFeedFetch).toBe(false);
   expect(requests).toBe(1);
 });
 
