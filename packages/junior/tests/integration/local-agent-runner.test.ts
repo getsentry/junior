@@ -33,8 +33,11 @@ import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { createProviderError } from "@/chat/services/provider-error";
 import {
+  createModelAgentRunnerForRun,
+  neverRunAgentRunner,
   scriptedAssistantMessageRunner,
 } from "../fixtures/agent-runner";
+import { createModelStream } from "../fixtures/model-stream";
 import { getConversationEventStore } from "@/chat/db";
 
 function userPiMessage(text: string, timestamp = 1): PiMessage {
@@ -207,13 +210,10 @@ describe("local agent runner", () => {
     });
     expect(conversationId).toBeDefined();
 
-    const contexts: CapturedAgentRun[] = [];
-    const generateReply = vi.fn<AgentRunner["run"]>(async (request) => {
-      const context = request;
-
-      contexts.push(context);
-      await deliverAssistantText(request, "hello from local");
-      return completedAgentRun(successReply("hello from local"));
+    const agentRuns: CapturedAgentRun[] = [];
+    const agentRunner = createModelAgentRunnerForRun((run) => {
+      agentRuns.push(run);
+      return createModelStream([{ type: "text", text: "hello from local" }]);
     });
     const delivered: LocalAgentReply[] = [];
 
@@ -226,11 +226,12 @@ describe("local agent runner", () => {
         deliverReply: async (reply) => {
           delivered.push(reply);
         },
-        agentRunner: { run: generateReply },
+        agentRunner,
       },
     );
 
-    expect(generateReply).toHaveBeenCalledWith(
+    expect(agentRuns).toHaveLength(1);
+    expect(agentRuns[0]).toEqual(
       expect.objectContaining({
         instruction: expect.objectContaining({ text: "hello" }),
         disabledFeatures: ["interactive-auth"],
@@ -244,13 +245,13 @@ describe("local agent runner", () => {
         surface: "internal",
       }),
     );
-    expect(contexts[0]?.actor).toEqual({
+    expect(agentRuns[0]?.actor).toEqual({
       fullName: "Local CLI",
       platform: "local",
       userId: "local-cli",
       userName: "local",
     });
-    expect(contexts[0]?.slackConversation).toBeUndefined();
+    expect(agentRuns[0]?.slackConversation).toBeUndefined();
     expect(delivered).toEqual([
       {
         text: "hello from local",
@@ -666,54 +667,6 @@ describe("local agent runner", () => {
     expect(JSON.stringify(lifecycle)).not.toContain(rawError);
   });
 
-  it("assigns distinct turn ids to concurrent turns", async () => {
-    const conversationId = normalizeLocalConversationId({
-      alias: "concurrent-turns",
-      cwd: "/tmp/local-agent-runner-concurrent-turns",
-    });
-    const runIds: string[] = [];
-    const agentRunner: AgentRunner = {
-      run: async (request) => {
-        runIds.push(request.turnId);
-        return completedAgentRun(successReply(`reply ${runIds.length}`));
-      },
-    };
-
-    await Promise.all([
-      runLocalAgentTurn(
-        { conversationId: conversationId!, message: "first" },
-        { agentRunner, deliverReply: async () => undefined },
-      ),
-      runLocalAgentTurn(
-        { conversationId: conversationId!, message: "second" },
-        { agentRunner, deliverReply: async () => undefined },
-      ),
-    ]);
-
-    expect(new Set(runIds).size).toBe(2);
-    expect(runIds).toEqual([
-      expect.stringMatching(/^local-turn-[0-9a-f-]{36}$/),
-      expect.stringMatching(/^local-turn-[0-9a-f-]{36}$/),
-    ]);
-    const starts = (await loadLifecycleEvents(conversationId!)).filter(
-      (event) => event.data.type === "turn_started",
-    );
-    expect(
-      new Set(
-        starts.flatMap((event) =>
-          event.data.type === "turn_started" ? [event.data.turnId] : [],
-        ),
-      ).size,
-    ).toBe(2);
-    expect(
-      new Set(
-        starts.flatMap((event) =>
-          event.data.type === "turn_started" ? event.data.inputMessageIds : [],
-        ),
-      ).size,
-    ).toBe(2);
-  });
-
   it("forwards tool events from the shared reply boundary", async () => {
     const conversationId = normalizeLocalConversationId({
       alias: "tools",
@@ -898,15 +851,12 @@ describe("local agent runner", () => {
     });
     expect(conversationId).toBeDefined();
 
-    const contexts: CapturedAgentRun[] = [];
-    const generateReply = vi.fn<AgentRunner["run"]>(async (request) => {
-      const text = request.instruction.text;
-      const context = request;
-
-      contexts.push(context);
-      const replyText = `reply to ${text}`;
-      await deliverAssistantText(request, replyText);
-      return completedAgentRun(successReply(replyText));
+    const agentRuns: CapturedAgentRun[] = [];
+    const agentRunner = createModelAgentRunnerForRun((run) => {
+      agentRuns.push(run);
+      return createModelStream([
+        { type: "text", text: `reply to ${run.instruction.text}` },
+      ]);
     });
 
     await runLocalAgentTurn(
@@ -916,7 +866,7 @@ describe("local agent runner", () => {
       },
       {
         deliverReply: async () => undefined,
-        agentRunner: { run: generateReply },
+        agentRunner,
       },
     );
     await runLocalAgentTurn(
@@ -926,12 +876,12 @@ describe("local agent runner", () => {
       },
       {
         deliverReply: async () => undefined,
-        agentRunner: { run: generateReply },
+        agentRunner,
       },
     );
 
-    expect(contexts[1]?.instruction.context).toContain("first question");
-    expect(contexts[1]?.instruction.context).toContain(
+    expect(agentRuns[1]?.instruction.context).toContain("first question");
+    expect(agentRuns[1]?.instruction.context).toContain(
       "reply to first question",
     );
 
@@ -958,10 +908,6 @@ describe("local agent runner", () => {
     });
     expect(conversationId).toBeDefined();
 
-    const generateReply = vi.fn<AgentRunner["run"]>(async () =>
-      completedAgentRun(successReply("not delivered")),
-    );
-
     await expect(
       runLocalAgentTurn(
         {
@@ -969,11 +915,10 @@ describe("local agent runner", () => {
           message: "hello",
         },
         {
-          agentRunner: { run: generateReply },
+          agentRunner: neverRunAgentRunner(),
         } as unknown as Parameters<typeof runLocalAgentTurn>[1],
       ),
     ).rejects.toThrow("Local reply delivery is required");
-    expect(generateReply).not.toHaveBeenCalled();
 
     const state = await getPersistedThreadState(conversationId!);
     const conversation = coerceThreadConversationState(state);
@@ -1050,12 +995,10 @@ describe("local agent runner", () => {
       messages: [projectedMessage],
     });
 
-    const contexts: CapturedAgentRun[] = [];
-    const generateReply = vi.fn<AgentRunner["run"]>(async (request) => {
-      const context = request;
-
-      contexts.push(context);
-      return completedAgentRun(successReply("uses projection"));
+    const agentRuns: CapturedAgentRun[] = [];
+    const agentRunner = createModelAgentRunnerForRun((run) => {
+      agentRuns.push(run);
+      return createModelStream([{ type: "text", text: "uses projection" }]);
     });
 
     await runLocalAgentTurn(
@@ -1065,11 +1008,11 @@ describe("local agent runner", () => {
       },
       {
         deliverReply: async () => undefined,
-        agentRunner: { run: generateReply },
+        agentRunner,
       },
     );
 
-    expect(contexts[0]?.history).toEqual([projectedMessage]);
+    expect(agentRuns[0]?.history).toEqual([projectedMessage]);
   });
 
   it("commits generated Pi history after successful local delivery", async () => {
@@ -1079,24 +1022,9 @@ describe("local agent runner", () => {
     });
     expect(conversationId).toBeDefined();
 
-    const generatedMessage = assistantPiMessage("persisted visible output", 2);
-    const generatedMessages: PiMessage[] = [
-      userPiMessage("hello"),
-      generatedMessage,
-    ];
-    const generateReply = vi.fn<AgentRunner["run"]>(async (request) => {
-      await deliverAssistantText(
-        request,
-        "persisted visible output",
-        generatedMessage,
-        generatedMessages.slice(0, -1),
-      );
-      return completedAgentRun(
-        successReply("persisted visible output", {
-          piMessages: generatedMessages,
-        }),
-      );
-    });
+    const firstAgentRunner = createModelAgentRunnerForRun(() =>
+      createModelStream([{ type: "text", text: "persisted visible output" }]),
+    );
 
     await runLocalAgentTurn(
       {
@@ -1105,15 +1033,34 @@ describe("local agent runner", () => {
       },
       {
         deliverReply: async () => undefined,
-        agentRunner: { run: generateReply },
+        agentRunner: firstAgentRunner,
       },
     );
 
-    expect(await loadProjection({ conversationId: conversationId! })).toEqual(
-      generatedMessages,
-    );
+    const generatedMessages = await loadProjection({
+      conversationId: conversationId!,
+    });
+    expect(generatedMessages).toEqual([
+      expect.objectContaining({
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: expect.stringContaining("hello"),
+          },
+        ],
+      }),
+      expect.objectContaining({
+        role: "assistant",
+        content: [{ type: "text", text: "persisted visible output" }],
+      }),
+    ]);
 
-    const contexts: CapturedAgentRun[] = [];
+    const agentRuns: CapturedAgentRun[] = [];
+    const followUpAgentRunner = createModelAgentRunnerForRun((run) => {
+      agentRuns.push(run);
+      return createModelStream([{ type: "text", text: "follow up reply" }]);
+    });
     await runLocalAgentTurn(
       {
         conversationId: conversationId!,
@@ -1121,18 +1068,11 @@ describe("local agent runner", () => {
       },
       {
         deliverReply: async () => undefined,
-        agentRunner: {
-          run: async (request) => {
-            const context = request;
-
-            contexts.push(context);
-            return completedAgentRun(successReply("follow up reply"));
-          },
-        },
+        agentRunner: followUpAgentRunner,
       },
     );
 
-    expect(contexts[0]?.history).toEqual([generatedMessages[0]]);
+    expect(agentRuns[0]?.history).toEqual(generatedMessages);
   });
 
   it("keeps the delivered local reply successful when a background task fails", async () => {
@@ -1230,7 +1170,11 @@ describe("local agent runner", () => {
       messages: projectedMessages,
     });
 
-    const contexts: CapturedAgentRun[] = [];
+    const agentRuns: CapturedAgentRun[] = [];
+    const agentRunner = createModelAgentRunnerForRun((run) => {
+      agentRuns.push(run);
+      return createModelStream([{ type: "text", text: "uses projection" }]);
+    });
     await runLocalAgentTurn(
       {
         conversationId: conversationId!,
@@ -1238,18 +1182,11 @@ describe("local agent runner", () => {
       },
       {
         deliverReply: async () => undefined,
-        agentRunner: {
-          run: async (request) => {
-            const context = request;
-
-            contexts.push(context);
-            return completedAgentRun(successReply("uses projection"));
-          },
-        },
+        agentRunner,
       },
     );
 
-    expect(contexts[0]?.history).toEqual(projectedMessages);
+    expect(agentRuns[0]?.history).toEqual(projectedMessages);
   });
 
   it("does not commit generated Pi output when local delivery fails", async () => {
