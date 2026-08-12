@@ -30,7 +30,9 @@ export async function listWorkspaces(db: JuniorDatabase): Promise<Workspace[]> {
       .from(juniorWorkspaceRepos)
       .orderBy(
         asc(juniorWorkspaceRepos.workspaceId),
+        asc(juniorWorkspaceRepos.provider),
         asc(juniorWorkspaceRepos.repo),
+        asc(juniorWorkspaceRepos.checkoutPath),
       ),
   ]);
   return workspaces.map((workspace) =>
@@ -57,7 +59,11 @@ export async function getWorkspaceByName(
     .select()
     .from(juniorWorkspaceRepos)
     .where(eq(juniorWorkspaceRepos.workspaceId, workspace.id))
-    .orderBy(asc(juniorWorkspaceRepos.repo));
+    .orderBy(
+      asc(juniorWorkspaceRepos.provider),
+      asc(juniorWorkspaceRepos.repo),
+      asc(juniorWorkspaceRepos.checkoutPath),
+    );
   return workspaceFromRows(workspace, repos);
 }
 
@@ -77,6 +83,10 @@ export async function getWorkspace(
     .select()
     .from(juniorWorkspaceRepos)
     .where(eq(juniorWorkspaceRepos.workspaceId, workspace.id))
-    .orderBy(asc(juniorWorkspaceRepos.repo));
+    .orderBy(
+      asc(juniorWorkspaceRepos.provider),
+      asc(juniorWorkspaceRepos.repo),
+      asc(juniorWorkspaceRepos.checkoutPath),
+    );
   return workspaceFromRows(workspace, repos);
 }

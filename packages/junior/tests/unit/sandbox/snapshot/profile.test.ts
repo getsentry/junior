@@ -103,6 +103,52 @@ describe("snapshot dependency profile", () => {
     expect(first?.hash).not.toBe(changed?.hash);
   });
 
+  it("keeps workspace profile hashes stable across repo order", () => {
+    const updatedAt = new Date("2026-03-10T00:00:00.000Z");
+    const first = create("node22", {
+      id: "workspace-1",
+      name: "sentry",
+      setupScript: "pnpm install",
+      updatedAt,
+      repos: [
+        {
+          provider: "github",
+          repo: "getsentry/sentry",
+          checkoutPath: "sentry",
+          isPrimary: true,
+        },
+        {
+          provider: "github",
+          repo: "getsentry/relay",
+          checkoutPath: "relay",
+          isPrimary: false,
+        },
+      ],
+    });
+    const second = create("node22", {
+      id: "workspace-1",
+      name: "sentry",
+      setupScript: "pnpm install",
+      updatedAt,
+      repos: [
+        {
+          provider: "github",
+          repo: "getsentry/relay",
+          checkoutPath: "relay",
+          isPrimary: false,
+        },
+        {
+          provider: "github",
+          repo: "getsentry/sentry",
+          checkoutPath: "sentry",
+          isPrimary: true,
+        },
+      ],
+    });
+
+    expect(first?.hash).toBe(second?.hash);
+  });
+
   it("layers workspace profiles on the base hash without reinstall deps", () => {
     dependenciesMock.mockReturnValue([
       { type: "npm", package: "example", version: "1.2.3" },

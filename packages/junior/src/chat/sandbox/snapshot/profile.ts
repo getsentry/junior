@@ -85,10 +85,18 @@ function floatingMaxAgeMs(): number {
 }
 
 function workspaceRecipe(workspace: Workspace) {
+  // Sort repos so profile hashes stay stable when query order differs.
+  const repos = [...workspace.repos].sort((left, right) => {
+    const provider = left.provider.localeCompare(right.provider);
+    if (provider !== 0) return provider;
+    const repo = left.repo.localeCompare(right.repo);
+    if (repo !== 0) return repo;
+    return left.checkoutPath.localeCompare(right.checkoutPath);
+  });
   return {
     id: workspace.id,
     updatedAt: workspace.updatedAt.toISOString(),
-    repos: workspace.repos,
+    repos,
     setupScript: workspace.setupScript,
   };
 }
