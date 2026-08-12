@@ -1,4 +1,9 @@
-import type { Actor } from "@sentry/junior-plugin-api";
+import type {
+  Actor,
+  Identity,
+  ToolRegistrationHookContext,
+  User,
+} from "@sentry/junior-plugin-api";
 
 export const GITHUB_REQUEST_ATTRIBUTION_START =
   "<!-- junior-request-attribution:start -->";
@@ -16,25 +21,40 @@ function cleanDisplayValue(
   return cleaned;
 }
 
-function actorLabel(actor: Actor | undefined): string | undefined {
+function boldLabel(value: string): string {
+  return `**${value.replaceAll("*", "\\*")}**`;
+}
+
+/**
+ * Resolve the requester display label through the host identity path first.
+ *
+ * Prefer the linked user name, then the stored identity name/handle, then the
+ * already-hydrated actor profile. Never publish a raw actor id.
+ */
+function requesterLabel(args: {
+  actor: Actor | undefined;
+  identity?: Identity;
+  user?: User;
+}): string | undefined {
+  const { actor, identity, user } = args;
   if (!actor) {
     return undefined;
   }
   if (actor.platform === "system") {
     return `Junior system actor \`${actor.name}\``;
   }
+
+  const userId = actor.userId;
   const display =
-    cleanDisplayValue(actor.fullName, actor.userId) ??
-    cleanDisplayValue(actor.userName, actor.userId);
-  return display ? `**${display.replaceAll("*", "\\*")}**` : undefined;
+    cleanDisplayValue(user?.displayName, userId) ??
+    cleanDisplayValue(identity?.displayName, userId) ??
+    cleanDisplayValue(identity?.handle, userId) ??
+    cleanDisplayValue(actor.fullName, userId) ??
+    cleanDisplayValue(actor.userName, userId);
+  return display ? boldLabel(display) : undefined;
 }
 
-/** Append or replace runtime-owned requester attribution in a GitHub body. */
-export function appendGitHubRequesterAttribution(
-  body: string,
-  actor: Actor | undefined,
-): string {
-  const label = actorLabel(actor);
+function applyAttribution(body: string, label: string | undefined): string {
   const attribution = label
     ? `${GITHUB_REQUEST_ATTRIBUTION_START}\nRequested by ${label}.\n${GITHUB_REQUEST_ATTRIBUTION_END}`
     : undefined;
@@ -51,4 +71,20 @@ export function appendGitHubRequesterAttribution(
     return normalizedBody;
   }
   return normalizedBody ? `${normalizedBody}\n\n${attribution}` : attribution;
+}
+
+/** Append or replace runtime-owned requester attribution in a GitHub body. */
+export async function appendGitHubRequesterAttribution(
+  body: string,
+  ctx: Pick<ToolRegistrationHookContext, "actor" | "users">,
+): Promise<string> {
+  const resolved = ctx.actor ? await ctx.users.resolveActor() : undefined;
+  return applyAttribution(
+    body,
+    requesterLabel({
+      actor: ctx.actor,
+      identity: resolved?.identity,
+      user: resolved?.user,
+    }),
+  );
 }

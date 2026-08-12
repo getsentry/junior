@@ -4,6 +4,7 @@ import {
   EgressAuthRequired,
   type PluginStoredTokens,
   type SandboxPrepareHookContext,
+  type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -299,6 +300,7 @@ function githubToolsContext(input?: {
     provider: string;
     request: Request;
   }) => Promise<Response>;
+  resolveActor?: ToolRegistrationHookContext["users"]["resolveActor"];
   stateSet?: (input: { key: string; value: unknown }) => Promise<void> | void;
 }) {
   const conversationId = input?.conversationId ?? "local:test:github-tool";
@@ -352,6 +354,10 @@ function githubToolsContext(input?: {
     },
     model: {},
     resourceEvents: { canSubscribe: true },
+    users: {
+      resolveActor:
+        input?.resolveActor ?? (async () => undefined),
+    },
     state: {
       async delete(key: string) {
         state.delete(key);
@@ -1211,7 +1217,61 @@ Conversation: \`local:test:old-conversation\`
     ]);
   });
 
-  it("omits requester attribution when the actor name is unresolved", async () => {
+  it("prefers stored identity names for requester attribution", async () => {
+    const resolveActor = vi.fn(async () => ({
+      identity: {
+        displayName: "Slack Profile Name",
+        handle: "david",
+        id: "identity-1",
+        provider: "slack",
+        providerSubjectId: "U039RR91S",
+        providerTenantId: "T1",
+      },
+      user: {
+        displayName: "David Cramer",
+        email: "david@example.com",
+        id: "user-1",
+        identities: [],
+      },
+    }));
+    const ctx = githubToolsContext({
+      actor: {
+        platform: "slack",
+        teamId: "T1",
+        userId: "U039RR91S",
+      },
+      resolveActor,
+      egressFetch: async () =>
+        new Response(
+          JSON.stringify({
+            number: 692,
+            html_url: "https://github.com/getsentry/junior/pull/692",
+          }),
+          { status: 201 },
+        ),
+    });
+    const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createPullRequest;
+
+    await tool?.execute?.(
+      {
+        repo: "getsentry/junior",
+        title: "Typed PR",
+        head: "dcramer/gh-660-pr-create",
+        base: "main",
+        body: "PR body",
+        draft: true,
+      },
+      { toolCallId: "call-create-identity-pull-request" },
+    );
+
+    expect(resolveActor).toHaveBeenCalledOnce();
+    const request = ctx.egressRequests()[0];
+    await expect(request?.request.json()).resolves.toMatchObject({
+      body: "PR body\n\n<!-- junior-request-attribution:start -->\nRequested by **David Cramer**.\n<!-- junior-request-attribution:end -->",
+    });
+  });
+
+  it("omits requester attribution when identity and actor names are unresolved", async () => {
     const ctx = githubToolsContext({
       actor: {
         fullName: "U039RR91S",
@@ -1220,11 +1280,19 @@ Conversation: \`local:test:old-conversation\`
         userId: "U039RR91S",
         userName: "U039RR91S",
       },
+      resolveActor: async () => ({
+        identity: {
+          id: "identity-1",
+          provider: "slack",
+          providerSubjectId: "U039RR91S",
+          providerTenantId: "T1",
+        },
+      }),
       egressFetch: async () =>
         new Response(
           JSON.stringify({
-            number: 692,
-            html_url: "https://github.com/getsentry/junior/pull/692",
+            number: 693,
+            html_url: "https://github.com/getsentry/junior/pull/693",
           }),
           { status: 201 },
         ),

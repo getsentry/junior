@@ -240,19 +240,19 @@ function isDefinitiveGitHubPullRequestCreateRejection(
 }
 
 /** Build the GitHub REST create-PR request after Junior owns body/footer shaping. */
-function createGitHubPullRequestRequest(
+async function createGitHubPullRequestRequest(
   conversationId: string,
   input: CreateGitHubPullRequestInput,
-  actor: ToolRegistrationHookContext["actor"],
+  ctx: ToolRegistrationHookContext,
   dashboardUrl?: string,
-): Request {
+): Promise<Request> {
   const repo = parseRepo(input.repo);
   const payload = {
     title: nonEmptyString(input.title, "title"),
     head: nonEmptyString(input.head, "head"),
     base: nonEmptyString(input.base, "base"),
     body: appendGitHubFooter(
-      appendGitHubRequesterAttribution(input.body ?? "", actor),
+      await appendGitHubRequesterAttribution(input.body ?? "", ctx),
       conversationId,
       dashboardUrl,
     ),
@@ -401,10 +401,10 @@ export function createGitHubPullRequestTool(ctx: ToolRegistrationHookContext) {
               "GitHub pull request creation for this tool call has an uncertain pending result; refusing to create a duplicate pull request.",
             );
           }
-          const request = createGitHubPullRequestRequest(
+          const request = await createGitHubPullRequestRequest(
             conversationId,
             parsedInput,
-            ctx.actor,
+            ctx,
             ctx.slack?.conversationLink?.url,
           );
           const pendingState: CreatePullRequestState = {

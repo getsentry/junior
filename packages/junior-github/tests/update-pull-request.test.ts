@@ -34,6 +34,9 @@ function toolContext(response?: Response) {
     slack: {
       conversationLink: { url: "https://example.com/session" },
     },
+    users: {
+      resolveActor: async () => undefined,
+    },
   } as unknown as ToolRegistrationHookContext;
   return { fetch, tool: createGitHubUpdatePullRequestTool(ctx) };
 }
