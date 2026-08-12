@@ -110,7 +110,7 @@ export function Drawer(props: {
             : "md:w-[min(560px,94vw)]",
         )}
       >
-        <header className="relative grid grid-cols-[minmax(0,1fr)_auto] gap-3 border-b border-white/10 bg-dashboard-surface-raised px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] md:px-5 md:pt-3">
+        <header className="relative grid grid-cols-[minmax(0,1fr)_auto] gap-3 border-b border-white/10 bg-dashboard-surface-raised px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] md:px-5">
           <div className="min-w-0">{props.header}</div>
           <div className="flex items-start gap-1.5">
             {props.actions}
@@ -125,7 +125,7 @@ export function Drawer(props: {
             </Button>
           </div>
         </header>
-        <div className="min-h-0 overflow-auto px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:px-5 md:pb-4">
+        <div className="min-h-0 overflow-auto px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:px-5">
           {props.children}
         </div>
       </aside>
