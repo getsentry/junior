@@ -43,6 +43,15 @@ describe("textMentionsBot", () => {
     ).toBe(false);
   });
 
+  it("detects a mention after a same-line fence close", () => {
+    expect(
+      textMentionsBot("```" + `<@${BOT}>` + "``` " + `<@${BOT}> help`, BOT),
+    ).toBe(true);
+    expect(
+      textMentionsBot("```" + `<@${BOT}>` + "``` no mention", BOT),
+    ).toBe(false);
+  });
+
   it("keeps the fence open when ``` appears mid-line inside the block", () => {
     expect(
       textMentionsBot(

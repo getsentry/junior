@@ -67,13 +67,27 @@ function isFenceCloser(line: string): boolean {
   return /^`{3,}\s*$/.test(line.trimStart());
 }
 
-/** True when a line opens a fence and also closes it before the newline. */
-function isSingleLineFence(line: string): boolean {
-  const trimmed = line.trimStart();
+/**
+ * When a line opens and closes a fence before the newline, return the text
+ * after the closing fence. Otherwise return undefined.
+ */
+function singleLineFenceSuffix(line: string): string | undefined {
+  const leadingWs = line.length - line.trimStart().length;
+  const trimmed = line.slice(leadingWs);
   if (!trimmed.startsWith("```")) {
-    return false;
+    return undefined;
   }
-  return trimmed.slice(3).includes("```");
+
+  const closeRel = trimmed.slice(3).indexOf("```");
+  if (closeRel === -1) {
+    return undefined;
+  }
+
+  let end = leadingWs + 3 + closeRel + 3;
+  while (line[end] === "`") {
+    end += 1;
+  }
+  return line.slice(end);
 }
 
 /**
@@ -83,6 +97,7 @@ function isSingleLineFence(line: string): boolean {
  * Fenced blocks open on a line-start ` ``` ` and close only on a pure fence
  * closer (backticks alone). Nested fence markers like ` ```js ` inside an
  * open block stay in code. Mid-line multi-backtick spans are inline code.
+ * Text after a same-line fence close is still scanned for mentions.
  */
 export function textMentionsBot(text: string, botUserId: string): boolean {
   if (!botUserId || !text) {
@@ -103,8 +118,13 @@ export function textMentionsBot(text: string, botUserId: string): boolean {
     }
 
     if (isFenceOpener(line)) {
-      // Opening fence that also closes on this line never leaves us stuck.
-      if (!isSingleLineFence(line)) {
+      const suffix = singleLineFenceSuffix(line);
+      if (suffix !== undefined) {
+        // Closed on this line; only post-fence text can activate.
+        if (lineMentionsBot(suffix, exactToken, labeledPrefix)) {
+          return true;
+        }
+      } else {
         inCodeBlock = true;
       }
       continue;
