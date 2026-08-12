@@ -70,6 +70,33 @@ describe("textMentionsBot", () => {
     ).toBe(true);
   });
 
+  it("keeps the fence open when a line inside starts with ```js", () => {
+    expect(
+      textMentionsBot(
+        [
+          "```",
+          "```js",
+          `<@${BOT}> still inside`,
+          "```",
+          "after the block",
+        ].join("\n"),
+        BOT,
+      ),
+    ).toBe(false);
+    expect(
+      textMentionsBot(
+        [
+          "```",
+          "```js",
+          `<@${BOT}> still inside`,
+          "```",
+          `<@${BOT}> after`,
+        ].join("\n"),
+        BOT,
+      ),
+    ).toBe(true);
+  });
+
   it("still detects a real mention beside code examples", () => {
     expect(
       textMentionsBot(
