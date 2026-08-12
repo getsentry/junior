@@ -173,13 +173,6 @@ function isDmEvent(event: SlackMessageEvent): boolean {
   return event.channel_type === "im" || event.channel?.startsWith("D") === true;
 }
 
-function eventMentionsBot(
-  event: SlackMessageEvent,
-  botUserId: string | undefined,
-): boolean {
-  return Boolean(botUserId && textMentionsBot(event.text ?? "", botUserId));
-}
-
 function shouldIgnoreMessageSubtype(event: SlackMessageEvent): boolean {
   return Boolean(event.subtype && IGNORED_MESSAGE_SUBTYPES.has(event.subtype));
 }
@@ -307,7 +300,10 @@ async function routeParsedMessage(args: {
   });
   // Slack still emits app_mention for tokens inside code spans/blocks. Only
   // count mentions that sit outside code as activations.
-  const isMention = eventMentionsBot(args.event, args.adapter.botUserId);
+  const botUserId = args.adapter.botUserId;
+  const isMention = Boolean(
+    botUserId && textMentionsBot(args.event.text ?? "", botUserId),
+  );
   if (isMention) {
     args.message.isMention = true;
   }

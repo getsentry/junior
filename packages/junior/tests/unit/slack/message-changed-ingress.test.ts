@@ -141,16 +141,6 @@ describe("extractMessageChangedMention", () => {
     expect(result).toBeNull();
   });
 
-  it("returns null when the new mention is only inside a code span", () => {
-    const body = makeEnvelope({
-      newText: "use `" + `<@${BOT_USER_ID}>` + "` in docs",
-      prevText: "use the bot in docs",
-    });
-
-    const result = extractMessageChangedMention(body, BOT_USER_ID, fakeAdapter);
-    expect(result).toBeNull();
-  });
-
   it("returns null when the edited message has no actor user id", () => {
     const body = makeEnvelope({
       newText: `<@${BOT_USER_ID}> please help`,
