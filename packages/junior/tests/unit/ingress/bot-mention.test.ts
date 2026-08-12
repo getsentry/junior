@@ -31,6 +31,18 @@ describe("textMentionsBot", () => {
     ).toBe(false);
   });
 
+  it("does not stay stuck after a single-line fenced block", () => {
+    expect(
+      textMentionsBot(
+        ["```" + `<@${BOT}>` + "```", `<@${BOT}> help`].join("\n"),
+        BOT,
+      ),
+    ).toBe(true);
+    expect(
+      textMentionsBot(["```" + `<@${BOT}>` + "```", "no mention"].join("\n"), BOT),
+    ).toBe(false);
+  });
+
   it("keeps the fence open when ``` appears mid-line inside the block", () => {
     expect(
       textMentionsBot(

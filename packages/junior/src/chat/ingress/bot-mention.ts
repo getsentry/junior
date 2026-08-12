@@ -58,13 +58,22 @@ function lineMentionsBot(
   return false;
 }
 
+/** True when a line opens a fence and also closes it before the newline. */
+function isSingleLineFence(line: string): boolean {
+  const trimmed = line.trimStart();
+  if (!trimmed.startsWith("```")) {
+    return false;
+  }
+  return trimmed.slice(3).includes("```");
+}
+
 /**
  * Return true when `text` contains a Slack bot mention token outside code.
  *
  * Slack encodes user mentions as `<@UXXXXXXXX>` or `<@UXXXXXXXX|label>`.
- * Fenced blocks use the same line-toggle rule as Slack mrkdwn helpers: a line
- * whose trimmed start is ` ``` ` flips in/out of code. Nested or mid-line
- * multi-backtick spans on non-fence lines are treated as inline code.
+ * Fenced blocks use line-start ` ``` ` toggles, matching Slack mrkdwn helpers,
+ * except a line that both opens and closes a fence stays out of block state.
+ * Nested or mid-line multi-backtick spans on non-fence lines are inline code.
  */
 export function textMentionsBot(text: string, botUserId: string): boolean {
   if (!botUserId || !text) {
@@ -77,7 +86,14 @@ export function textMentionsBot(text: string, botUserId: string): boolean {
 
   for (const line of text.split("\n")) {
     if (line.trimStart().startsWith("```")) {
-      inCodeBlock = !inCodeBlock;
+      if (inCodeBlock) {
+        inCodeBlock = false;
+        continue;
+      }
+      // Opening fence that also closes on this line never leaves us stuck.
+      if (!isSingleLineFence(line)) {
+        inCodeBlock = true;
+      }
       continue;
     }
     if (inCodeBlock) {
