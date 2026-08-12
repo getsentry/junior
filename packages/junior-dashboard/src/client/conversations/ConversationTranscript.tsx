@@ -1,53 +1,14 @@
-import {
-  Fragment,
-  useRef,
-  type ClipboardEventHandler,
-  type ReactNode,
-} from "react";
-import {
-  Activity,
-  Bot,
-  Brain,
-  Calendar,
-  Check,
-  ChevronRight,
-  CircleAlert,
-  Database,
-  Diff,
-  Info,
-  KeyRound,
-  Link,
-  MessageSquareText,
-  Minimize2,
-  Send,
-  Sparkles,
-  TriangleAlert,
-  type LucideIcon,
-} from "lucide-react";
+import { Fragment, useRef, type ReactNode } from "react";
 
-import { HighlightedCode } from "../code";
-import {
-  detectLanguage,
-  transcriptRoleKind,
-  formatMessageTimestamp,
-  transcriptMessageActorLabel,
-  unavailableTranscriptLabel,
-} from "../format";
-import { cn } from "../styles";
+import { unavailableTranscriptLabel } from "../format";
 import { conversationTranscriptMessages } from "./eventTranscript";
 import type {
   ConversationTranscript,
   TranscriptViewMessage,
   TranscriptViewSubagentPart,
 } from "../types";
-import {
-  TranscriptHeadingMeta,
-  TranscriptHeadingRow,
-} from "./TranscriptHeadingRow";
-import { TranscriptText } from "./TranscriptText";
 import { TranscriptSubagentView } from "./TranscriptSubagentView";
 import { TranscriptContextEventView } from "./TranscriptContextEventView";
-import { TranscriptTurnContextView } from "./TranscriptTurnContextView";
 import {
   isCollapsibleActivityEntry,
   TranscriptActivityGroup,
@@ -55,22 +16,25 @@ import {
 import { TranscriptToolView } from "./TranscriptToolView";
 import { TranscriptReasoningView } from "./TranscriptReasoningView";
 import { TranscriptStructuredEventView } from "./TranscriptStructuredEventView";
-import { getDashboardAgentName } from "../agentName";
-import { shouldCopyRawTranscript } from "./transcriptCopy";
+import { TranscriptFailureView } from "./TranscriptFailureView";
+import {
+  structuredEventIcon,
+  TranscriptRailEvent,
+} from "./TranscriptRailEvent";
+import { TranscriptMessageContextView } from "./TranscriptMessageContextView";
+import {
+  RedactedMessageView,
+  TranscriptMessageView,
+} from "./TranscriptMessageView";
+import { TranscriptResourceEventView } from "./TranscriptResourceEventView";
+import { TranscriptTypingIndicator } from "./TranscriptTypingIndicator";
 import {
   groupTranscriptMessages,
-  messageRawText,
   type RenderedTranscriptEntry,
   type TranscriptViewMode,
 } from "./transcriptRenderModel";
 import { transcriptEmptyClass } from "./transcriptStyles";
-import { SlackMark } from "./SlackMark";
-import {
-  entryMatchesSearch,
-  HighlightText,
-  useTranscriptSearch,
-} from "./transcriptSearch";
-import { showsSlackSourceIcon } from "./transcriptSource";
+import { entryMatchesSearch, useTranscriptSearch } from "./transcriptSearch";
 
 type TranscriptEntry = ReturnType<typeof groupTranscriptMessages>[number];
 type TranscriptContextEntry = Extract<TranscriptEntry, { kind: "context" }>;
@@ -111,122 +75,9 @@ export function ConversationTranscriptView(props: {
           messages={messages}
           view={props.view}
         />
-        {props.responding ? <TypingIndicator /> : null}
+        {props.responding ? <TranscriptTypingIndicator /> : null}
       </div>
     </section>
-  );
-}
-
-function TypingIndicator() {
-  return (
-    <div aria-live="polite" className="mt-5 flex items-center" role="status">
-      <span className="sr-only">{getDashboardAgentName()} is responding</span>
-      <span className="flex items-center gap-1 rounded-2xl bg-white/[0.04] px-3.5 py-2.5">
-        {[0, 1, 2].map((dot) => (
-          <span
-            aria-hidden="true"
-            className="size-1.5 animate-bounce rounded-full bg-cyan-100/70 motion-reduce:animate-none"
-            key={dot}
-            style={{ animationDelay: `${dot * 150}ms` }}
-          />
-        ))}
-      </span>
-    </div>
-  );
-}
-
-function transcriptRoleLabel(
-  message: TranscriptViewMessage,
-  conversation: ConversationTranscript,
-): string {
-  return transcriptMessageActorLabel(conversation, message);
-}
-
-function transcriptMessageClass(role: string): string {
-  const kind = transcriptRoleKind(role);
-
-  return cn(
-    "grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 rounded-2xl px-3 py-2 md:gap-1.5 md:px-3.5 md:py-2.5",
-    kind === "assistant" && "mr-6 bg-[#0f191c] text-dashboard-text md:mr-[18%]",
-    kind === "user" && "ml-6 bg-[#1a1a1c] text-dashboard-text md:ml-[22%]",
-    kind === "system" && "rounded-xl bg-[#17140d] text-dashboard-text",
-    kind === "tool" && "rounded-none px-0 text-dashboard-text-muted",
-    kind === "other" && "bg-dashboard-surface-hover text-dashboard-text",
-  );
-}
-
-function transcriptRoleClass(role: string): string {
-  const kind = transcriptRoleKind(role);
-
-  return cn(
-    "text-xs leading-snug",
-    kind === "assistant" && "text-cyan-100/70",
-    kind === "user" && "text-dashboard-text-muted",
-    kind === "system" && "text-amber-200/80",
-    kind === "tool" && "text-dashboard-text-muted",
-    kind === "other" && "text-dashboard-text-muted",
-  );
-}
-
-function transcriptRoleLabelClass(role: string): string {
-  const kind = transcriptRoleKind(role);
-
-  return cn(
-    "inline-block max-w-full truncate font-display text-xs font-semibold leading-tight md:text-sm",
-    kind === "assistant" && "text-cyan-100",
-    kind === "user" && "text-dashboard-text",
-    kind === "system" && "text-amber-200",
-    kind === "tool" && "text-dashboard-text-muted",
-    kind === "other" && "text-dashboard-text",
-  );
-}
-
-function TranscriptMessageShell(props: {
-  children: ReactNode;
-  onCopy?: ClipboardEventHandler<HTMLElement>;
-  role: string;
-}) {
-  return (
-    <article
-      className={transcriptMessageClass(props.role)}
-      onCopy={props.onCopy}
-    >
-      {props.children}
-    </article>
-  );
-}
-
-function TranscriptMessageHeader(props: {
-  meta?: Array<string | undefined>;
-  message: TranscriptViewMessage;
-  conversation: ConversationTranscript;
-}) {
-  const showSlack = showsSlackSourceIcon(props.message, props.conversation);
-  const metaText = (props.meta ?? []).filter(isString).join(" · ");
-  const roleLabel = transcriptRoleLabel(props.message, props.conversation);
-
-  return (
-    <TranscriptHeadingRow
-      left={
-        <span className={transcriptRoleLabelClass(props.message.role)}>
-          {roleLabel}
-        </span>
-      }
-      leftClassName={transcriptRoleClass(props.message.role)}
-      right={
-        showSlack || metaText ? (
-          <TranscriptHeadingMeta className="flex min-w-0 items-center gap-1.5 break-words text-2xs leading-snug text-dashboard-text-muted/80 md:leading-none">
-            {showSlack ? (
-              <span className="inline-flex shrink-0" title="Slack">
-                <SlackMark className="size-3.5" />
-              </span>
-            ) : null}
-            {showSlack && metaText ? <span aria-hidden="true">·</span> : null}
-            {metaText}
-          </TranscriptHeadingMeta>
-        ) : undefined
-      }
-    />
   );
 }
 
@@ -460,141 +311,6 @@ function stableActivityGroupKey(args: {
   return groupKey;
 }
 
-function TranscriptFailureView(props: {
-  outcome: "error" | "delivery_failed";
-  timestamp?: number;
-}) {
-  const timestamp = formatMessageTimestamp(props.timestamp);
-  const deliveryFailed = props.outcome === "delivery_failed";
-
-  return (
-    <div
-      className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3 rounded-lg bg-rose-300/[0.1] px-4 py-3 text-rose-100 max-md:grid-cols-[auto_minmax(0,1fr)]"
-      data-transcript-failure={props.outcome}
-      role="alert"
-    >
-      <CircleAlert
-        aria-hidden="true"
-        className="mt-0.5 text-rose-300"
-        size={16}
-      />
-      <div className="min-w-0">
-        <div className="font-display text-base font-semibold leading-tight">
-          {deliveryFailed ? "Message delivery failed" : "Agent response failed"}
-        </div>
-        <div className="mt-1 text-sm leading-relaxed text-rose-100/70">
-          {deliveryFailed
-            ? `${getDashboardAgentName()} could not deliver this message to its destination.`
-            : `The model response ended before ${getDashboardAgentName()} could complete this turn.`}
-        </div>
-      </div>
-      {timestamp ? (
-        <span className="font-mono text-xs leading-none text-rose-100/55 max-md:col-start-2">
-          {timestamp}
-        </span>
-      ) : null}
-    </div>
-  );
-}
-
-type TranscriptRailEventKind =
-  | "compaction"
-  | "handoff"
-  | "message_context"
-  | "resource_event"
-  | "structured_event"
-  | "subagent";
-
-/** Mark noteworthy transcript events with an inline status icon. */
-function TranscriptRailEvent(props: {
-  children: ReactNode;
-  icon?: LucideIcon;
-  kind: TranscriptRailEventKind;
-}) {
-  const marker = transcriptRailMarker(props.kind);
-  const Icon = props.icon ?? marker.icon;
-
-  return (
-    <div
-      className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-2"
-      data-transcript-rail-event={props.kind}
-    >
-      <span
-        aria-hidden="true"
-        className={cn(
-          "mt-1.5 grid size-5 place-items-center rounded bg-black/30",
-          marker.className,
-        )}
-      >
-        <Icon size={11} strokeWidth={2.2} />
-      </span>
-      <div className="min-w-0">{props.children}</div>
-    </div>
-  );
-}
-
-function transcriptRailMarker(kind: TranscriptRailEventKind): {
-  className: string;
-  icon: LucideIcon;
-} {
-  if (kind === "message_context") {
-    return {
-      className: "text-dashboard-text-muted",
-      icon: MessageSquareText,
-    };
-  }
-  if (kind === "resource_event") {
-    return {
-      className: "text-violet-200",
-      icon: Diff,
-    };
-  }
-  if (kind === "structured_event") {
-    return {
-      className: "text-violet-200",
-      icon: Activity,
-    };
-  }
-  if (kind === "subagent") {
-    return {
-      className: "text-cyan-200",
-      icon: Bot,
-    };
-  }
-  if (kind === "handoff") {
-    return {
-      className: "text-sky-200",
-      icon: Send,
-    };
-  }
-  return {
-    className: "text-amber-200",
-    icon: Minimize2,
-  };
-}
-
-const structuredEventIcons: Record<
-  NonNullable<TranscriptStructuredEventEntry["part"]["presentation"]["icon"]>,
-  LucideIcon
-> = {
-  activity: Activity,
-  brain: Brain,
-  calendar: Calendar,
-  check: Check,
-  database: Database,
-  info: Info,
-  key: KeyRound,
-  link: Link,
-  sparkles: Sparkles,
-  warning: TriangleAlert,
-};
-
-function structuredEventIcon(
-  icon: TranscriptStructuredEventEntry["part"]["presentation"]["icon"],
-): LucideIcon {
-  return icon ? structuredEventIcons[icon] : Activity;
-}
-
 function RedactedTranscriptView(props: {
   onOpenSubagentTranscript?: (args: {
     part: TranscriptViewSubagentPart;
@@ -674,201 +390,4 @@ function RedactedTranscriptView(props: {
       )}
     />
   );
-}
-
-function RedactedMessageView(props: {
-  message: TranscriptMessageEntry["message"];
-  conversation: ConversationTranscript;
-}) {
-  const meta = [formatMessageTimestamp(props.message.timestamp)].filter(
-    isString,
-  );
-
-  return (
-    <TranscriptMessageShell role={props.message.role}>
-      <TranscriptMessageHeader
-        meta={meta}
-        message={props.message}
-        conversation={props.conversation}
-      />
-      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 font-mono text-base leading-snug text-dashboard-text-muted">
-        {props.message.parts.map((_part, index) => (
-          <RedactedMetadataRow key={index} />
-        ))}
-      </div>
-    </TranscriptMessageShell>
-  );
-}
-
-function RedactedMetadataRow(props: { meta?: string }) {
-  return (
-    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-1 max-md:grid-cols-1">
-      <RedactedMarker />
-      {props.meta ? (
-        <span className="min-w-0 break-words text-right text-dashboard-text-muted max-md:text-left">
-          {props.meta}
-        </span>
-      ) : null}
-    </div>
-  );
-}
-
-function RedactedMarker() {
-  return (
-    <code className="inline-flex w-fit font-mono text-sm leading-tight text-dashboard-text-muted">
-      {"<redacted>"}
-    </code>
-  );
-}
-
-function TranscriptMessageContextView(props: {
-  conversation: ConversationTranscript;
-  message: TranscriptMessageEntry["message"];
-  redacted?: boolean;
-}) {
-  const actor = transcriptRoleLabel(props.message, props.conversation);
-  const timestamp = formatMessageTimestamp(props.message.timestamp);
-  const text = messageRawText(props.message);
-
-  const content = props.redacted ? (
-    <RedactedMarker />
-  ) : (
-    <HighlightText text={text} />
-  );
-
-  return (
-    <>
-      <details
-        className="group/message-context min-w-0 rounded-lg bg-white/[0.025] px-3 py-2.5 md:hidden"
-        data-transcript-message-context
-      >
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-2 font-display text-xs font-semibold text-dashboard-text-muted [&::-webkit-details-marker]:hidden">
-          <span className="min-w-0 truncate">Context from {actor}</span>
-          <ChevronRight
-            aria-hidden="true"
-            className="shrink-0 transition-transform group-open/message-context:rotate-90"
-            size={14}
-          />
-        </summary>
-        <div className="mt-2 whitespace-pre-wrap pt-2 text-sm leading-relaxed text-dashboard-text/75">
-          {content}
-        </div>
-        {!props.redacted && props.message.contexts?.length ? (
-          <div className="mt-2">
-            <TranscriptTurnContextView contexts={props.message.contexts} />
-          </div>
-        ) : null}
-      </details>
-      <article
-        className="hidden min-w-0 rounded-lg bg-white/[0.025] px-3 py-2.5 md:block"
-        data-transcript-message-context
-      >
-        <TranscriptHeadingRow
-          left={
-            <span className="font-display text-xs font-semibold text-dashboard-text-muted">
-              Context from {actor}
-            </span>
-          }
-          leftClassName="min-w-0"
-          right={
-            timestamp ? (
-              <TranscriptHeadingMeta className="font-mono text-2xs text-dashboard-text-muted/70">
-                {timestamp}
-              </TranscriptHeadingMeta>
-            ) : undefined
-          }
-        />
-        <div className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-dashboard-text/75">
-          {content}
-        </div>
-        {!props.redacted && props.message.contexts?.length ? (
-          <div className="mt-2">
-            <TranscriptTurnContextView contexts={props.message.contexts} />
-          </div>
-        ) : null}
-      </article>
-    </>
-  );
-}
-
-function TranscriptResourceEventView(props: {
-  message: TranscriptMessageEntry["message"];
-}) {
-  const text = messageRawText(props.message);
-  const redacted = props.message.parts.some(
-    (part) => part.type === "text" && part.redacted,
-  );
-  return (
-    <details className="min-w-0 rounded-lg bg-violet-300/[0.07] px-3 py-2">
-      <summary className="cursor-pointer list-none font-display text-sm font-semibold text-violet-100 [&::-webkit-details-marker]:hidden">
-        <HighlightText text={props.message.eventType ?? ""} />
-      </summary>
-      {text ? (
-        <div className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-dashboard-text-muted">
-          <HighlightText text={text} />
-        </div>
-      ) : redacted ? (
-        <div className="mt-2">
-          <RedactedMarker />
-        </div>
-      ) : null}
-    </details>
-  );
-}
-
-function TranscriptMessageView(props: {
-  message: TranscriptMessageEntry["message"];
-  conversation: ConversationTranscript;
-  view: TranscriptViewMode;
-}) {
-  const rawText = messageRawText(props.message);
-  const role = props.message.role;
-
-  return (
-    <TranscriptMessageShell
-      role={props.message.role}
-      onCopy={(event) => {
-        const selection = event.currentTarget.ownerDocument.getSelection();
-        if (
-          !shouldCopyRawTranscript(
-            props.view,
-            rawText,
-            selection,
-            event.currentTarget,
-          )
-        ) {
-          return;
-        }
-        event.clipboardData.setData("text/plain", rawText);
-        event.preventDefault();
-      }}
-    >
-      <TranscriptMessageHeader
-        meta={[formatMessageTimestamp(props.message.timestamp)]}
-        message={props.message}
-        conversation={props.conversation}
-      />
-      {props.view === "raw" ? (
-        <HighlightedCode
-          code={rawText || "{}"}
-          language={detectLanguage(rawText)}
-        />
-      ) : (
-        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
-          {props.message.parts.map((part, index) => (
-            <TranscriptText key={index} role={role} text={part.text ?? ""} />
-          ))}
-        </div>
-      )}
-      {props.view === "rich" &&
-      props.message.role === "user" &&
-      props.message.contexts?.length ? (
-        <TranscriptTurnContextView contexts={props.message.contexts} />
-      ) : null}
-    </TranscriptMessageShell>
-  );
-}
-
-function isString(value: string | undefined): value is string {
-  return typeof value === "string" && value.length > 0;
 }
