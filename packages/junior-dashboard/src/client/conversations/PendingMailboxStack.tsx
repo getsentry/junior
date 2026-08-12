@@ -4,7 +4,7 @@ import type { ConversationPendingMessage } from "@sentry/junior/api/schema";
 
 import { cn } from "../styles";
 import { Tooltip } from "../components/Tooltip";
-import { formatMessageTimestamp, transcriptMessageActorLabel } from "../format";
+import { transcriptMessageActorLabel } from "../format";
 import type { ConversationTranscript, TranscriptViewMessage } from "../types";
 import {
   TranscriptHeadingMeta,
@@ -31,14 +31,13 @@ function pendingDeliveryMeta(
 
 function PendingMetaIcon(props: {
   children: ReactElement;
-  className?: string;
   label: string;
 }) {
   return (
     <Tooltip content={props.label} placement="above">
       <span
         aria-label={props.label}
-        className={cn("inline-flex", props.className)}
+        className="inline-flex text-dashboard-text-muted"
       >
         {props.children}
       </span>
@@ -49,35 +48,22 @@ function PendingMetaIcon(props: {
 function PendingMetaIcons(props: {
   delivery: ConversationPendingMessage["delivery"];
   showSlack: boolean;
-  timestamp?: string;
 }) {
   const delivery = pendingDeliveryMeta(props.delivery);
   const DeliveryIcon = delivery.icon;
 
   return (
-    <TranscriptHeadingMeta className="flex min-w-0 items-center justify-end gap-2 text-xs leading-none text-dashboard-text-muted">
-      <span className="inline-flex shrink-0 items-center gap-1.5">
-        {props.showSlack ? (
-          <Tooltip content="Slack" placement="above">
-            <span className="inline-flex text-dashboard-text-muted">
-              <SlackMark className="size-3.5" />
-            </span>
-          </Tooltip>
-        ) : null}
-        <PendingMetaIcon
-          className={
-            props.delivery === "interrupt"
-              ? "text-amber-200/85"
-              : "text-dashboard-text-muted"
-          }
-          label={delivery.label}
-        >
-          <DeliveryIcon aria-hidden="true" size={13} strokeWidth={2.2} />
-        </PendingMetaIcon>
-      </span>
-      {props.timestamp ? (
-        <span className="min-w-0 truncate">{props.timestamp}</span>
+    <TranscriptHeadingMeta className="flex min-w-0 items-center justify-end gap-1.5 text-xs leading-none text-dashboard-text-muted">
+      {props.showSlack ? (
+        <Tooltip content="Slack" placement="above">
+          <span className="inline-flex text-dashboard-text-muted">
+            <SlackMark className="size-3.5" />
+          </span>
+        </Tooltip>
       ) : null}
+      <PendingMetaIcon label={delivery.label}>
+        <DeliveryIcon aria-hidden="true" size={13} strokeWidth={2.2} />
+      </PendingMetaIcon>
     </TranscriptHeadingMeta>
   );
 }
@@ -117,11 +103,7 @@ function PendingRow(props: {
         }
         leftClassName="text-sm leading-snug text-dashboard-text"
         right={
-          <PendingMetaIcons
-            delivery={delivery}
-            showSlack={showSlack}
-            timestamp={formatMessageTimestamp(props.message.timestamp)}
-          />
+          <PendingMetaIcons delivery={delivery} showSlack={showSlack} />
         }
       />
       {redacted ? (
@@ -159,7 +141,7 @@ export function PendingMailboxStack(props: {
   return (
     <div
       aria-label="Pending messages"
-      className="mx-2 overflow-hidden rounded-t-lg border border-b-0 border-amber-300/15 bg-amber-300/[0.055] md:mx-3"
+      className="mx-2 overflow-hidden rounded-t-lg bg-amber-300/[0.055] md:mx-3"
     >
       <div className="px-3 py-2 font-sans text-xs font-medium text-amber-100/80 md:hidden">
         {countLabel}
@@ -174,7 +156,7 @@ export function PendingMailboxStack(props: {
           />
         ))}
         {collapsedCount > 0 ? (
-          <div className="border-t border-amber-300/10 px-3 py-2 font-sans text-xs font-medium text-amber-100/70 md:px-3.5">
+          <div className="px-3 py-2 font-sans text-xs font-medium text-amber-100/70 md:px-3.5">
             {collapsedCount} more queued messages
           </div>
         ) : null}
