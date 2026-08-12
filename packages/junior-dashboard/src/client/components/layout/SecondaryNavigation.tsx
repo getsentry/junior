@@ -5,6 +5,7 @@ import {
   dashboardContainerClass,
   dashboardInteractiveTextClass,
 } from "../../styles";
+import { SecondaryNavigationPortal } from "./DashboardChrome";
 
 export type SecondaryNavigationItem = {
   end?: boolean;
@@ -12,7 +13,7 @@ export type SecondaryNavigationItem = {
   to: string;
 };
 
-/** Render the shared page-level secondary navigation. */
+/** Render the shared page-level secondary navigation in the sticky shell chrome. */
 export function SecondaryNavigation(props: {
   ariaLabel: string;
   items: SecondaryNavigationItem[];
@@ -29,25 +30,27 @@ export function SecondaryNavigation(props: {
     );
 
   return (
-    <div className="border-b border-white/[0.06] bg-white/[0.018]">
-      <nav
-        aria-label={props.ariaLabel}
-        className={cn(
-          dashboardContainerClass,
-          "flex min-w-0 gap-1 overflow-x-auto px-4 [scrollbar-width:none] md:px-8 [&::-webkit-scrollbar]:hidden",
-        )}
-      >
-        {props.items.map((item) => (
-          <NavLink
-            className={linkClass}
-            end={item.end}
-            key={item.to}
-            to={item.to}
-          >
-            {item.label}
-          </NavLink>
-        ))}
-      </nav>
-    </div>
+    <SecondaryNavigationPortal>
+      <div className="border-b border-white/[0.06] bg-white/[0.018]">
+        <nav
+          aria-label={props.ariaLabel}
+          className={cn(
+            dashboardContainerClass,
+            "flex min-w-0 gap-1 overflow-x-auto px-4 [scrollbar-width:none] md:px-8 [&::-webkit-scrollbar]:hidden",
+          )}
+        >
+          {props.items.map((item) => (
+            <NavLink
+              className={linkClass}
+              end={item.end}
+              key={item.to}
+              to={item.to}
+            >
+              {item.label}
+            </NavLink>
+          ))}
+        </nav>
+      </div>
+    </SecondaryNavigationPortal>
   );
 }

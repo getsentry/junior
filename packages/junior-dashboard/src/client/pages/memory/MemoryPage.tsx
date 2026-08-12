@@ -51,7 +51,7 @@ export function MemoryPage(props: { page: PluginUserPageLink }) {
   const libraryHref = pathWithSearch(libraryPath, location.search);
 
   return (
-    <div className="min-w-0">
+    <>
       <SecondaryNavigation
         ariaLabel="Memory navigation"
         items={[
@@ -71,7 +71,7 @@ export function MemoryPage(props: { page: PluginUserPageLink }) {
           <MemoryLibrary libraryPath={libraryPath} page={props.page} />
         )}
       </PageLayout>
-    </div>
+    </>
   );
 }
 
