@@ -1,81 +1,101 @@
 # Sources
 
-Retrieved: 2026-06-01
+Retrieved: 2026-08-12
+Published baseline: `@earendil-works/pi-agent-core@0.84.1`
+Upstream review commit: `9795d602306ef68a97585909e8e79f92a389057b`
 Skill class: `integration-documentation`
 Primary execution shape: `reference-backed-expert`
-Scope: Pi package documentation only; no consuming-product-specific contracts.
+Scope: Pi package guidance only. Consuming-product contracts remain out of scope.
 
 ## Source inventory
 
-| Source                                                               | Trust tier | Confidence | Contribution                                                                                | Usage constraints                         |
-| -------------------------------------------------------------------- | ---------- | ---------- | ------------------------------------------------------------------------------------------- | ----------------------------------------- |
-| npm metadata for `@earendil-works/pi-agent-core`                     | canonical  | high       | Confirmed latest package name, latest version, repository, dist-tags                        | Re-check before future material API edits |
-| `@earendil-works/pi-agent-core@0.78.0/package.json`                  | canonical  | high       | Runtime engine, exports, repository, dependency baseline                                    | Published package snapshot                |
-| `@earendil-works/pi-agent-core@0.78.0/README.md`                     | canonical  | high       | Public API intent, event flow, tool execution, continuation, proxy, low-level loop guidance | Published package snapshot                |
-| `@earendil-works/pi-agent-core@0.78.0/dist/agent.d.ts`               | canonical  | high       | `AgentOptions`, `Agent` methods, state, queue, lifecycle surface                            | Declaration source of truth               |
-| `@earendil-works/pi-agent-core@0.78.0/dist/agent.js`                 | canonical  | high       | Runtime semantics for `continue()`, queue draining, listener settlement, state updates      | Used where README/types were ambiguous    |
-| `@earendil-works/pi-agent-core@0.78.0/dist/types.d.ts`               | canonical  | high       | `StreamFn`, message pipeline, tool hooks, queue mode, tool execution, event types           | Declaration source of truth               |
-| `@earendil-works/pi-agent-core@0.78.0/dist/agent-loop.d.ts`          | canonical  | high       | Low-level loop signatures and continuation caveat                                           | Declaration source of truth               |
-| `@earendil-works/pi-agent-core@0.78.0/dist/agent-loop.js`            | canonical  | high       | Low-level loop ordering, `shouldStopAfterTurn`, `prepareNextTurn`, tool execution internals | Used where README/types were ambiguous    |
-| `@earendil-works/pi-agent-core@0.78.0/dist/proxy.d.ts`               | canonical  | high       | `streamProxy` events and serializable proxy options                                         | Declaration source of truth               |
-| `@earendil-works/pi-agent-core@0.78.0/dist/harness/*.d.ts`           | canonical  | high       | `AgentHarness`, session, skill, prompt-template, compaction, environment contracts          | Declaration source of truth               |
-| `.agents/skills/skill-writer/SKILL.md`                               | canonical  | high       | Required workflow for skill synthesis, authoring, and validation                            | Skill-authoring process source            |
-| `.agents/skills/skill-writer/references/mode-selection.md`           | canonical  | high       | Classified this as `integration-documentation`                                              | Process guidance                          |
-| `.agents/skills/skill-writer/references/execution-shapes.md`         | canonical  | high       | Selected `reference-backed-expert` shape                                                    | Process guidance                          |
-| `.agents/skills/skill-writer/references/synthesis-path.md`           | canonical  | high       | Required source inventory, decisions, coverage, gaps                                        | Process guidance                          |
-| `.agents/skills/skill-writer/references/authoring-path.md`           | canonical  | high       | Runtime authoring and precision-pass rules                                                  | Process guidance                          |
-| `.agents/skills/skill-writer/references/reference-architecture.md`   | canonical  | high       | Added focused `references/harness.md` as a routed lookup leaf                               | Process guidance                          |
-| `.agents/skills/skill-writer/references/spec-template.md`            | canonical  | high       | Added `SPEC.md` for material scope/reference changes                                        | Process guidance                          |
-| `.agents/skills/skill-writer/references/description-optimization.md` | canonical  | high       | Trigger quality pass                                                                        | Process guidance                          |
-| `.agents/skills/skill-writer/references/registration-validation.md`  | canonical  | high       | Validation expectations                                                                     | Process guidance                          |
+| Source                                                                 | Trust      | Contribution                                                                                  | Constraint                                                |
+| ---------------------------------------------------------------------- | ---------- | --------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| npm metadata for `@earendil-works/pi-agent-core`                       | canonical  | Confirmed `latest` `0.84.1`, package identity, repository, engine, and publish dates          | Re-check before each material update                      |
+| Published `0.84.1/package.json` and `README.md`                        | canonical  | Confirmed exports, required `streamFn`, main `Agent` API, loop use, tools, and event flow     | Published contract and public intent                      |
+| Published `0.84.1/dist/agent.d.ts` and `agent.js`                      | canonical  | Confirmed options, state, active-run guards, continuation, queues, and listener settlement    | Implementation resolves declaration ambiguity             |
+| Published `0.84.1/dist/types.d.ts` and `agent-loop.*`                  | canonical  | Confirmed stream shape, turn hooks, loop signatures, tools, usage, added tools, and events    | Published contract and behavior                           |
+| Published `0.84.1/dist/proxy.*`                                        | canonical  | Confirmed proxy options and published finalized-event behavior                                | Published package contains the noted metadata defect      |
+| Published `0.84.1/dist/harness/*`                                      | canonical  | Confirmed session v4 exports, scaffold types, and which `AgentHarness` methods are unfinished | Check implementation, not declarations alone              |
+| Upstream `packages/agent/CHANGELOG.md` at review commit                | primary    | Captured breaking changes from `0.78.0` through `0.84.1` and the unreleased proxy fix         | Unreleased entries are evidence, not published contract   |
+| Upstream `packages/agent/src` and `packages/agent/docs/harness.md`     | primary    | Compared implemented scaffold behavior with intended lane-based harness design                | Design text cannot imply current runtime readiness        |
+| Local Pi catalog and consumers                                         | supporting | Confirmed this repo pins `0.82.1` and already uses `prepareNextTurnWithContext`               | Product dependency upgrades are outside this skill update |
+| Local `skill-writer` workflow, repository instructions, and validators | canonical  | Required material synthesis, precision, trigger, source, and validation passes                | Authoring-process source                                  |
 
 ## Decisions
 
-| Decision                                                         | Status   | Evidence                                                                           |
-| ---------------------------------------------------------------- | -------- | ---------------------------------------------------------------------------------- |
-| Keep the skill Pi-only                                           | adopted  | User direction on 2026-06-01                                                       |
-| Target npm `latest` only                                         | adopted  | User direction + npm metadata                                                      |
-| Use `@earendil-works/pi-agent-core` as the only package identity | adopted  | Latest package metadata                                                            |
-| Remove consuming-product-specific source references              | adopted  | User direction + portability goal                                                  |
-| Add a routed harness reference                                   | adopted  | Latest package exports substantial `AgentHarness`, session, skill, compaction APIs |
-| Keep `SKILL.md` as router/guardrail layer                        | adopted  | `skill-writer` reference architecture                                              |
-| Add `SPEC.md`                                                    | adopted  | Material scope and reference architecture change                                   |
-| Add backward compatibility or old package migration guidance     | rejected | Latest-only user direction                                                         |
+| Decision                                                                    | Status   | Evidence                                                        |
+| --------------------------------------------------------------------------- | -------- | --------------------------------------------------------------- |
+| Keep the skill Pi-only                                                      | adopted  | Existing scope and user request                                 |
+| Target npm `latest` as the runtime contract                                 | adopted  | Existing policy and npm metadata                                |
+| Treat upstream `main` as unreleased evidence                                | adopted  | Published package differs from the upstream unreleased section  |
+| Keep the reference-backed shape and replace existing leaves                 | adopted  | Routes remain distinct; no new lookup need exists               |
+| Require explicit `streamFn` in current integrations                         | adopted  | Published declarations and README                               |
+| Prefer `prepareNextTurnWithContext` for context-aware `Agent` work          | adopted  | Published `AgentOptions`                                        |
+| Guard `reset()` with idle state                                             | adopted  | `0.84.1` implementation and changelog                           |
+| Include tool usage, added tools, late-update, and blocked termination rules | adopted  | Published types, implementation, and changelog                  |
+| Replace legacy harness guidance with session v4 and scaffold readiness      | adopted  | `0.84.0` breaking change and `0.84.1` implementation            |
+| Recommend bare `Agent` plus direct session/helpers for production work      | adopted  | Most current `AgentHarness` operations reject as unimplemented  |
+| Add old-package migration or compatibility wrappers by default              | rejected | Latest-only scope                                               |
+| Upgrade this repo's Pi dependency as part of the skill refresh              | rejected | Separate product change that needs its own implementation tests |
+
+## Source adaptation
+
+| Item              | Decision                                                                                                    |
+| ----------------- | ----------------------------------------------------------------------------------------------------------- |
+| Source intent     | Pi docs and types describe execution, sessions, and the intended lane-based harness.                        |
+| Local target      | Cause agents to use only published, implemented behavior and choose the smallest stable Pi surface.         |
+| Fidelity boundary | Keep current names, signatures, ordering, failure rules, and readiness exact.                               |
+| Local replacement | Replace long design prose with routed tables, guardrails, use cases, and failure fixes.                     |
+| Omitted material  | Omit legacy migration detail, unfinished harness internals, provider catalogs, and product-specific policy. |
+| Rights            | Pi is MIT licensed. This skill paraphrases public facts and does not copy substantial source text.          |
 
 ## Coverage matrix
 
-| Dimension                                   | Coverage status | Evidence                                                                                |
-| ------------------------------------------- | --------------- | --------------------------------------------------------------------------------------- |
-| API surface and behavior contracts          | covered         | `agent.d.ts`, `agent.js`, `types.d.ts`, `agent-loop.d.ts`, `agent-loop.js`, `README.md` |
-| Config/runtime options                      | covered         | `AgentOptions`, `AgentLoopConfig`, `AgentHarnessOptions`, package metadata              |
-| Common downstream use cases                 | covered         | `README.md`, declarations, runtime implementation                                       |
-| Known issues/failure modes with workarounds | covered         | `agent.js`, `agent-loop.js`, type contracts                                             |
-| Version/migration variance                  | constrained     | Latest-only package targeting; migration intentionally omitted                          |
-| Harness/session/skill/compaction surface    | covered         | `dist/harness/*.d.ts`                                                                   |
+| Dimension                          | Status  | Evidence                                                                                   |
+| ---------------------------------- | ------- | ------------------------------------------------------------------------------------------ |
+| API surface and behavior           | covered | Published README, declarations, and implementation                                         |
+| Config and runtime options         | covered | `AgentOptions`, `AgentLoopConfig`, proxy types, scaffold options, and session types        |
+| Downstream use cases               | covered | Ten focused use cases across streaming, proxy, auth, context, queues, tools, and sessions  |
+| Failure modes and workarounds      | covered | Published implementation, changelog fixes, and more than eight troubleshooting entries     |
+| Version variance                   | covered | Diff from `0.78.0`, changelog through `0.84.1`, local `0.82.1`, and unreleased `main` note |
+| Harness, session, helper readiness | covered | Published harness declarations and implementation plus upstream design comparison          |
+| Trigger precision                  | covered | Should-trigger and should-not-trigger sets below                                           |
 
-## Trigger quality notes
+## Trigger quality
 
 Should trigger:
 
 - "integrate pi-agent-core Agent into my app"
-- "stream Pi Agent text deltas into our SDK"
-- "how should I use AgentHarness sessions and skills"
-- "fix continue() throwing in pi-agent-core"
-- "wire streamProxy for Pi"
+- "wire Pi text streaming"
+- "why does Pi continue() reject?"
+- "update our Pi tool hooks"
+- "use Pi sessions or AgentHarness"
+- "proxy Pi model calls"
+- "review whether our Pi integration is current"
 
 Should not trigger:
 
-- "write a generic OpenAI API streaming adapter"
-- "document a consuming app's chat runtime behavior"
-- "create a new Codex skill unrelated to Pi"
+- "write a generic OpenAI streaming adapter"
+- "create an unrelated Codex skill"
 - "debug a React component"
-- "explain TypeBox generally"
+- "explain TypeBox"
+- "change product chat policy without touching Pi"
+
+The description now names concrete Pi APIs and tasks. It keeps generic SDK, skill-authoring, and consuming-product work out of scope.
 
 ## Open gaps
 
-- Re-run npm package retrieval before the next material update; the skill intentionally follows `latest`.
-- Add concrete code examples only after collecting stable upstream examples or tests from the Pi repository. The current runtime guidance is source-backed but example-light.
+- Upstream `main` contains an unreleased fix for `streamProxy()` finalized tool-call metadata. Re-check npm after the next release.
+- `AgentHarness` is a moving scaffold. Re-audit declarations and implementation before any harness guidance change.
+- This repo still pins Pi `0.82.1`. A dependency upgrade is a separate product change and was not made here.
+
+## Validation record
+
+- Agent Skills quick validator: pass with no warnings on 2026-08-12.
+- `pnpm skills:check`: pass for all 17 repository skill directories on 2026-08-12.
+- Manual published-package audit: complete for manifest, README, core declarations, core implementation, proxy, harness, sessions, changelog, and current upstream source.
 
 ## Stopping rationale
 
-Further retrieval is low-yield for this pass because published package metadata, README, declarations, and implementation files cover the latest API contracts needed by this Pi-only integration skill.
+The source mix covers the published contract, implementation edge behavior, breaking changes, current upstream differences, local consumption, and authoring rules. More retrieval is low value until Pi publishes a new release or completes more harness paths.
