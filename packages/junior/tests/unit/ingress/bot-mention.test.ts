@@ -17,6 +17,9 @@ describe("textMentionsBot", () => {
     expect(textMentionsBot("use ``" + `<@${BOT}>` + "`` to ping", BOT)).toBe(
       false,
     );
+    expect(
+      textMentionsBot("use ```" + `<@${BOT}>` + "``` to ping", BOT),
+    ).toBe(false);
   });
 
   it("ignores mentions only inside a fenced code block", () => {

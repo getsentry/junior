@@ -17,11 +17,6 @@ function readInlineCodeSpanEnd(text: string, start: number): number | undefined 
     n++;
   }
 
-  // Triple-or-longer markers belong to fenced blocks, not inline spans.
-  if (n >= 3) {
-    return undefined;
-  }
-
   const marker = "`".repeat(n);
   let search = start + n;
 
@@ -68,8 +63,8 @@ function lineMentionsBot(
  *
  * Slack encodes user mentions as `<@UXXXXXXXX>` or `<@UXXXXXXXX|label>`.
  * Fenced blocks use the same line-toggle rule as Slack mrkdwn helpers: a line
- * whose trimmed start is ` ``` ` flips in/out of code. Nested ` ``` ` mid-line
- * does not close the fence.
+ * whose trimmed start is ` ``` ` flips in/out of code. Nested or mid-line
+ * multi-backtick spans on non-fence lines are treated as inline code.
  */
 export function textMentionsBot(text: string, botUserId: string): boolean {
   if (!botUserId || !text) {
