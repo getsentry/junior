@@ -15,6 +15,7 @@ export function ToolFrame(props: {
   mobileSummaryMeta?: string;
   raw?: boolean;
   signature: ReactNode;
+  status?: "running" | "completed" | "error" | "aborted";
 }) {
   const { active: searchActive } = useTranscriptSearch();
   const metaText = props.meta.join(" · ");
@@ -53,7 +54,7 @@ export function ToolFrame(props: {
       )}
       right={
         metaText ? (
-          <TranscriptHeadingMeta className="min-w-0 break-words text-sm text-dashboard-text-muted">
+          <TranscriptHeadingMeta className="min-w-0 break-words text-xs text-dashboard-text-muted">
             {metaText}
           </TranscriptHeadingMeta>
         ) : undefined
@@ -63,7 +64,7 @@ export function ToolFrame(props: {
   );
   const mobileMeta =
     metaText && props.children ? (
-      <div className="hidden min-w-0 break-words py-1 font-mono text-xs leading-snug text-dashboard-text-muted max-md:block">
+      <div className="hidden min-w-0 break-words border-t border-white/[0.06] px-2.5 py-1 font-mono text-2xs leading-snug text-dashboard-text-muted max-md:block">
         {metaText}
       </div>
     ) : null;
@@ -71,7 +72,7 @@ export function ToolFrame(props: {
   // Force-expand tool details during search so highlighted matches are visible.
   if (staticFrame) {
     return (
-      <div className={toolFrameClass()}>
+      <div className={toolFrameClass(props.status)}>
         <div className={toolHeaderClass(false)}>{header}</div>
         {mobileMeta}
         {props.children}
@@ -80,7 +81,7 @@ export function ToolFrame(props: {
   }
 
   return (
-    <details className={cn("group", toolFrameClass())}>
+    <details className={cn("group", toolFrameClass(props.status))}>
       <summary className={toolHeaderClass(true)}>{header}</summary>
       {mobileMeta}
       {props.children}
@@ -89,15 +90,24 @@ export function ToolFrame(props: {
 }
 
 /** Provide the shared transcript tool-frame shell for nonstandard part views. */
-export function toolFrameClass(): string {
-  return "min-w-0 max-w-full overflow-hidden";
+export function toolFrameClass(
+  status?: "running" | "completed" | "error" | "aborted",
+): string {
+  return cn(
+    "min-w-0 max-w-full overflow-hidden rounded-md border bg-black/20",
+    status === "running" && "border-cyan-300/25 bg-cyan-300/[0.04]",
+    status === "error" && "border-rose-300/30 bg-rose-300/[0.05]",
+    status !== "running" &&
+      status !== "error" &&
+      "border-white/[0.08]",
+  );
 }
 
 function toolHeaderClass(interactive: boolean): string {
   return cn(
-    "block py-1.5 font-mono text-sm leading-tight text-dashboard-text-muted",
+    "block px-2.5 py-1.5 font-mono text-xs leading-tight text-dashboard-text-muted",
     interactive
-      ? "cursor-pointer list-none transition-colors hover:text-dashboard-text hover:[&_*]:text-dashboard-text focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55 focus-visible:text-dashboard-text focus-visible:[&_*]:text-dashboard-text [&::-webkit-details-marker]:hidden"
+      ? "cursor-pointer list-none transition-colors hover:bg-white/[0.03] hover:text-dashboard-text hover:[&_*]:text-dashboard-text focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55 focus-visible:text-dashboard-text focus-visible:[&_*]:text-dashboard-text [&::-webkit-details-marker]:hidden"
       : "cursor-default",
   );
 }

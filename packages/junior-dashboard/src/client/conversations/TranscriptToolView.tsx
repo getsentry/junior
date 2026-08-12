@@ -47,6 +47,7 @@ export function TranscriptToolView(props: {
         mobileSummaryMeta={mobileSummary}
         raw
         signature={signature}
+        status={props.part.status}
       >
         <ToolBody>
           <HighlightedCode
@@ -74,6 +75,7 @@ export function TranscriptToolView(props: {
         meta={meta}
         mobileSummaryMeta={mobileSummary}
         signature={signature}
+        status={props.part.status}
       >
         {props.part.input !== undefined ? (
           <ToolBody label="arguments">
@@ -146,9 +148,9 @@ function ToolSignature(props: {
 
 function ToolBody(props: { children: ReactNode; label?: string }) {
   return (
-    <div className="min-w-0 max-w-full overflow-hidden border-t border-white/10 py-2">
+    <div className="min-w-0 max-w-full overflow-hidden border-t border-white/[0.08] bg-black/15 px-2.5 py-2">
       {props.label ? (
-        <div className="pb-2 font-mono text-xs font-bold uppercase leading-none text-[#9a8fd0]">
+        <div className="pb-1.5 font-mono text-2xs font-bold uppercase leading-none tracking-[0.08em] text-dashboard-text-muted">
           {props.label}
         </div>
       ) : null}

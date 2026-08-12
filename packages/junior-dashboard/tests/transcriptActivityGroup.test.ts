@@ -106,38 +106,27 @@ function failure(): RenderedTranscriptEntry {
 }
 
 describe("transcript activity group", () => {
-  it("uses activity state until the user makes an explicit choice", () => {
+  it("opens only for live activity unless the user makes an explicit choice", () => {
     expect(
       activityGroupOpen({
-        activeTail: false,
         hasLiveActivity: false,
         userOpen: null,
       }),
     ).toBe(false);
     expect(
       activityGroupOpen({
-        activeTail: true,
-        hasLiveActivity: false,
-        userOpen: null,
-      }),
-    ).toBe(true);
-    expect(
-      activityGroupOpen({
-        activeTail: false,
         hasLiveActivity: true,
         userOpen: null,
       }),
     ).toBe(true);
     expect(
       activityGroupOpen({
-        activeTail: false,
         hasLiveActivity: false,
         userOpen: true,
       }),
     ).toBe(true);
     expect(
       activityGroupOpen({
-        activeTail: true,
         hasLiveActivity: true,
         userOpen: false,
       }),

@@ -14,7 +14,7 @@ export function TranscriptStructuredEventView(props: {
   const timestamp = formatMessageTimestamp(props.timestamp);
   const details = presentation.details ?? [];
   const surfaceClass =
-    "min-w-0 rounded-lg border border-violet-300/10 bg-violet-300/[0.035] px-3 py-2 font-mono text-sm leading-tight";
+    "min-w-0 rounded-md border border-violet-300/15 bg-violet-300/[0.04] px-2.5 py-1.5 font-mono text-xs leading-tight";
   const body =
     details.length > 0 ? (
       <div className="grid gap-2 pb-1 pt-2">

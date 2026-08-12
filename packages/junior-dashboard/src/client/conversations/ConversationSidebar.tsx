@@ -53,43 +53,43 @@ export function ConversationSidebar(props: {
   );
   return (
     <aside className="relative grid h-full min-h-0 min-w-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-white/[0.07] bg-white/[0.02]">
-      <div className="px-5 pb-3 pt-5">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="m-0 font-display text-xl font-medium leading-tight text-dashboard-text">
+      <div className="px-3 pb-2 pt-3">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="m-0 font-display text-lg font-medium leading-tight text-dashboard-text">
             Conversations
           </h2>
           <button
             aria-label="New conversation"
-            className="grid size-8 cursor-pointer place-items-center rounded-md text-dashboard-text-muted transition hover:bg-white/[0.05] hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-cyan-300/35"
+            className="grid size-7 cursor-pointer place-items-center rounded-md text-dashboard-text-muted transition hover:bg-white/[0.05] hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-cyan-300/35"
             onClick={props.onNewConversation}
             title="New conversation"
             type="button"
           >
-            <SquarePen aria-hidden="true" size={17} />
+            <SquarePen aria-hidden="true" size={15} />
           </button>
         </div>
       </div>
-      <div className="px-3 pb-3">
+      <div className="px-2 pb-2">
         <SearchInput
           label="Search your conversations"
           onChange={props.onQueryChange}
           placeholder="Search conversations…"
-          size="default"
+          size="compact"
           value={props.query}
         />
       </div>
-      <div className="min-h-0 overflow-y-auto overscroll-contain px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+      <div className="min-h-0 overflow-y-auto overscroll-contain px-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
         {props.error ? (
-          <div className="p-3">
+          <div className="p-2">
             <EmptyTelemetry>{props.error}</EmptyTelemetry>
           </div>
         ) : (
           <AnimatedList
             ariaLabel="Your conversations"
-            className="grid gap-1"
+            className="grid gap-0.5"
             empty={
               !props.loading ? (
-                <div className="p-3">
+                <div className="p-2">
                   <EmptyTelemetry>
                     No conversations match this view.
                   </EmptyTelemetry>
@@ -100,7 +100,7 @@ export function ConversationSidebar(props: {
             items={entries}
             renderItem={(entry) =>
               entry.kind === "section" ? (
-                <h3 className="m-0 px-3 pb-1 pt-4 font-display text-xs font-semibold uppercase tracking-[0.08em] text-dashboard-text-muted/60">
+                <h3 className="m-0 px-2.5 pb-0.5 pt-2.5 font-display text-2xs font-semibold uppercase tracking-[0.08em] text-dashboard-text-muted/55 first:pt-1">
                   {entry.label}
                 </h3>
               ) : (
@@ -182,12 +182,13 @@ function ConversationSidebarRow(props: {
       <Link
         aria-current={props.selected ? "page" : undefined}
         className={cn(
-          "block min-w-0 rounded-lg border border-transparent px-3 py-3 text-inherit no-underline transition-all hover:bg-white/[0.035]",
-          props.selected && "border-cyan-300/20 bg-cyan-300/[0.07]",
+          "block min-w-0 rounded-md border border-transparent px-2.5 py-1.5 text-inherit no-underline transition-colors hover:bg-white/[0.04]",
+          props.selected &&
+            "border-cyan-300/25 bg-cyan-300/[0.1] shadow-[inset_2px_0_0_0_rgba(103,232,249,0.55)]",
         )}
         to={conversationPath(props.conversation.id)}
       >
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 items-center gap-1.5">
           {status === "active" ? (
             <ActiveIndicator className="size-1.5" />
           ) : (
@@ -200,19 +201,19 @@ function ConversationSidebarRow(props: {
               )}
             />
           )}
-          <div className="truncate font-display text-sm font-medium leading-tight text-dashboard-text">
+          <div className="truncate font-display text-sm font-medium leading-snug text-dashboard-text">
             {title}
           </div>
         </div>
         {location ? (
-          <div className="ml-3.5 mt-1.5 truncate font-mono text-xs leading-tight text-dashboard-text-muted">
+          <div className="ml-3 mt-0.5 truncate font-mono text-2xs leading-tight text-dashboard-text-muted">
             {location}
           </div>
         ) : null}
       </Link>
       <button
         aria-label={`Archive ${title}`}
-        className="pointer-events-none absolute right-2 top-1/2 z-10 grid size-8 -translate-y-1/2 cursor-pointer place-items-center rounded-md bg-[#111719] text-dashboard-text-muted opacity-0 shadow-[-8px_0_12px_rgba(9,12,14,0.8)] transition hover:text-dashboard-text focus:pointer-events-auto focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-cyan-300/35 group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100 disabled:cursor-not-allowed"
+        className="pointer-events-none absolute right-1.5 top-1/2 z-10 grid size-7 -translate-y-1/2 cursor-pointer place-items-center rounded-md bg-[#111719] text-dashboard-text-muted opacity-0 shadow-[-8px_0_12px_rgba(9,12,14,0.8)] transition hover:text-dashboard-text focus:pointer-events-auto focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-cyan-300/35 group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100 disabled:cursor-not-allowed"
         disabled={archive.isPending}
         onClick={() =>
           archive.mutate({
@@ -223,7 +224,7 @@ function ConversationSidebarRow(props: {
         title={`Archive ${title}`}
         type="button"
       >
-        <Archive aria-hidden="true" size={15} />
+        <Archive aria-hidden="true" size={14} />
       </button>
     </div>
   );

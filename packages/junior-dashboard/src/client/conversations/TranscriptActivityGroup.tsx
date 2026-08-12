@@ -2,6 +2,7 @@ import { Fragment, useState, type ReactNode } from "react";
 import { ChevronRight, Layers } from "lucide-react";
 
 import type { RenderedTranscriptEntry } from "./transcriptRenderModel";
+import { cn } from "../styles";
 import { useTranscriptSearch } from "./transcriptSearch";
 
 function countLabel(count: number, singular: string, plural: string): string {
@@ -100,18 +101,19 @@ function hasLiveActivity(entries: RenderedTranscriptEntry[]): boolean {
   });
 }
 
-/** Resolve automatic activity visibility without overriding a user choice. */
+/**
+ * Open only while tools/subagents are live, or when the user forced it open.
+ * Completed historical activity stays collapsed so messages stay primary.
+ */
 export function activityGroupOpen(args: {
-  activeTail: boolean;
   hasLiveActivity: boolean;
   userOpen: boolean | null;
 }): boolean {
-  return args.userOpen ?? (args.activeTail || args.hasLiveActivity);
+  return args.userOpen ?? args.hasLiveActivity;
 }
 
 /** Collapse completed non-message activity so chat messages stay primary. */
 export function TranscriptActivityGroup(props: {
-  activeTail: boolean;
   entries: RenderedTranscriptEntry[];
   renderEntry: (entry: RenderedTranscriptEntry) => ReactNode;
 }) {
@@ -121,21 +123,31 @@ export function TranscriptActivityGroup(props: {
     <Fragment key={entry.key}>{props.renderEntry(entry)}</Fragment>
   ));
   const label = activityGroupLabel(props.entries);
+  const live = hasLiveActivity(props.entries);
 
   if (searchActive) {
-    return <>{rows}</>;
+    return (
+      <div className={activityLaneClass({ live: false, open: true })}>
+        <div className="grid min-w-0 gap-1">{rows}</div>
+      </div>
+    );
   }
 
   const open = activityGroupOpen({
-    activeTail: props.activeTail,
-    hasLiveActivity: hasLiveActivity(props.entries),
+    hasLiveActivity: live,
     userOpen,
   });
 
   return (
-    <details className="group/activity-run min-w-0" open={open}>
+    <details
+      className={cn("group/activity-run min-w-0", activityLaneClass({ live, open }))}
+      open={open}
+    >
       <summary
-        className="group flex w-fit max-w-full cursor-pointer list-none items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-left text-xs leading-tight text-dashboard-text-muted transition-colors hover:border-white/[0.14] hover:bg-white/[0.05] hover:text-dashboard-text focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55 [&::-webkit-details-marker]:hidden"
+        className={cn(
+          "group flex w-full max-w-full cursor-pointer list-none items-center gap-1.5 px-2.5 py-1.5 text-left text-xs leading-tight text-dashboard-text-muted transition-colors hover:text-dashboard-text focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55 [&::-webkit-details-marker]:hidden",
+          live && "text-cyan-100/80",
+        )}
         onClick={(event) => {
           event.preventDefault();
           setUserOpen(!open);
@@ -143,24 +155,41 @@ export function TranscriptActivityGroup(props: {
       >
         <Layers
           aria-hidden="true"
-          className="size-3 shrink-0 opacity-70"
+          className={cn("size-3 shrink-0 opacity-70", live && "text-cyan-200")}
           strokeWidth={2.2}
         />
-        <span className="min-w-0 truncate group-open/activity-run:hidden">
+        <span className="min-w-0 flex-1 truncate group-open/activity-run:hidden">
           {label}
         </span>
-        <span className="hidden min-w-0 truncate group-open/activity-run:inline">
+        <span className="hidden min-w-0 flex-1 truncate group-open/activity-run:inline">
           Hide {label}
         </span>
+        {live ? (
+          <span
+            aria-hidden="true"
+            className="size-1.5 shrink-0 animate-pulse rounded-full bg-cyan-300"
+          />
+        ) : null}
         <ChevronRight
           aria-hidden="true"
           className="size-3 shrink-0 opacity-60 transition-transform group-open/activity-run:rotate-90"
           strokeWidth={2.2}
         />
       </summary>
-      <div className="mt-2 grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
+      <div className="grid min-w-0 gap-1 border-t border-white/[0.06] px-2 py-1.5">
         {rows}
       </div>
     </details>
+  );
+}
+
+function activityLaneClass(args: { live: boolean; open: boolean }): string {
+  return cn(
+    "min-w-0 overflow-hidden rounded-lg border bg-white/[0.02]",
+    args.live
+      ? "border-cyan-300/25 bg-cyan-300/[0.04]"
+      : args.open
+        ? "border-white/[0.1] bg-white/[0.03]"
+        : "border-white/[0.08]",
   );
 }

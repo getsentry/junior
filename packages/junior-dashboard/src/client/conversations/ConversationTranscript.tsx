@@ -109,7 +109,6 @@ export function ConversationTranscriptView(props: {
           onOpenSubagentTranscript={props.onOpenSubagentTranscript}
           conversation={props.conversation}
           messages={messages}
-          responding={props.responding ?? false}
           view={props.view}
         />
         {props.responding ? <TypingIndicator /> : null}
@@ -120,9 +119,9 @@ export function ConversationTranscriptView(props: {
 
 function TypingIndicator() {
   return (
-    <div aria-live="polite" className="mt-3 flex items-center" role="status">
+    <div aria-live="polite" className="mt-5 flex items-center" role="status">
       <span className="sr-only">{getDashboardAgentName()} is responding</span>
-      <span className="flex items-center gap-1 rounded-2xl bg-white/[0.03] px-3.5 py-2.5">
+      <span className="flex items-center gap-1 rounded-2xl border border-white/[0.06] bg-white/[0.03] px-3.5 py-2.5">
         {[0, 1, 2].map((dot) => (
           <span
             aria-hidden="true"
@@ -149,9 +148,9 @@ function transcriptMessageClass(role: string): string {
   return cn(
     "grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 rounded-2xl px-3 py-2 md:gap-1.5 md:px-3.5 md:py-2.5",
     kind === "assistant" &&
-      "mr-6 bg-[#0e1517] text-dashboard-text md:mr-[18%]",
+      "mr-6 border border-cyan-300/10 bg-[#0e1517] text-dashboard-text shadow-[0_0_0_1px_rgba(255,255,255,0.02)] md:mr-[18%]",
     kind === "user" &&
-      "ml-6 bg-dashboard-surface-hover text-dashboard-text md:ml-[22%]",
+      "ml-6 border border-white/[0.06] bg-dashboard-surface-hover text-dashboard-text md:ml-[22%]",
     kind === "system" &&
       "rounded-xl border border-amber-300/10 bg-[#14120c] text-dashboard-text",
     kind === "tool" && "rounded-none px-0 text-dashboard-text-muted",
@@ -241,17 +240,15 @@ function SegmentEvents(props: {
   }) => void;
   conversation: ConversationTranscript;
   messages: TranscriptViewMessage[];
-  responding: boolean;
   view: TranscriptViewMode;
 }) {
   return (
-    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3 pt-1">
+    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-5 pt-1">
       {props.conversation.eventHistory.status === "available" ? (
         <VisibleTranscriptEntries
           onOpenSubagentTranscript={props.onOpenSubagentTranscript}
           transcript={props.messages}
           conversation={props.conversation}
-          responding={props.responding}
           view={props.view}
         />
       ) : props.conversation.eventHistory.status === "redacted" &&
@@ -266,7 +263,6 @@ function SegmentEvents(props: {
           onOpenSubagentTranscript={props.onOpenSubagentTranscript}
           transcript={props.messages}
           conversation={props.conversation}
-          responding={props.responding}
           view={props.view}
         />
       ) : (
@@ -285,14 +281,12 @@ function VisibleTranscriptEntries(props: {
   }) => void;
   transcript: TranscriptViewMessage[];
   conversation: ConversationTranscript;
-  responding: boolean;
   view: TranscriptViewMode;
 }) {
   return (
     <TranscriptEntryList
       entries={groupTranscriptMessages(props.transcript)}
       keyPrefix={props.conversation.conversationId}
-      responding={props.responding}
       renderContext={(entry) => (
         <TranscriptRailEvent
           kind={entry.part.event.type === "handoff" ? "handoff" : "compaction"}
@@ -369,7 +363,6 @@ function VisibleTranscriptEntries(props: {
 function TranscriptEntryList(props: {
   entries: TranscriptEntry[];
   keyPrefix: string;
-  responding?: boolean;
   renderContext: (entry: TranscriptContextEntry) => ReactNode;
   renderFailure: (entry: TranscriptFailureEntry) => ReactNode;
   renderMessage: (entry: TranscriptMessageEntry) => ReactNode;
@@ -421,9 +414,6 @@ function TranscriptEntryList(props: {
         });
         rows.push(
           <TranscriptActivityGroup
-            activeTail={
-              Boolean(props.responding) && index === props.entries.length
-            }
             entries={visibleEntries}
             key={activityKey}
             renderEntry={renderEntry}
@@ -449,7 +439,7 @@ function TranscriptEntryList(props: {
     );
   }
 
-  return <div className="grid min-w-0 gap-3">{rows}</div>;
+  return <div className="grid min-w-0 gap-5">{rows}</div>;
 }
 
 /** Keep one activity group mounted while new or historical events extend either edge. */
@@ -529,17 +519,17 @@ function TranscriptRailEvent(props: {
 
   return (
     <div
-      className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-2.5"
+      className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-2"
       data-transcript-rail-event={props.kind}
     >
       <span
         aria-hidden="true"
         className={cn(
-          "mt-2 grid size-6 place-items-center rounded-md border bg-black/20",
+          "mt-1.5 grid size-5 place-items-center rounded border bg-black/25",
           marker.className,
         )}
       >
-        <Icon size={12} strokeWidth={2.2} />
+        <Icon size={11} strokeWidth={2.2} />
       </span>
       <div className="min-w-0">{props.children}</div>
     </div>

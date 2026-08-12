@@ -19,37 +19,37 @@ export function TranscriptContextEventView(props: {
       : "";
   return (
     <article
-      className={`min-w-0 rounded-lg border px-3 py-3 first:mt-1 ${
+      className={`min-w-0 rounded-md border px-2.5 py-2 first:mt-0.5 ${
         handoff
-          ? "border-sky-300/10 bg-sky-300/[0.035]"
-          : "border-amber-300/10 bg-amber-300/[0.035]"
+          ? "border-sky-300/15 bg-sky-300/[0.04]"
+          : "border-amber-300/15 bg-amber-300/[0.04]"
       }`}
     >
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1">
         <strong
-          className={`font-display text-sm font-semibold ${
+          className={`font-display text-xs font-semibold ${
             handoff ? "text-sky-100" : "text-amber-100"
           }`}
         >
           {handoff ? "Model handoff" : "Context compacted"}
         </strong>
         {typeof props.timestamp === "number" ? (
-          <span className="text-xs text-dashboard-text-muted">
+          <span className="text-2xs text-dashboard-text-muted">
             {formatMessageTimestamp(props.timestamp)}
           </span>
         ) : null}
       </div>
-      <div className="mt-1.5 text-sm text-dashboard-text-muted">
+      <div className="mt-1 text-xs leading-relaxed text-dashboard-text-muted">
         {handoff
           ? `Execution continued with the ${event.modelProfile} profile (${event.modelId}${event.reasoningLevel ? `, ${event.reasoningLevel}` : ""}).`
           : `Earlier context was summarized${compactionDetail}${compactionModel} before execution continued.`}
       </div>
       {event.summary ? (
-        <details className="mt-2 border-t border-white/[0.06] pt-2">
-          <summary className="cursor-pointer select-none text-xs font-medium text-dashboard-text-muted">
+        <details className="mt-1.5 border-t border-white/[0.06] pt-1.5">
+          <summary className="cursor-pointer select-none text-2xs font-medium text-dashboard-text-muted">
             Continuation summary
           </summary>
-          <div className="mt-2 text-sm leading-relaxed text-dashboard-text-muted">
+          <div className="mt-1.5 text-xs leading-relaxed text-dashboard-text-muted">
             <TranscriptText role="system" text={event.summary} />
           </div>
         </details>

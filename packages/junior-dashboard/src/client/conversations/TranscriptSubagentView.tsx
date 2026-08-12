@@ -36,6 +36,7 @@ export function TranscriptSubagentView(props: {
           ) : null}
         </>
       }
+      status={props.part.status}
     />
   );
 
