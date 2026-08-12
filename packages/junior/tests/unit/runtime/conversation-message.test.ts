@@ -117,6 +117,16 @@ describe("conversation message actor identity", () => {
     ).toMatchObject({ eventType: "pull_request.merged" });
   });
 
+  it("tags Slack conversation messages with known source slack", () => {
+    expect(
+      toConversationMessage({
+        entry: createMessage(),
+        explicitMention: true,
+        text: "hello",
+      }).meta,
+    ).toMatchObject({ source: "slack" });
+  });
+
   it("rejects actor identity mismatches", () => {
     expect(() =>
       bindMessageActorIdentity(createMessage(), {

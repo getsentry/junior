@@ -442,16 +442,17 @@ describe("dashboard canonical-event components", () => {
             type: "message",
           }),
           event(1, {
-            messageId: "slack-user-explicit",
+            messageId: "slack-user",
             role: "user",
             source: "slack",
-            text: "From Slack mailbox.",
+            text: "From Slack.",
             type: "message",
           }),
           event(2, {
-            messageId: "unknown-assistant-source",
+            messageId: "slack-assistant",
             role: "assistant",
-            text: "Unknown source.",
+            source: "slack",
+            text: "Posted to Slack.",
             type: "message",
           }),
           event(3, {
@@ -486,8 +487,8 @@ describe("dashboard canonical-event components", () => {
 
     expect(slackHtml).toContain('aria-label="Slack"');
     expect(slackHtml).not.toContain(">Slack<");
-    // Only explicit Slack provenance gets a provider icon.
-    expect(slackHtml.match(/aria-label="Slack"/g)).toHaveLength(1);
+    // Known Slack user + assistant only. Null/web stay unmarked.
+    expect(slackHtml.match(/aria-label="Slack"/g)).toHaveLength(2);
     expect(dashboardRootHtml).not.toContain("Dashboard");
     expect(dashboardRootHtml).not.toContain('aria-label="Slack"');
   });

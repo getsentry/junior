@@ -878,6 +878,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             },
             meta: {
               replied: true,
+              source: "slack",
             },
           });
           await persistThreadState(thread, {
@@ -1089,6 +1090,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           const recordedMessageId = recordDeliveredAssistantMessage({
             conversation: preparedState.conversation,
             sessionId: turnId,
+            source: "slack",
             text,
             userMessageId: preparedState.userMessageId,
           });

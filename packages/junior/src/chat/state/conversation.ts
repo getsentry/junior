@@ -12,7 +12,8 @@ export interface ConversationAuthor {
 
 export interface ConversationMessageMeta {
   attachmentCount?: number;
-  source?: "web";
+  /** Known message provenance. Omit when unknown; never invent a default. */
+  source?: "slack" | "web";
   eventType?: string;
   explicitMention?: boolean;
   imageAttachmentCount?: number;
