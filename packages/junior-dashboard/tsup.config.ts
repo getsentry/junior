@@ -31,6 +31,12 @@ const dashboardAvatarHeaderPath = path.join(
   "assets",
   "junior-avatar-line.png",
 );
+const dashboardInstallIconPath = path.join(
+  packageRoot,
+  "src",
+  "assets",
+  "junior-avatar.png",
+);
 
 /** Read client build output that must be embedded in dashboard routes. */
 function readBuiltAsset(fileName: string): string {
@@ -61,6 +67,7 @@ function dashboardAssetsPlugin(): EsbuildPlugin {
             `export const dashboardClientAsset = ${JSON.stringify(readBuiltAsset("client.js"))};`,
             `export const dashboardTailwindAsset = ${JSON.stringify(readBuiltAsset("tailwind.css"))};`,
             `export const dashboardAvatarHeaderAsset = ${JSON.stringify(readFileSync(dashboardAvatarHeaderPath).toString("base64"))};`,
+            `export const dashboardInstallIconAsset = ${JSON.stringify(readFileSync(dashboardInstallIconPath).toString("base64"))};`,
           ].join("\n"),
           loader: "ts",
         };

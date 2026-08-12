@@ -1,96 +1,85 @@
-# AgentHarness
+# AgentHarness and Sessions
 
-Open this when using Pi's built-in harness, sessions, skills, prompt templates, resources, environment, compaction, or tree navigation.
+Open this when using Pi sessions, skills, prompt templates, compaction, execution helpers, or the current `AgentHarness` scaffold.
 
-## When to use it
+## Published readiness
 
-Use `AgentHarness` when the consumer needs more than a single `Agent` transcript:
+Pi `0.84.0` replaced the legacy harness and session APIs with a v4 lane-based session model and an `AgentHarness` v2 scaffold. In published `0.84.1`, the types describe the intended surface, but most operation paths reject with `HarnessNotImplemented`.
 
-- durable session tree and leaf navigation
-- skills or prompt-template invocation
-- app-owned resources included in system prompts
-- active tool subsets
-- filesystem and shell environment abstraction
-- compaction or branch summary operations
-- provider auth/header hooks
-- high-level queued UX with `steer`, `followUp`, and `nextTurn`
+Use these production paths now:
 
-Use bare `Agent` when the consumer already owns these concerns and only needs Pi execution/events/tools.
+- Use bare `Agent` for model turns, tools, queues, events, and aborts.
+- Use `Session`, `SessionTree`, and a `SessionRepo` for durable transcript and tree storage.
+- Use exported skill, prompt-template, compaction, branch-summary, search, environment, and tool helpers directly when they fit.
+- Use `AgentHarness` only for scaffold development or implemented configuration and session access. Verify source before each use.
 
-## Constructor inputs
+Do not restore the removed pre-`0.84` harness API or add compatibility wrappers unless the user asks for a migration.
 
-| Option                         | Purpose                                                                                                                   |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
-| `env`                          | `ExecutionEnv` filesystem/shell capability. Operations return `Result` values rather than throwing for expected failures. |
-| `session`                      | Session tree storage for messages, settings, compactions, labels, and leaf state.                                         |
-| `tools`                        | Available `AgentTool` definitions.                                                                                        |
-| `resources`                    | App-owned skills and prompt templates.                                                                                    |
-| `systemPrompt`                 | Static prompt or async function using env/session/model/thinking/tools/resources.                                         |
-| `getApiKeyAndHeaders(model)`   | Per-request provider auth and headers.                                                                                    |
-| `streamOptions`                | Curated provider options: transport, timeout, retries, headers, metadata, cache retention.                                |
-| `model`, `thinkingLevel`       | Active model and reasoning level.                                                                                         |
-| `activeToolNames`              | Optional initial active tool subset.                                                                                      |
-| `steeringMode`, `followUpMode` | Queue draining policy.                                                                                                    |
+## Create the scaffold
 
-## Main methods
+Call `await AgentHarness.create(options)`. The constructor is private. Creation returns `{ harness, suspended }` and currently rejects with `HarnessNotImplemented("create.restore")` when the session already has durable records.
 
-- Run work: `prompt(text, { images })`, `skill(name, additionalInstructions)`, `promptFromTemplate(name, args)`.
-- Queue work: `steer(text)`, `followUp(text)`, `nextTurn(text)`.
-- Mutate session: `appendMessage(message)`, `compact(customInstructions)`, `navigateTree(targetId, options)`.
-- Update runtime settings: `setModel`, `setThinkingLevel`, `setTools`, `setActiveTools`, `setResources`, `setStreamOptions`, `setSteeringMode`, `setFollowUpMode`.
-- Inspect runtime settings: `getModel`, `getThinkingLevel`, `getTools`, `getActiveTools`, `getResources`, `getStreamOptions`, `getSteeringMode`, `getFollowUpMode`.
-- Lifecycle: `abort()`, `waitForIdle()`, `subscribe(listener)`, `on(type, handler)`.
+| Required or common option | Current purpose                                                                              |
+| ------------------------- | -------------------------------------------------------------------------------------------- |
+| `session`                 | A v4 `Session`, not a legacy session repository wrapper.                                     |
+| `models`                  | Required `pi-ai` `Models` collection for provider calls.                                     |
+| `model`                   | Required initial model.                                                                      |
+| `thinkingLevel`           | Initial thinking level.                                                                      |
+| `tools`, `toolContext`    | Available tools and an optional static or per-turn application context source.               |
+| `activeToolNames`         | Initial active tool subset.                                                                  |
+| `systemPrompt`            | Static string or zero-argument async provider.                                               |
+| `resources`               | Skills and prompt templates.                                                                 |
+| Request policy            | `streamOptions`, `retry`, `compaction`, `toolExecution`, `steeringMode`, and `followUpMode`. |
+| Runtime control           | `drive`, `toProviderMessages`, `entryProjectors`, and telemetry `context`.                   |
 
-## Harness events and hooks
+`env` and `getApiKeyAndHeaders` are not constructor options. Provider auth belongs in the required `Models` collection. `ExecutionEnv` is used by standalone environment and tool helpers.
 
-Harness subscribers receive both core `AgentEvent` values and harness-owned events.
+## Implemented scaffold methods
 
-Use `on(type, handler)` for hook-style events that can return patches:
+Published `0.84.1` implements only a narrow subset:
 
-- `before_agent_start`: replace initial messages or system prompt.
-- `context`: replace context messages before provider conversion.
-- `before_provider_request`: patch stream options.
-- `before_provider_payload`: replace provider payload.
-- `tool_call`: block tool execution with a reason.
-- `tool_result`: patch content, details, error state, or termination.
-- `session_before_compact`: cancel or provide compaction output.
-- `session_before_tree`: cancel or provide branch summary/tree options.
+- `getLeafId()` through the current session.
+- Get and set model, thinking level, active tool names, tools, resources, stream options, retry policy, compaction settings, and queue modes.
+- Read the `session` tree.
+- `close()`.
 
-Observe these events for state and diagnostics:
+The following paths currently reject with `HarnessNotImplemented`:
 
-- `after_provider_response`
-- `session_compact`
-- `session_tree`
-- `model_update`
-- `thinking_level_update`
-- `resources_update`
-- `tools_update`
-- `queue_update`
-- `save_point`
-- `abort`
-- `settled`
+- Runs: `prompt`, `skill`, `promptFromTemplate`, `resume`.
+- Queues and control: `steer`, `followUp`, `nextRun`, `cancelQueued`, `abort`, `waitForIdle`, `runWhenIdle`.
+- History work: `compact`, `navigateTree`, `recordUsage`.
+- Driving and observation: `peekAction`, `executeAction`, `runToCompletion`, `watch`, `watchSession`, `hooks.on`, and `events.on`.
+- Lanes: `lane`, `createLane`, and `lanes`.
 
-## Queue guidance
+Do not describe declared `RunResult`, `QueueResult`, or hook behavior as executable until the published implementation supports it.
 
-- `steer()` targets the active run's next opportunity after the current assistant turn/tool batch.
-- `followUp()` runs after the agent would otherwise stop.
-- `nextTurn()` queues text for the next explicit turn and should be kept distinct from mid-run steering.
-- `queue_update` exposes current queued `steer`, `followUp`, and `nextTurn` messages.
+## Current declared vocabulary
 
-## Session and compaction guidance
+Use these names when reviewing or developing the scaffold:
 
-- Keep app-specific data in session entries or resources when it should survive turns.
-- Use `compact()` for harness-managed history reduction.
-- Use `navigateTree()` when moving the active leaf or summarizing a branch.
-- Treat compaction/tree hooks as policy boundaries; return structured results instead of mutating storage behind the harness.
+- The default lane is `main`. `AgentLane` owns prompts, queues, navigation, model settings, active tools, and a `SessionTree` view.
+- Queue names are `steer`, `followUp`, and `nextRun`. The removed name `nextTurn` is not current.
+- Hook names include `before_run`, `before_resume`, `before_run_end`, `transform_context`, `before_request`, `before_payload`, `after_response`, `before_tool`, `after_tool`, `before_compaction`, and `before_navigation`.
+- Expected operation rejections use typed `Result` values. Harness faults, closure during active work, and unfinished paths can reject with errors.
+
+These names describe the current contract shape. They do not override the readiness limits above.
+
+## Session v4
+
+- `SessionStorage` owns lanes, entries, records, queries, global facts, and statistics.
+- `Session` wraps storage and implements the main `SessionTree`. Use `session.view(lane)` for another lane.
+- `SessionTree` can read entries and facts, query all entries or one branch, and append messages or custom entries.
+- `SessionRepo` defines `create`, `open`, `list`, `delete`, and `fork`.
+- Use `InMemorySessionRepo` for process-local storage.
+- Use `JsonlSessionRepo` for append-only JSONL storage. It needs a filesystem and sessions root. Its create options include `cwd`.
+- Use `@earendil-works/pi-agent-core/session/testing` to run backend conformance checks for a custom repository.
+
+`FileSystem` implementations must include atomic same-filesystem `renameFile()` replacement semantics. `NodeExecutionEnv` from the `/node` entry implements the filesystem and shell environment.
 
 ## Verification
 
-Verify:
-
-1. Hook return patches are applied at the documented boundary.
-2. Session writes flush before relying on persisted state.
-3. Active tool names match the available tool set.
-4. `abort()` clears queued steer/follow-up messages and emits `abort`.
-5. `waitForIdle()` waits for the active run and awaited listeners.
-6. Compaction and tree navigation preserve expected leaf/session state.
+1. Confirm npm `latest` and inspect `dist/harness/agent-harness.js` before using a scaffold method.
+2. Confirm the session is v4 and uses current `Session`, `SessionStorage`, and `SessionRepo` contracts.
+3. Confirm old names such as `nextTurn`, `subscribe`, and legacy hook event names are absent.
+4. Treat `HarnessNotImplemented` as an unavailable feature, not a transient runtime failure.
+5. Test custom session backends with the `/session/testing` conformance export.

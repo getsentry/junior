@@ -1,0 +1,281 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createSlackSource } from "@sentry/junior-plugin-api";
+import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
+import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { getCapturedSlackApiCalls } from "../../msw/handlers/slack-api";
+
+const ORIGINAL_STATE_ADAPTER = process.env.JUNIOR_STATE_ADAPTER;
+const TEST_SLACK_DESTINATION = {
+  platform: "slack",
+  teamId: "T123",
+  channelId: "C123",
+} as const;
+
+function testSlackSource(threadTs: string) {
+  return createSlackSource({
+    teamId: TEST_SLACK_DESTINATION.teamId,
+    channelId: TEST_SLACK_DESTINATION.channelId,
+    threadTs,
+    visibility: "private",
+  });
+}
+
+function makeDiagnostics() {
+  return {
+    assistantMessageCount: 0,
+    modelId: "fake-agent-model",
+    outcome: "execution_failure" as const,
+    toolCalls: [],
+    toolErrorCount: 0,
+    toolResultCount: 0,
+    usedPrimaryText: false,
+  };
+}
+
+describe("Slack resume result handling", () => {
+  beforeEach(async () => {
+    process.env.JUNIOR_STATE_ADAPTER = "memory";
+    vi.resetModules();
+    await disconnectStateAdapter();
+  });
+
+  afterEach(async () => {
+    await disconnectStateAdapter();
+    if (ORIGINAL_STATE_ADAPTER === undefined) {
+      delete process.env.JUNIOR_STATE_ADAPTER;
+    } else {
+      process.env.JUNIOR_STATE_ADAPTER = ORIGINAL_STATE_ADAPTER;
+    }
+  });
+
+  it("posts the safe fallback when failure-state persistence fails", async () => {
+    const { resumeSlackTurn } = await import("@/chat/runtime/slack-resume");
+    const { getConversationEventStore } = await import("@/chat/db");
+    const conversationId = "slack:T123:C123:1700000000.009";
+    const turnId = "turn_1700000000_009";
+
+    await expect(
+      resumeSlackTurn({
+        messageText: "Resume the failed turn",
+        channelId: "C123",
+        threadTs: "1700000000.009",
+        inputMessageIds: ["msg.9"],
+        conversationId,
+        turnId,
+        replyContext: {
+          credentialContext: {
+            actor: { type: "user", userId: "U123" },
+          },
+          destination: TEST_SLACK_DESTINATION,
+          source: testSlackSource("1700000000.009"),
+          actor: { platform: "slack", teamId: "T123", userId: "U123" },
+        },
+        agentRunner: {
+          run: async () => {
+            throw new Error("resume failed");
+          },
+        },
+        onFailure: async () => {
+          throw new Error("failure state unavailable");
+        },
+      }),
+    ).rejects.toThrow("failure state unavailable");
+
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          channel: "C123",
+          thread_ts: "1700000000.009",
+          text: expect.stringContaining(
+            "I ran into an internal error while processing that. Reference: `event_id=",
+          ),
+        }),
+      }),
+    ]);
+
+    const lifecycle = (
+      await getConversationEventStore().loadHistory(conversationId)
+    ).filter((event) => event.data.type.startsWith("turn_"));
+    expect(lifecycle.map((event) => event.data)).toEqual([
+      expect.objectContaining({
+        type: "turn_started",
+        turnId,
+        inputMessageIds: ["msg.9"],
+        surface: "slack",
+      }),
+      expect.objectContaining({
+        type: "turn_failed",
+        turnId,
+        failureCode: "persistence_failed",
+        eventId: expect.stringMatching(/^[a-f0-9]{32}$/i),
+      }),
+    ]);
+  });
+
+  it("posts an auth pause notice with the conversation footer", async () => {
+    const { resumeSlackTurn } = await import("@/chat/runtime/slack-resume");
+
+    await resumeSlackTurn({
+      messageText: "continue this turn",
+      conversationId: "conversation-auth-pause",
+      turnId: "turn-auth-pause",
+      channelId: "C123",
+      threadTs: "1700000000.008",
+      initialText: "",
+      replyContext: {
+        credentialContext: {
+          actor: { type: "user", userId: "U123" },
+        },
+        destination: TEST_SLACK_DESTINATION,
+        source: testSlackSource("1700000000.008"),
+        actor: { platform: "slack", teamId: "T123", userId: "U123" },
+      },
+      agentRunner: {
+        run: async () => ({
+          status: "awaiting_auth" as const,
+          providerDisplayName: "Eval Auth",
+        }),
+      },
+      onAuthPause: async () => undefined,
+    });
+
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          channel: "C123",
+          thread_ts: "1700000000.008",
+          text: "<@U123> I'll need you to authorize Eval Auth. I sent you a link.",
+          blocks: expect.any(Array),
+        }),
+      }),
+    ]);
+    expect(
+      JSON.stringify(
+        getCapturedSlackApiCalls("chat.postMessage")[0]?.params.blocks,
+      ),
+    ).toContain("conversation-auth-pause");
+  });
+
+  it("replaces an execution-failure result before Slack planning", async () => {
+    const { resumeSlackTurn } = await import("@/chat/runtime/slack-resume");
+
+    await resumeSlackTurn({
+      messageText: "Continue the original request",
+      conversationId: "slack:C123:1700000000.006",
+      turnId: "turn-resume-execution-failure",
+      channelId: "C123",
+      threadTs: "1700000000.006",
+      initialText: "Connected. Continuing...",
+      replyContext: {
+        credentialContext: {
+          actor: { type: "user", userId: "U123" },
+        },
+        destination: TEST_SLACK_DESTINATION,
+        source: testSlackSource("1700000000.006"),
+        actor: { platform: "slack", teamId: "T123", userId: "U123" },
+      },
+      agentRunner: {
+        run: async () =>
+          completedAgentRun({ text: "", diagnostics: makeDiagnostics() }),
+      },
+    });
+
+    expect(getCapturedSlackApiCalls("chat.postMessage").at(-1)?.params).toEqual(
+      expect.objectContaining({
+        channel: "C123",
+        thread_ts: "1700000000.006",
+        text: expect.stringContaining(
+          "I ran into an internal error while processing that. Reference: `event_id=",
+        ),
+      }),
+    );
+  });
+
+  it("releases the thread lock before scheduling a suspended continuation", async () => {
+    const { resumeSlackTurn } = await import("@/chat/runtime/slack-resume");
+    const { getStateAdapter } = await import("@/chat/state/adapter");
+    const onSuspend = vi.fn(async () => {
+      const stateAdapter = getStateAdapter();
+      await stateAdapter.connect();
+      const lock = await stateAdapter.acquireLock(
+        "slack:C123:1700000000.013",
+        60_000,
+      );
+      expect(lock).not.toBeNull();
+      if (lock) {
+        await stateAdapter.releaseLock(lock);
+      }
+    });
+
+    await resumeSlackTurn({
+      messageText: "continue this turn",
+      conversationId: "slack:C123:1700000000.013",
+      turnId: "turn-resume-lock-release",
+      channelId: "C123",
+      threadTs: "1700000000.013",
+      replyContext: {
+        credentialContext: {
+          actor: { type: "user", userId: "U123" },
+        },
+        destination: TEST_SLACK_DESTINATION,
+        source: testSlackSource("1700000000.013"),
+        actor: { platform: "slack", teamId: "T123", userId: "U123" },
+      },
+      agentRunner: {
+        run: async () => ({
+          status: "suspended" as const,
+          reason: "timeout" as const,
+          resumeVersion: 3,
+        }),
+      },
+      onSuspend,
+    });
+
+    expect(onSuspend).toHaveBeenCalledOnce();
+    expect(onSuspend).toHaveBeenCalledWith(3);
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([]);
+  });
+
+  it("runs failure handling when suspended continuation scheduling fails", async () => {
+    const { resumeSlackTurn } = await import("@/chat/runtime/slack-resume");
+    const onFailure = vi.fn(async () => undefined);
+
+    await resumeSlackTurn({
+      messageText: "continue this turn",
+      conversationId: "slack:C123:1700000000.014",
+      turnId: "turn-resume-suspend-fail",
+      channelId: "C123",
+      threadTs: "1700000000.014",
+      replyContext: {
+        credentialContext: {
+          actor: { type: "user", userId: "U123" },
+        },
+        destination: TEST_SLACK_DESTINATION,
+        source: testSlackSource("1700000000.014"),
+        actor: { platform: "slack", teamId: "T123", userId: "U123" },
+      },
+      agentRunner: {
+        run: async () => ({
+          status: "suspended" as const,
+          reason: "timeout" as const,
+          resumeVersion: 3,
+        }),
+      },
+      onSuspend: async () => {
+        throw new Error("continuation scheduling failed");
+      },
+      onFailure,
+    });
+
+    expect(onFailure).toHaveBeenCalledOnce();
+    expect(
+      getCapturedSlackApiCalls("chat.postMessage").map(
+        (call) => call.params.text,
+      ),
+    ).toEqual([
+      expect.stringContaining(
+        "I ran into an internal error while processing that. Reference: `event_id=",
+      ),
+    ]);
+  });
+});

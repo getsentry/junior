@@ -1,13 +1,5 @@
-import { Menu, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import {
-  Link,
-  Navigate,
-  NavLink,
-  Route,
-  Routes,
-  useLocation,
-} from "react-router";
+import { Navigate, Route, Routes, useLocation } from "react-router";
 
 import {
   useDashboardCoreData,
@@ -15,11 +7,14 @@ import {
   usePluginUserPagesData,
   useSystemData,
 } from "./api";
-import { getDashboardAgentName } from "./agentName";
 import { ConnectionBanner } from "./components/ConnectionBanner";
 import { LoadingView } from "./components/LoadingView";
-import { JuniorLogo } from "./components/JuniorLogo";
 import { ProfileMenu } from "./components/ProfileMenu";
+import {
+  DashboardChrome,
+  DashboardChromeProvider,
+} from "./components/layout/DashboardChrome";
+import { DashboardHeader } from "./components/layout/DashboardHeader";
 import { setDashboardTimeZone } from "./format";
 import { ConversationWorkspace } from "./conversations/ConversationWorkspace";
 import { useMobileViewportHeight } from "./mobileViewport";
@@ -31,6 +26,7 @@ import { PersonalTokensPage } from "./pages/PersonalTokensPage";
 import { PersonProfilePage } from "./pages/people/PersonProfilePage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { SystemPage } from "./pages/system/SystemPage";
+import { SystemPageLayout } from "./pages/system/SystemPageLayout";
 import { TaskExecutionsPage } from "./pages/tasks/TaskExecutionsPage";
 import { TaskRunsPage } from "./pages/tasks/TaskRunsPage";
 import { TasksPage } from "./pages/tasks/TasksPage";
@@ -40,11 +36,7 @@ import {
   PluginUserPageRoute,
   pluginUserPagePath,
 } from "./pages/user/PluginUserPage";
-import {
-  cn,
-  dashboardContainerClass,
-  dashboardInteractiveTextClass,
-} from "./styles";
+import { cn } from "./styles";
 import type { DashboardCoreData } from "./types";
 
 const dashboardBackground = {
@@ -81,6 +73,17 @@ export function DashboardShell() {
     location.pathname === "/" ||
     location.pathname === "/conversations" ||
     location.pathname.startsWith("/conversations/");
+  const primaryNavItems = [
+    ...(loggedIn
+      ? [{ key: "tasks", label: "Tasks", to: "/tasks" }]
+      : []),
+    ...primaryUserPages.map((page) => ({
+      key: `${page.pluginName}:${page.id}`,
+      label: page.label,
+      to: pluginUserPagePath(page.pluginName, page.id),
+    })),
+    { key: "system", label: "System", to: "/system" },
+  ];
 
   useMobileViewportHeight(shellRef, workspace);
 
@@ -107,135 +110,47 @@ export function DashboardShell() {
     window.location.assign(data?.config.basePath ?? "/");
   }
 
-  const navLinkClass = ({ isActive }: { isActive: boolean }) =>
-    cn(
-      "shrink-0 whitespace-nowrap rounded-md px-2.5 py-2 font-mono text-xs font-medium tracking-normal no-underline transition-colors",
-      isActive
-        ? "bg-cyan-300/[0.1] text-cyan-50"
-        : cn("hover:bg-white/[0.035]", dashboardInteractiveTextClass),
-    );
-
   return (
-    <main
-      className={cn(
-        "relative grid font-sans text-dashboard-text",
-        workspace
-          ? "h-[var(--dashboard-viewport-height,100dvh)] min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden"
-          : "min-h-screen grid-rows-[auto_1fr]",
-      )}
-      ref={shellRef}
-      style={dashboardBackground}
-    >
-      <header
-        className="sticky top-0 z-30 border-b border-white/[0.05] bg-[#050507]/95"
+    <DashboardChromeProvider>
+      <main
+        className={cn(
+          "relative grid font-sans text-dashboard-text",
+          workspace
+            ? "h-[var(--dashboard-viewport-height,100dvh)] min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden"
+            : "min-h-screen grid-rows-[auto_1fr]",
+        )}
+        ref={shellRef}
+        style={dashboardBackground}
       >
-        <div
-          className={cn(
-            dashboardContainerClass,
-            "grid grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] items-center gap-x-2 px-3 py-2 md:gap-x-5 md:gap-y-3 md:px-4 md:py-4",
-            loggedIn
-              ? "md:grid-cols-[auto_minmax(0,1fr)_auto]"
-              : "md:grid-cols-[auto_minmax(0,1fr)]",
-            workspace ? "md:px-4" : "md:px-8",
-          )}
-        >
-          <button
-            aria-controls="mobile-navigation"
-            aria-expanded={mobileNavigationOpen}
-            aria-label={`${mobileNavigationOpen ? "Close" : "Open"} navigation`}
-            className="grid size-10 cursor-pointer place-items-center rounded-lg border-0 bg-transparent text-dashboard-text transition-colors hover:bg-white/[0.06] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#beaaff]/70 md:hidden"
-            onClick={() => setMobileNavigationOpen((open) => !open)}
-            type="button"
-          >
-            {mobileNavigationOpen ? (
-              <X aria-hidden="true" size={20} strokeWidth={2} />
-            ) : (
-              <Menu aria-hidden="true" size={20} strokeWidth={2} />
-            )}
-          </button>
-          <Link
-            aria-label={`${getDashboardAgentName()} home`}
-            className="flex min-w-0 max-w-full items-center justify-self-center text-inherit no-underline md:justify-self-start"
-            to="/"
-          >
-            <JuniorLogo />
-          </Link>
-          <nav className="hidden min-w-0 items-center gap-1 md:col-start-2 md:flex md:justify-self-start">
-            <Link
-              aria-current={workspace ? "page" : undefined}
-              className={navLinkClass({ isActive: workspace })}
-              to="/"
-            >
-              Conversations
-            </Link>
-            {loggedIn ? (
-              <NavLink className={navLinkClass} to="/tasks">
-                Tasks
-              </NavLink>
-            ) : null}
-            {primaryUserPages.map((page) => (
-              <NavLink
-                className={navLinkClass}
-                key={`${page.pluginName}:${page.id}`}
-                to={pluginUserPagePath(page.pluginName, page.id)}
-              >
-                {page.label}
-              </NavLink>
-            ))}
-            <NavLink className={navLinkClass} to="/system">
-              System
-            </NavLink>
-          </nav>
-          {loggedIn ? (
-            <div className="col-start-3 justify-self-end">
-              <ProfileMenu
-                identity={data!.me}
-                onSignOut={signOut}
-                spend={personalSpendQuery.data}
-                userPages={userPages}
-              />
-            </div>
-          ) : null}
-        </div>
-        {mobileNavigationOpen ? (
-          <nav
-            className="absolute left-0 right-0 top-full grid gap-1 border-b border-white/[0.07] bg-dashboard-surface-raised/95 p-2 shadow-2xl shadow-black/60 backdrop-blur-xl md:hidden"
-            id="mobile-navigation"
-          >
-            <Link
-              aria-current={workspace ? "page" : undefined}
-              className={navLinkClass({ isActive: workspace })}
-              to="/"
-            >
-              Conversations
-            </Link>
-            {loggedIn ? (
-              <NavLink className={navLinkClass} to="/tasks">
-                Tasks
-              </NavLink>
-            ) : null}
-            {primaryUserPages.map((page) => (
-              <NavLink
-                className={navLinkClass}
-                key={`${page.pluginName}:${page.id}`}
-                to={pluginUserPagePath(page.pluginName, page.id)}
-              >
-                {page.label}
-              </NavLink>
-            ))}
-            <NavLink className={navLinkClass} to="/system">
-              System
-            </NavLink>
-          </nav>
-        ) : null}
-        <ConnectionBanner />
-      </header>
-
-      <Routes>
+        <DashboardChrome
+          banner={<ConnectionBanner />}
+          header={
+            <DashboardHeader
+              compact={workspace}
+              mobileNavigationOpen={mobileNavigationOpen}
+              navItems={primaryNavItems}
+              onMobileNavigationOpenChange={setMobileNavigationOpen}
+              profile={
+                loggedIn ? (
+                  <ProfileMenu
+                    identity={data!.me}
+                    onSignOut={signOut}
+                    spend={personalSpendQuery.data}
+                    userPages={userPages}
+                  />
+                ) : undefined
+              }
+              workspaceActive={workspace}
+            />
+          }
+        />
+        <Routes>
         <Route
           element={
             loading ? (
-              <LoadingView label="Loading task executions" />
+              <TasksPageLayout>
+                <LoadingView label="Loading task executions" />
+              </TasksPageLayout>
             ) : loggedIn ? (
               <TasksPageLayout>
                 <TaskExecutionsPage enabled={loggedIn} />
@@ -249,7 +164,9 @@ export function DashboardShell() {
         <Route
           element={
             loading ? (
-              <LoadingView label="Loading task runs" />
+              <TasksPageLayout>
+                <LoadingView label="Loading task runs" />
+              </TasksPageLayout>
             ) : loggedIn ? (
               <TasksPageLayout>
                 <TaskRunsPage enabled={loggedIn} />
@@ -263,7 +180,9 @@ export function DashboardShell() {
         <Route
           element={
             loading ? (
-              <LoadingView label="Loading tasks" />
+              <TasksPageLayout>
+                <LoadingView label="Loading tasks" />
+              </TasksPageLayout>
             ) : loggedIn ? (
               <TasksPageLayout>
                 <TasksPage enabled={loggedIn} view="list" />
@@ -277,7 +196,9 @@ export function DashboardShell() {
         <Route
           element={
             loading ? (
-              <LoadingView label="Loading tasks" />
+              <TasksPageLayout>
+                <LoadingView label="Loading tasks" />
+              </TasksPageLayout>
             ) : loggedIn ? (
               <TasksPageLayout>
                 <TasksPage enabled={loggedIn} view="overview" />
@@ -299,7 +220,9 @@ export function DashboardShell() {
         <Route
           element={
             loading ? (
-              <LoadingView label="Loading locations" />
+              <SystemPageLayout>
+                <LoadingView label="Loading locations" />
+              </SystemPageLayout>
             ) : (
               <LocationsPage />
             )
@@ -309,7 +232,9 @@ export function DashboardShell() {
         <Route
           element={
             loading ? (
-              <LoadingView label="Loading location" />
+              <SystemPageLayout>
+                <LoadingView label="Loading location" />
+              </SystemPageLayout>
             ) : (
               <LocationDetailPage />
             )
@@ -377,20 +302,30 @@ export function DashboardShell() {
         />
         <Route
           element={
-            loading ? <LoadingView label="Loading people" /> : <PeoplePage />
+            loading ? (
+              <SystemPageLayout>
+                <LoadingView label="Loading people" />
+              </SystemPageLayout>
+            ) : (
+              <PeoplePage />
+            )
           }
           path="/system/people"
         />
         <Route
           element={
             loading ? (
-              <LoadingView label="Loading system" />
+              <SystemPageLayout>
+                <LoadingView label="Loading system" />
+              </SystemPageLayout>
             ) : data ? (
               <SystemRoute coreData={data} />
             ) : (
-              <LoadingView
-                label={query.error?.message ?? "Dashboard unavailable"}
-              />
+              <SystemPageLayout>
+                <LoadingView
+                  label={query.error?.message ?? "Dashboard unavailable"}
+                />
+              </SystemPageLayout>
             )
           }
           path="/system/*"
@@ -456,13 +391,14 @@ export function DashboardShell() {
           path="/plugins/:pluginName/:pageId/*"
         />
         <Route element={<Navigate replace to="/" />} path="*" />
-      </Routes>
-      <span
-        aria-hidden="true"
-        className="pointer-events-none fixed inset-0 z-50 block opacity-[0.018]"
-        style={dashboardNoise}
-      />
-    </main>
+        </Routes>
+        <span
+          aria-hidden="true"
+          className="pointer-events-none fixed inset-0 z-50 block opacity-[0.018]"
+          style={dashboardNoise}
+        />
+      </main>
+    </DashboardChromeProvider>
   );
 }
 
@@ -481,11 +417,17 @@ function LegacySystemRedirect(props: { section: "locations" | "people" }) {
 function SystemRoute(props: { coreData: DashboardCoreData }) {
   const query = useSystemData(props.coreData);
   if (!query.data && !query.error) {
-    return <LoadingView label="Loading system" />;
+    return (
+      <SystemPageLayout>
+        <LoadingView label="Loading system" />
+      </SystemPageLayout>
+    );
   }
   return query.data ? (
     <SystemPage data={query.data} />
   ) : (
-    <LoadingView label={query.error?.message ?? "System unavailable"} />
+    <SystemPageLayout>
+      <LoadingView label={query.error?.message ?? "System unavailable"} />
+    </SystemPageLayout>
   );
 }

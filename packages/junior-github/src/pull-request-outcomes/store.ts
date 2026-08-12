@@ -1,4 +1,4 @@
-import { and, eq, lte, sql } from "drizzle-orm";
+import { and, eq, lte, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { GitHubDb } from "../db/database.js";
 import {
@@ -131,6 +131,37 @@ export async function recordGitHubPullRequestOutcome(
     commitComposition: inserted[0]?.commitComposition ?? undefined,
     conversationIds: inserted[0]?.conversationIds ?? [],
   };
+}
+
+/** Return candidate conversations that have an associated unmerged pull request. */
+export async function listGitHubUnfinishedWork(
+  db: GitHubDb,
+  conversationIds: string[],
+): Promise<string[]> {
+  if (conversationIds.length === 0) return [];
+  const values = sql.join(
+    conversationIds.map((id) => sql`${id}`),
+    sql`, `,
+  );
+  const rows = await db
+    .select({ conversationIds: juniorGitHubPullRequests.conversationIds })
+    .from(juniorGitHubPullRequests)
+    .where(
+      and(
+        ne(juniorGitHubPullRequests.state, "merged"),
+        sql`${juniorGitHubPullRequests.conversationIds} && ARRAY[${values}]::text[]`,
+      ),
+    );
+  const candidates = new Set(conversationIds);
+  return [
+    ...new Set(
+      rows.flatMap((row) =>
+        row.conversationIds.filter((conversationId) =>
+          candidates.has(conversationId),
+        ),
+      ),
+    ),
+  ];
 }
 
 /** Append native conversation ids to an existing Junior-owned PR projection. */

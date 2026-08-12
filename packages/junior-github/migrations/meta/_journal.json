@@ -50,6 +50,13 @@
       "when": 1784947522832,
       "tag": "0006_fat_korvac",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1786486305688,
+      "tag": "0007_shallow_millenium_guard",
+      "breakpoints": true
     }
   ]
 }

@@ -1,40 +1,44 @@
 # Troubleshooting and Workarounds
 
-Open this when Pi-agent integration behavior is wrong in a consumer.
+Open this when Pi integration behavior is wrong.
 
-| Symptom                                                            | Likely cause                                                                        | Fix                                                                                      |
-| ------------------------------------------------------------------ | ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| `prompt()` throws "Agent is already processing a prompt..."        | A run is active                                                                     | Queue input with `steer()`/`followUp()` or await `waitForIdle()`                         |
-| `continue()` throws "Agent is already processing..."               | Continuation called during an active run                                            | Await the current prompt/continue or queue input                                         |
-| `continue()` throws "No messages to continue from"                 | Empty transcript                                                                    | Restore or append prior `AgentMessage[]` first                                           |
-| `continue()` throws "Cannot continue from message role: assistant" | Assistant tail with no queued steering/follow-up                                    | Trim to a safe `user`/`toolResult` boundary, queue a message, or start a new prompt      |
-| Low-level continuation reaches a provider role error               | Last custom message converts to `assistant` or an invalid provider role             | Ensure `convertToLlm` leaves a final `user` or `toolResult` message                      |
-| Stream shows no user-visible text                                  | Listener is forwarding the wrong event/delta                                        | Forward only `message_update` + `assistantMessageEvent.type === "text_delta"`            |
-| Thinking or tool-call text leaks to users                          | Consumer renders all assistant deltas                                               | Ignore `thinking_*` and `toolcall_*` deltas unless a deliberate UX exposes them          |
-| Streamed and final text differ                                     | Missing or inconsistent assistant-message boundaries                                | Insert separators intentionally and normalize streamed/final output the same way         |
-| Run settles late after `agent_end`                                 | Async subscribers are still running                                                 | Treat `agent_end` as final event emission, not full idle; await `waitForIdle()`          |
-| Tool preflight sees stale state with low-level loop                | Raw `agentLoop` event handling is observational                                     | Use `Agent` when message event handling must be a barrier before tool preflight          |
-| Provider failures bypass normal event flow                         | `streamFn` throws/rejects for expected failures                                     | Return a stream that encodes `error`/`aborted` and a final assistant message             |
-| Transform/conversion breaks lifecycle                              | `transformContext` or `convertToLlm` throws/rejects                                 | Return original messages, filtered messages, or another safe fallback for expected cases |
-| Missing auth crashes the loop                                      | `getApiKey` throws for expected unauthenticated state                               | Return `undefined` and let the consumer own visible auth recovery                        |
-| Tool results appear out of expected order                          | Default tool mode is parallel                                                       | Account for completion-order `tool_execution_end`; use `sequential` when required        |
-| A sequential-only tool still changes whole batch behavior          | Per-tool `executionMode: "sequential"` forces the whole batch sequential            | Isolate the tool call or accept sequential batch execution                               |
-| Tool failure is treated as success                                 | Tool returned failure text as normal content                                        | Throw from `execute()` so Pi emits an error tool result                                  |
-| `terminate: true` does not stop the next LLM call                  | Mixed batch where not every finalized tool result terminates                        | Ensure every result in the batch sets `terminate: true`, or split the batch              |
-| Queue order surprises                                              | Default queue mode drains one message at a time                                     | Set `steeringMode`/`followUpMode` explicitly                                             |
-| Proxy errors are opaque                                            | Proxy response/event handling hides status/body                                     | Validate proxy status/body in the proxy server and encode visible stream errors          |
-| Harness hook changes are ignored                                   | Handler is attached to the wrong event type or uses `subscribe()` instead of `on()` | Use `harness.on(type, handler)` for patch-returning hooks                                |
-| Harness session state is missing                                   | Work relies on pending writes before they flush                                     | Wait for the harness method/idle boundary before reading persisted session state         |
+| Symptom                                                    | Cause                                                                                | Fix                                                                                               |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| `Agent` construction or loop call fails type checking      | `streamFn` or its required argument position is missing                              | Pass `streamFn`; pass `undefined` in the low-level signal position when needed                    |
+| `prompt()` says the agent is already processing            | A run is active                                                                      | Queue with `steer()` or `followUp()`, or await `waitForIdle()`                                    |
+| `continue()` says the agent is already processing          | Continuation started during a run                                                    | Await the run or queue input                                                                      |
+| `reset()` says the agent is already processing             | Reset started during a run                                                           | Abort if needed, await `waitForIdle()`, then reset                                                |
+| `continue()` says there are no messages                    | The transcript is empty                                                              | Restore or append prior messages                                                                  |
+| `continue()` rejects an `assistant` tail                   | Both input queues are empty                                                          | Queue a message, trim to a safe `user` or `toolResult` boundary, or start a new prompt            |
+| Low-level continuation reaches a provider role error       | Conversion leaves an invalid final role                                              | Make `convertToLlm` leave a final `user` or `toolResult`                                          |
+| Visible text is missing or thinking/tool text leaks        | The listener forwards the wrong assistant delta                                      | Forward only `message_update` plus `text_delta`                                                   |
+| Streamed and final text differ                             | Message boundaries or normalization differ                                           | Insert boundaries on purpose and use one normalization rule                                       |
+| Run settlement is late after `agent_end`                   | Async subscribers are still running                                                  | Await the prompt or `waitForIdle()`                                                               |
+| Tool preflight sees stale state with a low-level loop      | Raw loop event handling is observational                                             | Use `Agent` when event handling must be a barrier                                                 |
+| Provider failures bypass normal events                     | `streamFn` throws or rejects for an expected failure                                 | Return a stream that encodes `error` or `aborted`                                                 |
+| Transform, conversion, auth, or loop hooks break lifecycle | An expected failure escapes                                                          | Return original or filtered messages, `undefined`, or another safe value                          |
+| Tool results appear in an unexpected order                 | Default tool mode is parallel                                                        | Expect completion-order end events or use sequential mode                                         |
+| One sequential tool serializes every call                  | Any per-tool sequential override affects the full batch                              | Isolate the call or accept sequential batch execution                                             |
+| Tool failure appears successful                            | The tool returned failure text as normal content                                     | Throw from `execute()`                                                                            |
+| A blocked tool does not terminate                          | The block result omitted `terminate`, or another batch result did not terminate      | Set `terminate` on every finalized result that must join early termination                        |
+| `afterToolCall` loses nested fields                        | `content`, `details`, and `usage` are full replacements                              | Return the complete replacement value                                                             |
+| Progress arrives after tool completion                     | The tool calls `onUpdate` after its promise settles                                  | Stop updates before settlement; Pi ignores late callbacks                                         |
+| Added tools are not available from the result point        | `addedToolNames` is missing from `AgentToolResult`                                   | Return the introduced tool names and keep the definitions available                               |
+| `prepareNextTurn` lacks completed-turn context             | The signal-only `Agent` compatibility hook is in use                                 | Use `Agent.prepareNextTurnWithContext`                                                            |
+| `AgentHarness` method rejects with `HarnessNotImplemented` | Published `0.84.1` ships a compile-complete scaffold with unfinished operation paths | Use bare `Agent`, direct session APIs, or standalone helpers                                      |
+| Old harness names do not compile                           | `0.84.0` replaced the legacy harness and session model                               | Use `AgentHarness.create`, `nextRun`, lane/session v4 names, and the current options              |
+| `AgentHarness.create()` rejects with `create.restore`      | The session contains durable records and restore is unfinished                       | Do not use the scaffold to restore that session                                                   |
+| `streamProxy` loses finalized tool-call metadata           | Published `0.84.1` drops some final metadata, including OpenAI Responses namespaces  | Do not depend on it; patch the proxy path locally or wait for the upstream unreleased fix to ship |
 
 ## Debugging checklist
 
-1. Confirm the package name is `@earendil-works/pi-agent-core` and the API was checked against npm `latest`.
-2. Identify whether the consumer uses `Agent`, low-level loop APIs, or `AgentHarness`.
-3. Check active-run state before any `prompt()` or `continue()` call.
-4. Inspect the transcript tail before continuation.
-5. Check whether queued steering/follow-up messages exist when continuing from an assistant tail.
-6. Confirm stream forwarding filters to text deltas only.
-7. Confirm expected provider failures are encoded in the stream rather than thrown.
-8. Confirm transform/conversion/auth hooks return safe values for expected failures.
-9. Confirm tool execution mode and per-tool execution overrides.
-10. Confirm async listeners or harness hooks are not delaying settlement unexpectedly.
+1. Confirm npm `latest`, then inspect the published README, declarations, and implementation.
+2. Identify `Agent`, a low-level loop, direct session APIs, or the `AgentHarness` scaffold.
+3. Confirm a required `streamFn` is present.
+4. Check active-run state before `prompt()`, `continue()`, or `reset()`.
+5. Inspect the transcript tail and queued input before continuation.
+6. Filter visible streaming to text deltas.
+7. Keep expected provider, conversion, transform, auth, and queue failures no-throw.
+8. Confirm tool execution mode, hook replacement semantics, usage, added tools, and termination.
+9. Account for awaited `Agent` listeners during settlement.
+10. For harness work, inspect which methods are implemented in the published package. Do not infer readiness from types or design docs.

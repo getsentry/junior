@@ -51,7 +51,11 @@ export function LocationsPageContent(props: {
   const deferredSort = useDeferredValue(sort);
   const [searchText, setSearchText, search] = useDebouncedSearchParam();
   if (!props.data && !props.error) {
-    return <LoadingView label="Loading locations" />;
+    return (
+      <SystemPageLayout>
+        <LoadingView label="Loading locations" />
+      </SystemPageLayout>
+    );
   }
 
   const locations = filterLocations(

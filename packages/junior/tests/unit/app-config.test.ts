@@ -868,6 +868,18 @@ describe("createApp plugin config", () => {
     expect(dashboardAvatar.status).toBe(200);
     await expect(dashboardAvatar.text()).resolves.toBe("dashboard");
 
+    const installManifest = await app.fetch(
+      new Request("http://localhost/_junior/dashboard/manifest.webmanifest"),
+    );
+    expect(installManifest.status).toBe(200);
+    await expect(installManifest.text()).resolves.toBe("dashboard");
+
+    const installIcon = await app.fetch(
+      new Request("http://localhost/_junior/dashboard/icon-512.png"),
+    );
+    expect(installIcon.status).toBe(200);
+    await expect(installIcon.text()).resolves.toBe("dashboard");
+
     const pluginsPage = await app.fetch(
       new Request("http://localhost/plugins"),
     );

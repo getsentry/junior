@@ -219,12 +219,12 @@ function isDefinitiveGitHubIssueCreateRejection(
   return [400, 401, 404, 410, 422].includes(error.status);
 }
 
-function createGitHubIssueRequest(
+async function createGitHubIssueRequest(
   conversationId: string,
   input: CreateGitHubIssueInput,
-  actor: ToolRegistrationHookContext["actor"],
+  ctx: ToolRegistrationHookContext,
   dashboardUrl?: string,
-): Request {
+): Promise<Request> {
   const repo = parseRepo(input.repo);
   const labels = input.labels?.map((label) =>
     nonEmptyString(label, "labels entry"),
@@ -232,7 +232,7 @@ function createGitHubIssueRequest(
   const payload = {
     title: nonEmptyString(input.title, "title"),
     body: appendGitHubFooter(
-      appendGitHubRequesterAttribution(input.body ?? "", actor),
+      await appendGitHubRequesterAttribution(input.body ?? "", ctx),
       conversationId,
       dashboardUrl,
     ),
@@ -347,10 +347,10 @@ export function createGitHubIssueTool(ctx: ToolRegistrationHookContext) {
               "GitHub issue creation for this tool call has an uncertain pending result; refusing to create a duplicate issue.",
             );
           }
-          const request = createGitHubIssueRequest(
+          const request = await createGitHubIssueRequest(
             conversationId,
             parsedInput,
-            ctx.actor,
+            ctx,
             ctx.slack?.conversationLink?.url,
           );
           const pendingState: CreateIssueState = {

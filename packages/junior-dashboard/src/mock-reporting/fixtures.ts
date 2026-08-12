@@ -126,6 +126,7 @@ function activeConversation(nowMs: number): ConversationDetailReport {
     lastSeenAt: iso(nowMs, -10_000),
     status: "active",
     surface: "slack",
+    unfinishedWork: true,
     channel: "CQA123",
     channelName: "proj-checkout",
     actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),
@@ -277,7 +278,7 @@ function activeConversation(nowMs: number): ConversationDetailReport {
 }
 
 function dashboardQaConversation(nowMs: number): ConversationDetailReport {
-  // Keep outside the 3h Priority window so the personal sidebar shows Today too.
+  // Finished work stays in Today even when it was active in the last 24 hours.
   const startedAt = iso(nowMs, -5 * 60 * 60_000);
   return detail(nowMs, {
     conversationId: DASHBOARD_QA_CONVERSATION_ID,
@@ -898,7 +899,7 @@ function simpleConversation(
     sourceTask?: ConversationDetailReport["sourceTask"];
   },
 ): ConversationDetailReport {
-  // Keep these outside the 3h Priority window so the sidebar still shows Today.
+  // Finished work stays in Today even when it was active in the last 24 hours.
   const startedAt = iso(nowMs, -5 * 60 * 60_000);
   return detail(nowMs, {
     ...options,

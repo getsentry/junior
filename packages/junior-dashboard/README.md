@@ -11,6 +11,8 @@ name, through dashboard settings.
   configuration through `JuniorDashboardOptions`.
 - Better Auth owns authentication; dashboard routes fail closed when identity
   or required configuration is missing.
+- The installable shell is static only: a public web app manifest, theme color,
+  and install icon. There is no service worker and no offline app shell cache.
 - API schemas under `src/api/` define the client/server boundary.
 - Plugin user pages use the core `/api/user-pages` contract and render under
   `/plugins/:plugin/:page/*`. Plugins choose primary dashboard navigation or the

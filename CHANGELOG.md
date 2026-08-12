@@ -1,4 +1,26 @@
 # Changelog
+## 0.154.0
+
+### New Features ✨
+
+#### Dashboard
+
+- Persist conversation drafts by @sentry-junior in [#1451](https://github.com/getsentry/junior/pull/1451)
+- Simplify the mobile header by @sentry-junior in [#1446](https://github.com/getsentry/junior/pull/1446)
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Prevent mobile focus zoom via viewport by @sentry-junior in [#1453](https://github.com/getsentry/junior/pull/1453)
+- Keep emphasis markers out of bare transcript URLs by @sentry-junior in [#1447](https://github.com/getsentry/junior/pull/1447)
+- Keep mobile composer focused during updates by @sentry-junior in [#1454](https://github.com/getsentry/junior/pull/1454)
+- Keep mobile workspace in visual viewport by @sentry-junior in [#1448](https://github.com/getsentry/junior/pull/1448)
+
+### Internal Changes 🔧
+
+- Run dispatch recovery through real agent by @dcramer in [#1450](https://github.com/getsentry/junior/pull/1450)
+
 ## 0.153.0
 
 ### Bug Fixes 🐛

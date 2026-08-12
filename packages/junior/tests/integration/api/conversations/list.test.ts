@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { describe, expect, test } from "vitest";
+import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { testViewer } from "../../../fixtures/user";
 import { eq } from "drizzle-orm";
 import { createJuniorApi } from "@/api";
@@ -12,6 +13,7 @@ import { apiErrorSchema, conversationFeedSchema } from "@/api/schema";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
+import { setPlugins } from "@/chat/plugins/agent-hooks";
 import {
   juniorConversationEvents,
   juniorConversationParticipants,
@@ -45,6 +47,45 @@ describe("conversation list API", () => {
         error: "Invalid query parameters.",
       });
     } finally {
+      await fixture.close();
+    }
+  });
+
+  test("marks conversations with unfinished plugin work", async () => {
+    const fixture = createConfiguredJuniorSqlFixture();
+    const store = createSqlStore(fixture.sql);
+    const conversationId = "slack:C123:unfinished-work";
+    const seenConversationIds: string[][] = [];
+    try {
+      await migrateSchema(fixture.sql);
+      await store.recordActivity({ conversationId, nowMs: 1_000 });
+      setPlugins([
+        defineJuniorPlugin({
+          manifest: {
+            name: "work",
+            displayName: "Work",
+            description: "Unfinished work test plugin",
+          },
+          hooks: {
+            unfinishedWork(ctx) {
+              seenConversationIds.push([...ctx.conversationIds]);
+              return { conversationIds: [conversationId] };
+            },
+          },
+        }),
+      ]);
+
+      await expect(readConversationFeedFromSql()).resolves.toMatchObject({
+        conversations: [
+          expect.objectContaining({
+            conversationId,
+            unfinishedWork: true,
+          }),
+        ],
+      });
+      expect(seenConversationIds).toEqual([[conversationId]]);
+    } finally {
+      setPlugins([]);
       await fixture.close();
     }
   });

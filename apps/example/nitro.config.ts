@@ -1,3 +1,4 @@
+import { withSentryConfig } from "@sentry/nitro";
 import { defineConfig } from "nitro";
 import { juniorNitro } from "@sentry/junior/nitro";
 import {
@@ -6,7 +7,7 @@ import {
   exampleDashboardMockConversations,
 } from "./dashboard.ts";
 
-export default defineConfig({
+const config = defineConfig({
   preset: "vercel",
   modules: [
     juniorNitro({
@@ -22,4 +23,10 @@ export default defineConfig({
   routes: {
     "/**": { handler: "./server.ts" },
   },
+});
+
+export default withSentryConfig(config, {
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
 });

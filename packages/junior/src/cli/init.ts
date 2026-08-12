@@ -5,17 +5,33 @@ import { juniorVercelConfig } from "../vercel";
 function writeServerEntry(targetDir: string): void {
   fs.writeFileSync(
     path.join(targetDir, "server.ts"),
-    `import { createApp } from "@sentry/junior";
-import { initSentry } from "@sentry/junior/instrumentation";
-import { plugins } from "./plugins.ts";
+    `import { initSentry } from "@sentry/junior/instrumentation";
 
 initSentry();
+
+const [
+  { createApp },
+  { plugins },
+] = await Promise.all([
+  import("@sentry/junior"),
+  import("./plugins.ts"),
+]);
 
 const app = await createApp({
   plugins,
 });
 
 export default app;
+`,
+  );
+}
+
+function writeInstrumentFile(targetDir: string): void {
+  fs.writeFileSync(
+    path.join(targetDir, "instrument.mjs"),
+    `import { initSentry } from "@sentry/junior/instrumentation";
+
+initSentry();
 `,
   );
 }
@@ -37,10 +53,11 @@ export const plugins = defineJuniorPlugins([
 function writeNitroConfig(targetDir: string): void {
   fs.writeFileSync(
     path.join(targetDir, "nitro.config.ts"),
-    `import { defineConfig } from "nitro";
+    `import { withSentryConfig } from "@sentry/nitro";
+import { defineConfig } from "nitro";
 import { juniorNitro } from "@sentry/junior/nitro";
 
-export default defineConfig({
+const config = defineConfig({
   preset: "vercel",
   modules: [
     juniorNitro({
@@ -50,6 +67,12 @@ export default defineConfig({
   routes: {
     "/**": { handler: "./server.ts" },
   },
+});
+
+export default withSentryConfig(config, {
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
 });
 `,
   );
@@ -75,6 +98,8 @@ function writePnpmWorkspace(targetDir: string): void {
     `minimumReleaseAge: 1440
 minimumReleaseAgeExclude:
   - "@sentry/*"
+allowBuilds:
+  "@sentry/cli": true
 `,
   );
 }
@@ -146,20 +171,24 @@ export async function runInit(
     private: true,
     type: "module",
     scripts: {
-      dev: "nitro dev",
+      dev: "cross-env NODE_OPTIONS=--import=./instrument.mjs nitro dev",
       check: "junior check",
       build: "junior snapshot create && nitro build",
-      preview: "nitro preview",
+      preview: "cross-env NODE_OPTIONS=--import=./instrument.mjs nitro preview",
       typecheck: "tsc --noEmit",
     },
     dependencies: {
+      "@opentelemetry/api": "1.9.1",
+      "@opentelemetry/core": "2.9.0",
       "@sentry/junior": "latest",
       "@sentry/junior-memory": "latest",
       "@sentry/junior-maintenance": "latest",
+      "@sentry/nitro": "10.65.0",
       hono: "^4.12.27",
     },
     devDependencies: {
       "@types/node": "^25.9.1",
+      "cross-env": "^10.1.0",
       jiti: "^2.7.0",
       nitro: "3.0.260522-beta",
       typescript: "^6.0.3",
@@ -226,11 +255,17 @@ JUNIOR_SQL_STATEMENT_TIMEOUT_MS=
 REDIS_URL=
 CRON_SECRET=
 SENTRY_DSN=
+SENTRY_ENVIRONMENT=
+SENTRY_TRACES_SAMPLE_RATE=1
+SENTRY_ORG=
 SENTRY_ORG_SLUG=
+SENTRY_PROJECT=
+SENTRY_AUTH_TOKEN=
 `,
   );
 
   writeServerEntry(target);
+  writeInstrumentFile(target);
   writePluginsFile(target);
   writeNitroConfig(target);
   writeTsConfig(target);

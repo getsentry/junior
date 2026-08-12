@@ -133,7 +133,7 @@ export function createGitHubUpdatePullRequestTool(
         ...(update.body !== undefined
           ? {
               body: appendGitHubFooter(
-                appendGitHubRequesterAttribution(update.body, ctx.actor),
+                await appendGitHubRequesterAttribution(update.body, ctx),
                 nonEmptyString(ctx.conversationId, "conversationId"),
                 ctx.slack?.conversationLink?.url,
               ),

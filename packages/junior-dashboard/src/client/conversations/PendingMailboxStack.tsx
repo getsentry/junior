@@ -15,23 +15,11 @@ import {
   conversationTranscriptMessages,
   unresolvedPendingTranscriptMessages,
 } from "./eventTranscript";
+import { SlackMark } from "./SlackMark";
+import { showsSlackSourceIcon } from "./transcriptSource";
 
 const MAX_EXPANDED_PENDING_ROWS = 3;
 const COLLAPSED_PENDING_ROW_COUNT = 2;
-
-/** Compact monochrome Slack mark for pending mailbox source. */
-function SlackMark(props: { className?: string }) {
-  return (
-    <svg
-      aria-hidden="true"
-      className={props.className}
-      fill="currentColor"
-      viewBox="0 0 24 24"
-    >
-      <path d="M6.2 15.3c0 1.4-1.1 2.5-2.5 2.5S1.2 16.7 1.2 15.3s1.1-2.5 2.5-2.5h2.5v2.5zm1.3 0c0-1.4 1.1-2.5 2.5-2.5s2.5 1.1 2.5 2.5v6.2c0 1.4-1.1 2.5-2.5 2.5s-2.5-1.1-2.5-2.5v-6.2zM8.7 6.2c-1.4 0-2.5-1.1-2.5-2.5S7.3 1.2 8.7 1.2s2.5 1.1 2.5 2.5v2.5H8.7zm0 1.3c1.4 0 2.5 1.1 2.5 2.5s-1.1 2.5-2.5 2.5H2.5C1.1 12.5 0 11.4 0 10s1.1-2.5 2.5-2.5h6.2zM17.8 8.7c0-1.4 1.1-2.5 2.5-2.5s2.5 1.1 2.5 2.5-1.1 2.5-2.5 2.5h-2.5V8.7zm-1.3 0c0 1.4-1.1 2.5-2.5 2.5s-2.5-1.1-2.5-2.5V2.5C11.5 1.1 12.6 0 14 0s2.5 1.1 2.5 2.5v6.2zM14 17.8c1.4 0 2.5 1.1 2.5 2.5s-1.1 2.5-2.5 2.5-2.5-1.1-2.5-2.5v-2.5H14zm0-1.3c-1.4 0-2.5-1.1-2.5-2.5s1.1-2.5 2.5-2.5h6.2c1.4 0 2.5 1.1 2.5 2.5s-1.1 2.5-2.5 2.5H14z" />
-    </svg>
-  );
-}
 
 function pendingDeliveryMeta(
   delivery: ConversationPendingMessage["delivery"],
@@ -61,20 +49,21 @@ function PendingMetaIcon(props: {
 
 function PendingMetaIcons(props: {
   delivery: ConversationPendingMessage["delivery"];
-  source: ConversationPendingMessage["source"];
+  showSlack: boolean;
   timestamp?: string;
 }) {
   const delivery = pendingDeliveryMeta(props.delivery);
   const DeliveryIcon = delivery.icon;
-  const showSlack = props.source === "slack";
 
   return (
     <TranscriptHeadingMeta className="flex min-w-0 items-center justify-end gap-2 text-xs leading-none text-dashboard-text-muted">
       <span className="inline-flex shrink-0 items-center gap-1.5">
-        {showSlack ? (
-          <PendingMetaIcon className="text-dashboard-text-muted" label="Slack">
-            <SlackMark className="size-3.5" />
-          </PendingMetaIcon>
+        {props.showSlack ? (
+          <Tooltip content="Slack" placement="above">
+            <span className="inline-flex text-dashboard-text-muted">
+              <SlackMark className="size-3.5" />
+            </span>
+          </Tooltip>
         ) : null}
         <PendingMetaIcon
           className={
@@ -112,9 +101,7 @@ function PendingRow(props: {
     props.message,
   );
   const delivery = props.message.delivery ?? "defer";
-  const source =
-    props.message.source ??
-    (props.conversation.surface === "slack" ? "slack" : "web");
+  const showSlack = showsSlackSourceIcon(props.message, props.conversation);
 
   return (
     <article
@@ -133,7 +120,7 @@ function PendingRow(props: {
         right={
           <PendingMetaIcons
             delivery={delivery}
-            source={source}
+            showSlack={showSlack}
             timestamp={formatMessageTimestamp(props.message.timestamp)}
           />
         }

@@ -1,13 +1,20 @@
-import { createApp } from "@sentry/junior";
 import { initSentry } from "@sentry/junior/instrumentation";
-import {
-  exampleDashboardAuthRequired,
-  exampleDashboardComponentGallery,
-  exampleDashboardMockConversations,
-} from "./dashboard.ts";
-import { plugins } from "./plugins.ts";
 
 initSentry();
+
+const [
+  { createApp },
+  {
+    exampleDashboardAuthRequired,
+    exampleDashboardComponentGallery,
+    exampleDashboardMockConversations,
+  },
+  { plugins },
+] = await Promise.all([
+  import("@sentry/junior"),
+  import("./dashboard.ts"),
+  import("./plugins.ts"),
+]);
 
 const app = await createApp({
   dashboard: {

@@ -863,6 +863,7 @@ export function buildConversations(
       status: summary.status,
       surface: summary.surface,
       traceId: summary.traceId,
+      unfinishedWork: summary.unfinishedWork,
       visibility: summary.visibility,
     }))
     .sort((a, b) => compareTimeDesc(a.lastSeenAt, b.lastSeenAt));

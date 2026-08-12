@@ -7,9 +7,7 @@ export type ConversationSection = {
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-// Priority is intentionally a short recent window for now. Expand later when
-// urgency signals (mentions, failures, active work) can rank above recency.
-const PRIORITY_WINDOW_MS = 3 * 60 * 60 * 1000;
+const PRIORITY_WINDOW_MS = DAY_MS;
 const SECTION_ORDER = [
   "priority",
   "today",
@@ -34,6 +32,7 @@ export function buildConversationSections(
   for (const conversation of sorted) {
     const time = activityTime(conversation);
     const section = conversationSection(
+      conversation,
       time,
       options.nowMs,
       nowDay,
@@ -58,6 +57,7 @@ function activityTime(conversation: Conversation): number {
 }
 
 function conversationSection(
+  conversation: Conversation,
   time: number,
   nowMs: number,
   nowDay: number,
@@ -65,8 +65,7 @@ function conversationSection(
 ): Pick<ConversationSection, "key" | "label"> {
   if (!Number.isFinite(time)) return { key: "older", label: "Older" };
 
-  // Keep Priority above Today so the freshest work stays easy to find.
-  if (nowMs - time <= PRIORITY_WINDOW_MS) {
+  if (conversation.unfinishedWork && nowMs - time <= PRIORITY_WINDOW_MS) {
     return { key: "priority", label: "Priority" };
   }
 
@@ -90,9 +89,7 @@ function conversationSection(
 }
 
 function sectionRank(key: string): number {
-  const known = SECTION_ORDER.indexOf(
-    key as (typeof SECTION_ORDER)[number],
-  );
+  const known = SECTION_ORDER.indexOf(key as (typeof SECTION_ORDER)[number]);
   if (known >= 0) return known;
   // Weekday buckets sit between Yesterday and Last week.
   if (key.startsWith("day-")) return SECTION_ORDER.indexOf("yesterday") + 0.5;

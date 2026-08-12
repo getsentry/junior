@@ -56,12 +56,28 @@ test("rejects manufactured agent outcomes", () => {
   assert.deepEqual(
     checkIntegrationTestArchitecture([
       integrationTest(
-        'import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";',
+        [
+          'import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";',
+          'return { status: "awaiting_auth", providerDisplayName: "GitHub" };',
+          'return ({ status: "suspended", reason: "timeout", resumeVersion: 2 });',
+          'return { status: "completed", result };',
+        ].join("\n"),
       ),
     ]),
     [
-      `${TEST_PATH}: integration tests must run the real agent instead of manufacturing agent outcomes (1 found, 0 allowed)`,
+      `${TEST_PATH}: integration tests must run the real agent instead of manufacturing agent outcomes (4 found, 0 allowed)`,
     ],
+  );
+});
+
+test("allows assertions about real agent outcomes", () => {
+  assert.deepEqual(
+    checkIntegrationTestArchitecture([
+      integrationTest(
+        'await expect(run).resolves.toEqual({ status: "completed" });',
+      ),
+    ]),
+    [],
   );
 });
 
