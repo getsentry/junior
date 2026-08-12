@@ -177,7 +177,11 @@ export function createSandboxRuntime(
   const timeoutMs = options.timeoutMs ?? 1000 * 60 * 30;
   const traceContext = options.traceContext ?? {};
   let activeWorkspace = options.workspace;
-  let dependencyProfileHash = profileHash(SANDBOX_RUNTIME, activeWorkspace);
+  // Keep durable workspace association when the recipe row is missing.
+  let dependencyProfileHash = activeWorkspace
+    ? profileHash(SANDBOX_RUNTIME, activeWorkspace)
+    : (options.sandboxRef?.profileHash ??
+      profileHash(SANDBOX_RUNTIME, activeWorkspace));
   const resolveCommandEnv =
     options.commandEnv ?? (async () => ({}) as Record<string, string>);
 
@@ -219,10 +223,11 @@ export function createSandboxRuntime(
   const reportSandboxRef = async (
     nextSandbox: SandboxSession,
   ): Promise<void> => {
+    const workspaceId = activeWorkspace?.id ?? sandboxRef?.workspaceId;
     const nextRef: SandboxRef = {
       id: nextSandbox.sandboxId,
       ...(dependencyProfileHash ? { profileHash: dependencyProfileHash } : {}),
-      ...(activeWorkspace ? { workspaceId: activeWorkspace.id } : {}),
+      ...(workspaceId ? { workspaceId } : {}),
     };
     sandboxRef = nextRef;
     if (
@@ -530,40 +535,34 @@ export function createSandboxRuntime(
     if (
       activeSandbox ||
       !sandboxRef ||
-      dependencyProfileHash === sandboxRef.profileHash
+      dependencyProfileHash === sandboxRef.profileHash ||
+      // Without the recipe we cannot recompute the workspace profile; keep the hint.
+      (!activeWorkspace && sandboxRef.workspaceId)
     ) {
       return;
     }
-
+    const attrs = {
+      ...(sandboxRef.profileHash
+        ? { "app.sandbox.previous_profile_hash": sandboxRef.profileHash }
+        : {}),
+      ...(dependencyProfileHash
+        ? { "app.sandbox.current_profile_hash": dependencyProfileHash }
+        : {}),
+    };
     setSpanAttributes({
       "app.sandbox.reused": false,
       "app.sandbox.recreate.reason": "dependency_profile_mismatch",
-      ...(sandboxRef.profileHash
-        ? {
-            "app.sandbox.previous_profile_hash": sandboxRef.profileHash,
-          }
-        : {}),
-      ...(dependencyProfileHash
-        ? { "app.sandbox.current_profile_hash": dependencyProfileHash }
-        : {}),
+      ...attrs,
     });
     logInfo("sandbox.hint.discarded", {
       "app.decision.reason": "dependency_profile_mismatch",
-      ...(sandboxRef.profileHash
-        ? {
-            "app.sandbox.previous_profile_hash": sandboxRef.profileHash,
-          }
-        : {}),
-      ...(dependencyProfileHash
-        ? { "app.sandbox.current_profile_hash": dependencyProfileHash }
-        : {}),
+      ...attrs,
     });
     sandboxRef = undefined;
   };
 
-  const tryReuseCachedSandbox = async (): Promise<SandboxSession | null> => {
-    return activeSandbox?.session ?? null;
-  };
+  const tryReuseCachedSandbox = (): SandboxSession | null =>
+    activeSandbox?.session ?? null;
 
   const tryRestoreHintedSandbox = async (
     signal?: AbortSignal,

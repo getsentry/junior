@@ -1161,6 +1161,39 @@ describe("createTestSandbox", () => {
     });
   });
 
+  it("keeps durable workspaceId when the recipe row is missing", async () => {
+    // Base-only hash would previously discard the workspace hint and strip workspaceId.
+    hashMock.mockReturnValue("profile-base");
+    const restored = makeSandbox("sbx_missing_recipe");
+    sandboxGetMock.mockResolvedValueOnce(restored);
+    const refs: Array<{ id: string; workspaceId?: string; profileHash?: string } | null> =
+      [];
+    const runtime = createSandboxRuntime({
+      sandboxRef: {
+        id: "sbx_missing_recipe",
+        profileHash: "profile-workspace",
+        workspaceId: "workspace-deleted",
+      },
+      skills: [],
+      referenceFiles: [],
+      onSandboxRefChanged: (ref) => {
+        refs.push(ref);
+      },
+    });
+
+    await runtime.acquire();
+
+    expect(sandboxGetMock).toHaveBeenCalled();
+    expect(sandboxCreateMock).not.toHaveBeenCalled();
+    expect(runtime.sandboxRef()).toEqual({
+      id: "sbx_missing_recipe",
+      profileHash: "profile-workspace",
+      workspaceId: "workspace-deleted",
+    });
+    // Same durable identity is not rewritten.
+    expect(refs).toEqual([]);
+  });
+
   it("starts keepalive after a successful workspace switch", async () => {
     vi.useFakeTimers();
     process.env.VERCEL_SANDBOX_KEEPALIVE_MS = "5000";
