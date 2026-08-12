@@ -130,9 +130,7 @@ function ToolSignature(props: {
         as="strong"
         className={cn(
           "shrink-0 font-bold",
-          failed
-            ? "!text-rose-300"
-            : !shimmering && "text-dashboard-text",
+          failed ? "!text-rose-300" : !shimmering && "text-dashboard-text",
         )}
       >
         <HighlightText text={props.name} />
@@ -148,7 +146,7 @@ function ToolSignature(props: {
 
 function ToolBody(props: { children: ReactNode; label?: string }) {
   return (
-    <div className="min-w-0 max-w-full overflow-hidden border-t border-white/[0.08] bg-black/15 px-2.5 py-2">
+    <div className="min-w-0 max-w-full overflow-hidden bg-black/20 px-2.5 py-2">
       {props.label ? (
         <div className="pb-1.5 font-mono text-2xs font-bold uppercase leading-none tracking-[0.08em] text-dashboard-text-muted">
           {props.label}

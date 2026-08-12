@@ -55,7 +55,7 @@ export function TranscriptReasoningView(props: {
     </>
   );
   const content = (
-    <div className="grid min-w-0 grid-cols-[1rem_minmax(0,1fr)] gap-2 border-t border-violet-300/10 px-2.5 pb-2 pt-1.5">
+    <div className="grid min-w-0 grid-cols-[1rem_minmax(0,1fr)] gap-2 bg-violet-950/15 px-2.5 pb-2 pt-1.5">
       <span aria-hidden="true" />
       <div className="min-w-0 whitespace-pre-wrap break-words text-xs leading-relaxed italic text-violet-100/65">
         <HighlightText text={rendered} />
@@ -85,5 +85,5 @@ export function TranscriptReasoningView(props: {
 }
 
 function reasoningFrameClass(): string {
-  return "min-w-0 overflow-hidden rounded-md border border-violet-300/20 bg-violet-300/[0.045] text-sm leading-relaxed text-violet-100/70";
+  return "min-w-0 overflow-hidden rounded-md bg-violet-300/[0.075] text-sm leading-relaxed text-violet-100/70";
 }

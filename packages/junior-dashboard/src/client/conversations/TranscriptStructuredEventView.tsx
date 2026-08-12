@@ -14,13 +14,13 @@ export function TranscriptStructuredEventView(props: {
   const timestamp = formatMessageTimestamp(props.timestamp);
   const details = presentation.details ?? [];
   const surfaceClass =
-    "min-w-0 rounded-md border border-violet-300/15 bg-violet-300/[0.04] px-2.5 py-1.5 font-mono text-xs leading-tight";
+    "min-w-0 rounded-md bg-violet-300/[0.07] px-2.5 py-1.5 font-mono text-xs leading-tight";
   const body =
     details.length > 0 ? (
       <div className="grid gap-2 pb-1 pt-2">
         {details.map((detail, index) => (
           <div
-            className="rounded border border-white/[0.06] bg-white/[0.025] px-3 py-2.5"
+            className="rounded bg-white/[0.04] px-3 py-2.5"
             key={`${detail.title}:${index}`}
           >
             <div className="whitespace-pre-wrap break-words text-sm text-dashboard-text">

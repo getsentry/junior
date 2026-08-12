@@ -19,10 +19,8 @@ export function TranscriptContextEventView(props: {
       : "";
   return (
     <article
-      className={`min-w-0 rounded-md border px-2.5 py-2 first:mt-0.5 ${
-        handoff
-          ? "border-sky-300/15 bg-sky-300/[0.04]"
-          : "border-amber-300/15 bg-amber-300/[0.04]"
+      className={`min-w-0 rounded-md px-2.5 py-2 first:mt-0.5 ${
+        handoff ? "bg-sky-300/[0.07]" : "bg-amber-300/[0.07]"
       }`}
     >
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1">
@@ -45,7 +43,7 @@ export function TranscriptContextEventView(props: {
           : `Earlier context was summarized${compactionDetail}${compactionModel} before execution continued.`}
       </div>
       {event.summary ? (
-        <details className="mt-1.5 border-t border-white/[0.06] pt-1.5">
+        <details className="mt-1.5 bg-black/10 px-2 py-1.5">
           <summary className="cursor-pointer select-none text-2xs font-medium text-dashboard-text-muted">
             Continuation summary
           </summary>

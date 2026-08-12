@@ -64,7 +64,7 @@ export function ToolFrame(props: {
   );
   const mobileMeta =
     metaText && props.children ? (
-      <div className="hidden min-w-0 break-words border-t border-white/[0.06] px-2.5 py-1 font-mono text-2xs leading-snug text-dashboard-text-muted max-md:block">
+      <div className="hidden min-w-0 break-words bg-black/15 px-2.5 py-1 font-mono text-2xs leading-snug text-dashboard-text-muted max-md:block">
         {metaText}
       </div>
     ) : null;
@@ -94,12 +94,9 @@ export function toolFrameClass(
   status?: "running" | "completed" | "error" | "aborted",
 ): string {
   return cn(
-    "min-w-0 max-w-full overflow-hidden rounded-md border bg-black/20",
-    status === "running" && "border-cyan-300/25 bg-cyan-300/[0.04]",
-    status === "error" && "border-rose-300/30 bg-rose-300/[0.05]",
-    status !== "running" &&
-      status !== "error" &&
-      "border-white/[0.08]",
+    "min-w-0 max-w-full overflow-hidden rounded-md bg-white/[0.04]",
+    status === "running" && "bg-cyan-300/[0.07]",
+    status === "error" && "bg-rose-300/[0.09]",
   );
 }
 

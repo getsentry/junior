@@ -121,7 +121,7 @@ function TypingIndicator() {
   return (
     <div aria-live="polite" className="mt-5 flex items-center" role="status">
       <span className="sr-only">{getDashboardAgentName()} is responding</span>
-      <span className="flex items-center gap-1 rounded-2xl border border-white/[0.06] bg-white/[0.03] px-3.5 py-2.5">
+      <span className="flex items-center gap-1 rounded-2xl bg-white/[0.04] px-3.5 py-2.5">
         {[0, 1, 2].map((dot) => (
           <span
             aria-hidden="true"
@@ -147,12 +147,9 @@ function transcriptMessageClass(role: string): string {
 
   return cn(
     "grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 rounded-2xl px-3 py-2 md:gap-1.5 md:px-3.5 md:py-2.5",
-    kind === "assistant" &&
-      "mr-6 border border-cyan-300/10 bg-[#0e1517] text-dashboard-text shadow-[0_0_0_1px_rgba(255,255,255,0.02)] md:mr-[18%]",
-    kind === "user" &&
-      "ml-6 border border-white/[0.06] bg-dashboard-surface-hover text-dashboard-text md:ml-[22%]",
-    kind === "system" &&
-      "rounded-xl border border-amber-300/10 bg-[#14120c] text-dashboard-text",
+    kind === "assistant" && "mr-6 bg-[#0f191c] text-dashboard-text md:mr-[18%]",
+    kind === "user" && "ml-6 bg-[#1a1a1c] text-dashboard-text md:ml-[22%]",
+    kind === "system" && "rounded-xl bg-[#17140d] text-dashboard-text",
     kind === "tool" && "rounded-none px-0 text-dashboard-text-muted",
     kind === "other" && "bg-dashboard-surface-hover text-dashboard-text",
   );
@@ -472,7 +469,7 @@ function TranscriptFailureView(props: {
 
   return (
     <div
-      className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3 rounded-lg border border-rose-300/25 bg-rose-300/[0.07] px-4 py-3 text-rose-100 max-md:grid-cols-[auto_minmax(0,1fr)]"
+      className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3 rounded-lg bg-rose-300/[0.1] px-4 py-3 text-rose-100 max-md:grid-cols-[auto_minmax(0,1fr)]"
       data-transcript-failure={props.outcome}
       role="alert"
     >
@@ -525,7 +522,7 @@ function TranscriptRailEvent(props: {
       <span
         aria-hidden="true"
         className={cn(
-          "mt-1.5 grid size-5 place-items-center rounded border bg-black/25",
+          "mt-1.5 grid size-5 place-items-center rounded bg-black/30",
           marker.className,
         )}
       >
@@ -542,36 +539,36 @@ function transcriptRailMarker(kind: TranscriptRailEventKind): {
 } {
   if (kind === "message_context") {
     return {
-      className: "border-white/20 text-dashboard-text-muted",
+      className: "text-dashboard-text-muted",
       icon: MessageSquareText,
     };
   }
   if (kind === "resource_event") {
     return {
-      className: "border-violet-300/35 text-violet-200",
+      className: "text-violet-200",
       icon: Diff,
     };
   }
   if (kind === "structured_event") {
     return {
-      className: "border-violet-300/35 text-violet-200",
+      className: "text-violet-200",
       icon: Activity,
     };
   }
   if (kind === "subagent") {
     return {
-      className: "border-cyan-300/35 text-cyan-200",
+      className: "text-cyan-200",
       icon: Bot,
     };
   }
   if (kind === "handoff") {
     return {
-      className: "border-sky-300/35 text-sky-200",
+      className: "text-sky-200",
       icon: Send,
     };
   }
   return {
-    className: "border-amber-300/35 text-amber-200",
+    className: "text-amber-200",
     icon: Minimize2,
   };
 }
@@ -802,7 +799,7 @@ function TranscriptResourceEventView(props: {
     (part) => part.type === "text" && part.redacted,
   );
   return (
-    <details className="min-w-0 rounded-lg border border-violet-300/10 bg-violet-300/[0.035] px-3 py-2">
+    <details className="min-w-0 rounded-lg bg-violet-300/[0.07] px-3 py-2">
       <summary className="cursor-pointer list-none font-display text-sm font-semibold text-violet-100 [&::-webkit-details-marker]:hidden">
         <HighlightText text={props.message.eventType ?? ""} />
       </summary>
