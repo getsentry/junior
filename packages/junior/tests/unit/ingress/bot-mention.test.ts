@@ -28,6 +28,33 @@ describe("textMentionsBot", () => {
     ).toBe(false);
   });
 
+  it("keeps the fence open when ``` appears mid-line inside the block", () => {
+    expect(
+      textMentionsBot(
+        [
+          "```",
+          'const fence = "```";',
+          `<@${BOT}> still inside`,
+          "```",
+          "after the block",
+        ].join("\n"),
+        BOT,
+      ),
+    ).toBe(false);
+    expect(
+      textMentionsBot(
+        [
+          "```",
+          'const fence = "```";',
+          `<@${BOT}> still inside`,
+          "```",
+          `<@${BOT}> after`,
+        ].join("\n"),
+        BOT,
+      ),
+    ).toBe(true);
+  });
+
   it("still detects a real mention beside code examples", () => {
     expect(
       textMentionsBot(

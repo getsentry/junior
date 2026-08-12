@@ -40,23 +40,36 @@ function readInlineCodeSpanEnd(text: string, start: number): number | undefined 
   return undefined;
 }
 
-function readFencedCodeBlockEnd(text: string, start: number): number | undefined {
-  if (!text.startsWith("```", start)) {
-    return undefined;
+function lineMentionsBot(
+  line: string,
+  exactToken: string,
+  labeledPrefix: string,
+): boolean {
+  let i = 0;
+  while (i < line.length) {
+    const spanEnd = readInlineCodeSpanEnd(line, i);
+    if (spanEnd !== undefined) {
+      i = spanEnd;
+      continue;
+    }
+
+    if (line.startsWith(exactToken, i) || line.startsWith(labeledPrefix, i)) {
+      return true;
+    }
+
+    i += 1;
   }
 
-  const close = text.indexOf("```", start + 3);
-  if (close === -1) {
-    // Unclosed fence: treat the remainder as code.
-    return text.length;
-  }
-  return close + 3;
+  return false;
 }
 
 /**
  * Return true when `text` contains a Slack bot mention token outside code.
  *
  * Slack encodes user mentions as `<@UXXXXXXXX>` or `<@UXXXXXXXX|label>`.
+ * Fenced blocks use the same line-toggle rule as Slack mrkdwn helpers: a line
+ * whose trimmed start is ` ``` ` flips in/out of code. Nested ` ``` ` mid-line
+ * does not close the fence.
  */
 export function textMentionsBot(text: string, botUserId: string): boolean {
   if (!botUserId || !text) {
@@ -65,26 +78,19 @@ export function textMentionsBot(text: string, botUserId: string): boolean {
 
   const exactToken = `<@${botUserId}>`;
   const labeledPrefix = `<@${botUserId}|`;
-  let i = 0;
+  let inCodeBlock = false;
 
-  while (i < text.length) {
-    const fenceEnd = readFencedCodeBlockEnd(text, i);
-    if (fenceEnd !== undefined) {
-      i = fenceEnd;
+  for (const line of text.split("\n")) {
+    if (line.trimStart().startsWith("```")) {
+      inCodeBlock = !inCodeBlock;
       continue;
     }
-
-    const spanEnd = readInlineCodeSpanEnd(text, i);
-    if (spanEnd !== undefined) {
-      i = spanEnd;
+    if (inCodeBlock) {
       continue;
     }
-
-    if (text.startsWith(exactToken, i) || text.startsWith(labeledPrefix, i)) {
+    if (lineMentionsBot(line, exactToken, labeledPrefix)) {
       return true;
     }
-
-    i += 1;
   }
 
   return false;
