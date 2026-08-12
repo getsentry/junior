@@ -733,6 +733,44 @@ test("expires the archive undo notice", async ({ page }) => {
   await expect(undo).toHaveCount(0);
 });
 
+test("resets the archive undo timer when archiving another conversation", async ({
+  page,
+}) => {
+  await page.clock.install();
+  await page.route("**/api/conversations/*/archive", async (route) => {
+    await route.fulfill({ json: { archived: true } });
+  });
+  await page.goto(server.baseURL);
+
+  await page.getByRole("link", { name: /Dashboard QA edge cases/ }).hover();
+  await page
+    .getByRole("button", { name: "Archive Dashboard QA edge cases" })
+    .click();
+  const firstUndo = page.getByRole("button", {
+    name: "Undo archive for Dashboard QA edge cases",
+  });
+  await expect(firstUndo).toBeVisible();
+
+  // Burn most of the first notice's timer, then archive a second conversation.
+  await page.clock.fastForward(5_000);
+  await page.getByRole("link", { name: /Checkout latency triage/ }).hover();
+  await page
+    .getByRole("button", { name: "Archive Checkout latency triage" })
+    .click();
+
+  const secondUndo = page.getByRole("button", {
+    name: "Undo archive for Checkout latency triage",
+  });
+  await expect(secondUndo).toBeVisible();
+  await expect(firstUndo).toHaveCount(0);
+
+  // A reused first-notice timer would dismiss here; a reset timer must remain.
+  await page.clock.fastForward(2_000);
+  await expect(secondUndo).toBeVisible();
+  await page.clock.fastForward(4_000);
+  await expect(secondUndo).toHaveCount(0);
+});
+
 test("shows archive failures after the row returns", async ({ page }) => {
   await page.setViewportSize({ height: 900, width: 1600 });
   await page.route("**/api/conversations/*/archive", async (route) => {

@@ -130,6 +130,8 @@ export function ConversationSidebar(props: {
           ) : null}
           {archivedConversation ? (
             <ArchivedConversationNotice
+              // Remount on each archive so the expiry timer and restore mutation reset.
+              key={archivedConversation.id}
               conversation={archivedConversation}
               onRestored={dismissArchivedConversation}
             />
@@ -268,7 +270,12 @@ function ArchivedConversationNotice(props: {
     if (restore.isPending || restore.error) return;
     const timeout = window.setTimeout(props.onRestored, 6_000);
     return () => window.clearTimeout(timeout);
-  }, [props.onRestored, restore.error, restore.isPending]);
+  }, [
+    props.conversation.id,
+    props.onRestored,
+    restore.error,
+    restore.isPending,
+  ]);
 
   return (
     <div className="overflow-hidden rounded-xl border border-cyan-200/20 bg-[linear-gradient(135deg,rgba(25,42,45,0.98),rgba(15,21,23,0.98))] shadow-[0_16px_40px_rgba(0,0,0,0.5)] backdrop-blur-md">
