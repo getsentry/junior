@@ -156,21 +156,14 @@ function parseKeepAliveMs(): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 }
 
-function getCommandAbortedResult(): {
-  stdout: string;
-  stderr: string;
-  exitCode: number;
-  stdoutTruncated: boolean;
-  stderrTruncated: boolean;
-  aborted: true;
-} {
+function getCommandAbortedResult() {
   return {
     stdout: "",
     stderr: "Command aborted because the agent turn was cancelled.",
     exitCode: 130,
     stdoutTruncated: false,
     stderrTruncated: false,
-    aborted: true,
+    aborted: true as const,
   };
 }
 
@@ -201,13 +194,9 @@ export function createSandboxRuntime(
     callback: () => Promise<T>,
   ): Promise<T> => withSpan(name, op, traceContext, callback, attributes);
 
-  /** Drop unavailable live state while retaining the persisted hint for lazy reacquisition. */
+  /** Drop unavailable live state; keep the durable hint for lazy reacquisition. */
   const invalidateSession = (sessionId?: string): void => {
-    if (
-      sessionId &&
-      activeSandbox &&
-      activeSandbox.session.sessionId !== sessionId
-    ) {
+    if (sessionId && activeSandbox?.session.sessionId !== sessionId) {
       return;
     }
     activeSandbox = null;
@@ -444,15 +433,16 @@ export function createSandboxRuntime(
       setSpanAttributes({
         "app.sandbox.snapshot.rebuild_after_missing": true,
       });
+      const recipe = activeWorkspace;
       const rebuiltSnapshot = await resolveSnapshot({
         runtime,
         timeoutMs,
         forceRebuild: true,
         staleSnapshotId: snapshot.snapshotId,
         signal,
-        workspace: activeWorkspace,
-        prepareWorkspace: activeWorkspace
-          ? async (sandbox) => await prepareWorkspaceSnapshot(sandbox, activeWorkspace!)
+        workspace: recipe,
+        prepareWorkspace: recipe
+          ? async (sandbox) => await prepareWorkspaceSnapshot(sandbox, recipe)
           : undefined,
       });
       if (!rebuiltSnapshot.snapshotId) {
@@ -505,13 +495,14 @@ export function createSandboxRuntime(
           "app.sandbox.runtime": runtime,
         },
         async () => {
+          const recipe = activeWorkspace;
           const snapshot = await resolveSnapshot({
             runtime,
             timeoutMs,
             signal,
-            workspace: activeWorkspace,
-            prepareWorkspace: activeWorkspace
-              ? async (sandbox) => await prepareWorkspaceSnapshot(sandbox, activeWorkspace!)
+            workspace: recipe,
+            prepareWorkspace: recipe
+              ? async (sandbox) => await prepareWorkspaceSnapshot(sandbox, recipe)
               : undefined,
           });
           signal?.throwIfAborted();
@@ -927,9 +918,13 @@ export function createSandboxRuntime(
         return;
       }
 
-      const previousWorkspace = activeWorkspace;
-      const previousProfileHash = dependencyProfileHash;
-
+      const previous = {
+        workspace: activeWorkspace,
+        profileHash: dependencyProfileHash,
+        sandboxRef,
+        reportedSandboxRef,
+        sandbox: activeSandbox,
+      };
       // Point at the target first so concurrent re-acquire uses it.
       activeWorkspace = workspace;
       dependencyProfileHash = nextProfileHash;
@@ -948,10 +943,8 @@ export function createSandboxRuntime(
         }
       }
 
-      const previousSandbox = activeSandbox;
       invalidateSession();
-      await stopSession(previousSandbox?.session);
-
+      await stopSession(previous.sandbox?.session);
       // Local ref survives failures that clear activeSandbox after acquire.
       let replacement: SandboxSession | undefined;
       try {
@@ -960,16 +953,23 @@ export function createSandboxRuntime(
         });
       } catch (error) {
         const failed = activeSandbox?.session ?? replacement;
-        activeWorkspace = previousWorkspace;
-        dependencyProfileHash = previousProfileHash;
+        const reportedNew = reportedSandboxRef !== previous.reportedSandboxRef;
+        activeWorkspace = previous.workspace;
+        dependencyProfileHash = previous.profileHash;
         invalidateSession();
-        sandboxRef = undefined;
-        reportedSandboxRef = undefined;
         await stopSession(failed);
-        try {
-          await options.onSandboxRefChanged?.(null);
-        } catch {
-          // Preserve the boot error when rollback persistence also fails.
+        // Keep prior durable hint only when nothing was stopped or reported.
+        if (previous.sandbox || failed || reportedNew) {
+          sandboxRef = undefined;
+          reportedSandboxRef = undefined;
+          try {
+            await options.onSandboxRefChanged?.(null);
+          } catch {
+            // Preserve the boot error when rollback persistence also fails.
+          }
+        } else {
+          sandboxRef = previous.sandboxRef;
+          reportedSandboxRef = previous.reportedSandboxRef;
         }
         throw error;
       }

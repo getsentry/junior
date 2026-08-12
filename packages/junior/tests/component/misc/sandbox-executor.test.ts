@@ -1244,6 +1244,45 @@ describe("createTestSandbox", () => {
     expect(runtime.sandboxRef()).toBeUndefined();
   });
 
+  it("restores a durable sandbox hint when cold switch fails before acquire", async () => {
+    hashMock
+      .mockReturnValueOnce("profile-initial")
+      .mockReturnValueOnce("profile-next");
+    sandboxCreateMock.mockRejectedValueOnce(new Error("boot failed"));
+    const initialWorkspace = {
+      id: "workspace-initial",
+      name: "initial",
+      setupScript: "",
+      updatedAt: new Date("2026-08-11T00:00:00.000Z"),
+      repos: [],
+    };
+    const nextWorkspace = {
+      ...initialWorkspace,
+      id: "workspace-next",
+      name: "next",
+    };
+    const runtime = createSandboxRuntime({
+      sandboxRef: {
+        id: "sbx_cold_hint",
+        profileHash: "profile-initial",
+        workspaceId: "workspace-initial",
+      },
+      workspace: initialWorkspace,
+      skills: [],
+      referenceFiles: [],
+    });
+
+    await expect(runtime.switchWorkspace(nextWorkspace)).rejects.toThrow(
+      "sandbox setup failed",
+    );
+
+    expect(runtime.sandboxRef()).toEqual({
+      id: "sbx_cold_hint",
+      profileHash: "profile-initial",
+      workspaceId: "workspace-initial",
+    });
+  });
+
   it("surfaces a generic sandbox setup failure for non-recoverable sync errors", async () => {
     const forbiddenSandbox = makeSandbox("sbx_forbidden", {
       mkDirError: createApiError(

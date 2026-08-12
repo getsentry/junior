@@ -86,13 +86,20 @@ function floatingMaxAgeMs(): number {
 
 function workspaceRecipe(workspace: Workspace) {
   // Sort repos so profile hashes stay stable when query order differs.
-  const repos = [...workspace.repos].sort((left, right) => {
-    const provider = left.provider.localeCompare(right.provider);
-    if (provider !== 0) return provider;
-    const repo = left.repo.localeCompare(right.repo);
-    if (repo !== 0) return repo;
-    return left.checkoutPath.localeCompare(right.checkoutPath);
-  });
+  // Omit isPrimary: it only selects AGENTS.md at runtime, not snapshot contents.
+  const repos = [...workspace.repos]
+    .map(({ provider, repo, checkoutPath }) => ({
+      provider,
+      repo,
+      checkoutPath,
+    }))
+    .sort((left, right) => {
+      const provider = left.provider.localeCompare(right.provider);
+      if (provider !== 0) return provider;
+      const repo = left.repo.localeCompare(right.repo);
+      if (repo !== 0) return repo;
+      return left.checkoutPath.localeCompare(right.checkoutPath);
+    });
   return {
     id: workspace.id,
     updatedAt: workspace.updatedAt.toISOString(),
