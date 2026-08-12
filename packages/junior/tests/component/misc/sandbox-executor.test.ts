@@ -1244,6 +1244,59 @@ describe("createTestSandbox", () => {
     expect(runtime.sandboxRef()).toBeUndefined();
   });
 
+  it("stops a late in-flight sandbox remembered during workspace switch", async () => {
+    const lateSandbox = makeSandbox("sbx_workspace_late_inflight");
+    const nextSandbox = makeSandbox("sbx_workspace_switch_target");
+    let releaseCreate: (() => void) | undefined;
+    const createGate = new Promise<void>((resolve) => {
+      releaseCreate = resolve;
+    });
+    sandboxCreateMock
+      .mockImplementationOnce(async () => {
+        await createGate;
+        return lateSandbox;
+      })
+      .mockResolvedValueOnce(nextSandbox);
+    // Late create reports a durable ref; force the next boot to recreate instead of restore.
+    sandboxGetMock.mockRejectedValueOnce(
+      createApiError(404, "Not Found", "not_found", "Sandbox was not found"),
+    );
+    hashMock
+      .mockReturnValueOnce("profile-initial")
+      .mockReturnValueOnce("profile-next");
+    const initialWorkspace = {
+      id: "workspace-initial",
+      name: "initial",
+      setupScript: "",
+      updatedAt: new Date("2026-08-11T00:00:00.000Z"),
+      repos: [],
+    };
+    const nextWorkspace = {
+      ...initialWorkspace,
+      id: "workspace-next",
+      name: "next",
+    };
+    const runtime = createSandboxRuntime({
+      workspace: initialWorkspace,
+      skills: [],
+      referenceFiles: [],
+    });
+
+    // Cold acquire is still in flight when switch aborts it.
+    const pendingAcquire = runtime.acquire();
+    await vi.waitFor(() => expect(sandboxCreateMock).toHaveBeenCalledTimes(1));
+
+    const switchPromise = runtime.switchWorkspace(nextWorkspace);
+    // Finish the aborted create so it can remember a session after previous was captured.
+    releaseCreate?.();
+    await pendingAcquire;
+    await switchPromise;
+
+    expect(lateSandbox.stop).toHaveBeenCalledTimes(1);
+    expect(nextSandbox.stop).not.toHaveBeenCalled();
+    expect(runtime.sandboxRef()?.id).toBe("sbx_workspace_switch_target");
+  });
+
   it("restores a durable sandbox hint when cold switch fails before acquire", async () => {
     hashMock
       .mockReturnValueOnce("profile-initial")
