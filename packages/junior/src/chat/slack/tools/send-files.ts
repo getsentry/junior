@@ -88,7 +88,7 @@ export function createSendFilesTool(
         ),
     }),
     outputSchema: sendFilesResultSchema,
-    execute: async ({ files }, options) => {
+    execute: async ({ files }) => {
       const filesToSend = normalizeFiles(files);
       const activeChannelId = context.sourceChannelId;
       if (!activeChannelId) {
@@ -116,16 +116,12 @@ export function createSendFilesTool(
         });
       }
 
-      if (attachments && !options.toolCallId) {
-        throw new ToolInputError("sendFiles requires an active tool call ID");
-      }
       const stored = attachments
         ? await storeAttachments({
             conversationId: attachments.conversationId,
             db: attachments.db,
             files: materializedFiles,
             storage: attachments.storage,
-            toolCallId: options.toolCallId!,
           })
         : [];
       const uploads = materializedFiles.map((file) => ({

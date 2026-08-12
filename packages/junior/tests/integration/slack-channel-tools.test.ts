@@ -506,11 +506,9 @@ describe("slack channel tools", () => {
         },
       );
 
-      const result = await executeTool(
-        tool,
-        { files: [{ path: "/tmp/report.txt" }] },
-        { toolCallId: "tool-1" },
-      );
+      const result = await executeTool(tool, {
+        files: [{ path: "/tmp/report.txt" }],
+      });
 
       const rows = await fixture.sql.db().select().from(juniorAttachments);
       expect(result.attachment_ids).toEqual([rows[0]?.id]);
@@ -518,8 +516,9 @@ describe("slack channel tools", () => {
         conversationId: "conversation-1",
         filename: "report.txt",
         provider: "test",
-        toolCallId: "tool-1",
       });
+      expect(rows[0]).not.toHaveProperty("toolCallId");
+      expect(rows[0]).not.toHaveProperty("position");
       expect(rows[0]?.readyAt).not.toBe(null);
       expect(puts).toEqual([rows[0]?.storageKey]);
       expect(

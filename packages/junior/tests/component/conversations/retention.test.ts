@@ -186,8 +186,6 @@ describe("retention purge job", () => {
     await fixture.sql.db().insert(juniorAttachments).values({
       id: "attachment-1",
       conversationId: "with-attachment",
-      toolCallId: "tool-1",
-      position: 0,
       provider: "test",
       storageKey: "key-1",
       filename: "report.txt",

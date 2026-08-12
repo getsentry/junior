@@ -10,7 +10,6 @@ const ATTACHMENT_GC_BATCH_LIMIT = 200;
 
 export interface StoredAttachment {
   id: string;
-  position: number;
 }
 
 export interface AttachmentGarbageCollectionResult {
@@ -29,97 +28,69 @@ function attachmentKey(args: {
   return `conversations/${args.conversationId}/attachments/${args.attachmentId}/${args.filename}`;
 }
 
-/** Persist materialized files before a provider sends them to its destination. */
+/**
+ * Persist one conversation-owned file.
+ *
+ * Identity is the attachment id under a conversation. Callers that need
+ * retry safety should reuse the returned id rather than invent a tool-call key.
+ */
+export async function storeAttachment(args: {
+  conversationId: string;
+  db: JuniorSqlDatabase;
+  file: SandboxFileUpload;
+  nowMs?: number;
+  storage: AttachmentStorage;
+}): Promise<StoredAttachment> {
+  const now = new Date(args.nowMs ?? Date.now());
+  const id = randomUUID();
+  const storageKey = attachmentKey({
+    attachmentId: id,
+    conversationId: args.conversationId,
+    filename: args.file.filename,
+  });
+  await args.db.db().insert(juniorAttachments).values({
+    id,
+    conversationId: args.conversationId,
+    provider: args.storage.provider,
+    storageKey,
+    filename: args.file.filename,
+    contentType: args.file.mimeType,
+    bytes: args.file.bytes,
+    sha256: attachmentDigest(args.file),
+    createdAt: now,
+  });
+  await args.storage.put({
+    body: args.file.data,
+    contentType: args.file.mimeType,
+    key: storageKey,
+  });
+  await args.db
+    .db()
+    .update(juniorAttachments)
+    .set({ readyAt: now })
+    .where(eq(juniorAttachments.id, id));
+  return { id };
+}
+
+/** Persist many conversation-owned files. */
 export async function storeAttachments(args: {
   conversationId: string;
   db: JuniorSqlDatabase;
   files: SandboxFileUpload[];
   nowMs?: number;
   storage: AttachmentStorage;
-  toolCallId: string;
 }): Promise<StoredAttachment[]> {
-  const now = new Date(args.nowMs ?? Date.now());
   const stored: StoredAttachment[] = [];
-  for (const [position, file] of args.files.entries()) {
-    const [existing] = await args.db
-      .db()
-      .select({
-        contentType: juniorAttachments.contentType,
-        filename: juniorAttachments.filename,
-        id: juniorAttachments.id,
-        position: juniorAttachments.position,
-        provider: juniorAttachments.provider,
-        readyAt: juniorAttachments.readyAt,
-        sha256: juniorAttachments.sha256,
-        storageKey: juniorAttachments.storageKey,
-      })
-      .from(juniorAttachments)
-      .where(
-        and(
-          eq(juniorAttachments.conversationId, args.conversationId),
-          eq(juniorAttachments.toolCallId, args.toolCallId),
-          eq(juniorAttachments.position, position),
-        ),
-      );
-    const sha256 = attachmentDigest(file);
-    if (
-      existing &&
-      (existing.contentType !== file.mimeType ||
-        existing.filename !== file.filename ||
-        existing.provider !== args.storage.provider ||
-        existing.sha256 !== sha256)
-    ) {
-      throw new Error(`Attachment write conflicts with ${existing.id}`);
-    }
-    if (existing?.readyAt) {
-      stored.push({ id: existing.id, position: existing.position });
-      continue;
-    }
-    if (existing) {
-      await args.storage.put({
-        body: file.data,
-        contentType: file.mimeType,
-        key: existing.storageKey,
-      });
-      await args.db
-        .db()
-        .update(juniorAttachments)
-        .set({ readyAt: now })
-        .where(eq(juniorAttachments.id, existing.id));
-      stored.push({ id: existing.id, position: existing.position });
-      continue;
-    }
-
-    const id = randomUUID();
-    const storageKey = attachmentKey({
-      attachmentId: id,
-      conversationId: args.conversationId,
-      filename: file.filename,
-    });
-    await args.db.db().insert(juniorAttachments).values({
-      id,
-      conversationId: args.conversationId,
-      toolCallId: args.toolCallId,
-      position,
-      provider: args.storage.provider,
-      storageKey,
-      filename: file.filename,
-      contentType: file.mimeType,
-      bytes: file.bytes,
-      sha256,
-      createdAt: now,
-    });
-    await args.storage.put({
-      body: file.data,
-      contentType: file.mimeType,
-      key: storageKey,
-    });
-    await args.db
-      .db()
-      .update(juniorAttachments)
-      .set({ readyAt: now })
-      .where(eq(juniorAttachments.id, id));
-    stored.push({ id, position });
+  for (const file of args.files) {
+    stored.push(
+      await storeAttachment({
+        conversationId: args.conversationId,
+        db: args.db,
+        file,
+        ...(args.nowMs !== undefined ? { nowMs: args.nowMs } : {}),
+        storage: args.storage,
+      }),
+    );
   }
   return stored;
 }
@@ -179,6 +150,11 @@ export async function collectAttachmentGarbage(args: {
   await args.db
     .db()
     .delete(juniorAttachments)
-    .where(inArray(juniorAttachments.id, rows.map((row) => row.id)));
+    .where(
+      inArray(
+        juniorAttachments.id,
+        rows.map((row) => row.id),
+      ),
+    );
   return { deleted: rows.length };
 }

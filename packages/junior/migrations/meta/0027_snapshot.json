@@ -1,5 +1,5 @@
 {
-  "id": "6c54b126-e87f-4bc2-a971-2d9240505a58",
+  "id": "0027_attachment_storage",
   "prevId": "77d3ed2a-01c0-4abe-9d3b-06409d923793",
   "version": "7",
   "dialect": "postgresql",
@@ -385,18 +385,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "tool_call_id": {
-          "name": "tool_call_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "position": {
-          "name": "position",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
         "provider": {
           "name": "provider",
           "type": "text",
@@ -453,29 +441,17 @@
         }
       },
       "indexes": {
-        "junior_attachments_tool_position_idx": {
-          "name": "junior_attachments_tool_position_idx",
+        "junior_attachments_conversation_idx": {
+          "name": "junior_attachments_conversation_idx",
           "columns": [
             {
               "expression": "conversation_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
-            },
-            {
-              "expression": "tool_call_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "position",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
             }
           ],
-          "isUnique": true,
+          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}
