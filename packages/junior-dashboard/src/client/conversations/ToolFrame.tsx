@@ -93,11 +93,13 @@ export function ToolFrame(props: {
 export function toolFrameClass(
   status?: "running" | "completed" | "error" | "aborted",
 ): string {
-  return cn(
-    "min-w-0 max-w-full overflow-hidden rounded-md bg-white/[0.04]",
-    status === "running" && "bg-cyan-300/[0.07]",
-    status === "error" && "bg-rose-300/[0.09]",
-  );
+  const background =
+    status === "running"
+      ? "bg-cyan-300/[0.07]"
+      : status === "error"
+        ? "bg-rose-300/[0.09]"
+        : "bg-white/[0.04]";
+  return cn("min-w-0 max-w-full overflow-hidden rounded-md", background);
 }
 
 function toolHeaderClass(interactive: boolean): string {

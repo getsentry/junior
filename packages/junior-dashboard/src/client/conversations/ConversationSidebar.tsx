@@ -22,7 +22,7 @@ import { EmptyTelemetry } from "../components/EmptyTelemetry";
 import { SearchInput } from "../components/SearchInput";
 
 type ConversationSidebarEntry =
-  | { key: string; kind: "section"; label: string }
+  | { first: boolean; key: string; kind: "section"; label: string }
   | { conversation: Conversation; key: string; kind: "conversation" };
 
 const conversationEntryKey = (entry: ConversationSidebarEntry) => entry.key;
@@ -100,7 +100,12 @@ export function ConversationSidebar(props: {
             items={entries}
             renderItem={(entry) =>
               entry.kind === "section" ? (
-                <h3 className="m-0 px-2.5 pb-0.5 pt-4 font-display text-2xs font-semibold uppercase tracking-[0.08em] text-dashboard-text-muted/55 first:pt-1.5">
+                <h3
+                  className={cn(
+                    "m-0 px-2.5 pb-0.5 font-display text-2xs font-semibold uppercase tracking-[0.08em] text-dashboard-text-muted/55",
+                    entry.first ? "pt-1.5" : "pt-4",
+                  )}
+                >
                   {entry.label}
                 </h3>
               ) : (
@@ -146,8 +151,9 @@ export function ConversationSidebar(props: {
 function conversationSidebarEntries(
   sections: ConversationSection[],
 ): ConversationSidebarEntry[] {
-  return sections.flatMap((section) => [
+  return sections.flatMap((section, index) => [
     {
+      first: index === 0,
       key: `section-${section.key}`,
       kind: "section" as const,
       label: section.label,
