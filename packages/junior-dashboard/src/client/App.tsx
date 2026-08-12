@@ -1,5 +1,5 @@
 import { Menu, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Link,
   Navigate,
@@ -21,6 +21,7 @@ import { JuniorLogo } from "./components/JuniorLogo";
 import { ProfileMenu } from "./components/ProfileMenu";
 import { setDashboardTimeZone } from "./format";
 import { ConversationWorkspace } from "./conversations/ConversationWorkspace";
+import { useMobileViewportHeight } from "./mobileViewport";
 import { ComponentsPage } from "./pages/dev/ComponentsPage";
 import { LocationDetailPage } from "./pages/locations/LocationDetailPage";
 import { LocationsPage } from "./pages/locations/LocationsPage";
@@ -60,6 +61,7 @@ const dashboardNoise = {
 /** Render the dashboard SPA shell and route-level loading states. */
 export function DashboardShell() {
   const location = useLocation();
+  const shellRef = useRef<HTMLElement>(null);
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const query = useDashboardCoreData();
   const userPagesQuery = usePluginUserPagesData();
@@ -78,6 +80,8 @@ export function DashboardShell() {
     location.pathname === "/" ||
     location.pathname === "/conversations" ||
     location.pathname.startsWith("/conversations/");
+
+  useMobileViewportHeight(shellRef, workspace);
 
   useEffect(() => {
     setMobileNavigationOpen(false);
@@ -115,9 +119,10 @@ export function DashboardShell() {
       className={cn(
         "relative grid font-sans text-dashboard-text",
         workspace
-          ? "h-dvh min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden"
+          ? "h-[var(--dashboard-viewport-height,100dvh)] min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden"
           : "min-h-screen grid-rows-[auto_1fr]",
       )}
+      ref={shellRef}
       style={dashboardBackground}
     >
       <header

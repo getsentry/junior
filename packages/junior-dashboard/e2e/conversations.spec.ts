@@ -400,6 +400,29 @@ test("opens and closes a conversation in the mobile workspace", async ({
   // One-row mobile composer; leave headroom for font metrics / padding.
   expect((await composer.boundingBox())?.height).toBeLessThan(80);
 
+  await page.evaluate(() => {
+    Object.defineProperty(window.visualViewport, "height", {
+      configurable: true,
+      value: 520,
+    });
+    window.visualViewport?.dispatchEvent(new Event("resize"));
+  });
+  await expect
+    .poll(async () => (await page.locator("main").first().boundingBox())?.height)
+    .toBe(520);
+  const compactShell = await page.locator("main").first().boundingBox();
+  const compactComposer = await composer.boundingBox();
+  expect(compactComposer!.y + compactComposer!.height).toBeLessThanOrEqual(
+    compactShell!.y + compactShell!.height,
+  );
+  const compactPage = await page.evaluate(() => ({
+    documentHeight: document.documentElement.scrollHeight,
+    viewportHeight: document.documentElement.clientHeight,
+  }));
+  expect(compactPage.documentHeight).toBeLessThanOrEqual(
+    compactPage.viewportHeight,
+  );
+
   await page.getByRole("button", { name: "Show transcript tools" }).click();
   await expect(page.getByPlaceholder("Search transcript…")).toBeVisible();
   await expect(
