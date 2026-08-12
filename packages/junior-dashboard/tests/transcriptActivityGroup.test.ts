@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   activityGroupLabel,
   activityGroupOpen,
+  activityGroupSummary,
   isCollapsibleActivityEntry,
 } from "../src/client/conversations/TranscriptActivityGroup";
 import type { RenderedTranscriptEntry } from "../src/client/conversations/transcriptRenderModel";
@@ -146,20 +147,25 @@ describe("transcript activity group", () => {
     expect(isCollapsibleActivityEntry(failure())).toBe(false);
   });
 
-  it("labels pure tool and reasoning runs with the familiar counts", () => {
-    expect(activityGroupLabel([tool("1")])).toBe("1 tool call");
-    expect(activityGroupLabel([tool("1"), tool("2")])).toBe("2 tool calls");
-    expect(activityGroupLabel([reasoning("r1")])).toBe("1 reasoning entry");
-    expect(activityGroupLabel([tool("1"), reasoning("r1")])).toBe(
-      "1 tool call and 1 reasoning entry",
-    );
-  });
-
-  it("labels mixed activity groups with an action count and key highlights", () => {
+  it("uses a uniform event count for collapsed activity labels", () => {
+    expect(activityGroupLabel([tool("1")])).toBe("1 event");
+    expect(activityGroupLabel([tool("1"), tool("2")])).toBe("2 events");
+    expect(activityGroupLabel([reasoning("r1")])).toBe("1 event");
+    expect(activityGroupLabel([tool("1"), reasoning("r1")])).toBe("2 events");
     expect(
       activityGroupLabel([tool("1"), tool("2"), compaction(), handoff()]),
-    ).toBe("4 actions · 2 tool calls · context compacted · model handoff");
-    expect(activityGroupLabel([compaction()])).toBe("context compacted");
-    expect(activityGroupLabel([handoff()])).toBe("model handoff");
+    ).toBe("4 events");
+  });
+
+  it("summarizes collapsed activity contents for the tooltip", () => {
+    expect(activityGroupSummary([tool("1")])).toBe("1 tool call");
+    expect(activityGroupSummary([tool("1"), reasoning("r1")])).toBe(
+      "1 tool call · 1 reasoning entry",
+    );
+    expect(
+      activityGroupSummary([tool("1"), tool("2"), compaction(), handoff()]),
+    ).toBe("2 tool calls · context compacted · model handoff");
+    expect(activityGroupSummary([compaction()])).toBe("context compacted");
+    expect(activityGroupSummary([handoff()])).toBe("model handoff");
   });
 });

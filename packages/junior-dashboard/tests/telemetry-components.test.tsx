@@ -397,15 +397,16 @@ describe("dashboard canonical-event components", () => {
     );
     const completeTranscriptHtml = renderTranscript(conversation(events));
 
-    // Conversation-level totals only render from complete history. Turns are the
-    // unique header signal; tool chips may still label visible activity on partial pages.
+    // Conversation header no longer shows turn or tool totals.
     expect(partialHtml).not.toContain("1 turn");
-    expect(completeHtml).toContain("1 turn");
-    // Transcript does not mirror conversation turn totals in a segment row.
+    expect(completeHtml).not.toContain("1 turn");
+    expect(partialHtml).not.toContain("1 tool call");
+    expect(completeHtml).not.toContain("1 tool call");
+    // Transcript collapses activity to a uniform event count.
     expect(partialTranscriptHtml).not.toContain("1 turn");
     expect(completeTranscriptHtml).not.toContain("1 turn");
-    expect(partialTranscriptHtml).toContain("1 tool call");
-    expect(completeTranscriptHtml).toContain("1 tool call");
+    expect(partialTranscriptHtml).toContain("1 event");
+    expect(completeTranscriptHtml).toContain("1 event");
   });
 
   it("renders each user message with its own actor", () => {

@@ -29,12 +29,9 @@ import {
   conversationFromDetail,
   conversationActorLabel,
   formatConversationDuration,
-  formatRelativeTime,
   peoplePath,
   slackLocationLabel,
   summarizeCost,
-  summarizeTurns,
-  summarizeToolCalls,
   summarizeUsage,
   taskPath,
   visualStatusForConversation,
@@ -42,13 +39,7 @@ import {
 import { Tooltip } from "../components/Tooltip";
 import { Card } from "../components/layout/Card";
 import { MetricList, type MetricListItem } from "../components/Metric";
-import {
-  CostMetric,
-  DurationMetric,
-  TurnsMetric,
-  TokenMetric,
-  ToolCallsMetric,
-} from "./TelemetryMetrics";
+import { CostMetric, DurationMetric, TokenMetric } from "./TelemetryMetrics";
 import { Transcript } from "./TranscriptView";
 import { TranscriptLoading } from "./TranscriptLoading";
 import {
@@ -122,9 +113,6 @@ export function ConversationPage(props: {
               />
             }
             title={conversationDisplayTitle(conversation)}
-            updatedLabel={formatRelativeTime(
-              conversation?.lastSeenAt ?? detail.data?.generatedAt,
-            )}
           />
 
           {detail.isPending ? (
@@ -534,12 +522,6 @@ function ConversationStats(props: {
   const completeDetail = props.detail?.previousCursor
     ? undefined
     : props.detail;
-  const turnSummary = completeDetail
-    ? summarizeTurns(completeDetail)
-    : undefined;
-  const toolSummary = completeDetail
-    ? summarizeToolCalls(completeDetail)
-    : undefined;
   const usage =
     props.detail?.cumulativeUsage ?? props.conversation.cumulativeUsage;
   const tokenSummary = summarizeUsage(usage);
@@ -615,26 +597,6 @@ function ConversationStats(props: {
             />
           ),
           key: "cost",
-        }
-      : undefined,
-    !props.detail || turnSummary
-      ? {
-          content: (
-            <TurnsMetric loading={!props.detail} summary={turnSummary} />
-          ),
-          key: "turns",
-        }
-      : undefined,
-    !props.detail || (toolSummary && toolSummary.total > 0)
-      ? {
-          content: (
-            <ToolCallsMetric
-              live={live}
-              loading={!props.detail}
-              summary={toolSummary}
-            />
-          ),
-          key: "tools",
         }
       : undefined,
   ];

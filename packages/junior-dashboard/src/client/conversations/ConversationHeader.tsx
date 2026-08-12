@@ -18,7 +18,6 @@ export function ConversationHeader(props: {
   privacy: ReactNode;
   stats: ReactNode;
   title: string;
-  updatedLabel: string;
 }) {
   return (
     <header className="sticky top-0 z-10 -mx-3 mb-2 border-b border-white/[0.07] bg-[#050507]/92 px-3 pb-1.5 pt-3 backdrop-blur md:-mx-7 md:mb-4 md:px-7 md:pb-3 md:pt-5">
@@ -37,9 +36,8 @@ export function ConversationHeader(props: {
             ) : null}
             <span className="hidden md:inline-flex">{props.privacy}</span>
           </div>
-          <div className="mt-1 hidden min-w-0 gap-0.5 font-sans text-xs leading-snug text-dashboard-text-muted md:grid">
+          <div className="mt-1 hidden min-w-0 font-sans text-xs leading-snug text-dashboard-text-muted md:block">
             {props.identity}
-            <span>updated {props.updatedLabel}</span>
           </div>
         </div>
         <ArchiveConversationButton {...props.archive} />

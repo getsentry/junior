@@ -598,7 +598,7 @@ test("inspects and copies an advisor transcript", async ({ context, page }) => {
   // Subagents live inside the collapsed activity chip between turns.
   const activityChip = page
     .locator("details")
-    .filter({ hasText: /\d+ actions.*subagents/ })
+    .filter({ hasText: /\d+ events?/ })
     .first();
   await expect(activityChip).toBeVisible();
   await activityChip.locator("> summary").click();
