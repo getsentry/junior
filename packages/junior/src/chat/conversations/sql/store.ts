@@ -4,6 +4,7 @@ import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { parseDestination, sameDestination } from "@/chat/destination";
 import { upsertIdentity } from "@/chat/identities/sql";
+import { recordConversationParticipant } from "./participants";
 import type { StoredSlackActor } from "@/chat/actor";
 import {
   normalizeSessionSource,
@@ -825,10 +826,21 @@ export class SqlStore implements ConversationStore {
         },
       })
       .returning({
+        actorIdentityId: juniorConversations.actorIdentityId,
+        parentConversationId: juniorConversations.parentConversationId,
         rootConversationId: juniorConversations.rootConversationId,
       });
-    if (!rows[0]?.rootConversationId) {
+    const row = rows[0];
+    if (!row?.rootConversationId) {
       throw new Error("Conversation parent is missing its persisted root");
+    }
+    // Root actors stay in the personal feed even before they author a message.
+    if (row.actorIdentityId && row.parentConversationId === null) {
+      await recordConversationParticipant(this.executor, {
+        actorIdentityId: row.actorIdentityId,
+        conversationId: conversation.conversationId,
+        atMs: conversation.lastActivityAtMs,
+      });
     }
   }
 

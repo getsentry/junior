@@ -169,25 +169,70 @@ ORDER BY conversation_id
 
       const conversationId = "internal:legacy-mcp-connection";
       const conversation = buildJuniorSqlConversation({ conversationId });
-      await fixture.sql
-        .db()
-        .insert(schema.juniorConversations)
-        .values(conversation);
-      await fixture.sql
-        .db()
-        .insert(juniorConversationEvents)
-        .values({
+      // Insert against the partial pre-actor_identity_id schema with raw SQL.
+      await fixture.sql.execute(
+        `INSERT INTO junior_conversations (
+           conversation_id,
+           source,
+           destination_json,
+           actor_json,
+           channel_name,
+           title,
+           created_at,
+           last_activity_at,
+           updated_at,
+           execution_status,
+           root_conversation_id
+         ) VALUES (
+           $1, $2, $3::jsonb, $4::jsonb, $5, $6, $7, $8, $9, $10, $11
+         )`,
+        [
+          conversation.conversationId,
+          conversation.source ?? null,
+          JSON.stringify(conversation.destination ?? null),
+          JSON.stringify(conversation.actor ?? null),
+          conversation.channelName ?? null,
+          conversation.title ?? null,
+          conversation.createdAt,
+          conversation.lastActivityAt,
+          conversation.updatedAt,
+          conversation.executionStatus,
+          conversation.rootConversationId ?? conversation.conversationId,
+        ],
+      );
+      await fixture.sql.execute(
+        `INSERT INTO junior_conversation_events (
+           conversation_id,
+           seq,
+           history_version,
+           schema_version,
+           type,
+           payload,
+           created_at
+         ) VALUES (
+           $1, $2, $3, $4, $5, $6::jsonb, $7
+         )`,
+        [
           conversationId,
-          seq: 0,
-          historyVersion: 0,
-          schemaVersion: 1,
-          type: "mcp_provider_connected",
-          payload: { provider: "github" },
-          createdAt: new Date(1_000),
-        });
+          0,
+          0,
+          1,
+          "mcp_provider_connected",
+          JSON.stringify({ provider: "github" }),
+          new Date(1_000),
+        ],
+      );
 
       for (const statement of ownershipMigration.sql) {
         await fixture.sql.execute(statement);
+      }
+      // Bring the fixture to the current schema before using typed Drizzle APIs.
+      for (const migration of coreMigrations.slice(
+        ownershipMigrationIndex + 1,
+      )) {
+        for (const statement of migration.sql) {
+          await fixture.sql.execute(statement);
+        }
       }
 
       const history = await createSqlConversationEventStore(
@@ -263,88 +308,102 @@ ORDER BY conversation_id
           conversation.rootConversationId ?? conversation.conversationId,
         ],
       );
-      await fixture.sql
-        .db()
-        .insert(juniorConversationEvents)
-        .values([
-          {
-            conversationId,
-            seq: 0,
-            historyVersion: 0,
-            schemaVersion: 1,
-            type: "agent_step",
-            payload: {
-              message: {
-                role: "user",
-                content: "Investigate the failure",
-                timestamp: 1_000,
-              },
+      // Insert against the partial pre-actor_identity_id schema with raw SQL.
+      const legacyEvents = [
+        {
+          seq: 0,
+          historyVersion: 0,
+          type: "agent_step",
+          payload: {
+            message: {
+              role: "user",
+              content: "Investigate the failure",
+              timestamp: 1_000,
             },
-            createdAt: new Date(1_000),
           },
-          {
-            conversationId,
-            seq: 1,
-            historyVersion: 0,
-            schemaVersion: 1,
-            type: "agent_step",
-            payload: {
-              message: {
-                role: "assistant",
-                content: [],
-                api: "responses",
-                provider: "openai",
-                model: "gpt-5.4",
-                usage: {},
-                stopReason: "toolUse",
-                timestamp: 1_001,
-              },
+          createdAt: new Date(1_000),
+        },
+        {
+          seq: 1,
+          historyVersion: 0,
+          type: "agent_step",
+          payload: {
+            message: {
+              role: "assistant",
+              content: [],
+              api: "responses",
+              provider: "openai",
+              model: "gpt-5.4",
+              usage: {},
+              stopReason: "toolUse",
+              timestamp: 1_001,
             },
-            createdAt: new Date(1_001),
           },
-          {
-            conversationId,
-            seq: 2,
-            historyVersion: 0,
-            schemaVersion: 1,
-            type: "agent_step",
-            payload: {
-              message: {
-                role: "toolResult",
-                toolCallId: "call-1",
-                toolName: "search",
-                content: [],
-                isError: false,
-                timestamp: 1_002,
-              },
+          createdAt: new Date(1_001),
+        },
+        {
+          seq: 2,
+          historyVersion: 0,
+          type: "agent_step",
+          payload: {
+            message: {
+              role: "toolResult",
+              toolCallId: "call-1",
+              toolName: "search",
+              content: [],
+              isError: false,
+              timestamp: 1_002,
             },
-            createdAt: new Date(1_002),
           },
-          {
-            conversationId,
-            seq: 3,
-            historyVersion: 1,
-            schemaVersion: 1,
-            type: "rollback",
-            payload: {
-              modelProfile: "coding",
-              modelId: "openai/gpt-5.4",
-              replacementHistory: [
-                {
-                  message: {
-                    role: "user",
-                    type: "tool_result",
-                    content: "Retained instruction",
-                    timestamp: 1_000,
-                  },
-                  provenance: { authority: "instruction" },
-                  sourceEventSeq: 0,
+          createdAt: new Date(1_002),
+        },
+        {
+          seq: 3,
+          historyVersion: 1,
+          type: "rollback",
+          payload: {
+            modelProfile: "coding",
+            modelId: "openai/gpt-5.4",
+            replacementHistory: [
+              {
+                message: {
+                  role: "user",
+                  type: "tool_result",
+                  content: "Retained instruction",
+                  timestamp: 1_000,
                 },
-              ],
-            },
-            createdAt: new Date(1_003),
+                provenance: { authority: "instruction" },
+                sourceEventSeq: 0,
+              },
+            ],
           },
-        ]);
+          createdAt: new Date(1_003),
+        },
+      ] as const;
+      for (const event of legacyEvents) {
+        await fixture.sql.execute(
+          `INSERT INTO junior_conversation_events (
+             conversation_id,
+             seq,
+             history_version,
+             schema_version,
+             type,
+             payload,
+             created_at
+           ) VALUES (
+             $1, $2, $3, $4, $5, $6::jsonb, $7
+           )`,
+          [
+            conversationId,
+            event.seq,
+            event.historyVersion,
+            1,
+            event.type,
+            JSON.stringify(event.payload),
+            event.createdAt,
+          ],
+        );
+      }
 
       for (const statement of nativeHistoryMigration.sql) {
         await fixture.sql.execute(statement);
@@ -352,6 +411,15 @@ ORDER BY conversation_id
       // The transformation is safe if an operator reruns its SQL manually.
       for (const statement of nativeHistoryMigration.sql) {
         await fixture.sql.execute(statement);
+      }
+
+      // Bring the fixture to the current schema before using typed Drizzle APIs.
+      for (const migration of coreMigrations.slice(
+        nativeHistoryMigrationIndex + 1,
+      )) {
+        for (const statement of migration.sql) {
+          await fixture.sql.execute(statement);
+        }
       }
 
       const rows = await fixture.sql
@@ -414,18 +482,28 @@ ORDER BY conversation_id
         },
       ]);
 
-      await fixture.sql
-        .db()
-        .insert(juniorConversationEvents)
-        .values({
+      await fixture.sql.execute(
+        `INSERT INTO junior_conversation_events (
+           conversation_id,
+           seq,
+           history_version,
+           schema_version,
+           type,
+           payload,
+           created_at
+         ) VALUES (
+           $1, $2, $3, $4, $5, $6::jsonb, $7
+         )`,
+        [
           conversationId,
-          seq: 4,
-          historyVersion: 1,
-          schemaVersion: 1,
-          type: "agent_step",
-          payload: { message: { role: "system" } },
-          createdAt: new Date(1_004),
-        });
+          4,
+          1,
+          1,
+          "agent_step",
+          JSON.stringify({ message: { role: "system" } }),
+          new Date(1_004),
+        ],
+      );
       await expect(
         (async () => {
           for (const statement of nativeHistoryMigration.sql) {

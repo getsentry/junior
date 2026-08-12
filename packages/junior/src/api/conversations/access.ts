@@ -9,10 +9,7 @@ import {
   juniorIdentities,
 } from "@/db/schema";
 import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
-import {
-  conversationIdsWithUserMessageByAuthors,
-  resolveViewerMessageAuthorIds,
-} from "./membership";
+import { conversationIdsWithParticipantUser } from "./membership";
 
 const rootConversation = alias(juniorConversations, "access_root_conversation");
 const rootDestination = alias(juniorDestinations, "access_root_destination");
@@ -64,9 +61,6 @@ export async function readConversationAccessFromSql(
     )
     .where(inArray(juniorConversations.conversationId, [...conversationIds]));
 
-  const authorIds = viewer
-    ? await resolveViewerMessageAuthorIds(db, viewer)
-    : [];
   const membershipConversationIds = new Set<string>();
   for (const row of rows) {
     membershipConversationIds.add(row.conversationId);
@@ -74,12 +68,12 @@ export async function readConversationAccessFromSql(
       membershipConversationIds.add(row.storedRootConversationId);
     }
   }
-  const authoredConversationIds =
-    viewer && authorIds.length > 0
-      ? await conversationIdsWithUserMessageByAuthors(
+  const participantRootIds =
+    viewer !== undefined
+      ? await conversationIdsWithParticipantUser(
           db,
           [...membershipConversationIds],
-          authorIds,
+          viewer.id,
         )
       : new Set<string>();
 
@@ -104,11 +98,11 @@ export async function readConversationAccessFromSql(
           (normalizedViewerEmail !== undefined &&
             row.rootEmailVerified === true &&
             row.rootEmailNormalized === normalizedViewerEmail));
-      const isMessageAuthor =
-        authoredConversationIds.has(row.conversationId) ||
+      const isMaterializedParticipant =
+        participantRootIds.has(row.conversationId) ||
         (validRootConversationId !== undefined &&
-          authoredConversationIds.has(validRootConversationId));
-      const isParticipant = isRootActor || isMessageAuthor;
+          participantRootIds.has(validRootConversationId));
+      const isParticipant = isRootActor || isMaterializedParticipant;
       const canViewPrivateContent =
         isParticipant ||
         (validRootConversationId !== undefined &&

@@ -28,9 +28,14 @@ import {
   type NewConversationEvent,
 } from "../history";
 import { ensureConversationRow } from "./conversation-row";
+import {
+  resolveEventActorIdentityId,
+  stripPayloadAuthorIdentityId,
+} from "./event-actor";
 import { juniorConversationEvents, juniorConversations } from "@/db/schema";
 import { sanitizePostgresJson } from "@/db/postgres-json";
 import { withConversationEventLock } from "./event-lock";
+import { recordConversationParticipant } from "./participants";
 
 type ConversationEventRow = typeof juniorConversationEvents.$inferSelect;
 type ConversationEventInsert = typeof juniorConversationEvents.$inferInsert;
@@ -52,8 +57,10 @@ function insertFromEvent(
   seq: number,
   historyVersion: number,
   event: PersistedConversationEvent,
+  actorIdentityId?: string,
 ): ConversationEventInsert {
-  const { type, ...payload } = conversationEventDataSchema.parse(event.data);
+  const stripped = stripPayloadAuthorIdentityId(event.data);
+  const { type, ...payload } = conversationEventDataSchema.parse(stripped);
   return {
     conversationId,
     seq,
@@ -62,12 +69,22 @@ function insertFromEvent(
     idempotencyKey: event.idempotencyKey ?? null,
     type,
     payload: sanitizePostgresJson(payload),
+    actorIdentityId: actorIdentityId ?? null,
     createdAt: new Date(event.createdAtMs),
   };
 }
 
 /** Parse one physical event row into the storage-compatible domain envelope. */
 function eventFromRow(row: ConversationEventRow): ConversationEvent {
+  const payload =
+    row.actorIdentityId &&
+    typeof row.payload === "object" &&
+    row.payload !== null &&
+    !Array.isArray(row.payload) &&
+    (row.type === "message" || row.type === "message_updated") &&
+    !("authorIdentityId" in row.payload)
+      ? { ...row.payload, authorIdentityId: row.actorIdentityId }
+      : row.payload;
   return decodeStoredConversationEvent({
     schemaVersion: row.schemaVersion,
     seq: row.seq,
@@ -75,7 +92,7 @@ function eventFromRow(row: ConversationEventRow): ConversationEvent {
     ...(row.idempotencyKey ? { idempotencyKey: row.idempotencyKey } : {}),
     createdAtMs: row.createdAt.getTime(),
     type: row.type,
-    payload: row.payload,
+    payload,
   });
 }
 
@@ -167,9 +184,33 @@ class SqlConversationEventStore implements ConversationEventStore {
       const cursor = await this.readCursor(conversationId);
       const historyVersion = cursor.maxHistoryVersion ?? 0;
       let seq = cursor.nextSeq;
-      const rows = pending.map((event) =>
-        insertFromEvent(conversationId, seq++, historyVersion, event),
-      );
+      const rows: ConversationEventInsert[] = [];
+      for (const event of pending) {
+        const actorIdentityId = await resolveEventActorIdentityId(
+          this.executor,
+          {
+            conversationId,
+            data: event.data,
+            nowMs: event.createdAtMs,
+          },
+        );
+        rows.push(
+          insertFromEvent(
+            conversationId,
+            seq++,
+            historyVersion,
+            event,
+            actorIdentityId,
+          ),
+        );
+        if (actorIdentityId) {
+          await recordConversationParticipant(this.executor, {
+            actorIdentityId,
+            conversationId,
+            atMs: event.createdAtMs,
+          });
+        }
+      }
       await this.executor.db().insert(juniorConversationEvents).values(rows);
     });
   }

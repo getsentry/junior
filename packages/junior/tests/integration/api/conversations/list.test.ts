@@ -12,6 +12,7 @@ import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import {
   juniorConversationEvents,
+  juniorConversationParticipants,
   juniorConversations,
   juniorDestinations,
   juniorIdentities,
@@ -273,11 +274,24 @@ describe("conversation list API", () => {
         nowMs: 4_000,
         source: "slack",
       });
+      const otherUser = await fixture.sql
+        .db()
+        .select({ id: juniorUsers.id })
+        .from(juniorUsers)
+        .where(eq(juniorUsers.primaryEmailNormalized, "other@example.com"))
+        .limit(1);
+      const otherUserId = otherUser[0]?.id;
+      expect(otherUserId).toBeDefined();
       await fixture.sql
         .db()
         .update(juniorIdentities)
         .set({ emailVerified: false, userId: null })
         .where(eq(juniorIdentities.providerSubjectId, "U2"));
+      // Unlinked identities also drop durable participant membership.
+      await fixture.sql
+        .db()
+        .delete(juniorConversationParticipants)
+        .where(eq(juniorConversationParticipants.userId, otherUserId!));
       await store.recordActivity({
         actor: {
           email: "Morgan@Example.com",
@@ -438,6 +452,7 @@ describe("conversation list API", () => {
         userId: participantUserId!,
       });
       await fixture.sql.db().insert(juniorConversationEvents).values({
+        actorIdentityId: "identity-participant-slack",
         conversationId: "slack:C1:shared-thread",
         createdAt: new Date(5_500),
         historyVersion: 0,
@@ -454,10 +469,14 @@ describe("conversation list API", () => {
           },
           role: "user",
           text: "@junior make urls clickable",
-          type: "message",
         },
         seq: 0,
         type: "message",
+      });
+      await fixture.sql.db().insert(juniorConversationParticipants).values({
+        lastMessageAt: new Date(5_500),
+        rootConversationId: "slack:C1:shared-thread",
+        userId: participantUserId!,
       });
 
       const viewer = {

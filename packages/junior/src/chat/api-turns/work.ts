@@ -679,6 +679,7 @@ export function createApiTurnWorker(options: {
             text: normalizeConversationText(text),
             createdAtMs: startedAtMs,
             author: {
+              ...(actor.email ? { email: actor.email } : {}),
               ...(actor.fullName ? { fullName: actor.fullName } : {}),
               userId: actor.userId,
               ...(actor.userName ? { userName: actor.userName } : {}),

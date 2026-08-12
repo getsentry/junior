@@ -3,6 +3,7 @@ import { isRecord, toOptionalNumber, toOptionalString } from "@/chat/coerce";
 type ConversationRole = "assistant" | "system" | "user";
 
 export interface ConversationAuthor {
+  email?: string;
   fullName?: string;
   isBot?: boolean;
   userId?: string;

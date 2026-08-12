@@ -2,6 +2,7 @@ import { juniorConversationAnnotations } from "./schema/conversation-annotations
 import { juniorApiTokens } from "./schema/api-tokens";
 import { juniorConversationEvents } from "./schema/conversation-events";
 import { juniorConversationBindings } from "./schema/conversation-bindings";
+import { juniorConversationParticipants } from "./schema/conversation-participants";
 import { juniorConversations } from "./schema/conversations";
 import {
   juniorAgentBindings,
@@ -26,6 +27,7 @@ export {
   juniorAgentInvocations,
   juniorConversationEvents,
   juniorConversationBindings,
+  juniorConversationParticipants,
   juniorConversations,
   juniorLocationConfigurations,
   juniorDestinations,
@@ -45,6 +47,7 @@ export const juniorSqlSchema = {
   juniorAgentInvocations,
   juniorConversationEvents,
   juniorConversationBindings,
+  juniorConversationParticipants,
   juniorConversations,
   juniorLocationConfigurations,
   juniorDestinations,

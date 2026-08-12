@@ -15,8 +15,8 @@ import { resolveSlackTeamDomains } from "@/chat/slack/team-domain";
 import { conversationSummaryFromStoredConversation } from "./projection";
 import { readConversationAccessFromSql } from "./access";
 import {
-  resolveEmailMessageAuthorIds,
-  resolveViewerMessageAuthorIds,
+  conversationHasParticipantEmail,
+  conversationHasParticipantUser,
   viewerConversationMembership,
 } from "./membership";
 import { conversationFeedSchema } from "../schema/conversation";
@@ -27,8 +27,8 @@ import { readConversationAuxiliaryCostsFromSql } from "./auxiliary-costs";
 const CONVERSATION_FEED_LIMIT = 50;
 
 type ConversationFeedMembership =
-  | { kind: "viewer"; userId: string; authorIds: readonly string[] }
-  | { kind: "actorEmail"; email: string; authorIds: readonly string[] };
+  | { kind: "viewer"; userId: string }
+  | { kind: "actorEmail"; email: string };
 
 function conversationFeedMembershipFilter(
   filter?: ConversationFeedMembership,
@@ -37,12 +37,12 @@ function conversationFeedMembershipFilter(
   if (filter.kind === "viewer") {
     return viewerConversationMembership({
       actorMatch: eq(juniorIdentities.userId, filter.userId),
-      authorIds: filter.authorIds,
+      participantMatch: conversationHasParticipantUser(filter.userId),
     });
   }
   return viewerConversationMembership({
     actorMatch: eq(juniorUsers.primaryEmailNormalized, filter.email),
-    authorIds: filter.authorIds,
+    participantMatch: conversationHasParticipantEmail(filter.email),
   });
 }
 
@@ -195,25 +195,20 @@ export async function readConversationRecordFromSql(
 }
 
 /** Prefer the authenticated viewer; fall back to actor email membership. */
-async function conversationFeedFilter(
-  db: JuniorDatabase,
-  options: {
-    actorEmail?: string;
-    viewer?: User;
-  },
-): Promise<ConversationFeedMembership | undefined> {
+function conversationFeedFilter(options: {
+  actorEmail?: string;
+  viewer?: User;
+}): ConversationFeedMembership | undefined {
   if (options.viewer) {
     return {
       kind: "viewer",
       userId: options.viewer.id,
-      authorIds: await resolveViewerMessageAuthorIds(db, options.viewer),
     };
   }
   if (options.actorEmail) {
     return {
       kind: "actorEmail",
       email: options.actorEmail,
-      authorIds: await resolveEmailMessageAuthorIds(db, options.actorEmail),
     };
   }
   return undefined;
@@ -222,7 +217,7 @@ async function conversationFeedFilter(
 /**
  * Build a bounded dashboard feed. Prefer the viewer user when present; otherwise
  * keep only roots linked to actorEmail before applying the limit. Membership is
- * root-actor ownership or a durable human user message by that person.
+ * root-actor ownership or a materialized participant row for that person.
  */
 export async function readConversationFeedFromSql(
   options: {
@@ -236,7 +231,7 @@ export async function readConversationFeedFromSql(
   const rows = await conversationRows(
     db,
     options.limit ?? CONVERSATION_FEED_LIMIT,
-    await conversationFeedFilter(db, options),
+    conversationFeedFilter(options),
   );
   const conversations = rows.map((row) => conversationFromRow(row));
   const conversationIds = conversations.map(
