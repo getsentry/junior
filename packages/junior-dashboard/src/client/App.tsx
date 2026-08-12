@@ -26,6 +26,7 @@ import { PersonalTokensPage } from "./pages/PersonalTokensPage";
 import { PersonProfilePage } from "./pages/people/PersonProfilePage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { SystemPage } from "./pages/system/SystemPage";
+import { SystemPageLayout } from "./pages/system/SystemPageLayout";
 import { TaskExecutionsPage } from "./pages/tasks/TaskExecutionsPage";
 import { TaskRunsPage } from "./pages/tasks/TaskRunsPage";
 import { TasksPage } from "./pages/tasks/TasksPage";
@@ -147,7 +148,9 @@ export function DashboardShell() {
         <Route
           element={
             loading ? (
-              <LoadingView label="Loading task executions" />
+              <TasksPageLayout>
+                <LoadingView label="Loading task executions" />
+              </TasksPageLayout>
             ) : loggedIn ? (
               <TasksPageLayout>
                 <TaskExecutionsPage enabled={loggedIn} />
@@ -161,7 +164,9 @@ export function DashboardShell() {
         <Route
           element={
             loading ? (
-              <LoadingView label="Loading task runs" />
+              <TasksPageLayout>
+                <LoadingView label="Loading task runs" />
+              </TasksPageLayout>
             ) : loggedIn ? (
               <TasksPageLayout>
                 <TaskRunsPage enabled={loggedIn} />
@@ -175,7 +180,9 @@ export function DashboardShell() {
         <Route
           element={
             loading ? (
-              <LoadingView label="Loading tasks" />
+              <TasksPageLayout>
+                <LoadingView label="Loading tasks" />
+              </TasksPageLayout>
             ) : loggedIn ? (
               <TasksPageLayout>
                 <TasksPage enabled={loggedIn} view="list" />
@@ -189,7 +196,9 @@ export function DashboardShell() {
         <Route
           element={
             loading ? (
-              <LoadingView label="Loading tasks" />
+              <TasksPageLayout>
+                <LoadingView label="Loading tasks" />
+              </TasksPageLayout>
             ) : loggedIn ? (
               <TasksPageLayout>
                 <TasksPage enabled={loggedIn} view="overview" />
@@ -211,7 +220,9 @@ export function DashboardShell() {
         <Route
           element={
             loading ? (
-              <LoadingView label="Loading locations" />
+              <SystemPageLayout>
+                <LoadingView label="Loading locations" />
+              </SystemPageLayout>
             ) : (
               <LocationsPage />
             )
@@ -221,7 +232,9 @@ export function DashboardShell() {
         <Route
           element={
             loading ? (
-              <LoadingView label="Loading location" />
+              <SystemPageLayout>
+                <LoadingView label="Loading location" />
+              </SystemPageLayout>
             ) : (
               <LocationDetailPage />
             )
@@ -289,20 +302,30 @@ export function DashboardShell() {
         />
         <Route
           element={
-            loading ? <LoadingView label="Loading people" /> : <PeoplePage />
+            loading ? (
+              <SystemPageLayout>
+                <LoadingView label="Loading people" />
+              </SystemPageLayout>
+            ) : (
+              <PeoplePage />
+            )
           }
           path="/system/people"
         />
         <Route
           element={
             loading ? (
-              <LoadingView label="Loading system" />
+              <SystemPageLayout>
+                <LoadingView label="Loading system" />
+              </SystemPageLayout>
             ) : data ? (
               <SystemRoute coreData={data} />
             ) : (
-              <LoadingView
-                label={query.error?.message ?? "Dashboard unavailable"}
-              />
+              <SystemPageLayout>
+                <LoadingView
+                  label={query.error?.message ?? "Dashboard unavailable"}
+                />
+              </SystemPageLayout>
             )
           }
           path="/system/*"
@@ -394,11 +417,17 @@ function LegacySystemRedirect(props: { section: "locations" | "people" }) {
 function SystemRoute(props: { coreData: DashboardCoreData }) {
   const query = useSystemData(props.coreData);
   if (!query.data && !query.error) {
-    return <LoadingView label="Loading system" />;
+    return (
+      <SystemPageLayout>
+        <LoadingView label="Loading system" />
+      </SystemPageLayout>
+    );
   }
   return query.data ? (
     <SystemPage data={query.data} />
   ) : (
-    <LoadingView label={query.error?.message ?? "System unavailable"} />
+    <SystemPageLayout>
+      <LoadingView label={query.error?.message ?? "System unavailable"} />
+    </SystemPageLayout>
   );
 }
