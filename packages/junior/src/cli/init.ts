@@ -171,13 +171,15 @@ export async function runInit(
     private: true,
     type: "module",
     scripts: {
-      dev: "NODE_OPTIONS=--import=./instrument.mjs nitro dev",
+      dev: "cross-env NODE_OPTIONS=--import=./instrument.mjs nitro dev",
       check: "junior check",
       build: "junior snapshot create && nitro build",
-      preview: "NODE_OPTIONS=--import=./instrument.mjs nitro preview",
+      preview: "cross-env NODE_OPTIONS=--import=./instrument.mjs nitro preview",
       typecheck: "tsc --noEmit",
     },
     dependencies: {
+      "@opentelemetry/api": "1.9.1",
+      "@opentelemetry/core": "2.9.0",
       "@sentry/junior": "latest",
       "@sentry/junior-memory": "latest",
       "@sentry/junior-maintenance": "latest",
@@ -186,6 +188,7 @@ export async function runInit(
     },
     devDependencies: {
       "@types/node": "^25.9.1",
+      "cross-env": "^10.1.0",
       jiti: "^2.7.0",
       nitro: "3.0.260522-beta",
       typescript: "^6.0.3",

@@ -171,12 +171,12 @@ describe("init cli", () => {
     expect(pkg.devDependencies.vite).toBeUndefined();
     expect(pkg.devDependencies.vercel).toBeUndefined();
     expect(pkg.scripts.dev).toBe(
-      "NODE_OPTIONS=--import=./instrument.mjs nitro dev",
+      "cross-env NODE_OPTIONS=--import=./instrument.mjs nitro dev",
     );
     expect(pkg.scripts.check).toBe("junior check");
     expect(pkg.scripts.build).toBe("junior snapshot create && nitro build");
     expect(pkg.scripts.preview).toBe(
-      "NODE_OPTIONS=--import=./instrument.mjs nitro preview",
+      "cross-env NODE_OPTIONS=--import=./instrument.mjs nitro preview",
     );
     expect(pkg.scripts.typecheck).toBe("tsc --noEmit");
 

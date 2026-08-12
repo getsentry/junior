@@ -76,6 +76,8 @@
     "@logtape/logtape": "^2.1.1",
     "@modelcontextprotocol/sdk": "1.29.0",
     "@neondatabase/serverless": "^1.1.0",
+    "@opentelemetry/api": "catalog:",
+    "@opentelemetry/core": "catalog:",
     "@sentry/junior-plugin-api": "workspace:*",
     "@sentry/node": "catalog:",
     "@sinclair/typebox": "^0.34.49",

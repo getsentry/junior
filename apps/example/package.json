@@ -4,14 +4,16 @@
   "type": "module",
   "scripts": {
     "predev": "pnpm --filter @sentry/junior build && pnpm --filter @sentry/junior-dashboard build && pnpm --filter @sentry/junior-memory build",
-    "dev": "NODE_OPTIONS=--import=./instrument.mjs nitro dev",
+    "dev": "cross-env NODE_OPTIONS=--import=./instrument.mjs nitro dev",
     "prebuild": "pnpm --filter @sentry/junior build && pnpm --filter @sentry/junior-dashboard build && pnpm --filter @sentry/junior-memory build",
     "build": "junior snapshot create && nitro build",
     "postbuild": "node scripts/check-vercel-output.mjs",
-    "preview": "NODE_OPTIONS=--import=./instrument.mjs nitro preview",
+    "preview": "cross-env NODE_OPTIONS=--import=./instrument.mjs nitro preview",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@opentelemetry/api": "1.9.1",
+    "@opentelemetry/core": "2.9.0",
     "@sentry/junior": "workspace:*",
     "@sentry/junior-agent-browser": "workspace:*",
     "@sentry/junior-amplitude": "workspace:*",
@@ -29,6 +31,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.9.1",
+    "cross-env": "^10.1.0",
     "jiti": "^2.7.0",
     "nitro": "3.0.260522-beta",
     "typescript": "^6.0.3"
