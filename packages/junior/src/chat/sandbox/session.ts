@@ -196,9 +196,7 @@ export function createSandboxRuntime(
 
   /** Drop unavailable live state; keep the durable hint for reacquire. */
   const invalidateSession = (sessionId?: string): void => {
-    if (sessionId && activeSandbox?.session.sessionId !== sessionId) {
-      return;
-    }
+    if (sessionId && activeSandbox?.session.sessionId !== sessionId) return;
     activeSandbox = null;
     if (keepAliveTimer) {
       clearTimeout(keepAliveTimer);
@@ -943,11 +941,14 @@ export function createSandboxRuntime(
         }
       }
 
-      // After await: aborted acquire may still remember a session.
+      // Aborted acquire may still remember a session and rewrite the durable hint.
       const late = activeSandbox;
       invalidateSession();
       await stopSession(previous.sandbox?.session);
-      if (late && late !== previous.sandbox) await stopSession(late.session);
+      if (late && late !== previous.sandbox) {
+        await stopSession(late.session);
+        sandboxRef = reportedSandboxRef = undefined;
+      }
       let replacement: SandboxSession | undefined;
       try {
         await ensureReadySandbox(signal, (s) => {
@@ -960,10 +961,9 @@ export function createSandboxRuntime(
         dependencyProfileHash = previous.profileHash;
         invalidateSession();
         await stopSession(failed);
-        // Keep prior durable hint only when nothing was stopped or reported.
+        // Keep prior durable hint only if nothing was stopped or reported.
         if (previous.sandbox || late || failed || reportedNew) {
-          sandboxRef = undefined;
-          reportedSandboxRef = undefined;
+          sandboxRef = reportedSandboxRef = undefined;
           try {
             await options.onSandboxRefChanged?.(null);
           } catch {

@@ -1257,10 +1257,6 @@ describe("createTestSandbox", () => {
         return lateSandbox;
       })
       .mockResolvedValueOnce(nextSandbox);
-    // Late create reports a durable ref; force the next boot to recreate instead of restore.
-    sandboxGetMock.mockRejectedValueOnce(
-      createApiError(404, "Not Found", "not_found", "Sandbox was not found"),
-    );
     hashMock
       .mockReturnValueOnce("profile-initial")
       .mockReturnValueOnce("profile-next");
@@ -1294,6 +1290,9 @@ describe("createTestSandbox", () => {
 
     expect(lateSandbox.stop).toHaveBeenCalledTimes(1);
     expect(nextSandbox.stop).not.toHaveBeenCalled();
+    // Late acquire rewrote the durable hint; stopping it must clear that hint so
+    // the switch boots fresh instead of restoring the stopped sandbox.
+    expect(sandboxGetMock).not.toHaveBeenCalled();
     expect(runtime.sandboxRef()?.id).toBe("sbx_workspace_switch_target");
   });
 
