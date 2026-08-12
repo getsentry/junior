@@ -177,11 +177,11 @@ export function createSandboxRuntime(
   const timeoutMs = options.timeoutMs ?? 1000 * 60 * 30;
   const traceContext = options.traceContext ?? {};
   let activeWorkspace = options.workspace;
-  // Keep durable workspace association when the recipe row is missing.
-  let dependencyProfileHash = activeWorkspace
-    ? profileHash(SANDBOX_RUNTIME, activeWorkspace)
-    : (options.sandboxRef?.profileHash ??
-      profileHash(SANDBOX_RUNTIME, activeWorkspace));
+  // Keep the stored workspace profile only when its recipe row is missing.
+  let dependencyProfileHash =
+    !activeWorkspace && options.sandboxRef?.workspaceId
+      ? options.sandboxRef.profileHash
+      : profileHash(SANDBOX_RUNTIME, activeWorkspace);
   const resolveCommandEnv =
     options.commandEnv ?? (async () => ({}) as Record<string, string>);
 
