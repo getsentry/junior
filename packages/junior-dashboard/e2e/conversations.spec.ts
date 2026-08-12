@@ -234,9 +234,12 @@ test("starts and continues conversations from the dashboard", async ({
   await page
     .getByLabel("Continue this conversation")
     .fill("Continue in Junior");
-  await page.getByRole("button", { name: "Send" }).click();
+  const send = page.getByRole("button", { name: "Send" });
+  // A second click before parent pending flips must not mint another key.
+  await Promise.all([send.click(), send.click()]);
   await expect(page.getByText("Sending message…")).toBeVisible();
   await expect(page.getByText("Could not send the message.")).toBeVisible();
+  await expect.poll(() => continueRequests.length).toBe(1);
   const failedIdempotencyKey = continueRequests[0]?.idempotencyKey;
   expect(continueRequests[0]?.message).toBe("Continue in Junior");
   expect(failedIdempotencyKey).toBeTruthy();
