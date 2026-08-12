@@ -7,10 +7,6 @@ export type ConversationSection = {
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-/** Unassigned conversations leave Priority after this idle window. */
-const UNASSIGNED_PRIORITY_WINDOW_MS = 3 * 60 * 60 * 1000;
-/** Unfinished work leaves Priority after this idle window. */
-const UNFINISHED_PRIORITY_WINDOW_MS = 48 * 60 * 60 * 1000;
 const SECTION_ORDER = [
   "priority",
   "today",
@@ -37,7 +33,6 @@ export function buildConversationSections(
     const section = conversationSection(
       conversation,
       time,
-      options.nowMs,
       nowDay,
       options.timeZone,
     );
@@ -59,32 +54,16 @@ function activityTime(conversation: Conversation): number {
   return Number.isFinite(time) ? time : Number.NEGATIVE_INFINITY;
 }
 
-function isPriority(
-  conversation: Conversation,
-  time: number,
-  nowMs: number,
-): boolean {
-  if (!Number.isFinite(time)) return false;
-  if (conversation.unfinishedWork) {
-    return nowMs - time <= UNFINISHED_PRIORITY_WINDOW_MS;
-  }
-  if (conversation.assignedWork) {
-    const finishedAt = Date.parse(conversation.finishedWorkAt ?? "");
-    return Number.isFinite(finishedAt) && time > finishedAt;
-  }
-  return nowMs - time <= UNASSIGNED_PRIORITY_WINDOW_MS;
-}
-
 function conversationSection(
   conversation: Conversation,
   time: number,
-  nowMs: number,
   nowDay: number,
   timeZone: string,
 ): Pick<ConversationSection, "key" | "label"> {
   if (!Number.isFinite(time)) return { key: "older", label: "Older" };
 
-  if (isPriority(conversation, time, nowMs)) {
+  // Priority membership is decided by the conversation feed API.
+  if (conversation.isPriority) {
     return { key: "priority", label: "Priority" };
   }
 

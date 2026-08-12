@@ -5,11 +5,15 @@ import { logWarn } from "@/chat/logging";
 
 export type ConversationWork = {
   assignedIds: string[];
+  /** Latest finish time per conversation, used with activity for Priority. */
   finishedAtById: Record<string, string>;
   unfinishedIds: string[];
 };
 
-/** Return assigned and unfinished plugin work for the candidate conversations. */
+/**
+ * Return assigned and unfinished plugin work for the candidate conversations.
+ * Feed Priority combines these signals with conversation activity on the host.
+ */
 export async function listConversationWork(
   conversationIds: string[],
 ): Promise<ConversationWork> {

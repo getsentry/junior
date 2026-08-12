@@ -6,11 +6,7 @@ import type { Conversation } from "../src/client/types";
 function conversation(
   id: string,
   lastSeenAt: string,
-  options: {
-    assignedWork?: boolean;
-    finishedWorkAt?: string;
-    unfinishedWork?: boolean;
-  } = {},
+  options: { isPriority?: boolean } = {},
 ): Conversation {
   return {
     cumulativeDurationMs: 0,
@@ -21,38 +17,28 @@ function conversation(
     startedAt: lastSeenAt,
     status: "completed",
     surface: "internal",
-    ...(options.assignedWork ? { assignedWork: true } : {}),
-    ...(options.finishedWorkAt
-      ? { finishedWorkAt: options.finishedWorkAt }
-      : {}),
-    ...(options.unfinishedWork ? { unfinishedWork: true } : {}),
+    ...(options.isPriority ? { isPriority: true } : {}),
   };
 }
 
 describe("conversation activity sections", () => {
-  it("keeps recent unfinished work, post-finish updates, and recent unassigned conversations in priority", () => {
+  it("uses the feed isPriority flag for the Priority section", () => {
     const sections = buildConversationSections(
       [
         conversation("older", "2026-06-20T12:00:00-07:00"),
         conversation("two-weeks", "2026-07-19T12:00:00-07:00"),
-        conversation("priority-unassigned", "2026-08-03T10:00:00-07:00"),
-        conversation("last-week", "2026-07-26T12:00:00-07:00"),
-        conversation("finished-no-update", "2026-08-03T11:30:00-07:00", {
-          assignedWork: true,
-          finishedWorkAt: "2026-08-03T11:30:00-07:00",
+        conversation("priority-unassigned", "2026-08-03T10:00:00-07:00", {
+          isPriority: true,
         }),
+        conversation("last-week", "2026-07-26T12:00:00-07:00"),
+        conversation("finished-no-update", "2026-08-03T11:30:00-07:00"),
         conversation("finished-then-updated", "2026-08-03T11:40:00-07:00", {
-          assignedWork: true,
-          finishedWorkAt: "2026-08-03T11:30:00-07:00",
+          isPriority: true,
         }),
         conversation("unfinished-recent", "2026-08-03T11:45:00-07:00", {
-          assignedWork: true,
-          unfinishedWork: true,
+          isPriority: true,
         }),
-        conversation("unfinished-stale", "2026-08-01T11:00:00-07:00", {
-          assignedWork: true,
-          unfinishedWork: true,
-        }),
+        conversation("unfinished-stale", "2026-08-01T11:00:00-07:00"),
         conversation("stale-unassigned", "2026-08-03T08:00:00-07:00"),
         conversation("yesterday", "2026-08-02T12:00:00-07:00"),
         conversation("weekday", "2026-08-01T10:00:00-07:00"),

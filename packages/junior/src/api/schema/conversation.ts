@@ -207,6 +207,16 @@ export const conversationSummaryReportSchema = z
     traceId: z.string().optional(),
     assignedWork: z.boolean().optional(),
     finishedWorkAt: z.string().datetime().optional(),
+    /**
+     * Dashboard Priority membership for this conversation summary.
+     * Present on the conversation feed. Clients must not recompute it.
+     *
+     * True only when:
+     * - unfinished work was last seen within 48 hours
+     * - finished assigned work has conversation activity after the finish time
+     * - there is no known work and the conversation was last seen within 3 hours
+     */
+    isPriority: z.boolean().optional(),
     unfinishedWork: z.boolean().optional(),
   })
   .strict();

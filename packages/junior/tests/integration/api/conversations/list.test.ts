@@ -51,16 +51,28 @@ describe("conversation list API", () => {
     }
   });
 
-  test("marks conversations with assigned and unfinished plugin work", async () => {
+  test("marks conversations with assigned work and feed priority", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
     const store = createSqlStore(fixture.sql);
     const unfinishedId = "slack:C123:unfinished-work";
     const finishedId = "slack:C123:finished-work";
+    const finishedUpdatedId = "slack:C123:finished-updated";
     const seenConversationIds: string[][] = [];
+    const nowMs = Date.now();
     try {
       await migrateSchema(fixture.sql);
-      await store.recordActivity({ conversationId: unfinishedId, nowMs: 2_000 });
-      await store.recordActivity({ conversationId: finishedId, nowMs: 1_000 });
+      await store.recordActivity({
+        conversationId: unfinishedId,
+        nowMs: nowMs - 60_000,
+      });
+      await store.recordActivity({
+        conversationId: finishedUpdatedId,
+        nowMs: nowMs - 30_000,
+      });
+      await store.recordActivity({
+        conversationId: finishedId,
+        nowMs: nowMs - 120_000,
+      });
       setPlugins([
         defineJuniorPlugin({
           manifest: {
@@ -72,10 +84,15 @@ describe("conversation list API", () => {
             unfinishedWork(ctx) {
               seenConversationIds.push([...ctx.conversationIds]);
               return {
-                assignedConversationIds: [unfinishedId, finishedId],
+                assignedConversationIds: [
+                  unfinishedId,
+                  finishedId,
+                  finishedUpdatedId,
+                ],
                 conversationIds: [unfinishedId],
                 finishedWorkAtByConversationId: {
-                  [finishedId]: "2026-08-03T11:30:00.000Z",
+                  [finishedId]: new Date(nowMs - 120_000).toISOString(),
+                  [finishedUpdatedId]: new Date(nowMs - 90_000).toISOString(),
                 },
               };
             },
@@ -86,18 +103,28 @@ describe("conversation list API", () => {
       await expect(readConversationFeedFromSql()).resolves.toMatchObject({
         conversations: [
           expect.objectContaining({
+            conversationId: finishedUpdatedId,
+            assignedWork: true,
+            finishedWorkAt: new Date(nowMs - 90_000).toISOString(),
+            isPriority: true,
+          }),
+          expect.objectContaining({
             conversationId: unfinishedId,
             assignedWork: true,
             unfinishedWork: true,
+            isPriority: true,
           }),
           expect.objectContaining({
             conversationId: finishedId,
             assignedWork: true,
-            finishedWorkAt: "2026-08-03T11:30:00.000Z",
+            finishedWorkAt: new Date(nowMs - 120_000).toISOString(),
+            isPriority: false,
           }),
         ],
       });
-      expect(seenConversationIds).toEqual([[unfinishedId, finishedId]]);
+      expect(seenConversationIds).toEqual([
+        [finishedUpdatedId, unfinishedId, finishedId],
+      ]);
     } finally {
       setPlugins([]);
       await fixture.close();
