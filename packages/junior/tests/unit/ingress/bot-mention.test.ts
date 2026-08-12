@@ -43,6 +43,12 @@ describe("textMentionsBot", () => {
     expect(
       textMentionsBot("```code``` " + `<@${BOT}> help`, BOT),
     ).toBe(true);
+    expect(
+      textMentionsBot(
+        ["```", "code", "``` " + `<@${BOT}> help`].join("\n"),
+        BOT,
+      ),
+    ).toBe(true);
   });
 
   it("requires an exact bot user id token", () => {

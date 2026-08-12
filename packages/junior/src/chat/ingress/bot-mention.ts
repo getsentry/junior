@@ -15,14 +15,23 @@ function stripInlineCode(line: string): string {
   return line.replace(/(`+)(?:(?!\1)[^\n])*\1/g, " ");
 }
 
+/** Length of the leading backtick run on a line-start fence marker. */
+function fenceMarkerLength(trimmed: string): number {
+  let n = 0;
+  while (trimmed[n] === "`") {
+    n += 1;
+  }
+  return n;
+}
+
 /**
  * If a fence opens and closes on this line, return the text after the close.
  * Mid-line ``` is not a fence opener; only line-start markers count.
  */
 function singleLineFenceSuffix(trimmed: string): string | undefined {
-  let openLen = 3;
-  while (trimmed[openLen] === "`") {
-    openLen += 1;
+  const openLen = fenceMarkerLength(trimmed);
+  if (openLen < 3) {
+    return undefined;
   }
   const afterOpen = trimmed.slice(openLen);
   const closeRel = afterOpen.indexOf("`".repeat(openLen));
@@ -35,8 +44,9 @@ function singleLineFenceSuffix(trimmed: string): string | undefined {
 /**
  * Remove fenced blocks and inline code so only active prose remains.
  *
- * Fences follow Slack mrkdwn: a line that starts with ``` opens or closes a
- * block. Mid-line triple backticks are not fences.
+ * Fences follow Slack mrkdwn (`mrkdwn.ts`): a line that starts with ``` opens
+ * or closes a block. Text after a closing marker stays active. Mid-line
+ * triple backticks are not fences.
  */
 function textOutsideCode(text: string): string {
   const lines = text.split("\n");
@@ -47,9 +57,12 @@ function textOutsideCode(text: string): string {
     const trimmed = line.trimStart();
     if (trimmed.startsWith("```")) {
       if (inFence) {
-        // Only a pure closer exits; ```js inside the block stays in code.
-        if (/^`{3,}\s*$/.test(trimmed)) {
-          inFence = false;
+        // Same rule as Slack mrkdwn: line-start ``` closes the fence. Keep any
+        // trailing prose after the marker so real mentions still activate.
+        inFence = false;
+        const suffix = trimmed.slice(fenceMarkerLength(trimmed));
+        if (suffix.length > 0) {
+          out.push(stripInlineCode(suffix));
         }
         continue;
       }
