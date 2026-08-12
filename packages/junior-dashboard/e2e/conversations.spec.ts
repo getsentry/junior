@@ -346,6 +346,23 @@ test("opens and closes a conversation in the mobile workspace", async ({
   await composer.focus();
   await expect(composer).toBeFocused();
 
+  await page.evaluate(() => {
+    Object.defineProperties(window.visualViewport, {
+      height: { configurable: true, value: 520 },
+      offsetTop: { configurable: true, value: 140 },
+    });
+    window.visualViewport?.dispatchEvent(new Event("resize"));
+  });
+  await expect
+    .poll(async () => (await page.locator("main").first().boundingBox())?.height)
+    .toBe(520);
+  const compactShell = await page.locator("main").first().boundingBox();
+  const compactComposer = await composer.boundingBox();
+  expect(compactShell!.y).toBe(140);
+  expect(compactComposer!.y + compactComposer!.height).toBeLessThanOrEqual(
+    compactShell!.y + compactShell!.height,
+  );
+
   await page.getByRole("button", { name: "Show transcript tools" }).click();
   await expect(page.getByPlaceholder("Search transcript…")).toBeVisible();
   await expect(

@@ -114,10 +114,10 @@ export function DashboardShell() {
     <DashboardChromeProvider>
       <main
         className={cn(
-          "relative grid font-sans text-dashboard-text",
+          "grid font-sans text-dashboard-text",
           workspace
-            ? "h-[var(--dashboard-viewport-height,100dvh)] min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden"
-            : "min-h-screen grid-rows-[auto_1fr]",
+            ? "fixed inset-x-0 top-[var(--dashboard-viewport-offset-top,0px)] h-[var(--dashboard-viewport-height,100dvh)] min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden md:relative md:inset-auto md:h-dvh"
+            : "relative min-h-screen grid-rows-[auto_1fr]",
         )}
         ref={shellRef}
         style={dashboardBackground}

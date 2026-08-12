@@ -1,6 +1,7 @@
 import { useEffect, type RefObject } from "react";
 
 const viewportHeightProperty = "--dashboard-viewport-height";
+const viewportOffsetTopProperty = "--dashboard-viewport-offset-top";
 
 /** Keep the mobile workspace inside the visual viewport while the keyboard is open. */
 export function useMobileViewportHeight(
@@ -22,8 +23,13 @@ export function useMobileViewportHeight(
             viewportHeightProperty,
             `${Math.round(viewport?.height ?? window.innerHeight)}px`,
           );
+          root.style.setProperty(
+            viewportOffsetTopProperty,
+            `${Math.round(viewport?.offsetTop ?? 0)}px`,
+          );
         } else {
           root.style.removeProperty(viewportHeightProperty);
+          root.style.removeProperty(viewportOffsetTopProperty);
         }
         frame = undefined;
       });
@@ -39,6 +45,7 @@ export function useMobileViewportHeight(
       window.removeEventListener("resize", syncHeight);
       viewport?.removeEventListener("resize", syncHeight);
       root.style.removeProperty(viewportHeightProperty);
+      root.style.removeProperty(viewportOffsetTopProperty);
     };
   }, [enabled, rootRef]);
 }
