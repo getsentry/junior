@@ -100,7 +100,7 @@ export function ConversationSidebar(props: {
             items={entries}
             renderItem={(entry) =>
               entry.kind === "section" ? (
-                <h3 className="m-0 px-2.5 pb-0.5 pt-2.5 font-display text-2xs font-semibold uppercase tracking-[0.08em] text-dashboard-text-muted/55 first:pt-1">
+                <h3 className="m-0 px-2.5 pb-0.5 pt-4 font-display text-2xs font-semibold uppercase tracking-[0.08em] text-dashboard-text-muted/55 first:pt-1.5">
                   {entry.label}
                 </h3>
               ) : (
