@@ -91,7 +91,10 @@ export function SecondaryNavigationPortal(props: {
   mobile: ReactNode;
 }) {
   const chrome = useContext(DashboardChromeContext);
-  if (!chrome?.secondarySlot) return null;
+  // Partial/static mounts have no shell provider. Keep desktop nav inline.
+  // When the provider exists, wait for the sticky slot before mounting.
+  if (!chrome) return props.desktop;
+  if (!chrome.secondarySlot) return null;
   return (
     <>
       {createPortal(props.desktop, chrome.secondarySlot)}
