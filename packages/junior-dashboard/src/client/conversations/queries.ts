@@ -22,7 +22,13 @@ import {
   conversationPendingMessagesReportSchema,
 } from "@sentry/junior/api/schema";
 
-import { DashboardApiError, fetchDashboardJson, patch, post } from "../http";
+import {
+  DashboardApiError,
+  deleteDashboardResource,
+  fetchDashboardJson,
+  patch,
+  post,
+} from "../http";
 import {
   buildConversationTranscript,
   conversationHistoryBridgeCursor,
@@ -134,6 +140,23 @@ export function conversationPendingMessagesQueryOptions(
         ? 2_000
         : false,
     retry: false,
+  });
+}
+
+/** Cancel one queued message and refresh its mailbox snapshot. */
+export function useCancelPendingMessage(conversationId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (inboundMessageId: string) =>
+      deleteDashboardResource(
+        `/api/conversations/${encodeURIComponent(conversationId)}/pending-messages/${encodeURIComponent(inboundMessageId)}`,
+      ),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        exact: true,
+        queryKey: conversationPendingMessagesQueryKey(conversationId),
+      });
+    },
   });
 }
 

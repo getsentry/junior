@@ -15,6 +15,7 @@ import type { ConversationFeed } from "@sentry/junior/api/schema";
 import {
   useAppendConversationMessage,
   useArchiveConversation,
+  useCancelPendingMessage,
   useConversationData,
   type PendingArchiveConversationUpdate,
 } from "./queries";
@@ -71,6 +72,7 @@ export function ConversationPage(props: {
   const detail = useConversationData(conversationId);
   const archive = useArchiveConversation(conversationId);
   const appendMessage = useAppendConversationMessage(conversationId);
+  const cancelPendingMessage = useCancelPendingMessage(conversationId);
   const feedConversation = conversations.find(
     (item) => item.id === conversationId,
   );
@@ -195,8 +197,12 @@ export function ConversationPage(props: {
             ) : null}
             {detail.data ? (
               <PendingMailboxStack
+                cancelingMessageId={cancelPendingMessage.variables}
                 conversation={detail.data}
                 messages={detail.pendingMessages}
+                onCancel={(inboundMessageId) => {
+                  cancelPendingMessage.mutate(inboundMessageId);
+                }}
               />
             ) : null}
             <ConversationComposer

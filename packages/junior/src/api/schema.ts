@@ -13,6 +13,7 @@ export {
   conversationFeedQuerySchema,
   conversationFeedSchema,
   conversationParamsSchema,
+  conversationPendingMessageParamsSchema,
   conversationPendingAuthorizationSchema,
   conversationPendingMessageDeliverySchema,
   conversationPendingMessageSchema,

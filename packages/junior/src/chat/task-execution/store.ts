@@ -399,6 +399,17 @@ export async function drainConversationMailbox(
   return result.messages;
 }
 
+/** Remove one pending mailbox message before a worker acknowledges it. */
+export async function cancelPendingMessage(
+  args: Parameters<typeof workState.cancelPendingMessage>[0] & MetadataOptions,
+) {
+  const result = await workState.cancelPendingMessage(args);
+  if (result === "canceled") {
+    await recordExecutionMetadata(args);
+  }
+  return result;
+}
+
 /** Acknowledge leased mailbox entries after the handler accepts responsibility. */
 export async function ackMessages(args: {
   conversationId: string;

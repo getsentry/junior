@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { jsonResponse, throwApiError } from "../http";
+import { emptyResponse, jsonResponse, throwApiError } from "../http";
 import type { JuniorApiEnv } from "../route";
 import {
   acceptedConversationMessageSchema,
@@ -12,6 +12,7 @@ import {
   conversationFeedQuerySchema,
   conversationFeedSchema,
   conversationParamsSchema,
+  conversationPendingMessageParamsSchema,
   conversationPendingMessagesReportSchema,
   conversationStatsReportSchema,
   createConversationBodySchema,
@@ -27,7 +28,10 @@ import {
 import { readConversationDetail } from "./detail";
 import { readConversationEvents } from "./event-list";
 import { readConversationFeed } from "./list";
-import { requireConversationPendingMessages } from "./pending-messages";
+import {
+  cancelConversationPendingMessage,
+  requireConversationPendingMessages,
+} from "./pending-messages";
 import { readConversationStats } from "./stats";
 
 /** Create the HTTP routes owned by the conversations API. */
@@ -144,6 +148,25 @@ export function createConversationRoutes(): Hono<JuniorApiEnv> {
       });
       if (!report) throwApiError(404, "Conversation not found.");
       return jsonResponse(conversationEventPageSchema, report);
+    },
+  );
+
+  app.delete(
+    "/:conversationId/pending-messages/:inboundMessageId",
+    requireViewer,
+    validateRequest(
+      "param",
+      conversationPendingMessageParamsSchema,
+      "Invalid route parameters.",
+    ),
+    async (context) => {
+      const { conversationId, inboundMessageId } = context.req.valid("param");
+      await cancelConversationPendingMessage(
+        conversationId,
+        inboundMessageId,
+        context.get("viewer"),
+      );
+      return emptyResponse();
     },
   );
 

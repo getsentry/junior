@@ -65,6 +65,40 @@ describe("conversation pending messages API", () => {
     ]);
   });
 
+  it("lets a participant cancel one pending mailbox row", async () => {
+    const { actor, conversationStore, queue, state } =
+      await createApiTurnWorkFixture();
+    const accepted = await createAndEnqueueApiConversation(
+      {
+        actor,
+        idempotencyKey: "pending-cancel-1",
+        message: "cancel this follow-up",
+      },
+      { conversationStore, queue, state },
+    );
+
+    const app = new Hono<{ Variables: JuniorApiVariables }>();
+    app.use("*", async (context, next) => {
+      context.set("viewer", testViewer(actor.email));
+      await next();
+    });
+    app.route("/", createJuniorApi());
+
+    const cancelResponse = await app.request(
+      `http://localhost/api/conversations/${encodeURIComponent(accepted.conversationId)}/pending-messages/${encodeURIComponent(accepted.messageId)}`,
+      { method: "DELETE" },
+    );
+    expect(cancelResponse.status).toBe(204);
+
+    const response = await app.request(
+      `http://localhost/api/conversations/${encodeURIComponent(accepted.conversationId)}/pending-messages`,
+    );
+    const report = conversationPendingMessagesReportSchema.parse(
+      await response.json(),
+    );
+    expect(report.messages).toEqual([]);
+  });
+
   it("returns accepted slack interrupt mailbox rows before history commit", async () => {
     const { state } = await createApiTurnWorkFixture();
     queueSlackApiResponse("users.info", {

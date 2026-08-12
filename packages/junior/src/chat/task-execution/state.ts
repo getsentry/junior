@@ -1568,6 +1568,41 @@ export async function drainConversationMailbox(args: {
   };
 }
 
+/** Remove one pending mailbox message before a worker acknowledges it. */
+export async function cancelPendingMessage(args: {
+  conversationId: string;
+  inboundMessageId: string;
+  nowMs?: number;
+  state?: StateAdapter;
+}): Promise<"canceled" | "not_found"> {
+  const nowMs = args.nowMs ?? now();
+  return await withConversationMutation(args, async (state, lock) => {
+    const current = await readConversation(state, args.conversationId);
+    if (!current) return "not_found";
+
+    const pendingMessages = current.execution.pendingMessages.filter(
+      (message) => message.inboundMessageId !== args.inboundMessageId,
+    );
+    if (pendingMessages.length === current.execution.pendingMessages.length) {
+      return "not_found";
+    }
+
+    await writeConversation(
+      state,
+      lock,
+      withExecutionUpdate(
+        current,
+        {
+          ...current.execution,
+          pendingMessages,
+        },
+        nowMs,
+      ),
+    );
+    return "canceled";
+  });
+}
+
 /** Acknowledge leased mailbox entries after the handler accepts responsibility. */
 export async function ackMessages(args: {
   conversationId: string;

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getConversationStore, getDb } from "@/chat/db";
 import { lookupSlackUser } from "@/chat/slack/user";
 import {
+  cancelPendingMessage,
   getConversation,
   type InboundMessage,
 } from "@/chat/task-execution/store";
@@ -209,6 +210,27 @@ export async function readConversationPendingMessages(
     generatedAt: new Date().toISOString(),
     messages,
   });
+}
+
+/** Cancel one pending mailbox message for a conversation participant. */
+export async function cancelConversationPendingMessage(
+  conversationId: string,
+  inboundMessageId: string,
+  viewer: User,
+): Promise<void> {
+  const access = (
+    await readConversationAccessFromSql(getDb(), [conversationId], viewer)
+  ).get(conversationId);
+  if (!access) throwApiError(404, "Conversation not found.");
+  if (!access.isParticipant) throwApiError(403, "Conversation access denied.");
+
+  const result = await cancelPendingMessage({
+    conversationId,
+    inboundMessageId,
+  });
+  if (result === "not_found") {
+    throwApiError(404, "Pending message not found.");
+  }
 }
 
 /** Load pending mailbox messages or throw a standard API not-found error. */

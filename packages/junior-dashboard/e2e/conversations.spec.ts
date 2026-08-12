@@ -357,6 +357,9 @@ test("collapses long pending message stacks", async ({ page }) => {
   ).toBeVisible();
   await expect(pending.getByText("3 more queued messages")).toBeVisible();
   await expect(pending.getByText("Third queued message.")).toBeHidden();
+  await expect(
+    pending.getByRole("button", { name: "Cancel queued message" }),
+  ).toHaveCount(2);
 });
 
 test("opens and closes a conversation in the mobile workspace", async ({

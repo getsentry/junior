@@ -1,5 +1,5 @@
 import type { ReactElement, ReactNode } from "react";
-import { Clock3, SkipForward, type LucideIcon } from "lucide-react";
+import { Clock3, SkipForward, X, type LucideIcon } from "lucide-react";
 import type { ConversationPendingMessage } from "@sentry/junior/api/schema";
 
 import { cn } from "../styles";
@@ -95,8 +95,10 @@ function PendingMetaIcons(props: {
 }
 
 function PendingRow(props: {
+  canceling: boolean;
   conversation: ConversationTranscript;
   message: TranscriptViewMessage;
+  onCancel: () => void;
   showDivider: boolean;
 }) {
   const textPart = props.message.parts.find((part) => part.type === "text");
@@ -131,11 +133,24 @@ function PendingRow(props: {
         }
         leftClassName="text-sm leading-snug text-dashboard-text"
         right={
-          <PendingMetaIcons
-            delivery={delivery}
-            source={source}
-            timestamp={formatMessageTimestamp(props.message.timestamp)}
-          />
+          <span className="flex items-center gap-2">
+            <PendingMetaIcons
+              delivery={delivery}
+              source={source}
+              timestamp={formatMessageTimestamp(props.message.timestamp)}
+            />
+            <Tooltip content="Cancel queued message" placement="above">
+              <button
+                aria-label="Cancel queued message"
+                className="-m-1 inline-flex size-6 shrink-0 items-center justify-center rounded text-dashboard-text-muted transition-colors hover:bg-white/[0.08] hover:text-dashboard-text disabled:cursor-wait disabled:opacity-50"
+                disabled={props.canceling}
+                onClick={props.onCancel}
+                type="button"
+              >
+                <X aria-hidden="true" size={14} strokeWidth={2.2} />
+              </button>
+            </Tooltip>
+          </span>
         }
       />
       {redacted ? (
@@ -154,7 +169,9 @@ function PendingRow(props: {
 /** Render accepted mailbox rows as a compact stack attached above the composer. */
 export function PendingMailboxStack(props: {
   conversation: ConversationTranscript;
+  cancelingMessageId?: string;
   messages: readonly ConversationPendingMessage[];
+  onCancel: (inboundMessageId: string) => void;
 }): ReactNode {
   const rows = unresolvedPendingTranscriptMessages(
     conversationTranscriptMessages(props.conversation),
@@ -179,14 +196,24 @@ export function PendingMailboxStack(props: {
         {countLabel}
       </div>
       <div className="hidden md:block">
-        {visibleRows.map((message, index) => (
-          <PendingRow
-            conversation={props.conversation}
-            key={message.messageId ?? `${message.sourceSeq}:${index}`}
-            message={message}
-            showDivider={index > 0}
-          />
-        ))}
+        {visibleRows.map((message, index) => {
+          const pendingMessage = props.messages.find(
+            (candidate) => candidate.messageId === message.messageId,
+          );
+          if (!pendingMessage) return null;
+          return (
+            <PendingRow
+              canceling={
+                props.cancelingMessageId === pendingMessage.inboundMessageId
+              }
+              conversation={props.conversation}
+              key={message.messageId ?? `${message.sourceSeq}:${index}`}
+              message={message}
+              onCancel={() => props.onCancel(pendingMessage.inboundMessageId)}
+              showDivider={index > 0}
+            />
+          );
+        })}
         {collapsedCount > 0 ? (
           <div className="border-t border-white/[0.06] px-3 py-2 font-sans text-xs font-medium text-cyan-50/70 md:px-3.5">
             {collapsedCount} more queued messages
