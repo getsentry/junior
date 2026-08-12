@@ -22,7 +22,6 @@ import {
   getConversationStore,
 } from "@/chat/db";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
-import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
@@ -32,7 +31,6 @@ import {
   streamReplies,
   type ConversationWorkQueueTestAdapter,
 } from "./conversation-work";
-import { deliverAssistantMessagesForTest } from "./agent-runner";
 import { testViewer } from "./user";
 
 /** Default verified dashboard viewer for web turn tests. */
@@ -88,36 +86,6 @@ export function emptyApiTurnAttempt(args: {
     drain: async () => [],
     isFinalAttempt: false,
     messages: [],
-  };
-}
-
-/**
- * Script one completed assistant reply through the production delivery port.
- */
-export function createApiTurnScriptedRunner(args: {
-  replyText: string;
-  onRun?: (request: Parameters<AgentRunner["run"]>[0]) => void | Promise<void>;
-}): AgentRunner {
-  return {
-    run: async (request) => {
-      await args.onRun?.(request);
-      const piMessages = await deliverAssistantMessagesForTest(request, [
-        { text: args.replyText },
-      ]);
-      return completedAgentRun({
-        text: args.replyText,
-        piMessages,
-        diagnostics: {
-          assistantMessageCount: 1,
-          modelId: "fake-api-turn",
-          outcome: "success",
-          toolCalls: [],
-          toolErrorCount: 0,
-          toolResultCount: 0,
-          usedPrimaryText: true,
-        },
-      });
-    },
   };
 }
 

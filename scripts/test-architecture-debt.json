@@ -1,6 +1,5 @@
 {
   "manufactured-agent-outcome": {
-    "packages/junior/tests/integration/api-turn-work.test.ts": 1,
     "packages/junior/tests/integration/local-agent-runner.test.ts": 19,
     "packages/junior/tests/integration/slack/assistant-thread-contract.test.ts": 2,
     "packages/junior/tests/integration/slack/attachment-behavior.test.ts": 3,
@@ -19,7 +18,6 @@
     "packages/junior/tests/integration/slack/thread-continuity-behavior.test.ts": 2
   },
   "scripted-agent-runner": {
-    "packages/junior/tests/integration/api-turn-work.test.ts": 4,
     "packages/junior/tests/integration/local-agent-runner.test.ts": 3,
     "packages/junior/tests/integration/slack/finalized-reply-behavior.test.ts": 7
   }
