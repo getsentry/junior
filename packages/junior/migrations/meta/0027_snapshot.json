@@ -427,12 +427,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "ready_at": {
-          "name": "ready_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
         "delete_requested_at": {
           "name": "delete_requested_at",
           "type": "timestamp with time zone",

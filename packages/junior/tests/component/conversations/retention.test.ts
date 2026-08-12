@@ -193,7 +193,6 @@ describe("retention purge job", () => {
       bytes: 6,
       sha256: "digest",
       createdAt: new Date(BASE_MS),
-      readyAt: new Date(BASE_MS),
     });
     const deleted: string[][] = [];
     const storage: AttachmentStorage = {

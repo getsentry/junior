@@ -535,7 +535,6 @@ describe("slack channel tools", () => {
         filename: "report.txt",
         provider: "test",
       });
-      expect(rows[0]?.readyAt).not.toBe(null);
       expect(puts).toEqual([rows[0]?.storageKey]);
       expect(
         getCapturedSlackApiCalls("files.completeUploadExternal"),

@@ -19,8 +19,6 @@ export const juniorAttachments = pgTable(
     bytes: integer("bytes").notNull(),
     sha256: text("sha256").notNull(),
     createdAt: timestamptz("created_at").notNull(),
-    /** Set after object storage accepts the bytes. Null means the write is incomplete. */
-    readyAt: timestamptz("ready_at"),
     /** Set when conversation purge marks the attachment unavailable. */
     deleteRequestedAt: timestamptz("delete_requested_at"),
   },

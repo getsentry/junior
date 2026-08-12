@@ -1,11 +1,10 @@
 import { createHash } from "node:crypto";
-import { and, asc, eq, inArray, isNotNull, isNull, lt, or } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorAttachments } from "@/db/schema";
 import type { SandboxFileUpload } from "@/chat/tools/sandbox/file-uploads";
 import type { AttachmentStorage } from "./storage";
 
-const STALE_ATTACHMENT_WRITE_MS = 24 * 60 * 60 * 1000;
 const ATTACHMENT_GC_BATCH_LIMIT = 200;
 
 export interface StoredAttachment {
@@ -52,9 +51,10 @@ function attachmentKey(args: {
 /**
  * Persist one conversation-owned file.
  *
- * Identity is content-stable under the conversation: the same bytes, filename,
- * content type, and storage provider reuse one attachment id. Retries resume an
- * incomplete write or return the ready row instead of creating duplicates.
+ * Identity is content-stable under the conversation. Object storage is written
+ * first; the SQL row is created only after that write succeeds. A row means the
+ * attachment is durable. Retries reuse an existing row or overwrite the same
+ * storage key and insert again.
  */
 export async function storeAttachment(args: {
   conversationId: string;
@@ -85,7 +85,6 @@ export async function storeAttachment(args: {
       filename: juniorAttachments.filename,
       id: juniorAttachments.id,
       provider: juniorAttachments.provider,
-      readyAt: juniorAttachments.readyAt,
       sha256: juniorAttachments.sha256,
       storageKey: juniorAttachments.storageKey,
     })
@@ -102,22 +101,14 @@ export async function storeAttachment(args: {
     ) {
       throw new Error(`Attachment write conflicts with ${existing.id}`);
     }
-    if (existing.readyAt) {
-      return { id: existing.id };
-    }
-    await args.storage.put({
-      body: args.file.data,
-      contentType: args.file.mimeType,
-      key: existing.storageKey,
-    });
-    await args.db
-      .db()
-      .update(juniorAttachments)
-      .set({ readyAt: now })
-      .where(eq(juniorAttachments.id, existing.id));
     return { id: existing.id };
   }
 
+  await args.storage.put({
+    body: args.file.data,
+    contentType: args.file.mimeType,
+    key: storageKey,
+  });
   await args.db
     .db()
     .insert(juniorAttachments)
@@ -133,16 +124,6 @@ export async function storeAttachment(args: {
       createdAt: now,
     })
     .onConflictDoNothing({ target: juniorAttachments.id });
-  await args.storage.put({
-    body: args.file.data,
-    contentType: args.file.mimeType,
-    key: storageKey,
-  });
-  await args.db
-    .db()
-    .update(juniorAttachments)
-    .set({ readyAt: now })
-    .where(eq(juniorAttachments.id, id));
   return { id };
 }
 
@@ -188,7 +169,7 @@ export async function requestAttachmentDeletion(
     );
 }
 
-/** Delete requested or abandoned blobs in one bounded batch. */
+/** Delete purged attachments in one bounded batch. */
 export async function collectAttachmentGarbage(args: {
   db: JuniorSqlDatabase;
   nowMs: number;
@@ -205,16 +186,7 @@ export async function collectAttachmentGarbage(args: {
     .where(
       and(
         eq(juniorAttachments.provider, args.storage.provider),
-        or(
-          isNotNull(juniorAttachments.deleteRequestedAt),
-          and(
-            isNull(juniorAttachments.readyAt),
-            lt(
-              juniorAttachments.createdAt,
-              new Date(args.nowMs - STALE_ATTACHMENT_WRITE_MS),
-            ),
-          ),
-        ),
+        isNotNull(juniorAttachments.deleteRequestedAt),
       ),
     )
     .orderBy(asc(juniorAttachments.createdAt), asc(juniorAttachments.id))

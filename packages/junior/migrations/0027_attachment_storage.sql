@@ -8,7 +8,6 @@ CREATE TABLE "junior_attachments" (
 	"bytes" integer NOT NULL,
 	"sha256" text NOT NULL,
 	"created_at" timestamp with time zone NOT NULL,
-	"ready_at" timestamp with time zone,
 	"delete_requested_at" timestamp with time zone
 );
 --> statement-breakpoint
