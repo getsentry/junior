@@ -15,7 +15,6 @@ type NoticeProps = {
 };
 
 type NoticeActionProps = ButtonHTMLAttributes<HTMLButtonElement> & {
-  emphasis?: "default" | "primary";
   tone?: NoticeTone;
 };
 
@@ -32,10 +31,8 @@ export function Notice({
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-xl border shadow-[0_16px_40px_rgba(0,0,0,0.5)]",
-        isError
-          ? "border-rose-300/40 bg-[#1f1216]"
-          : "border-cyan-200/20 bg-[#111719]",
+        "overflow-hidden rounded-xl shadow-[0_16px_40px_rgba(0,0,0,0.5)]",
+        isError ? "bg-[#1f1216]" : "bg-[#111719]",
       )}
     >
       <div className="flex min-w-0 items-center gap-3 px-3 py-3">
@@ -81,7 +78,6 @@ export function Notice({
 /** Render an action that fits the dashboard notice surface. */
 export function NoticeAction({
   className,
-  emphasis = "default",
   tone = "default",
   type = "button",
   ...props
@@ -93,13 +89,9 @@ export function NoticeAction({
       className={cn(
         "shrink-0 cursor-pointer px-3 py-1.5 text-xs transition focus:outline-none focus:ring-2 disabled:cursor-not-allowed disabled:opacity-40",
         isError ? "focus:ring-rose-300/40" : "focus:ring-cyan-300/35",
-        emphasis === "primary"
-          ? isError
-            ? "rounded-lg bg-rose-200/15 font-display font-medium text-rose-50 hover:bg-rose-200/25"
-            : "rounded-lg bg-cyan-200/10 font-display font-medium text-cyan-100 hover:bg-cyan-200/20"
-          : isError
-            ? "rounded border border-rose-200/25 font-mono text-rose-50/85 hover:border-rose-100/40 hover:text-rose-50"
-            : "rounded border border-white/15 font-mono text-dashboard-text-muted hover:border-white/30 hover:text-dashboard-text",
+        isError
+          ? "rounded-lg bg-rose-200/15 font-display font-medium text-rose-50 hover:bg-rose-200/25"
+          : "rounded-lg bg-cyan-200/10 font-display font-medium text-cyan-100 hover:bg-cyan-200/20",
         className,
       )}
       type={type}

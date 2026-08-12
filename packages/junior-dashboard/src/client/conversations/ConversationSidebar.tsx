@@ -277,7 +277,6 @@ function ArchivedConversationNotice(props: {
         <NoticeAction
           aria-label={`Undo archive for ${title}`}
           disabled={restore.isPending}
-          emphasis="primary"
           onClick={() =>
             restore.mutate({
               archived: false,
