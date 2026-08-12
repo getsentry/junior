@@ -47,7 +47,6 @@ export function TranscriptToolView(props: {
         mobileSummaryMeta={mobileSummary}
         raw
         signature={signature}
-        status={props.part.status}
       >
         <ToolBody>
           <HighlightedCode
@@ -75,7 +74,6 @@ export function TranscriptToolView(props: {
         meta={meta}
         mobileSummaryMeta={mobileSummary}
         signature={signature}
-        status={props.part.status}
       >
         {props.part.input !== undefined ? (
           <ToolBody label="arguments">

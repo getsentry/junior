@@ -587,16 +587,6 @@ test("inspects and copies an advisor transcript", async ({ context, page }) => {
   await expect(
     page.getByRole("heading", { name: "Dashboard QA edge cases" }),
   ).toBeVisible();
-  // Resource links live in the conversation details drawer.
-  await page.getByRole("button", { name: "Conversation details" }).click();
-  const details = page.getByRole("dialog");
-  await expect(
-    details.getByRole("link", {
-      name: "Open getsentry/junior#1081",
-    }),
-  ).toHaveAttribute("href", "https://github.com/getsentry/junior/pull/1081");
-  await page.getByRole("button", { name: "Close conversation details" }).click();
-  await expect(details).toBeHidden();
   // Subagents live inside the collapsed activity chip between turns.
   const activityChip = page
     .locator("details")

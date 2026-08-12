@@ -15,7 +15,6 @@ export function ToolFrame(props: {
   mobileSummaryMeta?: string;
   raw?: boolean;
   signature: ReactNode;
-  status?: "running" | "completed" | "error" | "aborted";
 }) {
   const { active: searchActive } = useTranscriptSearch();
   const metaText = props.meta.join(" · ");
@@ -72,7 +71,7 @@ export function ToolFrame(props: {
   // Force-expand tool details during search so highlighted matches are visible.
   if (staticFrame) {
     return (
-      <div className={toolFrameClass(props.status)}>
+      <div className={toolFrameClass()}>
         <div className={toolHeaderClass(false)}>{header}</div>
         {mobileMeta}
         {props.children}
@@ -81,7 +80,7 @@ export function ToolFrame(props: {
   }
 
   return (
-    <details className={cn("group", toolFrameClass(props.status))}>
+    <details className={cn("group", toolFrameClass())}>
       <summary className={toolHeaderClass(true)}>{header}</summary>
       {mobileMeta}
       {props.children}
@@ -90,16 +89,9 @@ export function ToolFrame(props: {
 }
 
 /** Provide the shared transcript tool-frame shell for nonstandard part views. */
-export function toolFrameClass(
-  status?: "running" | "completed" | "error" | "aborted",
-): string {
-  const background =
-    status === "running"
-      ? "bg-cyan-300/[0.07]"
-      : status === "error"
-        ? "bg-rose-300/[0.09]"
-        : "bg-white/[0.04]";
-  return cn("min-w-0 max-w-full overflow-hidden rounded-md", background);
+export function toolFrameClass(): string {
+  // Keep tool/subagent rows flat. Status comes from text, icons, and shimmer.
+  return "min-w-0 max-w-full overflow-hidden";
 }
 
 function toolHeaderClass(interactive: boolean): string {

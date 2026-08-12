@@ -3,7 +3,6 @@ import { Clock3, SkipForward, type LucideIcon } from "lucide-react";
 import type { ConversationPendingMessage } from "@sentry/junior/api/schema";
 
 import { cn } from "../styles";
-import { ShimmerText } from "../components/ShimmerText";
 import { Tooltip } from "../components/Tooltip";
 import { formatMessageTimestamp, transcriptMessageActorLabel } from "../format";
 import type { ConversationTranscript, TranscriptViewMessage } from "../types";
@@ -113,7 +112,7 @@ function PendingRow(props: {
       <TranscriptHeadingRow
         left={
           <span className="inline-block max-w-full truncate font-display text-sm font-semibold leading-tight text-dashboard-text">
-            <ShimmerText active>{roleLabel}</ShimmerText>
+            {roleLabel}
           </span>
         }
         leftClassName="text-sm leading-snug text-dashboard-text"
