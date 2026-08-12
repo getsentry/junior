@@ -335,7 +335,7 @@ function forbidden(request: Request, agentName: string): Response {
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
   <title>${escapeHtml(agentName)} access denied</title>
   <style>
     ${readDashboardTailwind()}
@@ -524,7 +524,7 @@ function renderDashboard(basePath: string, agentName: string): Response {
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
   <title>${escapeHtml(agentName)}</title>
   <style>
     ${readDashboardTailwind()}
