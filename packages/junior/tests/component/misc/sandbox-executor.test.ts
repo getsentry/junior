@@ -1183,8 +1183,11 @@ describe("createTestSandbox", () => {
           throw new Error("prepare failed");
         }
       },
-      onSandboxRefChanged: (ref) => {
+      onSandboxRefChanged: async (ref) => {
         refs.push(ref);
+        if (ref === null) {
+          throw new Error("persistence failed");
+        }
       },
     });
 

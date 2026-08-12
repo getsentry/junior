@@ -966,7 +966,11 @@ export function createSandboxRuntime(
         sandboxRef = undefined;
         reportedSandboxRef = undefined;
         await stopSession(failed);
-        await options.onSandboxRefChanged?.(null);
+        try {
+          await options.onSandboxRefChanged?.(null);
+        } catch {
+          // Preserve the boot error when rollback persistence also fails.
+        }
         throw error;
       }
     },
