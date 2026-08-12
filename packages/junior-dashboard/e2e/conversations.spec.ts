@@ -768,7 +768,7 @@ test("shows archive failures after the row returns", async ({ page }) => {
   await expect(conversationLink).toBeVisible();
   await expect(
     page.getByRole("alert").filter({
-      hasText: "Could not archive Dashboard QA edge cases.",
+      hasText: "Could not archive Dashboard QA edge cases",
     }),
   ).toBeVisible();
 });
@@ -812,7 +812,7 @@ test("keeps undo available when another archive fails", async ({ page }) => {
 
   await expect(
     page.getByRole("alert").filter({
-      hasText: "Could not archive Checkout latency triage.",
+      hasText: "Could not archive Checkout latency triage",
     }),
   ).toBeVisible();
   await expect(undo).toBeVisible();

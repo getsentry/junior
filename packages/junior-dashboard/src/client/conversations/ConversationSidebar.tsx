@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Archive, ArchiveRestore, SquarePen } from "lucide-react";
+import { Archive, ArchiveRestore, CircleAlert, SquarePen } from "lucide-react";
 import { Link } from "react-router";
 
 import { useArchiveConversation } from "./queries";
@@ -237,11 +237,13 @@ function ArchiveConversationErrorNotice(props: {
   return (
     <Notice
       action={
-        <NoticeAction onClick={props.onDismiss} title="Dismiss">
+        <NoticeAction onClick={props.onDismiss} title="Dismiss" tone="error">
           Dismiss
         </NoticeAction>
       }
-      title={<>Could not archive {title}.</>}
+      detail={title}
+      icon={CircleAlert}
+      title="Could not archive"
       tone="error"
     />
   );
@@ -293,7 +295,7 @@ function ArchivedConversationNotice(props: {
     >
       {restore.error ? (
         <div
-          className="border-t border-rose-300/15 bg-rose-300/[0.06] px-3 py-2 font-mono text-xs text-rose-200/80"
+          className="border-t border-rose-300/25 bg-rose-400/[0.12] px-3 py-2 font-mono text-xs text-rose-50/85"
           role="alert"
         >
           Could not restore the conversation.
