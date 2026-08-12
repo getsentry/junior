@@ -1,6 +1,7 @@
 import { Fragment, useState, type ReactNode } from "react";
 import { ChevronRight } from "lucide-react";
 
+import { ShimmerText } from "../components/ShimmerText";
 import { Tooltip } from "../components/Tooltip";
 import { formatMs } from "../format";
 import type { RenderedTranscriptEntry } from "./transcriptRenderModel";
@@ -179,17 +180,11 @@ export function TranscriptActivityGroup(props: {
         <Tooltip content={summary} placement="above">
           <span className="inline-flex min-w-0 max-w-full items-center gap-1">
             <span className="min-w-0 truncate group-open/activity-run:hidden">
-              {label}
+              <ShimmerText active={live}>{label}</ShimmerText>
             </span>
             <span className="hidden min-w-0 truncate group-open/activity-run:inline">
-              Hide {label}
+              <ShimmerText active={live}>Hide {label}</ShimmerText>
             </span>
-            {live ? (
-              <span
-                aria-hidden="true"
-                className="size-1.5 shrink-0 animate-pulse rounded-full bg-cyan-300"
-              />
-            ) : null}
             <ChevronRight
               aria-hidden="true"
               className="size-3 shrink-0 opacity-55 transition-transform group-open/activity-run:rotate-90"
