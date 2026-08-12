@@ -18,7 +18,6 @@
     "packages/junior/tests/integration/slack/thread-continuity-behavior.test.ts": 2
   },
   "scripted-agent-runner": {
-    "packages/junior/tests/integration/local-agent-runner.test.ts": 3,
-    "packages/junior/tests/integration/slack/finalized-reply-behavior.test.ts": 7
+    "packages/junior/tests/integration/local-agent-runner.test.ts": 3
   }
 }
