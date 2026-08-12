@@ -146,6 +146,22 @@ export const conversationPendingMessagesReportSchema = z
   })
   .strict();
 
+/** Optional filters for cancelling accepted mailbox rows. */
+export const cancelConversationPendingMessagesBodySchema = z
+  .object({
+    inboundMessageIds: z.array(z.string().min(1)).min(1).optional(),
+  })
+  .strict();
+
+/** Result of cancelling accepted human-facing mailbox rows. */
+export const cancelConversationPendingMessagesResponseSchema = z
+  .object({
+    cancelledCount: z.number().int().nonnegative(),
+    cancelledInboundMessageIds: z.array(z.string().min(1)),
+    conversationId: z.string().min(1),
+  })
+  .strict();
+
 export const conversationAuxiliaryCostsSchema = z
   .object({
     costUsd: z.number().finite().nonnegative(),
@@ -791,4 +807,10 @@ export type ConversationPendingMessage = z.infer<
 >;
 export type ConversationPendingMessagesReport = z.infer<
   typeof conversationPendingMessagesReportSchema
+>;
+export type CancelConversationPendingMessagesBody = z.infer<
+  typeof cancelConversationPendingMessagesBodySchema
+>;
+export type CancelConversationPendingMessagesResponse = z.infer<
+  typeof cancelConversationPendingMessagesResponseSchema
 >;

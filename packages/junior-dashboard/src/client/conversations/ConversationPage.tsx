@@ -7,6 +7,7 @@ import type {
 import {
   useAppendConversationMessage,
   useArchiveConversation,
+  useCancelConversationPendingMessages,
   useConversationData,
   type PendingArchiveConversationUpdate,
 } from "./queries";
@@ -53,6 +54,8 @@ export function ConversationPage(props: {
   const detail = useConversationData(conversationId);
   const archive = useArchiveConversation(conversationId);
   const appendMessage = useAppendConversationMessage(conversationId);
+  const cancelPendingMessages =
+    useCancelConversationPendingMessages(conversationId);
   const feedConversation = conversations.find(
     (item) => item.id === conversationId,
   );
@@ -174,8 +177,13 @@ export function ConversationPage(props: {
             ) : null}
             {detail.data ? (
               <PendingMailboxStack
+                cancelError={Boolean(cancelPendingMessages.error)}
+                cancelPending={cancelPendingMessages.isPending}
                 conversation={detail.data}
                 messages={detail.pendingMessages}
+                onCancelQueue={() => {
+                  cancelPendingMessages.mutate({});
+                }}
               />
             ) : null}
             <ConversationComposer

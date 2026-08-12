@@ -17,12 +17,13 @@ import type {
 import {
   acceptedConversationMessageSchema,
   archiveConversationResponseSchema,
+  cancelConversationPendingMessagesResponseSchema,
   conversationDetailReportSchema,
   conversationEventPageSchema,
   conversationPendingMessagesReportSchema,
 } from "@sentry/junior/api/schema";
 
-import { DashboardApiError, fetchDashboardJson, patch, post } from "../http";
+import { DashboardApiError, del, fetchDashboardJson, patch, post } from "../http";
 import {
   buildConversationTranscript,
   conversationHistoryBridgeCursor,
@@ -173,6 +174,62 @@ export function useAppendConversationMessage(conversationId: string) {
         args,
       ),
     onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["dashboard", "conversations"],
+        }),
+        queryClient.invalidateQueries({
+          exact: true,
+          queryKey: conversationDetailQueryKey(conversationId),
+        }),
+        queryClient.invalidateQueries({
+          exact: true,
+          queryKey: conversationPendingMessagesQueryKey(conversationId),
+        }),
+      ]);
+    },
+  });
+}
+
+/** Cancel accepted human-facing mailbox rows for the open conversation. */
+export function useCancelConversationPendingMessages(conversationId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args?: { inboundMessageIds?: string[] }) =>
+      del(
+        cancelConversationPendingMessagesResponseSchema,
+        `/api/conversations/${encodeURIComponent(conversationId)}/pending-messages`,
+        args ?? {},
+      ),
+    onMutate: async () => {
+      await queryClient.cancelQueries({
+        exact: true,
+        queryKey: conversationPendingMessagesQueryKey(conversationId),
+      });
+      const previousPending =
+        queryClient.getQueryData<ConversationPendingMessagesReport>(
+          conversationPendingMessagesQueryKey(conversationId),
+        );
+      if (previousPending) {
+        queryClient.setQueryData<ConversationPendingMessagesReport>(
+          conversationPendingMessagesQueryKey(conversationId),
+          {
+            ...previousPending,
+            messages: [],
+          },
+        );
+      }
+      return { previousPending };
+    },
+    onError: (_error, _args, context) => {
+      if (context?.previousPending) {
+        queryClient.setQueryData(
+          conversationPendingMessagesQueryKey(conversationId),
+          context.previousPending,
+        );
+      }
+    },
+    onSettled: async () => {
       await Promise.all([
         queryClient.invalidateQueries({
           queryKey: ["dashboard", "conversations"],

@@ -5,6 +5,8 @@ import {
   acceptedConversationMessageSchema,
   archiveConversationBodySchema,
   archiveConversationResponseSchema,
+  cancelConversationPendingMessagesBodySchema,
+  cancelConversationPendingMessagesResponseSchema,
   conversationDetailQuerySchema,
   conversationDetailReportSchema,
   conversationEventPageSchema,
@@ -27,6 +29,7 @@ import {
 import { readConversationDetail } from "./detail";
 import { readConversationEvents } from "./event-list";
 import { readConversationFeed } from "./list";
+import { cancelConversationPendingMessagesForViewer } from "./cancel-pending-messages";
 import { requireConversationPendingMessages } from "./pending-messages";
 import { readConversationStats } from "./stats";
 
@@ -162,6 +165,34 @@ export function createConversationRoutes(): Hono<JuniorApiEnv> {
         await requireConversationPendingMessages(conversationId, {
           viewer,
         }),
+      );
+    },
+  );
+
+  app.delete(
+    "/:conversationId/pending-messages",
+    requireViewer,
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    validateRequest(
+      "json",
+      cancelConversationPendingMessagesBodySchema,
+      "Invalid request body.",
+    ),
+    async (context) => {
+      const viewer = context.get("viewer");
+      const { conversationId } = context.req.valid("param");
+      const body = context.req.valid("json");
+      return jsonResponse(
+        cancelConversationPendingMessagesResponseSchema,
+        await cancelConversationPendingMessagesForViewer(
+          viewer,
+          conversationId,
+          body,
+        ),
       );
     },
   );

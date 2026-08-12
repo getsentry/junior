@@ -76,6 +76,23 @@ export async function deleteDashboardResource(path: string): Promise<void> {
   if (!response.ok) throw new DashboardApiError(path, response.status);
 }
 
+/** Send one authenticated DELETE request with JSON body and validate its response. */
+export async function del<T>(
+  schema: ZodType<T>,
+  path: string,
+  body: unknown = {},
+): Promise<T> {
+  const response = await fetch(path, {
+    body: JSON.stringify(body),
+    credentials: "same-origin",
+    headers: { "content-type": "application/json" },
+    method: "DELETE",
+  });
+  if (response.status === 401) restartDashboardSignIn();
+  if (!response.ok) throw new DashboardApiError(path, response.status);
+  return schema.parse(await response.json());
+}
+
 /** Fetch one authenticated dashboard JSON resource and validate its response. */
 export async function fetchDashboardJson<T>(
   schema: ZodType<T>,

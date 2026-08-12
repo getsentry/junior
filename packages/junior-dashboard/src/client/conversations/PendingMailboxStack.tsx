@@ -3,6 +3,7 @@ import { Clock3, SkipForward, type LucideIcon } from "lucide-react";
 import type { ConversationPendingMessage } from "@sentry/junior/api/schema";
 
 import { cn } from "../styles";
+import { Button } from "../components/Button";
 import { ShimmerText } from "../components/ShimmerText";
 import { Tooltip } from "../components/Tooltip";
 import { formatMessageTimestamp, transcriptMessageActorLabel } from "../format";
@@ -140,8 +141,11 @@ function PendingRow(props: {
 
 /** Render accepted mailbox rows as a compact stack attached above the composer. */
 export function PendingMailboxStack(props: {
+  cancelError?: boolean;
+  cancelPending?: boolean;
   conversation: ConversationTranscript;
   messages: readonly ConversationPendingMessage[];
+  onCancelQueue?: () => void;
 }): ReactNode {
   const rows = unresolvedPendingTranscriptMessages(
     conversationTranscriptMessages(props.conversation),
@@ -156,16 +160,34 @@ export function PendingMailboxStack(props: {
       ? rows.slice(0, COLLAPSED_PENDING_ROW_COUNT)
       : rows;
   const collapsedCount = rows.length - visibleRows.length;
+  const showCancel = Boolean(props.onCancelQueue);
 
   return (
     <div
       aria-label="Pending messages"
       className="mx-2 overflow-hidden rounded-t-lg border border-b-0 border-white/[0.09] bg-cyan-300/[0.07] md:mx-3"
     >
-      <div className="px-3 py-2 font-sans text-xs font-medium text-cyan-50/85 md:hidden">
-        {countLabel}
+      <div className="flex items-center justify-between gap-2 px-3 py-2 md:px-3.5">
+        <div className="min-w-0 font-sans text-xs font-medium text-cyan-50/85">
+          {countLabel}
+        </div>
+        {showCancel ? (
+          <Button
+            aria-label="Cancel queued messages"
+            className="h-7 shrink-0 border-white/10 bg-transparent px-2 text-xs font-medium text-cyan-50/85 hover:border-white/25 hover:bg-white/[0.06] hover:text-cyan-50"
+            disabled={props.cancelPending}
+            onClick={props.onCancelQueue}
+          >
+            {props.cancelPending ? "Cancelling…" : "Cancel queue"}
+          </Button>
+        ) : null}
       </div>
-      <div className="hidden md:block">
+      {props.cancelError ? (
+        <div className="border-t border-amber-300/15 px-3 py-1.5 font-sans text-xs text-amber-100/75 md:px-3.5">
+          Could not cancel queued messages. Try again.
+        </div>
+      ) : null}
+      <div className="hidden border-t border-white/[0.06] md:block">
         {visibleRows.map((message, index) => (
           <PendingRow
             conversation={props.conversation}
