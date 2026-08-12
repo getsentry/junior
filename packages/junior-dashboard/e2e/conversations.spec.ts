@@ -244,6 +244,9 @@ test("starts and continues conversations from the dashboard", async ({
   await page.reload();
   const restoredComposer = page.getByLabel("Continue this conversation");
   await expect(restoredComposer).toHaveValue("Continue in Junior");
+  // Edits that return to the failed text must keep the same key.
+  await restoredComposer.fill("Continue in Junior!");
+  await restoredComposer.fill("Continue in Junior");
   await page.getByRole("button", { name: "Send" }).click();
   await expect.poll(() => continueRequests.length).toBe(2);
   expect(continueRequests[1]?.idempotencyKey).toBe(failedIdempotencyKey);

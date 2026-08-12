@@ -15,7 +15,10 @@ const DESKTOP_MEDIA_QUERY = "(min-width: 768px)";
 const DRAFT_STORAGE_PREFIX = "junior:dashboard:conversation-draft:";
 
 type ConversationDraft = {
+  /** Key issued for `lastSubmittedText`. Reused while the next send matches it. */
   idempotencyKey: string;
+  /** Trimmed text the current idempotency key was issued for. */
+  lastSubmittedText: string;
   text: string;
 };
 
@@ -67,8 +70,20 @@ export function ConversationComposer(props: {
     event?.preventDefault();
     const text = message.trim();
     if (!text || props.pending) return;
+    // Keep the key while the trimmed text matches the last attempt. Edits that
+    // return to the same text (typo undo, IME) must not mint a new key or a
+    // retry can duplicate a send the server already accepted.
+    const nextDraft: ConversationDraft =
+      text === draft.lastSubmittedText
+        ? draft
+        : {
+            idempotencyKey: crypto.randomUUID(),
+            lastSubmittedText: text,
+            text: draft.text,
+          };
+    if (nextDraft !== draft) setDraft(nextDraft);
     try {
-      await props.onSubmit(text, draft.idempotencyKey);
+      await props.onSubmit(text, nextDraft.idempotencyKey);
       clearStoredDraft(storageKey);
       setDraft(emptyDraft());
     } catch {
@@ -111,10 +126,10 @@ export function ConversationComposer(props: {
           id={id}
           maxLength={32_000}
           onChange={(event) =>
-            setDraft({
-              idempotencyKey: crypto.randomUUID(),
+            setDraft((current) => ({
+              ...current,
               text: event.target.value,
-            })
+            }))
           }
           onKeyDown={handleKeyDown}
           placeholder="Message Junior…"
@@ -144,7 +159,11 @@ export function ConversationComposer(props: {
 }
 
 function emptyDraft(): ConversationDraft {
-  return { idempotencyKey: crypto.randomUUID(), text: "" };
+  return {
+    idempotencyKey: crypto.randomUUID(),
+    lastSubmittedText: "",
+    text: "",
+  };
 }
 
 function readStoredDraft(storageKey: string): ConversationDraft {
@@ -161,9 +180,18 @@ function readStoredDraft(storageKey: string): ConversationDraft {
       "text" in draft &&
       typeof draft.text === "string"
     ) {
+      const text = draft.text.slice(0, 32_000);
+      const lastSubmittedText =
+        "lastSubmittedText" in draft &&
+        typeof draft.lastSubmittedText === "string"
+          ? draft.lastSubmittedText
+          : // Older drafts only stored text + key. Bind the key to that text so
+            // a retry after reload still reuses it.
+            text.trim();
       return {
         idempotencyKey: draft.idempotencyKey,
-        text: draft.text.slice(0, 32_000),
+        lastSubmittedText,
+        text,
       };
     }
   } catch {
