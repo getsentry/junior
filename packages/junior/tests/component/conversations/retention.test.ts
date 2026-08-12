@@ -351,7 +351,7 @@ describe("retention purge job", () => {
       withLock: async (name, callback) => {
         if (
           !childWriteCompleted &&
-          name === "junior_conversation:event:racing-child"
+          name === "junior_conversation:racing-child"
         ) {
           await fixture.sql
             .db()
