@@ -18,6 +18,7 @@ import { conversationFeedSchema } from "../schema/conversation";
 import type { ConversationFeed } from "../schema/conversation";
 import { readRootConversationMetricsFromSql } from "./usage";
 import { readConversationAuxiliaryCostsFromSql } from "./auxiliary-costs";
+import { listLatestConversationPullRequests } from "@/chat/plugins/annotations";
 
 const CONVERSATION_FEED_LIMIT = 50;
 
@@ -218,6 +219,7 @@ export async function readConversationFeedFromSql(
     accessByConversation,
     auxiliaryCostsByRoot,
     metricsByRoot,
+    pullRequestByConversation,
     teamDomainByTeamId,
   ] = await Promise.all([
     readConversationAccessFromSql(db, conversationIds, options.viewer),
@@ -225,6 +227,7 @@ export async function readConversationFeedFromSql(
       includeDescendants: true,
     }),
     readRootConversationMetricsFromSql(db, conversationIds),
+    listLatestConversationPullRequests(db, conversationIds),
     resolveSlackTeamDomains(
       conversations.flatMap((conversation) =>
         conversation.sessionSource?.platform === "slack"
@@ -242,6 +245,7 @@ export async function readConversationFeedFromSql(
         access: accessByConversation.get(conversation.conversationId),
         auxiliaryCosts: auxiliaryCostsByRoot.get(conversation.conversationId),
         durationMs: metrics?.durationMs ?? row.conversation.durationMs,
+        pullRequest: pullRequestByConversation.get(conversation.conversationId),
         teamDomainByTeamId,
         ...(row.destination?.visibility === "public"
           ? { locationId: row.destination.id }

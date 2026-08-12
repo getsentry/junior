@@ -138,6 +138,7 @@ export type Conversation = {
   lastProgressAt: string;
   lastSeenAt: string;
   locationId?: string;
+  pullRequest?: ConversationSummaryReport["pullRequest"];
   actorIdentity?: ConversationSummaryReport["actorIdentity"];
   sentryTraceUrl?: string;
   sourceUrl?: string;

@@ -146,9 +146,15 @@ export function createGitHubWebhookRoute(args: {
           args.db,
           pullRequestOutcome,
         );
-        if (recordedOutcome.applied && pullRequestOutcome.state !== "open") {
+        if (recordedOutcome.applied) {
           const status =
-            pullRequestOutcome.state === "merged" ? "merged" : "closed";
+            pullRequestOutcome.state === "merged"
+              ? "merged"
+              : pullRequestOutcome.state === "closed_unmerged"
+                ? "closed"
+                : pullRequestOutcome.draft
+                  ? "draft"
+                  : "open";
           await Promise.all(
             recordedOutcome.conversationIds.map((conversationId) =>
               args.annotations.forConversation(conversationId).upsert({

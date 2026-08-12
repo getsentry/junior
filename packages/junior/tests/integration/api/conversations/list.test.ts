@@ -9,8 +9,10 @@ import {
 } from "@/api/conversations/list";
 import { apiErrorSchema, conversationFeedSchema } from "@/api/schema";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
+import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import {
+  juniorConversationAnnotations,
   juniorConversationEvents,
   juniorConversations,
   juniorDestinations,
@@ -36,6 +38,59 @@ describe("conversation list API", () => {
       expect(invalid.status).toBe(400);
       expect(apiErrorSchema.parse(await invalid.json())).toEqual({
         error: "Invalid query parameters.",
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  test("returns the newest linked pull request", async () => {
+    const fixture = createConfiguredJuniorSqlFixture();
+    const store = createSqlStore(fixture.sql);
+    const conversationId = "slack:C123:pull-request";
+    try {
+      await migrateSchema(fixture.sql);
+      await store.recordActivity({
+        conversationId,
+        nowMs: 1_000,
+        source: "slack",
+      });
+      const annotations = createPluginAnnotations({
+        conversationId,
+        db: fixture.sql.db(),
+        plugin: "github",
+      });
+      await annotations.upsert({
+        kind: "resource_link",
+        key: "getsentry/junior#100",
+        label: "getsentry/junior#100",
+        status: "merged",
+        url: "https://github.com/getsentry/junior/pull/100",
+      });
+      await fixture.sql
+        .db()
+        .update(juniorConversationAnnotations)
+        .set({ createdAt: new Date(1_000) })
+        .where(eq(juniorConversationAnnotations.key, "getsentry/junior#100"));
+      await annotations.upsert({
+        kind: "resource_link",
+        key: "getsentry/junior#101",
+        label: "getsentry/junior#101",
+        status: "draft",
+        url: "https://github.com/getsentry/junior/pull/101",
+      });
+
+      await expect(readConversationFeedFromSql()).resolves.toMatchObject({
+        conversations: [
+          expect.objectContaining({
+            conversationId,
+            pullRequest: {
+              label: "getsentry/junior#101",
+              status: "draft",
+              url: "https://github.com/getsentry/junior/pull/101",
+            },
+          }),
+        ],
       });
     } finally {
       await fixture.close();

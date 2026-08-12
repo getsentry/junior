@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import {
   conversationAnnotationInputSchema,
   type ConversationAnnotation,
@@ -58,6 +58,54 @@ export function createPluginAnnotations(args: {
     },
   };
 }
+export type ConversationPullRequest = {
+  label: string;
+  status: "draft" | "open" | "merged";
+  url: string;
+};
+
+/** Return the newest GitHub pull request annotation for each conversation. */
+export async function listLatestConversationPullRequests(
+  db: JuniorDatabase,
+  conversationIds: readonly string[],
+): Promise<Map<string, ConversationPullRequest>> {
+  if (conversationIds.length === 0) return new Map();
+  const rows = await db
+    .select()
+    .from(juniorConversationAnnotations)
+    .where(
+      and(
+        inArray(juniorConversationAnnotations.conversationId, conversationIds),
+        eq(juniorConversationAnnotations.plugin, "github"),
+        eq(juniorConversationAnnotations.kind, "resource_link"),
+      ),
+    )
+    .orderBy(
+      desc(juniorConversationAnnotations.createdAt),
+      desc(juniorConversationAnnotations.key),
+    );
+  const latest = new Map<string, ConversationPullRequest>();
+  for (const row of rows) {
+    if (latest.has(row.conversationId)) continue;
+    const parsed = conversationAnnotationInputSchema.safeParse(row.annotation);
+    if (
+      !parsed.success ||
+      parsed.data.kind !== "resource_link" ||
+      !parsed.data.url.startsWith("https://github.com/") ||
+      !parsed.data.url.includes("/pull/") ||
+      !["draft", "open", "merged"].includes(parsed.data.status ?? "")
+    ) {
+      continue;
+    }
+    latest.set(row.conversationId, {
+      label: parsed.data.label,
+      status: parsed.data.status as ConversationPullRequest["status"],
+      url: parsed.data.url,
+    });
+  }
+  return latest;
+}
+
 export async function listConversationAnnotations(
   db: JuniorDatabase,
   conversationId: string,

@@ -14,6 +14,7 @@ const githubPullRequestOutcomeInputSchema = z
     candidateOwned: z.boolean(),
     closedAt: z.date().optional(),
     commitComposition: githubPullRequestCommitCompositionSchema.optional(),
+    draft: z.boolean(),
     mergedAt: z.date().optional(),
     number: z.number().int().positive(),
     openedAt: z.date(),

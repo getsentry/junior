@@ -202,6 +202,14 @@ export const conversationSummaryReportSchema = z
     channelName: z.string().optional(),
     channelNameRedacted: z.boolean().optional(),
     locationId: z.string().optional(),
+    pullRequest: z
+      .object({
+        label: z.string(),
+        status: z.enum(["draft", "open", "merged"]),
+        url: z.string().url(),
+      })
+      .strict()
+      .optional(),
     sentryTraceUrl: z.string().optional(),
     sourceUrl: z.string().url().optional(),
     traceId: z.string().optional(),

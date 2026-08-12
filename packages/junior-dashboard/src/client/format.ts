@@ -856,6 +856,7 @@ export function buildConversations(
       lastProgressAt: summary.lastProgressAt,
       lastSeenAt: summary.lastSeenAt,
       locationId: summary.locationId,
+      pullRequest: summary.pullRequest,
       actorIdentity: summary.actorIdentity,
       sentryTraceUrl: summary.sentryTraceUrl,
       sourceUrl: summary.sourceUrl,

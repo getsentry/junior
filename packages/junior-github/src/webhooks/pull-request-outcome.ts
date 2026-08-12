@@ -13,12 +13,19 @@ import { botLoginFromEmail } from "./ownership.js";
 
 const canonicalPullRequestOutcomeSchema = z
   .object({
-    action: z.enum(["opened", "closed", "reopened"]),
+    action: z.enum([
+      "opened",
+      "closed",
+      "reopened",
+      "ready_for_review",
+      "converted_to_draft",
+    ]),
     pull_request: z
       .object({
         body: z.string().nullable().optional(),
         closed_at: z.string().nullable().optional(),
         created_at: z.string(),
+        draft: z.boolean().default(false),
         id: z.number().int().positive(),
         merged: z.boolean(),
         merged_at: z.string().nullable().optional(),
@@ -38,12 +45,19 @@ const canonicalPullRequestOutcomeSchema = z
 
 const pullRequestOutcomeSchema = z
   .object({
-    action: z.enum(["opened", "closed", "reopened"]),
+    action: z.enum([
+      "opened",
+      "closed",
+      "reopened",
+      "ready_for_review",
+      "converted_to_draft",
+    ]),
     pull_request: z
       .object({
         body: z.string().nullable().optional(),
         closed_at: z.string().nullable().optional(),
         created_at: z.string(),
+        draft: z.boolean().default(false),
         id: z.number().int().positive(),
         merged: z.boolean(),
         merged_at: z.string().nullable().optional(),
@@ -67,6 +81,7 @@ const pullRequestOutcomeSchema = z
         body: provider.pull_request.body,
         closed_at: provider.pull_request.closed_at,
         created_at: provider.pull_request.created_at,
+        draft: provider.pull_request.draft,
         id: provider.pull_request.id,
         merged: provider.pull_request.merged,
         merged_at: provider.pull_request.merged_at,
@@ -140,7 +155,13 @@ export function normalizeGitHubPullRequestOutcome(args: {
   const lifecycle = pullRequestLifecycleActionSchema.safeParse(args.body);
   if (
     !lifecycle.success ||
-    !["opened", "closed", "reopened"].includes(lifecycle.data.action)
+    ![
+      "opened",
+      "closed",
+      "reopened",
+      "ready_for_review",
+      "converted_to_draft",
+    ].includes(lifecycle.data.action)
   ) {
     return undefined;
   }
@@ -183,6 +204,7 @@ export function normalizeGitHubPullRequestOutcome(args: {
   return {
     candidateOwned,
     closedAt,
+    draft: pullRequest.draft,
     mergedAt,
     number: pullRequest.number,
     openedAt,

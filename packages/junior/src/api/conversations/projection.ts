@@ -212,6 +212,7 @@ export function conversationSummaryFromStoredConversation(args: {
   conversation: ConversationProjectionSource;
   durationMs: number;
   locationId?: string;
+  pullRequest?: ConversationSummaryReport["pullRequest"];
   teamDomainByTeamId?: ReadonlyMap<string, string>;
   usage?: ConversationUsage;
 }): ConversationSummaryReport {
@@ -265,6 +266,7 @@ export function conversationSummaryFromStoredConversation(args: {
     ...(args.auxiliaryCosts ? { auxiliaryCosts: args.auxiliaryCosts } : {}),
     ...(usage ? { cumulativeUsage: usage } : {}),
     ...(actorIdentity ? { actorIdentity } : {}),
+    ...(args.pullRequest ? { pullRequest: args.pullRequest } : {}),
     ...(sourceUrl ? { sourceUrl } : {}),
     ...(conversation.archivedAtMs
       ? { archivedAt: new Date(conversation.archivedAtMs).toISOString() }
