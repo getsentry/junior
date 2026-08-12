@@ -64,6 +64,7 @@ import {
   type TranscriptViewMode,
 } from "./transcriptRenderModel";
 import { transcriptEmptyClass } from "./transcriptStyles";
+import { SlackMark } from "./SlackMark";
 import {
   entryMatchesSearch,
   HighlightText,
@@ -206,10 +207,8 @@ function TranscriptMessageHeader(props: {
   const source =
     props.message.source ??
     (props.conversation.surface === "slack" ? "slack" : undefined);
-  const sourceLabel =
-    source === "slack" ? "Slack" : source === "web" ? "Dashboard" : undefined;
-  const metaParts = [sourceLabel, ...(props.meta ?? [])].filter(isString);
-  const metaText = metaParts.join(" · ");
+  const showSlack = source === "slack";
+  const metaText = (props.meta ?? []).filter(isString).join(" · ");
   const roleLabel = transcriptRoleLabel(props.message, props.conversation);
 
   return (
@@ -221,8 +220,14 @@ function TranscriptMessageHeader(props: {
       }
       leftClassName={transcriptRoleClass(props.message.role)}
       right={
-        metaText ? (
-          <TranscriptHeadingMeta className="block min-w-0 break-words text-2xs leading-snug text-dashboard-text-muted/80 md:leading-none">
+        showSlack || metaText ? (
+          <TranscriptHeadingMeta className="flex min-w-0 items-center gap-1.5 break-words text-2xs leading-snug text-dashboard-text-muted/80 md:leading-none">
+            {showSlack ? (
+              <span aria-label="Slack" className="inline-flex shrink-0" title="Slack">
+                <SlackMark className="size-3.5" />
+              </span>
+            ) : null}
+            {showSlack && metaText ? <span aria-hidden="true">·</span> : null}
             {metaText}
           </TranscriptHeadingMeta>
         ) : undefined

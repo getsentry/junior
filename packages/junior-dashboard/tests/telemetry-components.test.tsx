@@ -431,6 +431,38 @@ describe("dashboard canonical-event components", () => {
     expect(html).not.toContain("Morgan Lee");
   });
 
+  it("shows an icon only for non-native transcript sources", () => {
+    const slackHtml = renderTranscript(
+      conversation(
+        [
+          event(0, {
+            messageId: "slack-message",
+            role: "user",
+            text: "From Slack.",
+            type: "message",
+          }),
+        ],
+        { surface: "slack" },
+      ),
+    );
+    const webHtml = renderTranscript(
+      conversation([
+        event(0, {
+          messageId: "web-message",
+          role: "user",
+          source: "web",
+          text: "From the dashboard.",
+          type: "message",
+        }),
+      ]),
+    );
+
+    expect(slackHtml).toContain('aria-label="Slack"');
+    expect(slackHtml).not.toContain(">Slack<");
+    expect(webHtml).not.toContain("Dashboard");
+    expect(webHtml).not.toContain('aria-label="Slack"');
+  });
+
   it("omits status badges from conversation detail while retaining progress", () => {
     const activeClient = conversationQueryClient();
     activeClient.setQueryData(
