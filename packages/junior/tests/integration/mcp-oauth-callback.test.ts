@@ -15,8 +15,13 @@ import {
   createPluginAppFixture,
   type PluginAppFixture,
 } from "../fixtures/plugin-app";
-import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
-import { deliverAssistantMessagesForTest } from "../fixtures/agent-runner";
+import type { AgentRun } from "@/chat/agent/types";
+import type { AgentRunner } from "@/chat/runtime/agent-runner";
+import {
+  createModelAgentRunnerForRun,
+  neverRunAgentRunner,
+} from "../fixtures/agent-runner";
+import { createModelStream } from "../fixtures/model-stream";
 import {
   hydrateConversationMessages,
   persistConversationMessages,
@@ -43,9 +48,6 @@ async function seedVisibleTranscriptFromThreadState(
   await persistConversationMessages({ conversation, conversationId });
 }
 
-const executeAgentRunMock = vi.fn();
-const testAgentRunner = { run: executeAgentRunMock };
-
 const ORIGINAL_ENV = { ...process.env };
 const EVAL_MCP_PLUGIN_ROOT = path.resolve(
   import.meta.dirname,
@@ -65,18 +67,6 @@ function slackSource(threadTs: string) {
 
     visibility: "private",
   });
-}
-
-function makeDiagnostics() {
-  return {
-    assistantMessageCount: 1,
-    modelId: "fake-mcp-oauth-callback",
-    outcome: "success" as const,
-    toolCalls: [],
-    toolErrorCount: 0,
-    toolResultCount: 0,
-    usedPrimaryText: true,
-  };
 }
 
 type ConversationStateModule = typeof import("@/chat/state/conversation");
@@ -100,6 +90,8 @@ let pluginCatalogRuntimeModule: PluginCatalogRuntimeModule;
 let stateAdapterModule: StateAdapterModule;
 let turnSessionStoreModule: TurnSessionStoreModule;
 let pluginApp: PluginAppFixture | undefined;
+let agentRunner: AgentRunner;
+let agentRuns: AgentRun[];
 
 async function bindPendingAuthAttempt(args: {
   authSessionId: string;
@@ -200,16 +192,15 @@ async function createAwaitingMcpTurnRecord(args: {
 
 describe("mcp oauth callback integration", () => {
   beforeEach(async () => {
-    executeAgentRunMock.mockReset();
-    executeAgentRunMock.mockImplementation(async (request) => {
-      await deliverAssistantMessagesForTest(request, [
-        { text: "The budget deadline you mentioned earlier was Friday." },
+    agentRuns = [];
+    agentRunner = createModelAgentRunnerForRun((run) => {
+      agentRuns.push(run);
+      return createModelStream([
+        {
+          type: "text",
+          text: "The budget deadline you mentioned earlier was Friday.",
+        },
       ]);
-      return completedAgentRun({
-        text: "The budget deadline you mentioned earlier was Friday.",
-        sandboxRef: { id: "sandbox-1", profileHash: "hash-1" },
-        diagnostics: makeDiagnostics(),
-      });
     });
     resetSlackApiMockState();
     process.env = {
@@ -290,7 +281,7 @@ describe("mcp oauth callback integration", () => {
       await mcpOauthCallbackHarnessModule.completeMcpOauthCallbackRoute({
         provider: EVAL_MCP_AUTH_PROVIDER,
         authSessionId: authProvider.authSessionId,
-        agentRunner: testAgentRunner,
+        agentRunner: neverRunAgentRunner(),
         expectBackgroundWork: false,
         relayed: true,
       });
@@ -304,7 +295,6 @@ describe("mcp oauth callback integration", () => {
     ).resolves.toMatchObject({
       tokens: expect.objectContaining({ access_token: expect.any(String) }),
     });
-    expect(executeAgentRunMock).not.toHaveBeenCalled();
   });
 
   it("finalizes MCP OAuth and resumes the stored thread with persisted context", async () => {
@@ -485,7 +475,7 @@ describe("mcp oauth callback integration", () => {
       await mcpOauthCallbackHarnessModule.completeMcpOauthCallbackRoute({
         provider: EVAL_MCP_AUTH_PROVIDER,
         authSessionId: authProvider.authSessionId,
-        agentRunner: testAgentRunner,
+        agentRunner,
       });
 
     expect(response.status).toBe(200);
@@ -504,34 +494,29 @@ describe("mcp oauth callback integration", () => {
       refresh_token: "eval-auth-refresh-token",
     });
 
-    expect(executeAgentRunMock).toHaveBeenCalledWith(
+    expect(agentRuns).toHaveLength(1);
+    expect(agentRuns[0]).toEqual(
       expect.objectContaining({
         instruction: expect.objectContaining({
           text: "what did i say about the budget?",
           inboundAttachmentCount: 1,
           omittedImageAttachmentCount: 1,
-          context: expect.stringContaining(
-            "You need the budget by Friday.",
-          ),
+          context: expect.stringContaining("You need the budget by Friday."),
         }),
-          actor: {
-            platform: "slack",
-            teamId: "T123",
-            userId: "U123",
-          },
-          destination: SLACK_DESTINATION,
-          source: storedSource,
-          toolChannelId: "C123",
+        actor: {
+          platform: "slack",
+          teamId: "T123",
+          userId: "U123",
+        },
+        destination: SLACK_DESTINATION,
+        source: storedSource,
+        toolChannelId: "C123",
         state: expect.objectContaining({}),
       }),
     );
 
-    const resumeContext = executeAgentRunMock.mock.calls[0]?.[0] as {
-      instruction?: { context?: string };
-      environment?: { configuration?: Record<string, unknown> };
-      source?: unknown;
-    };
-    expect(resumeContext.instruction?.context).not.toContain(
+    const resumeContext = agentRuns[0]!;
+    expect(resumeContext.instruction.context).not.toContain(
       "what did i say about the budget?",
     );
     expect(resumeContext.environment?.configuration?.region).toBe("us");
@@ -722,7 +707,7 @@ describe("mcp oauth callback integration", () => {
         await mcpOauthCallbackHarnessModule.completeMcpOauthCallbackRoute({
           provider: EVAL_MCP_AUTH_PROVIDER,
           authSessionId: authProvider.authSessionId,
-          agentRunner: testAgentRunner,
+          agentRunner,
         });
 
       expect(response.status).toBe(200);
@@ -730,7 +715,8 @@ describe("mcp oauth callback integration", () => {
       getSpy.mockRestore();
     }
 
-    expect(executeAgentRunMock).toHaveBeenCalledWith(
+    expect(agentRuns).toHaveLength(1);
+    expect(agentRuns[0]).toEqual(
       expect.objectContaining({
         instruction: expect.objectContaining({
           text: "what did i say about the budget?",
@@ -738,18 +724,13 @@ describe("mcp oauth callback integration", () => {
             "Fresh MCP context loaded after the lock.",
           ),
         }),
-          destination: SLACK_DESTINATION,
-          toolChannelId: "C123",
+        destination: SLACK_DESTINATION,
+        toolChannelId: "C123",
       }),
     );
-    const resumeContext = executeAgentRunMock.mock.calls[0]?.[0] as {
-      instruction?: { context?: string };
-      source?: unknown;
-    };
-    expect(resumeContext.source).toEqual(
-      slackSource("1700000000.005"),
-    );
-    expect(resumeContext.instruction?.context).not.toContain(
+    const resumeContext = agentRuns[0]!;
+    expect(resumeContext.source).toEqual(slackSource("1700000000.005"));
+    expect(resumeContext.instruction.context).not.toContain(
       "Old MCP context that should not be used.",
     );
     expect(getCapturedSlackApiCalls("reactions.add")).toEqual([
@@ -836,11 +817,10 @@ describe("mcp oauth callback integration", () => {
       await mcpOauthCallbackHarnessModule.completeMcpOauthCallbackRoute({
         provider: EVAL_MCP_AUTH_PROVIDER,
         authSessionId: authProvider.authSessionId,
-        agentRunner: testAgentRunner,
+        agentRunner: neverRunAgentRunner(),
       });
 
     expect(response.status).toBe(200);
-    expect(executeAgentRunMock).not.toHaveBeenCalled();
     expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(0);
 
     const persistedState = await stateAdapterModule
@@ -904,11 +884,10 @@ describe("mcp oauth callback integration", () => {
       await mcpOauthCallbackHarnessModule.completeMcpOauthCallbackRoute({
         provider: EVAL_MCP_AUTH_PROVIDER,
         authSessionId: authProvider.authSessionId,
-        agentRunner: testAgentRunner,
+        agentRunner: neverRunAgentRunner(),
       });
 
     expect(response.status).toBe(200);
-    expect(executeAgentRunMock).not.toHaveBeenCalled();
     expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(0);
   });
 });
