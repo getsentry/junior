@@ -169,3 +169,20 @@ export function Tooltip({
     </span>
   );
 }
+
+/** Compact label tooltip for icon-only controls such as header actions. */
+export function IconButtonTooltip(props: {
+  children: ReactElement;
+  label: string;
+  placement?: "above" | "below";
+}) {
+  return (
+    <Tooltip
+      className="min-w-0 rounded-md border border-white/15 bg-dashboard-surface-raised px-2.5 py-1.5 font-sans text-xs leading-none text-dashboard-text shadow-2xl shadow-black/70"
+      content={props.label}
+      placement={props.placement ?? "above"}
+    >
+      {props.children}
+    </Tooltip>
+  );
+}

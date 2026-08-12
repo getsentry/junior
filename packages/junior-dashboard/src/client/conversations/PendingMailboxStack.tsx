@@ -2,7 +2,6 @@ import type { ReactElement, ReactNode } from "react";
 import { Clock3, SkipForward, type LucideIcon } from "lucide-react";
 import type { ConversationPendingMessage } from "@sentry/junior/api/schema";
 
-import { cn } from "../styles";
 import { Tooltip } from "../components/Tooltip";
 import { transcriptMessageActorLabel } from "../format";
 import type { ConversationTranscript, TranscriptViewMessage } from "../types";
@@ -71,7 +70,6 @@ function PendingMetaIcons(props: {
 function PendingRow(props: {
   conversation: ConversationTranscript;
   message: TranscriptViewMessage;
-  showDivider: boolean;
 }) {
   const textPart = props.message.parts.find((part) => part.type === "text");
   const redacted = Boolean(
@@ -89,12 +87,7 @@ function PendingRow(props: {
   const showSlack = showsSlackSourceIcon(props.message, props.conversation);
 
   return (
-    <article
-      className={cn(
-        "grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 px-3 py-2 text-dashboard-text md:px-3.5",
-        props.showDivider && "border-t border-white/[0.06]",
-      )}
-    >
+    <article className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 px-3 py-2 text-dashboard-text md:px-3.5">
       <TranscriptHeadingRow
         left={
           <span className="inline-block max-w-full truncate font-display text-sm font-semibold leading-tight text-dashboard-text">
@@ -152,7 +145,6 @@ export function PendingMailboxStack(props: {
             conversation={props.conversation}
             key={message.messageId ?? `${message.sourceSeq}:${index}`}
             message={message}
-            showDivider={index > 0}
           />
         ))}
         {collapsedCount > 0 ? (

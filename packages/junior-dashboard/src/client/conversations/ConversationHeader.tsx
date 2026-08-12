@@ -12,6 +12,7 @@ import {
 import { Button, ToggleButton } from "../components/Button";
 import { Drawer } from "../components/Drawer";
 import { SearchInput } from "../components/SearchInput";
+import { IconButtonTooltip } from "../components/Tooltip";
 import { cn } from "../styles";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
 
@@ -245,21 +246,22 @@ function ViewModeButton(props: {
   onClick(): void;
 }) {
   return (
-    <ToggleButton
-      aria-label={props.label}
-      className={cn(
-        "!normal-case !no-underline grid size-7 place-items-center rounded px-0 py-0",
-        props.active
-          ? "bg-white/[0.08] text-dashboard-text"
-          : "text-dashboard-text-muted",
-      )}
-      onClick={props.onClick}
-      pressed={props.active}
-      title={props.label}
-      variant="text"
-    >
-      {props.children}
-    </ToggleButton>
+    <IconButtonTooltip label={props.label}>
+      <ToggleButton
+        aria-label={props.label}
+        className={cn(
+          "!normal-case !no-underline grid size-7 place-items-center rounded px-0 py-0",
+          props.active
+            ? "bg-white/[0.08] text-dashboard-text"
+            : "text-dashboard-text-muted",
+        )}
+        onClick={props.onClick}
+        pressed={props.active}
+        variant="text"
+      >
+        {props.children}
+      </ToggleButton>
+    </IconButtonTooltip>
   );
 }
 
@@ -270,20 +272,21 @@ function HeaderIconButton(props: {
   pressed?: boolean;
 }) {
   return (
-    <Button
-      aria-label={props.label}
-      aria-pressed={props.pressed}
-      className={cn(
-        "text-dashboard-text-muted",
-        props.pressed && "bg-white/10 text-dashboard-text",
-      )}
-      onClick={props.onClick}
-      size="icon"
-      title={props.label}
-      type="button"
-    >
-      {props.children}
-    </Button>
+    <IconButtonTooltip label={props.label}>
+      <Button
+        aria-label={props.label}
+        aria-pressed={props.pressed}
+        className={cn(
+          "text-dashboard-text-muted",
+          props.pressed && "bg-white/10 text-dashboard-text",
+        )}
+        onClick={props.onClick}
+        size="icon"
+        type="button"
+      >
+        {props.children}
+      </Button>
+    </IconButtonTooltip>
   );
 }
 
@@ -300,16 +303,18 @@ function ArchiveConversationButton(props: {
       : "Archive";
   const Icon = props.archived ? ArchiveRestore : Archive;
   return (
-    <Button
-      aria-label={label}
-      className="hidden shrink-0 text-dashboard-text-muted md:grid"
-      disabled={props.disabled}
-      onClick={props.onClick}
-      size="icon"
-      title={label}
-      type="button"
-    >
-      <Icon aria-hidden="true" size={15} strokeWidth={2} />
-    </Button>
+    <IconButtonTooltip label={label}>
+      <Button
+        aria-label={label}
+        className="hidden shrink-0 text-dashboard-text-muted md:grid"
+        disabled={props.disabled}
+        onClick={props.onClick}
+        size="icon"
+        type="button"
+      >
+        <Icon aria-hidden="true" size={15} strokeWidth={2} />
+      </Button>
+    </IconButtonTooltip>
   );
 }
+
