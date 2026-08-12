@@ -253,6 +253,8 @@ jobs:
     name: test / dashboard e2e
     runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
+    # Healthy runs finish in ~2-3m; keep a hard cap so install/test hangs fail fast.
+    timeout-minutes: 10
     if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.dashboard == 'true' || needs.changes.outputs.full == 'true'
     env:
       DATABASE_URL: postgres://junior:junior@localhost:5432/junior
