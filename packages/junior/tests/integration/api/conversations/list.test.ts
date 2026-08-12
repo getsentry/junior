@@ -382,6 +382,108 @@ describe("conversation list API", () => {
     }
   });
 
+  test("includes conversations where the viewer authored a durable user message", async () => {
+    const fixture = createConfiguredJuniorSqlFixture();
+    const store = createSqlStore(fixture.sql);
+    try {
+      await migrateSchema(fixture.sql);
+      await store.recordActivity({
+        actor: {
+          email: "owner@example.com",
+          platform: "slack",
+          slackUserId: "U-OWNER",
+          teamId: "T1",
+        },
+        conversationId: "slack:C1:shared-thread",
+        nowMs: 5_000,
+        source: "slack",
+      });
+      await store.recordActivity({
+        actor: {
+          email: "other@example.com",
+          platform: "slack",
+          slackUserId: "U-OTHER",
+          teamId: "T1",
+        },
+        conversationId: "slack:C1:unrelated",
+        nowMs: 4_000,
+        source: "slack",
+      });
+
+      const participant = await fixture.sql
+        .db()
+        .insert(juniorUsers)
+        .values({
+          id: "user-participant",
+          createdAt: new Date(1_000),
+          displayName: "Participant",
+          primaryEmail: "participant@example.com",
+          primaryEmailNormalized: "participant@example.com",
+          updatedAt: new Date(1_000),
+        })
+        .returning({ id: juniorUsers.id });
+      const participantUserId = participant[0]?.id;
+      expect(participantUserId).toBeDefined();
+      await fixture.sql.db().insert(juniorIdentities).values({
+        id: "identity-participant-slack",
+        createdAt: new Date(1_000),
+        email: "participant@example.com",
+        emailNormalized: "participant@example.com",
+        emailVerified: true,
+        kind: "user",
+        provider: "slack",
+        providerSubjectId: "U-PARTICIPANT",
+        providerTenantId: "T1",
+        updatedAt: new Date(1_000),
+        userId: participantUserId!,
+      });
+      await fixture.sql.db().insert(juniorConversationEvents).values({
+        conversationId: "slack:C1:shared-thread",
+        createdAt: new Date(5_500),
+        historyVersion: 0,
+        payload: {
+          messageId: "1786500342.616849",
+          meta: {
+            author: {
+              fullName: "Participant",
+              isBot: false,
+              userId: "U-PARTICIPANT",
+              userName: "participant",
+            },
+            explicitMention: true,
+          },
+          role: "user",
+          text: "@junior make urls clickable",
+          type: "message",
+        },
+        seq: 0,
+        type: "message",
+      });
+
+      const viewer = {
+        ...testViewer("participant@example.com"),
+        id: participantUserId!,
+      };
+      const feed = await readConversationFeedFromSql({
+        viewer,
+        limit: 10,
+      });
+
+      expect(feed.conversations.map((item) => item.conversationId)).toEqual([
+        "slack:C1:shared-thread",
+      ]);
+      expect(feed.conversations[0]).toMatchObject({
+        actorIdentity: expect.objectContaining({
+          slackUserId: "U-OWNER",
+        }),
+        conversationId: "slack:C1:shared-thread",
+        isParticipant: true,
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
+
   test("excludes children from the feed and rolls their usage into the root", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
     const store = createSqlStore(fixture.sql);
