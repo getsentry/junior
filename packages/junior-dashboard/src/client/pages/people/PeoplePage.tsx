@@ -52,7 +52,11 @@ export function PeoplePageContent(props: {
   );
   const deferredSort = useDeferredValue(sort);
   if (!props.data && !props.error) {
-    return <LoadingView label="Loading people" />;
+    return (
+      <SystemPageLayout>
+        <LoadingView label="Loading people" />
+      </SystemPageLayout>
+    );
   }
 
   const data = props.data;

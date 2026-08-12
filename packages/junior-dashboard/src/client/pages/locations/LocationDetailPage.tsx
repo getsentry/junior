@@ -30,7 +30,11 @@ export function LocationDetailPageContent(props: {
   error: unknown;
 }) {
   if (!props.data && !props.error) {
-    return <LoadingView label="Loading location" />;
+    return (
+      <SystemPageLayout>
+        <LoadingView label="Loading location" />
+      </SystemPageLayout>
+    );
   }
   return (
     <SystemPageLayout>
