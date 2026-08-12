@@ -25,6 +25,9 @@ export const EVAL_MCP_AUTH_NOTICE = /I need access to Eval Auth to continue/;
 /** Canonical Eval Auth tool name used by orchestration suites. */
 export const EVAL_AUTH_TOOL_NAME = "mcp__eval-auth__budget-echo";
 
+/** Canonical open MCP tool name used by orchestration suites. */
+export const EVAL_MCP_OPEN_TOOL_NAME = "mcp__eval-mcp-open__handbook-search";
+
 /** Search connects the auth MCP provider; missing credentials park for auth. */
 export function streamMcpSearch(replyAfterConnect: string) {
   return streamScript(
@@ -62,6 +65,24 @@ export function streamOpenMcpSearch(replyAfterConnect: string) {
       args: { provider: EVAL_MCP_NO_AUTH_PROVIDER, query: "handbook" },
     },
     replyAfterConnect,
+  );
+}
+
+/** Search discloses the open MCP tool before the same turn calls it. */
+export function streamOpenMcpSearchAndCall(replyAfterCall: string) {
+  return streamScript(
+    {
+      tool: "searchMcpTools",
+      args: { provider: EVAL_MCP_NO_AUTH_PROVIDER, query: "handbook" },
+    },
+    {
+      tool: "callMcpTool",
+      args: {
+        tool_name: EVAL_MCP_OPEN_TOOL_NAME,
+        arguments: { query: "holidays" },
+      },
+    },
+    replyAfterCall,
   );
 }
 
@@ -195,9 +216,9 @@ export async function connectSlackMcpActor(args: {
   });
   await expectMcpAuthCleared();
   await expectMcpAuthCredentialsStored(args.userId);
-  expect(
-    args.harness.replies().some((text) => text.includes(replyText)),
-  ).toBe(true);
+  expect(args.harness.replies().some((text) => text.includes(replyText))).toBe(
+    true,
+  );
 }
 
 /** Assert pending MCP auth was cleared after a successful connect/resume. */
@@ -214,9 +235,9 @@ export async function expectMcpAuthCredentialsStored(
   userId: string,
   provider = EVAL_MCP_AUTH_PROVIDER,
 ): Promise<void> {
-  await expect(getMcpStoredOAuthCredentials(userId, provider)).resolves.toMatchObject(
-    {
-      tokens: expect.objectContaining({ access_token: expect.any(String) }),
-    },
-  );
+  await expect(
+    getMcpStoredOAuthCredentials(userId, provider),
+  ).resolves.toMatchObject({
+    tokens: expect.objectContaining({ access_token: expect.any(String) }),
+  });
 }

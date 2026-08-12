@@ -1,11 +1,15 @@
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { http, HttpResponse } from "msw";
 import {
   deleteMcpStoredOAuthCredentials,
   getMcpStoredOAuthCredentials,
 } from "@/chat/mcp/auth-store";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { listTurnSummaries } from "@/chat/task-execution/checkpoint";
+import {
+  getTurnRecord,
+  listTurnSummaries,
+} from "@/chat/task-execution/checkpoint";
 import {
   CONVERSATION_ID,
   createConversationWorkSlackHarness,
@@ -16,6 +20,7 @@ import {
   completeLatestMcpAuth,
   connectSlackMcpActor,
   EVAL_MCP_AUTH_NOTICE,
+  EVAL_MCP_OPEN_TOOL_NAME,
   expectMcpAuthCleared,
   expectMcpAuthCredentialsStored,
   expectNoSlackMcpAuth,
@@ -23,6 +28,7 @@ import {
   streamMcpSearch,
   streamMcpSearchAndCall,
   streamOpenMcpSearch,
+  streamOpenMcpSearchAndCall,
 } from "../fixtures/mcp-auth-orchestration";
 import {
   createPluginAppFixture,
@@ -30,9 +36,10 @@ import {
 } from "../fixtures/plugin-app";
 import { EVAL_MCP_AUTH_PROVIDER } from "../msw/handlers/eval-mcp-auth";
 import { resetSlackApiMockState } from "../msw/handlers/slack-api";
+import { mswServer } from "../msw/server";
 
 /**
- * MCP auth behavior through the durable queue.
+ * MCP behavior through the durable queue.
  * See https://github.com/getsentry/junior/issues/1377
  *
  * Common user behaviors only. Fake model stream + Slack HTTP. Real ingress,
@@ -52,7 +59,7 @@ const EVAL_MCP_OPEN_PLUGIN_ROOT = path.resolve(
 const ALICE = "UALICE";
 const BOB = "UBOB";
 
-describe("mcp auth orchestration", () => {
+describe("mcp orchestration", () => {
   let pluginApp: PluginAppFixture | undefined;
 
   beforeEach(async () => {
@@ -98,6 +105,77 @@ describe("mcp auth orchestration", () => {
     ).resolves.toBeUndefined();
   });
 
+  it("searches and calls an open MCP tool through the durable agent loop", async () => {
+    process.env.AI_GATEWAY_API_KEY = "test-gateway-key";
+    mswServer.use(
+      http.post("https://ai-gateway.vercel.sh/v3/ai/language-model", () =>
+        HttpResponse.json({
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                decision: "allow",
+                reason: "The user requested this read-only handbook lookup.",
+                riskLevel: "low",
+                userAuthorization: "high",
+              }),
+            },
+          ],
+          finishReason: { unified: "stop", raw: "stop" },
+          usage: {
+            inputTokens: {
+              total: 1,
+              noCache: 1,
+              cacheRead: 0,
+              cacheWrite: 0,
+            },
+            outputTokens: { total: 1, text: 1, reasoning: 0 },
+          },
+        }),
+      ),
+    );
+    const q = await createConversationWorkSlackHarness({
+      modelStream: streamOpenMcpSearchAndCall("Holiday lookup complete."),
+    });
+
+    await q.mention(ALICE, "use eval-mcp-open to look up holidays");
+    await q.drain();
+
+    expectNoSlackMcpAuth(ALICE, q);
+    await expectMcpAuthCleared();
+    expect(q.replies().at(-1)).toContain("Holiday lookup complete.");
+    await expect(
+      getTurnRecord(CONVERSATION_ID, "turn_1712345_0001"),
+    ).resolves.toMatchObject({
+      state: "completed",
+      piMessages: expect.arrayContaining([
+        expect.objectContaining({
+          role: "toolResult",
+          toolName: "searchMcpTools",
+          isError: false,
+          details: expect.objectContaining({
+            tools: [
+              expect.objectContaining({
+                tool_name: EVAL_MCP_OPEN_TOOL_NAME,
+              }),
+            ],
+          }),
+        }),
+        expect.objectContaining({
+          role: "toolResult",
+          toolName: "callMcpTool",
+          isError: false,
+          content: [
+            {
+              type: "text",
+              text: 'Handbook result for "holidays": US holidays follow the published company holiday calendar.',
+            },
+          ],
+        }),
+      ]),
+    });
+  });
+
   it("searches before calling, parks for OAuth, and resumes the same turn", async () => {
     const q = await createConversationWorkSlackHarness({
       modelStream: streamMcpSearchAndCall("Eval Auth tool completed."),
@@ -116,9 +194,7 @@ describe("mcp auth orchestration", () => {
       q.replies().some((text) => text.includes("Eval Auth tool completed")),
     ).toBe(true);
     await expect(listTurnSummaries(CONVERSATION_ID)).resolves.toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ state: "completed" }),
-      ]),
+      expect.arrayContaining([expect.objectContaining({ state: "completed" })]),
     );
   });
 
@@ -156,13 +232,15 @@ describe("mcp auth orchestration", () => {
     await q.drain();
 
     await expectSlackMcpAuthParked({ userId: ALICE, harness: q });
-    expect(q.authLinksFor(ALICE).length).toBeGreaterThan(aliceLinksAfterConnect);
+    expect(q.authLinksFor(ALICE).length).toBeGreaterThan(
+      aliceLinksAfterConnect,
+    );
 
     await completeLatestMcpAuth({ userId: ALICE, agentRunner: q.agentRunner });
     expect(
-      q.replies().some((text) =>
-        text.includes("Reconnected after missing credentials"),
-      ),
+      q
+        .replies()
+        .some((text) => text.includes("Reconnected after missing credentials")),
     ).toBe(true);
   });
 
@@ -174,10 +252,7 @@ describe("mcp auth orchestration", () => {
 
     // Bob's request never calls Eval Auth. Prior Alice MCP history must not force him to auth.
     q.setModelStream(
-      streamScript(
-        { tool: "systemTime", args: {} },
-        "Deploy looks fine.",
-      ),
+      streamScript({ tool: "systemTime", args: {} }, "Deploy looks fine."),
     );
     await q.mention(BOB, "what time is it for the deploy?");
     await q.drain();
@@ -260,7 +335,9 @@ describe("mcp auth orchestration", () => {
 
     expect(q.authLinksFor(ALICE)).toHaveLength(aliceLinksWhilePending);
     expect(q.replies().at(-1)).toContain("Okay, never mind.");
-    expect(q.replies().filter((text) => EVAL_MCP_AUTH_NOTICE.test(text))).toHaveLength(1);
+    expect(
+      q.replies().filter((text) => EVAL_MCP_AUTH_NOTICE.test(text)),
+    ).toHaveLength(1);
   });
 
   it("does not hand pending MCP auth to a passive bystander while the owner waits", async () => {
@@ -278,7 +355,9 @@ describe("mcp auth orchestration", () => {
     await q.drain();
 
     // Bob stays context. Alice remains the pending auth owner.
-    expect((await loadConversationState()).processing.pendingAuth).toMatchObject({
+    expect(
+      (await loadConversationState()).processing.pendingAuth,
+    ).toMatchObject({
       kind: "mcp",
       provider: EVAL_MCP_AUTH_PROVIDER,
       actorId: ALICE,
@@ -372,7 +451,9 @@ describe("mcp auth orchestration", () => {
     await expectMcpAuthCleared();
     expectNoSlackMcpAuth(ALICE, q);
     // Only Bob's Eval Auth auth notice — never a second auth from restore.
-    expect(q.replies().filter((text) => EVAL_MCP_AUTH_NOTICE.test(text))).toHaveLength(1);
+    expect(
+      q.replies().filter((text) => EVAL_MCP_AUTH_NOTICE.test(text)),
+    ).toHaveLength(1);
     expect(
       q.replies().some((text) => text.includes("Bob Eval Auth is connected")),
     ).toBe(true);

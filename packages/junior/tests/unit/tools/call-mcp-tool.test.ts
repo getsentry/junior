@@ -39,6 +39,27 @@ describe("callMcpTool", () => {
     );
   });
 
+  it("rejects an MCP tool that search has not disclosed", async () => {
+    const manager = {
+      activateProvider: vi.fn(async () => true),
+      getResolvedActiveTools: vi.fn(() => []),
+    };
+    const callMcpTool = createCallMcpToolTool(manager);
+
+    await expect(
+      callMcpTool.execute!(
+        {
+          tool_name: "mcp__demo__ping",
+          arguments: { query: "hello" },
+        },
+        {},
+      ),
+    ).rejects.toThrow(
+      'Call searchMcpTools with provider "demo" to refresh the catalog',
+    );
+    expect(manager.activateProvider).not.toHaveBeenCalled();
+  });
+
   it("advertises nested MCP arguments as an object", () => {
     const manager = {
       activateProvider: vi.fn(async () => true),
