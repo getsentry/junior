@@ -336,9 +336,8 @@ describe("slack channel tools", () => {
       files: [{ path: "/tmp/report.txt" }],
     });
 
-    expect(result).toMatchObject({
-      channel_id: "C123",
-      file_count: 1,
+    expect(result).toEqual({
+      attachment_refs: [],
     });
     expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(0);
     expect(
@@ -374,8 +373,8 @@ describe("slack channel tools", () => {
       filename: generatedArtifact.filename,
       length: String(imageBytes.byteLength),
     });
-    expect(result).toMatchObject({
-      file_count: 1,
+    expect(result).toEqual({
+      attachment_refs: [],
     });
   });
 
@@ -397,10 +396,8 @@ describe("slack channel tools", () => {
       files: [{ path: "/tmp/report.txt" }],
     });
 
-    expect(result).toMatchObject({
-      channel_id: "D123",
-      thread_ts: "1700000000.321",
-      file_count: 1,
+    expect(result).toEqual({
+      attachment_refs: [],
     });
     expect(
       getCapturedSlackApiCalls("files.completeUploadExternal")[0]?.params,
@@ -425,10 +422,8 @@ describe("slack channel tools", () => {
       files: [{ path: "/tmp/report.txt" }],
     });
 
-    expect(result).toMatchObject({
-      channel_id: "C123",
-      thread_ts: "1700000000.321",
-      file_count: 1,
+    expect(result).toEqual({
+      attachment_refs: [],
     });
     expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(0);
     expect(
@@ -461,10 +456,8 @@ describe("slack channel tools", () => {
       ],
     });
 
-    expect(result).toMatchObject({
-      channel_id: "C123",
-      thread_ts: "1700000000.321",
-      file_count: 1,
+    expect(result).toEqual({
+      attachment_refs: [],
     });
     expect(
       getCapturedSlackApiCalls("files.completeUploadExternal")[0]?.params,

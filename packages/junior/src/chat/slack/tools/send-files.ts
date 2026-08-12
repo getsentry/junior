@@ -23,8 +23,6 @@ export type MaterializeFile = (
 ) => Promise<SandboxFileUpload>;
 
 const sendFilesResultSchema = juniorToolOutputSchema.extend({
-  target: z.string().min(1),
-  channel_id: z.string().min(1),
   deduplicated: z.boolean().optional(),
   attachment_refs: z.array(
     z.object({
@@ -32,8 +30,6 @@ const sendFilesResultSchema = juniorToolOutputSchema.extend({
       name: z.string().min(1),
     }),
   ),
-  file_count: z.number().int().nonnegative(),
-  thread_ts: z.string().min(1),
 });
 
 type SendFilesResult = z.output<typeof sendFilesResultSchema>;
@@ -138,14 +134,10 @@ export function createSendFilesTool(
         threadTs,
       });
       const response: SendFilesResult = {
-        target: `${activeChannelId}:${threadTs}`,
         attachment_refs: stored.map((attachment, index) => ({
           id: attachment.id,
           name: materializedFiles[index]!.filename,
         })),
-        channel_id: activeChannelId,
-        thread_ts: threadTs,
-        file_count: uploads.length,
       };
       state.setOperationResult(operationKey, response);
       return response;
