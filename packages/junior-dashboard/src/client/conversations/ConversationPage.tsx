@@ -200,6 +200,7 @@ export function ConversationPage(props: {
               />
             ) : null}
             <ConversationComposer
+              draftId={conversationId}
               error={
                 appendMessage.error
                   ? "Could not send the message. Try again."

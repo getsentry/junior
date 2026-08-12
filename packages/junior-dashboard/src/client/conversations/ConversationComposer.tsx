@@ -12,19 +12,33 @@ import { Button } from "../components/Button";
 
 const MOBILE_COMPOSER_MAX_HEIGHT_PX = 112;
 const DESKTOP_MEDIA_QUERY = "(min-width: 768px)";
+const DRAFT_STORAGE_PREFIX = "junior:dashboard:conversation-draft:";
+
+type ConversationDraft = {
+  idempotencyKey: string;
+  text: string;
+};
 
 /** Render the dashboard message composer for a new or existing conversation. */
 export function ConversationComposer(props: {
+  draftId: string;
   error?: string;
   label: string;
   pending: boolean;
   submitLabel: string;
   onSubmit(message: string, idempotencyKey: string): Promise<void>;
 }) {
-  const [message, setMessage] = useState("");
+  const storageKey = `${DRAFT_STORAGE_PREFIX}${encodeURIComponent(props.draftId)}`;
+  const [draft, setDraft] = useState<ConversationDraft>(() =>
+    readStoredDraft(storageKey),
+  );
+  const message = draft.text;
   const id = useId();
-  const submission = useRef({ idempotencyKey: crypto.randomUUID(), text: "" });
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    storeDraft(storageKey, draft);
+  }, [draft, storageKey]);
 
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -53,15 +67,13 @@ export function ConversationComposer(props: {
     event?.preventDefault();
     const text = message.trim();
     if (!text || props.pending) return;
-    if (submission.current.text !== text) {
-      submission.current = { idempotencyKey: crypto.randomUUID(), text };
-    }
     try {
-      await props.onSubmit(text, submission.current.idempotencyKey);
-      setMessage("");
-      submission.current = { idempotencyKey: crypto.randomUUID(), text: "" };
+      await props.onSubmit(text, draft.idempotencyKey);
+      clearStoredDraft(storageKey);
+      setDraft(emptyDraft());
     } catch {
-      // The parent renders the mutation error and keeps the draft for retry.
+      // The parent renders the mutation error. The stored draft keeps the same
+      // idempotency key so a retry after reload cannot duplicate the message.
     }
   };
 
@@ -74,9 +86,16 @@ export function ConversationComposer(props: {
 
   return (
     <div className="grid min-w-0 gap-1.5">
-      {props.error ? (
-        <div className="min-w-0 font-mono text-xs leading-relaxed text-red-300/80">
-          {props.error}
+      {props.error || props.pending ? (
+        <div
+          aria-live="polite"
+          className={
+            props.error
+              ? "min-w-0 font-mono text-xs leading-relaxed text-red-300/80"
+              : "min-w-0 font-mono text-xs leading-relaxed text-dashboard-text-muted"
+          }
+        >
+          {props.error ?? "Sending message…"}
         </div>
       ) : null}
       <form
@@ -91,7 +110,12 @@ export function ConversationComposer(props: {
           disabled={props.pending}
           id={id}
           maxLength={32_000}
-          onChange={(event) => setMessage(event.target.value)}
+          onChange={(event) =>
+            setDraft({
+              idempotencyKey: crypto.randomUUID(),
+              text: event.target.value,
+            })
+          }
           onKeyDown={handleKeyDown}
           placeholder="Message Junior…"
           ref={textareaRef}
@@ -117,4 +141,55 @@ export function ConversationComposer(props: {
       </form>
     </div>
   );
+}
+
+function emptyDraft(): ConversationDraft {
+  return { idempotencyKey: crypto.randomUUID(), text: "" };
+}
+
+function readStoredDraft(storageKey: string): ConversationDraft {
+  if (typeof window === "undefined") return emptyDraft();
+  try {
+    const stored = window.localStorage.getItem(storageKey);
+    if (!stored) return emptyDraft();
+    const draft: unknown = JSON.parse(stored);
+    if (
+      typeof draft === "object" &&
+      draft !== null &&
+      "idempotencyKey" in draft &&
+      typeof draft.idempotencyKey === "string" &&
+      "text" in draft &&
+      typeof draft.text === "string"
+    ) {
+      return {
+        idempotencyKey: draft.idempotencyKey,
+        text: draft.text.slice(0, 32_000),
+      };
+    }
+  } catch {
+    // Storage can be unavailable in private browsing or contain stale data.
+  }
+  return emptyDraft();
+}
+
+function storeDraft(storageKey: string, draft: ConversationDraft): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (draft.text) {
+      window.localStorage.setItem(storageKey, JSON.stringify(draft));
+    } else {
+      window.localStorage.removeItem(storageKey);
+    }
+  } catch {
+    // Keep the in-memory composer usable when storage is unavailable.
+  }
+}
+
+function clearStoredDraft(storageKey: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(storageKey);
+  } catch {
+    // The successful send still clears the in-memory draft below.
+  }
 }

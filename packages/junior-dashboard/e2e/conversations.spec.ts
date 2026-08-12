@@ -178,6 +178,7 @@ test("starts and continues conversations from the dashboard", async ({
   await page.route("**/api/conversations/*/messages", async (route) => {
     continueRequests.push(route.request().postDataJSON());
     if (continueRequests.length === 1) {
+      await new Promise((resolve) => setTimeout(resolve, 200));
       await route.fulfill({
         json: { error: "temporary failure" },
         status: 500,
@@ -234,14 +235,22 @@ test("starts and continues conversations from the dashboard", async ({
     .getByLabel("Continue this conversation")
     .fill("Continue in Junior");
   await page.getByRole("button", { name: "Send" }).click();
+  await expect(page.getByText("Sending message…")).toBeVisible();
   await expect(page.getByText("Could not send the message.")).toBeVisible();
+  const failedIdempotencyKey = continueRequests[0]?.idempotencyKey;
+  expect(continueRequests[0]?.message).toBe("Continue in Junior");
+  expect(failedIdempotencyKey).toBeTruthy();
+
+  await page.reload();
+  const restoredComposer = page.getByLabel("Continue this conversation");
+  await expect(restoredComposer).toHaveValue("Continue in Junior");
   await page.getByRole("button", { name: "Send" }).click();
   await expect.poll(() => continueRequests.length).toBe(2);
-  expect(continueRequests[0]?.message).toBe("Continue in Junior");
-  expect(continueRequests[0]?.idempotencyKey).toBeTruthy();
-  expect(continueRequests[1]?.idempotencyKey).toBe(
-    continueRequests[0]?.idempotencyKey,
-  );
+  expect(continueRequests[1]?.idempotencyKey).toBe(failedIdempotencyKey);
+  await expect(restoredComposer).toHaveValue("");
+
+  await page.reload();
+  await expect(page.getByLabel("Continue this conversation")).toHaveValue("");
 });
 
 test("positions a long cost tooltip clear of its metric", async ({ page }) => {

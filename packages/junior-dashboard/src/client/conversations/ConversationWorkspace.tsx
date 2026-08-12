@@ -211,6 +211,7 @@ function NewConversationView(props: {
           </div>
         </div>
         <ConversationComposer
+          draftId="new"
           error={props.error}
           label="Start a conversation"
           pending={props.pending}
