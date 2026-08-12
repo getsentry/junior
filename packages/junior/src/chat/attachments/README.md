@@ -19,6 +19,9 @@ This module owns durable files linked to a conversation.
 - Conversation purge marks attachments for deletion in the same SQL transaction.
 - Store rejects writes into a purged conversation and marks any raced insert for
   deletion before failing, so concurrent sendFiles cannot leave a durable orphan.
+- Post-insert purge handling stays outside the insert cleanup catch, so a later
+  non-insert error cannot delete the blob for a row that already committed.
+- Reuse of another writer's live row also checks purge before reporting success.
 - The retention job deletes object keys for purge-marked rows and for rows owned
   by purged conversations, then removes those SQL rows. A failed blob delete
   leaves the eligible row for the next run.

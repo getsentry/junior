@@ -81,6 +81,58 @@ async function isConversationPurged(
   return row?.transcriptPurgedAt != null;
 }
 
+function purgedConversationError(conversationId: string): Error {
+  return new Error(
+    `Cannot store attachment for purged conversation ${conversationId}`,
+  );
+}
+
+async function assertConversationNotPurged(
+  db: JuniorSqlDatabase,
+  conversationId: string,
+): Promise<void> {
+  if (await isConversationPurged(db, conversationId)) {
+    throw purgedConversationError(conversationId);
+  }
+}
+
+/** Mark a just-written row for deletion and drop its unused object. */
+async function rejectPurgedAttachmentWrite(args: {
+  conversationId: string;
+  db: JuniorSqlDatabase;
+  id: string;
+  now: Date;
+  storage: AttachmentStorage;
+  storageKey: string;
+}): Promise<never> {
+  await args.db
+    .db()
+    .update(juniorAttachments)
+    .set({ deleteRequestedAt: args.now })
+    .where(eq(juniorAttachments.id, args.id));
+  await bestEffortDelete(args.storage, args.storageKey);
+  throw purgedConversationError(args.conversationId);
+}
+
+/**
+ * Return another writer's live row only when the conversation is still active.
+ *
+ * The caller already wrote a unique object for this attempt. Delete that unused
+ * object either way. If the conversation is purged, do not report success for a
+ * row that purge/GC is about to remove.
+ */
+async function reuseLiveAttachment(args: {
+  conversationId: string;
+  db: JuniorSqlDatabase;
+  id: string;
+  storage: AttachmentStorage;
+  storageKey: string;
+}): Promise<StoredAttachment> {
+  await bestEffortDelete(args.storage, args.storageKey);
+  await assertConversationNotPurged(args.db, args.conversationId);
+  return { id: args.id };
+}
+
 /**
  * Persist one conversation-owned file.
  *
@@ -134,20 +186,12 @@ export async function storeAttachment(args: {
       throw new Error(`Attachment write conflicts with ${existing.id}`);
     }
     if (existing.deleteRequestedAt === null) {
-      if (await isConversationPurged(args.db, args.conversationId)) {
-        throw new Error(
-          `Cannot store attachment for purged conversation ${args.conversationId}`,
-        );
-      }
+      await assertConversationNotPurged(args.db, args.conversationId);
       return { id: existing.id };
     }
   }
 
-  if (await isConversationPurged(args.db, args.conversationId)) {
-    throw new Error(
-      `Cannot store attachment for purged conversation ${args.conversationId}`,
-    );
-  }
+  await assertConversationNotPurged(args.db, args.conversationId);
 
   const storageKey = attachmentKey({
     attachmentId: id,
@@ -164,9 +208,7 @@ export async function storeAttachment(args: {
   if (existing?.deleteRequestedAt != null) {
     if (await isConversationPurged(args.db, args.conversationId)) {
       await bestEffortDelete(args.storage, storageKey);
-      throw new Error(
-        `Cannot store attachment for purged conversation ${args.conversationId}`,
-      );
+      throw purgedConversationError(args.conversationId);
     }
     const oldStorageKey = existing.storageKey;
     const revived = await args.db
@@ -185,15 +227,14 @@ export async function storeAttachment(args: {
       .returning({ id: juniorAttachments.id });
     if (revived.length > 0) {
       if (await isConversationPurged(args.db, args.conversationId)) {
-        await args.db
-          .db()
-          .update(juniorAttachments)
-          .set({ deleteRequestedAt: now })
-          .where(eq(juniorAttachments.id, id));
-        await bestEffortDelete(args.storage, storageKey);
-        throw new Error(
-          `Cannot store attachment for purged conversation ${args.conversationId}`,
-        );
+        await rejectPurgedAttachmentWrite({
+          conversationId: args.conversationId,
+          db: args.db,
+          id,
+          now,
+          storage: args.storage,
+          storageKey,
+        });
       }
       if (oldStorageKey !== storageKey) {
         await bestEffortDelete(args.storage, oldStorageKey);
@@ -210,13 +251,19 @@ export async function storeAttachment(args: {
       .from(juniorAttachments)
       .where(eq(juniorAttachments.id, id));
     if (afterRace?.deleteRequestedAt === null) {
-      await bestEffortDelete(args.storage, storageKey);
-      return { id: afterRace.id };
+      return reuseLiveAttachment({
+        conversationId: args.conversationId,
+        db: args.db,
+        id: afterRace.id,
+        storage: args.storage,
+        storageKey,
+      });
     }
   }
 
+  let inserted: Array<{ id: string }> = [];
   try {
-    const inserted = await args.db
+    inserted = await args.db
       .db()
       .insert(juniorAttachments)
       .values({
@@ -232,29 +279,24 @@ export async function storeAttachment(args: {
       })
       .onConflictDoNothing({ target: juniorAttachments.id })
       .returning({ id: juniorAttachments.id });
-    if (inserted.length > 0) {
-      if (await isConversationPurged(args.db, args.conversationId)) {
-        await args.db
-          .db()
-          .update(juniorAttachments)
-          .set({ deleteRequestedAt: now })
-          .where(eq(juniorAttachments.id, id));
-        await bestEffortDelete(args.storage, storageKey);
-        throw new Error(
-          `Cannot store attachment for purged conversation ${args.conversationId}`,
-        );
-      }
-      return { id };
-    }
   } catch (error) {
-    if (
-      error instanceof Error &&
-      error.message.startsWith("Cannot store attachment for purged conversation")
-    ) {
-      throw error;
-    }
+    // Only clean up when the insert itself failed. Post-insert purge handling
+    // must not delete a blob for a row that already committed.
     await bestEffortDelete(args.storage, storageKey);
     throw error;
+  }
+  if (inserted.length > 0) {
+    if (await isConversationPurged(args.db, args.conversationId)) {
+      await rejectPurgedAttachmentWrite({
+        conversationId: args.conversationId,
+        db: args.db,
+        id,
+        now,
+        storage: args.storage,
+        storageKey,
+      });
+    }
+    return { id };
   }
 
   const [row] = await args.db
@@ -272,15 +314,18 @@ export async function storeAttachment(args: {
   }
   if (row.deleteRequestedAt === null) {
     // Another writer owns the live row. Our unique object is unused.
-    await bestEffortDelete(args.storage, storageKey);
-    return { id: row.id };
+    return reuseLiveAttachment({
+      conversationId: args.conversationId,
+      db: args.db,
+      id: row.id,
+      storage: args.storage,
+      storageKey,
+    });
   }
 
   if (await isConversationPurged(args.db, args.conversationId)) {
     await bestEffortDelete(args.storage, storageKey);
-    throw new Error(
-      `Cannot store attachment for purged conversation ${args.conversationId}`,
-    );
+    throw purgedConversationError(args.conversationId);
   }
 
   const revived = await args.db
@@ -299,15 +344,14 @@ export async function storeAttachment(args: {
     .returning({ id: juniorAttachments.id });
   if (revived.length > 0) {
     if (await isConversationPurged(args.db, args.conversationId)) {
-      await args.db
-        .db()
-        .update(juniorAttachments)
-        .set({ deleteRequestedAt: now })
-        .where(eq(juniorAttachments.id, id));
-      await bestEffortDelete(args.storage, storageKey);
-      throw new Error(
-        `Cannot store attachment for purged conversation ${args.conversationId}`,
-      );
+      await rejectPurgedAttachmentWrite({
+        conversationId: args.conversationId,
+        db: args.db,
+        id,
+        now,
+        storage: args.storage,
+        storageKey,
+      });
     }
     if (row.storageKey !== storageKey) {
       await bestEffortDelete(args.storage, row.storageKey);
@@ -324,8 +368,13 @@ export async function storeAttachment(args: {
     .from(juniorAttachments)
     .where(eq(juniorAttachments.id, id));
   if (afterRace?.deleteRequestedAt === null) {
-    await bestEffortDelete(args.storage, storageKey);
-    return { id: afterRace.id };
+    return reuseLiveAttachment({
+      conversationId: args.conversationId,
+      db: args.db,
+      id: afterRace.id,
+      storage: args.storage,
+      storageKey,
+    });
   }
 
   await bestEffortDelete(args.storage, storageKey);
