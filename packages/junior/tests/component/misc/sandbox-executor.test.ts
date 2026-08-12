@@ -1194,6 +1194,64 @@ describe("createTestSandbox", () => {
     expect(refs).toEqual([]);
   });
 
+  it("forwards abort signal into workspace setup scripts", async () => {
+    const buildSandbox = makeSandbox("sbx_workspace_setup_signal");
+    const controller = new AbortController();
+    let releaseSetup: (() => void) | undefined;
+    const setupStarted = new Promise<void>((resolve) => {
+      buildSandbox.runCommand.mockImplementationOnce(async (input: any) => {
+        resolve();
+        await new Promise<void>((settle) => {
+          releaseSetup = settle;
+          input.signal?.addEventListener("abort", () => settle(), { once: true });
+        });
+        if (input.signal?.aborted) {
+          const error = new Error("aborted");
+          error.name = "AbortError";
+          throw error;
+        }
+        return { exitCode: 0, stdout: async () => "", stderr: async () => "" };
+      });
+    });
+    resolveMock.mockImplementationOnce(async (params: any) => {
+      await params.prepareWorkspace?.(buildSandbox);
+      return {
+        snapshotId: "snap_workspace_setup",
+        profileHash: "profile-workspace-setup",
+        dependencyCount: 0,
+        cacheHit: false,
+        resolveOutcome: "built",
+      };
+    });
+    hashMock.mockReturnValue("profile-workspace-setup");
+    const runtime = createSandboxRuntime({
+      workspace: {
+        id: "workspace-setup",
+        name: "setup",
+        setupScript: "echo ready",
+        updatedAt: new Date("2026-08-12T00:00:00.000Z"),
+        repos: [],
+      },
+      skills: [],
+      referenceFiles: [],
+    });
+
+    const acquirePromise = runtime.acquire(controller.signal);
+    await setupStarted;
+    const setupCommand = buildSandbox.runCommand.mock.calls[0]?.[0] as {
+      cmd?: string;
+      signal?: AbortSignal;
+    };
+    expect(setupCommand.cmd).toBe("bash");
+    expect(setupCommand.signal).toBeInstanceOf(AbortSignal);
+    expect(setupCommand.signal?.aborted).toBe(false);
+
+    controller.abort("cancel setup");
+    await expect(acquirePromise).rejects.toBe("cancel setup");
+    expect(setupCommand.signal?.aborted).toBe(true);
+    releaseSetup?.();
+  });
+
   it("starts keepalive after a successful workspace switch", async () => {
     vi.useFakeTimers();
     process.env.VERCEL_SANDBOX_KEEPALIVE_MS = "5000";

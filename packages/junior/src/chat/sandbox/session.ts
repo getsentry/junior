@@ -143,10 +143,7 @@ function truncateOutput(
 }
 
 function parseKeepAliveMs(): number {
-  const parsed = Number.parseInt(
-    process.env.VERCEL_SANDBOX_KEEPALIVE_MS ?? "0",
-    10,
-  );
+  const parsed = Number.parseInt(process.env.VERCEL_SANDBOX_KEEPALIVE_MS ?? "0", 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 }
 
@@ -209,16 +206,13 @@ export function createSandboxRuntime(
       onUnavailable: invalidateSession,
     });
 
-  const createSandboxName = (): string =>
-    `${SANDBOX_NAME_PREFIX}${randomUUID()}`;
+  const createSandboxName = (): string => `${SANDBOX_NAME_PREFIX}${randomUUID()}`;
 
+  // Build once before boot so missing proxy config fails before sandbox work.
+  // The final route is rebound to the Vercel session id after creation.
   const preflightNetworkPolicy = (
     sandboxName: string,
-  ): NetworkPolicy | undefined => {
-    // Build once before boot so missing proxy config fails before sandbox work.
-    // The final route is rebound to the Vercel session id after creation.
-    return options.createNetworkPolicy?.(sandboxName);
-  };
+  ): NetworkPolicy | undefined => options.createNetworkPolicy?.(sandboxName);
 
   const reportSandboxRef = async (
     nextSandbox: SandboxSession,
@@ -439,7 +433,8 @@ export function createSandboxRuntime(
         signal,
         workspace: recipe,
         prepareWorkspace: recipe
-          ? async (sandbox) => await prepareWorkspaceSnapshot(sandbox, recipe)
+          ? async (sandbox) =>
+              await prepareWorkspaceSnapshot(sandbox, recipe, signal)
           : undefined,
       });
       if (!rebuiltSnapshot.snapshotId) {
@@ -459,13 +454,16 @@ export function createSandboxRuntime(
   const prepareWorkspaceSnapshot = async (
     sandbox: SandboxSession,
     workspace: Workspace,
+    signal?: AbortSignal,
   ): Promise<void> => {
+    signal?.throwIfAborted();
     await options.onWorkspacePrepare?.(sandbox, workspace);
     if (!workspace.setupScript.trim()) return;
     const result = await sandbox.runCommand({
       cmd: "bash",
       args: ["-euo", "pipefail", "-c", workspace.setupScript],
       cwd: SANDBOX_WORKSPACE_ROOT,
+      signal,
     });
     if (result.exitCode !== 0) {
       throw new Error(
@@ -499,7 +497,8 @@ export function createSandboxRuntime(
             signal,
             workspace: recipe,
             prepareWorkspace: recipe
-              ? async (sandbox) => await prepareWorkspaceSnapshot(sandbox, recipe)
+              ? async (sandbox) =>
+                  await prepareWorkspaceSnapshot(sandbox, recipe, signal)
               : undefined,
           });
           signal?.throwIfAborted();
@@ -532,11 +531,11 @@ export function createSandboxRuntime(
   };
 
   const discardHintIfProfileChanged = (): void => {
+    // Missing recipe cannot recompute workspace profile; keep the durable hint.
     if (
       activeSandbox ||
       !sandboxRef ||
       dependencyProfileHash === sandboxRef.profileHash ||
-      // Without the recipe we cannot recompute the workspace profile; keep the hint.
       (!activeWorkspace && sandboxRef.workspaceId)
     ) {
       return;
