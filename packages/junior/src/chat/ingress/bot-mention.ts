@@ -78,15 +78,20 @@ function singleLineFenceSuffix(line: string): string | undefined {
     return undefined;
   }
 
-  const closeRel = trimmed.slice(3).indexOf("```");
+  let openLen = 3;
+  while (trimmed[openLen] === "`") {
+    openLen += 1;
+  }
+
+  // Find a closer of the same length; do not eat extra trailing backticks so
+  // an immediately following inline-code opener stays in the suffix.
+  const afterOpen = trimmed.slice(openLen);
+  const closeRel = afterOpen.indexOf("`".repeat(openLen));
   if (closeRel === -1) {
     return undefined;
   }
 
-  let end = leadingWs + 3 + closeRel + 3;
-  while (line[end] === "`") {
-    end += 1;
-  }
+  const end = leadingWs + openLen + closeRel + openLen;
   return line.slice(end);
 }
 

@@ -52,6 +52,16 @@ describe("textMentionsBot", () => {
     ).toBe(false);
   });
 
+  it("keeps a post-fence inline-code mention inactive", () => {
+    // Extra backticks after the fence close open inline code; do not absorb them.
+    expect(
+      textMentionsBot(
+        "```code```" + "`" + `<@${BOT}>` + "`",
+        BOT,
+      ),
+    ).toBe(false);
+  });
+
   it("keeps the fence open when ``` appears mid-line inside the block", () => {
     expect(
       textMentionsBot(
