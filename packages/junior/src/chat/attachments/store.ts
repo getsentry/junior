@@ -48,13 +48,56 @@ function attachmentKey(args: {
   return `conversations/${args.conversationId}/attachments/${args.attachmentId}/${args.filename}`;
 }
 
+async function bestEffortDelete(
+  storage: AttachmentStorage,
+  key: string,
+): Promise<void> {
+  try {
+    await storage.delete([key]);
+  } catch {
+    // Leave the blob. A later store of the same content overwrites the key.
+  }
+}
+
+/** Clear a purge mark after rewriting the blob for the same attachment id. */
+async function clearDeletionMark(
+  db: JuniorSqlDatabase,
+  id: string,
+): Promise<"live" | "missing"> {
+  const revived = await db
+    .db()
+    .update(juniorAttachments)
+    .set({ deleteRequestedAt: null })
+    .where(
+      and(
+        eq(juniorAttachments.id, id),
+        isNotNull(juniorAttachments.deleteRequestedAt),
+      ),
+    )
+    .returning({ id: juniorAttachments.id });
+  if (revived.length > 0) return "live";
+  const [row] = await db
+    .db()
+    .select({
+      deleteRequestedAt: juniorAttachments.deleteRequestedAt,
+      id: juniorAttachments.id,
+    })
+    .from(juniorAttachments)
+    .where(eq(juniorAttachments.id, id));
+  if (row?.deleteRequestedAt === null) return "live";
+  return "missing";
+}
+
 /**
  * Persist one conversation-owned file.
  *
  * Identity is content-stable under the conversation. Object storage is written
  * first; the SQL row is created only after that write succeeds. A row means the
- * attachment is durable. Retries reuse an existing row or overwrite the same
- * storage key and insert again.
+ * attachment is durable. Retries reuse an existing live row. A purge-marked row
+ * is revived by rewriting the blob and clearing the mark. If the SQL write
+ * fails after object storage accepts the bytes, this path deletes that blob.
+ * A process crash between those steps can leave an unreferenced blob on a
+ * stable key; the next store of the same content overwrites it.
  */
 export async function storeAttachment(args: {
   conversationId: string;
@@ -82,6 +125,7 @@ export async function storeAttachment(args: {
     .select({
       contentType: juniorAttachments.contentType,
       conversationId: juniorAttachments.conversationId,
+      deleteRequestedAt: juniorAttachments.deleteRequestedAt,
       filename: juniorAttachments.filename,
       id: juniorAttachments.id,
       provider: juniorAttachments.provider,
@@ -101,7 +145,9 @@ export async function storeAttachment(args: {
     ) {
       throw new Error(`Attachment write conflicts with ${existing.id}`);
     }
-    return { id: existing.id };
+    if (existing.deleteRequestedAt === null) {
+      return { id: existing.id };
+    }
   }
 
   await args.storage.put({
@@ -109,22 +155,59 @@ export async function storeAttachment(args: {
     contentType: args.file.mimeType,
     key: storageKey,
   });
-  await args.db
+
+  if (existing?.deleteRequestedAt != null) {
+    if ((await clearDeletionMark(args.db, id)) === "live") {
+      return { id };
+    }
+  }
+
+  try {
+    const inserted = await args.db
+      .db()
+      .insert(juniorAttachments)
+      .values({
+        id,
+        conversationId: args.conversationId,
+        provider: args.storage.provider,
+        storageKey,
+        filename: args.file.filename,
+        contentType: args.file.mimeType,
+        bytes: args.file.bytes,
+        sha256,
+        createdAt: now,
+      })
+      .onConflictDoNothing({ target: juniorAttachments.id })
+      .returning({ id: juniorAttachments.id });
+    if (inserted.length > 0) {
+      return { id };
+    }
+  } catch (error) {
+    await bestEffortDelete(args.storage, storageKey);
+    throw error;
+  }
+
+  const [row] = await args.db
     .db()
-    .insert(juniorAttachments)
-    .values({
-      id,
-      conversationId: args.conversationId,
-      provider: args.storage.provider,
-      storageKey,
-      filename: args.file.filename,
-      contentType: args.file.mimeType,
-      bytes: args.file.bytes,
-      sha256,
-      createdAt: now,
+    .select({
+      deleteRequestedAt: juniorAttachments.deleteRequestedAt,
+      id: juniorAttachments.id,
     })
-    .onConflictDoNothing({ target: juniorAttachments.id });
-  return { id };
+    .from(juniorAttachments)
+    .where(eq(juniorAttachments.id, id));
+  if (!row) {
+    await bestEffortDelete(args.storage, storageKey);
+    throw new Error(`Attachment row missing after write for ${id}`);
+  }
+  if (row.deleteRequestedAt === null) {
+    return { id: row.id };
+  }
+  // Conflicted with a purge-marked row. Blob was rewritten above; clear the mark.
+  if ((await clearDeletionMark(args.db, id)) === "missing") {
+    await bestEffortDelete(args.storage, storageKey);
+    throw new Error(`Attachment ${id} disappeared while reviving`);
+  }
+  return { id: row.id };
 }
 
 /** Persist many conversation-owned files. */
@@ -169,13 +252,20 @@ export async function requestAttachmentDeletion(
     );
 }
 
-/** Delete purged attachments in one bounded batch. */
+/**
+ * Delete purged attachments in one bounded batch.
+ *
+ * Remove still-marked SQL rows first, then delete object keys that were not
+ * reclaimed by a concurrent revive. This keeps blob deletion from racing a
+ * later store of the same content-stable key.
+ */
 export async function collectAttachmentGarbage(args: {
   db: JuniorSqlDatabase;
   nowMs: number;
   storage: AttachmentStorage;
   limit?: number;
 }): Promise<AttachmentGarbageCollectionResult> {
+  void args.nowMs;
   const rows = await args.db
     .db()
     .select({
@@ -192,15 +282,34 @@ export async function collectAttachmentGarbage(args: {
     .orderBy(asc(juniorAttachments.createdAt), asc(juniorAttachments.id))
     .limit(args.limit ?? ATTACHMENT_GC_BATCH_LIMIT);
   if (rows.length === 0) return { deleted: 0 };
-  await args.storage.delete(rows.map((row) => row.storageKey));
-  await args.db
+
+  const removed = await args.db
     .db()
     .delete(juniorAttachments)
     .where(
-      inArray(
-        juniorAttachments.id,
-        rows.map((row) => row.id),
+      and(
+        inArray(
+          juniorAttachments.id,
+          rows.map((row) => row.id),
+        ),
+        isNotNull(juniorAttachments.deleteRequestedAt),
       ),
-    );
-  return { deleted: rows.length };
+    )
+    .returning({
+      storageKey: juniorAttachments.storageKey,
+    });
+  if (removed.length === 0) return { deleted: 0 };
+
+  const removedKeys = [...new Set(removed.map((row) => row.storageKey))];
+  const reclaimed = await args.db
+    .db()
+    .select({ storageKey: juniorAttachments.storageKey })
+    .from(juniorAttachments)
+    .where(inArray(juniorAttachments.storageKey, removedKeys));
+  const reclaimedKeys = new Set(reclaimed.map((row) => row.storageKey));
+  const keysToDelete = removedKeys.filter((key) => !reclaimedKeys.has(key));
+  if (keysToDelete.length > 0) {
+    await args.storage.delete(keysToDelete);
+  }
+  return { deleted: removed.length };
 }

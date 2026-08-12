@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createSlackChannelJoinTool } from "@/chat/slack/tools/channel-join";
 import { createSlackChannelListMessagesTool } from "@/chat/slack/tools/channel-list-messages";
@@ -539,6 +540,125 @@ describe("slack channel tools", () => {
       expect(
         getCapturedSlackApiCalls("files.completeUploadExternal"),
       ).toHaveLength(2);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("revives a purge-marked attachment on later store", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+    try {
+      await migrateSchema(fixture.sql);
+      const now = new Date("2026-08-12T17:00:00.000Z");
+      await fixture.sql.db().insert(juniorConversations).values({
+        conversationId: "conversation-1",
+        createdAt: now,
+        lastActivityAt: now,
+        updatedAt: now,
+        executionStatus: "idle",
+      });
+      const puts: string[] = [];
+      const storage: AttachmentStorage = {
+        provider: "test",
+        put: async (input) => {
+          puts.push(input.key);
+        },
+        delete: async () => undefined,
+      };
+      const firstTool = createSendFilesTool(
+        createContext("attach the report"),
+        createToolState(),
+        createMaterializeFile({
+          "/tmp/report.txt": Buffer.from("report body"),
+        }),
+        {
+          conversationId: "conversation-1",
+          db: fixture.sql,
+          storage,
+        },
+      );
+      const first = await executeTool(firstTool, {
+        files: [{ path: "/tmp/report.txt" }],
+      });
+      const attachmentId = first.attachment_ids[0];
+      expect(attachmentId).toEqual(expect.any(String));
+
+      await fixture.sql
+        .db()
+        .update(juniorAttachments)
+        .set({ deleteRequestedAt: now })
+        .where(eq(juniorAttachments.id, attachmentId!));
+
+      const retryTool = createSendFilesTool(
+        createContext("attach the report again"),
+        createToolState(),
+        createMaterializeFile({
+          "/tmp/report.txt": Buffer.from("report body"),
+        }),
+        {
+          conversationId: "conversation-1",
+          db: fixture.sql,
+          storage,
+        },
+      );
+      const retry = await executeTool(retryTool, {
+        files: [{ path: "/tmp/report.txt" }],
+      });
+
+      const rows = await fixture.sql.db().select().from(juniorAttachments);
+      expect(retry.attachment_ids).toEqual([attachmentId]);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        id: attachmentId,
+        deleteRequestedAt: null,
+      });
+      expect(puts).toHaveLength(2);
+      expect(puts[0]).toBe(puts[1]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("deletes the blob when SQL insert fails after put", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+    try {
+      await migrateSchema(fixture.sql);
+      // No conversation row: FK on junior_attachments.conversation_id fails.
+      const deleted: string[] = [];
+      const puts: string[] = [];
+      const storage: AttachmentStorage = {
+        provider: "test",
+        put: async (input) => {
+          puts.push(input.key);
+        },
+        delete: async (keys) => {
+          deleted.push(...keys);
+        },
+      };
+      const tool = createSendFilesTool(
+        createContext("attach the report"),
+        createToolState(),
+        createMaterializeFile({
+          "/tmp/report.txt": Buffer.from("report body"),
+        }),
+        {
+          conversationId: "missing-conversation",
+          db: fixture.sql,
+          storage,
+        },
+      );
+
+      await expect(
+        executeTool(tool, {
+          files: [{ path: "/tmp/report.txt" }],
+        }),
+      ).rejects.toThrow(/Failed query|foreign key|violates/i);
+
+      expect(puts).toHaveLength(1);
+      expect(deleted).toEqual(puts);
+      expect(await fixture.sql.db().select().from(juniorAttachments)).toEqual(
+        [],
+      );
     } finally {
       await fixture.close();
     }
