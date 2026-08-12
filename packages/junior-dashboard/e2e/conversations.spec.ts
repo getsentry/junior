@@ -446,6 +446,23 @@ test("opens and closes a conversation in the mobile workspace", async ({
     compactPage.viewportHeight,
   );
 
+  await composer.focus();
+  await page.evaluate(() => {
+    HTMLElement.prototype.scrollIntoView = () => {
+      throw new Error("Live transcript pinning must not scroll the page");
+    };
+    Object.defineProperty(window.visualViewport, "height", {
+      configurable: true,
+      value: 480,
+    });
+    window.visualViewport?.dispatchEvent(new Event("resize"));
+  });
+  await expect
+    .poll(async () => (await page.locator("main").first().boundingBox())?.height)
+    .toBe(480);
+  await expect(composer).toBeFocused();
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+
   await page.getByRole("button", { name: "Show transcript tools" }).click();
   await expect(page.getByPlaceholder("Search transcript…")).toBeVisible();
   await expect(

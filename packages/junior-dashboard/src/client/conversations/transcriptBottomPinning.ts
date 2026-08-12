@@ -185,7 +185,9 @@ export function usePinnedTranscriptBottom(input: {
   );
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior) => {
-    anchorRef.current?.scrollIntoView({ behavior, block: "end" });
+    const root = scrollRootFor(contentElementRef.current);
+    if (!root) return;
+    setScrollTop(root, scrollSnapshot(root).scrollHeight, behavior);
   }, []);
 
   const preserveViewportForPrepend = useCallback(() => {
@@ -426,12 +428,16 @@ function scrollSnapshot(root: ScrollRoot): ScrollSnapshot {
   };
 }
 
-function setScrollTop(root: ScrollRoot, scrollTop: number): void {
+function setScrollTop(
+  root: ScrollRoot,
+  scrollTop: number,
+  behavior: ScrollBehavior = "auto",
+): void {
   if (isWindowRoot(root)) {
-    window.scrollTo({ behavior: "auto", top: scrollTop });
+    window.scrollTo({ behavior, top: scrollTop });
     return;
   }
-  root.scrollTop = scrollTop;
+  root.scrollTo({ behavior, top: scrollTop });
 }
 
 function isWindowRoot(root: ScrollRoot): root is Window {
