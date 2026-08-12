@@ -77,6 +77,12 @@ older source-thread context; it does not replace Pi history.
 - Restore transcripts and agent history directly from conversation events.
 - Keep imports and migrations idempotent and preserve conversation IDs.
 
+## SQL Write Lock
+
+All metadata and event writes for one conversation use the
+`junior_conversation:<conversationId>` advisory lock. They cannot lock shared SQL
+rows in opposite order because their transactions do not overlap.
+
 Reporting APIs project an authorized, redacted contract from the event stream.
 Raw event payloads are internal and must not become dashboard or external API
 payloads. Reporting keeps destination-visible `message` events separate from
