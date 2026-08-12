@@ -479,7 +479,8 @@ describe("dashboard canonical-event components", () => {
 
     expect(slackHtml).toContain('aria-label="Slack"');
     expect(slackHtml).not.toContain(">Slack<");
-    expect(slackHtml.match(/aria-label="Slack"/g)).toHaveLength(3);
+    // Slack-origin user + Slack-outbound assistant only; web continues stay unmarked.
+    expect(slackHtml.match(/aria-label="Slack"/g)).toHaveLength(2);
     expect(dashboardRootHtml).not.toContain("Dashboard");
     expect(dashboardRootHtml).not.toContain('aria-label="Slack"');
   });
