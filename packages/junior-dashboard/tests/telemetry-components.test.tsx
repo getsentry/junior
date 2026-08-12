@@ -431,21 +431,41 @@ describe("dashboard canonical-event components", () => {
     expect(html).not.toContain("Morgan Lee");
   });
 
-  it("shows an icon only for non-native transcript sources", () => {
+  it("shows a Slack icon for Slack user messages and Slack-outbound assistants", () => {
     const slackHtml = renderTranscript(
       conversation(
         [
           event(0, {
-            messageId: "slack-message",
+            messageId: "slack-user",
             role: "user",
             text: "From Slack.",
+            type: "message",
+          }),
+          event(1, {
+            messageId: "slack-assistant",
+            role: "assistant",
+            text: "Posted to Slack.",
+            type: "message",
+          }),
+          event(2, {
+            messageId: "dashboard-user",
+            role: "user",
+            source: "web",
+            text: "Continued from the dashboard.",
+            type: "message",
+          }),
+          event(3, {
+            messageId: "dashboard-assistant",
+            role: "assistant",
+            source: "web",
+            text: "Stays in Junior.",
             type: "message",
           }),
         ],
         { surface: "slack" },
       ),
     );
-    const webHtml = renderTranscript(
+    const dashboardRootHtml = renderTranscript(
       conversation([
         event(0, {
           messageId: "web-message",
@@ -459,8 +479,9 @@ describe("dashboard canonical-event components", () => {
 
     expect(slackHtml).toContain('aria-label="Slack"');
     expect(slackHtml).not.toContain(">Slack<");
-    expect(webHtml).not.toContain("Dashboard");
-    expect(webHtml).not.toContain('aria-label="Slack"');
+    expect(slackHtml.match(/aria-label="Slack"/g)).toHaveLength(3);
+    expect(dashboardRootHtml).not.toContain("Dashboard");
+    expect(dashboardRootHtml).not.toContain('aria-label="Slack"');
   });
 
   it("omits status badges from conversation detail while retaining progress", () => {

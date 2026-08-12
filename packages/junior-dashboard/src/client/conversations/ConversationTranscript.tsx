@@ -70,6 +70,7 @@ import {
   HighlightText,
   useTranscriptSearch,
 } from "./transcriptSearch";
+import { showsSlackSourceIcon } from "./transcriptSource";
 
 type TranscriptEntry = ReturnType<typeof groupTranscriptMessages>[number];
 type TranscriptContextEntry = Extract<TranscriptEntry, { kind: "context" }>;
@@ -204,10 +205,7 @@ function TranscriptMessageHeader(props: {
   message: TranscriptViewMessage;
   conversation: ConversationTranscript;
 }) {
-  const source =
-    props.message.source ??
-    (props.conversation.surface === "slack" ? "slack" : undefined);
-  const showSlack = source === "slack";
+  const showSlack = showsSlackSourceIcon(props.message, props.conversation);
   const metaText = (props.meta ?? []).filter(isString).join(" · ");
   const roleLabel = transcriptRoleLabel(props.message, props.conversation);
 

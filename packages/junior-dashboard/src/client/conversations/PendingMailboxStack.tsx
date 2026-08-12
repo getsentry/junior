@@ -16,6 +16,7 @@ import {
   unresolvedPendingTranscriptMessages,
 } from "./eventTranscript";
 import { SlackMark } from "./SlackMark";
+import { showsSlackSourceIcon } from "./transcriptSource";
 
 const MAX_EXPANDED_PENDING_ROWS = 3;
 const COLLAPSED_PENDING_ROW_COUNT = 2;
@@ -48,17 +49,16 @@ function PendingMetaIcon(props: {
 
 function PendingMetaIcons(props: {
   delivery: ConversationPendingMessage["delivery"];
-  source: ConversationPendingMessage["source"];
+  showSlack: boolean;
   timestamp?: string;
 }) {
   const delivery = pendingDeliveryMeta(props.delivery);
   const DeliveryIcon = delivery.icon;
-  const showSlack = props.source === "slack";
 
   return (
     <TranscriptHeadingMeta className="flex min-w-0 items-center justify-end gap-2 text-xs leading-none text-dashboard-text-muted">
       <span className="inline-flex shrink-0 items-center gap-1.5">
-        {showSlack ? (
+        {props.showSlack ? (
           <PendingMetaIcon className="text-dashboard-text-muted" label="Slack">
             <SlackMark className="size-3.5" />
           </PendingMetaIcon>
@@ -99,9 +99,7 @@ function PendingRow(props: {
     props.message,
   );
   const delivery = props.message.delivery ?? "defer";
-  const source =
-    props.message.source ??
-    (props.conversation.surface === "slack" ? "slack" : "web");
+  const showSlack = showsSlackSourceIcon(props.message, props.conversation);
 
   return (
     <article
@@ -120,7 +118,7 @@ function PendingRow(props: {
         right={
           <PendingMetaIcons
             delivery={delivery}
-            source={source}
+            showSlack={showSlack}
             timestamp={formatMessageTimestamp(props.message.timestamp)}
           />
         }
