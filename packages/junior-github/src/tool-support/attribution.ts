@@ -5,9 +5,15 @@ export const GITHUB_REQUEST_ATTRIBUTION_START =
 export const GITHUB_REQUEST_ATTRIBUTION_END =
   "<!-- junior-request-attribution:end -->";
 
-function cleanDisplayValue(value: string | undefined): string | undefined {
+function cleanDisplayValue(
+  value: string | undefined,
+  userId?: string,
+): string | undefined {
   const cleaned = value?.replace(/[\r\n<>]/g, " ").trim();
-  return cleaned || undefined;
+  if (!cleaned || cleaned === userId) {
+    return undefined;
+  }
+  return cleaned;
 }
 
 function actorLabel(actor: Actor | undefined): string | undefined {
@@ -18,9 +24,8 @@ function actorLabel(actor: Actor | undefined): string | undefined {
     return `Junior system actor \`${actor.name}\``;
   }
   const display =
-    cleanDisplayValue(actor.fullName) ??
-    cleanDisplayValue(actor.userName) ??
-    cleanDisplayValue(actor.userId);
+    cleanDisplayValue(actor.fullName, actor.userId) ??
+    cleanDisplayValue(actor.userName, actor.userId);
   return display ? `**${display.replaceAll("*", "\\*")}**` : undefined;
 }
 

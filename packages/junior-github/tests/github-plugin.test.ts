@@ -1211,6 +1211,44 @@ Conversation: \`local:test:old-conversation\`
     ]);
   });
 
+  it("omits requester attribution when the actor name is unresolved", async () => {
+    const ctx = githubToolsContext({
+      actor: {
+        fullName: "U039RR91S",
+        platform: "slack",
+        teamId: "T1",
+        userId: "U039RR91S",
+        userName: "U039RR91S",
+      },
+      egressFetch: async () =>
+        new Response(
+          JSON.stringify({
+            number: 692,
+            html_url: "https://github.com/getsentry/junior/pull/692",
+          }),
+          { status: 201 },
+        ),
+    });
+    const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createPullRequest;
+
+    await tool?.execute?.(
+      {
+        repo: "getsentry/junior",
+        title: "Typed PR",
+        head: "dcramer/gh-660-pr-create",
+        base: "main",
+        body: "PR body",
+        draft: true,
+      },
+      { toolCallId: "call-create-unresolved-pull-request" },
+    );
+
+    const request = ctx.egressRequests()[0];
+    await expect(request?.request.json()).resolves.toMatchObject({
+      body: "PR body",
+    });
+  });
+
   it("keeps pull request annotation labels compact for long titles", async () => {
     const ctx = githubToolsContext({
       egressFetch: async () =>
