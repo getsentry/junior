@@ -299,8 +299,10 @@ export async function requestAttachmentDeletion(
 /**
  * Delete purged attachments in one bounded batch.
  *
- * Object keys are unique per write, so removing a still-marked row's key cannot
- * delete a later revive's blob.
+ * Delete object keys first, then remove SQL rows that are still marked. A failed
+ * blob delete leaves the marked row so the next retention run can retry. Object
+ * keys are unique per write, so deleting a still-marked row's key cannot remove
+ * a concurrent revive's blob.
  */
 export async function collectAttachmentGarbage(args: {
   db: JuniorSqlDatabase;
@@ -326,6 +328,7 @@ export async function collectAttachmentGarbage(args: {
     .limit(args.limit ?? ATTACHMENT_GC_BATCH_LIMIT);
   if (rows.length === 0) return { deleted: 0 };
 
+  await args.storage.delete(rows.map((row) => row.storageKey));
   const removed = await args.db
     .db()
     .delete(juniorAttachments)
@@ -339,10 +342,7 @@ export async function collectAttachmentGarbage(args: {
       ),
     )
     .returning({
-      storageKey: juniorAttachments.storageKey,
+      id: juniorAttachments.id,
     });
-  if (removed.length === 0) return { deleted: 0 };
-
-  await args.storage.delete(removed.map((row) => row.storageKey));
   return { deleted: removed.length };
 }

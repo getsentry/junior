@@ -17,5 +17,5 @@ This module owns durable files linked to a conversation.
   deletes that unique object. A process crash between those steps can leave an
   unreferenced unique object with no SQL row.
 - Conversation purge marks attachments for deletion in the same SQL transaction.
-- The retention job removes still-marked SQL rows, then deletes those rows'
-  object keys.
+- The retention job deletes still-marked object keys first, then removes those
+  SQL rows. A failed blob delete leaves the marked row for the next run.

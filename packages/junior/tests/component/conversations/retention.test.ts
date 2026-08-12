@@ -20,6 +20,7 @@ import {
 } from "@/db/schema";
 import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
 import type { JuniorSqlDatabase } from "@/db/db";
+import { collectAttachmentGarbage } from "@/chat/attachments/store";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import {
   createLocalJuniorSqlFixture,
@@ -211,6 +212,50 @@ describe("retention purge job", () => {
     expect(result.attachments).toBe(1);
     expect(deleted).toEqual([["key-1"]]);
     expect(await fixture.sql.db().select().from(juniorAttachments)).toEqual([]);
+  });
+
+  it("keeps marked attachment rows when blob delete fails", async () => {
+    const destinationId = await seedDestination(fixture.sql, "private");
+    await seedConversation(fixture.sql, {
+      conversationId: "with-attachment",
+      destinationId,
+      lastActivityAtMs: BASE_MS,
+    });
+    await fixture.sql.db().insert(juniorAttachments).values({
+      id: "attachment-1",
+      conversationId: "with-attachment",
+      provider: "test",
+      storageKey: "key-1",
+      filename: "report.txt",
+      contentType: "text/plain",
+      bytes: 6,
+      sha256: "digest",
+      createdAt: new Date(BASE_MS),
+      deleteRequestedAt: new Date(BASE_MS + DAY_MS),
+    });
+    const storage: AttachmentStorage = {
+      provider: "test",
+      put: async () => undefined,
+      delete: async () => {
+        throw new Error("blob delete failed");
+      },
+    };
+
+    await expect(
+      collectAttachmentGarbage({
+        db: fixture.sql,
+        nowMs: BASE_MS + 15 * DAY_MS,
+        storage,
+      }),
+    ).rejects.toThrow("blob delete failed");
+
+    const rows = await fixture.sql.db().select().from(juniorAttachments);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      id: "attachment-1",
+      storageKey: "key-1",
+      deleteRequestedAt: expect.any(Date),
+    });
   });
 
   it("shortens the window when visibility flips public to private", async () => {
