@@ -6,8 +6,8 @@ export async function withConversationEventLock<T>(
   conversationId: string,
   callback: () => Promise<T>,
 ): Promise<T> {
-  return executor.withLock(
-    `junior_conversation:event:${conversationId}`,
-    callback,
-  );
+  // Event writes and metadata writes touch the same conversation and identity
+  // rows. Use the mutation lock so their transactions cannot deadlock by
+  // acquiring those rows in different orders.
+  return executor.withLock(`junior_conversation:${conversationId}`, callback);
 }
