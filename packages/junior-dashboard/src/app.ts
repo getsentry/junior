@@ -487,8 +487,9 @@ function readDashboardInstallIcon(): ArrayBuffer {
   return Uint8Array.from(readFileSync(assetUrl)).buffer;
 }
 
+/** Use the exact registered dashboard base path so installed launches do not 404. */
 function dashboardStartUrl(basePath: string): string {
-  return basePath === "/" ? "/" : `${basePath}/`;
+  return basePath;
 }
 
 function dashboardPagePaths(

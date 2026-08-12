@@ -635,9 +635,9 @@ describe("dashboard routes", () => {
         },
       ],
       name: "Marky",
-      scope: "/ops/",
+      scope: "/ops",
       short_name: "Marky",
-      start_url: "/ops/",
+      start_url: "/ops",
       theme_color: "#000000",
     });
   });
