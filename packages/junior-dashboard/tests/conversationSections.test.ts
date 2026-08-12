@@ -30,7 +30,7 @@ function conversation(
 }
 
 describe("conversation activity sections", () => {
-  it("keeps unfinished work, post-finish updates, and recent unassigned conversations in priority", () => {
+  it("keeps recent unfinished work, post-finish updates, and recent unassigned conversations in priority", () => {
     const sections = buildConversationSections(
       [
         conversation("older", "2026-06-20T12:00:00-07:00"),
@@ -46,6 +46,10 @@ describe("conversation activity sections", () => {
           finishedWorkAt: "2026-08-03T11:30:00-07:00",
         }),
         conversation("unfinished-recent", "2026-08-03T11:45:00-07:00", {
+          assignedWork: true,
+          unfinishedWork: true,
+        }),
+        conversation("unfinished-stale", "2026-08-01T11:00:00-07:00", {
           assignedWork: true,
           unfinishedWork: true,
         }),
@@ -79,7 +83,10 @@ describe("conversation activity sections", () => {
         label: "Today",
       },
       { conversations: ["yesterday"], label: "Yesterday" },
-      { conversations: ["weekday"], label: "Saturday" },
+      {
+        conversations: ["unfinished-stale", "weekday"],
+        label: "Saturday",
+      },
       { conversations: ["last-week"], label: "Last week" },
       { conversations: ["two-weeks"], label: "2 weeks ago" },
       { conversations: ["three-weeks"], label: "3 weeks ago" },

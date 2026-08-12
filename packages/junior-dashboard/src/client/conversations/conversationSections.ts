@@ -9,6 +9,8 @@ export type ConversationSection = {
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** Unassigned conversations leave Priority after this idle window. */
 const UNASSIGNED_PRIORITY_WINDOW_MS = 3 * 60 * 60 * 1000;
+/** Unfinished work leaves Priority after this idle window. */
+const UNFINISHED_PRIORITY_WINDOW_MS = 48 * 60 * 60 * 1000;
 const SECTION_ORDER = [
   "priority",
   "today",
@@ -63,7 +65,9 @@ function isPriority(
   nowMs: number,
 ): boolean {
   if (!Number.isFinite(time)) return false;
-  if (conversation.unfinishedWork) return true;
+  if (conversation.unfinishedWork) {
+    return nowMs - time <= UNFINISHED_PRIORITY_WINDOW_MS;
+  }
   if (conversation.assignedWork) {
     const finishedAt = Date.parse(conversation.finishedWorkAt ?? "");
     return Number.isFinite(finishedAt) && time > finishedAt;
