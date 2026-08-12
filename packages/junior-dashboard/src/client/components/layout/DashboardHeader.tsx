@@ -59,10 +59,18 @@ export function DashboardHeader(props: {
   useEffect(() => {
     if (!props.mobileNavigationOpen) return;
 
+    // md:hidden only hides the sheet; clear open state so locks do not stick.
+    const mobile = window.matchMedia("(max-width: 767px)");
+    const closeWhenDesktop = () => {
+      if (!mobile.matches) onOpenChangeRef.current(false);
+    };
+    closeWhenDesktop();
+    mobile.addEventListener("change", closeWhenDesktop);
+
     previousFocusRef.current =
       document.activeElement instanceof HTMLElement
         ? document.activeElement
-        : openButtonRef.current ?? undefined;
+        : (openButtonRef.current ?? undefined);
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const focusFrame = requestAnimationFrame(() => {
@@ -102,6 +110,7 @@ export function DashboardHeader(props: {
     window.addEventListener("keydown", onKeyDown);
     return () => {
       cancelAnimationFrame(focusFrame);
+      mobile.removeEventListener("change", closeWhenDesktop);
       window.removeEventListener("keydown", onKeyDown);
       document.body.style.overflow = previousOverflow;
       const previousFocus = previousFocusRef.current;
@@ -169,6 +178,15 @@ export function DashboardHeader(props: {
           aria-modal="true"
           className="fixed inset-0 z-50 flex flex-col bg-[#070707] md:hidden"
           id="mobile-navigation"
+          onClick={(event) => {
+            // Close on any in-sheet route tap, including the current page.
+            if (
+              event.target instanceof Element &&
+              event.target.closest("a[href]")
+            ) {
+              onOpenChangeRef.current(false);
+            }
+          }}
           ref={sheetRef}
           role="dialog"
         >
@@ -176,7 +194,6 @@ export function DashboardHeader(props: {
             <Link
               aria-label={`${getDashboardAgentName()} home`}
               className="flex min-w-0 items-center text-inherit no-underline"
-              onClick={() => onOpenChangeRef.current(false)}
               to="/"
             >
               <JuniorLogo />
