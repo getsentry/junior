@@ -1,10 +1,12 @@
 import { Hono } from "hono";
+import type { AttachmentStorage } from "@/chat/attachments/storage";
 import { jsonResponse, throwApiError } from "../http";
 import type { JuniorApiEnv } from "../route";
 import {
   acceptedConversationMessageSchema,
   archiveConversationBodySchema,
   archiveConversationResponseSchema,
+  conversationAttachmentParamsSchema,
   conversationDetailQuerySchema,
   conversationDetailReportSchema,
   conversationEventPageSchema,
@@ -21,6 +23,10 @@ import { validateRequest } from "../validation";
 import { requireViewer } from "../viewer";
 import { archiveConversation } from "./archive";
 import {
+  conversationAttachmentHeaders,
+  requireConversationAttachment,
+} from "./attachments";
+import {
   appendConversationMessageForViewer,
   createConversationForViewer,
 } from "./create";
@@ -31,7 +37,9 @@ import { requireConversationPendingMessages } from "./pending-messages";
 import { readConversationStats } from "./stats";
 
 /** Create the HTTP routes owned by the conversations API. */
-export function createConversationRoutes(): Hono<JuniorApiEnv> {
+export function createConversationRoutes(options?: {
+  attachmentStorage?: AttachmentStorage;
+}): Hono<JuniorApiEnv> {
   const app = new Hono<JuniorApiEnv>();
 
   app.get(
@@ -163,6 +171,34 @@ export function createConversationRoutes(): Hono<JuniorApiEnv> {
           viewer,
         }),
       );
+    },
+  );
+
+  app.get(
+    "/:conversationId/attachments/:attachmentId",
+    validateRequest(
+      "param",
+      conversationAttachmentParamsSchema,
+      "Invalid route parameters.",
+    ),
+    async (context) => {
+      const { attachmentId, conversationId } = context.req.valid("param");
+      const viewer = context.get("viewer");
+      const opened = await requireConversationAttachment({
+        attachmentId,
+        conversationId,
+        ...(options?.attachmentStorage
+          ? { storage: options.attachmentStorage }
+          : {}),
+        ...(viewer ? { viewer } : {}),
+      });
+      return new Response(opened.body, {
+        headers: conversationAttachmentHeaders({
+          bytes: opened.attachment.bytes,
+          contentType: opened.contentType,
+          filename: opened.attachment.filename,
+        }),
+      });
     },
   );
 

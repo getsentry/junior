@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
+import type { AttachmentStorage } from "./chat/attachments/storage";
 import { createConversationRoutes } from "./api/conversations/routes";
 import { jsonResponse } from "./api/http";
 import { createLocationRoutes } from "./api/locations/routes";
@@ -36,7 +37,9 @@ export type { JuniorApiVariables };
 export { jsonResponse };
 
 /** Create Junior's production REST API for authenticated dashboard consumers. */
-export function createJuniorApi(): Hono<JuniorApiEnv> {
+export function createJuniorApi(options?: {
+  attachmentStorage?: AttachmentStorage;
+}): Hono<JuniorApiEnv> {
   const app = new Hono<JuniorApiEnv>();
 
   app.get("/api/health", async () =>
@@ -61,7 +64,14 @@ export function createJuniorApi(): Hono<JuniorApiEnv> {
     jsonResponse(statsReportSchema, await readStatsReport()),
   );
 
-  app.route("/api/conversations", createConversationRoutes());
+  app.route(
+    "/api/conversations",
+    createConversationRoutes({
+      ...(options?.attachmentStorage
+        ? { attachmentStorage: options.attachmentStorage }
+        : {}),
+    }),
+  );
   app.route("/api/personal-tokens", createPersonalTokenRoutes());
   app.route("/api/people", createPeopleRoutes());
   app.route("/api/locations", createLocationRoutes());

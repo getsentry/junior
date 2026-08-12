@@ -26,6 +26,13 @@ export const conversationParamsSchema = z
   .object({ conversationId: z.string().min(1) })
   .strict();
 
+export const conversationAttachmentParamsSchema = z
+  .object({
+    attachmentId: z.string().min(1),
+    conversationId: z.string().min(1),
+  })
+  .strict();
+
 export const conversationDetailQuerySchema = z
   .object({
     limit: z.coerce.number().int().min(1).max(1_000).default(500),
