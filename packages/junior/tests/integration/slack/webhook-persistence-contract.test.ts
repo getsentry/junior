@@ -122,6 +122,44 @@ describe("Slack webhook persistence contract", () => {
     expect(queue.queuedMessages()).toEqual([]);
   });
 
+  it.each([
+    {
+      label: "app_mention",
+      eventType: "app_mention" as const,
+    },
+    {
+      label: "message",
+      eventType: "message" as const,
+    },
+  ])(
+    "acks a code-only bot mention on $label without queueing work",
+    async (args) => {
+      const queue = createConversationWorkQueueTestAdapter();
+      const state = getStateAdapter();
+      await state.connect();
+      const slackAdapter = createSlackAdapterFixture();
+      const codeOnlyText = "docs say use `" + `<@${SLACK_BOT_USER_ID}>` + "`";
+
+      const response = await handleSlackWebhookAndFlush({
+        request: slackWebhookRequest(
+          slackEnvelope({
+            eventType: args.eventType,
+            text: codeOnlyText,
+          }),
+        ),
+        services: {
+          getSlackAdapter: () => slackAdapter,
+          queue,
+          runtime: createNoopSlackWebhookRuntime(),
+          state,
+        },
+      });
+
+      expect(response.status).toBe(200);
+      expect(queue.queuedMessages()).toEqual([]);
+    },
+  );
+
   it("routes a provider conversation into its bound durable conversation", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();
