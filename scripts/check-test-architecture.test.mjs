@@ -3,6 +3,8 @@ import test from "node:test";
 import { checkIntegrationTestArchitecture } from "./check-test-architecture.mjs";
 
 const TEST_PATH = "packages/junior/tests/integration/new.test.ts";
+const DASHBOARD_E2E_PATH =
+  "packages/junior-dashboard/e2e/conversations.spec.ts";
 
 function integrationTest(contents, path = TEST_PATH) {
   return { path, contents };
@@ -84,6 +86,40 @@ test("rejects unsafe Slack double casts", () => {
     [
       `${TEST_PATH}: integration tests must use typed Slack fixtures instead of double casts (1 found, 0 allowed)`,
     ],
+  );
+});
+
+test("rejects fixed waits in dashboard E2E tests", () => {
+  assert.deepEqual(
+    checkIntegrationTestArchitecture([
+      integrationTest("await page.waitForTimeout(100);", DASHBOARD_E2E_PATH),
+    ]),
+    [
+      `${DASHBOARD_E2E_PATH}: dashboard E2E tests must wait for an observable state instead of a fixed delay (1 found, 0 allowed)`,
+    ],
+  );
+});
+
+test("rejects visual assertions in dashboard E2E tests", () => {
+  assert.deepEqual(
+    checkIntegrationTestArchitecture([
+      integrationTest(
+        "await expect(control).toHaveCSS('height', '44px');\nawait control.boundingBox();",
+        DASHBOARD_E2E_PATH,
+      ),
+    ]),
+    [
+      `${DASHBOARD_E2E_PATH}: dashboard E2E tests must leave visual layout and style checks to visual QA (2 found, 0 allowed)`,
+    ],
+  );
+});
+
+test("scopes dashboard E2E rules to dashboard browser specs", () => {
+  assert.deepEqual(
+    checkIntegrationTestArchitecture([
+      integrationTest("await control.boundingBox();"),
+    ]),
+    [],
   );
 });
 

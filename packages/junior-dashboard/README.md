@@ -34,6 +34,12 @@ Mock reporting data exists for local UI development only and must not be
 reachable as a production fallback.
 
 Browser journeys live in `e2e/`, with one Playwright spec per user-facing page.
+Keep these journeys small. Use them for behavior that needs a real browser:
+navigation, interaction, accessibility state, request contracts, and realistic
+failure recovery. Use visual QA for layout, responsive rendering, styling, and
+copy-only changes. Do not add pixel geometry, element size, computed style, or
+fixed-delay checks to browser E2E.
+
 Shared server and API setup belongs in `e2e/harness.ts`; page behavior does not
 belong in a cross-page aggregate spec. Tests under `tests/` cover modules and
 component integration without standing in for browser E2E.
