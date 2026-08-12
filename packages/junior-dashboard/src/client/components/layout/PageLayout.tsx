@@ -8,7 +8,7 @@ export function PageLayout(props: { children: ReactNode; className?: string }) {
     <div
       className={cn(
         dashboardContainerClass,
-        "grid min-w-0 content-start gap-4 px-4 py-4 sm:gap-6 sm:px-8 sm:py-8",
+        "grid min-w-0 content-start gap-4 px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:gap-6 sm:px-8 sm:py-8 sm:pb-8",
         props.className,
       )}
     >

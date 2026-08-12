@@ -73,7 +73,7 @@ export function ConversationSidebar(props: {
           value={props.query}
         />
       </div>
-      <div className="min-h-0 overflow-y-auto overscroll-contain px-2 pb-2">
+      <div className="min-h-0 overflow-y-auto overscroll-contain px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
         {props.error ? (
           <div className="p-3">
             <EmptyTelemetry>{props.error}</EmptyTelemetry>
