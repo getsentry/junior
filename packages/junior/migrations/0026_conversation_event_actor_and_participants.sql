@@ -55,7 +55,9 @@ FROM (
 WHERE e."conversation_id" = matched."conversation_id"
   AND e."seq" = matched."seq"
   AND e."actor_identity_id" IS NULL;--> statement-breakpoint
--- Match durable junior/web human authors by verified email subject.
+-- Match durable junior/web human authors by verified email subject, including
+-- dashboard:<sha256(email).slice(0,24)> author ids produced by webActorFromEmail.
+CREATE EXTENSION IF NOT EXISTS pgcrypto;--> statement-breakpoint
 UPDATE "junior_conversation_events" AS e
 SET "actor_identity_id" = matched."id"
 FROM (
@@ -72,7 +74,13 @@ FROM (
     AND (
       i."email_normalized" = lower(e2."payload"->'meta'->'author'->>'email')
       OR i."provider_subject_id" = lower(e2."payload"->'meta'->'author'->>'email')
-      OR i."provider_subject_id" = e2."payload"->'meta'->'author'->>'userId'
+      OR (
+        e2."payload"->'meta'->'author'->>'userId' LIKE 'dashboard:%'
+        AND e2."payload"->'meta'->'author'->>'userId' = concat(
+          'dashboard:',
+          left(encode(digest(i."email_normalized", 'sha256'), 'hex'), 24)
+        )
+      )
     )
   WHERE e2."actor_identity_id" IS NULL
     AND e2."type" IN ('message', 'message_updated')

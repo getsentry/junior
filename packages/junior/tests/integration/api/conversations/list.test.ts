@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { describe, expect, test } from "vitest";
 import { testViewer } from "../../../fixtures/user";
 import { eq } from "drizzle-orm";
@@ -8,6 +9,7 @@ import {
   readConversationRecordFromSql,
 } from "@/api/conversations/list";
 import { apiErrorSchema, conversationFeedSchema } from "@/api/schema";
+import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import {
@@ -19,6 +21,10 @@ import {
   juniorUsers,
 } from "@/db/schema";
 import { createConfiguredJuniorSqlFixture } from "../../../fixtures/sql";
+
+function dashboardAuthorIdFromEmail(email: string): string {
+  return `dashboard:${createHash("sha256").update(email).digest("hex").slice(0, 24)}`;
+}
 
 describe("conversation list API", () => {
   test("serves the route and validates its filters", async () => {
@@ -498,6 +504,114 @@ describe("conversation list API", () => {
         conversationId: "slack:C1:shared-thread",
         isParticipant: true,
       });
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  test("resolves dashboard author ids against junior email identities", async () => {
+    const fixture = createConfiguredJuniorSqlFixture();
+    const store = createSqlStore(fixture.sql);
+    const eventStore = createSqlConversationEventStore(fixture.sql);
+    try {
+      await migrateSchema(fixture.sql);
+      await store.recordActivity({
+        actor: {
+          email: "owner@example.com",
+          platform: "slack",
+          slackUserId: "U-OWNER",
+          teamId: "T1",
+        },
+        conversationId: "slack:C1:dashboard-author",
+        nowMs: 5_000,
+        source: "slack",
+      });
+
+      const participant = await fixture.sql
+        .db()
+        .insert(juniorUsers)
+        .values({
+          id: "user-dashboard-participant",
+          createdAt: new Date(1_000),
+          displayName: "Dashboard Participant",
+          primaryEmail: "dashboard-participant@example.com",
+          primaryEmailNormalized: "dashboard-participant@example.com",
+          updatedAt: new Date(1_000),
+        })
+        .returning({ id: juniorUsers.id });
+      const participantUserId = participant[0]?.id;
+      expect(participantUserId).toBeDefined();
+      await fixture.sql.db().insert(juniorIdentities).values({
+        id: "identity-dashboard-participant",
+        createdAt: new Date(1_000),
+        email: "dashboard-participant@example.com",
+        emailNormalized: "dashboard-participant@example.com",
+        emailVerified: true,
+        kind: "user",
+        provider: "junior",
+        providerSubjectId: "dashboard-participant@example.com",
+        providerTenantId: "",
+        updatedAt: new Date(1_000),
+        userId: participantUserId!,
+      });
+
+      await eventStore.append("slack:C1:dashboard-author", [
+        {
+          createdAtMs: 5_500,
+          data: {
+            messageId: "dashboard-msg-1",
+            meta: {
+              author: {
+                isBot: false,
+                userId: dashboardAuthorIdFromEmail(
+                  "dashboard-participant@example.com",
+                ),
+              },
+            },
+            role: "user",
+            text: "continue from dashboard",
+            type: "message",
+          },
+          idempotencyKey: "message:dashboard-msg-1",
+        },
+      ]);
+
+      const [event] = await fixture.sql
+        .db()
+        .select({
+          actorIdentityId: juniorConversationEvents.actorIdentityId,
+        })
+        .from(juniorConversationEvents)
+        .where(eq(juniorConversationEvents.conversationId, "slack:C1:dashboard-author"))
+        .limit(1);
+      expect(event?.actorIdentityId).toBe("identity-dashboard-participant");
+
+      const participantRows = await fixture.sql
+        .db()
+        .select({
+          userId: juniorConversationParticipants.userId,
+        })
+        .from(juniorConversationParticipants)
+        .where(
+          eq(
+            juniorConversationParticipants.rootConversationId,
+            "slack:C1:dashboard-author",
+          ),
+        );
+      expect(participantRows.map((row) => row.userId)).toContain(
+        participantUserId,
+      );
+
+      const feed = await readConversationFeedFromSql({
+        viewer: {
+          ...testViewer("dashboard-participant@example.com"),
+          id: participantUserId!,
+        },
+        limit: 10,
+      });
+      expect(feed.conversations.map((item) => item.conversationId)).toEqual([
+        "slack:C1:dashboard-author",
+      ]);
     } finally {
       await fixture.close();
     }

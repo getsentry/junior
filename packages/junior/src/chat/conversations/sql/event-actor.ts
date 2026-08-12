@@ -1,4 +1,4 @@
-import { and, eq, or } from "drizzle-orm";
+import { and, eq, or, sql } from "drizzle-orm";
 import { parseActorUserId } from "@/chat/actor";
 import type { IdentityUpsert } from "@/chat/identities/identity";
 import { upsertIdentity } from "@/chat/identities/sql";
@@ -126,6 +126,39 @@ async function findJuniorIdentityIdByEmail(
 }
 
 /**
+ * Resolve a dashboard:<hash> author against junior identities keyed by email.
+ * Web actors store userId as dashboard:${sha256(email).slice(0,24)} while the
+ * durable identity subject remains the verified email.
+ */
+async function findJuniorIdentityIdByDashboardAuthorId(
+  executor: JuniorSqlDatabase,
+  dashboardAuthorId: string,
+): Promise<string | undefined> {
+  if (!dashboardAuthorId.startsWith("dashboard:")) {
+    return undefined;
+  }
+  const rows = await executor
+    .db()
+    .select({ id: juniorIdentities.id })
+    .from(juniorIdentities)
+    .where(
+      and(
+        eq(juniorIdentities.provider, "junior"),
+        eq(juniorIdentities.kind, "user"),
+        eq(juniorIdentities.emailVerified, true),
+        sql`${juniorIdentities.emailNormalized} is not null`,
+        // Match webActorFromEmail(): dashboard:${sha256(email).slice(0,24)}
+        sql`concat(
+          'dashboard:',
+          left(encode(digest(${juniorIdentities.emailNormalized}, 'sha256'), 'hex'), 24)
+        ) = ${dashboardAuthorId}`,
+      ),
+    )
+    .limit(1);
+  return rows[0]?.id;
+}
+
+/**
  * Resolve the durable actor identity for one event payload.
  * Human user messages get an identity when author data is enough; other events
  * keep a null actor.
@@ -211,13 +244,10 @@ export async function resolveEventActorIdentityId(
     return stored.id;
   }
 
-  // Dashboard authors store dashboard:<hash> without email in meta. Match an
-  // existing junior identity when one was already linked for that subject.
+  // Dashboard authors store dashboard:<hash> without email in meta. Junior
+  // identities stay keyed by verified email, so match the hash of that email.
   if (userId.startsWith("dashboard:")) {
-    return findIdentityIdByProviderSubject(executor, {
-      provider: "junior",
-      providerSubjectId: userId,
-    });
+    return findJuniorIdentityIdByDashboardAuthorId(executor, userId);
   }
 
   return findJuniorIdentityIdByEmail(executor, userId);
