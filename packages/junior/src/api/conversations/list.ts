@@ -23,7 +23,7 @@ import { conversationFeedSchema } from "../schema/conversation";
 import type { ConversationFeed } from "../schema/conversation";
 import { readRootConversationMetricsFromSql } from "./usage";
 import { readConversationAuxiliaryCostsFromSql } from "./auxiliary-costs";
-import { listUnfinishedWork } from "@/chat/plugins/unfinished-work";
+import { listConversationWork } from "@/chat/plugins/unfinished-work";
 
 const CONVERSATION_FEED_LIMIT = 50;
 
@@ -243,7 +243,7 @@ export async function readConversationFeedFromSql(
     auxiliaryCostsByRoot,
     metricsByRoot,
     teamDomainByTeamId,
-    unfinishedWorkIds,
+    conversationWork,
   ] = await Promise.all([
     readConversationAccessFromSql(db, conversationIds, options.viewer),
     readConversationAuxiliaryCostsFromSql(db, conversationIds, {
@@ -257,9 +257,10 @@ export async function readConversationFeedFromSql(
           : [],
       ),
     ),
-    listUnfinishedWork(conversationIds),
+    listConversationWork(conversationIds),
   ]);
-  const unfinishedWork = new Set(unfinishedWorkIds);
+  const assignedWork = new Set(conversationWork.assignedIds);
+  const unfinishedWork = new Set(conversationWork.unfinishedIds);
   return {
     conversations: conversations.map((conversation, index) => {
       const row = rows[index]!;
@@ -276,6 +277,9 @@ export async function readConversationFeedFromSql(
             : {}),
           usage: metrics?.usage ?? row.conversation.usage ?? undefined,
         }),
+        ...(assignedWork.has(conversation.conversationId)
+          ? { assignedWork: true }
+          : {}),
         ...(unfinishedWork.has(conversation.conversationId)
           ? { unfinishedWork: true }
           : {}),

@@ -28,6 +28,11 @@ export interface UnfinishedWorkHookContext extends PluginContext {
 export interface UnfinishedWorkResult {
   /** Candidate conversations that have plugin-owned work to finish. */
   conversationIds: string[];
+  /**
+   * Candidate conversations that have any associated plugin-owned work,
+   * finished or unfinished. Omit when the plugin cannot distinguish assignment.
+   */
+  assignedConversationIds?: string[];
 }
 
 export type PluginOperationalTone = "danger" | "good" | "neutral" | "warning";

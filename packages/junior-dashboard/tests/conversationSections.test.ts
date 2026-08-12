@@ -6,7 +6,7 @@ import type { Conversation } from "../src/client/types";
 function conversation(
   id: string,
   lastSeenAt: string,
-  unfinishedWork = false,
+  options: { assignedWork?: boolean; unfinishedWork?: boolean } = {},
 ): Conversation {
   return {
     cumulativeDurationMs: 0,
@@ -17,22 +17,29 @@ function conversation(
     startedAt: lastSeenAt,
     status: "completed",
     surface: "internal",
-    ...(unfinishedWork ? { unfinishedWork: true } : {}),
+    ...(options.assignedWork ? { assignedWork: true } : {}),
+    ...(options.unfinishedWork ? { unfinishedWork: true } : {}),
   };
 }
 
 describe("conversation activity sections", () => {
-  it("keeps recent finished conversations in priority and broadens older date groups", () => {
+  it("keeps only recent unassigned conversations in priority", () => {
     const sections = buildConversationSections(
       [
         conversation("older", "2026-06-20T12:00:00-07:00"),
         conversation("two-weeks", "2026-07-19T12:00:00-07:00"),
-        conversation("priority", "2026-08-03T11:00:00-07:00"),
+        conversation("priority-unassigned", "2026-08-03T10:00:00-07:00"),
         conversation("last-week", "2026-07-26T12:00:00-07:00"),
-        conversation("unfinished-today", "2026-08-03T08:00:00-07:00", true),
-        conversation("priority-yesterday", "2026-08-02T13:00:00-07:00"),
-        conversation("unfinished-yesterday", "2026-08-02T12:00:00-07:00", true),
-        conversation("weekday", "2026-08-01T12:00:00-07:00"),
+        conversation("finished-assigned", "2026-08-03T11:30:00-07:00", {
+          assignedWork: true,
+        }),
+        conversation("unfinished-recent", "2026-08-03T11:45:00-07:00", {
+          assignedWork: true,
+          unfinishedWork: true,
+        }),
+        conversation("stale-unassigned", "2026-08-03T08:00:00-07:00"),
+        conversation("yesterday", "2026-08-02T12:00:00-07:00"),
+        conversation("weekday", "2026-08-01T10:00:00-07:00"),
         conversation("three-weeks", "2026-07-12T12:00:00-07:00"),
       ],
       {
@@ -48,14 +55,18 @@ describe("conversation activity sections", () => {
       })),
     ).toEqual([
       {
-        conversations: ["priority", "priority-yesterday"],
+        conversations: ["priority-unassigned"],
         label: "Priority",
       },
       {
-        conversations: ["unfinished-today"],
+        conversations: [
+          "unfinished-recent",
+          "finished-assigned",
+          "stale-unassigned",
+        ],
         label: "Today",
       },
-      { conversations: ["unfinished-yesterday"], label: "Yesterday" },
+      { conversations: ["yesterday"], label: "Yesterday" },
       { conversations: ["weekday"], label: "Saturday" },
       { conversations: ["last-week"], label: "Last week" },
       { conversations: ["two-weeks"], label: "2 weeks ago" },

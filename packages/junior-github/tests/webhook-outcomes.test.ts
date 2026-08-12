@@ -22,7 +22,10 @@ import {
 import type { GitHubDb } from "../src/db/database";
 import { githubPlugin } from "../src/index";
 import { buildGitHubOutcomeReport } from "../src/outcomes/report";
-import { listGitHubUnfinishedWork } from "../src/pull-request-outcomes/store";
+import {
+  listGitHubAssignedWork,
+  listGitHubUnfinishedWork,
+} from "../src/pull-request-outcomes/store";
 import { createGitHubWebhookRoute } from "../src/webhooks/handler";
 import {
   buildCheckSuiteUrl,
@@ -94,6 +97,18 @@ it("returns only candidate conversations with unmerged pull requests", async () 
         "conversation-unrelated",
       ]),
     ).resolves.toEqual(["conversation-open", "conversation-shared"]);
+    await expect(
+      listGitHubAssignedWork(fixture.db(), [
+        "conversation-open",
+        "conversation-merged",
+        "conversation-shared",
+        "conversation-unrelated",
+      ]).then((ids) => [...ids].sort()),
+    ).resolves.toEqual([
+      "conversation-merged",
+      "conversation-open",
+      "conversation-shared",
+    ]);
   } finally {
     await fixture.close();
   }

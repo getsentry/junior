@@ -51,14 +51,16 @@ describe("conversation list API", () => {
     }
   });
 
-  test("marks conversations with unfinished plugin work", async () => {
+  test("marks conversations with assigned and unfinished plugin work", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
     const store = createSqlStore(fixture.sql);
-    const conversationId = "slack:C123:unfinished-work";
+    const unfinishedId = "slack:C123:unfinished-work";
+    const finishedId = "slack:C123:finished-work";
     const seenConversationIds: string[][] = [];
     try {
       await migrateSchema(fixture.sql);
-      await store.recordActivity({ conversationId, nowMs: 1_000 });
+      await store.recordActivity({ conversationId: unfinishedId, nowMs: 2_000 });
+      await store.recordActivity({ conversationId: finishedId, nowMs: 1_000 });
       setPlugins([
         defineJuniorPlugin({
           manifest: {
@@ -69,7 +71,10 @@ describe("conversation list API", () => {
           hooks: {
             unfinishedWork(ctx) {
               seenConversationIds.push([...ctx.conversationIds]);
-              return { conversationIds: [conversationId] };
+              return {
+                assignedConversationIds: [unfinishedId, finishedId],
+                conversationIds: [unfinishedId],
+              };
             },
           },
         }),
@@ -78,12 +83,17 @@ describe("conversation list API", () => {
       await expect(readConversationFeedFromSql()).resolves.toMatchObject({
         conversations: [
           expect.objectContaining({
-            conversationId,
+            conversationId: unfinishedId,
+            assignedWork: true,
             unfinishedWork: true,
+          }),
+          expect.objectContaining({
+            conversationId: finishedId,
+            assignedWork: true,
           }),
         ],
       });
-      expect(seenConversationIds).toEqual([[conversationId]]);
+      expect(seenConversationIds).toEqual([[unfinishedId, finishedId]]);
     } finally {
       setPlugins([]);
       await fixture.close();

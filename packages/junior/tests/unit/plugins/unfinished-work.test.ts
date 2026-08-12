@@ -1,7 +1,10 @@
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it } from "vitest";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
-import { listUnfinishedWork } from "@/chat/plugins/unfinished-work";
+import {
+  listConversationWork,
+  listUnfinishedWork,
+} from "@/chat/plugins/unfinished-work";
 
 describe("plugin unfinished work", () => {
   afterEach(() => setPlugins([]));
@@ -16,7 +19,14 @@ describe("plugin unfinished work", () => {
         },
         hooks: {
           unfinishedWork() {
-            return { conversationIds: ["conversation-a", "not-a-candidate"] };
+            return {
+              assignedConversationIds: [
+                "conversation-a",
+                "conversation-finished",
+                "not-a-candidate",
+              ],
+              conversationIds: ["conversation-a", "not-a-candidate"],
+            };
           },
         },
       }),
@@ -35,10 +45,26 @@ describe("plugin unfinished work", () => {
     ]);
 
     await expect(
+      listConversationWork([
+        "conversation-a",
+        "conversation-b",
+        "conversation-c",
+        "conversation-finished",
+      ]),
+    ).resolves.toEqual({
+      assignedIds: [
+        "conversation-a",
+        "conversation-b",
+        "conversation-finished",
+      ],
+      unfinishedIds: ["conversation-a", "conversation-b"],
+    });
+    await expect(
       listUnfinishedWork([
         "conversation-a",
         "conversation-b",
         "conversation-c",
+        "conversation-finished",
       ]),
     ).resolves.toEqual(["conversation-a", "conversation-b"]);
   });
@@ -53,7 +79,10 @@ describe("plugin unfinished work", () => {
         },
         hooks: {
           unfinishedWork() {
-            return { conversationIds: ["conversation-a"] };
+            return {
+              assignedConversationIds: ["conversation-a", "conversation-c"],
+              conversationIds: ["conversation-a"],
+            };
           },
         },
       }),
@@ -72,7 +101,14 @@ describe("plugin unfinished work", () => {
     ]);
 
     await expect(
-      listUnfinishedWork(["conversation-a", "conversation-b"]),
-    ).resolves.toEqual(["conversation-a"]);
+      listConversationWork([
+        "conversation-a",
+        "conversation-b",
+        "conversation-c",
+      ]),
+    ).resolves.toEqual({
+      assignedIds: ["conversation-a", "conversation-c"],
+      unfinishedIds: ["conversation-a"],
+    });
   });
 });

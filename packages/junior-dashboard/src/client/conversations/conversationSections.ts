@@ -7,7 +7,8 @@ export type ConversationSection = {
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const PRIORITY_WINDOW_MS = DAY_MS;
+/** Unassigned conversations leave Priority after this idle window. */
+const UNASSIGNED_PRIORITY_WINDOW_MS = 3 * 60 * 60 * 1000;
 const SECTION_ORDER = [
   "priority",
   "today",
@@ -56,6 +57,20 @@ function activityTime(conversation: Conversation): number {
   return Number.isFinite(time) ? time : Number.NEGATIVE_INFINITY;
 }
 
+function isPriority(
+  conversation: Conversation,
+  time: number,
+  nowMs: number,
+): boolean {
+  if (!Number.isFinite(time)) return false;
+  // Assigned work leaves Priority whether finished or unfinished.
+  // unfinishedWork alone still counts as assigned when a plugin omits the
+  // broader assignment list.
+  if (conversation.assignedWork || conversation.unfinishedWork) return false;
+  // No assigned work stays only while recently active.
+  return nowMs - time <= UNASSIGNED_PRIORITY_WINDOW_MS;
+}
+
 function conversationSection(
   conversation: Conversation,
   time: number,
@@ -65,9 +80,7 @@ function conversationSection(
 ): Pick<ConversationSection, "key" | "label"> {
   if (!Number.isFinite(time)) return { key: "older", label: "Older" };
 
-  // Priority is recent activity without unfinished work. Unfinished work
-  // (for example open PRs) moves a conversation into its normal date section.
-  if (!conversation.unfinishedWork && nowMs - time <= PRIORITY_WINDOW_MS) {
+  if (isPriority(conversation, time, nowMs)) {
     return { key: "priority", label: "Priority" };
   }
 

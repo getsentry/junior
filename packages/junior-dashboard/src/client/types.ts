@@ -145,6 +145,7 @@ export type Conversation = {
   status: ConversationSummaryReport["status"];
   surface: ConversationSummaryReport["surface"];
   traceId?: string;
+  assignedWork?: boolean;
   unfinishedWork?: boolean;
   visibility?: ConversationSummaryReport["visibility"];
 };

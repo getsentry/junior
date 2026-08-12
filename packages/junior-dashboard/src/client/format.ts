@@ -863,6 +863,7 @@ export function buildConversations(
       status: summary.status,
       surface: summary.surface,
       traceId: summary.traceId,
+      assignedWork: summary.assignedWork,
       unfinishedWork: summary.unfinishedWork,
       visibility: summary.visibility,
     }))
