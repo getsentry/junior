@@ -145,10 +145,10 @@ export function ConversationComposer(props: {
         <div
           aria-live="polite"
           className={
-            props.error
-              ? "min-w-0 font-mono text-xs leading-relaxed text-red-300/80"
-              : !online
-                ? "min-w-0 font-mono text-xs leading-relaxed text-amber-100/80"
+            !online
+              ? "min-w-0 font-mono text-xs leading-relaxed text-amber-100/80"
+              : props.error
+                ? "min-w-0 font-mono text-xs leading-relaxed text-red-300/80"
                 : "min-w-0 font-mono text-xs leading-relaxed text-dashboard-text-muted"
           }
         >
