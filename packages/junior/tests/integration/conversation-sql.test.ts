@@ -22,6 +22,11 @@ import {
   createEmptyJuniorSqlFixture,
   hasJuniorPostgresTestDatabase,
 } from "../fixtures/postgres/fixture";
+import {
+  applyCoreMigrations as applyCoreMigrationSlice,
+  insertLegacyConversation,
+  insertLegacyConversationEvent,
+} from "../fixtures/conversation-sql-migrations";
 
 const coreMigrations = readMigrationFiles({
   migrationsFolder: fileURLToPath(new URL("../../migrations", import.meta.url)),
@@ -38,6 +43,19 @@ SELECT EXISTS (
 ) AS "schemaExists"
 `);
   expect(state?.schemaExists).toBe(false);
+}
+
+async function applyCoreMigrations(
+  fixture: Awaited<ReturnType<typeof createLocalJuniorSqlFixture>>,
+  fromIndex: number,
+  toIndexExclusive?: number,
+): Promise<void> {
+  await applyCoreMigrationSlice(
+    fixture,
+    coreMigrations,
+    fromIndex,
+    toIndexExclusive,
+  );
 }
 
 describe("conversation SQL local mode", () => {
@@ -62,11 +80,7 @@ describe("conversation SQL local mode", () => {
     }
 
     try {
-      for (const migration of coreMigrations.slice(0, sourceMigrationIndex)) {
-        for (const statement of migration.sql) {
-          await fixture.sql.execute(statement);
-        }
-      }
+      await applyCoreMigrations(fixture, 0, sourceMigrationIndex);
       await fixture.sql.execute(`
 INSERT INTO junior_destinations (
   id,
@@ -161,79 +175,25 @@ ORDER BY conversation_id
     }
 
     try {
-      for (const migration of coreMigrations.slice(0, ownershipMigrationIndex)) {
-        for (const statement of migration.sql) {
-          await fixture.sql.execute(statement);
-        }
-      }
+      await applyCoreMigrations(fixture, 0, ownershipMigrationIndex);
 
       const conversationId = "internal:legacy-mcp-connection";
       const conversation = buildJuniorSqlConversation({ conversationId });
-      // Insert against the partial pre-actor_identity_id schema with raw SQL.
-      await fixture.sql.execute(
-        `INSERT INTO junior_conversations (
-           conversation_id,
-           source,
-           destination_json,
-           actor_json,
-           channel_name,
-           title,
-           created_at,
-           last_activity_at,
-           updated_at,
-           execution_status,
-           root_conversation_id
-         ) VALUES (
-           $1, $2, $3::jsonb, $4::jsonb, $5, $6, $7, $8, $9, $10, $11
-         )`,
-        [
-          conversation.conversationId,
-          conversation.source ?? null,
-          JSON.stringify(conversation.destination ?? null),
-          JSON.stringify(conversation.actor ?? null),
-          conversation.channelName ?? null,
-          conversation.title ?? null,
-          conversation.createdAt,
-          conversation.lastActivityAt,
-          conversation.updatedAt,
-          conversation.executionStatus,
-          conversation.rootConversationId ?? conversation.conversationId,
-        ],
-      );
-      await fixture.sql.execute(
-        `INSERT INTO junior_conversation_events (
-           conversation_id,
-           seq,
-           history_version,
-           schema_version,
-           type,
-           payload,
-           created_at
-         ) VALUES (
-           $1, $2, $3, $4, $5, $6::jsonb, $7
-         )`,
-        [
-          conversationId,
-          0,
-          0,
-          1,
-          "mcp_provider_connected",
-          JSON.stringify({ provider: "github" }),
-          new Date(1_000),
-        ],
-      );
+      await insertLegacyConversation(fixture, conversation);
+      await insertLegacyConversationEvent(fixture, {
+        conversationId,
+        createdAt: new Date(1_000),
+        historyVersion: 0,
+        payload: { provider: "github" },
+        seq: 0,
+        type: "mcp_provider_connected",
+      });
 
       for (const statement of ownershipMigration.sql) {
         await fixture.sql.execute(statement);
       }
       // Bring the fixture to the current schema before using typed Drizzle APIs.
-      for (const migration of coreMigrations.slice(
-        ownershipMigrationIndex + 1,
-      )) {
-        for (const statement of migration.sql) {
-          await fixture.sql.execute(statement);
-        }
-      }
+      await applyCoreMigrations(fixture, ownershipMigrationIndex + 1);
 
       const history = await createSqlConversationEventStore(
         fixture.sql,
@@ -265,51 +225,13 @@ ORDER BY conversation_id
     }
 
     try {
-      for (const migration of coreMigrations.slice(
-        0,
-        nativeHistoryMigrationIndex,
-      )) {
-        for (const statement of migration.sql) {
-          await fixture.sql.execute(statement);
-        }
-      }
+      await applyCoreMigrations(fixture, 0, nativeHistoryMigrationIndex);
 
       const conversationId = "internal:native-history-migration";
-      // Insert with the pre-source_json column set so this fixture stays valid
-      // against the partial migration history applied above.
+      // Keep the partial pre-source_json fixture valid against earlier migrations.
       const conversation = buildJuniorSqlConversation({ conversationId });
-      await fixture.sql.execute(
-        `INSERT INTO junior_conversations (
-           conversation_id,
-           source,
-           destination_json,
-           actor_json,
-           channel_name,
-           title,
-           created_at,
-           last_activity_at,
-           updated_at,
-           execution_status,
-           root_conversation_id
-         ) VALUES (
-           $1, $2, $3::jsonb, $4::jsonb, $5, $6, $7, $8, $9, $10, $11
-         )`,
-        [
-          conversation.conversationId,
-          conversation.source ?? null,
-          JSON.stringify(conversation.destination ?? null),
-          JSON.stringify(conversation.actor ?? null),
-          conversation.channelName ?? null,
-          conversation.title ?? null,
-          conversation.createdAt,
-          conversation.lastActivityAt,
-          conversation.updatedAt,
-          conversation.executionStatus,
-          conversation.rootConversationId ?? conversation.conversationId,
-        ],
-      );
-      // Insert against the partial pre-actor_identity_id schema with raw SQL.
-      const legacyEvents = [
+      await insertLegacyConversation(fixture, conversation);
+      for (const event of [
         {
           seq: 0,
           historyVersion: 0,
@@ -379,30 +301,11 @@ ORDER BY conversation_id
           },
           createdAt: new Date(1_003),
         },
-      ] as const;
-      for (const event of legacyEvents) {
-        await fixture.sql.execute(
-          `INSERT INTO junior_conversation_events (
-             conversation_id,
-             seq,
-             history_version,
-             schema_version,
-             type,
-             payload,
-             created_at
-           ) VALUES (
-             $1, $2, $3, $4, $5, $6::jsonb, $7
-           )`,
-          [
-            conversationId,
-            event.seq,
-            event.historyVersion,
-            1,
-            event.type,
-            JSON.stringify(event.payload),
-            event.createdAt,
-          ],
-        );
+      ] as const) {
+        await insertLegacyConversationEvent(fixture, {
+          conversationId,
+          ...event,
+        });
       }
 
       for (const statement of nativeHistoryMigration.sql) {
@@ -414,13 +317,7 @@ ORDER BY conversation_id
       }
 
       // Bring the fixture to the current schema before using typed Drizzle APIs.
-      for (const migration of coreMigrations.slice(
-        nativeHistoryMigrationIndex + 1,
-      )) {
-        for (const statement of migration.sql) {
-          await fixture.sql.execute(statement);
-        }
-      }
+      await applyCoreMigrations(fixture, nativeHistoryMigrationIndex + 1);
 
       const rows = await fixture.sql
         .db()
@@ -482,28 +379,14 @@ ORDER BY conversation_id
         },
       ]);
 
-      await fixture.sql.execute(
-        `INSERT INTO junior_conversation_events (
-           conversation_id,
-           seq,
-           history_version,
-           schema_version,
-           type,
-           payload,
-           created_at
-         ) VALUES (
-           $1, $2, $3, $4, $5, $6::jsonb, $7
-         )`,
-        [
-          conversationId,
-          4,
-          1,
-          1,
-          "agent_step",
-          JSON.stringify({ message: { role: "system" } }),
-          new Date(1_004),
-        ],
-      );
+      await insertLegacyConversationEvent(fixture, {
+        conversationId,
+        createdAt: new Date(1_004),
+        historyVersion: 1,
+        payload: { message: { role: "system" } },
+        seq: 4,
+        type: "agent_step",
+      });
       await expect(
         (async () => {
           for (const statement of nativeHistoryMigration.sql) {
