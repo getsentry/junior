@@ -48,6 +48,7 @@ allowBuilds:
   "@google/genai": true
   "@mongodb-js/zstd": true
   "@parcel/watcher": true
+  "@sentry/cli": true
   agent-browser: true
   esbuild: true
   msw: true
