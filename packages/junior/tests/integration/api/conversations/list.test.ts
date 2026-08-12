@@ -48,6 +48,7 @@ describe("conversation list API", () => {
     const fixture = createConfiguredJuniorSqlFixture();
     const store = createSqlStore(fixture.sql);
     const conversationId = "slack:C123:unfinished-work";
+    const seenConversationIds: string[][] = [];
     try {
       await migrateSchema(fixture.sql);
       await store.recordActivity({ conversationId, nowMs: 1_000 });
@@ -60,7 +61,7 @@ describe("conversation list API", () => {
           },
           hooks: {
             unfinishedWork(ctx) {
-              expect(ctx.conversationIds).toEqual([conversationId]);
+              seenConversationIds.push([...ctx.conversationIds]);
               return { conversationIds: [conversationId] };
             },
           },
@@ -75,6 +76,7 @@ describe("conversation list API", () => {
           }),
         ],
       });
+      expect(seenConversationIds).toEqual([[conversationId]]);
     } finally {
       setPlugins([]);
       await fixture.close();
