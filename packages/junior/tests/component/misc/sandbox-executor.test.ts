@@ -1199,6 +1199,46 @@ describe("createTestSandbox", () => {
       null,
     ]);
     expect(runtime.sandboxRef()).toBeUndefined();
+    expect(failedSandbox.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops a remembered replacement when switch fails after acquire", async () => {
+    process.env.VERCEL_SANDBOX_KEEPALIVE_MS = "5000";
+    const initialSandbox = makeSandbox("sbx_workspace_initial");
+    const failedSandbox = makeSandbox("sbx_workspace_keepalive_failed");
+    // Fail after createFreshSandbox remembers the session, during ensureReady.
+    failedSandbox.extendTimeout.mockRejectedValueOnce(
+      createApiError(410, "Gone", "sandbox_stopped", "sandbox is gone"),
+    );
+    sandboxCreateMock
+      .mockResolvedValueOnce(initialSandbox)
+      .mockResolvedValueOnce(failedSandbox);
+    hashMock
+      .mockReturnValueOnce("profile-initial")
+      .mockReturnValueOnce("profile-next");
+    const initialWorkspace = {
+      id: "workspace-initial",
+      name: "initial",
+      setupScript: "",
+      updatedAt: new Date("2026-08-11T00:00:00.000Z"),
+      repos: [],
+    };
+    const nextWorkspace = {
+      ...initialWorkspace,
+      id: "workspace-next",
+      name: "next",
+    };
+    const runtime = createSandboxRuntime({
+      workspace: initialWorkspace,
+      skills: [],
+      referenceFiles: [],
+    });
+
+    await runtime.acquire();
+    await expect(runtime.switchWorkspace(nextWorkspace)).rejects.toThrow();
+
+    expect(failedSandbox.stop).toHaveBeenCalledTimes(1);
+    expect(runtime.sandboxRef()).toBeUndefined();
   });
 
   it("surfaces a generic sandbox setup failure for non-recoverable sync errors", async () => {

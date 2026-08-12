@@ -27,6 +27,7 @@ import {
 import { syncSkillsToSandbox } from "@/chat/sandbox/skill-sync";
 import {
   createSandboxSession,
+  stopSession,
   type SandboxCommandResult,
   type SandboxFileSystem,
   type SandboxSession,
@@ -535,6 +536,7 @@ export function createSandboxRuntime(
       networkPolicyKey = await applyNetworkPolicy(createdSandbox);
       await prepareSandbox(createdSandbox);
     } catch (error) {
+      await stopSession(createdSandbox);
       return failSetup(error);
     }
 
@@ -627,6 +629,7 @@ export function createSandboxRuntime(
       await prepareSandbox(hintedSandbox);
       return rememberSandbox(hintedSandbox, networkPolicyKey);
     } catch (error) {
+      await stopSession(hintedSandbox);
       if (isSandboxUnavailableError(error)) {
         throw error;
       }
@@ -897,14 +900,16 @@ export function createSandboxRuntime(
 
   const ensureReadySandbox = async (
     signal?: AbortSignal,
+    onAcquired?: (session: SandboxSession) => void,
   ): Promise<SandboxSession> => {
-    const activeSandbox = await getOrAcquireSandbox(signal);
+    const session = await getOrAcquireSandbox(signal);
+    onAcquired?.(session);
     signal?.throwIfAborted();
-    await probeSession(activeSandbox);
+    await probeSession(session);
     signal?.throwIfAborted();
-    await extendKeepAlive(activeSandbox);
-    startKeepAlive(activeSandbox);
-    return activeSandbox;
+    await extendKeepAlive(session);
+    startKeepAlive(session);
+    return session;
   };
 
   return {
@@ -914,8 +919,7 @@ export function createSandboxRuntime(
     async switchWorkspace(workspace, signal) {
       signal?.throwIfAborted();
       const nextProfileHash = profileHash(SANDBOX_RUNTIME, workspace);
-      // Same recipe is a no-op even when the provider session is cold. Clearing
-      // sandboxRef here would force a fresh boot and drop durable working state.
+      // Same recipe is a no-op even when cold.
       if (
         activeWorkspace?.id === workspace.id &&
         dependencyProfileHash === nextProfileHash
@@ -926,8 +930,7 @@ export function createSandboxRuntime(
       const previousWorkspace = activeWorkspace;
       const previousProfileHash = dependencyProfileHash;
 
-      // Point the recipe at the target first so any concurrent re-acquire after
-      // an aborted boot uses the new workspace instead of the old one.
+      // Point at the target first so concurrent re-acquire uses it.
       activeWorkspace = workspace;
       dependencyProfileHash = nextProfileHash;
       sandboxRef = undefined;
@@ -946,31 +949,23 @@ export function createSandboxRuntime(
       }
 
       const previousSandbox = activeSandbox;
-      activeSandbox = null;
-      if (keepAliveTimer) {
-        clearTimeout(keepAliveTimer);
-        keepAliveTimer = undefined;
-      }
-      if (previousSandbox) {
-        try {
-          await previousSandbox.session.stop();
-        } catch {
-          // Best-effort stop of the sandbox being replaced.
-        }
-      }
+      invalidateSession();
+      await stopSession(previousSandbox?.session);
 
+      // Local ref survives failures that clear activeSandbox after acquire.
+      let replacement: SandboxSession | undefined;
       try {
-        // Route through ensureReadySandbox so the replacement session gets the
-        // same probe + keepalive path as normal tool acquisition.
-        await ensureReadySandbox(signal);
+        await ensureReadySandbox(signal, (s) => {
+          replacement = s;
+        });
       } catch (error) {
-        // Roll back recipe identity so AGENTS.md selection and the next boot
-        // stay aligned. The previous live sandbox is gone, so drop its id hint.
+        const failed = activeSandbox?.session ?? replacement;
         activeWorkspace = previousWorkspace;
         dependencyProfileHash = previousProfileHash;
-        activeSandbox = null;
+        invalidateSession();
         sandboxRef = undefined;
         reportedSandboxRef = undefined;
+        await stopSession(failed);
         await options.onSandboxRefChanged?.(null);
         throw error;
       }
