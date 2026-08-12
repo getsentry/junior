@@ -141,34 +141,56 @@ export function createGitHubWebhookRoute(args: {
         eventName === "pull_request"
           ? normalizeGitHubPullRequestLinkedIssues({ body, botEmail })
           : undefined;
-      if (pullRequestOutcome) {
-        const recordedOutcome = await recordGitHubPullRequestOutcome(
-          args.db,
-          pullRequestOutcome,
+      const recordedOutcome = pullRequestOutcome
+        ? await recordGitHubPullRequestOutcome(args.db, pullRequestOutcome)
+        : undefined;
+      if (issueOutcome) {
+        await recordGitHubIssueOutcome(args.db, issueOutcome);
+      }
+      const recordedIssueConversations = issueConversations
+        ? await recordGitHubIssueConversations(args.db, issueConversations)
+        : false;
+      const recordedPullRequestConversations = pullRequestConversations
+        ? await recordGitHubPullRequestConversations(
+            args.db,
+            pullRequestConversations,
+          )
+        : false;
+      const recordedPullRequestLinkedIssues = pullRequestLinkedIssues
+        ? await recordGitHubPullRequestLinkedIssues(
+            args.db,
+            pullRequestLinkedIssues,
+          )
+        : false;
+      if (pullRequestOutcome && recordedOutcome?.applied) {
+        const conversationIds = [
+          ...new Set([
+            ...recordedOutcome.conversationIds,
+            ...(recordedPullRequestConversations && pullRequestConversations
+              ? pullRequestConversations.conversationIds
+              : []),
+          ]),
+        ];
+        const status =
+          pullRequestOutcome.state === "merged"
+            ? "merged"
+            : pullRequestOutcome.state === "closed_unmerged"
+              ? "closed"
+              : pullRequestOutcome.draft
+                ? "draft"
+                : "open";
+        await Promise.all(
+          conversationIds.map((conversationId) =>
+            args.annotations.forConversation(conversationId).upsert({
+              kind: "resource_link",
+              key: `${pullRequestOutcome.repositoryFullName.toLowerCase()}#${pullRequestOutcome.number}`,
+              label: `${pullRequestOutcome.repositoryFullName}#${pullRequestOutcome.number}`,
+              url: `https://github.com/${pullRequestOutcome.repositoryFullName}/pull/${pullRequestOutcome.number}`,
+              status,
+            }),
+          ),
         );
-        if (recordedOutcome.applied) {
-          const status =
-            pullRequestOutcome.state === "merged"
-              ? "merged"
-              : pullRequestOutcome.state === "closed_unmerged"
-                ? "closed"
-                : pullRequestOutcome.draft
-                  ? "draft"
-                  : "open";
-          await Promise.all(
-            recordedOutcome.conversationIds.map((conversationId) =>
-              args.annotations.forConversation(conversationId).upsert({
-                kind: "resource_link",
-                key: `${pullRequestOutcome.repositoryFullName.toLowerCase()}#${pullRequestOutcome.number}`,
-                label: `${pullRequestOutcome.repositoryFullName}#${pullRequestOutcome.number}`,
-                url: `https://github.com/${pullRequestOutcome.repositoryFullName}/pull/${pullRequestOutcome.number}`,
-                status,
-              }),
-            ),
-          );
-        }
         if (
-          recordedOutcome.applied &&
           !recordedOutcome.commitComposition &&
           pullRequestOutcome.state === "merged" &&
           args.classifyPullRequestCommits
@@ -195,24 +217,6 @@ export function createGitHubWebhookRoute(args: {
           }
         }
       }
-      if (issueOutcome) {
-        await recordGitHubIssueOutcome(args.db, issueOutcome);
-      }
-      const recordedIssueConversations = issueConversations
-        ? await recordGitHubIssueConversations(args.db, issueConversations)
-        : false;
-      const recordedPullRequestConversations = pullRequestConversations
-        ? await recordGitHubPullRequestConversations(
-            args.db,
-            pullRequestConversations,
-          )
-        : false;
-      const recordedPullRequestLinkedIssues = pullRequestLinkedIssues
-        ? await recordGitHubPullRequestLinkedIssues(
-            args.db,
-            pullRequestLinkedIssues,
-          )
-        : false;
 
       const failingChecks =
         eventName === "check_suite" && args.loadFailingChecks

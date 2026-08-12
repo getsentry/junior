@@ -52,8 +52,14 @@ describe("conversation list API", () => {
       await migrateSchema(fixture.sql);
       await store.recordActivity({
         conversationId,
+        destination: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: "C123",
+        },
         nowMs: 1_000,
         source: "slack",
+        visibility: "public",
       });
       const annotations = createPluginAnnotations({
         conversationId,
@@ -88,6 +94,91 @@ describe("conversation list API", () => {
               label: "getsentry/junior#101",
               status: "draft",
               url: "https://github.com/getsentry/junior/pull/101",
+            },
+          }),
+        ],
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  test("hides linked pull requests without private-content access", async () => {
+    const fixture = createConfiguredJuniorSqlFixture();
+    const store = createSqlStore(fixture.sql);
+    const conversationId = "slack:C-private:pull-request";
+    try {
+      await migrateSchema(fixture.sql);
+      await store.recordActivity({
+        actor: {
+          email: "participant@example.com",
+          platform: "slack",
+          slackUserId: "U-participant",
+          teamId: "TPRIVATE",
+        },
+        conversationId,
+        destination: {
+          platform: "slack",
+          teamId: "TPRIVATE",
+          channelId: "CPRIVATE",
+        },
+        nowMs: 1_000,
+        source: "slack",
+        visibility: "private",
+      });
+      const annotations = createPluginAnnotations({
+        conversationId,
+        db: fixture.sql.db(),
+        plugin: "github",
+      });
+      await annotations.upsert({
+        kind: "resource_link",
+        key: "getsentry/junior#1081",
+        label: "getsentry/junior#1081",
+        status: "open",
+        url: "https://github.com/getsentry/junior/pull/1081",
+      });
+
+      const anonymous = await readConversationFeedFromSql();
+      expect(
+        anonymous.conversations.find(
+          (conversation) => conversation.conversationId === conversationId,
+        ),
+      ).toMatchObject({
+        conversationId,
+      });
+      expect(
+        anonymous.conversations.find(
+          (conversation) => conversation.conversationId === conversationId,
+        ),
+      ).not.toHaveProperty("pullRequest");
+
+      const linkedUser = await fixture.sql
+        .db()
+        .select({ id: juniorUsers.id })
+        .from(juniorUsers)
+        .where(
+          eq(juniorUsers.primaryEmailNormalized, "participant@example.com"),
+        )
+        .limit(1);
+      const linkedUserId = linkedUser[0]?.id;
+      expect(linkedUserId).toBeDefined();
+
+      await expect(
+        readConversationFeedFromSql({
+          viewer: {
+            ...testViewer("participant@example.com"),
+            id: linkedUserId!,
+          },
+        }),
+      ).resolves.toMatchObject({
+        conversations: [
+          expect.objectContaining({
+            conversationId,
+            pullRequest: {
+              label: "getsentry/junior#1081",
+              status: "open",
+              url: "https://github.com/getsentry/junior/pull/1081",
             },
           }),
         ],

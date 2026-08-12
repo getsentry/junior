@@ -40,7 +40,7 @@ function PullRequestBadge(props: { conversation: Conversation }) {
     <a
       aria-label={`${pullRequest.label}: ${label}`}
       className={cn(
-        "shrink-0 rounded border px-1.5 py-0.5 font-mono text-[0.65rem] font-bold uppercase tracking-wide",
+        "shrink-0 rounded border px-1.5 py-0.5 font-mono text-xs font-bold uppercase tracking-wide",
         pullRequest.status === "draft" &&
           "border-amber-300/35 bg-amber-300/10 text-amber-200",
         pullRequest.status === "open" &&
