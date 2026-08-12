@@ -90,7 +90,7 @@ function TurnContextPanel(props: {
         id={props.id}
         role="dialog"
       >
-        <header className="flex min-h-16 items-center justify-between gap-4 border-b border-white/10 px-5">
+        <header className="flex min-h-16 items-center justify-between gap-4 border-b border-white/10 px-5 pt-[env(safe-area-inset-top)]">
           <div className="flex min-w-0 items-center gap-3">
             <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-cyan-200/10 text-cyan-100/80">
               <Braces aria-hidden="true" size={17} strokeWidth={1.8} />
@@ -116,7 +116,7 @@ function TurnContextPanel(props: {
           </button>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-2">
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
           {props.contexts.map((context, index) => (
             <TurnContext
               context={context}

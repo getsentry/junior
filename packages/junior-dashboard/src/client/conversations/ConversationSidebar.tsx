@@ -117,7 +117,7 @@ export function ConversationSidebar(props: {
         )}
       </div>
       {archivedConversation || archiveError ? (
-        <div className="absolute bottom-3 left-3 right-3 z-20 grid gap-2">
+        <div className="absolute bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-3 right-3 z-20 grid gap-2">
           {archiveError ? (
             <ArchiveConversationErrorNotice
               conversation={archiveError}
