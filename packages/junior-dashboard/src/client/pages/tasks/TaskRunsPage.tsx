@@ -114,7 +114,7 @@ export function TaskRunsPage(props: { enabled: boolean }) {
           ))}
         </FilterGroup>
       </FilterBar>
-      <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1 border-b border-white/[0.07] pb-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1 border-b border-dashboard-border pb-3">
         <p className="m-0 font-display text-lg text-dashboard-text">
           {visibleRuns.length} {visibleRuns.length === 1 ? "run" : "runs"}
         </p>
@@ -137,7 +137,7 @@ export function TaskRunsPage(props: { enabled: boolean }) {
       ) : (
         <Card>
           <div
-            className="sticky top-0 z-[1] hidden grid-cols-[minmax(13rem,1.7fr)_minmax(11rem,1fr)_auto] items-center gap-3 border-b border-white/[0.06] bg-black/25 px-3 py-2.5 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted md:grid"
+            className="sticky top-0 z-[1] hidden grid-cols-[minmax(13rem,1.7fr)_minmax(11rem,1fr)_auto] items-center gap-3 border-b border-dashboard-border-subtle bg-dashboard-overlay-strong px-3 py-2.5 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted md:grid"
             role="row"
           >
             <div>Run</div>
@@ -194,7 +194,7 @@ function TaskRunRow(props: { run: TaskRun }) {
       className={cn(
         "group grid min-w-0 grid-cols-[minmax(13rem,1.7fr)_minmax(11rem,1fr)_auto] items-center gap-3 overflow-hidden border-b border-b-white/[0.055] px-3 py-3 text-left text-inherit transition-colors max-md:grid-cols-1 max-md:px-4 max-md:py-4",
         run.conversationId
-          ? "cursor-pointer hover:bg-white/[0.035]"
+          ? "cursor-pointer hover:bg-dashboard-fill-muted"
           : "cursor-default opacity-80",
       )}
       onClick={openConversation}

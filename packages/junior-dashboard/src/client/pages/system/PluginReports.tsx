@@ -20,7 +20,7 @@ export function PluginReports(props: {
     return (
       <Card padding="md">
         <div className="flex items-center gap-4">
-          <div className="grid size-10 shrink-0 place-items-center rounded border border-white/[0.07] bg-white/[0.025] text-dashboard-text-muted">
+          <div className="grid size-10 shrink-0 place-items-center rounded border border-dashboard-border bg-dashboard-fill-soft text-dashboard-text-muted">
             <RadioTower aria-hidden="true" size={17} />
           </div>
           <div>
@@ -67,7 +67,7 @@ function PluginReportView(props: {
   const metrics = props.report.metrics ?? [];
   return (
     <Card>
-      <div className="flex items-start justify-between gap-4 border-b border-white/[0.06] px-5 py-4">
+      <div className="flex items-start justify-between gap-4 border-b border-dashboard-border-subtle px-5 py-4">
         <div className="min-w-0">
           <h3 className="m-0 truncate font-display text-lg font-medium text-dashboard-text">
             {title}
@@ -85,7 +85,7 @@ function PluginReportView(props: {
       {metrics.length ? (
         <div
           className={cn(
-            "grid gap-px bg-white/[0.055]",
+            "grid gap-px bg-dashboard-fill-mid",
             metrics.length === 1 ? "grid-cols-1" : "grid-cols-2",
             metrics.length === 3
               ? "lg:grid-cols-3"
@@ -118,7 +118,7 @@ function PluginReportView(props: {
         </div>
       ) : null}
       {props.report.widgets?.length ? (
-        <div className="grid gap-3 border-t border-white/[0.06] bg-black/15 p-3 lg:grid-cols-2">
+        <div className="grid gap-3 border-t border-dashboard-border-subtle bg-dashboard-overlay-soft p-3 lg:grid-cols-2">
           {props.report.widgets.map((widget) => (
             <PluginBarChart
               key={widget.id}
@@ -148,7 +148,7 @@ function PluginReportRecordSet(props: {
   const fields = props.recordSet.fields ?? [];
   const records = props.recordSet.records ?? [];
   return (
-    <div className="border-t border-white/[0.06]">
+    <div className="border-t border-dashboard-border-subtle">
       <div className="flex items-center justify-between gap-4 px-5 py-3">
         <div className="font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted">
           {props.recordSet.title}
@@ -167,11 +167,11 @@ function PluginReportRecordSet(props: {
         </div>
       ) : (
         <>
-          <div className="grid gap-2 border-t border-white/[0.05] p-3 sm:hidden">
+          <div className="grid gap-2 border-t border-dashboard-border-faint p-3 sm:hidden">
             {records.map((record) => (
               <div
                 className={cn(
-                  "grid gap-3 rounded-md border border-white/[0.06] bg-black/15 p-3",
+                  "grid gap-3 rounded-md border border-dashboard-border-subtle bg-dashboard-overlay-soft p-3",
                   rowToneClass(record.tone),
                 )}
                 key={record.id}
@@ -189,13 +189,13 @@ function PluginReportRecordSet(props: {
               </div>
             ))}
           </div>
-          <div className="hidden overflow-x-auto border-t border-white/[0.05] sm:block">
+          <div className="hidden overflow-x-auto border-t border-dashboard-border-faint sm:block">
             <table className="w-full min-w-[36rem] border-collapse text-left">
-              <thead className="bg-black/15 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted">
+              <thead className="bg-dashboard-overlay-soft font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted">
                 <tr>
                   {fields.map((field) => (
                     <th
-                      className="border-b border-white/[0.055] px-5 py-2.5 font-medium"
+                      className="border-b border-dashboard-border-subtle px-5 py-2.5 font-medium"
                       key={field.key}
                       scope="col"
                     >
@@ -208,14 +208,14 @@ function PluginReportRecordSet(props: {
                 {records.map((record) => (
                   <tr
                     className={cn(
-                      "transition-colors hover:bg-white/[0.025]",
+                      "transition-colors hover:bg-dashboard-fill-soft",
                       rowToneClass(record.tone),
                     )}
                     key={record.id}
                   >
                     {fields.map((field) => (
                       <td
-                        className="max-w-72 truncate border-b border-white/[0.05] px-5 py-3 font-mono text-xs text-dashboard-text-muted"
+                        className="max-w-72 truncate border-b border-dashboard-border-faint px-5 py-3 font-mono text-xs text-dashboard-text-muted"
                         key={field.key}
                       >
                         {record.values[field.key] ?? ""}

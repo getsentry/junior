@@ -377,7 +377,7 @@ describe("dashboard routes", () => {
     expect(html).toContain(
       'content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"',
     );
-    expect(html).toContain('name="theme-color" content="#000000"');
+    expect(html).toContain('name="theme-color" content="#050507"');
     expect(html).toContain(
       'href="/_junior/dashboard/manifest.webmanifest"',
     );
@@ -626,7 +626,7 @@ describe("dashboard routes", () => {
       "application/manifest+json",
     );
     expect(await response.json()).toEqual({
-      background_color: "#000000",
+      background_color: "#050507",
       description: "Marky dashboard",
       display: "standalone",
       icons: [
@@ -641,7 +641,7 @@ describe("dashboard routes", () => {
       scope: "/ops",
       short_name: "Marky",
       start_url: "/ops",
-      theme_color: "#000000",
+      theme_color: "#050507",
     });
   });
 

@@ -45,7 +45,7 @@ export function TranscriptContextEventView(props: {
           : `Earlier context was summarized${compactionDetail}${compactionModel} before execution continued.`}
       </div>
       {event.summary ? (
-        <details className="mt-2 border-t border-white/[0.06] pt-2">
+        <details className="mt-2 border-t border-dashboard-border-subtle pt-2">
           <summary className="cursor-pointer select-none text-xs font-medium text-dashboard-text-muted">
             Continuation summary
           </summary>

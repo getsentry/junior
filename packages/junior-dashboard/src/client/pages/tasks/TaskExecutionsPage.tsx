@@ -111,7 +111,7 @@ function TaskExecutionsView(props: {
         <TaskExecutionStatusChart days={data.executionDays} range={range} />
       ) : null}
 
-      <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1 border-b border-white/[0.07] pb-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1 border-b border-dashboard-border pb-3">
         <p className="m-0 font-display text-lg text-dashboard-text">
           {data.executions.length}{" "}
           {data.executions.length === 1 ? "run" : "runs"}
@@ -130,7 +130,7 @@ function TaskExecutionsView(props: {
       ) : (
         <Card>
           <div
-            className="sticky top-0 z-[1] hidden grid-cols-[minmax(13rem,1.7fr)_minmax(10rem,1fr)] items-center gap-3 border-b border-white/[0.06] bg-black/25 px-3 py-2.5 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted md:grid"
+            className="sticky top-0 z-[1] hidden grid-cols-[minmax(13rem,1.7fr)_minmax(10rem,1fr)] items-center gap-3 border-b border-dashboard-border-subtle bg-dashboard-overlay-strong px-3 py-2.5 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted md:grid"
             role="row"
           >
             <div>Conversation</div>
@@ -181,7 +181,7 @@ function ExecutionRow(props: {
       className={cn(
         "group grid min-w-0 grid-cols-[minmax(13rem,1.7fr)_minmax(10rem,1fr)] items-center gap-3 overflow-hidden border-b border-b-white/[0.055] px-3 py-3 text-left text-inherit transition-colors max-md:grid-cols-1 max-md:px-4 max-md:py-4",
         execution.conversationId
-          ? "cursor-pointer hover:bg-white/[0.035]"
+          ? "cursor-pointer hover:bg-dashboard-fill-muted"
           : "cursor-default opacity-80",
       )}
       onClick={openConversation}

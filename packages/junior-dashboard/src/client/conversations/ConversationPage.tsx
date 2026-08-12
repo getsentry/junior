@@ -130,7 +130,7 @@ export function ConversationPage(props: {
           {detail.isPending ? (
             <TranscriptLoading />
           ) : detail.error && !detail.data ? (
-            <Card className="border-white/[0.07] bg-white/[0.025] p-4 font-sans text-xs leading-relaxed text-dashboard-text-muted">
+            <Card className="border-dashboard-border bg-dashboard-fill-soft p-4 font-sans text-xs leading-relaxed text-dashboard-text-muted">
               {detail.error.message}
             </Card>
           ) : (
@@ -267,7 +267,7 @@ function ConversationPrivacyChip(props: {
       className={
         isPublic
           ? "inline-flex max-w-full items-center gap-1 rounded-full border border-emerald-300/20 bg-emerald-300/[0.08] px-2 py-0.5 font-sans text-2xs font-medium text-emerald-50/85"
-          : "inline-flex max-w-full items-center gap-1 rounded-full border border-white/[0.1] bg-white/[0.04] px-2 py-0.5 font-sans text-2xs font-medium text-dashboard-text-muted"
+          : "inline-flex max-w-full items-center gap-1 rounded-full border border-dashboard-border-strong bg-dashboard-fill-mid px-2 py-0.5 font-sans text-2xs font-medium text-dashboard-text-muted"
       }
       role="note"
       title={`${fullLabel}. ${detail}`}
@@ -384,7 +384,7 @@ function ConversationIdentity(props: {
   const ownerNode = owner ? (
     email ? (
       <Link
-        className="font-semibold text-dashboard-text underline decoration-white/20 underline-offset-2 transition-colors hover:text-dashboard-text hover:decoration-white/60"
+        className="font-semibold text-dashboard-text underline decoration-dashboard-decoration underline-offset-2 transition-colors hover:text-dashboard-text hover:decoration-dashboard-decoration-strong"
         to={peoplePath(email)}
       >
         {owner}
@@ -439,7 +439,7 @@ function ConversationIdentity(props: {
 function SourceLocation(props: { label: string; sourceUrl?: string }) {
   return props.sourceUrl ? (
     <a
-      className="text-dashboard-text underline decoration-white/20 underline-offset-2 transition-colors hover:decoration-white/60"
+      className="text-dashboard-text underline decoration-dashboard-decoration underline-offset-2 transition-colors hover:decoration-dashboard-decoration-strong"
       href={props.sourceUrl}
       rel="noreferrer"
       target="_blank"
@@ -461,7 +461,7 @@ function SourceTask(props: {
   const title = props.sourceTask.title?.trim();
   const link = taskId ? (
     <Link
-      className="text-dashboard-text underline decoration-white/20 underline-offset-2 transition-colors hover:decoration-white/60"
+      className="text-dashboard-text underline decoration-dashboard-decoration underline-offset-2 transition-colors hover:decoration-dashboard-decoration-strong"
       to={taskPath(taskId)}
     >
       Triggered by {kindLabel}

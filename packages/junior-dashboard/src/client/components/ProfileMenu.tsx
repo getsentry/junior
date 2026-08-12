@@ -134,8 +134,8 @@ export function ProfileMenu({
         aria-haspopup="true"
         aria-label={`${open ? "Close" : "Open"} profile menu for ${name}. Personal model spend: 7 days ${sevenDaySpend}, 30 days ${thirtyDaySpend}.`}
         className={cn(
-          "group flex h-10 cursor-pointer items-center gap-2 rounded-lg border-0 bg-transparent px-1.5 text-dashboard-text transition-colors hover:bg-white/[0.06] hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#beaaff]/70",
-          open && "bg-white/[0.08] text-dashboard-text",
+          "group flex h-10 cursor-pointer items-center gap-2 rounded-lg border-0 bg-transparent px-1.5 text-dashboard-text transition-colors hover:bg-dashboard-fill-mid hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
+          open && "bg-dashboard-fill-strong text-dashboard-text",
         )}
         onClick={(event) => {
           clearHoverTimers();
@@ -153,7 +153,7 @@ export function ProfileMenu({
               {sevenDaySpend}
             </span>
           </span>
-          <span aria-hidden="true" className="h-3 w-px bg-white/10" />
+          <span aria-hidden="true" className="h-3 w-px bg-dashboard-fill-stronger" />
           <span className="flex items-baseline gap-1 whitespace-nowrap tabular-nums">
             <span className="text-xs font-medium tracking-[0.08em] text-dashboard-text-muted">
               30d
@@ -165,7 +165,7 @@ export function ProfileMenu({
         </span>
         <span
           aria-hidden="true"
-          className="grid size-7 place-items-center rounded-full bg-[#beaaff] text-xs font-bold tracking-wide text-black shadow-sm shadow-black/40"
+          className="grid size-7 place-items-center rounded-full bg-dashboard-focus text-xs font-bold tracking-wide text-dashboard-text-inverse shadow-sm shadow-dashboard-shadow-mid"
         >
           {initials(identity.user.name, email)}
         </span>
@@ -182,10 +182,10 @@ export function ProfileMenu({
 
       {open ? (
         <div
-          className="absolute right-0 top-[calc(100%+0.5rem)] z-40 w-64 rounded-xl bg-dashboard-surface-raised/95 p-1.5 shadow-2xl shadow-black/75 backdrop-blur-xl"
+          className="absolute right-0 top-[calc(100%+0.5rem)] z-40 w-64 rounded-xl bg-dashboard-surface-raised/95 p-1.5 shadow-2xl shadow-dashboard-shadow-heavy backdrop-blur-xl"
           id="profile-popover"
         >
-          <div className="border-b border-white/10 px-2.5 py-2.5">
+          <div className="border-b border-dashboard-border-strong px-2.5 py-2.5">
             <p className="m-0 truncate text-sm font-semibold text-dashboard-text">
               {name}
             </p>
@@ -196,7 +196,7 @@ export function ProfileMenu({
             ) : null}
           </div>
           <Link
-            className="mt-1 flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-semibold text-dashboard-text no-underline transition-colors hover:bg-white/10 hover:text-dashboard-text focus-visible:bg-white/10 focus-visible:text-dashboard-text focus-visible:outline-none"
+            className="mt-1 flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-semibold text-dashboard-text no-underline transition-colors hover:bg-dashboard-fill-stronger hover:text-dashboard-text focus-visible:bg-dashboard-fill-stronger focus-visible:text-dashboard-text focus-visible:outline-none"
             onClick={() => setOpen(false)}
             to={peoplePath(email)}
           >
@@ -204,7 +204,7 @@ export function ProfileMenu({
             My profile
           </Link>
           <Link
-            className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-semibold text-dashboard-text no-underline transition-colors hover:bg-white/10 hover:text-dashboard-text focus-visible:bg-white/10 focus-visible:text-dashboard-text focus-visible:outline-none"
+            className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-semibold text-dashboard-text no-underline transition-colors hover:bg-dashboard-fill-stronger hover:text-dashboard-text focus-visible:bg-dashboard-fill-stronger focus-visible:text-dashboard-text focus-visible:outline-none"
             onClick={() => setOpen(false)}
             to="/settings"
           >
@@ -212,7 +212,7 @@ export function ProfileMenu({
             Settings
           </Link>
           <Link
-            className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-semibold text-dashboard-text no-underline transition-colors hover:bg-white/10 hover:text-dashboard-text focus-visible:bg-white/10 focus-visible:text-dashboard-text focus-visible:outline-none"
+            className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-semibold text-dashboard-text no-underline transition-colors hover:bg-dashboard-fill-stronger hover:text-dashboard-text focus-visible:bg-dashboard-fill-stronger focus-visible:text-dashboard-text focus-visible:outline-none"
             onClick={() => setOpen(false)}
             to="/settings/api-tokens"
           >
@@ -223,7 +223,7 @@ export function ProfileMenu({
             .filter((page) => page.navigation === "profile")
             .map((page) => (
               <Link
-                className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-semibold text-dashboard-text no-underline transition-colors hover:bg-white/10 hover:text-dashboard-text focus-visible:bg-white/10 focus-visible:text-dashboard-text focus-visible:outline-none"
+                className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-semibold text-dashboard-text no-underline transition-colors hover:bg-dashboard-fill-stronger hover:text-dashboard-text focus-visible:bg-dashboard-fill-stronger focus-visible:text-dashboard-text focus-visible:outline-none"
                 key={`${page.pluginName}:${page.id}`}
                 onClick={() => setOpen(false)}
                 to={pluginUserPagePath(page.pluginName, page.id)}
@@ -233,7 +233,7 @@ export function ProfileMenu({
               </Link>
             ))}
           <button
-            className="flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold text-dashboard-text transition-colors hover:bg-white/10 hover:text-dashboard-text focus-visible:bg-white/10 focus-visible:text-dashboard-text focus-visible:outline-none"
+            className="flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold text-dashboard-text transition-colors hover:bg-dashboard-fill-stronger hover:text-dashboard-text focus-visible:bg-dashboard-fill-stronger focus-visible:text-dashboard-text focus-visible:outline-none"
             onClick={() => {
               setOpen(false);
               void onSignOut();

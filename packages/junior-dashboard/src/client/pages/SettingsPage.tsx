@@ -56,7 +56,7 @@ export function SettingsPage({ identity }: SettingsPageProps) {
         </p>
 
         <form
-          className="mt-6 rounded-lg border border-white/15 bg-dashboard-surface-raised p-5"
+          className="mt-6 rounded-lg border border-dashboard-border-emphasis bg-dashboard-surface-raised p-5"
           onSubmit={submit}
         >
           <h2 className="m-0 text-lg font-bold">Profile</h2>
@@ -68,7 +68,7 @@ export function SettingsPage({ identity }: SettingsPageProps) {
           </label>
           <input
             autoComplete="name"
-            className="mt-2 block w-full rounded border border-white/15 bg-black px-3 py-2 text-sm text-dashboard-text focus:border-[#beaaff] focus:outline-none"
+            className="mt-2 block w-full rounded border border-dashboard-border-emphasis bg-dashboard-ink px-3 py-2 text-sm text-dashboard-text focus:border-dashboard-focus focus:outline-none"
             id="display-name"
             maxLength={80}
             onChange={(event) => {

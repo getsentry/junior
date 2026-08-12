@@ -51,8 +51,8 @@ export function PluginBarChart(props: {
   const zeroY = layout.top + (maximum / span) * layout.plotHeight;
 
   return (
-    <div className="overflow-hidden rounded border border-white/[0.07] bg-dashboard-surface-panel">
-      <div className="border-b border-white/[0.06] px-4 py-3">
+    <div className="overflow-hidden rounded border border-dashboard-border bg-dashboard-surface-panel">
+      <div className="border-b border-dashboard-border-subtle px-4 py-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <h4 className="m-0 font-mono text-xs font-medium uppercase tracking-[0.14em] text-dashboard-text-muted">
             {widget.title}
@@ -91,7 +91,7 @@ export function PluginBarChart(props: {
             return (
               <g key={index}>
                 <line
-                  stroke="rgba(255,255,255,0.07)"
+                  stroke="var(--color-dashboard-border)"
                   strokeDasharray="3 5"
                   x1={layout.left}
                   x2={layout.width - layout.right}

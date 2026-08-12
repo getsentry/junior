@@ -7,7 +7,7 @@ export function DetailList(props: { children: ReactNode; className?: string }) {
   return (
     <dl
       className={cn(
-        "grid gap-px overflow-hidden rounded border border-white/[0.06] bg-white/[0.055]",
+        "grid gap-px overflow-hidden rounded border border-dashboard-border-subtle bg-dashboard-fill-mid",
         props.className,
       )}
     >
@@ -23,7 +23,7 @@ export function Detail(props: {
   valueClassName?: string;
 }) {
   return (
-    <div className="min-w-0 bg-[#09090b] px-3 py-3">
+    <div className="min-w-0 bg-dashboard-surface-panel px-3 py-3">
       <dt className="font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted">
         {props.label}
       </dt>

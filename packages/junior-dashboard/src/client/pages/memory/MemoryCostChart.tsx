@@ -162,7 +162,7 @@ export function MemoryCostChart(props: {
             format={(value) => formatCostSummary({ total: value })}
             layout={layout}
             maximum={maximum}
-            stroke="#e2e8f0"
+            stroke="var(--color-dashboard-chart-guide)"
           />
           <ActivityChartDateLabels
             dates={days.map((day) => day.date)}

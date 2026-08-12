@@ -1210,7 +1210,9 @@ describe("dashboard canonical-event components", () => {
             'aria-label="2026-01-01: 0 conversations, 0ms, $0.00 spend, 0 tokens"',
           ),
         )
-        .match(/class="size-3 border border-black\/40 bg-\[#101010\]"/g),
+        .match(
+          /class="size-3 border border-dashboard-border-inverse bg-dashboard-ink-soft"/g,
+        ),
     ).toHaveLength(4);
     expect(html).not.toContain('href="/people/avery%40example.com"');
     expect(html).toContain('href="/system/people"');

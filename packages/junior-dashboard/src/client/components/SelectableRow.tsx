@@ -28,7 +28,7 @@ export function SelectableRow(props: {
         "group cursor-pointer transition-colors",
         props.selected
           ? "bg-cyan-300/[0.045]"
-          : "hover:bg-white/[0.035] focus-within:bg-white/[0.035]",
+          : "hover:bg-dashboard-fill-muted focus-within:bg-dashboard-fill-muted",
         props.className,
       )}
       onClick={handleClick}

@@ -133,9 +133,9 @@ describe("ActivityChartAverageLine", () => {
     expect(html).toContain('stroke-dasharray="4 4"');
     expect(html).toContain(">40 / day</text>");
     expect(html).toContain('stroke="#22d3ee"');
-    // Label sits on a dark chip so series colors stay off the text.
-    expect(html).toContain('fill="rgba(9, 12, 14, 0.92)"');
-    expect(html).toContain('fill="#ffffff"');
+    // Label sits on a themed chip so series colors stay off the text.
+    expect(html).toContain('fill="var(--color-dashboard-popover)"');
+    expect(html).toContain('fill="var(--color-dashboard-chart-label)"');
   });
 
   it("hides when the average is zero", () => {

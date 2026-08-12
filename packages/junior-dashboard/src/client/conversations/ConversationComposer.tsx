@@ -158,7 +158,7 @@ export function ConversationComposer(props: {
         </div>
       ) : null}
       <form
-        className="grid grid-cols-[minmax(0,1fr)_auto] items-end overflow-hidden rounded-lg border border-white/[0.09] bg-white/[0.035] focus-within:border-cyan-300/35 focus-within:ring-1 focus-within:ring-cyan-300/25 md:block"
+        className="grid grid-cols-[minmax(0,1fr)_auto] items-end overflow-hidden rounded-lg border border-dashboard-border-strong bg-dashboard-fill-muted focus-within:border-cyan-300/35 focus-within:ring-1 focus-within:ring-cyan-300/25 md:block"
         onSubmit={submit}
       >
         <label className="sr-only" htmlFor={id}>
@@ -181,7 +181,7 @@ export function ConversationComposer(props: {
           rows={1}
           value={message}
         />
-        <div className="flex min-w-0 items-center justify-end gap-3 border-l border-white/[0.07] bg-black/15 px-2 py-1.5 md:justify-between md:border-l-0 md:border-t md:px-3 md:py-2">
+        <div className="flex min-w-0 items-center justify-end gap-3 border-l border-dashboard-border bg-dashboard-overlay-soft px-2 py-1.5 md:justify-between md:border-l-0 md:border-t md:px-3 md:py-2">
           <div className="hidden min-w-0 font-mono text-xs leading-relaxed text-dashboard-text-muted md:block">
             Enter to send · Shift+Enter for a new line
           </div>

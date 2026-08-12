@@ -31,7 +31,7 @@ function TooltipLines(props: { lines: MetricTooltipLine[] }) {
                     "font-mono font-semibold text-dashboard-text",
                   line.valueStyle === "heading" &&
                     index > 0 &&
-                    "mt-1 border-t border-white/10 pt-2",
+                    "mt-1 border-t border-dashboard-border-strong pt-2",
                 )
           }
           key={`${index}-${line.label ?? ""}-${line.value}-${line.live ? "live" : ""}`}
@@ -91,7 +91,7 @@ export function MetricValue(props: {
     <Tooltip
       align={props.align}
       className={cn(
-        "w-[calc(100vw-2rem)] rounded-lg border border-white/15 bg-[#050505] px-3 py-2 text-left text-xs font-normal leading-relaxed text-dashboard-text-muted shadow-xl shadow-black/35",
+        "w-[calc(100vw-2rem)] rounded-lg border border-dashboard-border-emphasis bg-dashboard-empty px-3 py-2 text-left text-xs font-normal leading-relaxed text-dashboard-text-muted shadow-xl shadow-dashboard-shadow-mid",
         wide ? "max-w-[32.5rem]" : "max-w-80",
       )}
       content={
@@ -111,7 +111,7 @@ export function MetricValue(props: {
     >
       <span
         className={cn(
-          "inline-flex border-b border-dotted border-white/20 outline-none transition-colors hover:border-white/45 focus-visible:border-white/45",
+          "inline-flex border-b border-dotted border-dashboard-border-emphasis outline-none transition-colors hover:border-dashboard-border-heavy focus-visible:border-dashboard-border-heavy",
           props.className,
         )}
         tabIndex={0}

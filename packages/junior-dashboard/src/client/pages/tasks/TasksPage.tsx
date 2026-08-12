@@ -256,7 +256,7 @@ export function TasksPage(props: {
               ))}
             </FilterGroup>
           </FilterBar>
-          <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1 border-b border-white/[0.07] pb-3">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1 border-b border-dashboard-border pb-3">
             <p className="m-0 font-display text-lg text-dashboard-text">
               {visibleTaskCount} {visibleTaskCount === 1 ? "task" : "tasks"}
             </p>
@@ -281,7 +281,7 @@ export function TasksPage(props: {
           ) : (
             <Card>
               <TaskListHeader />
-              <div className="divide-y divide-white/[0.07]" role="list">
+              <div className="divide-y divide-dashboard-border" role="list">
                 {pagedTasks.map((task) => {
                   const key = `${task.kind}:${task.id}`;
                   return (
@@ -362,7 +362,7 @@ function TaskListHeader() {
   return (
     <div
       aria-hidden="true"
-      className="hidden grid-cols-[repeat(3,minmax(0,1fr))_auto_auto] items-center gap-3 border-b border-white/[0.07] px-4 py-2.5 text-left font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted lg:grid"
+      className="hidden grid-cols-[repeat(3,minmax(0,1fr))_auto_auto] items-center gap-3 border-b border-dashboard-border px-4 py-2.5 text-left font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted lg:grid"
     >
       <span>Task</span>
       <span>Destination</span>
@@ -430,7 +430,7 @@ function TaskRow(props: {
         <button
           aria-expanded={props.selected}
           aria-label={`View task details: ${task.title}`}
-          className="grid size-8 cursor-pointer place-items-center rounded border border-transparent bg-transparent text-dashboard-text-muted transition-colors hover:border-white/10 hover:bg-white/[0.04] hover:text-dashboard-text"
+          className="grid size-8 cursor-pointer place-items-center rounded border border-transparent bg-transparent text-dashboard-text-muted transition-colors hover:border-dashboard-border-strong hover:bg-dashboard-fill-mid hover:text-dashboard-text"
           onClick={props.onSelect}
           type="button"
         >
@@ -467,7 +467,7 @@ function TaskSourceMark(props: { task: TaskSummary }) {
     return (
       <div
         aria-label="Scheduled task"
-        className="grid size-9 shrink-0 place-items-center rounded border border-white/[0.08] bg-white/[0.03] text-cyan-300/75"
+        className="grid size-9 shrink-0 place-items-center rounded border border-dashboard-border bg-dashboard-fill-soft text-cyan-300/75"
         role="img"
         title="Scheduled task"
       >
@@ -488,7 +488,7 @@ function TaskSourceMark(props: { task: TaskSummary }) {
   return (
     <div
       aria-label={`${sourceLabel} event task`}
-      className="grid size-9 shrink-0 place-items-center rounded border border-white/[0.08] bg-white/[0.03] text-cyan-300/75"
+      className="grid size-9 shrink-0 place-items-center rounded border border-dashboard-border bg-dashboard-fill-soft text-cyan-300/75"
       role="img"
       title={`${sourceLabel} event task`}
     >

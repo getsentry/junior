@@ -103,13 +103,13 @@ export function PersonalTokensPage() {
           or script. Tokens expire after 90 days.
         </p>
 
-        <div className="mt-6 rounded-lg border border-white/15 bg-dashboard-surface-raised p-5">
+        <div className="mt-6 rounded-lg border border-dashboard-border-emphasis bg-dashboard-surface-raised p-5">
           {createdToken ? (
             <div className="mt-5 rounded border border-emerald-400/40 bg-emerald-400/5 p-3">
               <p className="mt-0 mb-2 text-sm font-semibold">
                 Copy this token now. It won't be shown again.
               </p>
-              <code className="block overflow-x-auto rounded bg-black p-2 text-xs text-emerald-300">
+              <code className="block overflow-x-auto rounded bg-dashboard-ink p-2 text-xs text-emerald-300">
                 {createdToken.token}
               </code>
               <Button
@@ -126,7 +126,7 @@ export function PersonalTokensPage() {
             <div className="mt-5 flex gap-2">
               <input
                 aria-label="Token name"
-                className="min-w-0 flex-1 rounded border border-white/15 bg-black px-3 py-2 text-sm text-dashboard-text"
+                className="min-w-0 flex-1 rounded border border-dashboard-border-emphasis bg-dashboard-ink px-3 py-2 text-sm text-dashboard-text"
                 maxLength={80}
                 onChange={(event) => setName(event.target.value)}
                 value={name}
@@ -161,10 +161,10 @@ export function PersonalTokensPage() {
             ) : (
               tokens.map((token) => (
                 <div
-                  className="flex items-center gap-3 rounded border border-white/10 p-3"
+                  className="flex items-center gap-3 rounded border border-dashboard-border-strong p-3"
                   key={token.id}
                 >
-                  <KeyRound className="text-[#beaaff]" size={16} />
+                  <KeyRound className="text-dashboard-focus" size={16} />
                   <div className="min-w-0 flex-1">
                     <p className="m-0 truncate text-sm font-semibold">
                       {token.name}

@@ -27,8 +27,8 @@ export function Button({
       className={cn(
         "font-mono transition-colors disabled:cursor-not-allowed disabled:opacity-50",
         size === "icon"
-          ? "grid size-9 place-items-center rounded-md border-0 bg-transparent p-0 text-dashboard-text-muted hover:!bg-white/10 hover:!text-dashboard-text focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55 disabled:hover:!bg-transparent disabled:hover:!text-dashboard-text-muted"
-          : "inline-flex h-9 max-w-full items-center gap-2 rounded border border-white/15 bg-dashboard-surface-raised px-3 text-sm font-semibold leading-none text-dashboard-text hover:border-white/30 hover:bg-dashboard-surface-hover hover:text-dashboard-text disabled:hover:border-white/15 disabled:hover:bg-dashboard-surface-raised disabled:hover:text-dashboard-text",
+          ? "grid size-9 place-items-center rounded-md border-0 bg-transparent p-0 text-dashboard-text-muted hover:!bg-dashboard-fill-stronger hover:!text-dashboard-text focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55 disabled:hover:!bg-transparent disabled:hover:!text-dashboard-text-muted"
+          : "inline-flex h-9 max-w-full items-center gap-2 rounded border border-dashboard-border-emphasis bg-dashboard-surface-raised px-3 text-sm font-semibold leading-none text-dashboard-text hover:border-dashboard-border-heavy hover:bg-dashboard-surface-hover hover:text-dashboard-text disabled:hover:border-dashboard-border-emphasis disabled:hover:bg-dashboard-surface-raised disabled:hover:text-dashboard-text",
         props.disabled ? "" : "cursor-pointer",
         className,
       )}
@@ -65,11 +65,11 @@ const toggleButtonBase: Record<ToggleButtonVariant, string> = {
 };
 
 const toggleButtonPressed: Record<ToggleButtonVariant, string> = {
-  pill: "border-white/30 bg-white text-black",
-  text: "text-dashboard-text underline decoration-white",
+  pill: "border-dashboard-border-heavy bg-dashboard-fill-solid text-dashboard-text-inverse",
+  text: "text-dashboard-text underline decoration-dashboard-decoration-solid",
 };
 
 const toggleButtonIdle: Record<ToggleButtonVariant, string> = {
-  pill: "border-white/10 bg-dashboard-surface-raised text-dashboard-text-muted hover:border-white/25 hover:bg-dashboard-surface-hover hover:text-dashboard-text",
+  pill: "border-dashboard-border-strong bg-dashboard-surface-raised text-dashboard-text-muted hover:border-dashboard-border-emphasis hover:bg-dashboard-surface-hover hover:text-dashboard-text",
   text: "text-dashboard-text-muted hover:text-dashboard-text",
 };

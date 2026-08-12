@@ -39,13 +39,6 @@ import {
 import { cn } from "./styles";
 import type { DashboardCoreData } from "./types";
 
-const dashboardBackground = {
-  backgroundColor: "#050507",
-  backgroundImage:
-    "radial-gradient(ellipse at 50% 0%, transparent 0%, #050507 70%), linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px)",
-  backgroundSize: "100% 100%, 40px 40px, 40px 40px",
-};
-
 const dashboardNoise = {
   backgroundImage:
     "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitchTiles'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.7'/%3E%3C/svg%3E\")",
@@ -114,13 +107,12 @@ export function DashboardShell() {
     <DashboardChromeProvider>
       <main
         className={cn(
-          "relative grid font-sans text-dashboard-text",
+          "dashboard-shell-bg relative grid font-sans text-dashboard-text",
           workspace
             ? "h-[var(--dashboard-viewport-height,100dvh)] min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden"
             : "min-h-screen grid-rows-[auto_1fr]",
         )}
         ref={shellRef}
-        style={dashboardBackground}
       >
         <DashboardChrome
           banner={<ConnectionBanner />}

@@ -13,19 +13,19 @@ export function DirectoryRowsSkeleton(props: { wideRuntime?: boolean }) {
       {Array.from({ length: 5 }, (_, index) => (
         <div
           aria-hidden="true"
-          className={`grid min-w-0 ${gridColumns} items-center gap-4 border-b border-white/[0.055] px-4 py-3.5 last:border-b-0 max-md:gap-x-3 max-md:gap-y-4`}
+          className={`grid min-w-0 ${gridColumns} items-center gap-4 border-b border-dashboard-border-subtle px-4 py-3.5 last:border-b-0 max-md:gap-x-3 max-md:gap-y-4`}
           key={index}
         >
           <div className="flex min-w-0 items-center gap-3 max-md:col-span-3">
-            <span className="size-9 shrink-0 rounded bg-white/[0.07]" />
+            <span className="size-9 shrink-0 rounded bg-dashboard-fill-strong" />
             <div className="grid min-w-0 flex-1 gap-2">
-              <span className="h-3.5 w-2/5 rounded bg-white/[0.08]" />
-              <span className="h-2.5 w-3/5 rounded bg-white/[0.045]" />
+              <span className="h-3.5 w-2/5 rounded bg-dashboard-fill-strong" />
+              <span className="h-2.5 w-3/5 rounded bg-dashboard-fill-mid" />
             </div>
           </div>
           {[0, 1, 2].map((metric) => (
             <span
-              className="h-4 w-10 justify-self-end rounded bg-white/[0.06]"
+              className="h-4 w-10 justify-self-end rounded bg-dashboard-fill-mid"
               key={metric}
             />
           ))}

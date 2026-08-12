@@ -20,7 +20,7 @@ export function PageHeader(props: {
   const actions = props.actions ?? rangeActions;
 
   return (
-    <header className="flex min-w-0 items-center justify-between gap-6 border-b border-white/[0.05] pb-4 sm:pb-6 max-md:flex-col max-md:items-stretch">
+    <header className="flex min-w-0 items-center justify-between gap-6 border-b border-dashboard-border-faint pb-4 sm:pb-6 max-md:flex-col max-md:items-stretch">
       <div className="min-w-0">
         <h2 className="m-0 font-display text-3xl font-light leading-none tracking-[-0.03em] text-dashboard-text sm:text-4xl">
           {props.title}

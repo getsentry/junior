@@ -31,11 +31,11 @@ export function DashboardHeader(props: {
       "shrink-0 whitespace-nowrap rounded-md px-2.5 py-2 font-mono text-xs font-medium tracking-normal no-underline transition-colors",
       isActive
         ? "bg-cyan-300/[0.1] text-cyan-50"
-        : cn("hover:bg-white/[0.035]", dashboardInteractiveTextClass),
+        : cn("hover:bg-dashboard-fill-muted", dashboardInteractiveTextClass),
     );
 
   return (
-    <header className="relative border-b border-white/[0.05]">
+    <header className="relative border-b border-dashboard-border-faint">
       <div
         className={cn(
           dashboardContainerClass,
@@ -50,7 +50,7 @@ export function DashboardHeader(props: {
           aria-controls="mobile-navigation"
           aria-expanded={props.mobileNavigationOpen}
           aria-label={`${props.mobileNavigationOpen ? "Close" : "Open"} navigation`}
-          className="grid size-10 cursor-pointer place-items-center rounded-lg border-0 bg-transparent text-dashboard-text transition-colors hover:bg-white/[0.06] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#beaaff]/70 md:hidden"
+          className="grid size-10 cursor-pointer place-items-center rounded-lg border-0 bg-transparent text-dashboard-text transition-colors hover:bg-dashboard-fill-mid focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70 md:hidden"
           onClick={() =>
             props.onMobileNavigationOpenChange(!props.mobileNavigationOpen)
           }
@@ -92,7 +92,7 @@ export function DashboardHeader(props: {
       </div>
       {props.mobileNavigationOpen ? (
         <div
-          className="absolute left-0 right-0 top-full border-b border-white/[0.07] bg-dashboard-surface-raised/95 p-2 shadow-2xl shadow-black/60 backdrop-blur-xl md:hidden"
+          className="absolute left-0 right-0 top-full border-b border-dashboard-border bg-dashboard-surface-raised/95 p-2 shadow-2xl shadow-dashboard-shadow-strong backdrop-blur-xl md:hidden"
           id="mobile-navigation"
         >
           <nav aria-label="Primary" className="grid gap-1">

@@ -107,7 +107,7 @@ function PendingRow(props: {
     <article
       className={cn(
         "grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 px-3 py-2 text-dashboard-text md:px-3.5",
-        props.showDivider && "border-t border-white/[0.06]",
+        props.showDivider && "border-t border-dashboard-border-subtle",
       )}
     >
       <TranscriptHeadingRow
@@ -160,7 +160,7 @@ export function PendingMailboxStack(props: {
   return (
     <div
       aria-label="Pending messages"
-      className="mx-2 overflow-hidden rounded-t-lg border border-b-0 border-white/[0.09] bg-cyan-300/[0.07] md:mx-3"
+      className="mx-2 overflow-hidden rounded-t-lg border border-b-0 border-dashboard-border-strong bg-cyan-300/[0.07] md:mx-3"
     >
       <div className="px-3 py-2 font-sans text-xs font-medium text-cyan-50/85 md:hidden">
         {countLabel}
@@ -175,7 +175,7 @@ export function PendingMailboxStack(props: {
           />
         ))}
         {collapsedCount > 0 ? (
-          <div className="border-t border-white/[0.06] px-3 py-2 font-sans text-xs font-medium text-cyan-50/70 md:px-3.5">
+          <div className="border-t border-dashboard-border-subtle px-3 py-2 font-sans text-xs font-medium text-cyan-50/70 md:px-3.5">
             {collapsedCount} more queued messages
           </div>
         ) : null}

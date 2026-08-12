@@ -95,7 +95,7 @@ function TranscriptViewToggle(props: {
   return (
     <div
       aria-label="Transcript view"
-      className="inline-flex items-center gap-0.5 rounded-lg border border-white/[0.08] bg-black/20 p-0.5 text-xs font-medium text-dashboard-text-muted"
+      className="inline-flex items-center gap-0.5 rounded-lg border border-dashboard-border bg-dashboard-overlay p-0.5 text-xs font-medium text-dashboard-text-muted"
       role="group"
     >
       {TRANSCRIPT_VIEW_OPTIONS.map((option) => (
@@ -103,7 +103,7 @@ function TranscriptViewToggle(props: {
           className={cn(
             "!normal-case !no-underline rounded-md px-2 py-1 font-sans text-xs font-medium tracking-normal",
             props.value === option.value &&
-              "bg-white/[0.08] text-dashboard-text",
+              "bg-dashboard-fill-strong text-dashboard-text",
           )}
           key={option.value}
           onClick={() => props.onChange(option.value)}

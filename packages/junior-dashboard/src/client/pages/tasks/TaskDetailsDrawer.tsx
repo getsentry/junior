@@ -16,7 +16,7 @@ export function TaskDetailsDrawer(props: {
   const { task } = props;
   const createdBy = task.createdByEmail ? (
     <Link
-      className="font-semibold text-dashboard-text underline decoration-white/20 underline-offset-2 transition-colors hover:decoration-white/60"
+      className="font-semibold text-dashboard-text underline decoration-dashboard-decoration underline-offset-2 transition-colors hover:decoration-dashboard-decoration-strong"
       to={peoplePath(task.createdByEmail)}
     >
       {task.ownedByViewer ? "you" : task.createdBy}
@@ -102,7 +102,7 @@ export function TaskDetailsDrawer(props: {
         {task.totalRuns > 0 ? (
           <div className="pt-1">
             <Link
-              className="inline-flex items-center justify-center rounded border border-white/12 bg-white/[0.03] px-3 py-2 font-mono text-xs font-medium text-dashboard-text no-underline transition-colors hover:border-white/25 hover:bg-white/[0.06]"
+              className="inline-flex items-center justify-center rounded border border-dashboard-border-emphasis bg-dashboard-fill-soft px-3 py-2 font-mono text-xs font-medium text-dashboard-text no-underline transition-colors hover:border-dashboard-border-emphasis hover:bg-dashboard-fill-mid"
               to={`/tasks/${task.kind}/${encodeURIComponent(task.id)}/executions`}
             >
               View all executions
@@ -131,7 +131,7 @@ function TaskExecutionSummary(props: {
     <div className="text-sm text-dashboard-text-muted">
       {task.totalRuns > 0 ? (
         <Link
-          className="text-dashboard-text underline decoration-white/20 underline-offset-2 hover:decoration-white/60"
+          className="text-dashboard-text underline decoration-dashboard-decoration underline-offset-2 hover:decoration-dashboard-decoration-strong"
           to={executionsPath}
         >
           {task.runsLast7Days} runs / 7d
@@ -145,7 +145,7 @@ function TaskExecutionSummary(props: {
       <span>
         {task.totalRuns > 0 ? (
           <Link
-            className="text-dashboard-text underline decoration-white/20 underline-offset-2 hover:decoration-white/60"
+            className="text-dashboard-text underline decoration-dashboard-decoration underline-offset-2 hover:decoration-dashboard-decoration-strong"
             to={executionsPath}
           >
             {task.totalRuns} total
@@ -156,7 +156,7 @@ function TaskExecutionSummary(props: {
         {task.lastRunAt ? " · Last execution " : " · Never run"}
         {task.lastRunAt && task.lastConversationId ? (
           <Link
-            className="text-dashboard-text underline decoration-white/20 underline-offset-2 hover:decoration-white/60"
+            className="text-dashboard-text underline decoration-dashboard-decoration underline-offset-2 hover:decoration-dashboard-decoration-strong"
             to={conversationPath(task.lastConversationId)}
           >
             {formatRunDate(task.lastRunAt)}

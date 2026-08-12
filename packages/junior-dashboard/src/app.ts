@@ -45,8 +45,9 @@ const DASHBOARD_CLIENT_PATH = "/_junior/dashboard/client.js";
 const DASHBOARD_AVATAR_HEADER_PATH = "/_junior/dashboard/avatar.png";
 const DASHBOARD_INSTALL_ICON_PATH = "/_junior/dashboard/icon-512.png";
 const DASHBOARD_MANIFEST_PATH = "/_junior/dashboard/manifest.webmanifest";
-const DASHBOARD_THEME_COLOR = "#000000";
-const DASHBOARD_BACKGROUND_COLOR = "#000000";
+/** Match --color-dashboard-ink / shell canvas until theme switching lands. */
+const DASHBOARD_THEME_COLOR = "#050507";
+const DASHBOARD_BACKGROUND_COLOR = "#050507";
 const LOGIN_NEXT_PARAM = "next";
 const LOCAL_VIEWER_EMAIL = "dev@example.com";
 /** Process-local display names for mock reporting only. */
@@ -346,11 +347,11 @@ function forbidden(request: Request, agentName: string): Response {
     ${readDashboardTailwind()}
   </style>
 </head>
-<body class="m-0 bg-black font-sans text-white [color-scheme:dark]">
+<body class="m-0 bg-dashboard-bg font-sans text-dashboard-text-solid [color-scheme:var(--dashboard-color-scheme,dark)]">
   <main class="grid min-h-screen place-items-center p-8">
     <section class="max-w-lg border-l-4 border-rose-400 pl-4">
       <h1 class="m-0 mb-3 text-3xl font-bold leading-tight">Access denied</h1>
-      <p class="m-0 leading-relaxed text-[#b8b8b8]">Your Google account is authenticated, but it is not allowed to use this ${escapeHtml(agentName)} dashboard.</p>
+      <p class="m-0 leading-relaxed text-dashboard-text-subtle">Your Google account is authenticated, but it is not allowed to use this ${escapeHtml(agentName)} dashboard.</p>
     </section>
   </main>
 </body>
@@ -599,11 +600,11 @@ function renderDashboard(basePath: string, agentName: string): Response {
     ${readDashboardTailwind()}
   </style>
 </head>
-<body class="m-0 bg-black text-white [color-scheme:dark]">
+<body class="m-0 bg-dashboard-bg text-dashboard-text-solid [color-scheme:var(--dashboard-color-scheme,dark)]">
   <div id="dashboard-root">
-    <main class="grid min-h-screen place-items-center bg-black px-4 py-8 font-sans text-white md:px-8" aria-busy="true">
-      <section class="grid w-full max-w-lg grid-cols-[auto_minmax(0,1fr)] items-center gap-3 border border-white/15 bg-[#0b0b0b] p-4">
-        <div class="grid size-9 shrink-0 select-none place-items-center bg-black text-sm font-black leading-none text-white">Jr</div>
+    <main class="grid min-h-screen place-items-center bg-dashboard-bg px-4 py-8 font-sans text-dashboard-text-solid md:px-8" aria-busy="true">
+      <section class="grid w-full max-w-lg grid-cols-[auto_minmax(0,1fr)] items-center gap-3 border border-dashboard-border-emphasis bg-dashboard-surface-raised p-4">
+        <div class="grid size-9 shrink-0 select-none place-items-center bg-dashboard-bg text-sm font-black leading-none text-dashboard-text-solid">Jr</div>
         <div class="min-w-0">
           <div class="font-bold">Loading ${escapeHtml(agentName)}</div>
           <div class="${dashboardRainbowProgressClass} mt-3 h-1.5 w-full" role="progressbar" aria-label="Loading ${escapeHtml(agentName)}"></div>
@@ -638,12 +639,12 @@ function renderDashboard(basePath: string, agentName: string): Response {
         var root = document.getElementById("dashboard-root");
         if (!root) return;
         root.innerHTML =
-          '<main class="grid min-h-screen place-items-center bg-black p-8 text-white">' +
-          '<section class="w-full max-w-5xl border border-rose-400/50 bg-[#0b0b0b] p-5 font-sans">' +
-          '<div class="font-mono text-xs uppercase leading-none text-[#888]">Dashboard Error</div>' +
+          '<main class="grid min-h-screen place-items-center bg-dashboard-bg p-8 text-dashboard-text-solid">' +
+          '<section class="w-full max-w-5xl border border-rose-400/50 bg-dashboard-surface-raised p-5 font-sans">' +
+          '<div class="font-mono text-xs uppercase leading-none text-dashboard-text-faint">Dashboard Error</div>' +
           '<h1 class="mt-2 text-3xl font-bold leading-tight tracking-normal">' + escapeHtml(window.__JUNIOR_DASHBOARD_AGENT_NAME__) + ' failed to render</h1>' +
-          '<p class="my-4 max-w-3xl text-[#b8b8b8]">The dashboard hit a client-side exception. The stack trace is shown here so the page does not fail blank.</p>' +
-          '<pre class="max-h-[60vh] overflow-auto whitespace-pre-wrap break-words border border-white/10 bg-black p-4 font-mono text-sm leading-relaxed text-white">' +
+          '<p class="my-4 max-w-3xl text-dashboard-text-subtle">The dashboard hit a client-side exception. The stack trace is shown here so the page does not fail blank.</p>' +
+          '<pre class="max-h-[60vh] overflow-auto whitespace-pre-wrap break-words border border-dashboard-border-strong bg-dashboard-bg p-4 font-mono text-sm leading-relaxed text-dashboard-text-solid">' +
           escapeHtml(errorText(error)) +
           "</pre></section></main>";
       };
@@ -669,7 +670,7 @@ function renderDashboard(basePath: string, agentName: string): Response {
 
 function renderFavicon(): Response {
   return new Response(
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" fill="#000000"/><text x="16" y="20.5" fill="#ffffff" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11" font-weight="900" text-anchor="middle">Jr</text></svg>`,
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" fill="#050507"/><text x="16" y="20.5" fill="#f4f4f5" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11" font-weight="900" text-anchor="middle">Jr</text></svg>`,
     { headers: { "content-type": "image/svg+xml" } },
   );
 }

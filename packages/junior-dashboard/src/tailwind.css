@@ -1,6 +1,11 @@
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@300;400;500;600;700&display=swap");
 @import "tailwindcss";
 
+/*
+ * Dashboard color tokens.
+ * Keep structural UI colors here so light/dark themes can share one utility surface.
+ * Status accents (rose/cyan/emerald series colors) stay as Tailwind palette utilities.
+ */
 @theme {
   --font-display:
     "Outfit", "Avenir Next", Avenir, "Segoe UI", -apple-system,
@@ -38,15 +43,93 @@
   --text-4xl: 2.25rem; /* 36px — large display titles */
   --text-4xl--line-height: 1.15;
 
-  --color-dashboard-text: #f4f4f5;
-  --color-dashboard-text-muted: #a1a1aa;
+  /* Solid canvas and elevated surfaces */
+  --color-dashboard-bg: #050507;
+  --color-dashboard-bg-elevated: #070707;
   --color-dashboard-surface-panel: #09090b;
   --color-dashboard-surface-raised: #0b0b0b;
   --color-dashboard-surface-hover: #151515;
   --color-dashboard-control: #111114;
+  --color-dashboard-popover: #111719;
+  --color-dashboard-tooltip: #111111;
+  --color-dashboard-empty: #050505;
+  --color-dashboard-ink: #000000;
+  --color-dashboard-ink-soft: #101010;
+
+  /* Text */
+  --color-dashboard-text: #f4f4f5;
+  --color-dashboard-text-muted: #a1a1aa;
+  --color-dashboard-text-subtle: #b8b8b8;
+  --color-dashboard-text-faint: #888888;
+  --color-dashboard-text-inverse: #000000;
+  --color-dashboard-text-solid: #ffffff;
+
+  /* Focus / brand accent used for rings and avatar chips */
+  --color-dashboard-focus: #beaaff;
+
+  /* Hairline borders (pre-multiplied so themes can flip without white/black literals) */
+  --color-dashboard-border-faint: rgb(255 255 255 / 0.05);
+  --color-dashboard-border-subtle: rgb(255 255 255 / 0.06);
+  --color-dashboard-border: rgb(255 255 255 / 0.07);
+  --color-dashboard-border-strong: rgb(255 255 255 / 0.1);
+  --color-dashboard-border-emphasis: rgb(255 255 255 / 0.15);
+  --color-dashboard-border-heavy: rgb(255 255 255 / 0.3);
+  --color-dashboard-border-inverse: rgb(0 0 0 / 0.4);
+
+  /* Translucent fills on the canvas */
+  --color-dashboard-fill-faint: rgb(255 255 255 / 0.02);
+  --color-dashboard-fill-soft: rgb(255 255 255 / 0.025);
+  --color-dashboard-fill-muted: rgb(255 255 255 / 0.035);
+  --color-dashboard-fill-mid: rgb(255 255 255 / 0.055);
+  --color-dashboard-fill-strong: rgb(255 255 255 / 0.08);
+  --color-dashboard-fill-stronger: rgb(255 255 255 / 0.1);
+  --color-dashboard-fill-heavy: rgb(255 255 255 / 0.15);
+  --color-dashboard-fill-solid: #ffffff;
+
+  /* Dark overlays (table headers, sticky rows, scrims) */
+  --color-dashboard-overlay-faint: rgb(0 0 0 / 0.1);
+  --color-dashboard-overlay-soft: rgb(0 0 0 / 0.15);
+  --color-dashboard-overlay: rgb(0 0 0 / 0.2);
+  --color-dashboard-overlay-strong: rgb(0 0 0 / 0.25);
+  --color-dashboard-overlay-heavy: rgb(0 0 0 / 0.55);
+
+  /* Underline / decoration tones */
+  --color-dashboard-decoration: rgb(255 255 255 / 0.2);
+  --color-dashboard-decoration-strong: rgb(255 255 255 / 0.6);
+  --color-dashboard-decoration-solid: #ffffff;
+
+  /* Chart label fills that previously used fill-white */
+  --color-dashboard-chart-label: #ffffff;
+  --color-dashboard-chart-label-muted: rgb(255 255 255 / 0.5);
+  --color-dashboard-chart-guide: #e2e8f0;
+
+  /* Shadow colors for shadow-* utilities */
+  --color-dashboard-shadow: rgb(0 0 0 / 0.45);
+  --color-dashboard-shadow-soft: rgb(0 0 0 / 0.18);
+  --color-dashboard-shadow-mid: rgb(0 0 0 / 0.35);
+  --color-dashboard-shadow-strong: rgb(0 0 0 / 0.6);
+  --color-dashboard-shadow-heavy: rgb(0 0 0 / 0.7);
+
+  /* Shell grid + scroll chrome */
+  --color-dashboard-grid-line: rgb(255 255 255 / 0.04);
+  --color-dashboard-scrollbar-track: rgb(255 255 255 / 0.02);
+  --color-dashboard-scrollbar-thumb: rgb(255 255 255 / 0.1);
+  --color-dashboard-scrollbar-thumb-hover: rgb(255 255 255 / 0.2);
+
+  /* Structural tinted surfaces that should flip with the theme later */
+  --color-dashboard-bubble-assistant: #0e1517;
+  --color-dashboard-bubble-warning: #14120c;
+  --color-dashboard-jump-idle: #0b181a;
+  --color-dashboard-jump-hover: #102226;
+  --color-dashboard-tool-label: #9a8fd0;
 }
 
 @layer base {
+  :root {
+    color-scheme: var(--dashboard-color-scheme, dark);
+    --dashboard-color-scheme: dark;
+  }
+
   html {
     text-rendering: geometricPrecision;
   }
@@ -57,17 +140,38 @@
   }
 
   ::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.02);
+    background: var(--color-dashboard-scrollbar-track);
   }
 
   ::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--color-dashboard-scrollbar-thumb);
     border-radius: 4px;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.2);
+    background: var(--color-dashboard-scrollbar-thumb-hover);
   }
+}
+
+/* Shell canvas: solid base + faint grid. Noise sits in a separate layer. */
+.dashboard-shell-bg {
+  background-color: var(--color-dashboard-bg);
+  background-image:
+    radial-gradient(
+      ellipse at 50% 0%,
+      transparent 0%,
+      var(--color-dashboard-bg) 70%
+    ),
+    linear-gradient(var(--color-dashboard-grid-line) 1px, transparent 1px),
+    linear-gradient(
+      90deg,
+      var(--color-dashboard-grid-line) 1px,
+      transparent 1px
+    );
+  background-size:
+    100% 100%,
+    40px 40px,
+    40px 40px;
 }
 
 @source "./app.ts";

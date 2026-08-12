@@ -66,7 +66,7 @@ export function DashboardChrome(props: {
   }
 
   return (
-    <div className="sticky top-0 z-30 bg-[#050507]/95 pt-[env(safe-area-inset-top)]">
+    <div className="sticky top-0 z-30 bg-dashboard-bg/95 pt-[env(safe-area-inset-top)]">
       {props.header}
       <div className="hidden md:block" ref={chrome.secondarySlotRef} />
       {props.banner}

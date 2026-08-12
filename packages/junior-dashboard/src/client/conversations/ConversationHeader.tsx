@@ -21,7 +21,7 @@ export function ConversationHeader(props: {
   updatedLabel: string;
 }) {
   return (
-    <header className="sticky top-0 z-10 -mx-3 mb-2 border-b border-white/[0.07] bg-[#050507]/92 px-3 pb-1.5 pt-3 backdrop-blur md:-mx-7 md:mb-4 md:px-7 md:pb-3 md:pt-5">
+    <header className="sticky top-0 z-10 -mx-3 mb-2 border-b border-dashboard-border bg-dashboard-bg/92 px-3 pb-1.5 pt-3 backdrop-blur md:-mx-7 md:mb-4 md:px-7 md:pb-3 md:pt-5">
       <div className="flex min-w-0 items-center justify-between gap-2 md:items-start md:gap-3">
         <div className="min-w-0">
           <div className="flex min-w-0 items-center gap-x-2 gap-y-1">

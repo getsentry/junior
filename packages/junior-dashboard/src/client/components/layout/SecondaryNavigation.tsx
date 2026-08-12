@@ -24,7 +24,7 @@ export function SecondaryNavigation(props: {
       isActive
         ? "text-dashboard-text after:bg-cyan-300"
         : cn(
-            "after:bg-transparent hover:bg-white/[0.025]",
+            "after:bg-transparent hover:bg-dashboard-fill-soft",
             dashboardInteractiveTextClass,
           ),
     );
@@ -33,13 +33,13 @@ export function SecondaryNavigation(props: {
       "rounded-md px-2.5 py-2 pl-5 font-mono text-xs font-medium no-underline transition-colors",
       isActive
         ? "bg-cyan-300/[0.1] text-cyan-50"
-        : cn("hover:bg-white/[0.035]", dashboardInteractiveTextClass),
+        : cn("hover:bg-dashboard-fill-muted", dashboardInteractiveTextClass),
     );
 
   return (
     <SecondaryNavigationPortal
       desktop={
-        <div className="border-b border-white/[0.06] bg-white/[0.018]">
+        <div className="border-b border-dashboard-border-subtle bg-dashboard-fill-faint">
           <nav
             aria-label={props.ariaLabel}
             className={cn(
@@ -63,7 +63,7 @@ export function SecondaryNavigation(props: {
       mobile={
         <nav
           aria-label={props.ariaLabel}
-          className="mt-2 grid gap-1 border-t border-white/[0.07] pt-2"
+          className="mt-2 grid gap-1 border-t border-dashboard-border pt-2"
         >
           {props.items.map((item) => (
             <NavLink

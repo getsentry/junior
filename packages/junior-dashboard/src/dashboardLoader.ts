@@ -1,7 +1,7 @@
 export const dashboardRainbowProgressClass = [
   "relative",
   "overflow-hidden",
-  "bg-white/15",
+  "bg-dashboard-fill-heavy",
   "before:absolute",
   "before:inset-0",
   "before:content-['']",

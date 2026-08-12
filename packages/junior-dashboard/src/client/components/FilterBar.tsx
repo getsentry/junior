@@ -71,7 +71,7 @@ export function FilterTabList(props: {
   return (
     <div
       aria-label={props.ariaLabel}
-      className="grid min-w-0 grid-cols-3 gap-1 border-b border-white/[0.06] sm:flex sm:overflow-x-auto"
+      className="grid min-w-0 grid-cols-3 gap-1 border-b border-dashboard-border-subtle sm:flex sm:overflow-x-auto"
       role="tablist"
     >
       {props.items.map((item) => {
@@ -97,7 +97,7 @@ export function FilterTabList(props: {
                   "rounded-sm border px-1.5 py-0.5 text-xs",
                   selected
                     ? "border-cyan-300/20 bg-cyan-300/10 text-cyan-100"
-                    : "border-white/[0.07] bg-white/[0.025] text-dashboard-text-muted",
+                    : "border-dashboard-border bg-dashboard-fill-soft text-dashboard-text-muted",
                 )}
               >
                 {item.count.toLocaleString("en-US")}

@@ -32,7 +32,7 @@ function Stat(props: {
   valueClassName?: string;
 }) {
   return (
-    <div className="rounded-md border border-white/[0.05] bg-black/10 px-3 py-3">
+    <div className="rounded-md border border-dashboard-border-faint bg-dashboard-overlay-faint px-3 py-3">
       <div className="font-display text-xl font-light text-dashboard-text">
         <span className={props.valueClassName}>{props.value}</span>
       </div>
@@ -58,7 +58,7 @@ export function GuardianActivity(props: { days: GuardianMetricDay[] }) {
 
   return (
     <Card>
-      <div className="border-b border-white/[0.06] px-4 py-4">
+      <div className="border-b border-dashboard-border-subtle px-4 py-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h3 className="m-0 font-mono text-xs font-medium uppercase tracking-[0.14em] text-dashboard-text-muted">
@@ -127,7 +127,7 @@ export function GuardianActivity(props: { days: GuardianMetricDay[] }) {
               >
                 <button
                   aria-label={`${shortDate(day.date)}: ${day.allow} allowed, ${day.ask} asked, ${day.deny} denied, ${formatCostSummary({ total: day.costUsd ?? 0 })}`}
-                  className="flex w-full min-w-0 flex-col justify-end overflow-hidden rounded-t-sm bg-white/[0.035] focus-visible:outline-1 focus-visible:outline-cyan-300"
+                  className="flex w-full min-w-0 flex-col justify-end overflow-hidden rounded-t-sm bg-dashboard-fill-muted focus-visible:outline-1 focus-visible:outline-cyan-300"
                   style={{ height: `${height}%` }}
                   type="button"
                 >

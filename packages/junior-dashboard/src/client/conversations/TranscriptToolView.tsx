@@ -146,9 +146,9 @@ function ToolSignature(props: {
 
 function ToolBody(props: { children: ReactNode; label?: string }) {
   return (
-    <div className="min-w-0 max-w-full overflow-hidden border-t border-white/10 py-2">
+    <div className="min-w-0 max-w-full overflow-hidden border-t border-dashboard-border-strong py-2">
       {props.label ? (
-        <div className="pb-2 font-mono text-xs font-bold uppercase leading-none text-[#9a8fd0]">
+        <div className="pb-2 font-mono text-xs font-bold uppercase leading-none text-dashboard-tool-label">
           {props.label}
         </div>
       ) : null}

@@ -191,7 +191,7 @@ function renderInlineCode(text: string, keyBase: number): ReactNode[] {
     }
     nodes.push(
       <code
-        className="rounded-[0.25rem] bg-white/[0.08] px-1 py-0.5 font-mono text-[0.9em] text-cyan-50"
+        className="rounded-[0.25rem] bg-dashboard-fill-strong px-1 py-0.5 font-mono text-[0.9em] text-cyan-50"
         key={`code-${keyBase}-${part++}`}
       >
         <HighlightText text={match[2] ?? ""} />

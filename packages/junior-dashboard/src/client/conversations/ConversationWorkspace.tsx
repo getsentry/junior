@@ -64,7 +64,7 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
     <div
       className={cn(
         dashboardContainerClass,
-        "grid h-full min-h-0 overflow-hidden md:grid-cols-[21rem_minmax(0,1fr)] xl:border-x xl:border-white/[0.07]",
+        "grid h-full min-h-0 overflow-hidden md:grid-cols-[21rem_minmax(0,1fr)] xl:border-x xl:border-dashboard-border",
       )}
     >
       <div
@@ -94,13 +94,13 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
         aria-label="Selected conversation"
         className={
           selectedId || creating
-            ? "grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-white/[0.012]"
-            : "hidden min-h-0 overflow-hidden bg-white/[0.012] md:grid md:grid-rows-[minmax(0,1fr)]"
+            ? "grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-dashboard-fill-faint"
+            : "hidden min-h-0 overflow-hidden bg-dashboard-fill-faint md:grid md:grid-rows-[minmax(0,1fr)]"
         }
       >
         {selectedId && !creating ? (
           <>
-            <div className="border-b border-white/[0.07] bg-white/[0.025] px-3 py-2.5 md:hidden">
+            <div className="border-b border-dashboard-border bg-dashboard-fill-soft px-3 py-2.5 md:hidden">
               <Link
                 className="inline-flex items-center gap-2 font-mono text-xs text-dashboard-text-muted no-underline hover:text-dashboard-text"
                 to="/"
@@ -127,7 +127,7 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
         ) : (
           <>
             {creating ? (
-              <div className="border-b border-white/[0.07] bg-white/[0.025] px-3 py-2.5 md:hidden">
+              <div className="border-b border-dashboard-border bg-dashboard-fill-soft px-3 py-2.5 md:hidden">
                 <button
                   className="inline-flex cursor-pointer items-center gap-2 font-mono text-xs text-dashboard-text-muted hover:text-dashboard-text"
                   onClick={() => {

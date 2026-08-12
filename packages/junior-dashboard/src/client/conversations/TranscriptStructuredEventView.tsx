@@ -20,7 +20,7 @@ export function TranscriptStructuredEventView(props: {
       <div className="grid gap-2 pb-1 pt-2">
         {details.map((detail, index) => (
           <div
-            className="rounded border border-white/[0.06] bg-white/[0.025] px-3 py-2.5"
+            className="rounded border border-dashboard-border-subtle bg-dashboard-fill-soft px-3 py-2.5"
             key={`${detail.title}:${index}`}
           >
             <div className="whitespace-pre-wrap break-words text-sm text-dashboard-text">
@@ -32,7 +32,7 @@ export function TranscriptStructuredEventView(props: {
               </div>
             ) : null}
             {detail.content ? (
-              <pre className="mt-2 max-h-[32rem] overflow-auto whitespace-pre-wrap break-words rounded bg-black/20 p-3 font-mono text-xs leading-relaxed text-dashboard-text-muted">
+              <pre className="mt-2 max-h-[32rem] overflow-auto whitespace-pre-wrap break-words rounded bg-dashboard-overlay p-3 font-mono text-xs leading-relaxed text-dashboard-text-muted">
                 <HighlightText text={detail.content} />
               </pre>
             ) : null}
@@ -40,7 +40,7 @@ export function TranscriptStructuredEventView(props: {
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {detail.metadata.map((value) => (
                   <span
-                    className="rounded bg-white/[0.05] px-1.5 py-0.5 font-mono text-xs text-dashboard-text-muted"
+                    className="rounded bg-dashboard-fill-mid px-1.5 py-0.5 font-mono text-xs text-dashboard-text-muted"
                     key={value}
                   >
                     <HighlightText text={value} />

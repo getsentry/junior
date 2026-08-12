@@ -96,7 +96,7 @@ export function ContributionGrid(props: { days: ContributionDay[] }) {
                   <span
                     aria-label={`${day.date}: ${day.conversations} conversations, ${activityRuntime(day)}, ${formatCostSummary({ total: day.costUsd ?? 0 })} spend, ${formatCompactNumber(day.tokens ?? 0)} tokens`}
                     className={cn(
-                      "size-3 border border-black/40 outline-none focus-visible:ring-2 focus-visible:ring-[#beaaff]",
+                      "size-3 border border-dashboard-border-inverse outline-none focus-visible:ring-2 focus-visible:ring-dashboard-focus",
                       activityClass(day.conversations, max),
                     )}
                     role="listitem"
@@ -106,7 +106,7 @@ export function ContributionGrid(props: { days: ContributionDay[] }) {
               ) : (
                 <span
                   aria-hidden="true"
-                  className="size-3 border border-black/40 bg-[#101010]"
+                  className="size-3 border border-dashboard-border-inverse bg-dashboard-ink-soft"
                   key={`empty-${weekIndex}-${dayIndex}`}
                 />
               ),
@@ -119,7 +119,7 @@ export function ContributionGrid(props: { days: ContributionDay[] }) {
             <span
               aria-hidden="true"
               className={cn(
-                "size-3 border border-black/40",
+                "size-3 border border-dashboard-border-inverse",
                 level === 0 && "bg-dashboard-surface-hover",
                 level === 1 && "bg-[#133225]",
                 level === 2 && "bg-[#176a4a]",

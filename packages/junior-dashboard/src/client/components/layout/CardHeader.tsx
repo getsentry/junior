@@ -12,7 +12,7 @@ export function CardHeader(props: {
   return (
     <div
       className={cn(
-        "flex flex-wrap items-start justify-between gap-4 border-b border-white/[0.06] px-4 py-4 sm:px-5",
+        "flex flex-wrap items-start justify-between gap-4 border-b border-dashboard-border-subtle px-4 py-4 sm:px-5",
         props.className,
       )}
     >

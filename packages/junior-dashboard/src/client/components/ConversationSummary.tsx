@@ -36,7 +36,7 @@ function ConversationIdentity(props: { conversation: Conversation }) {
       {location && props.conversation.locationId ? (
         <>
           <Link
-            className="font-semibold text-dashboard-text underline decoration-white/20 underline-offset-2 transition-colors hover:text-dashboard-text hover:decoration-white/60"
+            className="font-semibold text-dashboard-text underline decoration-dashboard-decoration underline-offset-2 transition-colors hover:text-dashboard-text hover:decoration-dashboard-decoration-strong"
             onClick={(event) => event.stopPropagation()}
             onKeyDown={(event) => event.stopPropagation()}
             to={locationPath(props.conversation.locationId)}
@@ -53,7 +53,7 @@ function ConversationIdentity(props: { conversation: Conversation }) {
       ) : null}
       {email ? (
         <Link
-          className="font-semibold text-dashboard-text underline decoration-white/20 underline-offset-2 transition-colors hover:text-dashboard-text hover:decoration-white/60"
+          className="font-semibold text-dashboard-text underline decoration-dashboard-decoration underline-offset-2 transition-colors hover:text-dashboard-text hover:decoration-dashboard-decoration-strong"
           onClick={(event) => event.stopPropagation()}
           onKeyDown={(event) => event.stopPropagation()}
           to={peoplePath(email)}

@@ -14,7 +14,7 @@ export function PluginDetails(props: { plugin: SystemPlugin }) {
         title="Details"
       />
       <Card>
-        <div className="grid grid-cols-1 gap-px bg-white/[0.055] sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-px bg-dashboard-fill-mid sm:grid-cols-3">
           <Detail icon={Boxes} label="Identifier" value={props.plugin.name} />
           <Detail
             icon={Sparkles}
@@ -27,7 +27,7 @@ export function PluginDetails(props: { plugin: SystemPlugin }) {
             value={String(props.plugin.configKeys.length)}
           />
         </div>
-        <div className="grid gap-5 border-t border-white/[0.06] p-4 sm:p-5 lg:grid-cols-2">
+        <div className="grid gap-5 border-t border-dashboard-border-subtle p-4 sm:p-5 lg:grid-cols-2">
           <CapabilityList
             emptyText="No plugin-provided skills were discovered."
             items={props.plugin.skills.map((skill) => skill.name)}
@@ -79,7 +79,7 @@ function CapabilityList(props: {
         <div className="mt-2.5 flex flex-wrap gap-2">
           {props.items.map((item) => (
             <span
-              className="rounded border border-white/[0.07] bg-black/20 px-2.5 py-1.5 font-mono text-xs text-dashboard-text-muted"
+              className="rounded border border-dashboard-border bg-dashboard-overlay px-2.5 py-1.5 font-mono text-xs text-dashboard-text-muted"
               key={item}
             >
               {item}

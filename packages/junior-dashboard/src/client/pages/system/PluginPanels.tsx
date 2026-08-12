@@ -31,7 +31,7 @@ function PluginPanel(props: { plugin: SystemPlugin }) {
   );
   return (
     <Link
-      className="group grid min-w-0 gap-4 rounded-lg border border-white/[0.07] bg-dashboard-surface-panel/85 p-4 no-underline transition-colors hover:border-cyan-300/20 hover:bg-cyan-300/[0.025] sm:p-5"
+      className="group grid min-w-0 gap-4 rounded-lg border border-dashboard-border bg-dashboard-surface-panel/85 p-4 no-underline transition-colors hover:border-cyan-300/20 hover:bg-cyan-300/[0.025] sm:p-5"
       to={systemPluginPath(props.plugin.name)}
     >
       <div className="flex min-w-0 items-start justify-between gap-4">
@@ -59,7 +59,7 @@ function PluginPanel(props: { plugin: SystemPlugin }) {
         <div
           className={`grid ${
             metrics.length === 1 ? "grid-cols-1" : "grid-cols-2"
-          } gap-px overflow-hidden rounded border border-white/[0.06] bg-white/[0.055]`}
+          } gap-px overflow-hidden rounded border border-dashboard-border-subtle bg-dashboard-fill-mid`}
         >
           {metrics.slice(0, 2).map((metric) => (
             <div
@@ -77,7 +77,7 @@ function PluginPanel(props: { plugin: SystemPlugin }) {
         </div>
       ) : null}
 
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-white/[0.055] pt-3">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-dashboard-border-subtle pt-3">
         <PanelFact
           icon={Sparkles}
           label={`${props.plugin.skills.length} skills`}

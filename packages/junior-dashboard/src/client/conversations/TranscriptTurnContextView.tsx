@@ -37,9 +37,9 @@ export function TranscriptTurnContextView(props: {
           aria-expanded={open}
           aria-label="View turn context"
           className={cn(
-            "grid size-7 cursor-pointer place-items-center rounded-md border border-transparent bg-transparent transition-colors hover:border-white/10 hover:bg-white/[0.06] focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-200/60",
+            "grid size-7 cursor-pointer place-items-center rounded-md border border-transparent bg-transparent transition-colors hover:border-dashboard-border-strong hover:bg-dashboard-fill-mid focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-200/60",
             dashboardInteractiveTextClass,
-            open && "border-white/10 bg-white/[0.06] text-cyan-100/80",
+            open && "border-dashboard-border-strong bg-dashboard-fill-mid text-cyan-100/80",
           )}
           onClick={() => setOpen(true)}
           ref={triggerRef}
@@ -50,7 +50,7 @@ export function TranscriptTurnContextView(props: {
         </button>
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute right-0 bottom-[calc(100%+0.35rem)] z-10 whitespace-nowrap rounded border border-white/10 bg-[#111] px-2 py-1 text-xs font-medium text-dashboard-text-muted opacity-0 shadow-lg transition-opacity group-hover/context:opacity-100 group-focus-within/context:opacity-100"
+          className="pointer-events-none absolute right-0 bottom-[calc(100%+0.35rem)] z-10 whitespace-nowrap rounded border border-dashboard-border-strong bg-dashboard-tooltip px-2 py-1 text-xs font-medium text-dashboard-text-muted opacity-0 shadow-lg transition-opacity group-hover/context:opacity-100 group-focus-within/context:opacity-100"
         >
           View turn context
         </span>
@@ -79,18 +79,18 @@ function TurnContextPanel(props: {
     <div className="fixed inset-0 z-50">
       <button
         aria-label="Close turn context"
-        className="absolute inset-0 cursor-default border-0 bg-black/55 backdrop-blur-[1px]"
+        className="absolute inset-0 cursor-default border-0 bg-dashboard-overlay-heavy backdrop-blur-[1px]"
         onClick={props.onClose}
         type="button"
       />
       <section
         aria-label="Turn context"
         aria-modal="true"
-        className="absolute inset-y-0 right-0 flex w-full max-w-[34rem] flex-col border-l border-white/15 bg-dashboard-surface-raised shadow-2xl shadow-black/70"
+        className="absolute inset-y-0 right-0 flex w-full max-w-[34rem] flex-col border-l border-dashboard-border-emphasis bg-dashboard-surface-raised shadow-2xl shadow-dashboard-shadow-heavy"
         id={props.id}
         role="dialog"
       >
-        <header className="flex min-h-16 items-center justify-between gap-4 border-b border-white/10 px-5 pt-[env(safe-area-inset-top)]">
+        <header className="flex min-h-16 items-center justify-between gap-4 border-b border-dashboard-border-strong px-5 pt-[env(safe-area-inset-top)]">
           <div className="flex min-w-0 items-center gap-3">
             <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-cyan-200/10 text-cyan-100/80">
               <Braces aria-hidden="true" size={17} strokeWidth={1.8} />
@@ -107,7 +107,7 @@ function TurnContextPanel(props: {
           <button
             aria-label="Close turn context"
             autoFocus
-            className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-md border-0 bg-transparent text-dashboard-text-muted transition-colors hover:bg-white/10 hover:text-dashboard-text"
+            className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-md border-0 bg-transparent text-dashboard-text-muted transition-colors hover:bg-dashboard-fill-stronger hover:text-dashboard-text"
             onClick={props.onClose}
             title="Close turn context"
             type="button"
@@ -133,7 +133,7 @@ function TurnContext(props: { context: TranscriptViewTurnContext }) {
   const memory = memoryRecallContent(props.context);
 
   return (
-    <section className="border-b border-white/10 py-5 last:border-b-0">
+    <section className="border-b border-dashboard-border-strong py-5 last:border-b-0">
       <div className="mb-4 flex items-start justify-between gap-4">
         <div className="flex min-w-0 items-center gap-2.5">
           {memory ? (
@@ -175,13 +175,13 @@ function MemoryRecall(props: {
   memories: MemoryRecallContent["memories"];
 }) {
   return (
-    <div className="overflow-hidden rounded-lg border border-white/10">
+    <div className="overflow-hidden rounded-lg border border-dashboard-border-strong">
       {props.memories.map((memory, index) => (
         <details
-          className="group/memory border-t border-white/10 first:border-t-0"
+          className="group/memory border-t border-dashboard-border-strong first:border-t-0"
           key={memory.id}
         >
-          <summary className="flex cursor-pointer list-none items-start gap-2.5 px-3 py-3 transition-colors hover:bg-white/[0.04] [&::-webkit-details-marker]:hidden">
+          <summary className="flex cursor-pointer list-none items-start gap-2.5 px-3 py-3 transition-colors hover:bg-dashboard-fill-mid [&::-webkit-details-marker]:hidden">
             <ChevronRight
               aria-hidden="true"
               className="mt-0.5 shrink-0 text-dashboard-text-muted transition-transform group-open/memory:rotate-90"
@@ -202,7 +202,7 @@ function MemoryRecall(props: {
             </span>
           </summary>
 
-          <div className="border-t border-white/8 bg-white/[0.025] px-4 py-4">
+          <div className="border-t border-dashboard-border bg-dashboard-fill-soft px-4 py-4">
             <div className="whitespace-pre-wrap text-sm leading-6 text-dashboard-text">
               <HighlightText text={memory.content} />
             </div>
@@ -234,7 +234,7 @@ function MemoryRecall(props: {
           </div>
         </details>
       ))}
-      <p className="m-0 border-t border-white/10 px-3 py-2 text-xs text-dashboard-text-muted">
+      <p className="m-0 border-t border-dashboard-border-strong px-3 py-2 text-xs text-dashboard-text-muted">
         {props.memories.length}{" "}
         {props.memories.length === 1 ? "memory" : "memories"} · Loaded{" "}
         {formatMessageTimestamp(Date.parse(props.loadedAt))}
@@ -246,7 +246,7 @@ function MemoryRecall(props: {
 function GenericContext(props: { context: TranscriptViewTurnContext }) {
   return (
     <div>
-      <pre className="m-0 overflow-x-auto whitespace-pre-wrap break-words rounded-lg bg-white/[0.04] p-3 text-xs leading-relaxed text-dashboard-text-muted">
+      <pre className="m-0 overflow-x-auto whitespace-pre-wrap break-words rounded-lg bg-dashboard-fill-mid p-3 text-xs leading-relaxed text-dashboard-text-muted">
         <HighlightText text={JSON.stringify(props.context.content, null, 2)} />
       </pre>
       <p className="m-0 mt-3 text-xs text-dashboard-text-muted">

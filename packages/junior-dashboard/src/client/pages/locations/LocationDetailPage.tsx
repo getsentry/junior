@@ -91,7 +91,7 @@ function LocationDetail(props: { detail: LocationDetailReport }) {
       <LocationActivityChart days={detail.activityDays} />
 
       <Card>
-        <div className="flex items-center gap-3 border-b border-white/[0.06] px-4 py-4">
+        <div className="flex items-center gap-3 border-b border-dashboard-border-subtle px-4 py-4">
           <span className="grid size-9 place-items-center rounded border border-cyan-400/15 bg-cyan-400/[0.06] text-cyan-300">
             <MapPin aria-hidden="true" size={16} />
           </span>
@@ -126,7 +126,7 @@ function LocationDetail(props: { detail: LocationDetailReport }) {
                 </>
               );
               const className =
-                "min-w-0 border-b border-r border-white/[0.055] px-4 py-3.5 transition-colors hover:bg-white/[0.03]";
+                "min-w-0 border-b border-r border-dashboard-border-subtle px-4 py-3.5 transition-colors hover:bg-dashboard-fill-soft";
               return item.actor.email ? (
                 <Link
                   className={`${className} text-inherit no-underline`}

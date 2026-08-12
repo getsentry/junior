@@ -18,8 +18,8 @@ export function Card(props: {
   }[props.padding ?? "none"];
   const surface =
     props.variant === "section"
-      ? "mb-4 border-white/[0.06] bg-white/[0.025] shadow-[0_24px_80px_rgba(0,0,0,0.18)]"
-      : "border-white/[0.05] bg-white/[0.02]";
+      ? "mb-4 border-dashboard-border-subtle bg-dashboard-fill-soft shadow-[0_24px_80px_var(--color-dashboard-shadow-soft)]"
+      : "border-dashboard-border-faint bg-dashboard-fill-faint";
   return (
     <Component
       className={cn(

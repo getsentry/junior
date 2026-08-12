@@ -147,7 +147,7 @@ export function MemoryDetailsDrawer(props: {
             Forget this memory
           </button>
         ) : isPublic ? (
-          <div className="inline-flex w-fit items-center gap-2 rounded border border-white/[0.08] px-3 py-2 font-mono text-xs uppercase tracking-[0.08em] text-dashboard-text-muted">
+          <div className="inline-flex w-fit items-center gap-2 rounded border border-dashboard-border px-3 py-2 font-mono text-xs uppercase tracking-[0.08em] text-dashboard-text-muted">
             <Globe2 aria-hidden="true" size={13} />
             View only · public memories can&apos;t be deleted
           </div>

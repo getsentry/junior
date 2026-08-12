@@ -17,7 +17,7 @@ export function SkillInventory(props: { skills: SkillReport[] }) {
 
   return (
     <Card>
-      <div className="flex items-start justify-between gap-4 border-b border-white/[0.06] px-5 py-4 max-sm:flex-col">
+      <div className="flex items-start justify-between gap-4 border-b border-dashboard-border-subtle px-5 py-4 max-sm:flex-col">
         <SectionIntro
           description={
             <>
@@ -28,7 +28,7 @@ export function SkillInventory(props: { skills: SkillReport[] }) {
           }
           title="Skills"
         />
-        <div className="grid min-w-[12rem] grid-cols-2 overflow-hidden rounded-lg border border-white/[0.07] bg-black/15 max-sm:w-full max-sm:min-w-0">
+        <div className="grid min-w-[12rem] grid-cols-2 overflow-hidden rounded-lg border border-dashboard-border bg-dashboard-overlay-soft max-sm:w-full max-sm:min-w-0">
           <InventoryMetric label="discovered" value={props.skills.length} />
           <InventoryMetric label="from plugins" value={pluginSkillCount} />
         </div>
@@ -42,7 +42,7 @@ export function SkillInventory(props: { skills: SkillReport[] }) {
             />
           ))
         ) : (
-          <div className="rounded-lg border border-dashed border-white/[0.08] px-4 py-8 text-center font-mono text-xs text-dashboard-text-muted">
+          <div className="rounded-lg border border-dashed border-dashboard-border px-4 py-8 text-center font-mono text-xs text-dashboard-text-muted">
             No skills have been discovered yet.
           </div>
         )}
@@ -54,7 +54,7 @@ export function SkillInventory(props: { skills: SkillReport[] }) {
 function SkillGroupCard(props: { group: SkillGroup }) {
   const label = props.group.pluginProvider ?? "Standalone";
   return (
-    <article className="rounded-lg border border-white/[0.065] bg-white/[0.025] p-4">
+    <article className="rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-soft p-4">
       <div className="mb-3 flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2.5">
           <div className="grid size-8 shrink-0 place-items-center rounded border border-cyan-300/15 bg-cyan-300/[0.075] text-cyan-200">
@@ -81,7 +81,7 @@ function SkillGroupCard(props: { group: SkillGroup }) {
       <div className="flex flex-wrap gap-2">
         {props.group.skills.map((skill) => (
           <span
-            className="rounded border border-white/[0.07] bg-black/20 px-2.5 py-1.5 font-mono text-xs text-dashboard-text-muted"
+            className="rounded border border-dashboard-border bg-dashboard-overlay px-2.5 py-1.5 font-mono text-xs text-dashboard-text-muted"
             key={skill.name}
           >
             {skill.name}
@@ -94,7 +94,7 @@ function SkillGroupCard(props: { group: SkillGroup }) {
 
 function InventoryMetric(props: { label: string; value: number }) {
   return (
-    <div className="border-r border-white/[0.06] px-3 py-2.5 text-center last:border-r-0">
+    <div className="border-r border-dashboard-border-subtle px-3 py-2.5 text-center last:border-r-0">
       <div className="font-display text-xl font-light leading-none text-dashboard-text">
         {formatCompactNumber(props.value)}
       </div>

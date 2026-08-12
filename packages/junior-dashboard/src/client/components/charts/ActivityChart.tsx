@@ -74,7 +74,7 @@ const ChartSvgScaleContext = createContext(1);
 
 /** Shared visual style for SVG chart axis labels. */
 export const chartAxisLabelClassName =
-  "fill-white/50 font-mono leading-none text-dashboard-text-muted";
+  "fill-dashboard-chart-label-muted font-mono leading-none text-dashboard-text-muted";
 
 type ChartAxisLabelProps = Omit<
   SVGProps<SVGTextElement>,
@@ -171,7 +171,7 @@ export function ActivityChartGrid(props: {
     return (
       <g key={ratio}>
         <line
-          stroke="rgba(255,255,255,0.07)"
+          stroke="var(--color-dashboard-border)"
           strokeDasharray="3 5"
           x1={props.layout.left}
           x2={props.layout.width - props.layout.right}
@@ -251,10 +251,10 @@ export function activityChartAverage(values: readonly number[]): number {
 }
 
 /** Shared visual style for average-line labels. */
-export const chartAverageLabelClassName = "fill-white font-mono leading-none";
+export const chartAverageLabelClassName = "fill-dashboard-chart-label font-mono leading-none";
 
 /** Solid chip behind average labels so series colors never wash out the text. */
-const chartAverageLabelChip = "rgba(9, 12, 14, 0.92)";
+const chartAverageLabelChip = "var(--color-dashboard-popover)";
 
 /**
  * Opt-in horizontal average across the plotted buckets.
@@ -301,7 +301,7 @@ export function ActivityChartAverageLine(props: {
   return (
     <g aria-label={`average ${label}`} pointerEvents="none">
       <line
-        stroke={props.stroke ?? "rgba(255,255,255,0.55)"}
+        stroke={props.stroke ?? "var(--color-dashboard-chart-label-muted)"}
         strokeDasharray="4 4"
         strokeOpacity={0.85}
         strokeWidth={1.25}
@@ -320,7 +320,7 @@ export function ActivityChartAverageLine(props: {
       />
       <text
         className={chartAverageLabelClassName}
-        fill="#ffffff"
+        fill="var(--color-dashboard-chart-label)"
         fontSize={fontSize}
         textAnchor="middle"
         x={chipX + chipWidth / 2}

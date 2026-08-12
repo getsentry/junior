@@ -47,7 +47,7 @@ export function ConversationSidebar(props: {
     }),
   );
   return (
-    <aside className="relative grid h-full min-h-0 min-w-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-white/[0.07] bg-white/[0.02]">
+    <aside className="relative grid h-full min-h-0 min-w-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-dashboard-border bg-dashboard-fill-faint">
       <div className="px-5 pb-3 pt-5">
         <div className="flex items-center justify-between gap-3">
           <h2 className="m-0 font-display text-xl font-medium leading-tight text-dashboard-text">
@@ -55,7 +55,7 @@ export function ConversationSidebar(props: {
           </h2>
           <button
             aria-label="New conversation"
-            className="grid size-8 cursor-pointer place-items-center rounded-md text-dashboard-text-muted transition hover:bg-white/[0.05] hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-cyan-300/35"
+            className="grid size-8 cursor-pointer place-items-center rounded-md text-dashboard-text-muted transition hover:bg-dashboard-fill-mid hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-cyan-300/35"
             onClick={props.onNewConversation}
             title="New conversation"
             type="button"
@@ -175,7 +175,7 @@ function ConversationSidebarRow(props: {
       <Link
         aria-current={props.selected ? "page" : undefined}
         className={cn(
-          "block min-w-0 rounded-lg border border-transparent px-3 py-3 text-inherit no-underline transition-all hover:bg-white/[0.035]",
+          "block min-w-0 rounded-lg border border-transparent px-3 py-3 text-inherit no-underline transition-all hover:bg-dashboard-fill-muted",
           props.selected && "border-cyan-300/20 bg-cyan-300/[0.07]",
         )}
         to={conversationPath(props.conversation.id)}
@@ -189,7 +189,7 @@ function ConversationSidebarRow(props: {
               className={cn(
                 "size-1.5 shrink-0 rounded-full",
                 status === "failed" && "bg-rose-300",
-                status === "idle" && "bg-white/25",
+                status === "idle" && "bg-dashboard-fill-heavy",
               )}
             />
           )}
@@ -205,7 +205,7 @@ function ConversationSidebarRow(props: {
       </Link>
       <button
         aria-label={`Archive ${title}`}
-        className="pointer-events-none absolute right-2 top-1/2 z-10 grid size-8 -translate-y-1/2 cursor-pointer place-items-center rounded-md bg-[#111719] text-dashboard-text-muted opacity-0 shadow-[-8px_0_12px_rgba(9,12,14,0.8)] transition hover:text-dashboard-text focus:pointer-events-auto focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-cyan-300/35 group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100 disabled:cursor-not-allowed"
+        className="pointer-events-none absolute right-2 top-1/2 z-10 grid size-8 -translate-y-1/2 cursor-pointer place-items-center rounded-md bg-dashboard-popover text-dashboard-text-muted opacity-0 shadow-[-8px_0_12px_var(--color-dashboard-shadow-heavy)] transition hover:text-dashboard-text focus:pointer-events-auto focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-cyan-300/35 group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100 disabled:cursor-not-allowed"
         disabled={archive.isPending}
         onClick={() =>
           archive.mutate({
@@ -228,7 +228,7 @@ function ArchiveConversationErrorNotice(props: {
 }) {
   const title = conversationDisplayTitle(props.conversation);
   return (
-    <div className="rounded-lg border border-rose-300/25 bg-[#111719] px-3 py-2.5 shadow-[0_12px_32px_rgba(0,0,0,0.45)]">
+    <div className="rounded-lg border border-rose-300/25 bg-dashboard-popover px-3 py-2.5 shadow-[0_12px_32px_var(--color-dashboard-shadow)]">
       <div className="flex min-w-0 items-center gap-3">
         <div
           className="min-w-0 flex-1 font-mono text-xs text-rose-200/80"
@@ -237,7 +237,7 @@ function ArchiveConversationErrorNotice(props: {
           Could not archive {title}.
         </div>
         <button
-          className="shrink-0 cursor-pointer rounded border border-white/15 px-2 py-1 font-mono text-xs text-dashboard-text-muted transition hover:border-white/30 hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-cyan-300/35"
+          className="shrink-0 cursor-pointer rounded border border-dashboard-border-emphasis px-2 py-1 font-mono text-xs text-dashboard-text-muted transition hover:border-dashboard-border-heavy hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-cyan-300/35"
           onClick={props.onDismiss}
           title="Dismiss"
           type="button"
@@ -260,7 +260,7 @@ function ArchivedConversationNotice(props: {
   });
   const title = conversationDisplayTitle(props.conversation);
   return (
-    <div className="rounded-lg border border-white/15 bg-[#111719] px-3 py-2.5 shadow-[0_12px_32px_rgba(0,0,0,0.45)]">
+    <div className="rounded-lg border border-dashboard-border-emphasis bg-dashboard-popover px-3 py-2.5 shadow-[0_12px_32px_var(--color-dashboard-shadow)]">
       <div className="flex min-w-0 items-center gap-3">
         <div
           className="min-w-0 flex-1 truncate font-mono text-xs text-dashboard-text-muted"
@@ -270,7 +270,7 @@ function ArchivedConversationNotice(props: {
         </div>
         <button
           aria-label={`Undo archive for ${title}`}
-          className="shrink-0 cursor-pointer rounded border border-white/15 px-2 py-1 font-mono text-xs text-cyan-100/75 transition hover:border-white/30 hover:text-cyan-50 focus:outline-none focus:ring-2 focus:ring-cyan-300/35 disabled:cursor-not-allowed disabled:opacity-40"
+          className="shrink-0 cursor-pointer rounded border border-dashboard-border-emphasis px-2 py-1 font-mono text-xs text-cyan-100/75 transition hover:border-dashboard-border-heavy hover:text-cyan-50 focus:outline-none focus:ring-2 focus:ring-cyan-300/35 disabled:cursor-not-allowed disabled:opacity-40"
           disabled={restore.isPending}
           onClick={() =>
             restore.mutate({

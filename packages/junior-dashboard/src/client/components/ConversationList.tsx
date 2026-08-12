@@ -31,7 +31,7 @@ export function ConversationList(props: {
   return (
     <div className="min-w-0" role="table">
       <div
-        className="sticky top-0 z-[1] grid grid-cols-[minmax(13rem,1.7fr)_minmax(13rem,1fr)] items-center gap-3 border-b border-white/[0.06] bg-black/25 px-3 py-2.5 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted max-md:hidden"
+        className="sticky top-0 z-[1] grid grid-cols-[minmax(13rem,1.7fr)_minmax(13rem,1fr)] items-center gap-3 border-b border-dashboard-border-subtle bg-dashboard-overlay-strong px-3 py-2.5 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted max-md:hidden"
         role="row"
       >
         <div>Conversation</div>
@@ -88,7 +88,7 @@ function conversationRecordClass(
   selected: boolean | undefined,
 ): string {
   return cn(
-    "group grid min-w-0 cursor-pointer grid-cols-[minmax(13rem,1.7fr)_minmax(13rem,1fr)] items-center gap-3 overflow-hidden border-b border-b-white/[0.055] px-3 py-3 text-left text-inherit no-underline transition-colors hover:bg-white/[0.035] max-md:grid-cols-1 max-md:px-4 max-md:py-4",
+    "group grid min-w-0 cursor-pointer grid-cols-[minmax(13rem,1.7fr)_minmax(13rem,1fr)] items-center gap-3 overflow-hidden border-b border-b-white/[0.055] px-3 py-3 text-left text-inherit no-underline transition-colors hover:bg-dashboard-fill-muted max-md:grid-cols-1 max-md:px-4 max-md:py-4",
     status === "idle" && "saturate-50",
     selected && "bg-cyan-400/[0.045]",
   );

@@ -15,7 +15,7 @@ export function DirectoryToolbar(props: {
   return (
     <div
       className={cn(
-        "grid min-w-0 gap-2 border-b border-white/[0.06] bg-black/15 p-3",
+        "grid min-w-0 gap-2 border-b border-dashboard-border-subtle bg-dashboard-overlay-soft p-3",
         props.columnsClassName,
       )}
     >
@@ -43,7 +43,7 @@ export function DirectoryTable(props: {
       <div
         aria-hidden="true"
         className={cn(
-          "grid items-center gap-4 border-b border-white/[0.06] bg-black/20 px-4 py-2.5 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted max-md:hidden",
+          "grid items-center gap-4 border-b border-dashboard-border-subtle bg-dashboard-overlay px-4 py-2.5 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted max-md:hidden",
           directoryGridClass,
         )}
       >
@@ -63,7 +63,7 @@ export function DirectoryRow(props: { children: ReactNode; to: string }) {
   return (
     <Link
       className={cn(
-        "group grid min-w-0 items-center gap-4 border-b border-white/[0.055] px-4 py-3.5 text-inherit no-underline transition-colors last:border-b-0 hover:bg-white/[0.035] max-md:grid-cols-3 max-md:gap-x-3 max-md:gap-y-4",
+        "group grid min-w-0 items-center gap-4 border-b border-dashboard-border-subtle px-4 py-3.5 text-inherit no-underline transition-colors last:border-b-0 hover:bg-dashboard-fill-muted max-md:grid-cols-3 max-md:gap-x-3 max-md:gap-y-4",
         directoryGridClass,
       )}
       to={props.to}
@@ -84,7 +84,7 @@ export function DirectoryIdentity(props: {
     <div className="flex min-w-0 items-center gap-3 max-md:col-span-3">
       <span
         className={cn(
-          "grid size-9 shrink-0 place-items-center rounded border border-white/10 transition-colors",
+          "grid size-9 shrink-0 place-items-center rounded border border-dashboard-border-strong transition-colors",
           props.iconClassName,
         )}
       >
