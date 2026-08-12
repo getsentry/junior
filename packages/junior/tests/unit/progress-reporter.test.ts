@@ -399,7 +399,78 @@ describe("createAssistantStatusScheduler", () => {
     ]);
   });
 
-  it("replaces generic loading messages when explicit progress matches the visible text", async () => {
+  it("keeps the loading_messages carousel size stable across a mid-turn progress update", async () => {
+    const scheduler = createFakeScheduler();
+    const calls: Array<{ text: string; loadingMessages?: string[] }> = [];
+    const baseCarousel = [
+      "Consulting the orb",
+      "Bribing the gremlins",
+      "Shuffling the papers dramatically",
+    ];
+    const reporter = createAssistantStatusScheduler({
+      sendStatus: async (text, loadingMessages) => {
+        calls.push({ text, loadingMessages });
+      },
+      loadingMessages: baseCarousel,
+      now: scheduler.now,
+      setTimer: scheduler.setTimer,
+      clearTimer: scheduler.clearTimer,
+      random: () => 0,
+    });
+
+    reporter.update();
+    await flushAsyncWork();
+
+    reporter.update(makeAssistantStatus("searching", "sources"));
+    scheduler.advance(1200);
+    await flushAsyncWork();
+
+    // Slack rotates loading_messages as a carousel; shrinking that array on a
+    // mid-turn update (instead of keeping its size stable) is what produced
+    // the flicker in issue #445. The base carousel is shuffled before it
+    // reaches the scheduler, so assert the invariant rather than one exact
+    // fill order.
+    const initialCarousel = calls[0]?.loadingMessages ?? [];
+    expect(initialCarousel).toHaveLength(baseCarousel.length);
+
+    const mergedCarousel = calls[1]?.loadingMessages ?? [];
+    expect(calls[1]?.text).toBe(secondSearchingStatus);
+    expect(mergedCarousel).toHaveLength(baseCarousel.length);
+    expect(mergedCarousel[0]).toBe(secondSearchingStatus);
+    expect(new Set(mergedCarousel).size).toBe(mergedCarousel.length);
+    expect(
+      mergedCarousel
+        .slice(1)
+        .every((message) => initialCarousel.includes(message)),
+    ).toBe(true);
+  });
+
+  it("falls back to a single-element loading message array without a base carousel", async () => {
+    const scheduler = createFakeScheduler();
+    const calls: Array<{ text: string; loadingMessages?: string[] }> = [];
+    const reporter = createAssistantStatusScheduler({
+      sendStatus: async (text, loadingMessages) => {
+        calls.push({ text, loadingMessages });
+      },
+      loadingMessages: [],
+      now: scheduler.now,
+      setTimer: scheduler.setTimer,
+      clearTimer: scheduler.clearTimer,
+      random: () => 0,
+    });
+
+    reporter.update(makeAssistantStatus("searching", "sources"));
+    await flushAsyncWork();
+
+    expect(calls).toEqual([
+      {
+        text: secondSearchingStatus,
+        loadingMessages: [secondSearchingStatus],
+      },
+    ]);
+  });
+
+  it("skips a redundant resend when explicit progress already matches the visible carousel", async () => {
     const scheduler = createFakeScheduler();
     const calls: Array<{ text: string; loadingMessages?: string[] }> = [];
     const reporter = createAssistantStatusScheduler({
@@ -419,14 +490,14 @@ describe("createAssistantStatusScheduler", () => {
     reporter.update(makeAssistantStatus("reviewing"));
     await flushAsyncWork();
 
+    // The merged carousel for the explicit update is identical to the one
+    // already on screen (same visible text, same base carousel), so no
+    // second Slack write is sent — resending it would only recreate the
+    // flicker this scheduler exists to avoid.
     expect(calls).toEqual([
       {
         text: secondReviewingStatus,
         loadingMessages: [secondReviewingStatus, "Consulting the orb"],
-      },
-      {
-        text: secondReviewingStatus,
-        loadingMessages: [secondReviewingStatus],
       },
     ]);
   });

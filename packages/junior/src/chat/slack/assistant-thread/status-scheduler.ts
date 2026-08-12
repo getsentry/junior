@@ -94,7 +94,16 @@ export function createAssistantStatusScheduler(args: {
 
   const getLoadingMessagesForVisibleStatus = (
     visible: string,
-  ): string[] | undefined => (visible ? [visible] : undefined);
+  ): string[] | undefined => {
+    if (!visible) {
+      return undefined;
+    }
+    if (!loadingMessages?.length) {
+      return [visible];
+    }
+    const fillers = loadingMessages.filter((message) => message !== visible);
+    return [visible, ...fillers].slice(0, loadingMessages.length);
+  };
 
   const getInitialStatusText = (): string => {
     if (loadingMessages?.length) {

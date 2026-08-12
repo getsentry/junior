@@ -536,13 +536,13 @@ describe("paused turn Slack integration", () => {
 
     const activeStatuses = slackApiOutbox
       .calls("assistant.threads.setStatus")
-      .map((call) => call.params)
+      .map(
+        (call) =>
+          call.params as { status?: unknown; loading_messages?: string[] },
+      )
       .filter((params) => params.status !== "");
-    expect(activeStatuses[0]).toEqual(
-      expect.objectContaining({
-        loading_messages: ["Reviewing results"],
-      }),
-    );
+    expect(activeStatuses[0]?.loading_messages?.[0]).toBe("Reviewing results");
+    expect(activeStatuses[0]?.loading_messages?.length).toBeGreaterThan(1);
   });
 
   it("terminalizes startup failures before the visible failure path runs", async () => {
