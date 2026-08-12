@@ -24,6 +24,7 @@ import {
 import {
   dashboardAvatarHeaderAsset,
   dashboardClientAsset,
+  dashboardInstallIconAsset,
   dashboardTailwindAsset,
 } from "./assets";
 import {
@@ -42,6 +43,10 @@ const DEFAULT_AUTH_PATH = "/api/auth";
 const DASHBOARD_CLIENT_VERSION = Date.now().toString(36);
 const DASHBOARD_CLIENT_PATH = "/_junior/dashboard/client.js";
 const DASHBOARD_AVATAR_HEADER_PATH = "/_junior/dashboard/avatar.png";
+const DASHBOARD_INSTALL_ICON_PATH = "/_junior/dashboard/icon-512.png";
+const DASHBOARD_MANIFEST_PATH = "/_junior/dashboard/manifest.webmanifest";
+const DASHBOARD_THEME_COLOR = "#000000";
+const DASHBOARD_BACKGROUND_COLOR = "#000000";
 const LOGIN_NEXT_PARAM = "next";
 const LOCAL_VIEWER_EMAIL = "dev@example.com";
 /** Process-local display names for mock reporting only. */
@@ -469,6 +474,23 @@ function readDashboardAvatarHeader(): ArrayBuffer {
   return Uint8Array.from(readFileSync(assetUrl)).buffer;
 }
 
+function readDashboardInstallIcon(): ArrayBuffer {
+  if (dashboardInstallIconAsset) {
+    return Uint8Array.from(Buffer.from(dashboardInstallIconAsset, "base64"))
+      .buffer;
+  }
+
+  const assetUrl = new URL("./assets/junior-avatar.png", import.meta.url);
+  if (!existsSync(assetUrl)) {
+    throw new Error("Junior dashboard install icon was not found");
+  }
+  return Uint8Array.from(readFileSync(assetUrl)).buffer;
+}
+
+function dashboardStartUrl(basePath: string): string {
+  return basePath === "/" ? "/" : `${basePath}/`;
+}
+
 function dashboardPagePaths(
   basePath: string,
   options: { componentGallery?: boolean } = {},
@@ -517,6 +539,45 @@ function dashboardPagePaths(
   return paths;
 }
 
+function renderManifest(basePath: string, agentName: string): Response {
+  const startUrl = dashboardStartUrl(basePath);
+  return new Response(
+    JSON.stringify({
+      background_color: DASHBOARD_BACKGROUND_COLOR,
+      description: `${agentName} dashboard`,
+      display: "standalone",
+      icons: [
+        {
+          purpose: "any",
+          sizes: "512x512",
+          src: DASHBOARD_INSTALL_ICON_PATH,
+          type: "image/png",
+        },
+      ],
+      name: agentName,
+      scope: startUrl,
+      short_name: agentName,
+      start_url: startUrl,
+      theme_color: DASHBOARD_THEME_COLOR,
+    }),
+    {
+      headers: {
+        "cache-control": "public, max-age=0, must-revalidate",
+        "content-type": "application/manifest+json",
+      },
+    },
+  );
+}
+
+function renderInstallIcon(): Response {
+  return new Response(readDashboardInstallIcon(), {
+    headers: {
+      "cache-control": "public, max-age=0, must-revalidate",
+      "content-type": "image/png",
+    },
+  });
+}
+
 function renderDashboard(basePath: string, agentName: string): Response {
   const encodedAgentName = JSON.stringify(agentName).replace(/</g, "\\u003c");
   return new Response(
@@ -525,6 +586,13 @@ function renderDashboard(basePath: string, agentName: string): Response {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <meta name="theme-color" content="${DASHBOARD_THEME_COLOR}" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="${escapeHtml(agentName)}" />
+  <link rel="manifest" href="${DASHBOARD_MANIFEST_PATH}" />
+  <link rel="apple-touch-icon" href="${DASHBOARD_INSTALL_ICON_PATH}" />
   <title>${escapeHtml(agentName)}</title>
   <style>
     ${readDashboardTailwind()}
@@ -712,10 +780,13 @@ export function createDashboardApp(
   }
 
   app.get("/favicon.ico", () => renderFavicon());
+  app.get(DASHBOARD_MANIFEST_PATH, () => renderManifest(basePath, agentName));
+  app.get(DASHBOARD_INSTALL_ICON_PATH, () => renderInstallIcon());
 
   /**
    * Require dashboard auth for every later route; login, Better Auth callbacks,
-   * and favicon are the only registration-order bypasses.
+   * favicon, install manifest, and install icon are the only registration-order
+   * bypasses.
    */
   const requireAuth = async (
     c: Context<{ Variables: Variables }>,

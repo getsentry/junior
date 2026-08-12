@@ -374,6 +374,13 @@ describe("dashboard routes", () => {
     expect(html).toContain("junior-rainbow-flow");
     expect(html).toMatch(/\/_junior\/dashboard\/client\.js\?v=[a-z0-9]+/);
     expect(html).toContain("__JUNIOR_DASHBOARD_BASE_PATH__");
+    expect(html).toContain('name="theme-color" content="#000000"');
+    expect(html).toContain(
+      'href="/_junior/dashboard/manifest.webmanifest"',
+    );
+    expect(html).toContain(
+      'href="/_junior/dashboard/icon-512.png"',
+    );
   });
 
   it("renders the configured agent name from the dashboard shell", async () => {
@@ -594,6 +601,60 @@ describe("dashboard routes", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("image/svg+xml");
+  });
+
+  it("serves the installable shell manifest without auth", async () => {
+    const app = createDashboardApp({
+      agentName: "Marky",
+      allowedEmails: ["admin@example.com"],
+      auth: auth(null),
+      basePath: "/ops",
+    });
+
+    const response = await app.fetch(
+      new Request("http://localhost/_junior/dashboard/manifest.webmanifest"),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe(
+      "public, max-age=0, must-revalidate",
+    );
+    expect(response.headers.get("content-type")).toBe(
+      "application/manifest+json",
+    );
+    expect(await response.json()).toEqual({
+      background_color: "#000000",
+      description: "Marky dashboard",
+      display: "standalone",
+      icons: [
+        {
+          purpose: "any",
+          sizes: "512x512",
+          src: "/_junior/dashboard/icon-512.png",
+          type: "image/png",
+        },
+      ],
+      name: "Marky",
+      scope: "/ops/",
+      short_name: "Marky",
+      start_url: "/ops/",
+      theme_color: "#000000",
+    });
+  });
+
+  it("serves the install icon without auth", async () => {
+    const app = dashboard(null);
+
+    const response = await app.fetch(
+      new Request("http://localhost/_junior/dashboard/icon-512.png"),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe(
+      "public, max-age=0, must-revalidate",
+    );
+    expect(response.headers.get("content-type")).toBe("image/png");
+    expect((await response.arrayBuffer()).byteLength).toBeGreaterThan(1_000);
   });
 
   it("returns the signed-in identity", async () => {
