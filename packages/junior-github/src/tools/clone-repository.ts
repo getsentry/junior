@@ -6,8 +6,7 @@ import {
   type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
-
-const RESERVED_SANDBOX_DIRECTORIES = new Set([".junior", "data", "skills"]);
+import { RESERVED_SANDBOX_DIRECTORIES } from "../sandbox-paths.js";
 
 const inputSchema = z
   .object({
