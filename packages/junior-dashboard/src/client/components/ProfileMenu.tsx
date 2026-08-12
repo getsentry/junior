@@ -144,7 +144,7 @@ export function ProfileMenu({
         ref={triggerRef}
         type="button"
       >
-        <span className="hidden items-center gap-2 sm:flex">
+        <span className="hidden items-center gap-2 md:flex">
           <span className="flex items-baseline gap-1 whitespace-nowrap tabular-nums">
             <span className="text-xs font-medium tracking-[0.08em] text-dashboard-text-muted">
               7d
@@ -172,7 +172,7 @@ export function ProfileMenu({
         <ChevronDown
           aria-hidden="true"
           className={cn(
-            "text-dashboard-text-muted transition-[color,transform] group-hover:text-dashboard-text",
+            "hidden text-dashboard-text-muted transition-[color,transform] group-hover:text-dashboard-text md:block",
             open && "rotate-180 text-dashboard-text",
           )}
           size={14}

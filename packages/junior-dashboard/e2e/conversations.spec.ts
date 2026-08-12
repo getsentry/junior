@@ -345,6 +345,26 @@ test("opens and closes a conversation in the mobile workspace", async ({
   await expect(
     page.getByRole("heading", { name: "Conversations" }),
   ).toBeVisible();
+  const navigationTrigger = page.getByRole("button", {
+    name: "Open navigation",
+  });
+  await expect(navigationTrigger).toBeVisible();
+  await expect(page.getByLabel("Junior home")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Open profile menu for Dashboard User" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Conversations", exact: true }),
+  ).toBeHidden();
+  await navigationTrigger.click();
+  await expect(
+    page.getByRole("link", { name: "Conversations", exact: true }),
+  ).toBeVisible();
+  const closeNavigation = page.getByRole("button", {
+    name: "Close navigation",
+  });
+  await expect(closeNavigation).toBeVisible();
+  await closeNavigation.click();
 
   // Participant fixture so the compact mobile composer is present.
   await page

@@ -1,3 +1,5 @@
+import { Menu, X } from "lucide-react";
+import { useEffect, useState } from "react";
 import {
   Link,
   Navigate,
@@ -58,6 +60,7 @@ const dashboardNoise = {
 /** Render the dashboard SPA shell and route-level loading states. */
 export function DashboardShell() {
   const location = useLocation();
+  const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const query = useDashboardCoreData();
   const userPagesQuery = usePluginUserPagesData();
   const data = query.data;
@@ -75,9 +78,21 @@ export function DashboardShell() {
     location.pathname === "/" ||
     location.pathname === "/conversations" ||
     location.pathname.startsWith("/conversations/");
-  const conversationDetail =
-    location.pathname.startsWith("/conversations/") &&
-    location.pathname !== "/conversations/";
+
+  useEffect(() => {
+    setMobileNavigationOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!mobileNavigationOpen) return;
+
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") setMobileNavigationOpen(false);
+    }
+
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [mobileNavigationOpen]);
 
   async function signOut() {
     await fetch(`${data?.config.authPath ?? "/api/auth"}/sign-out`, {
@@ -100,44 +115,46 @@ export function DashboardShell() {
       className={cn(
         "relative grid font-sans text-dashboard-text",
         workspace
-          ? cn(
-              "h-dvh min-h-0 overflow-hidden",
-              // Hidden header is removed from the grid, so mobile conversation
-              // detail must use a single full-height row or the workspace lands
-              // in `auto` and the transcript height chain breaks.
-              conversationDetail
-                ? "grid-rows-[minmax(0,1fr)] md:grid-rows-[auto_minmax(0,1fr)]"
-                : "grid-rows-[auto_minmax(0,1fr)]",
-            )
+          ? "h-dvh min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden"
           : "min-h-screen grid-rows-[auto_1fr]",
       )}
       style={dashboardBackground}
     >
       <header
-        className={cn(
-          // Stay above conversation sticky chrome so profile menus remain clickable.
-          "sticky top-0 z-30 border-b border-white/[0.05] bg-[#050507]/95",
-          conversationDetail && "max-md:hidden",
-        )}
+        className="sticky top-0 z-30 border-b border-white/[0.05] bg-[#050507]/95"
       >
         <div
           className={cn(
             dashboardContainerClass,
-            "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 px-4 py-3 md:gap-x-5 md:gap-y-3 md:py-4",
+            "grid grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] items-center gap-x-2 px-3 py-2 md:gap-x-5 md:gap-y-3 md:px-4 md:py-4",
             loggedIn
               ? "md:grid-cols-[auto_minmax(0,1fr)_auto]"
               : "md:grid-cols-[auto_minmax(0,1fr)]",
             workspace ? "md:px-4" : "md:px-8",
           )}
         >
+          <button
+            aria-controls="mobile-navigation"
+            aria-expanded={mobileNavigationOpen}
+            aria-label={`${mobileNavigationOpen ? "Close" : "Open"} navigation`}
+            className="grid size-10 cursor-pointer place-items-center rounded-lg border-0 bg-transparent text-dashboard-text transition-colors hover:bg-white/[0.06] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#beaaff]/70 md:hidden"
+            onClick={() => setMobileNavigationOpen((open) => !open)}
+            type="button"
+          >
+            {mobileNavigationOpen ? (
+              <X aria-hidden="true" size={20} strokeWidth={2} />
+            ) : (
+              <Menu aria-hidden="true" size={20} strokeWidth={2} />
+            )}
+          </button>
           <Link
             aria-label={`${getDashboardAgentName()} home`}
-            className="flex min-w-0 max-w-full items-center justify-self-start text-inherit no-underline"
+            className="flex min-w-0 max-w-full items-center justify-self-center text-inherit no-underline md:justify-self-start"
             to="/"
           >
             <JuniorLogo />
           </Link>
-          <nav className="col-span-2 row-start-2 flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none] md:col-span-1 md:col-start-2 md:row-start-1 md:justify-self-start md:overflow-visible [&::-webkit-scrollbar]:hidden">
+          <nav className="hidden min-w-0 items-center gap-1 md:col-start-2 md:flex md:justify-self-start">
             <Link
               aria-current={workspace ? "page" : undefined}
               className={navLinkClass({ isActive: workspace })}
@@ -164,7 +181,7 @@ export function DashboardShell() {
             </NavLink>
           </nav>
           {loggedIn ? (
-            <div className="col-start-2 row-start-1 justify-self-end md:col-start-3">
+            <div className="col-start-3 justify-self-end">
               <ProfileMenu
                 identity={data!.me}
                 onSignOut={signOut}
@@ -174,6 +191,37 @@ export function DashboardShell() {
             </div>
           ) : null}
         </div>
+        {mobileNavigationOpen ? (
+          <nav
+            className="absolute left-0 right-0 top-full grid gap-1 border-b border-white/[0.07] bg-dashboard-surface-raised/95 p-2 shadow-2xl shadow-black/60 backdrop-blur-xl md:hidden"
+            id="mobile-navigation"
+          >
+            <Link
+              aria-current={workspace ? "page" : undefined}
+              className={navLinkClass({ isActive: workspace })}
+              to="/"
+            >
+              Conversations
+            </Link>
+            {loggedIn ? (
+              <NavLink className={navLinkClass} to="/tasks">
+                Tasks
+              </NavLink>
+            ) : null}
+            {primaryUserPages.map((page) => (
+              <NavLink
+                className={navLinkClass}
+                key={`${page.pluginName}:${page.id}`}
+                to={pluginUserPagePath(page.pluginName, page.id)}
+              >
+                {page.label}
+              </NavLink>
+            ))}
+            <NavLink className={navLinkClass} to="/system">
+              System
+            </NavLink>
+          </nav>
+        ) : null}
       </header>
 
       <Routes>
