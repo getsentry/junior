@@ -1238,7 +1238,9 @@ describe("createTestSandbox", () => {
     });
 
     await runtime.acquire();
-    await expect(runtime.switchWorkspace(nextWorkspace)).rejects.toThrow();
+    await expect(runtime.switchWorkspace(nextWorkspace)).rejects.toThrow(
+      "Status code 410 is not ok",
+    );
 
     expect(failedSandbox.stop).toHaveBeenCalledTimes(1);
     expect(runtime.sandboxRef()).toBeUndefined();
