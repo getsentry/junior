@@ -434,6 +434,8 @@ function dashboardHostRoutePaths(dashboard: JuniorDashboardOptions): string[] {
     "/favicon.ico",
     "/_junior/dashboard/avatar.png",
     "/_junior/dashboard/client.js",
+    "/_junior/dashboard/icon-512.png",
+    "/_junior/dashboard/manifest.webmanifest",
     loginPath,
     "/api/health",
     "/api/runtime",
