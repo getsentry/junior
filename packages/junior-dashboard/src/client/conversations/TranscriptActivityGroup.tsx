@@ -2,6 +2,7 @@ import { Fragment, useState, type ReactNode } from "react";
 import { ChevronRight } from "lucide-react";
 
 import { Tooltip } from "../components/Tooltip";
+import { formatMs } from "../format";
 import type { RenderedTranscriptEntry } from "./transcriptRenderModel";
 import { cn } from "../styles";
 import { useTranscriptSearch } from "./transcriptSearch";
@@ -19,9 +20,54 @@ export function isCollapsibleActivityEntry(
   return true;
 }
 
+function entryStartMs(entry: RenderedTranscriptEntry): number | undefined {
+  if (entry.kind === "tool") {
+    return entry.part.startedTimestamp ?? entry.timestamp;
+  }
+  if (entry.kind === "message") return entry.message.timestamp;
+  return entry.timestamp;
+}
+
+function entryEndMs(entry: RenderedTranscriptEntry): number | undefined {
+  if (entry.kind === "tool") {
+    return entry.part.resultTimestamp ?? entry.timestamp;
+  }
+  if (entry.kind === "message") return entry.message.timestamp;
+  return entry.timestamp;
+}
+
+/** Span one activity group from the earliest start to the latest end. */
+export function activityGroupDurationMs(
+  entries: RenderedTranscriptEntry[],
+): number | undefined {
+  let startedAt: number | undefined;
+  let endedAt: number | undefined;
+  for (const entry of entries) {
+    const start = entryStartMs(entry);
+    const end = entryEndMs(entry);
+    if (typeof start === "number" && Number.isFinite(start)) {
+      startedAt = startedAt === undefined ? start : Math.min(startedAt, start);
+    }
+    if (typeof end === "number" && Number.isFinite(end)) {
+      endedAt = endedAt === undefined ? end : Math.max(endedAt, end);
+    }
+  }
+  if (
+    typeof startedAt !== "number" ||
+    typeof endedAt !== "number" ||
+    endedAt < startedAt
+  ) {
+    return undefined;
+  }
+  return endedAt - startedAt;
+}
+
 /** Build a uniform collapsed label for one activity group. */
 export function activityGroupLabel(entries: RenderedTranscriptEntry[]): string {
-  return countLabel(entries.length, "1 event", "events");
+  const count = countLabel(entries.length, "1 event", "events");
+  const durationMs = activityGroupDurationMs(entries);
+  if (typeof durationMs !== "number" || durationMs <= 0) return count;
+  return `${count} · ${formatMs(durationMs)}`;
 }
 
 /** Build a breakdown of what one collapsed activity group contains. */
