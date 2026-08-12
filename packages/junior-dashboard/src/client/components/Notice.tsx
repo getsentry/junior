@@ -34,7 +34,7 @@ export function Notice({
       className={cn(
         "overflow-hidden rounded-xl border shadow-[0_16px_40px_rgba(0,0,0,0.5)]",
         isError
-          ? "border-rose-300/35 bg-rose-400/[0.12]"
+          ? "border-rose-300/40 bg-[#1f1216]"
           : "border-cyan-200/20 bg-[#111719]",
       )}
     >
