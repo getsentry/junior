@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { and, asc, eq, inArray, isNotNull, isNull, lt, or } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorAttachments } from "@/db/schema";
@@ -20,6 +20,27 @@ function attachmentDigest(file: SandboxFileUpload): string {
   return createHash("sha256").update(file.data).digest("hex");
 }
 
+/** Stable conversation-owned id for one file body and presentation metadata. */
+function attachmentId(args: {
+  conversationId: string;
+  contentType: string;
+  filename: string;
+  provider: string;
+  sha256: string;
+}): string {
+  return createHash("sha256")
+    .update(
+      [
+        args.conversationId,
+        args.provider,
+        args.sha256,
+        args.filename,
+        args.contentType,
+      ].join("\0"),
+    )
+    .digest("hex");
+}
+
 function attachmentKey(args: {
   attachmentId: string;
   conversationId: string;
@@ -31,8 +52,9 @@ function attachmentKey(args: {
 /**
  * Persist one conversation-owned file.
  *
- * Identity is the attachment id under a conversation. Callers that need
- * retry safety should reuse the returned id rather than invent a tool-call key.
+ * Identity is content-stable under the conversation: the same bytes, filename,
+ * content type, and storage provider reuse one attachment id. Retries resume an
+ * incomplete write or return the ready row instead of creating duplicates.
  */
 export async function storeAttachment(args: {
   conversationId: string;
@@ -42,23 +64,75 @@ export async function storeAttachment(args: {
   storage: AttachmentStorage;
 }): Promise<StoredAttachment> {
   const now = new Date(args.nowMs ?? Date.now());
-  const id = randomUUID();
+  const sha256 = attachmentDigest(args.file);
+  const id = attachmentId({
+    conversationId: args.conversationId,
+    contentType: args.file.mimeType,
+    filename: args.file.filename,
+    provider: args.storage.provider,
+    sha256,
+  });
   const storageKey = attachmentKey({
     attachmentId: id,
     conversationId: args.conversationId,
     filename: args.file.filename,
   });
-  await args.db.db().insert(juniorAttachments).values({
-    id,
-    conversationId: args.conversationId,
-    provider: args.storage.provider,
-    storageKey,
-    filename: args.file.filename,
-    contentType: args.file.mimeType,
-    bytes: args.file.bytes,
-    sha256: attachmentDigest(args.file),
-    createdAt: now,
-  });
+  const [existing] = await args.db
+    .db()
+    .select({
+      contentType: juniorAttachments.contentType,
+      conversationId: juniorAttachments.conversationId,
+      filename: juniorAttachments.filename,
+      id: juniorAttachments.id,
+      provider: juniorAttachments.provider,
+      readyAt: juniorAttachments.readyAt,
+      sha256: juniorAttachments.sha256,
+      storageKey: juniorAttachments.storageKey,
+    })
+    .from(juniorAttachments)
+    .where(eq(juniorAttachments.id, id));
+  if (existing) {
+    if (
+      existing.contentType !== args.file.mimeType ||
+      existing.conversationId !== args.conversationId ||
+      existing.filename !== args.file.filename ||
+      existing.provider !== args.storage.provider ||
+      existing.sha256 !== sha256 ||
+      existing.storageKey !== storageKey
+    ) {
+      throw new Error(`Attachment write conflicts with ${existing.id}`);
+    }
+    if (existing.readyAt) {
+      return { id: existing.id };
+    }
+    await args.storage.put({
+      body: args.file.data,
+      contentType: args.file.mimeType,
+      key: existing.storageKey,
+    });
+    await args.db
+      .db()
+      .update(juniorAttachments)
+      .set({ readyAt: now })
+      .where(eq(juniorAttachments.id, existing.id));
+    return { id: existing.id };
+  }
+
+  await args.db
+    .db()
+    .insert(juniorAttachments)
+    .values({
+      id,
+      conversationId: args.conversationId,
+      provider: args.storage.provider,
+      storageKey,
+      filename: args.file.filename,
+      contentType: args.file.mimeType,
+      bytes: args.file.bytes,
+      sha256,
+      createdAt: now,
+    })
+    .onConflictDoNothing({ target: juniorAttachments.id });
   await args.storage.put({
     body: args.file.data,
     contentType: args.file.mimeType,

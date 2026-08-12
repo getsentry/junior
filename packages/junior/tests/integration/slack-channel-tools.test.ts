@@ -509,21 +509,37 @@ describe("slack channel tools", () => {
       const result = await executeTool(tool, {
         files: [{ path: "/tmp/report.txt" }],
       });
+      // Clear in-process tool dedupe so a later call exercises durable reuse.
+      const retryTool = createSendFilesTool(
+        createContext("attach the report again"),
+        createToolState(),
+        createMaterializeFile({
+          "/tmp/report.txt": Buffer.from("report body"),
+        }),
+        {
+          conversationId: "conversation-1",
+          db: fixture.sql,
+          storage,
+        },
+      );
+      const retry = await executeTool(retryTool, {
+        files: [{ path: "/tmp/report.txt" }],
+      });
 
       const rows = await fixture.sql.db().select().from(juniorAttachments);
       expect(result.attachment_ids).toEqual([rows[0]?.id]);
+      expect(retry.attachment_ids).toEqual([rows[0]?.id]);
+      expect(rows).toHaveLength(1);
       expect(rows[0]).toMatchObject({
         conversationId: "conversation-1",
         filename: "report.txt",
         provider: "test",
       });
-      expect(rows[0]).not.toHaveProperty("toolCallId");
-      expect(rows[0]).not.toHaveProperty("position");
       expect(rows[0]?.readyAt).not.toBe(null);
       expect(puts).toEqual([rows[0]?.storageKey]);
       expect(
         getCapturedSlackApiCalls("files.completeUploadExternal"),
-      ).toHaveLength(1);
+      ).toHaveLength(2);
     } finally {
       await fixture.close();
     }
