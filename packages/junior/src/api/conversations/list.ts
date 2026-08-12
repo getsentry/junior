@@ -53,10 +53,7 @@ async function conversationRows(
         isNull(juniorConversations.parentConversationId),
         isNull(juniorConversations.archivedAt),
         actorEmail
-          ? and(
-              eq(juniorIdentities.emailNormalized, actorEmail),
-              eq(juniorIdentities.emailVerified, true),
-            )
+          ? eq(juniorUsers.primaryEmailNormalized, actorEmail)
           : undefined,
       ),
     )
@@ -175,8 +172,8 @@ export async function readConversationRecordFromSql(
 }
 
 /**
- * Build a bounded dashboard feed, applying a normalized actor-email filter
- * before the limit when one is provided.
+ * Build a bounded dashboard feed. When actorEmail is set, keep only roots whose
+ * actor identity is linked to that user before applying the limit.
  */
 export async function readConversationFeedFromSql(
   options: {
@@ -237,8 +234,8 @@ export async function readConversationFeedFromSql(
 }
 
 /**
- * Load a bounded feed with an optional normalized actor-email presentation
- * filter. This filter is not an authorization boundary.
+ * Load a bounded feed with an optional linked-user presentation filter.
+ * This filter is not an authorization boundary.
  */
 export async function readConversationFeed(
   options: { actorEmail?: string; viewer?: User } = {},

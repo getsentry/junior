@@ -257,7 +257,7 @@ describe("conversation list API", () => {
     }
   });
 
-  test("filters by verified actor email before applying the feed limit", async () => {
+  test("filters by linked user before applying the feed limit", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
     const store = createSqlStore(fixture.sql);
     try {
@@ -270,13 +270,13 @@ describe("conversation list API", () => {
           teamId: "T1",
         },
         conversationId: "slack:C1:newest-overall",
-        nowMs: 3_000,
+        nowMs: 4_000,
         source: "slack",
       });
       await fixture.sql
         .db()
         .update(juniorIdentities)
-        .set({ emailVerified: false })
+        .set({ emailVerified: false, userId: null })
         .where(eq(juniorIdentities.providerSubjectId, "U2"));
       await store.recordActivity({
         actor: {
@@ -286,7 +286,7 @@ describe("conversation list API", () => {
           teamId: "T1",
         },
         conversationId: "slack:C1:morgan-newest",
-        nowMs: 2_000,
+        nowMs: 3_000,
         source: "slack",
       });
       await store.recordActivity({
@@ -300,11 +300,42 @@ describe("conversation list API", () => {
         nowMs: 1_000,
         source: "slack",
       });
+      await store.recordActivity({
+        actor: {
+          fullName: "Morgan Linked",
+          platform: "slack",
+          slackUserId: "U1B",
+          slackUserName: "morgan-linked",
+          teamId: "T1",
+        },
+        conversationId: "slack:D1:morgan-linked",
+        nowMs: 2_000,
+        source: "slack",
+        visibility: "private",
+      });
+      const linkedUser = await fixture.sql
+        .db()
+        .select({ id: juniorUsers.id })
+        .from(juniorUsers)
+        .where(eq(juniorUsers.primaryEmailNormalized, "morgan@example.com"))
+        .limit(1);
+      const linkedUserId = linkedUser[0]?.id;
+      expect(linkedUserId).toBeDefined();
+      await fixture.sql
+        .db()
+        .update(juniorIdentities)
+        .set({
+          email: null,
+          emailNormalized: null,
+          emailVerified: false,
+          userId: linkedUserId!,
+        })
+        .where(eq(juniorIdentities.providerSubjectId, "U1B"));
 
       const feed = await readConversationFeedFromSql({
         actorEmail: "morgan@example.com",
         viewer: testViewer("MORGAN@example.com"),
-        limit: 1,
+        limit: 2,
       });
 
       expect(feed.conversations).toEqual([
@@ -314,6 +345,13 @@ describe("conversation list API", () => {
           }),
           conversationId: "slack:C1:morgan-newest",
           isParticipant: true,
+        }),
+        expect.objectContaining({
+          actorIdentity: expect.objectContaining({
+            fullName: "Morgan Linked",
+            slackUserId: "U1B",
+          }),
+          conversationId: "slack:D1:morgan-linked",
         }),
       ]);
       await expect(
