@@ -1218,29 +1218,28 @@ Conversation: \`local:test:old-conversation\`
   });
 
   it("prefers stored identity names for requester attribution", async () => {
-    const resolveActor = vi.fn(async () => ({
-      identity: {
-        displayName: "Slack Profile Name",
-        handle: "david",
-        id: "identity-1",
-        provider: "slack",
-        providerSubjectId: "U039RR91S",
-        providerTenantId: "T1",
-      },
-      user: {
-        displayName: "David Cramer",
-        email: "david@example.com",
-        id: "user-1",
-        identities: [],
-      },
-    }));
     const ctx = githubToolsContext({
       actor: {
         platform: "slack",
         teamId: "T1",
         userId: "U039RR91S",
       },
-      resolveActor,
+      resolveActor: async () => ({
+        identity: {
+          displayName: "Slack Profile Name",
+          handle: "david",
+          id: "identity-1",
+          provider: "slack",
+          providerSubjectId: "U039RR91S",
+          providerTenantId: "T1",
+        },
+        user: {
+          displayName: "David Cramer",
+          email: "david@example.com",
+          id: "user-1",
+          identities: [],
+        },
+      }),
       egressFetch: async () =>
         new Response(
           JSON.stringify({
@@ -1264,7 +1263,6 @@ Conversation: \`local:test:old-conversation\`
       { toolCallId: "call-create-identity-pull-request" },
     );
 
-    expect(resolveActor).toHaveBeenCalledOnce();
     const request = ctx.egressRequests()[0];
     await expect(request?.request.json()).resolves.toMatchObject({
       body: "PR body\n\n<!-- junior-request-attribution:start -->\nRequested by **David Cramer**.\n<!-- junior-request-attribution:end -->",

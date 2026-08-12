@@ -10,19 +10,30 @@ export const GITHUB_REQUEST_ATTRIBUTION_START =
 export const GITHUB_REQUEST_ATTRIBUTION_END =
   "<!-- junior-request-attribution:end -->";
 
+const SLACK_USER_ID_DISPLAY_PATTERN = /^[UW][A-Z0-9]{5,}$/;
+
+/**
+ * Match host actor display cleaning: drop blanks, unknown, the actor id, and
+ * Slack user-id shaped values so attribution never publishes a raw subject id.
+ */
 function cleanDisplayValue(
   value: string | undefined,
   userId?: string,
 ): string | undefined {
   const cleaned = value?.replace(/[\r\n<>]/g, " ").trim();
-  if (!cleaned || cleaned === userId) {
+  if (!cleaned) {
+    return undefined;
+  }
+  if (cleaned.toLowerCase() === "unknown") {
+    return undefined;
+  }
+  if (userId && cleaned === userId) {
+    return undefined;
+  }
+  if (SLACK_USER_ID_DISPLAY_PATTERN.test(cleaned)) {
     return undefined;
   }
   return cleaned;
-}
-
-function boldLabel(value: string): string {
-  return `**${value.replaceAll("*", "\\*")}**`;
 }
 
 /**
@@ -51,7 +62,7 @@ function requesterLabel(args: {
     cleanDisplayValue(identity?.handle, userId) ??
     cleanDisplayValue(actor.fullName, userId) ??
     cleanDisplayValue(actor.userName, userId);
-  return display ? boldLabel(display) : undefined;
+  return display ? `**${display.replaceAll("*", "\\*")}**` : undefined;
 }
 
 function applyAttribution(body: string, label: string | undefined): string {
