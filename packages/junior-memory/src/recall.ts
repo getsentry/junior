@@ -17,7 +17,6 @@ import {
 } from "./store";
 import { memoryRuntimeContextSchema } from "./types";
 
-const DEFAULT_RECALL_LIMIT = 5;
 const RECALL_CANDIDATE_LIMIT = 20;
 const MAX_PROMPT_CHARS = 4_000;
 const MAX_MEMORY_LINE_CHARS = 600;
@@ -59,7 +58,8 @@ const recalledMemorySchema = z
 /** Structured snapshot retained for one automatic memory recall. */
 export const memoryRecallContextSchema = z
   .object({
-    memories: z.array(recalledMemorySchema).min(1).max(DEFAULT_RECALL_LIMIT),
+    // Count is a safety rail only. Admission packs by MAX_PROMPT_CHARS.
+    memories: z.array(recalledMemorySchema).min(1).max(RECALL_CANDIDATE_LIMIT),
   })
   .strict();
 
@@ -187,8 +187,7 @@ export async function createMemoryPromptContributions(
   );
   const relevant = recall.relevantIds
     .map((id) => candidatesById.get(id))
-    .filter((memory): memory is MemoryRecord => memory !== undefined)
-    .slice(0, DEFAULT_RECALL_LIMIT);
+    .filter((memory): memory is MemoryRecord => memory !== undefined);
   const selected = selectPromptMemories(relevant);
   const costUsd = addUsd(embeddingCostUsd, recall.costUsd);
   await emitRecallOutcome({

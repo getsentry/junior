@@ -4114,6 +4114,72 @@ WHERE id = '${superseded.memory.id}'
     }
   }, 15_000);
 
+  it("admits more than five relevant memories when they fit the prompt budget", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      let nowMs = TEST_NOW_MS;
+      const context = slackContext();
+      const store = createMemoryStore(memoryDb(fixture), context, {
+        now: () => nowMs,
+      });
+      const created = [];
+      for (let index = 0; index < 6; index += 1) {
+        created.push(
+          await store.createConversationMemory({
+            content: `Deploy step ${index + 1} uses checklist item ${index + 1}.`,
+            kind: "procedure",
+            idempotencyKey: `memory-test:recall-budget-${index}`,
+          }),
+        );
+        nowMs += 1;
+      }
+
+      const emitted: PluginConversationEventValue[] = [];
+      const plugin = memoryPlugin();
+      const result = await plugin.hooks?.userPrompt?.({
+        ...context,
+        destination: slackDestination(context),
+        db: memoryDb(fixture),
+        embedder: createTestEmbedder(),
+        events: {
+          async emit(event) {
+            emitted.push(event);
+          },
+        },
+        log: noopLogger,
+        model: selectAllRecallModel,
+        plugin: { name: "memory" },
+        state: memoryState,
+        text: "Walk through the deploy checklist steps.",
+      });
+
+      const contribution = result?.[0];
+      expect(contribution && "context" in contribution).toBe(true);
+      if (!contribution || !("context" in contribution)) {
+        throw new Error("Memory recall did not return structured context");
+      }
+      const admittedIds = contribution.context.content.memories.map(
+        (memory) => memory.id,
+      );
+      expect(admittedIds).toHaveLength(6);
+      expect([...admittedIds].sort()).toEqual(
+        created.map(({ memory }) => memory.id).sort(),
+      );
+      expect(emitted).toEqual([
+        expect.objectContaining({
+          data: { memories: admittedIds },
+          definition: expect.objectContaining({
+            eventName: "memories_recalled",
+            version: 1,
+          }),
+        }),
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
   it("retains conversation memory recall as structured prompt context", async () => {
     const fixture = await createMemoryFixture();
 
