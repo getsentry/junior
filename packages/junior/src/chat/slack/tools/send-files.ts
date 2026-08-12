@@ -33,7 +33,6 @@ const sendFilesResultSchema = juniorToolOutputSchema.extend({
     }),
   ),
   file_count: z.number().int().nonnegative(),
-  file_ids: z.array(z.string().min(1)).optional(),
   thread_ts: z.string().min(1),
 });
 
@@ -133,14 +132,11 @@ export function createSendFilesTool(
         data: file.data,
         filename: file.filename,
       }));
-      const uploaded = await uploadFilesToConversation({
+      await uploadFilesToConversation({
         channelId: activeChannelId,
         files: uploads,
         threadTs,
       });
-      const fileIds = uploaded?.files
-        ?.map((file) => file.id)
-        .filter((id): id is string => Boolean(id));
       const response: SendFilesResult = {
         target: `${activeChannelId}:${threadTs}`,
         attachment_refs: stored.map((attachment, index) => ({
@@ -150,7 +146,6 @@ export function createSendFilesTool(
         channel_id: activeChannelId,
         thread_ts: threadTs,
         file_count: uploads.length,
-        ...(fileIds ? { file_ids: fileIds } : {}),
       };
       state.setOperationResult(operationKey, response);
       return response;
