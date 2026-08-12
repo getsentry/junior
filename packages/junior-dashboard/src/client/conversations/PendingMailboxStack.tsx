@@ -59,9 +59,11 @@ function PendingMetaIcons(props: {
     <TranscriptHeadingMeta className="flex min-w-0 items-center justify-end gap-2 text-xs leading-none text-dashboard-text-muted">
       <span className="inline-flex shrink-0 items-center gap-1.5">
         {props.showSlack ? (
-          <PendingMetaIcon className="text-dashboard-text-muted" label="Slack">
-            <SlackMark className="size-3.5" />
-          </PendingMetaIcon>
+          <Tooltip content="Slack" placement="above">
+            <span className="inline-flex text-dashboard-text-muted">
+              <SlackMark className="size-3.5" />
+            </span>
+          </Tooltip>
         ) : null}
         <PendingMetaIcon
           className={

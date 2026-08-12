@@ -221,7 +221,7 @@ function TranscriptMessageHeader(props: {
         showSlack || metaText ? (
           <TranscriptHeadingMeta className="flex min-w-0 items-center gap-1.5 break-words text-2xs leading-snug text-dashboard-text-muted/80 md:leading-none">
             {showSlack ? (
-              <span aria-label="Slack" className="inline-flex shrink-0" title="Slack">
+              <span className="inline-flex shrink-0" title="Slack">
                 <SlackMark className="size-3.5" />
               </span>
             ) : null}
