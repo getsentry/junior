@@ -12,6 +12,7 @@ import {
 import { cn } from "../styles";
 import type { Conversation } from "../types";
 import { ActiveIndicator } from "../components/ActiveIndicator";
+import { Notice, NoticeAction } from "../components/Notice";
 import { AnimatedList } from "./AnimatedList";
 import {
   buildConversationSections,
@@ -234,24 +235,15 @@ function ArchiveConversationErrorNotice(props: {
 }) {
   const title = conversationDisplayTitle(props.conversation);
   return (
-    <div className="rounded-lg border border-rose-300/25 bg-[#111719] px-3 py-2.5 shadow-[0_12px_32px_rgba(0,0,0,0.45)]">
-      <div className="flex min-w-0 items-center gap-3">
-        <div
-          className="min-w-0 flex-1 font-mono text-xs text-rose-200/80"
-          role="alert"
-        >
-          Could not archive {title}.
-        </div>
-        <button
-          className="shrink-0 cursor-pointer rounded border border-white/15 px-2 py-1 font-mono text-xs text-dashboard-text-muted transition hover:border-white/30 hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-cyan-300/35"
-          onClick={props.onDismiss}
-          title="Dismiss"
-          type="button"
-        >
+    <Notice
+      action={
+        <NoticeAction onClick={props.onDismiss} title="Dismiss">
           Dismiss
-        </button>
-      </div>
-    </div>
+        </NoticeAction>
+      }
+      title={<>Could not archive {title}.</>}
+      tone="error"
+    />
   );
 }
 
@@ -278,23 +270,12 @@ function ArchivedConversationNotice(props: {
   ]);
 
   return (
-    <div className="overflow-hidden rounded-xl border border-cyan-200/20 bg-[linear-gradient(135deg,rgba(25,42,45,0.98),rgba(15,21,23,0.98))] shadow-[0_16px_40px_rgba(0,0,0,0.5)] backdrop-blur-md">
-      <div className="flex min-w-0 items-center gap-3 px-3 py-3">
-        <div className="grid size-8 shrink-0 place-items-center rounded-lg bg-cyan-300/10 text-cyan-100/80">
-          <ArchiveRestore aria-hidden="true" size={16} />
-        </div>
-        <div className="min-w-0 flex-1" role="status">
-          <div className="font-display text-sm font-medium text-dashboard-text">
-            Conversation archived
-          </div>
-          <div className="mt-0.5 truncate font-mono text-xs text-dashboard-text-muted">
-            {title}
-          </div>
-        </div>
-        <button
+    <Notice
+      action={
+        <NoticeAction
           aria-label={`Undo archive for ${title}`}
-          className="shrink-0 cursor-pointer rounded-lg bg-cyan-200/10 px-3 py-1.5 font-display text-xs font-medium text-cyan-100 transition hover:bg-cyan-200/20 focus:outline-none focus:ring-2 focus:ring-cyan-300/35 disabled:cursor-not-allowed disabled:opacity-40"
           disabled={restore.isPending}
+          emphasis="primary"
           onClick={() =>
             restore.mutate({
               archived: false,
@@ -302,11 +283,14 @@ function ArchivedConversationNotice(props: {
             })
           }
           title={`Undo archive for ${title}`}
-          type="button"
         >
           {restore.isPending ? "Restoring…" : "Undo"}
-        </button>
-      </div>
+        </NoticeAction>
+      }
+      detail={title}
+      icon={ArchiveRestore}
+      title="Conversation archived"
+    >
       {restore.error ? (
         <div
           className="border-t border-rose-300/15 bg-rose-300/[0.06] px-3 py-2 font-mono text-xs text-rose-200/80"
@@ -315,6 +299,6 @@ function ArchivedConversationNotice(props: {
           Could not restore the conversation.
         </div>
       ) : null}
-    </div>
+    </Notice>
   );
 }
