@@ -22,16 +22,16 @@ function conversation(
 }
 
 describe("conversation activity sections", () => {
-  it("keeps recent conversations first and broadens older date groups", () => {
+  it("keeps recent finished conversations in priority and broadens older date groups", () => {
     const sections = buildConversationSections(
       [
         conversation("older", "2026-06-20T12:00:00-07:00"),
         conversation("two-weeks", "2026-07-19T12:00:00-07:00"),
-        conversation("priority", "2026-08-03T11:00:00-07:00", true),
+        conversation("priority", "2026-08-03T11:00:00-07:00"),
         conversation("last-week", "2026-07-26T12:00:00-07:00"),
-        conversation("today-earlier", "2026-08-03T08:00:00-07:00"),
-        conversation("priority-yesterday", "2026-08-02T13:00:00-07:00", true),
-        conversation("yesterday", "2026-08-02T12:00:00-07:00"),
+        conversation("unfinished-today", "2026-08-03T08:00:00-07:00", true),
+        conversation("priority-yesterday", "2026-08-02T13:00:00-07:00"),
+        conversation("unfinished-yesterday", "2026-08-02T12:00:00-07:00", true),
         conversation("weekday", "2026-08-01T12:00:00-07:00"),
         conversation("three-weeks", "2026-07-12T12:00:00-07:00"),
       ],
@@ -52,10 +52,10 @@ describe("conversation activity sections", () => {
         label: "Priority",
       },
       {
-        conversations: ["today-earlier"],
+        conversations: ["unfinished-today"],
         label: "Today",
       },
-      { conversations: ["yesterday"], label: "Yesterday" },
+      { conversations: ["unfinished-yesterday"], label: "Yesterday" },
       { conversations: ["weekday"], label: "Saturday" },
       { conversations: ["last-week"], label: "Last week" },
       { conversations: ["two-weeks"], label: "2 weeks ago" },

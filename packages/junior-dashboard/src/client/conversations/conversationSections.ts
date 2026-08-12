@@ -65,7 +65,9 @@ function conversationSection(
 ): Pick<ConversationSection, "key" | "label"> {
   if (!Number.isFinite(time)) return { key: "older", label: "Older" };
 
-  if (conversation.unfinishedWork && nowMs - time <= PRIORITY_WINDOW_MS) {
+  // Priority is recent activity without unfinished work. Unfinished work
+  // (for example open PRs) moves a conversation into its normal date section.
+  if (!conversation.unfinishedWork && nowMs - time <= PRIORITY_WINDOW_MS) {
     return { key: "priority", label: "Priority" };
   }
 

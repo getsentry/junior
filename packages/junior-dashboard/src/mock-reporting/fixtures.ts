@@ -126,7 +126,6 @@ function activeConversation(nowMs: number): ConversationDetailReport {
     lastSeenAt: iso(nowMs, -10_000),
     status: "active",
     surface: "slack",
-    unfinishedWork: true,
     channel: "CQA123",
     channelName: "proj-checkout",
     actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),

@@ -43,7 +43,7 @@ describe("plugin unfinished work", () => {
     ).resolves.toEqual(["conversation-a", "conversation-b"]);
   });
 
-  it("keeps every candidate unfinished when one plugin fails", async () => {
+  it("keeps successful plugin signals when one plugin fails", async () => {
     setPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -73,6 +73,6 @@ describe("plugin unfinished work", () => {
 
     await expect(
       listUnfinishedWork(["conversation-a", "conversation-b"]),
-    ).resolves.toEqual(["conversation-a", "conversation-b"]);
+    ).resolves.toEqual(["conversation-a"]);
   });
 });

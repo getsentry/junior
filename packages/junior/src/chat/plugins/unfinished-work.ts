@@ -24,14 +24,13 @@ export async function listUnfinishedWork(
         if (candidates.has(conversationId)) unfinished.add(conversationId);
       }
     } catch (error) {
+      // Fail open for unfinished work: a broken plugin must not demote recent
+      // conversations out of Priority by inventing unfinished work.
       logWarn("plugin.unfinished_work.hook.failed", {
         "app.plugin.name": plugin.manifest.name,
         "exception.message":
           error instanceof Error ? error.message : String(error),
       });
-      for (const conversationId of conversationIds) {
-        unfinished.add(conversationId);
-      }
     }
   }
   return conversationIds.filter((conversationId) =>
