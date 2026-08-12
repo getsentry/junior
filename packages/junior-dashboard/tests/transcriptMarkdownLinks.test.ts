@@ -116,4 +116,30 @@ describe("transcript markdown links", () => {
       },
     ]);
   });
+
+  it("keeps emphasis markers outside bare URLs", () => {
+    expect(
+      findTranscriptMarkdownLinks(
+        "**PR is up: https://github.com/getsentry/getsentry/pull/21513**",
+      ).map(({ href, label, start, end }) => ({ href, label, start, end })),
+    ).toEqual([
+      {
+        end: 61,
+        href: "https://github.com/getsentry/getsentry/pull/21513",
+        label: "https://github.com/getsentry/getsentry/pull/21513",
+        start: 12,
+      },
+    ]);
+
+    expect(
+      findTranscriptMarkdownLinks("see https://example.com**bold** here").map(
+        ({ href, label }) => ({ href, label }),
+      ),
+    ).toEqual([
+      {
+        href: "https://example.com",
+        label: "https://example.com",
+      },
+    ]);
+  });
 });

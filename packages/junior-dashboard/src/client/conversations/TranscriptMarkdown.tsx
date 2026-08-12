@@ -167,30 +167,11 @@ function isOrderedListItem(line: string): boolean {
 }
 
 function renderInlineMarkdown(text: string): ReactNode[] {
-  const links = findTranscriptMarkdownLinks(text);
-  const nodes: ReactNode[] = [];
-  let cursor = 0;
-  let key = 0;
-
-  for (const link of links) {
-    if (link.start > cursor) {
-      nodes.push(...renderInlineText(text.slice(cursor, link.start), key++));
-    }
-    nodes.push(
-      <TranscriptAnchor href={link.href} key={`link-${link.start}`}>
-        <SearchAwareLinkLabel href={link.href} label={link.label} />
-      </TranscriptAnchor>,
-    );
-    cursor = link.end;
-  }
-
-  if (cursor < text.length) {
-    nodes.push(...renderInlineText(text.slice(cursor), key));
-  }
-  return nodes;
+  // code -> emphasis -> links, so bold/italic can wrap URLs without leaking ** into hrefs
+  return renderInlineCode(text, 0);
 }
 
-function renderInlineText(text: string, keyBase: number): ReactNode[] {
+function renderInlineCode(text: string, keyBase: number): ReactNode[] {
   if (!text) return [];
 
   const nodes: ReactNode[] = [];
@@ -237,10 +218,7 @@ function renderEmphasisText(text: string, keyBase: string): ReactNode[] {
   while ((match = pattern.exec(text))) {
     if (match.index > cursor) {
       nodes.push(
-        <HighlightText
-          key={`${keyBase}-t-${part++}`}
-          text={text.slice(cursor, match.index)}
-        />,
+        ...renderLinkText(text.slice(cursor, match.index), `${keyBase}-t-${part++}`),
       );
     }
     nodes.push(
@@ -249,14 +227,14 @@ function renderEmphasisText(text: string, keyBase: string): ReactNode[] {
           className="font-semibold text-dashboard-text"
           key={`${keyBase}-b-${part++}`}
         >
-          <HighlightText text={match[2] ?? ""} />
+          {renderLinkText(match[2] ?? "", `${keyBase}-bc-${part}`)}
         </strong>
       ) : (
         <em
           className="italic text-dashboard-text"
           key={`${keyBase}-i-${part++}`}
         >
-          <HighlightText text={match[3] ?? ""} />
+          {renderLinkText(match[3] ?? "", `${keyBase}-ic-${part}`)}
         </em>
       ),
     );
@@ -264,8 +242,39 @@ function renderEmphasisText(text: string, keyBase: string): ReactNode[] {
   }
 
   if (cursor < text.length) {
+    nodes.push(...renderLinkText(text.slice(cursor), `${keyBase}-t-${part}`));
+  }
+  return nodes;
+}
+
+function renderLinkText(text: string, keyBase: string): ReactNode[] {
+  if (!text) return [];
+
+  const links = findTranscriptMarkdownLinks(text);
+  const nodes: ReactNode[] = [];
+  let cursor = 0;
+  let part = 0;
+
+  for (const link of links) {
+    if (link.start > cursor) {
+      nodes.push(
+        <HighlightText
+          key={`${keyBase}-s-${part++}`}
+          text={text.slice(cursor, link.start)}
+        />,
+      );
+    }
     nodes.push(
-      <HighlightText key={`${keyBase}-t-${part}`} text={text.slice(cursor)} />,
+      <TranscriptAnchor href={link.href} key={`${keyBase}-a-${link.start}`}>
+        <SearchAwareLinkLabel href={link.href} label={link.label} />
+      </TranscriptAnchor>,
+    );
+    cursor = link.end;
+  }
+
+  if (cursor < text.length) {
+    nodes.push(
+      <HighlightText key={`${keyBase}-s-${part}`} text={text.slice(cursor)} />,
     );
   }
   return nodes;

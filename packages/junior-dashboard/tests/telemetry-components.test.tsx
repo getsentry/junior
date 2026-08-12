@@ -201,6 +201,22 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain("italic text");
   });
 
+  it("renders bold-wrapped bare URLs without leaking emphasis markers into the href", () => {
+    const html = renderToStaticMarkup(
+      <TranscriptSearchProvider query="">
+        <TranscriptMarkdown text="**PR is up: https://github.com/getsentry/getsentry/pull/21513**" />
+      </TranscriptSearchProvider>,
+    );
+
+    expect(html).toContain(
+      'href="https://github.com/getsentry/getsentry/pull/21513"',
+    );
+    expect(html).not.toContain("pull/21513**");
+    expect(html).not.toContain(">**</");
+    expect(html).toContain("<strong");
+    expect(html).toContain("PR is up:");
+  });
+
   it("renders code-like user prose as markdown", () => {
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
