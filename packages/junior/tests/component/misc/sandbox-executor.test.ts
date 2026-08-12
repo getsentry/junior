@@ -1072,6 +1072,48 @@ describe("createTestSandbox", () => {
     });
   });
 
+  it("starts keepalive after a successful workspace switch", async () => {
+    vi.useFakeTimers();
+    process.env.VERCEL_SANDBOX_KEEPALIVE_MS = "5000";
+    const initialSandbox = makeSandbox("sbx_workspace_keepalive_initial");
+    const nextSandbox = makeSandbox("sbx_workspace_keepalive_next");
+    sandboxCreateMock
+      .mockResolvedValueOnce(initialSandbox)
+      .mockResolvedValueOnce(nextSandbox);
+    hashMock
+      .mockReturnValueOnce("profile-initial")
+      .mockReturnValueOnce("profile-next");
+    const initialWorkspace = {
+      id: "workspace-initial",
+      name: "initial",
+      setupScript: "",
+      updatedAt: new Date("2026-08-11T00:00:00.000Z"),
+      repos: [],
+    };
+    const nextWorkspace = {
+      ...initialWorkspace,
+      id: "workspace-next",
+      name: "next",
+    };
+    const runtime = createSandboxRuntime({
+      workspace: initialWorkspace,
+      skills: [],
+      referenceFiles: [],
+    });
+
+    await runtime.acquire();
+    expect(initialSandbox.extendTimeout).not.toHaveBeenCalled();
+
+    await runtime.switchWorkspace(nextWorkspace);
+
+    expect(nextSandbox.extendTimeout).toHaveBeenCalledTimes(1);
+    expect(nextSandbox.extendTimeout).toHaveBeenCalledWith(5000);
+    await vi.advanceTimersByTimeAsync(2500);
+    expect(nextSandbox.extendTimeout).toHaveBeenCalledTimes(2);
+
+    runtime.close();
+  });
+
   it("clears a durably reported workspace when its switch fails", async () => {
     const initialSandbox = makeSandbox("sbx_workspace_initial");
     const failedSandbox = makeSandbox("sbx_workspace_failed");

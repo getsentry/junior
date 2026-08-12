@@ -959,7 +959,9 @@ export function createSandboxRuntime(
       }
 
       try {
-        await getOrAcquireSandbox(signal);
+        // Route through ensureReadySandbox so the replacement session gets the
+        // same probe + keepalive path as normal tool acquisition.
+        await ensureReadySandbox(signal);
       } catch (error) {
         // Roll back recipe identity so AGENTS.md selection and the next boot
         // stay aligned. The previous live sandbox is gone, so drop its id hint.
