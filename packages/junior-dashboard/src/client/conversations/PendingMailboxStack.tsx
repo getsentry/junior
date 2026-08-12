@@ -159,9 +159,9 @@ export function PendingMailboxStack(props: {
   return (
     <div
       aria-label="Pending messages"
-      className="mx-2 overflow-hidden rounded-t-lg border border-b-0 border-white/[0.09] bg-cyan-300/[0.07] md:mx-3"
+      className="mx-2 overflow-hidden rounded-t-lg border border-b-0 border-amber-300/15 bg-amber-300/[0.055] md:mx-3"
     >
-      <div className="px-3 py-2 font-sans text-xs font-medium text-cyan-50/85 md:hidden">
+      <div className="px-3 py-2 font-sans text-xs font-medium text-amber-100/80 md:hidden">
         {countLabel}
       </div>
       <div className="hidden md:block">
@@ -174,7 +174,7 @@ export function PendingMailboxStack(props: {
           />
         ))}
         {collapsedCount > 0 ? (
-          <div className="border-t border-white/[0.06] px-3 py-2 font-sans text-xs font-medium text-cyan-50/70 md:px-3.5">
+          <div className="border-t border-amber-300/10 px-3 py-2 font-sans text-xs font-medium text-amber-100/70 md:px-3.5">
             {collapsedCount} more queued messages
           </div>
         ) : null}
