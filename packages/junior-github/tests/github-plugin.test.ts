@@ -1315,6 +1315,47 @@ Conversation: \`local:test:old-conversation\`
     });
   });
 
+  it("keeps GitHub writes when identity lookup fails", async () => {
+    const ctx = githubToolsContext({
+      actor: {
+        fullName: "David Cramer",
+        platform: "slack",
+        teamId: "T1",
+        userId: "U039RR91S",
+        userName: "david",
+      },
+      resolveActor: async () => {
+        throw new Error("identity storage unavailable");
+      },
+      egressFetch: async () =>
+        new Response(
+          JSON.stringify({
+            number: 694,
+            html_url: "https://github.com/getsentry/junior/pull/694",
+          }),
+          { status: 201 },
+        ),
+    });
+    const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createPullRequest;
+
+    await tool?.execute?.(
+      {
+        repo: "getsentry/junior",
+        title: "Typed PR",
+        head: "dcramer/gh-660-pr-create",
+        base: "main",
+        body: "PR body",
+        draft: true,
+      },
+      { toolCallId: "call-create-identity-lookup-failed" },
+    );
+
+    const request = ctx.egressRequests()[0];
+    await expect(request?.request.json()).resolves.toMatchObject({
+      body: "PR body\n\n<!-- junior-request-attribution:start -->\nRequested by **David Cramer**.\n<!-- junior-request-attribution:end -->",
+    });
+  });
+
   it("keeps pull request annotation labels compact for long titles", async () => {
     const ctx = githubToolsContext({
       egressFetch: async () =>

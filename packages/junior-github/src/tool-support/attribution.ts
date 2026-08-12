@@ -84,12 +84,32 @@ function applyAttribution(body: string, label: string | undefined): string {
   return normalizedBody ? `${normalizedBody}\n\n${attribution}` : attribution;
 }
 
-/** Append or replace runtime-owned requester attribution in a GitHub body. */
+/**
+ * Append or replace runtime-owned requester attribution in a GitHub body.
+ *
+ * Identity lookup is best-effort presentation data. A storage failure falls
+ * back to the already-hydrated actor profile instead of blocking the write.
+ */
 export async function appendGitHubRequesterAttribution(
   body: string,
-  ctx: Pick<ToolRegistrationHookContext, "actor" | "users">,
+  ctx: Pick<ToolRegistrationHookContext, "actor" | "log" | "users">,
 ): Promise<string> {
-  const resolved = ctx.actor ? await ctx.users.resolveActor() : undefined;
+  let resolved:
+    | {
+        identity?: Identity;
+        user?: User;
+      }
+    | undefined;
+  if (ctx.actor) {
+    try {
+      resolved = await ctx.users.resolveActor();
+    } catch (error) {
+      ctx.log.warn("github.requester_attribution.resolve_actor.failed", {
+        "exception.message":
+          error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
   return applyAttribution(
     body,
     requesterLabel({
