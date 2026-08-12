@@ -598,6 +598,8 @@ test("archives and restores a conversation from the sidebar", async ({
   page,
 }) => {
   const initialTime = Date.now();
+  // Freeze timers so the 6s undo-notice expiry cannot race the stale refetch path.
+  await page.clock.install({ time: initialTime });
   await page.setViewportSize({ height: 900, width: 1600 });
   let archived = false;
   await page.route(/\/api\/conversations(?:\?.*)?$/, async (route) => {
@@ -666,11 +668,11 @@ test("archives and restores a conversation from the sidebar", async ({
 
   expect(archiveRequest.postDataJSON()).toMatchObject({ archived: true });
   expect(page.url()).toBe(currentUrl);
-  await expect(
-    page.getByRole("status").filter({
-      hasText: "Dashboard QA edge cases archived",
-    }),
-  ).toBeVisible();
+  const undoNotice = page.getByRole("status").filter({
+    hasText: "Conversation archived",
+  });
+  await expect(undoNotice).toBeVisible();
+  await expect(undoNotice).toContainText("Dashboard QA edge cases");
 
   const restoreRequestPromise = page.waitForRequest(
     (request) =>
@@ -702,11 +704,7 @@ test("archives and restores a conversation from the sidebar", async ({
   const restoreRequest = await restoreRequestPromise;
 
   expect(restoreRequest.postDataJSON()).toMatchObject({ archived: false });
-  await expect(
-    page.getByRole("status").filter({
-      hasText: "Dashboard QA edge cases archived",
-    }),
-  ).toHaveCount(0);
+  await expect(undoNotice).toHaveCount(0);
   expect(page.url()).toBe(currentUrl);
 });
 

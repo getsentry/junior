@@ -280,7 +280,7 @@ function ArchivedConversationNotice(props: {
           <div className="font-display text-sm font-medium text-dashboard-text">
             Conversation archived
           </div>
-          <div className="mt-0.5 truncate font-mono text-[11px] text-dashboard-text-muted">
+          <div className="mt-0.5 truncate font-mono text-xs text-dashboard-text-muted">
             {title}
           </div>
         </div>
