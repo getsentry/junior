@@ -25,7 +25,16 @@ test("reuses the fresh conversation feed after window focus", async ({
   page,
 }) => {
   let requests = 0;
-  await page.route("**/api/conversations?*", async (route) => {
+  await page.route("**/api/conversations", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    const pathname = new URL(route.request().url()).pathname;
+    if (pathname !== "/api/conversations") {
+      await route.fallback();
+      return;
+    }
     requests += 1;
     await route.fallback();
   });
@@ -431,7 +440,16 @@ test("scrolls long conversation and transcript panes independently", async ({
     surface: "internal",
   }));
 
-  await page.route("**/api/conversations?*", async (route) => {
+  await page.route("**/api/conversations", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    const pathname = new URL(route.request().url()).pathname;
+    if (pathname !== "/api/conversations") {
+      await route.fallback();
+      return;
+    }
     await route.fulfill({
       json: {
         conversations,
