@@ -161,6 +161,10 @@ test("starts and continues conversations from the dashboard", async ({
   }> = [];
   const continueRequests: Array<{ idempotencyKey: string; message: string }> =
     [];
+  let releaseFirstContinue: (() => void) | undefined;
+  const firstContinueHeld = new Promise<void>((resolve) => {
+    releaseFirstContinue = resolve;
+  });
   await page.route("**/api/conversations", async (route) => {
     if (route.request().method() !== "POST") {
       await route.fallback();
@@ -178,7 +182,7 @@ test("starts and continues conversations from the dashboard", async ({
   await page.route("**/api/conversations/*/messages", async (route) => {
     continueRequests.push(route.request().postDataJSON());
     if (continueRequests.length === 1) {
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      await firstContinueHeld;
       await route.fulfill({
         json: { error: "temporary failure" },
         status: 500,
@@ -231,15 +235,19 @@ test("starts and continues conversations from the dashboard", async ({
       "This reply stays in Junior. It will not be posted to Slack.",
     ),
   ).toHaveCount(0);
-  await page
-    .getByLabel("Continue this conversation")
-    .fill("Continue in Junior");
-  const send = page.getByRole("button", { name: "Send" });
-  // A second click before parent pending flips must not mint another key.
-  await Promise.all([send.click(), send.click()]);
+  const composer = page.getByLabel("Continue this conversation");
+  await composer.fill("Continue in Junior");
+  await page.getByRole("button", { name: "Send" }).click();
   await expect(page.getByText("Sending message…")).toBeVisible();
-  await expect(page.getByText("Could not send the message.")).toBeVisible();
   await expect.poll(() => continueRequests.length).toBe(1);
+  // Playwright serializes locator clicks and waits for enabled, so force a
+  // second submit while the first request is still open.
+  await composer.evaluate((element) => {
+    element.closest("form")?.requestSubmit();
+  });
+  expect(continueRequests).toHaveLength(1);
+  releaseFirstContinue?.();
+  await expect(page.getByText("Could not send the message.")).toBeVisible();
   const failedIdempotencyKey = continueRequests[0]?.idempotencyKey;
   expect(continueRequests[0]?.message).toBe("Continue in Junior");
   expect(failedIdempotencyKey).toBeTruthy();
