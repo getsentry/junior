@@ -280,6 +280,12 @@ export async function readConversationFeedFromSql(
         ...(assignedWork.has(conversation.conversationId)
           ? { assignedWork: true }
           : {}),
+        ...(conversationWork.finishedAtById[conversation.conversationId]
+          ? {
+              finishedWorkAt:
+                conversationWork.finishedAtById[conversation.conversationId],
+            }
+          : {}),
         ...(unfinishedWork.has(conversation.conversationId)
           ? { unfinishedWork: true }
           : {}),

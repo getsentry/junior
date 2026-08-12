@@ -6,7 +6,11 @@ import type { Conversation } from "../src/client/types";
 function conversation(
   id: string,
   lastSeenAt: string,
-  options: { assignedWork?: boolean; unfinishedWork?: boolean } = {},
+  options: {
+    assignedWork?: boolean;
+    finishedWorkAt?: string;
+    unfinishedWork?: boolean;
+  } = {},
 ): Conversation {
   return {
     cumulativeDurationMs: 0,
@@ -18,20 +22,28 @@ function conversation(
     status: "completed",
     surface: "internal",
     ...(options.assignedWork ? { assignedWork: true } : {}),
+    ...(options.finishedWorkAt
+      ? { finishedWorkAt: options.finishedWorkAt }
+      : {}),
     ...(options.unfinishedWork ? { unfinishedWork: true } : {}),
   };
 }
 
 describe("conversation activity sections", () => {
-  it("keeps only recent unassigned conversations in priority", () => {
+  it("keeps unfinished work, post-finish updates, and recent unassigned conversations in priority", () => {
     const sections = buildConversationSections(
       [
         conversation("older", "2026-06-20T12:00:00-07:00"),
         conversation("two-weeks", "2026-07-19T12:00:00-07:00"),
         conversation("priority-unassigned", "2026-08-03T10:00:00-07:00"),
         conversation("last-week", "2026-07-26T12:00:00-07:00"),
-        conversation("finished-assigned", "2026-08-03T11:30:00-07:00", {
+        conversation("finished-no-update", "2026-08-03T11:30:00-07:00", {
           assignedWork: true,
+          finishedWorkAt: "2026-08-03T11:30:00-07:00",
+        }),
+        conversation("finished-then-updated", "2026-08-03T11:40:00-07:00", {
+          assignedWork: true,
+          finishedWorkAt: "2026-08-03T11:30:00-07:00",
         }),
         conversation("unfinished-recent", "2026-08-03T11:45:00-07:00", {
           assignedWork: true,
@@ -55,15 +67,15 @@ describe("conversation activity sections", () => {
       })),
     ).toEqual([
       {
-        conversations: ["priority-unassigned"],
+        conversations: [
+          "unfinished-recent",
+          "finished-then-updated",
+          "priority-unassigned",
+        ],
         label: "Priority",
       },
       {
-        conversations: [
-          "unfinished-recent",
-          "finished-assigned",
-          "stale-unassigned",
-        ],
+        conversations: ["finished-no-update", "stale-unassigned"],
         label: "Today",
       },
       { conversations: ["yesterday"], label: "Yesterday" },

@@ -39,6 +39,7 @@ import { buildGitHubOutcomeReport } from "./outcomes/report.js";
 import { classifyGitHubPullRequestCommitComposition } from "./pull-request-outcomes/commit-composition.js";
 import {
   listGitHubAssignedWork,
+  listGitHubFinishedWork,
   listGitHubUnfinishedWork,
 } from "./pull-request-outcomes/store.js";
 import { loadFailingChecksForSuite } from "./webhooks/check-suite-enrichment.js";
@@ -749,13 +750,19 @@ export function githubPlugin(
     hooks: {
       async unfinishedWork(ctx) {
         const db = ctx.db as GitHubDb;
-        const [conversationIds, assignedConversationIds] = await Promise.all([
+        const [
+          conversationIds,
+          assignedConversationIds,
+          finishedWorkAtByConversationId,
+        ] = await Promise.all([
           listGitHubUnfinishedWork(db, ctx.conversationIds),
           listGitHubAssignedWork(db, ctx.conversationIds),
+          listGitHubFinishedWork(db, ctx.conversationIds),
         ]);
         return {
           conversationIds,
           assignedConversationIds,
+          finishedWorkAtByConversationId,
         };
       },
       routes(ctx) {

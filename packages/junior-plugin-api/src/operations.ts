@@ -33,6 +33,8 @@ export interface UnfinishedWorkResult {
    * finished or unfinished. Omit when the plugin cannot distinguish assignment.
    */
   assignedConversationIds?: string[];
+  /** Latest time when all known work finished, keyed by conversation id. */
+  finishedWorkAtByConversationId?: Record<string, string>;
 }
 
 export type PluginOperationalTone = "danger" | "good" | "neutral" | "warning";

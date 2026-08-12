@@ -171,6 +171,48 @@ export async function listGitHubUnfinishedWork(
   return conversationIdsForPullRequests(rows, conversationIds);
 }
 
+/** Return the latest merge time for each candidate conversation. */
+export async function listGitHubFinishedWork(
+  db: GitHubDb,
+  conversationIds: string[],
+): Promise<Record<string, string>> {
+  if (conversationIds.length === 0) return {};
+  const values = sql.join(
+    conversationIds.map((id) => sql`${id}`),
+    sql`, `,
+  );
+  const rows = await db
+    .select({
+      conversationIds: juniorGitHubPullRequests.conversationIds,
+      mergedAt: juniorGitHubPullRequests.mergedAt,
+    })
+    .from(juniorGitHubPullRequests)
+    .where(
+      and(
+        eq(juniorGitHubPullRequests.state, "merged"),
+        sql`${juniorGitHubPullRequests.conversationIds} && ARRAY[${values}]::text[]`,
+      ),
+    );
+  const candidates = new Set(conversationIds);
+  const finishedAtById = new Map<string, Date>();
+  for (const row of rows) {
+    if (!row.mergedAt) continue;
+    for (const conversationId of row.conversationIds) {
+      if (!candidates.has(conversationId)) continue;
+      const current = finishedAtById.get(conversationId);
+      if (!current || row.mergedAt > current) {
+        finishedAtById.set(conversationId, row.mergedAt);
+      }
+    }
+  }
+  return Object.fromEntries(
+    conversationIds.flatMap((conversationId) => {
+      const finishedAt = finishedAtById.get(conversationId);
+      return finishedAt ? [[conversationId, finishedAt.toISOString()]] : [];
+    }),
+  );
+}
+
 /** Return candidate conversations linked to any Junior-owned pull request. */
 export async function listGitHubAssignedWork(
   db: GitHubDb,

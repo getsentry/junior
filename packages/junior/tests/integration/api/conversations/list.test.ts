@@ -74,6 +74,9 @@ describe("conversation list API", () => {
               return {
                 assignedConversationIds: [unfinishedId, finishedId],
                 conversationIds: [unfinishedId],
+                finishedWorkAtByConversationId: {
+                  [finishedId]: "2026-08-03T11:30:00.000Z",
+                },
               };
             },
           },
@@ -90,6 +93,7 @@ describe("conversation list API", () => {
           expect.objectContaining({
             conversationId: finishedId,
             assignedWork: true,
+            finishedWorkAt: "2026-08-03T11:30:00.000Z",
           }),
         ],
       });

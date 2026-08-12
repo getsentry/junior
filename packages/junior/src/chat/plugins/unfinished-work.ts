@@ -5,6 +5,7 @@ import { logWarn } from "@/chat/logging";
 
 export type ConversationWork = {
   assignedIds: string[];
+  finishedAtById: Record<string, string>;
   unfinishedIds: string[];
 };
 
@@ -13,10 +14,11 @@ export async function listConversationWork(
   conversationIds: string[],
 ): Promise<ConversationWork> {
   if (conversationIds.length === 0) {
-    return { assignedIds: [], unfinishedIds: [] };
+    return { assignedIds: [], finishedAtById: {}, unfinishedIds: [] };
   }
   const candidates = new Set(conversationIds);
   const assigned = new Set<string>();
+  const finishedAtById = new Map<string, string>();
   const unfinished = new Set<string>();
   for (const plugin of getPlugins()) {
     const hook = plugin.hooks?.unfinishedWork;
@@ -36,6 +38,17 @@ export async function listConversationWork(
       for (const conversationId of result.assignedConversationIds ?? []) {
         if (candidates.has(conversationId)) assigned.add(conversationId);
       }
+      for (const [conversationId, finishedAt] of Object.entries(
+        result.finishedWorkAtByConversationId ?? {},
+      )) {
+        if (!candidates.has(conversationId)) continue;
+        const time = Date.parse(finishedAt);
+        if (!Number.isFinite(time)) continue;
+        const current = finishedAtById.get(conversationId);
+        if (!current || time > Date.parse(current)) {
+          finishedAtById.set(conversationId, finishedAt);
+        }
+      }
     } catch (error) {
       // Fail open: a broken plugin must not invent assigned or unfinished work
       // and demote recent conversations out of Priority.
@@ -49,6 +62,12 @@ export async function listConversationWork(
   return {
     assignedIds: conversationIds.filter((conversationId) =>
       assigned.has(conversationId),
+    ),
+    finishedAtById: Object.fromEntries(
+      conversationIds.flatMap((conversationId) => {
+        const finishedAt = finishedAtById.get(conversationId);
+        return finishedAt ? [[conversationId, finishedAt]] : [];
+      }),
     ),
     unfinishedIds: conversationIds.filter((conversationId) =>
       unfinished.has(conversationId),

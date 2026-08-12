@@ -206,6 +206,7 @@ export const conversationSummaryReportSchema = z
     sourceUrl: z.string().url().optional(),
     traceId: z.string().optional(),
     assignedWork: z.boolean().optional(),
+    finishedWorkAt: z.string().datetime().optional(),
     unfinishedWork: z.boolean().optional(),
   })
   .strict();

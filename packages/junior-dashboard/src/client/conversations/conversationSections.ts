@@ -63,11 +63,11 @@ function isPriority(
   nowMs: number,
 ): boolean {
   if (!Number.isFinite(time)) return false;
-  // Assigned work leaves Priority whether finished or unfinished.
-  // unfinishedWork alone still counts as assigned when a plugin omits the
-  // broader assignment list.
-  if (conversation.assignedWork || conversation.unfinishedWork) return false;
-  // No assigned work stays only while recently active.
+  if (conversation.unfinishedWork) return true;
+  if (conversation.assignedWork) {
+    const finishedAt = Date.parse(conversation.finishedWorkAt ?? "");
+    return Number.isFinite(finishedAt) && time > finishedAt;
+  }
   return nowMs - time <= UNASSIGNED_PRIORITY_WINDOW_MS;
 }
 
