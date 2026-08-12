@@ -485,7 +485,8 @@ test("scrolls long conversation and transcript panes independently", async ({
   );
   expect(
     await transcript.evaluate(
-      (element) => element.scrollTop + element.clientHeight >= element.scrollHeight - 1,
+      (element) =>
+        element.scrollTop + element.clientHeight >= element.scrollHeight - 1,
     ),
   ).toBe(true);
   expect(await page.evaluate(() => window.scrollY)).toBe(0);
@@ -707,6 +708,31 @@ test("archives and restores a conversation from the sidebar", async ({
     }),
   ).toHaveCount(0);
   expect(page.url()).toBe(currentUrl);
+});
+
+test("expires the archive undo notice", async ({ page }) => {
+  await page.clock.install();
+  await page.route("**/api/conversations/*/archive", async (route) => {
+    await route.fulfill({ json: { archived: true } });
+  });
+  await page.goto(server.baseURL);
+
+  const conversationLink = page.getByRole("link", {
+    name: /Dashboard QA edge cases/,
+  });
+  await conversationLink.hover();
+  await page
+    .getByRole("button", { name: "Archive Dashboard QA edge cases" })
+    .click();
+
+  const undo = page.getByRole("button", {
+    name: "Undo archive for Dashboard QA edge cases",
+  });
+  await expect(undo).toBeVisible();
+  await page.clock.fastForward(5_000);
+  await expect(undo).toBeVisible();
+  await page.clock.fastForward(1_000);
+  await expect(undo).toHaveCount(0);
 });
 
 test("shows archive failures after the row returns", async ({ page }) => {

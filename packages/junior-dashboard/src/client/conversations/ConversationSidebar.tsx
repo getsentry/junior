@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Archive, SquarePen } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Archive, ArchiveRestore, SquarePen } from "lucide-react";
 import { Link } from "react-router";
 
 import { useArchiveConversation } from "./queries";
@@ -40,6 +40,10 @@ export function ConversationSidebar(props: {
   const [archivedConversation, setArchivedConversation] =
     useState<Conversation>();
   const [archiveError, setArchiveError] = useState<Conversation>();
+  const dismissArchivedConversation = useCallback(
+    () => setArchivedConversation(undefined),
+    [],
+  );
   const entries = conversationSidebarEntries(
     buildConversationSections(props.conversations, {
       nowMs: Date.now(),
@@ -127,7 +131,7 @@ export function ConversationSidebar(props: {
           {archivedConversation ? (
             <ArchivedConversationNotice
               conversation={archivedConversation}
-              onRestored={() => setArchivedConversation(undefined)}
+              onRestored={dismissArchivedConversation}
             />
           ) : null}
         </div>
@@ -259,18 +263,30 @@ function ArchivedConversationNotice(props: {
     },
   });
   const title = conversationDisplayTitle(props.conversation);
+
+  useEffect(() => {
+    if (restore.isPending || restore.error) return;
+    const timeout = window.setTimeout(props.onRestored, 6_000);
+    return () => window.clearTimeout(timeout);
+  }, [props.onRestored, restore.error, restore.isPending]);
+
   return (
-    <div className="rounded-lg border border-white/15 bg-[#111719] px-3 py-2.5 shadow-[0_12px_32px_rgba(0,0,0,0.45)]">
-      <div className="flex min-w-0 items-center gap-3">
-        <div
-          className="min-w-0 flex-1 truncate font-mono text-xs text-dashboard-text-muted"
-          role="status"
-        >
-          {title} archived
+    <div className="overflow-hidden rounded-xl border border-cyan-200/20 bg-[linear-gradient(135deg,rgba(25,42,45,0.98),rgba(15,21,23,0.98))] shadow-[0_16px_40px_rgba(0,0,0,0.5)] backdrop-blur-md">
+      <div className="flex min-w-0 items-center gap-3 px-3 py-3">
+        <div className="grid size-8 shrink-0 place-items-center rounded-lg bg-cyan-300/10 text-cyan-100/80">
+          <ArchiveRestore aria-hidden="true" size={16} />
+        </div>
+        <div className="min-w-0 flex-1" role="status">
+          <div className="font-display text-sm font-medium text-dashboard-text">
+            Conversation archived
+          </div>
+          <div className="mt-0.5 truncate font-mono text-[11px] text-dashboard-text-muted">
+            {title}
+          </div>
         </div>
         <button
           aria-label={`Undo archive for ${title}`}
-          className="shrink-0 cursor-pointer rounded border border-white/15 px-2 py-1 font-mono text-xs text-cyan-100/75 transition hover:border-white/30 hover:text-cyan-50 focus:outline-none focus:ring-2 focus:ring-cyan-300/35 disabled:cursor-not-allowed disabled:opacity-40"
+          className="shrink-0 cursor-pointer rounded-lg bg-cyan-200/10 px-3 py-1.5 font-display text-xs font-medium text-cyan-100 transition hover:bg-cyan-200/20 focus:outline-none focus:ring-2 focus:ring-cyan-300/35 disabled:cursor-not-allowed disabled:opacity-40"
           disabled={restore.isPending}
           onClick={() =>
             restore.mutate({
@@ -285,7 +301,10 @@ function ArchivedConversationNotice(props: {
         </button>
       </div>
       {restore.error ? (
-        <div className="mt-1 font-mono text-xs text-rose-200/80" role="alert">
+        <div
+          className="border-t border-rose-300/15 bg-rose-300/[0.06] px-3 py-2 font-mono text-xs text-rose-200/80"
+          role="alert"
+        >
           Could not restore the conversation.
         </div>
       ) : null}
