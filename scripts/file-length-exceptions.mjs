@@ -56,8 +56,6 @@ export const fileLengthExceptions = {
     "Existing broad conversation work suite; split by behavior.",
   "packages/junior/tests/component/task-execution/slack-conversation-work.test.ts":
     "Existing broad Slack conversation work suite; split by behavior.",
-  "packages/junior/tests/integration/agent-continue-slack.test.ts":
-    "Existing broad Slack continuation suite; split by behavior.",
   "packages/junior/tests/integration/local-agent-runner.test.ts":
     "Existing broad local runner suite; split by behavior.",
   "packages/junior/tests/component/auth/mcp-auth-runtime-slack.test.ts":

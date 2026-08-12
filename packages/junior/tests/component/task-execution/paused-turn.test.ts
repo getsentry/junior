@@ -2,7 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { getConversationStore } from "@/chat/db";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { persistThreadStateById } from "@/chat/runtime/thread-state";
+import {
+  getPersistedThreadState,
+  persistThreadStateById,
+} from "@/chat/runtime/thread-state";
 import {
   getTurnRecord,
   upsertTurnRecord,
@@ -223,14 +226,107 @@ describe("paused turn runner callbacks", () => {
             if (!prepared || !prepared.replyContext) {
               throw new Error("Expected prepared paused-turn reply context");
             }
-            seenPublishExternally =
-              prepared.replyContext.publishExternally;
+            seenPublishExternally = prepared.replyContext.publishExternally;
             return true;
           },
         },
       ),
     ).resolves.toBe(true);
     expect(seenPublishExternally).toBe(true);
+  });
+
+  it("requests another wake when a high-slice continuation suspends", async () => {
+    const conversationId = "slack:C123:1712345.0002";
+    const sessionId = "turn_msg_2";
+    const sessionRecord = await upsertTurnRecord({
+      conversationId,
+      turnId: sessionId,
+      sliceId: 5,
+      state: "paused",
+      destination: SLACK_DESTINATION,
+      source: createSlackSource({
+        teamId: SLACK_DESTINATION.teamId,
+        channelId: SLACK_DESTINATION.channelId,
+        threadTs: "1712345.0002",
+        visibility: "private",
+      }),
+      piMessages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "hello" }],
+          timestamp: 1,
+        },
+      ],
+      resumeReason: "timeout",
+      resumedFromSliceId: 4,
+      errorMessage: "Agent turn timed out",
+      actor: {
+        platform: "slack",
+        teamId: SLACK_DESTINATION.teamId,
+        userId: "U123",
+        userName: "testuser",
+        fullName: "Test User",
+        email: "testuser@example.com",
+      },
+    });
+    await seedConversationRouting({
+      conversationId,
+      threadTs: "1712345.0002",
+    });
+    await persistThreadStateById(conversationId, {
+      conversation: {
+        schemaVersion: 1,
+        compactions: [],
+        messages: [
+          {
+            id: "msg.2",
+            role: "user",
+            text: "resume this request",
+            createdAtMs: 1,
+            author: { userId: "U123" },
+          },
+        ],
+        processing: { activeTurnId: sessionId },
+        vision: { byFileId: {} },
+      },
+    });
+
+    const wakePausedTurn = vi.fn(async () => {});
+    const { runPausedTurn } = await import("@/chat/task-execution/paused-turn");
+    await expect(
+      runPausedTurn(
+        {
+          conversationId,
+          destination: SLACK_DESTINATION,
+          turnId: sessionId,
+          expectedVersion: sessionRecord.version,
+        },
+        {
+          agentRunner: agentRunnerShouldNotRun,
+          wakePausedTurn,
+          resumeTurn: async (args) => {
+            const prepared = await args.beforeStart?.();
+            if (!prepared) {
+              throw new Error("Expected the continuation to prepare");
+            }
+            const runArgs = { ...args, ...prepared };
+            await runArgs.onSuspend?.(sessionRecord.version + 1);
+            return true;
+          },
+        },
+      ),
+    ).resolves.toBe(true);
+    expect(wakePausedTurn).toHaveBeenCalledWith({
+      conversationId,
+      destination: SLACK_DESTINATION,
+      turnId: sessionId,
+      expectedVersion: sessionRecord.version + 1,
+    });
+    const persisted = await getPersistedThreadState(conversationId);
+    const conversation = (persisted.conversation ?? {}) as {
+      processing?: { activeTurnId?: string };
+    };
+    expect(conversation.processing?.activeTurnId).toBe(sessionId);
   });
 
   it("fails before continuing when sql conversation source is missing", async () => {
