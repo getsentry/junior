@@ -1041,6 +1041,45 @@ describe("createTestSandbox", () => {
     expect(runtime.sandboxRef()?.id).toBe("sbx_workspace_refreshed");
   });
 
+  it("keeps the live sandbox when workspace switch is already cancelled", async () => {
+    const initialSandbox = makeSandbox("sbx_workspace_initial");
+    sandboxCreateMock.mockResolvedValueOnce(initialSandbox);
+    hashMock
+      .mockReturnValueOnce("profile-initial")
+      .mockReturnValueOnce("profile-next");
+    const initialWorkspace = {
+      id: "workspace-initial",
+      name: "initial",
+      setupScript: "",
+      updatedAt: new Date("2026-08-11T00:00:00.000Z"),
+      repos: [],
+    };
+    const runtime = createSandboxRuntime({
+      workspace: initialWorkspace,
+      skills: [],
+      referenceFiles: [],
+    });
+    await runtime.acquire();
+    const controller = new AbortController();
+    const reason = new Error("switch cancelled");
+    controller.abort(reason);
+
+    await expect(
+      runtime.switchWorkspace(
+        {
+          ...initialWorkspace,
+          id: "workspace-next",
+          name: "next",
+        },
+        controller.signal,
+      ),
+    ).rejects.toBe(reason);
+
+    expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
+    expect(initialSandbox.stop).not.toHaveBeenCalled();
+    expect(runtime.sandboxRef()?.id).toBe("sbx_workspace_initial");
+  });
+
   it("keeps a durable same-recipe sandbox when switch is repeated cold", async () => {
     hashMock.mockReturnValue("profile-same");
     const workspace = {

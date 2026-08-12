@@ -912,6 +912,7 @@ export function createSandboxRuntime(
       return sandboxRef ? { ...sandboxRef } : undefined;
     },
     async switchWorkspace(workspace, signal) {
+      signal?.throwIfAborted();
       const nextProfileHash = profileHash(SANDBOX_RUNTIME, workspace);
       // Same recipe is a no-op even when the provider session is cold. Clearing
       // sandboxRef here would force a fresh boot and drop durable working state.
