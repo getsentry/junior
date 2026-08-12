@@ -182,9 +182,8 @@ function ConversationSidebarRow(props: {
       <Link
         aria-current={props.selected ? "page" : undefined}
         className={cn(
-          "block min-w-0 rounded-md border border-transparent px-2.5 py-1.5 text-inherit no-underline transition-colors hover:bg-white/[0.04]",
-          props.selected &&
-            "border-cyan-300/25 bg-cyan-300/[0.1] shadow-[inset_2px_0_0_0_rgba(103,232,249,0.55)]",
+          "block min-w-0 rounded-md px-2.5 py-1.5 text-inherit no-underline transition-colors hover:bg-white/[0.04]",
+          props.selected && "bg-white/[0.06]",
         )}
         to={conversationPath(props.conversation.id)}
       >

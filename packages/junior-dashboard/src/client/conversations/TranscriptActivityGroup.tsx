@@ -1,5 +1,5 @@
 import { Fragment, useState, type ReactNode } from "react";
-import { ChevronRight, Layers } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 
 import type { RenderedTranscriptEntry } from "./transcriptRenderModel";
 import { cn } from "../styles";
@@ -15,11 +15,6 @@ export function isCollapsibleActivityEntry(
 ): boolean {
   if (entry.kind === "failure") return false;
   if (entry.kind === "message") return Boolean(entry.message.eventType);
-  // Keep terminal failures visible; collapsed chips hide the red tool status.
-  if (entry.kind === "tool") return entry.part.status !== "error";
-  if (entry.kind === "subagent") {
-    return entry.part.status !== "error" && entry.part.status !== "aborted";
-  }
   return true;
 }
 
@@ -126,11 +121,7 @@ export function TranscriptActivityGroup(props: {
   const live = hasLiveActivity(props.entries);
 
   if (searchActive) {
-    return (
-      <div className={activityLaneClass({ live: false, open: true })}>
-        <div className="grid min-w-0 gap-1">{rows}</div>
-      </div>
-    );
+    return <div className="grid min-w-0 gap-1">{rows}</div>;
   }
 
   const open = activityGroupOpen({
@@ -139,13 +130,10 @@ export function TranscriptActivityGroup(props: {
   });
 
   return (
-    <details
-      className={cn("group/activity-run min-w-0", activityLaneClass({ live, open }))}
-      open={open}
-    >
+    <details className="group/activity-run min-w-0" open={open}>
       <summary
         className={cn(
-          "group flex w-full max-w-full cursor-pointer list-none items-center gap-1.5 px-2.5 py-1.5 text-left text-xs leading-tight text-dashboard-text-muted transition-colors hover:text-dashboard-text focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55 [&::-webkit-details-marker]:hidden",
+          "flex w-fit max-w-full cursor-pointer list-none items-center gap-1 py-0.5 text-left text-xs leading-tight text-dashboard-text-muted transition-colors hover:text-dashboard-text focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55 [&::-webkit-details-marker]:hidden",
           live && "text-cyan-100/80",
         )}
         onClick={(event) => {
@@ -153,15 +141,10 @@ export function TranscriptActivityGroup(props: {
           setUserOpen(!open);
         }}
       >
-        <Layers
-          aria-hidden="true"
-          className={cn("size-3 shrink-0 opacity-70", live && "text-cyan-200")}
-          strokeWidth={2.2}
-        />
-        <span className="min-w-0 flex-1 truncate group-open/activity-run:hidden">
+        <span className="min-w-0 truncate group-open/activity-run:hidden">
           {label}
         </span>
-        <span className="hidden min-w-0 flex-1 truncate group-open/activity-run:inline">
+        <span className="hidden min-w-0 truncate group-open/activity-run:inline">
           Hide {label}
         </span>
         {live ? (
@@ -172,24 +155,11 @@ export function TranscriptActivityGroup(props: {
         ) : null}
         <ChevronRight
           aria-hidden="true"
-          className="size-3 shrink-0 opacity-60 transition-transform group-open/activity-run:rotate-90"
+          className="size-3 shrink-0 opacity-55 transition-transform group-open/activity-run:rotate-90"
           strokeWidth={2.2}
         />
       </summary>
-      <div className="grid min-w-0 gap-1 border-t border-white/[0.06] px-2 py-1.5">
-        {rows}
-      </div>
+      <div className="mt-1.5 grid min-w-0 gap-1">{rows}</div>
     </details>
-  );
-}
-
-function activityLaneClass(args: { live: boolean; open: boolean }): string {
-  return cn(
-    "min-w-0 overflow-hidden rounded-lg border bg-white/[0.02]",
-    args.live
-      ? "border-cyan-300/25 bg-cyan-300/[0.04]"
-      : args.open
-        ? "border-white/[0.1] bg-white/[0.03]"
-        : "border-white/[0.08]",
   );
 }
