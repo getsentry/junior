@@ -1080,6 +1080,56 @@ describe("createTestSandbox", () => {
     expect(runtime.sandboxRef()?.id).toBe("sbx_workspace_initial");
   });
 
+  it("restores the live sandbox when workspace switch is cancelled mid-boot", async () => {
+    const initialSandbox = makeSandbox("sbx_workspace_initial");
+    const nextSandbox = makeSandbox("sbx_workspace_next");
+    let releaseCreate: (() => void) | undefined;
+    const createGate = new Promise<void>((resolve) => {
+      releaseCreate = resolve;
+    });
+    sandboxCreateMock
+      .mockResolvedValueOnce(initialSandbox)
+      .mockImplementationOnce(async () => {
+        await createGate;
+        return nextSandbox;
+      });
+    hashMock
+      .mockReturnValueOnce("profile-initial")
+      .mockReturnValueOnce("profile-next");
+    const initialWorkspace = {
+      id: "workspace-initial",
+      name: "initial",
+      setupScript: "",
+      updatedAt: new Date("2026-08-11T00:00:00.000Z"),
+      repos: [],
+    };
+    const runtime = createSandboxRuntime({
+      workspace: initialWorkspace,
+      skills: [],
+      referenceFiles: [],
+    });
+    await runtime.acquire();
+    const controller = new AbortController();
+    const reason = new Error("switch cancelled mid-boot");
+
+    const switchPromise = runtime.switchWorkspace(
+      {
+        ...initialWorkspace,
+        id: "workspace-next",
+        name: "next",
+      },
+      controller.signal,
+    );
+    await vi.waitFor(() => expect(sandboxCreateMock).toHaveBeenCalledTimes(2));
+    controller.abort(reason);
+    releaseCreate?.();
+
+    await expect(switchPromise).rejects.toBe(reason);
+    expect(initialSandbox.stop).not.toHaveBeenCalled();
+    expect(nextSandbox.stop).toHaveBeenCalledTimes(1);
+    expect(runtime.sandboxRef()?.id).toBe("sbx_workspace_initial");
+  });
+
   it("keeps a durable same-recipe sandbox when switch is repeated cold", async () => {
     hashMock.mockReturnValue("profile-same");
     const workspace = {
@@ -1196,13 +1246,15 @@ describe("createTestSandbox", () => {
       "sandbox setup failed",
     );
 
+    // Failed replacement is stopped; prior live sandbox is restored and re-reported.
     expect(refs).toEqual([
       { id: "sbx_workspace_initial", workspaceId: "workspace-initial" },
       { id: "sbx_workspace_failed", workspaceId: "workspace-next" },
-      null,
+      { id: "sbx_workspace_initial", workspaceId: "workspace-initial" },
     ]);
-    expect(runtime.sandboxRef()).toBeUndefined();
+    expect(runtime.sandboxRef()?.id).toBe("sbx_workspace_initial");
     expect(failedSandbox.stop).toHaveBeenCalledTimes(1);
+    expect(initialSandbox.stop).not.toHaveBeenCalled();
   });
 
   it("stops a remembered replacement when switch fails after acquire", async () => {
@@ -1243,7 +1295,8 @@ describe("createTestSandbox", () => {
     );
 
     expect(failedSandbox.stop).toHaveBeenCalledTimes(1);
-    expect(runtime.sandboxRef()).toBeUndefined();
+    expect(initialSandbox.stop).not.toHaveBeenCalled();
+    expect(runtime.sandboxRef()?.id).toBe("sbx_workspace_initial");
   });
 
   it("stops a late in-flight sandbox remembered during workspace switch", async () => {

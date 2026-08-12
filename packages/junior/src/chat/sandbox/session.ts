@@ -64,10 +64,7 @@ interface SandboxAcquisition {
 function sandboxFetchOptions(
   signal?: AbortSignal,
 ): { fetch: typeof globalThis.fetch } | Record<string, never> {
-  if (!signal) {
-    return {};
-  }
-
+  if (!signal) return {};
   return {
     fetch: (input, init) => {
       const requestSignal =
@@ -138,12 +135,9 @@ function truncateOutput(
   output: string,
   maxLength: number,
 ): { value: string; truncated: boolean } {
-  if (output.length <= maxLength) {
-    return { value: output, truncated: false };
-  }
-  const truncatedLength = output.length - maxLength;
+  if (output.length <= maxLength) return { value: output, truncated: false };
   return {
-    value: `${output.slice(0, maxLength)}\n\n[output truncated: ${truncatedLength} characters removed]`,
+    value: `${output.slice(0, maxLength)}\n\n[output truncated: ${output.length - maxLength} characters removed]`,
     truncated: true,
   };
 }
@@ -746,39 +740,27 @@ export function createSandboxRuntime(
     };
   };
 
-  const extendKeepAlive = async (
-    activeSandbox: SandboxSession,
-  ): Promise<void> => {
+  const extendKeepAlive = async (session: SandboxSession): Promise<void> => {
     const keepAliveMs = parseKeepAliveMs();
-    if (keepAliveMs === 0) {
-      return;
-    }
-
+    if (keepAliveMs === 0) return;
     try {
       await withSandboxSpan(
         "sandbox.keepalive.extend",
         "sandbox.keepalive",
-        {
-          "app.sandbox.keepalive_ms": keepAliveMs,
-        },
+        { "app.sandbox.keepalive_ms": keepAliveMs },
         async () => {
-          await activeSandbox.extendTimeout(keepAliveMs);
+          await session.extendTimeout(keepAliveMs);
         },
       );
     } catch (error) {
-      if (isSandboxUnavailableError(error)) {
-        throw error;
-      }
+      if (isSandboxUnavailableError(error)) throw error;
       // Non-lifecycle keepalive failures are best effort.
     }
   };
 
   const startKeepAlive = (session: SandboxSession): void => {
     const keepAliveMs = parseKeepAliveMs();
-    if (keepAliveMs === 0 || closed || keepAliveTimer) {
-      return;
-    }
-
+    if (keepAliveMs === 0 || closed || keepAliveTimer) return;
     const intervalMs = Math.max(
       MIN_KEEPALIVE_INTERVAL_MS,
       Math.min(MAX_KEEPALIVE_INTERVAL_MS, Math.floor(keepAliveMs / 2)),
@@ -786,18 +768,14 @@ export function createSandboxRuntime(
     const schedule = (): void => {
       keepAliveTimer = setTimeout(async () => {
         keepAliveTimer = undefined;
-        if (closed || activeSandbox?.session !== session) {
-          return;
-        }
+        if (closed || activeSandbox?.session !== session) return;
         try {
           await extendKeepAlive(session);
         } catch {
           invalidateSession(session.sessionId);
           return;
         }
-        if (closed || activeSandbox?.session !== session) {
-          return;
-        }
+        if (closed || activeSandbox?.session !== session) return;
         schedule();
       }, intervalMs);
       keepAliveTimer.unref?.();
@@ -941,10 +919,9 @@ export function createSandboxRuntime(
         }
       }
 
-      // Aborted acquire may still remember a session and rewrite the durable hint.
+      // Detach without stopping previous yet so mid-switch cancel can restore it.
       const late = activeSandbox;
       invalidateSession();
-      await stopSession(previous.sandbox?.session);
       if (late && late !== previous.sandbox) {
         await stopSession(late.session);
         sandboxRef = reportedSandboxRef = undefined;
@@ -955,19 +932,41 @@ export function createSandboxRuntime(
           replacement = s;
         });
       } catch (error) {
+        // Cancelled/failed ready may leave a create finishing in the background.
+        const leftover = acquiringSandbox;
+        if (leftover) {
+          acquiringSandbox = undefined;
+          leftover.controller.abort(signal?.reason ?? error);
+          try {
+            await leftover.promise;
+          } catch {
+            // Expected when the replacement boot is aborted.
+          }
+        }
         const failed = activeSandbox?.session ?? replacement;
         const reportedNew = reportedSandboxRef !== previous.reportedSandboxRef;
         activeWorkspace = previous.workspace;
         dependencyProfileHash = previous.profileHash;
         invalidateSession();
         await stopSession(failed);
-        // Keep prior durable hint only if nothing was stopped or reported.
-        if (previous.sandbox || late || failed || reportedNew) {
+        if (previous.sandbox) {
+          activeSandbox = previous.sandbox;
+          sandboxRef = previous.sandboxRef;
+          reportedSandboxRef = previous.reportedSandboxRef;
+          startKeepAlive(previous.sandbox.session);
+          if (reportedNew) {
+            try {
+              await options.onSandboxRefChanged?.(previous.sandboxRef ?? null);
+            } catch {
+              // Keep the original switch error.
+            }
+          }
+        } else if (late || failed || reportedNew) {
           sandboxRef = reportedSandboxRef = undefined;
           try {
             await options.onSandboxRefChanged?.(null);
           } catch {
-            // Preserve the boot error when rollback persistence also fails.
+            // Keep the original switch error.
           }
         } else {
           sandboxRef = previous.sandboxRef;
@@ -975,6 +974,7 @@ export function createSandboxRuntime(
         }
         throw error;
       }
+      await stopSession(previous.sandbox?.session);
     },
     async acquire(signal) {
       return await getOrAcquireSandbox(signal);
