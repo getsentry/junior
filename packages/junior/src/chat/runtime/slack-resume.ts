@@ -21,7 +21,10 @@ import {
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import type { AgentRunner } from "@/chat/runtime/agent-runner";
+import {
+  runAgentWithTimeout,
+  type AgentRunner,
+} from "@/chat/runtime/agent-runner";
 import { scheduleSessionCompletedPluginTasks } from "@/chat/plugins/task-runner";
 import {
   buildTurnFailureResponse,
@@ -389,8 +392,7 @@ function createResumeReplyContext(
             ...(args.threadTs ? { threadTs: args.threadTs } : {}),
           }
         : source,
-    deadlineAtMs:
-      replyContext.deadlineAtMs ?? requestDeadline?.deadlineAtMs,
+    deadlineAtMs: replyContext.deadlineAtMs ?? requestDeadline?.deadlineAtMs,
     environment: {
       ...replyContext.environment,
       locationConfiguration: persistedLocationConfiguration,
@@ -584,8 +586,7 @@ async function resumeSlackTurnInContext(
           slackMessageTs = await sendSlackReply({
             channelId: runArgs.channelId,
             conversationId: runArgs.conversationId,
-            replyAttribution:
-              runArgs.replyContext?.dispatch?.replyAttribution,
+            replyAttribution: runArgs.replyContext?.dispatch?.replyAttribution,
             text,
             threadTs: runArgs.threadTs,
           });
@@ -687,25 +688,12 @@ async function resumeSlackTurnInContext(
         surface: "slack",
       });
     }
-    const replyPromise = runArgs.agentRunner.run(replyContext);
     const replyTimeoutMs = resolveReplyTimeoutMs(runArgs.replyTimeoutMs);
-    const outcome =
-      typeof replyTimeoutMs === "number"
-        ? await Promise.race([
-            replyPromise,
-            new Promise<never>((_, reject) =>
-              setTimeout(
-                () =>
-                  reject(
-                    new Error(
-                      `executeAgentRun timed out after ${replyTimeoutMs}ms`,
-                    ),
-                  ),
-                replyTimeoutMs,
-              ),
-            ),
-          ])
-        : await replyPromise;
+    const outcome = await runAgentWithTimeout(
+      runArgs.agentRunner,
+      replyContext,
+      replyTimeoutMs,
+    );
     if (outcome.status !== "completed") {
       // Expected pauses defer their handlers until the lock is released,
       // mirroring the failure path below.

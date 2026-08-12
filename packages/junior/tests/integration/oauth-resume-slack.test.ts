@@ -155,7 +155,20 @@ describe("oauth resume slack integration", () => {
 
   it("posts a failure reply when resumed generation times out", async () => {
     const { resumeSlackTurn } = await import("@/chat/runtime/slack-resume");
-    const onFailure = vi.fn(async () => undefined);
+    const runEvents: string[] = [];
+    let observedSignal: AbortSignal | undefined;
+    const realAgentRunner = createModelAgentRunner(
+      createModelStream([
+        {
+          type: "text",
+          text: "This reply should not finish.",
+          waitFor: new Promise<never>(() => undefined),
+        },
+      ]),
+    );
+    const onFailure = vi.fn(async () => {
+      runEvents.push("failure handled");
+    });
 
     await resumeSlackTurn({
       messageText: "What budget deadline did I mention earlier?",
@@ -172,19 +185,34 @@ describe("oauth resume slack integration", () => {
         source: testSlackSource("1700000000.010"),
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
       },
-      agentRunner: createModelAgentRunner(
-        createModelStream([
-          {
-            type: "text",
-            text: "This reply should not finish.",
-            waitFor: new Promise<never>(() => undefined),
-          },
-        ]),
-      ),
+      agentRunner: {
+        run: async (run) => {
+          observedSignal = run.signal;
+          run.signal?.addEventListener(
+            "abort",
+            () => runEvents.push("agent aborted"),
+            { once: true },
+          );
+          try {
+            return await realAgentRunner.run(run);
+          } finally {
+            runEvents.push("agent settled");
+          }
+        },
+      },
       replyTimeoutMs: 10,
       onFailure,
     });
 
+    expect(observedSignal?.aborted).toBe(true);
+    expect(observedSignal?.reason).toEqual(
+      new Error("executeAgentRun timed out after 10ms"),
+    );
+    expect(runEvents).toEqual([
+      "agent aborted",
+      "agent settled",
+      "failure handled",
+    ]);
     expect(onFailure).toHaveBeenCalledOnce();
     expect(
       getCapturedSlackApiCalls("chat.postMessage").map(

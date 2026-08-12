@@ -26,7 +26,8 @@ const RULES = [
     id: "manufactured-agent-outcome",
     message:
       "integration tests must run the real agent instead of manufacturing agent outcomes",
-    pattern: /\bcompletedAgentRun\b/g,
+    pattern:
+      /\bcompletedAgentRun\b|\breturn\s*\(?\s*\{\s*status:\s*["'](?:completed|awaiting_auth|suspended)["']/g,
   },
   {
     allowsDebt: true,
@@ -157,9 +158,7 @@ function main() {
     readDebt(root),
   );
   if (errors.length === 0) {
-    console.log(
-      "Tests do not add to known test architecture debt.",
-    );
+    console.log("Tests do not add to known test architecture debt.");
     return;
   }
   console.error(["Test architecture check failed:", ...errors].join("\n"));
