@@ -160,6 +160,11 @@ test("starts and continues conversations from the dashboard", async ({
   const firstContinueHeld = new Promise<void>((resolve) => {
     releaseFirstContinue = resolve;
   });
+  let holdDetailRefresh = false;
+  let releaseDetailRefresh: (() => void) | undefined;
+  const detailRefreshHeld = new Promise<void>((resolve) => {
+    releaseDetailRefresh = resolve;
+  });
   await page.route("**/api/conversations", async (route) => {
     if (route.request().method() !== "POST") {
       await route.fallback();
@@ -215,6 +220,7 @@ test("starts and continues conversations from the dashboard", async ({
   await page.route(
     `**/api/conversations/${encodeURIComponent(slackConversationId)}`,
     async (route) => {
+      if (holdDetailRefresh) await detailRefreshHeld;
       const response = await route.fetch();
       await route.fulfill({
         response,
@@ -253,10 +259,14 @@ test("starts and continues conversations from the dashboard", async ({
   // Edits that return to the failed text must keep the same key.
   await restoredComposer.fill("Continue in Junior!");
   await restoredComposer.fill("Continue in Junior");
+  holdDetailRefresh = true;
   await page.getByRole("button", { name: "Send" }).click();
   await expect.poll(() => continueRequests.length).toBe(2);
   expect(continueRequests[1]?.idempotencyKey).toBe(failedIdempotencyKey);
+  // The accepted message clears the composer before background transcript
+  // refreshes finish. A slow read must not make the send look like a UI reload.
   await expect(restoredComposer).toHaveValue("");
+  releaseDetailRefresh?.();
 
   await page.reload();
   await expect(page.getByLabel("Continue this conversation")).toHaveValue("");
