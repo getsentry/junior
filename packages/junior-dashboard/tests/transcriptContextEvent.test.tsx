@@ -47,6 +47,8 @@ describe("transcript context events", () => {
     expect(html).toContain("approximately 361k estimated tokens");
     expect(html).toContain("standard profile (openai/gpt-5.4)");
     expect(html).toContain("Continuation summary");
+    expect(html).not.toContain("bg-amber-300");
+    expect(html).not.toContain("bg-black");
     expect(html).toContain("Preserve the release state and monitor");
     expect(html).toContain("CI");
   });
@@ -75,6 +77,8 @@ describe("transcript context events", () => {
       "Execution continued with the coding profile (openai/gpt-5.4, high).",
     );
     expect(html).toContain("Continuation summary");
+    expect(html).not.toContain("bg-sky-300");
+    expect(html).not.toContain("bg-black");
     expect(html).toContain(
       "Continue the implementation from the failing test.",
     );
