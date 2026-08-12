@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type {
   ConversationDetailReport,
   ConversationFeed,
@@ -24,6 +24,7 @@ import {
 import { PendingMailboxStack } from "./PendingMailboxStack";
 import {
   buildConversations,
+  conversationActorLabel,
   conversationDisplayTitle,
   conversationFromDetail,
   visualStatusForConversation,
@@ -31,6 +32,7 @@ import {
 import { Card } from "../components/layout/Card";
 import { Transcript } from "./TranscriptView";
 import { TranscriptLoading } from "./TranscriptLoading";
+import type { TranscriptViewMode } from "./transcriptRenderModel";
 import {
   SubagentTranscriptDrawer,
   type SubagentTranscriptTarget,
@@ -47,6 +49,8 @@ export function ConversationPage(props: {
 }) {
   const [subagentTarget, setSubagentTarget] =
     useState<SubagentTranscriptTarget>();
+  const [view, setView] = useState<TranscriptViewMode>("rich");
+  const [search, setSearch] = useState("");
   const conversationId = props.conversationId;
   const summaries = props.data?.conversations.conversations ?? [];
   const conversations = buildConversations(summaries);
@@ -74,6 +78,20 @@ export function ConversationPage(props: {
       >
         <section className="min-w-0">
           <ConversationHeader
+            actions={
+              <CopyMarkdownButton
+                key={conversationDetail?.conversationId ?? "loading"}
+                getMarkdown={
+                  conversationDetail
+                    ? async () =>
+                        buildConversationMarkdown(
+                          await detail.loadCompleteTranscript(),
+                          conversation,
+                        )
+                    : undefined
+                }
+              />
+            }
             annotations={<ConversationAnnotations detail={detail.data} />}
             archive={{
               archived: Boolean(conversation?.archivedAt),
@@ -94,9 +112,33 @@ export function ConversationPage(props: {
               />
             }
             live={conversationIsLive(visualStatus, detail.data)}
+            meta={
+              <ConversationHeaderMeta
+                identity={
+                  conversationActorLabel(conversation) ? (
+                    <ConversationIdentity
+                      conversation={conversation}
+                      conversationId={conversationId}
+                      detail={detail.data}
+                      variant="compact"
+                    />
+                  ) : null
+                }
+                stats={
+                  <ConversationStats
+                    conversation={conversation}
+                    detail={detail.data}
+                    variant="compact"
+                  />
+                }
+              />
+            }
+            onSearchChange={setSearch}
+            onViewChange={setView}
             privacy={
               <ConversationPrivacyChip visibility={conversation?.visibility} />
             }
+            search={search}
             stats={
               <ConversationStats
                 conversation={conversation}
@@ -104,6 +146,7 @@ export function ConversationPage(props: {
               />
             }
             title={conversationDisplayTitle(conversation)}
+            view={view}
           />
 
           {detail.isPending ? (
@@ -120,20 +163,6 @@ export function ConversationPage(props: {
                 </div>
               ) : null}
               <Transcript
-                actions={
-                  <CopyMarkdownButton
-                    key={conversationDetail?.conversationId ?? "loading"}
-                    getMarkdown={
-                      conversationDetail
-                        ? async () =>
-                            buildConversationMarkdown(
-                              await detail.loadCompleteTranscript(),
-                              conversation,
-                            )
-                        : undefined
-                    }
-                  />
-                }
                 hasPreviousPage={detail.hasPreviousPage}
                 historyError={detail.historyError}
                 historyVersion={detail.historyVersion}
@@ -149,7 +178,9 @@ export function ConversationPage(props: {
                     part,
                   });
                 }}
+                search={search}
                 transcript={detail.data}
+                view={view}
               />
             </>
           )}
@@ -230,4 +261,23 @@ function conversationIsLive(
 ): boolean {
   if (detail) return detail.status === "active";
   return visualStatus === "active";
+}
+
+/** Keep the sticky header meta line to owner plus runtime stats. */
+function ConversationHeaderMeta(props: {
+  identity: ReactNode;
+  stats: ReactNode;
+}) {
+  if (!props.identity && !props.stats) return null;
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
+      {props.identity ? (
+        <span className="min-w-0 max-w-full truncate">{props.identity}</span>
+      ) : null}
+      {props.identity && props.stats ? (
+        <span className="text-dashboard-text-muted">·</span>
+      ) : null}
+      {props.stats ? <span className="min-w-0">{props.stats}</span> : null}
+    </div>
+  );
 }

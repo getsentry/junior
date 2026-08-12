@@ -91,7 +91,7 @@ export function ConversationAnnotations(props: {
   );
   if (!links?.length) return null;
   return (
-    <div className="mt-2 flex flex-wrap gap-1.5">
+    <div className="flex flex-wrap gap-1.5">
       {links.map((link) => (
         <a
           className="inline-flex items-center gap-1.5 rounded border border-cyan-300/15 bg-cyan-300/[0.055] px-2 py-0.5 font-sans text-2xs leading-snug text-cyan-50 no-underline"
@@ -147,12 +147,14 @@ function ResourceStatus(props: {
   );
 }
 
-/** Render the conversation owner, id, and Sentry deep link. */
+/** Render the conversation owner, optionally with id and Sentry deep link. */
 export function ConversationIdentity(props: {
   conversation: Conversation | undefined;
   conversationId: string | undefined;
   detail: ConversationDetailReport | undefined;
+  variant?: "compact" | "full";
 }) {
+  const variant = props.variant ?? "full";
   const email = props.conversation?.actorIdentity?.email?.trim();
   const owner = conversationActorLabel(props.conversation);
   const id = props.conversationId ?? props.conversation?.id;
@@ -168,6 +170,14 @@ export function ConversationIdentity(props: {
       owner
     )
   ) : null;
+  if (variant === "compact") {
+    if (!ownerNode) return null;
+    return (
+      <span className="inline-flex min-w-0 max-w-full items-center">
+        <span className="min-w-0 max-w-full truncate">{ownerNode}</span>
+      </span>
+    );
+  }
   const sentryLink = props.detail?.sentryConversationUrl ? (
     <a
       className="text-dashboard-text no-underline hover:underline"
@@ -185,10 +195,7 @@ export function ConversationIdentity(props: {
         <span className="min-w-0 max-w-full truncate">{ownerNode}</span>
       ) : null}
       {id ? (
-        <span
-          className="hidden min-w-0 items-center gap-x-1.5 md:inline-flex"
-          title={id}
-        >
+        <span className="inline-flex min-w-0 items-center gap-x-1.5" title={id}>
           {ownerNode ? (
             <span className="text-dashboard-text-muted/50">·</span>
           ) : null}
@@ -197,12 +204,8 @@ export function ConversationIdentity(props: {
       ) : null}
       {sentryLink ? (
         <span className="inline-flex min-w-0 items-center gap-x-1.5">
-          {ownerNode ? (
+          {ownerNode || id ? (
             <span className="text-dashboard-text-muted/50">·</span>
-          ) : id ? (
-            <span className="hidden text-dashboard-text-muted/50 md:inline">
-              ·
-            </span>
           ) : null}
           {sentryLink}
         </span>
@@ -305,8 +308,10 @@ export function liveModelId(
 export function ConversationStats(props: {
   conversation: Conversation | undefined;
   detail?: ConversationDetailReport;
+  variant?: "compact" | "full";
 }) {
   if (!props.conversation) return null;
+  const variant = props.variant ?? "full";
   const completeDetail = props.detail?.previousCursor
     ? undefined
     : props.detail;
@@ -323,13 +328,13 @@ export function ConversationStats(props: {
   const activeModelId = liveModelId(props.detail);
   const sourceTask = props.detail?.sourceTask;
   const rawStats: Array<MetricListItem | undefined> = [
-    location
+    variant === "full" && location
       ? {
           content: <SourceLocation label={location} sourceUrl={sourceUrl} />,
           key: "location",
         }
       : undefined,
-    sourceTask
+    variant === "full" && sourceTask
       ? {
           content: <SourceTask sourceTask={sourceTask} />,
           key: "source-task",
@@ -391,13 +396,12 @@ export function ConversationStats(props: {
   const stats = rawStats.filter(
     (item): item is MetricListItem => item !== undefined,
   );
+  if (stats.length === 0) return null;
 
   return (
-    <div className="mt-2 hidden md:block">
-      <MetricList
-        className="break-words text-xs leading-[1.45] text-dashboard-text-muted"
-        items={stats}
-      />
-    </div>
+    <MetricList
+      className="break-words text-xs leading-[1.45] text-dashboard-text-muted"
+      items={stats}
+    />
   );
 }
