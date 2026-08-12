@@ -42,4 +42,37 @@ describe("plugin unfinished work", () => {
       ]),
     ).resolves.toEqual(["conversation-a", "conversation-b"]);
   });
+
+  it("keeps every candidate unfinished when one plugin fails", async () => {
+    setPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "working",
+          displayName: "Working",
+          description: "Working unfinished work plugin",
+        },
+        hooks: {
+          unfinishedWork() {
+            return { conversationIds: ["conversation-a"] };
+          },
+        },
+      }),
+      defineJuniorPlugin({
+        manifest: {
+          name: "failing",
+          displayName: "Failing",
+          description: "Failing unfinished work plugin",
+        },
+        hooks: {
+          unfinishedWork() {
+            throw new Error("provider unavailable");
+          },
+        },
+      }),
+    ]);
+
+    await expect(
+      listUnfinishedWork(["conversation-a", "conversation-b"]),
+    ).resolves.toEqual(["conversation-a", "conversation-b"]);
+  });
 });

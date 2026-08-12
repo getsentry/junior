@@ -1,6 +1,7 @@
 import { getDb } from "@/chat/db";
 import { getPlugins } from "@/chat/plugins/agent-hooks";
 import { createPluginLogger } from "@/chat/plugins/logging";
+import { logWarn } from "@/chat/logging";
 
 /** Return candidate conversations that have unfinished plugin work. */
 export async function listUnfinishedWork(
@@ -12,14 +13,25 @@ export async function listUnfinishedWork(
   for (const plugin of getPlugins()) {
     const hook = plugin.hooks?.unfinishedWork;
     if (!hook) continue;
-    const result = await hook({
-      conversationIds,
-      db: getDb(),
-      log: createPluginLogger(plugin.manifest.name),
-      plugin: { name: plugin.manifest.name },
-    });
-    for (const conversationId of result.conversationIds) {
-      if (candidates.has(conversationId)) unfinished.add(conversationId);
+    try {
+      const result = await hook({
+        conversationIds,
+        db: getDb(),
+        log: createPluginLogger(plugin.manifest.name),
+        plugin: { name: plugin.manifest.name },
+      });
+      for (const conversationId of result.conversationIds) {
+        if (candidates.has(conversationId)) unfinished.add(conversationId);
+      }
+    } catch (error) {
+      logWarn("plugin.unfinished_work.hook.failed", {
+        "app.plugin.name": plugin.manifest.name,
+        "exception.message":
+          error instanceof Error ? error.message : String(error),
+      });
+      for (const conversationId of conversationIds) {
+        unfinished.add(conversationId);
+      }
     }
   }
   return conversationIds.filter((conversationId) =>
