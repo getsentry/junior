@@ -26,6 +26,7 @@ import { createSlackPublicSearchTool } from "@/chat/slack/tools/public-search";
 import { getSlackToolContext } from "@/chat/slack/tool-support/context";
 import { createSlackMessageAddReactionTool } from "@/chat/slack/tools/message-add-reaction";
 import { createSendFilesTool } from "@/chat/slack/tools/send-files";
+import { getSqlExecutor } from "@/chat/db";
 import { createSlackCanvasCreateTool } from "@/chat/slack/tools/canvas/create";
 import { createSlackCanvasEditTool } from "@/chat/slack/tools/canvas/edit";
 import { createSlackCanvasReadTool } from "@/chat/slack/tools/canvas/read";
@@ -203,8 +204,17 @@ export function createTools(
     }
 
     if (rawChannelCapabilities.canSendFiles) {
-      tools.sendFiles = createSendFilesTool(slackContext, state, (input) =>
-        readSandboxFileUpload(context.workspace, input),
+      tools.sendFiles = createSendFilesTool(
+        slackContext,
+        state,
+        (input) => readSandboxFileUpload(context.workspace, input),
+        context.conversationId && context.attachmentStorage
+          ? {
+              conversationId: context.conversationId,
+              db: getSqlExecutor(),
+              storage: context.attachmentStorage,
+            }
+          : undefined,
       );
     }
 

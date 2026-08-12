@@ -1,4 +1,7 @@
 import { createHash } from "node:crypto";
+import { storeAttachments } from "@/chat/attachments/store";
+import type { AttachmentStorage } from "@/chat/attachments/storage";
+import type { JuniorSqlDatabase } from "@/db/db";
 import { uploadFilesToConversation } from "@/chat/slack/outbound";
 import type { SlackToolContext } from "@/chat/slack/tool-support/context";
 import { z } from "zod";
@@ -23,6 +26,7 @@ const sendFilesResultSchema = juniorToolOutputSchema.extend({
   target: z.string().min(1),
   channel_id: z.string().min(1),
   deduplicated: z.boolean().optional(),
+  attachment_ids: z.array(z.string().min(1)),
   file_count: z.number().int().nonnegative(),
   file_ids: z.array(z.string().min(1)).optional(),
   thread_ts: z.string().min(1),
@@ -60,6 +64,11 @@ export function createSendFilesTool(
   context: SlackToolContext,
   state: ToolState,
   materializeFile: MaterializeFile,
+  attachments?: {
+    conversationId: string;
+    db: JuniorSqlDatabase;
+    storage: AttachmentStorage;
+  },
 ) {
   return zodTool({
     annotations: {
@@ -79,7 +88,7 @@ export function createSendFilesTool(
         ),
     }),
     outputSchema: sendFilesResultSchema,
-    execute: async ({ files }) => {
+    execute: async ({ files }, options) => {
       const filesToSend = normalizeFiles(files);
       const activeChannelId = context.sourceChannelId;
       if (!activeChannelId) {
@@ -107,6 +116,18 @@ export function createSendFilesTool(
         });
       }
 
+      if (attachments && !options.toolCallId) {
+        throw new ToolInputError("sendFiles requires an active tool call ID");
+      }
+      const stored = attachments
+        ? await storeAttachments({
+            conversationId: attachments.conversationId,
+            db: attachments.db,
+            files: materializedFiles,
+            storage: attachments.storage,
+            toolCallId: options.toolCallId!,
+          })
+        : [];
       const uploads = materializedFiles.map((file) => ({
         data: file.data,
         filename: file.filename,
@@ -121,6 +142,7 @@ export function createSendFilesTool(
         .filter((id): id is string => Boolean(id));
       const response: SendFilesResult = {
         target: `${activeChannelId}:${threadTs}`,
+        attachment_ids: stored.map((attachment) => attachment.id),
         channel_id: activeChannelId,
         thread_ts: threadTs,
         file_count: uploads.length,

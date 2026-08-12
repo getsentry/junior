@@ -83,6 +83,7 @@ import {
   createProductionSlackWebhookServices,
 } from "@/chat/app/production";
 import { createAgentRunner } from "@/chat/runtime/agent-runner";
+import { createVercelAttachmentStorage } from "@/chat/attachments/vercel";
 import type { WaitUntilFn } from "@/handlers/types";
 import { ingestResourceEvent } from "@/chat/resource-events/ingest";
 import { createResourceEventTeamIdResolver } from "@/chat/resource-events/workspace";
@@ -693,7 +694,9 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   const waitUntil = options?.waitUntil ?? (await defaultWaitUntil());
   const tracePropagation = { domains: sandboxEgressTracePropagationDomains };
   const conversationWorkQueue = getVercelConversationWorkQueue();
+  const attachmentStorage = createVercelAttachmentStorage();
   const agentRunner = createAgentRunner(executeAgentRun, {
+    attachmentStorage,
     bindSpawnAgent: (request) =>
       bindSpawnAgent(request, { queue: conversationWorkQueue }),
     tracePropagation,

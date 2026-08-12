@@ -7,6 +7,8 @@
  * so no expiry is ever stored and a public↔private flip takes effect on the next
  * pass. Storage write paths own no TTLs.
  */
+import { collectAttachmentGarbage } from "@/chat/attachments/store";
+import type { AttachmentStorage } from "@/chat/attachments/storage";
 import { logException, logInfo, withLogContext } from "@/chat/logging";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { purgeConversationTree, selectExpiredRoots } from "./sql/purge";
@@ -24,6 +26,8 @@ const RETENTION_BATCH_LIMIT = 200;
 
 /** Aggregate outcome of one bounded retention purge batch. */
 export interface RetentionPurgeResult {
+  /** Attachment blobs removed after conversation content was purged. */
+  attachments: number;
   /** Root conversations examined and attempted this run. */
   scanned: number;
   /** Root trees successfully purged. */
@@ -42,7 +46,11 @@ export interface RetentionPurgeResult {
  */
 export async function runRetentionPurge(
   executor: JuniorSqlDatabase,
-  args: { nowMs: number; limit?: number },
+  args: {
+    attachmentStorage?: AttachmentStorage;
+    nowMs: number;
+    limit?: number;
+  },
 ): Promise<RetentionPurgeResult> {
   const limit = args.limit ?? RETENTION_BATCH_LIMIT;
   const startedAtMs = Date.now();
@@ -76,14 +84,28 @@ export async function runRetentionPurge(
       }
     });
   }
+  const attachmentResult = args.attachmentStorage
+    ? await collectAttachmentGarbage({
+        db: executor,
+        nowMs: args.nowMs,
+        storage: args.attachmentStorage,
+      })
+    : { deleted: 0 };
   logInfo("retention.purge.completed", {
+    "app.retention.attachments": attachmentResult.deleted,
     "app.retention.scanned": roots.length,
     "app.retention.purged": purged,
     "app.retention.failed": failed,
     "app.retention.conversations": conversations,
     "app.retention.duration_ms": Date.now() - startedAtMs,
   });
-  return { scanned: roots.length, purged, failed, conversations };
+  return {
+    scanned: roots.length,
+    purged,
+    failed,
+    conversations,
+    attachments: attachmentResult.deleted,
+  };
 }
 
 /**

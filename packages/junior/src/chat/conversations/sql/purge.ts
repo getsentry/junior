@@ -1,6 +1,7 @@
 import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
+import { requestAttachmentDeletion } from "@/chat/attachments/store";
 import {
   juniorConversationEvents,
   juniorConversations,
@@ -289,6 +290,7 @@ export async function purgeConversationTree(
                 inArray(juniorAgentBindings.childConversationId, ids),
               ),
             );
+          await requestAttachmentDeletion(executor, ids, args.nowMs);
           await executor
             .db()
             .update(juniorConversations)

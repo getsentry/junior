@@ -34,6 +34,7 @@ import type {
   WebSearchToolDeps,
 } from "@/chat/tools/types";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
+import type { AttachmentStorage } from "@/chat/attachments/storage";
 
 /** One attachment the model may see for the current instruction. */
 export type AgentAttachment = {
@@ -172,6 +173,7 @@ export type AgentEvent =
 
 /** Resolved environment and optional per-run tool test overrides. */
 export type AgentEnvironment = {
+  attachmentStorage?: AttachmentStorage;
   configuration?: Record<string, unknown>;
   locationConfiguration?: LocationConfigurationService;
   skillDirs?: string[];

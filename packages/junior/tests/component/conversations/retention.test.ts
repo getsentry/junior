@@ -11,6 +11,7 @@ import {
   selectExpiredRoots,
 } from "@/chat/conversations/sql/purge";
 import {
+  juniorAttachments,
   juniorConversationEvents,
   juniorConversations,
   juniorDestinations,
@@ -19,6 +20,7 @@ import {
 } from "@/db/schema";
 import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
 import type { JuniorSqlDatabase } from "@/db/db";
+import type { AttachmentStorage } from "@/chat/attachments/storage";
 import {
   createLocalJuniorSqlFixture,
   type LocalJuniorSqlFixture,
@@ -172,6 +174,46 @@ describe("retention purge job", () => {
     });
     expect(second.purged).toBe(1);
     expect(await eventCount(fixture.sql, "pub")).toBe(0);
+  });
+
+  it("deletes attachment blobs after conversation content expires", async () => {
+    const destinationId = await seedDestination(fixture.sql, "private");
+    await seedConversation(fixture.sql, {
+      conversationId: "with-attachment",
+      destinationId,
+      lastActivityAtMs: BASE_MS,
+    });
+    await fixture.sql.db().insert(juniorAttachments).values({
+      id: "attachment-1",
+      conversationId: "with-attachment",
+      toolCallId: "tool-1",
+      position: 0,
+      provider: "test",
+      storageKey: "key-1",
+      filename: "report.txt",
+      contentType: "text/plain",
+      bytes: 6,
+      sha256: "digest",
+      createdAt: new Date(BASE_MS),
+      readyAt: new Date(BASE_MS),
+    });
+    const deleted: string[][] = [];
+    const storage: AttachmentStorage = {
+      provider: "test",
+      put: async () => undefined,
+      delete: async (keys) => {
+        deleted.push(keys);
+      },
+    };
+
+    const result = await runRetentionPurge(fixture.sql, {
+      attachmentStorage: storage,
+      nowMs: BASE_MS + 15 * DAY_MS,
+    });
+
+    expect(result.attachments).toBe(1);
+    expect(deleted).toEqual([["key-1"]]);
+    expect(await fixture.sql.db().select().from(juniorAttachments)).toEqual([]);
   });
 
   it("shortens the window when visibility flips public to private", async () => {

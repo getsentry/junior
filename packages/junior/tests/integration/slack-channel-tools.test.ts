@@ -7,6 +7,10 @@ import { createSendFilesTool } from "@/chat/slack/tools/send-files";
 import type { SlackToolContext } from "@/chat/slack/tool-support/context";
 import { readSandboxFileUpload } from "@/chat/tools/sandbox/file-uploads";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { migrateSchema } from "@/chat/conversations/sql/migrations";
+import { juniorAttachments, juniorConversations } from "@/db/schema";
+import type { AttachmentStorage } from "@/chat/attachments/storage";
+import { createLocalJuniorSqlFixture } from "../fixtures/sql";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import type { ToolState } from "@/chat/tools/types";
 import { parseSlackChannelId, parseSlackTeamId } from "@/chat/slack/ids";
@@ -141,11 +145,15 @@ function createMaterializeFile(files: Record<string, Buffer> = {}) {
     readSandboxFileUpload(sandbox, input);
 }
 
-async function executeTool<TInput>(tool: any, input: TInput) {
+async function executeTool<TInput>(
+  tool: any,
+  input: TInput,
+  options: { toolCallId?: string } = {},
+) {
   if (typeof tool?.execute !== "function") {
     throw new Error("tool execute function missing");
   }
-  return await tool.execute(input, {} as any);
+  return await tool.execute(input, options as any);
 }
 
 describe("slack channel tools", () => {
@@ -463,6 +471,63 @@ describe("slack channel tools", () => {
       channel_id: "C123",
       thread_ts: "1700000000.321",
     });
+  });
+
+  it("stores files before Slack delivery", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+    try {
+      await migrateSchema(fixture.sql);
+      const now = new Date("2026-08-12T17:00:00.000Z");
+      await fixture.sql.db().insert(juniorConversations).values({
+        conversationId: "conversation-1",
+        createdAt: now,
+        lastActivityAt: now,
+        updatedAt: now,
+        executionStatus: "idle",
+      });
+      const puts: string[] = [];
+      const storage: AttachmentStorage = {
+        provider: "test",
+        put: async (input) => {
+          puts.push(input.key);
+        },
+        delete: async () => undefined,
+      };
+      const tool = createSendFilesTool(
+        createContext("attach the report"),
+        createToolState(),
+        createMaterializeFile({
+          "/tmp/report.txt": Buffer.from("report body"),
+        }),
+        {
+          conversationId: "conversation-1",
+          db: fixture.sql,
+          storage,
+        },
+      );
+
+      const result = await executeTool(
+        tool,
+        { files: [{ path: "/tmp/report.txt" }] },
+        { toolCallId: "tool-1" },
+      );
+
+      const rows = await fixture.sql.db().select().from(juniorAttachments);
+      expect(result.attachment_ids).toEqual([rows[0]?.id]);
+      expect(rows[0]).toMatchObject({
+        conversationId: "conversation-1",
+        filename: "report.txt",
+        provider: "test",
+        toolCallId: "tool-1",
+      });
+      expect(rows[0]?.readyAt).not.toBe(null);
+      expect(puts).toEqual([rows[0]?.storageKey]);
+      expect(
+        getCapturedSlackApiCalls("files.completeUploadExternal"),
+      ).toHaveLength(1);
+    } finally {
+      await fixture.close();
+    }
   });
 
   it("does not deduplicate changed file contents at the same path", async () => {

@@ -80,6 +80,7 @@
     "@sentry/node": "catalog:",
     "@sinclair/typebox": "^0.34.49",
     "@slack/web-api": "^7.16.0",
+    "@vercel/blob": "^2.4.0",
     "@vercel/functions": "^3.6.0",
     "@vercel/oidc": "^3.4.1",
     "@vercel/queue": "^0.2.0",
