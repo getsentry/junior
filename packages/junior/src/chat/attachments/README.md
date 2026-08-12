@@ -6,6 +6,8 @@ This module owns durable files linked to a conversation.
 - Provider adapters keep their SDK types private.
 - `store.ts` writes object storage first, then creates the SQL row. A row means
   the attachment is durable.
+- Live reads load SQL metadata first, then object bytes. Missing, purge-marked,
+  or purged-conversation rows return not found.
 - Attachment identity is content-stable under a conversation. The same bytes,
   filename, content type, and storage provider reuse one attachment id so
   retries do not create duplicates.

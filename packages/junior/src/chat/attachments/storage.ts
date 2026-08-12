@@ -9,5 +9,7 @@ export interface AttachmentWrite {
 export interface AttachmentStorage {
   readonly provider: string;
   put(input: AttachmentWrite): Promise<void>;
+  /** Return live object bytes, or null when the key is missing. */
+  get(key: string): Promise<ReadableStream<Uint8Array> | null>;
   delete(keys: string[]): Promise<void>;
 }

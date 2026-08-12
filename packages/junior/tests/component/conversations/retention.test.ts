@@ -201,6 +201,7 @@ describe("retention purge job", () => {
     const deleted: string[][] = [];
     const storage: AttachmentStorage = {
       provider: "test",
+      get: async () => null,
       put: async () => undefined,
       delete: async (keys) => {
         deleted.push(keys);
@@ -238,6 +239,7 @@ describe("retention purge job", () => {
     });
     const storage: AttachmentStorage = {
       provider: "test",
+      get: async () => null,
       put: async () => undefined,
       delete: async () => {
         throw new Error("blob delete failed");
@@ -287,6 +289,7 @@ describe("retention purge job", () => {
     const deleted: string[][] = [];
     const storage: AttachmentStorage = {
       provider: "test",
+      get: async () => null,
       put: async () => undefined,
       delete: async (keys) => {
         deleted.push(keys);
@@ -320,6 +323,7 @@ describe("retention purge job", () => {
     const deleted: string[] = [];
     const storage: AttachmentStorage = {
       provider: "test",
+      get: async () => null,
       put: async (input) => {
         puts.push(input.key);
       },
@@ -359,6 +363,7 @@ describe("retention purge job", () => {
     const deleted: string[] = [];
     const storage: AttachmentStorage = {
       provider: "test",
+      get: async () => null,
       put: async (input) => {
         puts.push(input.key);
         await fixture.sql
@@ -411,6 +416,7 @@ describe("retention purge job", () => {
     };
     const firstStorage: AttachmentStorage = {
       provider: "test",
+      get: async () => null,
       put: async () => undefined,
       delete: async () => undefined,
     };
@@ -436,6 +442,7 @@ describe("retention purge job", () => {
     const deleted: string[] = [];
     const storage: AttachmentStorage = {
       provider: "test",
+      get: async () => null,
       put: async (input) => {
         puts.push(input.key);
       },
