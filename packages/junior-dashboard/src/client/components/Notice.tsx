@@ -56,6 +56,7 @@ export function Notice({
             )}
           >
             {title}
+            {detail ? " " : null}
           </div>
           {detail ? (
             <div
