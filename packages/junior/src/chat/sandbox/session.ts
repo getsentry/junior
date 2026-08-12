@@ -629,7 +629,7 @@ export function createSandboxRuntime(
       await prepareSandbox(hintedSandbox);
       return rememberSandbox(hintedSandbox, networkPolicyKey);
     } catch (error) {
-      await stopSession(hintedSandbox);
+      // Keep the durable VM alive so a later reacquire can reuse it.
       if (isSandboxUnavailableError(error)) {
         throw error;
       }

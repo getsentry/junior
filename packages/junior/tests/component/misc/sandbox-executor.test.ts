@@ -1285,6 +1285,30 @@ describe("createTestSandbox", () => {
     expect(sandboxCreateMock).not.toHaveBeenCalled();
   });
 
+  it("keeps a restored sandbox alive when prepare fails", async () => {
+    const restoredSandbox = makeSandbox("sbx_restore_prepare");
+    sandboxGetMock.mockResolvedValueOnce(restoredSandbox);
+
+    const executor = createTestSandbox({
+      sandboxId: "sbx_restore_prepare",
+      agentHooks: {
+        beforeToolExecute: vi.fn(),
+        prepareSandbox: vi.fn(async () => {
+          throw new Error("prepare failed");
+        }),
+      },
+    });
+    executor.configureSkills([]);
+
+    await expect(executor.createSandbox()).rejects.toThrow(
+      "sandbox setup failed",
+    );
+
+    expect(restoredSandbox.stop).not.toHaveBeenCalled();
+    expect(sandboxCreateMock).not.toHaveBeenCalled();
+    expect(executor.getSandboxId()).toBe("sbx_restore_prepare");
+  });
+
   it.each([
     createApiError(404, "Not Found", "not_found", "Sandbox was not found"),
     createApiError(
