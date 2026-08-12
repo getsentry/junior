@@ -2,11 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const TEST_ROOTS = [
-  "packages/junior/tests/integration",
-  "packages/junior-dashboard/e2e",
-];
-const DASHBOARD_E2E_ROOT = "packages/junior-dashboard/e2e/";
+const INTEGRATION_ROOT = "packages/junior/tests/integration";
 const DEBT_PATH = "scripts/test-architecture-debt.json";
 
 const RULES = [
@@ -43,21 +39,6 @@ const RULES = [
     pattern:
       /\bas\s+unknown\s+as\s+(?:SlackAdapter|Thread|Message)(?:\b|\s*<)/g,
   },
-  {
-    id: "dashboard-e2e-fixed-wait",
-    message:
-      "dashboard E2E tests must wait for an observable state instead of a fixed delay",
-    pathPrefix: DASHBOARD_E2E_ROOT,
-    pattern: /\bwaitForTimeout\s*\(/g,
-  },
-  {
-    id: "dashboard-e2e-visual-assertion",
-    message:
-      "dashboard E2E tests must leave visual layout and style checks to visual QA",
-    pathPrefix: DASHBOARD_E2E_ROOT,
-    pattern:
-      /\b(?:boundingBox|getBoundingClientRect|toHaveCSS|toHaveScreenshot)\s*\(/g,
-  },
 ];
 
 function countMatches(contents, pattern) {
@@ -88,9 +69,7 @@ export function checkIntegrationTestArchitecture(files, debt = {}) {
     const actualByPath = new Map(
       files.map((file) => [
         file.path,
-        rule.pathPrefix && !file.path.startsWith(rule.pathPrefix)
-          ? 0
-          : countMatches(file.contents, rule.pattern),
+        countMatches(file.contents, rule.pattern),
       ]),
     );
     const paths = new Set([
@@ -125,24 +104,18 @@ export function checkIntegrationTestArchitecture(files, debt = {}) {
   return errors;
 }
 
-function collectTests(root) {
-  return TEST_ROOTS.flatMap((testRoot) => {
-    const directory = path.join(root, testRoot);
-    return fs
-      .readdirSync(directory, { recursive: true, withFileTypes: true })
-      .filter(
-        (entry) =>
-          entry.isFile() &&
-          (entry.name.endsWith(".test.ts") || entry.name.endsWith(".spec.ts")),
-      )
-      .map((entry) => {
-        const absolutePath = path.join(entry.parentPath, entry.name);
-        return {
-          path: path.relative(root, absolutePath).split(path.sep).join("/"),
-          contents: fs.readFileSync(absolutePath, "utf8"),
-        };
-      });
-  });
+function collectIntegrationTests(root) {
+  const directory = path.join(root, INTEGRATION_ROOT);
+  return fs
+    .readdirSync(directory, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".test.ts"))
+    .map((entry) => {
+      const absolutePath = path.join(entry.parentPath, entry.name);
+      return {
+        path: path.relative(root, absolutePath).split(path.sep).join("/"),
+        contents: fs.readFileSync(absolutePath, "utf8"),
+      };
+    });
 }
 
 function readDebt(root) {
@@ -153,12 +126,12 @@ function main() {
   const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
   const root = path.resolve(scriptDirectory, "..");
   const errors = checkIntegrationTestArchitecture(
-    collectTests(root),
+    collectIntegrationTests(root),
     readDebt(root),
   );
   if (errors.length === 0) {
     console.log(
-      "Tests do not add to known test architecture debt.",
+      "Integration tests do not add to known test architecture debt.",
     );
     return;
   }

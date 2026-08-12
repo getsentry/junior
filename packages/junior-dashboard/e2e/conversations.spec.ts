@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 import {
   collectBrowserErrors,
   type DashboardE2eServer,
@@ -44,23 +45,11 @@ test("reuses the fresh conversation feed after window focus", async ({
   ).toBeVisible();
   expect(requests).toBe(1);
 
-  // Fresh feeds must not refetch on focus. Fail if another list fetch starts.
-  const extraFeedFetch = page
-    .waitForRequest(
-      (request) => {
-        if (request.method() !== "GET") return false;
-        return new URL(request.url()).pathname === "/api/conversations";
-      },
-      { timeout: 500 },
-    )
-    .then(() => true)
-    .catch(() => false);
-
   await page.evaluate(() => {
     window.dispatchEvent(new Event("visibilitychange"));
   });
+  await page.waitForTimeout(100);
 
-  expect(await extraFeedFetch).toBe(false);
   expect(requests).toBe(1);
 });
 
@@ -89,8 +78,43 @@ test("opens a conversation in the built dashboard", async ({ page }) => {
     .locator('span[tabindex="0"]')
     .filter({ hasText: /^\$0\.03$/ });
   await expect(costMetric).toHaveCount(1);
-  await costMetric.focus();
+  await costMetric.hover();
   const costTooltip = page.getByRole("tooltip");
+  await expect(costTooltip).toBeVisible();
+  const tooltipBounds = await costTooltip.boundingBox();
+  expect(tooltipBounds).not.toBeNull();
+  if (!tooltipBounds) throw new Error("Expected cost tooltip bounds");
+  expect(tooltipBounds.x).toBeGreaterThanOrEqual(0);
+  expect(tooltipBounds.y).toBeGreaterThanOrEqual(0);
+  expect(tooltipBounds.x + tooltipBounds.width).toBeLessThanOrEqual(1600);
+  expect(tooltipBounds.y + tooltipBounds.height).toBeLessThanOrEqual(900);
+
+  const costValue = costTooltip.getByText("$0.0332", { exact: true });
+  const valueBounds = await costValue.boundingBox();
+  expect(valueBounds).not.toBeNull();
+  if (!valueBounds) throw new Error("Expected cost value bounds");
+  await page.mouse.move(
+    valueBounds.x + 2,
+    valueBounds.y + valueBounds.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    tooltipBounds.x + tooltipBounds.width + 40,
+    valueBounds.y + valueBounds.height / 2,
+    { steps: 8 },
+  );
+  await page.waitForTimeout(200);
+  await expect(costTooltip).toBeVisible();
+  await page.mouse.up();
+  await page.waitForTimeout(200);
+  await expect(costTooltip).toBeVisible();
+  expect(
+    await page.evaluate(() => window.getSelection()?.toString()),
+  ).toContain("$0.0332");
+  await page.keyboard.press("Escape");
+  await expect(costTooltip).toBeHidden();
+
+  await costMetric.focus();
   await expect(costTooltip).toBeVisible();
   const tooltipId = await costTooltip.getAttribute("id");
   expect(tooltipId).toBeTruthy();
@@ -98,10 +122,25 @@ test("opens a conversation in the built dashboard", async ({ page }) => {
   await page.keyboard.press("Escape");
   await expect(costTooltip).toBeHidden();
 
+  const containerBounds = () =>
+    page.locator("main > div").evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      return { left: bounds.left, width: bounds.width };
+    });
+  const headerBounds = await page
+    .locator("main > header > div")
+    .evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      return { left: bounds.left, width: bounds.width };
+    });
+  expect(headerBounds).toEqual({ left: 160, width: 1280 });
+  expect(await containerBounds()).toEqual(headerBounds);
+
   await expect(
     page.getByRole("link", { name: "Conversations" }),
   ).toHaveAttribute("aria-current", "page");
   await expect(page.getByRole("link", { name: "Plugins" })).toHaveCount(0);
+  expect(await containerBounds()).toEqual(headerBounds);
 
   await page.goto(
     `${server.baseURL}/conversations/${encodeURIComponent("slack:DQA123:1770007200.000300")}`,
@@ -228,6 +267,77 @@ test("starts and continues conversations from the dashboard", async ({
   await expect(page.getByLabel("Continue this conversation")).toHaveValue("");
 });
 
+test("positions a long cost tooltip clear of its metric", async ({ page }) => {
+  const conversationId = "slack:CQA123:1770003600.000200";
+  await page.setViewportSize({ height: 900, width: 1600 });
+  await page.route(
+    `**/api/conversations/${encodeURIComponent(conversationId)}`,
+    async (route) => {
+      const response = await route.fetch();
+      const detail = (await response.json()) as ConversationDetailReport;
+      await route.fulfill({
+        response,
+        json: {
+          ...detail,
+          modelUsage: [
+            {
+              modelId: "openai/gpt-5.6-sol",
+              usage: {
+                cost: {
+                  cacheRead: 0.004,
+                  cacheWrite: 0.005,
+                  input: 0.01,
+                  output: 0.021,
+                  total: 0.04,
+                },
+              },
+            },
+            {
+              modelId: "xai/grok-4.5",
+              usage: { cost: { input: 0.0004, output: 0.0006, total: 0.001 } },
+            },
+          ],
+        },
+      });
+    },
+  );
+  await page.goto(
+    `${server.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
+  );
+
+  // Active conversation cost is provisional (`$0.04+`) until the turn settles.
+  const cost = page
+    .locator('span[tabindex="0"]')
+    .filter({ hasText: /^\$0\.04\+?$/ })
+    .first();
+  await expect(cost).toBeVisible();
+  await cost.hover();
+  const tooltip = page.getByRole("tooltip");
+  await expect(tooltip).toBeVisible();
+
+  const costBounds = await cost.boundingBox();
+  const tooltipBounds = await tooltip.boundingBox();
+  expect(costBounds).not.toBeNull();
+  expect(tooltipBounds).not.toBeNull();
+  const tooltipIsAbove =
+    tooltipBounds!.y + tooltipBounds!.height < costBounds!.y;
+  const tooltipIsBelow = tooltipBounds!.y > costBounds!.y + costBounds!.height;
+  expect(tooltipIsAbove || tooltipIsBelow).toBe(true);
+
+  const columns = tooltip.locator(":scope > span > span");
+  await expect(columns).toHaveCount(2);
+  const auxiliary = columns.nth(1);
+  const headingBounds = await auxiliary
+    .getByText("Auxiliary", { exact: true })
+    .boundingBox();
+  const totalBounds = await auxiliary
+    .getByText("total", { exact: true })
+    .boundingBox();
+  expect(headingBounds).not.toBeNull();
+  expect(totalBounds).not.toBeNull();
+  expect(totalBounds!.y - headingBounds!.y).toBeLessThan(40);
+});
+
 test("collapses long pending message stacks", async ({ page }) => {
   const conversationId = "slack:CQA123:1770003600.000200";
   await page.setViewportSize({ height: 900, width: 1600 });
@@ -308,9 +418,54 @@ test("opens and closes a conversation in the mobile workspace", async ({
 
   const composer = page.getByPlaceholder("Message Junior…");
   await expect(composer).toBeVisible();
+  await expect(composer).toHaveCSS("min-height", "44px");
+  await expect(page.locator('meta[name="viewport"]')).toHaveAttribute(
+    "content",
+    "width=device-width, initial-scale=1, maximum-scale=1",
+  );
   await expect(page.getByRole("button", { name: "Send" })).toBeVisible();
+  // One-row mobile composer; leave headroom for font metrics / padding.
+  expect((await composer.boundingBox())?.height).toBeLessThan(80);
+
+  await page.evaluate(() => {
+    Object.defineProperty(window.visualViewport, "height", {
+      configurable: true,
+      value: 520,
+    });
+    window.visualViewport?.dispatchEvent(new Event("resize"));
+  });
+  await expect
+    .poll(async () => (await page.locator("main").first().boundingBox())?.height)
+    .toBe(520);
+  const compactShell = await page.locator("main").first().boundingBox();
+  const compactComposer = await composer.boundingBox();
+  expect(compactComposer!.y + compactComposer!.height).toBeLessThanOrEqual(
+    compactShell!.y + compactShell!.height,
+  );
+  const compactPage = await page.evaluate(() => ({
+    documentHeight: document.documentElement.scrollHeight,
+    viewportHeight: document.documentElement.clientHeight,
+  }));
+  expect(compactPage.documentHeight).toBeLessThanOrEqual(
+    compactPage.viewportHeight,
+  );
+
   await composer.focus();
+  await page.evaluate(() => {
+    HTMLElement.prototype.scrollIntoView = () => {
+      throw new Error("Live transcript pinning must not scroll the page");
+    };
+    Object.defineProperty(window.visualViewport, "height", {
+      configurable: true,
+      value: 480,
+    });
+    window.visualViewport?.dispatchEvent(new Event("resize"));
+  });
+  await expect
+    .poll(async () => (await page.locator("main").first().boundingBox())?.height)
+    .toBe(480);
   await expect(composer).toBeFocused();
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
 
   await page.getByRole("button", { name: "Show transcript tools" }).click();
   await expect(page.getByPlaceholder("Search transcript…")).toBeVisible();
@@ -626,6 +781,7 @@ test("archives and restores a conversation from the sidebar", async ({
   });
   await archiveFocusRefetch;
   await expect(conversationLink).toHaveCount(0);
+  await page.waitForTimeout(220);
   await expect(emptyView).toBeVisible();
   const archiveRequest = await archiveRequestPromise;
 

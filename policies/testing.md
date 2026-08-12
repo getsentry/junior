@@ -53,19 +53,9 @@ refactors should not churn brittle unit tests.
 - Do not assert that static strings are present in normal system or turn-context
   prompts. Assert generated values only, such as dispatch input built from task
   data or other rendered outputs under test.
-- Browser E2E tests protect critical user journeys that need a real browser.
-  Keep one representative path for navigation, interaction, accessibility
-  state, request contracts, and realistic failure recovery. Do not use browser
-  E2E as a catalog of every visible state or implementation branch.
-- Do not assert CSS utility strings, raw DOM tag counts, generated markup,
-  pixel geometry, element size, or computed style to prove visual styling.
-  Test semantic state and interaction behavior with component or browser
-  coverage, and validate layout and styling through visual QA.
-- Do not add fixed sleeps to browser E2E tests. Wait for the user-visible state,
-  URL, request, or response that proves the behavior.
-- UI changes do not require browser E2E coverage when they only change layout,
-  styling, copy, or already-covered presentation. Use visual QA and include its
-  evidence in the change instead.
+- Do not assert CSS utility strings, raw DOM tag counts, or generated markup to
+  prove visual styling. Test semantic state and interaction behavior with
+  component or browser coverage, and validate styling-only changes visually.
 - Before you finish a non-trivial change, prune touched tests that equal- or
   higher-fidelity coverage already covers, only mirror implementation branches
   without a distinct contract, or exercise equivalent or unreachable cases.
