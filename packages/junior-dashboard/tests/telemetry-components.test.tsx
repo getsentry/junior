@@ -436,9 +436,9 @@ describe("dashboard canonical-event components", () => {
       conversation(
         [
           event(0, {
-            messageId: "slack-user-history",
+            messageId: "unknown-user-source",
             role: "user",
-            text: "From Slack history.",
+            text: "Unknown source.",
             type: "message",
           }),
           event(1, {
@@ -449,9 +449,9 @@ describe("dashboard canonical-event components", () => {
             type: "message",
           }),
           event(2, {
-            messageId: "slack-assistant",
+            messageId: "unknown-assistant-source",
             role: "assistant",
-            text: "Posted to Slack.",
+            text: "Unknown source.",
             type: "message",
           }),
           event(3, {
@@ -486,8 +486,8 @@ describe("dashboard canonical-event components", () => {
 
     expect(slackHtml).toContain('aria-label="Slack"');
     expect(slackHtml).not.toContain(">Slack<");
-    // History omit + explicit slack user + Slack-outbound assistant. Web is native.
-    expect(slackHtml.match(/aria-label="Slack"/g)).toHaveLength(3);
+    // Only explicit Slack provenance gets a provider icon.
+    expect(slackHtml.match(/aria-label="Slack"/g)).toHaveLength(1);
     expect(dashboardRootHtml).not.toContain("Dashboard");
     expect(dashboardRootHtml).not.toContain('aria-label="Slack"');
   });
