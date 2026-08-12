@@ -33,7 +33,20 @@ describe("textMentionsBot", () => {
     ).toBe(true);
   });
 
-  it("ignores other users and empty input", () => {
+  it("does not treat mid-line triple backticks as a fence", () => {
+    expect(
+      textMentionsBot(`Use \`\`\` for blocks and <@${BOT}> will help`, BOT),
+    ).toBe(true);
+  });
+
+  it("detects a mention after a same-line fence close", () => {
+    expect(
+      textMentionsBot("```code``` " + `<@${BOT}> help`, BOT),
+    ).toBe(true);
+  });
+
+  it("requires an exact bot user id token", () => {
+    expect(textMentionsBot(`hey <@${BOT}123> status?`, BOT)).toBe(false);
     expect(textMentionsBot(`hey <@U0OTHER> status?`, BOT)).toBe(false);
     expect(textMentionsBot("", BOT)).toBe(false);
     expect(textMentionsBot(`<@${BOT}>`, "")).toBe(false);
