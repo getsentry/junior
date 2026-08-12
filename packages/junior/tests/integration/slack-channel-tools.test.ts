@@ -611,9 +611,10 @@ describe("slack channel tools", () => {
       expect(rows[0]).toMatchObject({
         id: attachmentId,
         deleteRequestedAt: null,
+        storageKey: puts[1],
       });
       expect(puts).toHaveLength(2);
-      expect(puts[0]).toBe(puts[1]);
+      expect(puts[0]).not.toBe(puts[1]);
     } finally {
       await fixture.close();
     }

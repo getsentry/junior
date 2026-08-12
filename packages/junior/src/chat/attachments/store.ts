@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { and, asc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorAttachments } from "@/db/schema";
@@ -40,12 +40,20 @@ function attachmentId(args: {
     .digest("hex");
 }
 
+/**
+ * Object key for one write attempt.
+ *
+ * Attachment ids are content-stable. Object keys are not: each put gets a fresh
+ * key so a failed-write cleanup or GC delete cannot remove another writer's
+ * durable blob.
+ */
 function attachmentKey(args: {
   attachmentId: string;
   conversationId: string;
   filename: string;
+  writeId: string;
 }): string {
-  return `conversations/${args.conversationId}/attachments/${args.attachmentId}/${args.filename}`;
+  return `conversations/${args.conversationId}/attachments/${args.attachmentId}/${args.writeId}/${args.filename}`;
 }
 
 async function bestEffortDelete(
@@ -55,49 +63,20 @@ async function bestEffortDelete(
   try {
     await storage.delete([key]);
   } catch {
-    // Leave the blob. A later store of the same content overwrites the key.
+    // Leave the blob. Unique keys make a later store write a different object.
   }
-}
-
-/** Clear a purge mark after rewriting the blob for the same attachment id. */
-async function clearDeletionMark(
-  db: JuniorSqlDatabase,
-  id: string,
-): Promise<"live" | "missing"> {
-  const revived = await db
-    .db()
-    .update(juniorAttachments)
-    .set({ deleteRequestedAt: null })
-    .where(
-      and(
-        eq(juniorAttachments.id, id),
-        isNotNull(juniorAttachments.deleteRequestedAt),
-      ),
-    )
-    .returning({ id: juniorAttachments.id });
-  if (revived.length > 0) return "live";
-  const [row] = await db
-    .db()
-    .select({
-      deleteRequestedAt: juniorAttachments.deleteRequestedAt,
-      id: juniorAttachments.id,
-    })
-    .from(juniorAttachments)
-    .where(eq(juniorAttachments.id, id));
-  if (row?.deleteRequestedAt === null) return "live";
-  return "missing";
 }
 
 /**
  * Persist one conversation-owned file.
  *
  * Identity is content-stable under the conversation. Object storage is written
- * first; the SQL row is created only after that write succeeds. A row means the
- * attachment is durable. Retries reuse an existing live row. A purge-marked row
- * is revived by rewriting the blob and clearing the mark. If the SQL write
- * fails after object storage accepts the bytes, this path deletes that blob.
- * A process crash between those steps can leave an unreferenced blob on a
- * stable key; the next store of the same content overwrites it.
+ * first under a unique key; the SQL row is created only after that write
+ * succeeds. A row means the attachment is durable. Retries reuse an existing
+ * live row. A purge-marked row is revived by writing a new object and pointing
+ * the row at it. If the SQL write fails after object storage accepts the bytes,
+ * this path deletes that unique object. A process crash between those steps can
+ * leave an unreferenced unique object with no SQL row.
  */
 export async function storeAttachment(args: {
   conversationId: string;
@@ -114,11 +93,6 @@ export async function storeAttachment(args: {
     filename: args.file.filename,
     provider: args.storage.provider,
     sha256,
-  });
-  const storageKey = attachmentKey({
-    attachmentId: id,
-    conversationId: args.conversationId,
-    filename: args.file.filename,
   });
   const [existing] = await args.db
     .db()
@@ -140,8 +114,7 @@ export async function storeAttachment(args: {
       existing.conversationId !== args.conversationId ||
       existing.filename !== args.file.filename ||
       existing.provider !== args.storage.provider ||
-      existing.sha256 !== sha256 ||
-      existing.storageKey !== storageKey
+      existing.sha256 !== sha256
     ) {
       throw new Error(`Attachment write conflicts with ${existing.id}`);
     }
@@ -150,6 +123,12 @@ export async function storeAttachment(args: {
     }
   }
 
+  const storageKey = attachmentKey({
+    attachmentId: id,
+    conversationId: args.conversationId,
+    filename: args.file.filename,
+    writeId: randomUUID(),
+  });
   await args.storage.put({
     body: args.file.data,
     contentType: args.file.mimeType,
@@ -157,8 +136,39 @@ export async function storeAttachment(args: {
   });
 
   if (existing?.deleteRequestedAt != null) {
-    if ((await clearDeletionMark(args.db, id)) === "live") {
+    const oldStorageKey = existing.storageKey;
+    const revived = await args.db
+      .db()
+      .update(juniorAttachments)
+      .set({
+        deleteRequestedAt: null,
+        storageKey,
+      })
+      .where(
+        and(
+          eq(juniorAttachments.id, id),
+          isNotNull(juniorAttachments.deleteRequestedAt),
+        ),
+      )
+      .returning({ id: juniorAttachments.id });
+    if (revived.length > 0) {
+      if (oldStorageKey !== storageKey) {
+        await bestEffortDelete(args.storage, oldStorageKey);
+      }
       return { id };
+    }
+    const [afterRace] = await args.db
+      .db()
+      .select({
+        deleteRequestedAt: juniorAttachments.deleteRequestedAt,
+        id: juniorAttachments.id,
+        storageKey: juniorAttachments.storageKey,
+      })
+      .from(juniorAttachments)
+      .where(eq(juniorAttachments.id, id));
+    if (afterRace?.deleteRequestedAt === null) {
+      await bestEffortDelete(args.storage, storageKey);
+      return { id: afterRace.id };
     }
   }
 
@@ -192,6 +202,7 @@ export async function storeAttachment(args: {
     .select({
       deleteRequestedAt: juniorAttachments.deleteRequestedAt,
       id: juniorAttachments.id,
+      storageKey: juniorAttachments.storageKey,
     })
     .from(juniorAttachments)
     .where(eq(juniorAttachments.id, id));
@@ -200,14 +211,47 @@ export async function storeAttachment(args: {
     throw new Error(`Attachment row missing after write for ${id}`);
   }
   if (row.deleteRequestedAt === null) {
+    // Another writer owns the live row. Our unique object is unused.
+    await bestEffortDelete(args.storage, storageKey);
     return { id: row.id };
   }
-  // Conflicted with a purge-marked row. Blob was rewritten above; clear the mark.
-  if ((await clearDeletionMark(args.db, id)) === "missing") {
-    await bestEffortDelete(args.storage, storageKey);
-    throw new Error(`Attachment ${id} disappeared while reviving`);
+
+  const revived = await args.db
+    .db()
+    .update(juniorAttachments)
+    .set({
+      deleteRequestedAt: null,
+      storageKey,
+    })
+    .where(
+      and(
+        eq(juniorAttachments.id, id),
+        isNotNull(juniorAttachments.deleteRequestedAt),
+      ),
+    )
+    .returning({ id: juniorAttachments.id });
+  if (revived.length > 0) {
+    if (row.storageKey !== storageKey) {
+      await bestEffortDelete(args.storage, row.storageKey);
+    }
+    return { id };
   }
-  return { id: row.id };
+
+  const [afterRace] = await args.db
+    .db()
+    .select({
+      deleteRequestedAt: juniorAttachments.deleteRequestedAt,
+      id: juniorAttachments.id,
+    })
+    .from(juniorAttachments)
+    .where(eq(juniorAttachments.id, id));
+  if (afterRace?.deleteRequestedAt === null) {
+    await bestEffortDelete(args.storage, storageKey);
+    return { id: afterRace.id };
+  }
+
+  await bestEffortDelete(args.storage, storageKey);
+  throw new Error(`Attachment ${id} disappeared while reviving`);
 }
 
 /** Persist many conversation-owned files. */
@@ -255,9 +299,8 @@ export async function requestAttachmentDeletion(
 /**
  * Delete purged attachments in one bounded batch.
  *
- * Remove still-marked SQL rows first, then delete object keys that were not
- * reclaimed by a concurrent revive. This keeps blob deletion from racing a
- * later store of the same content-stable key.
+ * Object keys are unique per write, so removing a still-marked row's key cannot
+ * delete a later revive's blob.
  */
 export async function collectAttachmentGarbage(args: {
   db: JuniorSqlDatabase;
@@ -300,16 +343,6 @@ export async function collectAttachmentGarbage(args: {
     });
   if (removed.length === 0) return { deleted: 0 };
 
-  const removedKeys = [...new Set(removed.map((row) => row.storageKey))];
-  const reclaimed = await args.db
-    .db()
-    .select({ storageKey: juniorAttachments.storageKey })
-    .from(juniorAttachments)
-    .where(inArray(juniorAttachments.storageKey, removedKeys));
-  const reclaimedKeys = new Set(reclaimed.map((row) => row.storageKey));
-  const keysToDelete = removedKeys.filter((key) => !reclaimedKeys.has(key));
-  if (keysToDelete.length > 0) {
-    await args.storage.delete(keysToDelete);
-  }
+  await args.storage.delete(removed.map((row) => row.storageKey));
   return { deleted: removed.length };
 }
