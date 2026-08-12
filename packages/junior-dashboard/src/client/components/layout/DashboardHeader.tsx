@@ -4,6 +4,7 @@ import { Link, NavLink } from "react-router";
 
 import { getDashboardAgentName } from "../../agentName";
 import { JuniorLogo } from "../JuniorLogo";
+import { MobileSecondaryNavigationSlot } from "./DashboardChrome";
 import {
   cn,
   dashboardContainerClass,
@@ -90,24 +91,26 @@ export function DashboardHeader(props: {
         ) : null}
       </div>
       {props.mobileNavigationOpen ? (
-        <nav
-          aria-label="Primary"
-          className="absolute left-0 right-0 top-full grid gap-1 border-b border-white/[0.07] bg-dashboard-surface-raised/95 p-2 shadow-2xl shadow-black/60 backdrop-blur-xl md:hidden"
+        <div
+          className="absolute left-0 right-0 top-full border-b border-white/[0.07] bg-dashboard-surface-raised/95 p-2 shadow-2xl shadow-black/60 backdrop-blur-xl md:hidden"
           id="mobile-navigation"
         >
-          <Link
-            aria-current={props.workspaceActive ? "page" : undefined}
-            className={navLinkClass({ isActive: props.workspaceActive })}
-            to="/"
-          >
-            Conversations
-          </Link>
-          {props.navItems.map((item) => (
-            <NavLink className={navLinkClass} key={item.key} to={item.to}>
-              {item.label}
-            </NavLink>
-          ))}
-        </nav>
+          <nav aria-label="Primary" className="grid gap-1">
+            <Link
+              aria-current={props.workspaceActive ? "page" : undefined}
+              className={navLinkClass({ isActive: props.workspaceActive })}
+              to="/"
+            >
+              Conversations
+            </Link>
+            {props.navItems.map((item) => (
+              <NavLink className={navLinkClass} key={item.key} to={item.to}>
+                {item.label}
+              </NavLink>
+            ))}
+          </nav>
+          <MobileSecondaryNavigationSlot />
+        </div>
       ) : null}
     </header>
   );

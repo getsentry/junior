@@ -10,6 +10,8 @@ import {
 import { createPortal } from "react-dom";
 
 type DashboardChromeContextValue = {
+  mobileSecondarySlot: HTMLElement | null;
+  mobileSecondarySlotRef: RefCallback<HTMLDivElement>;
   secondarySlot: HTMLElement | null;
   secondarySlotRef: RefCallback<HTMLDivElement>;
 };
@@ -20,15 +22,30 @@ const DashboardChromeContext =
 /** Provide the sticky chrome slot used by page secondary navigation. */
 export function DashboardChromeProvider(props: { children: ReactNode }) {
   const [secondarySlot, setSecondarySlot] = useState<HTMLElement | null>(null);
+  const [mobileSecondarySlot, setMobileSecondarySlot] =
+    useState<HTMLElement | null>(null);
   const secondarySlotRef = useCallback<RefCallback<HTMLDivElement>>((node) => {
     setSecondarySlot(node);
   }, []);
+  const mobileSecondarySlotRef = useCallback<RefCallback<HTMLDivElement>>(
+    (node) => {
+      setMobileSecondarySlot(node);
+    },
+    [],
+  );
   const value = useMemo(
     () => ({
+      mobileSecondarySlot,
+      mobileSecondarySlotRef,
       secondarySlot,
       secondarySlotRef,
     }),
-    [secondarySlot, secondarySlotRef],
+    [
+      mobileSecondarySlot,
+      mobileSecondarySlotRef,
+      secondarySlot,
+      secondarySlotRef,
+    ],
   );
 
   return (
@@ -51,15 +68,36 @@ export function DashboardChrome(props: {
   return (
     <div className="sticky top-0 z-30 bg-[#050507]/95">
       {props.header}
-      <div ref={chrome.secondarySlotRef} />
+      <div className="hidden md:block" ref={chrome.secondarySlotRef} />
       {props.banner}
     </div>
   );
 }
 
-/** Mount page secondary navigation into the sticky shell chrome. */
-export function SecondaryNavigationPortal(props: { children: ReactNode }) {
+/** Provide the current page navigation target inside the mobile drawer. */
+export function MobileSecondaryNavigationSlot() {
+  const chrome = useContext(DashboardChromeContext);
+  if (!chrome) {
+    throw new Error(
+      "MobileSecondaryNavigationSlot requires DashboardChromeProvider",
+    );
+  }
+  return <div ref={chrome.mobileSecondarySlotRef} />;
+}
+
+/** Mount page navigation into the desktop chrome and mobile drawer. */
+export function SecondaryNavigationPortal(props: {
+  desktop: ReactNode;
+  mobile: ReactNode;
+}) {
   const chrome = useContext(DashboardChromeContext);
   if (!chrome?.secondarySlot) return null;
-  return createPortal(props.children, chrome.secondarySlot);
+  return (
+    <>
+      {createPortal(props.desktop, chrome.secondarySlot)}
+      {chrome.mobileSecondarySlot
+        ? createPortal(props.mobile, chrome.mobileSecondarySlot)
+        : null}
+    </>
+  );
 }

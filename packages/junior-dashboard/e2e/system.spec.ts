@@ -75,6 +75,8 @@ test("keeps System navigation usable on mobile", async ({ page }) => {
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth),
   ).toBeLessThanOrEqual(390);
+  await expect(page.getByLabel("System navigation")).not.toBeVisible();
+  await page.getByRole("button", { name: "Open navigation" }).click();
   const systemNavigation = page.getByLabel("System navigation");
   await expect(systemNavigation.getByRole("link")).toHaveText([
     "Overview",

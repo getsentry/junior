@@ -13,12 +13,12 @@ export type SecondaryNavigationItem = {
   to: string;
 };
 
-/** Render the shared page-level secondary navigation in the sticky shell chrome. */
+/** Render page navigation in the desktop chrome and mobile drawer. */
 export function SecondaryNavigation(props: {
   ariaLabel: string;
   items: SecondaryNavigationItem[];
 }) {
-  const linkClass = ({ isActive }: { isActive: boolean }) =>
+  const desktopLinkClass = ({ isActive }: { isActive: boolean }) =>
     cn(
       "relative flex h-12 shrink-0 items-center px-3 font-display text-xs font-medium no-underline transition-colors after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:transition-colors sm:text-sm",
       isActive
@@ -28,20 +28,46 @@ export function SecondaryNavigation(props: {
             dashboardInteractiveTextClass,
           ),
     );
+  const mobileLinkClass = ({ isActive }: { isActive: boolean }) =>
+    cn(
+      "rounded-md px-2.5 py-2 pl-5 font-mono text-xs font-medium no-underline transition-colors",
+      isActive
+        ? "bg-cyan-300/[0.1] text-cyan-50"
+        : cn("hover:bg-white/[0.035]", dashboardInteractiveTextClass),
+    );
 
   return (
-    <SecondaryNavigationPortal>
-      <div className="border-b border-white/[0.06] bg-white/[0.018]">
+    <SecondaryNavigationPortal
+      desktop={
+        <div className="border-b border-white/[0.06] bg-white/[0.018]">
+          <nav
+            aria-label={props.ariaLabel}
+            className={cn(
+              dashboardContainerClass,
+              "flex min-w-0 gap-1 overflow-x-auto px-4 [scrollbar-width:none] md:px-8 [&::-webkit-scrollbar]:hidden",
+            )}
+          >
+            {props.items.map((item) => (
+              <NavLink
+                className={desktopLinkClass}
+                end={item.end}
+                key={item.to}
+                to={item.to}
+              >
+                {item.label}
+              </NavLink>
+            ))}
+          </nav>
+        </div>
+      }
+      mobile={
         <nav
           aria-label={props.ariaLabel}
-          className={cn(
-            dashboardContainerClass,
-            "flex min-w-0 gap-1 overflow-x-auto px-4 [scrollbar-width:none] md:px-8 [&::-webkit-scrollbar]:hidden",
-          )}
+          className="mt-2 grid gap-1 border-t border-white/[0.07] pt-2"
         >
           {props.items.map((item) => (
             <NavLink
-              className={linkClass}
+              className={mobileLinkClass}
               end={item.end}
               key={item.to}
               to={item.to}
@@ -50,7 +76,7 @@ export function SecondaryNavigation(props: {
             </NavLink>
           ))}
         </nav>
-      </div>
-    </SecondaryNavigationPortal>
+      }
+    />
   );
 }
