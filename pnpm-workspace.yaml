@@ -5,8 +5,8 @@ injectWorkspacePackages: true
 autoInstallPeers: false
 dedupePeerDependents: false
 catalog:
-  "@earendil-works/pi-agent-core": 0.82.1
-  "@earendil-works/pi-ai": 0.82.1
+  "@earendil-works/pi-agent-core": 0.84.1
+  "@earendil-works/pi-ai": 0.84.1
   "@opentelemetry/api": 1.9.1
   "@opentelemetry/core": 2.9.0
   "@sentry/node": 10.65.0
