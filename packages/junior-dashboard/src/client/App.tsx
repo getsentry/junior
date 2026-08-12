@@ -16,6 +16,7 @@ import {
   useSystemData,
 } from "./api";
 import { getDashboardAgentName } from "./agentName";
+import { ConnectionBanner } from "./components/ConnectionBanner";
 import { LoadingView } from "./components/LoadingView";
 import { JuniorLogo } from "./components/JuniorLogo";
 import { ProfileMenu } from "./components/ProfileMenu";
@@ -227,6 +228,7 @@ export function DashboardShell() {
             </NavLink>
           </nav>
         ) : null}
+        <ConnectionBanner />
       </header>
 
       <Routes>

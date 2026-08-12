@@ -9,6 +9,7 @@ import {
 import { Send } from "lucide-react";
 
 import { Button } from "../components/Button";
+import { useDashboardOnline } from "../connection";
 
 const MOBILE_COMPOSER_MAX_HEIGHT_PX = 112;
 const DESKTOP_MEDIA_QUERY = "(min-width: 768px)";
@@ -53,6 +54,7 @@ export function ConversationComposer(props: {
     readStoredDraft(storageKey),
   );
   const [submitting, setSubmitting] = useState(false);
+  const online = useDashboardOnline();
   const message = draft.text;
   const id = useId();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -95,7 +97,7 @@ export function ConversationComposer(props: {
   const submit = async (event?: FormEvent) => {
     event?.preventDefault();
     const text = message.trim();
-    if (!text || busy || submittingRef.current) return;
+    if (!text || !online || busy || submittingRef.current) return;
 
     // Keep the key while the trimmed text matches the last attempt. Edits that
     // return to the same text (typo undo, IME) must not mint a new key or a
@@ -139,16 +141,20 @@ export function ConversationComposer(props: {
 
   return (
     <div className="grid min-w-0 gap-1.5">
-      {props.error || busy ? (
+      {!online || props.error || busy ? (
         <div
           aria-live="polite"
           className={
             props.error
               ? "min-w-0 font-mono text-xs leading-relaxed text-red-300/80"
-              : "min-w-0 font-mono text-xs leading-relaxed text-dashboard-text-muted"
+              : !online
+                ? "min-w-0 font-mono text-xs leading-relaxed text-amber-100/80"
+                : "min-w-0 font-mono text-xs leading-relaxed text-dashboard-text-muted"
           }
         >
-          {props.error ?? "Sending message…"}
+          {!online
+            ? "Connect to send. Your draft is saved."
+            : (props.error ?? "Sending message…")}
         </div>
       ) : null}
       <form
@@ -181,8 +187,14 @@ export function ConversationComposer(props: {
           </div>
           <Button
             aria-label={busy ? "Sending message" : props.submitLabel}
-            disabled={!message.trim() || busy}
-            title={busy ? "Sending message" : props.submitLabel}
+            disabled={!message.trim() || !online || busy}
+            title={
+              !online
+                ? "Connect to send"
+                : busy
+                  ? "Sending message"
+                  : props.submitLabel
+            }
             type="submit"
           >
             <Send aria-hidden="true" size={14} />

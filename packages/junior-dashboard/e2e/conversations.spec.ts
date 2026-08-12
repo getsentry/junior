@@ -53,6 +53,49 @@ test("reuses the fresh conversation feed after window focus", async ({
   expect(requests).toBe(1);
 });
 
+test("keeps cached conversation and draft available through reconnect", async ({
+  context,
+  page,
+}) => {
+  const conversationId = "slack:CQA123:1770003600.000200";
+  let detailRequests = 0;
+  await page.route(
+    `**/api/conversations/${encodeURIComponent(conversationId)}`,
+    async (route) => {
+      detailRequests += 1;
+      await route.fallback();
+    },
+  );
+
+  await page.goto(
+    `${server.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
+  );
+  const heading = page.getByRole("heading", {
+    name: "Investigate checkout latency",
+  });
+  await expect(heading).toBeVisible();
+  expect(detailRequests).toBe(1);
+
+  await context.setOffline(true);
+  await expect(
+    page.getByText("You’re offline. Drafts stay on this device."),
+  ).toBeVisible();
+  await expect(heading).toBeVisible();
+
+  const composer = page.getByLabel("Continue this conversation");
+  await composer.fill("Keep this draft through reconnect");
+  await expect(page.getByText("Connect to send. Your draft is saved.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Send" })).toBeDisabled();
+
+  await context.setOffline(false);
+  await expect(
+    page.getByText("You’re offline. Drafts stay on this device."),
+  ).toBeHidden();
+  await expect.poll(() => detailRequests).toBeGreaterThan(1);
+  await expect(composer).toHaveValue("Keep this draft through reconnect");
+  await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
+});
+
 test("opens a conversation in the built dashboard", async ({ page }) => {
   await page.setViewportSize({ height: 900, width: 1600 });
   const browserErrors = collectBrowserErrors(page);

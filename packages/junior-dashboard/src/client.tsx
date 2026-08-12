@@ -72,8 +72,9 @@ if (!root) {
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      // Route changes should reuse recent dashboard reads. Resources that need
-      // faster updates own their polling or are invalidated by their mutation.
+      // Route changes should reuse recent dashboard reads. The connection
+      // banner owns one active refresh after reconnect so queries do not race it.
+      refetchOnReconnect: false,
       staleTime: 30_000,
     },
   },
