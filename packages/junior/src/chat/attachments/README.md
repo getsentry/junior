@@ -17,5 +17,8 @@ This module owns durable files linked to a conversation.
   deletes that unique object. A process crash between those steps can leave an
   unreferenced unique object with no SQL row.
 - Conversation purge marks attachments for deletion in the same SQL transaction.
-- The retention job deletes still-marked object keys first, then removes those
-  SQL rows. A failed blob delete leaves the marked row for the next run.
+- Store rejects writes into a purged conversation and marks any raced insert for
+  deletion before failing, so concurrent sendFiles cannot leave a durable orphan.
+- The retention job deletes object keys for purge-marked rows and for rows owned
+  by purged conversations, then removes those SQL rows. A failed blob delete
+  leaves the eligible row for the next run.

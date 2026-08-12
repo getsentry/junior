@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
-import { and, asc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, or } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
-import { juniorAttachments } from "@/db/schema";
+import { juniorAttachments, juniorConversations } from "@/db/schema";
 import type { SandboxFileUpload } from "@/chat/tools/sandbox/file-uploads";
 import type { AttachmentStorage } from "./storage";
 
@@ -67,6 +67,20 @@ async function bestEffortDelete(
   }
 }
 
+async function isConversationPurged(
+  db: JuniorSqlDatabase,
+  conversationId: string,
+): Promise<boolean> {
+  const [row] = await db
+    .db()
+    .select({
+      transcriptPurgedAt: juniorConversations.transcriptPurgedAt,
+    })
+    .from(juniorConversations)
+    .where(eq(juniorConversations.conversationId, conversationId));
+  return row?.transcriptPurgedAt != null;
+}
+
 /**
  * Persist one conversation-owned file.
  *
@@ -74,9 +88,10 @@ async function bestEffortDelete(
  * first under a unique key; the SQL row is created only after that write
  * succeeds. A row means the attachment is durable. Retries reuse an existing
  * live row. A purge-marked row is revived by writing a new object and pointing
- * the row at it. If the SQL write fails after object storage accepts the bytes,
- * this path deletes that unique object. A process crash between those steps can
- * leave an unreferenced unique object with no SQL row.
+ * the row at it, unless the conversation is still purged. If the SQL write
+ * fails after object storage accepts the bytes, this path deletes that unique
+ * object. A process crash between those steps can leave an unreferenced unique
+ * object with no SQL row.
  */
 export async function storeAttachment(args: {
   conversationId: string;
@@ -119,8 +134,19 @@ export async function storeAttachment(args: {
       throw new Error(`Attachment write conflicts with ${existing.id}`);
     }
     if (existing.deleteRequestedAt === null) {
+      if (await isConversationPurged(args.db, args.conversationId)) {
+        throw new Error(
+          `Cannot store attachment for purged conversation ${args.conversationId}`,
+        );
+      }
       return { id: existing.id };
     }
+  }
+
+  if (await isConversationPurged(args.db, args.conversationId)) {
+    throw new Error(
+      `Cannot store attachment for purged conversation ${args.conversationId}`,
+    );
   }
 
   const storageKey = attachmentKey({
@@ -136,6 +162,12 @@ export async function storeAttachment(args: {
   });
 
   if (existing?.deleteRequestedAt != null) {
+    if (await isConversationPurged(args.db, args.conversationId)) {
+      await bestEffortDelete(args.storage, storageKey);
+      throw new Error(
+        `Cannot store attachment for purged conversation ${args.conversationId}`,
+      );
+    }
     const oldStorageKey = existing.storageKey;
     const revived = await args.db
       .db()
@@ -152,6 +184,17 @@ export async function storeAttachment(args: {
       )
       .returning({ id: juniorAttachments.id });
     if (revived.length > 0) {
+      if (await isConversationPurged(args.db, args.conversationId)) {
+        await args.db
+          .db()
+          .update(juniorAttachments)
+          .set({ deleteRequestedAt: now })
+          .where(eq(juniorAttachments.id, id));
+        await bestEffortDelete(args.storage, storageKey);
+        throw new Error(
+          `Cannot store attachment for purged conversation ${args.conversationId}`,
+        );
+      }
       if (oldStorageKey !== storageKey) {
         await bestEffortDelete(args.storage, oldStorageKey);
       }
@@ -190,9 +233,26 @@ export async function storeAttachment(args: {
       .onConflictDoNothing({ target: juniorAttachments.id })
       .returning({ id: juniorAttachments.id });
     if (inserted.length > 0) {
+      if (await isConversationPurged(args.db, args.conversationId)) {
+        await args.db
+          .db()
+          .update(juniorAttachments)
+          .set({ deleteRequestedAt: now })
+          .where(eq(juniorAttachments.id, id));
+        await bestEffortDelete(args.storage, storageKey);
+        throw new Error(
+          `Cannot store attachment for purged conversation ${args.conversationId}`,
+        );
+      }
       return { id };
     }
   } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message.startsWith("Cannot store attachment for purged conversation")
+    ) {
+      throw error;
+    }
     await bestEffortDelete(args.storage, storageKey);
     throw error;
   }
@@ -216,6 +276,13 @@ export async function storeAttachment(args: {
     return { id: row.id };
   }
 
+  if (await isConversationPurged(args.db, args.conversationId)) {
+    await bestEffortDelete(args.storage, storageKey);
+    throw new Error(
+      `Cannot store attachment for purged conversation ${args.conversationId}`,
+    );
+  }
+
   const revived = await args.db
     .db()
     .update(juniorAttachments)
@@ -231,6 +298,17 @@ export async function storeAttachment(args: {
     )
     .returning({ id: juniorAttachments.id });
   if (revived.length > 0) {
+    if (await isConversationPurged(args.db, args.conversationId)) {
+      await args.db
+        .db()
+        .update(juniorAttachments)
+        .set({ deleteRequestedAt: now })
+        .where(eq(juniorAttachments.id, id));
+      await bestEffortDelete(args.storage, storageKey);
+      throw new Error(
+        `Cannot store attachment for purged conversation ${args.conversationId}`,
+      );
+    }
     if (row.storageKey !== storageKey) {
       await bestEffortDelete(args.storage, row.storageKey);
     }
@@ -299,10 +377,10 @@ export async function requestAttachmentDeletion(
 /**
  * Delete purged attachments in one bounded batch.
  *
- * Delete object keys first, then remove SQL rows that are still marked. A failed
- * blob delete leaves the marked row so the next retention run can retry. Object
- * keys are unique per write, so deleting a still-marked row's key cannot remove
- * a concurrent revive's blob.
+ * Eligible rows are explicitly purge-marked, or owned by a conversation whose
+ * transcript is already purged. That second path covers a concurrent store that
+ * inserted after purge marked existing rows. Delete object keys first, then
+ * remove rows that are still eligible so a failed blob delete remains retryable.
  */
 export async function collectAttachmentGarbage(args: {
   db: JuniorSqlDatabase;
@@ -318,10 +396,20 @@ export async function collectAttachmentGarbage(args: {
       storageKey: juniorAttachments.storageKey,
     })
     .from(juniorAttachments)
+    .innerJoin(
+      juniorConversations,
+      eq(
+        juniorAttachments.conversationId,
+        juniorConversations.conversationId,
+      ),
+    )
     .where(
       and(
         eq(juniorAttachments.provider, args.storage.provider),
-        isNotNull(juniorAttachments.deleteRequestedAt),
+        or(
+          isNotNull(juniorAttachments.deleteRequestedAt),
+          isNotNull(juniorConversations.transcriptPurgedAt),
+        ),
       ),
     )
     .orderBy(asc(juniorAttachments.createdAt), asc(juniorAttachments.id))
@@ -329,16 +417,37 @@ export async function collectAttachmentGarbage(args: {
   if (rows.length === 0) return { deleted: 0 };
 
   await args.storage.delete(rows.map((row) => row.storageKey));
-  const removed = await args.db
+  const stillEligible = await args.db
     .db()
-    .delete(juniorAttachments)
+    .select({ id: juniorAttachments.id })
+    .from(juniorAttachments)
+    .innerJoin(
+      juniorConversations,
+      eq(
+        juniorAttachments.conversationId,
+        juniorConversations.conversationId,
+      ),
+    )
     .where(
       and(
         inArray(
           juniorAttachments.id,
           rows.map((row) => row.id),
         ),
-        isNotNull(juniorAttachments.deleteRequestedAt),
+        or(
+          isNotNull(juniorAttachments.deleteRequestedAt),
+          isNotNull(juniorConversations.transcriptPurgedAt),
+        ),
+      ),
+    );
+  if (stillEligible.length === 0) return { deleted: 0 };
+  const removed = await args.db
+    .db()
+    .delete(juniorAttachments)
+    .where(
+      inArray(
+        juniorAttachments.id,
+        stillEligible.map((row) => row.id),
       ),
     )
     .returning({
