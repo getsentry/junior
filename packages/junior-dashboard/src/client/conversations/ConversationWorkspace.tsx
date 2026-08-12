@@ -27,9 +27,7 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
   const params = useParams();
   const navigate = useNavigate();
   const selectedId = params.conversationId;
-  const feed = useConversationsData(
-    props.data.config.authRequired ? props.data.me.user.email : undefined,
-  );
+  const feed = useConversationsData();
   const pendingArchiveUpdates = usePendingArchiveConversationUpdates();
   const createConversation = useCreateConversation();
   const [creating, setCreating] = useState(false);

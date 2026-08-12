@@ -24,7 +24,9 @@ const CONVERSATION_FEED_LIMIT = 50;
 async function conversationRows(
   db: JuniorDatabase,
   limit: number,
-  actorEmail?: string,
+  filter?:
+    | { kind: "viewer"; userId: string }
+    | { kind: "actorEmail"; email: string },
 ) {
   return db
     .select({
@@ -52,9 +54,11 @@ async function conversationRows(
       and(
         isNull(juniorConversations.parentConversationId),
         isNull(juniorConversations.archivedAt),
-        actorEmail
-          ? eq(juniorUsers.primaryEmailNormalized, actorEmail)
-          : undefined,
+        filter?.kind === "viewer"
+          ? eq(juniorIdentities.userId, filter.userId)
+          : filter?.kind === "actorEmail"
+            ? eq(juniorUsers.primaryEmailNormalized, filter.email)
+            : undefined,
       ),
     )
     .orderBy(
@@ -171,9 +175,26 @@ export async function readConversationRecordFromSql(
     : undefined;
 }
 
+/** Prefer the authenticated viewer user id; fall back to actor email. */
+function conversationFeedFilter(options: {
+  actorEmail?: string;
+  viewer?: User;
+}):
+  | { kind: "viewer"; userId: string }
+  | { kind: "actorEmail"; email: string }
+  | undefined {
+  if (options.viewer) {
+    return { kind: "viewer", userId: options.viewer.id };
+  }
+  if (options.actorEmail) {
+    return { kind: "actorEmail", email: options.actorEmail };
+  }
+  return undefined;
+}
+
 /**
- * Build a bounded dashboard feed. When actorEmail is set, keep only roots whose
- * actor identity is linked to that user before applying the limit.
+ * Build a bounded dashboard feed. Prefer the viewer user when present; otherwise
+ * keep only roots linked to actorEmail before applying the limit.
  */
 export async function readConversationFeedFromSql(
   options: {
@@ -187,7 +208,7 @@ export async function readConversationFeedFromSql(
   const rows = await conversationRows(
     db,
     options.limit ?? CONVERSATION_FEED_LIMIT,
-    options.actorEmail,
+    conversationFeedFilter(options),
   );
   const conversations = rows.map((row) => conversationFromRow(row));
   const conversationIds = conversations.map(
@@ -234,7 +255,7 @@ export async function readConversationFeedFromSql(
 }
 
 /**
- * Load a bounded feed with an optional linked-user presentation filter.
+ * Load a bounded feed with an optional viewer-primary linked-user filter.
  * This filter is not an authorization boundary.
  */
 export async function readConversationFeed(

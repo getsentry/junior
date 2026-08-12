@@ -332,9 +332,13 @@ describe("conversation list API", () => {
         })
         .where(eq(juniorIdentities.providerSubjectId, "U1B"));
 
+      const viewer = {
+        ...testViewer("morgan@example.com"),
+        id: linkedUserId!,
+      };
       const feed = await readConversationFeedFromSql({
-        actorEmail: "morgan@example.com",
-        viewer: testViewer("MORGAN@example.com"),
+        actorEmail: "other@example.com",
+        viewer,
         limit: 2,
       });
 
@@ -352,11 +356,27 @@ describe("conversation list API", () => {
             slackUserId: "U1B",
           }),
           conversationId: "slack:D1:morgan-linked",
+          isParticipant: true,
         }),
       ]);
       await expect(
         readConversationFeedFromSql({ actorEmail: "other@example.com" }),
       ).resolves.toMatchObject({ conversations: [] });
+      await expect(
+        readConversationFeedFromSql({
+          actorEmail: "morgan@example.com",
+          limit: 2,
+        }),
+      ).resolves.toMatchObject({
+        conversations: [
+          expect.objectContaining({
+            conversationId: "slack:C1:morgan-newest",
+          }),
+          expect.objectContaining({
+            conversationId: "slack:D1:morgan-linked",
+          }),
+        ],
+      });
     } finally {
       await fixture.close();
     }

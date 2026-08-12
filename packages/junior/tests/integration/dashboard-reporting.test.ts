@@ -465,7 +465,7 @@ describe("dashboard canonical event reporting", () => {
     });
     const rootParticipantSummary = (
       await readConversationFeedFromSql({
-        viewer: testViewer("owner@example.com"),
+        viewer: rootViewer!,
       })
     ).conversations.find(
       (conversation) => conversation.conversationId === rootConversationId,
@@ -505,6 +505,7 @@ describe("dashboard canonical event reporting", () => {
       status: "available",
     });
     const { getConversationStore, getDb } = await import("@/chat/db");
+    const { resolveViewerUser } = await import("@/chat/plugins/viewer");
     const [rootRow] = await getDb()
       .select({ destinationId: juniorConversations.destinationId })
       .from(juniorConversations)
@@ -593,9 +594,13 @@ describe("dashboard canonical event reporting", () => {
       .set({ destinationId: null })
       .where(eq(juniorConversations.conversationId, destinationlessRoot));
 
+    const destinationlessViewer = await resolveViewerUser(
+      "destinationless-owner@example.com",
+    );
+    expect(destinationlessViewer).toBeDefined();
     await expect(
       readConversationDetail(destinationlessRoot, {
-        viewer: testViewer("destinationless-owner@example.com"),
+        viewer: destinationlessViewer!,
       }),
     ).resolves.toMatchObject({
       eventHistory: { status: "available" },
@@ -603,7 +608,7 @@ describe("dashboard canonical event reporting", () => {
     });
     const destinationlessSummary = (
       await readConversationFeedFromSql({
-        viewer: testViewer("destinationless-owner@example.com"),
+        viewer: destinationlessViewer!,
       })
     ).conversations.find(
       (conversation) => conversation.conversationId === destinationlessRoot,
@@ -627,9 +632,11 @@ describe("dashboard canonical event reporting", () => {
       .set({ rootConversationId: foreignRoot })
       .where(eq(juniorConversations.conversationId, malformedTopLevel));
 
+    const foreignViewer = await resolveViewerUser("foreign-owner@example.com");
+    expect(foreignViewer).toBeDefined();
     await expect(
       readConversationDetail(malformedTopLevel, {
-        viewer: testViewer("foreign-owner@example.com"),
+        viewer: foreignViewer!,
       }),
     ).resolves.toMatchObject({
       eventHistory: { status: "redacted" },
@@ -637,12 +644,12 @@ describe("dashboard canonical event reporting", () => {
     });
     const malformedSummary = (
       await readConversationFeedFromSql({
-        viewer: testViewer("foreign-owner@example.com"),
+        viewer: foreignViewer!,
       })
     ).conversations.find(
       (conversation) => conversation.conversationId === malformedTopLevel,
     );
-    expect(malformedSummary).toMatchObject({ isParticipant: false });
+    expect(malformedSummary).toBeUndefined();
   });
 
   it("lets requested-row expiry win and stamps both root and child purges", async () => {
