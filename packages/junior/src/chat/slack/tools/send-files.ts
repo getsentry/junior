@@ -26,7 +26,12 @@ const sendFilesResultSchema = juniorToolOutputSchema.extend({
   target: z.string().min(1),
   channel_id: z.string().min(1),
   deduplicated: z.boolean().optional(),
-  attachment_ids: z.array(z.string().min(1)),
+  attachment_refs: z.array(
+    z.object({
+      id: z.string().min(1),
+      name: z.string().min(1),
+    }),
+  ),
   file_count: z.number().int().nonnegative(),
   file_ids: z.array(z.string().min(1)).optional(),
   thread_ts: z.string().min(1),
@@ -138,7 +143,10 @@ export function createSendFilesTool(
         .filter((id): id is string => Boolean(id));
       const response: SendFilesResult = {
         target: `${activeChannelId}:${threadTs}`,
-        attachment_ids: stored.map((attachment) => attachment.id),
+        attachment_refs: stored.map((attachment, index) => ({
+          id: attachment.id,
+          name: materializedFiles[index]!.filename,
+        })),
         channel_id: activeChannelId,
         thread_ts: threadTs,
         file_count: uploads.length,

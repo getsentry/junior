@@ -528,8 +528,12 @@ describe("slack channel tools", () => {
       });
 
       const rows = await fixture.sql.db().select().from(juniorAttachments);
-      expect(result.attachment_ids).toEqual([rows[0]?.id]);
-      expect(retry.attachment_ids).toEqual([rows[0]?.id]);
+      expect(result.attachment_refs).toEqual([
+        { id: rows[0]?.id, name: "report.txt" },
+      ]);
+      expect(retry.attachment_refs).toEqual([
+        { id: rows[0]?.id, name: "report.txt" },
+      ]);
       expect(rows).toHaveLength(1);
       expect(rows[0]).toMatchObject({
         conversationId: "conversation-1",
@@ -580,8 +584,10 @@ describe("slack channel tools", () => {
       const first = await executeTool(firstTool, {
         files: [{ path: "/tmp/report.txt" }],
       });
-      const attachmentId = first.attachment_ids[0];
-      expect(attachmentId).toEqual(expect.any(String));
+      const attachmentId = first.attachment_refs[0]?.id;
+      expect(first.attachment_refs).toEqual([
+        { id: expect.any(String), name: "report.txt" },
+      ]);
 
       await fixture.sql
         .db()
@@ -606,7 +612,9 @@ describe("slack channel tools", () => {
       });
 
       const rows = await fixture.sql.db().select().from(juniorAttachments);
-      expect(retry.attachment_ids).toEqual([attachmentId]);
+      expect(retry.attachment_refs).toEqual([
+        { id: attachmentId, name: "report.txt" },
+      ]);
       expect(rows).toHaveLength(1);
       expect(rows[0]).toMatchObject({
         id: attachmentId,
