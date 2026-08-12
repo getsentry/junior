@@ -419,6 +419,7 @@ test("opens and closes a conversation in the mobile workspace", async ({
   const composer = page.getByPlaceholder("Message Junior…");
   await expect(composer).toBeVisible();
   await expect(composer).toHaveCSS("min-height", "44px");
+  await expect(composer).toHaveCSS("font-size", "16px");
   await expect(page.getByRole("button", { name: "Send" })).toBeVisible();
   // One-row mobile composer; leave headroom for font metrics / padding.
   expect((await composer.boundingBox())?.height).toBeLessThan(80);
