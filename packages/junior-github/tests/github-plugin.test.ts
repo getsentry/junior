@@ -2827,7 +2827,7 @@ Conversation: \`local:test:old-conversation\`
     ]);
   });
 
-  it("preloads workspace repositories with an installation token", async () => {
+  it("preloads workspace repositories with Git Smart HTTP installation auth", async () => {
     const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
     process.env.GITHUB_APP_ID = "123";
     process.env.GITHUB_INSTALLATION_ID = "456";
@@ -2867,7 +2867,9 @@ Conversation: \`local:test:old-conversation\`
     });
     expect(runs.map((run) => run.args?.at(-1))).toEqual(["sentry", "junior"]);
     expect(runs[0]?.env).toMatchObject({
-      GIT_CONFIG_VALUE_0: "Authorization: Bearer installation-token",
+      GIT_CONFIG_VALUE_0: `Authorization: Basic ${Buffer.from(
+        "x-access-token:installation-token",
+      ).toString("base64")}`,
     });
     expect(runs[0]?.args?.join(" ")).not.toContain("installation-token");
   });

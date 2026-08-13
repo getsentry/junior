@@ -68,6 +68,7 @@ import {
   GitHubPluginSetupError,
   createPermissionCache,
   credentialUnavailable,
+  githubAuthorizationHeader,
   githubRepositoryFromLeaseScope,
   githubRepositoryFromUrl,
   githubRepositoryLeaseScope,
@@ -875,7 +876,7 @@ export function githubPlugin(
             env: {
               GIT_CONFIG_COUNT: "1",
               GIT_CONFIG_KEY_0: "http.extraHeader",
-              GIT_CONFIG_VALUE_0: `Authorization: Bearer ${token.token}`,
+              GIT_CONFIG_VALUE_0: `Authorization: ${githubAuthorizationHeader("github.com", token.token)}`,
             },
           });
           if (result.exitCode !== 0) {

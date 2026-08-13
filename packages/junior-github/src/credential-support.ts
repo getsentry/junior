@@ -447,7 +447,11 @@ function isGitSmartHttpDomain(domain: string): boolean {
   return domain.toLowerCase() === "github.com";
 }
 
-function authorizationFor(domain: string, token: string): string {
+/** Build the GitHub authorization header for API and Git Smart HTTP requests. */
+export function githubAuthorizationHeader(
+  domain: string,
+  token: string,
+): string {
   if (isGitSmartHttpDomain(domain)) {
     return `Basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}`;
   }
@@ -471,7 +475,7 @@ function createCredentialLease(
       ).map((domain) => ({
         domain,
         headers: {
-          Authorization: authorizationFor(domain, input.token),
+          Authorization: githubAuthorizationHeader(domain, input.token),
         },
       })),
     },
