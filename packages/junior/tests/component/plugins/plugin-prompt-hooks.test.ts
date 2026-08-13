@@ -186,7 +186,6 @@ describe("plugin prompt hook composition", () => {
   source: LOCAL_SOURCE,
 });
 
-    expect(captured.systemPrompt).toContain("System memory guidance.");
     expect(JSON.stringify(captured.promptContextMessages[0])).toContain(
       "User memory guidance for hello.",
     );

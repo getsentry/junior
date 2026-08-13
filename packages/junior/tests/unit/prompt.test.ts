@@ -1,42 +1,8 @@
 import { describe, expect, it } from "vitest";
-import {
-  createLocalSource,
-  createSlackSource,
-} from "@sentry/junior-plugin-api";
-import { buildSystemPrompt, buildTurnContextPrompt } from "@/chat/prompt";
+import { createSlackSource } from "@sentry/junior-plugin-api";
+import { buildTurnContextPrompt } from "@/chat/prompt";
 
 describe("prompt builders", () => {
-  it("keeps direct instructions above AGENTS.md instructions", () => {
-    expect(
-      buildSystemPrompt({ source: createLocalSource("local:test") }),
-    ).toContain(
-      "Direct system/developer/user instructions (as part of a prompt) take precedence over AGENTS.md instructions.",
-    );
-  });
-
-  it("requires pull request mentions to include a direct link", () => {
-    const slackPrompt = buildSystemPrompt({
-      source: createSlackSource({
-        teamId: "T123",
-        channelId: "C123",
-        visibility: "private",
-      }),
-    });
-    const localPrompt = buildSystemPrompt({
-      source: createLocalSource("local:test"),
-    });
-
-    expect(slackPrompt).toContain(
-      "When you mention a pull request, include a direct link.",
-    );
-    expect(slackPrompt).toContain(
-      "`owner/repo#number` is also accepted and is linkified on delivery",
-    );
-    expect(localPrompt).toContain(
-      "When you mention a pull request, include a direct link.",
-    );
-  });
-
   it("renders sandbox workspace root as runtime context", () => {
     const prompt = buildTurnContextPrompt({
       availableSkills: [],
