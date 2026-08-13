@@ -4,6 +4,7 @@ import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector"
 import { SectionIntro } from "../../components/layout/SectionIntro";
 import { cn } from "../../styles";
 import { PluginBarChart } from "../system/PluginBarChart";
+import { PluginReportRecordSet } from "../system/PluginReportRecordSet";
 
 /**
  * Render person-scoped plugin reports as peer profile sections.
@@ -40,7 +41,8 @@ function ProfilePluginReport(props: {
       : props.report.pluginName;
   const metrics = props.report.metrics ?? [];
   const widgets = props.report.widgets ?? [];
-  if (!metrics.length && !widgets.length) return null;
+  const recordSets = props.report.recordSets ?? [];
+  if (!metrics.length && !widgets.length && !recordSets.length) return null;
 
   return (
     <section
@@ -102,6 +104,12 @@ function ProfilePluginReport(props: {
           ))}
         </div>
       ) : null}
+      {recordSets.map((recordSet) => (
+        <PluginReportRecordSet
+          key={`${props.report.pluginName}:${recordSet.title}`}
+          recordSet={recordSet}
+        />
+      ))}
     </section>
   );
 }
