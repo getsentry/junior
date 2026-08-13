@@ -172,6 +172,10 @@ test("starts and continues conversations from the dashboard", async ({
   const firstContinueHeld = new Promise<void>((resolve) => {
     releaseFirstContinue = resolve;
   });
+  let releaseFirstCreate: (() => void) | undefined;
+  const firstCreateHeld = new Promise<void>((resolve) => {
+    releaseFirstCreate = resolve;
+  });
   let holdDetailRefresh = false;
   let releaseDetailRefresh: (() => void) | undefined;
   const detailRefreshHeld = new Promise<void>((resolve) => {
@@ -184,6 +188,8 @@ test("starts and continues conversations from the dashboard", async ({
     }
     createRequests.push(route.request().postDataJSON());
     if (createRequests.length === 1) {
+      // Hold the first create so we can prove send stays locked mid-flight.
+      await firstCreateHeld;
       await route.fulfill({
         json: { error: "temporary failure" },
         status: 500,
@@ -235,13 +241,23 @@ test("starts and continues conversations from the dashboard", async ({
   const startComposer = page.getByLabel("Start a conversation");
   await startComposer.fill("Start from the dashboard");
   await page.getByRole("button", { name: "Send" }).click();
+  await expect.poll(() => createRequests.length).toBe(1);
+  // Create restore keeps send locked while the first accept is open so a later
+  // submit cannot race the failed-draft restore.
+  await expect(
+    page.getByRole("button", { name: "Sending message" }),
+  ).toBeDisabled();
+  await startComposer.evaluate((element) => {
+    element.closest("form")?.requestSubmit();
+  });
+  expect(createRequests).toHaveLength(1);
+  releaseFirstCreate?.();
   await expect(
     page.getByText("Could not create the conversation. Try again."),
   ).toBeVisible();
   // New roots have no mailbox outbox, so a failed create restores the draft and
   // keeps the same idempotency key for a safe retry.
   await expect(startComposer).toHaveValue("Start from the dashboard");
-  expect(createRequests).toHaveLength(1);
   const failedCreateKey = createRequests[0]?.idempotencyKey;
   expect(createRequests[0]?.message).toBe("Start from the dashboard");
   expect(createRequests[0]?.visibility).toBe("private");

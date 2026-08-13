@@ -60,6 +60,9 @@ export function ConversationComposer(props: {
   const [draft, setDraft] = useState<ConversationDraft>(() =>
     readStoredDraft(storageKey),
   );
+  // New-conversation create holds the send control until accept settles so a
+  // failed restore cannot race a later submit.
+  const [createPending, setCreatePending] = useState(false);
   const online = useDashboardOnline();
   const message = draft.text;
   const id = useId();
@@ -71,8 +74,11 @@ export function ConversationComposer(props: {
     idempotencyKey: draft.idempotencyKey,
     lastSubmittedText: draft.lastSubmittedText,
   });
-  // Blocks only the same-tick double fire before the cleared draft re-renders.
+  // Blocks same-tick double fire. For create restore, also blocks until settle.
   const submittingRef = useRef(false);
+  // Monotonic token so a late failed create never restores over a newer submit.
+  const submitTokenRef = useRef(0);
+  const sendLocked = props.restoreDraftOnError && createPending;
 
   useEffect(() => {
     storeDraft(storageKey, draft);
@@ -104,13 +110,14 @@ export function ConversationComposer(props: {
   const submit = async (event?: FormEvent) => {
     event?.preventDefault();
     const text = message.trim();
-    if (!text || !online || submittingRef.current) return;
+    if (!text || !online || submittingRef.current || sendLocked) return;
 
     // Keep the key while the trimmed text matches the last attempt. Edits that
     // return to the same text (typo undo, IME) must not mint a new key or a
     // retry can duplicate a send the server already accepted.
     const attempt = conversationAttemptForSubmit(attemptRef.current, text);
     attemptRef.current = attempt;
+    const submitToken = ++submitTokenRef.current;
     const submittedDraft: ConversationDraft = {
       ...attempt,
       text,
@@ -127,12 +134,16 @@ export function ConversationComposer(props: {
     storeDraft(storageKey, clearedDraft);
     attemptRef.current = nextAttempt;
     submittingRef.current = true;
+    if (props.restoreDraftOnError) setCreatePending(true);
     props.onSubmitStart?.();
     textareaRef.current?.focus({ preventScroll: true });
-    // Release before the network round-trip so the next message can queue.
-    queueMicrotask(() => {
-      submittingRef.current = false;
-    });
+    // Existing conversations unlock immediately so the next message can queue.
+    // Create restore stays locked until this accept settles.
+    if (!props.restoreDraftOnError) {
+      queueMicrotask(() => {
+        submittingRef.current = false;
+      });
+    }
 
     try {
       await props.onSubmit(text, attempt.idempotencyKey);
@@ -141,12 +152,19 @@ export function ConversationComposer(props: {
         // Parent keeps the failed message in the mailbox queue for retry.
         return;
       }
+      // Ignore stale failures after a newer submit owns the composer.
+      if (submitToken !== submitTokenRef.current) return;
       // Restore only when the reader has not already started another draft.
       if (draftRef.current.text) return;
       draftRef.current = submittedDraft;
       attemptRef.current = attempt;
       setDraft(submittedDraft);
       storeDraft(storageKey, submittedDraft);
+    } finally {
+      if (props.restoreDraftOnError && submitToken === submitTokenRef.current) {
+        submittingRef.current = false;
+        setCreatePending(false);
+      }
     }
   };
 
@@ -202,13 +220,21 @@ export function ConversationComposer(props: {
             Enter to send · Shift+Enter for a new line
           </div>
           <Button
-            aria-label={props.submitLabel}
-            disabled={!message.trim() || !online}
-            title={!online ? "Connect to send" : props.submitLabel}
+            aria-label={sendLocked ? "Sending message" : props.submitLabel}
+            disabled={!message.trim() || !online || sendLocked}
+            title={
+              !online
+                ? "Connect to send"
+                : sendLocked
+                  ? "Sending message"
+                  : props.submitLabel
+            }
             type="submit"
           >
             <Send aria-hidden="true" size={14} />
-            <span className="hidden md:inline">{props.submitLabel}</span>
+            <span className="hidden md:inline">
+              {sendLocked ? "Sending…" : props.submitLabel}
+            </span>
           </Button>
         </div>
       </form>
