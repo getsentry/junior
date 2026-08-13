@@ -298,9 +298,47 @@ describe("transcript bottom pinning", () => {
     ).toBe(false);
   });
 
-  it("lets a real upward scroll pause follow during a pin settle window", () => {
-    expect(programmaticSettleScrollAction("pause")).toBe("pause");
-    expect(programmaticSettleScrollAction("follow")).toBe("ignore");
-    expect(programmaticSettleScrollAction("preserve")).toBe("ignore");
+  it("lets a real leave-bottom scroll pause follow during a pin settle window", () => {
+    expect(
+      programmaticSettleScrollAction({
+        intent: "pause",
+        snapshot: {
+          clientHeight: 800,
+          scrollHeight: 2_000,
+          scrollTop: 800,
+        },
+      }),
+    ).toBe("pause");
+    // Layout clamps can drop scrollTop while still near the bottom.
+    expect(
+      programmaticSettleScrollAction({
+        intent: "pause",
+        snapshot: {
+          clientHeight: 800,
+          scrollHeight: 2_000,
+          scrollTop: 1_112,
+        },
+      }),
+    ).toBe("ignore");
+    expect(
+      programmaticSettleScrollAction({
+        intent: "follow",
+        snapshot: {
+          clientHeight: 800,
+          scrollHeight: 2_000,
+          scrollTop: 1_200,
+        },
+      }),
+    ).toBe("ignore");
+    expect(
+      programmaticSettleScrollAction({
+        intent: "preserve",
+        snapshot: {
+          clientHeight: 800,
+          scrollHeight: 2_000,
+          scrollTop: 900,
+        },
+      }),
+    ).toBe("ignore");
   });
 });

@@ -118,12 +118,19 @@ export function transcriptFollowIntent(input: {
 /**
  * Decide how a scroll event interacts with an open programmatic pin settle.
  *
- * Pin settle noise must not pause follow, but a real upward move must still win.
+ * Pin settle noise and layout clamps must not pause follow. Only a real leave
+ * from the bottom should win over the settle window.
  */
-export function programmaticSettleScrollAction(
-  intent: TranscriptFollowIntent,
-): "ignore" | "pause" {
-  return intent === "pause" ? "pause" : "ignore";
+export function programmaticSettleScrollAction(input: {
+  intent: TranscriptFollowIntent;
+  snapshot: ScrollSnapshot;
+}): "ignore" | "pause" {
+  // Layout clamps can drop scrollTop while the reader is still at the bottom.
+  // Treat only a leave-bottom pause as intentional scroll-away.
+  if (input.intent === "pause" && !isNearScrollBottom(input.snapshot)) {
+    return "pause";
+  }
+  return "ignore";
 }
 
 /** Decide when a requested history prepend can restore or discard its viewport snapshot. */
@@ -198,10 +205,10 @@ export function usePinnedTranscriptBottom(input: {
         source,
       });
 
-      // While a pin settle is open, ignore noise from our own bottom scroll, but
-      // still honor a real upward move so the reader can leave follow mode.
+      // While a pin settle is open, ignore noise from our own bottom scroll and
+      // layout clamps, but still honor a real leave from the bottom.
       if (source === "scroll" && programmaticScrollGenerationRef.current > 0) {
-        if (programmaticSettleScrollAction(intent) === "pause") {
+        if (programmaticSettleScrollAction({ intent, snapshot }) === "pause") {
           programmaticScrollGenerationRef.current = 0;
           setFollowingIntent(false);
         }
