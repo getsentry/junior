@@ -1007,15 +1007,18 @@ describe("local agent runner", () => {
     const eventId = "33333333333333333333333333333333";
     const capture = vi.fn().mockReturnValue(eventId);
 
-    const generateReply = vi.fn<AgentRunner["run"]>(async (request) => {
-      const context = request;
-      await context.durability?.onSandboxRefChanged?.({
-        id: "sandbox-undelivered",
-        profileHash: "profile-undelivered",
-      });
-      await deliverAssistantText(request, "not delivered");
-      return completedAgentRun(successReply("not delivered"));
-    });
+    const realAgentRunner = createModelAgentRunnerForRun(() =>
+      createModelStream([{ type: "text", text: "not delivered" }]),
+    );
+    const agentRunner: AgentRunner = {
+      run: async (request) => {
+        await request.durability?.onSandboxRefChanged?.({
+          id: "sandbox-undelivered",
+          profileHash: "profile-undelivered",
+        });
+        return await realAgentRunner.run(request);
+      },
+    };
 
     await expect(
       runLocalAgentTurn(
@@ -1027,14 +1030,28 @@ describe("local agent runner", () => {
           deliverReply: async () => {
             throw new Error(rawDeliveryError);
           },
-          agentRunner: { run: generateReply },
+          agentRunner,
           logException: capture,
         },
       ),
     ).rejects.toThrow(rawDeliveryError);
 
-    expect(await loadProjection({ conversationId: conversationId! })).toEqual(
-      [],
+    const projection = await loadProjection({
+      conversationId: conversationId!,
+    });
+    expect(projection).toEqual([
+      expect.objectContaining({
+        role: "user",
+        content: expect.arrayContaining([
+          expect.objectContaining({
+            type: "text",
+            text: expect.stringContaining("hello"),
+          }),
+        ]),
+      }),
+    ]);
+    expect(projection.some((message) => message.role === "assistant")).toBe(
+      false,
     );
     const state = await getPersistedThreadState(conversationId!);
     expect(getPersistedSandboxState(state)).toBeUndefined();
