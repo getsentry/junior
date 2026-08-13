@@ -6,13 +6,13 @@
  */
 import type { ResourceEventInput } from "@sentry/junior-plugin-api";
 import { z } from "zod";
+import { vercelProjectIdSchema } from "../project.js";
 import {
   VERCEL_DEPLOYMENT_EVENTS,
   vercelDeploymentResource,
   type VercelDeploymentTarget,
 } from "../resource-events/deployment.js";
 
-const projectIdSchema = z.string().regex(/^prj_[A-Za-z0-9]+$/);
 const deploymentIdSchema = z.string().regex(/^dpl_[A-Za-z0-9]+$/);
 const commitShaSchema = z.string().regex(/^[0-9a-f]{40}$/i);
 
@@ -45,7 +45,7 @@ const deploymentPayloadSchema = z
     plan: z.unknown().optional(),
     project: z
       .object({
-        id: projectIdSchema,
+        id: vercelProjectIdSchema,
         name: z.unknown().optional(),
       })
       .strict(),

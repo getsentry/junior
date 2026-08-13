@@ -43,13 +43,13 @@ https://<junior-host>/api/webhooks/vercel
 
 The endpoint must be publicly reachable. Subscribe it to `deployment.succeeded`, `deployment.error`, and `deployment.canceled`, select the projects Junior should monitor, and save the one-time secret as a sensitive `VERCEL_WEBHOOK_SECRET` value in Junior's Production environment. Redeploy Junior after adding it.
 
-Deployment watches use Vercel's canonical `prj_...` ID. Junior resolves that ID from the project name or ID and optional team slug or ID through Vercel's authenticated project API.
+Deployment watches use Vercel's project ID. Junior resolves that ID from the project name or ID and optional team slug or ID through Vercel's authenticated project API.
 
 Supported scopes (`deployment` resource type):
 
-- `prj_...` for every deployment in the project
-- `prj_...:production` for every production deployment
-- `prj_...:production:<sha>` for one commit-scoped deployment
+- `<project-id>` for every deployment in the project
+- `<project-id>:production` for every production deployment
+- `<project-id>:production:<sha>` for one commit-scoped deployment
 
 Create the conversation watch or event task before the terminal deployment event. A valid webhook delivery does not create a watch by itself, and unmatched deliveries are not replayed later.
 

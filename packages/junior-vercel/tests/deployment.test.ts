@@ -65,6 +65,19 @@ describe("Vercel deployment", () => {
     });
   });
 
+  it("accepts an opaque project ID returned by Vercel", async () => {
+    const { tool } = toolFixture(Response.json({ id: "QmLegacyProject123" }));
+
+    await expect(
+      tool.execute?.(
+        { project: "sentry-docs" },
+        { toolCallId: "deployment-legacy-project" },
+      ),
+    ).resolves.toMatchObject({
+      projectId: "QmLegacyProject123",
+    });
+  });
+
   it("returns a project-wide subscribable resource when commit and target are omitted", async () => {
     vi.stubEnv("VERCEL_WEBHOOK_SECRET", "webhook-secret");
     const { tool } = toolFixture();

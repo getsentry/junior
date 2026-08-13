@@ -6,10 +6,10 @@ import {
   type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
+import { vercelProjectIdSchema } from "../project.js";
 import { vercelDeploymentSubscribable } from "../resource-events/deployment.js";
 import { vercelWebhookSecret } from "../webhooks/secret.js";
 
-const projectIdSchema = z.string().regex(/^prj_[A-Za-z0-9]+$/);
 const commitShaSchema = z.string().regex(/^[0-9a-f]{40}$/i);
 const targetSchema = z.enum(["preview", "production", "staging"]);
 const nonEmptyStringSchema = z.string().trim().min(1);
@@ -36,7 +36,7 @@ const inputSchema = z
 const deploymentSchema = z.object({
   commitSha: commitShaSchema.nullable(),
   deploymentTarget: targetSchema.nullable(),
-  projectId: projectIdSchema,
+  projectId: vercelProjectIdSchema,
   subscribable: subscribableResourceSchema.optional(),
 });
 
@@ -96,7 +96,9 @@ export function createVercelDeploymentTool(ctx: ToolRegistrationHookContext) {
           `Vercel project lookup failed with HTTP ${response.status}`,
         );
       }
-      const projectId = z.object({ id: projectIdSchema }).parse(parsed).id;
+      const projectId = z
+        .object({ id: vercelProjectIdSchema })
+        .parse(parsed).id;
       const commitSha = input.commitSha?.toLowerCase();
       // Preserve the previous commit-watch default so one-shot SHA watches stay
       // production-scoped unless the caller names another target.
