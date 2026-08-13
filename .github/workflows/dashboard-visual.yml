@@ -8,20 +8,9 @@ on:
       - ".github/workflows/dashboard-visual.yml"
       - "package.json"
       - "pnpm-lock.yaml"
-  workflow_dispatch:
-    inputs:
-      pr_number:
-        description: Pull request number to comment on
-        required: true
-        type: string
-      all:
-        description: Capture every registered scenario
-        required: false
-        default: true
-        type: boolean
 
 concurrency:
-  group: dashboard-visual-${{ github.event.pull_request.number || inputs.pr_number || github.ref }}
+  group: dashboard-visual-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
@@ -29,12 +18,9 @@ jobs:
     name: visual / capture
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 20
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (
-        github.event_name == 'pull_request' &&
-        github.event.pull_request.head.repo.full_name == github.repository
-      )
+    # pull_request only: avoid workflow_dispatch privileged default-branch context
+    # executing untrusted PR head (CodeQL cache-poisoning rule).
+    if: github.event.pull_request.head.repo.full_name == github.repository
     permissions:
       contents: read
       pull-requests: read
@@ -47,48 +33,25 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/pull/{0}/head', inputs.pr_number) || github.sha }}
 
       - name: Resolve run mode
         id: mode
         env:
-          EVENT_NAME: ${{ github.event_name }}
-          FORCE_ALL_INPUT: ${{ inputs.all }}
-          GH_TOKEN: ${{ github.token }}
           PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
-          PR_NUMBER_INPUT: ${{ inputs.pr_number }}
-          PR_NUMBER_EVENT: ${{ github.event.pull_request.number }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.sha }}
-          REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
 
-          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
-            echo "pr_number=$PR_NUMBER_INPUT" >> "$GITHUB_OUTPUT"
-            head_repo="$(gh api "repos/${REPOSITORY}/pulls/${PR_NUMBER_INPUT}" --jq .head.repo.full_name)"
-            if [[ "$head_repo" != "$REPOSITORY" ]]; then
-              echo "Refusing workflow_dispatch for fork PR head ($head_repo)."
-              echo "all=false" >> "$GITHUB_OUTPUT"
-              echo "run=false" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-            if [[ "$FORCE_ALL_INPUT" == "true" ]]; then
-              echo "all=true" >> "$GITHUB_OUTPUT"
-            else
-              echo "all=false" >> "$GITHUB_OUTPUT"
-            fi
-            : > /tmp/visual-changed.txt
+          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          if [[ ",$PR_LABELS," == *",trigger-visual,"* ]]; then
+            echo "all=true" >> "$GITHUB_OUTPUT"
           else
-            echo "pr_number=$PR_NUMBER_EVENT" >> "$GITHUB_OUTPUT"
-            if [[ ",$PR_LABELS," == *",trigger-visual,"* ]]; then
-              echo "all=true" >> "$GITHUB_OUTPUT"
-            else
-              echo "all=false" >> "$GITHUB_OUTPUT"
-            fi
-            git diff --name-only "$BASE_SHA" "$HEAD_SHA" > /tmp/visual-changed.txt
+            echo "all=false" >> "$GITHUB_OUTPUT"
           fi
 
+          git diff --name-only "$BASE_SHA" "$HEAD_SHA" > /tmp/visual-changed.txt
           cat /tmp/visual-changed.txt
 
           if [[ -s /tmp/visual-changed.txt ]] && grep -q '^packages/junior-dashboard/' /tmp/visual-changed.txt; then
@@ -97,18 +60,10 @@ jobs:
             has_dashboard=false
           fi
 
-          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
-            if [[ "$FORCE_ALL_INPUT" == "true" || "$has_dashboard" == "true" ]]; then
-              echo "run=true" >> "$GITHUB_OUTPUT"
-            else
-              echo "run=false" >> "$GITHUB_OUTPUT"
-            fi
+          if [[ ",$PR_LABELS," == *",trigger-visual,"* || "$has_dashboard" == "true" ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
           else
-            if [[ ",$PR_LABELS," == *",trigger-visual,"* || "$has_dashboard" == "true" ]]; then
-              echo "run=true" >> "$GITHUB_OUTPUT"
-            else
-              echo "run=false" >> "$GITHUB_OUTPUT"
-            fi
+            echo "run=false" >> "$GITHUB_OUTPUT"
           fi
 
       # No shared Actions cache here. Capture runs PR head code, and writing the
@@ -172,7 +127,6 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/pull/{0}/head', inputs.pr_number) || github.sha }}
 
       - name: Prefer trusted publisher from default branch
         env:
