@@ -32,6 +32,12 @@ function readMarkdownLink(text: string, start: number): number | undefined {
     return undefined;
   }
 
+  // Reject bare or nested brackets so an earlier `[` cannot bind to a later link.
+  const label = text.slice(start + 1, labelEnd);
+  if (label.includes("[") || label.includes("]") || label.includes("\n")) {
+    return undefined;
+  }
+
   const destStart = labelEnd + 2;
   if (
     !text.startsWith("http://", destStart) &&

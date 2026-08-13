@@ -37,6 +37,16 @@ describe("GitHub reply markdown", () => {
     );
   });
 
+  it("still linkifies refs after a bare bracketed token", () => {
+    expect(
+      linkifyGitHubReferences(
+        "[note] getsentry/junior#1509 and [real](https://example.com/x)",
+      ),
+    ).toBe(
+      "[note] [getsentry/junior#1509](https://github.com/getsentry/junior/issues/1509) and [real](https://example.com/x)",
+    );
+  });
+
   it("leaves ambiguous references unchanged", () => {
     expect(linkifyGitHubReferences("PR #1509 and foo.getsentry/junior#1509")).toBe(
       "PR #1509 and foo.getsentry/junior#1509",
