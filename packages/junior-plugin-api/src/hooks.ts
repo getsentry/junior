@@ -34,6 +34,13 @@ import type {
   UserPromptContext,
   UserPromptContribution,
 } from "./prompt";
+import type { PluginContext } from "./context";
+
+/** One plugin-owned transformation of a Slack reply before core formatting. */
+export interface SlackReplyMarkdownHookContext
+  extends Pick<PluginContext, "db" | "log" | "plugin"> {
+  text: string;
+}
 
 export interface PluginHooks {
   systemPrompt?(
@@ -85,6 +92,8 @@ export interface PluginHooks {
   slackConversationLink?(
     ctx: SlackConversationLinkHookContext,
   ): SlackConversationLink | undefined;
+  /** Transform provider-owned references before core formats a Slack reply. */
+  slackReplyMarkdown?(ctx: SlackReplyMarkdownHookContext): string;
   tools?(
     ctx: ToolRegistrationHookContext,
   ): Record<string, PluginToolDefinition>;

@@ -390,6 +390,22 @@ export function getPlugins(): PluginRegistration[] {
   return [...registeredPlugins];
 }
 
+/** Apply provider-owned reference formatting before core formats a Slack reply. */
+export function applyPluginSlackReplyMarkdown(text: string): string {
+  let transformed = text;
+  for (const plugin of getPlugins()) {
+    const hook = plugin.hooks?.slackReplyMarkdown;
+    if (!hook) {
+      continue;
+    }
+    transformed = hook({
+      ...basePluginContext(plugin),
+      text: transformed,
+    });
+  }
+  return transformed;
+}
+
 /** Collect stable plugin prompt contributions for the static system prompt. */
 export async function getPluginSystemPromptContributions(
   source: ToolRuntimeContext["source"],
