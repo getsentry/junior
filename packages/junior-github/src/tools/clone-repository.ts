@@ -6,7 +6,7 @@ import {
   type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
-import { RESERVED_SANDBOX_DIRECTORIES } from "../sandbox-paths.js";
+import { isReservedSandboxDirectory } from "../sandbox-paths.js";
 
 const inputSchema = z
   .object({
@@ -43,7 +43,7 @@ function parseRepo(value: string): { name: string; owner: string } {
 }
 
 function defaultDirectory(repoName: string): string {
-  return RESERVED_SANDBOX_DIRECTORIES.has(repoName)
+  return isReservedSandboxDirectory(repoName)
     ? `${repoName}-repo`
     : repoName;
 }

@@ -53,7 +53,7 @@ import {
   prepareCommitMsgHook,
 } from "./git-config.js";
 import { linkifyGitHubReferences } from "./reply-markdown.js";
-import { RESERVED_SANDBOX_DIRECTORIES } from "./sandbox-paths.js";
+import { isReservedSandboxDirectory } from "./sandbox-paths.js";
 import {
   CREATE_TOOL_ROUTING_GUIDANCE,
   GITHUB_APP_ID_ENV,
@@ -847,7 +847,7 @@ export function githubPlugin(
             !/^[A-Za-z0-9._-]+$/.test(entry.path) ||
             entry.path === "." ||
             entry.path === ".." ||
-            RESERVED_SANDBOX_DIRECTORIES.has(entry.path)
+            isReservedSandboxDirectory(entry.path)
           ) {
             throw new Error(`Invalid workspace checkout path: ${entry.path}`);
           }

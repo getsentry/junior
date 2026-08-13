@@ -58,6 +58,35 @@ describe("thread sandbox state", () => {
     expect(getPersistedSandboxState(state)).toBeUndefined();
   });
 
+  it("final fallback still clears when null is preserved after failed inline write", async () => {
+    // Mirrors durability adapters: keep null in the local variable so a later
+    // persist can clear even if an earlier onSandboxRefChanged write failed.
+    const conversationId = "local:test:thread-sandbox-null-fallback";
+    await persistThreadStateById(conversationId, {
+      sandboxRef: { id: "sandbox-stale", profileHash: "profile-stale" },
+    });
+
+    let sandboxRef: { id: string; profileHash?: string } | null | undefined = {
+      id: "sandbox-stale",
+      profileHash: "profile-stale",
+    };
+    const resultSandboxRef: { id: string } | null | undefined = null;
+
+    // Inline clear signal collapses only when coerced with ?? undefined.
+    sandboxRef = null;
+    await persistThreadStateById(conversationId, {
+      sandboxRef:
+        resultSandboxRef !== undefined ? resultSandboxRef : sandboxRef,
+    });
+
+    const state = await getPersistedThreadState(conversationId);
+    expect(getPersistedSandboxState(state)).toBeUndefined();
+    expect(state).toMatchObject({
+      app_sandbox_id: "",
+      app_sandbox_dependency_profile_hash: "",
+    });
+  });
+
   it("writes thread scratch with Junior's 7-day TTL", async () => {
     const stateAdapter = getStateAdapter();
     const set = vi.spyOn(stateAdapter, "set");

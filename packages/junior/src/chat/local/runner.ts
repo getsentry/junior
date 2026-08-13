@@ -62,6 +62,7 @@ import {
   type OAuthAuthorization,
 } from "@/chat/oauth-authorization";
 import type { SandboxEgressSignalTransport } from "@/chat/sandbox/egress/signals";
+import type { SandboxRef } from "@/chat/sandbox/ref";
 
 const SENTRY_EVENT_ID_PATTERN = /^[a-f0-9]{32}$/i;
 
@@ -215,7 +216,8 @@ async function runLocalAgentTurnInContext(
     conversation,
     conversationId: input.conversationId,
   });
-  let sandboxRef = getPersistedSandboxState(persisted);
+  let sandboxRef: SandboxRef | null | undefined =
+    getPersistedSandboxState(persisted);
   const initialSandboxRef = sandboxRef;
 
   const turnId = localTurnId();
@@ -350,7 +352,8 @@ async function runLocalAgentTurnInContext(
         },
         state: {
           pendingAuth: conversation.processing.pendingAuth,
-          sandboxRef,
+          // Agent run state only tracks a live/absent ref, not an explicit clear.
+          sandboxRef: sandboxRef ?? undefined,
         },
         onEvent: async (event) => {
           if (event.type === "status") {
@@ -371,6 +374,7 @@ async function runLocalAgentTurnInContext(
         delivery: deliverAssistantMessage,
         durability: {
           onSandboxRefChanged: async (nextSandboxRef) => {
+            // Keep null so a failed inline persist still clears on final write.
             sandboxRef = nextSandboxRef;
             await persistThreadStateById(input.conversationId, {
               conversation,
@@ -504,7 +508,8 @@ async function runLocalAgentTurnInContext(
   try {
     await persistThreadStateById(input.conversationId, {
       conversation: completedState.conversation,
-      sandboxRef: reply.sandboxRef ?? sandboxRef,
+      sandboxRef:
+        reply.sandboxRef !== undefined ? reply.sandboxRef : sandboxRef,
     });
     if (reply.piMessages?.length) {
       // Destination acceptance is the completion boundary: this first commits

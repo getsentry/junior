@@ -78,6 +78,13 @@ function floatingMaxAgeMs(): number {
     : DEFAULT_FLOATING_MAX_AGE_MS;
 }
 
+/** Locale-independent string order for stable profile hashes. */
+function compareCodePoints(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
 function workspaceRecipe(workspace: Workspace) {
   // Sort repos so profile hashes stay stable when query order differs.
   // Omit isPrimary: it only selects AGENTS.md at runtime, not snapshot contents.
@@ -88,11 +95,11 @@ function workspaceRecipe(workspace: Workspace) {
       checkoutPath,
     }))
     .sort((left, right) => {
-      const provider = left.provider.localeCompare(right.provider);
+      const provider = compareCodePoints(left.provider, right.provider);
       if (provider !== 0) return provider;
-      const repo = left.repo.localeCompare(right.repo);
+      const repo = compareCodePoints(left.repo, right.repo);
       if (repo !== 0) return repo;
-      return left.checkoutPath.localeCompare(right.checkoutPath);
+      return compareCodePoints(left.checkoutPath, right.checkoutPath);
     });
   return {
     id: workspace.id,

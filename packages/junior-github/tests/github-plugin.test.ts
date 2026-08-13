@@ -2881,6 +2881,30 @@ Conversation: \`local:test:old-conversation\`
     );
   });
 
+  it("rejects reserved workspace checkout paths case-insensitively", async () => {
+    const ctx = {
+      db,
+      log: pluginLog,
+      plugin: { name: "github" },
+      repos: [{ repo: "getsentry/skills", path: "Skills" }],
+      sandbox: {
+        juniorRoot: "/vercel/sandbox/.junior",
+        root: "/vercel/sandbox",
+        async readFile() {
+          return null;
+        },
+        async run() {
+          throw new Error("workspace clone should not start");
+        },
+        async writeFile() {},
+      },
+    } as WorkspacePrepareHookContext;
+
+    await expect(githubPlugin().hooks?.workspacePrepare?.(ctx)).rejects.toThrow(
+      "Invalid workspace checkout path: Skills",
+    );
+  });
+
   it("injects Junior author and committer identity", () => {
     process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
     process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";

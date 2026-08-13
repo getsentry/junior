@@ -33,6 +33,7 @@ import {
 } from "@/chat/logging";
 import { getConfigDefaults } from "@/chat/configuration/defaults";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
+import type { SandboxRef } from "@/chat/sandbox/ref";
 import {
   findSkillByName,
   parseSkillInvocation,
@@ -358,7 +359,7 @@ async function executeAgentRunInPrivacyContext(
   const turnTimeoutBudgetMs = Math.max(0, turnDeadlineAtMs - replyStartedAtMs);
 
   let resume: ResumeState | undefined;
-  let lastKnownSandboxRef = state.sandboxRef;
+  let lastKnownSandboxRef: SandboxRef | null | undefined = state.sandboxRef;
   let mcpToolManager: McpToolManager | undefined;
   let closeTools: (() => Promise<void>) | undefined;
   let connectedMcpProviders = new Set<string>();
@@ -1652,7 +1653,11 @@ async function executeAgentRunInPrivacyContext(
       newMessages,
       userInput,
       toolCalls,
-      sandboxRef: wiring.getSandboxRef(),
+      // Prefer the durability hint so an explicit clear (null) survives result.
+      sandboxRef:
+        lastKnownSandboxRef !== undefined
+          ? lastKnownSandboxRef
+          : wiring.getSandboxRef(),
       piMessages: [...agent.state.messages],
       durationMs: Date.now() - replyStartedAtMs,
       generatedFileCount: generatedFiles.length,

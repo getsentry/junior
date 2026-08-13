@@ -38,7 +38,8 @@ export interface AgentTurnDiagnostics {
 export interface AgentRunResult {
   /** Sanitized terminal text for diagnostics and failure fallback, not success delivery. */
   text: string;
-  sandboxRef?: SandboxRef;
+  /** Latest sandbox ref; null means the durable reference was cleared. */
+  sandboxRef?: SandboxRef | null;
   piMessages?: PiMessage[];
   diagnostics: AgentTurnDiagnostics;
 }
@@ -47,7 +48,8 @@ export interface TurnResultInput {
   newMessages: unknown[];
   userInput: string;
   toolCalls: string[];
-  sandboxRef?: SandboxRef;
+  /** Latest sandbox ref; null means the durable reference was cleared. */
+  sandboxRef?: SandboxRef | null;
   piMessages?: PiMessage[];
   durationMs?: number;
   generatedFileCount: number;

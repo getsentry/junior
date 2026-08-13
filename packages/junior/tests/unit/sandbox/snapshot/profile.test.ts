@@ -140,6 +140,87 @@ describe("snapshot dependency profile", () => {
     expect(first?.hash).toBe(reordered?.hash);
   });
 
+  it("keeps workspace profile hashes stable without localeCompare", () => {
+    const updatedAt = new Date("2026-03-10T00:00:00.000Z");
+    // Code-point order differs from some locales for mixed case / symbols.
+    const reposA = [
+      {
+        provider: "github",
+        repo: "getsentry/Zulu",
+        checkoutPath: "Zulu",
+        isPrimary: true,
+      },
+      {
+        provider: "github",
+        repo: "getsentry/alpha",
+        checkoutPath: "alpha",
+        isPrimary: false,
+      },
+    ];
+    const reposB = [...reposA].reverse();
+    const first = create("node22", {
+      id: "workspace-1",
+      name: "sentry",
+      setupScript: "pnpm install",
+      updatedAt,
+      repos: reposA,
+    });
+    const second = create("node22", {
+      id: "workspace-1",
+      name: "sentry",
+      setupScript: "pnpm install",
+      updatedAt,
+      repos: reposB,
+    });
+    expect(first?.hash).toBe(second?.hash);
+  });
+
+  it("ignores isPrimary when hashing workspace profiles", () => {
+    const updatedAt = new Date("2026-03-10T00:00:00.000Z");
+    const first = create("node22", {
+      id: "workspace-1",
+      name: "sentry",
+      setupScript: "pnpm install",
+      updatedAt,
+      repos: [
+        {
+          provider: "github",
+          repo: "getsentry/sentry",
+          checkoutPath: "sentry",
+          isPrimary: true,
+        },
+        {
+          provider: "github",
+          repo: "getsentry/relay",
+          checkoutPath: "relay",
+          isPrimary: false,
+        },
+      ],
+    });
+    const second = create("node22", {
+      id: "workspace-1",
+      name: "sentry",
+      setupScript: "pnpm install",
+      updatedAt,
+      repos: [
+        {
+          provider: "github",
+          repo: "getsentry/sentry",
+          checkoutPath: "sentry",
+          isPrimary: false,
+        },
+        {
+          provider: "github",
+          repo: "getsentry/relay",
+          checkoutPath: "relay",
+          isPrimary: true,
+        },
+      ],
+    });
+
+    expect(first?.hash).toBe(second?.hash);
+  });
+
   it("installs dependencies in the complete Workspace profile", () => {
     dependenciesMock.mockReturnValue([
       { type: "npm", package: "example", version: "1.2.3" },

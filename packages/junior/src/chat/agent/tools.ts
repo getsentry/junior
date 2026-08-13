@@ -95,7 +95,7 @@ interface ToolWiringArgs {
   invokedSkill: SkillMetadata | null;
   onEvent?: (event: AgentEvent) => void | Promise<void>;
   onFatalToolError(error: Error): void;
-  onSandboxRefChanged: (sandboxRef: SandboxRef | undefined) => void;
+  onSandboxRefChanged: (sandboxRef: SandboxRef | null | undefined) => void;
   preAgentPromptMessages: () => PiMessage[];
   recordConnectedMcpProvider: (provider: string) => Promise<void>;
   requestHandoff?: ToolRuntimeContext["handoff"];
