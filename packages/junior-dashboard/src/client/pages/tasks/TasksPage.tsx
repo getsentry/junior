@@ -430,7 +430,7 @@ function TaskRow(props: {
         <button
           aria-expanded={props.selected}
           aria-label={`View task details: ${task.title}`}
-          className="grid size-8 cursor-pointer place-items-center rounded border border-transparent bg-transparent text-dashboard-text-muted transition-colors hover:border-dashboard-border-strong hover:bg-dashboard-fill-mid hover:text-dashboard-text"
+          className="grid size-8 cursor-pointer place-items-center rounded border border-transparent bg-transparent text-dashboard-text-muted transition-colors hover:border-dashboard-border-strong hover:bg-dashboard-fill-low hover:text-dashboard-text"
           onClick={props.onSelect}
           type="button"
         >
@@ -467,7 +467,7 @@ function TaskSourceMark(props: { task: TaskSummary }) {
     return (
       <div
         aria-label="Scheduled task"
-        className="grid size-9 shrink-0 place-items-center rounded border border-dashboard-border bg-dashboard-fill-soft text-cyan-300/75"
+        className="grid size-9 shrink-0 place-items-center rounded border border-dashboard-border bg-dashboard-fill-subtle text-cyan-300/75"
         role="img"
         title="Scheduled task"
       >
@@ -488,7 +488,7 @@ function TaskSourceMark(props: { task: TaskSummary }) {
   return (
     <div
       aria-label={`${sourceLabel} event task`}
-      className="grid size-9 shrink-0 place-items-center rounded border border-dashboard-border bg-dashboard-fill-soft text-cyan-300/75"
+      className="grid size-9 shrink-0 place-items-center rounded border border-dashboard-border bg-dashboard-fill-subtle text-cyan-300/75"
       role="img"
       title={`${sourceLabel} event task`}
     >

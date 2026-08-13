@@ -251,10 +251,11 @@ export function activityChartAverage(values: readonly number[]): number {
 }
 
 /** Shared visual style for average-line labels. */
-export const chartAverageLabelClassName = "fill-dashboard-chart-label font-mono leading-none";
+export const chartAverageLabelClassName =
+  "fill-dashboard-chart-label font-mono leading-none";
 
 /** Solid chip behind average labels so series colors never wash out the text. */
-const chartAverageLabelChip = "var(--color-dashboard-popover)";
+const chartAverageLabelChip = "var(--color-dashboard-chart-label-chip)";
 
 /**
  * Opt-in horizontal average across the plotted buckets.
@@ -301,7 +302,7 @@ export function ActivityChartAverageLine(props: {
   return (
     <g aria-label={`average ${label}`} pointerEvents="none">
       <line
-        stroke={props.stroke ?? "var(--color-dashboard-chart-label-muted)"}
+        stroke={props.stroke ?? "var(--color-dashboard-chart-average-guide)"}
         strokeDasharray="4 4"
         strokeOpacity={0.85}
         strokeWidth={1.25}

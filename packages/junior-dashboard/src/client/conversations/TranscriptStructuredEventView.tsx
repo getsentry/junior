@@ -40,7 +40,7 @@ export function TranscriptStructuredEventView(props: {
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {detail.metadata.map((value) => (
                   <span
-                    className="rounded bg-dashboard-fill-mid px-1.5 py-0.5 font-mono text-xs text-dashboard-text-muted"
+                    className="rounded bg-dashboard-fill-hover px-1.5 py-0.5 font-mono text-xs text-dashboard-text-muted"
                     key={value}
                   >
                     <HighlightText text={value} />

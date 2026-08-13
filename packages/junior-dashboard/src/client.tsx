@@ -44,7 +44,7 @@ class DashboardErrorBoundary extends Component<
 
 function DashboardErrorPanel(props: { error: Error }) {
   return (
-    <main className="grid min-h-screen place-items-center bg-dashboard-bg p-8 text-dashboard-text-solid">
+    <main className="grid min-h-screen place-items-center bg-dashboard-ink p-8 text-dashboard-text-solid">
       <section className="w-full max-w-5xl border border-rose-400/50 bg-dashboard-surface-raised p-5 font-sans">
         <div className="font-mono text-xs uppercase leading-none text-dashboard-text-faint">
           Dashboard Error
@@ -56,7 +56,7 @@ function DashboardErrorPanel(props: { error: Error }) {
           The dashboard hit a client-side exception. The stack trace is shown
           here so the page does not fail blank.
         </p>
-        <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap break-words border border-dashboard-border-strong bg-dashboard-bg p-4 font-mono text-sm leading-relaxed text-dashboard-text-solid">
+        <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap break-words border border-dashboard-border-strong bg-dashboard-ink p-4 font-mono text-sm leading-relaxed text-dashboard-text-solid">
           {props.error.stack ?? props.error.message}
         </pre>
       </section>

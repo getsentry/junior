@@ -50,7 +50,7 @@ export function DashboardHeader(props: {
           aria-controls="mobile-navigation"
           aria-expanded={props.mobileNavigationOpen}
           aria-label={`${props.mobileNavigationOpen ? "Close" : "Open"} navigation`}
-          className="grid size-10 cursor-pointer place-items-center rounded-lg border-0 bg-transparent text-dashboard-text transition-colors hover:bg-dashboard-fill-mid focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70 md:hidden"
+          className="grid size-10 cursor-pointer place-items-center rounded-lg border-0 bg-transparent text-dashboard-text transition-colors hover:bg-dashboard-fill-emphasis focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70 md:hidden"
           onClick={() =>
             props.onMobileNavigationOpenChange(!props.mobileNavigationOpen)
           }

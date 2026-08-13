@@ -39,7 +39,7 @@ export function SecondaryNavigation(props: {
   return (
     <SecondaryNavigationPortal
       desktop={
-        <div className="border-b border-dashboard-border-subtle bg-dashboard-fill-faint">
+        <div className="border-b border-dashboard-border-subtle bg-dashboard-fill-quiet">
           <nav
             aria-label={props.ariaLabel}
             className={cn(

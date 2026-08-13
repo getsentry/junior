@@ -102,7 +102,7 @@ export function TaskDetailsDrawer(props: {
         {task.totalRuns > 0 ? (
           <div className="pt-1">
             <Link
-              className="inline-flex items-center justify-center rounded border border-dashboard-border-emphasis bg-dashboard-fill-soft px-3 py-2 font-mono text-xs font-medium text-dashboard-text no-underline transition-colors hover:border-dashboard-border-emphasis hover:bg-dashboard-fill-mid"
+              className="inline-flex items-center justify-center rounded border border-dashboard-border-emphasis bg-dashboard-fill-subtle px-3 py-2 font-mono text-xs font-medium text-dashboard-text no-underline transition-colors hover:border-dashboard-border-emphasis hover:bg-dashboard-fill-emphasis"
               to={`/tasks/${task.kind}/${encodeURIComponent(task.id)}/executions`}
             >
               View all executions

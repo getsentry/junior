@@ -94,8 +94,8 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
         aria-label="Selected conversation"
         className={
           selectedId || creating
-            ? "grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-dashboard-fill-faint"
-            : "hidden min-h-0 overflow-hidden bg-dashboard-fill-faint md:grid md:grid-rows-[minmax(0,1fr)]"
+            ? "grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-dashboard-fill-minimal"
+            : "hidden min-h-0 overflow-hidden bg-dashboard-fill-minimal md:grid md:grid-rows-[minmax(0,1fr)]"
         }
       >
         {selectedId && !creating ? (

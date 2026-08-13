@@ -17,15 +17,15 @@ export function DirectoryRowsSkeleton(props: { wideRuntime?: boolean }) {
           key={index}
         >
           <div className="flex min-w-0 items-center gap-3 max-md:col-span-3">
-            <span className="size-9 shrink-0 rounded bg-dashboard-fill-strong" />
+            <span className="size-9 shrink-0 rounded bg-dashboard-fill-highlight" />
             <div className="grid min-w-0 flex-1 gap-2">
               <span className="h-3.5 w-2/5 rounded bg-dashboard-fill-strong" />
-              <span className="h-2.5 w-3/5 rounded bg-dashboard-fill-mid" />
+              <span className="h-2.5 w-3/5 rounded bg-dashboard-fill-skeleton" />
             </div>
           </div>
           {[0, 1, 2].map((metric) => (
             <span
-              className="h-4 w-10 justify-self-end rounded bg-dashboard-fill-mid"
+              className="h-4 w-10 justify-self-end rounded bg-dashboard-fill-emphasis"
               key={metric}
             />
           ))}

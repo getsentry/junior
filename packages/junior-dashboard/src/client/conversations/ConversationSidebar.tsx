@@ -55,7 +55,7 @@ export function ConversationSidebar(props: {
           </h2>
           <button
             aria-label="New conversation"
-            className="grid size-8 cursor-pointer place-items-center rounded-md text-dashboard-text-muted transition hover:bg-dashboard-fill-mid hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-cyan-300/35"
+            className="grid size-8 cursor-pointer place-items-center rounded-md text-dashboard-text-muted transition hover:bg-dashboard-fill-hover hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-cyan-300/35"
             onClick={props.onNewConversation}
             title="New conversation"
             type="button"
@@ -189,7 +189,7 @@ function ConversationSidebarRow(props: {
               className={cn(
                 "size-1.5 shrink-0 rounded-full",
                 status === "failed" && "bg-rose-300",
-                status === "idle" && "bg-dashboard-fill-heavy",
+                status === "idle" && "bg-dashboard-fill-idle",
               )}
             />
           )}
@@ -205,7 +205,7 @@ function ConversationSidebarRow(props: {
       </Link>
       <button
         aria-label={`Archive ${title}`}
-        className="pointer-events-none absolute right-2 top-1/2 z-10 grid size-8 -translate-y-1/2 cursor-pointer place-items-center rounded-md bg-dashboard-popover text-dashboard-text-muted opacity-0 shadow-[-8px_0_12px_var(--color-dashboard-shadow-heavy)] transition hover:text-dashboard-text focus:pointer-events-auto focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-cyan-300/35 group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100 disabled:cursor-not-allowed"
+        className="pointer-events-none absolute right-2 top-1/2 z-10 grid size-8 -translate-y-1/2 cursor-pointer place-items-center rounded-md bg-dashboard-popover text-dashboard-text-muted opacity-0 shadow-[-8px_0_12px_var(--color-dashboard-shadow-popover-edge)] transition hover:text-dashboard-text focus:pointer-events-auto focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-cyan-300/35 group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100 disabled:cursor-not-allowed"
         disabled={archive.isPending}
         onClick={() =>
           archive.mutate({

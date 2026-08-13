@@ -37,9 +37,10 @@ export function TranscriptTurnContextView(props: {
           aria-expanded={open}
           aria-label="View turn context"
           className={cn(
-            "grid size-7 cursor-pointer place-items-center rounded-md border border-transparent bg-transparent transition-colors hover:border-dashboard-border-strong hover:bg-dashboard-fill-mid focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-200/60",
+            "grid size-7 cursor-pointer place-items-center rounded-md border border-transparent bg-transparent transition-colors hover:border-dashboard-border-strong hover:bg-dashboard-fill-emphasis focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-200/60",
             dashboardInteractiveTextClass,
-            open && "border-dashboard-border-strong bg-dashboard-fill-mid text-cyan-100/80",
+            open &&
+              "border-dashboard-border-strong bg-dashboard-fill-emphasis text-cyan-100/80",
           )}
           onClick={() => setOpen(true)}
           ref={triggerRef}
@@ -181,7 +182,7 @@ function MemoryRecall(props: {
           className="group/memory border-t border-dashboard-border-strong first:border-t-0"
           key={memory.id}
         >
-          <summary className="flex cursor-pointer list-none items-start gap-2.5 px-3 py-3 transition-colors hover:bg-dashboard-fill-mid [&::-webkit-details-marker]:hidden">
+          <summary className="flex cursor-pointer list-none items-start gap-2.5 px-3 py-3 transition-colors hover:bg-dashboard-fill-low [&::-webkit-details-marker]:hidden">
             <ChevronRight
               aria-hidden="true"
               className="mt-0.5 shrink-0 text-dashboard-text-muted transition-transform group-open/memory:rotate-90"
@@ -246,7 +247,7 @@ function MemoryRecall(props: {
 function GenericContext(props: { context: TranscriptViewTurnContext }) {
   return (
     <div>
-      <pre className="m-0 overflow-x-auto whitespace-pre-wrap break-words rounded-lg bg-dashboard-fill-mid p-3 text-xs leading-relaxed text-dashboard-text-muted">
+      <pre className="m-0 overflow-x-auto whitespace-pre-wrap break-words rounded-lg bg-dashboard-fill-low p-3 text-xs leading-relaxed text-dashboard-text-muted">
         <HighlightText text={JSON.stringify(props.context.content, null, 2)} />
       </pre>
       <p className="m-0 mt-3 text-xs text-dashboard-text-muted">

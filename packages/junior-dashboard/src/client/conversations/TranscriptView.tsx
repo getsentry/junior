@@ -128,7 +128,7 @@ function JumpToLatestButton(props: {
     <div className="pointer-events-none sticky bottom-3 z-20 mt-3 flex justify-center px-3 md:fixed md:inset-x-auto md:bottom-6 md:right-8 md:mt-0 md:justify-end md:px-0">
       <Button
         aria-label={label}
-        className="pointer-events-auto relative rounded-lg !border !border-cyan-300/30 !bg-dashboard-jump-idle text-dashboard-text shadow-[0_6px_24px_var(--color-dashboard-shadow-mid)] hover:!border-cyan-200/60 hover:!bg-dashboard-jump-hover hover:!text-dashboard-text"
+        className="pointer-events-auto relative rounded-lg !border !border-cyan-300/30 !bg-dashboard-jump-idle text-dashboard-text shadow-[0_6px_24px_var(--color-dashboard-shadow-jump)] hover:!border-cyan-200/60 hover:!bg-dashboard-jump-hover hover:!text-dashboard-text"
         onClick={props.onClick}
         size="icon"
         title={label}

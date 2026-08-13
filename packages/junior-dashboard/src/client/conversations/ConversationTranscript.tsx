@@ -122,7 +122,7 @@ function TypingIndicator() {
   return (
     <div aria-live="polite" className="mt-3 flex items-center" role="status">
       <span className="sr-only">{getDashboardAgentName()} is responding</span>
-      <span className="flex items-center gap-1 rounded-2xl bg-dashboard-fill-soft px-3.5 py-2.5">
+      <span className="flex items-center gap-1 rounded-2xl bg-dashboard-fill-subtle px-3.5 py-2.5">
         {[0, 1, 2].map((dot) => (
           <span
             aria-hidden="true"

@@ -326,7 +326,7 @@ function MemorySummary(props: { data: MemoryDashboardData }) {
   return (
     <section
       aria-label="Memory summary"
-      className="grid grid-cols-2 gap-px border-y border-dashboard-border-subtle bg-dashboard-fill-mid lg:grid-cols-4"
+      className="grid grid-cols-2 gap-px border-y border-dashboard-border-subtle bg-dashboard-fill-emphasis lg:grid-cols-4"
     >
       {items.map((item) => (
         <div className="bg-dashboard-bg px-4 py-4 sm:px-5" key={item.label}>

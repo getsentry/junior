@@ -134,7 +134,7 @@ export function ProfileMenu({
         aria-haspopup="true"
         aria-label={`${open ? "Close" : "Open"} profile menu for ${name}. Personal model spend: 7 days ${sevenDaySpend}, 30 days ${thirtyDaySpend}.`}
         className={cn(
-          "group flex h-10 cursor-pointer items-center gap-2 rounded-lg border-0 bg-transparent px-1.5 text-dashboard-text transition-colors hover:bg-dashboard-fill-mid hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
+          "group flex h-10 cursor-pointer items-center gap-2 rounded-lg border-0 bg-transparent px-1.5 text-dashboard-text transition-colors hover:bg-dashboard-fill-emphasis hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
           open && "bg-dashboard-fill-strong text-dashboard-text",
         )}
         onClick={(event) => {
@@ -153,7 +153,10 @@ export function ProfileMenu({
               {sevenDaySpend}
             </span>
           </span>
-          <span aria-hidden="true" className="h-3 w-px bg-dashboard-fill-stronger" />
+          <span
+            aria-hidden="true"
+            className="h-3 w-px bg-dashboard-fill-stronger"
+          />
           <span className="flex items-baseline gap-1 whitespace-nowrap tabular-nums">
             <span className="text-xs font-medium tracking-[0.08em] text-dashboard-text-muted">
               30d
@@ -165,7 +168,7 @@ export function ProfileMenu({
         </span>
         <span
           aria-hidden="true"
-          className="grid size-7 place-items-center rounded-full bg-dashboard-focus text-xs font-bold tracking-wide text-dashboard-text-inverse shadow-sm shadow-dashboard-shadow-mid"
+          className="grid size-7 place-items-center rounded-full bg-dashboard-focus text-xs font-bold tracking-wide text-dashboard-text-inverse shadow-sm shadow-dashboard-shadow-avatar"
         >
           {initials(identity.user.name, email)}
         </span>
@@ -182,7 +185,7 @@ export function ProfileMenu({
 
       {open ? (
         <div
-          className="absolute right-0 top-[calc(100%+0.5rem)] z-40 w-64 rounded-xl bg-dashboard-surface-raised/95 p-1.5 shadow-2xl shadow-dashboard-shadow-heavy backdrop-blur-xl"
+          className="absolute right-0 top-[calc(100%+0.5rem)] z-40 w-64 rounded-xl bg-dashboard-surface-raised/95 p-1.5 shadow-2xl shadow-dashboard-shadow-popover backdrop-blur-xl"
           id="profile-popover"
         >
           <div className="border-b border-dashboard-border-strong px-2.5 py-2.5">

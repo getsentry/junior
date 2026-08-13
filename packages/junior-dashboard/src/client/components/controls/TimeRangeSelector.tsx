@@ -22,7 +22,7 @@ export function TimeRangeSelector(props: {
             props.value === days
               ? "border-amber-500/30 bg-amber-500/20 text-amber-400"
               : cn(
-                  "border-dashboard-border-strong bg-dashboard-fill-mid hover:bg-dashboard-fill-stronger",
+                  "border-dashboard-border-strong bg-dashboard-fill-hover hover:bg-dashboard-fill-stronger",
                   dashboardInteractiveTextClass,
                 ),
           )}
