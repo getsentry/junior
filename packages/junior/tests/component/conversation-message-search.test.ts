@@ -168,9 +168,9 @@ describe("conversation message search", () => {
         plugin: "code-host",
       }).upsert({
         kind: "resource_link",
-        key: "acme/widget_v2#1234",
-        label: "acme/widget_v2#1234",
-        url: "https://code.example/acme/widget_v2/changes/1234",
+        key: "acme/widget_v2#12",
+        label: "acme/widget_v2#12",
+        url: "https://code.example/acme/widget_v2/changes/12",
       });
       await createPluginAnnotations({
         conversationId: "slack:CREQUEST:1700000000.200000",
@@ -178,9 +178,26 @@ describe("conversation message search", () => {
         plugin: "code-host",
       }).upsert({
         kind: "resource_link",
-        key: "acme/widgetX#9",
-        label: "acme/widgetX#9",
-        url: "https://code.example/acme/widgetX/issues/9",
+        key: "acme/widget_v2extra#9",
+        label: "acme/widget_v2extra#9",
+        url: "https://code.example/acme/widget_v2extra/issues/9",
+      });
+      await seed({
+        channelId: "CNEST",
+        channelName: "nested",
+        conversationId: "slack:CNEST:1700000000.700000",
+        message: "A longer nested resource id should stay distinct.",
+        visibility: "public",
+      });
+      await createPluginAnnotations({
+        conversationId: "slack:CNEST:1700000000.700000",
+        db: fixture.sql.db(),
+        plugin: "code-host",
+      }).upsert({
+        kind: "resource_link",
+        key: "acme/widget_v2#123",
+        label: "acme/widget_v2#123",
+        url: "https://code.example/acme/widget_v2/changes/123",
       });
 
       const annotated = await search.search({
@@ -197,7 +214,31 @@ describe("conversation message search", () => {
           providerTenantId: "T123",
         },
       });
-      expect(annotated).toEqual([
+      expect(annotated).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            conversationId: "slack:CARCHIVE:1700000000.300000",
+          }),
+          expect.objectContaining({
+            conversationId: "slack:CNEST:1700000000.700000",
+          }),
+        ]),
+      );
+      expect(annotated).toHaveLength(2);
+
+      const exactNested = await search.search({
+        currentConversationId: "slack:CREQUEST:1700000000.100000",
+        filters: {
+          annotation: "acme/widget_v2#12",
+        },
+        limit: 10,
+        scope: {
+          kind: "public_provider_tenant",
+          provider: "slack",
+          providerTenantId: "T123",
+        },
+      });
+      expect(exactNested).toEqual([
         expect.objectContaining({
           conversationId: "slack:CARCHIVE:1700000000.300000",
         }),

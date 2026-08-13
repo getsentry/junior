@@ -20,7 +20,7 @@ export interface ConversationMessageSearchScope {
 export interface ConversationMessageSearchFilters {
   /** Only conversations active at or after this time. */
   afterMs?: number;
-  /** Annotation key prefix, matched case-insensitively. */
+  /** Annotation key, matched case-insensitively. Nested keys may continue with `#`. */
   annotation?: string;
   /** Only conversations active before this time. */
   beforeMs?: number;

@@ -89,6 +89,7 @@ class SqlConversationMessageSearchStore implements ConversationMessageSearchStor
     }
     if (args.filters.annotation) {
       const annotation = args.filters.annotation.toLowerCase();
+      const nestedAnnotationPrefix = `${annotation}#`;
       conditions.push(
         sql`exists (
           select 1
@@ -98,8 +99,15 @@ class SqlConversationMessageSearchStore implements ConversationMessageSearchStor
               juniorConversationAnnotations.conversationId,
               juniorConversations.conversationId,
             ),
-            // Prefix match avoids LIKE wildcards in plugin-owned annotation keys.
-            sql`starts_with(lower(${juniorConversationAnnotations.key}), ${annotation})`,
+            // Exact key, or a nested child that continues with "#".
+            // Avoids sibling key collisions and partial nested-id prefixes.
+            sql`(
+              lower(${juniorConversationAnnotations.key}) = ${annotation}
+              or starts_with(
+                lower(${juniorConversationAnnotations.key}),
+                ${nestedAnnotationPrefix}
+              )
+            )`,
           )}
         )`,
       );

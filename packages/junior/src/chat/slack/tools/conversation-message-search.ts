@@ -130,7 +130,7 @@ export function createSlackConversationMessageSearchTool(
           .max(256)
           .nullable()
           .describe(
-            "Linked resource key or key prefix, such as getsentry/junior.",
+            "Linked resource key. Matches that key, or nested children that continue with #.",
           )
           .optional(),
         before: z
