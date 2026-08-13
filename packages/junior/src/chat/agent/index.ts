@@ -104,6 +104,7 @@ import {
   AuthorizationPauseError,
 } from "@/chat/services/auth-pause";
 import { TurnSliceLimitExceededError } from "@/chat/services/turn-limit";
+import { ToolActionReviewLimitError } from "@/chat/tool-support/action-review";
 import {
   resolveConversationPrivacy,
   runWithConversationPrivacy,
@@ -1743,6 +1744,36 @@ async function executeAgentRunInPrivacyContext(
     }
     if (durability.onInputCommitted && !resume?.inputCommitted) {
       throw error;
+    }
+
+    // Guardian review-limit stops are expected control flow after repeated
+    // denials. Return execution_failure without logException; delivery owns
+    // the warn log and user-visible stop text without opening a Sentry issue.
+    if (error instanceof ToolActionReviewLimitError) {
+      return {
+        status: "completed",
+        result: {
+          text: "",
+          sandboxRef: lastKnownSandboxRef,
+          diagnostics: {
+            outcome: "execution_failure",
+            modelId: activeModelId,
+            assistantMessageCount: 0,
+            ...(turnRoute
+              ? {
+                  reasoningLevel: turnRoute.reasoningLevel,
+                }
+              : {}),
+            toolCalls: [],
+            toolResultCount: 0,
+            toolErrorCount: 0,
+            usedPrimaryText: false,
+            durationMs: Date.now() - replyStartedAtMs,
+            errorMessage: error.message,
+            providerError: error,
+          },
+        },
+      };
     }
 
     const providerError = findProviderError(error);

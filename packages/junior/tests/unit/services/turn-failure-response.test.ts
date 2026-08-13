@@ -1,8 +1,27 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getInterruptionMarker } from "@/chat/interruption-marker";
 import { createProviderError } from "@/chat/services/provider-error";
-import { finalizeFailedTurnReply } from "@/chat/services/turn-failure-response";
+import {
+  buildToolActionReviewLimitResponse,
+  finalizeFailedTurnReply,
+} from "@/chat/services/turn-failure-response";
 import type { AgentRunResult } from "@/chat/services/turn-result";
+import {
+  TOOL_ACTION_REVIEW_LIMIT_MESSAGE,
+  ToolActionReviewLimitError,
+} from "@/chat/tool-support/action-review";
+
+const logWarnMock = vi.fn();
+
+vi.mock("@/chat/logging", async () => {
+  const actual = await vi.importActual<typeof import("@/chat/logging")>(
+    "@/chat/logging",
+  );
+  return {
+    ...actual,
+    logWarn: (...args: unknown[]) => logWarnMock(...args),
+  };
+});
 
 function providerErrorReply(args: {
   assistantMessageCount: number;
@@ -26,7 +45,33 @@ function providerErrorReply(args: {
   };
 }
 
+function executionFailureReply(args: {
+  assistantMessageCount?: number;
+  errorMessage?: string;
+  providerError?: unknown;
+  text?: string;
+}): AgentRunResult {
+  return {
+    text: args.text ?? "",
+    diagnostics: {
+      outcome: "execution_failure",
+      modelId: "test-model",
+      assistantMessageCount: args.assistantMessageCount ?? 0,
+      toolCalls: [],
+      toolResultCount: 0,
+      toolErrorCount: 0,
+      usedPrimaryText: false,
+      ...(args.errorMessage ? { errorMessage: args.errorMessage } : {}),
+      ...(args.providerError ? { providerError: args.providerError } : {}),
+    },
+  };
+}
+
 describe("finalizeFailedTurnReply", () => {
+  beforeEach(() => {
+    logWarnMock.mockClear();
+  });
+
   it("never delivers synthesized error text without assistant messages", () => {
     const logException = vi.fn().mockReturnValue("evt_123");
     const internalError = new Error("ECONNRESET at redis.js:42");
@@ -149,5 +194,43 @@ describe("finalizeFailedTurnReply", () => {
     expect(finalized.text).toBe(
       `Here is what I found so far${getInterruptionMarker()}`,
     );
+  });
+
+  it("does not capture ToolActionReviewLimitError as a Sentry exception", () => {
+    const logException = vi.fn().mockReturnValue("evt_should_not_fire");
+    const limitError = new ToolActionReviewLimitError();
+
+    const finalized = finalizeFailedTurnReply({
+      reply: executionFailureReply({
+        errorMessage: limitError.message,
+        providerError: limitError,
+      }),
+      logException,
+    });
+
+    expect(logException).not.toHaveBeenCalled();
+    expect(finalized.text).toBe(buildToolActionReviewLimitResponse());
+    expect(finalized.text).not.toContain("event_id=");
+    expect(logWarnMock).toHaveBeenCalledWith(
+      "agent.tool_action_review.limit_reached",
+      expect.objectContaining({
+        "error.type": "ToolActionReviewLimitError",
+        "exception.message": TOOL_ACTION_REVIEW_LIMIT_MESSAGE,
+      }),
+    );
+  });
+
+  it("recognizes review-limit stops from the stable error message alone", () => {
+    const logException = vi.fn().mockReturnValue("evt_should_not_fire");
+
+    const finalized = finalizeFailedTurnReply({
+      reply: executionFailureReply({
+        errorMessage: TOOL_ACTION_REVIEW_LIMIT_MESSAGE,
+      }),
+      logException,
+    });
+
+    expect(logException).not.toHaveBeenCalled();
+    expect(finalized.text).toBe(buildToolActionReviewLimitResponse());
   });
 });

@@ -174,7 +174,7 @@ Events: `agent.message.received`, `agent.message.generated`,
 `agent.turn.provider_error`, `agent.turn.execution.failed`,
 `agent.turn.empty_output.retrying`,
 `agent.turn.empty_output.exhausted`, `assistant.reply.generation.failed`,
-`guardian.action_review.retrying`
+`guardian.action_review.retrying`, `agent.tool_action_review.limit_reached`
 
 Spans: `ai.generate_assistant_reply`, `ai.chat_completion`,
 `chat.route_thinking`, `gen_ai.invoke_agent`, `gen_ai.chat`

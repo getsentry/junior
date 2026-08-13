@@ -181,12 +181,14 @@ export class ToolActionReviewUnavailableError extends Error {
   }
 }
 
+/** Stable message for the bounded action-review rejection stop. */
+export const TOOL_ACTION_REVIEW_LIMIT_MESSAGE =
+  "Action review rejected three consecutive tool execution attempts; the run was interrupted.";
+
 /** The execution slice exceeded its bounded sequence of rejected actions. */
 export class ToolActionReviewLimitError extends Error {
   constructor() {
-    super(
-      "Action review rejected three consecutive tool execution attempts; the run was interrupted.",
-    );
+    super(TOOL_ACTION_REVIEW_LIMIT_MESSAGE);
     this.name = "ToolActionReviewLimitError";
   }
 }

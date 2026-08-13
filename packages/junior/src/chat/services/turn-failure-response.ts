@@ -1,4 +1,4 @@
-import { buildTurnFailureResponse } from "@/chat/logging";
+import { buildTurnFailureResponse, logWarn } from "@/chat/logging";
 import { getInterruptionMarker } from "@/chat/interruption-marker";
 import {
   findProviderError,
@@ -7,6 +7,10 @@ import {
   ProviderError,
 } from "@/chat/services/provider-error";
 import type { AgentRunResult } from "@/chat/services/turn-result";
+import {
+  TOOL_ACTION_REVIEW_LIMIT_MESSAGE,
+  ToolActionReviewLimitError,
+} from "@/chat/tool-support/action-review";
 
 type LogException = (
   error: unknown,
@@ -113,6 +117,21 @@ export interface FinalizedTurnFailure {
   reply: AgentRunResult;
 }
 
+function isToolActionReviewLimitFailure(reply: AgentRunResult): boolean {
+  return (
+    reply.diagnostics.providerError instanceof ToolActionReviewLimitError ||
+    reply.diagnostics.errorMessage === TOOL_ACTION_REVIEW_LIMIT_MESSAGE
+  );
+}
+
+/** User-visible stop after Guardian rejects a bounded sequence of actions. */
+export function buildToolActionReviewLimitResponse(): string {
+  return (
+    "I stopped because action review rejected three consecutive tool attempts. " +
+    "I won't keep retrying the blocked action."
+  );
+}
+
 /** Enforce one captured failure response and return its structured correlation. */
 export function finalizeFailedTurnReplyWithEvent(args: {
   reply: AgentRunResult;
@@ -121,6 +140,31 @@ export function finalizeFailedTurnReplyWithEvent(args: {
 }): FinalizedTurnFailure {
   if (args.reply.diagnostics.outcome === "success") {
     return { reply: args.reply };
+  }
+
+  // Review-limit stops are expected control flow after repeated denials.
+  // Keep the turn failed for delivery/metrics, but do not open a Sentry issue.
+  if (isToolActionReviewLimitFailure(args.reply)) {
+    logWarn("agent.tool_action_review.limit_reached", {
+      ...getAgentTurnDiagnosticsAttributes(args.reply),
+      ...args.attributes,
+      "error.type": "ToolActionReviewLimitError",
+      ...(args.reply.diagnostics.errorMessage
+        ? { "exception.message": args.reply.diagnostics.errorMessage }
+        : {}),
+    });
+    const providerPartialText =
+      args.reply.diagnostics.assistantMessageCount > 0
+        ? args.reply.text.trim()
+        : "";
+    return {
+      reply: {
+        ...args.reply,
+        text: providerPartialText
+          ? `${providerPartialText}${getInterruptionMarker()}`
+          : buildToolActionReviewLimitResponse(),
+      },
+    };
   }
 
   const capture = getFailureCapture(args.reply);
