@@ -46,6 +46,7 @@ export function ConversationComposer(props: {
   error?: string;
   label: string;
   submitLabel: string;
+  onFocus?: () => void;
   onSubmit(message: string, idempotencyKey: string): Promise<void>;
   onSubmitStart?: () => void;
 }) {
@@ -169,6 +170,7 @@ export function ConversationComposer(props: {
             draftRef.current = nextDraft;
             setDraft(nextDraft);
           }}
+          onFocus={props.onFocus}
           onKeyDown={handleKeyDown}
           placeholder="Message Junior…"
           ref={textareaRef}

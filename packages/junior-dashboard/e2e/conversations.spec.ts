@@ -456,9 +456,37 @@ test("opens and closes a conversation in the mobile workspace", async ({
     )
     .toBe("180px");
 
+  await composer.blur();
   await transcript.evaluate((element) => {
     element.scrollTop = 0;
   });
+  await composer.focus();
+  await expect
+    .poll(() =>
+      transcript.evaluate(
+        (element) =>
+          element.scrollHeight - element.scrollTop - element.clientHeight,
+      ),
+    )
+    .toBeLessThanOrEqual(1);
+
+  // Keyboard resize keeps the latest message above the focused composer.
+  await page.evaluate(() => {
+    Object.defineProperty(window.visualViewport, "height", {
+      configurable: true,
+      value: 480,
+    });
+    window.visualViewport?.dispatchEvent(new Event("resize"));
+  });
+  await expect
+    .poll(() =>
+      transcript.evaluate(
+        (element) =>
+          element.scrollHeight - element.scrollTop - element.clientHeight,
+      ),
+    )
+    .toBeLessThanOrEqual(1);
+
   await composer.fill("Keep the mobile composer ready");
   await composer.press("Enter");
   await expect(composer).toBeFocused();

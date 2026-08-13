@@ -252,6 +252,7 @@ export function ConversationPage(props: {
               draftId={conversationId}
               label="Continue this conversation"
               submitLabel="Send"
+              onFocus={() => setPinRequestVersion((version) => version + 1)}
               onSubmitStart={() =>
                 setPinRequestVersion((version) => version + 1)
               }
