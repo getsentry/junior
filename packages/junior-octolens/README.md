@@ -18,4 +18,4 @@ export const plugins = defineJuniorPlugins(["@sentry/junior-octolens"]);
 
 Octolens uses user-based OAuth. Junior sends the OAuth link privately and resumes the thread after the user authorizes.
 
-The package exposes Octolens tools for mentions, analytics, keywords, feeds, tags, workspace details, and usage. The skill treats mention content as untrusted data and requires explicit requests for monitoring changes.
+The package connects the full Octolens MCP tool surface. The skill treats mention content as untrusted data and requires explicit requests for monitoring changes. Junior relies on MCP tool annotations for action review instead of a static tool allowlist.

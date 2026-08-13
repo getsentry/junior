@@ -159,6 +159,87 @@ describe("tool action review", () => {
     expect(JSON.stringify(proposal)).not.toContain("must-not-reach-guardian");
   });
 
+  it("reviews auto actions when tool annotations are missing", async () => {
+    const review = vi.fn<ToolActionReviewer["review"]>(async () => ({
+      decision: "allow",
+      reason: "Unknown risk needs review.",
+      riskLevel: "medium",
+      userAuthorization: "medium",
+    }));
+
+    await reviewToolAction(
+      "tool-call",
+      "callMcpTool",
+      definition({
+        approvalMode: "auto",
+        // Partial annotations are still unknown risk.
+        annotations: {
+          destructiveHint: false,
+          readOnlyHint: true,
+        },
+        resolveApprovalMetadata: async () => ({
+          annotations: {
+            destructiveHint: false,
+            readOnlyHint: true,
+          },
+          description: "Call a remote MCP tool.",
+          name: "mcp__demo__search",
+        }),
+      }),
+      { tool_name: "mcp__demo__search" },
+      reviewContext({ review }),
+    );
+
+    expect(review).toHaveBeenCalledTimes(1);
+  });
+
+  it("reviews auto actions when annotations are absent", async () => {
+    const review = vi.fn<ToolActionReviewer["review"]>(async () => ({
+      decision: "allow",
+      reason: "Unknown risk needs review.",
+      riskLevel: "medium",
+      userAuthorization: "medium",
+    }));
+
+    await reviewToolAction(
+      "tool-call",
+      "callMcpTool",
+      definition({
+        approvalMode: "auto",
+        resolveApprovalMetadata: async () => ({
+          description: "Call a remote MCP tool with no annotations.",
+          name: "mcp__demo__search",
+        }),
+      }),
+      { tool_name: "mcp__demo__search" },
+      reviewContext({ review }),
+    );
+
+    expect(review).toHaveBeenCalledTimes(1);
+  });
+
+  it("auto-approves only fully annotated safe non-plugin actions", async () => {
+    const review = vi.fn<ToolActionReviewer["review"]>();
+
+    await reviewToolAction(
+      "tool-call",
+      "localSafeTool",
+      definition({
+        approvalMode: "auto",
+        annotations: {
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+          readOnlyHint: true,
+        },
+      }),
+      {},
+      reviewContext({ review }),
+    );
+
+    expect(review).not.toHaveBeenCalled();
+  });
+
   it("returns ask and deny decisions as expected tool rejections", async () => {
     for (const decision of ["ask", "deny"] as const) {
       const action = reviewToolAction(

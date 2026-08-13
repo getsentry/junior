@@ -27,7 +27,7 @@ description: Internal provider workflows
 | `target`               | target/config metadata      | `config-key` must be in `config-keys`                                               |
 | `runtime-dependencies` | sandbox packages            | `npm` or `system`                                                                   |
 | `runtime-postinstall`  | setup commands              | `cmd`, optional `args`, optional `sudo`                                             |
-| `mcp`                  | hosted HTTP MCP             | HTTPS `url`, optional `allowed-tools` and `wrapped-tools`                           |
+| `mcp`                  | hosted HTTP MCP             | HTTPS `url`; omit `allowed-tools` by default; optional `wrapped-tools`              |
 
 ## OAuth bearer
 
@@ -75,10 +75,10 @@ api-headers:
 
 mcp:
   url: https://mcp.${EXAMPLE_SITE}/mcp
-  allowed-tools:
-    - search
-    - fetch
 ```
+
+Omit `allowed-tools` unless the plugin must hide part of the provider surface.
+When set, only listed tools are exposed and discovery fails if any are missing.
 
 ### MCP wrapper tools
 

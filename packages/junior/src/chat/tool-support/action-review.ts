@@ -4,10 +4,11 @@
  * Deterministic host checks establish authority before the model evaluates
  * untrusted action evidence.
  */
-import type {
-  Destination,
-  Source,
-  ToolAnnotations,
+import {
+  missingToolAnnotationKeys,
+  type Destination,
+  type Source,
+  type ToolAnnotations,
 } from "@sentry/junior-plugin-api";
 import type { Actor } from "@/chat/actor";
 import type { CredentialContext } from "@/chat/credentials/context";
@@ -208,6 +209,10 @@ function effectiveApprovalMode(
   }
 
   const annotations = resolved?.annotations ?? tool.annotations;
+  // Missing or partial annotations are unknown risk, so require review.
+  if (missingToolAnnotationKeys(annotations).length > 0) {
+    return "review";
+  }
   if (
     annotations?.destructiveHint === true ||
     annotations?.openWorldHint === true ||
