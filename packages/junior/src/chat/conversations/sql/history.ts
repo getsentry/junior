@@ -51,6 +51,43 @@ const messageHistoryEventTypes = [
   "message_handled",
 ] as const;
 
+const HUMAN_INSTRUCTION_PLATFORMS = new Set(["slack", "local", "web"]);
+
+/**
+ * Whether one event should restore an archived conversation to the feed.
+ *
+ * Archive hides finished noise until a human comes back. Resource events,
+ * turn lifecycle, compaction, and other system writes may still refresh
+ * activity clocks, but they must not unarchive on their own.
+ */
+function eventUnarchivesConversation(data: ConversationEventData): boolean {
+  if (data.type === "user_message") {
+    const provenance = data.provenance;
+    if (provenance.authority !== "instruction") return false;
+    const platform = provenance.actor?.platform;
+    return platform === undefined || HUMAN_INSTRUCTION_PLATFORMS.has(platform);
+  }
+  if (data.type !== "message" && data.type !== "message_updated") {
+    return false;
+  }
+  if (data.role !== "user") return false;
+  const meta = data.meta;
+  if (!meta) return true;
+  if (typeof meta.eventType === "string" && meta.eventType.length > 0) {
+    return false;
+  }
+  const author = meta.author;
+  if (
+    author &&
+    typeof author === "object" &&
+    !Array.isArray(author) &&
+    (author as { isBot?: unknown }).isBot === true
+  ) {
+    return false;
+  }
+  return true;
+}
+
 /** Split validated event data into column-lifted and JSON payload fields. */
 function insertFromEvent(
   conversationId: string,
@@ -169,7 +206,10 @@ class SqlConversationEventStore implements ConversationEventStore {
         newestCreatedAtMs,
         options,
       );
-      if (options.activity !== "preserve") {
+      if (
+        options.activity !== "preserve" &&
+        pending.some((event) => eventUnarchivesConversation(event.data))
+      ) {
         await this.executor
           .db()
           .update(juniorConversations)
@@ -222,16 +262,6 @@ class SqlConversationEventStore implements ConversationEventStore {
     const parsed = historyReplacementSchema.parse(replacement);
     await withConversationEventLock(this.executor, conversationId, async () => {
       await ensureConversationRow(this.executor, conversationId, Date.now());
-      await this.executor
-        .db()
-        .update(juniorConversations)
-        .set({ archivedAt: null })
-        .where(
-          and(
-            eq(juniorConversations.conversationId, conversationId),
-            isNotNull(juniorConversations.archivedAt),
-          ),
-        );
       const cursor = await this.readCursor(conversationId);
       const historyVersion = (cursor.maxHistoryVersion ?? 0) + 1;
       await this.executor

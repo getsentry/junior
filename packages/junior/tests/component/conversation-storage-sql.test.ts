@@ -317,13 +317,33 @@ function userMessage(text: string) {
 function userMessageEvent(
   text: string,
   authority: "instruction" | "context" = "context",
+  actor?: { platform: "slack" | "local" | "web" | "system"; name?: string },
 ) {
   const { content, timestamp } = userMessage(text);
   return {
     type: "user_message" as const,
     content,
     timestamp,
-    provenance: { authority },
+    provenance: {
+      authority,
+      ...(actor
+        ? {
+            actor:
+              actor.platform === "system"
+                ? { platform: "system" as const, name: actor.name ?? "system" }
+                : actor.platform === "slack"
+                  ? {
+                      platform: "slack" as const,
+                      teamId: "T123",
+                      userId: "U123",
+                    }
+                  : {
+                      platform: actor.platform,
+                      userId: "user-1",
+                    },
+          }
+        : {}),
+    },
   };
 }
 
@@ -527,7 +547,7 @@ describe("SQL conversation storage", () => {
       await migrateSchema(fixture.sql);
       const store = createSqlConversationEventStore(fixture.sql);
       const firstEvent = {
-        data: userMessageEvent("first"),
+        data: userMessageEvent("first", "instruction"),
         idempotencyKey: "event:first",
         createdAtMs: 1_000,
       };
@@ -566,7 +586,7 @@ describe("SQL conversation storage", () => {
       await store.append(CONVERSATION_ID, [
         { ...firstEvent, createdAtMs: 10_000 },
         {
-          data: userMessageEvent("second"),
+          data: userMessageEvent("second", "instruction"),
           idempotencyKey: "event:second",
           createdAtMs: 8_000,
         },
@@ -587,6 +607,135 @@ describe("SQL conversation storage", () => {
         { idempotencyKey: "event:first", seq: 0 },
         { idempotencyKey: "event:second", seq: 1 },
       ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("keeps archive through system noise and restores only on human activity", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await migrateSchema(fixture.sql);
+      const store = createSqlConversationEventStore(fixture.sql);
+      await store.append(CONVERSATION_ID, [
+        {
+          data: userMessageEvent("seed", "instruction", { platform: "slack" }),
+          idempotencyKey: "event:seed",
+          createdAtMs: 1_000,
+        },
+      ]);
+      await fixture.sql
+        .db()
+        .update(juniorConversations)
+        .set({
+          archivedAt: new Date(2_000),
+          transcriptPurgedAt: new Date(2_500),
+        })
+        .where(eq(juniorConversations.conversationId, CONVERSATION_ID));
+
+      const readConversationTimestamps = async () => {
+        const [row] = await fixture.sql
+          .db()
+          .select({
+            archivedAt: juniorConversations.archivedAt,
+            lastActivityAt: juniorConversations.lastActivityAt,
+            transcriptPurgedAt: juniorConversations.transcriptPurgedAt,
+            updatedAt: juniorConversations.updatedAt,
+          })
+          .from(juniorConversations)
+          .where(eq(juniorConversations.conversationId, CONVERSATION_ID));
+        return row;
+      };
+      const archived = await readConversationTimestamps();
+
+      await store.append(CONVERSATION_ID, [
+        {
+          data: {
+            type: "turn_started",
+            turnId: "turn-1",
+            inputMessageIds: ["msg-resource"],
+            surface: "slack",
+          },
+          idempotencyKey: "event:turn-started",
+          createdAtMs: 3_000,
+        },
+        {
+          data: {
+            type: "message",
+            messageId: "msg-resource",
+            role: "user",
+            text: "Pull request checks failed.",
+            meta: {
+              eventType: "pull_request.checks.failed",
+              author: {
+                userId: "UJRNEVENT",
+                userName: "junior-event",
+                isBot: true,
+              },
+            },
+          },
+          idempotencyKey: "event:resource",
+          createdAtMs: 3_100,
+        },
+        {
+          data: userMessageEvent("ambient", "context"),
+          idempotencyKey: "event:context",
+          createdAtMs: 3_200,
+        },
+        {
+          data: userMessageEvent("system", "instruction", {
+            platform: "system",
+            name: "resource-event",
+          }),
+          idempotencyKey: "event:system-instruction",
+          createdAtMs: 3_300,
+        },
+      ]);
+
+      expect(await readConversationTimestamps()).toEqual({
+        ...archived,
+        lastActivityAt: new Date(3_300),
+        transcriptPurgedAt: null,
+        updatedAt: new Date(3_300),
+      });
+
+      await store.replaceHistory(CONVERSATION_ID, {
+        createdAtMs: 4_000,
+        data: {
+          type: "compaction",
+          modelProfile: "coding",
+          modelId: "openai/gpt-5.4",
+          replacementHistory: [
+            {
+              item: userMessageEvent("summary", "instruction", {
+                platform: "slack",
+              }),
+            },
+          ],
+        },
+      });
+
+      expect((await readConversationTimestamps())?.archivedAt).toEqual(
+        archived?.archivedAt,
+      );
+
+      await store.append(CONVERSATION_ID, [
+        {
+          data: userMessageEvent("follow up", "instruction", {
+            platform: "slack",
+          }),
+          idempotencyKey: "event:human",
+          createdAtMs: 5_000,
+        },
+      ]);
+
+      const restored = await readConversationTimestamps();
+      expect(restored?.archivedAt).toBeNull();
+      expect(restored?.transcriptPurgedAt).toBeNull();
+      // replaceHistory refreshes activity with Date.now(); the human append
+      // must still clear archive without regressing that clock.
+      expect(restored?.lastActivityAt?.getTime()).toBeGreaterThanOrEqual(5_000);
     } finally {
       await fixture.close();
     }
