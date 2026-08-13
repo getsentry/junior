@@ -106,7 +106,7 @@ export function ConversationPage(props: {
               />
             }
             annotations={
-              hasConversationAnnotations(detail.data) ? (
+              hasConversationAnnotations(detail.data?.annotations) ? (
                 <ConversationAnnotations detail={detail.data} />
               ) : null
             }

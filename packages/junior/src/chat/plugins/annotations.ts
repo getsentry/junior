@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import {
   conversationAnnotationInputSchema,
   type ConversationAnnotation,
@@ -6,6 +6,24 @@ import {
 } from "@sentry/junior-plugin-api";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorConversationAnnotations } from "@/db/schema";
+
+function annotationFromRow(row: {
+  annotation: unknown;
+  conversationId: string;
+  createdAt: Date;
+  plugin: string;
+  updatedAt: Date;
+}): ConversationAnnotation | undefined {
+  const parsed = conversationAnnotationInputSchema.safeParse(row.annotation);
+  if (!parsed.success) return undefined;
+  return {
+    ...parsed.data,
+    plugin: row.plugin,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
 export function createPluginAnnotations(args: {
   conversationId: string;
   db: JuniorDatabase;
@@ -58,26 +76,45 @@ export function createPluginAnnotations(args: {
     },
   };
 }
+
+/** Load stored annotations for one conversation, newest update first. */
 export async function listConversationAnnotations(
   db: JuniorDatabase,
   conversationId: string,
 ): Promise<ConversationAnnotation[]> {
+  const byConversation = await listConversationAnnotationsById(db, [
+    conversationId,
+  ]);
+  return byConversation.get(conversationId) ?? [];
+}
+
+/** Load stored annotations for a bounded set of conversations. */
+export async function listConversationAnnotationsById(
+  db: JuniorDatabase,
+  conversationIds: readonly string[],
+): Promise<Map<string, ConversationAnnotation[]>> {
+  const byConversation = new Map<string, ConversationAnnotation[]>();
+  if (conversationIds.length === 0) return byConversation;
+
   const rows = await db
     .select()
     .from(juniorConversationAnnotations)
-    .where(eq(juniorConversationAnnotations.conversationId, conversationId))
+    .where(
+      inArray(juniorConversationAnnotations.conversationId, [
+        ...conversationIds,
+      ]),
+    )
     .orderBy(desc(juniorConversationAnnotations.updatedAt));
-  return rows.flatMap((row) => {
-    const parsed = conversationAnnotationInputSchema.safeParse(row.annotation);
-    return parsed.success
-      ? [
-          {
-            ...parsed.data,
-            plugin: row.plugin,
-            createdAt: row.createdAt.toISOString(),
-            updatedAt: row.updatedAt.toISOString(),
-          },
-        ]
-      : [];
-  });
+
+  for (const row of rows) {
+    const annotation = annotationFromRow(row);
+    if (!annotation) continue;
+    const current = byConversation.get(row.conversationId);
+    if (current) {
+      current.push(annotation);
+    } else {
+      byConversation.set(row.conversationId, [annotation]);
+    }
+  }
+  return byConversation;
 }

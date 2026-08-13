@@ -139,6 +139,7 @@ export type TranscriptViewMessage = {
 export type ConversationTranscript = ConversationDetailReport;
 
 export type Conversation = {
+  annotations?: ConversationSummaryReport["annotations"];
   archivedAt?: string;
   auxiliaryCosts?: ConversationSummaryReport["auxiliaryCosts"];
   channel?: string;

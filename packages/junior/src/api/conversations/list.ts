@@ -23,6 +23,7 @@ import { conversationFeedSchema } from "../schema/conversation";
 import type { ConversationFeed } from "../schema/conversation";
 import { readRootConversationMetricsFromSql } from "./usage";
 import { readConversationAuxiliaryCostsFromSql } from "./auxiliary-costs";
+import { listConversationAnnotationsById } from "@/chat/plugins/annotations";
 import { listConversationWork } from "@/chat/plugins/unfinished-work";
 import { isConversationPriority } from "./priority";
 import { readLastUserMessageAtByConversation } from "./user-message-activity";
@@ -242,6 +243,7 @@ export async function readConversationFeedFromSql(
   );
   const [
     accessByConversation,
+    annotationsByConversation,
     auxiliaryCostsByRoot,
     metricsByRoot,
     teamDomainByTeamId,
@@ -249,6 +251,7 @@ export async function readConversationFeedFromSql(
     lastUserMessageAtByConversation,
   ] = await Promise.all([
     readConversationAccessFromSql(db, conversationIds, options.viewer),
+    listConversationAnnotationsById(db, conversationIds),
     readConversationAuxiliaryCostsFromSql(db, conversationIds, {
       includeDescendants: true,
     }),
@@ -268,10 +271,11 @@ export async function readConversationFeedFromSql(
   return {
     conversations: conversations.map((conversation, index) => {
       const row = rows[index]!;
+      const access = accessByConversation.get(conversation.conversationId);
       const metrics = metricsByRoot.get(conversation.conversationId);
       const summary = conversationSummaryFromStoredConversation({
         conversation,
-        access: accessByConversation.get(conversation.conversationId),
+        access,
         auxiliaryCosts: auxiliaryCostsByRoot.get(conversation.conversationId),
         durationMs: metrics?.durationMs ?? row.conversation.durationMs,
         teamDomainByTeamId,
@@ -294,9 +298,13 @@ export async function readConversationFeedFromSql(
           ? { unfinishedWork: true as const }
           : {}),
       };
+      const annotations = access?.canViewPrivateContent
+        ? (annotationsByConversation.get(conversation.conversationId) ?? [])
+        : [];
       return {
         ...summary,
         ...work,
+        ...(annotations.length > 0 ? { annotations } : {}),
         isPriority: isConversationPriority(
           {
             lastSeenAt: summary.lastSeenAt,

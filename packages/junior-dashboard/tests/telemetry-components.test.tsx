@@ -21,8 +21,10 @@ import {
 import { Transcript } from "../src/client/conversations/TranscriptView";
 import { ConversationHeader } from "../src/client/conversations/ConversationHeader";
 import {
+  ConversationAnnotationChips,
   ConversationAnnotations,
   ConversationStats,
+  selectSidebarResourceLinks,
 } from "../src/client/conversations/ConversationMeta";
 import { conversationFromDetail } from "../src/client/format";
 import { TranscriptMarkdown } from "../src/client/conversations/TranscriptMarkdown";
@@ -559,6 +561,54 @@ describe("dashboard canonical-event components", () => {
     expect(html).not.toContain("Linked resources");
     expect(html).not.toContain("Pull requests");
     expect(html).not.toContain("Open pull request");
+  });
+
+  it("prefers actionable resource links in compact sidebar chips", () => {
+    const annotations = [
+      {
+        kind: "resource_link" as const,
+        key: "getsentry/junior#100",
+        label: "getsentry/junior#100",
+        plugin: "github",
+        status: "merged" as const,
+        url: "https://github.com/getsentry/junior/pull/100",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:03.000Z",
+      },
+      {
+        kind: "resource_link" as const,
+        key: "getsentry/junior#200",
+        label: "getsentry/junior#200",
+        plugin: "github",
+        status: "warning" as const,
+        url: "https://github.com/getsentry/junior/pull/200",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:01.000Z",
+      },
+      {
+        kind: "resource_link" as const,
+        key: "getsentry/junior#300",
+        label: "getsentry/junior#300",
+        plugin: "github",
+        status: "open" as const,
+        url: "https://github.com/getsentry/junior/pull/300",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:02.000Z",
+      },
+    ];
+
+    expect(selectSidebarResourceLinks(annotations, 1)).toEqual({
+      extraCount: 2,
+      links: [expect.objectContaining({ key: "getsentry/junior#200" })],
+    });
+
+    const html = renderToStaticMarkup(
+      <ConversationAnnotationChips annotations={annotations} />,
+    );
+    expect(html).toContain("junior#200");
+    expect(html).toContain("+2");
+    expect(html).not.toContain("junior#100");
+    expect(html).not.toContain("Pull request");
   });
 
   it("distinguishes initial detail failures from stale refresh failures", () => {

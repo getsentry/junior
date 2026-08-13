@@ -1020,7 +1020,6 @@ function summaryFromConversation(
   conversation: MockConversation,
 ): ConversationSummaryReport {
   const {
-    annotations: _annotations,
     eventHistory: _eventHistory,
     events: _events,
     generatedAt: _generatedAt,
