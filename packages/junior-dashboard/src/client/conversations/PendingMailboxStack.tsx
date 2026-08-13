@@ -108,31 +108,36 @@ function PendingRow(props: {
 }
 
 function ExpandQueuedMessagesButton(props: {
-  className?: string;
   expanded: boolean;
   hiddenCount: number;
   onClick(): void;
   totalCount: number;
 }) {
-  const label = props.expanded
-    ? "Show fewer queued messages"
-    : props.hiddenCount > 0
+  const totalLabel =
+    props.totalCount === 1
+      ? "1 queued message"
+      : `${props.totalCount} queued messages`;
+  const moreLabel =
+    props.hiddenCount > 0
       ? `${props.hiddenCount} more queued messages`
-      : props.totalCount === 1
-        ? "1 queued message"
-        : `${props.totalCount} queued messages`;
+      : totalLabel;
+  const label = props.expanded ? "Show fewer queued messages" : moreLabel;
 
   return (
     <button
       aria-expanded={props.expanded}
-      className={
-        props.className ??
-        "w-full cursor-pointer border-0 bg-transparent px-3 py-2 text-left font-sans text-xs font-medium text-amber-100/80 transition-colors hover:text-amber-50 focus-visible:outline focus-visible:outline-1 focus-visible:outline-amber-200/55 md:px-3.5"
-      }
+      className="w-full cursor-pointer border-0 bg-transparent px-3 py-2 text-left font-sans text-xs font-medium text-amber-100/80 transition-colors hover:text-amber-50 focus-visible:outline focus-visible:outline-1 focus-visible:outline-amber-200/55 md:px-3.5"
       onClick={props.onClick}
       type="button"
     >
-      {label}
+      {props.expanded ? (
+        label
+      ) : (
+        <>
+          <span className="md:hidden">{totalLabel}</span>
+          <span className="hidden md:inline">{moreLabel}</span>
+        </>
+      )}
     </button>
   );
 }
@@ -151,9 +156,8 @@ export function PendingMailboxStack(props: {
 
   const canCollapse = rows.length > MAX_EXPANDED_PENDING_ROWS;
   const showCollapsed = canCollapse && !expanded;
-  const visibleRows = showCollapsed
-    ? rows.slice(0, COLLAPSED_PENDING_ROW_COUNT)
-    : rows;
+  const previewRows = rows.slice(0, COLLAPSED_PENDING_ROW_COUNT);
+  const visibleRows = showCollapsed ? previewRows : rows;
   const hiddenCount = Math.max(0, rows.length - COLLAPSED_PENDING_ROW_COUNT);
   const toggleExpanded = () => setExpanded((value) => !value);
 
@@ -162,51 +166,34 @@ export function PendingMailboxStack(props: {
       aria-label="Pending messages"
       className="mx-2 overflow-hidden rounded-t-lg bg-amber-300/[0.055] md:mx-3"
     >
-      <div className="md:hidden">
-        {showCollapsed ? (
-          <ExpandQueuedMessagesButton
-            expanded={false}
-            hiddenCount={0}
-            onClick={toggleExpanded}
-            totalCount={rows.length}
-          />
-        ) : (
-          <>
-            {visibleRows.map((message, index) => (
-              <PendingRow
-                conversation={props.conversation}
-                key={message.messageId ?? `${message.sourceSeq}:${index}`}
-                message={message}
-              />
-            ))}
-            {canCollapse ? (
-              <ExpandQueuedMessagesButton
-                expanded
-                hiddenCount={hiddenCount}
-                onClick={toggleExpanded}
-                totalCount={rows.length}
-              />
-            ) : null}
-          </>
-        )}
-      </div>
-      <div className="hidden md:block">
-        {visibleRows.map((message, index) => (
+      {showCollapsed ? (
+        // Desktop keeps a two-row preview; mobile collapses to the control only.
+        <div className="hidden md:block">
+          {previewRows.map((message, index) => (
+            <PendingRow
+              conversation={props.conversation}
+              key={message.messageId ?? `${message.sourceSeq}:${index}`}
+              message={message}
+            />
+          ))}
+        </div>
+      ) : (
+        visibleRows.map((message, index) => (
           <PendingRow
             conversation={props.conversation}
             key={message.messageId ?? `${message.sourceSeq}:${index}`}
             message={message}
           />
-        ))}
-        {canCollapse ? (
-          <ExpandQueuedMessagesButton
-            expanded={expanded}
-            hiddenCount={hiddenCount}
-            onClick={toggleExpanded}
-            totalCount={rows.length}
-          />
-        ) : null}
-      </div>
+        ))
+      )}
+      {canCollapse ? (
+        <ExpandQueuedMessagesButton
+          expanded={expanded}
+          hiddenCount={hiddenCount}
+          onClick={toggleExpanded}
+          totalCount={rows.length}
+        />
+      ) : null}
     </div>
   );
 }
