@@ -461,7 +461,7 @@ function MemoryRow(props: {
     <SelectableRow
       className={cn(
         "flex items-stretch",
-        !props.first && "border-t border-dashboard-border-subtle",
+        !props.first && "border-t border-dashboard-border-row",
       )}
       onSelect={props.onSelect}
       selected={props.selected}
@@ -507,7 +507,7 @@ function MemoryRow(props: {
             "hidden items-center gap-1.5 rounded border px-2 py-1 font-mono text-2xs uppercase tracking-[0.08em] sm:inline-flex",
             isPublic
               ? "border-emerald-300/20 bg-emerald-300/[0.07] text-emerald-100"
-              : "border-dashboard-border bg-dashboard-fill-soft text-dashboard-text-muted",
+              : "border-dashboard-border-medium bg-dashboard-fill-soft text-dashboard-text-muted",
           )}
         >
           {isPublic ? (

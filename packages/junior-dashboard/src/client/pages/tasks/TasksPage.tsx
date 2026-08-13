@@ -467,7 +467,7 @@ function TaskSourceMark(props: { task: TaskSummary }) {
     return (
       <div
         aria-label="Scheduled task"
-        className="grid size-9 shrink-0 place-items-center rounded border border-dashboard-border bg-dashboard-fill-subtle text-cyan-300/75"
+        className="grid size-9 shrink-0 place-items-center rounded border border-dashboard-border-medium bg-dashboard-fill-subtle text-cyan-300/75"
         role="img"
         title="Scheduled task"
       >
@@ -488,7 +488,7 @@ function TaskSourceMark(props: { task: TaskSummary }) {
   return (
     <div
       aria-label={`${sourceLabel} event task`}
-      className="grid size-9 shrink-0 place-items-center rounded border border-dashboard-border bg-dashboard-fill-subtle text-cyan-300/75"
+      className="grid size-9 shrink-0 place-items-center rounded border border-dashboard-border-medium bg-dashboard-fill-subtle text-cyan-300/75"
       role="img"
       title={`${sourceLabel} event task`}
     >

@@ -63,7 +63,7 @@ export function DirectoryRow(props: { children: ReactNode; to: string }) {
   return (
     <Link
       className={cn(
-        "group grid min-w-0 items-center gap-4 border-b border-dashboard-border-subtle px-4 py-3.5 text-inherit no-underline transition-colors last:border-b-0 hover:bg-dashboard-fill-muted max-md:grid-cols-3 max-md:gap-x-3 max-md:gap-y-4",
+        "group grid min-w-0 items-center gap-4 border-b border-dashboard-border-row px-4 py-3.5 text-inherit no-underline transition-colors last:border-b-0 hover:bg-dashboard-fill-muted max-md:grid-cols-3 max-md:gap-x-3 max-md:gap-y-4",
         directoryGridClass,
       )}
       to={props.to}

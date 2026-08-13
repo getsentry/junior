@@ -95,7 +95,7 @@ function TranscriptViewToggle(props: {
   return (
     <div
       aria-label="Transcript view"
-      className="inline-flex items-center gap-0.5 rounded-lg border border-dashboard-border bg-dashboard-overlay p-0.5 text-xs font-medium text-dashboard-text-muted"
+      className="inline-flex items-center gap-0.5 rounded-lg border border-dashboard-border-medium bg-dashboard-overlay p-0.5 text-xs font-medium text-dashboard-text-muted"
       role="group"
     >
       {TRANSCRIPT_VIEW_OPTIONS.map((option) => (

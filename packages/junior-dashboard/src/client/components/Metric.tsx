@@ -111,7 +111,7 @@ export function MetricValue(props: {
     >
       <span
         className={cn(
-          "inline-flex border-b border-dotted border-dashboard-border-emphasis outline-none transition-colors hover:border-dashboard-border-heavy focus-visible:border-dashboard-border-heavy",
+          "inline-flex border-b border-dotted border-dashboard-border-pronounced outline-none transition-colors hover:border-dashboard-border-focus focus-visible:border-dashboard-border-focus",
           props.className,
         )}
         tabIndex={0}

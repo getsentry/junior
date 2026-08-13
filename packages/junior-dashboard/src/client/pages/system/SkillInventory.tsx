@@ -42,7 +42,7 @@ export function SkillInventory(props: { skills: SkillReport[] }) {
             />
           ))
         ) : (
-          <div className="rounded-lg border border-dashed border-dashboard-border px-4 py-8 text-center font-mono text-xs text-dashboard-text-muted">
+          <div className="rounded-lg border border-dashed border-dashboard-border-medium px-4 py-8 text-center font-mono text-xs text-dashboard-text-muted">
             No skills have been discovered yet.
           </div>
         )}
@@ -54,7 +54,7 @@ export function SkillInventory(props: { skills: SkillReport[] }) {
 function SkillGroupCard(props: { group: SkillGroup }) {
   const label = props.group.pluginProvider ?? "Standalone";
   return (
-    <article className="rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-soft p-4">
+    <article className="rounded-lg border border-dashboard-border-soft bg-dashboard-fill-soft p-4">
       <div className="mb-3 flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2.5">
           <div className="grid size-8 shrink-0 place-items-center rounded border border-cyan-300/15 bg-cyan-300/[0.075] text-cyan-200">

@@ -203,7 +203,7 @@ function MemoryRecall(props: {
             </span>
           </summary>
 
-          <div className="border-t border-dashboard-border bg-dashboard-fill-soft px-4 py-4">
+          <div className="border-t border-dashboard-border-medium bg-dashboard-fill-soft px-4 py-4">
             <div className="whitespace-pre-wrap text-sm leading-6 text-dashboard-text">
               <HighlightText text={memory.content} />
             </div>

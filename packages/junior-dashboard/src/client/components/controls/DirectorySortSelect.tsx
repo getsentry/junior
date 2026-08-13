@@ -11,7 +11,7 @@ export function DirectorySortSelect(props: {
   value: string;
 }) {
   return (
-    <label className="grid h-9 min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center overflow-hidden rounded-lg border border-dashboard-border-strong bg-dashboard-fill-soft transition-colors hover:border-dashboard-border-emphasis focus-within:border-amber-500/35 focus-within:ring-1 focus-within:ring-amber-500/15">
+    <label className="grid h-9 min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center overflow-hidden rounded-lg border border-dashboard-border-strong bg-dashboard-fill-soft transition-colors hover:border-dashboard-border-pronounced focus-within:border-amber-500/35 focus-within:ring-1 focus-within:ring-amber-500/15">
       <span className="flex h-full items-center border-r border-dashboard-border px-2 font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted">
         Sort
       </span>

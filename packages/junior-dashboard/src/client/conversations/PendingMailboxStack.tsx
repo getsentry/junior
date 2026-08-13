@@ -160,7 +160,7 @@ export function PendingMailboxStack(props: {
   return (
     <div
       aria-label="Pending messages"
-      className="mx-2 overflow-hidden rounded-t-lg border border-b-0 border-dashboard-border-strong bg-cyan-300/[0.07] md:mx-3"
+      className="mx-2 overflow-hidden rounded-t-lg border border-b-0 border-dashboard-border-control bg-cyan-300/[0.07] md:mx-3"
     >
       <div className="px-3 py-2 font-sans text-xs font-medium text-cyan-50/85 md:hidden">
         {countLabel}

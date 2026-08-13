@@ -28,7 +28,7 @@ export function SearchInput(props: {
       <input
         aria-label={props.label}
         className={cn(
-          "w-full rounded-lg border border-dashboard-border font-mono text-xs text-dashboard-text outline-none transition-colors placeholder:text-dashboard-text-muted hover:border-dashboard-border-emphasis",
+          "w-full rounded-lg border border-dashboard-border-medium font-mono text-xs text-dashboard-text outline-none transition-colors placeholder:text-dashboard-text-muted hover:border-dashboard-border-emphasis",
           searchInputClass[size],
         )}
         onChange={(event) => props.onChange(event.currentTarget.value)}

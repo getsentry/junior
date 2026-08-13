@@ -77,7 +77,7 @@ function PluginPanel(props: { plugin: SystemPlugin }) {
         </div>
       ) : null}
 
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-dashboard-border-subtle pt-3">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-dashboard-border-row pt-3">
         <PanelFact
           icon={Sparkles}
           label={`${props.plugin.skills.length} skills`}

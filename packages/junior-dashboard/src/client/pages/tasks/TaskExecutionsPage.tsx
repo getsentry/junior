@@ -179,7 +179,7 @@ function ExecutionRow(props: {
     <div
       aria-disabled={!execution.conversationId}
       className={cn(
-        "group grid min-w-0 grid-cols-[minmax(13rem,1.7fr)_minmax(10rem,1fr)] items-center gap-3 overflow-hidden border-b border-b-white/[0.055] px-3 py-3 text-left text-inherit transition-colors max-md:grid-cols-1 max-md:px-4 max-md:py-4",
+        "group grid min-w-0 grid-cols-[minmax(13rem,1.7fr)_minmax(10rem,1fr)] items-center gap-3 overflow-hidden border-b border-b-dashboard-border-row px-3 py-3 text-left text-inherit transition-colors max-md:grid-cols-1 max-md:px-4 max-md:py-4",
         execution.conversationId
           ? "cursor-pointer hover:bg-dashboard-fill-muted"
           : "cursor-default opacity-80",

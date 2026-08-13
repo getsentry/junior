@@ -158,7 +158,7 @@ export function ConversationComposer(props: {
         </div>
       ) : null}
       <form
-        className="grid grid-cols-[minmax(0,1fr)_auto] items-end overflow-hidden rounded-lg border border-dashboard-border-strong bg-dashboard-fill-muted focus-within:border-cyan-300/35 focus-within:ring-1 focus-within:ring-cyan-300/25 md:block"
+        className="grid grid-cols-[minmax(0,1fr)_auto] items-end overflow-hidden rounded-lg border border-dashboard-border-control bg-dashboard-fill-muted focus-within:border-cyan-300/35 focus-within:ring-1 focus-within:ring-cyan-300/25 md:block"
         onSubmit={submit}
       >
         <label className="sr-only" htmlFor={id}>

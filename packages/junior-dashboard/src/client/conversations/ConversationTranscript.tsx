@@ -552,7 +552,7 @@ function transcriptRailMarker(kind: TranscriptRailEventKind): {
 } {
   if (kind === "message_context") {
     return {
-      className: "border-dashboard-border-emphasis text-dashboard-text-muted",
+      className: "border-dashboard-border-pronounced text-dashboard-text-muted",
       icon: MessageSquareText,
     };
   }

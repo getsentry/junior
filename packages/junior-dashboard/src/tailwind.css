@@ -69,11 +69,20 @@
 
   /* Hairline borders (pre-multiplied so themes can flip without white/black literals) */
   --color-dashboard-border-faint: rgb(255 255 255 / 0.05);
+  --color-dashboard-border-row: rgb(255 255 255 / 0.055);
   --color-dashboard-border-subtle: rgb(255 255 255 / 0.06);
+  --color-dashboard-border-soft: rgb(255 255 255 / 0.065);
   --color-dashboard-border: rgb(255 255 255 / 0.07);
+  --color-dashboard-border-medium: rgb(255 255 255 / 0.08);
+  --color-dashboard-border-control: rgb(255 255 255 / 0.09);
   --color-dashboard-border-strong: rgb(255 255 255 / 0.1);
+  --color-dashboard-border-raised: rgb(255 255 255 / 0.12);
+  --color-dashboard-border-hover: rgb(255 255 255 / 0.14);
   --color-dashboard-border-emphasis: rgb(255 255 255 / 0.15);
+  --color-dashboard-border-pronounced: rgb(255 255 255 / 0.2);
+  --color-dashboard-border-interactive: rgb(255 255 255 / 0.25);
   --color-dashboard-border-heavy: rgb(255 255 255 / 0.3);
+  --color-dashboard-border-focus: rgb(255 255 255 / 0.45);
   --color-dashboard-border-inverse: rgb(0 0 0 / 0.4);
 
   /* Translucent fills on the canvas */

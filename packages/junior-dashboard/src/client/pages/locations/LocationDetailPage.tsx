@@ -126,7 +126,7 @@ function LocationDetail(props: { detail: LocationDetailReport }) {
                 </>
               );
               const className =
-                "min-w-0 border-b border-r border-dashboard-border-subtle px-4 py-3.5 transition-colors hover:bg-dashboard-fill-subtle";
+                "min-w-0 border-b border-r border-dashboard-border-row px-4 py-3.5 transition-colors hover:bg-dashboard-fill-subtle";
               return item.actor.email ? (
                 <Link
                   className={`${className} text-inherit no-underline`}

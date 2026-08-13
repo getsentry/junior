@@ -70,6 +70,6 @@ const toggleButtonPressed: Record<ToggleButtonVariant, string> = {
 };
 
 const toggleButtonIdle: Record<ToggleButtonVariant, string> = {
-  pill: "border-dashboard-border-strong bg-dashboard-surface-raised text-dashboard-text-muted hover:border-dashboard-border-emphasis hover:bg-dashboard-surface-hover hover:text-dashboard-text",
+  pill: "border-dashboard-border-strong bg-dashboard-surface-raised text-dashboard-text-muted hover:border-dashboard-border-interactive hover:bg-dashboard-surface-hover hover:text-dashboard-text",
   text: "text-dashboard-text-muted hover:text-dashboard-text",
 };

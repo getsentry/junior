@@ -104,7 +104,7 @@ export function Drawer(props: {
       />
       <aside
         className={cn(
-          "absolute top-0 right-0 grid h-full w-full grid-rows-[auto_minmax(0,1fr)] bg-dashboard-bg-elevated shadow-[-20px_0_60px_var(--color-dashboard-shadow)] md:border-l md:border-dashboard-border-emphasis",
+          "absolute top-0 right-0 grid h-full w-full grid-rows-[auto_minmax(0,1fr)] bg-dashboard-bg-elevated shadow-[-20px_0_60px_var(--color-dashboard-shadow)] md:border-l md:border-dashboard-border-raised",
           props.width === "wide"
             ? "md:w-[min(760px,94vw)]"
             : "md:w-[min(560px,94vw)]",

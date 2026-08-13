@@ -135,7 +135,7 @@ export function TranscriptActivityGroup(props: {
   return (
     <details className="group/activity-run min-w-0" open={open}>
       <summary
-        className="group flex w-fit max-w-full cursor-pointer list-none items-center gap-1.5 rounded-full border border-dashboard-border bg-dashboard-fill-subtle px-2.5 py-1 text-left text-xs leading-tight text-dashboard-text-muted transition-colors hover:border-dashboard-border-strong hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55 [&::-webkit-details-marker]:hidden"
+        className="group flex w-fit max-w-full cursor-pointer list-none items-center gap-1.5 rounded-full border border-dashboard-border-medium bg-dashboard-fill-subtle px-2.5 py-1 text-left text-xs leading-tight text-dashboard-text-muted transition-colors hover:border-dashboard-border-hover hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55 [&::-webkit-details-marker]:hidden"
         onClick={(event) => {
           event.preventDefault();
           setUserOpen(!open);

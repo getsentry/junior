@@ -13,7 +13,7 @@ export function DirectoryRowsSkeleton(props: { wideRuntime?: boolean }) {
       {Array.from({ length: 5 }, (_, index) => (
         <div
           aria-hidden="true"
-          className={`grid min-w-0 ${gridColumns} items-center gap-4 border-b border-dashboard-border-subtle px-4 py-3.5 last:border-b-0 max-md:gap-x-3 max-md:gap-y-4`}
+          className={`grid min-w-0 ${gridColumns} items-center gap-4 border-b border-dashboard-border-row px-4 py-3.5 last:border-b-0 max-md:gap-x-3 max-md:gap-y-4`}
           key={index}
         >
           <div className="flex min-w-0 items-center gap-3 max-md:col-span-3">

@@ -38,10 +38,7 @@ export function PluginReports(props: {
 
   return (
     <div className="grid gap-3">
-      <SectionIntro
-        className="px-1"
-        title="Operational reports"
-      />
+      <SectionIntro className="px-1" title="Operational reports" />
       {props.reports.map((report) => (
         <PluginReportView
           fallbackTitle={props.fallbackTitle}
@@ -195,7 +192,7 @@ function PluginReportRecordSet(props: {
                 <tr>
                   {fields.map((field) => (
                     <th
-                      className="border-b border-dashboard-border-subtle px-5 py-2.5 font-medium"
+                      className="border-b border-dashboard-border-row px-5 py-2.5 font-medium"
                       key={field.key}
                       scope="col"
                     >
