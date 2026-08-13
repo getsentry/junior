@@ -314,15 +314,68 @@ async function requestBodyBytes(
   return await request.arrayBuffer();
 }
 
+function isGitHubApiHost(upstreamUrl: URL): boolean {
+  return upstreamUrl.hostname.toLowerCase() === "api.github.com";
+}
+
+function isGitHubGraphqlPath(upstreamUrl: URL): boolean {
+  return upstreamUrl.pathname.toLowerCase().endsWith("/graphql");
+}
+
+/** REST review submits need body inspection so Junior can deny APPROVE. */
+function isGitHubPullRequestReviewSubmitPath(upstreamUrl: URL): boolean {
+  const pathname = upstreamUrl.pathname.toLowerCase();
+  return (
+    /^\/repos\/[^/]+\/[^/]+\/pulls\/[^/]+\/reviews$/.test(pathname) ||
+    /^\/repos\/[^/]+\/[^/]+\/pulls\/[^/]+\/reviews\/[^/]+\/events$/.test(
+      pathname,
+    )
+  );
+}
+
 function isGrantSelectionBodyVisible(input: {
   provider: string;
+  requestMethod: string;
   upstreamUrl: URL;
 }): boolean {
+  if (input.provider !== "github" || !isGitHubApiHost(input.upstreamUrl)) {
+    return false;
+  }
+  if (isGitHubGraphqlPath(input.upstreamUrl)) {
+    return true;
+  }
   return (
-    input.provider === "github" &&
-    input.upstreamUrl.hostname.toLowerCase() === "api.github.com" &&
-    input.upstreamUrl.pathname.toLowerCase().endsWith("/graphql")
+    input.requestMethod.toUpperCase() === "POST" &&
+    isGitHubPullRequestReviewSubmitPath(input.upstreamUrl)
   );
+}
+
+function grantSelectionBodyRequiresInspection(input: {
+  operation?: string;
+  provider: string;
+  request: Request;
+  upstreamUrl: URL;
+}): boolean {
+  if (input.operation || input.provider !== "github") {
+    return false;
+  }
+  if (input.request.method.toUpperCase() !== "POST") {
+    return false;
+  }
+  if (!isGitHubApiHost(input.upstreamUrl)) {
+    return false;
+  }
+  return (
+    isGitHubGraphqlPath(input.upstreamUrl) ||
+    isGitHubPullRequestReviewSubmitPath(input.upstreamUrl)
+  );
+}
+
+function grantSelectionBodyTooLargeMessage(upstreamUrl: URL): string {
+  if (isGitHubGraphqlPath(upstreamUrl)) {
+    return "GitHub GraphQL request body is too large for Junior to inspect before issuing credentials.";
+  }
+  return "GitHub pull request review request body is too large for Junior to inspect before issuing credentials.";
 }
 
 function grantSelectionBodyText(input: {
@@ -336,15 +389,9 @@ function grantSelectionBodyText(input: {
     return undefined;
   }
   if (input.body.byteLength > GRANT_SELECTION_BODY_TEXT_LIMIT_BYTES) {
-    if (
-      !input.operation &&
-      input.provider === "github" &&
-      input.request.method.toUpperCase() === "POST" &&
-      input.upstreamUrl.hostname.toLowerCase() === "api.github.com" &&
-      input.upstreamUrl.pathname.toLowerCase().endsWith("/graphql")
-    ) {
+    if (grantSelectionBodyRequiresInspection(input)) {
       throw new EgressPolicyDenied(
-        "GitHub GraphQL request body is too large for Junior to inspect before issuing credentials.",
+        grantSelectionBodyTooLargeMessage(input.upstreamUrl),
       );
     }
     return undefined;
@@ -581,6 +628,7 @@ export async function executeCredentialedEgressRequest(input: {
   } = input;
   const bodyForGrantSelection = isGrantSelectionBodyVisible({
     provider,
+    requestMethod: request.method,
     upstreamUrl,
   })
     ? await requestBodyBytes(request)

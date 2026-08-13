@@ -78,6 +78,7 @@ import {
   type GitHubGrantName,
   type GitHubGrantReason,
 } from "./credential-support.js";
+import { assertGitHubPullRequestApprovalDenied } from "./write-policy.js";
 
 /** Configure the built-in GitHub plugin manifest and hooks. */
 export interface GitHubPluginOptions {
@@ -534,6 +535,11 @@ function assertGitHubWriteAllowed(input: {
       `GitHub pull request creation must use the github_createPullRequest tool so Junior can own idempotency and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
     );
   }
+  assertGitHubPullRequestApprovalDenied({
+    ...(input.bodyText !== undefined ? { bodyText: input.bodyText } : {}),
+    method: input.method,
+    upstreamUrl: input.upstreamUrl,
+  });
 }
 
 function grantForAccess(
