@@ -1,13 +1,16 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import {
   createTestMessage,
   createTestThread,
   createTestDestination,
 } from "../../fixtures/slack-harness";
-import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { getLocationConfigurationService } from "@/chat/runtime/thread-state";
-import { deliverAssistantMessagesForTest } from "../../fixtures/agent-runner";
+import {
+  createModelAgentRunnerForRun,
+  neverRunAgentRunner,
+} from "../../fixtures/agent-runner";
+import { createModelStream } from "../../fixtures/model-stream";
 
 function toPostedText(value: unknown): string {
   if (typeof value === "string") {
@@ -24,11 +27,10 @@ function toPostedText(value: unknown): string {
 
 describe("Slack behavior: provider default configuration", () => {
   it("sets an explicit default GitHub repo without starting an agent turn", async () => {
-    const executeAgentRun = vi.fn();
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
-          agentRunner: { run: executeAgentRun },
+          agentRunner: neverRunAgentRunner(),
         },
       },
     });
@@ -47,7 +49,6 @@ describe("Slack behavior: provider default configuration", () => {
       { destination: createTestDestination(thread) },
     );
 
-    expect(executeAgentRun).not.toHaveBeenCalled();
     expect(thread.posts).toHaveLength(1);
     expect(toPostedText(thread.posts[0])).toContain("getsentry/junior");
     await expect(
@@ -62,27 +63,16 @@ describe("Slack behavior: provider default configuration", () => {
   });
 
   it("does not intercept combined repo setup and agent work", async () => {
-    const executeAgentRun = vi.fn(async (request) => {
-      await deliverAssistantMessagesForTest(request, [
-        { text: "Created the issue." },
-      ]);
-      return completedAgentRun({
-        text: "Created the issue.",
-        diagnostics: {
-          assistantMessageCount: 1,
-          modelId: "test-model",
-          outcome: "success" as const,
-          toolCalls: [],
-          toolErrorCount: 0,
-          toolResultCount: 0,
-          usedPrimaryText: true,
-        },
-      });
-    });
+    let agentRunCount = 0;
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
-          agentRunner: { run: executeAgentRun },
+          agentRunner: createModelAgentRunnerForRun(() => {
+            agentRunCount += 1;
+            return createModelStream([
+              { type: "text", text: "Created the issue." },
+            ]);
+          }),
         },
       },
     });
@@ -101,7 +91,7 @@ describe("Slack behavior: provider default configuration", () => {
       { destination: createTestDestination(thread) },
     );
 
-    expect(executeAgentRun).toHaveBeenCalledOnce();
+    expect(agentRunCount).toBe(1);
     expect(toPostedText(thread.posts[0])).toContain("Created the issue.");
     await expect(
       getLocationConfigurationService(createTestDestination(thread)).get(

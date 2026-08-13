@@ -4,9 +4,7 @@
     "packages/junior/tests/integration/slack/bot-handlers.test.ts": 29,
     "packages/junior/tests/integration/slack/conversation-turn-steering-behavior.test.ts": 7,
     "packages/junior/tests/integration/slack/message-content-behavior.test.ts": 2,
-    "packages/junior/tests/integration/slack/new-mention-behavior.test.ts": 2,
     "packages/junior/tests/integration/slack/processing-reaction-behavior.test.ts": 6,
-    "packages/junior/tests/integration/slack/provider-default-config-behavior.test.ts": 2,
     "packages/junior/tests/integration/slack/subscribed-message-behavior.test.ts": 3
   }
 }
