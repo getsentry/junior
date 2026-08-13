@@ -395,7 +395,7 @@ describe("Slack sendFiles", () => {
     });
   });
 
-  it("does not re-upload to Slack when retrying after a cached send", async () => {
+  it("does not re-upload or mint a second delivery item on a cached retry", async () => {
     const conversationId = "conversation-cached-send";
     await getConversationStore().recordActivity({
       conversationId,
@@ -434,10 +434,12 @@ describe("Slack sendFiles", () => {
       { files: [{ path: "/tmp/report.txt" }] },
       { toolCallId: "call-send-cached" },
     );
+    // A later tool call with the same bytes must reuse the original delivery
+    // identity, not create another transcript row under a new toolCallId.
     const second = await executeTool(
       tool,
       { files: [{ path: "/tmp/report.txt" }] },
-      { toolCallId: "call-send-cached" },
+      { toolCallId: "call-send-later" },
     );
 
     expect(first.attachment_refs).toEqual([

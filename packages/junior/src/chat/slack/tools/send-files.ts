@@ -46,6 +46,8 @@ type DeliveredAttachment = {
 type CachedSendFiles = {
   delivered: DeliveredAttachment[];
   result: SendFilesResult;
+  /** Identity used for the first delivery event; retries must reuse it. */
+  toolCallId?: string;
 };
 
 function normalizeFiles(
@@ -125,12 +127,13 @@ export function createSendFilesTool(
       const cached = state.getOperationResult<CachedSendFiles>(operationKey);
       if (cached) {
         // A prior attempt may have uploaded to Slack and cached before the
-        // transcript event landed. Re-record idempotently without re-uploading.
+        // transcript event landed. Re-record with the original delivery identity
+        // so a later toolCallId cannot mint a second transcript row.
         if (attachments && cached.delivered.length > 0) {
           await recordAttachmentsDelivered({
             attachments: cached.delivered,
             conversationId: attachments.conversationId,
-            ...(options.toolCallId ? { toolCallId: options.toolCallId } : {}),
+            ...(cached.toolCallId ? { toolCallId: cached.toolCallId } : {}),
           });
         }
         return sendFilesResultSchema.parse({
@@ -178,6 +181,7 @@ export function createSendFilesTool(
       state.setOperationResult(operationKey, {
         delivered,
         result: response,
+        ...(options.toolCallId ? { toolCallId: options.toolCallId } : {}),
       } satisfies CachedSendFiles);
       if (attachments && delivered.length > 0) {
         await recordAttachmentsDelivered({
