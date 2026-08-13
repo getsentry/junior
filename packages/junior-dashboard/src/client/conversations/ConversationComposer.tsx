@@ -44,6 +44,7 @@ export function conversationAttemptForSubmit(
 }
 
 type ConversationComposerProps = {
+  disabled?: boolean;
   draftId: string;
   error?: string;
   label: string;
@@ -85,7 +86,8 @@ export const ConversationComposer = memo(function ConversationComposer(
   const submittingRef = useRef(false);
   // Monotonic token so a late failed create never restores over a newer submit.
   const submitTokenRef = useRef(0);
-  const sendLocked = props.restoreDraftOnError && createPending;
+  const sendLocked =
+    Boolean(props.disabled) || (props.restoreDraftOnError && createPending);
   draftRef.current = draft;
 
   // Persist drafts after typing settles so storage never contends with keystrokes.

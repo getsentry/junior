@@ -298,13 +298,13 @@ function ConversationReplyFooter(props: {
     (message) => message.clientStatus === "sending",
   );
   const onCancelQueue = useCallback(() => {
-    const snapshotInboundMessageIds = cancellableMessageIdsRef.current;
-    if (snapshotInboundMessageIds.length === 0) return;
-    cancelPendingMessagesRef.current.mutate({ snapshotInboundMessageIds });
+    const inboundMessageIds = cancellableMessageIdsRef.current;
+    if (inboundMessageIds.length === 0) return;
+    cancelPendingMessagesRef.current.mutate({ inboundMessageIds });
   }, []);
   const cancelError = Boolean(
     cancelPendingMessages.error &&
-    cancelPendingMessages.variables?.snapshotInboundMessageIds.some((id) =>
+    cancelPendingMessages.variables?.inboundMessageIds.some((id) =>
       cancellableMessageIds.includes(id),
     ),
   );
@@ -333,6 +333,7 @@ function ConversationReplyFooter(props: {
           onRetry={onRetry}
         />
         <ConversationComposer
+          disabled={cancelPendingMessages.isPending}
           draftId={props.conversationId}
           label="Continue this conversation"
           submitLabel="Send"
