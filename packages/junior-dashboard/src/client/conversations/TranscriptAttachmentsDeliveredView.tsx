@@ -28,8 +28,7 @@ function attachmentUrl(
   return `/api/conversations/${encodeURIComponent(conversationId)}/attachments/${encodeURIComponent(attachmentId)}`;
 }
 
-function formatAttachmentBytes(bytes: number | undefined): string | undefined {
-  if (bytes === undefined) return undefined;
+function formatAttachmentBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
@@ -43,9 +42,7 @@ function AttachmentItem(props: {
   const href = attachmentUrl(props.conversationId, props.attachment.id);
   const size = formatAttachmentBytes(props.attachment.bytes);
   const inline = mayDisplayInline(props.attachment.contentType);
-  const meta = [props.attachment.contentType, size]
-    .filter((value): value is string => value !== undefined)
-    .join(" · ");
+  const meta = [props.attachment.contentType, size].join(" · ");
 
   return (
     <div className="min-w-0">
@@ -57,7 +54,7 @@ function AttachmentItem(props: {
           target="_blank"
         >
           <img
-            alt={props.attachment.name}
+            alt={props.attachment.filename}
             className="max-h-48 max-w-sm h-auto w-auto object-contain"
             loading="lazy"
             src={href}
@@ -66,7 +63,7 @@ function AttachmentItem(props: {
       ) : null}
       <a
         className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-md px-1.5 py-1 -mx-1.5 no-underline transition-colors hover:bg-white/[0.04]"
-        download={props.attachment.name}
+        download={props.attachment.filename}
         href={href}
         rel="noreferrer"
       >
@@ -78,13 +75,11 @@ function AttachmentItem(props: {
         </span>
         <div className="min-w-0">
           <div className="truncate font-mono text-xs text-dashboard-text">
-            <HighlightText text={props.attachment.name} />
+            <HighlightText text={props.attachment.filename} />
           </div>
-          {meta ? (
-            <div className="truncate font-mono text-2xs text-dashboard-text-muted">
-              <HighlightText text={meta} />
-            </div>
-          ) : null}
+          <div className="truncate font-mono text-2xs text-dashboard-text-muted">
+            <HighlightText text={meta} />
+          </div>
         </div>
       </a>
     </div>

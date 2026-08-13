@@ -306,9 +306,10 @@ const structuredConversationEventDataSchema = z
 const deliveredAttachmentSchema = z
   .object({
     id: z.string().min(1),
-    name: z.string().min(1),
+    // Match storage + attachment route metadata (public report field).
+    filename: z.string().min(1),
     contentType: z.string().min(1),
-    bytes: z.number().int().nonnegative().optional(),
+    bytes: z.number().int().nonnegative(),
   })
   .strict();
 

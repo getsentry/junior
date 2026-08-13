@@ -79,10 +79,10 @@ export type TranscriptViewStructuredEventPart = {
 };
 
 export type TranscriptViewDeliveredAttachment = {
-  bytes?: number;
+  bytes: number;
   contentType: string;
+  filename: string;
   id: string;
-  name: string;
 };
 
 export type TranscriptViewAttachmentsDeliveredPart = {

@@ -36,10 +36,10 @@ const sendFilesResultSchema = juniorToolOutputSchema.extend({
 type SendFilesResult = z.output<typeof sendFilesResultSchema>;
 
 type DeliveredAttachment = {
-  bytes?: number;
+  bytes: number;
   contentType: string;
+  filename: string;
   id: string;
-  name: string;
 };
 
 /** Operation cache keeps delivery metadata so retries can re-record safely. */
@@ -164,16 +164,17 @@ export function createSendFilesTool(
           const file = materializedFiles[index]!;
           return {
             id: attachment.id,
-            name: file.filename,
+            filename: file.filename,
             contentType: file.mimeType,
             bytes: file.bytes,
           };
         },
       );
       const response: SendFilesResult = {
+        // Tool result stays minimal; transcript/report carries full metadata.
         attachment_refs: delivered.map((attachment) => ({
           id: attachment.id,
-          name: attachment.name,
+          name: attachment.filename,
         })),
       };
       // Cache before host bookkeeping so a later event-write failure cannot

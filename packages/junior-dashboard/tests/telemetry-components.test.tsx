@@ -680,13 +680,13 @@ describe("dashboard canonical-event components", () => {
           attachments: [
             {
               id: "att-1",
-              name: "chart.png",
+              filename: "chart.png",
               contentType: "image/png",
               bytes: 18211,
             },
             {
               id: "att-2",
-              name: "notes.txt",
+              filename: "notes.txt",
               contentType: "text/plain",
               bytes: 42,
             },

@@ -178,7 +178,7 @@ export function entryMatchesSearch(
   if (entry.kind === "attachments_delivered") {
     return entry.part.attachments.some(
       (attachment) =>
-        textContains(attachment.name, normalizedQuery) ||
+        textContains(attachment.filename, normalizedQuery) ||
         textContains(attachment.contentType, normalizedQuery),
     );
   }

@@ -189,7 +189,7 @@ function appendTranscriptMessages(
       for (const attachment of entry.part.attachments) {
         lines.push(
           "",
-          `- ${attachment.name} (${attachment.contentType}${attachment.bytes !== undefined ? `, ${attachment.bytes} bytes` : ""})`,
+          `- ${attachment.filename} (${attachment.contentType}, ${attachment.bytes} bytes)`,
         );
       }
       continue;

@@ -383,7 +383,7 @@ describe("Slack sendFiles", () => {
       attachments: [
         {
           id: rows[0]?.id,
-          name: "report.txt",
+          filename: "report.txt",
           contentType: "text/plain",
           bytes: Buffer.byteLength("report body"),
         },
@@ -465,7 +465,7 @@ describe("Slack sendFiles", () => {
       attachments: [
         {
           id: first.attachment_refs[0]?.id,
-          name: "report.txt",
+          filename: "report.txt",
           contentType: "text/plain",
           bytes: Buffer.byteLength("report body"),
         },

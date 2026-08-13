@@ -532,13 +532,13 @@ Run targeted tests before broad suites, and keep durable explanations beside the
         attachments: [
           {
             id: "qa-chart-png",
-            name: "chart.png",
+            filename: "chart.png",
             contentType: "image/png",
             bytes: 18211,
           },
           {
             id: "qa-notes-txt",
-            name: "notes.txt",
+            filename: "notes.txt",
             contentType: "text/plain",
             bytes: 42,
           },

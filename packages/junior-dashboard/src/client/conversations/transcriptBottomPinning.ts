@@ -394,7 +394,7 @@ function transcriptPartVersion(part: TranscriptViewPart | undefined): string {
       part.type,
       ...part.attachments.map(
         (attachment) =>
-          `${attachment.id}:${attachment.name}:${attachment.contentType}:${attachment.bytes ?? ""}`,
+          `${attachment.id}:${attachment.filename}:${attachment.contentType}:${attachment.bytes}`,
       ),
     ].join(":");
   }

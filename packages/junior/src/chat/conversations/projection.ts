@@ -873,10 +873,10 @@ function attachmentsDeliveredIdempotencyKey(args: {
 /** Record files delivered for humans without adding them to Pi replay. */
 export async function recordAttachmentsDelivered(args: {
   attachments: Array<{
-    bytes?: number;
+    bytes: number;
     contentType: string;
+    filename: string;
     id: string;
-    name: string;
   }>;
   conversationId: string;
   createdAtMs?: number;
@@ -897,10 +897,11 @@ export async function recordAttachmentsDelivered(args: {
         type: "attachments_delivered",
         attachments: args.attachments.map((attachment) => ({
           id: attachment.id,
-          name: attachment.name,
+          filename: attachment.filename,
           contentType: attachment.contentType,
-          ...(attachment.bytes !== undefined ? { bytes: attachment.bytes } : {}),
+          bytes: attachment.bytes,
         })),
+        // toolCallId/turnId are write-path only; report projection strips them.
         ...(args.toolCallId ? { toolCallId: args.toolCallId } : {}),
         ...(args.turnId ? { turnId: args.turnId } : {}),
       },

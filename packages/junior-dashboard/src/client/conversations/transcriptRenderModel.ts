@@ -190,7 +190,7 @@ export function messageRawText(message: TranscriptViewMessage): string {
       }
       if (part.type === "attachments_delivered") {
         return part.attachments
-          .map((attachment) => attachment.name)
+          .map((attachment) => attachment.filename)
           .join("\n");
       }
       if (part.event.type !== "handoff") {

@@ -236,7 +236,7 @@ describe("conversation report event projection", () => {
       attachments: [
         {
           id: "att-1",
-          name: "chart.png",
+          filename: "chart.png",
           contentType: "image/png",
           bytes: 18211,
         },
@@ -259,7 +259,7 @@ describe("conversation report event projection", () => {
           attachments: [
             {
               id: "att-1",
-              name: "chart.png",
+              filename: "chart.png",
               contentType: "image/png",
               bytes: 18211,
             },
