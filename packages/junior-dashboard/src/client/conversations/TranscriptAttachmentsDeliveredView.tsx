@@ -65,7 +65,7 @@ function AttachmentItem(props: {
         </a>
       ) : null}
       <a
-        className="group/attachment grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-md px-1.5 py-1 -mx-1.5 no-underline transition-colors hover:bg-white/[0.04]"
+        className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-md px-1.5 py-1 -mx-1.5 no-underline transition-colors hover:bg-white/[0.04]"
         download={props.attachment.name}
         href={href}
         rel="noreferrer"
@@ -77,7 +77,7 @@ function AttachmentItem(props: {
           {inline ? <ImageIcon size={13} /> : <FileText size={13} />}
         </span>
         <div className="min-w-0">
-          <div className="truncate font-mono text-xs text-dashboard-text group-hover/attachment:text-white">
+          <div className="truncate font-mono text-xs text-dashboard-text">
             <HighlightText text={props.attachment.name} />
           </div>
           {meta ? (
