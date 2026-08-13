@@ -15,6 +15,7 @@ describe("GitHub reply markdown", () => {
         [
           "`getsentry/junior#1509`",
           "[getsentry/junior#1509](https://github.com/getsentry/junior/pull/1509)",
+          "[PR (draft) getsentry/junior#1509](https://github.com/getsentry/junior/pull/1509)",
           "<https://example.com/getsentry/junior#1509>",
           "https://example.com/getsentry/junior#1509",
           "```",
@@ -26,6 +27,7 @@ describe("GitHub reply markdown", () => {
       [
         "`getsentry/junior#1509`",
         "[getsentry/junior#1509](https://github.com/getsentry/junior/pull/1509)",
+        "[PR (draft) getsentry/junior#1509](https://github.com/getsentry/junior/pull/1509)",
         "<https://example.com/getsentry/junior#1509>",
         "https://example.com/getsentry/junior#1509",
         "```",

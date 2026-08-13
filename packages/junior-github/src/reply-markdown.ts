@@ -8,19 +8,6 @@ function isReferenceBoundary(char: string | undefined): boolean {
   return char === undefined || !/[A-Za-z0-9._-]/.test(char);
 }
 
-function readDelimitedText(
-  text: string,
-  start: number,
-  open: string,
-  close: string,
-): number | undefined {
-  if (!text.startsWith(open, start)) {
-    return undefined;
-  }
-  const end = text.indexOf(close, start + open.length);
-  return end === -1 ? undefined : end + close.length;
-}
-
 function readInlineCode(text: string, start: number): number | undefined {
   if (text[start] !== "`") {
     return undefined;
@@ -32,6 +19,37 @@ function readInlineCode(text: string, start: number): number | undefined {
   const marker = "`".repeat(markerLength);
   const end = text.indexOf(marker, start + markerLength);
   return end === -1 ? undefined : end + markerLength;
+}
+
+/** Skip one existing Markdown link whose destination starts with http(s). */
+function readMarkdownLink(text: string, start: number): number | undefined {
+  if (text[start] !== "[") {
+    return undefined;
+  }
+
+  const labelEnd = text.indexOf("](", start + 1);
+  if (labelEnd === -1) {
+    return undefined;
+  }
+
+  const destStart = labelEnd + 2;
+  if (
+    !text.startsWith("http://", destStart) &&
+    !text.startsWith("https://", destStart)
+  ) {
+    return undefined;
+  }
+
+  const closeParens = text.indexOf(")", destStart);
+  return closeParens === -1 ? undefined : closeParens + 1;
+}
+
+function readAngleToken(text: string, start: number): number | undefined {
+  if (text[start] !== "<") {
+    return undefined;
+  }
+  const end = text.indexOf(">", start + 1);
+  return end === -1 ? undefined : end + 1;
 }
 
 function linkifyLine(line: string): string {
@@ -46,20 +64,17 @@ function linkifyLine(line: string): string {
       continue;
     }
 
-    const markdownLinkEnd = readDelimitedText(line, index, "[", ")");
-    if (
-      markdownLinkEnd !== undefined &&
-      line.slice(index, markdownLinkEnd).includes("](")
-    ) {
+    const markdownLinkEnd = readMarkdownLink(line, index);
+    if (markdownLinkEnd !== undefined) {
       output += line.slice(index, markdownLinkEnd);
       index = markdownLinkEnd;
       continue;
     }
 
-    const slackTokenEnd = readDelimitedText(line, index, "<", ">");
-    if (slackTokenEnd !== undefined) {
-      output += line.slice(index, slackTokenEnd);
-      index = slackTokenEnd;
+    const angleTokenEnd = readAngleToken(line, index);
+    if (angleTokenEnd !== undefined) {
+      output += line.slice(index, angleTokenEnd);
+      index = angleTokenEnd;
       continue;
     }
 
