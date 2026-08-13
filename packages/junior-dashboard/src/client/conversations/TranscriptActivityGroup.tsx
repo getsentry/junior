@@ -16,6 +16,8 @@ export function isCollapsibleActivityEntry(
   entry: RenderedTranscriptEntry,
 ): boolean {
   if (entry.kind === "failure") return false;
+  // Delivered files are human-facing media, not collapsible tool chrome.
+  if (entry.kind === "attachments_delivered") return false;
   if (entry.kind === "message") return Boolean(entry.message.eventType);
   return true;
 }

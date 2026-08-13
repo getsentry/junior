@@ -527,7 +527,25 @@ Run targeted tests before broad suites, and keep durable explanations beside the
           ],
         },
       }),
-      reportEvent(15, iso(Date.parse(startedAt), 64_000), {
+      reportEvent(15, iso(Date.parse(startedAt), 63_000), {
+        type: "attachments_delivered",
+        toolCallId: "qa-send-files",
+        attachments: [
+          {
+            id: "qa-chart-png",
+            name: "chart.png",
+            contentType: "image/png",
+            bytes: 18211,
+          },
+          {
+            id: "qa-notes-txt",
+            name: "notes.txt",
+            contentType: "text/plain",
+            bytes: 42,
+          },
+        ],
+      }),
+      reportEvent(16, iso(Date.parse(startedAt), 64_000), {
         type: "message",
         messageId: "qa-unused-context",
         role: "user",
@@ -535,7 +553,7 @@ Run targeted tests before broad suites, and keep durable explanations beside the
         explicitMention: false,
         actorIdentity: actor(undefined, "Alex Rivera", "alex"),
       }),
-      reportEvent(16, iso(Date.parse(startedAt), 66_000), {
+      reportEvent(17, iso(Date.parse(startedAt), 66_000), {
         type: "message",
         messageId: "qa-used-context",
         role: "user",
@@ -543,13 +561,13 @@ Run targeted tests before broad suites, and keep durable explanations beside the
         explicitMention: false,
         actorIdentity: actor(undefined, "Alex Rivera", "alex"),
       }),
-      reportEvent(17, iso(Date.parse(startedAt), 67_000), {
+      reportEvent(18, iso(Date.parse(startedAt), 67_000), {
         type: "turn_lifecycle",
         turnId: "qa-context-turn",
         state: "started",
         inputMessageIds: ["qa-used-context"],
       }),
-      reportEvent(18, iso(Date.parse(startedAt), 69_000), {
+      reportEvent(19, iso(Date.parse(startedAt), 69_000), {
         type: "message",
         messageId: "qa-context-answer",
         role: "assistant",

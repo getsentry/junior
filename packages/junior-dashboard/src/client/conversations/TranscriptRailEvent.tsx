@@ -77,7 +77,7 @@ function transcriptRailMarker(kind: TranscriptRailEventKind): {
   }
   if (kind === "attachments_delivered") {
     return {
-      className: "text-sky-200",
+      className: "text-dashboard-text-muted",
       icon: Paperclip,
     };
   }
