@@ -394,14 +394,31 @@ export function getPlugins(): PluginRegistration[] {
 export function applyPluginSlackReplyMarkdown(text: string): string {
   let transformed = text;
   for (const plugin of getPlugins()) {
+    const pluginName = plugin.manifest.name;
     const hook = plugin.hooks?.slackReplyMarkdown;
     if (!hook) {
       continue;
     }
-    transformed = hook({
-      ...basePluginContext(plugin),
-      text: transformed,
-    });
+    try {
+      const next = hook({
+        ...basePluginContext(plugin),
+        text: transformed,
+      });
+      if (typeof next === "string") {
+        transformed = next;
+      } else {
+        logWarn("plugin.slack_reply_markdown.contribution_result.invalid", {
+          "app.plugin.name": pluginName,
+          "app.plugin.validation_reason": "invalid_shape",
+        });
+      }
+    } catch (error) {
+      // Fail open: reply delivery must not depend on optional provider formatting.
+      logWarn("plugin.slack_reply_markdown.hook.failed", {
+        "app.plugin.name": pluginName,
+        "exception.message": safeErrorMessage(error),
+      });
+    }
   }
   return transformed;
 }

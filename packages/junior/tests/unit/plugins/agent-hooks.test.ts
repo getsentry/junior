@@ -30,6 +30,7 @@ vi.mock("@/chat/plugins/viewer", () => ({
   resolveViewerUser: resolveViewerUserMock,
 }));
 import {
+  applyPluginSlackReplyMarkdown,
   createPluginHookRunner,
   getPluginApiRoutes,
   getPluginSystemPromptContributions,
@@ -210,6 +211,46 @@ describe("agent plugin hooks", () => {
         visibility: "private",
       }).visibility,
     ).toBe("private");
+  });
+
+  it("applies slack reply markdown transforms and fails open on plugin errors", () => {
+    const previous = setPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "a-demo",
+          displayName: "A Demo",
+          description: "A demo",
+        },
+        hooks: {
+          slackReplyMarkdown({ text }) {
+            return text.replaceAll("alpha", "beta");
+          },
+        },
+      }),
+      defineJuniorPlugin({
+        manifest: {
+          name: "z-demo",
+          displayName: "Z Demo",
+          description: "Z demo",
+        },
+        hooks: {
+          slackReplyMarkdown() {
+            throw new Error("boom");
+          },
+        },
+      }),
+    ]);
+    try {
+      expect(applyPluginSlackReplyMarkdown("alpha one")).toBe("beta one");
+      expect(logWarnMock).toHaveBeenCalledWith(
+        "plugin.slack_reply_markdown.hook.failed",
+        expect.objectContaining({
+          "app.plugin.name": "z-demo",
+        }),
+      );
+    } finally {
+      setPlugins(previous);
+    }
   });
 
   it("collects system prompt contributions from configured plugins", async () => {
