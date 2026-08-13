@@ -6,6 +6,7 @@ import {
   acceptedConversationMessageSchema,
   archiveConversationBodySchema,
   archiveConversationResponseSchema,
+  publishConversationResponseSchema,
   cancelConversationPendingMessagesBodySchema,
   cancelConversationPendingMessagesResponseSchema,
   conversationAttachmentParamsSchema,
@@ -28,6 +29,7 @@ import {
   conversationAttachmentHeaders,
   requireConversationAttachment,
 } from "./attachments";
+import { publishConversationForViewer } from "./publish";
 import {
   appendConversationMessageForViewer,
   createConversationForViewer,
@@ -129,6 +131,24 @@ export function createConversationRoutes(options: {
       return jsonResponse(
         archiveConversationResponseSchema,
         await archiveConversation(conversationId, body),
+      );
+    },
+  );
+
+  app.post(
+    "/:conversationId/publish",
+    requireViewer,
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    async (context) => {
+      const viewer = context.get("viewer");
+      const { conversationId } = context.req.valid("param");
+      return jsonResponse(
+        publishConversationResponseSchema,
+        await publishConversationForViewer(viewer, conversationId),
       );
     },
   );

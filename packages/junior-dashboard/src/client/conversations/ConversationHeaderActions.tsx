@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import {
   Archive,
   ArchiveRestore,
+  Globe2,
   Info,
   MessagesSquare,
   ScrollText,
@@ -22,6 +23,14 @@ export type ConversationArchiveAction = {
   pending: boolean;
 };
 
+export type ConversationPublishAction = {
+  disabled: boolean;
+  error: boolean;
+  onClick(): void;
+  pending: boolean;
+  visible: boolean;
+};
+
 /** Render the compact icon controls for one conversation header. */
 export function ConversationHeaderActions(props: {
   archive: ConversationArchiveAction;
@@ -30,6 +39,7 @@ export function ConversationHeaderActions(props: {
   onDetailsClick(): void;
   onSearchClick(): void;
   onViewChange(value: TranscriptViewMode): void;
+  publish?: ConversationPublishAction;
   searchOpen: boolean;
   view: TranscriptViewMode;
 }) {
@@ -41,6 +51,9 @@ export function ConversationHeaderActions(props: {
       />
       <TranscriptViewToggle onChange={props.onViewChange} value={props.view} />
       {props.copyAction}
+      {props.publish?.visible ? (
+        <PublishConversationButton {...props.publish} />
+      ) : null}
       <ArchiveConversationButton {...props.archive} />
       <HeaderIconButton
         label="Conversation details"
@@ -170,6 +183,23 @@ function ArchiveConversationButton(props: ConversationArchiveAction) {
         size="icon"
       >
         <Icon aria-hidden="true" size={15} strokeWidth={2} />
+      </Button>
+    </IconButtonTooltip>
+  );
+}
+
+function PublishConversationButton(props: ConversationPublishAction) {
+  const label = props.pending ? "Making public" : "Make public";
+  return (
+    <IconButtonTooltip label={label}>
+      <Button
+        aria-label={label}
+        className="hidden shrink-0 text-dashboard-text-muted md:grid"
+        disabled={props.disabled}
+        onClick={props.onClick}
+        size="icon"
+      >
+        <Globe2 aria-hidden="true" size={15} strokeWidth={2} />
       </Button>
     </IconButtonTooltip>
   );
