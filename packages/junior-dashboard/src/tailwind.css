@@ -64,6 +64,9 @@
   --color-dashboard-text-faint: #888888;
   --color-dashboard-text-inverse: #000000;
   --color-dashboard-text-solid: #ffffff;
+  --color-dashboard-shimmer-edge: #777777;
+  --color-dashboard-shimmer-soft: #d6d6d6;
+  --color-dashboard-shimmer-highlight: #ffffff;
 
   /* Focus / brand accent used for rings and avatar chips */
   --color-dashboard-focus: #beaaff;
@@ -78,7 +81,6 @@
   --color-dashboard-border-control: rgb(255 255 255 / 0.09);
   --color-dashboard-border-strong: rgb(255 255 255 / 0.1);
   --color-dashboard-border-raised: rgb(255 255 255 / 0.12);
-  --color-dashboard-border-hover: rgb(255 255 255 / 0.14);
   --color-dashboard-border-emphasis: rgb(255 255 255 / 0.15);
   --color-dashboard-border-pronounced: rgb(255 255 255 / 0.2);
   --color-dashboard-border-interactive: rgb(255 255 255 / 0.25);
@@ -131,7 +133,6 @@
   --color-dashboard-shadow-mid: rgb(0 0 0 / 0.35);
   --color-dashboard-shadow-jump: rgb(0 0 0 / 0.36);
   --color-dashboard-shadow-avatar: rgb(0 0 0 / 0.4);
-  --color-dashboard-shadow-strong: rgb(0 0 0 / 0.6);
   --color-dashboard-shadow-heavy: rgb(0 0 0 / 0.7);
   --color-dashboard-shadow-popover: rgb(0 0 0 / 0.75);
   --color-dashboard-shadow-popover-edge: rgb(9 12 14 / 0.8);
@@ -151,7 +152,6 @@
   --color-dashboard-bubble-warning: #17140d;
   --color-dashboard-jump-idle: #0b181a;
   --color-dashboard-jump-hover: #102226;
-  --color-dashboard-tool-label: #9a8fd0;
 }
 
 @layer base {
@@ -181,27 +181,6 @@
   ::-webkit-scrollbar-thumb:hover {
     background: var(--color-dashboard-scrollbar-thumb-hover);
   }
-}
-
-/* Shell canvas: solid base + faint grid. Noise sits in a separate layer. */
-.dashboard-shell-bg {
-  background-color: var(--color-dashboard-bg);
-  background-image:
-    radial-gradient(
-      ellipse at 50% 0%,
-      transparent 0%,
-      var(--color-dashboard-bg) 70%
-    ),
-    linear-gradient(var(--color-dashboard-grid-line) 1px, transparent 1px),
-    linear-gradient(
-      90deg,
-      var(--color-dashboard-grid-line) 1px,
-      transparent 1px
-    );
-  background-size:
-    100% 100%,
-    40px 40px,
-    40px 40px;
 }
 
 @source "./app.ts";
