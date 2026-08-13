@@ -29,3 +29,5 @@ The plugin owns its signed webhook route, deployment, pull request, and release
 resource events, normalized pull request and issue outcome projections, and
 dashboard operational report. Core only owns delivery from plugin-published
 resource events into matching conversation subscriptions.
+
+Person profiles call `hooks.profileReport` for Junior-owned GitHub work attributed through conversation actors.

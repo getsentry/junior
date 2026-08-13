@@ -14,7 +14,10 @@ export function PluginReports(props: {
   fallbackTitle?: string;
   range?: TimeRangeDays;
   reports: PluginOperationalReport[];
+  /** Section label above the report cards. */
+  title?: string;
 }) {
+  const sectionTitle = props.title ?? "Operational reports";
   if (props.reports.length === 0 && !props.emptyText) return null;
   if (props.reports.length === 0) {
     return (
@@ -25,7 +28,7 @@ export function PluginReports(props: {
           </div>
           <div>
             <h2 className="m-0 font-display text-base font-medium text-dashboard-text-muted">
-              Operational reports
+              {sectionTitle}
             </h2>
             <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
               {props.emptyText}
@@ -40,7 +43,7 @@ export function PluginReports(props: {
     <div className="grid gap-3">
       <SectionIntro
         className="px-1"
-        title="Operational reports"
+        title={sectionTitle}
       />
       {props.reports.map((report) => (
         <PluginReportView

@@ -58,6 +58,9 @@ reports, and other typed hook surfaces exported by this package.
   binds the plugin namespace and owns access to the conversation event log.
   Event `costUsd` is additive operation cost and must not duplicate cost
   already recorded in the conversation's agent model usage.
+- Profile report hooks return the same bounded operational report content for
+  one subject user on a person profile. Core owns viewer authorization,
+  collection, sanitization, and browser rendering.
 - Tool hooks may lazily resolve the active actor's canonical identity and linked
   user through `ctx.users.resolveActor()`.
 - Authenticated API route hooks receive `ctx.users.resolve(email)` for lazy

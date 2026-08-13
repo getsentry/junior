@@ -91,6 +91,30 @@ export async function resolveViewerUser(
   return await resolveViewerUserFromSql(getDb(), email);
 }
 
+/** Read one existing canonical user by verified email without creating a row. */
+export async function findUserByEmailFromSql(
+  db: JuniorDatabase,
+  email: string,
+): Promise<User | undefined> {
+  const normalizedEmail = normalizeIdentityEmail(email);
+  if (!normalizedEmail) return undefined;
+  const userRow = (
+    await db
+      .select()
+      .from(juniorUsers)
+      .where(eq(juniorUsers.primaryEmailNormalized, normalizedEmail))
+      .limit(1)
+  )[0];
+  return userRow ? await readUserById(db, userRow) : undefined;
+}
+
+/** Read one existing canonical user by verified email without creating a row. */
+export async function findUserByEmail(
+  email: string,
+): Promise<User | undefined> {
+  return await findUserByEmailFromSql(getDb(), email);
+}
+
 /** Update one canonical user's display name in SQL. */
 export async function updateViewerDisplayNameFromSql(
   db: JuniorDatabase,

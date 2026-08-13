@@ -35,6 +35,7 @@ import {
   getPluginSystemPromptContributions,
   getPluginUserPromptContributions,
   getPluginOperationalReports,
+  getPluginProfileReports,
   getPluginRoutes,
   getPluginSlackConversationLink,
   getPluginTools,
@@ -1485,6 +1486,77 @@ describe("agent plugin hooks", () => {
           ],
           metrics: [{ label: "report", tone: "danger", value: "failed" }],
           title: "broken-demo",
+        },
+      ]);
+    } finally {
+      setPlugins(previous);
+    }
+  });
+
+  it("collects profile reports and skips plugin failures", async () => {
+    const subject = {
+      email: "subject@example.com",
+      id: "user-subject",
+      identities: [],
+    };
+    const viewer = {
+      email: "viewer@example.com",
+      id: "user-viewer",
+      identities: [],
+    };
+    const previous = setPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "agent-demo",
+          displayName: "Agent Demo",
+          description: "Agent demo",
+        },
+        hooks: {
+          async profileReport(ctx) {
+            expect(ctx.nowMs).toBe(123);
+            expect(ctx.subject).toEqual(subject);
+            expect(ctx.viewer).toEqual(viewer);
+            expect("set" in ctx.state).toBe(false);
+            return {
+              title: "Code changes",
+              metrics: [{ label: "prs", value: "2" }],
+            };
+          },
+        },
+      }),
+      defineJuniorPlugin({
+        manifest: {
+          name: "broken-demo",
+          displayName: "Broken Demo",
+          description: "Broken demo",
+        },
+        hooks: {
+          profileReport() {
+            throw new Error("database unavailable");
+          },
+        },
+      }),
+      defineJuniorPlugin({
+        manifest: {
+          name: "empty-demo",
+          displayName: "Empty Demo",
+          description: "Empty demo",
+        },
+        hooks: {
+          profileReport() {
+            return undefined;
+          },
+        },
+      }),
+    ]);
+    try {
+      await expect(
+        getPluginProfileReports({ nowMs: 123, subject, viewer }),
+      ).resolves.toEqual([
+        {
+          pluginName: "agent-demo",
+          title: "Code changes",
+          metrics: [{ label: "prs", value: "2" }],
         },
       ]);
     } finally {

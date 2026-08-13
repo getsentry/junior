@@ -5,9 +5,10 @@ import { Link, useParams } from "react-router";
 import type {
   ActorProfileReport,
   ConversationStatsItem,
+  PluginOperationalReport,
 } from "@sentry/junior/api/schema";
 
-import { useActorProfileData } from "../../api";
+import { useActorPluginReportsData, useActorProfileData } from "../../api";
 import { ContributionGrid } from "./ContributionGrid";
 import { SystemMetricCharts } from "../../components/charts/SystemMetricCharts";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
@@ -21,6 +22,7 @@ import { SectionIntro } from "../../components/layout/SectionIntro";
 import { SectionTitle } from "../../components/layout/SectionTitle";
 import { StatCard } from "../../components/metrics/StatCard";
 import { formatCompactNumber } from "../../format";
+import { PluginReports } from "../system/PluginReports";
 
 function runtimeLabel(durationMs: number, conversations: number): string {
   if (durationMs <= 0 && conversations > 0) return "unknown";
@@ -32,13 +34,19 @@ export function PersonProfilePage() {
   const params = useParams();
   const email = params.email ? decodeURIComponent(params.email) : undefined;
   const query = useActorProfileData(email);
+  const pluginReportsQuery = useActorPluginReportsData(email);
   if (!query.data && !query.error) {
     return <LoadingView label="Loading profile" />;
   }
   return (
     <PageLayout>
       {query.data ? (
-        <Profile profile={query.data} />
+        <Profile
+          pluginReports={pluginReportsQuery.data?.reports ?? []}
+          pluginReportsError={Boolean(pluginReportsQuery.error)}
+          pluginReportsLoading={pluginReportsQuery.isPending}
+          profile={query.data}
+        />
       ) : (
         <Card padding="md">
           <EmptyTelemetry>Profile failed to load.</EmptyTelemetry>
@@ -49,9 +57,15 @@ export function PersonProfilePage() {
 }
 
 /** Present one actor's activity and dimensions. */
-export function Profile(props: { profile: ActorProfileReport }) {
+export function Profile(props: {
+  pluginReports?: PluginOperationalReport[];
+  pluginReportsError?: boolean;
+  pluginReportsLoading?: boolean;
+  profile: ActorProfileReport;
+}) {
   const [range, setRange] = useState<TimeRangeDays>(30);
   const profile = props.profile;
+  const pluginReports = props.pluginReports ?? [];
   const displayName =
     profile.actor.fullName ??
     profile.actor.slackUserName ??
@@ -87,6 +101,22 @@ export function Profile(props: { profile: ActorProfileReport }) {
         />
         <SystemMetricCharts days={profile.activityDays.slice(-range)} />
       </section>
+
+      {props.pluginReportsError ? (
+        <Card className="border-amber-300/10 bg-amber-300/[0.025]" padding="sm">
+          <div className="font-display text-sm font-medium text-dashboard-text-muted">
+            Plugin activity failed to load.
+          </div>
+        </Card>
+      ) : null}
+      {!props.pluginReportsLoading && pluginReports.length > 0 ? (
+        <PluginReports
+          fallbackTitle="Plugin activity"
+          range={range}
+          reports={pluginReports}
+          title="Work via Junior"
+        />
+      ) : null}
 
       <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_19rem] lg:items-start">
         <aside className="grid min-w-0 gap-4 lg:order-2">

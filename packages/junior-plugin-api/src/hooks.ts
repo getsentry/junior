@@ -11,6 +11,7 @@ import type {
   HeartbeatHookContext,
   HeartbeatResult,
   OperationalReportHookContext,
+  ProfileReportHookContext,
   ApiRouteRegistrationHookContext,
   PluginOperationalReportContent,
   PluginRoute,
@@ -68,6 +69,16 @@ export interface PluginHooks {
   onEgressResponse?(ctx: EgressResponseHookContext): Promise<void> | void;
   operationalReport?(
     ctx: OperationalReportHookContext,
+  ):
+    | Promise<PluginOperationalReportContent | undefined>
+    | PluginOperationalReportContent
+    | undefined;
+  /**
+   * Return one person-scoped operational report for a profile page.
+   * Omit or return undefined when the plugin has nothing to show for the subject.
+   */
+  profileReport?(
+    ctx: ProfileReportHookContext,
   ):
     | Promise<PluginOperationalReportContent | undefined>
     | PluginOperationalReportContent
