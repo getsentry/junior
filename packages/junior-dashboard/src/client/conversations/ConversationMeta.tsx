@@ -159,6 +159,20 @@ function ResourceStatus(props: {
   );
 }
 
+/** True when identity has content for the requested presentation. */
+export function hasConversationIdentity(props: {
+  conversation: Conversation | undefined;
+  conversationId: string | undefined;
+  detail: ConversationDetailReport | undefined;
+  variant?: "compact" | "full";
+}): boolean {
+  const variant = props.variant ?? "full";
+  const owner = conversationActorLabel(props.conversation);
+  if (variant === "compact") return Boolean(owner);
+  const id = props.conversationId ?? props.conversation?.id;
+  return Boolean(owner || id || props.detail?.sentryConversationUrl);
+}
+
 /** Render the conversation owner, optionally with id and Sentry deep link. */
 export function ConversationIdentity(props: {
   conversation: Conversation | undefined;
@@ -166,6 +180,7 @@ export function ConversationIdentity(props: {
   detail: ConversationDetailReport | undefined;
   variant?: "compact" | "full";
 }) {
+  if (!hasConversationIdentity(props)) return null;
   const variant = props.variant ?? "full";
   const email = props.conversation?.actorIdentity?.email?.trim();
   const owner = conversationActorLabel(props.conversation);
@@ -183,7 +198,6 @@ export function ConversationIdentity(props: {
     )
   ) : null;
   if (variant === "compact") {
-    if (!ownerNode) return null;
     return (
       <span className="inline-flex min-w-0 max-w-full items-center">
         <span className="min-w-0 max-w-full truncate">{ownerNode}</span>
@@ -200,7 +214,6 @@ export function ConversationIdentity(props: {
       View in Sentry
     </a>
   ) : null;
-  if (!ownerNode && !id && !sentryLink) return null;
 
   return (
     <span className="inline-flex min-w-0 max-w-full flex-wrap items-center gap-x-1.5 gap-y-1">
@@ -317,13 +330,38 @@ export function liveModelId(
   return openTurns.size > 0 ? modelId : undefined;
 }
 
+/** True when runtime stats have content for the requested presentation. */
+export function hasConversationStats(props: {
+  conversation: Conversation | undefined;
+  detail?: ConversationDetailReport;
+  variant?: "compact" | "full";
+}): boolean {
+  return conversationStatItems(props).length > 0;
+}
+
 /** Render runtime, source, token, and cost metadata under the conversation title. */
 export function ConversationStats(props: {
   conversation: Conversation | undefined;
   detail?: ConversationDetailReport;
   variant?: "compact" | "full";
 }) {
-  if (!props.conversation) return null;
+  const stats = conversationStatItems(props);
+  if (stats.length === 0) return null;
+
+  return (
+    <MetricList
+      className="break-words text-xs leading-[1.45] text-dashboard-text-muted"
+      items={stats}
+    />
+  );
+}
+
+function conversationStatItems(props: {
+  conversation: Conversation | undefined;
+  detail?: ConversationDetailReport;
+  variant?: "compact" | "full";
+}): MetricListItem[] {
+  if (!props.conversation) return [];
   const variant = props.variant ?? "full";
   const completeDetail = props.detail?.previousCursor
     ? undefined
@@ -406,15 +444,5 @@ export function ConversationStats(props: {
         }
       : undefined,
   ];
-  const stats = rawStats.filter(
-    (item): item is MetricListItem => item !== undefined,
-  );
-  if (stats.length === 0) return null;
-
-  return (
-    <MetricList
-      className="break-words text-xs leading-[1.45] text-dashboard-text-muted"
-      items={stats}
-    />
-  );
+  return rawStats.filter((item): item is MetricListItem => item !== undefined);
 }

@@ -1,17 +1,18 @@
 import { useState } from "react";
-import { Bot, ExternalLink, Search, X } from "lucide-react";
+import { Bot, ExternalLink } from "lucide-react";
 import { Link } from "react-router";
 
 import { useConversationData } from "./queries";
 import { conversationPath, formatMessageTimestamp } from "../format";
 import { buildConversationMarkdown } from "../markdownExport";
 import type { TranscriptViewSubagentPart } from "../types";
-import { Button } from "../components/Button";
 import { Drawer } from "../components/Drawer";
 import { SearchInput } from "../components/SearchInput";
-import { IconButtonTooltip } from "../components/Tooltip";
 import { CopyMarkdownButton } from "./CopyMarkdownButton";
-import { TranscriptViewToggle } from "./ConversationHeaderActions";
+import {
+  TranscriptSearchToggle,
+  TranscriptViewToggle,
+} from "./ConversationHeaderActions";
 import { Transcript } from "./TranscriptView";
 import { TranscriptLoading } from "./TranscriptLoading";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
@@ -61,32 +62,17 @@ function SubagentTranscriptDrawerContent(props: {
     <Drawer
       actions={
         <>
-          <IconButtonTooltip
-            label={searchOpenVisible ? "Hide search" : "Search transcript"}
-          >
-            <Button
-              aria-label={
-                searchOpenVisible ? "Hide search" : "Search transcript"
+          <TranscriptSearchToggle
+            onClick={() => {
+              if (searchOpenVisible) {
+                setSearchOpen(false);
+                if (search.length > 0) setSearch("");
+                return;
               }
-              aria-pressed={searchOpenVisible}
-              className="text-dashboard-text-muted"
-              onClick={() => {
-                if (searchOpenVisible) {
-                  setSearchOpen(false);
-                  if (search.length > 0) setSearch("");
-                  return;
-                }
-                setSearchOpen(true);
-              }}
-              size="icon"
-            >
-              {searchOpenVisible ? (
-                <X aria-hidden="true" size={15} strokeWidth={2} />
-              ) : (
-                <Search aria-hidden="true" size={15} strokeWidth={2} />
-              )}
-            </Button>
-          </IconButtonTooltip>
+              setSearchOpen(true);
+            }}
+            open={searchOpenVisible}
+          />
           <TranscriptViewToggle onChange={setView} value={view} />
           <CopyMarkdownButton
             key={props.target.conversationId}

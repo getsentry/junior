@@ -35,17 +35,10 @@ export function ConversationHeaderActions(props: {
 }) {
   return (
     <div className="flex shrink-0 items-center gap-0.5">
-      <HeaderIconButton
-        label={props.searchOpen ? "Hide search" : "Search transcript"}
+      <TranscriptSearchToggle
         onClick={props.onSearchClick}
-        pressed={props.searchOpen}
-      >
-        {props.searchOpen ? (
-          <X aria-hidden="true" size={15} strokeWidth={2} />
-        ) : (
-          <Search aria-hidden="true" size={15} strokeWidth={2} />
-        )}
-      </HeaderIconButton>
+        open={props.searchOpen}
+      />
       <TranscriptViewToggle onChange={props.onViewChange} value={props.view} />
       {props.copyAction}
       <ArchiveConversationButton {...props.archive} />
@@ -115,7 +108,8 @@ function ViewModeButton(props: {
   );
 }
 
-function HeaderIconButton(props: {
+/** Shared icon control used by conversation and subagent transcript headers. */
+export function HeaderIconButton(props: {
   children: ReactNode;
   label: string;
   onClick(): void;
@@ -136,6 +130,26 @@ function HeaderIconButton(props: {
         {props.children}
       </Button>
     </IconButtonTooltip>
+  );
+}
+
+/** Toggle transcript search visibility with the shared header icon control. */
+export function TranscriptSearchToggle(props: {
+  onClick(): void;
+  open: boolean;
+}) {
+  return (
+    <HeaderIconButton
+      label={props.open ? "Hide search" : "Search transcript"}
+      onClick={props.onClick}
+      pressed={props.open}
+    >
+      {props.open ? (
+        <X aria-hidden="true" size={15} strokeWidth={2} />
+      ) : (
+        <Search aria-hidden="true" size={15} strokeWidth={2} />
+      )}
+    </HeaderIconButton>
   );
 }
 

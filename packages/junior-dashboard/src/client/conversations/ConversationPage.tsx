@@ -21,12 +21,13 @@ import {
   ConversationPrivacyChip,
   ConversationStats,
   hasConversationAnnotations,
+  hasConversationIdentity,
+  hasConversationStats,
   PendingAuthorization,
 } from "./ConversationMeta";
 import { PendingMailboxStack } from "./PendingMailboxStack";
 import {
   buildConversations,
-  conversationActorLabel,
   conversationDisplayTitle,
   conversationFromDetail,
   visualStatusForConversation,
@@ -111,7 +112,11 @@ export function ConversationPage(props: {
               pending: archive.isPending,
             }}
             identity={
-              conversation || conversationId || detail.data ? (
+              hasConversationIdentity({
+                conversation,
+                conversationId,
+                detail: detail.data,
+              }) ? (
                 <ConversationIdentity
                   conversation={conversation}
                   conversationId={conversationId}
@@ -123,7 +128,12 @@ export function ConversationPage(props: {
             meta={
               <ConversationHeaderMeta
                 identity={
-                  conversationActorLabel(conversation) ? (
+                  hasConversationIdentity({
+                    conversation,
+                    conversationId,
+                    detail: detail.data,
+                    variant: "compact",
+                  }) ? (
                     <ConversationIdentity
                       conversation={conversation}
                       conversationId={conversationId}
@@ -133,7 +143,11 @@ export function ConversationPage(props: {
                   ) : null
                 }
                 stats={
-                  conversation ? (
+                  hasConversationStats({
+                    conversation,
+                    detail: detail.data,
+                    variant: "compact",
+                  }) ? (
                     <ConversationStats
                       conversation={conversation}
                       detail={detail.data}
@@ -150,7 +164,10 @@ export function ConversationPage(props: {
             }
             search={search}
             stats={
-              conversation ? (
+              hasConversationStats({
+                conversation,
+                detail: detail.data,
+              }) ? (
                 <ConversationStats
                   conversation={conversation}
                   detail={detail.data}
