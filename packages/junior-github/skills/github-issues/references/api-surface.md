@@ -1,6 +1,6 @@
 # GitHub Issue API Surface
 
-Issue creation uses Junior's `github_createIssue` tool. Other issue operations use allowlisted REST endpoints through `gh api`; generic GraphQL-backed `gh issue` mutations are not supported.
+Issue creation uses `github_createIssue`. Issue title, body, and state updates use `github_updateIssue` so Junior keeps requester attribution and the conversation footer. Comments, labels, and reads use allowlisted REST endpoints through `gh api`; generic GraphQL-backed `gh issue` mutations are not supported.
 
 ## Repo scoping
 
@@ -13,16 +13,16 @@ Treat explicit repo flags as command-targeting safety rails, not as a credential
 | Permission capability | Operations                                                                           |
 | --------------------- | ------------------------------------------------------------------------------------ |
 | `github.issues.read`  | `gh issue view`, `gh api /repos/.../comments`                                        |
-| `github.issues.write` | `github_createIssue` and allowlisted REST issue lifecycle endpoints through `gh api` |
+| `github.issues.write` | Typed issue create/update tools and allowlisted comment or label endpoints through `gh api` |
 
 ## Command matrix
 
 | Operation           | Command                                                                                                       |
 | ------------------- | ------------------------------------------------------------------------------------------------------------- |
 | Create issue        | `github_createIssue({ repo: "owner/repo", title: "...", body: "...", labels: ["..."] })`                      |
-| Update issue fields | `gh api repos/owner/repo/issues/NUMBER --method PATCH --input payload.json`                                   |
-| Close issue         | `gh api repos/owner/repo/issues/NUMBER --method PATCH -f state=closed`                                        |
-| Reopen issue        | `gh api repos/owner/repo/issues/NUMBER --method PATCH -f state=open`                                          |
+| Update issue fields | `github_updateIssue({ repo: "owner/repo", number: NUMBER, title?: "...", body?: "...", state?: "open" \| "closed" })` |
+| Close issue         | `github_updateIssue({ repo: "owner/repo", number: NUMBER, state: "closed" })`                              |
+| Reopen issue        | `github_updateIssue({ repo: "owner/repo", number: NUMBER, state: "open" })`                                |
 | Add labels          | `gh api repos/owner/repo/issues/NUMBER/labels --method POST --input labels.json`                              |
 | Remove label        | `gh api repos/owner/repo/issues/NUMBER/labels/LABEL --method DELETE`                                          |
 | Add comment         | `gh api repos/owner/repo/issues/NUMBER/comments --method POST --input comment.json`                           |
@@ -42,5 +42,6 @@ jr-rpc config set github.repo owner/repo
 - Prefer `--json` output for machine-readable parsing where available.
 - Use `gh api` for endpoints not fully covered by `gh issue` subcommands.
 - For creation, call `github_createIssue` directly instead of shelling out to `gh issue create`.
+- Use `github_updateIssue` for title, body, or state changes. Raw issue PATCH is denied because GitHub also uses that endpoint for pull requests.
 - Keep `--repo owner/repo` explicit when working across repositories.
 - Return actionable errors for access, permission, not-found, and validation failures.

@@ -1313,12 +1313,12 @@ describe("sandbox egress proxy integration", () => {
     ).resolves.toBeUndefined();
   });
 
-  it("denies raw GitHub pull request updates before credential injection", async () => {
+  it("denies raw GitHub issue endpoint updates before credential injection", async () => {
     configureGitHubAppEnv();
     mockGitHubInstallationToken();
     await registerGitHubPlugin({
       appPermissions: {
-        pull_requests: "write",
+        issues: "write",
       },
     });
     const credentialToken = modules.session.createSandboxEgressCredentialToken({
@@ -1341,7 +1341,7 @@ describe("sandbox egress proxy integration", () => {
         forwardURL,
         method: "PATCH",
         upstreamHost: GITHUB_API_HOST,
-        upstreamPath: "/repos/getsentry/junior/pulls/1491",
+        upstreamPath: "/repos/getsentry/junior/issues/1491",
       }),
       {
         fetch: upstreamFetch as typeof fetch,
@@ -1352,7 +1352,7 @@ describe("sandbox egress proxy integration", () => {
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({
       error:
-        "GitHub pull request updates must use the github_updatePullRequest tool so Junior can own requester attribution and the conversation footer. This is a Junior tool-routing denial, not a GitHub permission failure. Do not ask the user for GitHub permissions; retry with the required Junior tool.",
+        "GitHub issue updates must use the github_updateIssue tool so Junior can own requester attribution and the conversation footer. This is a Junior tool-routing denial, not a GitHub permission failure. Do not ask the user for GitHub permissions; retry with the required Junior tool.",
     });
     expect(upstreamFetch).not.toHaveBeenCalled();
     await expect(

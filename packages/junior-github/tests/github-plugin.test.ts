@@ -594,6 +594,18 @@ describe("github plugin", () => {
     });
     expect(
       await grantForEgress({
+        method: "PATCH",
+        operation: "github.issue.update",
+        url: "https://api.github.com/repos/getsentry/junior/issues/780",
+      }),
+    ).toMatchObject({
+      name: "installation-write",
+      access: "write",
+      leaseScope: "repository:getsentry/junior",
+      reason: "github.installation-write",
+    });
+    expect(
+      await grantForEgress({
         method: "POST",
         operation: "github.pull.create",
         url: "https://api.github.com/repos/getsentry/junior/pulls",
@@ -1872,7 +1884,13 @@ Conversation: \`local:test:old-conversation\`
     ).rejects.toThrow("must use the github_createPullRequest tool");
   });
 
-  it("denies raw pull request metadata updates without github_updatePullRequest", async () => {
+  it("denies raw issue and pull request metadata updates", async () => {
+    await expect(
+      grantForEgress({
+        method: "PATCH",
+        url: "https://api.github.com/repos/getsentry/junior/issues/780",
+      }),
+    ).rejects.toThrow("must use the github_updateIssue tool");
     await expect(
       grantForEgress({
         method: "PATCH",
@@ -1882,17 +1900,6 @@ Conversation: \`local:test:old-conversation\`
   });
 
   it("keeps unsupported repository writes outside the allowlist", async () => {
-    await expect(
-      grantForEgress({
-        method: "PATCH",
-        url: "https://api.github.com/repos/getsentry/junior/issues/780",
-      }),
-    ).resolves.toMatchObject({
-      name: "installation-write",
-      access: "write",
-      leaseScope: "repository:getsentry/junior",
-      reason: "github.installation-write",
-    });
     await expect(
       grantForEgress({
         method: "POST",

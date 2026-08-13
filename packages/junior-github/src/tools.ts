@@ -9,6 +9,7 @@ import { createGitHubPullRequestTool } from "./tools/create-pull-request.js";
 import { createGitHubGetPullRequestTool } from "./tools/get-pull-request.js";
 import { createGitHubGetReleaseTool } from "./tools/get-release.js";
 import { createGitHubGetRepositoryTool } from "./tools/get-repository.js";
+import { createGitHubUpdateIssueTool } from "./tools/update-issue.js";
 import { createGitHubUpdatePullRequestTool } from "./tools/update-pull-request.js";
 
 /** Build the GitHub plugin's runtime tools from their per-tool modules. */
@@ -23,6 +24,7 @@ export function createGitHubTools(
     getPullRequest: createGitHubGetPullRequestTool(ctx),
     getRelease: createGitHubGetReleaseTool(ctx),
     getRepository: createGitHubGetRepositoryTool(ctx),
+    updateIssue: createGitHubUpdateIssueTool(ctx),
     updatePullRequest: createGitHubUpdatePullRequestTool(ctx),
   };
 }
