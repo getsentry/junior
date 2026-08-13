@@ -417,6 +417,7 @@ export async function ackMessages(args: {
 export async function cancelHumanFacingPendingMessages(args: {
   conversationId: string;
   inboundMessageIds?: readonly string[];
+  receivedBeforeMs?: number;
   conversationStore?: ConversationStore;
   nowMs?: number;
   state?: StateAdapter;

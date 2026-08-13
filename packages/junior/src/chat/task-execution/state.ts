@@ -1616,6 +1616,7 @@ export async function ackMessages(args: {
 export async function cancelHumanFacingPendingMessages(args: {
   conversationId: string;
   inboundMessageIds?: readonly string[];
+  receivedBeforeMs?: number;
   nowMs?: number;
   state?: StateAdapter;
 }): Promise<{ cancelledInboundMessageIds: string[] }> {
@@ -1638,7 +1639,10 @@ export async function cancelHumanFacingPendingMessages(args: {
       const isRequested =
         requestedIds === undefined ||
         requestedIds.has(message.inboundMessageId);
-      if (isHumanFacing && isRequested) {
+      const isInSnapshot =
+        args.receivedBeforeMs === undefined ||
+        message.receivedAtMs <= args.receivedBeforeMs;
+      if (isHumanFacing && isRequested && isInSnapshot) {
         cancelledInboundMessageIds.push(message.inboundMessageId);
         continue;
       }

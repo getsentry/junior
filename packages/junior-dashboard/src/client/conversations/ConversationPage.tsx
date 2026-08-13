@@ -231,6 +231,7 @@ export function ConversationPage(props: {
           live={live}
           onPinRequest={requestPin}
           pendingAuthorization={detail.pendingAuthorization}
+          pendingGeneratedAt={detail.pendingGeneratedAt}
           pendingMessages={detail.pendingMessages}
         />
       ) : null}
@@ -252,6 +253,7 @@ function ConversationReplyFooter(props: {
   live: boolean;
   onPinRequest: () => void;
   pendingAuthorization?: ConversationPendingMessagesReport["authorization"];
+  pendingGeneratedAt?: string;
   pendingMessages: ConversationMailboxMessage[];
 }) {
   const appendMessage = useAppendConversationMessage(props.conversationId);
@@ -297,10 +299,16 @@ function ConversationReplyFooter(props: {
   const hasSendingOutboxMessage = props.pendingMessages.some(
     (message) => message.clientStatus === "sending",
   );
+  const pendingGeneratedAtRef = useRef(props.pendingGeneratedAt);
+  pendingGeneratedAtRef.current = props.pendingGeneratedAt;
   const onCancelQueue = useCallback(() => {
     const inboundMessageIds = cancellableMessageIdsRef.current;
-    if (inboundMessageIds.length === 0) return;
-    cancelPendingMessagesRef.current.mutate({ inboundMessageIds });
+    const receivedBefore = pendingGeneratedAtRef.current;
+    if (!receivedBefore || inboundMessageIds.length === 0) return;
+    cancelPendingMessagesRef.current.mutate({
+      inboundMessageIds,
+      receivedBefore,
+    });
   }, []);
   const cancelError = Boolean(
     cancelPendingMessages.error &&

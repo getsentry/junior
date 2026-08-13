@@ -37,6 +37,9 @@ export async function cancelConversationPendingMessagesForViewer(
       ...(body.inboundMessageIds
         ? { inboundMessageIds: body.inboundMessageIds }
         : {}),
+      ...(body.receivedBefore
+        ? { receivedBeforeMs: Date.parse(body.receivedBefore) }
+        : {}),
       conversationStore: getConversationStore(),
     });
     return {

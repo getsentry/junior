@@ -224,7 +224,10 @@ export function useAppendConversationMessage(conversationId: string) {
 export function useCancelConversationPendingMessages(conversationId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (args: { inboundMessageIds: string[] }) =>
+    mutationFn: (args: {
+      inboundMessageIds: string[];
+      receivedBefore: string;
+    }) =>
       del(
         cancelConversationPendingMessagesResponseSchema,
         `/api/conversations/${encodeURIComponent(conversationId)}/pending-messages`,
@@ -534,6 +537,7 @@ export function useConversationData(conversationId: string | undefined) {
     isPending: detail.isPending,
     isLoadingPreviousPage,
     pendingAuthorization: pending.data?.authorization,
+    pendingGeneratedAt: pending.data?.generatedAt,
     pendingMessages,
     loadCompleteTranscript: () => {
       if (!conversationId || !detail.data) {

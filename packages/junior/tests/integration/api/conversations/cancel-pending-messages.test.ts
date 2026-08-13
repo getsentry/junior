@@ -115,6 +115,61 @@ describe("conversation cancel pending messages API", () => {
     );
   });
 
+  it("keeps messages received after the requested snapshot", async () => {
+    const { actor, conversationStore, queue, state } =
+      await createApiTurnWorkFixture();
+    const created = await createAndEnqueueApiConversation(
+      {
+        actor,
+        idempotencyKey: "cancel-snapshot-root",
+        message: "first",
+      },
+      { conversationStore, nowMs: 1_000, queue, state },
+    );
+    const later = await appendAndEnqueueApiConversationMessage(
+      {
+        actor,
+        conversationId: created.conversationId,
+        idempotencyKey: "cancel-snapshot-later",
+        message: "later",
+      },
+      { conversationStore, nowMs: 3_000, queue, state },
+    );
+
+    const app = new Hono<{ Variables: JuniorApiVariables }>();
+    app.use("*", async (context, next) => {
+      context.set("viewer", testViewer(actor.email));
+      await next();
+    });
+    app.route("/", createJuniorApi());
+
+    const response = await app.request(
+      `http://localhost/api/conversations/${encodeURIComponent(created.conversationId)}/pending-messages`,
+      {
+        body: JSON.stringify({
+          inboundMessageIds: [created.messageId, later.messageId],
+          receivedBefore: new Date(2_000).toISOString(),
+        }),
+        headers: { "content-type": "application/json" },
+        method: "DELETE",
+      },
+    );
+    expect(response.status).toBe(200);
+    const cancelled = cancelConversationPendingMessagesResponseSchema.parse(
+      await response.json(),
+    );
+    expect(cancelled.cancelledInboundMessageIds).toEqual([created.messageId]);
+
+    const work = await getConversation({
+      conversationId: created.conversationId,
+      state,
+    });
+    expect(
+      work?.execution.pendingMessages.map((message) => message.inboundMessageId),
+    ).toEqual([later.messageId]);
+    expect(work?.execution.status).toBe("pending");
+  });
+
   it("rejects cancel from non-participants", async () => {
     const { actor, conversationStore, queue, state } =
       await createApiTurnWorkFixture();

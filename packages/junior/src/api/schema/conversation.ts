@@ -157,6 +157,7 @@ export const conversationPendingMessagesReportSchema = z
 export const cancelConversationPendingMessagesBodySchema = z
   .object({
     inboundMessageIds: z.array(z.string().min(1)).min(1).optional(),
+    receivedBefore: z.string().datetime().optional(),
   })
   .strict();
 
