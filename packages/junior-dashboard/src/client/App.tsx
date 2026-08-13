@@ -140,6 +140,7 @@ export function DashboardShell() {
                   />
                 ) : undefined
               }
+              version={data?.config.version}
               workspaceActive={workspace}
             />
           }

@@ -750,6 +750,7 @@ describe("dashboard routes", () => {
       componentGallery: false,
       sentryConversationLinks: true,
       timeZone: "America/Los_Angeles",
+      version: expect.stringMatching(/\S+/),
     });
   });
 

@@ -403,6 +403,7 @@ test("opens and closes a conversation in the mobile workspace", async ({
   await expect(
     page.getByRole("link", { name: "Conversations", exact: true }),
   ).toBeVisible();
+  await expect(page.getByText(/^junior version /)).toBeVisible();
   const closeNavigation = page.getByRole("button", {
     name: "Close navigation",
   });

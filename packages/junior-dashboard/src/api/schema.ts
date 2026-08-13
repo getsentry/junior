@@ -28,6 +28,7 @@ export const dashboardConfigSchema = z
     componentGallery: z.boolean(),
     sentryConversationLinks: z.boolean(),
     timeZone: z.string(),
+    version: z.string().min(1),
   })
   .strict();
 

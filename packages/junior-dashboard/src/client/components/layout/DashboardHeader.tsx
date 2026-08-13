@@ -33,6 +33,7 @@ export function DashboardHeader(props: {
   navItems: DashboardHeaderNavItem[];
   onMobileNavigationOpenChange(open: boolean): void;
   profile?: ReactNode;
+  version?: string;
   workspaceActive: boolean;
 }) {
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -208,7 +209,7 @@ export function DashboardHeader(props: {
               <X aria-hidden="true" size={20} strokeWidth={2} />
             </button>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3">
             <nav aria-label="Primary" className="grid gap-1">
               <Link
                 aria-current={props.workspaceActive ? "page" : undefined}
@@ -225,6 +226,11 @@ export function DashboardHeader(props: {
             </nav>
             <MobileSecondaryNavigationSlot />
           </div>
+          {props.version ? (
+            <p className="m-0 border-t border-white/[0.07] px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] font-mono text-xs text-dashboard-text-muted">
+              junior version {props.version}
+            </p>
+          ) : null}
         </div>
       ) : null}
     </header>

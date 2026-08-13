@@ -11,6 +11,7 @@ import {
 } from "@sentry/junior/api";
 import { apiErrorSchema } from "@sentry/junior/api/schema";
 import { initSentry } from "@sentry/junior/instrumentation";
+import { JUNIOR_VERSION } from "@sentry/junior/version";
 import type {
   PluginApiRouteRequestContext,
   PluginRouteApp,
@@ -893,6 +894,7 @@ export function createDashboardApp(
       componentGallery: options.componentGallery === true,
       sentryConversationLinks: hasSentryConversationLinks(),
       timeZone: dashboardTimeZone(),
+      version: JUNIOR_VERSION,
     });
   });
   app.get("/api/me", (c) => {

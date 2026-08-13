@@ -94,6 +94,7 @@ function systemData(): SystemData {
       componentGallery: false,
       sentryConversationLinks: false,
       timeZone: "UTC",
+      version: "0.0.0-test",
     },
     me: { user: { email: "viewer@example.com" } },
     conversationStats: {
