@@ -130,6 +130,24 @@ test("rejects visual assertions in dashboard E2E tests", () => {
   );
 });
 
+test("rejects broad browser error assertions in dashboard E2E tests", () => {
+  assert.deepEqual(
+    checkIntegrationTestArchitecture([
+      integrationTest(
+        [
+          "collectBrowserErrors(page);",
+          'page.on("console", handleConsole);',
+          'page.on("pageerror", handlePageError);',
+        ].join("\n"),
+        DASHBOARD_E2E_PATH,
+      ),
+    ]),
+    [
+      `${DASHBOARD_E2E_PATH}: dashboard E2E tests must assert the journey outcome instead of broad browser error silence (3 found, 0 allowed)`,
+    ],
+  );
+});
+
 test("scopes dashboard E2E rules to dashboard browser specs", () => {
   assert.deepEqual(
     checkIntegrationTestArchitecture([

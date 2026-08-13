@@ -600,17 +600,3 @@ export async function mockDashboardApis(page: Page) {
     });
   });
 }
-
-/** Collects uncaught browser and console errors for a page assertion. */
-export function collectBrowserErrors(page: Page): string[] {
-  const errors: string[] = [];
-  page.on("pageerror", (error) => {
-    errors.push(error.stack ?? error.message);
-  });
-  page.on("console", (message) => {
-    if (message.type() === "error") {
-      errors.push(message.text());
-    }
-  });
-  return errors;
-}

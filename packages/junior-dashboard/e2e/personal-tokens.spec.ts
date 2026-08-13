@@ -1,6 +1,5 @@
 import { expect, test } from "@playwright/test";
 import {
-  collectBrowserErrors,
   type DashboardE2eServer,
   mockDashboardApis,
   startDashboardE2eServer,
@@ -23,7 +22,6 @@ test.beforeEach(async ({ page }) => {
 test("lists and creates personal API tokens from settings", async ({
   page,
 }) => {
-  const browserErrors = collectBrowserErrors(page);
   let createRequests = 0;
   await page.route("**/api/personal-tokens", async (route) => {
     if (route.request().method() === "POST") {
@@ -69,7 +67,6 @@ test("lists and creates personal API tokens from settings", async ({
   await expect(page.getByText("jr_pat_one-time-secret")).toBeVisible();
   await expect(page.getByText("Review token", { exact: true })).toBeVisible();
   expect(createRequests).toBe(1);
-  expect(browserErrors).toEqual([]);
 });
 
 test("surfaces token create errors without losing the list", async ({

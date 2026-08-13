@@ -1,6 +1,5 @@
 import { expect, test } from "@playwright/test";
 import {
-  collectBrowserErrors,
   type DashboardE2eServer,
   mockDashboardApis,
   startDashboardE2eServer,
@@ -24,7 +23,6 @@ test("opens a registered plugin page from primary navigation", async ({
   page,
 }) => {
   await page.setViewportSize({ height: 900, width: 1600 });
-  const browserErrors = collectBrowserErrors(page);
   await page.goto(server.baseURL);
 
   const memoriesLink = page.getByRole("link", { name: "Memories" });
@@ -97,13 +95,11 @@ test("opens a registered plugin page from primary navigation", async ({
   await expect(page).toHaveURL(/filter=private/);
   const navLinks = await page.locator("header nav a").allTextContents();
   expect(navLinks.at(-1)?.trim()).toBe("System");
-  expect(browserErrors).toEqual([]);
 });
 
 test("opens scheduled and event tasks in the native Tasks view", async ({
   page,
 }) => {
-  const browserErrors = collectBrowserErrors(page);
   await page.goto(server.baseURL);
 
   await page.getByRole("link", { name: "Tasks" }).click();
@@ -199,11 +195,9 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
   await creatorLink.click();
   await expect(page).toHaveURL(`${server.baseURL}/people/avery%40sentry.io`);
   await expect(page.getByRole("heading", { name: "Avery Chen" })).toBeVisible();
-  expect(browserErrors).toEqual([]);
 });
 
 test("lists runs across tasks", async ({ page }) => {
-  const browserErrors = collectBrowserErrors(page);
   await page.goto(`${server.baseURL}/tasks/runs`);
 
   await expect(page.getByRole("heading", { name: "Runs" })).toBeVisible();
@@ -217,11 +211,9 @@ test("lists runs across tasks", async ({ page }) => {
   await expect(
     page.getByText("completed", { exact: true }).first(),
   ).toBeVisible();
-  expect(browserErrors).toEqual([]);
 });
 
 test("opens one task's execution history", async ({ page }) => {
-  const browserErrors = collectBrowserErrors(page);
   await page.goto(`${server.baseURL}/tasks/scheduled/scheduled-1/executions`);
 
   await expect(
@@ -245,12 +237,10 @@ test("opens one task's execution history", async ({ page }) => {
   await expect(
     page.getByText("No conversation", { exact: true }),
   ).toBeVisible();
-  expect(browserErrors).toEqual([]);
 });
 
 test("opens memory details in a slide-out drawer", async ({ page }) => {
   await page.setViewportSize({ height: 900, width: 1440 });
-  const browserErrors = collectBrowserErrors(page);
   await page.goto(`${server.baseURL}/memories/library`);
 
   const memory = page.getByRole("button", {
@@ -297,7 +287,6 @@ test("opens memory details in a slide-out drawer", async ({ page }) => {
   ).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  expect(browserErrors).toEqual([]);
 });
 
 test("renders an empty registered plugin page", async ({ page }) => {
@@ -310,12 +299,10 @@ test("renders an empty registered plugin page", async ({ page }) => {
       },
     });
   });
-  const browserErrors = collectBrowserErrors(page);
 
   await page.goto(`${server.baseURL}/memories/library`);
 
   await expect(page.getByText("No memories yet.")).toBeVisible();
-  expect(browserErrors).toEqual([]);
 });
 
 test("shows the memory overview error state", async ({ page }) => {
@@ -412,7 +399,6 @@ test("searches, paginates, and forgets plugin page records", async ({
       await route.fulfill({ status: 204 });
     },
   );
-  const browserErrors = collectBrowserErrors(page);
 
   await page.goto(`${server.baseURL}/memories/library`);
   await expect(
@@ -482,5 +468,4 @@ test("searches, paginates, and forgets plugin page records", async ({
   await searchbox.fill("");
   await expect(page).not.toHaveURL(/q=/);
   await expect(page.getByText("No memories yet.")).toBeVisible();
-  expect(browserErrors).toEqual([]);
 });

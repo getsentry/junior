@@ -1,6 +1,5 @@
 import { expect, test } from "@playwright/test";
 import {
-  collectBrowserErrors,
   type DashboardE2eServer,
   mockDashboardApis,
   startDashboardE2eServer,
@@ -100,7 +99,6 @@ test("keeps cached conversation and draft available through reconnect", async ({
 
 test("opens a conversation in the built dashboard", async ({ page }) => {
   await page.setViewportSize({ height: 900, width: 1600 });
-  const browserErrors = collectBrowserErrors(page);
 
   await page.goto(server.baseURL);
 
@@ -154,7 +152,6 @@ test("opens a conversation in the built dashboard", async ({ page }) => {
   );
   await expect(page.getByRole("note")).toContainText("Private conversation");
   await expect(page.getByRole("note")).toContainText("Private");
-  expect(browserErrors).toEqual([]);
 });
 
 test("starts and continues conversations from the dashboard", async ({

@@ -57,6 +57,9 @@ refactors should not churn brittle unit tests.
   Keep one representative path for navigation, interaction, accessibility
   state, request contracts, and realistic failure recovery. Do not use browser
   E2E as a catalog of every visible state or implementation branch.
+- Assert the outcome named by the browser journey. Do not fail a journey because
+  the browser emitted unrelated console or page errors. Test an error only when
+  it is the user-visible outcome or external contract that the journey owns.
 - Do not assert CSS utility strings, raw DOM tag counts, generated markup,
   pixel geometry, element size, or computed style to prove visual styling.
   Test semantic state and interaction behavior with component or browser

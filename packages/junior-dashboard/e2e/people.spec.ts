@@ -1,6 +1,5 @@
 import { expect, test } from "@playwright/test";
 import {
-  collectBrowserErrors,
   type DashboardE2eServer,
   mockDashboardApis,
   startDashboardE2eServer,
@@ -22,7 +21,6 @@ test.beforeEach(async ({ page }) => {
 
 test("explores people activity", async ({ page }) => {
   await page.setViewportSize({ height: 900, width: 1600 });
-  const browserErrors = collectBrowserErrors(page);
   await page.goto(`${server.baseURL}/system/people`);
 
   await expect(
@@ -51,6 +49,4 @@ test("explores people activity", async ({ page }) => {
     "aria-pressed",
     "true",
   );
-
-  expect(browserErrors).toEqual([]);
 });

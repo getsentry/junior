@@ -1,6 +1,5 @@
 import { expect, test } from "@playwright/test";
 import {
-  collectBrowserErrors,
   type DashboardE2eServer,
   mockDashboardApis,
   startDashboardE2eServer,
@@ -22,7 +21,6 @@ test.beforeEach(async ({ page }) => {
 
 test("explores location activity", async ({ page }) => {
   await page.setViewportSize({ height: 900, width: 1600 });
-  const browserErrors = collectBrowserErrors(page);
   await page.goto(`${server.baseURL}/locations?q=proj`);
 
   await expect(page).toHaveURL(`${server.baseURL}/system/locations?q=proj`);
@@ -54,6 +52,4 @@ test("explores location activity", async ({ page }) => {
       .getByLabel("System navigation")
       .getByRole("link", { name: "Locations" }),
   ).toHaveAttribute("aria-current", "page");
-
-  expect(browserErrors).toEqual([]);
 });

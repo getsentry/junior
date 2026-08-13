@@ -59,6 +59,14 @@ const RULES = [
     pattern:
       /\b(?:boundingBox|getBoundingClientRect|toHaveCSS|toHaveScreenshot)\s*\(/g,
   },
+  {
+    id: "dashboard-e2e-browser-error-assertion",
+    message:
+      "dashboard E2E tests must assert the journey outcome instead of broad browser error silence",
+    pathPrefix: DASHBOARD_E2E_ROOT,
+    pattern:
+      /\bcollectBrowserErrors\s*\(|\bpage\.on\s*\(\s*["'](?:console|pageerror)["']/g,
+  },
 ];
 
 function countMatches(contents, pattern) {

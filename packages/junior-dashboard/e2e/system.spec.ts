@@ -1,6 +1,5 @@
 import { expect, test } from "@playwright/test";
 import {
-  collectBrowserErrors,
   type DashboardE2eServer,
   mockDashboardApis,
   startDashboardE2eServer,
@@ -22,7 +21,6 @@ test.beforeEach(async ({ page }) => {
 
 test("shows system usage and plugin details", async ({ page }) => {
   await page.setViewportSize({ height: 900, width: 1600 });
-  const browserErrors = collectBrowserErrors(page);
   await page.goto(`${server.baseURL}/system`);
 
   await expect(page.getByText("Conversation activity")).toBeVisible();
@@ -66,7 +64,6 @@ test("shows system usage and plugin details", async ({ page }) => {
     page.getByText("This plugin does not expose operational activity yet."),
   ).toBeVisible();
   await expect(page.getByText("github.organization")).toBeVisible();
-  expect(browserErrors).toEqual([]);
 });
 
 test("keeps System navigation usable on mobile", async ({ page }) => {

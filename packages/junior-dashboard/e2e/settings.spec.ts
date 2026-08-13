@@ -1,6 +1,5 @@
 import { expect, test } from "@playwright/test";
 import {
-  collectBrowserErrors,
   type DashboardE2eServer,
   mockDashboardApis,
   startDashboardE2eServer,
@@ -21,8 +20,6 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("updates the signed-in user's display name", async ({ page }) => {
-  const browserErrors = collectBrowserErrors(page);
-
   await page.goto(server.baseURL);
   await page.getByRole("button", { name: /Open profile menu/ }).click();
   await page.getByRole("link", { name: "Settings", exact: true }).click();
@@ -36,5 +33,4 @@ test("updates the signed-in user's display name", async ({ page }) => {
   await expect(
     page.getByRole("button", { name: /profile menu for Cramer Jr\./i }),
   ).toBeVisible();
-  expect(browserErrors).toEqual([]);
 });
