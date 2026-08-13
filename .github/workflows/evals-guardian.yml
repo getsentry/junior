@@ -2,6 +2,7 @@ name: Guardian evals
 
 permissions:
   contents: read
+  checks: write
 
 on:
   pull_request:
@@ -77,20 +78,35 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-pnpm
       - name: Run Guardian evals
+        id: run
+        continue-on-error: true
         env:
           VITEST_EVALS_OUTPUT_FILE: guardian-results.json
           VITEST_EVALS_REPORT_LEVEL: info
         run: pnpm --filter @sentry/junior-evals evals:guardian
+      - name: Require Guardian eval results
+        id: results
+        if: steps.run.conclusion != 'skipped'
+        run: |
+          set -euo pipefail
+          result_file="packages/junior-evals/guardian-results.json"
+          if [[ ! -f "$result_file" ]]; then
+            echo "::error::missing guardian eval results ($result_file). Treat setup/runtime crashes as hard failures."
+            exit 1
+          fi
       - name: Publish Guardian eval summary
-        if: always() && !cancelled() && hashFiles('packages/junior-evals/guardian-results.json') != ''
+        if: steps.results.conclusion == 'success'
         uses: getsentry/vitest-evals@v0.16.1
         with:
           results: packages/junior-evals/guardian-results.json
+          publish-check: true
+          check-name: guardian / score
+          fail-on-failures: true
       - name: Upload Guardian eval results
-        if: always() && !cancelled()
+        if: steps.results.conclusion == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: guardian-evals
           path: packages/junior-evals/guardian-results.json
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 7
