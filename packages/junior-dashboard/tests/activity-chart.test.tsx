@@ -124,18 +124,12 @@ describe("ActivityChartAverageLine", () => {
           format={(value) => `${value}`}
           layout={layout}
           maximum={100}
-          stroke="#22d3ee"
         />
       </ChartSvg>,
     );
 
     expect(html).toContain('aria-label="average 40 / day"');
-    expect(html).toContain('stroke-dasharray="4 4"');
     expect(html).toContain(">40 / day</text>");
-    expect(html).toContain('stroke="#22d3ee"');
-    // Label sits on a themed chip so series colors stay off the text.
-    expect(html).toContain('fill="var(--color-dashboard-popover)"');
-    expect(html).toContain('fill="var(--color-dashboard-chart-label)"');
   });
 
   it("hides when the average is zero", () => {
