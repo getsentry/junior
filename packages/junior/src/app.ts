@@ -698,10 +698,8 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   const tracePropagation = { domains: sandboxEgressTracePropagationDomains };
   const conversationWorkQueue = getVercelConversationWorkQueue();
   const attachmentStorage = createVercelAttachmentStorage();
-  const publishedImageStorage = attachmentStorage;
   const agentRunner = createAgentRunner(executeAgentRun, {
     attachmentStorage,
-    publishedImageStorage,
     bindSpawnAgent: (request) =>
       bindSpawnAgent(request, { queue: conversationWorkQueue }),
     tracePropagation,
@@ -741,17 +739,12 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
 
   app.get("/", () => healthGET());
   app.get("/health", () => healthGET());
-  app.get("/public/images/:filename", (c) => {
-    const filename = c.req.param("filename");
-    const separator = filename.lastIndexOf(".");
-    const sha256 = separator === -1 ? filename : filename.slice(0, separator);
-    const extension = separator === -1 ? "" : filename.slice(separator + 1);
-    return publishedImageGET(c.req.raw, {
-      extension,
-      sha256,
-      storage: publishedImageStorage,
-    });
-  });
+  app.get("/public/images/:filename", (c) =>
+    publishedImageGET({
+      filename: c.req.param("filename"),
+      storage: attachmentStorage,
+    }),
+  );
 
   // MCP callback must be registered before the generic OAuth callback
   // because Hono matches routes top-down and `:provider` would swallow `mcp/`.

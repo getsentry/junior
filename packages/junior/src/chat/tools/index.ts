@@ -139,10 +139,9 @@ export function createTools(
       hooks.toolOverrides?.imageGenerate,
     );
   }
-  if (context.publishedImageStorage) {
+  if (context.attachmentStorage) {
     tools.publishImage = createPublishImageTool({
-      state,
-      storage: context.publishedImageStorage,
+      storage: context.attachmentStorage,
       workspace: context.workspace,
     });
   }

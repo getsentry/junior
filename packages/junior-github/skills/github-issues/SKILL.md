@@ -76,7 +76,7 @@ Follow [references/research-rules.md](references/research-rules.md) for cross-ty
 
 - The runtime adds the verified `Requested by` block. Do not add or rewrite requester attribution in model-authored body text.
 - If the person who originally reported or observed the problem differs from the issue creator, capture that with durable body text such as `Reported by Alice.` or `Raised by Alice during incident triage.`
-- Attach screenshots from the thread when present. For GitHub markdown, first publish each local image with `publishImage` (the image becomes public to anyone with the URL), then embed the returned `markdown` or `url` in the issue body or comment. Do not use private Slack file links or conversation attachment URLs.
+- Attach screenshots from the thread when present. For GitHub Markdown, first publish each local image with `publishImage` (the image becomes public to anyone with the URL), then embed the returned URL in the issue body or comment. Do not use private Slack file links or conversation attachment URLs.
 - Include code snippets, related issues, and related PRs only when they materially improve the issue.
 
 ### 4. Verify draft

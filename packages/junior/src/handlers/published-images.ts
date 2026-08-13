@@ -1,40 +1,28 @@
+import { createVercelAttachmentStorage } from "@/chat/attachments/vercel";
+import type { AttachmentStorage } from "@/chat/attachments/storage";
 import {
   publishedImageHeaders,
   readPublishedImage,
 } from "@/chat/published-images/store";
-import type { PublishedImageStorage } from "@/chat/published-images/storage";
-import { createVercelAttachmentStorage } from "@/chat/attachments/vercel";
 import { logException } from "@/chat/logging";
 
-/** Serve one content-addressed published image without authentication. */
-export async function publishedImageGET(
-  request: Request,
-  options: {
-    extension: string;
-    sha256: string;
-    storage?: PublishedImageStorage;
-  },
-): Promise<Response> {
-  void request;
+/** Serve one content-addressed image without authentication. */
+export async function publishedImageGET(args: {
+  filename: string;
+  storage?: Pick<AttachmentStorage, "get">;
+}): Promise<Response> {
   try {
-    const storage = options.storage ?? createVercelAttachmentStorage();
     const image = await readPublishedImage({
-      extension: options.extension,
-      sha256: options.sha256,
-      storage,
+      filename: args.filename,
+      storage: args.storage ?? createVercelAttachmentStorage(),
     });
-    if (!image) {
-      return new Response("Not Found", { status: 404 });
-    }
+    if (!image) return new Response("Not Found", { status: 404 });
+
     return new Response(image.body, {
-      headers: publishedImageHeaders({
-        bytes: image.bytes,
-        contentType: image.contentType,
-      }),
-      status: 200,
+      headers: publishedImageHeaders(image.contentType),
     });
   } catch (error) {
-    logException(error, "published_images.get.exception");
+    logException(error, "published_image.get.failed");
     return new Response("Internal Server Error", { status: 500 });
   }
 }

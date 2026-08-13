@@ -361,7 +361,6 @@ export async function wireAgentTools(
     ...commonToolRuntimeContext,
     ...toolRoute,
     attachmentStorage: args.run.environment?.attachmentStorage,
-    publishedImageStorage: args.run.environment?.publishedImageStorage,
   } as ToolRuntimeContext;
   const actionReview = createToolActionReview({
     context: {

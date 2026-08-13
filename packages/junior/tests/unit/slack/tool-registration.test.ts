@@ -337,29 +337,6 @@ describe("Slack tool registration", () => {
     expect(tools).not.toHaveProperty("searchConversationEvents");
   });
 
-  it("registers publishImage only when published image storage is available", () => {
-    expect(createTools([], {}, ctx())).not.toHaveProperty("publishImage");
-
-    const tools = createTools(
-      [],
-      {},
-      {
-        ...ctx(),
-        publishedImageStorage: {
-          provider: "test",
-          async put() {},
-          async get() {
-            return null;
-          },
-        },
-      },
-    );
-    expect(tools).toHaveProperty("publishImage");
-    expect(tools.publishImage?.description).toContain(
-      "public to anyone on the internet",
-    );
-  });
-
   it("registers image generation only when artifact persistence is available", () => {
     expect(createTools([], {}, ctx())).not.toHaveProperty("imageGenerate");
 

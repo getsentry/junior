@@ -22,7 +22,6 @@ import type { ModelProfile } from "@/chat/model-profile";
 import type { GeneratedArtifactFileRef } from "@/chat/tools/sandbox/file-uploads";
 import type { SpawnAgent } from "@/chat/agent/types";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
-import type { PublishedImageStorage } from "@/chat/published-images/storage";
 
 interface HandoffControl {
   /** Non-empty catalog of configured targets. */
@@ -75,8 +74,6 @@ export interface ToolHooks {
 
 interface BaseToolRuntimeContext {
   attachmentStorage?: AttachmentStorage;
-  /** Storage used by publishImage for durable public image URLs. */
-  publishedImageStorage?: PublishedImageStorage;
   handoff?: HandoffControl;
   spawnAgent?: SpawnAgent;
   /**
