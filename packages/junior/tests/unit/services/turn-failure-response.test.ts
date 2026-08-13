@@ -3,10 +3,6 @@ import { getInterruptionMarker } from "@/chat/interruption-marker";
 import { createProviderError } from "@/chat/services/provider-error";
 import { finalizeFailedTurnReply } from "@/chat/services/turn-failure-response";
 import type { AgentRunResult } from "@/chat/services/turn-result";
-import {
-  TOOL_ACTION_REVIEW_LIMIT_MESSAGE,
-  ToolActionReviewLimitError,
-} from "@/chat/tool-support/action-review";
 
 function providerErrorReply(args: {
   assistantMessageCount: number;
@@ -153,34 +149,5 @@ describe("finalizeFailedTurnReply", () => {
     expect(finalized.text).toBe(
       `Here is what I found so far${getInterruptionMarker()}`,
     );
-  });
-
-  it("does not capture action-review limit stops as Sentry exceptions", () => {
-    const logException = vi.fn().mockReturnValue("evt_should_not_fire");
-    const limitError = new ToolActionReviewLimitError();
-
-    const finalized = finalizeFailedTurnReply({
-      reply: {
-        text: "",
-        diagnostics: {
-          outcome: "execution_failure",
-          modelId: "test-model",
-          assistantMessageCount: 0,
-          toolCalls: [],
-          toolResultCount: 0,
-          toolErrorCount: 0,
-          usedPrimaryText: false,
-          errorMessage: limitError.message,
-        },
-      },
-      logException,
-    });
-
-    expect(logException).not.toHaveBeenCalled();
-    expect(finalized.text).toBe(
-      "I stopped because action review rejected three consecutive tool attempts.",
-    );
-    expect(finalized.text).not.toContain("event_id=");
-    expect(limitError.message).toBe(TOOL_ACTION_REVIEW_LIMIT_MESSAGE);
   });
 });

@@ -1,13 +1,20 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import {
   createToolActionReview,
   reviewToolAction,
+  ToolActionRejectedError,
   ToolActionReviewUnavailableError,
   type ToolActionReview,
   type ToolActionReviewContext,
   type ToolActionReviewer,
 } from "@/chat/tool-support/action-review";
+
+const logExceptionMock = vi.fn();
+
+vi.mock("@/chat/logging", () => ({
+  logException: (...args: unknown[]) => logExceptionMock(...args),
+}));
 
 const LOCAL_SOURCE = {
   platform: "local",
@@ -77,6 +84,10 @@ function definition(
 }
 
 describe("tool action review", () => {
+  beforeEach(() => {
+    logExceptionMock.mockClear();
+  });
+
   it("preserves execution behavior for unclassified core tools", async () => {
     const reviewer = { review: vi.fn() };
     const resolveApprovalMetadata = vi.fn();
@@ -301,6 +312,77 @@ describe("tool action review", () => {
       expect(reviewer.review).not.toHaveBeenCalled();
     },
   );
+
+  it("returns a stop-retrying tool rejection after three consecutive denials", async () => {
+    const onFatal = vi.fn();
+    const review = vi.fn<ToolActionReviewer["review"]>(async () => ({
+      decision: "deny",
+      reason: "The destination is surprising.",
+      riskLevel: "high",
+      userAuthorization: "low",
+    }));
+    const actionReview = createToolActionReview({
+      context: {
+        actor: { platform: "local", userId: "local-user" },
+        conversationId: "local:approval-test",
+        destination: LOCAL_DESTINATION,
+        source: LOCAL_SOURCE,
+        userIntent: () => "Generate the report.",
+      },
+      onDecision: vi.fn(async () => undefined),
+      onFatal,
+      reviewer: { review },
+    });
+
+    await expect(
+      reviewToolAction(
+        "call-1",
+        "generateReport",
+        definition({ approvalMode: "review" }),
+        { reportId: "weekly" },
+        actionReview,
+      ),
+    ).rejects.toBeInstanceOf(ToolActionRejectedError);
+    await expect(
+      reviewToolAction(
+        "call-2",
+        "generateReport",
+        definition({ approvalMode: "review" }),
+        { reportId: "weekly" },
+        actionReview,
+      ),
+    ).rejects.toBeInstanceOf(ToolActionRejectedError);
+    await expect(
+      reviewToolAction(
+        "call-3",
+        "generateReport",
+        definition({ approvalMode: "review" }),
+        { reportId: "weekly" },
+        actionReview,
+      ),
+    ).rejects.toThrow("Do not retry this action or an equivalent write this turn.");
+
+    expect(onFatal).not.toHaveBeenCalled();
+    expect(logExceptionMock).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "ToolActionReviewLimitError" }),
+      "guardian.action_review.exhausted",
+      expect.objectContaining({
+        "gen_ai.tool.name": "generateReport",
+        "gen_ai.tool.call.id": "call-3",
+      }),
+    );
+    expect(
+      actionReview.projectToolResult("call-3", { isError: true }),
+    ).toMatchObject({
+      details: {
+        guardianActionRejection: {
+          decision: "deny",
+          reason: "The destination is surprising.",
+        },
+      },
+      isError: true,
+    });
+  });
 
   it("fails closed when Guardian cannot produce a decision", async () => {
     const action = reviewToolAction(

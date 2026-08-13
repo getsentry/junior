@@ -5,7 +5,6 @@ import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
 import {
   createToolActionReview,
-  ToolActionReviewLimitError,
   type ToolActionReview,
   type ToolActionReviewer,
 } from "@/chat/tool-support/action-review";
@@ -571,11 +570,20 @@ describe("Pi tool adapter", () => {
 
     await expect(
       demoTool!.execute("tool-limit", { cadence: "weekly" }),
-    ).rejects.toBeInstanceOf(ToolActionReviewLimitError);
+    ).rejects.toThrow("Do not retry this action or an equivalent write this turn.");
     expect(review).toHaveBeenCalledTimes(3);
-    expect(onFatal).toHaveBeenCalledWith(
-      expect.any(ToolActionReviewLimitError),
-    );
+    expect(onFatal).not.toHaveBeenCalled();
+    expect(
+      reviewState.projectToolResult("tool-limit", { isError: true }),
+    ).toMatchObject({
+      details: {
+        guardianActionRejection: {
+          decision: "ask",
+          reason: "Recurring work should be confirmed.",
+        },
+      },
+      isError: true,
+    });
     expect(execute).not.toHaveBeenCalled();
   });
 

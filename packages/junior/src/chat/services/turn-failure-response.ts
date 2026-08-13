@@ -1,4 +1,4 @@
-import { buildTurnFailureResponse, logWarn } from "@/chat/logging";
+import { buildTurnFailureResponse } from "@/chat/logging";
 import { getInterruptionMarker } from "@/chat/interruption-marker";
 import {
   findProviderError,
@@ -7,7 +7,6 @@ import {
   ProviderError,
 } from "@/chat/services/provider-error";
 import type { AgentRunResult } from "@/chat/services/turn-result";
-import { TOOL_ACTION_REVIEW_LIMIT_MESSAGE } from "@/chat/tool-support/action-review";
 
 type LogException = (
   error: unknown,
@@ -122,21 +121,6 @@ export function finalizeFailedTurnReplyWithEvent(args: {
 }): FinalizedTurnFailure {
   if (args.reply.diagnostics.outcome === "success") {
     return { reply: args.reply };
-  }
-
-  // Review-limit stops are expected control flow after repeated denials.
-  // Keep the turn failed for delivery/metrics, but do not open a Sentry issue.
-  if (args.reply.diagnostics.errorMessage === TOOL_ACTION_REVIEW_LIMIT_MESSAGE) {
-    logWarn("guardian.action_review.exhausted", {
-      ...getAgentTurnDiagnosticsAttributes(args.reply),
-      ...args.attributes,
-    });
-    return {
-      reply: {
-        ...args.reply,
-        text: "I stopped because action review rejected three consecutive tool attempts.",
-      },
-    };
   }
 
   const capture = getFailureCapture(args.reply);

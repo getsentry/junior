@@ -20,6 +20,7 @@ import type {
   ToolActionRejectionMarker,
 } from "@/chat/tool-support/action-review-history";
 import { projectToolActionRejection } from "@/chat/tool-support/action-review-history";
+import { logException } from "@/chat/logging";
 
 /** Outcome available to the action reviewer. */
 export type ToolActionDecision = "allow" | "ask" | "deny";
@@ -139,6 +140,14 @@ const ACTION_DENIAL_INSTRUCTIONS = [
   "Proceed only with a materially safer alternative. Otherwise, stop and explain the specific risk to the user without mentioning Guardian or internal review mechanics.",
 ].join("\n");
 
+const ACTION_REVIEW_LIMIT_INSTRUCTIONS = [
+  "This action was rejected due to unacceptable risk.",
+  "Action review rejected three consecutive tool execution attempts.",
+  "Do not retry this action or an equivalent write this turn.",
+  "Stop tool use for this turn and respond to the user now with a direct, concise explanation of the risk.",
+  "Do not mention Guardian, the runtime, policy, or internal review mechanics.",
+].join("\n");
+
 /** Expected tool failure when core or Guardian rejects an exact action. */
 export class ToolActionRejectedError extends Error {
   readonly decision: Exclude<ToolActionDecision, "allow">;
@@ -152,13 +161,17 @@ export class ToolActionRejectedError extends Error {
     reason: string,
     assessment: Partial<
       Pick<ToolActionReviewDecision, "riskLevel" | "userAuthorization">
-    > & { reviewedAction?: ToolActionPriorRejection } = {},
+    > & {
+      instructions?: string;
+      reviewedAction?: ToolActionPriorRejection;
+    } = {},
   ) {
-    super(
-      decision === "ask"
-        ? `${ACTION_CONFIRMATION_INSTRUCTIONS}\nReason: ${reason}`
-        : `${ACTION_DENIAL_INSTRUCTIONS}\nReason: ${reason}`,
-    );
+    const instructions =
+      assessment.instructions ??
+      (decision === "ask"
+        ? ACTION_CONFIRMATION_INSTRUCTIONS
+        : ACTION_DENIAL_INSTRUCTIONS);
+    super(`${instructions}\nReason: ${reason}`);
     this.name = "ToolActionRejectedError";
     this.decision = decision;
     this.reason = reason;
@@ -181,14 +194,12 @@ export class ToolActionReviewUnavailableError extends Error {
   }
 }
 
-/** Stable message for the bounded action-review rejection stop. */
-export const TOOL_ACTION_REVIEW_LIMIT_MESSAGE =
-  "Action review rejected three consecutive tool execution attempts; the run was interrupted.";
-
-/** The execution slice exceeded its bounded sequence of rejected actions. */
+/** Telemetry-only marker when action review exhausts consecutive rejections. */
 export class ToolActionReviewLimitError extends Error {
   constructor() {
-    super(TOOL_ACTION_REVIEW_LIMIT_MESSAGE);
+    super(
+      "Action review rejected three consecutive tool execution attempts.",
+    );
     this.name = "ToolActionReviewLimitError";
   }
 }
@@ -451,10 +462,8 @@ export function createToolActionReview(options: {
     toolName: string;
     decision: ToolActionReviewDecision;
   }): Promise<void>;
-  /** Escalate terminal review failures to the owning agent-run boundary. */
-  onFatal(
-    error: ToolActionReviewUnavailableError | ToolActionReviewLimitError,
-  ): void;
+  /** Escalate unavailable review to the owning agent-run boundary. */
+  onFatal(error: ToolActionReviewUnavailableError): void;
   priorRejections?: ToolActionPriorRejection[];
   reviewer: ToolActionReviewer;
 }): ToolActionReview {
@@ -504,10 +513,21 @@ export function createToolActionReview(options: {
       const reviewedAction = projectedRejection(proposal, decision);
       appendVisibleRejection(priorRejections, reviewedAction);
       consecutiveRejections += 1;
-      if (consecutiveRejections >= MAX_CONSECUTIVE_REJECTIONS) {
-        const limitError = new ToolActionReviewLimitError();
-        options.onFatal(limitError);
-        throw limitError;
+      const exhausted =
+        consecutiveRejections >= MAX_CONSECUTIVE_REJECTIONS;
+      if (exhausted) {
+        // Keep Sentry visibility for the limit without aborting the run.
+        logException(
+          new ToolActionReviewLimitError(),
+          "guardian.action_review.exhausted",
+          {
+            "app.guardian.decision": decision.decision,
+            "app.guardian.risk_level": decision.riskLevel,
+            "app.guardian.user_authorization": decision.userAuthorization,
+            "gen_ai.tool.name": proposal.tool.name,
+            "gen_ai.tool.call.id": toolCallId,
+          },
+        );
       }
       pendingRejections.set(toolCallId, {
         decision: decision.decision,
@@ -521,6 +541,9 @@ export function createToolActionReview(options: {
         riskLevel: decision.riskLevel,
         reviewedAction,
         userAuthorization: decision.userAuthorization,
+        ...(exhausted
+          ? { instructions: ACTION_REVIEW_LIMIT_INSTRUCTIONS }
+          : {}),
       });
     },
     projectToolResult(toolCallId, result) {

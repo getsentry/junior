@@ -104,7 +104,6 @@ import {
   AuthorizationPauseError,
 } from "@/chat/services/auth-pause";
 import { TurnSliceLimitExceededError } from "@/chat/services/turn-limit";
-import { ToolActionReviewLimitError } from "@/chat/tool-support/action-review";
 import {
   resolveConversationPrivacy,
   runWithConversationPrivacy,
@@ -1746,29 +1745,23 @@ async function executeAgentRunInPrivacyContext(
       throw error;
     }
 
-    // Review-limit stops are expected control flow after repeated denials.
-    // Skip Sentry capture here; delivery finalization owns the warn log and
-    // user-visible stop text.
-    const message = error instanceof Error ? error.message : String(error);
-    const isActionReviewLimit = error instanceof ToolActionReviewLimitError;
-    if (!isActionReviewLimit) {
-      const providerError = findProviderError(error);
-      logException(
-        error,
-        "assistant.reply.generation.failed",
-        providerError ? getProviderErrorAttributes(providerError) : {},
-      );
-    }
+    const providerError = findProviderError(error);
+    logException(
+      error,
+      "assistant.reply.generation.failed",
+      providerError ? getProviderErrorAttributes(providerError) : {},
+    );
 
     // Raw exception text is diagnostics-only; the failure-response service
     // owns the sanitized user-visible fallback for empty provider errors.
+    const message = error instanceof Error ? error.message : String(error);
     return {
       status: "completed",
       result: {
         text: "",
         sandboxRef: lastKnownSandboxRef,
         diagnostics: {
-          outcome: isActionReviewLimit ? "execution_failure" : "provider_error",
+          outcome: "provider_error",
           modelId: activeModelId,
           assistantMessageCount: 0,
           ...(turnRoute
@@ -1782,7 +1775,7 @@ async function executeAgentRunInPrivacyContext(
           usedPrimaryText: false,
           durationMs: Date.now() - replyStartedAtMs,
           errorMessage: message,
-          ...(!isActionReviewLimit ? { providerError: error } : {}),
+          providerError: error,
         },
       },
     };
