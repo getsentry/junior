@@ -109,19 +109,29 @@ describe("repository instructions", () => {
     });
   });
 
-  it("selects only one direct-child Git worktree", async () => {
+  it("selects only one Git worktree under repos/", async () => {
+    const fs = new MemoryFileSystem()
+      .directory("/vercel/sandbox")
+      .directory("/vercel/sandbox/repos")
+      .directory("/vercel/sandbox/repos/repo")
+      .file("/vercel/sandbox/repos/repo/.git", "gitdir: elsewhere");
+
+    expect(await findSingleRepositoryDirectory(fs)).toBe(
+      "/vercel/sandbox/repos/repo",
+    );
+
+    fs.directory("/vercel/sandbox/repos/other").directory(
+      "/vercel/sandbox/repos/other/.git",
+    );
+    expect(await findSingleRepositoryDirectory(fs)).toBeUndefined();
+  });
+
+  it("ignores root-level clones outside repos/", async () => {
     const fs = new MemoryFileSystem()
       .directory("/vercel/sandbox")
       .directory("/vercel/sandbox/repo")
       .file("/vercel/sandbox/repo/.git", "gitdir: elsewhere");
 
-    expect(await findSingleRepositoryDirectory(fs)).toBe(
-      "/vercel/sandbox/repo",
-    );
-
-    fs.directory("/vercel/sandbox/other").directory(
-      "/vercel/sandbox/other/.git",
-    );
     expect(await findSingleRepositoryDirectory(fs)).toBeUndefined();
   });
 });

@@ -1,7 +1,10 @@
 import { createHash } from "node:crypto";
 import path from "node:path";
 import type { PiMessage } from "@/chat/pi/messages";
-import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
+import {
+  SANDBOX_REPOS_ROOT,
+  SANDBOX_WORKSPACE_ROOT,
+} from "@/chat/sandbox/paths";
 import type { SandboxFileSystem } from "@/chat/sandbox/workspace";
 import { isMissingPathError } from "@/chat/tools/sandbox/file-utils";
 
@@ -79,14 +82,18 @@ async function findGitRoot(
   }
 }
 
-/** Return the only direct-child Git worktree, without guessing when ambiguous. */
+/** Return the only Git worktree under repos/, without guessing when ambiguous. */
 export async function findSingleRepositoryDirectory(
   fs: SandboxFileSystem,
 ): Promise<string | undefined> {
-  const entries = await fs.readdir(SANDBOX_WORKSPACE_ROOT);
+  if (!(await directoryExists(fs, SANDBOX_REPOS_ROOT))) {
+    return undefined;
+  }
+
+  const entries = await fs.readdir(SANDBOX_REPOS_ROOT);
   const repositories: string[] = [];
   for (const entry of entries) {
-    const candidate = path.posix.join(SANDBOX_WORKSPACE_ROOT, entry);
+    const candidate = path.posix.join(SANDBOX_REPOS_ROOT, entry);
     if (
       (await directoryExists(fs, candidate)) &&
       (await pathExists(fs, path.posix.join(candidate, ".git")))
