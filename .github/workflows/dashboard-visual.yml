@@ -111,8 +111,21 @@ jobs:
             fi
           fi
 
-      - uses: ./.github/actions/setup-node-pnpm
+      # No shared Actions cache here. Capture runs PR head code, and writing the
+      # default pnpm cache from untrusted code is a cache-poisoning path.
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         if: steps.mode.outputs.run == 'true'
+        with:
+          run_install: false
+
+      - uses: actions/setup-node@v4
+        if: steps.mode.outputs.run == 'true'
+        with:
+          node-version: "24.18.0"
+
+      - name: Install dependencies
+        if: steps.mode.outputs.run == 'true'
+        run: pnpm install --frozen-lockfile
 
       - run: pnpm exec playwright install --with-deps chromium
         if: steps.mode.outputs.run == 'true'
