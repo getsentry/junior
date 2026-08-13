@@ -691,13 +691,30 @@ describe("SQL conversation storage", () => {
           idempotencyKey: "event:system-instruction",
           createdAtMs: 3_300,
         },
+        {
+          data: {
+            type: "message_updated",
+            messageId: "msg-seed",
+            role: "user",
+            text: "seed (hydrated)",
+            meta: {
+              author: {
+                userId: "U123",
+                userName: "pierre",
+                isBot: false,
+              },
+            },
+          },
+          idempotencyKey: "event:message-updated",
+          createdAtMs: 3_400,
+        },
       ]);
 
       expect(await readConversationTimestamps()).toEqual({
         ...archived,
-        lastActivityAt: new Date(3_300),
+        lastActivityAt: new Date(3_400),
         transcriptPurgedAt: null,
-        updatedAt: new Date(3_300),
+        updatedAt: new Date(3_400),
       });
 
       await store.replaceHistory(CONVERSATION_ID, {

@@ -67,7 +67,8 @@ function eventUnarchivesConversation(data: ConversationEventData): boolean {
     const platform = provenance.actor?.platform;
     return platform === undefined || HUMAN_INSTRUCTION_PLATFORMS.has(platform);
   }
-  if (data.type !== "message" && data.type !== "message_updated") {
+  // message_updated is hydration/delivery on an existing row, not a new human.
+  if (data.type !== "message") {
     return false;
   }
   if (data.role !== "user") return false;
