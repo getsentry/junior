@@ -212,19 +212,19 @@ function ConversationSidebarRow(props: {
               )}
             />
           )}
-          <div className="flex min-w-0 items-center gap-1 font-display text-sm font-medium leading-snug text-dashboard-text">
+          <div className="truncate font-display text-sm font-medium leading-snug text-dashboard-text">
+            {title}
+          </div>
+        </div>
+        {location || props.conversation.visibility === "private" ? (
+          <div className="ml-3 mt-0.5 flex min-w-0 items-center gap-1 font-mono text-2xs leading-tight text-dashboard-text-muted">
             {props.conversation.visibility === "private" ? (
               <LockKeyhole
                 aria-label="Private conversation"
-                className="size-3 shrink-0 text-dashboard-text-muted"
+                className="size-3 shrink-0"
               />
             ) : null}
-            <span className="truncate">{title}</span>
-          </div>
-        </div>
-        {location ? (
-          <div className="ml-3 mt-0.5 truncate font-mono text-2xs leading-tight text-dashboard-text-muted">
-            {location}
+            {location ? <span className="truncate">{location}</span> : null}
           </div>
         ) : null}
       </Link>
