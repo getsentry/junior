@@ -122,6 +122,7 @@ export function usePinnedTranscriptBottom(input: {
   enabled: boolean;
   historyVersion: string;
   loadingPreviousPage: boolean;
+  pinRequestVersion?: number;
   version: string;
 }): BottomPinResult {
   const anchorRef = useRef<HTMLDivElement | null>(null);
@@ -132,6 +133,7 @@ export function usePinnedTranscriptBottom(input: {
   const initializedConversationRef = useRef<string | null>(null);
   const previousScrollTopRef = useRef<number | null>(null);
   const prependSnapshotRef = useRef<PrependSnapshot | null>(null);
+  const pinRequestVersionRef = useRef(input.pinRequestVersion ?? 0);
   const [following, setFollowing] = useState(false);
   const [hasPendingUpdate, setHasPendingUpdate] = useState(false);
   const [contentElement, setContentElement] = useState<HTMLDivElement | null>(
@@ -314,6 +316,15 @@ export function usePinnedTranscriptBottom(input: {
     setHasPendingUpdate(false);
     scrollToBottom(preferredExplicitScrollBehavior());
   }, [scrollToBottom, setFollowingIntent]);
+
+  useBrowserLayoutEffect(() => {
+    const version = input.pinRequestVersion ?? 0;
+    if (version === pinRequestVersionRef.current) return;
+    pinRequestVersionRef.current = version;
+    setFollowingIntent(true);
+    setHasPendingUpdate(false);
+    scrollToBottom("auto");
+  }, [input.pinRequestVersion, scrollToBottom, setFollowingIntent]);
 
   return useMemo(
     () => ({

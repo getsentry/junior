@@ -48,6 +48,7 @@ export function ConversationComposer(props: {
   pending: boolean;
   submitLabel: string;
   onSubmit(message: string, idempotencyKey: string): Promise<void>;
+  onSubmitStart?: () => void;
 }) {
   const storageKey = `${DRAFT_STORAGE_PREFIX}${encodeURIComponent(props.draftId)}`;
   const [draft, setDraft] = useState<ConversationDraft>(() =>
@@ -58,6 +59,7 @@ export function ConversationComposer(props: {
   const message = draft.text;
   const id = useId();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const draftRef = useRef(draft);
   // Source of truth for the in-flight attempt. React state alone is too late for
   // a second Enter before the parent pending flag flips.
   const attemptRef = useRef<ConversationAttempt>({
@@ -104,28 +106,42 @@ export function ConversationComposer(props: {
     // retry can duplicate a send the server already accepted.
     const attempt = conversationAttemptForSubmit(attemptRef.current, text);
     attemptRef.current = attempt;
-    const nextDraft: ConversationDraft = {
+    const submittedDraft: ConversationDraft = {
       ...attempt,
-      text: draft.text,
+      text,
     };
-    // Write storage before the request so a reload mid-send retries the same key.
-    setDraft(nextDraft);
-    storeDraft(storageKey, nextDraft);
+    const clearedDraft: ConversationDraft = {
+      ...attempt,
+      text: "",
+    };
+    // Keep the accepted attempt key while the request runs, but clear the field
+    // at once so the reader can compose the next message.
+    draftRef.current = clearedDraft;
+    setDraft(clearedDraft);
+    storeDraft(storageKey, clearedDraft);
     submittingRef.current = true;
     setSubmitting(true);
+    props.onSubmitStart?.();
+    textareaRef.current?.focus({ preventScroll: true });
 
     try {
       await props.onSubmit(text, attempt.idempotencyKey);
-      clearStoredDraft(storageKey);
-      const cleared = emptyDraft();
-      attemptRef.current = {
-        idempotencyKey: cleared.idempotencyKey,
-        lastSubmittedText: cleared.lastSubmittedText,
+      const nextAttempt = emptyDraft();
+      const nextDraft: ConversationDraft = {
+        ...nextAttempt,
+        text: draftRef.current.text,
       };
-      setDraft(cleared);
+      attemptRef.current = nextAttempt;
+      draftRef.current = nextDraft;
+      setDraft(nextDraft);
+      storeDraft(storageKey, nextDraft);
     } catch {
-      // The parent renders the mutation error. The stored draft keeps the same
-      // idempotency key so a retry after reload cannot duplicate the message.
+      // Restore the failed message unless the reader already started the next one.
+      if (!draftRef.current.text) {
+        draftRef.current = submittedDraft;
+        setDraft(submittedDraft);
+        storeDraft(storageKey, submittedDraft);
+      }
     } finally {
       submittingRef.current = false;
       setSubmitting(false);
@@ -166,15 +182,17 @@ export function ConversationComposer(props: {
         </label>
         <textarea
           className="min-h-11 max-h-28 w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-2.5 font-mono text-sm leading-relaxed text-dashboard-text outline-none placeholder:text-dashboard-text-muted/65 disabled:opacity-60 md:min-h-24 md:max-h-none md:resize-y md:overflow-visible md:px-3.5 md:py-3"
-          disabled={busy}
+          aria-disabled={busy}
           id={id}
           maxLength={32_000}
-          onChange={(event) =>
-            setDraft((current) => ({
-              ...current,
+          onChange={(event) => {
+            const nextDraft = {
+              ...draftRef.current,
               text: event.target.value,
-            }))
-          }
+            };
+            draftRef.current = nextDraft;
+            setDraft(nextDraft);
+          }}
           onKeyDown={handleKeyDown}
           placeholder="Message Junior…"
           ref={textareaRef}
@@ -260,14 +278,5 @@ function storeDraft(storageKey: string, draft: ConversationDraft): void {
     }
   } catch {
     // Keep the in-memory composer usable when storage is unavailable.
-  }
-}
-
-function clearStoredDraft(storageKey: string): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.removeItem(storageKey);
-  } catch {
-    // The successful send still clears the in-memory draft below.
   }
 }

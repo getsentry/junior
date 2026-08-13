@@ -328,6 +328,15 @@ test("opens and closes a conversation in the mobile workspace", async ({
   page,
 }) => {
   await page.setViewportSize({ height: 844, width: 390 });
+  await page.route("**/api/conversations/*/messages", async (route) => {
+    await route.fulfill({
+      json: {
+        conversationId: "slack:CQA123:1770003600.000200",
+        messageId: "mobile-message",
+        status: "accepted",
+      },
+    });
+  });
   await page.goto(`${server.baseURL}/conversations`);
   await expect(page).toHaveURL(`${server.baseURL}/`);
   await expect(
@@ -435,6 +444,22 @@ test("opens and closes a conversation in the mobile workspace", async ({
       ),
     )
     .toBe("180px");
+
+  await transcript.evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  await composer.fill("Keep the mobile composer ready");
+  await composer.press("Enter");
+  await expect(composer).toBeFocused();
+  await expect(composer).toHaveValue("");
+  await expect
+    .poll(() =>
+      transcript.evaluate(
+        (element) =>
+          element.scrollHeight - element.scrollTop - element.clientHeight,
+      ),
+    )
+    .toBeLessThanOrEqual(1);
 
   await page.getByRole("button", { name: "Search transcript" }).click();
   await expect(page.getByPlaceholder("Search transcript…")).toBeVisible();

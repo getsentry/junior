@@ -54,6 +54,7 @@ export function ConversationPage(props: {
     useState<SubagentTranscriptTarget>();
   const [view, setView] = useState<TranscriptViewMode>("rich");
   const [search, setSearch] = useState("");
+  const [pinRequestVersion, setPinRequestVersion] = useState(0);
   const conversationId = props.conversationId;
   const summaries = props.data?.conversations.conversations ?? [];
   const conversations = buildConversations(summaries);
@@ -199,6 +200,7 @@ export function ConversationPage(props: {
                 live={conversationIsLive(visualStatus, detail.data)}
                 loadingPreviousPage={detail.isLoadingPreviousPage}
                 onLoadPreviousPage={detail.loadPreviousPage}
+                pinRequestVersion={pinRequestVersion}
                 responding={
                   !detail.error && conversationIsLive(visualStatus, detail.data)
                 }
@@ -249,6 +251,9 @@ export function ConversationPage(props: {
               label="Continue this conversation"
               pending={appendMessage.isPending}
               submitLabel="Send"
+              onSubmitStart={() =>
+                setPinRequestVersion((version) => version + 1)
+              }
               onSubmit={async (message, idempotencyKey) => {
                 await appendMessage.mutateAsync({
                   idempotencyKey,
