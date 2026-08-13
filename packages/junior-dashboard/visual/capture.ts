@@ -9,6 +9,7 @@ import {
 import {
   resolveVisualScenarios,
   selectVisualScenarioIds,
+  VISUAL_ALL_LABEL,
   type VisualScenario,
   type VisualViewport,
 } from "./scenarios.ts";
@@ -144,7 +145,7 @@ async function main() {
       : selectVisualScenarioIds(changedPaths);
 
   const reasons = all
-    ? ["forced full suite (--all or trigger-visual)"]
+    ? [`forced full suite (--all or ${VISUAL_ALL_LABEL})`]
     : changedPaths.filter((filePath) =>
         filePath.replaceAll("\\", "/").startsWith("packages/junior-dashboard/"),
       );

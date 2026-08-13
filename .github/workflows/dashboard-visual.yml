@@ -18,8 +18,8 @@ jobs:
     name: visual / capture
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 20
-    # pull_request only: avoid workflow_dispatch privileged default-branch context
-    # executing untrusted PR head (CodeQL cache-poisoning rule).
+    # Same-repo pull_request only. Do not add workflow_dispatch that checks out
+    # PR head from default-branch context (CodeQL cache-poisoning rule).
     if: github.event.pull_request.head.repo.full_name == github.repository
     permissions:
       contents: read
@@ -66,8 +66,8 @@ jobs:
             echo "run=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # No shared Actions cache here. Capture runs PR head code, and writing the
-      # default pnpm cache from untrusted code is a cache-poisoning path.
+      # No shared Actions cache. Capture runs PR head code; writing the default
+      # pnpm cache from that tree is a cache-poisoning path.
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         if: steps.mode.outputs.run == 'true'
         with:
@@ -120,26 +120,27 @@ jobs:
       contents: write
       pull-requests: write
     steps:
-      # No package install here. Prefer the publisher from the default branch when
-      # present so a PR cannot replace the write-scoped comment script after the
-      # feature lands on main. Fall back to the PR copy only while bootstrapping.
-      - uses: actions/checkout@v4
+      # Write-scoped job never installs packages and never checks out the full PR
+      # tree. Prefer the publisher on the default branch; bootstrap from the PR
+      # only while the script is still landing.
+      - name: Load trusted publisher
+        id: publisher
+        uses: actions/checkout@v4
         with:
-          fetch-depth: 0
           persist-credentials: false
+          ref: ${{ github.event.repository.default_branch }}
+          sparse-checkout: |
+            packages/junior-dashboard/visual/post-pr-comment.mjs
+          sparse-checkout-cone-mode: false
 
-      - name: Prefer trusted publisher from default branch
-        env:
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-        run: |
-          set -euo pipefail
-          git fetch --depth=1 origin "$DEFAULT_BRANCH"
-          if git cat-file -e "origin/${DEFAULT_BRANCH}:packages/junior-dashboard/visual/post-pr-comment.mjs"; then
-            git checkout "origin/${DEFAULT_BRANCH}" -- packages/junior-dashboard/visual/post-pr-comment.mjs
-            echo "Using publisher from origin/${DEFAULT_BRANCH}"
-          else
-            echo "Publisher not on origin/${DEFAULT_BRANCH} yet; using PR copy for bootstrap"
-          fi
+      - name: Bootstrap publisher from PR head
+        if: hashFiles('packages/junior-dashboard/visual/post-pr-comment.mjs') == ''
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            packages/junior-dashboard/visual/post-pr-comment.mjs
+          sparse-checkout-cone-mode: false
 
       - name: Download visual artifacts
         uses: actions/download-artifact@v4

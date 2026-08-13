@@ -87,8 +87,9 @@ type PathRule = {
 const PATH_RULES: PathRule[] = [
   {
     match: (filePath) =>
-      filePath.startsWith("packages/junior-dashboard/src/client/conversations/") ||
-      filePath.includes("/mock-reporting/"),
+      filePath.startsWith(
+        "packages/junior-dashboard/src/client/conversations/",
+      ) || filePath.includes("/mock-reporting/"),
     scenarioIds: ["conversations", "conversation-detail"],
   },
   {
