@@ -35,13 +35,11 @@ jobs:
         id: mode
         env:
           PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
 
-          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
           if [[ ",$PR_LABELS," == *",trigger-visual,"* ]]; then
             echo "all=true" >> "$GITHUB_OUTPUT"
           else
@@ -51,39 +49,22 @@ jobs:
           git diff --name-only "$BASE_SHA" "$HEAD_SHA" > /tmp/visual-changed.txt
           cat /tmp/visual-changed.txt
 
-          if [[ -s /tmp/visual-changed.txt ]] && grep -q '^packages/junior-dashboard/' /tmp/visual-changed.txt; then
-            has_dashboard=true
-          else
-            has_dashboard=false
-          fi
-
-          if [[ ",$PR_LABELS," == *",trigger-visual,"* || "$has_dashboard" == "true" ]]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "run=false" >> "$GITHUB_OUTPUT"
-          fi
-
       # No shared Actions cache. Capture runs PR head code; writing the default
       # pnpm cache from that tree is a cache-poisoning path.
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
-        if: steps.mode.outputs.run == 'true'
         with:
           run_install: false
 
       - uses: actions/setup-node@v4
-        if: steps.mode.outputs.run == 'true'
         with:
           node-version: "24"
 
       - name: Install dependencies
-        if: steps.mode.outputs.run == 'true'
         run: pnpm install --frozen-lockfile
 
       - run: pnpm exec playwright install --with-deps chromium
-        if: steps.mode.outputs.run == 'true'
 
       - name: Capture screenshots
-        if: steps.mode.outputs.run == 'true'
         env:
           ALL: ${{ steps.mode.outputs.all }}
         run: |
@@ -96,34 +77,6 @@ jobs:
             args+=(--all)
           fi
           pnpm run visual:dashboard -- "${args[@]}"
-
-      # Keep a skipped manifest when capture is a no-op so the trusted comment
-      # job can clear a stale sticky PR comment.
-      - name: Write skipped visual manifest
-        if: steps.mode.outputs.run != 'true'
-        env:
-          HEAD_SHA: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-          mkdir -p .playwright/visual-dashboard
-          python3 - <<'PY'
-          import json, os
-          from pathlib import Path
-          Path(".playwright/visual-dashboard/manifest.json").write_text(
-              json.dumps(
-                  {
-                      "commitSha": os.environ["HEAD_SHA"],
-                      "mode": "path",
-                      "reasons": [],
-                      "scenarioIds": [],
-                      "shots": [],
-                      "skipped": True,
-                  },
-                  indent=2,
-              )
-              + "\n"
-          )
-          PY
 
       - name: Upload visual artifacts
         if: always()

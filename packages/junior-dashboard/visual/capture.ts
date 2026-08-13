@@ -2,10 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium, type Page } from "@playwright/test";
-import {
-  mockDashboardApis,
-  startDashboardE2eServer,
-} from "../e2e/harness.ts";
+import { mockDashboardApis, startDashboardE2eServer } from "../e2e/harness.ts";
 import {
   resolveVisualScenarios,
   selectVisualScenarioIds,
@@ -14,16 +11,15 @@ import {
   type VisualViewport,
 } from "./scenarios.ts";
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+const ROOT = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../..",
+);
 const DEFAULT_OUT_DIR = path.join(ROOT, ".playwright/visual-dashboard");
 
 type CaptureShot = {
   file: string;
   label: string;
-  ready: string;
-  scenarioId: string;
-  url: string;
-  viewport: string;
 };
 
 type CaptureManifest = {
@@ -126,10 +122,6 @@ async function captureScenario(options: {
     shots.push({
       file,
       label: `${scenario.label} · ${viewport.name}`,
-      ready: scenario.ready,
-      scenarioId: scenario.id,
-      url: scenario.path,
-      viewport: viewport.name,
     });
   }
 
