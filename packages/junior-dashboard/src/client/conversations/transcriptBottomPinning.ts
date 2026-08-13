@@ -85,6 +85,18 @@ export function shouldAutoPinTranscriptBottom(input: {
   return input.enabled && input.following;
 }
 
+/**
+ * Show the jump control only when the reader left the bottom and a newer tail
+ * arrived. Staying pinned, or intentionally following, must not flash it.
+ */
+export function shouldShowJumpToLatest(input: {
+  enabled: boolean;
+  following: boolean;
+  hasPendingUpdate: boolean;
+}): boolean {
+  return input.enabled && !input.following && input.hasPendingUpdate;
+}
+
 /** Resolve scroll intent with user upward movement taking precedence over bottom slack. */
 export function transcriptFollowIntent(input: {
   previousScrollTop: number | null;
@@ -134,6 +146,7 @@ export function usePinnedTranscriptBottom(input: {
   const previousScrollTopRef = useRef<number | null>(null);
   const prependSnapshotRef = useRef<PrependSnapshot | null>(null);
   const pinRequestVersionRef = useRef(input.pinRequestVersion ?? 0);
+  const programmaticScrollGenerationRef = useRef(0);
   const [following, setFollowing] = useState(false);
   const [hasPendingUpdate, setHasPendingUpdate] = useState(false);
   const [contentElement, setContentElement] = useState<HTMLDivElement | null>(
@@ -165,6 +178,13 @@ export function usePinnedTranscriptBottom(input: {
       if (!root) return;
 
       const snapshot = scrollSnapshot(root);
+      // Ignore scroll events caused by our own bottom pin. Those deltas can look
+      // like an upward user scroll while content is still settling.
+      if (source === "scroll" && programmaticScrollGenerationRef.current > 0) {
+        previousScrollTopRef.current = snapshot.scrollTop;
+        return;
+      }
+
       const previousScrollTop = previousScrollTopRef.current;
       previousScrollTopRef.current = snapshot.scrollTop;
 
@@ -186,11 +206,37 @@ export function usePinnedTranscriptBottom(input: {
     [setFollowingIntent],
   );
 
-  const scrollToBottom = useCallback((behavior: ScrollBehavior) => {
-    const root = scrollRootFor(contentElementRef.current);
-    if (!root) return;
-    setScrollTop(root, scrollSnapshot(root).scrollHeight, behavior);
-  }, []);
+  const scrollToBottom = useCallback(
+    (behavior: ScrollBehavior) => {
+      const root = scrollRootFor(contentElementRef.current);
+      if (!root) return;
+
+      const generation = ++programmaticScrollGenerationRef.current;
+      setScrollTop(root, scrollSnapshot(root).scrollHeight, behavior);
+
+      const settleProgrammaticScroll = () => {
+        if (programmaticScrollGenerationRef.current !== generation) return;
+        programmaticScrollGenerationRef.current = 0;
+        const settled = scrollSnapshot(root);
+        previousScrollTopRef.current = settled.scrollTop;
+        if (enabledRef.current && isNearScrollBottom(settled)) {
+          setFollowingIntent(true);
+          setHasPendingUpdate(false);
+        }
+      };
+
+      if (behavior === "smooth") {
+        window.setTimeout(settleProgrammaticScroll, 400);
+        return;
+      }
+
+      // Wait two frames so the browser can emit the scroll event first.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(settleProgrammaticScroll);
+      });
+    },
+    [setFollowingIntent],
+  );
 
   const preserveViewportForPrepend = useCallback(() => {
     const root = scrollRootFor(contentElementRef.current);
@@ -333,7 +379,11 @@ export function usePinnedTranscriptBottom(input: {
       hasPendingUpdate,
       jumpToBottom,
       preserveViewportForPrepend,
-      showJumpToLatest: input.enabled && !following,
+      showJumpToLatest: shouldShowJumpToLatest({
+        enabled: input.enabled,
+        following,
+        hasPendingUpdate,
+      }),
     }),
     [
       contentRef,

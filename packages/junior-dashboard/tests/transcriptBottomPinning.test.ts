@@ -5,6 +5,7 @@ import {
   prependViewportIntent,
   scrollTopAfterPrepend,
   shouldAutoPinTranscriptBottom,
+  shouldShowJumpToLatest,
   transcriptFollowIntent,
   transcriptBottomVersion,
 } from "../src/client/conversations/transcriptBottomPinning";
@@ -263,5 +264,36 @@ describe("transcript bottom pinning", () => {
         source: "scroll",
       }),
     ).toBe("pause");
+  });
+
+  it("shows jump-to-latest only after the reader leaves the bottom and a newer tail arrives", () => {
+    expect(
+      shouldShowJumpToLatest({
+        enabled: true,
+        following: true,
+        hasPendingUpdate: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldShowJumpToLatest({
+        enabled: true,
+        following: false,
+        hasPendingUpdate: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldShowJumpToLatest({
+        enabled: true,
+        following: false,
+        hasPendingUpdate: true,
+      }),
+    ).toBe(true);
+    expect(
+      shouldShowJumpToLatest({
+        enabled: false,
+        following: false,
+        hasPendingUpdate: true,
+      }),
+    ).toBe(false);
   });
 });
