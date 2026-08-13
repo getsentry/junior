@@ -604,6 +604,18 @@ describe("github plugin", () => {
       leaseScope: "repository:getsentry/junior",
       reason: "github.installation-write",
     });
+    expect(
+      await grantForEgress({
+        method: "PATCH",
+        operation: "github.pull.update",
+        url: "https://api.github.com/repos/getsentry/junior/pulls/780",
+      }),
+    ).toMatchObject({
+      name: "installation-write",
+      access: "write",
+      leaseScope: "repository:getsentry/junior",
+      reason: "github.installation-write",
+    });
     await expect(
       grantForEgress({
         method: "POST",
@@ -1800,7 +1812,7 @@ Conversation: \`local:test:old-conversation\`
             "fragment prFields on PullRequest { number } mutation UpdatePullRequest($input: UpdatePullRequestInput!) { updatePullRequest(input: $input) { pullRequest { ...prFields } } }",
         }),
       }),
-    ).rejects.toThrow("GraphQL mutations are not enabled");
+    ).rejects.toThrow("must use the github_updatePullRequest tool");
     await expect(
       grantForEgress({
         method: "POST",
@@ -1860,6 +1872,26 @@ Conversation: \`local:test:old-conversation\`
     ).rejects.toThrow("must use the github_createPullRequest tool");
   });
 
+  it("denies raw pull request metadata updates without github_updatePullRequest", async () => {
+    await expect(
+      grantForEgress({
+        method: "PATCH",
+        url: "https://api.github.com/repos/getsentry/junior/pulls/780",
+      }),
+    ).rejects.toThrow("must use the github_updatePullRequest tool");
+    await expect(
+      grantForEgress({
+        method: "POST",
+        url: "https://api.github.com/graphql",
+        bodyText: JSON.stringify({
+          operationName: "UpdatePullRequest",
+          query:
+            'mutation UpdatePullRequest($input: UpdatePullRequestInput!) { updatePullRequest(input: $input) { pullRequest { number } } }',
+        }),
+      }),
+    ).rejects.toThrow("must use the github_updatePullRequest tool");
+  });
+
   it("keeps unsupported repository writes outside the allowlist", async () => {
     await expect(
       grantForEgress({
@@ -1883,17 +1915,6 @@ Conversation: \`local:test:old-conversation\`
   });
 
   it("treats pull request review writes as bot-owned installation identity", async () => {
-    await expect(
-      grantForEgress({
-        method: "PATCH",
-        url: "https://api.github.com/repos/getsentry/junior/pulls/780",
-      }),
-    ).resolves.toMatchObject({
-      name: "installation-write",
-      access: "write",
-      leaseScope: "repository:getsentry/junior",
-      reason: "github.installation-write",
-    });
     await expect(
       grantForEgress({
         method: "POST",

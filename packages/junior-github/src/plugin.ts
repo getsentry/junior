@@ -452,6 +452,19 @@ function isGitHubPullCreateRestRequest(
   );
 }
 
+function isGitHubPullUpdateRestRequest(
+  method: string,
+  upstreamUrl: URL,
+): boolean {
+  return (
+    method === "PATCH" &&
+    isGitHubApiUrl(upstreamUrl) &&
+    /^\/repos\/[^/]+\/[^/]+\/pulls\/[^/]+$/.test(
+      upstreamUrl.pathname.toLowerCase(),
+    )
+  );
+}
+
 function isGitHubIssueCreateGraphqlMutation(
   method: string,
   upstreamUrl: URL,
@@ -498,6 +511,29 @@ function isGitHubPullCreateGraphqlMutation(
   ).test(parsed.normalized);
 }
 
+function isGitHubPullUpdateGraphqlMutation(
+  method: string,
+  upstreamUrl: URL,
+  bodyText: string | undefined,
+): boolean {
+  if (method !== "POST" || !isGitHubGraphqlUrl(upstreamUrl)) {
+    return false;
+  }
+  const parsed = parseGitHubGraphqlRequest(bodyText);
+  if (!parsed) {
+    return false;
+  }
+  if (!/\bupdatePullRequest\b/.test(parsed.normalized)) {
+    return false;
+  }
+  if (!parsed.operationName) {
+    return /\bmutation\b/.test(parsed.normalized);
+  }
+  return new RegExp(
+    `\\bmutation\\s+${escapeRegExp(parsed.operationName)}\\b`,
+  ).test(parsed.normalized);
+}
+
 function assertGitHubWriteAllowed(input: {
   bodyText?: string;
   method: string;
@@ -508,6 +544,9 @@ function assertGitHubWriteAllowed(input: {
     return;
   }
   if (input.operation === "github.pull.create") {
+    return;
+  }
+  if (input.operation === "github.pull.update") {
     return;
   }
   if (
@@ -532,6 +571,18 @@ function assertGitHubWriteAllowed(input: {
   ) {
     throw new EgressPolicyDenied(
       `GitHub pull request creation must use the github_createPullRequest tool so Junior can own idempotency and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
+    );
+  }
+  if (
+    isGitHubPullUpdateRestRequest(input.method, input.upstreamUrl) ||
+    isGitHubPullUpdateGraphqlMutation(
+      input.method,
+      input.upstreamUrl,
+      input.bodyText,
+    )
+  ) {
+    throw new EgressPolicyDenied(
+      `GitHub pull request updates must use the github_updatePullRequest tool so Junior can own requester attribution and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
     );
   }
 }

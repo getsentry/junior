@@ -488,8 +488,9 @@ A local `git commit` does not call GitHub. The write happens on push. Grant
   or event task first. A webhook alone does not create either one.
 - Missing repository context: include `owner/repo`, or set a thread default
   repository.
-- A `403` that names `github_createIssue` or `github_createPullRequest` is a
-  Junior routing denial. Retry with the named tool.
+- A `403` that names `github_createIssue`, `github_createPullRequest`, or
+  `github_updatePullRequest` is a Junior routing denial. Retry with the named
+  tool.
 - Private OAuth prompt for a personal operation: complete the private
   authorization prompt. Do not paste personal access tokens into chat.
 - Permission failures on issue or PR workflows: update App permissions or the
