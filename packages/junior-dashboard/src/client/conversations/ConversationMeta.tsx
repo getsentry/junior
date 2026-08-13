@@ -95,44 +95,58 @@ export function hasConversationAnnotations(
   );
 }
 
-/** Compact unfinished-work label for dense conversation rows. */
-export function unfinishedWorkSidebarLabel(
-  labels: readonly string[] | undefined,
-): string | undefined {
-  const unique = [
-    ...new Set(
-      (labels ?? [])
-        .map((label) => label.trim())
-        .filter((label) => label.length > 0),
-    ),
-  ];
-  if (unique.length === 0) return undefined;
-  if (unique.length === 1) return unique[0];
-  return `${unique.length} repos`;
+type SidebarAnnotation = NonNullable<
+  NonNullable<ConversationDetailReport["annotations"]>[number]["sidebar"]
+>;
+
+/** Group plugin-owned annotation summaries for a conversation row. */
+export function conversationSidebarAnnotations(
+  annotations: ConversationDetailReport["annotations"] | undefined,
+): SidebarAnnotation[] {
+  const groups = new Map<
+    string,
+    { labels: Set<string>; pluralLabel: string }
+  >();
+  for (const annotation of annotations ?? []) {
+    if (!annotation.sidebar) continue;
+    const current = groups.get(annotation.sidebar.group);
+    if (current) {
+      current.labels.add(annotation.sidebar.label);
+    } else {
+      groups.set(annotation.sidebar.group, {
+        labels: new Set([annotation.sidebar.label]),
+        pluralLabel: annotation.sidebar.pluralLabel,
+      });
+    }
+  }
+  return [...groups.entries()].map(([group, summary]) => ({
+    group,
+    label:
+      summary.labels.size === 1
+        ? [...summary.labels][0]!
+        : `${summary.labels.size} ${summary.pluralLabel}`,
+    pluralLabel: summary.pluralLabel,
+  }));
 }
 
-/** Compact unfinished-work chip for dense conversation rows. */
-export function ConversationUnfinishedWorkChip(props: {
-  unfinishedWork?: boolean;
-  unfinishedWorkLabels?: readonly string[];
+/** Render compact plugin-owned annotation summaries in a conversation row. */
+export function ConversationSidebarAnnotations(props: {
+  annotations: ConversationDetailReport["annotations"] | undefined;
 }) {
-  if (!props.unfinishedWork) return null;
-  const label = unfinishedWorkSidebarLabel(props.unfinishedWorkLabels);
-  const title = label
-    ? `Unfinished work · ${label}`
-    : "Unfinished work";
-  return (
+  const summaries = conversationSidebarAnnotations(props.annotations);
+  if (summaries.length === 0) return null;
+  return summaries.map((summary) => (
     <span
       className="inline-flex min-w-0 max-w-full items-center gap-1 truncate text-[#3fb950]"
-      title={title}
+      key={summary.group}
+      title={summary.label}
     >
       <CircleDot aria-hidden="true" size={11} strokeWidth={2.25} />
-      <span className="sr-only">Unfinished work</span>
-      {label ? (
-        <span className="truncate text-dashboard-text-muted">{label}</span>
-      ) : null}
+      <span className="truncate text-dashboard-text-muted">
+        {summary.label}
+      </span>
     </span>
-  );
+  ));
 }
 
 /** Render resource-link annotations under the conversation title. */

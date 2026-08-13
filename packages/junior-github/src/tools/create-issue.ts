@@ -15,6 +15,7 @@ import { z } from "zod";
 import { appendGitHubFooter } from "./footer.js";
 import { gitHubIssueSubscribable } from "../resource-events/issue.js";
 import { appendGitHubRequesterAttribution } from "../tool-support/attribution.js";
+import { githubRepositorySidebar } from "../annotations.js";
 const GITHUB_ISSUE_CREATE_IDEMPOTENCY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const GITHUB_ISSUE_CREATE_LOCK_TTL_MS = 60_000;
 
@@ -297,6 +298,7 @@ async function annotateIssue(
     label: `${repo.owner}/${repo.name}#${result.number}`,
     url: result.url,
     status: "open",
+    sidebar: githubRepositorySidebar(input.repo),
   });
 }
 

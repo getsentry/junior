@@ -30,10 +30,6 @@ describe("plugin unfinished work", () => {
                 "conversation-finished": "2026-08-03T11:30:00.000Z",
                 "not-a-candidate": "2026-08-03T12:00:00.000Z",
               },
-              unfinishedWorkLabelsByConversationId: {
-                "conversation-a": ["junior", "payments"],
-                "not-a-candidate": ["ignored"],
-              },
             };
           },
         },
@@ -46,13 +42,7 @@ describe("plugin unfinished work", () => {
         },
         hooks: {
           unfinishedWork() {
-            return {
-              conversationIds: ["conversation-b", "conversation-a"],
-              unfinishedWorkLabelsByConversationId: {
-                "conversation-a": ["junior"],
-                "conversation-b": ["relay"],
-              },
-            };
+            return { conversationIds: ["conversation-b", "conversation-a"] };
           },
         },
       }),
@@ -75,10 +65,6 @@ describe("plugin unfinished work", () => {
         "conversation-finished": "2026-08-03T11:30:00.000Z",
       },
       unfinishedIds: ["conversation-a", "conversation-b"],
-      unfinishedLabelsById: {
-        "conversation-a": ["junior", "payments"],
-        "conversation-b": ["relay"],
-      },
     });
     await expect(
       listUnfinishedWork([
@@ -131,7 +117,6 @@ describe("plugin unfinished work", () => {
       assignedIds: ["conversation-a", "conversation-c"],
       finishedAtById: {},
       unfinishedIds: ["conversation-a"],
-      unfinishedLabelsById: {},
     });
   });
 });

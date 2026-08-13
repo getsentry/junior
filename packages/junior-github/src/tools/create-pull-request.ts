@@ -15,6 +15,7 @@ import { appendGitHubFooter } from "./footer.js";
 import { subscribableResourceSchema } from "@sentry/junior-plugin-api";
 import { gitHubPullRequestSubscribable } from "../resource-events/pull-request.js";
 import { appendGitHubRequesterAttribution } from "../tool-support/attribution.js";
+import { githubRepositorySidebar } from "../annotations.js";
 const GITHUB_PULL_REQUEST_CREATE_IDEMPOTENCY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const GITHUB_PULL_REQUEST_CREATE_LOCK_TTL_MS = 60_000;
 
@@ -339,6 +340,7 @@ async function annotatePullRequest(
     label: `${repo.owner}/${repo.name}#${result.number}`,
     url: result.url,
     status: input.draft ? "draft" : "open",
+    sidebar: githubRepositorySidebar(input.repo),
   });
 }
 

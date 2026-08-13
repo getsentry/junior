@@ -161,7 +161,6 @@ export type Conversation = {
   traceId?: string;
   isPriority?: boolean;
   unfinishedWork?: boolean;
-  unfinishedWorkLabels?: string[];
   visibility?: ConversationSummaryReport["visibility"];
 };
 

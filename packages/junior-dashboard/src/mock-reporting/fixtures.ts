@@ -131,7 +131,6 @@ function activeConversation(nowMs: number): ConversationDetailReport {
     actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),
     assignedWork: true,
     unfinishedWork: true,
-    unfinishedWorkLabels: ["payments"],
     isPriority: true,
     annotations: [
       {
@@ -140,6 +139,11 @@ function activeConversation(nowMs: number): ConversationDetailReport {
         label: "getsentry/payments#42",
         plugin: "github",
         status: "open",
+        sidebar: {
+          group: "github-repositories",
+          label: "payments",
+          pluralLabel: "repos",
+        },
         url: "https://github.com/getsentry/payments/pull/42",
         createdAt: startedAt,
         updatedAt: iso(Date.parse(startedAt), 12_000),
@@ -329,7 +333,6 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
     actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),
     assignedWork: true,
     unfinishedWork: true,
-    unfinishedWorkLabels: ["junior"],
     isPriority: true,
     annotations: [
       {
@@ -338,6 +341,11 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         label: "getsentry/junior#1081",
         plugin: "github",
         status: "open",
+        sidebar: {
+          group: "github-repositories",
+          label: "junior",
+          pluralLabel: "repos",
+        },
         url: "https://github.com/getsentry/junior/pull/1081",
         createdAt: startedAt,
         updatedAt: iso(Date.parse(startedAt), 52_000),
@@ -348,6 +356,11 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         label: "getsentry/junior#1090",
         plugin: "github",
         status: "open",
+        sidebar: {
+          group: "github-repositories",
+          label: "junior",
+          pluralLabel: "repos",
+        },
         url: "https://github.com/getsentry/junior/issues/1090",
         createdAt: startedAt,
         updatedAt: iso(Date.parse(startedAt), 40_000),
@@ -761,7 +774,6 @@ function longConversation(nowMs: number): ConversationDetailReport {
     actorIdentity: actor(undefined, "Jordan Blake", "jordan"),
     assignedWork: true,
     unfinishedWork: true,
-    unfinishedWorkLabels: ["junior", "payments"],
     isPriority: true,
     annotations: [
       {
@@ -770,6 +782,11 @@ function longConversation(nowMs: number): ConversationDetailReport {
         label: "getsentry/junior#2201",
         plugin: "github",
         status: "draft",
+        sidebar: {
+          group: "github-repositories",
+          label: "junior",
+          pluralLabel: "repos",
+        },
         url: "https://github.com/getsentry/junior/pull/2201",
         createdAt: startedAt,
         updatedAt: iso(Date.parse(startedAt), 80_000),
@@ -780,6 +797,11 @@ function longConversation(nowMs: number): ConversationDetailReport {
         label: "getsentry/payments#88",
         plugin: "github",
         status: "open",
+        sidebar: {
+          group: "github-repositories",
+          label: "payments",
+          pluralLabel: "repos",
+        },
         url: "https://github.com/getsentry/payments/issues/88",
         createdAt: startedAt,
         updatedAt: iso(Date.parse(startedAt), 70_000),
@@ -790,6 +812,11 @@ function longConversation(nowMs: number): ConversationDetailReport {
         label: "getsentry/payments#91",
         plugin: "github",
         status: "open",
+        sidebar: {
+          group: "github-repositories",
+          label: "payments",
+          pluralLabel: "repos",
+        },
         url: "https://github.com/getsentry/payments/pull/91",
         createdAt: startedAt,
         updatedAt: iso(Date.parse(startedAt), 75_000),

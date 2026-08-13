@@ -26,7 +26,6 @@ import {
   listGitHubAssignedWork,
   listGitHubFinishedWork,
   listGitHubUnfinishedWork,
-  listGitHubUnfinishedWorkLabels,
 } from "../src/pull-request-outcomes/store";
 import { createGitHubWebhookRoute } from "../src/webhooks/handler";
 import {
@@ -99,17 +98,6 @@ it("returns only candidate conversations with unmerged pull requests", async () 
         "conversation-unrelated",
       ]),
     ).resolves.toEqual(["conversation-open", "conversation-shared"]);
-    await expect(
-      listGitHubUnfinishedWorkLabels(fixture.db(), [
-        "conversation-open",
-        "conversation-merged",
-        "conversation-shared",
-        "conversation-unrelated",
-      ]),
-    ).resolves.toEqual({
-      "conversation-open": ["junior"],
-      "conversation-shared": ["junior"],
-    });
     await expect(
       listGitHubFinishedWork(fixture.db(), [
         "conversation-open",
@@ -1075,6 +1063,11 @@ describe("GitHub-owned issue outcomes", () => {
             kind: "resource_link",
             key: "getsentry/junior#990",
             label: "getsentry/junior#990",
+            sidebar: {
+              group: "github-repositories",
+              label: "junior",
+              pluralLabel: "repos",
+            },
             status: "closed",
             url: "https://github.com/getsentry/junior/issues/990",
           },
@@ -1455,6 +1448,11 @@ describe("GitHub-owned pull request outcomes", () => {
               kind: "resource_link",
               key: "getsentry/junior#946",
               label: "getsentry/junior#946",
+              sidebar: {
+                group: "github-repositories",
+                label: "junior",
+                pluralLabel: "repos",
+              },
               status: "merged",
               url: "https://github.com/getsentry/junior/pull/946",
             },
@@ -1465,6 +1463,11 @@ describe("GitHub-owned pull request outcomes", () => {
               kind: "resource_link",
               key: "getsentry/junior#946",
               label: "getsentry/junior#946",
+              sidebar: {
+                group: "github-repositories",
+                label: "junior",
+                pluralLabel: "repos",
+              },
               status: "merged",
               url: "https://github.com/getsentry/junior/pull/946",
             },

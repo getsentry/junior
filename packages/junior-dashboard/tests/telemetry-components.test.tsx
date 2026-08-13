@@ -22,9 +22,9 @@ import { Transcript } from "../src/client/conversations/TranscriptView";
 import { ConversationHeader } from "../src/client/conversations/ConversationHeader";
 import {
   ConversationAnnotations,
+  ConversationSidebarAnnotations,
   ConversationStats,
-  ConversationUnfinishedWorkChip,
-  unfinishedWorkSidebarLabel,
+  conversationSidebarAnnotations,
 } from "../src/client/conversations/ConversationMeta";
 import { conversationFromDetail } from "../src/client/format";
 import { TranscriptMarkdown } from "../src/client/conversations/TranscriptMarkdown";
@@ -563,28 +563,51 @@ describe("dashboard canonical-event components", () => {
     expect(html).not.toContain("Open pull request");
   });
 
-  it("renders unfinished work as a compact repo or multi-repo chip", () => {
-    expect(unfinishedWorkSidebarLabel(["junior", "junior"])).toBe("junior");
-    expect(unfinishedWorkSidebarLabel(["junior", "payments"])).toBe("2 repos");
+  it("renders server-owned annotation summaries for one or more repos", () => {
+    const annotations = [
+      {
+        kind: "resource_link" as const,
+        key: "getsentry/junior#1",
+        label: "getsentry/junior#1",
+        plugin: "github",
+        status: "open" as const,
+        sidebar: {
+          group: "github-repositories",
+          label: "junior",
+          pluralLabel: "repos",
+        },
+        url: "https://github.com/getsentry/junior/pull/1",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:01.000Z",
+      },
+      {
+        kind: "resource_link" as const,
+        key: "getsentry/payments#2",
+        label: "getsentry/payments#2",
+        plugin: "github",
+        status: "open" as const,
+        sidebar: {
+          group: "github-repositories",
+          label: "payments",
+          pluralLabel: "repos",
+        },
+        url: "https://github.com/getsentry/payments/issues/2",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:01.000Z",
+      },
+    ];
+    expect(conversationSidebarAnnotations([annotations[0]!])).toEqual([
+      expect.objectContaining({ label: "junior" }),
+    ]);
+    expect(conversationSidebarAnnotations(annotations)).toEqual([
+      expect.objectContaining({ label: "2 repos" }),
+    ]);
 
-    const singleHtml = renderToStaticMarkup(
-      <ConversationUnfinishedWorkChip
-        unfinishedWork
-        unfinishedWorkLabels={["junior"]}
-      />,
+    const html = renderToStaticMarkup(
+      <ConversationSidebarAnnotations annotations={annotations} />,
     );
-    expect(singleHtml).toContain("junior");
-    expect(singleHtml).toContain('title="Unfinished work · junior"');
-    expect(singleHtml).not.toContain("Pull request");
-
-    const multiHtml = renderToStaticMarkup(
-      <ConversationUnfinishedWorkChip
-        unfinishedWork
-        unfinishedWorkLabels={["junior", "payments"]}
-      />,
-    );
-    expect(multiHtml).toContain("2 repos");
-    expect(multiHtml).not.toContain("junior#");
+    expect(html).toContain("2 repos");
+    expect(html).not.toContain("junior#");
   });
 
   it("distinguishes initial detail failures from stale refresh failures", () => {

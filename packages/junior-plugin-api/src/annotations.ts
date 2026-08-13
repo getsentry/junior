@@ -21,6 +21,15 @@ export const resourceLinkAnnotationSchema = z
       .refine(usesHttpProtocol, "URL must use HTTP or HTTPS."),
     description: z.string().trim().min(1).max(512).optional(),
     status: z.enum(["open", "draft", "closed", "merged", "warning"]).optional(),
+    /** Plugin-owned compact grouping for conversation feed rows. */
+    sidebar: z
+      .object({
+        group: z.string().trim().min(1).max(64),
+        label: z.string().trim().min(1).max(64),
+        pluralLabel: z.string().trim().min(1).max(64),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
