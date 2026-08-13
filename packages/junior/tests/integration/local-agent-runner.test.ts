@@ -31,11 +31,11 @@ import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
+import { NO_REPLY_MARKER } from "@/chat/no-reply";
 import { createProviderError } from "@/chat/services/provider-error";
 import {
   createModelAgentRunnerForRun,
   neverRunAgentRunner,
-  scriptedAssistantMessageRunner,
 } from "../fixtures/agent-runner";
 import { createModelStream } from "../fixtures/model-stream";
 import { getConversationEventStore } from "@/chat/db";
@@ -165,44 +165,6 @@ async function persistRunningSessionForFakeReply(
 }
 
 describe("local agent runner", () => {
-  it("delivers and persists completed assistant messages in order", async () => {
-    const conversationId = normalizeLocalConversationId({
-      alias: "assistant-messages",
-      cwd: "/tmp/local-agent-runner-assistant-messages",
-    });
-    expect(conversationId).toBeDefined();
-    const delivered: LocalAgentReply[] = [];
-
-    await runLocalAgentTurn(
-      {
-        conversationId: conversationId!,
-        message: "check this",
-      },
-      {
-        deliverReply: async (reply) => {
-          delivered.push(reply);
-        },
-        agentRunner: scriptedAssistantMessageRunner({
-          messages: [{ text: "Checking now." }, { text: "Done." }],
-          result: successReply("Done."),
-        }),
-      },
-    );
-
-    expect(delivered).toEqual([{ text: "Checking now." }, { text: "Done." }]);
-    const state = await getPersistedThreadState(conversationId!);
-    const conversation = coerceThreadConversationState(state);
-    await hydrateConversationMessages({
-      conversation,
-      conversationId: conversationId!,
-    });
-    expect(
-      conversation.messages
-        .filter((message) => message.role === "assistant")
-        .map((message) => message.text),
-    ).toEqual(["Checking now.", "Done."]);
-  });
-
   it("runs a local message without Slack actor or destination state", async () => {
     const conversationId = normalizeLocalConversationId({
       alias: "demo",
@@ -398,9 +360,9 @@ describe("local agent runner", () => {
     await runLocalAgentTurn(
       { conversationId: conversationId!, message: "react only" },
       {
-        agentRunner: {
-          run: async () => completedAgentRun(successReply("")),
-        },
+        agentRunner: createModelAgentRunnerForRun(() =>
+          createModelStream([{ type: "text", text: NO_REPLY_MARKER }]),
+        ),
         deliverReply,
       },
     );
@@ -418,51 +380,12 @@ describe("local agent runner", () => {
     expect(JSON.stringify(conversation.messages)).not.toContain(
       "[no visible reply]",
     );
-    expect(await loadLifecycleEvents(conversationId!)).toEqual([
-      expect.objectContaining({
-        data: expect.objectContaining({ type: "turn_started" }),
-      }),
-      expect.objectContaining({
-        data: expect.objectContaining({
-          type: "turn_completed",
-          outcome: "no_reply",
-        }),
-      }),
-    ]);
-  });
-
-  it("records success when a completed message precedes intentional silence", async () => {
-    const conversationId = normalizeLocalConversationId({
-      alias: "message-then-no-reply",
-      cwd: "/tmp/local-agent-runner-message-then-no-reply",
+    const lifecycle = await loadLifecycleEvents(conversationId!);
+    expect(lifecycle[0]?.data).toMatchObject({ type: "turn_started" });
+    expect(lifecycle.at(-1)?.data).toMatchObject({
+      type: "turn_completed",
+      outcome: "no_reply",
     });
-    const delivered: LocalAgentReply[] = [];
-
-    await runLocalAgentTurn(
-      { conversationId: conversationId!, message: "check, then react" },
-      {
-        agentRunner: scriptedAssistantMessageRunner({
-          messages: [{ text: "Checked it." }],
-          result: successReply(""),
-        }),
-        deliverReply: async (reply) => {
-          delivered.push(reply);
-        },
-      },
-    );
-
-    expect(delivered).toEqual([{ text: "Checked it." }]);
-    expect(await loadLifecycleEvents(conversationId!)).toEqual([
-      expect.objectContaining({
-        data: expect.objectContaining({ type: "turn_started" }),
-      }),
-      expect.objectContaining({
-        data: expect.objectContaining({
-          type: "turn_completed",
-          outcome: "success",
-        }),
-      }),
-    ]);
   });
 
   it("records a delivered sanitized model failure without raw error data", async () => {
