@@ -212,6 +212,7 @@ function NewConversationView(props: {
           draftId="new"
           error={props.error}
           label="Start a conversation"
+          restoreDraftOnError
           submitLabel="Send"
           onSubmit={(message, idempotencyKey) =>
             props.onSubmit(message, idempotencyKey, visibility)

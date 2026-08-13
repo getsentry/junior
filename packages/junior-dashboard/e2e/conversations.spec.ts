@@ -183,6 +183,13 @@ test("starts and continues conversations from the dashboard", async ({
       return;
     }
     createRequests.push(route.request().postDataJSON());
+    if (createRequests.length === 1) {
+      await route.fulfill({
+        json: { error: "temporary failure" },
+        status: 500,
+      });
+      return;
+    }
     await route.fulfill({
       json: {
         conversationId: createdConversationId,
@@ -225,17 +232,29 @@ test("starts and continues conversations from the dashboard", async ({
     page.getByRole("heading", { name: "New conversation" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Private" }).click();
-  await page
-    .getByLabel("Start a conversation")
-    .fill("Start from the dashboard");
+  const startComposer = page.getByLabel("Start a conversation");
+  await startComposer.fill("Start from the dashboard");
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect(
+    page.getByText("Could not create the conversation. Try again."),
+  ).toBeVisible();
+  // New roots have no mailbox outbox, so a failed create restores the draft and
+  // keeps the same idempotency key for a safe retry.
+  await expect(startComposer).toHaveValue("Start from the dashboard");
+  expect(createRequests).toHaveLength(1);
+  const failedCreateKey = createRequests[0]?.idempotencyKey;
+  expect(createRequests[0]?.message).toBe("Start from the dashboard");
+  expect(createRequests[0]?.visibility).toBe("private");
+  expect(failedCreateKey).toBeTruthy();
+
   await page.getByRole("button", { name: "Send" }).click();
   await expect(page).toHaveURL(
     `${server.baseURL}/conversations/${encodeURIComponent(createdConversationId)}`,
   );
-  expect(createRequests).toHaveLength(1);
-  expect(createRequests[0]?.message).toBe("Start from the dashboard");
-  expect(createRequests[0]?.visibility).toBe("private");
-  expect(createRequests[0]?.idempotencyKey).toBeTruthy();
+  expect(createRequests).toHaveLength(2);
+  expect(createRequests[1]?.idempotencyKey).toBe(failedCreateKey);
+  expect(createRequests[1]?.message).toBe("Start from the dashboard");
+  expect(createRequests[1]?.visibility).toBe("private");
 
   const slackConversationId = "slack:CQA123:1770000000.000100";
   await page.route(

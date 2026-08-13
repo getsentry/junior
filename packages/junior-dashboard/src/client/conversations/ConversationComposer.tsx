@@ -45,6 +45,12 @@ export function ConversationComposer(props: {
   draftId: string;
   error?: string;
   label: string;
+  /**
+   * Restore the submitted text after a failed accept when there is no mailbox
+   * outbox (new conversation create). Existing conversations keep failures in
+   * the pending queue instead.
+   */
+  restoreDraftOnError?: boolean;
   submitLabel: string;
   onFocus?: () => void;
   onSubmit(message: string, idempotencyKey: string): Promise<void>;
@@ -105,7 +111,12 @@ export function ConversationComposer(props: {
     // retry can duplicate a send the server already accepted.
     const attempt = conversationAttemptForSubmit(attemptRef.current, text);
     attemptRef.current = attempt;
-    // Clear immediately. Failed sends stay in the mailbox outbox, not here.
+    const submittedDraft: ConversationDraft = {
+      ...attempt,
+      text,
+    };
+    // Clear immediately so the reader can compose the next message. Existing
+    // conversations keep failures in the mailbox outbox; new roots may restore.
     const nextAttempt = emptyDraft();
     const clearedDraft: ConversationDraft = {
       ...nextAttempt,
@@ -126,7 +137,16 @@ export function ConversationComposer(props: {
     try {
       await props.onSubmit(text, attempt.idempotencyKey);
     } catch {
-      // Parent keeps the failed message in the mailbox queue for retry.
+      if (!props.restoreDraftOnError) {
+        // Parent keeps the failed message in the mailbox queue for retry.
+        return;
+      }
+      // Restore only when the reader has not already started another draft.
+      if (draftRef.current.text) return;
+      draftRef.current = submittedDraft;
+      attemptRef.current = attempt;
+      setDraft(submittedDraft);
+      storeDraft(storageKey, submittedDraft);
     }
   };
 
