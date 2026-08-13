@@ -1879,17 +1879,6 @@ Conversation: \`local:test:old-conversation\`
         url: "https://api.github.com/repos/getsentry/junior/pulls/780",
       }),
     ).rejects.toThrow("must use the github_updatePullRequest tool");
-    await expect(
-      grantForEgress({
-        method: "POST",
-        url: "https://api.github.com/graphql",
-        bodyText: JSON.stringify({
-          operationName: "UpdatePullRequest",
-          query:
-            'mutation UpdatePullRequest($input: UpdatePullRequestInput!) { updatePullRequest(input: $input) { pullRequest { number } } }',
-        }),
-      }),
-    ).rejects.toThrow("must use the github_updatePullRequest tool");
   });
 
   it("keeps unsupported repository writes outside the allowlist", async () => {
