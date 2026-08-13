@@ -241,7 +241,7 @@ export async function buildGitHubProfileReport(args: {
 
   return {
     generatedAt: new Date(args.nowMs).toISOString(),
-    title: "Code changes",
+    title: "GitHub",
     metrics: [
       {
         label: "PRs opened · 30d",

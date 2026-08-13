@@ -43,7 +43,7 @@ describe("people plugin reports API", () => {
           hooks: {
             profileReport(ctx) {
               return {
-                title: "Code changes",
+                title: "Agent Demo",
                 metrics: [
                   {
                     label: "subject",
@@ -67,7 +67,7 @@ describe("people plugin reports API", () => {
         expect(body.reports).toEqual([
           {
             pluginName: "agent-demo",
-            title: "Code changes",
+            title: "Agent Demo",
             metrics: [{ label: "subject", value: "alice@example.com" }],
           },
         ]);

@@ -150,10 +150,7 @@ export function Profile(props: {
             </SectionHeader>
             <ContributionGrid days={profile.activityDays} />
           </Card>
-          <div className="grid min-w-0 gap-5 md:grid-cols-2">
-            <LeaderboardSection items={profile.locations} title="Places" />
-            <LeaderboardSection items={profile.surfaces} title="Surfaces" />
-          </div>
+          <LeaderboardSection items={profile.surfaces} title="Surfaces" />
         </div>
       </div>
     </div>

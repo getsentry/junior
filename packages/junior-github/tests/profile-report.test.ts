@@ -111,7 +111,7 @@ describe("GitHub profile reports", () => {
         nowMs,
         userId: "user-alice",
       });
-      expect(alice?.title).toBe("Code changes");
+      expect(alice?.title).toBe("GitHub");
       expect(alice?.metrics).toEqual([
         { label: "PRs opened · 30d", value: "1" },
         { label: "PRs merged · 30d", value: "1" },

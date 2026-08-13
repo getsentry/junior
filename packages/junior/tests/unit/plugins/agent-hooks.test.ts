@@ -1518,7 +1518,7 @@ describe("agent plugin hooks", () => {
             expect(ctx.viewer).toEqual(viewer);
             expect("set" in ctx.state).toBe(false);
             return {
-              title: "Code changes",
+              title: "Agent Demo",
               metrics: [{ label: "prs", value: "2" }],
             };
           },
@@ -1555,7 +1555,7 @@ describe("agent plugin hooks", () => {
       ).resolves.toEqual([
         {
           pluginName: "agent-demo",
-          title: "Code changes",
+          title: "Agent Demo",
           metrics: [{ label: "prs", value: "2" }],
         },
       ]);

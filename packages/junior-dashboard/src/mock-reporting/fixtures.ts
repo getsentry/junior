@@ -1632,7 +1632,7 @@ export function readMockPeoplePluginReports(
     reports: [
       {
         pluginName: "github",
-        title: "Code changes",
+        title: "GitHub",
         generatedAt: new Date(nowMs).toISOString(),
         metrics: [
           { label: "PRs opened · 30d", value: "12" },
