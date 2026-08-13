@@ -134,6 +134,7 @@ interface SandboxRuntimeOptions {
   onWorkspacePrepare?: (
     sandbox: SandboxSession,
     workspace: Workspace,
+    signal?: AbortSignal,
   ) => Promise<void>;
   onSandboxRefChanged?: (sandboxRef: SandboxRef) => void | Promise<void>;
 }
@@ -184,11 +185,7 @@ export function createSandboxRuntime(
   const timeoutMs = options.timeoutMs ?? 1000 * 60 * 30;
   const traceContext = options.traceContext ?? {};
   let activeWorkspace = options.workspace;
-  // Keep the stored workspace profile only when its recipe row is missing.
-  let dependencyProfileHash =
-    !activeWorkspace && options.sandboxRef?.workspaceId
-      ? options.sandboxRef.profileHash
-      : profileHash(SANDBOX_RUNTIME, activeWorkspace);
+  let dependencyProfileHash = profileHash(SANDBOX_RUNTIME, activeWorkspace);
   const resolveCommandEnv =
     options.commandEnv ?? (async () => ({}) as Record<string, string>);
 
@@ -478,7 +475,7 @@ export function createSandboxRuntime(
   ): Promise<void> => {
     signal?.throwIfAborted();
     await applyNetworkPolicy(sandbox);
-    await options.onWorkspacePrepare?.(sandbox, workspace);
+    await options.onWorkspacePrepare?.(sandbox, workspace, signal);
     // The provider hook is trusted and runs through credential egress. Remove
     // that route before the app-owned setup script runs and before capture.
     if (options.createNetworkPolicy) {
@@ -580,12 +577,10 @@ export function createSandboxRuntime(
   };
 
   const discardHintIfProfileChanged = (): void => {
-    // Missing recipe cannot recompute workspace profile; keep the durable hint.
     if (
       activeSandbox ||
       !sandboxRef ||
-      dependencyProfileHash === sandboxRef.profileHash ||
-      (!activeWorkspace && sandboxRef.workspaceId)
+      dependencyProfileHash === sandboxRef.profileHash
     ) {
       return;
     }

@@ -1086,11 +1086,10 @@ describe("createTestSandbox", () => {
     });
   });
 
-  it("keeps durable workspaceId when the recipe row is missing", async () => {
-    // Base-only hash would previously discard the workspace hint and strip workspaceId.
+  it("discards the Workspace hint when its recipe row is missing", async () => {
     hashMock.mockReturnValue("profile-base");
-    const restored = makeSandbox("sbx_missing_recipe");
-    sandboxGetMock.mockResolvedValueOnce(restored);
+    const fresh = makeSandbox("sbx_after_recipe_removed");
+    sandboxCreateMock.mockResolvedValueOnce(fresh);
     const refs: Array<{
       id: string;
       workspaceId?: string;
@@ -1111,15 +1110,18 @@ describe("createTestSandbox", () => {
 
     await runtime.acquire();
 
-    expect(sandboxGetMock).toHaveBeenCalled();
-    expect(sandboxCreateMock).not.toHaveBeenCalled();
+    expect(sandboxGetMock).not.toHaveBeenCalled();
+    expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
     expect(runtime.sandboxRef()).toEqual({
-      id: "sbx_missing_recipe",
-      profileHash: "profile-workspace",
-      workspaceId: "workspace-deleted",
+      id: "sbx_after_recipe_removed",
+      profileHash: "profile-base",
     });
-    // Same durable identity is not rewritten.
-    expect(refs).toEqual([]);
+    expect(refs).toEqual([
+      {
+        id: "sbx_after_recipe_removed",
+        profileHash: "profile-base",
+      },
+    ]);
   });
 
   it("limits credential egress to Workspace provider preparation", async () => {
@@ -1235,6 +1237,55 @@ describe("createTestSandbox", () => {
     await expect(acquirePromise).rejects.toBe("cancel setup");
     expect(setupCommand.signal?.aborted).toBe(true);
     releaseSetup?.();
+  });
+
+  it("forwards abort signal into Workspace provider preparation", async () => {
+    const buildSandbox = makeSandbox("sbx_workspace_provider_signal");
+    const controller = new AbortController();
+    let providerSignal: AbortSignal | undefined;
+    let markProviderStarted: (() => void) | undefined;
+    const providerStarted = new Promise<void>((resolve) => {
+      markProviderStarted = resolve;
+    });
+    resolveMock.mockImplementationOnce(async (params: any) => {
+      await params.prepareWorkspace?.(buildSandbox);
+      return {
+        snapshotId: "snap_workspace_provider",
+        profileHash: "profile-workspace-provider",
+        dependencyCount: 0,
+        cacheHit: false,
+        resolveOutcome: "built",
+      };
+    });
+    hashMock.mockReturnValue("profile-workspace-provider");
+    const runtime = createSandboxRuntime({
+      workspace: {
+        id: "workspace-provider",
+        name: "provider",
+        setupScript: "",
+        repos: [],
+      },
+      skills: [],
+      referenceFiles: [],
+      onWorkspacePrepare: async (_sandbox, _workspace, signal) => {
+        providerSignal = signal;
+        markProviderStarted?.();
+        await new Promise<void>((resolve) => {
+          signal?.addEventListener("abort", () => resolve(), { once: true });
+        });
+        signal?.throwIfAborted();
+      },
+    });
+
+    const acquirePromise = runtime.acquire(controller.signal);
+    await providerStarted;
+    expect(providerSignal).toBeInstanceOf(AbortSignal);
+    expect(providerSignal?.aborted).toBe(false);
+
+    controller.abort("cancel provider preparation");
+
+    await expect(acquirePromise).rejects.toBe("cancel provider preparation");
+    expect(providerSignal?.aborted).toBe(true);
   });
 
   it("keeps the durable workspace reference when its switch fails", async () => {

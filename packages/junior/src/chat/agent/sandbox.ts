@@ -44,6 +44,7 @@ export interface AgentSandboxOptions {
   prepareWorkspace?(
     workspace: SandboxWorkspace,
     recipe: Workspace,
+    signal?: AbortSignal,
   ): Promise<void>;
   /** In-memory run hint. null means cleared; undefined means unknown/unchanged. */
   onSandboxRefChanged(sandboxRef: SandboxRef | null | undefined): void;

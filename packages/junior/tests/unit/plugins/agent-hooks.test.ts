@@ -44,7 +44,10 @@ import {
 } from "@/chat/plugins/agent-hooks";
 import { createTools } from "@/chat/tools";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
-import type { SandboxSession } from "@/chat/sandbox/workspace";
+import type {
+  SandboxCommandInput,
+  SandboxSession,
+} from "@/chat/sandbox/workspace";
 
 const demoToolResultSchema = pluginToolOutputSchema.extend({
   message: z.string(),
@@ -1681,6 +1684,101 @@ describe("agent plugin hooks", () => {
         env: { PUBLIC_MODE: "preview" },
       });
       expect(before.env).toEqual({ AGENT_PLUGIN: "U123" });
+    } finally {
+      setPlugins(previous);
+    }
+  });
+
+  it("runs Workspace preparation non-interactively with owner cancellation", async () => {
+    const runCommand = vi.fn(async (_input: SandboxCommandInput) => ({
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+    }));
+    const previous = setPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "agent-demo",
+          displayName: "Agent Demo",
+          description: "Agent demo",
+        },
+        hooks: {
+          async workspacePrepare(ctx) {
+            await ctx.sandbox.run({
+              cmd: "git",
+              args: ["clone", "https://example.com/demo.git", "demo"],
+              cwd: ctx.sandbox.root,
+            });
+          },
+        },
+      }),
+    ]);
+    try {
+      const controller = new AbortController();
+      const sandbox = {
+        ...fakeSandbox([]),
+        runCommand,
+      };
+
+      await createPluginHookRunner().prepareWorkspace?.(
+        sandbox,
+        [
+          {
+            provider: "agent-demo",
+            repo: "example/demo",
+            checkoutPath: "demo",
+          },
+        ],
+        controller.signal,
+      );
+
+      expect(runCommand).toHaveBeenCalledTimes(1);
+      const command = runCommand.mock.calls[0]?.[0];
+      expect(command).toMatchObject({
+        cmd: "bash",
+        cwd: "/vercel/sandbox",
+        signal: controller.signal,
+      });
+      expect(command?.args?.[0]).toBe("-c");
+      expect(command?.args?.[1]).toContain("GIT_TERMINAL_PROMPT");
+      expect(command?.args?.[1]).toContain(
+        "'git' 'clone' 'https://example.com/demo.git' 'demo'",
+      );
+    } finally {
+      setPlugins(previous);
+    }
+  });
+
+  it("rejects unhandled Workspace repository providers before preparation", async () => {
+    const workspacePrepare = vi.fn(async () => {});
+    const previous = setPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "agent-demo",
+          displayName: "Agent Demo",
+          description: "Agent demo",
+        },
+        hooks: { workspacePrepare },
+      }),
+    ]);
+    try {
+      await expect(
+        createPluginHookRunner().prepareWorkspace?.(fakeSandbox([]), [
+          {
+            provider: "agent-demo",
+            repo: "example/demo",
+            checkoutPath: "demo",
+          },
+          {
+            provider: "missing-provider",
+            repo: "example/missing",
+            checkoutPath: "missing",
+          },
+        ]),
+      ).rejects.toThrow(
+        "Workspace repository providers have no preparation hook: missing-provider",
+      );
+      expect(workspacePrepare).not.toHaveBeenCalled();
     } finally {
       setPlugins(previous);
     }

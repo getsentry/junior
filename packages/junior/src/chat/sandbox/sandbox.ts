@@ -104,6 +104,7 @@ export interface SandboxOptions {
   prepareWorkspace?: (
     workspace: SandboxWorkspace,
     recipe: Workspace,
+    signal?: AbortSignal,
   ) => Promise<void>;
   onSandboxRefChanged?: (sandboxRef: SandboxRef) => void | Promise<void>;
 }

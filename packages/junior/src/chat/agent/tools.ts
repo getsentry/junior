@@ -239,8 +239,8 @@ export async function wireAgentTools(
     configurationValues: args.configurationValues,
     getActiveSkill: () => args.skillSandbox.getActiveSkill(),
     prepareSandbox: pluginHooks.prepareSandbox,
-    prepareWorkspace: async (sandbox, recipe) =>
-      await pluginHooks.prepareWorkspace?.(sandbox, recipe.repos),
+    prepareWorkspace: async (sandbox, recipe, signal) =>
+      await pluginHooks.prepareWorkspace?.(sandbox, recipe.repos, signal),
     onSandboxRefChanged: args.onSandboxRefChanged,
     persistSandboxRef: args.durability.onSandboxRefChanged,
   });

@@ -11,8 +11,8 @@ traffic through verified host egress.
 - Runtime state persists only an opaque `SandboxRef` (`id`, dependency profile
   hash, and optional Workspace id). The provider adapter maps that reference to
   Vercel's named Sandbox API; callers do not depend on provider names or VM
-  session ids. If a configured Workspace is removed, restore keeps the durable
-  Workspace id and profile hash.
+  session ids. A removed Workspace recipe invalidates its stored profile the
+  same way any other removed profile input does.
 - Each agent run creates lazy sandbox access from the persisted reference.
   `workspace` serves non-sandbox tools and generated artifacts, while `tools`
   serves the Pi sandbox tool adapter. The live provider session stays private
