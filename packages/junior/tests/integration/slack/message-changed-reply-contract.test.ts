@@ -10,10 +10,9 @@ import { JuniorChat } from "@/chat/ingress/junior-chat";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import { handleChatSdkPlatformWebhook } from "@/handlers/webhooks";
-import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
-import { deliverAssistantMessagesForTest } from "../../fixtures/agent-runner";
+import { createModelAgentRunner } from "../../fixtures/agent-runner";
+import { createModelStream } from "../../fixtures/model-stream";
 import { queueSlackApiError } from "../../msw/handlers/slack-api";
-import { RetryableDeliveryError } from "@/chat/agent/types";
 import type { PausedTurnRequest } from "@/chat/task-execution/turn-wake";
 
 const SIGNING_SECRET = "test-signing-secret";
@@ -21,18 +20,6 @@ const BOT_USER_ID = "U0BOT";
 const slackWebhookClient = createSlackWebhookTestClient({
   signingSecret: SIGNING_SECRET,
 });
-
-function makeDiagnostics() {
-  return {
-    assistantMessageCount: 1,
-    modelId: "fake-agent-model",
-    outcome: "success" as const,
-    toolCalls: [],
-    toolErrorCount: 0,
-    toolResultCount: 0,
-    usedPrimaryText: true,
-  };
-}
 
 function createEditedMentionRequest(args: {
   messageTs: string;
@@ -106,18 +93,9 @@ async function createEditedDmBot(args: {
 describe("Slack contract: edited-message reply delivery", () => {
   it("posts the finalized reply into the edited DM thread with chat.postMessage", async () => {
     const bot = await createEditedDmBot({
-      agentRunner: {
-        run: async (request) => {
-          const _prompt = request.instruction.text;
-          await deliverAssistantMessagesForTest(request, [
-            { text: "Hello world" },
-          ]);
-          return completedAgentRun({
-            text: "Hello world",
-            diagnostics: makeDiagnostics(),
-          });
-        },
-      },
+      agentRunner: createModelAgentRunner(
+        createModelStream([{ type: "text", text: "Hello world" }]),
+      ),
     });
     const waitUntil = slackWebhookClient.waitUntil();
 
@@ -151,15 +129,9 @@ describe("Slack contract: edited-message reply delivery", () => {
       (_, i) => `line ${i + 1}`,
     ).join("\n");
     const bot = await createEditedDmBot({
-      agentRunner: {
-        run: async (request) => {
-          await deliverAssistantMessagesForTest(request, [{ text: longReply }]);
-          return completedAgentRun({
-            text: longReply,
-            diagnostics: makeDiagnostics(),
-          });
-        },
-      },
+      agentRunner: createModelAgentRunner(
+        createModelStream([{ type: "text", text: longReply }]),
+      ),
     });
     const waitUntil = slackWebhookClient.waitUntil();
 
@@ -197,14 +169,9 @@ describe("Slack contract: edited-message reply delivery", () => {
     }
     const wakePausedTurn = vi.fn().mockResolvedValue(undefined);
     const bot = await createEditedDmBot({
-      agentRunner: {
-        run: async (request) => {
-          await expect(
-            deliverAssistantMessagesForTest(request, [{ text: "Hello world" }]),
-          ).rejects.toBeInstanceOf(RetryableDeliveryError);
-          return { status: "suspended", reason: "retry", resumeVersion: 2 };
-        },
-      },
+      agentRunner: createModelAgentRunner(
+        createModelStream([{ type: "text", text: "Hello world" }]),
+      ),
       wakePausedTurn,
     });
     const waitUntil = slackWebhookClient.waitUntil();
