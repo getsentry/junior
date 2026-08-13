@@ -67,7 +67,7 @@ jobs:
             : > /tmp/visual-changed.txt
           else
             echo "pr_number=$PR_NUMBER_EVENT" >> "$GITHUB_OUTPUT"
-            if [[ ",$PR_LABELS," == *",visual:all,"* ]]; then
+            if [[ ",$PR_LABELS," == *",trigger-visual,"* ]]; then
               echo "all=true" >> "$GITHUB_OUTPUT"
             else
               echo "all=false" >> "$GITHUB_OUTPUT"
@@ -92,7 +92,7 @@ jobs:
               echo "run=false" >> "$GITHUB_OUTPUT"
             fi
           else
-            if [[ ",$PR_LABELS," == *",visual:all,"* || "$has_dashboard" == "true" ]]; then
+            if [[ ",$PR_LABELS," == *",trigger-visual,"* || "$has_dashboard" == "true" ]]; then
               echo "run=true" >> "$GITHUB_OUTPUT"
             else
               echo "run=false" >> "$GITHUB_OUTPUT"

@@ -143,7 +143,7 @@ const PATH_RULES: PathRule[] = [
 export const MAX_VISUAL_SCENARIOS = 4;
 
 /** PR label that forces every registered scenario. */
-export const VISUAL_ALL_LABEL = "visual:all";
+export const VISUAL_ALL_LABEL = "trigger-visual";
 
 /** Return every registered scenario id in registry order. */
 export function allVisualScenarioIds(): string[] {

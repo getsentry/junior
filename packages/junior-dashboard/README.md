@@ -51,8 +51,8 @@ and open `/dev` to inspect the typed component fixtures.
 
 PR visual evidence lives in `visual/` and the standalone `Dashboard Visual`
 workflow. CI selects scenarios from changed paths, captures screenshots against
-the mock dashboard, and posts one sticky comment. Add the `visual:all` label to
-force every registered scenario. See `visual/README.md`.
+the mock dashboard, and posts one sticky comment. Add the `trigger-visual` label
+to force every registered scenario. See `visual/README.md`.
 
 ## Type scale
 

@@ -75,7 +75,7 @@ function buildBody(manifest, imageBaseUrl) {
 
   const modeLine =
     manifest.mode === "all"
-      ? "Mode: full suite (`visual:all` / `--all`)"
+      ? "Mode: full suite (`trigger-visual` / `--all`)"
       : manifest.mode === "explicit"
         ? "Mode: explicit scenario list"
         : "Mode: path-selected";

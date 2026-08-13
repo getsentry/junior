@@ -26,7 +26,7 @@ Screenshots land in `.playwright/visual-dashboard/`.
 Default selection is capped (`MAX_VISUAL_SCENARIOS`) so broad diffs stay
 reviewable. Force every registered scenario with any of:
 
-1. PR label `visual:all`
+1. PR label `trigger-visual`
 2. Manual `workflow_dispatch` on `Dashboard Visual` with `all=true`
 3. Local `--all`
 

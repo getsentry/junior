@@ -144,7 +144,7 @@ async function main() {
       : selectVisualScenarioIds(changedPaths);
 
   const reasons = all
-    ? ["forced full suite (--all or visual:all)"]
+    ? ["forced full suite (--all or trigger-visual)"]
     : changedPaths.filter((filePath) =>
         filePath.replaceAll("\\", "/").startsWith("packages/junior-dashboard/"),
       );
