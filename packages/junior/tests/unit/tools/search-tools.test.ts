@@ -141,6 +141,16 @@ function mixedCatalog() {
       exposure: "deferred",
       inputSchema: Type.Object({ repo: Type.String() }),
     }),
+    github_updateIssue: tool({
+      description:
+        "Update an existing GitHub issue's title, body, or state.",
+      source: githubSource,
+      exposure: "deferred",
+      inputSchema: Type.Object({
+        repo: Type.String(),
+        number: Type.Integer({ description: "Issue number." }),
+      }),
+    }),
     github_updatePullRequest: tool({
       description:
         "Update an existing GitHub pull request's title, body, base branch, or state.",
@@ -378,6 +388,7 @@ describe("searchTools", () => {
       ["search code repository", "github_getRepository", "github"],
       ["create issue", "github_createIssue", "github"],
       ["create issue", "mcp__linear__create_issue", "linear"],
+      ["update GitHub issue", "github_updateIssue", "github"],
       ["create pull request", "github_createPullRequest", "github"],
       ["GitHub create pull request", "github_createPullRequest", "github"],
       ["update pull request", "github_updatePullRequest", "github"],

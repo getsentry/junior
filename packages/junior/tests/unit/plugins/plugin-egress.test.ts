@@ -200,7 +200,7 @@ describe("plugin egress", () => {
 
     const response = await egress.fetch({
       provider: "github",
-      operation: "github.review.create",
+      operation: "github.pull.update",
       request: new Request(
         "https://api.github.com/repos/getsentry/junior/pulls/780/reviews",
         {

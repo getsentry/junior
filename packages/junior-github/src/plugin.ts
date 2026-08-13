@@ -16,6 +16,7 @@ import {
   normalizePermissions,
   readGrantPermissions,
 } from "./permissions.js";
+import { assertGitHubPullRequestApprovalDenied } from "./pull-request-review-policy.js";
 import { createGitHubTools } from "./tools.js";
 import { createGitHubWebhookRoute } from "./webhooks/handler.js";
 import {
@@ -452,113 +453,35 @@ function isGitHubPullCreateRestRequest(
   );
 }
 
-function isGitHubIssueCreateGraphqlMutation(
+function isGitHubResourceUpdateRestRequest(
+  method: string,
+  upstreamUrl: URL,
+  resource: "issues" | "pulls",
+): boolean {
+  return (
+    method === "PATCH" &&
+    isGitHubApiUrl(upstreamUrl) &&
+    new RegExp(`^/repos/[^/]+/[^/]+/${resource}/[^/]+$`).test(
+      upstreamUrl.pathname.toLowerCase(),
+    )
+  );
+}
+
+function isGitHubGraphqlMutation(
   method: string,
   upstreamUrl: URL,
   bodyText: string | undefined,
+  field: "createIssue" | "createPullRequest" | "updateIssue" | "updatePullRequest",
 ): boolean {
-  if (method !== "POST" || !isGitHubGraphqlUrl(upstreamUrl)) {
-    return false;
-  }
+  if (method !== "POST" || !isGitHubGraphqlUrl(upstreamUrl)) return false;
   const parsed = parseGitHubGraphqlRequest(bodyText);
-  if (!parsed) {
+  if (!parsed || !new RegExp(`\\b${field}\\b`).test(parsed.normalized)) {
     return false;
   }
-  if (!/\bcreateIssue\b/.test(parsed.normalized)) {
-    return false;
-  }
-  if (!parsed.operationName) {
-    return /\bmutation\b/.test(parsed.normalized);
-  }
+  if (!parsed.operationName) return /\bmutation\b/.test(parsed.normalized);
   return new RegExp(
     `\\bmutation\\s+${escapeRegExp(parsed.operationName)}\\b`,
   ).test(parsed.normalized);
-}
-
-function isGitHubPullCreateGraphqlMutation(
-  method: string,
-  upstreamUrl: URL,
-  bodyText: string | undefined,
-): boolean {
-  if (method !== "POST" || !isGitHubGraphqlUrl(upstreamUrl)) {
-    return false;
-  }
-  const parsed = parseGitHubGraphqlRequest(bodyText);
-  if (!parsed) {
-    return false;
-  }
-  if (!/\bcreatePullRequest\b/.test(parsed.normalized)) {
-    return false;
-  }
-  if (!parsed.operationName) {
-    return /\bmutation\b/.test(parsed.normalized);
-  }
-  return new RegExp(
-    `\\bmutation\\s+${escapeRegExp(parsed.operationName)}\\b`,
-  ).test(parsed.normalized);
-}
-
-/** Deny APPROVE while allowing change requests, comments, and dismissals. */
-function assertGitHubPullRequestApprovalDenied(input: {
-  bodyText?: string;
-  method: string;
-  upstreamUrl: URL;
-}): void {
-  if (input.method !== "POST" || !isGitHubApiUrl(input.upstreamUrl)) {
-    return;
-  }
-  const match = input.upstreamUrl.pathname
-    .toLowerCase()
-    .match(
-      /^\/repos\/[^/]+\/[^/]+\/pulls\/[^/]+\/reviews(?:\/[^/]+\/(events))?$/,
-    );
-  if (!match) return;
-
-  const isEventsPath = match[1] === "events";
-  const bodyText = input.bodyText?.trim() ?? "";
-  // Empty create body is a pending review. The events path always needs a body.
-  if (!bodyText) {
-    if (isEventsPath) {
-      throw new EgressPolicyDenied(
-        "GitHub pull request review submissions must include a parseable non-APPROVE event so Junior can enforce the no-approve policy.",
-      );
-    }
-    return;
-  }
-
-  let body: unknown;
-  try {
-    body = JSON.parse(bodyText);
-  } catch {
-    throw new EgressPolicyDenied(
-      "GitHub pull request review requests must use JSON bodies so Junior can enforce the no-approve policy.",
-    );
-  }
-  if (!isRecord(body)) {
-    throw new EgressPolicyDenied(
-      "GitHub pull request review requests must use JSON object bodies so Junior can enforce the no-approve policy.",
-    );
-  }
-
-  let event: string | undefined;
-  if ("event" in body) {
-    if (typeof body.event !== "string" || body.event.trim().length === 0) {
-      throw new EgressPolicyDenied(
-        "GitHub pull request review submissions must include a parseable non-APPROVE event so Junior can enforce the no-approve policy.",
-      );
-    }
-    event = body.event.trim().toUpperCase();
-  }
-  if (event === "APPROVE") {
-    throw new EgressPolicyDenied(
-      "Junior cannot approve GitHub pull requests. Request changes, leave a comment review, or dismiss Junior's own review instead.",
-    );
-  }
-  if (isEventsPath && event === undefined) {
-    throw new EgressPolicyDenied(
-      "GitHub pull request review submissions must include a parseable non-APPROVE event so Junior can enforce the no-approve policy.",
-    );
-  }
 }
 
 function assertGitHubWriteAllowed(input: {
@@ -567,18 +490,22 @@ function assertGitHubWriteAllowed(input: {
   operation?: string;
   upstreamUrl: URL;
 }): void {
-  if (input.operation === "github.issue.create") {
-    return;
-  }
-  if (input.operation === "github.pull.create") {
-    return;
-  }
+  assertGitHubPullRequestApprovalDenied({
+    ...(input.bodyText !== undefined ? { bodyText: input.bodyText } : {}),
+    method: input.method,
+    upstreamUrl: input.upstreamUrl,
+  });
+  if (input.operation === "github.issue.create") return;
+  if (input.operation === "github.issue.update") return;
+  if (input.operation === "github.pull.create") return;
+  if (input.operation === "github.pull.update") return;
   if (
     isGitHubIssueCreateRestRequest(input.method, input.upstreamUrl) ||
-    isGitHubIssueCreateGraphqlMutation(
+    isGitHubGraphqlMutation(
       input.method,
       input.upstreamUrl,
       input.bodyText,
+      "createIssue",
     )
   ) {
     throw new EgressPolicyDenied(
@@ -587,21 +514,51 @@ function assertGitHubWriteAllowed(input: {
   }
   if (
     isGitHubPullCreateRestRequest(input.method, input.upstreamUrl) ||
-    isGitHubPullCreateGraphqlMutation(
+    isGitHubGraphqlMutation(
       input.method,
       input.upstreamUrl,
       input.bodyText,
+      "createPullRequest",
     )
   ) {
     throw new EgressPolicyDenied(
       `GitHub pull request creation must use the github_createPullRequest tool so Junior can own idempotency and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
     );
   }
-  assertGitHubPullRequestApprovalDenied({
-    ...(input.bodyText !== undefined ? { bodyText: input.bodyText } : {}),
-    method: input.method,
-    upstreamUrl: input.upstreamUrl,
-  });
+  if (
+    isGitHubResourceUpdateRestRequest(
+      input.method,
+      input.upstreamUrl,
+      "issues",
+    ) ||
+    isGitHubGraphqlMutation(
+      input.method,
+      input.upstreamUrl,
+      input.bodyText,
+      "updateIssue",
+    )
+  ) {
+    throw new EgressPolicyDenied(
+      `GitHub issue updates must use the github_updateIssue tool so Junior can own requester attribution and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
+    );
+  }
+  if (
+    isGitHubResourceUpdateRestRequest(
+      input.method,
+      input.upstreamUrl,
+      "pulls",
+    ) ||
+    isGitHubGraphqlMutation(
+      input.method,
+      input.upstreamUrl,
+      input.bodyText,
+      "updatePullRequest",
+    )
+  ) {
+    throw new EgressPolicyDenied(
+      `GitHub pull request updates must use the github_updatePullRequest tool so Junior can own requester attribution and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
+    );
+  }
 }
 
 function grantForAccess(
