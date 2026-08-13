@@ -46,7 +46,9 @@ async function writeResponse(res: ServerResponse, response: Response) {
 }
 
 /** Starts the built dashboard with mock conversations for a browser spec. */
-export async function startDashboardE2eServer(): Promise<DashboardE2eServer> {
+export async function startDashboardE2eServer(
+  options: { componentGallery?: boolean } = {},
+): Promise<DashboardE2eServer> {
   process.env.DATABASE_URL ??= "postgres://localhost/junior-dashboard-e2e";
   const { createDashboardApp } = await import("../dist/app.js");
   const app = createDashboardApp({
@@ -68,6 +70,7 @@ export async function startDashboardE2eServer(): Promise<DashboardE2eServer> {
         return Response.redirect("https://accounts.google.com", 302);
       },
     },
+    componentGallery: options.componentGallery === true,
     mockConversations: true,
   });
 

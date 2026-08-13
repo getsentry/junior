@@ -30,6 +30,7 @@
     "start": "pnpm --filter @sentry/junior-example dev",
     "test": "pnpm --filter @sentry/junior build && pnpm --filter @sentry/junior-memory build && pnpm --filter @sentry/junior-github build && pnpm --filter @sentry/junior-linear build && pnpm --filter @sentry/junior-sentry build && pnpm --filter @sentry/junior-vercel build && pnpm --filter @sentry/junior-dashboard build && pnpm --filter @sentry/junior test && pnpm --filter @sentry/junior-memory test && pnpm --filter @sentry/junior-github test && pnpm --filter @sentry/junior-sentry test && pnpm --filter @sentry/junior-vercel test && pnpm --filter @sentry/junior-dashboard test",
     "test:e2e:dashboard": "pnpm --filter @sentry/junior-dashboard build && playwright test -c packages/junior-dashboard/playwright.config.ts",
+    "visual:dashboard": "pnpm --filter @sentry/junior-dashboard build && pnpm exec tsx packages/junior-dashboard/visual/capture.ts",
     "test:watch": "pnpm --filter @sentry/junior test:watch",
     "evals": "pnpm --filter @sentry/junior-evals evals",
     "evals:behavioral": "pnpm --filter @sentry/junior-evals evals:behavioral",
