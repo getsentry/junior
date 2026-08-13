@@ -316,15 +316,13 @@ async function requestBodyBytes(
 
 type GitHubBodyInspection = "graphql" | "pull-request-review";
 
-/** Identify raw GitHub writes whose body determines whether a grant is safe. */
+/** Identify GitHub writes whose body determines whether a grant is safe. */
 function githubBodyInspection(input: {
-  operation?: string;
   provider: string;
   requestMethod: string;
   upstreamUrl: URL;
 }): GitHubBodyInspection | undefined {
   if (
-    input.operation ||
     input.provider !== "github" ||
     input.requestMethod.toUpperCase() !== "POST" ||
     input.upstreamUrl.hostname.toLowerCase() !== "api.github.com"
@@ -352,7 +350,6 @@ function grantSelectionBodyTooLargeMessage(
 
 function grantSelectionBodyText(input: {
   body: ArrayBuffer | undefined;
-  operation?: string;
   provider: string;
   request: Request;
   upstreamUrl: URL;
@@ -362,7 +359,6 @@ function grantSelectionBodyText(input: {
   }
   if (input.body.byteLength > GRANT_SELECTION_BODY_TEXT_LIMIT_BYTES) {
     const inspection = githubBodyInspection({
-      ...(input.operation ? { operation: input.operation } : {}),
       provider: input.provider,
       requestMethod: input.request.method,
       upstreamUrl: input.upstreamUrl,
@@ -605,7 +601,6 @@ export async function executeCredentialedEgressRequest(input: {
     upstreamUrl,
   } = input;
   const bodyForGrantSelection = githubBodyInspection({
-    ...(operation ? { operation } : {}),
     provider,
     requestMethod: request.method,
     upstreamUrl,
@@ -617,7 +612,6 @@ export async function executeCredentialedEgressRequest(input: {
     grantSelection = await selectSandboxEgressGrant({
       bodyText: grantSelectionBodyText({
         body: bodyForGrantSelection,
-        ...(operation ? { operation } : {}),
         provider,
         request,
         upstreamUrl,
