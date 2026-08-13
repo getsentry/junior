@@ -1,6 +1,5 @@
 {
   "manufactured-agent-outcome": {
-    "packages/junior/tests/integration/local-agent-runner.test.ts": 3,
     "packages/junior/tests/integration/slack/assistant-thread-contract.test.ts": 2,
     "packages/junior/tests/integration/slack/attachment-behavior.test.ts": 3,
     "packages/junior/tests/integration/slack/attachment-media-behavior.test.ts": 4,

@@ -1,6 +1,5 @@
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import type { AgentRunResult } from "@/chat/services/turn-result";
-import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import {
   defineJuniorPlugin,
   type PluginRunContext,
@@ -29,14 +28,25 @@ import {
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
-import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { NO_REPLY_MARKER } from "@/chat/no-reply";
+import { getMcpStoredOAuthCredentials } from "@/chat/mcp/auth-store";
+import { startLocalOAuthCallbackServer } from "@/chat/local/oauth-callback-server";
+import { createLocalOAuthState } from "@/chat/local/oauth-relay";
+import { getTurnRecord } from "@/chat/task-execution/checkpoint";
 import {
   createModelAgentRunnerForRun,
   neverRunAgentRunner,
 } from "../fixtures/agent-runner";
 import { createModelStream } from "../fixtures/model-stream";
+import { runMcpOauthCallbackRoute } from "../fixtures/mcp-oauth-callback-harness";
+import { createPluginAppFixture } from "../fixtures/plugin-app";
+import { EVAL_MCP_AUTH_PROVIDER } from "../msw/handlers/eval-mcp-auth";
 import { getConversationEventStore } from "@/chat/db";
+
+const EVAL_MCP_PLUGIN_ROOT = path.resolve(
+  import.meta.dirname,
+  "../fixtures/plugins/eval-auth",
+);
 
 function userPiMessage(text: string, timestamp = 1): PiMessage {
   return {
@@ -72,25 +82,6 @@ function assistantPiMessage(text: string, timestamp = 1): AssistantMessage {
   };
 }
 
-function successReply(
-  text: string,
-  options: Partial<Pick<AgentRunResult, "piMessages">> = {},
-): AgentRunResult {
-  return {
-    text,
-    ...(options.piMessages ? { piMessages: options.piMessages } : {}),
-    diagnostics: {
-      assistantMessageCount: 1,
-      modelId: "fake-local-agent",
-      outcome: "success",
-      toolCalls: [],
-      toolErrorCount: 0,
-      toolResultCount: 0,
-      usedPrimaryText: true,
-    },
-  };
-}
-
 async function loadLifecycleEvents(conversationId: string) {
   return (await getConversationEventStore().loadHistory(conversationId)).filter(
     (event) => event.data.type.startsWith("turn_"),
@@ -98,27 +89,6 @@ async function loadLifecycleEvents(conversationId: string) {
 }
 
 type CapturedAgentRun = AgentRun;
-
-async function deliverAssistantText(
-  request: Parameters<AgentRunner["run"]>[0],
-  text: string,
-  message: AssistantMessage = assistantPiMessage(text),
-  historyBeforeMessage?: PiMessage[],
-): Promise<void> {
-  if (!request.delivery) {
-    throw new Error("local test runner requires assistant delivery");
-  }
-  if (historyBeforeMessage) {
-    await commitMessages({
-      conversationId: request.conversationId,
-      messages: historyBeforeMessage,
-    });
-  }
-  if (getAssistantReplyText(message) !== text) {
-    throw new Error("fake delivery text must match its assistant message");
-  }
-  await request.delivery(message);
-}
 
 describe("local agent runner", () => {
   it("runs a local message without Slack actor or destination state", async () => {
@@ -237,73 +207,135 @@ describe("local agent runner", () => {
       cwd: "/tmp/local-agent-runner-oauth-resume",
     });
     expect(conversationId).toBeDefined();
-    const requests: Parameters<AgentRunner["run"]>[0][] = [];
-    const deliverAuthorizationRequest =
-      vi.fn<NonNullable<LocalAgentTurnDeps["authorization"]>["deliver"]>();
-    const waitForAuthorization = vi.fn(async () => undefined);
-    const saveTurnCheckpoint = vi.fn(async () => undefined);
+    const previousBaseUrl = process.env.JUNIOR_BASE_URL;
+    process.env.JUNIOR_BASE_URL = "https://junior.example.com";
+    const pluginApp = await createPluginAppFixture([EVAL_MCP_PLUGIN_ROOT]);
+    let oauthCallback:
+      | Awaited<ReturnType<typeof startLocalOAuthCallbackServer>>
+      | undefined;
 
-    await runLocalAgentTurn(
-      {
-        conversationId: conversationId!,
-        message: "upload the image",
-      },
-      {
-        agentRunner: {
-          run: async (request) => {
-            requests.push(request);
-            if (requests.length === 1) {
-              await request.durability?.recordPendingAuth?.({
-                kind: "plugin",
-                provider: "github",
-                actorId: "local-cli",
-                sessionId: request.turnId,
-                linkSentAtMs: Date.now(),
-              });
-              await request.authorization?.deliver({
-                authorizationUrl: "https://github.com/login/oauth/authorize",
-                completionText: "Once authorized, this request will continue.",
-                label: "Connect GitHub",
-              });
-              return {
-                status: "awaiting_auth",
-                providerDisplayName: "GitHub",
-              };
-            }
-            await deliverAssistantText(request, "uploaded");
-            return completedAgentRun(
-              successReply("uploaded", {
-                piMessages: [assistantPiMessage("uploaded")],
-              }),
-            );
+    try {
+      const requests: Parameters<AgentRunner["run"]>[0][] = [];
+      const authorizationRequests: Parameters<
+        NonNullable<LocalAgentTurnDeps["authorization"]>["deliver"]
+      >[0][] = [];
+      const delivered: LocalAgentReply[] = [];
+      const agentRunner = createModelAgentRunnerForRun((request) => {
+        requests.push(request);
+        return createModelStream([
+          {
+            type: "toolCall",
+            name: "searchMcpTools",
+            arguments: {
+              provider: EVAL_MCP_AUTH_PROVIDER,
+              query: "budget echo",
+            },
+          },
+          { type: "text", text: "Eval Auth is connected." },
+        ]);
+      });
+      oauthCallback = await startLocalOAuthCallbackServer(agentRunner);
+      const completeAuthorization = async (authorizationUrl: string) => {
+        const providerResponse = await fetch(authorizationUrl, {
+          redirect: "manual",
+        });
+        const providerLocation = providerResponse.headers.get("location");
+        expect(providerResponse.status).toBe(302);
+        expect(providerLocation).toEqual(expect.any(String));
+        const providerCallback = new URL(providerLocation!);
+        const state = providerCallback.searchParams.get("state");
+        const code = providerCallback.searchParams.get("code");
+        expect(state).toEqual(expect.any(String));
+        expect(code).toEqual(expect.any(String));
+
+        const relayResponse = await runMcpOauthCallbackRoute({
+          provider: EVAL_MCP_AUTH_PROVIDER,
+          state: state!,
+          code: code!,
+          agentRunner: neverRunAgentRunner(),
+          expectBackgroundWork: false,
+        });
+        const localCallbackUrl = relayResponse.headers.get("location");
+        expect(relayResponse.status).toBe(302);
+        expect(localCallbackUrl).toEqual(expect.any(String));
+        await expect(fetch(localCallbackUrl!)).resolves.toMatchObject({
+          status: 200,
+        });
+      };
+
+      await runLocalAgentTurn(
+        {
+          conversationId: conversationId!,
+          message: "connect eval-auth",
+        },
+        {
+          agentRunner,
+          authorization: {
+            cancel: oauthCallback.cancelAuthorization,
+            createState: async () =>
+              await createLocalOAuthState(oauthCallback!.port),
+            deliver: async (request) => {
+              authorizationRequests.push(request);
+              oauthCallback!.beginAuthorization(request.authorizationUrl);
+              await completeAuthorization(request.authorizationUrl);
+            },
+            wait: oauthCallback.waitForAuthorization,
+          },
+          deliverReply: async (reply) => {
+            delivered.push(reply);
           },
         },
-        authorization: {
-          cancel: vi.fn(),
-          createState: vi.fn(async () => "local-oauth-state"),
-          deliver: deliverAuthorizationRequest,
-          wait: waitForAuthorization,
-        },
-        saveTurnCheckpoint,
-        deliverReply: async () => undefined,
-      },
-    );
+      );
 
-    expect(deliverAuthorizationRequest).toHaveBeenCalledOnce();
-    expect(waitForAuthorization).toHaveBeenCalledOnce();
-    expect(requests).toHaveLength(2);
-    expect(requests[0]?.turnId).toBe(requests[1]?.turnId);
-    expect(requests[0]?.runId).not.toBe(requests[1]?.runId);
-    expect(saveTurnCheckpoint).toHaveBeenCalledWith(
-      expect.objectContaining({ sliceId: 2 }),
-    );
-    expect(requests[0]?.disabledFeatures).toBeUndefined();
-    expect(requests[0]?.authorization).toBeDefined();
-    expect(requests[1]?.state?.pendingAuth).toMatchObject({
-      kind: "plugin",
-      provider: "github",
-      actorId: "local-cli",
-    });
+      expect(authorizationRequests).toEqual([
+        expect.objectContaining({
+          authorizationUrl: expect.stringContaining(
+            "https://eval-auth.example.test/oauth/authorize",
+          ),
+        }),
+      ]);
+      expect(requests).toHaveLength(2);
+      expect(requests[0]?.turnId).toBe(requests[1]?.turnId);
+      expect(requests[0]?.runId).not.toBe(requests[1]?.runId);
+      expect(requests[0]?.disabledFeatures).toBeUndefined();
+      expect(requests[0]?.authorization).toBeDefined();
+      expect(requests[1]?.state?.pendingAuth).toMatchObject({
+        kind: "mcp",
+        provider: EVAL_MCP_AUTH_PROVIDER,
+        actorId: "local-cli",
+      });
+      expect(delivered).toEqual([{ text: "Eval Auth is connected." }]);
+      await expect(
+        getMcpStoredOAuthCredentials("local-cli", EVAL_MCP_AUTH_PROVIDER),
+      ).resolves.toMatchObject({
+        tokens: expect.objectContaining({ access_token: expect.any(String) }),
+      });
+      await expect(
+        getTurnRecord(conversationId!, requests[0]!.turnId),
+      ).resolves.toMatchObject({
+        state: "completed",
+        sliceId: 2,
+        piMessages: expect.arrayContaining([
+          expect.objectContaining({
+            role: "toolResult",
+            toolName: "searchMcpTools",
+            isError: false,
+          }),
+        ]),
+      });
+      const state = coerceThreadConversationState(
+        await getPersistedThreadState(conversationId!),
+      );
+      expect(state.processing.pendingAuth).toBeUndefined();
+    } finally {
+      await oauthCallback?.close();
+      await pluginApp.cleanup();
+      if (previousBaseUrl === undefined) {
+        delete process.env.JUNIOR_BASE_URL;
+      } else {
+        process.env.JUNIOR_BASE_URL = previousBaseUrl;
+      }
+    }
   });
 
   it("records intentional silence without delivering or inventing a message", async () => {
