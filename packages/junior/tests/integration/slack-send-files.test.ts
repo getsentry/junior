@@ -395,6 +395,82 @@ describe("Slack sendFiles", () => {
     });
   });
 
+  it("does not re-upload to Slack when retrying after a cached send", async () => {
+    const conversationId = "conversation-cached-send";
+    await getConversationStore().recordActivity({
+      conversationId,
+      destination: {
+        channelId: "C123",
+        platform: "slack",
+        teamId: "T123",
+      },
+      nowMs: Date.parse("2026-08-12T17:00:00.000Z"),
+      source: "slack",
+      title: "Cached attachment delivery",
+      visibility: "private",
+    });
+    const storage: AttachmentStorage = {
+      provider: "test",
+      get: async () => null,
+      put: async () => undefined,
+      delete: async () => undefined,
+    };
+    const state = createToolState();
+    const tool = createSendFilesTool(
+      createContext("attach the report"),
+      state,
+      createMaterializeFile({
+        "/tmp/report.txt": Buffer.from("report body"),
+      }),
+      {
+        conversationId,
+        db: getSqlExecutor(),
+        storage,
+      },
+    );
+
+    const first = await executeTool(
+      tool,
+      { files: [{ path: "/tmp/report.txt" }] },
+      { toolCallId: "call-send-cached" },
+    );
+    const second = await executeTool(
+      tool,
+      { files: [{ path: "/tmp/report.txt" }] },
+      { toolCallId: "call-send-cached" },
+    );
+
+    expect(first.attachment_refs).toEqual([
+      { id: expect.any(String), name: "report.txt" },
+    ]);
+    expect(second).toMatchObject({
+      deduplicated: true,
+      attachment_refs: first.attachment_refs,
+    });
+    expect(
+      getCapturedSlackApiCalls("files.completeUploadExternal"),
+    ).toHaveLength(1);
+
+    const history =
+      await getConversationEventStore().loadHistory(conversationId);
+    const delivered = history.filter(
+      (event) => event.data.type === "attachments_delivered",
+    );
+    expect(delivered).toHaveLength(1);
+    expect(delivered[0]?.data).toMatchObject({
+      type: "attachments_delivered",
+      toolCallId: "call-send-cached",
+      attachments: [
+        {
+          id: first.attachment_refs[0]?.id,
+          name: "report.txt",
+          contentType: "text/plain",
+          bytes: Buffer.byteLength("report body"),
+        },
+      ],
+    });
+  });
+
   it("revives a purge-marked attachment on later store", async () => {
     const conversationId = "conversation-1";
     const now = new Date("2026-08-12T17:00:00.000Z");

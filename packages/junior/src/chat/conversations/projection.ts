@@ -843,6 +843,33 @@ export async function recordToolExecutionStarted(args: {
   ]);
 }
 
+function attachmentsDeliveredIdempotencyKey(args: {
+  attachments: Array<{ id: string }>;
+  conversationId: string;
+  toolCallId?: string;
+  turnId?: string;
+}): string {
+  if (args.toolCallId) {
+    return `attachments_delivered:tool:${args.toolCallId}`;
+  }
+  if (args.turnId) {
+    return (
+      `attachments_delivered:turn:${args.turnId}:` +
+      args.attachments
+        .map((attachment) => attachment.id)
+        .sort()
+        .join(",")
+    );
+  }
+  return (
+    `attachments_delivered:${args.conversationId}:` +
+    args.attachments
+      .map((attachment) => attachment.id)
+      .sort()
+      .join(",")
+  );
+}
+
 /** Record files delivered for humans without adding them to Pi replay. */
 export async function recordAttachmentsDelivered(args: {
   attachments: Array<{
@@ -859,6 +886,13 @@ export async function recordAttachmentsDelivered(args: {
   if (args.attachments.length === 0) return;
   await getConversationEventStore().append(args.conversationId, [
     {
+      // Retries after a successful Slack upload must not create duplicate rows.
+      idempotencyKey: attachmentsDeliveredIdempotencyKey({
+        attachments: args.attachments,
+        conversationId: args.conversationId,
+        ...(args.toolCallId ? { toolCallId: args.toolCallId } : {}),
+        ...(args.turnId ? { turnId: args.turnId } : {}),
+      }),
       data: {
         type: "attachments_delivered",
         attachments: args.attachments.map((attachment) => ({

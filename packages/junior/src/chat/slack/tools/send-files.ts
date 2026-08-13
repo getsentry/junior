@@ -35,6 +35,19 @@ const sendFilesResultSchema = juniorToolOutputSchema.extend({
 
 type SendFilesResult = z.output<typeof sendFilesResultSchema>;
 
+type DeliveredAttachment = {
+  bytes?: number;
+  contentType: string;
+  id: string;
+  name: string;
+};
+
+/** Operation cache keeps delivery metadata so retries can re-record safely. */
+type CachedSendFiles = {
+  delivered: DeliveredAttachment[];
+  result: SendFilesResult;
+};
+
 function normalizeFiles(
   files: SandboxFileReferenceInput[],
 ): SandboxFileMaterializationInput[] {
@@ -109,10 +122,19 @@ export function createSendFilesTool(
         thread_ts: threadTs,
         files: fileOperationInput(materializedFiles),
       });
-      const cached = state.getOperationResult<SendFilesResult>(operationKey);
+      const cached = state.getOperationResult<CachedSendFiles>(operationKey);
       if (cached) {
+        // A prior attempt may have uploaded to Slack and cached before the
+        // transcript event landed. Re-record idempotently without re-uploading.
+        if (attachments && cached.delivered.length > 0) {
+          await recordAttachmentsDelivered({
+            attachments: cached.delivered,
+            conversationId: attachments.conversationId,
+            ...(options.toolCallId ? { toolCallId: options.toolCallId } : {}),
+          });
+        }
         return sendFilesResultSchema.parse({
-          ...cached,
+          ...cached.result,
           deduplicated: true,
         });
       }
@@ -134,15 +156,29 @@ export function createSendFilesTool(
         files: uploads,
         threadTs,
       });
-      const delivered = stored.map((attachment, index) => {
-        const file = materializedFiles[index]!;
-        return {
+      const delivered: DeliveredAttachment[] = stored.map(
+        (attachment, index) => {
+          const file = materializedFiles[index]!;
+          return {
+            id: attachment.id,
+            name: file.filename,
+            contentType: file.mimeType,
+            bytes: file.bytes,
+          };
+        },
+      );
+      const response: SendFilesResult = {
+        attachment_refs: delivered.map((attachment) => ({
           id: attachment.id,
-          name: file.filename,
-          contentType: file.mimeType,
-          bytes: file.bytes,
-        };
-      });
+          name: attachment.name,
+        })),
+      };
+      // Cache before host bookkeeping so a later event-write failure cannot
+      // cause another Slack upload on retry.
+      state.setOperationResult(operationKey, {
+        delivered,
+        result: response,
+      } satisfies CachedSendFiles);
       if (attachments && delivered.length > 0) {
         await recordAttachmentsDelivered({
           attachments: delivered,
@@ -150,13 +186,6 @@ export function createSendFilesTool(
           ...(options.toolCallId ? { toolCallId: options.toolCallId } : {}),
         });
       }
-      const response: SendFilesResult = {
-        attachment_refs: delivered.map((attachment) => ({
-          id: attachment.id,
-          name: attachment.name,
-        })),
-      };
-      state.setOperationResult(operationKey, response);
       return response;
     },
   });
