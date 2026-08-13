@@ -9,16 +9,17 @@ function annotation(
   repo: string,
   number: number,
   status: NonNullable<ConversationAnnotation["status"]>,
+  owner = "getsentry",
 ): ConversationAnnotation {
   return {
     createdAt: "2026-01-01T00:00:00.000Z",
-    key: `getsentry/${repo}#${number}`,
+    key: `${owner}/${repo}#${number}`,
     kind: "resource_link",
-    label: `getsentry/${repo}#${number}`,
+    label: `${owner}/${repo}#${number}`,
     plugin: "github",
     status,
     updatedAt: "2026-01-01T00:00:01.000Z",
-    url: `https://github.com/getsentry/${repo}/pull/${number}`,
+    url: `https://github.com/${owner}/${repo}/pull/${number}`,
   };
 }
 
@@ -42,6 +43,15 @@ describe("GitHub conversation sidebar", () => {
         annotation("junior", 2, "closed"),
       ]),
     ).toEqual({ icon: "circle-x", key: "github", label: "junior" });
+  });
+
+  it("counts repositories with the same name under different owners", () => {
+    expect(
+      githubSidebarAnnotation([
+        annotation("shared", 1, "merged", "getsentry"),
+        annotation("shared", 2, "open", "example"),
+      ]),
+    ).toEqual({ icon: "circle-dot", key: "github", label: "2 repos" });
   });
 
   it("keeps valid 100-character GitHub repository names", () => {

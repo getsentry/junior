@@ -21,10 +21,12 @@ const STATUS_ICON = {
 
 type GitHubAnnotationStatus = keyof typeof STATUS_RANK;
 
-function repositoryName(annotation: ConversationAnnotation): string | undefined {
+function repositoryScope(
+  annotation: ConversationAnnotation,
+): { key: string; label: string } | undefined {
   try {
     const [, owner, repo] = new URL(annotation.url).pathname.split("/");
-    return owner && repo ? repo : undefined;
+    return owner && repo ? { key: `${owner}/${repo}`, label: repo } : undefined;
   } catch {
     return undefined;
   }
@@ -35,12 +37,12 @@ export function githubSidebarAnnotation(
   annotations: ConversationAnnotation[],
 ): ConversationSidebarAnnotation | undefined {
   const links = annotations.flatMap((annotation) => {
-    const repo = repositoryName(annotation);
+    const repo = repositoryScope(annotation);
     const status = annotation.status as GitHubAnnotationStatus | undefined;
-    return repo && status ? [{ annotation, repo, status }] : [];
+    return repo && status ? [{ repo, status }] : [];
   });
   if (links.length === 0) return undefined;
-  const repos = new Set(links.map((link) => link.repo));
+  const repos = new Map(links.map((link) => [link.repo.key, link.repo.label]));
   const status = links.reduce<GitHubAnnotationStatus>(
     (current, link) =>
       STATUS_RANK[link.status] > STATUS_RANK[current] ? link.status : current,
@@ -49,6 +51,6 @@ export function githubSidebarAnnotation(
   return {
     icon: STATUS_ICON[status],
     key: "github",
-    label: repos.size === 1 ? [...repos][0]! : `${repos.size} repos`,
+    label: repos.size === 1 ? [...repos.values()][0]! : `${repos.size} repos`,
   };
 }
