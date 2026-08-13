@@ -108,7 +108,19 @@ test("opens a conversation in the built dashboard", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Conversations" }),
   ).toBeVisible();
-  await page.getByRole("link", { name: /Checkout latency triage/ }).click();
+  const publicConversationLink = page.getByRole("link", {
+    name: /Checkout latency triage/,
+  });
+  const privateConversationLink = page.getByRole("link", {
+    name: /Direct Message/,
+  });
+  await expect(
+    privateConversationLink.getByLabel("Private conversation"),
+  ).toBeVisible();
+  await expect(
+    publicConversationLink.getByLabel("Private conversation"),
+  ).toHaveCount(0);
+  await publicConversationLink.click();
   await expect(page).toHaveURL(
     `${server.baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770000000.000100")}`,
   );

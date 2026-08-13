@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { Archive, ArchiveRestore, CircleAlert, SquarePen } from "lucide-react";
+import {
+  Archive,
+  ArchiveRestore,
+  CircleAlert,
+  LockKeyhole,
+  SquarePen,
+} from "lucide-react";
 import { Link } from "react-router";
 
 import { useArchiveConversation } from "./queries";
@@ -206,8 +212,14 @@ function ConversationSidebarRow(props: {
               )}
             />
           )}
-          <div className="truncate font-display text-sm font-medium leading-snug text-dashboard-text">
-            {title}
+          <div className="flex min-w-0 items-center gap-1 font-display text-sm font-medium leading-snug text-dashboard-text">
+            {props.conversation.visibility === "private" ? (
+              <LockKeyhole
+                aria-label="Private conversation"
+                className="size-3 shrink-0 text-dashboard-text-muted"
+              />
+            ) : null}
+            <span className="truncate">{title}</span>
           </div>
         </div>
         {location ? (
