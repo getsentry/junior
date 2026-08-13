@@ -1,15 +1,15 @@
 # Dashboard visual CI
 
-Deterministic screenshots for dashboard PRs. The standalone
-`Dashboard Visual` workflow picks scenarios from the changed-path rules in
-`scenarios.ts`, captures them with Playwright against the built mock dashboard,
-and posts one sticky PR comment.
+Deterministic screenshots for dashboard PRs. Two workflows own the path:
 
-Security split:
-- `visual / capture` is read-only on the PR head and skips the shared Actions
-  package cache
-- `visual / comment` has write access, installs nothing, and loads the publisher
-  from the default branch when present
+1. `Dashboard Visual` (`.github/workflows/dashboard-visual.yml`) captures on the
+   PR head with a read-only token and uploads artifacts
+2. `Dashboard Visual Comment` (`.github/workflows/dashboard-visual-comment.yml`)
+   runs from the default branch via `workflow_run`, downloads those artifacts,
+   and posts one sticky PR comment with the trusted publisher
+
+Capture never gets write access. Comment never installs packages and never
+checks out PR head.
 
 ## Local
 

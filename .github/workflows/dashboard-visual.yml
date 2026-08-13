@@ -18,16 +18,13 @@ jobs:
     name: visual / capture
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 20
-    # Same-repo pull_request only. Do not add workflow_dispatch that checks out
-    # PR head from default-branch context (CodeQL cache-poisoning rule).
+    # Same-repo pull_request only. Capture stays read-only and never receives a
+    # write token. Commenting runs in dashboard-visual-comment.yml on the
+    # default branch via workflow_run.
     if: github.event.pull_request.head.repo.full_name == github.repository
     permissions:
       contents: read
       pull-requests: read
-    outputs:
-      all: ${{ steps.mode.outputs.all }}
-      pr_number: ${{ steps.mode.outputs.pr_number }}
-      run: ${{ steps.mode.outputs.run }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -89,67 +86,22 @@ jobs:
         if: steps.mode.outputs.run == 'true'
         env:
           ALL: ${{ steps.mode.outputs.all }}
+          PR_NUMBER: ${{ steps.mode.outputs.pr_number }}
         run: |
           set -euo pipefail
-          args=(--changed-file /tmp/visual-changed.txt --out-dir .playwright/visual-dashboard)
+          out_dir=.playwright/visual-dashboard
+          args=(--changed-file /tmp/visual-changed.txt --out-dir "$out_dir")
           if [[ "$ALL" == "true" ]]; then
             args+=(--all)
           fi
           pnpm run visual:dashboard -- "${args[@]}"
+          printf '%s\n' "$PR_NUMBER" > "$out_dir/pr-number.txt"
 
       - name: Upload visual artifacts
         if: steps.mode.outputs.run == 'true' && always()
         uses: actions/upload-artifact@v4
         with:
-          name: dashboard-visual-${{ steps.mode.outputs.pr_number }}
+          name: dashboard-visual
           path: .playwright/visual-dashboard
           if-no-files-found: warn
           retention-days: 14
-
-  comment:
-    name: visual / comment
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-    timeout-minutes: 10
-    needs: capture
-    if: >-
-      always() &&
-      !cancelled() &&
-      needs.capture.result == 'success' &&
-      needs.capture.outputs.run == 'true'
-    permissions:
-      contents: write
-      pull-requests: write
-    steps:
-      # Write-scoped job never installs packages and never checks out the full PR
-      # tree. Prefer the publisher on the default branch; bootstrap from the PR
-      # only while the script is still landing.
-      - name: Load trusted publisher
-        id: publisher
-        uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-          ref: ${{ github.event.repository.default_branch }}
-          sparse-checkout: |
-            packages/junior-dashboard/visual/post-pr-comment.mjs
-          sparse-checkout-cone-mode: false
-
-      - name: Bootstrap publisher from PR head
-        if: hashFiles('packages/junior-dashboard/visual/post-pr-comment.mjs') == ''
-        uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-          sparse-checkout: |
-            packages/junior-dashboard/visual/post-pr-comment.mjs
-          sparse-checkout-cone-mode: false
-
-      - name: Download visual artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: dashboard-visual-${{ needs.capture.outputs.pr_number }}
-          path: .playwright/visual-dashboard
-
-      - name: Comment screenshots on PR
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ needs.capture.outputs.pr_number }}
-        run: node packages/junior-dashboard/visual/post-pr-comment.mjs .playwright/visual-dashboard

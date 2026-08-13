@@ -1,0 +1,80 @@
+name: Dashboard Visual Comment
+
+# Runs only from the default branch after a successful Dashboard Visual capture.
+# Write tokens never execute PR-head code or install PR packages.
+on:
+  workflow_run:
+    workflows: ["Dashboard Visual"]
+    types: [completed]
+
+concurrency:
+  group: dashboard-visual-comment-${{ github.event.workflow_run.id }}
+  cancel-in-progress: true
+
+jobs:
+  comment:
+    name: visual / comment
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 10
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request'
+    permissions:
+      actions: read
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.repository.default_branch }}
+          sparse-checkout: |
+            packages/junior-dashboard/visual/post-pr-comment.mjs
+          sparse-checkout-cone-mode: false
+
+      - name: Check trusted publisher
+        id: publisher
+        run: |
+          set -euo pipefail
+          if [[ -f packages/junior-dashboard/visual/post-pr-comment.mjs ]]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "Trusted publisher missing on default branch; skip comment until merge."
+          fi
+
+      - name: Download visual artifacts
+        id: download
+        if: steps.publisher.outputs.present == 'true'
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: dashboard-visual
+          path: .playwright/visual-dashboard
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Comment screenshots on PR
+        if: steps.publisher.outputs.present == 'true' && steps.download.outcome == 'success'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          out_dir=.playwright/visual-dashboard
+          if [[ ! -f "$out_dir/manifest.json" ]]; then
+            echo "No visual manifest in artifacts; skip comment."
+            exit 0
+          fi
+          if [[ ! -f "$out_dir/pr-number.txt" ]]; then
+            echo "Missing pr-number.txt in artifacts; skip comment."
+            exit 0
+          fi
+          export PR_NUMBER
+          PR_NUMBER="$(tr -d '[:space:]' < "$out_dir/pr-number.txt")"
+          if [[ -z "$PR_NUMBER" ]]; then
+            echo "Empty PR number; skip comment."
+            exit 0
+          fi
+          node packages/junior-dashboard/visual/post-pr-comment.mjs "$out_dir"
