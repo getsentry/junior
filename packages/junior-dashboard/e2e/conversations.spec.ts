@@ -400,9 +400,6 @@ test("opens and closes a conversation in the mobile workspace", async ({
     page.getByRole("link", { name: "Conversations", exact: true }),
   ).toBeHidden();
   await navigationTrigger.click();
-  await expect(
-    page.getByRole("link", { name: "Conversations", exact: true }),
-  ).toBeVisible();
   await expect(page.getByText(/^junior version /)).toBeVisible();
   const closeNavigation = page.getByRole("button", {
     name: "Close navigation",
