@@ -529,7 +529,6 @@ Run targeted tests before broad suites, and keep durable explanations beside the
       }),
       reportEvent(15, iso(Date.parse(startedAt), 63_000), {
         type: "attachments_delivered",
-        toolCallId: "qa-send-files",
         attachments: [
           {
             id: "qa-chart-png",

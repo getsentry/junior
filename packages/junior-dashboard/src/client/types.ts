@@ -87,7 +87,6 @@ export type TranscriptViewDeliveredAttachment = {
 
 export type TranscriptViewAttachmentsDeliveredPart = {
   attachments: TranscriptViewDeliveredAttachment[];
-  toolCallId?: string;
   type: "attachments_delivered";
 };
 

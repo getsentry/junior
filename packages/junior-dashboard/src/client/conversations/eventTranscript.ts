@@ -364,7 +364,6 @@ export function conversationTranscriptMessages(
           {
             type: "attachments_delivered",
             attachments: data.attachments,
-            ...(data.toolCallId ? { toolCallId: data.toolCallId } : {}),
           },
         ]),
       );

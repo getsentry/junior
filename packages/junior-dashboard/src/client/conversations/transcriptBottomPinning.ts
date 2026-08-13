@@ -392,7 +392,6 @@ function transcriptPartVersion(part: TranscriptViewPart | undefined): string {
   if (part.type === "attachments_delivered") {
     return [
       part.type,
-      part.toolCallId ?? "",
       ...part.attachments.map(
         (attachment) =>
           `${attachment.id}:${attachment.name}:${attachment.contentType}:${attachment.bytes ?? ""}`,

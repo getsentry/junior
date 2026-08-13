@@ -365,9 +365,8 @@ function reportEventData(args: {
       }
       return {
         type: "attachments_delivered",
+        // toolCallId/turnId stay on the stored event for write idempotency only.
         attachments: data.attachments,
-        ...(data.toolCallId ? { toolCallId: data.toolCallId } : {}),
-        ...(data.turnId ? { turnId: data.turnId } : {}),
       };
     case "turn_routed":
       return {

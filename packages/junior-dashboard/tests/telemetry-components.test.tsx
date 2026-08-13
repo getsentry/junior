@@ -677,7 +677,6 @@ describe("dashboard canonical-event components", () => {
       conversation([
         event(0, {
           type: "attachments_delivered",
-          toolCallId: "call-send-1",
           attachments: [
             {
               id: "att-1",

@@ -453,8 +453,6 @@ const conversationReportAttachmentsDeliveredEventDataSchema = z
   .object({
     type: z.literal("attachments_delivered"),
     attachments: z.array(conversationReportDeliveredAttachmentSchema).min(1),
-    toolCallId: z.string().min(1).optional(),
-    turnId: z.string().min(1).optional(),
   })
   .strict();
 
