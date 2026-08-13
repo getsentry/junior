@@ -172,6 +172,10 @@ test("starts and continues conversations from the dashboard", async ({
   const firstContinueHeld = new Promise<void>((resolve) => {
     releaseFirstContinue = resolve;
   });
+  let releaseFirstCreate: (() => void) | undefined;
+  const firstCreateHeld = new Promise<void>((resolve) => {
+    releaseFirstCreate = resolve;
+  });
   let holdDetailRefresh = false;
   let releaseDetailRefresh: (() => void) | undefined;
   const detailRefreshHeld = new Promise<void>((resolve) => {
@@ -183,6 +187,15 @@ test("starts and continues conversations from the dashboard", async ({
       return;
     }
     createRequests.push(route.request().postDataJSON());
+    if (createRequests.length === 1) {
+      // Hold the first create so we can prove send stays locked mid-flight.
+      await firstCreateHeld;
+      await route.fulfill({
+        json: { error: "temporary failure" },
+        status: 500,
+      });
+      return;
+    }
     await route.fulfill({
       json: {
         conversationId: createdConversationId,
@@ -192,9 +205,18 @@ test("starts and continues conversations from the dashboard", async ({
     });
   });
   await page.route("**/api/conversations/*/messages", async (route) => {
-    continueRequests.push(route.request().postDataJSON());
-    if (continueRequests.length === 1) {
-      await firstContinueHeld;
+    const body = route.request().postDataJSON() as {
+      idempotencyKey: string;
+      message: string;
+    };
+    continueRequests.push(body);
+    // Hold every accept until release so concurrent queue rows stay visible.
+    await firstContinueHeld;
+    if (
+      body.message === "Continue in Junior" &&
+      continueRequests.filter((item) => item.message === "Continue in Junior")
+        .length === 1
+    ) {
       await route.fulfill({
         json: { error: "temporary failure" },
         status: 500,
@@ -204,7 +226,7 @@ test("starts and continues conversations from the dashboard", async ({
     await route.fulfill({
       json: {
         conversationId: "slack:CQA123:1770000000.000100",
-        messageId: "continued-message",
+        messageId: `continued-message-${continueRequests.length}`,
         status: "accepted",
       },
     });
@@ -216,17 +238,39 @@ test("starts and continues conversations from the dashboard", async ({
     page.getByRole("heading", { name: "New conversation" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Private" }).click();
-  await page
-    .getByLabel("Start a conversation")
-    .fill("Start from the dashboard");
+  const startComposer = page.getByLabel("Start a conversation");
+  await startComposer.fill("Start from the dashboard");
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect.poll(() => createRequests.length).toBe(1);
+  // Create restore keeps send locked while the first accept is open so a later
+  // submit cannot race the failed-draft restore.
+  await expect(
+    page.getByRole("button", { name: "Sending message" }),
+  ).toBeDisabled();
+  await startComposer.evaluate((element) => {
+    element.closest("form")?.requestSubmit();
+  });
+  expect(createRequests).toHaveLength(1);
+  releaseFirstCreate?.();
+  await expect(
+    page.getByText("Could not create the conversation. Try again."),
+  ).toBeVisible();
+  // New roots have no mailbox outbox, so a failed create restores the draft and
+  // keeps the same idempotency key for a safe retry.
+  await expect(startComposer).toHaveValue("Start from the dashboard");
+  const failedCreateKey = createRequests[0]?.idempotencyKey;
+  expect(createRequests[0]?.message).toBe("Start from the dashboard");
+  expect(createRequests[0]?.visibility).toBe("private");
+  expect(failedCreateKey).toBeTruthy();
+
   await page.getByRole("button", { name: "Send" }).click();
   await expect(page).toHaveURL(
     `${server.baseURL}/conversations/${encodeURIComponent(createdConversationId)}`,
   );
-  expect(createRequests).toHaveLength(1);
-  expect(createRequests[0]?.message).toBe("Start from the dashboard");
-  expect(createRequests[0]?.visibility).toBe("private");
-  expect(createRequests[0]?.idempotencyKey).toBeTruthy();
+  expect(createRequests).toHaveLength(2);
+  expect(createRequests[1]?.idempotencyKey).toBe(failedCreateKey);
+  expect(createRequests[1]?.message).toBe("Start from the dashboard");
+  expect(createRequests[1]?.visibility).toBe("private");
 
   const slackConversationId = "slack:CQA123:1770000000.000100";
   await page.route(
@@ -251,33 +295,35 @@ test("starts and continues conversations from the dashboard", async ({
   const composer = page.getByLabel("Continue this conversation");
   await composer.fill("Continue in Junior");
   await page.getByRole("button", { name: "Send" }).click();
-  await expect(page.getByText("Sending message…")).toBeVisible();
+  const pending = page.getByLabel("Pending messages");
+  await expect(pending.getByText("Continue in Junior")).toBeVisible();
+  await expect(composer).toHaveValue("");
   await expect.poll(() => continueRequests.length).toBe(1);
-  // Playwright serializes locator clicks and waits for enabled, so force a
-  // second submit while the first request is still open.
+  // Distinct messages can queue while an earlier accept is still open.
+  await composer.fill("Second queued message");
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect(pending.getByText("Second queued message")).toBeVisible();
+  await expect.poll(() => continueRequests.length).toBe(2);
+  // Empty-composer double submit must not mint another request.
   await composer.evaluate((element) => {
     element.closest("form")?.requestSubmit();
   });
-  expect(continueRequests).toHaveLength(1);
+  expect(continueRequests).toHaveLength(2);
   releaseFirstContinue?.();
-  await expect(page.getByText("Could not send the message.")).toBeVisible();
+  await expect(pending.getByText("Could not send.")).toBeVisible();
+  await expect(composer).toHaveValue("");
   const failedIdempotencyKey = continueRequests[0]?.idempotencyKey;
   expect(continueRequests[0]?.message).toBe("Continue in Junior");
   expect(failedIdempotencyKey).toBeTruthy();
 
-  await page.reload();
-  const restoredComposer = page.getByLabel("Continue this conversation");
-  await expect(restoredComposer).toHaveValue("Continue in Junior");
-  // Edits that return to the failed text must keep the same key.
-  await restoredComposer.fill("Continue in Junior!");
-  await restoredComposer.fill("Continue in Junior");
   holdDetailRefresh = true;
-  await page.getByRole("button", { name: "Send" }).click();
-  await expect.poll(() => continueRequests.length).toBe(2);
-  expect(continueRequests[1]?.idempotencyKey).toBe(failedIdempotencyKey);
-  // The accepted message clears the composer before background transcript
+  await pending.getByRole("button", { name: "Retry" }).click();
+  await expect.poll(() => continueRequests.length).toBe(3);
+  expect(continueRequests[2]?.idempotencyKey).toBe(failedIdempotencyKey);
+  // The accepted message stays out of the composer before background transcript
   // refreshes finish. A slow read must not make the send look like a UI reload.
-  await expect(restoredComposer).toHaveValue("");
+  await expect(composer).toHaveValue("");
+  await expect(pending.getByText("Continue in Junior")).toBeHidden();
   releaseDetailRefresh?.();
 
   await page.reload();
@@ -328,6 +374,15 @@ test("opens and closes a conversation in the mobile workspace", async ({
   page,
 }) => {
   await page.setViewportSize({ height: 844, width: 390 });
+  await page.route("**/api/conversations/*/messages", async (route) => {
+    await route.fulfill({
+      json: {
+        conversationId: "slack:CQA123:1770003600.000200",
+        messageId: "mobile-message",
+        status: "accepted",
+      },
+    });
+  });
   await page.goto(`${server.baseURL}/conversations`);
   await expect(page).toHaveURL(`${server.baseURL}/`);
   await expect(
@@ -435,6 +490,50 @@ test("opens and closes a conversation in the mobile workspace", async ({
       ),
     )
     .toBe("180px");
+
+  await composer.blur();
+  await transcript.evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  await composer.focus();
+  await expect
+    .poll(() =>
+      transcript.evaluate(
+        (element) =>
+          element.scrollHeight - element.scrollTop - element.clientHeight,
+      ),
+    )
+    .toBeLessThanOrEqual(1);
+
+  // Keyboard resize keeps the latest message above the focused composer.
+  await page.evaluate(() => {
+    Object.defineProperty(window.visualViewport, "height", {
+      configurable: true,
+      value: 480,
+    });
+    window.visualViewport?.dispatchEvent(new Event("resize"));
+  });
+  await expect
+    .poll(() =>
+      transcript.evaluate(
+        (element) =>
+          element.scrollHeight - element.scrollTop - element.clientHeight,
+      ),
+    )
+    .toBeLessThanOrEqual(1);
+
+  await composer.fill("Keep the mobile composer ready");
+  await composer.press("Enter");
+  await expect(composer).toBeFocused();
+  await expect(composer).toHaveValue("");
+  await expect
+    .poll(() =>
+      transcript.evaluate(
+        (element) =>
+          element.scrollHeight - element.scrollTop - element.clientHeight,
+      ),
+    )
+    .toBeLessThanOrEqual(1);
 
   await page.getByRole("button", { name: "Search transcript" }).click();
   await expect(page.getByPlaceholder("Search transcript…")).toBeVisible();

@@ -111,6 +111,43 @@ function hasUnmatchedClosingParen(text: string): boolean {
   return balance < 0;
 }
 
+const GITHUB_OWNER_PATTERN = "[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?";
+const GITHUB_REPO_PATTERN = "[A-Za-z0-9._-]+";
+const GITHUB_REPO_ISSUE_REF_PATTERN = new RegExp(
+  `^(${GITHUB_OWNER_PATTERN})\\/(${GITHUB_REPO_PATTERN})#(\\d+)\\b`,
+);
+
+function isGitHubRefBoundary(char: string | undefined): boolean {
+  return char === undefined || !/[A-Za-z0-9._-]/.test(char);
+}
+
+/**
+ * Read an unambiguous `owner/repo#number` reference.
+ *
+ * Uses the issues URL because GitHub serves both issues and pull requests there
+ * and redirects pull requests to `/pull/number`.
+ */
+function readGitHubRepoIssueRef(
+  line: string,
+  start: number,
+): { text: string; end: number; url: string } | undefined {
+  if (!isGitHubRefBoundary(start === 0 ? undefined : line[start - 1])) {
+    return undefined;
+  }
+
+  const match = GITHUB_REPO_ISSUE_REF_PATTERN.exec(line.slice(start));
+  if (!match) {
+    return undefined;
+  }
+
+  const [text, owner, repo, number] = match;
+  return {
+    text,
+    end: start + text.length,
+    url: `https://github.com/${owner}/${repo}/issues/${number}`,
+  };
+}
+
 function readBareUrl(
   line: string,
   start: number,
@@ -162,7 +199,11 @@ function readBareUrl(
   return { url: raw, suffix, end };
 }
 
-/** Wrap bare http(s) URLs on a single line as Slack explicit `<url>` links. */
+/**
+ * Wrap bare http(s) URLs and unambiguous GitHub `owner/repo#number` refs on one
+ * line. URLs become Slack explicit `<url>` links. Repo refs become Markdown
+ * links so destination-visible replies always carry a clickable target.
+ */
 function wrapBareUrlsOnLine(line: string): string {
   let result = "";
   let i = 0;
@@ -198,6 +239,13 @@ function wrapBareUrlsOnLine(line: string): string {
       }
     }
 
+    const repoIssueRef = readGitHubRepoIssueRef(line, i);
+    if (repoIssueRef) {
+      result += `[${repoIssueRef.text}](${repoIssueRef.url})`;
+      i = repoIssueRef.end;
+      continue;
+    }
+
     result += line[i];
     i++;
   }
@@ -206,9 +254,10 @@ function wrapBareUrlsOnLine(line: string): string {
 }
 
 /**
- * Pre-wrap bare http(s) URLs outside fenced code blocks as Slack explicit
- * links, preventing Slack's auto-linker from consuming adjacent formatting
- * markers into the URL.
+ * Pre-wrap bare http(s) URLs and unambiguous GitHub `owner/repo#number` refs
+ * outside fenced code blocks. URLs become Slack explicit links so Slack's
+ * auto-linker does not consume adjacent formatting markers. Repo refs become
+ * Markdown links so destination-visible replies keep a clickable target.
  *
  * Uses the same fence-toggle rule as `ensureBlockSpacing` so both passes
  * agree on which lines are code.
@@ -283,7 +332,8 @@ export function ensureBlockSpacing(text: string): string {
  * or `{ type: "markdown" }` blocks.
  *
  * Pre-wraps bare URLs as Slack explicit links to prevent Slack's auto-linker
- * from consuming adjacent formatting markers. Slack reply delivery owns
+ * from consuming adjacent formatting markers. Also turns unambiguous GitHub
+ * `owner/repo#number` mentions into Markdown links. Slack reply delivery owns
  * chunking and continuation markers separately.
  */
 export function normalizeSlackReplyMarkdown(text: string): string {

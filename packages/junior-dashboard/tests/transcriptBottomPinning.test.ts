@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   isNearScrollBottom,
   prependViewportIntent,
+  programmaticSettleScrollAction,
   scrollTopAfterPrepend,
   shouldAutoPinTranscriptBottom,
+  shouldShowJumpToLatest,
   transcriptFollowIntent,
   transcriptBottomVersion,
 } from "../src/client/conversations/transcriptBottomPinning";
@@ -251,6 +253,34 @@ describe("transcript bottom pinning", () => {
     ).toBe(false);
   });
 
+  it("does not resume follow from a layout measurement alone", () => {
+    expect(
+      transcriptFollowIntent({
+        previousScrollTop: 1_000,
+        snapshot: {
+          clientHeight: 800,
+          scrollHeight: 2_000,
+          scrollTop: 1_112,
+        },
+        source: "measure",
+      }),
+    ).toBe("preserve");
+  });
+
+  it("resumes follow when the reader scrolls to the bottom", () => {
+    expect(
+      transcriptFollowIntent({
+        previousScrollTop: 1_000,
+        snapshot: {
+          clientHeight: 800,
+          scrollHeight: 2_000,
+          scrollTop: 1_112,
+        },
+        source: "scroll",
+      }),
+    ).toBe("follow");
+  });
+
   it("pauses follow when the reader scrolls up inside bottom slack", () => {
     expect(
       transcriptFollowIntent({
@@ -263,5 +293,80 @@ describe("transcript bottom pinning", () => {
         source: "scroll",
       }),
     ).toBe("pause");
+  });
+
+  it("shows jump-to-latest only after the reader leaves the bottom and a newer tail arrives", () => {
+    expect(
+      shouldShowJumpToLatest({
+        enabled: true,
+        following: true,
+        hasPendingUpdate: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldShowJumpToLatest({
+        enabled: true,
+        following: false,
+        hasPendingUpdate: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldShowJumpToLatest({
+        enabled: true,
+        following: false,
+        hasPendingUpdate: true,
+      }),
+    ).toBe(true);
+    expect(
+      shouldShowJumpToLatest({
+        enabled: false,
+        following: false,
+        hasPendingUpdate: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("lets a real leave-bottom scroll pause follow during a pin settle window", () => {
+    expect(
+      programmaticSettleScrollAction({
+        intent: "pause",
+        snapshot: {
+          clientHeight: 800,
+          scrollHeight: 2_000,
+          scrollTop: 800,
+        },
+      }),
+    ).toBe("pause");
+    // Layout clamps can drop scrollTop while still near the bottom.
+    expect(
+      programmaticSettleScrollAction({
+        intent: "pause",
+        snapshot: {
+          clientHeight: 800,
+          scrollHeight: 2_000,
+          scrollTop: 1_112,
+        },
+      }),
+    ).toBe("ignore");
+    expect(
+      programmaticSettleScrollAction({
+        intent: "follow",
+        snapshot: {
+          clientHeight: 800,
+          scrollHeight: 2_000,
+          scrollTop: 1_200,
+        },
+      }),
+    ).toBe("ignore");
+    expect(
+      programmaticSettleScrollAction({
+        intent: "preserve",
+        snapshot: {
+          clientHeight: 800,
+          scrollHeight: 2_000,
+          scrollTop: 900,
+        },
+      }),
+    ).toBe("ignore");
   });
 });

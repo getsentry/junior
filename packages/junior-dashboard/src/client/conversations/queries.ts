@@ -17,12 +17,28 @@ import type {
 import {
   acceptedConversationMessageSchema,
   archiveConversationResponseSchema,
+  cancelConversationPendingMessagesResponseSchema,
   conversationDetailReportSchema,
   conversationEventPageSchema,
   conversationPendingMessagesReportSchema,
 } from "@sentry/junior/api/schema";
 
-import { DashboardApiError, fetchDashboardJson, patch, post } from "../http";
+import {
+  DashboardApiError,
+  del,
+  fetchDashboardJson,
+  patch,
+  post,
+} from "../http";
+import {
+  conversationOutboxMessageForSubmit,
+  conversationOutboxQueryKey,
+  failConversationOutboxMessage,
+  mergeConversationMailboxMessages,
+  removeConversationOutboxMessage,
+  upsertConversationOutboxMessage,
+  type ConversationOutboxMessage,
+} from "./conversationOutbox";
 import {
   buildConversationTranscript,
   conversationHistoryBridgeCursor,
@@ -161,6 +177,7 @@ export function useCreateConversation() {
 /** Add one dashboard message and refresh the shared transcript. */
 export function useAppendConversationMessage(conversationId: string) {
   const queryClient = useQueryClient();
+  const outboxQueryKey = conversationOutboxQueryKey(conversationId);
   return useMutation({
     mutationFn: (args: { idempotencyKey: string; message: string }) =>
       post(
@@ -168,7 +185,26 @@ export function useAppendConversationMessage(conversationId: string) {
         `/api/conversations/${encodeURIComponent(conversationId)}/messages`,
         args,
       ),
-    onSuccess: () => {
+    onMutate: async (args) => {
+      const optimistic = conversationOutboxMessageForSubmit(args);
+      queryClient.setQueryData<ConversationOutboxMessage[]>(
+        outboxQueryKey,
+        (current) => upsertConversationOutboxMessage(current, optimistic),
+      );
+    },
+    onError: (_error, args) => {
+      queryClient.setQueryData<ConversationOutboxMessage[]>(
+        outboxQueryKey,
+        (current) =>
+          failConversationOutboxMessage(current, args.idempotencyKey),
+      );
+    },
+    onSuccess: (_accepted, args) => {
+      queryClient.setQueryData<ConversationOutboxMessage[]>(
+        outboxQueryKey,
+        (current) =>
+          removeConversationOutboxMessage(current, args.idempotencyKey),
+      );
       void queryClient.invalidateQueries({
         queryKey: ["dashboard", "conversations"],
       });
@@ -180,6 +216,68 @@ export function useAppendConversationMessage(conversationId: string) {
         exact: true,
         queryKey: conversationPendingMessagesQueryKey(conversationId),
       });
+    },
+  });
+}
+
+/** Cancel accepted human-facing mailbox rows for the open conversation. */
+export function useCancelConversationPendingMessages(conversationId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args: {
+      inboundMessageIds: string[];
+      receivedBefore: string;
+    }) =>
+      del(
+        cancelConversationPendingMessagesResponseSchema,
+        `/api/conversations/${encodeURIComponent(conversationId)}/pending-messages`,
+        args,
+      ),
+    onMutate: async (args) => {
+      await queryClient.cancelQueries({
+        exact: true,
+        queryKey: conversationPendingMessagesQueryKey(conversationId),
+      });
+      const previousPending =
+        queryClient.getQueryData<ConversationPendingMessagesReport>(
+          conversationPendingMessagesQueryKey(conversationId),
+        );
+      if (previousPending) {
+        queryClient.setQueryData<ConversationPendingMessagesReport>(
+          conversationPendingMessagesQueryKey(conversationId),
+          {
+            ...previousPending,
+            messages: previousPending.messages.filter(
+              (message) =>
+                !args.inboundMessageIds.includes(message.inboundMessageId),
+            ),
+          },
+        );
+      }
+      return { previousPending };
+    },
+    onError: (_error, _args, context) => {
+      if (context?.previousPending) {
+        queryClient.setQueryData(
+          conversationPendingMessagesQueryKey(conversationId),
+          context.previousPending,
+        );
+      }
+    },
+    onSettled: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["dashboard", "conversations"],
+        }),
+        queryClient.invalidateQueries({
+          exact: true,
+          queryKey: conversationDetailQueryKey(conversationId),
+        }),
+        queryClient.invalidateQueries({
+          exact: true,
+          queryKey: conversationPendingMessagesQueryKey(conversationId),
+        }),
+      ]);
     },
   });
 }
@@ -372,7 +470,22 @@ export function useConversationData(conversationId: string | undefined) {
         : undefined,
     [detail.data, historyPages],
   );
-  const pendingMessages = pending.data?.messages ?? [];
+  const outbox = useQuery({
+    enabled: Boolean(conversationId),
+    // Local-only cache. Never replace optimistic rows with an empty fetch result.
+    queryFn: async (): Promise<ConversationOutboxMessage[]> =>
+      queryClient.getQueryData<ConversationOutboxMessage[]>(
+        conversationOutboxQueryKey(conversationId),
+      ) ?? [],
+    queryKey: conversationOutboxQueryKey(conversationId),
+    initialData: [],
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
+  const pendingMessages = useMemo(
+    () => mergeConversationMailboxMessages(pending.data?.messages, outbox.data),
+    [outbox.data, pending.data?.messages],
+  );
   const invalidHistoryCursor = isInvalidCursorError(history.error);
   const shouldRefreshDetail = Boolean(
     detail.data &&
@@ -424,6 +537,7 @@ export function useConversationData(conversationId: string | undefined) {
     isPending: detail.isPending,
     isLoadingPreviousPage,
     pendingAuthorization: pending.data?.authorization,
+    pendingGeneratedAt: pending.data?.generatedAt,
     pendingMessages,
     loadCompleteTranscript: () => {
       if (!conversationId || !detail.data) {

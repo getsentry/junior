@@ -38,8 +38,8 @@ export function ConversationHeader(props: {
   return (
     <>
       <header className="sticky top-0 z-10 -mx-3 mb-2 border-b border-dashboard-border bg-dashboard-bg/92 px-3 pb-2 pt-3 backdrop-blur md:-mx-7 md:mb-3 md:px-7 md:pb-2.5 md:pt-4">
-        <div className="flex min-w-0 items-start justify-between gap-2">
-          <div className="min-w-0 pt-0.5">
+        <div className="flex min-w-0 items-center justify-between gap-2 md:items-start">
+          <div className="min-w-0 md:pt-0.5">
             <div className="flex min-w-0 items-center gap-x-2 gap-y-1">
               <h2 className="m-0 line-clamp-1 min-w-0 font-display text-sm font-medium leading-tight tracking-[-0.03em] md:text-xl">
                 {props.title}

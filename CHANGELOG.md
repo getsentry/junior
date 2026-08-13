@@ -1,4 +1,31 @@
 # Changelog
+## 0.159.0
+
+### New Features ✨
+
+#### Dashboard
+
+- Cancel queued mailbox messages by @sentry-junior in [#1498](https://github.com/getsentry/junior/pull/1498)
+- Mark private sidebar conversations by @sentry-junior in [#1512](https://github.com/getsentry/junior/pull/1512)
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Keep mobile composer responsive during live activity by @sentry-junior in [#1519](https://github.com/getsentry/junior/pull/1519)
+- Keep mobile composer ready after send by @sentry-junior in [#1517](https://github.com/getsentry/junior/pull/1517)
+
+#### Other
+
+- (chat) Keep archive through system noise by @sentry-junior in [#1511](https://github.com/getsentry/junior/pull/1511)
+- (slack) Linkify owner/repo#number PR mentions by @sentry-junior in [#1518](https://github.com/getsentry/junior/pull/1518)
+
+### Internal Changes 🔧
+
+- (local) Run OAuth resume through real agent by @dcramer in [#1510](https://github.com/getsentry/junior/pull/1510)
+- (plugins) Add plugin egress policy helper by @sentry-junior in [#1508](https://github.com/getsentry/junior/pull/1508)
+- (slack) Remove false thread continuity coverage by @dcramer in [#1514](https://github.com/getsentry/junior/pull/1514)
+
 ## 0.158.0
 
 ### Bug Fixes 🐛

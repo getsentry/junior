@@ -1612,6 +1612,74 @@ export async function ackMessages(args: {
   });
 }
 
+/** Cancel human-facing pending mailbox rows without requiring a worker lease. */
+export async function cancelHumanFacingPendingMessages(args: {
+  conversationId: string;
+  inboundMessageIds?: readonly string[];
+  receivedBeforeMs?: number;
+  nowMs?: number;
+  state?: StateAdapter;
+}): Promise<{ cancelledInboundMessageIds: string[] }> {
+  const nowMs = args.nowMs ?? now();
+  const requestedIds =
+    args.inboundMessageIds === undefined
+      ? undefined
+      : new Set(args.inboundMessageIds);
+  return await withConversationMutation(args, async (state, lock) => {
+    const current = await readConversation(state, args.conversationId);
+    if (!current) {
+      return { cancelledInboundMessageIds: [] };
+    }
+
+    const cancelledInboundMessageIds: string[] = [];
+    const pendingMessages: InboundMessage[] = [];
+    for (const message of current.execution.pendingMessages) {
+      const isHumanFacing =
+        message.source === "web" || message.source === "slack";
+      const isRequested =
+        requestedIds === undefined ||
+        requestedIds.has(message.inboundMessageId);
+      const isInSnapshot =
+        args.receivedBeforeMs === undefined ||
+        message.receivedAtMs <= args.receivedBeforeMs;
+      if (isHumanFacing && isRequested && isInSnapshot) {
+        cancelledInboundMessageIds.push(message.inboundMessageId);
+        continue;
+      }
+      pendingMessages.push(message);
+    }
+
+    if (cancelledInboundMessageIds.length === 0) {
+      return { cancelledInboundMessageIds };
+    }
+
+    const becomesIdle =
+      current.execution.status === "pending" && pendingMessages.length === 0;
+
+    await writeConversation(
+      state,
+      lock,
+      withExecutionUpdate(
+        current,
+        {
+          ...current.execution,
+          lastEnqueuedAtMs:
+            pendingMessages.length === 0
+              ? undefined
+              : current.execution.lastEnqueuedAtMs,
+          pendingMessages,
+          retryCount: becomesIdle ? 0 : current.execution.retryCount,
+          runId: becomesIdle ? undefined : current.execution.runId,
+          status: becomesIdle ? "idle" : current.execution.status,
+        },
+        nowMs,
+      ),
+    );
+
+    return { cancelledInboundMessageIds };
+  });
+}
+
 /** Mark the leased conversation as needing another queue-delivered slice. */
 export async function requestAnotherSlice(args: {
   conversationId: string;

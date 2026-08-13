@@ -104,6 +104,9 @@ delegation without becoming the execution actor or a general task owner.
 - Durable state is committed before acknowledging queue work or yielding.
 - Conversation events emitted by plugin operations preserve conversation
   activity, archive, and transcript-retention state.
+- Archive stays set through system noise (resource events, turn lifecycle,
+  compaction/handoff). Only a human user instruction or human visible user
+  message restores an archived conversation to the feed.
 - Model input stays below the configured bot context cap and the active model's
   advertised window. The agent checks before its first provider request and
   after each tool batch; an in-turn compaction commits its history replacement

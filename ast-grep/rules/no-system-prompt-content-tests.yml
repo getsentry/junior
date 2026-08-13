@@ -1,0 +1,21 @@
+id: no-system-prompt-content-tests
+language: TypeScript
+severity: error
+message: Tests must not inspect the static system prompt. Test behavior or generated prompt values instead.
+files:
+  - packages/**/*.test.ts
+  - packages/**/*.test.tsx
+  - packages/**/*.spec.ts
+  - packages/**/*.spec.tsx
+rule:
+  any:
+    - pattern: import { $$$BEFORE, buildSystemPrompt, $$$AFTER } from "@/chat/prompt"
+    - pattern: import { buildSystemPrompt, $$$AFTER } from "@/chat/prompt"
+    - pattern: import { $$$BEFORE, buildSystemPrompt } from "@/chat/prompt"
+    - pattern: import { buildSystemPrompt } from "@/chat/prompt"
+    - pattern: expect($OBJECT.systemPrompt).toContain($TEXT)
+    - pattern: expect($OBJECT.systemPrompt).not.toContain($TEXT)
+    - pattern: expect($OBJECT.systemPrompt).toMatch($TEXT)
+    - pattern: expect($OBJECT.systemPrompt).not.toMatch($TEXT)
+    - pattern: expect($OBJECT.systemPrompt).toBe($TEXT)
+    - pattern: expect($OBJECT.systemPrompt).toEqual($TEXT)

@@ -1,15 +1,18 @@
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type {
   ConversationDetailReport,
   ConversationFeed,
+  ConversationPendingMessagesReport,
 } from "@sentry/junior/api/schema";
 
 import {
   useAppendConversationMessage,
   useArchiveConversation,
+  useCancelConversationPendingMessages,
   useConversationData,
   type PendingArchiveConversationUpdate,
 } from "./queries";
+import type { ConversationMailboxMessage } from "./conversationOutbox";
 import { buildConversationMarkdown } from "../markdownExport";
 import { CopyMarkdownButton } from "./CopyMarkdownButton";
 import { ConversationComposer } from "./ConversationComposer";
@@ -40,7 +43,7 @@ import {
   SubagentTranscriptDrawer,
   type SubagentTranscriptTarget,
 } from "./SubagentTranscriptDrawer";
-import type { Conversation } from "../types";
+import type { Conversation, ConversationTranscript } from "../types";
 
 export { liveModelId } from "./ConversationMeta";
 
@@ -54,12 +57,12 @@ export function ConversationPage(props: {
     useState<SubagentTranscriptTarget>();
   const [view, setView] = useState<TranscriptViewMode>("rich");
   const [search, setSearch] = useState("");
+  const [pinRequestVersion, setPinRequestVersion] = useState(0);
   const conversationId = props.conversationId;
   const summaries = props.data?.conversations.conversations ?? [];
   const conversations = buildConversations(summaries);
   const detail = useConversationData(conversationId);
   const archive = useArchiveConversation(conversationId);
-  const appendMessage = useAppendConversationMessage(conversationId);
   const feedConversation = conversations.find(
     (item) => item.id === conversationId,
   );
@@ -71,9 +74,15 @@ export function ConversationPage(props: {
   const visualStatus = conversation
     ? visualStatusForConversation(conversation)
     : undefined;
+  // Keep live flags and transcript data on the same render. Composer isolation
+  // in the reply footer is what keeps typing urgent during live polls.
+  const live = conversationIsLive(visualStatus, detail.data);
+  const requestPin = useCallback(() => {
+    setPinRequestVersion((version) => version + 1);
+  }, []);
 
   return (
-    <div className="grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_auto]">
+    <div className="grid min-h-0 min-w-0 grid-rows-[minmax(7rem,1fr)_minmax(0,auto)]">
       <div
         aria-label="Conversation transcript"
         className="min-h-0 overflow-y-auto overscroll-contain px-3 pb-3 md:px-7 md:pb-5"
@@ -125,7 +134,7 @@ export function ConversationPage(props: {
                 />
               ) : null
             }
-            live={conversationIsLive(visualStatus, detail.data)}
+            live={live}
             meta={
               <ConversationHeaderMeta
                 identity={
@@ -196,12 +205,11 @@ export function ConversationPage(props: {
                 hasPreviousPage={detail.hasPreviousPage}
                 historyError={detail.historyError}
                 historyVersion={detail.historyVersion}
-                live={conversationIsLive(visualStatus, detail.data)}
+                live={live}
                 loadingPreviousPage={detail.isLoadingPreviousPage}
                 onLoadPreviousPage={detail.loadPreviousPage}
-                responding={
-                  !detail.error && conversationIsLive(visualStatus, detail.data)
-                }
+                pinRequestVersion={pinRequestVersion}
+                responding={!detail.error && live}
                 onOpenSubagentTranscript={({ part }) => {
                   setSubagentTarget({
                     conversationId: part.childConversationId,
@@ -217,52 +225,131 @@ export function ConversationPage(props: {
         </section>
       </div>
       {detail.data?.isParticipant ? (
-        <div className="px-2 py-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] md:px-7 md:py-4 md:pb-4">
-          {conversationIsLive(visualStatus, detail.data) ? (
-            <div className="mb-1.5 flex items-center gap-2 font-sans text-xs text-dashboard-text-muted md:hidden">
-              <span
-                aria-hidden="true"
-                className="size-1.5 shrink-0 animate-pulse rounded-full bg-emerald-300"
-              />
-              <span>Junior is working…</span>
-            </div>
-          ) : null}
-          <div className="grid min-w-0">
-            {detail.pendingAuthorization ? (
-              <PendingAuthorization
-                authorization={detail.pendingAuthorization}
-              />
-            ) : null}
-            {detail.data ? (
-              <PendingMailboxStack
-                conversation={detail.data}
-                messages={detail.pendingMessages}
-              />
-            ) : null}
-            <ConversationComposer
-              draftId={conversationId}
-              error={
-                appendMessage.error
-                  ? "Could not send the message. Try again."
-                  : undefined
-              }
-              label="Continue this conversation"
-              pending={appendMessage.isPending}
-              submitLabel="Send"
-              onSubmit={async (message, idempotencyKey) => {
-                await appendMessage.mutateAsync({
-                  idempotencyKey,
-                  message,
-                });
-              }}
-            />
-          </div>
-        </div>
+        <ConversationReplyFooter
+          conversation={detail.data}
+          conversationId={conversationId}
+          live={live}
+          onPinRequest={requestPin}
+          pendingAuthorization={detail.pendingAuthorization}
+          pendingGeneratedAt={detail.pendingGeneratedAt}
+          pendingMessages={detail.pendingMessages}
+        />
       ) : null}
       <SubagentTranscriptDrawer
         onClose={() => setSubagentTarget(undefined)}
         target={subagentTarget}
       />
+    </div>
+  );
+}
+
+/**
+ * Own mutation state and mailbox chrome outside the page tree that re-renders
+ * on every live transcript poll. Keeps composer props stable while typing.
+ */
+function ConversationReplyFooter(props: {
+  conversation: ConversationTranscript;
+  conversationId: string;
+  live: boolean;
+  onPinRequest: () => void;
+  pendingAuthorization?: ConversationPendingMessagesReport["authorization"];
+  pendingGeneratedAt?: string;
+  pendingMessages: ConversationMailboxMessage[];
+}) {
+  const appendMessage = useAppendConversationMessage(props.conversationId);
+  const cancelPendingMessages = useCancelConversationPendingMessages(
+    props.conversationId,
+  );
+  // Keep submit identity stable across mutation status flips so the memoized
+  // composer does not re-render while the reader is still typing.
+  const appendMessageRef = useRef(appendMessage);
+  appendMessageRef.current = appendMessage;
+  const cancelPendingMessagesRef = useRef(cancelPendingMessages);
+  cancelPendingMessagesRef.current = cancelPendingMessages;
+  const onPinRequestRef = useRef(props.onPinRequest);
+  onPinRequestRef.current = props.onPinRequest;
+  const onSubmit = useCallback(
+    async (message: string, idempotencyKey: string) => {
+      await appendMessageRef.current.mutateAsync({
+        idempotencyKey,
+        message,
+      });
+    },
+    [],
+  );
+  const onRetry = useCallback((message: ConversationMailboxMessage) => {
+    if (!message.idempotencyKey || !message.text) return;
+    void appendMessageRef.current.mutateAsync({
+      idempotencyKey: message.idempotencyKey,
+      message: message.text,
+    });
+  }, []);
+  const onFocus = useCallback(() => {
+    onPinRequestRef.current();
+  }, []);
+  const onSubmitStart = useCallback(() => {
+    cancelPendingMessagesRef.current.reset();
+    onPinRequestRef.current();
+  }, []);
+  const cancellableMessageIds = props.pendingMessages
+    .filter((message) => message.clientStatus === undefined)
+    .map((message) => message.inboundMessageId);
+  const cancellableMessageIdsRef = useRef(cancellableMessageIds);
+  cancellableMessageIdsRef.current = cancellableMessageIds;
+  const hasSendingOutboxMessage = props.pendingMessages.some(
+    (message) => message.clientStatus === "sending",
+  );
+  const pendingGeneratedAtRef = useRef(props.pendingGeneratedAt);
+  pendingGeneratedAtRef.current = props.pendingGeneratedAt;
+  const onCancelQueue = useCallback(() => {
+    const inboundMessageIds = cancellableMessageIdsRef.current;
+    const receivedBefore = pendingGeneratedAtRef.current;
+    if (!receivedBefore || inboundMessageIds.length === 0) return;
+    cancelPendingMessagesRef.current.mutate({
+      inboundMessageIds,
+      receivedBefore,
+    });
+  }, []);
+  const cancelError = Boolean(
+    cancelPendingMessages.error &&
+    cancelPendingMessages.variables?.inboundMessageIds.some((id) =>
+      cancellableMessageIds.includes(id),
+    ),
+  );
+
+  return (
+    <div className="min-h-0 max-h-[min(55%,24rem)] overflow-y-auto overscroll-contain px-2 py-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] md:max-h-none md:overflow-visible md:px-7 md:py-4 md:pb-4">
+      {props.live ? (
+        <div className="mb-1.5 flex items-center gap-2 font-sans text-xs text-dashboard-text-muted md:hidden">
+          <span
+            aria-hidden="true"
+            className="size-1.5 shrink-0 animate-pulse rounded-full bg-emerald-300"
+          />
+          <span>Junior is working…</span>
+        </div>
+      ) : null}
+      <div className="grid min-w-0">
+        {props.pendingAuthorization ? (
+          <PendingAuthorization authorization={props.pendingAuthorization} />
+        ) : null}
+        <PendingMailboxStack
+          cancelError={cancelError}
+          cancelPending={cancelPendingMessages.isPending}
+          conversation={props.conversation}
+          messages={props.pendingMessages}
+          onCancelQueue={hasSendingOutboxMessage ? undefined : onCancelQueue}
+          onRetry={onRetry}
+        />
+        <ConversationComposer
+          disabled={cancelPendingMessages.isPending}
+          draftId={props.conversationId}
+          label="Continue this conversation"
+          submitLabel="Send"
+          onFocus={onFocus}
+          onSubmitStart={onSubmitStart}
+          onSubmit={onSubmit}
+        />
+      </div>
     </div>
   );
 }

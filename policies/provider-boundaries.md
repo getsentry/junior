@@ -2,29 +2,34 @@
 
 ## Intent
 
-Keep each provider SDK and its data inside the module that owns the provider.
-Shared Junior code must use small Junior-owned types. It must not depend on
-Slack, Vercel, GitHub, or another provider SDK.
+Keep domain-specific behavior in the plugin that owns the domain. Core owns the
+runtime and the provider-neutral contracts that plugins use.
 
 ## Policy
 
-- Keep SDK clients, response types, errors, webhook data, and formatting rules
-  in the module or feature that owns the provider.
+- Put all behavior for a provider in its plugin package. This includes API
+  routes, request and response rules, permissions, errors, webhooks, formatting,
+  and provider-specific policy.
+- Core must not import a plugin package. The dependency check enforces this for
+  `@sentry/junior-*` plugin imports from `packages/junior/src`.
+- Core may expose a small provider-neutral contract when a plugin needs a new
+  runtime capability. The plugin supplies the provider-specific data and
+  decisions through that contract.
+- Do not add a provider name, host, route, API field, permission, or error rule
+  to core when a plugin can own it. Static checks cannot find every case, so
+  reviewers must apply this rule to values and control flow as well as imports.
 - Shared code must use Junior-owned types. Examples include `Destination`,
   `Source`, actor identity, a local interface, or a feature-owned view.
-- Put provider actions behind a small local interface or a provider-owned
-  service. Do not import a provider client into shared runtime, service, state,
-  reporting, or tool code.
 - Tests for one provider may use its SDK types. Tests outside that provider
-  must use its public adapter or a Junior runtime interface.
-- When provider behavior must enter shared code, name the interface for its
-  product role. Keep the SDK type private to the provider module.
+  must use its public adapter or a Junior runtime contract.
 
 ## Exceptions
 
-- Provider modules, provider tools, and inbound adapters may read raw provider
-  data and call provider SDKs.
-- App setup code may connect a provider implementation to a Junior interface.
-  It must not perform the provider action itself.
-- Existing runtime code may keep old provider imports while maintainers remove
-  them. New code must not add more provider SDK types there.
+- Core may own provider-neutral dispatch, plugin registration, credential
+  transport, and egress transport.
+- App setup code may connect a plugin implementation to a Junior contract. It
+  must not perform the provider action itself.
+- Slack runtime and delivery code remains in core until Slack is a plugin. Keep
+  Slack behavior in Slack-owned modules and out of shared services.
+- Existing domain-specific core behavior is debt, not a pattern for new code.
+  Move it to the owning plugin when the touched contract makes that practical.

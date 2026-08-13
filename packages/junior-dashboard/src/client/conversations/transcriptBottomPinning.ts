@@ -85,6 +85,18 @@ export function shouldAutoPinTranscriptBottom(input: {
   return input.enabled && input.following;
 }
 
+/**
+ * Show the jump control only when the reader left the bottom and a newer tail
+ * arrived. Staying pinned, or intentionally following, must not flash it.
+ */
+export function shouldShowJumpToLatest(input: {
+  enabled: boolean;
+  following: boolean;
+  hasPendingUpdate: boolean;
+}): boolean {
+  return input.enabled && !input.following && input.hasPendingUpdate;
+}
+
 /** Resolve scroll intent with user upward movement taking precedence over bottom slack. */
 export function transcriptFollowIntent(input: {
   previousScrollTop: number | null;
@@ -99,8 +111,28 @@ export function transcriptFollowIntent(input: {
     return "pause";
   }
 
-  if (isNearScrollBottom(input.snapshot)) return "follow";
+  if (input.source === "scroll" && isNearScrollBottom(input.snapshot)) {
+    return "follow";
+  }
   return "preserve";
+}
+
+/**
+ * Decide how a scroll event interacts with an open programmatic pin settle.
+ *
+ * Pin settle noise and layout clamps must not pause follow. Only a real leave
+ * from the bottom should win over the settle window.
+ */
+export function programmaticSettleScrollAction(input: {
+  intent: TranscriptFollowIntent;
+  snapshot: ScrollSnapshot;
+}): "ignore" | "pause" {
+  // Layout clamps can drop scrollTop while the reader is still at the bottom.
+  // Treat only a leave-bottom pause as intentional scroll-away.
+  if (input.intent === "pause" && !isNearScrollBottom(input.snapshot)) {
+    return "pause";
+  }
+  return "ignore";
 }
 
 /** Decide when a requested history prepend can restore or discard its viewport snapshot. */
@@ -122,6 +154,7 @@ export function usePinnedTranscriptBottom(input: {
   enabled: boolean;
   historyVersion: string;
   loadingPreviousPage: boolean;
+  pinRequestVersion?: number;
   version: string;
 }): BottomPinResult {
   const anchorRef = useRef<HTMLDivElement | null>(null);
@@ -132,6 +165,8 @@ export function usePinnedTranscriptBottom(input: {
   const initializedConversationRef = useRef<string | null>(null);
   const previousScrollTopRef = useRef<number | null>(null);
   const prependSnapshotRef = useRef<PrependSnapshot | null>(null);
+  const pinRequestVersionRef = useRef(input.pinRequestVersion ?? 0);
+  const programmaticScrollGenerationRef = useRef(0);
   const [following, setFollowing] = useState(false);
   const [hasPendingUpdate, setHasPendingUpdate] = useState(false);
   const [contentElement, setContentElement] = useState<HTMLDivElement | null>(
@@ -171,6 +206,17 @@ export function usePinnedTranscriptBottom(input: {
         snapshot,
         source,
       });
+
+      // While a pin settle is open, ignore noise from our own bottom scroll and
+      // layout clamps, but still honor a real leave from the bottom.
+      if (source === "scroll" && programmaticScrollGenerationRef.current > 0) {
+        if (programmaticSettleScrollAction({ intent, snapshot }) === "pause") {
+          programmaticScrollGenerationRef.current = 0;
+          setFollowingIntent(false);
+        }
+        return;
+      }
+
       if (intent === "follow") {
         setFollowingIntent(true);
         setHasPendingUpdate(false);
@@ -184,11 +230,51 @@ export function usePinnedTranscriptBottom(input: {
     [setFollowingIntent],
   );
 
-  const scrollToBottom = useCallback((behavior: ScrollBehavior) => {
-    const root = scrollRootFor(contentElementRef.current);
-    if (!root) return;
-    setScrollTop(root, scrollSnapshot(root).scrollHeight, behavior);
-  }, []);
+  const scrollToBottom = useCallback(
+    (behavior: ScrollBehavior) => {
+      const root = scrollRootFor(contentElementRef.current);
+      if (!root) return;
+
+      // Only suppress pin-settle noise while still following. After the reader
+      // leaves the bottom, do not open a window that can ignore their scroll.
+      const suppressSettleNoise = followingRef.current;
+      const generation = suppressSettleNoise
+        ? ++programmaticScrollGenerationRef.current
+        : 0;
+      setScrollTop(root, scrollSnapshot(root).scrollHeight, behavior);
+
+      const settleProgrammaticScroll = () => {
+        if (
+          suppressSettleNoise &&
+          programmaticScrollGenerationRef.current !== generation
+        ) {
+          return;
+        }
+        if (suppressSettleNoise) programmaticScrollGenerationRef.current = 0;
+        const settled = scrollSnapshot(root);
+        previousScrollTopRef.current = settled.scrollTop;
+        if (
+          enabledRef.current &&
+          followingRef.current &&
+          isNearScrollBottom(settled)
+        ) {
+          setFollowingIntent(true);
+          setHasPendingUpdate(false);
+        }
+      };
+
+      if (behavior === "smooth") {
+        window.setTimeout(settleProgrammaticScroll, 400);
+        return;
+      }
+
+      // Wait two frames so the browser can emit the scroll event first.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(settleProgrammaticScroll);
+      });
+    },
+    [setFollowingIntent],
+  );
 
   const preserveViewportForPrepend = useCallback(() => {
     const root = scrollRootFor(contentElementRef.current);
@@ -261,7 +347,13 @@ export function usePinnedTranscriptBottom(input: {
     const wasInitialized = initializedRef.current;
     if (!initializedRef.current) {
       initializedRef.current = true;
-      measurePosition("measure");
+    }
+
+    if (input.enabled && !wasEnabled) {
+      const root = scrollRootFor(contentElementRef.current);
+      if (root) {
+        setFollowingIntent(isNearScrollBottom(scrollSnapshot(root)));
+      }
     }
 
     if (
@@ -278,7 +370,7 @@ export function usePinnedTranscriptBottom(input: {
     if (input.enabled && wasInitialized) {
       setHasPendingUpdate(true);
     }
-  }, [input.enabled, input.version, measurePosition, scrollToBottom]);
+  }, [input.enabled, input.version, scrollToBottom, setFollowingIntent]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -315,6 +407,15 @@ export function usePinnedTranscriptBottom(input: {
     scrollToBottom(preferredExplicitScrollBehavior());
   }, [scrollToBottom, setFollowingIntent]);
 
+  useBrowserLayoutEffect(() => {
+    const version = input.pinRequestVersion ?? 0;
+    if (version === pinRequestVersionRef.current) return;
+    pinRequestVersionRef.current = version;
+    setFollowingIntent(true);
+    setHasPendingUpdate(false);
+    scrollToBottom("auto");
+  }, [input.pinRequestVersion, scrollToBottom, setFollowingIntent]);
+
   return useMemo(
     () => ({
       anchorRef,
@@ -322,7 +423,11 @@ export function usePinnedTranscriptBottom(input: {
       hasPendingUpdate,
       jumpToBottom,
       preserveViewportForPrepend,
-      showJumpToLatest: input.enabled && !following,
+      showJumpToLatest: shouldShowJumpToLatest({
+        enabled: input.enabled,
+        following,
+        hasPendingUpdate,
+      }),
     }),
     [
       contentRef,
@@ -399,12 +504,7 @@ function scrollRootFor(element: HTMLElement | null): ScrollRoot | null {
   let current = element.parentElement;
   while (current && current !== document.body) {
     const style = window.getComputedStyle(current);
-    if (
-      /(auto|scroll|overlay)/.test(style.overflowY) &&
-      current.scrollHeight > current.clientHeight
-    ) {
-      return current;
-    }
+    if (/(auto|scroll|overlay)/.test(style.overflowY)) return current;
     current = current.parentElement;
   }
 

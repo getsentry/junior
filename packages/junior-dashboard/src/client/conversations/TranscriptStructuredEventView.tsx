@@ -13,7 +13,9 @@ export function TranscriptStructuredEventView(props: {
   const presentation = props.part.presentation;
   const timestamp = formatMessageTimestamp(props.timestamp);
   const details = presentation.details ?? [];
-  const surfaceClass = "min-w-0 px-0.5 py-1 font-mono text-xs leading-tight";
+  // Match TranscriptRailEvent icon offset (mt-1.5) so single-line titles share a baseline.
+  const surfaceClass =
+    "min-w-0 px-0.5 pb-1 pt-1.5 font-mono text-xs leading-tight";
   const body =
     details.length > 0 ? (
       <div className="grid gap-4 pb-1 pt-3">

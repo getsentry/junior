@@ -413,6 +413,22 @@ export async function ackMessages(args: {
   return result;
 }
 
+/** Cancel human-facing pending mailbox rows without requiring a worker lease. */
+export async function cancelHumanFacingPendingMessages(args: {
+  conversationId: string;
+  inboundMessageIds?: readonly string[];
+  receivedBeforeMs?: number;
+  conversationStore?: ConversationStore;
+  nowMs?: number;
+  state?: StateAdapter;
+}) {
+  const result = await workState.cancelHumanFacingPendingMessages(args);
+  if (result.cancelledInboundMessageIds.length > 0) {
+    await recordExecutionMetadata(args);
+  }
+  return result;
+}
+
 /** Mark the leased conversation as needing another queue-delivered slice. */
 export async function requestAnotherSlice(args: {
   conversationId: string;

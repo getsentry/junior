@@ -6,7 +6,8 @@ import { slackEventsApiEnvelope } from "../../fixtures/slack/factories/events";
 import { createSlackWebhookTestClient } from "../../fixtures/slack/webhook-client";
 import { mswServer } from "../../msw/server";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
-import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
+import { createModelAgentRunnerForRun } from "../../fixtures/agent-runner";
+import { createModelStream } from "../../fixtures/model-stream";
 
 const SIGNING_SECRET = "test-signing-secret";
 const BOT_USER_ID = "U0BOT";
@@ -16,18 +17,6 @@ const ORIGINAL_ENV = { ...process.env };
 const slackWebhookClient = createSlackWebhookTestClient({
   signingSecret: SIGNING_SECRET,
 });
-
-function makeDiagnostics() {
-  return {
-    assistantMessageCount: 1,
-    modelId: "fake-agent-model",
-    outcome: "success" as const,
-    toolCalls: [],
-    toolErrorCount: 0,
-    toolResultCount: 0,
-    usedPrimaryText: true,
-  };
-}
 
 async function createDirectMessageBot(args: {
   completeText: () => Promise<{ text: string; message: never }>;
@@ -103,24 +92,18 @@ describe("Slack contract: message.im attachment ingress", () => {
         text: "Screenshot shows the current incident chart.",
         message: {} as never,
       }),
-      agentRunner: {
-        run: async (request) => {
-          const _prompt = request.instruction.text;
-          const context = request;
-
-          const attachments = context?.instruction.attachments ?? [];
-          capturedAttachmentMediaTypes.push(
-            attachments.map((attachment) => attachment.mediaType),
-          );
-          capturedAttachmentNames.push(
-            attachments.map((attachment) => attachment.filename ?? ""),
-          );
-          return completedAgentRun({
-            text: "Processed screenshot.",
-            diagnostics: makeDiagnostics(),
-          });
-        },
-      },
+      agentRunner: createModelAgentRunnerForRun((request) => {
+        const attachments = request.instruction.attachments ?? [];
+        capturedAttachmentMediaTypes.push(
+          attachments.map((attachment) => attachment.mediaType),
+        );
+        capturedAttachmentNames.push(
+          attachments.map((attachment) => attachment.filename ?? ""),
+        );
+        return createModelStream([
+          { type: "text", text: "Processed screenshot." },
+        ]);
+      }),
     });
     const waitUntil = slackWebhookClient.waitUntil();
 

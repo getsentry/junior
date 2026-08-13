@@ -114,31 +114,10 @@ function failure(): RenderedTranscriptEntry {
 }
 
 describe("transcript activity group", () => {
-  it("opens only for live activity unless the user makes an explicit choice", () => {
-    expect(
-      activityGroupOpen({
-        hasLiveActivity: false,
-        userOpen: null,
-      }),
-    ).toBe(false);
-    expect(
-      activityGroupOpen({
-        hasLiveActivity: true,
-        userOpen: null,
-      }),
-    ).toBe(true);
-    expect(
-      activityGroupOpen({
-        hasLiveActivity: false,
-        userOpen: true,
-      }),
-    ).toBe(true);
-    expect(
-      activityGroupOpen({
-        hasLiveActivity: true,
-        userOpen: false,
-      }),
-    ).toBe(false);
+  it("stays collapsed until the reader explicitly opens it", () => {
+    expect(activityGroupOpen(null)).toBe(false);
+    expect(activityGroupOpen(true)).toBe(true);
+    expect(activityGroupOpen(false)).toBe(false);
   });
 
   it("collapses non-message activity including tool errors, and keeps failures and chat messages open", () => {

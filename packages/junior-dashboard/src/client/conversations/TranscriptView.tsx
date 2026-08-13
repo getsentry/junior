@@ -21,6 +21,7 @@ export function Transcript(props: {
   historyVersion?: string;
   live?: boolean;
   loadingPreviousPage?: boolean;
+  pinRequestVersion?: number;
   onLoadPreviousPage?: () => void;
   responding?: boolean;
   search?: string;
@@ -39,6 +40,7 @@ export function Transcript(props: {
     enabled: props.live ?? false,
     historyVersion: props.historyVersion ?? "empty",
     loadingPreviousPage: props.loadingPreviousPage ?? false,
+    pinRequestVersion: props.pinRequestVersion,
     version: transcriptBottomVersion(props.transcript),
   });
 
