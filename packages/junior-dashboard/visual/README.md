@@ -3,7 +3,9 @@
 Deterministic screenshots for dashboard PRs. The standalone
 `Dashboard Visual` workflow picks scenarios from the changed-path rules in
 `scenarios.ts`, captures them with Playwright against the built mock dashboard,
-and posts one sticky PR comment.
+and posts one sticky PR comment. Capture runs read-only on the PR head. The
+comment job publishes uploaded artifacts only and prefers the publisher from
+the default branch so a PR cannot replace the write-scoped comment script.
 
 ## Local
 

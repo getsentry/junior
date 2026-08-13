@@ -91,7 +91,7 @@ function buildBody(manifest, imageBaseUrl) {
     reasonLines,
     "",
     shotBlocks,
-    "_Head-only screenshots from the mock dashboard. Not a pixel-diff gate._",
+    "_Full-page screenshots from the mock dashboard. Not a pixel-diff gate._",
     "",
   ].join("\n");
 }

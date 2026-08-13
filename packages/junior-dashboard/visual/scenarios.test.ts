@@ -37,6 +37,19 @@ describe("selectVisualScenarioIds", () => {
     expect(selected).toHaveLength(MAX_VISUAL_SCENARIOS);
   });
 
+  it("selects the shell set for layout component changes", () => {
+    expect(
+      selectVisualScenarioIds([
+        "packages/junior-dashboard/src/client/components/layout/DashboardHeader.tsx",
+      ]),
+    ).toEqual([
+      "conversations",
+      "conversation-detail",
+      "system",
+      "component-gallery",
+    ]);
+  });
+
   it("ignores e2e and test-only dashboard paths", () => {
     expect(
       selectVisualScenarioIds([

@@ -25,8 +25,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  dashboard-visual:
-    name: visual / dashboard
+  capture:
+    name: visual / capture
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 20
     if: >-
@@ -36,12 +36,17 @@ jobs:
         github.event.pull_request.head.repo.full_name == github.repository
       )
     permissions:
-      contents: write
-      pull-requests: write
+      contents: read
+      pull-requests: read
+    outputs:
+      all: ${{ steps.mode.outputs.all }}
+      pr_number: ${{ steps.mode.outputs.pr_number }}
+      run: ${{ steps.mode.outputs.run }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
           ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/pull/{0}/head', inputs.pr_number) || github.sha }}
 
       - name: Resolve run mode
@@ -49,16 +54,25 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           FORCE_ALL_INPUT: ${{ inputs.all }}
+          GH_TOKEN: ${{ github.token }}
           PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
           PR_NUMBER_INPUT: ${{ inputs.pr_number }}
           PR_NUMBER_EVENT: ${{ github.event.pull_request.number }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.sha }}
+          REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
 
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
             echo "pr_number=$PR_NUMBER_INPUT" >> "$GITHUB_OUTPUT"
+            head_repo="$(gh api "repos/${REPOSITORY}/pulls/${PR_NUMBER_INPUT}" --jq .head.repo.full_name)"
+            if [[ "$head_repo" != "$REPOSITORY" ]]; then
+              echo "Refusing workflow_dispatch for fork PR head ($head_repo)."
+              echo "all=false" >> "$GITHUB_OUTPUT"
+              echo "run=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
             if [[ "$FORCE_ALL_INPUT" == "true" ]]; then
               echo "all=true" >> "$GITHUB_OUTPUT"
             else
@@ -83,9 +97,7 @@ jobs:
             has_dashboard=false
           fi
 
-          # Always run when forced; otherwise only when dashboard paths changed.
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
-            # Manual path mode with no changed files is empty; default dispatch is all=true.
             if [[ "$FORCE_ALL_INPUT" == "true" || "$has_dashboard" == "true" ]]; then
               echo "run=true" >> "$GITHUB_OUTPUT"
             else
@@ -126,9 +138,50 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  comment:
+    name: visual / comment
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 10
+    needs: capture
+    if: >-
+      always() &&
+      !cancelled() &&
+      needs.capture.result == 'success' &&
+      needs.capture.outputs.run == 'true'
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      # No package install here. Prefer the publisher from the default branch when
+      # present so a PR cannot replace the write-scoped comment script after the
+      # feature lands on main. Fall back to the PR copy only while bootstrapping.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/pull/{0}/head', inputs.pr_number) || github.sha }}
+
+      - name: Prefer trusted publisher from default branch
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          git fetch --depth=1 origin "$DEFAULT_BRANCH"
+          if git cat-file -e "origin/${DEFAULT_BRANCH}:packages/junior-dashboard/visual/post-pr-comment.mjs"; then
+            git checkout "origin/${DEFAULT_BRANCH}" -- packages/junior-dashboard/visual/post-pr-comment.mjs
+            echo "Using publisher from origin/${DEFAULT_BRANCH}"
+          else
+            echo "Publisher not on origin/${DEFAULT_BRANCH} yet; using PR copy for bootstrap"
+          fi
+
+      - name: Download visual artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dashboard-visual-${{ needs.capture.outputs.pr_number }}
+          path: .playwright/visual-dashboard
+
       - name: Comment screenshots on PR
-        if: steps.mode.outputs.run == 'true' && success()
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ steps.mode.outputs.pr_number }}
+          PR_NUMBER: ${{ needs.capture.outputs.pr_number }}
         run: node packages/junior-dashboard/visual/post-pr-comment.mjs .playwright/visual-dashboard

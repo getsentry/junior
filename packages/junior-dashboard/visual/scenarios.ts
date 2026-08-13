@@ -110,12 +110,6 @@ const PATH_RULES: PathRule[] = [
   },
   {
     match: (filePath) =>
-      filePath.startsWith("packages/junior-dashboard/src/client/pages/dev/") ||
-      filePath.startsWith("packages/junior-dashboard/src/client/components/"),
-    scenarioIds: ["component-gallery"],
-  },
-  {
-    match: (filePath) =>
       filePath === "packages/junior-dashboard/src/client/App.tsx" ||
       filePath === "packages/junior-dashboard/src/tailwind.css" ||
       filePath.startsWith("packages/junior-dashboard/src/client/styles") ||
@@ -128,6 +122,12 @@ const PATH_RULES: PathRule[] = [
       "system",
       "component-gallery",
     ],
+  },
+  {
+    match: (filePath) =>
+      filePath.startsWith("packages/junior-dashboard/src/client/pages/dev/") ||
+      filePath.startsWith("packages/junior-dashboard/src/client/components/"),
+    scenarioIds: ["component-gallery"],
   },
   {
     match: (filePath) =>
