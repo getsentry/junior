@@ -45,14 +45,7 @@ describe("GitHub reply markdown", () => {
     const hook = githubPlugin().hooks?.formatMarkdown;
 
     expect(hook).toBeDefined();
-    expect(
-      hook?.({
-        db: {} as never,
-        log: {} as never,
-        plugin: { name: "github" } as never,
-        text: "getsentry/junior#1509",
-      }),
-    ).toBe(
+    expect(hook?.({ text: "getsentry/junior#1509" })).toBe(
       "[getsentry/junior#1509](https://github.com/getsentry/junior/issues/1509)",
     );
   });

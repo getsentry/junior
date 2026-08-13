@@ -390,32 +390,23 @@ export function getPlugins(): PluginRegistration[] {
   return [...registeredPlugins];
 }
 
-/** Apply destination-neutral plugin Markdown rewrites before delivery formatting. */
+/** Apply plugin Markdown rewrites before destination delivery formatting. */
 export function applyPluginFormatMarkdown(text: string): string {
   let transformed = text;
   for (const plugin of getPlugins()) {
-    const pluginName = plugin.manifest.name;
     const hook = plugin.hooks?.formatMarkdown;
     if (!hook) {
       continue;
     }
     try {
-      const next = hook({
-        ...basePluginContext(plugin),
-        text: transformed,
-      });
+      const next = hook({ text: transformed });
       if (typeof next === "string") {
         transformed = next;
-      } else {
-        logWarn("plugin.format_markdown.contribution_result.invalid", {
-          "app.plugin.name": pluginName,
-          "app.plugin.validation_reason": "invalid_shape",
-        });
       }
     } catch (error) {
       // Fail open: reply delivery must not depend on optional provider formatting.
       logWarn("plugin.format_markdown.hook.failed", {
-        "app.plugin.name": pluginName,
+        "app.plugin.name": plugin.manifest.name,
         "exception.message": safeErrorMessage(error),
       });
     }

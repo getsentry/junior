@@ -34,11 +34,9 @@ import type {
   UserPromptContext,
   UserPromptContribution,
 } from "./prompt";
-import type { PluginContext } from "./context";
 
-/** One plugin-owned markdown rewrite before destination delivery formatting. */
-export interface FormatMarkdownHookContext
-  extends Pick<PluginContext, "db" | "log" | "plugin"> {
+/** Input for a pure Markdown rewrite before destination delivery formatting. */
+export interface FormatMarkdownHookContext {
   text: string;
 }
 
@@ -92,10 +90,7 @@ export interface PluginHooks {
   slackConversationLink?(
     ctx: SlackConversationLinkHookContext,
   ): SlackConversationLink | undefined;
-  /**
-   * Rewrite provider-owned references into ordinary Markdown before destination
-   * delivery formatting. Keep this destination-neutral; do not emit Slack mrkdwn.
-   */
+  /** Pure Markdown rewrite. Emit ordinary Markdown only. */
   formatMarkdown?(ctx: FormatMarkdownHookContext): string;
   tools?(
     ctx: ToolRegistrationHookContext,

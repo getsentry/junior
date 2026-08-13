@@ -736,8 +736,8 @@ export function githubPlugin(
       ],
     },
     hooks: {
-      formatMarkdown(ctx) {
-        return linkifyGitHubReferences(ctx.text);
+      formatMarkdown({ text }) {
+        return linkifyGitHubReferences(text);
       },
       async unfinishedWork(ctx) {
         const db = ctx.db as GitHubDb;

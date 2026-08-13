@@ -244,9 +244,7 @@ describe("agent plugin hooks", () => {
       expect(applyPluginFormatMarkdown("alpha one")).toBe("beta one");
       expect(logWarnMock).toHaveBeenCalledWith(
         "plugin.format_markdown.hook.failed",
-        expect.objectContaining({
-          "app.plugin.name": "z-demo",
-        }),
+        expect.objectContaining({ "app.plugin.name": "z-demo" }),
       );
     } finally {
       setPlugins(previous);

@@ -44,9 +44,7 @@ reports, and other typed hook surfaces exported by this package.
   database, logging, and only the host capabilities required by that hook.
 - Prompt hooks return bounded structured prompt messages rather than mutate the
   core prompt.
-- `formatMarkdown` may rewrite provider-owned references into ordinary Markdown
-  before destination delivery formatting. Keep the rewrite destination-neutral;
-  do not emit Slack mrkdwn or other platform syntax.
+- `formatMarkdown` is a pure text rewrite into ordinary Markdown before delivery.
 - User prompt hooks for durable turns may emit registered structured events
   through `ctx.events` for auxiliary work completed while building context.
 - Tool hooks return model-visible schemas aligned with their executor inputs.
