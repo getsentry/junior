@@ -1,26 +1,15 @@
 import { EgressPolicyDenied } from "./credentials";
 
-/** One plugin-defined egress rule and its denial message. */
-export interface EgressPolicyRule {
+/**
+ * Deny provider egress when a plugin policy does not allow the request.
+ *
+ * Call from a plugin `grantForEgress` hook before returning a write grant.
+ */
+export function enforceEgressPolicy(input: {
+  allowed: boolean;
   denialMessage: string;
-}
-
-/** Apply the first plugin-defined rule that matches an egress request. */
-export function enforceEgressPolicy<
-  Request,
-  Rule extends EgressPolicyRule,
->(input: {
-  allows(rule: Rule, request: Request): boolean;
-  matches(rule: Rule, request: Request): boolean;
-  request: Request;
-  rules: readonly Rule[];
-}): Rule | undefined {
-  const rule = input.rules.find((candidate) =>
-    input.matches(candidate, input.request),
-  );
-  if (!rule) return undefined;
-  if (!input.allows(rule, input.request)) {
-    throw new EgressPolicyDenied(rule.denialMessage);
+}): void {
+  if (!input.allowed) {
+    throw new EgressPolicyDenied(input.denialMessage);
   }
-  return rule;
 }
