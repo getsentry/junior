@@ -80,6 +80,7 @@ jobs:
               - packages/junior-maintenance/**
               - packages/junior-memory/**
               - packages/junior-notion/**
+              - packages/junior-octolens/**
               - packages/junior-sentry/**
               - packages/junior-vercel/**
             repo:
@@ -357,6 +358,7 @@ jobs:
           pnpm --filter @sentry/junior-linear pack --pack-destination artifacts
           pnpm --filter @sentry/junior-memory pack --pack-destination artifacts
           pnpm --filter @sentry/junior-notion pack --pack-destination artifacts
+          pnpm --filter @sentry/junior-octolens pack --pack-destination artifacts
           pnpm --filter @sentry/junior-maintenance pack --pack-destination artifacts
           pnpm --filter @sentry/junior-sentry pack --pack-destination artifacts
           pnpm --filter @sentry/junior-vercel pack --pack-destination artifacts

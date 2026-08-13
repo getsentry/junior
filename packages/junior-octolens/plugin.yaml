@@ -1,0 +1,31 @@
+name: octolens
+display-name: Octolens
+description: Search and analyze social mentions and manage Octolens monitoring through its OAuth-backed MCP server
+
+mcp:
+  transport: http
+  url: https://app.octolens.com/api/mcp/v2
+  allowed-tools:
+    - list_mentions
+    - analytics
+    - analytics_context
+    - list_keywords
+    - get_keyword
+    - add_keyword
+    - update_keyword
+    - pause_keyword
+    - delete_keyword
+    - list_keyword_suggestions
+    - accept_keyword_suggestion
+    - reject_keyword_suggestion
+    - list_feeds
+    - create_feed
+    - update_feed
+    - delete_feed
+    - add_feed_destination
+    - remove_feed_destination
+    - search_slack_channels
+    - get_workspace
+    - get_usage
+    - get_global_filters
+    - list_tags
