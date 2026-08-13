@@ -81,3 +81,5 @@ If PR creation or update is blocked, report the exact failed command/tool call a
 When PR creation returns a subscribable resource hint, subscribe to suggested review/CI events. Report only actionable feedback addressed, build failures fixed, fully green/ready state, or merge.
 
 Return: repo, branch, PR URL/number, checks and results, pre-existing failures, and anything not run with the reason.
+
+When you mention a pull request in a user-facing reply, always include a direct link. Prefer the full PR URL or a Markdown link such as `[#123](https://github.com/owner/repo/pull/123)`. `owner/repo#number` is also fine. Do not leave bare `PR #123` text without a URL or repo.
