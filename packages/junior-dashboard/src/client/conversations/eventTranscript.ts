@@ -358,6 +358,19 @@ export function conversationTranscriptMessages(
       continue;
     }
 
+    if (data.type === "attachments_delivered") {
+      messages.push(
+        eventMessage(event, "system", [
+          {
+            type: "attachments_delivered",
+            attachments: data.attachments,
+            ...(data.toolCallId ? { toolCallId: data.toolCallId } : {}),
+          },
+        ]),
+      );
+      continue;
+    }
+
     if (data.type === "compaction" || data.type === "handoff") {
       messages.push(
         eventMessage(event, "system", [

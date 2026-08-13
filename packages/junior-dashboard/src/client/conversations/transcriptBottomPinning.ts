@@ -389,6 +389,16 @@ function transcriptPartVersion(part: TranscriptViewPart | undefined): string {
       part.presentation.details?.length ?? 0,
     ].join(":");
   }
+  if (part.type === "attachments_delivered") {
+    return [
+      part.type,
+      part.toolCallId ?? "",
+      ...part.attachments.map(
+        (attachment) =>
+          `${attachment.id}:${attachment.name}:${attachment.contentType}:${attachment.bytes ?? ""}`,
+      ),
+    ].join(":");
+  }
   return [part.type, part.event.type, part.event.createdAt].join(":");
 }
 

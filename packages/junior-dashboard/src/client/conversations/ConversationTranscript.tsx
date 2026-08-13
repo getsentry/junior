@@ -15,6 +15,7 @@ import {
 } from "./TranscriptActivityGroup";
 import { TranscriptToolView } from "./TranscriptToolView";
 import { TranscriptReasoningView } from "./TranscriptReasoningView";
+import { TranscriptAttachmentsDeliveredView } from "./TranscriptAttachmentsDeliveredView";
 import { TranscriptStructuredEventView } from "./TranscriptStructuredEventView";
 import { TranscriptFailureView } from "./TranscriptFailureView";
 import {
@@ -40,6 +41,10 @@ type TranscriptEntry = ReturnType<typeof groupTranscriptMessages>[number];
 type TranscriptContextEntry = Extract<TranscriptEntry, { kind: "context" }>;
 type TranscriptFailureEntry = Extract<TranscriptEntry, { kind: "failure" }>;
 type TranscriptMessageEntry = Extract<TranscriptEntry, { kind: "message" }>;
+type TranscriptAttachmentsDeliveredEntry = Extract<
+  TranscriptEntry,
+  { kind: "attachments_delivered" }
+>;
 type TranscriptStructuredEventEntry = Extract<
   TranscriptEntry,
   { kind: "structured_event" }
@@ -171,6 +176,15 @@ function VisibleTranscriptEntries(props: {
           />
         )
       }
+      renderAttachmentsDelivered={(entry) => (
+        <TranscriptRailEvent kind="attachments_delivered">
+          <TranscriptAttachmentsDeliveredView
+            conversation={props.conversation}
+            part={entry.part}
+            timestamp={entry.timestamp}
+          />
+        </TranscriptRailEvent>
+      )}
       renderStructuredEvent={(entry) => (
         <TranscriptRailEvent
           icon={structuredEventIcon(entry.part.presentation.icon)}
@@ -211,6 +225,9 @@ function VisibleTranscriptEntries(props: {
 function TranscriptEntryList(props: {
   entries: TranscriptEntry[];
   keyPrefix: string;
+  renderAttachmentsDelivered: (
+    entry: TranscriptAttachmentsDeliveredEntry,
+  ) => ReactNode;
   renderContext: (entry: TranscriptContextEntry) => ReactNode;
   renderFailure: (entry: TranscriptFailureEntry) => ReactNode;
   renderMessage: (entry: TranscriptMessageEntry) => ReactNode;
@@ -227,6 +244,9 @@ function TranscriptEntryList(props: {
   const renderEntry = (entry: TranscriptEntry): ReactNode => {
     if (entry.kind === "subagent") return props.renderSubagent(entry);
     if (entry.kind === "context") return props.renderContext(entry);
+    if (entry.kind === "attachments_delivered") {
+      return props.renderAttachmentsDelivered(entry);
+    }
     if (entry.kind === "structured_event") {
       return props.renderStructuredEvent(entry);
     }
@@ -359,6 +379,15 @@ function RedactedTranscriptView(props: {
           />
         )
       }
+      renderAttachmentsDelivered={(entry) => (
+        <TranscriptRailEvent kind="attachments_delivered">
+          <TranscriptAttachmentsDeliveredView
+            conversation={props.conversation}
+            part={entry.part}
+            timestamp={entry.timestamp}
+          />
+        </TranscriptRailEvent>
+      )}
       renderStructuredEvent={(entry) => (
         <TranscriptRailEvent
           icon={structuredEventIcon(entry.part.presentation.icon)}

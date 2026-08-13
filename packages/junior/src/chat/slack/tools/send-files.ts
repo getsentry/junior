@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import { storeAttachments } from "@/chat/attachments/store";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
+import { recordAttachmentsDelivered } from "@/chat/conversations/projection";
+import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { uploadFilesToConversation } from "@/chat/slack/outbound";
 import type { SlackToolContext } from "@/chat/slack/tool-support/context";
@@ -88,7 +90,7 @@ export function createSendFilesTool(
         ),
     }),
     outputSchema: sendFilesResultSchema,
-    execute: async ({ files }) => {
+    execute: async ({ files }, options) => {
       const filesToSend = normalizeFiles(files);
       const activeChannelId = context.sourceChannelId;
       if (!activeChannelId) {
@@ -133,10 +135,27 @@ export function createSendFilesTool(
         files: uploads,
         threadTs,
       });
-      const response: SendFilesResult = {
-        attachment_refs: stored.map((attachment, index) => ({
+      const delivered = stored.map((attachment, index) => {
+        const file = materializedFiles[index]!;
+        return {
           id: attachment.id,
-          name: materializedFiles[index]!.filename,
+          name: file.filename,
+          contentType: file.mimeType,
+          bytes: file.bytes,
+        };
+      });
+      if (attachments && delivered.length > 0) {
+        await recordAttachmentsDelivered({
+          attachments: delivered,
+          conversationId: attachments.conversationId,
+          eventStore: createSqlConversationEventStore(attachments.db),
+          ...(options.toolCallId ? { toolCallId: options.toolCallId } : {}),
+        });
+      }
+      const response: SendFilesResult = {
+        attachment_refs: delivered.map((attachment) => ({
+          id: attachment.id,
+          name: attachment.name,
         })),
       };
       state.setOperationResult(operationKey, response);

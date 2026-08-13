@@ -175,6 +175,14 @@ export function entryMatchesSearch(
     ].some((value) => textContains(value, normalizedQuery));
   }
 
+  if (entry.kind === "attachments_delivered") {
+    return entry.part.attachments.some(
+      (attachment) =>
+        textContains(attachment.name, normalizedQuery) ||
+        textContains(attachment.contentType, normalizedQuery),
+    );
+  }
+
   if (entry.kind === "context") {
     const event = entry.part.event;
     return event.type === "handoff"

@@ -91,6 +91,9 @@ export function activityGroupSummary(
   const structuredCount = entries.filter(
     (entry) => entry.kind === "structured_event",
   ).length;
+  const attachmentsCount = entries.filter(
+    (entry) => entry.kind === "attachments_delivered",
+  ).length;
   const resourceEventCount = entries.filter(
     (entry) => entry.kind === "message",
   ).length;
@@ -113,6 +116,9 @@ export function activityGroupSummary(
       : undefined,
     structuredCount > 0
       ? countLabel(structuredCount, "1 structured event", "structured events")
+      : undefined,
+    attachmentsCount > 0
+      ? countLabel(attachmentsCount, "1 file delivery", "file deliveries")
       : undefined,
     resourceEventCount > 0
       ? countLabel(resourceEventCount, "1 resource event", "resource events")

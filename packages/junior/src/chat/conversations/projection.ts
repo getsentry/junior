@@ -14,6 +14,7 @@ import {
 import type {
   AuthorizationKind,
   ConversationEvent,
+  ConversationEventStore,
 } from "@/chat/conversations/history";
 import type { RepositoryInstructions } from "@/chat/repository-instructions";
 import {
@@ -837,6 +838,41 @@ export async function recordToolExecutionStarted(args: {
         type: "tool_execution_started",
         toolCallId: args.toolCallId,
         toolName: args.toolName,
+      },
+      createdAtMs: args.createdAtMs ?? Date.now(),
+    },
+  ]);
+}
+
+/** Record files delivered for humans without adding them to Pi replay. */
+export async function recordAttachmentsDelivered(args: {
+  attachments: Array<{
+    bytes?: number;
+    contentType: string;
+    id: string;
+    name: string;
+  }>;
+  conversationId: string;
+  createdAtMs?: number;
+  /** Defaults to the process conversation event store. */
+  eventStore?: ConversationEventStore;
+  toolCallId?: string;
+  turnId?: string;
+}): Promise<void> {
+  if (args.attachments.length === 0) return;
+  const eventStore = args.eventStore ?? getConversationEventStore();
+  await eventStore.append(args.conversationId, [
+    {
+      data: {
+        type: "attachments_delivered",
+        attachments: args.attachments.map((attachment) => ({
+          id: attachment.id,
+          name: attachment.name,
+          contentType: attachment.contentType,
+          ...(attachment.bytes !== undefined ? { bytes: attachment.bytes } : {}),
+        })),
+        ...(args.toolCallId ? { toolCallId: args.toolCallId } : {}),
+        ...(args.turnId ? { turnId: args.turnId } : {}),
       },
       createdAtMs: args.createdAtMs ?? Date.now(),
     },

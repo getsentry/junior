@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
+import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { parseSlackChannelId, parseSlackTeamId } from "@/chat/slack/ids";
@@ -124,11 +125,13 @@ function createMaterializeFile(files: Record<string, Buffer> = {}) {
     readSandboxFileUpload(sandbox, input);
 }
 
-async function executeTool<TInput>(tool: any, input: TInput) {
+async function executeTool<
+  TInput,
+>(tool: any, input: TInput, options: { toolCallId?: string } = {}) {
   if (typeof tool?.execute !== "function") {
     throw new Error("tool execute function missing");
   }
-  return await tool.execute(input, {} as any);
+  return await tool.execute(input, options as any);
 }
 
 describe("Slack sendFiles", () => {
@@ -310,9 +313,13 @@ describe("Slack sendFiles", () => {
         },
       );
 
-      const result = await executeTool(tool, {
-        files: [{ path: "/tmp/report.txt" }],
-      });
+      const result = await executeTool(
+        tool,
+        {
+          files: [{ path: "/tmp/report.txt" }],
+        },
+        { toolCallId: "call-send-1" },
+      );
       // Clear in-process tool dedupe so a later call exercises durable reuse.
       const retryTool = createSendFilesTool(
         createContext("attach the report again"),
@@ -326,9 +333,13 @@ describe("Slack sendFiles", () => {
           storage,
         },
       );
-      const retry = await executeTool(retryTool, {
-        files: [{ path: "/tmp/report.txt" }],
-      });
+      const retry = await executeTool(
+        retryTool,
+        {
+          files: [{ path: "/tmp/report.txt" }],
+        },
+        { toolCallId: "call-send-2" },
+      );
 
       const rows = await fixture.sql.db().select().from(juniorAttachments);
       expect(result.attachment_refs).toEqual([
@@ -347,6 +358,30 @@ describe("Slack sendFiles", () => {
       expect(
         getCapturedSlackApiCalls("files.completeUploadExternal"),
       ).toHaveLength(2);
+
+      const history = await createSqlConversationEventStore(
+        fixture.sql,
+      ).loadHistory("conversation-1");
+      const delivered = history.filter(
+        (event) => event.data.type === "attachments_delivered",
+      );
+      expect(delivered).toHaveLength(2);
+      expect(delivered[0]?.data).toMatchObject({
+        type: "attachments_delivered",
+        toolCallId: "call-send-1",
+        attachments: [
+          {
+            id: rows[0]?.id,
+            name: "report.txt",
+            contentType: "text/plain",
+            bytes: Buffer.byteLength("report body"),
+          },
+        ],
+      });
+      expect(delivered[1]?.data).toMatchObject({
+        type: "attachments_delivered",
+        toolCallId: "call-send-2",
+      });
     } finally {
       await fixture.close();
     }

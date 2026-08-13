@@ -230,6 +230,52 @@ describe("conversation report event projection", () => {
     ]);
   });
 
+  it("projects delivered attachments only when payload is visible", () => {
+    const delivered = event(1, {
+      type: "attachments_delivered",
+      attachments: [
+        {
+          id: "att-1",
+          name: "chart.png",
+          contentType: "image/png",
+          bytes: 18211,
+        },
+      ],
+      toolCallId: "call-send-1",
+    });
+
+    expect(
+      projectConversationReportEventPage({
+        canExposePayload: true,
+        events: [delivered],
+      }),
+    ).toEqual([
+      {
+        seq: 1,
+        createdAt: "1970-01-01T00:00:01.000Z",
+        data: {
+          type: "attachments_delivered",
+          attachments: [
+            {
+              id: "att-1",
+              name: "chart.png",
+              contentType: "image/png",
+              bytes: 18211,
+            },
+          ],
+          toolCallId: "call-send-1",
+        },
+      },
+    ]);
+
+    expect(
+      projectConversationReportEventPage({
+        canExposePayload: false,
+        events: [delivered],
+      }),
+    ).toEqual([]);
+  });
+
   it("projects turn input message ids across report pages", () => {
     const events = [
       event(1, {

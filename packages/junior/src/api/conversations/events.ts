@@ -19,6 +19,7 @@ export const conversationReportSourceEventTypes = [
   "turn_started",
   "turn_context",
   "structured_event",
+  "attachments_delivered",
   "turn_routed",
   "turn_completed",
   "turn_failed",
@@ -357,6 +358,16 @@ function reportEventData(args: {
         kind: data.kind,
         version: data.version,
         content: data.content,
+      };
+    case "attachments_delivered":
+      if (!args.canExposePayload) {
+        return undefined;
+      }
+      return {
+        type: "attachments_delivered",
+        attachments: data.attachments,
+        ...(data.toolCallId ? { toolCallId: data.toolCallId } : {}),
+        ...(data.turnId ? { turnId: data.turnId } : {}),
       };
     case "turn_routed":
       return {

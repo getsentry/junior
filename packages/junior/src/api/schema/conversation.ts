@@ -440,6 +440,24 @@ const conversationReportStructuredEventDataSchema = z
   })
   .strict();
 
+const conversationReportDeliveredAttachmentSchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    contentType: z.string().min(1),
+    bytes: z.number().int().nonnegative().optional(),
+  })
+  .strict();
+
+const conversationReportAttachmentsDeliveredEventDataSchema = z
+  .object({
+    type: z.literal("attachments_delivered"),
+    attachments: z.array(conversationReportDeliveredAttachmentSchema).min(1),
+    toolCallId: z.string().min(1).optional(),
+    turnId: z.string().min(1).optional(),
+  })
+  .strict();
+
 const conversationReportCompactionEventDataSchema = z
   .object({
     type: z.literal("compaction"),
@@ -494,6 +512,7 @@ export const conversationReportEventDataSchema = z.discriminatedUnion("type", [
   conversationReportTurnLifecycleEventDataSchema,
   conversationReportTurnContextEventDataSchema,
   conversationReportStructuredEventDataSchema,
+  conversationReportAttachmentsDeliveredEventDataSchema,
   conversationReportTurnRoutedEventDataSchema,
   conversationReportGuardianActionReviewedEventDataSchema,
   conversationReportCompactionEventDataSchema,

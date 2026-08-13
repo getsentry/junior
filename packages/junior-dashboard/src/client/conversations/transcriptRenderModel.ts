@@ -1,4 +1,5 @@
 import type {
+  TranscriptViewAttachmentsDeliveredPart,
   TranscriptViewContextEventPart,
   TranscriptViewMessage,
   TranscriptViewStructuredEventPart,
@@ -12,6 +13,13 @@ export type RenderedFailureEntry = {
   key: string;
   kind: "failure";
   outcome: "error" | "delivery_failed";
+  timestamp?: number;
+};
+
+export type RenderedAttachmentsDeliveredEntry = {
+  key: string;
+  kind: "attachments_delivered";
+  part: TranscriptViewAttachmentsDeliveredPart;
   timestamp?: number;
 };
 
@@ -59,6 +67,7 @@ export type RenderedMessageEntry = {
 };
 
 export type RenderedTranscriptEntry =
+  | RenderedAttachmentsDeliveredEntry
   | RenderedContextEventEntry
   | RenderedFailureEntry
   | RenderedMessageEntry
@@ -124,6 +133,13 @@ export function groupTranscriptMessages(
           part,
           timestamp: message.timestamp,
         });
+      } else if (part.type === "attachments_delivered") {
+        entries.push({
+          key: `${message.sourceSeq}:attachments-delivered`,
+          kind: "attachments_delivered",
+          part,
+          timestamp: message.timestamp,
+        });
       } else {
         entries.push({
           key: `${message.sourceSeq}:context:${partIndex}`,
@@ -170,6 +186,11 @@ export function messageRawText(message: TranscriptViewMessage): string {
           ]),
         ]
           .filter((line): line is string => line !== undefined)
+          .join("\n");
+      }
+      if (part.type === "attachments_delivered") {
+        return part.attachments
+          .map((attachment) => attachment.name)
           .join("\n");
       }
       if (part.event.type !== "handoff") {

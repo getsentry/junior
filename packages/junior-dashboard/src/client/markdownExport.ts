@@ -179,6 +179,22 @@ function appendTranscriptMessages(
       continue;
     }
 
+    if (entry.kind === "attachments_delivered") {
+      const count = entry.part.attachments.length;
+      lines.push(
+        "",
+        `### ${count === 1 ? "1 file delivered" : `${count} files delivered`}`,
+      );
+      addEventMeta(lines, conversationTranscript, entry.timestamp);
+      for (const attachment of entry.part.attachments) {
+        lines.push(
+          "",
+          `- ${attachment.name} (${attachment.contentType}${attachment.bytes !== undefined ? `, ${attachment.bytes} bytes` : ""})`,
+        );
+      }
+      continue;
+    }
+
     appendTool(lines, conversationTranscript, entry.part, entry.timestamp);
   }
 }

@@ -303,6 +303,25 @@ const structuredConversationEventDataSchema = z
   })
   .strict();
 
+const deliveredAttachmentSchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    contentType: z.string().min(1),
+    bytes: z.number().int().nonnegative().optional(),
+  })
+  .strict();
+
+/** Host-owned transcript item for files delivered to humans this turn. */
+const attachmentsDeliveredEventDataSchema = z
+  .object({
+    type: z.literal("attachments_delivered"),
+    attachments: z.array(deliveredAttachmentSchema).min(1),
+    toolCallId: z.string().min(1).optional(),
+    turnId: z.string().min(1).optional(),
+  })
+  .strict();
+
 const turnCompletedEventDataSchema = z
   .object({
     type: z.literal("turn_completed"),
@@ -365,6 +384,7 @@ const appendableConversationEventDataSchema = z.union([
   turnStartedEventDataSchema,
   turnContextEventDataSchema,
   structuredConversationEventDataSchema,
+  attachmentsDeliveredEventDataSchema,
   turnRoutedEventDataSchema,
   turnCompletedEventDataSchema,
   turnFailedEventDataSchema,
@@ -404,6 +424,7 @@ export const KNOWN_CONVERSATION_EVENT_TYPES = [
   "turn_started",
   "turn_context",
   "structured_event",
+  "attachments_delivered",
   "turn_routed",
   "turn_completed",
   "turn_failed",
