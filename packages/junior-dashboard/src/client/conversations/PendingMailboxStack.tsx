@@ -1,4 +1,4 @@
-import type { ReactElement, ReactNode } from "react";
+import { useState, type ReactElement, type ReactNode } from "react";
 import { Clock3, SkipForward, type LucideIcon } from "lucide-react";
 import type { ConversationPendingMessage } from "@sentry/junior/api/schema";
 
@@ -107,32 +107,88 @@ function PendingRow(props: {
   );
 }
 
+function ExpandQueuedMessagesButton(props: {
+  className?: string;
+  expanded: boolean;
+  hiddenCount: number;
+  onClick(): void;
+  totalCount: number;
+}) {
+  const label = props.expanded
+    ? "Show fewer queued messages"
+    : props.hiddenCount > 0
+      ? `${props.hiddenCount} more queued messages`
+      : props.totalCount === 1
+        ? "1 queued message"
+        : `${props.totalCount} queued messages`;
+
+  return (
+    <button
+      aria-expanded={props.expanded}
+      className={
+        props.className ??
+        "w-full cursor-pointer border-0 bg-transparent px-3 py-2 text-left font-sans text-xs font-medium text-amber-100/80 transition-colors hover:text-amber-50 focus-visible:outline focus-visible:outline-1 focus-visible:outline-amber-200/55 md:px-3.5"
+      }
+      onClick={props.onClick}
+      type="button"
+    >
+      {label}
+    </button>
+  );
+}
+
 /** Render accepted mailbox rows as a compact stack attached above the composer. */
 export function PendingMailboxStack(props: {
   conversation: ConversationTranscript;
   messages: readonly ConversationPendingMessage[];
 }): ReactNode {
+  const [expanded, setExpanded] = useState(false);
   const rows = unresolvedPendingTranscriptMessages(
     conversationTranscriptMessages(props.conversation),
     props.messages,
   );
   if (rows.length === 0) return null;
 
-  const countLabel =
-    rows.length === 1 ? "1 queued message" : `${rows.length} queued messages`;
-  const visibleRows =
-    rows.length > MAX_EXPANDED_PENDING_ROWS
-      ? rows.slice(0, COLLAPSED_PENDING_ROW_COUNT)
-      : rows;
-  const collapsedCount = rows.length - visibleRows.length;
+  const canCollapse = rows.length > MAX_EXPANDED_PENDING_ROWS;
+  const showCollapsed = canCollapse && !expanded;
+  const visibleRows = showCollapsed
+    ? rows.slice(0, COLLAPSED_PENDING_ROW_COUNT)
+    : rows;
+  const hiddenCount = Math.max(0, rows.length - COLLAPSED_PENDING_ROW_COUNT);
+  const toggleExpanded = () => setExpanded((value) => !value);
 
   return (
     <div
       aria-label="Pending messages"
       className="mx-2 overflow-hidden rounded-t-lg bg-amber-300/[0.055] md:mx-3"
     >
-      <div className="px-3 py-2 font-sans text-xs font-medium text-amber-100/80 md:hidden">
-        {countLabel}
+      <div className="md:hidden">
+        {showCollapsed ? (
+          <ExpandQueuedMessagesButton
+            expanded={false}
+            hiddenCount={0}
+            onClick={toggleExpanded}
+            totalCount={rows.length}
+          />
+        ) : (
+          <>
+            {visibleRows.map((message, index) => (
+              <PendingRow
+                conversation={props.conversation}
+                key={message.messageId ?? `${message.sourceSeq}:${index}`}
+                message={message}
+              />
+            ))}
+            {canCollapse ? (
+              <ExpandQueuedMessagesButton
+                expanded
+                hiddenCount={hiddenCount}
+                onClick={toggleExpanded}
+                totalCount={rows.length}
+              />
+            ) : null}
+          </>
+        )}
       </div>
       <div className="hidden md:block">
         {visibleRows.map((message, index) => (
@@ -142,10 +198,13 @@ export function PendingMailboxStack(props: {
             message={message}
           />
         ))}
-        {collapsedCount > 0 ? (
-          <div className="px-3 py-2 font-sans text-xs font-medium text-amber-100/70 md:px-3.5">
-            {collapsedCount} more queued messages
-          </div>
+        {canCollapse ? (
+          <ExpandQueuedMessagesButton
+            expanded={expanded}
+            hiddenCount={hiddenCount}
+            onClick={toggleExpanded}
+            totalCount={rows.length}
+          />
         ) : null}
       </div>
     </div>

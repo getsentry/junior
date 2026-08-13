@@ -279,7 +279,26 @@ test("collapses long pending message stacks", async ({ page }) => {
       "Keep the reply in Junior. I will paste the dashboard link next.",
     ),
   ).toBeVisible();
-  await expect(pending.getByText("3 more queued messages")).toBeVisible();
+  const expand = pending.getByRole("button", {
+    name: "3 more queued messages",
+  });
+  await expect(expand).toBeVisible();
+  await expect(expand).toHaveAttribute("aria-expanded", "false");
+  await expect(pending.getByText("Third queued message.")).toBeHidden();
+
+  await expand.click();
+  await expect(
+    pending.getByRole("button", { name: "Show fewer queued messages" }),
+  ).toHaveAttribute("aria-expanded", "true");
+  await expect(pending.getByText("Third queued message.")).toBeVisible();
+  await expect(pending.getByText("Fifth queued message.")).toBeVisible();
+
+  await pending
+    .getByRole("button", { name: "Show fewer queued messages" })
+    .click();
+  await expect(
+    pending.getByRole("button", { name: "3 more queued messages" }),
+  ).toHaveAttribute("aria-expanded", "false");
   await expect(pending.getByText("Third queued message.")).toBeHidden();
 });
 
@@ -335,10 +354,20 @@ test("opens and closes a conversation in the mobile workspace", async ({
 
   const pending = page.getByLabel("Pending messages");
   await expect(pending).toBeVisible();
-  await expect(pending.getByText("5 queued messages")).toBeVisible();
+  const expand = pending.getByRole("button", { name: "5 queued messages" });
+  await expect(expand).toBeVisible();
+  await expect(expand).toHaveAttribute("aria-expanded", "false");
   await expect(
     pending.getByText("Also check the canary traffic from the last deploy."),
   ).toBeHidden();
+
+  await expand.click();
+  await expect(
+    pending.getByText("Also check the canary traffic from the last deploy."),
+  ).toBeVisible();
+  await expect(
+    pending.getByRole("button", { name: "Show fewer queued messages" }),
+  ).toHaveAttribute("aria-expanded", "true");
 
   const composer = page.getByPlaceholder("Message Junior…");
   await expect(composer).toBeVisible();
