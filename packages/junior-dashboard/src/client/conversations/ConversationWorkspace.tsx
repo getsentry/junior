@@ -149,7 +149,6 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
                     ? "Could not create the conversation. Try again."
                     : undefined
                 }
-                pending={createConversation.isPending}
                 onSubmit={async (message, idempotencyKey, visibility) => {
                   const accepted = await createConversation.mutateAsync({
                     idempotencyKey,
@@ -169,7 +168,6 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
 
 function NewConversationView(props: {
   error?: string;
-  pending: boolean;
   onSubmit(
     message: string,
     idempotencyKey: string,
@@ -214,7 +212,6 @@ function NewConversationView(props: {
           draftId="new"
           error={props.error}
           label="Start a conversation"
-          pending={props.pending}
           submitLabel="Send"
           onSubmit={(message, idempotencyKey) =>
             props.onSubmit(message, idempotencyKey, visibility)

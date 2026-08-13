@@ -1,10 +1,16 @@
 import { useState, type ReactElement, type ReactNode } from "react";
-import { Clock3, SkipForward, type LucideIcon } from "lucide-react";
-import type { ConversationPendingMessage } from "@sentry/junior/api/schema";
+import {
+  AlertCircle,
+  Clock3,
+  LoaderCircle,
+  SkipForward,
+  type LucideIcon,
+} from "lucide-react";
 
 import { Tooltip } from "../components/Tooltip";
 import { transcriptMessageActorLabel } from "../format";
 import type { ConversationTranscript, TranscriptViewMessage } from "../types";
+import type { ConversationMailboxMessage } from "./conversationOutbox";
 import {
   TranscriptHeadingMeta,
   TranscriptHeadingRow,
@@ -20,9 +26,15 @@ const MAX_EXPANDED_PENDING_ROWS = 3;
 const COLLAPSED_PENDING_ROW_COUNT = 2;
 
 function pendingDeliveryMeta(
-  delivery: ConversationPendingMessage["delivery"],
-): { icon: LucideIcon; label: string } {
-  if (delivery === "interrupt") {
+  message: Pick<ConversationMailboxMessage, "clientStatus" | "delivery">,
+): { icon: LucideIcon; label: string; spin?: boolean } {
+  if (message.clientStatus === "failed") {
+    return { icon: AlertCircle, label: "Failed to send" };
+  }
+  if (message.clientStatus === "sending") {
+    return { icon: LoaderCircle, label: "Sending", spin: true };
+  }
+  if (message.delivery === "interrupt") {
     return { icon: SkipForward, label: "Interrupt" };
   }
   return { icon: Clock3, label: "Queued" };
@@ -42,10 +54,10 @@ function PendingMetaIcon(props: { children: ReactElement; label: string }) {
 }
 
 function PendingMetaIcons(props: {
-  delivery: ConversationPendingMessage["delivery"];
+  message: ConversationMailboxMessage;
   showSlack: boolean;
 }) {
-  const delivery = pendingDeliveryMeta(props.delivery);
+  const delivery = pendingDeliveryMeta(props.message);
   const DeliveryIcon = delivery.icon;
 
   return (
@@ -58,7 +70,12 @@ function PendingMetaIcons(props: {
         </Tooltip>
       ) : null}
       <PendingMetaIcon label={delivery.label}>
-        <DeliveryIcon aria-hidden="true" size={13} strokeWidth={2.2} />
+        <DeliveryIcon
+          aria-hidden="true"
+          className={delivery.spin ? "animate-spin" : undefined}
+          size={13}
+          strokeWidth={2.2}
+        />
       </PendingMetaIcon>
     </TranscriptHeadingMeta>
   );
@@ -66,22 +83,30 @@ function PendingMetaIcons(props: {
 
 function PendingRow(props: {
   conversation: ConversationTranscript;
-  message: TranscriptViewMessage;
+  message: ConversationMailboxMessage;
+  onRetry?(message: ConversationMailboxMessage): void;
 }) {
-  const textPart = props.message.parts.find((part) => part.type === "text");
-  const redacted = Boolean(
-    textPart && "redacted" in textPart && textPart.redacted,
-  );
-  const text =
-    textPart && "text" in textPart && typeof textPart.text === "string"
-      ? textPart.text
-      : "";
-  const roleLabel = transcriptMessageActorLabel(
-    props.conversation,
-    props.message,
-  );
-  const delivery = props.message.delivery ?? "defer";
-  const showSlack = showsSlackSourceIcon(props.message, props.conversation);
+  const text = props.message.text ?? "";
+  const redacted = Boolean(props.message.redacted);
+  const projected: TranscriptViewMessage = {
+    actorIdentity: props.message.actorIdentity,
+    delivery: props.message.delivery,
+    messageId: props.message.messageId,
+    parts: redacted
+      ? [{ type: "text", redacted: true }]
+      : [{ type: "text", text }],
+    pending: true,
+    role: "user",
+    source: props.message.source,
+    sourceSeq: 0,
+    timestamp: Date.parse(props.message.createdAt),
+  };
+  const roleLabel = transcriptMessageActorLabel(props.conversation, projected);
+  const showSlack = showsSlackSourceIcon(projected, props.conversation);
+  const canRetry =
+    props.message.clientStatus === "failed" &&
+    Boolean(props.message.idempotencyKey) &&
+    Boolean(props.onRetry);
 
   return (
     <article className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 px-3 py-2 text-dashboard-text md:px-3.5">
@@ -92,7 +117,9 @@ function PendingRow(props: {
           </span>
         }
         leftClassName="text-sm leading-snug text-dashboard-text"
-        right={<PendingMetaIcons delivery={delivery} showSlack={showSlack} />}
+        right={
+          <PendingMetaIcons message={props.message} showSlack={showSlack} />
+        }
       />
       {redacted ? (
         <p className="m-0 font-mono text-sm leading-snug text-dashboard-text-muted">
@@ -103,6 +130,20 @@ function PendingRow(props: {
           {text}
         </p>
       )}
+      {canRetry ? (
+        <div className="flex min-w-0 items-center gap-2">
+          <p className="m-0 font-sans text-xs text-red-300/80">
+            Could not send.
+          </p>
+          <button
+            className="cursor-pointer border-0 bg-transparent p-0 font-sans text-xs font-medium text-cyan-200/90 underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55"
+            onClick={() => props.onRetry?.(props.message)}
+            type="button"
+          >
+            Retry
+          </button>
+        </div>
+      ) : null}
     </article>
   );
 }
@@ -145,12 +186,19 @@ function ExpandQueuedMessagesButton(props: {
 /** Render accepted mailbox rows as a compact stack attached above the composer. */
 export function PendingMailboxStack(props: {
   conversation: ConversationTranscript;
-  messages: readonly ConversationPendingMessage[];
+  messages: readonly ConversationMailboxMessage[];
+  onRetry?(message: ConversationMailboxMessage): void;
 }): ReactNode {
   const [expanded, setExpanded] = useState(false);
-  const rows = unresolvedPendingTranscriptMessages(
-    conversationTranscriptMessages(props.conversation),
-    props.messages,
+  const unresolvedIds = new Set(
+    unresolvedPendingTranscriptMessages(
+      conversationTranscriptMessages(props.conversation),
+      props.messages,
+    ).map((message) => message.messageId),
+  );
+  // Preserve mailbox order and clientStatus from the merged source rows.
+  const rows = props.messages.filter((message) =>
+    unresolvedIds.has(message.messageId),
   );
   if (rows.length === 0) return null;
 
@@ -172,8 +220,9 @@ export function PendingMailboxStack(props: {
           {previewRows.map((message, index) => (
             <PendingRow
               conversation={props.conversation}
-              key={message.messageId ?? `${message.sourceSeq}:${index}`}
+              key={message.messageId ?? `${message.inboundMessageId}:${index}`}
               message={message}
+              onRetry={props.onRetry}
             />
           ))}
         </div>
@@ -181,8 +230,9 @@ export function PendingMailboxStack(props: {
         visibleRows.map((message, index) => (
           <PendingRow
             conversation={props.conversation}
-            key={message.messageId ?? `${message.sourceSeq}:${index}`}
+            key={message.messageId ?? `${message.inboundMessageId}:${index}`}
             message={message}
+            onRetry={props.onRetry}
           />
         ))
       )}

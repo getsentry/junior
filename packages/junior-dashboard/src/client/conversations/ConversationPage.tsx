@@ -239,17 +239,18 @@ export function ConversationPage(props: {
               <PendingMailboxStack
                 conversation={detail.data}
                 messages={detail.pendingMessages}
+                onRetry={(message) => {
+                  if (!message.idempotencyKey || !message.text) return;
+                  void appendMessage.mutateAsync({
+                    idempotencyKey: message.idempotencyKey,
+                    message: message.text,
+                  });
+                }}
               />
             ) : null}
             <ConversationComposer
               draftId={conversationId}
-              error={
-                appendMessage.error
-                  ? "Could not send the message. Try again."
-                  : undefined
-              }
               label="Continue this conversation"
-              pending={appendMessage.isPending}
               submitLabel="Send"
               onSubmitStart={() =>
                 setPinRequestVersion((version) => version + 1)

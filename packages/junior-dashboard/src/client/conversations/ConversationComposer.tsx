@@ -45,7 +45,6 @@ export function ConversationComposer(props: {
   draftId: string;
   error?: string;
   label: string;
-  pending: boolean;
   submitLabel: string;
   onSubmit(message: string, idempotencyKey: string): Promise<void>;
   onSubmitStart?: () => void;
@@ -54,7 +53,6 @@ export function ConversationComposer(props: {
   const [draft, setDraft] = useState<ConversationDraft>(() =>
     readStoredDraft(storageKey),
   );
-  const [submitting, setSubmitting] = useState(false);
   const online = useDashboardOnline();
   const message = draft.text;
   const id = useId();
@@ -66,8 +64,8 @@ export function ConversationComposer(props: {
     idempotencyKey: draft.idempotencyKey,
     lastSubmittedText: draft.lastSubmittedText,
   });
+  // Blocks only the same-tick double fire before the cleared draft re-renders.
   const submittingRef = useRef(false);
-  const busy = props.pending || submitting;
 
   useEffect(() => {
     storeDraft(storageKey, draft);
@@ -99,52 +97,35 @@ export function ConversationComposer(props: {
   const submit = async (event?: FormEvent) => {
     event?.preventDefault();
     const text = message.trim();
-    if (!text || !online || busy || submittingRef.current) return;
+    if (!text || !online || submittingRef.current) return;
 
     // Keep the key while the trimmed text matches the last attempt. Edits that
     // return to the same text (typo undo, IME) must not mint a new key or a
     // retry can duplicate a send the server already accepted.
     const attempt = conversationAttemptForSubmit(attemptRef.current, text);
     attemptRef.current = attempt;
-    const submittedDraft: ConversationDraft = {
-      ...attempt,
-      text,
-    };
+    // Clear immediately. Failed sends stay in the mailbox outbox, not here.
+    const nextAttempt = emptyDraft();
     const clearedDraft: ConversationDraft = {
-      ...attempt,
+      ...nextAttempt,
       text: "",
     };
-    // Keep the accepted attempt key while the request runs, but clear the field
-    // at once so the reader can compose the next message.
     draftRef.current = clearedDraft;
     setDraft(clearedDraft);
     storeDraft(storageKey, clearedDraft);
+    attemptRef.current = nextAttempt;
     submittingRef.current = true;
-    setSubmitting(true);
     props.onSubmitStart?.();
     textareaRef.current?.focus({ preventScroll: true });
+    // Release before the network round-trip so the next message can queue.
+    queueMicrotask(() => {
+      submittingRef.current = false;
+    });
 
     try {
       await props.onSubmit(text, attempt.idempotencyKey);
-      const nextAttempt = emptyDraft();
-      const nextDraft: ConversationDraft = {
-        ...nextAttempt,
-        text: draftRef.current.text,
-      };
-      attemptRef.current = nextAttempt;
-      draftRef.current = nextDraft;
-      setDraft(nextDraft);
-      storeDraft(storageKey, nextDraft);
     } catch {
-      // Restore the failed message unless the reader already started the next one.
-      if (!draftRef.current.text) {
-        draftRef.current = submittedDraft;
-        setDraft(submittedDraft);
-        storeDraft(storageKey, submittedDraft);
-      }
-    } finally {
-      submittingRef.current = false;
-      setSubmitting(false);
+      // Parent keeps the failed message in the mailbox queue for retry.
     }
   };
 
@@ -157,20 +138,16 @@ export function ConversationComposer(props: {
 
   return (
     <div className="grid min-w-0 gap-1.5">
-      {!online || props.error || busy ? (
+      {!online || props.error ? (
         <div
           aria-live="polite"
           className={
             !online
               ? "min-w-0 font-mono text-xs leading-relaxed text-amber-100/80"
-              : props.error
-                ? "min-w-0 font-mono text-xs leading-relaxed text-red-300/80"
-                : "min-w-0 font-mono text-xs leading-relaxed text-dashboard-text-muted"
+              : "min-w-0 font-mono text-xs leading-relaxed text-red-300/80"
           }
         >
-          {!online
-            ? "Connect to send. Your draft is saved."
-            : (props.error ?? "Sending message…")}
+          {!online ? "Connect to send. Your draft is saved." : props.error}
         </div>
       ) : null}
       <form
@@ -181,8 +158,7 @@ export function ConversationComposer(props: {
           {props.label}
         </label>
         <textarea
-          className="min-h-11 max-h-28 w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-2.5 font-mono text-sm leading-relaxed text-dashboard-text outline-none placeholder:text-dashboard-text-muted/65 disabled:opacity-60 md:min-h-24 md:max-h-none md:resize-y md:overflow-visible md:px-3.5 md:py-3"
-          aria-disabled={busy}
+          className="min-h-11 max-h-28 w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-2.5 font-mono text-sm leading-relaxed text-dashboard-text outline-none placeholder:text-dashboard-text-muted/65 md:min-h-24 md:max-h-none md:resize-y md:overflow-visible md:px-3.5 md:py-3"
           id={id}
           maxLength={32_000}
           onChange={(event) => {
@@ -204,21 +180,13 @@ export function ConversationComposer(props: {
             Enter to send · Shift+Enter for a new line
           </div>
           <Button
-            aria-label={busy ? "Sending message" : props.submitLabel}
-            disabled={!message.trim() || !online || busy}
-            title={
-              !online
-                ? "Connect to send"
-                : busy
-                  ? "Sending message"
-                  : props.submitLabel
-            }
+            aria-label={props.submitLabel}
+            disabled={!message.trim() || !online}
+            title={!online ? "Connect to send" : props.submitLabel}
             type="submit"
           >
             <Send aria-hidden="true" size={14} />
-            <span className="hidden md:inline">
-              {busy ? "Sending…" : props.submitLabel}
-            </span>
+            <span className="hidden md:inline">{props.submitLabel}</span>
           </Button>
         </div>
       </form>

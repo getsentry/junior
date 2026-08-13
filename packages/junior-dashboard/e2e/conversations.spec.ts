@@ -192,9 +192,18 @@ test("starts and continues conversations from the dashboard", async ({
     });
   });
   await page.route("**/api/conversations/*/messages", async (route) => {
-    continueRequests.push(route.request().postDataJSON());
-    if (continueRequests.length === 1) {
-      await firstContinueHeld;
+    const body = route.request().postDataJSON() as {
+      idempotencyKey: string;
+      message: string;
+    };
+    continueRequests.push(body);
+    // Hold every accept until release so concurrent queue rows stay visible.
+    await firstContinueHeld;
+    if (
+      body.message === "Continue in Junior" &&
+      continueRequests.filter((item) => item.message === "Continue in Junior")
+        .length === 1
+    ) {
       await route.fulfill({
         json: { error: "temporary failure" },
         status: 500,
@@ -204,7 +213,7 @@ test("starts and continues conversations from the dashboard", async ({
     await route.fulfill({
       json: {
         conversationId: "slack:CQA123:1770000000.000100",
-        messageId: "continued-message",
+        messageId: `continued-message-${continueRequests.length}`,
         status: "accepted",
       },
     });
@@ -251,33 +260,35 @@ test("starts and continues conversations from the dashboard", async ({
   const composer = page.getByLabel("Continue this conversation");
   await composer.fill("Continue in Junior");
   await page.getByRole("button", { name: "Send" }).click();
-  await expect(page.getByText("Sending message…")).toBeVisible();
+  const pending = page.getByLabel("Pending messages");
+  await expect(pending.getByText("Continue in Junior")).toBeVisible();
+  await expect(composer).toHaveValue("");
   await expect.poll(() => continueRequests.length).toBe(1);
-  // Playwright serializes locator clicks and waits for enabled, so force a
-  // second submit while the first request is still open.
+  // Distinct messages can queue while an earlier accept is still open.
+  await composer.fill("Second queued message");
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect(pending.getByText("Second queued message")).toBeVisible();
+  await expect.poll(() => continueRequests.length).toBe(2);
+  // Empty-composer double submit must not mint another request.
   await composer.evaluate((element) => {
     element.closest("form")?.requestSubmit();
   });
-  expect(continueRequests).toHaveLength(1);
+  expect(continueRequests).toHaveLength(2);
   releaseFirstContinue?.();
-  await expect(page.getByText("Could not send the message.")).toBeVisible();
+  await expect(pending.getByText("Could not send.")).toBeVisible();
+  await expect(composer).toHaveValue("");
   const failedIdempotencyKey = continueRequests[0]?.idempotencyKey;
   expect(continueRequests[0]?.message).toBe("Continue in Junior");
   expect(failedIdempotencyKey).toBeTruthy();
 
-  await page.reload();
-  const restoredComposer = page.getByLabel("Continue this conversation");
-  await expect(restoredComposer).toHaveValue("Continue in Junior");
-  // Edits that return to the failed text must keep the same key.
-  await restoredComposer.fill("Continue in Junior!");
-  await restoredComposer.fill("Continue in Junior");
   holdDetailRefresh = true;
-  await page.getByRole("button", { name: "Send" }).click();
-  await expect.poll(() => continueRequests.length).toBe(2);
-  expect(continueRequests[1]?.idempotencyKey).toBe(failedIdempotencyKey);
-  // The accepted message clears the composer before background transcript
+  await pending.getByRole("button", { name: "Retry" }).click();
+  await expect.poll(() => continueRequests.length).toBe(3);
+  expect(continueRequests[2]?.idempotencyKey).toBe(failedIdempotencyKey);
+  // The accepted message stays out of the composer before background transcript
   // refreshes finish. A slow read must not make the send look like a UI reload.
-  await expect(restoredComposer).toHaveValue("");
+  await expect(composer).toHaveValue("");
+  await expect(pending.getByText("Continue in Junior")).toBeHidden();
   releaseDetailRefresh?.();
 
   await page.reload();
