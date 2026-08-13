@@ -1,8 +1,9 @@
 # Dashboard visual CI
 
-Deterministic screenshots for dashboard PRs. CI picks scenarios from the
-changed-path rules in `scenarios.ts`, captures them with Playwright against the
-built mock dashboard, and posts one sticky PR comment.
+Deterministic screenshots for dashboard PRs. The standalone
+`Dashboard Visual` workflow picks scenarios from the changed-path rules in
+`scenarios.ts`, captures them with Playwright against the built mock dashboard,
+and posts one sticky PR comment.
 
 ## Local
 
@@ -10,12 +11,24 @@ built mock dashboard, and posts one sticky PR comment.
 # capture scenarios for an explicit list
 pnpm visual:dashboard -- --scenarios conversations,conversation-detail
 
+# capture every registered scenario
+pnpm visual:dashboard -- --all
+
 # capture from a changed-file list (one path per line)
 git diff --name-only origin/main...HEAD > /tmp/changed.txt
 pnpm visual:dashboard -- --changed-file /tmp/changed.txt
 ```
 
 Screenshots land in `.playwright/visual-dashboard/`.
+
+## Force a fuller suite
+
+Default selection is capped (`MAX_VISUAL_SCENARIOS`) so broad diffs stay
+reviewable. Force every registered scenario with any of:
+
+1. PR label `visual:all`
+2. Manual `workflow_dispatch` on `Dashboard Visual` with `all=true`
+3. Local `--all`
 
 ## Adding a scenario
 

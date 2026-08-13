@@ -288,57 +288,6 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:e2e:dashboard
 
-  dashboard-visual:
-    name: visual / dashboard
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-    needs: changes
-    timeout-minutes: 15
-    if: >
-      github.event_name == 'pull_request' &&
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      (needs.changes.outputs.ci == 'true' ||
-       needs.changes.outputs.dashboard == 'true' ||
-       needs.changes.outputs.full == 'true')
-    permissions:
-      contents: write
-      pull-requests: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: List changed files
-        id: changed
-        run: |
-          git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.sha }}" \
-            > /tmp/visual-changed.txt
-          cat /tmp/visual-changed.txt
-          if grep -q '^packages/junior-dashboard/' /tmp/visual-changed.txt; then
-            echo "dashboard=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "dashboard=false" >> "$GITHUB_OUTPUT"
-          fi
-      - uses: ./.github/actions/setup-node-pnpm
-        if: steps.changed.outputs.dashboard == 'true'
-      - run: pnpm exec playwright install --with-deps chromium
-        if: steps.changed.outputs.dashboard == 'true'
-      - name: Capture screenshots
-        if: steps.changed.outputs.dashboard == 'true'
-        run: pnpm visual:dashboard -- --changed-file /tmp/visual-changed.txt --out-dir .playwright/visual-dashboard
-      - name: Upload visual artifacts
-        if: steps.changed.outputs.dashboard == 'true' && always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: dashboard-visual-${{ github.event.pull_request.number }}
-          path: .playwright/visual-dashboard
-          if-no-files-found: warn
-          retention-days: 14
-      - name: Comment screenshots on PR
-        if: steps.changed.outputs.dashboard == 'true' && success()
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: node packages/junior-dashboard/visual/post-pr-comment.mjs .playwright/visual-dashboard
-
   build-packages:
     name: build / packages
     runs-on: blacksmith-4vcpu-ubuntu-2404
@@ -434,7 +383,6 @@ jobs:
       - plugin-tests
       - dashboard-tests
       - dashboard-e2e
-      - dashboard-visual
       - build-packages
       - build-example
       - docs-check
@@ -459,7 +407,6 @@ jobs:
             "${{ needs.plugin-tests.result }}" \
             "${{ needs.dashboard-tests.result }}" \
             "${{ needs.dashboard-e2e.result }}" \
-            "${{ needs.dashboard-visual.result }}" \
             "${{ needs.build-packages.result }}" \
             "${{ needs.build-example.result }}" \
             "${{ needs.docs-check.result }}" \

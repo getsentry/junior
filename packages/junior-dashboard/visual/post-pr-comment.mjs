@@ -73,10 +73,18 @@ function buildBody(manifest, imageBaseUrl) {
     })
     .join("\n");
 
+  const modeLine =
+    manifest.mode === "all"
+      ? "Mode: full suite (`visual:all` / `--all`)"
+      : manifest.mode === "explicit"
+        ? "Mode: explicit scenario list"
+        : "Mode: path-selected";
+
   return [
     MARKER,
     "## Dashboard visual evidence",
     "",
+    modeLine,
     `Selected: \`${manifest.scenarioIds.join("`, `")}\``,
     "",
     "Triggered by:",

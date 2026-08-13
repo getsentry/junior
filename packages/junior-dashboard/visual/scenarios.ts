@@ -142,11 +142,23 @@ const PATH_RULES: PathRule[] = [
 /** Hard cap so broad CSS/layout diffs stay reviewable. */
 export const MAX_VISUAL_SCENARIOS = 4;
 
+/** PR label that forces every registered scenario. */
+export const VISUAL_ALL_LABEL = "visual:all";
+
+/** Return every registered scenario id in registry order. */
+export function allVisualScenarioIds(): string[] {
+  return VISUAL_SCENARIOS.map((scenario) => scenario.id);
+}
+
 /** Pick scenario ids for the changed paths. Empty means skip visual CI. */
 export function selectVisualScenarioIds(
   changedPaths: readonly string[],
-  options: { max?: number } = {},
+  options: { all?: boolean; max?: number } = {},
 ): string[] {
+  if (options.all) {
+    return allVisualScenarioIds();
+  }
+
   const max = options.max ?? MAX_VISUAL_SCENARIOS;
   const selected = new Set<string>();
 

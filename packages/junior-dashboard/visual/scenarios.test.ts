@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  allVisualScenarioIds,
   MAX_VISUAL_SCENARIOS,
   resolveVisualScenarios,
   selectVisualScenarioIds,
@@ -59,6 +60,13 @@ describe("selectVisualScenarioIds", () => {
       "system",
       "memories",
     ]);
+  });
+
+  it("returns the full registry when all is forced", () => {
+    expect(selectVisualScenarioIds([], { all: true })).toEqual(
+      allVisualScenarioIds(),
+    );
+    expect(allVisualScenarioIds().length).toBeGreaterThan(MAX_VISUAL_SCENARIOS);
   });
 });
 

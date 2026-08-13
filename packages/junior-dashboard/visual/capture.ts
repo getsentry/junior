@@ -27,6 +27,7 @@ type CaptureShot = {
 
 type CaptureManifest = {
   commitSha: string | null;
+  mode: "all" | "explicit" | "path";
   reasons: string[];
   scenarioIds: string[];
   shots: CaptureShot[];
@@ -34,12 +35,17 @@ type CaptureManifest = {
 };
 
 function parseArgs(argv: string[]) {
+  let all = false;
   let changedFile: string | undefined;
   let outDir = DEFAULT_OUT_DIR;
   let scenarioCsv: string | undefined;
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
+    if (arg === "--all") {
+      all = true;
+      continue;
+    }
     if (arg === "--changed-file") {
       changedFile = argv[++i];
       continue;
@@ -55,7 +61,7 @@ function parseArgs(argv: string[]) {
     throw new Error(`Unknown argument: ${arg}`);
   }
 
-  return { changedFile, outDir, scenarioCsv };
+  return { all, changedFile, outDir, scenarioCsv };
 }
 
 async function readChangedPaths(changedFile: string | undefined) {
@@ -119,18 +125,25 @@ async function captureScenario(options: {
 }
 
 async function main() {
-  const { changedFile, outDir, scenarioCsv } = parseArgs(process.argv.slice(2));
-  const changedPaths = await readChangedPaths(changedFile);
-  const scenarioIds = scenarioCsv
-    ? scenarioCsv
-        .split(",")
-        .map((value) => value.trim())
-        .filter(Boolean)
-    : selectVisualScenarioIds(changedPaths);
-
-  const reasons = changedPaths.filter((filePath) =>
-    filePath.replaceAll("\\", "/").startsWith("packages/junior-dashboard/"),
+  const { all, changedFile, outDir, scenarioCsv } = parseArgs(
+    process.argv.slice(2),
   );
+  const changedPaths = await readChangedPaths(changedFile);
+  const mode = all ? "all" : scenarioCsv ? "explicit" : "path";
+  const scenarioIds = all
+    ? selectVisualScenarioIds(changedPaths, { all: true })
+    : scenarioCsv
+      ? scenarioCsv
+          .split(",")
+          .map((value) => value.trim())
+          .filter(Boolean)
+      : selectVisualScenarioIds(changedPaths);
+
+  const reasons = all
+    ? ["forced full suite (--all or visual:all)"]
+    : changedPaths.filter((filePath) =>
+        filePath.replaceAll("\\", "/").startsWith("packages/junior-dashboard/"),
+      );
 
   await fs.rm(outDir, { force: true, recursive: true });
   await fs.mkdir(outDir, { recursive: true });
@@ -138,6 +151,7 @@ async function main() {
   if (scenarioIds.length === 0) {
     const empty: CaptureManifest = {
       commitSha: process.env.GITHUB_SHA ?? null,
+      mode,
       reasons,
       scenarioIds: [],
       shots: [],
@@ -179,6 +193,7 @@ async function main() {
 
   const manifest: CaptureManifest = {
     commitSha: process.env.GITHUB_SHA ?? null,
+    mode,
     reasons: reasons.slice(0, 20),
     scenarioIds,
     shots,

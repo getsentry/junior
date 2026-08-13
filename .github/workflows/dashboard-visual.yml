@@ -1,0 +1,134 @@
+name: Dashboard Visual
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+    paths:
+      - "packages/junior-dashboard/**"
+      - ".github/workflows/dashboard-visual.yml"
+      - "package.json"
+      - "pnpm-lock.yaml"
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number to comment on
+        required: true
+        type: string
+      all:
+        description: Capture every registered scenario
+        required: false
+        default: true
+        type: boolean
+
+concurrency:
+  group: dashboard-visual-${{ github.event.pull_request.number || inputs.pr_number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dashboard-visual:
+    name: visual / dashboard
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 20
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.full_name == github.repository
+      )
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/pull/{0}/head', inputs.pr_number) || github.sha }}
+
+      - name: Resolve run mode
+        id: mode
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          FORCE_ALL_INPUT: ${{ inputs.all }}
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          PR_NUMBER_INPUT: ${{ inputs.pr_number }}
+          PR_NUMBER_EVENT: ${{ github.event.pull_request.number }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            echo "pr_number=$PR_NUMBER_INPUT" >> "$GITHUB_OUTPUT"
+            if [[ "$FORCE_ALL_INPUT" == "true" ]]; then
+              echo "all=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "all=false" >> "$GITHUB_OUTPUT"
+            fi
+            : > /tmp/visual-changed.txt
+          else
+            echo "pr_number=$PR_NUMBER_EVENT" >> "$GITHUB_OUTPUT"
+            if [[ ",$PR_LABELS," == *",visual:all,"* ]]; then
+              echo "all=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "all=false" >> "$GITHUB_OUTPUT"
+            fi
+            git diff --name-only "$BASE_SHA" "$HEAD_SHA" > /tmp/visual-changed.txt
+          fi
+
+          cat /tmp/visual-changed.txt
+
+          if [[ -s /tmp/visual-changed.txt ]] && grep -q '^packages/junior-dashboard/' /tmp/visual-changed.txt; then
+            has_dashboard=true
+          else
+            has_dashboard=false
+          fi
+
+          # Always run when forced; otherwise only when dashboard paths changed.
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            # Manual path mode with no changed files is empty; default dispatch is all=true.
+            if [[ "$FORCE_ALL_INPUT" == "true" || "$has_dashboard" == "true" ]]; then
+              echo "run=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "run=false" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            if [[ ",$PR_LABELS," == *",visual:all,"* || "$has_dashboard" == "true" ]]; then
+              echo "run=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "run=false" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+      - uses: ./.github/actions/setup-node-pnpm
+        if: steps.mode.outputs.run == 'true'
+
+      - run: pnpm exec playwright install --with-deps chromium
+        if: steps.mode.outputs.run == 'true'
+
+      - name: Capture screenshots
+        if: steps.mode.outputs.run == 'true'
+        env:
+          ALL: ${{ steps.mode.outputs.all }}
+        run: |
+          set -euo pipefail
+          args=(--changed-file /tmp/visual-changed.txt --out-dir .playwright/visual-dashboard)
+          if [[ "$ALL" == "true" ]]; then
+            args+=(--all)
+          fi
+          pnpm visual:dashboard -- "${args[@]}"
+
+      - name: Upload visual artifacts
+        if: steps.mode.outputs.run == 'true' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-visual-${{ steps.mode.outputs.pr_number }}
+          path: .playwright/visual-dashboard
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Comment screenshots on PR
+        if: steps.mode.outputs.run == 'true' && success()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.mode.outputs.pr_number }}
+        run: node packages/junior-dashboard/visual/post-pr-comment.mjs .playwright/visual-dashboard

@@ -49,9 +49,10 @@ component integration without standing in for browser E2E.
 Run `JUNIOR_DASHBOARD_COMPONENT_GALLERY=true pnpm dev` from the repository root
 and open `/dev` to inspect the typed component fixtures.
 
-PR visual evidence lives in `visual/`. CI selects scenarios from changed paths,
-captures screenshots against the mock dashboard, and posts one sticky comment.
-See `visual/README.md`.
+PR visual evidence lives in `visual/` and the standalone `Dashboard Visual`
+workflow. CI selects scenarios from changed paths, captures screenshots against
+the mock dashboard, and posts one sticky comment. Add the `visual:all` label to
+force every registered scenario. See `visual/README.md`.
 
 ## Type scale
 
