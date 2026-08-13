@@ -109,8 +109,10 @@ function ProfilePluginReport(props: {
 function metricToneClass(
   tone: "danger" | "good" | "neutral" | "warning" | undefined,
 ): string | undefined {
-  if (tone === "danger") return "text-rose-200";
-  if (tone === "good") return "text-emerald-200";
-  if (tone === "warning") return "text-amber-200";
+  // Match system PluginReports: tone is an inset accent, not text color.
+  // Child value/label classes own text color and would override parent text-*.
+  if (tone === "danger") return "shadow-[inset_0_2px_0_rgba(251,113,133,0.65)]";
+  if (tone === "warning") return "shadow-[inset_0_2px_0_rgba(251,191,36,0.65)]";
+  if (tone === "good") return "shadow-[inset_0_2px_0_rgba(110,231,183,0.55)]";
   return undefined;
 }
