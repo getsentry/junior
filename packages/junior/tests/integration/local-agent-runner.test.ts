@@ -74,11 +74,7 @@ function assistantPiMessage(text: string, timestamp = 1): AssistantMessage {
 
 function successReply(
   text: string,
-  options: Partial<
-    Pick<AgentRunResult, "piMessages"> & {
-      toolCalls: string[];
-    }
-  > = {},
+  options: Partial<Pick<AgentRunResult, "piMessages">> = {},
 ): AgentRunResult {
   return {
     text,
@@ -87,7 +83,7 @@ function successReply(
       assistantMessageCount: 1,
       modelId: "fake-local-agent",
       outcome: "success",
-      toolCalls: options.toolCalls ?? [],
+      toolCalls: [],
       toolErrorCount: 0,
       toolResultCount: 0,
       usedPrimaryText: true,
@@ -541,40 +537,23 @@ describe("local agent runner", () => {
     });
     expect(conversationId).toBeDefined();
 
-    const generateReply = vi.fn<AgentRunner["run"]>(async (request) => {
-      const context = request;
-
-      await context.onEvent?.({
-        type: "tool_started",
-        params: { content: "The actor prefers short updates." },
-        toolCallId: "tool-call-1",
-        toolName: "createMemory",
-      });
-      await context.onEvent?.({
-        type: "tool_finished",
-        report: {
-          ok: true,
-          params: { content: "The actor prefers short updates." },
-          result: { ok: true },
-          toolCallId: "tool-call-1",
-          toolName: "createMemory",
-        },
-      });
-      return completedAgentRun(
-        successReply("saved", { toolCalls: ["createMemory"] }),
-      );
-    });
+    const agentRunner = createModelAgentRunnerForRun(() =>
+      createModelStream([
+        { type: "toolCall", name: "systemTime", arguments: {} },
+        { type: "text", text: "Time checked." },
+      ]),
+    );
     const invocations: LocalToolInvocation[] = [];
     const results: LocalToolResult[] = [];
 
     await runLocalAgentTurn(
       {
         conversationId: conversationId!,
-        message: "remember this",
+        message: "check the current time",
       },
       {
         deliverReply: async () => undefined,
-        agentRunner: { run: generateReply },
+        agentRunner,
         onToolInvocation: async (invocation) => {
           invocations.push(invocation);
         },
@@ -586,19 +565,24 @@ describe("local agent runner", () => {
 
     expect(invocations).toEqual([
       {
-        toolName: "createMemory",
-        params: { content: "The actor prefers short updates." },
+        toolName: "systemTime",
+        params: {},
       },
     ]);
-    expect(results).toEqual([
-      {
-        ok: true,
-        toolCallId: "tool-call-1",
-        toolName: "createMemory",
-        params: { content: "The actor prefers short updates." },
-        result: { ok: true },
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({
+      ok: true,
+      toolCallId: expect.any(String),
+      toolName: "systemTime",
+      params: {},
+      result: {
+        unix_ms: expect.any(Number),
+        iso_utc: expect.any(String),
+        iso_local: expect.any(String),
+        timezone: null,
+        timezone_offset_minutes: expect.any(Number),
       },
-    ]);
+    });
   });
 
   it("runs plugin tasks inline after completed local turns", async () => {
