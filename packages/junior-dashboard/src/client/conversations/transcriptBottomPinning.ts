@@ -111,7 +111,9 @@ export function transcriptFollowIntent(input: {
     return "pause";
   }
 
-  if (isNearScrollBottom(input.snapshot)) return "follow";
+  if (input.source === "scroll" && isNearScrollBottom(input.snapshot)) {
+    return "follow";
+  }
   return "preserve";
 }
 
@@ -345,7 +347,13 @@ export function usePinnedTranscriptBottom(input: {
     const wasInitialized = initializedRef.current;
     if (!initializedRef.current) {
       initializedRef.current = true;
-      measurePosition("measure");
+    }
+
+    if (input.enabled && !wasEnabled) {
+      const root = scrollRootFor(contentElementRef.current);
+      if (root) {
+        setFollowingIntent(isNearScrollBottom(scrollSnapshot(root)));
+      }
     }
 
     if (
@@ -362,7 +370,7 @@ export function usePinnedTranscriptBottom(input: {
     if (input.enabled && wasInitialized) {
       setHasPendingUpdate(true);
     }
-  }, [input.enabled, input.version, measurePosition, scrollToBottom]);
+  }, [input.enabled, input.version, scrollToBottom, setFollowingIntent]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -496,12 +504,7 @@ function scrollRootFor(element: HTMLElement | null): ScrollRoot | null {
   let current = element.parentElement;
   while (current && current !== document.body) {
     const style = window.getComputedStyle(current);
-    if (
-      /(auto|scroll|overlay)/.test(style.overflowY) &&
-      current.scrollHeight > current.clientHeight
-    ) {
-      return current;
-    }
+    if (/(auto|scroll|overlay)/.test(style.overflowY)) return current;
     current = current.parentElement;
   }
 

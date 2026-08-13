@@ -253,6 +253,34 @@ describe("transcript bottom pinning", () => {
     ).toBe(false);
   });
 
+  it("does not resume follow from a layout measurement alone", () => {
+    expect(
+      transcriptFollowIntent({
+        previousScrollTop: 1_000,
+        snapshot: {
+          clientHeight: 800,
+          scrollHeight: 2_000,
+          scrollTop: 1_112,
+        },
+        source: "measure",
+      }),
+    ).toBe("preserve");
+  });
+
+  it("resumes follow when the reader scrolls to the bottom", () => {
+    expect(
+      transcriptFollowIntent({
+        previousScrollTop: 1_000,
+        snapshot: {
+          clientHeight: 800,
+          scrollHeight: 2_000,
+          scrollTop: 1_112,
+        },
+        source: "scroll",
+      }),
+    ).toBe("follow");
+  });
+
   it("pauses follow when the reader scrolls up inside bottom slack", () => {
     expect(
       transcriptFollowIntent({

@@ -131,15 +131,9 @@ function hasLiveActivity(entries: RenderedTranscriptEntry[]): boolean {
   });
 }
 
-/**
- * Open only while tools/subagents are live, or when the user forced it open.
- * Completed historical activity stays collapsed so messages stay primary.
- */
-export function activityGroupOpen(args: {
-  hasLiveActivity: boolean;
-  userOpen: boolean | null;
-}): boolean {
-  return args.userOpen ?? args.hasLiveActivity;
+/** Keep activity collapsed until the reader explicitly opens it. */
+export function activityGroupOpen(userOpen: boolean | null): boolean {
+  return userOpen ?? false;
 }
 
 /** Collapse completed non-message activity so chat messages stay primary. */
@@ -160,10 +154,7 @@ export function TranscriptActivityGroup(props: {
     return <div className="grid min-w-0 gap-1">{rows}</div>;
   }
 
-  const open = activityGroupOpen({
-    hasLiveActivity: live,
-    userOpen,
-  });
+  const open = activityGroupOpen(userOpen);
 
   return (
     <details className="group/activity-run min-w-0" open={open}>
