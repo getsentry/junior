@@ -1,0 +1,82 @@
+{
+  "commitSha": "dfe03fce7e6042995b887b9d4afdadc7b8a4dd36",
+  "mode": "all",
+  "reasons": [
+    "forced full suite (--all or trigger-visual)"
+  ],
+  "scenarioIds": [
+    "conversations",
+    "conversation-detail",
+    "system",
+    "memories",
+    "settings",
+    "component-gallery"
+  ],
+  "shots": [
+    {
+      "file": "conversations__desktop.png",
+      "label": "Conversations · desktop",
+      "ready": "Conversations",
+      "scenarioId": "conversations",
+      "url": "/",
+      "viewport": "desktop"
+    },
+    {
+      "file": "conversations__mobile.png",
+      "label": "Conversations · mobile",
+      "ready": "Conversations",
+      "scenarioId": "conversations",
+      "url": "/",
+      "viewport": "mobile"
+    },
+    {
+      "file": "conversation-detail__desktop.png",
+      "label": "Conversation detail · desktop",
+      "ready": "Investigate checkout latency",
+      "scenarioId": "conversation-detail",
+      "url": "/conversations/slack%3ACQA123%3A1770003600.000200",
+      "viewport": "desktop"
+    },
+    {
+      "file": "conversation-detail__mobile.png",
+      "label": "Conversation detail · mobile",
+      "ready": "Investigate checkout latency",
+      "scenarioId": "conversation-detail",
+      "url": "/conversations/slack%3ACQA123%3A1770003600.000200",
+      "viewport": "mobile"
+    },
+    {
+      "file": "system__desktop.png",
+      "label": "System · desktop",
+      "ready": "Model spend",
+      "scenarioId": "system",
+      "url": "/system",
+      "viewport": "desktop"
+    },
+    {
+      "file": "memories__desktop.png",
+      "label": "Memories · desktop",
+      "ready": "Memories",
+      "scenarioId": "memories",
+      "url": "/memories",
+      "viewport": "desktop"
+    },
+    {
+      "file": "settings__desktop.png",
+      "label": "Settings · desktop",
+      "ready": "Settings",
+      "scenarioId": "settings",
+      "url": "/settings",
+      "viewport": "desktop"
+    },
+    {
+      "file": "component-gallery__desktop.png",
+      "label": "Component gallery · desktop",
+      "ready": "Component gallery",
+      "scenarioId": "component-gallery",
+      "url": "/dev",
+      "viewport": "desktop"
+    }
+  ],
+  "skipped": false
+}
