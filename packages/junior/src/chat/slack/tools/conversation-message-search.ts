@@ -43,6 +43,20 @@ const conversationMessageSearchOutputSchema = juniorToolOutputSchema.extend({
   ),
 });
 
+function parseActivityTimestamp(
+  field: "active_after" | "active_before",
+  value: string | null | undefined,
+): number | undefined {
+  if (value == null || value.trim() === "") {
+    return undefined;
+  }
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) {
+    throw new ToolInputError(`${field} must be a valid ISO-8601 timestamp`);
+  }
+  return parsed;
+}
+
 async function resolveSearchFilters(input: {
   active_after?: string | null;
   active_before?: string | null;
@@ -54,12 +68,14 @@ async function resolveSearchFilters(input: {
   const query = input.query?.trim() || undefined;
   const annotationKeyPrefix = input.annotation_key_prefix?.trim() || undefined;
   const annotationPlugin = input.annotation_plugin?.trim() || undefined;
-  const activeAfterMs = input.active_after
-    ? Date.parse(input.active_after)
-    : undefined;
-  const activeBeforeMs = input.active_before
-    ? Date.parse(input.active_before)
-    : undefined;
+  const activeAfterMs = parseActivityTimestamp(
+    "active_after",
+    input.active_after,
+  );
+  const activeBeforeMs = parseActivityTimestamp(
+    "active_before",
+    input.active_before,
+  );
   let channelId: string | undefined;
 
   if (input.channel_id != null && input.channel_id.trim() !== "") {

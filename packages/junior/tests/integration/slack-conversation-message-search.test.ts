@@ -139,5 +139,17 @@ describe("searchConversationMessages", () => {
         limit: null,
       }),
     ).rejects.toBeInstanceOf(ToolInputError);
+
+    await expect(
+      executeTool(tool, {
+        active_after: "2024-13-01T00:00:00.000Z",
+        active_before: null,
+        annotation_key_prefix: null,
+        annotation_plugin: null,
+        channel_id: "CARCHIVE",
+        query: null,
+        limit: null,
+      }),
+    ).rejects.toBeInstanceOf(ToolInputError);
   });
 });

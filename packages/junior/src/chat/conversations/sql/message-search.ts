@@ -3,7 +3,6 @@ import {
   desc,
   eq,
   gte,
-  ilike,
   isNull,
   lt,
   ne,
@@ -25,10 +24,6 @@ import type {
 } from "../message-search";
 
 const EXCERPT_WITHOUT_QUERY_CHARS = 240;
-
-function escapeLikePrefix(value: string): string {
-  return value.replace(/[\\%_]/g, "\\$&");
-}
 
 class SqlConversationMessageSearchStore implements ConversationMessageSearchStore {
   constructor(private readonly executor: JuniorSqlDatabase) {}
@@ -76,7 +71,10 @@ class SqlConversationMessageSearchStore implements ConversationMessageSearchStor
         eq(juniorDestinations.providerDestinationId, args.filters.channelId),
       );
     }
-    if (args.filters.activeAfterMs !== undefined) {
+    if (
+      args.filters.activeAfterMs !== undefined &&
+      Number.isFinite(args.filters.activeAfterMs)
+    ) {
       conditions.push(
         gte(
           juniorConversations.lastActivityAt,
@@ -84,7 +82,10 @@ class SqlConversationMessageSearchStore implements ConversationMessageSearchStor
         ),
       );
     }
-    if (args.filters.activeBeforeMs !== undefined) {
+    if (
+      args.filters.activeBeforeMs !== undefined &&
+      Number.isFinite(args.filters.activeBeforeMs)
+    ) {
       conditions.push(
         lt(
           juniorConversations.lastActivityAt,
@@ -93,15 +94,14 @@ class SqlConversationMessageSearchStore implements ConversationMessageSearchStor
       );
     }
     if (args.filters.annotationKeyPrefix) {
+      const annotationKeyPrefix = args.filters.annotationKeyPrefix.toLowerCase();
       const annotationConditions: SQL[] = [
         eq(
           juniorConversationAnnotations.conversationId,
           juniorConversations.conversationId,
         ),
-        ilike(
-          juniorConversationAnnotations.key,
-          `${escapeLikePrefix(args.filters.annotationKeyPrefix)}%`,
-        ),
+        // Prefix match avoids LIKE wildcards in plugin-owned annotation keys.
+        sql`starts_with(lower(${juniorConversationAnnotations.key}), ${annotationKeyPrefix})`,
       ];
       if (args.filters.annotationPlugin) {
         annotationConditions.push(

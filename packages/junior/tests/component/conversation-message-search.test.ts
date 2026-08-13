@@ -168,9 +168,9 @@ describe("conversation message search", () => {
         plugin: "code-host",
       }).upsert({
         kind: "resource_link",
-        key: "acme/widget#1234",
-        label: "acme/widget#1234",
-        url: "https://code.example/acme/widget/changes/1234",
+        key: "acme/widget_v2#1234",
+        label: "acme/widget_v2#1234",
+        url: "https://code.example/acme/widget_v2/changes/1234",
       });
       await createPluginAnnotations({
         conversationId: "slack:CREQUEST:1700000000.200000",
@@ -178,9 +178,9 @@ describe("conversation message search", () => {
         plugin: "code-host",
       }).upsert({
         kind: "resource_link",
-        key: "acme/other#9",
-        label: "acme/other#9",
-        url: "https://code.example/acme/other/issues/9",
+        key: "acme/widgetX#9",
+        label: "acme/widgetX#9",
+        url: "https://code.example/acme/widgetX/issues/9",
       });
 
       const annotated = await search.search({
@@ -188,7 +188,7 @@ describe("conversation message search", () => {
         filters: {
           activeAfterMs: 1_749_999_999_000,
           activeBeforeMs: 1_750_000_001_000,
-          annotationKeyPrefix: "ACME/WIDGET",
+          annotationKeyPrefix: "ACME/WIDGET_V2",
           annotationPlugin: "code-host",
         },
         limit: 10,
