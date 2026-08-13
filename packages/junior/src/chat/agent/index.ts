@@ -1746,53 +1746,29 @@ async function executeAgentRunInPrivacyContext(
       throw error;
     }
 
-    // Guardian review-limit stops are expected control flow after repeated
-    // denials. Return execution_failure without logException; delivery owns
-    // the warn log and user-visible stop text without opening a Sentry issue.
-    if (error instanceof ToolActionReviewLimitError) {
-      return {
-        status: "completed",
-        result: {
-          text: "",
-          sandboxRef: lastKnownSandboxRef,
-          diagnostics: {
-            outcome: "execution_failure",
-            modelId: activeModelId,
-            assistantMessageCount: 0,
-            ...(turnRoute
-              ? {
-                  reasoningLevel: turnRoute.reasoningLevel,
-                }
-              : {}),
-            toolCalls: [],
-            toolResultCount: 0,
-            toolErrorCount: 0,
-            usedPrimaryText: false,
-            durationMs: Date.now() - replyStartedAtMs,
-            errorMessage: error.message,
-            providerError: error,
-          },
-        },
-      };
+    // Review-limit stops are expected control flow after repeated denials.
+    // Skip Sentry capture here; delivery finalization owns the warn log and
+    // user-visible stop text.
+    const message = error instanceof Error ? error.message : String(error);
+    const isActionReviewLimit = error instanceof ToolActionReviewLimitError;
+    if (!isActionReviewLimit) {
+      const providerError = findProviderError(error);
+      logException(
+        error,
+        "assistant.reply.generation.failed",
+        providerError ? getProviderErrorAttributes(providerError) : {},
+      );
     }
-
-    const providerError = findProviderError(error);
-    logException(
-      error,
-      "assistant.reply.generation.failed",
-      providerError ? getProviderErrorAttributes(providerError) : {},
-    );
 
     // Raw exception text is diagnostics-only; the failure-response service
     // owns the sanitized user-visible fallback for empty provider errors.
-    const message = error instanceof Error ? error.message : String(error);
     return {
       status: "completed",
       result: {
         text: "",
         sandboxRef: lastKnownSandboxRef,
         diagnostics: {
-          outcome: "provider_error",
+          outcome: isActionReviewLimit ? "execution_failure" : "provider_error",
           modelId: activeModelId,
           assistantMessageCount: 0,
           ...(turnRoute
@@ -1806,7 +1782,7 @@ async function executeAgentRunInPrivacyContext(
           usedPrimaryText: false,
           durationMs: Date.now() - replyStartedAtMs,
           errorMessage: message,
-          providerError: error,
+          ...(!isActionReviewLimit ? { providerError: error } : {}),
         },
       },
     };
