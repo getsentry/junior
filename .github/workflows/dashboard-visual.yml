@@ -86,19 +86,47 @@ jobs:
         if: steps.mode.outputs.run == 'true'
         env:
           ALL: ${{ steps.mode.outputs.all }}
-          PR_NUMBER: ${{ steps.mode.outputs.pr_number }}
         run: |
           set -euo pipefail
-          out_dir=.playwright/visual-dashboard
-          args=(--changed-file /tmp/visual-changed.txt --out-dir "$out_dir")
+          args=(
+            --changed-file /tmp/visual-changed.txt
+            --out-dir .playwright/visual-dashboard
+          )
           if [[ "$ALL" == "true" ]]; then
             args+=(--all)
           fi
           pnpm run visual:dashboard -- "${args[@]}"
-          printf '%s\n' "$PR_NUMBER" > "$out_dir/pr-number.txt"
+
+      # Keep a skipped manifest when capture is a no-op so the trusted comment
+      # job can clear a stale sticky PR comment.
+      - name: Write skipped visual manifest
+        if: steps.mode.outputs.run != 'true'
+        env:
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p .playwright/visual-dashboard
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          Path(".playwright/visual-dashboard/manifest.json").write_text(
+              json.dumps(
+                  {
+                      "commitSha": os.environ["HEAD_SHA"],
+                      "mode": "path",
+                      "reasons": [],
+                      "scenarioIds": [],
+                      "shots": [],
+                      "skipped": True,
+                  },
+                  indent=2,
+              )
+              + "\n"
+          )
+          PY
 
       - name: Upload visual artifacts
-        if: steps.mode.outputs.run == 'true' && always()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: dashboard-visual

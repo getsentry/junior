@@ -182,16 +182,18 @@ function main() {
   }
 
   const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-  if (manifest.skipped || manifest.shots.length === 0) {
-    console.log("no dashboard visual scenarios selected; skipping PR comment");
-    return;
+  const hasShots = !manifest.skipped && manifest.shots.length > 0;
+  if (hasShots) {
+    publishImages(outDir, branch, commitSha);
   }
-
-  publishImages(outDir, branch, commitSha);
   const imageBaseUrl = `https://raw.githubusercontent.com/${repo}/${branch}`;
   const body = buildBody(manifest, imageBaseUrl);
   upsertComment(repo, prNumber, body);
-  console.log(`updated visual evidence comment on PR #${prNumber}`);
+  console.log(
+    hasShots
+      ? `updated visual evidence comment on PR #${prNumber}`
+      : `cleared stale visual evidence comment on PR #${prNumber}`,
+  );
 }
 
 main();

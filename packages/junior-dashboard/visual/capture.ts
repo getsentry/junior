@@ -35,6 +35,13 @@ type CaptureManifest = {
   skipped: boolean;
 };
 
+function requireFlagValue(flag: string, value: string | undefined): string {
+  if (value === undefined || value.trim() === "" || value.startsWith("-")) {
+    throw new Error(`${flag} requires a non-empty value`);
+  }
+  return value;
+}
+
 function parseArgs(argv: string[]) {
   let all = false;
   let changedFile: string | undefined;
@@ -52,15 +59,15 @@ function parseArgs(argv: string[]) {
       continue;
     }
     if (arg === "--changed-file") {
-      changedFile = argv[++i];
+      changedFile = requireFlagValue("--changed-file", argv[++i]);
       continue;
     }
     if (arg === "--out-dir") {
-      outDir = path.resolve(argv[++i] ?? DEFAULT_OUT_DIR);
+      outDir = path.resolve(requireFlagValue("--out-dir", argv[++i]));
       continue;
     }
     if (arg === "--scenarios") {
-      scenarioCsv = argv[++i];
+      scenarioCsv = requireFlagValue("--scenarios", argv[++i]);
       continue;
     }
     throw new Error(`Unknown argument: ${arg}`);
