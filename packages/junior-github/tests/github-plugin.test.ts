@@ -2827,15 +2827,7 @@ Conversation: \`local:test:old-conversation\`
     ]);
   });
 
-  it("preloads workspace repositories with Git Smart HTTP installation auth", async () => {
-    const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
-    process.env.GITHUB_APP_ID = "123";
-    process.env.GITHUB_INSTALLATION_ID = "456";
-    process.env.GITHUB_APP_PRIVATE_KEY = privateKey.export({
-      type: "pkcs8",
-      format: "pem",
-    }).toString();
-    const requests = mockGitHubInstallationApi();
+  it("preloads workspace repositories through sandbox egress", async () => {
     const runs: Array<{ args?: string[]; env?: Record<string, string> }> = [];
     const ctx = {
       db,
@@ -2861,17 +2853,8 @@ Conversation: \`local:test:old-conversation\`
 
     await githubPlugin().hooks?.workspacePrepare?.(ctx);
 
-    expect(requests[0]?.body).toEqual({
-      permissions: { contents: "read" },
-      repositories: ["sentry", "junior"],
-    });
     expect(runs.map((run) => run.args?.at(-1))).toEqual(["sentry", "junior"]);
-    expect(runs[0]?.env).toMatchObject({
-      GIT_CONFIG_VALUE_0: `Authorization: Basic ${Buffer.from(
-        "x-access-token:installation-token",
-      ).toString("base64")}`,
-    });
-    expect(runs[0]?.args?.join(" ")).not.toContain("installation-token");
+    expect(runs[0]?.env).toBeUndefined();
   });
 
   it("rejects reserved workspace checkout paths", async () => {

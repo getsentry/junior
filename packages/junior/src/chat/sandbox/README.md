@@ -9,10 +9,10 @@ traffic through verified host egress.
 - Sandboxes are ephemeral execution environments associated with a durable
   conversation or run.
 - Runtime state persists only an opaque `SandboxRef` (`id`, dependency profile
-  hash, and optional workspace id). The provider adapter maps that reference to
-  Vercel's named sandbox API; callers do not depend on provider names or VM
-  session ids. If the workspace recipe row is missing, restore still keeps the
-  durable workspace id and profile hash instead of stripping them.
+  hash, and optional Workspace id). The provider adapter maps that reference to
+  Vercel's named Sandbox API; callers do not depend on provider names or VM
+  session ids. If a configured Workspace is removed, restore keeps the durable
+  Workspace id and profile hash.
 - Each agent run creates lazy sandbox access from the persisted reference.
   `workspace` serves non-sandbox tools and generated artifacts, while `tools`
   serves the Pi sandbox tool adapter. The live provider session stays private
@@ -47,10 +47,14 @@ traffic through verified host egress.
 - A deterministic profile hash selects a reusable snapshot.
 - Snapshot creation installs only the declared dependencies and post-install
   steps for that profile.
-- A workspace profile selects a snapshot that starts from the resolved base
-  dependency snapshot, then runs repository and setup preparation.
-- A workspace snapshot cache key includes the base snapshot id. Rebuilding the
-  base therefore rebuilds each workspace snapshot on its next use.
+- A Workspace recipe is part of the profile hash. One build installs runtime
+  dependencies, prepares repositories, runs setup, and captures the complete
+  snapshot.
+- Repository preparation uses host egress for provider credentials. Snapshot
+  state and Sandbox commands do not receive real provider credentials. Setup
+  runs after Junior removes the credential route from the build Sandbox.
+- A Workspace switch prepares a candidate Sandbox before it updates durable or
+  live state. A failed candidate leaves the current Sandbox unchanged.
 - Missing or invalid snapshots rebuild through the owning snapshot path;
   callers do not mutate a cached snapshot in place.
 - Snapshot state never contains real provider credentials.

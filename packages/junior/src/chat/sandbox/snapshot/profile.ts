@@ -19,12 +19,6 @@ export type Profile = {
   floating: boolean;
   dependencies: PluginRuntimeDependency[];
   postinstall: PluginRuntimePostinstallCommand[];
-  /**
-   * When set, this profile extends a base dependency snapshot instead of
-   * installing dependencies itself. The hash includes the base hash so base
-   * busts also bust workspace snapshots.
-   */
-  baseHash?: string;
 };
 
 function isExactNpmVersion(version: string): boolean {
@@ -102,21 +96,20 @@ function workspaceRecipe(workspace: Workspace) {
     });
   return {
     id: workspace.id,
-    updatedAt: workspace.updatedAt.toISOString(),
     repos,
     setupScript: workspace.setupScript,
   };
 }
 
-/** Build the base dependency profile without workspace contents. */
-function createBase(runtime: string): Profile | null {
+/** Build the complete profile that selects one reusable sandbox snapshot. */
+export function create(runtime: string, workspace?: Workspace): Profile | null {
   const dependencies = mergeDependencies([
     ...GLOBAL_RUNTIME_DEPENDENCIES,
     ...pluginCatalogRuntime.getRuntimeDependencies(),
   ]);
   const pluginPostinstall = pluginCatalogRuntime.getRuntimePostinstall();
   const postinstall = [...GLOBAL_RUNTIME_POSTINSTALL, ...pluginPostinstall];
-  if (dependencies.length === 0 && postinstall.length === 0) {
+  if (dependencies.length === 0 && postinstall.length === 0 && !workspace) {
     return null;
   }
 
@@ -125,7 +118,8 @@ function createBase(runtime: string): Profile | null {
   // containing them expire on the same schedule as floating npm selectors.
   const floating =
     dependencies.some((dependency) => isFloating(dependency)) ||
-    pluginPostinstall.length > 0;
+    pluginPostinstall.length > 0 ||
+    Boolean(workspace);
   const hash = createHash("sha256")
     .update(
       JSON.stringify({
@@ -134,6 +128,7 @@ function createBase(runtime: string): Profile | null {
         rebuildEpoch,
         dependencies,
         postinstall,
+        workspace: workspace ? workspaceRecipe(workspace) : null,
       }),
     )
     .digest("hex");
@@ -147,47 +142,11 @@ function createBase(runtime: string): Profile | null {
   };
 }
 
-/**
- * Build the dependency profile that selects a reusable sandbox snapshot.
- *
- * Workspace profiles extend the base dependency profile: their hash includes
- * the base hash plus the workspace recipe, and build boots from the base
- * snapshot instead of reinstalling dependencies.
- */
-export function create(runtime: string, workspace?: Workspace): Profile | null {
-  const base = createBase(runtime);
-  if (!workspace) {
-    return base;
-  }
-
-  const rebuildEpoch = process.env.SANDBOX_SNAPSHOT_REBUILD_EPOCH?.trim() ?? "";
-  const baseHash = base?.hash;
-  const hash = createHash("sha256")
-    .update(
-      JSON.stringify({
-        version: VERSION,
-        kind: "workspace",
-        runtime,
-        rebuildEpoch,
-        baseHash: baseHash ?? null,
-        workspace: workspaceRecipe(workspace),
-      }),
-    )
-    .digest("hex");
-
-  return {
-    hash,
-    // Preserve base dependency count for telemetry; install work is skipped.
-    dependencyCount: base?.dependencyCount ?? 0,
-    floating: true,
-    dependencies: [],
-    postinstall: [],
-    ...(baseHash ? { baseHash } : {}),
-  };
-}
-
 /** Return the current dependency profile hash without building its snapshot. */
-export function hash(runtime: string, workspace?: Workspace): string | undefined {
+export function hash(
+  runtime: string,
+  workspace?: Workspace,
+): string | undefined {
   return create(runtime, workspace)?.hash;
 }
 

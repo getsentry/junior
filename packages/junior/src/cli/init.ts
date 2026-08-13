@@ -12,13 +12,16 @@ initSentry();
 const [
   { createApp },
   { plugins },
+  { workspaces },
 ] = await Promise.all([
   import("@sentry/junior"),
   import("./plugins.ts"),
+  import("./workspaces.ts"),
 ]);
 
 const app = await createApp({
   plugins,
+  workspaces,
 });
 
 export default app;
@@ -46,6 +49,16 @@ export const plugins = defineJuniorPlugins([
   memoryPlugin(),
   "@sentry/junior-maintenance",
 ]);
+`,
+  );
+}
+
+function writeWorkspacesFile(targetDir: string): void {
+  fs.writeFileSync(
+    path.join(targetDir, "workspaces.ts"),
+    `import { defineJuniorWorkspaces } from "@sentry/junior";
+
+export const workspaces = defineJuniorWorkspaces([]);
 `,
   );
 }
@@ -267,6 +280,7 @@ SENTRY_AUTH_TOKEN=
   writeServerEntry(target);
   writeInstrumentFile(target);
   writePluginsFile(target);
+  writeWorkspacesFile(target);
   writeNitroConfig(target);
   writeTsConfig(target);
   writePnpmWorkspace(target);

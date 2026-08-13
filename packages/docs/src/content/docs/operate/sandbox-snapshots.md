@@ -15,7 +15,7 @@ Junior plugins can declare sandbox runtime dependencies such as npm CLIs, system
 
 ## When snapshots are used
 
-Snapshots are used only when loaded plugins declare runtime dependencies or runtime postinstall commands. If the dependency profile is empty, Junior creates a base sandbox without snapshot warmup.
+Snapshots are used when loaded plugins declare runtime dependencies or runtime postinstall commands, or when a Workspace prepares repository contents. If the dependency profile is empty and no Workspace is selected, Junior creates a base sandbox without snapshot warmup.
 
 The common deploy path runs snapshot warmup during build:
 
@@ -37,9 +37,18 @@ Junior computes the snapshot profile from its global baseline and loaded plugin 
 | npm dependencies     | Global and plugin `runtime-dependencies` entries with `type: npm`.    |
 | system dependencies  | Global and plugin `runtime-dependencies` entries with `type: system`. |
 | postinstall commands | Global and plugin `runtime-postinstall` entries.                      |
+| Workspace recipe     | Repository providers, names, checkout paths, and setup script.        |
 | manual rebuild epoch | `SANDBOX_SNAPSHOT_REBUILD_EPOCH`, when set.                           |
 
 Any change to those inputs produces a new profile hash and a new snapshot.
+
+## Repository Workspaces
+
+Define install-wide Workspace recipes with `defineJuniorWorkspaces(...)`, then pass them to `createApp({ workspaces })`. Put the value in an app-local `workspaces.ts` file so `junior chat` loads the same recipes.
+
+Junior builds one complete snapshot for each selected Workspace. The build installs runtime dependencies, prepares repositories, runs the setup script, and then captures the snapshot. The first switch builds the snapshot on demand. Later switches reuse it until its floating profile becomes stale.
+
+Provider plugins prepare repositories through Junior's host egress proxy. Junior removes the credential route before it runs the setup script and captures the snapshot. Real provider credentials do not enter the Sandbox or the captured snapshot.
 
 ## Cache and rebuild behavior
 
@@ -62,7 +71,7 @@ Leave the variable unset to use the Vercel default. Requested vCPU counts must b
 
 ## Failure behavior
 
-Snapshot build failures are deploy blockers. Junior must not silently continue with partially installed dependencies.
+Warmup snapshot failures are deploy blockers. A lazy Workspace snapshot failure stops that switch and leaves the current Sandbox active. Junior does not continue with partially prepared contents.
 
 Check these first:
 

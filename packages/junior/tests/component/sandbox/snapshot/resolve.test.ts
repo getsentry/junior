@@ -411,21 +411,17 @@ describe("snapshot resolution", () => {
     expect(sandboxCreateMock).not.toHaveBeenCalled();
   });
 
-  it("builds workspace snapshots by extending the cached base snapshot", async () => {
+  it("builds and reuses one complete workspace snapshot", async () => {
     getRuntimeDependenciesMock.mockReturnValue([
       { type: "npm", package: "sentry", version: "latest" },
     ]);
-    const baseSandbox = makeSandbox("snap_base");
     const workspaceSandbox = makeSandbox("snap_workspace");
-    sandboxCreateMock
-      .mockResolvedValueOnce(baseSandbox)
-      .mockResolvedValueOnce(workspaceSandbox);
+    sandboxCreateMock.mockResolvedValueOnce(workspaceSandbox);
     const prepareWorkspace = vi.fn(async () => {});
     const workspace = {
       id: "workspace-1",
       name: "sentry",
       setupScript: "pnpm install",
-      updatedAt: new Date("2026-03-01T00:00:00.000Z"),
       repos: [
         {
           provider: "github",
@@ -446,20 +442,12 @@ describe("snapshot resolution", () => {
     expect(snapshot.snapshotId).toBe("snap_workspace");
     expect(snapshot.cacheHit).toBe(false);
     expect(snapshot.resolveOutcome).toBe("rebuilt");
-    expect(sandboxCreateMock).toHaveBeenCalledTimes(2);
-    expect(sandboxCreateMock).toHaveBeenNthCalledWith(
-      1,
+    expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
+    expect(sandboxCreateMock).toHaveBeenCalledWith(
       expect.objectContaining({ runtime: "node22" }),
     );
-    expect(sandboxCreateMock).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({
-        source: { type: "snapshot", snapshotId: "snap_base" },
-      }),
-    );
     expect(prepareWorkspace).toHaveBeenCalledTimes(1);
-    expect(baseSandbox.runCommand).toHaveBeenCalled();
-    expect(workspaceSandbox.runCommand).not.toHaveBeenCalled();
+    expect(workspaceSandbox.runCommand).toHaveBeenCalled();
 
     const reused = await resolveSnapshot({
       runtime: "node22",
@@ -469,127 +457,7 @@ describe("snapshot resolution", () => {
     });
     expect(reused.snapshotId).toBe("snap_workspace");
     expect(reused.cacheHit).toBe(true);
-    expect(sandboxCreateMock).toHaveBeenCalledTimes(2);
-    expect(prepareWorkspace).toHaveBeenCalledTimes(1);
-  });
-
-  it("rebuilds a workspace snapshot when its base snapshot changes", async () => {
-    getRuntimeDependenciesMock.mockReturnValue([
-      { type: "npm", package: "sentry", version: "latest" },
-    ]);
-    sandboxCreateMock
-      .mockResolvedValueOnce(makeSandbox("snap_base"))
-      .mockResolvedValueOnce(makeSandbox("snap_workspace"))
-      .mockResolvedValueOnce(makeSandbox("snap_base_rebuilt"))
-      .mockResolvedValueOnce(makeSandbox("snap_workspace_rebuilt"));
-    const workspace = {
-      id: "workspace-1",
-      name: "sentry",
-      setupScript: "pnpm install",
-      updatedAt: new Date("2026-03-01T00:00:00.000Z"),
-      repos: [
-        {
-          provider: "github",
-          repo: "getsentry/sentry",
-          checkoutPath: "sentry",
-          isPrimary: true,
-        },
-      ],
-    };
-
-    const first = await resolveSnapshot({
-      runtime: "node22",
-      timeoutMs: 60_000,
-      workspace,
-      prepareWorkspace: async () => {},
-    });
-    const rebuiltBase = await resolveSnapshot({
-      runtime: "node22",
-      timeoutMs: 60_000,
-      forceRebuild: true,
-      staleSnapshotId: "snap_base",
-    });
-    const rebuiltWorkspace = await resolveSnapshot({
-      runtime: "node22",
-      timeoutMs: 60_000,
-      workspace,
-      prepareWorkspace: async () => {},
-    });
-
-    expect(first.snapshotId).toBe("snap_workspace");
-    expect(rebuiltBase.snapshotId).toBe("snap_base_rebuilt");
-    expect(rebuiltWorkspace.snapshotId).toBe("snap_workspace_rebuilt");
-    expect(rebuiltWorkspace.cacheHit).toBe(false);
-    expect(sandboxCreateMock).toHaveBeenNthCalledWith(
-      4,
-      expect.objectContaining({
-        source: { type: "snapshot", snapshotId: "snap_base_rebuilt" },
-      }),
-    );
-  });
-
-  it("rebuilds the base snapshot when workspace extend finds it missing", async () => {
-    getRuntimeDependenciesMock.mockReturnValue([
-      { type: "npm", package: "sentry", version: "latest" },
-    ]);
-    const baseSandbox = makeSandbox("snap_base");
-    const rebuiltBaseSandbox = makeSandbox("snap_base_rebuilt");
-    const workspaceSandbox = makeSandbox("snap_workspace");
-    sandboxCreateMock
-      .mockResolvedValueOnce(baseSandbox)
-      .mockRejectedValueOnce(new Error("snapshot not found"))
-      .mockResolvedValueOnce(rebuiltBaseSandbox)
-      .mockResolvedValueOnce(workspaceSandbox);
-
-    const prepareWorkspace = vi.fn(async () => {});
-    const workspace = {
-      id: "workspace-1",
-      name: "sentry",
-      setupScript: "pnpm install",
-      updatedAt: new Date("2026-03-01T00:00:00.000Z"),
-      repos: [
-        {
-          provider: "github",
-          repo: "getsentry/sentry",
-          checkoutPath: "sentry",
-          isPrimary: true,
-        },
-      ],
-    };
-
-    // Seed a base cache entry first.
-    await resolveSnapshot({
-      runtime: "node22",
-      timeoutMs: 60_000,
-    });
-
-    // Drop the base provider snapshot while keeping the cache pointer so the
-    // workspace build hits the missing-parent retry path.
-    const snapshot = await resolveSnapshot({
-      runtime: "node22",
-      timeoutMs: 60_000,
-      workspace,
-      prepareWorkspace,
-    });
-
-    expect(snapshot.snapshotId).toBe("snap_workspace");
-    expect(sandboxCreateMock).toHaveBeenCalledTimes(4);
-    expect(sandboxCreateMock).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({
-        source: { type: "snapshot", snapshotId: "snap_base" },
-      }),
-    );
-    expect(sandboxCreateMock).toHaveBeenNthCalledWith(
-      3,
-      expect.objectContaining({ runtime: "node22" }),
-    );
-    expect(sandboxCreateMock).toHaveBeenNthCalledWith(
-      4,
-      expect.objectContaining({
-        source: { type: "snapshot", snapshotId: "snap_base_rebuilt" },
-      }),
-    );
+    expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
     expect(prepareWorkspace).toHaveBeenCalledTimes(1);
   });
 });

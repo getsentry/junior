@@ -4,7 +4,7 @@ Canonical words used across Junior's code and documentation.
 
 ## Terms
 
-- **Workspace**: a named recipe that selects repositories and setup instructions for a sandbox snapshot.
+- **Workspace**: a named recipe that selects repositories and setup instructions for a Sandbox snapshot.
 - **Sandbox**: the live execution environment for a conversation.
 - **Conversation**: the durable container for visible history and execution
   state, identified by a globally unique `conversationId`.

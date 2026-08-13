@@ -38,8 +38,6 @@ import {
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
 import { planToolExposure } from "@/chat/tool-exposure";
 import type { SandboxRef } from "@/chat/sandbox/ref";
-import { getWorkspace } from "@/chat/workspaces/store";
-import { getDb } from "@/chat/db";
 import type { RepositoryInstructions } from "@/chat/repository-instructions";
 import { createMcpAuthOrchestration } from "@/chat/services/mcp-auth-orchestration";
 import { createPluginAuthOrchestration } from "@/chat/services/plugin-auth-orchestration";
@@ -223,8 +221,11 @@ export async function wireAgentTools(
     actor: args.currentActor,
     actors: args.currentActors,
   });
+  const workspaces = args.run.environment?.workspaces ?? [];
   const workspace = args.state.sandboxRef?.workspaceId
-    ? await getWorkspace(getDb(), args.state.sandboxRef.workspaceId)
+    ? workspaces.find(
+        (value) => value.id === args.state.sandboxRef?.workspaceId,
+      )
     : undefined;
   const agentSandbox = createAgentSandbox({
     sandboxRef: args.state.sandboxRef,
@@ -371,6 +372,7 @@ export async function wireAgentTools(
     attachmentStorage: args.run.environment?.attachmentStorage,
     workspaces: {
       activeWorkspaceId: () => agentSandbox.sandboxRef()?.workspaceId,
+      recipes: workspaces,
       switch: agentSandbox.switchWorkspace,
     },
   } as ToolRuntimeContext;

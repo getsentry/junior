@@ -36,4 +36,5 @@ heartbeat, or server paths use them.
 - `plugins.ts` is the single source of truth for installed plugin registrations and runtime hook plugins in this app
 - `nitro.config.ts` points `juniorNitro()` at `./plugins` so plugin content is copied into the build output and exposed to runtime through the virtual config module
 - `server.ts` imports the same plugin set and passes it to `createApp({ plugins })` so local dev and built bundles load identical runtime plugins
+- `workspaces.ts` defines install-wide Workspace recipes and `server.ts` passes them to `createApp({ workspaces })`; local chat loads the same module
 - root `pnpm dev` starts a local heartbeat loop that calls `/api/internal/heartbeat` every minute, matching the production cron pulse used for plugin heartbeats and stale dispatch recovery

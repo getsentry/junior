@@ -10,10 +10,12 @@ const [
     exampleDashboardMockConversations,
   },
   { plugins },
+  { workspaces },
 ] = await Promise.all([
   import("@sentry/junior"),
   import("./dashboard.ts"),
   import("./plugins.ts"),
+  import("./workspaces.ts"),
 ]);
 
 const app = await createApp({
@@ -24,6 +26,7 @@ const app = await createApp({
     mockConversations: exampleDashboardMockConversations(),
   },
   plugins,
+  workspaces,
   configDefaults: {
     "sentry.org": "sentry",
   },

@@ -1,11 +1,10 @@
 import { z } from "zod";
-import { getDb } from "@/chat/db";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRegistry } from "@/chat/tools/definition";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
-import { getWorkspaceByName, listWorkspaces } from "./store";
+import type { Workspace } from "./types";
 
 const repoSchema = z.object({
   provider: z.string(),
@@ -19,7 +18,7 @@ const workspaceSchema = z.object({
   repos: z.array(repoSchema),
 });
 
-function view(workspace: Awaited<ReturnType<typeof listWorkspaces>>[number]) {
+function view(workspace: Workspace) {
   return {
     id: workspace.id,
     name: workspace.name,
@@ -33,7 +32,9 @@ function view(workspace: Awaited<ReturnType<typeof listWorkspaces>>[number]) {
 }
 
 /** Build tools for listing and selecting registered workspaces. */
-export function createWorkspaceTools(context: ToolRuntimeContext): ToolRegistry {
+export function createWorkspaceTools(
+  context: ToolRuntimeContext,
+): ToolRegistry {
   if (!context.workspaces) return {};
   return {
     listWorkspaces: zodTool({
@@ -53,11 +54,14 @@ export function createWorkspaceTools(context: ToolRuntimeContext): ToolRegistry 
       async execute() {
         return {
           active_workspace_id: context.workspaces!.activeWorkspaceId() ?? null,
-          workspaces: (await listWorkspaces(getDb())).map(view),
+          workspaces: [...context.workspaces!.recipes]
+            .sort((left, right) => left.name.localeCompare(right.name))
+            .map(view),
         };
       },
     }),
     switchWorkspace: zodTool({
+      executionMode: "sequential",
       annotations: {
         destructiveHint: true,
         idempotentHint: true,
@@ -75,8 +79,11 @@ export function createWorkspaceTools(context: ToolRuntimeContext): ToolRegistry 
         workspace: workspaceSchema,
       }),
       async execute({ name }, options) {
-        const workspace = await getWorkspaceByName(getDb(), name);
-        if (!workspace) throw new ToolInputError(`Workspace not found: ${name}`);
+        const workspace = context.workspaces!.recipes.find(
+          (value) => value.name === name,
+        );
+        if (!workspace)
+          throw new ToolInputError(`Workspace not found: ${name}`);
         await context.workspaces!.switch(workspace, options.signal);
         return { workspace: view(workspace) };
       },

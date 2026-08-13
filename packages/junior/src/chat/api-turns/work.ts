@@ -794,10 +794,10 @@ export function createApiTurnWorker(options: {
               onInputCommitted: acknowledge,
               shouldYield: context.shouldYield,
               onSandboxRefChanged: async (nextSandboxRef) => {
-                sandboxRef = nextSandboxRef ?? undefined;
+                sandboxRef = nextSandboxRef;
                 await persistThreadStateById(context.conversationId, {
                   conversation,
-                  sandboxRef: nextSandboxRef,
+                  sandboxRef,
                 });
               },
               recordPendingAuth: async (pendingAuth) => {

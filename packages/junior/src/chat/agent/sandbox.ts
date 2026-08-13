@@ -41,9 +41,12 @@ export interface AgentSandboxOptions {
   configurationValues: Record<string, unknown>;
   getActiveSkill(): Skill | null;
   prepareSandbox(workspace: SandboxWorkspace): void | Promise<void>;
-  prepareWorkspace?(workspace: SandboxWorkspace, recipe: Workspace): Promise<void>;
-  onSandboxRefChanged(sandboxRef: SandboxRef | undefined): void;
-  persistSandboxRef?(sandboxRef: SandboxRef | null): void | Promise<void>;
+  prepareWorkspace?(
+    workspace: SandboxWorkspace,
+    recipe: Workspace,
+  ): Promise<void>;
+  onSandboxRefChanged(sandboxRef: SandboxRef): void;
+  persistSandboxRef?(sandboxRef: SandboxRef): void | Promise<void>;
 }
 
 export interface AgentSandbox {
@@ -153,7 +156,7 @@ export function createAgentSandbox(options: AgentSandboxOptions): AgentSandbox {
     prepare: options.prepareSandbox,
     prepareWorkspace: options.prepareWorkspace,
     onSandboxRefChanged: async (sandboxRef) => {
-      options.onSandboxRefChanged(sandboxRef ?? undefined);
+      options.onSandboxRefChanged(sandboxRef);
       await options.persistSandboxRef?.(sandboxRef);
     },
   });

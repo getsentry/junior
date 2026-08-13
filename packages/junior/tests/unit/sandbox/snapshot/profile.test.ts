@@ -77,12 +77,11 @@ describe("snapshot dependency profile", () => {
     expect(profile?.floating).toBe(true);
   });
 
-  it("includes workspace contents in the profile hash", () => {
+  it("includes Workspace contents in the profile hash", () => {
     const workspace = {
       id: "workspace-1",
       name: "sentry",
       setupScript: "pnpm install",
-      updatedAt: new Date("2026-03-10T00:00:00.000Z"),
       repos: [
         {
           provider: "github",
@@ -94,167 +93,74 @@ describe("snapshot dependency profile", () => {
     };
 
     const first = create("node22", workspace);
-    const changed = create("node22", {
+    const changedSetup = create("node22", {
       ...workspace,
       setupScript: "pnpm install --frozen-lockfile",
     });
+    const changedRepo = create("node22", {
+      ...workspace,
+      repos: [{ ...workspace.repos[0]!, repo: "getsentry/junior" }],
+    });
 
-    expect(first).not.toBeNull();
-    expect(first?.hash).not.toBe(changed?.hash);
+    expect(first?.hash).not.toBe(changedSetup?.hash);
+    expect(first?.hash).not.toBe(changedRepo?.hash);
+    expect(first?.floating).toBe(true);
   });
 
-  it("keeps workspace profile hashes stable across repo order", () => {
-    const updatedAt = new Date("2026-03-10T00:00:00.000Z");
+  it("normalizes repository order and ignores the primary selection", () => {
+    const repos = [
+      {
+        provider: "github",
+        repo: "getsentry/sentry",
+        checkoutPath: "sentry",
+        isPrimary: true,
+      },
+      {
+        provider: "github",
+        repo: "getsentry/relay",
+        checkoutPath: "relay",
+        isPrimary: false,
+      },
+    ];
     const first = create("node22", {
       id: "workspace-1",
       name: "sentry",
-      setupScript: "pnpm install",
-      updatedAt,
-      repos: [
-        {
-          provider: "github",
-          repo: "getsentry/sentry",
-          checkoutPath: "sentry",
-          isPrimary: true,
-        },
-        {
-          provider: "github",
-          repo: "getsentry/relay",
-          checkoutPath: "relay",
-          isPrimary: false,
-        },
-      ],
+      setupScript: "",
+      repos,
     });
-    const second = create("node22", {
+    const reordered = create("node22", {
       id: "workspace-1",
       name: "sentry",
-      setupScript: "pnpm install",
-      updatedAt,
-      repos: [
-        {
-          provider: "github",
-          repo: "getsentry/relay",
-          checkoutPath: "relay",
-          isPrimary: false,
-        },
-        {
-          provider: "github",
-          repo: "getsentry/sentry",
-          checkoutPath: "sentry",
-          isPrimary: true,
-        },
-      ],
+      setupScript: "",
+      repos: [...repos]
+        .reverse()
+        .map((repo) => ({ ...repo, isPrimary: !repo.isPrimary })),
     });
 
-    expect(first?.hash).toBe(second?.hash);
+    expect(first?.hash).toBe(reordered?.hash);
   });
 
-  it("ignores isPrimary when hashing workspace profiles", () => {
-    const updatedAt = new Date("2026-03-10T00:00:00.000Z");
-    const first = create("node22", {
-      id: "workspace-1",
-      name: "sentry",
-      setupScript: "pnpm install",
-      updatedAt,
-      repos: [
-        {
-          provider: "github",
-          repo: "getsentry/sentry",
-          checkoutPath: "sentry",
-          isPrimary: true,
-        },
-        {
-          provider: "github",
-          repo: "getsentry/relay",
-          checkoutPath: "relay",
-          isPrimary: false,
-        },
-      ],
-    });
-    const second = create("node22", {
-      id: "workspace-1",
-      name: "sentry",
-      setupScript: "pnpm install",
-      updatedAt,
-      repos: [
-        {
-          provider: "github",
-          repo: "getsentry/sentry",
-          checkoutPath: "sentry",
-          isPrimary: false,
-        },
-        {
-          provider: "github",
-          repo: "getsentry/relay",
-          checkoutPath: "relay",
-          isPrimary: true,
-        },
-      ],
-    });
-
-    expect(first?.hash).toBe(second?.hash);
-  });
-
-  it("layers workspace profiles on the base hash without reinstall deps", () => {
+  it("installs dependencies in the complete Workspace profile", () => {
     dependenciesMock.mockReturnValue([
       { type: "npm", package: "example", version: "1.2.3" },
     ]);
     const workspace = {
       id: "workspace-1",
       name: "sentry",
-      setupScript: "pnpm install",
-      updatedAt: new Date("2026-03-10T00:00:00.000Z"),
-      repos: [
-        {
-          provider: "github",
-          repo: "getsentry/sentry",
-          checkoutPath: "sentry",
-          isPrimary: true,
-        },
-      ],
+      setupScript: "",
+      repos: [],
     };
-
-    const base = create("node22");
-    const layered = create("node22", workspace);
-
-    expect(base).not.toBeNull();
-    expect(layered).not.toBeNull();
-    expect(layered?.baseHash).toBe(base?.hash);
-    expect(layered?.hash).not.toBe(base?.hash);
-    expect(layered?.dependencies).toEqual([]);
-    expect(layered?.postinstall).toEqual([]);
-    expect(layered?.floating).toBe(true);
-    expect(layered?.dependencyCount).toBe(base?.dependencyCount);
-  });
-
-  it("busts workspace hashes when the base dependency profile changes", () => {
-    const workspace = {
-      id: "workspace-1",
-      name: "sentry",
-      setupScript: "pnpm install",
-      updatedAt: new Date("2026-03-10T00:00:00.000Z"),
-      repos: [
-        {
-          provider: "github",
-          repo: "getsentry/sentry",
-          checkoutPath: "sentry",
-          isPrimary: true,
-        },
-      ],
-    };
-
-    dependenciesMock.mockReturnValue([
-      { type: "npm", package: "example", version: "1.2.3" },
-    ]);
     const first = create("node22", workspace);
 
     dependenciesMock.mockReturnValue([
       { type: "npm", package: "example", version: "2.0.0" },
     ]);
-    const second = create("node22", workspace);
+    const changed = create("node22", workspace);
 
-    expect(first?.baseHash).not.toBe(second?.baseHash);
-    expect(first?.hash).not.toBe(second?.hash);
+    expect(first?.dependencies).toEqual([
+      { type: "npm", package: "example", version: "1.2.3" },
+    ]);
+    expect(first?.hash).not.toBe(changed?.hash);
   });
 
   it("changes the hash when the rebuild epoch changes", () => {

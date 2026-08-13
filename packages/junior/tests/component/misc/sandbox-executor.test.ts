@@ -82,7 +82,6 @@ vi.mock("@/chat/config", async (importOriginal) => {
     getChatConfig: () => memoryConfig,
   };
 });
-
 vi.mock("@/chat/plugins/catalog-runtime", () => ({
   pluginCatalogRuntime: {
     getProviders: () => [
@@ -595,37 +594,7 @@ describe("createTestSandbox", () => {
     expect(executor.getSandboxId()).toBe("sbx_stopped");
   });
 
-  it("retains a fresh sandbox hint when its setup session becomes unavailable", async () => {
-    const stoppedSandbox = makeSandbox("sbx_fresh_stopped", {
-      mkDirError: createApiError(
-        410,
-        "Gone",
-        "sandbox_stopped",
-        "Sandbox has stopped execution and is no longer available",
-      ),
-    });
-    const recoveredSandbox = makeSandbox("sbx_fresh_stopped");
-    hashMock.mockReturnValue("profile-v1");
-    sandboxCreateMock.mockResolvedValueOnce(stoppedSandbox);
-    sandboxGetMock.mockResolvedValueOnce(recoveredSandbox);
-
-    const executor = createTestSandbox();
-    executor.configureSkills([]);
-
-    await expect(executor.createSandbox()).rejects.toBeInstanceOf(
-      ToolInputError,
-    );
-    const sandbox = await executor.createSandbox();
-
-    await expectWorkspaceToDelegate(sandbox, recoveredSandbox);
-    expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
-    expect(sandboxGetMock).toHaveBeenCalledWith({
-      name: "sbx_fresh_stopped",
-      resume: true,
-    });
-  });
-
-  it("reports a fresh sandbox reference before session preparation can fail", async () => {
+  it("reports a fresh sandbox reference only after preparation succeeds", async () => {
     const unavailable = createClosedStreamError();
     const freshSandbox = makeSandbox("sbx_prepare_failure");
     const callOrder: string[] = [];
@@ -649,21 +618,22 @@ describe("createTestSandbox", () => {
       ToolInputError,
     );
 
-    expect(callOrder).toEqual(["reference", "prepare"]);
-    expect(executor.getSandboxId()).toBe("sbx_prepare_failure");
+    expect(callOrder).toEqual(["prepare"]);
+    expect(executor.getSandboxId()).toBeUndefined();
+    expect(freshSandbox.stop).toHaveBeenCalledTimes(1);
   });
 
   it("retries durable reference reporting after persistence fails", async () => {
     const freshSandbox = makeSandbox("sbx_ref_retry");
-    const restoredSandbox = makeSandbox("sbx_ref_retry");
-    restoredSandbox.session.sessionId = "sbx_ref_retry_restored";
+    const replacementSandbox = makeSandbox("sbx_ref_retry_replacement");
     const persistenceError = new Error("state unavailable");
     const onSandboxAcquired = vi
       .fn()
       .mockRejectedValueOnce(persistenceError)
       .mockResolvedValueOnce(undefined);
-    sandboxCreateMock.mockResolvedValueOnce(freshSandbox);
-    sandboxGetMock.mockResolvedValueOnce(restoredSandbox);
+    sandboxCreateMock
+      .mockResolvedValueOnce(freshSandbox)
+      .mockResolvedValueOnce(replacementSandbox);
 
     const executor = createTestSandbox({ onSandboxAcquired });
     executor.configureSkills([]);
@@ -672,11 +642,9 @@ describe("createTestSandbox", () => {
     await expect(executor.createSandbox()).resolves.toBeDefined();
 
     expect(onSandboxAcquired).toHaveBeenCalledTimes(2);
-    expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
-    expect(sandboxGetMock).toHaveBeenCalledWith({
-      name: "sbx_ref_retry",
-      resume: true,
-    });
+    expect(sandboxCreateMock).toHaveBeenCalledTimes(2);
+    expect(sandboxGetMock).not.toHaveBeenCalled();
+    expect(freshSandbox.stop).toHaveBeenCalledTimes(1);
   });
 
   it("shares in-flight sandbox setup across parallel executor initialization", async () => {
@@ -1021,7 +989,6 @@ describe("createTestSandbox", () => {
       id: "workspace-1",
       name: "sentry",
       setupScript: "",
-      updatedAt: new Date("2026-08-11T00:00:00.000Z"),
       repos: [],
     };
     const runtime = createSandboxRuntime({
@@ -1033,7 +1000,6 @@ describe("createTestSandbox", () => {
     await runtime.acquire();
     await runtime.switchWorkspace({
       ...workspace,
-      updatedAt: new Date("2026-08-12T00:00:00.000Z"),
     });
 
     expect(sandboxCreateMock).toHaveBeenCalledTimes(2);
@@ -1041,46 +1007,7 @@ describe("createTestSandbox", () => {
     expect(runtime.sandboxRef()?.id).toBe("sbx_workspace_refreshed");
   });
 
-  it("keeps the live sandbox when workspace switch is already cancelled", async () => {
-    const initialSandbox = makeSandbox("sbx_workspace_initial");
-    sandboxCreateMock.mockResolvedValueOnce(initialSandbox);
-    hashMock
-      .mockReturnValueOnce("profile-initial")
-      .mockReturnValueOnce("profile-next");
-    const initialWorkspace = {
-      id: "workspace-initial",
-      name: "initial",
-      setupScript: "",
-      updatedAt: new Date("2026-08-11T00:00:00.000Z"),
-      repos: [],
-    };
-    const runtime = createSandboxRuntime({
-      workspace: initialWorkspace,
-      skills: [],
-      referenceFiles: [],
-    });
-    await runtime.acquire();
-    const controller = new AbortController();
-    const reason = new Error("switch cancelled");
-    controller.abort(reason);
-
-    await expect(
-      runtime.switchWorkspace(
-        {
-          ...initialWorkspace,
-          id: "workspace-next",
-          name: "next",
-        },
-        controller.signal,
-      ),
-    ).rejects.toBe(reason);
-
-    expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
-    expect(initialSandbox.stop).not.toHaveBeenCalled();
-    expect(runtime.sandboxRef()?.id).toBe("sbx_workspace_initial");
-  });
-
-  it("restores the live sandbox when workspace switch is cancelled mid-boot", async () => {
+  it("keeps the live sandbox when workspace switch is cancelled mid-boot", async () => {
     const initialSandbox = makeSandbox("sbx_workspace_initial");
     const nextSandbox = makeSandbox("sbx_workspace_next");
     let releaseCreate: (() => void) | undefined;
@@ -1100,7 +1027,6 @@ describe("createTestSandbox", () => {
       id: "workspace-initial",
       name: "initial",
       setupScript: "",
-      updatedAt: new Date("2026-08-11T00:00:00.000Z"),
       repos: [],
     };
     const runtime = createSandboxRuntime({
@@ -1136,7 +1062,6 @@ describe("createTestSandbox", () => {
       id: "workspace-1",
       name: "sentry",
       setupScript: "",
-      updatedAt: new Date("2026-08-11T00:00:00.000Z"),
       repos: [],
     };
     const runtime = createSandboxRuntime({
@@ -1166,8 +1091,11 @@ describe("createTestSandbox", () => {
     hashMock.mockReturnValue("profile-base");
     const restored = makeSandbox("sbx_missing_recipe");
     sandboxGetMock.mockResolvedValueOnce(restored);
-    const refs: Array<{ id: string; workspaceId?: string; profileHash?: string } | null> =
-      [];
+    const refs: Array<{
+      id: string;
+      workspaceId?: string;
+      profileHash?: string;
+    } | null> = [];
     const runtime = createSandboxRuntime({
       sandboxRef: {
         id: "sbx_missing_recipe",
@@ -1194,6 +1122,62 @@ describe("createTestSandbox", () => {
     expect(refs).toEqual([]);
   });
 
+  it("limits credential egress to Workspace provider preparation", async () => {
+    const buildSandbox = makeSandbox("sbx_workspace_build");
+    const activeSandbox = makeSandbox("sbx_workspace_active");
+    const policy = {
+      allow: {
+        "*": [],
+        "github.com": [
+          {
+            forwardURL:
+              "https://junior.example.com/api/internal/sandbox-egress/token",
+          },
+        ],
+      },
+    };
+    const createNetworkPolicy = vi.fn(() => policy);
+    const onWorkspacePrepare = vi.fn(async () => {
+      expect(buildSandbox.update).toHaveBeenLastCalledWith({
+        networkPolicy: policy,
+      });
+    });
+    resolveMock.mockImplementationOnce(async (params: any) => {
+      await params.prepareWorkspace?.(buildSandbox);
+      return {
+        snapshotId: "snap_workspace",
+        profileHash: "profile-workspace",
+        dependencyCount: 0,
+        cacheHit: false,
+        resolveOutcome: "rebuilt",
+      };
+    });
+    hashMock.mockReturnValue("profile-workspace");
+    sandboxCreateMock.mockResolvedValueOnce(activeSandbox);
+    const runtime = createSandboxRuntime({
+      workspace: {
+        id: "workspace-1",
+        name: "sentry",
+        setupScript: "",
+        repos: [],
+      },
+      skills: [],
+      referenceFiles: [],
+      createNetworkPolicy,
+      onWorkspacePrepare,
+    });
+
+    await runtime.acquire();
+
+    expect(onWorkspacePrepare).toHaveBeenCalledTimes(1);
+    expect(buildSandbox.update).toHaveBeenNthCalledWith(1, {
+      networkPolicy: policy,
+    });
+    expect(buildSandbox.update).toHaveBeenNthCalledWith(2, {
+      networkPolicy: "allow-all",
+    });
+  });
+
   it("forwards abort signal into workspace setup scripts", async () => {
     const buildSandbox = makeSandbox("sbx_workspace_setup_signal");
     const controller = new AbortController();
@@ -1203,7 +1187,9 @@ describe("createTestSandbox", () => {
         resolve();
         await new Promise<void>((settle) => {
           releaseSetup = settle;
-          input.signal?.addEventListener("abort", () => settle(), { once: true });
+          input.signal?.addEventListener("abort", () => settle(), {
+            once: true,
+          });
         });
         if (input.signal?.aborted) {
           const error = new Error("aborted");
@@ -1229,7 +1215,6 @@ describe("createTestSandbox", () => {
         id: "workspace-setup",
         name: "setup",
         setupScript: "echo ready",
-        updatedAt: new Date("2026-08-12T00:00:00.000Z"),
         repos: [],
       },
       skills: [],
@@ -1252,61 +1237,18 @@ describe("createTestSandbox", () => {
     releaseSetup?.();
   });
 
-  it("starts keepalive after a successful workspace switch", async () => {
-    vi.useFakeTimers();
-    process.env.VERCEL_SANDBOX_KEEPALIVE_MS = "5000";
-    const initialSandbox = makeSandbox("sbx_workspace_keepalive_initial");
-    const nextSandbox = makeSandbox("sbx_workspace_keepalive_next");
-    sandboxCreateMock
-      .mockResolvedValueOnce(initialSandbox)
-      .mockResolvedValueOnce(nextSandbox);
-    hashMock
-      .mockReturnValueOnce("profile-initial")
-      .mockReturnValueOnce("profile-next");
-    const initialWorkspace = {
-      id: "workspace-initial",
-      name: "initial",
-      setupScript: "",
-      updatedAt: new Date("2026-08-11T00:00:00.000Z"),
-      repos: [],
-    };
-    const nextWorkspace = {
-      ...initialWorkspace,
-      id: "workspace-next",
-      name: "next",
-    };
-    const runtime = createSandboxRuntime({
-      workspace: initialWorkspace,
-      skills: [],
-      referenceFiles: [],
-    });
-
-    await runtime.acquire();
-    expect(initialSandbox.extendTimeout).not.toHaveBeenCalled();
-
-    await runtime.switchWorkspace(nextWorkspace);
-
-    expect(nextSandbox.extendTimeout).toHaveBeenCalledTimes(1);
-    expect(nextSandbox.extendTimeout).toHaveBeenCalledWith(5000);
-    await vi.advanceTimersByTimeAsync(2500);
-    expect(nextSandbox.extendTimeout).toHaveBeenCalledTimes(2);
-
-    runtime.close();
-  });
-
-  it("clears a durably reported workspace when its switch fails", async () => {
+  it("keeps the durable workspace reference when its switch fails", async () => {
     const initialSandbox = makeSandbox("sbx_workspace_initial");
     const failedSandbox = makeSandbox("sbx_workspace_failed");
     sandboxCreateMock
       .mockResolvedValueOnce(initialSandbox)
       .mockResolvedValueOnce(failedSandbox);
     let prepareCount = 0;
-    const refs: Array<{ id: string; workspaceId?: string } | null> = [];
+    const refs: Array<{ id: string; workspaceId?: string }> = [];
     const initialWorkspace = {
       id: "workspace-initial",
       name: "initial",
       setupScript: "",
-      updatedAt: new Date("2026-08-11T00:00:00.000Z"),
       repos: [],
     };
     const nextWorkspace = {
@@ -1326,9 +1268,6 @@ describe("createTestSandbox", () => {
       },
       onSandboxRefChanged: async (ref) => {
         refs.push(ref);
-        if (ref === null) {
-          throw new Error("persistence failed");
-        }
       },
     });
 
@@ -1337,10 +1276,8 @@ describe("createTestSandbox", () => {
       "sandbox setup failed",
     );
 
-    // Failed replacement is stopped; prior live sandbox is restored and re-reported.
+    // Failed replacement is stopped before it can replace durable or live state.
     expect(refs).toEqual([
-      { id: "sbx_workspace_initial", workspaceId: "workspace-initial" },
-      { id: "sbx_workspace_failed", workspaceId: "workspace-next" },
       { id: "sbx_workspace_initial", workspaceId: "workspace-initial" },
     ]);
     expect(runtime.sandboxRef()?.id).toBe("sbx_workspace_initial");
@@ -1348,49 +1285,7 @@ describe("createTestSandbox", () => {
     expect(initialSandbox.stop).not.toHaveBeenCalled();
   });
 
-  it("stops a remembered replacement when switch fails after acquire", async () => {
-    process.env.VERCEL_SANDBOX_KEEPALIVE_MS = "5000";
-    const initialSandbox = makeSandbox("sbx_workspace_initial");
-    const failedSandbox = makeSandbox("sbx_workspace_keepalive_failed");
-    // Fail after createFreshSandbox remembers the session, during ensureReady.
-    failedSandbox.extendTimeout.mockRejectedValueOnce(
-      createApiError(410, "Gone", "sandbox_stopped", "sandbox is gone"),
-    );
-    sandboxCreateMock
-      .mockResolvedValueOnce(initialSandbox)
-      .mockResolvedValueOnce(failedSandbox);
-    hashMock
-      .mockReturnValueOnce("profile-initial")
-      .mockReturnValueOnce("profile-next");
-    const initialWorkspace = {
-      id: "workspace-initial",
-      name: "initial",
-      setupScript: "",
-      updatedAt: new Date("2026-08-11T00:00:00.000Z"),
-      repos: [],
-    };
-    const nextWorkspace = {
-      ...initialWorkspace,
-      id: "workspace-next",
-      name: "next",
-    };
-    const runtime = createSandboxRuntime({
-      workspace: initialWorkspace,
-      skills: [],
-      referenceFiles: [],
-    });
-
-    await runtime.acquire();
-    await expect(runtime.switchWorkspace(nextWorkspace)).rejects.toThrow(
-      "Status code 410 is not ok",
-    );
-
-    expect(failedSandbox.stop).toHaveBeenCalledTimes(1);
-    expect(initialSandbox.stop).not.toHaveBeenCalled();
-    expect(runtime.sandboxRef()?.id).toBe("sbx_workspace_initial");
-  });
-
-  it("stops a late in-flight sandbox remembered during workspace switch", async () => {
+  it("waits for an in-flight acquisition before workspace switch", async () => {
     const lateSandbox = makeSandbox("sbx_workspace_late_inflight");
     const nextSandbox = makeSandbox("sbx_workspace_switch_target");
     let releaseCreate: (() => void) | undefined;
@@ -1410,7 +1305,6 @@ describe("createTestSandbox", () => {
       id: "workspace-initial",
       name: "initial",
       setupScript: "",
-      updatedAt: new Date("2026-08-11T00:00:00.000Z"),
       repos: [],
     };
     const nextWorkspace = {
@@ -1424,61 +1318,20 @@ describe("createTestSandbox", () => {
       referenceFiles: [],
     });
 
-    // Cold acquire is still in flight when switch aborts it.
+    // Cold acquire is still in flight when the switch starts.
     const pendingAcquire = runtime.acquire();
     await vi.waitFor(() => expect(sandboxCreateMock).toHaveBeenCalledTimes(1));
 
     const switchPromise = runtime.switchWorkspace(nextWorkspace);
-    // Finish the aborted create so it can remember a session after previous was captured.
+    // Finish the current acquisition before the candidate build starts.
     releaseCreate?.();
     await pendingAcquire;
     await switchPromise;
 
     expect(lateSandbox.stop).toHaveBeenCalledTimes(1);
     expect(nextSandbox.stop).not.toHaveBeenCalled();
-    // Late acquire rewrote the durable hint; stopping it must clear that hint so
-    // the switch boots fresh instead of restoring the stopped sandbox.
     expect(sandboxGetMock).not.toHaveBeenCalled();
     expect(runtime.sandboxRef()?.id).toBe("sbx_workspace_switch_target");
-  });
-
-  it("restores a durable sandbox hint when cold switch fails before acquire", async () => {
-    hashMock
-      .mockReturnValueOnce("profile-initial")
-      .mockReturnValueOnce("profile-next");
-    sandboxCreateMock.mockRejectedValueOnce(new Error("boot failed"));
-    const initialWorkspace = {
-      id: "workspace-initial",
-      name: "initial",
-      setupScript: "",
-      updatedAt: new Date("2026-08-11T00:00:00.000Z"),
-      repos: [],
-    };
-    const nextWorkspace = {
-      ...initialWorkspace,
-      id: "workspace-next",
-      name: "next",
-    };
-    const runtime = createSandboxRuntime({
-      sandboxRef: {
-        id: "sbx_cold_hint",
-        profileHash: "profile-initial",
-        workspaceId: "workspace-initial",
-      },
-      workspace: initialWorkspace,
-      skills: [],
-      referenceFiles: [],
-    });
-
-    await expect(runtime.switchWorkspace(nextWorkspace)).rejects.toThrow(
-      "sandbox setup failed",
-    );
-
-    expect(runtime.sandboxRef()).toEqual({
-      id: "sbx_cold_hint",
-      profileHash: "profile-initial",
-      workspaceId: "workspace-initial",
-    });
   });
 
   it("surfaces a generic sandbox setup failure for non-recoverable sync errors", async () => {
@@ -1520,59 +1373,6 @@ describe("createTestSandbox", () => {
     expect(error).toBeInstanceOf(Error);
     expect(error).toMatchObject({ message: "sandbox restore failed" });
     expect(sandboxCreateMock).not.toHaveBeenCalled();
-  });
-
-  it("keeps a restored sandbox alive when prepare fails", async () => {
-    const restoredSandbox = makeSandbox("sbx_restore_prepare");
-    sandboxGetMock.mockResolvedValueOnce(restoredSandbox);
-
-    const executor = createTestSandbox({
-      sandboxId: "sbx_restore_prepare",
-      agentHooks: {
-        beforeToolExecute: vi.fn(),
-        prepareSandbox: vi.fn(async () => {
-          throw new Error("prepare failed");
-        }),
-      },
-    });
-    executor.configureSkills([]);
-
-    await expect(executor.createSandbox()).rejects.toThrow(
-      "sandbox setup failed",
-    );
-
-    expect(restoredSandbox.stop).not.toHaveBeenCalled();
-    expect(sandboxCreateMock).not.toHaveBeenCalled();
-    expect(executor.getSandboxId()).toBe("sbx_restore_prepare");
-  });
-
-  it.each([
-    createApiError(404, "Not Found", "not_found", "Sandbox was not found"),
-    createApiError(
-      410,
-      "Gone",
-      "snapshot_not_found",
-      "The sandbox snapshot was not found",
-    ),
-  ])("replaces a permanently missing sandbox reference", async (missing) => {
-    const freshSandbox = makeSandbox("sbx_replacement");
-    const onSandboxAcquired = vi.fn();
-    sandboxGetMock.mockRejectedValueOnce(missing);
-    sandboxCreateMock.mockResolvedValueOnce(freshSandbox);
-
-    const executor = createTestSandbox({
-      sandboxId: "sbx_missing",
-      onSandboxAcquired,
-    });
-    executor.configureSkills([]);
-
-    await executor.createSandbox();
-
-    expect(executor.getSandboxId()).toBe("sbx_replacement");
-    expect(onSandboxAcquired).toHaveBeenCalledWith({
-      sandboxId: "sbx_replacement",
-    });
-    expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
   });
 
   it("defers to SDK OIDC resolution when VERCEL_OIDC_TOKEN is set without explicit credentials", async () => {

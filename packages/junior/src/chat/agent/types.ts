@@ -35,6 +35,7 @@ import type {
 } from "@/chat/tools/types";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
+import type { Workspace } from "@/chat/workspaces/types";
 
 /** One attachment the model may see for the current instruction. */
 export type AgentAttachment = {
@@ -132,9 +133,7 @@ export type AgentRunState = {
  * The runner must commit the preceding agent boundary before invoking this
  * port; the accepted reply transaction appends only this message.
  */
-export type AgentDelivery = (
-  message: AssistantMessage,
-) => void | Promise<void>;
+export type AgentDelivery = (message: AssistantMessage) => void | Promise<void>;
 
 /** Resume the agent turn after a transient or ambiguous delivery failure. */
 export class RetryableDeliveryError extends Error {
@@ -157,8 +156,7 @@ export type AgentDurability = {
   recordPendingAuth?: (
     pendingAuth: ConversationPendingAuthState | undefined,
   ) => void | Promise<void>;
-  /** Persist a replacement sandbox reference; null clears the durable reference. */
-  onSandboxRefChanged?: (sandboxRef: SandboxRef | null) => void | Promise<void>;
+  onSandboxRefChanged?: (sandboxRef: SandboxRef) => void | Promise<void>;
 };
 
 /** Best-effort progress events. Failures here never affect the run. */
@@ -182,6 +180,8 @@ export type AgentEnvironment = {
   sandboxTracePropagation?: SandboxEgressTracePropagationConfig;
   /** Per-slice sandbox egress signal storage override. */
   sandboxEgressSignals?: SandboxEgressSignalTransport;
+  /** Immutable install-wide Workspace recipes for this run. */
+  workspaces?: readonly Workspace[];
   toolOverrides?: {
     imageGenerate?: ImageGenerateToolDeps;
     viewImage?: ViewImageToolDeps;
@@ -304,7 +304,9 @@ export function assertRunConsistency(
   switch (source.platform) {
     case "slack": {
       if (destination.platform !== "slack") {
-        throw new TypeError("Run source and destination platforms do not match");
+        throw new TypeError(
+          "Run source and destination platforms do not match",
+        );
       }
       if (source.teamId !== destination.teamId) {
         throw new TypeError("Slack source and destination teams do not match");
@@ -313,7 +315,9 @@ export function assertRunConsistency(
     }
     case "local": {
       if (destination.platform !== "local") {
-        throw new TypeError("Run source and destination platforms do not match");
+        throw new TypeError(
+          "Run source and destination platforms do not match",
+        );
       }
       if (source.conversationId !== destination.conversationId) {
         throw new TypeError(

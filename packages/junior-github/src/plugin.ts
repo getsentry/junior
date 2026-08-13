@@ -68,7 +68,6 @@ import {
   GitHubPluginSetupError,
   createPermissionCache,
   credentialUnavailable,
-  githubAuthorizationHeader,
   githubRepositoryFromLeaseScope,
   githubRepositoryFromUrl,
   githubRepositoryLeaseScope,
@@ -854,13 +853,6 @@ export function githubPlugin(
           }
           return { owner, name, path: entry.path, repo: entry.repo };
         });
-        const token = await issueInstallationToken({
-          appIdEnv,
-          privateKeyEnv,
-          installationIdEnv,
-          permissions: { contents: "read" },
-          repositories: repos.map(({ name }) => name),
-        });
         for (const { owner, name, path, repo } of repos) {
           const result = await ctx.sandbox.run({
             cmd: "git",
@@ -873,11 +865,6 @@ export function githubPlugin(
               path,
             ],
             cwd: ctx.sandbox.root,
-            env: {
-              GIT_CONFIG_COUNT: "1",
-              GIT_CONFIG_KEY_0: "http.extraHeader",
-              GIT_CONFIG_VALUE_0: `Authorization: ${githubAuthorizationHeader("github.com", token.token)}`,
-            },
           });
           if (result.exitCode !== 0) {
             throw new Error(

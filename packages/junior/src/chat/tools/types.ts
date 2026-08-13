@@ -103,6 +103,7 @@ interface BaseToolRuntimeContext {
   workspace: SandboxWorkspace;
   workspaces?: {
     activeWorkspaceId(): string | undefined;
+    recipes: readonly Workspace[];
     switch(workspace: Workspace, signal?: AbortSignal): Promise<void>;
   };
   /** Report whether the model currently executing the turn accepts images. */
