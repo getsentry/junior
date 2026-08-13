@@ -11,6 +11,17 @@ export interface StoredAttachment {
   id: string;
 }
 
+/** Live conversation-owned attachment metadata. */
+export interface AttachmentRecord {
+  bytes: number;
+  contentType: string;
+  conversationId: string;
+  filename: string;
+  id: string;
+  provider: string;
+  storageKey: string;
+}
+
 export interface AttachmentGarbageCollectionResult {
   deleted: number;
 }
@@ -379,6 +390,47 @@ export async function storeAttachment(args: {
 
   await bestEffortDelete(args.storage, storageKey);
   throw new Error(`Attachment ${id} disappeared while reviving`);
+}
+
+/** Load one live attachment owned by a conversation. */
+export async function readLiveAttachment(args: {
+  attachmentId: string;
+  conversationId: string;
+  db: JuniorSqlDatabase;
+}): Promise<AttachmentRecord | null> {
+  const [row] = await args.db
+    .db()
+    .select({
+      bytes: juniorAttachments.bytes,
+      contentType: juniorAttachments.contentType,
+      conversationId: juniorAttachments.conversationId,
+      deleteRequestedAt: juniorAttachments.deleteRequestedAt,
+      filename: juniorAttachments.filename,
+      id: juniorAttachments.id,
+      provider: juniorAttachments.provider,
+      storageKey: juniorAttachments.storageKey,
+    })
+    .from(juniorAttachments)
+    .where(
+      and(
+        eq(juniorAttachments.id, args.attachmentId),
+        eq(juniorAttachments.conversationId, args.conversationId),
+        isNull(juniorAttachments.deleteRequestedAt),
+      ),
+    );
+  if (!row) return null;
+  if (await isConversationPurged(args.db, args.conversationId)) {
+    return null;
+  }
+  return {
+    bytes: row.bytes,
+    contentType: row.contentType,
+    conversationId: row.conversationId,
+    filename: row.filename,
+    id: row.id,
+    provider: row.provider,
+    storageKey: row.storageKey,
+  };
 }
 
 /** Persist many conversation-owned files. */

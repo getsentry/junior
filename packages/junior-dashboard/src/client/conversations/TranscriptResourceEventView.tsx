@@ -12,12 +12,12 @@ export function TranscriptResourceEventView(props: {
     (part) => part.type === "text" && part.redacted,
   );
   return (
-    <details className="min-w-0 rounded-lg bg-violet-300/[0.07] px-3 py-2">
-      <summary className="cursor-pointer list-none font-display text-sm font-semibold text-violet-100 [&::-webkit-details-marker]:hidden">
+    <details className="min-w-0 px-0.5 py-1">
+      <summary className="cursor-pointer list-none font-display text-sm font-semibold text-dashboard-text transition-colors hover:text-violet-100 [&::-webkit-details-marker]:hidden">
         <HighlightText text={props.message.eventType ?? ""} />
       </summary>
       {text ? (
-        <div className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-dashboard-text-muted">
+        <div className="mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-dashboard-text-muted">
           <HighlightText text={text} />
         </div>
       ) : redacted ? (

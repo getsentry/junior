@@ -539,7 +539,10 @@ export interface ConversationEventPage {
 
 /** Persist and read the canonical per-conversation event log. */
 export interface ConversationEventStore {
-  /** Append events atomically, optionally preserving conversation activity. */
+  /**
+   * Append events atomically, optionally preserving conversation activity.
+   * Archive clears only for human user activity, not every non-preserve write.
+   */
   append(
     conversationId: string,
     events: NewConversationEvent[],

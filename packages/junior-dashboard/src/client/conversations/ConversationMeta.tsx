@@ -82,16 +82,28 @@ export function ConversationPrivacyChip(props: {
   );
 }
 
+/** True when the conversation has at least one resource-link annotation. */
+export function hasConversationAnnotations(
+  detail: ConversationDetailReport | undefined,
+): boolean {
+  return Boolean(
+    detail?.annotations?.some(
+      (annotation) => annotation.kind === "resource_link",
+    ),
+  );
+}
+
 /** Render resource-link annotations under the conversation title. */
 export function ConversationAnnotations(props: {
   detail: ConversationDetailReport | undefined;
 }) {
-  const links = props.detail?.annotations?.filter(
-    (annotation) => annotation.kind === "resource_link",
-  );
-  if (!links?.length) return null;
+  const links =
+    props.detail?.annotations?.filter(
+      (annotation) => annotation.kind === "resource_link",
+    ) ?? [];
+  if (links.length === 0) return null;
   return (
-    <div className="mt-2 flex flex-wrap gap-1.5">
+    <div className="flex flex-wrap gap-1.5">
       {links.map((link) => (
         <a
           className="inline-flex items-center gap-1.5 rounded border border-cyan-300/15 bg-cyan-300/[0.055] px-2 py-0.5 font-sans text-2xs leading-snug text-cyan-50 no-underline"
@@ -147,12 +159,29 @@ function ResourceStatus(props: {
   );
 }
 
-/** Render the conversation owner, id, and Sentry deep link. */
+/** True when identity has content for the requested presentation. */
+export function hasConversationIdentity(props: {
+  conversation: Conversation | undefined;
+  conversationId: string | undefined;
+  detail: ConversationDetailReport | undefined;
+  variant?: "compact" | "full";
+}): boolean {
+  const variant = props.variant ?? "full";
+  const owner = conversationActorLabel(props.conversation);
+  if (variant === "compact") return Boolean(owner);
+  const id = props.conversationId ?? props.conversation?.id;
+  return Boolean(owner || id || props.detail?.sentryConversationUrl);
+}
+
+/** Render the conversation owner, optionally with id and Sentry deep link. */
 export function ConversationIdentity(props: {
   conversation: Conversation | undefined;
   conversationId: string | undefined;
   detail: ConversationDetailReport | undefined;
+  variant?: "compact" | "full";
 }) {
+  if (!hasConversationIdentity(props)) return null;
+  const variant = props.variant ?? "full";
   const email = props.conversation?.actorIdentity?.email?.trim();
   const owner = conversationActorLabel(props.conversation);
   const id = props.conversationId ?? props.conversation?.id;
@@ -168,6 +197,13 @@ export function ConversationIdentity(props: {
       owner
     )
   ) : null;
+  if (variant === "compact") {
+    return (
+      <span className="inline-flex min-w-0 max-w-full items-center">
+        <span className="min-w-0 max-w-full truncate">{ownerNode}</span>
+      </span>
+    );
+  }
   const sentryLink = props.detail?.sentryConversationUrl ? (
     <a
       className="text-dashboard-text no-underline hover:underline"
@@ -185,10 +221,7 @@ export function ConversationIdentity(props: {
         <span className="min-w-0 max-w-full truncate">{ownerNode}</span>
       ) : null}
       {id ? (
-        <span
-          className="hidden min-w-0 items-center gap-x-1.5 md:inline-flex"
-          title={id}
-        >
+        <span className="inline-flex min-w-0 items-center gap-x-1.5" title={id}>
           {ownerNode ? (
             <span className="text-dashboard-text-muted/50">·</span>
           ) : null}
@@ -197,12 +230,8 @@ export function ConversationIdentity(props: {
       ) : null}
       {sentryLink ? (
         <span className="inline-flex min-w-0 items-center gap-x-1.5">
-          {ownerNode ? (
+          {ownerNode || id ? (
             <span className="text-dashboard-text-muted/50">·</span>
-          ) : id ? (
-            <span className="hidden text-dashboard-text-muted/50 md:inline">
-              ·
-            </span>
           ) : null}
           {sentryLink}
         </span>
@@ -301,12 +330,39 @@ export function liveModelId(
   return openTurns.size > 0 ? modelId : undefined;
 }
 
+/** True when runtime stats have content for the requested presentation. */
+export function hasConversationStats(props: {
+  conversation: Conversation | undefined;
+  detail?: ConversationDetailReport;
+  variant?: "compact" | "full";
+}): boolean {
+  return conversationStatItems(props).length > 0;
+}
+
 /** Render runtime, source, token, and cost metadata under the conversation title. */
 export function ConversationStats(props: {
   conversation: Conversation | undefined;
   detail?: ConversationDetailReport;
+  variant?: "compact" | "full";
 }) {
-  if (!props.conversation) return null;
+  const stats = conversationStatItems(props);
+  if (stats.length === 0) return null;
+
+  return (
+    <MetricList
+      className="break-words text-xs leading-[1.45] text-dashboard-text-muted"
+      items={stats}
+    />
+  );
+}
+
+function conversationStatItems(props: {
+  conversation: Conversation | undefined;
+  detail?: ConversationDetailReport;
+  variant?: "compact" | "full";
+}): MetricListItem[] {
+  if (!props.conversation) return [];
+  const variant = props.variant ?? "full";
   const completeDetail = props.detail?.previousCursor
     ? undefined
     : props.detail;
@@ -323,13 +379,13 @@ export function ConversationStats(props: {
   const activeModelId = liveModelId(props.detail);
   const sourceTask = props.detail?.sourceTask;
   const rawStats: Array<MetricListItem | undefined> = [
-    location
+    variant === "full" && location
       ? {
           content: <SourceLocation label={location} sourceUrl={sourceUrl} />,
           key: "location",
         }
       : undefined,
-    sourceTask
+    variant === "full" && sourceTask
       ? {
           content: <SourceTask sourceTask={sourceTask} />,
           key: "source-task",
@@ -388,16 +444,5 @@ export function ConversationStats(props: {
         }
       : undefined,
   ];
-  const stats = rawStats.filter(
-    (item): item is MetricListItem => item !== undefined,
-  );
-
-  return (
-    <div className="mt-2 hidden md:block">
-      <MetricList
-        className="break-words text-xs leading-[1.45] text-dashboard-text-muted"
-        items={stats}
-      />
-    </div>
-  );
+  return rawStats.filter((item): item is MetricListItem => item !== undefined);
 }

@@ -26,6 +26,10 @@ describe("plugin unfinished work", () => {
                 "not-a-candidate",
               ],
               conversationIds: ["conversation-a", "not-a-candidate"],
+              finishedWorkAtByConversationId: {
+                "conversation-finished": "2026-08-03T11:30:00.000Z",
+                "not-a-candidate": "2026-08-03T12:00:00.000Z",
+              },
             };
           },
         },
@@ -57,6 +61,9 @@ describe("plugin unfinished work", () => {
         "conversation-b",
         "conversation-finished",
       ],
+      finishedAtById: {
+        "conversation-finished": "2026-08-03T11:30:00.000Z",
+      },
       unfinishedIds: ["conversation-a", "conversation-b"],
     });
     await expect(
@@ -108,6 +115,7 @@ describe("plugin unfinished work", () => {
       ]),
     ).resolves.toEqual({
       assignedIds: ["conversation-a", "conversation-c"],
+      finishedAtById: {},
       unfinishedIds: ["conversation-a"],
     });
   });

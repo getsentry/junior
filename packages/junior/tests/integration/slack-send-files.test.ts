@@ -291,6 +291,7 @@ describe("Slack sendFiles", () => {
       const puts: string[] = [];
       const storage: AttachmentStorage = {
         provider: "test",
+        get: async () => null,
         put: async (input) => {
           puts.push(input.key);
         },
@@ -366,6 +367,7 @@ describe("Slack sendFiles", () => {
       const puts: string[] = [];
       const storage: AttachmentStorage = {
         provider: "test",
+        get: async () => null,
         put: async (input) => {
           puts.push(input.key);
         },
@@ -439,6 +441,7 @@ describe("Slack sendFiles", () => {
       const puts: string[] = [];
       const storage: AttachmentStorage = {
         provider: "test",
+        get: async () => null,
         put: async (input) => {
           puts.push(input.key);
         },

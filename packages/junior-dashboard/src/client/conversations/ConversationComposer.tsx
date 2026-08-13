@@ -45,27 +45,40 @@ export function ConversationComposer(props: {
   draftId: string;
   error?: string;
   label: string;
-  pending: boolean;
+  /**
+   * Restore the submitted text after a failed accept when there is no mailbox
+   * outbox (new conversation create). Existing conversations keep failures in
+   * the pending queue instead.
+   */
+  restoreDraftOnError?: boolean;
   submitLabel: string;
+  onFocus?: () => void;
   onSubmit(message: string, idempotencyKey: string): Promise<void>;
+  onSubmitStart?: () => void;
 }) {
   const storageKey = `${DRAFT_STORAGE_PREFIX}${encodeURIComponent(props.draftId)}`;
   const [draft, setDraft] = useState<ConversationDraft>(() =>
     readStoredDraft(storageKey),
   );
-  const [submitting, setSubmitting] = useState(false);
+  // New-conversation create holds the send control until accept settles so a
+  // failed restore cannot race a later submit.
+  const [createPending, setCreatePending] = useState(false);
   const online = useDashboardOnline();
   const message = draft.text;
   const id = useId();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const draftRef = useRef(draft);
   // Source of truth for the in-flight attempt. React state alone is too late for
   // a second Enter before the parent pending flag flips.
   const attemptRef = useRef<ConversationAttempt>({
     idempotencyKey: draft.idempotencyKey,
     lastSubmittedText: draft.lastSubmittedText,
   });
+  // Blocks same-tick double fire. For create restore, also blocks until settle.
   const submittingRef = useRef(false);
-  const busy = props.pending || submitting;
+  // Monotonic token so a late failed create never restores over a newer submit.
+  const submitTokenRef = useRef(0);
+  const sendLocked = props.restoreDraftOnError && createPending;
 
   useEffect(() => {
     storeDraft(storageKey, draft);
@@ -97,38 +110,61 @@ export function ConversationComposer(props: {
   const submit = async (event?: FormEvent) => {
     event?.preventDefault();
     const text = message.trim();
-    if (!text || !online || busy || submittingRef.current) return;
+    if (!text || !online || submittingRef.current || sendLocked) return;
 
     // Keep the key while the trimmed text matches the last attempt. Edits that
     // return to the same text (typo undo, IME) must not mint a new key or a
     // retry can duplicate a send the server already accepted.
     const attempt = conversationAttemptForSubmit(attemptRef.current, text);
     attemptRef.current = attempt;
-    const nextDraft: ConversationDraft = {
+    const submitToken = ++submitTokenRef.current;
+    const submittedDraft: ConversationDraft = {
       ...attempt,
-      text: draft.text,
+      text,
     };
-    // Write storage before the request so a reload mid-send retries the same key.
-    setDraft(nextDraft);
-    storeDraft(storageKey, nextDraft);
+    // Clear immediately so the reader can compose the next message. Existing
+    // conversations keep failures in the mailbox outbox; new roots may restore.
+    const nextAttempt = emptyDraft();
+    const clearedDraft: ConversationDraft = {
+      ...nextAttempt,
+      text: "",
+    };
+    draftRef.current = clearedDraft;
+    setDraft(clearedDraft);
+    storeDraft(storageKey, clearedDraft);
+    attemptRef.current = nextAttempt;
     submittingRef.current = true;
-    setSubmitting(true);
+    if (props.restoreDraftOnError) setCreatePending(true);
+    props.onSubmitStart?.();
+    textareaRef.current?.focus({ preventScroll: true });
+    // Existing conversations unlock immediately so the next message can queue.
+    // Create restore stays locked until this accept settles.
+    if (!props.restoreDraftOnError) {
+      queueMicrotask(() => {
+        submittingRef.current = false;
+      });
+    }
 
     try {
       await props.onSubmit(text, attempt.idempotencyKey);
-      clearStoredDraft(storageKey);
-      const cleared = emptyDraft();
-      attemptRef.current = {
-        idempotencyKey: cleared.idempotencyKey,
-        lastSubmittedText: cleared.lastSubmittedText,
-      };
-      setDraft(cleared);
     } catch {
-      // The parent renders the mutation error. The stored draft keeps the same
-      // idempotency key so a retry after reload cannot duplicate the message.
+      if (!props.restoreDraftOnError) {
+        // Parent keeps the failed message in the mailbox queue for retry.
+        return;
+      }
+      // Ignore stale failures after a newer submit owns the composer.
+      if (submitToken !== submitTokenRef.current) return;
+      // Restore only when the reader has not already started another draft.
+      if (draftRef.current.text) return;
+      draftRef.current = submittedDraft;
+      attemptRef.current = attempt;
+      setDraft(submittedDraft);
+      storeDraft(storageKey, submittedDraft);
     } finally {
-      submittingRef.current = false;
-      setSubmitting(false);
+      if (props.restoreDraftOnError && submitToken === submitTokenRef.current) {
+        submittingRef.current = false;
+        setCreatePending(false);
+      }
     }
   };
 
@@ -141,20 +177,16 @@ export function ConversationComposer(props: {
 
   return (
     <div className="grid min-w-0 gap-1.5">
-      {!online || props.error || busy ? (
+      {!online || props.error ? (
         <div
           aria-live="polite"
           className={
             !online
               ? "min-w-0 font-mono text-xs leading-relaxed text-amber-100/80"
-              : props.error
-                ? "min-w-0 font-mono text-xs leading-relaxed text-red-300/80"
-                : "min-w-0 font-mono text-xs leading-relaxed text-dashboard-text-muted"
+              : "min-w-0 font-mono text-xs leading-relaxed text-red-300/80"
           }
         >
-          {!online
-            ? "Connect to send. Your draft is saved."
-            : (props.error ?? "Sending message…")}
+          {!online ? "Connect to send. Your draft is saved." : props.error}
         </div>
       ) : null}
       <form
@@ -165,16 +197,18 @@ export function ConversationComposer(props: {
           {props.label}
         </label>
         <textarea
-          className="min-h-11 max-h-28 w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-2.5 font-mono text-sm leading-relaxed text-dashboard-text outline-none placeholder:text-dashboard-text-muted/65 disabled:opacity-60 md:min-h-24 md:max-h-none md:resize-y md:overflow-visible md:px-3.5 md:py-3"
-          disabled={busy}
+          className="min-h-11 max-h-28 w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-2.5 font-mono text-sm leading-relaxed text-dashboard-text outline-none placeholder:text-dashboard-text-muted/65 md:min-h-24 md:max-h-none md:resize-y md:overflow-visible md:px-3.5 md:py-3"
           id={id}
           maxLength={32_000}
-          onChange={(event) =>
-            setDraft((current) => ({
-              ...current,
+          onChange={(event) => {
+            const nextDraft = {
+              ...draftRef.current,
               text: event.target.value,
-            }))
-          }
+            };
+            draftRef.current = nextDraft;
+            setDraft(nextDraft);
+          }}
+          onFocus={props.onFocus}
           onKeyDown={handleKeyDown}
           placeholder="Message Junior…"
           ref={textareaRef}
@@ -186,12 +220,12 @@ export function ConversationComposer(props: {
             Enter to send · Shift+Enter for a new line
           </div>
           <Button
-            aria-label={busy ? "Sending message" : props.submitLabel}
-            disabled={!message.trim() || !online || busy}
+            aria-label={sendLocked ? "Sending message" : props.submitLabel}
+            disabled={!message.trim() || !online || sendLocked}
             title={
               !online
                 ? "Connect to send"
-                : busy
+                : sendLocked
                   ? "Sending message"
                   : props.submitLabel
             }
@@ -199,7 +233,7 @@ export function ConversationComposer(props: {
           >
             <Send aria-hidden="true" size={14} />
             <span className="hidden md:inline">
-              {busy ? "Sending…" : props.submitLabel}
+              {sendLocked ? "Sending…" : props.submitLabel}
             </span>
           </Button>
         </div>
@@ -260,14 +294,5 @@ function storeDraft(storageKey: string, draft: ConversationDraft): void {
     }
   } catch {
     // Keep the in-memory composer usable when storage is unavailable.
-  }
-}
-
-function clearStoredDraft(storageKey: string): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.removeItem(storageKey);
-  } catch {
-    // The successful send still clears the in-memory draft below.
   }
 }

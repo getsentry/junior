@@ -14,6 +14,29 @@ describe("prompt builders", () => {
     );
   });
 
+  it("requires pull request mentions to include a direct link", () => {
+    const slackPrompt = buildSystemPrompt({
+      source: createSlackSource({
+        teamId: "T123",
+        channelId: "C123",
+        visibility: "private",
+      }),
+    });
+    const localPrompt = buildSystemPrompt({
+      source: createLocalSource("local:test"),
+    });
+
+    expect(slackPrompt).toContain(
+      "When you mention a pull request, include a direct link.",
+    );
+    expect(slackPrompt).toContain(
+      "`owner/repo#number` is also accepted and is linkified on delivery",
+    );
+    expect(localPrompt).toContain(
+      "When you mention a pull request, include a direct link.",
+    );
+  });
+
   it("renders sandbox workspace root as runtime context", () => {
     const prompt = buildTurnContextPrompt({
       availableSkills: [],

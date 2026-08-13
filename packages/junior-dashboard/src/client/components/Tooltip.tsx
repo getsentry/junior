@@ -40,9 +40,7 @@ const SVG_TRIGGER_TAGS = new Set([
 ]);
 
 function isSvgTrigger(element: ReactElement): boolean {
-  return (
-    typeof element.type === "string" && SVG_TRIGGER_TAGS.has(element.type)
-  );
+  return typeof element.type === "string" && SVG_TRIGGER_TAGS.has(element.type);
 }
 
 /** Show selectable dashboard details beside an element. */
@@ -167,5 +165,22 @@ export function Tooltip({
     >
       {card}
     </span>
+  );
+}
+
+/** Compact label tooltip for icon-only controls such as header actions. */
+export function IconButtonTooltip(props: {
+  children: ReactElement;
+  label: string;
+  placement?: "above" | "below";
+}) {
+  return (
+    <Tooltip
+      className="min-w-0 rounded-md border border-white/15 bg-dashboard-surface-raised px-2.5 py-1.5 font-sans text-xs leading-none text-dashboard-text shadow-2xl shadow-black/70"
+      content={props.label}
+      placement={props.placement ?? "above"}
+    >
+      <span className="inline-flex">{props.children}</span>
+    </Tooltip>
   );
 }

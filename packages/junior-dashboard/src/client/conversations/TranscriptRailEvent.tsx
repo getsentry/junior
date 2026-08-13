@@ -46,7 +46,7 @@ export function TranscriptRailEvent(props: {
       <span
         aria-hidden="true"
         className={cn(
-          "mt-1.5 grid size-5 place-items-center rounded bg-black/30",
+          "mt-1.5 grid size-5 place-items-center",
           marker.className,
         )}
       >

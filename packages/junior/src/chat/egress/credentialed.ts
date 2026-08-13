@@ -314,20 +314,42 @@ async function requestBodyBytes(
   return await request.arrayBuffer();
 }
 
-function isGrantSelectionBodyVisible(input: {
+type GitHubBodyInspection = "graphql" | "pull-request-review";
+
+/** Identify GitHub writes whose body determines whether a grant is safe. */
+function githubBodyInspection(input: {
   provider: string;
+  requestMethod: string;
   upstreamUrl: URL;
-}): boolean {
-  return (
-    input.provider === "github" &&
-    input.upstreamUrl.hostname.toLowerCase() === "api.github.com" &&
-    input.upstreamUrl.pathname.toLowerCase().endsWith("/graphql")
-  );
+}): GitHubBodyInspection | undefined {
+  if (
+    input.provider !== "github" ||
+    input.requestMethod.toUpperCase() !== "POST" ||
+    input.upstreamUrl.hostname.toLowerCase() !== "api.github.com"
+  ) {
+    return undefined;
+  }
+  const pathname = input.upstreamUrl.pathname.toLowerCase();
+  if (pathname.endsWith("/graphql")) {
+    return "graphql";
+  }
+  return /^\/repos\/[^/]+\/[^/]+\/pulls\/[^/]+\/reviews(?:\/[^/]+\/events)?$/.test(
+    pathname,
+  )
+    ? "pull-request-review"
+    : undefined;
+}
+
+function grantSelectionBodyTooLargeMessage(
+  inspection: GitHubBodyInspection,
+): string {
+  return inspection === "graphql"
+    ? "GitHub GraphQL request body is too large for Junior to inspect before issuing credentials."
+    : "GitHub pull request review request body is too large for Junior to inspect before issuing credentials.";
 }
 
 function grantSelectionBodyText(input: {
   body: ArrayBuffer | undefined;
-  operation?: string;
   provider: string;
   request: Request;
   upstreamUrl: URL;
@@ -336,15 +358,14 @@ function grantSelectionBodyText(input: {
     return undefined;
   }
   if (input.body.byteLength > GRANT_SELECTION_BODY_TEXT_LIMIT_BYTES) {
-    if (
-      !input.operation &&
-      input.provider === "github" &&
-      input.request.method.toUpperCase() === "POST" &&
-      input.upstreamUrl.hostname.toLowerCase() === "api.github.com" &&
-      input.upstreamUrl.pathname.toLowerCase().endsWith("/graphql")
-    ) {
+    const inspection = githubBodyInspection({
+      provider: input.provider,
+      requestMethod: input.request.method,
+      upstreamUrl: input.upstreamUrl,
+    });
+    if (inspection) {
       throw new EgressPolicyDenied(
-        "GitHub GraphQL request body is too large for Junior to inspect before issuing credentials.",
+        grantSelectionBodyTooLargeMessage(inspection),
       );
     }
     return undefined;
@@ -579,8 +600,9 @@ export async function executeCredentialedEgressRequest(input: {
     request,
     upstreamUrl,
   } = input;
-  const bodyForGrantSelection = isGrantSelectionBodyVisible({
+  const bodyForGrantSelection = githubBodyInspection({
     provider,
+    requestMethod: request.method,
     upstreamUrl,
   })
     ? await requestBodyBytes(request)
@@ -590,7 +612,6 @@ export async function executeCredentialedEgressRequest(input: {
     grantSelection = await selectSandboxEgressGrant({
       bodyText: grantSelectionBodyText({
         body: bodyForGrantSelection,
-        ...(operation ? { operation } : {}),
         provider,
         request,
         upstreamUrl,

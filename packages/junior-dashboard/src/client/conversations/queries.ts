@@ -25,6 +25,15 @@ import {
 
 import { DashboardApiError, del, fetchDashboardJson, patch, post } from "../http";
 import {
+  conversationOutboxMessageForSubmit,
+  conversationOutboxQueryKey,
+  failConversationOutboxMessage,
+  mergeConversationMailboxMessages,
+  removeConversationOutboxMessage,
+  upsertConversationOutboxMessage,
+  type ConversationOutboxMessage,
+} from "./conversationOutbox";
+import {
   buildConversationTranscript,
   conversationHistoryBridgeCursor,
   conversationHistoryChanged,
@@ -147,18 +156,14 @@ export function useCreateConversation() {
       message: string;
       visibility?: "private" | "public";
     }) => post(acceptedConversationMessageSchema, "/api/conversations", args),
-    onSuccess: async (accepted) => {
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: ["dashboard", "conversations"],
-        }),
-        queryClient.invalidateQueries({
-          exact: true,
-          queryKey: conversationPendingMessagesQueryKey(
-            accepted.conversationId,
-          ),
-        }),
-      ]);
+    onSuccess: (accepted) => {
+      void queryClient.invalidateQueries({
+        queryKey: ["dashboard", "conversations"],
+      });
+      void queryClient.invalidateQueries({
+        exact: true,
+        queryKey: conversationPendingMessagesQueryKey(accepted.conversationId),
+      });
     },
   });
 }
@@ -166,6 +171,7 @@ export function useCreateConversation() {
 /** Add one dashboard message and refresh the shared transcript. */
 export function useAppendConversationMessage(conversationId: string) {
   const queryClient = useQueryClient();
+  const outboxQueryKey = conversationOutboxQueryKey(conversationId);
   return useMutation({
     mutationFn: (args: { idempotencyKey: string; message: string }) =>
       post(
@@ -173,20 +179,37 @@ export function useAppendConversationMessage(conversationId: string) {
         `/api/conversations/${encodeURIComponent(conversationId)}/messages`,
         args,
       ),
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: ["dashboard", "conversations"],
-        }),
-        queryClient.invalidateQueries({
-          exact: true,
-          queryKey: conversationDetailQueryKey(conversationId),
-        }),
-        queryClient.invalidateQueries({
-          exact: true,
-          queryKey: conversationPendingMessagesQueryKey(conversationId),
-        }),
-      ]);
+    onMutate: async (args) => {
+      const optimistic = conversationOutboxMessageForSubmit(args);
+      queryClient.setQueryData<ConversationOutboxMessage[]>(
+        outboxQueryKey,
+        (current) => upsertConversationOutboxMessage(current, optimistic),
+      );
+    },
+    onError: (_error, args) => {
+      queryClient.setQueryData<ConversationOutboxMessage[]>(
+        outboxQueryKey,
+        (current) =>
+          failConversationOutboxMessage(current, args.idempotencyKey),
+      );
+    },
+    onSuccess: (_accepted, args) => {
+      queryClient.setQueryData<ConversationOutboxMessage[]>(
+        outboxQueryKey,
+        (current) =>
+          removeConversationOutboxMessage(current, args.idempotencyKey),
+      );
+      void queryClient.invalidateQueries({
+        queryKey: ["dashboard", "conversations"],
+      });
+      void queryClient.invalidateQueries({
+        exact: true,
+        queryKey: conversationDetailQueryKey(conversationId),
+      });
+      void queryClient.invalidateQueries({
+        exact: true,
+        queryKey: conversationPendingMessagesQueryKey(conversationId),
+      });
     },
   });
 }
@@ -435,7 +458,22 @@ export function useConversationData(conversationId: string | undefined) {
         : undefined,
     [detail.data, historyPages],
   );
-  const pendingMessages = pending.data?.messages ?? [];
+  const outbox = useQuery({
+    enabled: Boolean(conversationId),
+    // Local-only cache. Never replace optimistic rows with an empty fetch result.
+    queryFn: async (): Promise<ConversationOutboxMessage[]> =>
+      queryClient.getQueryData<ConversationOutboxMessage[]>(
+        conversationOutboxQueryKey(conversationId),
+      ) ?? [],
+    queryKey: conversationOutboxQueryKey(conversationId),
+    initialData: [],
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
+  const pendingMessages = useMemo(
+    () => mergeConversationMailboxMessages(pending.data?.messages, outbox.data),
+    [outbox.data, pending.data?.messages],
+  );
   const invalidHistoryCursor = isInvalidCursorError(history.error);
   const shouldRefreshDetail = Boolean(
     detail.data &&

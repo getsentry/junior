@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { Archive, ArchiveRestore, CircleAlert, SquarePen } from "lucide-react";
+import {
+  Archive,
+  ArchiveRestore,
+  CircleAlert,
+  LockKeyhole,
+  SquarePen,
+} from "lucide-react";
 import { Link } from "react-router";
 
 import { useArchiveConversation } from "./queries";
@@ -210,9 +216,15 @@ function ConversationSidebarRow(props: {
             {title}
           </div>
         </div>
-        {location ? (
-          <div className="ml-3 mt-0.5 truncate font-mono text-2xs leading-tight text-dashboard-text-muted">
-            {location}
+        {location || props.conversation.visibility === "private" ? (
+          <div className="ml-3 mt-0.5 flex min-w-0 items-center gap-1 font-mono text-2xs leading-tight text-dashboard-text-muted">
+            {props.conversation.visibility === "private" ? (
+              <LockKeyhole
+                aria-label="Private conversation"
+                className="size-3 shrink-0"
+              />
+            ) : null}
+            {location ? <span className="truncate">{location}</span> : null}
           </div>
         ) : null}
       </Link>

@@ -1,4 +1,51 @@
 # Changelog
+## 0.158.0
+
+### Bug Fixes 🐛
+
+- (dashboard) Prioritize user messages after work finishes by @sentry-junior in [#1509](https://github.com/getsentry/junior/pull/1509)
+
+### Internal Changes 🔧
+
+- (local) Run delivery rollback through real agent by @dcramer in [#1507](https://github.com/getsentry/junior/pull/1507)
+
+## 0.157.0
+
+### New Features ✨
+
+- (attachments) Serve conversation attachment bytes by @sentry-junior in [#1496](https://github.com/getsentry/junior/pull/1496)
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Simplify transcript hierarchy and header by @sentry-junior in [#1491](https://github.com/getsentry/junior/pull/1491)
+- Prioritize updates after work finishes by @sentry-junior in [#1492](https://github.com/getsentry/junior/pull/1492)
+- Finish sends before cache refresh by @sentry-junior in [#1493](https://github.com/getsentry/junior/pull/1493)
+
+#### Github
+
+- Deny pull request approvals at egress by @sentry-junior in [#1500](https://github.com/getsentry/junior/pull/1500)
+- Route PR metadata updates through the owned tool by @sentry-junior in [#1501](https://github.com/getsentry/junior/pull/1501)
+
+### Documentation 📚
+
+- (vercel) Document Blob attachment storage by @sentry-junior in [#1494](https://github.com/getsentry/junior/pull/1494)
+
+### Internal Changes 🔧
+
+#### Local
+
+- Run tool events through real agent by @dcramer in [#1505](https://github.com/getsentry/junior/pull/1505)
+- Exercise completion paths through real agent by @dcramer in [#1502](https://github.com/getsentry/junior/pull/1502)
+- Remove scripted agent runner by @dcramer in [#1499](https://github.com/getsentry/junior/pull/1499)
+- Exercise normal turns through real agent by @dcramer in [#1495](https://github.com/getsentry/junior/pull/1495)
+
+#### Other
+
+- (api) Run turn workers through real agent by @dcramer in [#1490](https://github.com/getsentry/junior/pull/1490)
+- (slack) Run finalized replies through real agent by @dcramer in [#1497](https://github.com/getsentry/junior/pull/1497)
+
 ## 0.156.0
 
 ### New Features ✨

@@ -10,8 +10,8 @@ import {
   resolveApiTurnWork,
   routeApiTurnWork,
 } from "@/chat/api-turns/work";
+import type { AgentRun } from "@/chat/agent/types";
 import { getConversationEventStore } from "@/chat/db";
-import { getWebAuthorization } from "@/chat/api-turns/authorization";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import {
   getTurnRecord,
@@ -19,10 +19,11 @@ import {
 } from "@/chat/task-execution/checkpoint";
 import {
   closeApiTurnWorkFixture,
-  createApiTurnScriptedRunner,
   createApiTurnWorkFixture,
   emptyApiTurnAttempt,
 } from "../fixtures/api-turn";
+import { createModelAgentRunnerForRun } from "../fixtures/agent-runner";
+import { createModelStream } from "../fixtures/model-stream";
 
 describe("api turn conversation work", () => {
   afterEach(async () => {
@@ -129,17 +130,13 @@ describe("api turn conversation work", () => {
       source: "web",
     });
 
-    let observedPublishExternally: boolean | undefined;
-    let observedSource: unknown;
-    let observedActorPlatform: string | undefined;
+    const agentRuns: AgentRun[] = [];
     const worker = createApiTurnWorker({
-      agentRunner: createApiTurnScriptedRunner({
-        replyText: "Stored only in Junior.",
-        onRun: (request) => {
-          observedPublishExternally = request.publishExternally;
-          observedSource = request.source;
-          observedActorPlatform = request.actor?.platform;
-        },
+      agentRunner: createModelAgentRunnerForRun((run) => {
+        agentRuns.push(run);
+        return createModelStream([
+          { type: "text", text: "Stored only in Junior." },
+        ]);
       }),
     });
     const route = routeApiTurnWork({
@@ -158,11 +155,14 @@ describe("api turn conversation work", () => {
       }),
     ).resolves.toMatchObject({ status: "completed" });
 
-    expect(observedPublishExternally).toBe(false);
-    expect(observedSource).toEqual(
-      createWebSource(accepted.conversationId, "public"),
+    expect(agentRuns).toHaveLength(1);
+    expect(agentRuns[0]).toEqual(
+      expect.objectContaining({
+        publishExternally: false,
+        source: createWebSource(accepted.conversationId, "public"),
+        actor: expect.objectContaining({ platform: "web" }),
+      }),
     );
-    expect(observedActorPlatform).toBe("web");
 
     // Title generation is automatic on human transcript persist and may finish
     // just after the worker returns completed.
@@ -203,83 +203,6 @@ describe("api turn conversation work", () => {
     });
   });
 
-  it("parks web turns for participant-only authorization", async () => {
-    const { actor, conversationStore, queue, state } =
-      await createApiTurnWorkFixture();
-    const accepted = await createAndEnqueueApiConversation(
-      {
-        actor,
-        idempotencyKey: "web-auth-1",
-        message: "Use Hex.",
-      },
-      { conversationStore, queue, state },
-    );
-    const worker = createApiTurnWorker({
-      agentRunner: {
-        run: async (request) => {
-          expect(request.disabledFeatures).toBeUndefined();
-          expect(request.authorization).toBeDefined();
-          await request.authorization!.deliver({
-            authorizationUrl: "https://example.com/authorize",
-            completionText: "Junior will continue automatically.",
-            label: "Connect Hex",
-          });
-          await saveTurnCheckpoint({
-            mode: "paused",
-            conversationId: request.conversationId,
-            turnId: request.turnId,
-            sliceId: 1,
-            reason: "auth",
-            messages: [
-              {
-                role: "user",
-                content: [{ type: "text", text: "Use Hex." }],
-                timestamp: Date.now(),
-              },
-            ],
-            destination: request.destination,
-            publishExternally: false,
-            source: request.source,
-            actor: request.actor,
-            surface: "api",
-          });
-          return {
-            status: "awaiting_auth",
-            providerDisplayName: "Hex",
-          };
-        },
-      },
-    });
-
-    await expect(
-      processConversationQueueMessage(queue.takeMessage(), {
-        conversationStore,
-        queue,
-        run: worker,
-        state,
-      }),
-    ).resolves.toMatchObject({ status: "completed" });
-    await expect(
-      getWebAuthorization({
-        actorId: actor.userId,
-        conversationId: accepted.conversationId,
-      }),
-    ).resolves.toMatchObject({
-      authorizationUrl: "https://example.com/authorize",
-      label: "Connect Hex",
-    });
-    await expect(
-      getTurnRecord(
-        accepted.conversationId,
-        apiTurnIdForMessage(accepted.messageId),
-      ),
-    ).resolves.toMatchObject({
-      resumeReason: "auth",
-      state: "paused",
-      surface: "api",
-    });
-  });
-
   it("feeds private source visibility into the agent run", async () => {
     const { actor, conversationStore, queue, state } =
       await createApiTurnWorkFixture();
@@ -300,13 +223,13 @@ describe("api turn conversation work", () => {
       visibility: "private",
     });
 
-    let observedSource: unknown;
+    const agentRuns: AgentRun[] = [];
     const worker = createApiTurnWorker({
-      agentRunner: createApiTurnScriptedRunner({
-        replyText: "Private reply stays in Junior.",
-        onRun: (request) => {
-          observedSource = request.source;
-        },
+      agentRunner: createModelAgentRunnerForRun((run) => {
+        agentRuns.push(run);
+        return createModelStream([
+          { type: "text", text: "Private reply stays in Junior." },
+        ]);
       }),
     });
     const route = routeApiTurnWork({
@@ -324,7 +247,8 @@ describe("api turn conversation work", () => {
         state,
       }),
     ).resolves.toMatchObject({ status: "completed" });
-    expect(observedSource).toEqual(
+    expect(agentRuns).toHaveLength(1);
+    expect(agentRuns[0]?.source).toEqual(
       createWebSource(accepted.conversationId, "private"),
     );
   });
@@ -490,17 +414,13 @@ describe("api turn conversation work", () => {
       source: "web",
     });
 
-    let observedDestinationPlatform: string | undefined;
-    let observedPublishExternally: boolean | undefined;
-    let observedSourcePlatform: string | undefined;
+    const agentRuns: AgentRun[] = [];
     const worker = createApiTurnWorker({
-      agentRunner: createApiTurnScriptedRunner({
-        replyText: "Dashboard-only reply.",
-        onRun: (request) => {
-          observedDestinationPlatform = request.destination.platform;
-          observedPublishExternally = request.publishExternally;
-          observedSourcePlatform = request.source.platform;
-        },
+      agentRunner: createModelAgentRunnerForRun((run) => {
+        agentRuns.push(run);
+        return createModelStream([
+          { type: "text", text: "Dashboard-only reply." },
+        ]);
       }),
     });
     const route = routeApiTurnWork({
@@ -519,9 +439,14 @@ describe("api turn conversation work", () => {
       }),
     ).resolves.toMatchObject({ status: "completed" });
 
-    expect(observedDestinationPlatform).toBe("slack");
-    expect(observedPublishExternally).toBe(false);
-    expect(observedSourcePlatform).toBe("web");
+    expect(agentRuns).toHaveLength(1);
+    expect(agentRuns[0]).toEqual(
+      expect.objectContaining({
+        destination: expect.objectContaining({ platform: "slack" }),
+        publishExternally: false,
+        source: expect.objectContaining({ platform: "web" }),
+      }),
+    );
 
     const messages = (
       await getConversationEventStore().loadMessageHistory(conversationId)

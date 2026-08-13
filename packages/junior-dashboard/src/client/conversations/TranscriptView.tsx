@@ -1,4 +1,3 @@
-import { useState, type ReactNode } from "react";
 import { ArrowDownToLine } from "lucide-react";
 
 import type {
@@ -6,7 +5,6 @@ import type {
   TranscriptViewSubagentPart,
 } from "../types";
 import { Button } from "../components/Button";
-import { TranscriptHeader } from "./TranscriptHeader";
 import { ConversationTranscriptView } from "./ConversationTranscript";
 import {
   transcriptBottomVersion,
@@ -18,29 +16,31 @@ import { TranscriptSearchProvider } from "./transcriptSearch";
 
 /** Render one conversation transcript as ordered message and tool events. */
 export function Transcript(props: {
-  actions?: ReactNode;
   hasPreviousPage?: boolean;
   historyError?: Error | null;
   historyVersion?: string;
   live?: boolean;
   loadingPreviousPage?: boolean;
+  pinRequestVersion?: number;
   onLoadPreviousPage?: () => void;
   responding?: boolean;
+  search?: string;
   onOpenSubagentTranscript?: (args: {
     part: TranscriptViewSubagentPart;
     conversation: ConversationTranscript;
   }) => void;
   transcript?: ConversationTranscript;
+  view?: TranscriptViewMode;
 }) {
-  const [view, setView] = useState<TranscriptViewMode>("rich");
-  const [search, setSearch] = useState("");
-
+  const view = props.view ?? "rich";
+  const search = props.search ?? "";
   const redacted = props.transcript?.eventHistory.status === "redacted";
   const bottomPinning = usePinnedTranscriptBottom({
     conversationId: props.transcript?.conversationId,
     enabled: props.live ?? false,
     historyVersion: props.historyVersion ?? "empty",
     loadingPreviousPage: props.loadingPreviousPage ?? false,
+    pinRequestVersion: props.pinRequestVersion,
     version: transcriptBottomVersion(props.transcript),
   });
 
@@ -55,14 +55,11 @@ export function Transcript(props: {
   return (
     <TranscriptSearchProvider query={search}>
       <div className="grid min-w-0" ref={bottomPinning.contentRef}>
-        <TranscriptHeader
-          actions={props.actions}
-          onChange={setView}
-          onSearchChange={setSearch}
-          redacted={redacted}
-          search={search}
-          value={view}
-        />
+        {redacted ? (
+          <div className="mb-2 min-w-0 break-words text-sm leading-relaxed text-dashboard-text-muted">
+            Hidden because this conversation is not public.
+          </div>
+        ) : null}
         {props.hasPreviousPage || props.loadingPreviousPage ? (
           <div className="mb-3 flex items-center gap-3">
             <span className="h-px min-w-4 flex-1 bg-white/[0.08]" />

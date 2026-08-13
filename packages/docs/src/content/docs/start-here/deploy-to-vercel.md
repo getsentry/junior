@@ -114,7 +114,26 @@ Set the core runtime variables in Vercel:
 | `JUNIOR_BASE_URL`                           | Conditional | Main URL for OAuth and callback URLs when Vercel URL values are not enough.       |
 | `JUNIOR_STATE_KEY_PREFIX`                   | No          | Redis key namespace for this deployment when sharing one Redis database.          |
 | `AI_GATEWAY_API_KEY`                        | Optional    | Fallback AI Gateway auth when OIDC is unavailable. Prefer project OIDC on Vercel. |
+| `BLOB_STORE_ID`                             | Conditional | Blob store used for durable conversation attachments. Vercel sets this for an OIDC-connected store. |
+| `BLOB_READ_WRITE_TOKEN`                     | Conditional | Static fallback for Blob when OIDC is unavailable. Vercel sets this for a token-connected store. |
 | `VERCEL_SANDBOX_KEEPALIVE_MS`               | Recommended | Extends an active sandbox on each tool acquire. Set to `900000` (15 minutes).     |
+
+### Configure attachment storage
+
+Junior stores files sent with `sendFiles` as private conversation attachments in
+Vercel Blob. File delivery fails if the project has no Blob store credentials.
+
+1. Open the Vercel project and select **Storage**.
+2. Create a **Blob** store with **Private** access.
+3. Connect the store to the project for the environments that run Junior.
+4. Prefer **OIDC** for production. On an existing token connection, open the
+   store's **Projects** tab and select **Upgrade to OIDC** for the project.
+5. Redeploy the project after you change the store connection.
+
+An OIDC connection sets `BLOB_STORE_ID`. Vercel also supplies its short-lived
+OIDC credential at runtime. The Blob SDK uses these values automatically. A
+token connection sets `BLOB_READ_WRITE_TOKEN` instead. Use the static token only
+for local development, CI, a non-Vercel host, or when OIDC is not available.
 
 ### AI Gateway auth (preferred: project OIDC)
 
@@ -188,9 +207,10 @@ Run these checks after deployment:
 3. The Vercel deployment has a cron entry for `/api/internal/heartbeat`.
 4. The Vercel deployment has Queue triggers for `/api/internal/agent/continue` and `/api/internal/plugin/tasks`.
 5. A Slack mention produces a thread reply in the expected workspace.
-6. App Home opens without an error.
-7. Queue callback and agent-run logs show successful processing.
-8. One enabled plugin workflow succeeds end to end.
+6. `sendFiles` can attach a small test file in Slack.
+7. App Home opens without an error.
+8. Queue callback and agent-run logs show successful processing.
+9. One enabled plugin workflow succeeds end to end.
 
 ## Next step
 

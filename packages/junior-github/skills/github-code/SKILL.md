@@ -5,7 +5,7 @@ description: Work with GitHub repositories, source code, branches, commits, pull
 
 # GitHub Code Operations
 
-Use `git` and `gh` for repository work. Use `github_createPullRequest`, not `gh pr create`, for new PRs.
+Use `git` and `gh` for repository work. Use `github_createPullRequest`, not `gh pr create`, for new PRs. Use `github_updatePullRequest`, not raw `gh api`/`gh pr edit`, when changing PR title, body, base, or open/closed state.
 
 ## References
 
@@ -64,7 +64,7 @@ Unless the user explicitly says not to create a PR, every completed repository e
 2. Commit using repo conventions; otherwise use `<type>(<scope>): <Subject>` in imperative present tense, with no agent branding.
 3. Push explicitly with `git push -u origin BRANCH`.
 4. Resolve the actual default branch.
-5. Reuse and update an existing PR for the branch; otherwise call `github_createPullRequest` with explicit repo, head, base, title, body, and `draft: true` unless the user or repo explicitly requires ready-for-review.
+5. Reuse and update an existing PR for the branch with `github_updatePullRequest`; otherwise call `github_createPullRequest` with explicit repo, head, base, title, body, and `draft: true` unless the user or repo explicitly requires ready-for-review.
 
 PR titles use the same conventional form as commits: `<type>(<scope>): <Subject>` or `<type>: <Subject>`. Match the current dominant change, not the latest commit or a stale title.
 
@@ -72,12 +72,14 @@ Write the PR body for a reviewer who knows the product but not this change. Use 
 
 Explain what this PR changes and why it matters. Add only context the diff cannot show. Keep the body short by default; add structure only when it helps. Omit empty or `N/A` sections, file-by-file narration, copied commit logs, and redundant diff summaries.
 
-Treat the current title, body, and commit messages as fallible context. After material follow-up commits, re-check the title and rewrite the body against the current diff. Never include customer data, PII, secrets, or sensitive thread context, especially in public repositories. Resolve requested assignee/reviewer handles from evidence; skip unconfirmed identities.
+Treat the current title, body, and commit messages as fallible context. After material follow-up commits, re-check the title and rewrite the body against the current diff with `github_updatePullRequest`. Never include customer data, PII, secrets, or sensitive thread context, especially in public repositories. Resolve requested assignee/reviewer handles from evidence; skip unconfirmed identities.
 
-If PR creation is blocked, report the exact failed command/tool call and leave the committed branch intact.
+If PR creation or update is blocked, report the exact failed command/tool call and leave the committed branch intact.
 
 ### 6. Follow and report
 
 When PR creation returns a subscribable resource hint, subscribe to suggested review/CI events. Report only actionable feedback addressed, build failures fixed, fully green/ready state, or merge.
 
 Return: repo, branch, PR URL/number, checks and results, pre-existing failures, and anything not run with the reason.
+
+When you mention a pull request in a user-facing reply, always include a direct link. Prefer the full PR URL or a Markdown link such as `[#123](https://github.com/owner/repo/pull/123)`. `owner/repo#number` is also fine. Do not leave bare `PR #123` text without a URL or repo.

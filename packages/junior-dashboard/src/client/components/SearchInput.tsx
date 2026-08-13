@@ -1,3 +1,4 @@
+import type { Ref } from "react";
 import { Search } from "lucide-react";
 
 import { cn } from "../styles";
@@ -7,6 +8,7 @@ type SearchInputSize = "compact" | "default";
 /** Render the dashboard's standard search input with distinct value and placeholder text. */
 export function SearchInput(props: {
   className?: string;
+  inputRef?: Ref<HTMLInputElement>;
   label: string;
   onChange(value: string): void;
   placeholder: string;
@@ -33,6 +35,7 @@ export function SearchInput(props: {
         )}
         onChange={(event) => props.onChange(event.currentTarget.value)}
         placeholder={props.placeholder}
+        ref={props.inputRef}
         type="search"
         value={props.value}
       />

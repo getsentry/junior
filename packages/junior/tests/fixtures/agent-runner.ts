@@ -5,9 +5,7 @@ import {
 import type { StreamFn } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
-import type { AgentRunResult } from "@/chat/services/turn-result";
 import { getAssistantReplyText } from "@/chat/services/assistant-reply";
-import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import type { PiMessage } from "@/chat/pi/messages";
 import { isAssistantMessage } from "@/chat/pi/transcript";
 import type { AgentRun } from "@/chat/agent/types";
@@ -85,21 +83,4 @@ export async function deliverAssistantMessagesForTest(
     await run.delivery(message);
   }
   return history;
-}
-
-/** Script completed assistant messages through the production delivery port. */
-export function scriptedAssistantMessageRunner(args: {
-  messages: Array<{ text: string }>;
-  result: AgentRunResult;
-}): AgentRunner {
-  return {
-    run: async (run) => {
-      await deliverAssistantMessagesForTest(
-        run,
-        args.messages,
-        args.result.piMessages,
-      );
-      return completedAgentRun(args.result);
-    },
-  };
 }

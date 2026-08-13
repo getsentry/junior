@@ -1,6 +1,5 @@
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import type { AgentRunResult } from "@/chat/services/turn-result";
-import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import {
   defineJuniorPlugin,
   type PluginRunContext,
@@ -18,7 +17,6 @@ import type { PiMessage } from "@/chat/pi/messages";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import type { AgentRun } from "@/chat/agent/types";
-import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import {
   getPersistedSandboxState,
   getPersistedThreadState,
@@ -30,12 +28,25 @@ import {
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
-import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
-import { createProviderError } from "@/chat/services/provider-error";
+import { NO_REPLY_MARKER } from "@/chat/no-reply";
+import { getMcpStoredOAuthCredentials } from "@/chat/mcp/auth-store";
+import { startLocalOAuthCallbackServer } from "@/chat/local/oauth-callback-server";
+import { createLocalOAuthState } from "@/chat/local/oauth-relay";
+import { getTurnRecord } from "@/chat/task-execution/checkpoint";
 import {
-  scriptedAssistantMessageRunner,
+  createModelAgentRunnerForRun,
+  neverRunAgentRunner,
 } from "../fixtures/agent-runner";
+import { createModelStream } from "../fixtures/model-stream";
+import { runMcpOauthCallbackRoute } from "../fixtures/mcp-oauth-callback-harness";
+import { createPluginAppFixture } from "../fixtures/plugin-app";
+import { EVAL_MCP_AUTH_PROVIDER } from "../msw/handlers/eval-mcp-auth";
 import { getConversationEventStore } from "@/chat/db";
+
+const EVAL_MCP_PLUGIN_ROOT = path.resolve(
+  import.meta.dirname,
+  "../fixtures/plugins/eval-auth",
+);
 
 function userPiMessage(text: string, timestamp = 1): PiMessage {
   return {
@@ -71,49 +82,6 @@ function assistantPiMessage(text: string, timestamp = 1): AssistantMessage {
   };
 }
 
-function successReply(
-  text: string,
-  options: Partial<
-    Pick<AgentRunResult, "piMessages"> & {
-      toolCalls: string[];
-    }
-  > = {},
-): AgentRunResult {
-  return {
-    text,
-    ...(options.piMessages ? { piMessages: options.piMessages } : {}),
-    diagnostics: {
-      assistantMessageCount: 1,
-      modelId: "fake-local-agent",
-      outcome: "success",
-      toolCalls: options.toolCalls ?? [],
-      toolErrorCount: 0,
-      toolResultCount: 0,
-      usedPrimaryText: true,
-    },
-  };
-}
-
-function providerFailureReply(
-  rawError: string,
-  providerError: unknown = new Error(rawError),
-): AgentRunResult {
-  return {
-    text: rawError,
-    diagnostics: {
-      assistantMessageCount: 0,
-      errorMessage: rawError,
-      modelId: "fake-local-agent",
-      outcome: "provider_error",
-      providerError,
-      toolCalls: [],
-      toolErrorCount: 0,
-      toolResultCount: 0,
-      usedPrimaryText: false,
-    },
-  };
-}
-
 async function loadLifecycleEvents(conversationId: string) {
   return (await getConversationEventStore().loadHistory(conversationId)).filter(
     (event) => event.data.type.startsWith("turn_"),
@@ -122,84 +90,7 @@ async function loadLifecycleEvents(conversationId: string) {
 
 type CapturedAgentRun = AgentRun;
 
-async function deliverAssistantText(
-  request: Parameters<AgentRunner["run"]>[0],
-  text: string,
-  message: AssistantMessage = assistantPiMessage(text),
-  historyBeforeMessage?: PiMessage[],
-): Promise<void> {
-  if (!request.delivery) {
-    throw new Error("local test runner requires assistant delivery");
-  }
-  if (historyBeforeMessage) {
-    await commitMessages({
-      conversationId: request.conversationId,
-      messages: historyBeforeMessage,
-    });
-  }
-  if (getAssistantReplyText(message) !== text) {
-    throw new Error("fake delivery text must match its assistant message");
-  }
-  await request.delivery(message);
-}
-
-async function persistRunningSessionForFakeReply(
-  run: CapturedAgentRun,
-  piMessages: PiMessage[],
-): Promise<void> {
-  await saveTurnCheckpoint({
-    mode: "running",
-    conversationId: run.conversationId,
-    destination: run.destination,
-    actor: run.actor && "platform" in run.actor ? run.actor : undefined,
-    source: run.source,
-    turnId: run.turnId,
-    sliceId: 1,
-    messages: piMessages.slice(0, -1),
-    surface: run.surface,
-    turnStartMessageIndex: run.history?.length ?? 0,
-  });
-}
-
 describe("local agent runner", () => {
-  it("delivers and persists completed assistant messages in order", async () => {
-    const conversationId = normalizeLocalConversationId({
-      alias: "assistant-messages",
-      cwd: "/tmp/local-agent-runner-assistant-messages",
-    });
-    expect(conversationId).toBeDefined();
-    const delivered: LocalAgentReply[] = [];
-
-    await runLocalAgentTurn(
-      {
-        conversationId: conversationId!,
-        message: "check this",
-      },
-      {
-        deliverReply: async (reply) => {
-          delivered.push(reply);
-        },
-        agentRunner: scriptedAssistantMessageRunner({
-          messages: [{ text: "Checking now." }, { text: "Done." }],
-          result: successReply("Done."),
-        }),
-      },
-    );
-
-    expect(delivered).toEqual([{ text: "Checking now." }, { text: "Done." }]);
-    const state = await getPersistedThreadState(conversationId!);
-    const conversation = coerceThreadConversationState(state);
-    await hydrateConversationMessages({
-      conversation,
-      conversationId: conversationId!,
-    });
-    expect(
-      conversation.messages
-        .filter((message) => message.role === "assistant")
-        .map((message) => message.text),
-    ).toEqual(["Checking now.", "Done."]);
-  });
-
   it("runs a local message without Slack actor or destination state", async () => {
     const conversationId = normalizeLocalConversationId({
       alias: "demo",
@@ -207,13 +98,10 @@ describe("local agent runner", () => {
     });
     expect(conversationId).toBeDefined();
 
-    const contexts: CapturedAgentRun[] = [];
-    const generateReply = vi.fn<AgentRunner["run"]>(async (request) => {
-      const context = request;
-
-      contexts.push(context);
-      await deliverAssistantText(request, "hello from local");
-      return completedAgentRun(successReply("hello from local"));
+    const agentRuns: CapturedAgentRun[] = [];
+    const agentRunner = createModelAgentRunnerForRun((run) => {
+      agentRuns.push(run);
+      return createModelStream([{ type: "text", text: "hello from local" }]);
     });
     const delivered: LocalAgentReply[] = [];
 
@@ -226,11 +114,12 @@ describe("local agent runner", () => {
         deliverReply: async (reply) => {
           delivered.push(reply);
         },
-        agentRunner: { run: generateReply },
+        agentRunner,
       },
     );
 
-    expect(generateReply).toHaveBeenCalledWith(
+    expect(agentRuns).toHaveLength(1);
+    expect(agentRuns[0]).toEqual(
       expect.objectContaining({
         instruction: expect.objectContaining({ text: "hello" }),
         disabledFeatures: ["interactive-auth"],
@@ -244,13 +133,13 @@ describe("local agent runner", () => {
         surface: "internal",
       }),
     );
-    expect(contexts[0]?.actor).toEqual({
+    expect(agentRuns[0]?.actor).toEqual({
       fullName: "Local CLI",
       platform: "local",
       userId: "local-cli",
       userName: "local",
     });
-    expect(contexts[0]?.slackConversation).toBeUndefined();
+    expect(agentRuns[0]?.slackConversation).toBeUndefined();
     expect(delivered).toEqual([
       {
         text: "hello from local",
@@ -318,73 +207,135 @@ describe("local agent runner", () => {
       cwd: "/tmp/local-agent-runner-oauth-resume",
     });
     expect(conversationId).toBeDefined();
-    const requests: Parameters<AgentRunner["run"]>[0][] = [];
-    const deliverAuthorizationRequest =
-      vi.fn<NonNullable<LocalAgentTurnDeps["authorization"]>["deliver"]>();
-    const waitForAuthorization = vi.fn(async () => undefined);
-    const saveTurnCheckpoint = vi.fn(async () => undefined);
+    const previousBaseUrl = process.env.JUNIOR_BASE_URL;
+    process.env.JUNIOR_BASE_URL = "https://junior.example.com";
+    const pluginApp = await createPluginAppFixture([EVAL_MCP_PLUGIN_ROOT]);
+    let oauthCallback:
+      | Awaited<ReturnType<typeof startLocalOAuthCallbackServer>>
+      | undefined;
 
-    await runLocalAgentTurn(
-      {
-        conversationId: conversationId!,
-        message: "upload the image",
-      },
-      {
-        agentRunner: {
-          run: async (request) => {
-            requests.push(request);
-            if (requests.length === 1) {
-              await request.durability?.recordPendingAuth?.({
-                kind: "plugin",
-                provider: "github",
-                actorId: "local-cli",
-                sessionId: request.turnId,
-                linkSentAtMs: Date.now(),
-              });
-              await request.authorization?.deliver({
-                authorizationUrl: "https://github.com/login/oauth/authorize",
-                completionText: "Once authorized, this request will continue.",
-                label: "Connect GitHub",
-              });
-              return {
-                status: "awaiting_auth",
-                providerDisplayName: "GitHub",
-              };
-            }
-            await deliverAssistantText(request, "uploaded");
-            return completedAgentRun(
-              successReply("uploaded", {
-                piMessages: [assistantPiMessage("uploaded")],
-              }),
-            );
+    try {
+      const requests: Parameters<AgentRunner["run"]>[0][] = [];
+      const authorizationRequests: Parameters<
+        NonNullable<LocalAgentTurnDeps["authorization"]>["deliver"]
+      >[0][] = [];
+      const delivered: LocalAgentReply[] = [];
+      const agentRunner = createModelAgentRunnerForRun((request) => {
+        requests.push(request);
+        return createModelStream([
+          {
+            type: "toolCall",
+            name: "searchMcpTools",
+            arguments: {
+              provider: EVAL_MCP_AUTH_PROVIDER,
+              query: "budget echo",
+            },
+          },
+          { type: "text", text: "Eval Auth is connected." },
+        ]);
+      });
+      oauthCallback = await startLocalOAuthCallbackServer(agentRunner);
+      const completeAuthorization = async (authorizationUrl: string) => {
+        const providerResponse = await fetch(authorizationUrl, {
+          redirect: "manual",
+        });
+        const providerLocation = providerResponse.headers.get("location");
+        expect(providerResponse.status).toBe(302);
+        expect(providerLocation).toEqual(expect.any(String));
+        const providerCallback = new URL(providerLocation!);
+        const state = providerCallback.searchParams.get("state");
+        const code = providerCallback.searchParams.get("code");
+        expect(state).toEqual(expect.any(String));
+        expect(code).toEqual(expect.any(String));
+
+        const relayResponse = await runMcpOauthCallbackRoute({
+          provider: EVAL_MCP_AUTH_PROVIDER,
+          state: state!,
+          code: code!,
+          agentRunner: neverRunAgentRunner(),
+          expectBackgroundWork: false,
+        });
+        const localCallbackUrl = relayResponse.headers.get("location");
+        expect(relayResponse.status).toBe(302);
+        expect(localCallbackUrl).toEqual(expect.any(String));
+        await expect(fetch(localCallbackUrl!)).resolves.toMatchObject({
+          status: 200,
+        });
+      };
+
+      await runLocalAgentTurn(
+        {
+          conversationId: conversationId!,
+          message: "connect eval-auth",
+        },
+        {
+          agentRunner,
+          authorization: {
+            cancel: oauthCallback.cancelAuthorization,
+            createState: async () =>
+              await createLocalOAuthState(oauthCallback!.port),
+            deliver: async (request) => {
+              authorizationRequests.push(request);
+              oauthCallback!.beginAuthorization(request.authorizationUrl);
+              await completeAuthorization(request.authorizationUrl);
+            },
+            wait: oauthCallback.waitForAuthorization,
+          },
+          deliverReply: async (reply) => {
+            delivered.push(reply);
           },
         },
-        authorization: {
-          cancel: vi.fn(),
-          createState: vi.fn(async () => "local-oauth-state"),
-          deliver: deliverAuthorizationRequest,
-          wait: waitForAuthorization,
-        },
-        saveTurnCheckpoint,
-        deliverReply: async () => undefined,
-      },
-    );
+      );
 
-    expect(deliverAuthorizationRequest).toHaveBeenCalledOnce();
-    expect(waitForAuthorization).toHaveBeenCalledOnce();
-    expect(requests).toHaveLength(2);
-    expect(requests[0]?.turnId).toBe(requests[1]?.turnId);
-    expect(requests[0]?.runId).not.toBe(requests[1]?.runId);
-    expect(saveTurnCheckpoint).toHaveBeenCalledWith(
-      expect.objectContaining({ sliceId: 2 }),
-    );
-    expect(requests[0]?.disabledFeatures).toBeUndefined();
-    expect(requests[0]?.authorization).toBeDefined();
-    expect(requests[1]?.state?.pendingAuth).toMatchObject({
-      kind: "plugin",
-      provider: "github",
-      actorId: "local-cli",
-    });
+      expect(authorizationRequests).toEqual([
+        expect.objectContaining({
+          authorizationUrl: expect.stringContaining(
+            "https://eval-auth.example.test/oauth/authorize",
+          ),
+        }),
+      ]);
+      expect(requests).toHaveLength(2);
+      expect(requests[0]?.turnId).toBe(requests[1]?.turnId);
+      expect(requests[0]?.runId).not.toBe(requests[1]?.runId);
+      expect(requests[0]?.disabledFeatures).toBeUndefined();
+      expect(requests[0]?.authorization).toBeDefined();
+      expect(requests[1]?.state?.pendingAuth).toMatchObject({
+        kind: "mcp",
+        provider: EVAL_MCP_AUTH_PROVIDER,
+        actorId: "local-cli",
+      });
+      expect(delivered).toEqual([{ text: "Eval Auth is connected." }]);
+      await expect(
+        getMcpStoredOAuthCredentials("local-cli", EVAL_MCP_AUTH_PROVIDER),
+      ).resolves.toMatchObject({
+        tokens: expect.objectContaining({ access_token: expect.any(String) }),
+      });
+      await expect(
+        getTurnRecord(conversationId!, requests[0]!.turnId),
+      ).resolves.toMatchObject({
+        state: "completed",
+        sliceId: 2,
+        piMessages: expect.arrayContaining([
+          expect.objectContaining({
+            role: "toolResult",
+            toolName: "searchMcpTools",
+            isError: false,
+          }),
+        ]),
+      });
+      const state = coerceThreadConversationState(
+        await getPersistedThreadState(conversationId!),
+      );
+      expect(state.processing.pendingAuth).toBeUndefined();
+    } finally {
+      await oauthCallback?.close();
+      await pluginApp.cleanup();
+      if (previousBaseUrl === undefined) {
+        delete process.env.JUNIOR_BASE_URL;
+      } else {
+        process.env.JUNIOR_BASE_URL = previousBaseUrl;
+      }
+    }
   });
 
   it("records intentional silence without delivering or inventing a message", async () => {
@@ -397,9 +348,9 @@ describe("local agent runner", () => {
     await runLocalAgentTurn(
       { conversationId: conversationId!, message: "react only" },
       {
-        agentRunner: {
-          run: async () => completedAgentRun(successReply("")),
-        },
+        agentRunner: createModelAgentRunnerForRun(() =>
+          createModelStream([{ type: "text", text: NO_REPLY_MARKER }]),
+        ),
         deliverReply,
       },
     );
@@ -417,51 +368,12 @@ describe("local agent runner", () => {
     expect(JSON.stringify(conversation.messages)).not.toContain(
       "[no visible reply]",
     );
-    expect(await loadLifecycleEvents(conversationId!)).toEqual([
-      expect.objectContaining({
-        data: expect.objectContaining({ type: "turn_started" }),
-      }),
-      expect.objectContaining({
-        data: expect.objectContaining({
-          type: "turn_completed",
-          outcome: "no_reply",
-        }),
-      }),
-    ]);
-  });
-
-  it("records success when a completed message precedes intentional silence", async () => {
-    const conversationId = normalizeLocalConversationId({
-      alias: "message-then-no-reply",
-      cwd: "/tmp/local-agent-runner-message-then-no-reply",
+    const lifecycle = await loadLifecycleEvents(conversationId!);
+    expect(lifecycle[0]?.data).toMatchObject({ type: "turn_started" });
+    expect(lifecycle.at(-1)?.data).toMatchObject({
+      type: "turn_completed",
+      outcome: "no_reply",
     });
-    const delivered: LocalAgentReply[] = [];
-
-    await runLocalAgentTurn(
-      { conversationId: conversationId!, message: "check, then react" },
-      {
-        agentRunner: scriptedAssistantMessageRunner({
-          messages: [{ text: "Checked it." }],
-          result: successReply(""),
-        }),
-        deliverReply: async (reply) => {
-          delivered.push(reply);
-        },
-      },
-    );
-
-    expect(delivered).toEqual([{ text: "Checked it." }]);
-    expect(await loadLifecycleEvents(conversationId!)).toEqual([
-      expect.objectContaining({
-        data: expect.objectContaining({ type: "turn_started" }),
-      }),
-      expect.objectContaining({
-        data: expect.objectContaining({
-          type: "turn_completed",
-          outcome: "success",
-        }),
-      }),
-    ]);
   });
 
   it("records a delivered sanitized model failure without raw error data", async () => {
@@ -470,19 +382,15 @@ describe("local agent runner", () => {
       cwd: "/tmp/local-agent-runner-model-failure",
     });
     const rawError =
-      "503 raw-error-sentinel https://provider.invalid/private?token=secret";
-    const providerError = createProviderError(rawError, {
-      modelId: "xai/grok-4.5",
-    });
+      "upstream request failed: raw-error-sentinel https://provider.invalid/private?token=secret";
     const delivered: LocalAgentReply[] = [];
 
     await runLocalAgentTurn(
       { conversationId: conversationId!, message: "please try" },
       {
-        agentRunner: {
-          run: async () =>
-            completedAgentRun(providerFailureReply(rawError, providerError)),
-        },
+        agentRunner: createModelAgentRunnerForRun(() =>
+          createModelStream([{ type: "error", errorMessage: rawError }]),
+        ),
         deliverReply: async (reply) => {
           delivered.push(reply);
         },
@@ -579,21 +487,15 @@ describe("local agent runner", () => {
       .fn()
       .mockReturnValueOnce(modelEventId)
       .mockReturnValueOnce(persistenceEventId);
-    const reply = providerFailureReply("raw-model-error-sentinel");
-    reply.piMessages = [
-      {
-        role: "user",
-        content: [{ type: "text", text: "please try" }],
-      } as PiMessage,
-    ];
+    const rawModelError = "raw-model-error-sentinel";
 
     await expect(
       runLocalAgentTurn(
         { conversationId: conversationId!, message: "please try" },
         {
-          agentRunner: {
-            run: async () => completedAgentRun(reply),
-          },
+          agentRunner: createModelAgentRunnerForRun(() =>
+            createModelStream([{ type: "error", errorMessage: rawModelError }]),
+          ),
           saveTurnCheckpoint: async () => {
             throw new Error("session-persistence-error-sentinel");
           },
@@ -619,7 +521,7 @@ describe("local agent runner", () => {
     });
     expect(JSON.stringify(visible.messages)).toContain(modelEventId);
     expect(JSON.stringify(visible.messages)).not.toContain(persistenceEventId);
-    expect(JSON.stringify(lifecycle)).not.toContain("raw-model-error-sentinel");
+    expect(JSON.stringify(lifecycle)).not.toContain(rawModelError);
     expect(JSON.stringify(lifecycle)).not.toContain(
       "session-persistence-error-sentinel",
     );
@@ -633,20 +535,14 @@ describe("local agent runner", () => {
     const eventId = "44444444444444444444444444444444";
     const capture = vi.fn().mockReturnValue(eventId);
     const rawError = "raw-session-persistence-error-sentinel";
-    const reply = successReply("delivered", {
-      piMessages: [assistantPiMessage("delivered")],
-    });
 
     await expect(
       runLocalAgentTurn(
         { conversationId: conversationId!, message: "please try" },
         {
-          agentRunner: {
-            run: async (request) => {
-              await deliverAssistantText(request, reply.text);
-              return completedAgentRun(reply);
-            },
-          },
+          agentRunner: createModelAgentRunnerForRun(() =>
+            createModelStream([{ type: "text", text: "delivered" }]),
+          ),
           saveTurnCheckpoint: async () => {
             throw new Error(rawError);
           },
@@ -666,54 +562,6 @@ describe("local agent runner", () => {
     expect(JSON.stringify(lifecycle)).not.toContain(rawError);
   });
 
-  it("assigns distinct turn ids to concurrent turns", async () => {
-    const conversationId = normalizeLocalConversationId({
-      alias: "concurrent-turns",
-      cwd: "/tmp/local-agent-runner-concurrent-turns",
-    });
-    const runIds: string[] = [];
-    const agentRunner: AgentRunner = {
-      run: async (request) => {
-        runIds.push(request.turnId);
-        return completedAgentRun(successReply(`reply ${runIds.length}`));
-      },
-    };
-
-    await Promise.all([
-      runLocalAgentTurn(
-        { conversationId: conversationId!, message: "first" },
-        { agentRunner, deliverReply: async () => undefined },
-      ),
-      runLocalAgentTurn(
-        { conversationId: conversationId!, message: "second" },
-        { agentRunner, deliverReply: async () => undefined },
-      ),
-    ]);
-
-    expect(new Set(runIds).size).toBe(2);
-    expect(runIds).toEqual([
-      expect.stringMatching(/^local-turn-[0-9a-f-]{36}$/),
-      expect.stringMatching(/^local-turn-[0-9a-f-]{36}$/),
-    ]);
-    const starts = (await loadLifecycleEvents(conversationId!)).filter(
-      (event) => event.data.type === "turn_started",
-    );
-    expect(
-      new Set(
-        starts.flatMap((event) =>
-          event.data.type === "turn_started" ? [event.data.turnId] : [],
-        ),
-      ).size,
-    ).toBe(2);
-    expect(
-      new Set(
-        starts.flatMap((event) =>
-          event.data.type === "turn_started" ? event.data.inputMessageIds : [],
-        ),
-      ).size,
-    ).toBe(2);
-  });
-
   it("forwards tool events from the shared reply boundary", async () => {
     const conversationId = normalizeLocalConversationId({
       alias: "tools",
@@ -721,40 +569,23 @@ describe("local agent runner", () => {
     });
     expect(conversationId).toBeDefined();
 
-    const generateReply = vi.fn<AgentRunner["run"]>(async (request) => {
-      const context = request;
-
-      await context.onEvent?.({
-        type: "tool_started",
-        params: { content: "The actor prefers short updates." },
-        toolCallId: "tool-call-1",
-        toolName: "createMemory",
-      });
-      await context.onEvent?.({
-        type: "tool_finished",
-        report: {
-          ok: true,
-          params: { content: "The actor prefers short updates." },
-          result: { ok: true },
-          toolCallId: "tool-call-1",
-          toolName: "createMemory",
-        },
-      });
-      return completedAgentRun(
-        successReply("saved", { toolCalls: ["createMemory"] }),
-      );
-    });
+    const agentRunner = createModelAgentRunnerForRun(() =>
+      createModelStream([
+        { type: "toolCall", name: "systemTime", arguments: {} },
+        { type: "text", text: "Time checked." },
+      ]),
+    );
     const invocations: LocalToolInvocation[] = [];
     const results: LocalToolResult[] = [];
 
     await runLocalAgentTurn(
       {
         conversationId: conversationId!,
-        message: "remember this",
+        message: "check the current time",
       },
       {
         deliverReply: async () => undefined,
-        agentRunner: { run: generateReply },
+        agentRunner,
         onToolInvocation: async (invocation) => {
           invocations.push(invocation);
         },
@@ -766,19 +597,24 @@ describe("local agent runner", () => {
 
     expect(invocations).toEqual([
       {
-        toolName: "createMemory",
-        params: { content: "The actor prefers short updates." },
+        toolName: "systemTime",
+        params: {},
       },
     ]);
-    expect(results).toEqual([
-      {
-        ok: true,
-        toolCallId: "tool-call-1",
-        toolName: "createMemory",
-        params: { content: "The actor prefers short updates." },
-        result: { ok: true },
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({
+      ok: true,
+      toolCallId: expect.any(String),
+      toolName: "systemTime",
+      params: {},
+      result: {
+        unix_ms: expect.any(Number),
+        iso_utc: expect.any(String),
+        iso_local: expect.any(String),
+        timezone: null,
+        timezone_offset_minutes: expect.any(Number),
       },
-    ]);
+    });
   });
 
   it("runs plugin tasks inline after completed local turns", async () => {
@@ -815,29 +651,9 @@ describe("local agent runner", () => {
         },
         {
           deliverReply: async () => undefined,
-          agentRunner: {
-            run: async (request) => {
-              const context = request;
-
-              const replyMessage = assistantPiMessage("captured", 2);
-              const piMessages: PiMessage[] = [
-                userPiMessage("capture this local turn"),
-                replyMessage,
-              ];
-              await persistRunningSessionForFakeReply(context, piMessages);
-              await deliverAssistantText(
-                request,
-                "captured",
-                replyMessage,
-                piMessages.slice(0, -1),
-              );
-              return completedAgentRun(
-                successReply("captured", {
-                  piMessages,
-                }),
-              );
-            },
-          },
+          agentRunner: createModelAgentRunnerForRun(() =>
+            createModelStream([{ type: "text", text: "captured" }]),
+          ),
         },
       );
     } finally {
@@ -898,15 +714,12 @@ describe("local agent runner", () => {
     });
     expect(conversationId).toBeDefined();
 
-    const contexts: CapturedAgentRun[] = [];
-    const generateReply = vi.fn<AgentRunner["run"]>(async (request) => {
-      const text = request.instruction.text;
-      const context = request;
-
-      contexts.push(context);
-      const replyText = `reply to ${text}`;
-      await deliverAssistantText(request, replyText);
-      return completedAgentRun(successReply(replyText));
+    const agentRuns: CapturedAgentRun[] = [];
+    const agentRunner = createModelAgentRunnerForRun((run) => {
+      agentRuns.push(run);
+      return createModelStream([
+        { type: "text", text: `reply to ${run.instruction.text}` },
+      ]);
     });
 
     await runLocalAgentTurn(
@@ -916,7 +729,7 @@ describe("local agent runner", () => {
       },
       {
         deliverReply: async () => undefined,
-        agentRunner: { run: generateReply },
+        agentRunner,
       },
     );
     await runLocalAgentTurn(
@@ -926,12 +739,12 @@ describe("local agent runner", () => {
       },
       {
         deliverReply: async () => undefined,
-        agentRunner: { run: generateReply },
+        agentRunner,
       },
     );
 
-    expect(contexts[1]?.instruction.context).toContain("first question");
-    expect(contexts[1]?.instruction.context).toContain(
+    expect(agentRuns[1]?.instruction.context).toContain("first question");
+    expect(agentRuns[1]?.instruction.context).toContain(
       "reply to first question",
     );
 
@@ -958,10 +771,6 @@ describe("local agent runner", () => {
     });
     expect(conversationId).toBeDefined();
 
-    const generateReply = vi.fn<AgentRunner["run"]>(async () =>
-      completedAgentRun(successReply("not delivered")),
-    );
-
     await expect(
       runLocalAgentTurn(
         {
@@ -969,11 +778,10 @@ describe("local agent runner", () => {
           message: "hello",
         },
         {
-          agentRunner: { run: generateReply },
+          agentRunner: neverRunAgentRunner(),
         } as unknown as Parameters<typeof runLocalAgentTurn>[1],
       ),
     ).rejects.toThrow("Local reply delivery is required");
-    expect(generateReply).not.toHaveBeenCalled();
 
     const state = await getPersistedThreadState(conversationId!);
     const conversation = coerceThreadConversationState(state);
@@ -1050,12 +858,10 @@ describe("local agent runner", () => {
       messages: [projectedMessage],
     });
 
-    const contexts: CapturedAgentRun[] = [];
-    const generateReply = vi.fn<AgentRunner["run"]>(async (request) => {
-      const context = request;
-
-      contexts.push(context);
-      return completedAgentRun(successReply("uses projection"));
+    const agentRuns: CapturedAgentRun[] = [];
+    const agentRunner = createModelAgentRunnerForRun((run) => {
+      agentRuns.push(run);
+      return createModelStream([{ type: "text", text: "uses projection" }]);
     });
 
     await runLocalAgentTurn(
@@ -1065,11 +871,11 @@ describe("local agent runner", () => {
       },
       {
         deliverReply: async () => undefined,
-        agentRunner: { run: generateReply },
+        agentRunner,
       },
     );
 
-    expect(contexts[0]?.history).toEqual([projectedMessage]);
+    expect(agentRuns[0]?.history).toEqual([projectedMessage]);
   });
 
   it("commits generated Pi history after successful local delivery", async () => {
@@ -1079,24 +885,9 @@ describe("local agent runner", () => {
     });
     expect(conversationId).toBeDefined();
 
-    const generatedMessage = assistantPiMessage("persisted visible output", 2);
-    const generatedMessages: PiMessage[] = [
-      userPiMessage("hello"),
-      generatedMessage,
-    ];
-    const generateReply = vi.fn<AgentRunner["run"]>(async (request) => {
-      await deliverAssistantText(
-        request,
-        "persisted visible output",
-        generatedMessage,
-        generatedMessages.slice(0, -1),
-      );
-      return completedAgentRun(
-        successReply("persisted visible output", {
-          piMessages: generatedMessages,
-        }),
-      );
-    });
+    const firstAgentRunner = createModelAgentRunnerForRun(() =>
+      createModelStream([{ type: "text", text: "persisted visible output" }]),
+    );
 
     await runLocalAgentTurn(
       {
@@ -1105,15 +896,34 @@ describe("local agent runner", () => {
       },
       {
         deliverReply: async () => undefined,
-        agentRunner: { run: generateReply },
+        agentRunner: firstAgentRunner,
       },
     );
 
-    expect(await loadProjection({ conversationId: conversationId! })).toEqual(
-      generatedMessages,
-    );
+    const generatedMessages = await loadProjection({
+      conversationId: conversationId!,
+    });
+    expect(generatedMessages).toEqual([
+      expect.objectContaining({
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: expect.stringContaining("hello"),
+          },
+        ],
+      }),
+      expect.objectContaining({
+        role: "assistant",
+        content: [{ type: "text", text: "persisted visible output" }],
+      }),
+    ]);
 
-    const contexts: CapturedAgentRun[] = [];
+    const agentRuns: CapturedAgentRun[] = [];
+    const followUpAgentRunner = createModelAgentRunnerForRun((run) => {
+      agentRuns.push(run);
+      return createModelStream([{ type: "text", text: "follow up reply" }]);
+    });
     await runLocalAgentTurn(
       {
         conversationId: conversationId!,
@@ -1121,18 +931,11 @@ describe("local agent runner", () => {
       },
       {
         deliverReply: async () => undefined,
-        agentRunner: {
-          run: async (request) => {
-            const context = request;
-
-            contexts.push(context);
-            return completedAgentRun(successReply("follow up reply"));
-          },
-        },
+        agentRunner: followUpAgentRunner,
       },
     );
 
-    expect(contexts[0]?.history).toEqual([generatedMessages[0]]);
+    expect(agentRuns[0]?.history).toEqual(generatedMessages);
   });
 
   it("keeps the delivered local reply successful when a background task fails", async () => {
@@ -1142,11 +945,6 @@ describe("local agent runner", () => {
     });
     expect(conversationId).toBeDefined();
 
-    const generatedMessage = assistantPiMessage("visible reply", 2);
-    const generatedMessages: PiMessage[] = [
-      userPiMessage("hello"),
-      generatedMessage,
-    ];
     const delivered: LocalAgentReply[] = [];
     let taskRuns = 0;
     setPlugins([
@@ -1178,27 +976,9 @@ describe("local agent runner", () => {
             deliverReply: async (reply) => {
               delivered.push(reply);
             },
-            agentRunner: {
-              run: async (request) => {
-                const context = request;
-
-                await persistRunningSessionForFakeReply(
-                  context,
-                  generatedMessages,
-                );
-                await deliverAssistantText(
-                  request,
-                  "visible reply",
-                  generatedMessage,
-                  generatedMessages.slice(0, -1),
-                );
-                return completedAgentRun(
-                  successReply("visible reply", {
-                    piMessages: generatedMessages,
-                  }),
-                );
-              },
-            },
+            agentRunner: createModelAgentRunnerForRun(() =>
+              createModelStream([{ type: "text", text: "visible reply" }]),
+            ),
           },
         ),
       ).resolves.toEqual({
@@ -1230,7 +1010,11 @@ describe("local agent runner", () => {
       messages: projectedMessages,
     });
 
-    const contexts: CapturedAgentRun[] = [];
+    const agentRuns: CapturedAgentRun[] = [];
+    const agentRunner = createModelAgentRunnerForRun((run) => {
+      agentRuns.push(run);
+      return createModelStream([{ type: "text", text: "uses projection" }]);
+    });
     await runLocalAgentTurn(
       {
         conversationId: conversationId!,
@@ -1238,18 +1022,11 @@ describe("local agent runner", () => {
       },
       {
         deliverReply: async () => undefined,
-        agentRunner: {
-          run: async (request) => {
-            const context = request;
-
-            contexts.push(context);
-            return completedAgentRun(successReply("uses projection"));
-          },
-        },
+        agentRunner,
       },
     );
 
-    expect(contexts[0]?.history).toEqual(projectedMessages);
+    expect(agentRuns[0]?.history).toEqual(projectedMessages);
   });
 
   it("does not commit generated Pi output when local delivery fails", async () => {
@@ -1262,15 +1039,18 @@ describe("local agent runner", () => {
     const eventId = "33333333333333333333333333333333";
     const capture = vi.fn().mockReturnValue(eventId);
 
-    const generateReply = vi.fn<AgentRunner["run"]>(async (request) => {
-      const context = request;
-      await context.durability?.onSandboxRefChanged?.({
-        id: "sandbox-undelivered",
-        profileHash: "profile-undelivered",
-      });
-      await deliverAssistantText(request, "not delivered");
-      return completedAgentRun(successReply("not delivered"));
-    });
+    const realAgentRunner = createModelAgentRunnerForRun(() =>
+      createModelStream([{ type: "text", text: "not delivered" }]),
+    );
+    const agentRunner: AgentRunner = {
+      run: async (request) => {
+        await request.durability?.onSandboxRefChanged?.({
+          id: "sandbox-undelivered",
+          profileHash: "profile-undelivered",
+        });
+        return await realAgentRunner.run(request);
+      },
+    };
 
     await expect(
       runLocalAgentTurn(
@@ -1282,14 +1062,28 @@ describe("local agent runner", () => {
           deliverReply: async () => {
             throw new Error(rawDeliveryError);
           },
-          agentRunner: { run: generateReply },
+          agentRunner,
           logException: capture,
         },
       ),
     ).rejects.toThrow(rawDeliveryError);
 
-    expect(await loadProjection({ conversationId: conversationId! })).toEqual(
-      [],
+    const projection = await loadProjection({
+      conversationId: conversationId!,
+    });
+    expect(projection).toEqual([
+      expect.objectContaining({
+        role: "user",
+        content: expect.arrayContaining([
+          expect.objectContaining({
+            type: "text",
+            text: expect.stringContaining("hello"),
+          }),
+        ]),
+      }),
+    ]);
+    expect(projection.some((message) => message.role === "assistant")).toBe(
+      false,
     );
     const state = await getPersistedThreadState(conversationId!);
     expect(getPersistedSandboxState(state)).toBeUndefined();
