@@ -426,6 +426,8 @@ test("opens and closes a conversation in the mobile workspace", async ({
     page.getByRole("group", { name: "Transcript view" }),
   ).toBeVisible();
   await expect(page.getByRole("note")).toBeHidden();
+  await page.getByRole("button", { name: "Search transcript" }).focus();
+  await expect(page.getByRole("tooltip")).toHaveCount(0);
 
   const pending = page.getByLabel("Pending messages");
   await expect(pending).toBeVisible();
