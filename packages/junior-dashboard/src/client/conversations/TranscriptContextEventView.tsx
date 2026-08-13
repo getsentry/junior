@@ -28,7 +28,7 @@ export function TranscriptContextEventView(props: {
           {handoff ? "Model handoff" : "Context compacted"}
         </strong>
         {typeof props.timestamp === "number" ? (
-          <span className="text-2xs text-dashboard-text-muted">
+          <span className="text-xs text-dashboard-text-muted">
             {formatMessageTimestamp(props.timestamp)}
           </span>
         ) : null}
@@ -40,7 +40,7 @@ export function TranscriptContextEventView(props: {
       </div>
       {event.summary ? (
         <details className="mt-2">
-          <summary className="cursor-pointer select-none text-2xs font-medium text-dashboard-text-muted">
+          <summary className="cursor-pointer select-none text-xs font-medium text-dashboard-text-muted">
             Continuation summary
           </summary>
           <div className="mt-1.5 whitespace-pre-wrap text-xs leading-relaxed text-dashboard-text-muted">

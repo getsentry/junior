@@ -1,32 +1,18 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import {
-  Archive,
-  ArchiveRestore,
-  Info,
-  MessagesSquare,
-  ScrollText,
-  Search,
-  X,
-} from "lucide-react";
 
-import { Button, ToggleButton } from "../components/Button";
-import { Drawer } from "../components/Drawer";
 import { SearchInput } from "../components/SearchInput";
-import { IconButtonTooltip } from "../components/Tooltip";
-import { cn } from "../styles";
+import {
+  ConversationHeaderActions,
+  type ConversationArchiveAction,
+} from "./ConversationHeaderActions";
+import { ConversationDetailsDrawer } from "./ConversationDetailsDrawer";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
 
 /** Render the sticky conversation title, compact tools, and advanced details. */
 export function ConversationHeader(props: {
-  actions?: ReactNode;
+  copyAction?: ReactNode;
   annotations: ReactNode;
-  archive: {
-    archived: boolean;
-    disabled: boolean;
-    error: boolean;
-    onClick(): void;
-    pending: boolean;
-  };
+  archive: ConversationArchiveAction;
   identity: ReactNode;
   live: boolean;
   meta?: ReactNode;
@@ -69,39 +55,23 @@ export function ConversationHeader(props: {
               </span>
             </div>
           </div>
-          <div className="flex shrink-0 items-center gap-0.5">
-            <HeaderIconButton
-              label={searchOpenVisible ? "Hide search" : "Search transcript"}
-              onClick={() => {
-                if (searchOpenVisible) {
-                  setSearchOpen(false);
-                  if (props.search.length > 0) props.onSearchChange("");
-                  return;
-                }
-                setSearchOpen(true);
-              }}
-              pressed={searchOpenVisible}
-            >
-              {searchOpenVisible ? (
-                <X aria-hidden="true" size={15} strokeWidth={2} />
-              ) : (
-                <Search aria-hidden="true" size={15} strokeWidth={2} />
-              )}
-            </HeaderIconButton>
-            <TranscriptViewToggle
-              onChange={props.onViewChange}
-              value={props.view}
-            />
-            {props.actions}
-            <ArchiveConversationButton {...props.archive} />
-            <HeaderIconButton
-              label="Conversation details"
-              onClick={() => setDetailsOpen(true)}
-              pressed={detailsOpen}
-            >
-              <Info aria-hidden="true" size={15} strokeWidth={2} />
-            </HeaderIconButton>
-          </div>
+          <ConversationHeaderActions
+            archive={props.archive}
+            copyAction={props.copyAction}
+            detailsOpen={detailsOpen}
+            onDetailsClick={() => setDetailsOpen(true)}
+            onSearchClick={() => {
+              if (searchOpenVisible) {
+                setSearchOpen(false);
+                if (props.search.length > 0) props.onSearchChange("");
+                return;
+              }
+              setSearchOpen(true);
+            }}
+            onViewChange={props.onViewChange}
+            searchOpen={searchOpenVisible}
+            view={props.view}
+          />
         </div>
 
         {searchOpenVisible ? (
@@ -144,177 +114,3 @@ export function ConversationHeader(props: {
     </>
   );
 }
-
-function ConversationDetailsDrawer(props: {
-  annotations: ReactNode;
-  identity: ReactNode;
-  onClose(): void;
-  privacy: ReactNode;
-  stats: ReactNode;
-  title: string;
-}) {
-  const titleId = "conversation-details-drawer-title";
-  return (
-    <Drawer
-      closeLabel="Close conversation details"
-      dismissLabel="Dismiss conversation details"
-      header={
-        <>
-          <h2
-            className="m-0 min-w-0 break-words text-lg font-bold leading-tight text-dashboard-text"
-            id={titleId}
-          >
-            {props.title}
-          </h2>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            {props.privacy}
-          </div>
-        </>
-      }
-      onClose={props.onClose}
-      openKey={props.title}
-      titleId={titleId}
-    >
-      <div className="grid min-w-0 gap-5">
-        {props.identity ? (
-          <DetailsSection title="Identity">
-            <div className="min-w-0 break-words font-sans text-sm leading-relaxed text-dashboard-text-muted">
-              {props.identity}
-            </div>
-          </DetailsSection>
-        ) : null}
-        {props.stats ? (
-          <DetailsSection title="Runtime">
-            <div className="min-w-0 break-words font-sans text-sm leading-relaxed text-dashboard-text-muted">
-              {props.stats}
-            </div>
-          </DetailsSection>
-        ) : null}
-        {props.annotations ? (
-          <DetailsSection title="Links">
-            <div className="min-w-0">{props.annotations}</div>
-          </DetailsSection>
-        ) : null}
-      </div>
-    </Drawer>
-  );
-}
-
-function DetailsSection(props: { children: ReactNode; title: string }) {
-  return (
-    <section className="grid min-w-0 gap-2">
-      <h3 className="m-0 font-mono text-2xs font-medium uppercase tracking-[0.14em] text-dashboard-text-muted">
-        {props.title}
-      </h3>
-      {props.children}
-    </section>
-  );
-}
-
-function TranscriptViewToggle(props: {
-  onChange(value: TranscriptViewMode): void;
-  value: TranscriptViewMode;
-}) {
-  return (
-    <div
-      aria-label="Transcript view"
-      className="inline-flex items-center gap-0.5 rounded-md border border-white/[0.08] bg-black/20 p-0.5"
-      role="group"
-    >
-      <ViewModeButton
-        active={props.value === "rich"}
-        label="Conversation"
-        onClick={() => props.onChange("rich")}
-      >
-        <MessagesSquare aria-hidden="true" size={14} strokeWidth={2} />
-      </ViewModeButton>
-      <ViewModeButton
-        active={props.value === "raw"}
-        label="Event log"
-        onClick={() => props.onChange("raw")}
-      >
-        <ScrollText aria-hidden="true" size={14} strokeWidth={2} />
-      </ViewModeButton>
-    </div>
-  );
-}
-
-function ViewModeButton(props: {
-  active: boolean;
-  children: ReactNode;
-  label: string;
-  onClick(): void;
-}) {
-  return (
-    <IconButtonTooltip label={props.label}>
-      <ToggleButton
-        aria-label={props.label}
-        className={cn(
-          "!normal-case !no-underline grid size-7 place-items-center rounded px-0 py-0",
-          props.active
-            ? "bg-white/[0.08] text-dashboard-text"
-            : "text-dashboard-text-muted",
-        )}
-        onClick={props.onClick}
-        pressed={props.active}
-        variant="text"
-      >
-        {props.children}
-      </ToggleButton>
-    </IconButtonTooltip>
-  );
-}
-
-function HeaderIconButton(props: {
-  children: ReactNode;
-  label: string;
-  onClick(): void;
-  pressed?: boolean;
-}) {
-  return (
-    <IconButtonTooltip label={props.label}>
-      <Button
-        aria-label={props.label}
-        aria-pressed={props.pressed}
-        className={cn(
-          "text-dashboard-text-muted",
-          props.pressed && "bg-white/10 text-dashboard-text",
-        )}
-        onClick={props.onClick}
-        size="icon"
-        type="button"
-      >
-        {props.children}
-      </Button>
-    </IconButtonTooltip>
-  );
-}
-
-function ArchiveConversationButton(props: {
-  archived: boolean;
-  disabled: boolean;
-  onClick(): void;
-  pending: boolean;
-}) {
-  const label = props.pending
-    ? "Saving archive state"
-    : props.archived
-      ? "Unarchive"
-      : "Archive";
-  const Icon = props.archived ? ArchiveRestore : Archive;
-  return (
-    <IconButtonTooltip label={label}>
-      <Button
-        aria-label={label}
-        className="hidden shrink-0 text-dashboard-text-muted md:grid"
-        disabled={props.disabled}
-        onClick={props.onClick}
-        size="icon"
-        type="button"
-      >
-        <Icon aria-hidden="true" size={15} strokeWidth={2} />
-      </Button>
-    </IconButtonTooltip>
-  );
-}
-

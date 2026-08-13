@@ -28,10 +28,7 @@ function pendingDeliveryMeta(
   return { icon: Clock3, label: "Queued" };
 }
 
-function PendingMetaIcon(props: {
-  children: ReactElement;
-  label: string;
-}) {
+function PendingMetaIcon(props: { children: ReactElement; label: string }) {
   return (
     <Tooltip content={props.label} placement="above">
       <span
@@ -95,9 +92,7 @@ function PendingRow(props: {
           </span>
         }
         leftClassName="text-sm leading-snug text-dashboard-text"
-        right={
-          <PendingMetaIcons delivery={delivery} showSlack={showSlack} />
-        }
+        right={<PendingMetaIcons delivery={delivery} showSlack={showSlack} />}
       />
       {redacted ? (
         <p className="m-0 font-mono text-sm leading-snug text-dashboard-text-muted">

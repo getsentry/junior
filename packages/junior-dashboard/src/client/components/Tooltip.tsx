@@ -40,9 +40,7 @@ const SVG_TRIGGER_TAGS = new Set([
 ]);
 
 function isSvgTrigger(element: ReactElement): boolean {
-  return (
-    typeof element.type === "string" && SVG_TRIGGER_TAGS.has(element.type)
-  );
+  return typeof element.type === "string" && SVG_TRIGGER_TAGS.has(element.type);
 }
 
 /** Show selectable dashboard details beside an element. */
@@ -182,7 +180,7 @@ export function IconButtonTooltip(props: {
       content={props.label}
       placement={props.placement ?? "above"}
     >
-      {props.children}
+      <span className="inline-flex">{props.children}</span>
     </Tooltip>
   );
 }

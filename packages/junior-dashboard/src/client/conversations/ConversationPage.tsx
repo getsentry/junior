@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import type {
   ConversationDetailReport,
   ConversationFeed,
@@ -14,6 +14,7 @@ import { buildConversationMarkdown } from "../markdownExport";
 import { CopyMarkdownButton } from "./CopyMarkdownButton";
 import { ConversationComposer } from "./ConversationComposer";
 import { ConversationHeader } from "./ConversationHeader";
+import { ConversationHeaderMeta } from "./ConversationHeaderMeta";
 import {
   ConversationAnnotations,
   ConversationIdentity,
@@ -78,7 +79,7 @@ export function ConversationPage(props: {
       >
         <section className="min-w-0">
           <ConversationHeader
-            actions={
+            copyAction={
               <CopyMarkdownButton
                 key={conversationDetail?.conversationId ?? "loading"}
                 getMarkdown={
@@ -261,23 +262,4 @@ function conversationIsLive(
 ): boolean {
   if (detail) return detail.status === "active";
   return visualStatus === "active";
-}
-
-/** Keep the sticky header meta line to owner plus runtime stats. */
-function ConversationHeaderMeta(props: {
-  identity: ReactNode;
-  stats: ReactNode;
-}) {
-  if (!props.identity && !props.stats) return null;
-  return (
-    <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
-      {props.identity ? (
-        <span className="min-w-0 max-w-full truncate">{props.identity}</span>
-      ) : null}
-      {props.identity && props.stats ? (
-        <span className="text-dashboard-text-muted">·</span>
-      ) : null}
-      {props.stats ? <span className="min-w-0">{props.stats}</span> : null}
-    </div>
-  );
 }
