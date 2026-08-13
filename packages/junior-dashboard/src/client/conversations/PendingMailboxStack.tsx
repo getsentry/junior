@@ -215,7 +215,11 @@ export function PendingMailboxStack(props: {
   const cancellableCount = rows.filter(
     (message) => message.clientStatus === undefined,
   ).length;
-  const showCancel = cancellableCount > 0 && Boolean(props.onCancelQueue);
+  const hasSendingRow = rows.some(
+    (message) => message.clientStatus === "sending",
+  );
+  const showCancel =
+    cancellableCount > 0 && !hasSendingRow && Boolean(props.onCancelQueue);
   const countLabel =
     rows.length === 1 ? "1 queued message" : `${rows.length} queued messages`;
 

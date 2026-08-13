@@ -67,6 +67,25 @@ describe("PendingMailboxStack cancel control", () => {
     expect(localOnly).not.toContain("Cancel queue");
   });
 
+  it("hides cancel while a local send can still become accepted", () => {
+    const html = renderToStaticMarkup(
+      <PendingMailboxStack
+        conversation={conversation()}
+        messages={[
+          message(),
+          message({
+            clientStatus: "sending",
+            inboundMessageId: "client:2",
+            messageId: "client:2",
+          }),
+        ]}
+        onCancelQueue={() => undefined}
+      />,
+    );
+
+    expect(html).not.toContain("Cancel queue");
+  });
+
   it("hides a stale cancel error when only local outbox rows remain", () => {
     const html = renderToStaticMarkup(
       <PendingMailboxStack

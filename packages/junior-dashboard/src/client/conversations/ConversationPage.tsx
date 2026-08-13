@@ -294,14 +294,17 @@ function ConversationReplyFooter(props: {
     .map((message) => message.inboundMessageId);
   const cancellableMessageIdsRef = useRef(cancellableMessageIds);
   cancellableMessageIdsRef.current = cancellableMessageIds;
+  const hasSendingOutboxMessage = props.pendingMessages.some(
+    (message) => message.clientStatus === "sending",
+  );
   const onCancelQueue = useCallback(() => {
-    const inboundMessageIds = cancellableMessageIdsRef.current;
-    if (inboundMessageIds.length === 0) return;
-    cancelPendingMessagesRef.current.mutate({ inboundMessageIds });
+    const snapshotInboundMessageIds = cancellableMessageIdsRef.current;
+    if (snapshotInboundMessageIds.length === 0) return;
+    cancelPendingMessagesRef.current.mutate({ snapshotInboundMessageIds });
   }, []);
   const cancelError = Boolean(
     cancelPendingMessages.error &&
-    cancelPendingMessages.variables?.inboundMessageIds?.some((id) =>
+    cancelPendingMessages.variables?.snapshotInboundMessageIds.some((id) =>
       cancellableMessageIds.includes(id),
     ),
   );
@@ -326,7 +329,7 @@ function ConversationReplyFooter(props: {
           cancelPending={cancelPendingMessages.isPending}
           conversation={props.conversation}
           messages={props.pendingMessages}
-          onCancelQueue={onCancelQueue}
+          onCancelQueue={hasSendingOutboxMessage ? undefined : onCancelQueue}
           onRetry={onRetry}
         />
         <ConversationComposer

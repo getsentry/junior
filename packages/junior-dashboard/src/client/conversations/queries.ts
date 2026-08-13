@@ -224,11 +224,11 @@ export function useAppendConversationMessage(conversationId: string) {
 export function useCancelConversationPendingMessages(conversationId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (args?: { inboundMessageIds?: string[] }) =>
+    mutationFn: (_args: { snapshotInboundMessageIds: string[] }) =>
       del(
         cancelConversationPendingMessagesResponseSchema,
         `/api/conversations/${encodeURIComponent(conversationId)}/pending-messages`,
-        args ?? {},
+        {},
       ),
     onMutate: async (args) => {
       await queryClient.cancelQueries({
@@ -244,12 +244,12 @@ export function useCancelConversationPendingMessages(conversationId: string) {
           conversationPendingMessagesQueryKey(conversationId),
           {
             ...previousPending,
-            messages: args?.inboundMessageIds
-              ? previousPending.messages.filter(
-                  (message) =>
-                    !args.inboundMessageIds!.includes(message.inboundMessageId),
-                )
-              : [],
+            messages: previousPending.messages.filter(
+              (message) =>
+                !args.snapshotInboundMessageIds.includes(
+                  message.inboundMessageId,
+                ),
+            ),
           },
         );
       }
