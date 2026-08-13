@@ -1,6 +1,19 @@
 import { describe, expect, it, vi } from "vitest";
-import { defineJuniorWorkspaces } from "@/chat/workspaces/config";
 import { createWorkspaceTools } from "@/chat/workspaces/tools";
+
+const { getDbMock, listWorkspacesMock, getWorkspaceByNameMock } = vi.hoisted(
+  () => ({
+    getDbMock: vi.fn(() => ({})),
+    listWorkspacesMock: vi.fn(),
+    getWorkspaceByNameMock: vi.fn(),
+  }),
+);
+
+vi.mock("@/chat/db", () => ({ getDb: getDbMock }));
+vi.mock("@/chat/workspaces/store", () => ({
+  listWorkspaces: listWorkspacesMock,
+  getWorkspaceByName: getWorkspaceByNameMock,
+}));
 
 const workspace = {
   id: "workspace-1",
@@ -17,19 +30,13 @@ const workspace = {
 };
 
 describe("workspace tools", () => {
-  it("validates install-wide Workspace recipes", () => {
-    expect(defineJuniorWorkspaces([workspace])).toEqual([workspace]);
-    expect(() => defineJuniorWorkspaces([workspace, { ...workspace }])).toThrow(
-      "Duplicate Workspace id: workspace-1",
-    );
-  });
-
   it("lists and switches registered workspaces", async () => {
+    listWorkspacesMock.mockResolvedValue([workspace]);
+    getWorkspaceByNameMock.mockResolvedValue(workspace);
     const switchWorkspace = vi.fn();
     const tools = createWorkspaceTools({
       workspaces: {
         activeWorkspaceId: () => undefined,
-        recipes: [workspace],
         switch: switchWorkspace,
       },
     } as never);

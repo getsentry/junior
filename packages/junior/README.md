@@ -34,30 +34,7 @@ const app = await createApp({
 export default app;
 ```
 
-Define named repository Workspaces in `workspaces.ts`:
-
-```ts
-import { defineJuniorWorkspaces } from "@sentry/junior";
-
-export const workspaces = defineJuniorWorkspaces([
-  {
-    id: "app",
-    name: "app",
-    setupScript: "pnpm install",
-    repos: [
-      {
-        provider: "github",
-        repo: "example/app",
-        checkoutPath: "app",
-        isPrimary: true,
-      },
-    ],
-  },
-]);
-```
-
-Pass this value to `createApp({ workspaces })`. The local `junior chat`
-command also loads an app-local `workspaces.ts` file.
+Named repository Workspace recipes are stored in the Junior SQL database.
 
 Run `junior init my-bot` to scaffold a complete project including `vercel.json` for Vercel deployment.
 

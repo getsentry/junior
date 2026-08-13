@@ -44,7 +44,7 @@ Any change to those inputs produces a new profile hash and a new snapshot.
 
 ## Repository Workspaces
 
-Define install-wide Workspace recipes with `defineJuniorWorkspaces(...)`, then pass them to `createApp({ workspaces })`. Put the value in an app-local `workspaces.ts` file so `junior chat` loads the same recipes.
+Junior stores install-wide Workspace recipes and their repositories in SQL. The agent reads this configuration when it lists a Workspace, resumes an active Workspace, or starts a switch.
 
 Junior builds one complete snapshot for each selected Workspace. The build installs runtime dependencies, prepares repositories, runs the setup script, and then captures the snapshot. The first switch builds the snapshot on demand. Later switches reuse it until its floating profile becomes stale.
 

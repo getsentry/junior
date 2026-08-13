@@ -8,7 +8,6 @@ import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
-import type { Workspace } from "@/chat/workspaces/types";
 
 const AGENT_ABORT_SETTLE_GRACE_MS = 5_000;
 
@@ -25,13 +24,11 @@ export function createAgentRunner(
     bindSpawnAgent?: (run: AgentRun) => SpawnAgent | undefined;
     streamFn?: StreamFn;
     tracePropagation?: SandboxEgressTracePropagationConfig;
-    workspaces?: readonly Workspace[];
   },
 ): AgentRunner {
   const attachmentStorage = options?.attachmentStorage;
   const streamFn = options?.streamFn;
   const tracePropagation = options?.tracePropagation;
-  const workspaces = options?.workspaces;
   const bindSpawnAgent = options?.bindSpawnAgent;
   const canBindSpawn =
     Boolean(bindSpawnAgent) && isExperimentalFeatureEnabled("subagents");
@@ -51,7 +48,6 @@ export function createAgentRunner(
             run.environment?.attachmentStorage ?? attachmentStorage,
           sandboxTracePropagation:
             run.environment?.sandboxTracePropagation ?? tracePropagation,
-          workspaces: run.environment?.workspaces ?? workspaces,
         },
         ...(spawnAgent
           ? {

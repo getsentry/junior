@@ -13,8 +13,7 @@ import {
 import { randomUUID } from "node:crypto";
 import * as readline from "node:readline/promises";
 import { createJiti } from "jiti";
-import { loadAppPluginSet, resolvePluginModule } from "@/plugin-module";
-import type { Workspace } from "@/chat/workspaces/types";
+import { loadAppPluginSet } from "@/plugin-module";
 import { normalizeLocalConversationId } from "@/chat/local/conversation";
 import type {
   LocalAgentReply,
@@ -137,35 +136,6 @@ async function loadLocalPluginSet(): Promise<JuniorPluginSet | undefined> {
   );
 }
 
-/** Load app-local Workspace recipes for source-mode local chat. */
-async function loadLocalWorkspaces(): Promise<Workspace[] | undefined> {
-  let moduleRef: ReturnType<typeof resolvePluginModule>;
-  try {
-    moduleRef = resolvePluginModule(process.cwd(), {
-      module: "./workspaces",
-      exportName: "workspaces",
-    });
-  } catch (error) {
-    if (
-      error instanceof Error &&
-      error.message === 'Plugin module "./workspaces" could not be resolved'
-    ) {
-      return undefined;
-    }
-    throw error;
-  }
-  const mod = await localPluginLoader.import<Record<string, unknown>>(
-    moduleRef.importPath,
-  );
-  const { defineJuniorWorkspaces } = await import("@/chat/workspaces/config");
-  if (!Array.isArray(mod.workspaces)) {
-    throw new Error(
-      `Workspace module ${moduleRef.importUrl}#workspaces must export an array`,
-    );
-  }
-  return defineJuniorWorkspaces(mod.workspaces as Workspace[]);
-}
-
 /** Configure plugin hooks after local chat has selected its state adapter. */
 async function configureLocalChatPlugins(
   pluginSet?: JuniorPluginSet | null,
@@ -266,7 +236,6 @@ async function prepareLocalChatRun(
 ) {
   defaultStateAdapterForLocalChat();
   await configureLocalChatPlugins(pluginSet);
-  const workspaces = await loadLocalWorkspaces();
   // Local chat is the createApp-equivalent entrypoint. Opt into experimental
   // subagents here so spawnAgent matches the wired child-worker path.
   const { setExperimentalFeatures } = await import("@/chat/experimental");
@@ -305,7 +274,6 @@ async function prepareLocalChatRun(
   agentRunner = createAgentRunner(executeAgentRun, {
     bindSpawnAgent: (request) =>
       bindSpawnAgent(request, { queue: localConversationWork.queue }),
-    workspaces,
   });
   const oauthCallback = await startLocalOAuthCallbackServer(agentRunner);
   const deps: LocalAgentTurnDeps = {

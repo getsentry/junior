@@ -1,10 +1,11 @@
 import { z } from "zod";
+import { getDb } from "@/chat/db";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRegistry } from "@/chat/tools/definition";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
-import type { Workspace } from "./types";
+import { getWorkspaceByName, listWorkspaces } from "./store";
 
 const repoSchema = z.object({
   provider: z.string(),
@@ -18,7 +19,7 @@ const workspaceSchema = z.object({
   repos: z.array(repoSchema),
 });
 
-function view(workspace: Workspace) {
+function view(workspace: Awaited<ReturnType<typeof listWorkspaces>>[number]) {
   return {
     id: workspace.id,
     name: workspace.name,
@@ -54,9 +55,7 @@ export function createWorkspaceTools(
       async execute() {
         return {
           active_workspace_id: context.workspaces!.activeWorkspaceId() ?? null,
-          workspaces: [...context.workspaces!.recipes]
-            .sort((left, right) => left.name.localeCompare(right.name))
-            .map(view),
+          workspaces: (await listWorkspaces(getDb())).map(view),
         };
       },
     }),
@@ -79,9 +78,7 @@ export function createWorkspaceTools(
         workspace: workspaceSchema,
       }),
       async execute({ name }, options) {
-        const workspace = context.workspaces!.recipes.find(
-          (value) => value.name === name,
-        );
+        const workspace = await getWorkspaceByName(getDb(), name);
         if (!workspace)
           throw new ToolInputError(`Workspace not found: ${name}`);
         await context.workspaces!.switch(workspace, options.signal);

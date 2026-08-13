@@ -74,7 +74,6 @@ describe("init cli", () => {
     expect(fs.existsSync(path.join(target, "vercel.json"))).toBe(true);
     expect(fs.existsSync(path.join(target, "nitro.config.ts"))).toBe(true);
     expect(fs.existsSync(path.join(target, "plugins.ts"))).toBe(true);
-    expect(fs.existsSync(path.join(target, "workspaces.ts"))).toBe(true);
     expect(fs.existsSync(path.join(target, "vite.config.ts"))).toBe(false);
     expect(fs.existsSync(path.join(target, "tsconfig.json"))).toBe(true);
     expect(fs.existsSync(path.join(target, "app", "SOUL.md"))).toBe(true);
@@ -110,10 +109,8 @@ describe("init cli", () => {
     );
     expect(serverEntry).toContain('import("@sentry/junior")');
     expect(serverEntry).toContain('import("./plugins.ts")');
-    expect(serverEntry).toContain('import("./workspaces.ts")');
     expect(serverEntry).toContain("createApp({");
     expect(serverEntry).toContain("plugins,");
-    expect(serverEntry).toContain("workspaces,");
 
     const instrumentFile = fs.readFileSync(
       path.join(target, "instrument.mjs"),
@@ -160,15 +157,6 @@ describe("init cli", () => {
     expect(pluginsFile).toContain("defineJuniorPlugins(");
     expect(pluginsFile).toContain("memoryPlugin()");
     expect(pluginsFile).toContain('"@sentry/junior-maintenance"');
-
-    const workspacesFile = fs.readFileSync(
-      path.join(target, "workspaces.ts"),
-      "utf8",
-    );
-    expect(workspacesFile).toContain(
-      'import { defineJuniorWorkspaces } from "@sentry/junior";',
-    );
-    expect(workspacesFile).toContain("defineJuniorWorkspaces([])");
 
     const pkg = readJsonFile<{
       dependencies: Record<string, string>;

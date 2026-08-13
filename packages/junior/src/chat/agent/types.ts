@@ -35,7 +35,6 @@ import type {
 } from "@/chat/tools/types";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
-import type { Workspace } from "@/chat/workspaces/types";
 
 /** One attachment the model may see for the current instruction. */
 export type AgentAttachment = {
@@ -180,8 +179,6 @@ export type AgentEnvironment = {
   sandboxTracePropagation?: SandboxEgressTracePropagationConfig;
   /** Per-slice sandbox egress signal storage override. */
   sandboxEgressSignals?: SandboxEgressSignalTransport;
-  /** Immutable install-wide Workspace recipes for this run. */
-  workspaces?: readonly Workspace[];
   toolOverrides?: {
     imageGenerate?: ImageGenerateToolDeps;
     viewImage?: ViewImageToolDeps;

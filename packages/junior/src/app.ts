@@ -28,8 +28,6 @@ import {
   setSandboxResourceConfig,
   type SandboxResourceConfig,
 } from "@/chat/sandbox/resources";
-import { defineJuniorWorkspaces } from "@/chat/workspaces/config";
-import type { Workspace } from "@/chat/workspaces/types";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import {
   type PluginRouteRegistration,
@@ -94,14 +92,12 @@ import { ingestEventTasks } from "@/chat/event-tasks/ingest";
 import { receiveLocalOAuthCredential } from "@/chat/local/credential-sync";
 
 export { defineJuniorPlugins } from "./plugins";
-export { defineJuniorWorkspaces };
 export { JUNIOR_VERSION } from "./version";
 export type {
   JuniorPluginInput,
   JuniorPluginSet,
   JuniorPluginSetOptions,
 } from "./plugins";
-export type { Workspace, WorkspaceRepo } from "@/chat/workspaces/types";
 
 export interface JuniorAppOptions {
   /** Authenticated dashboard mounted by core when configured. */
@@ -125,8 +121,6 @@ export interface JuniorAppOptions {
   conversationWork?: VercelConversationWorkCallbackOptions;
   /** Direct plugin set override. Usually omitted when `juniorNitro()` uses a plugin module. */
   plugins?: JuniorPluginSet;
-  /** Install-wide named repository Workspace recipes. */
-  workspaces?: readonly Workspace[];
   /** Sandbox execution options. */
   sandbox?: SandboxResourceConfig & {
     /**
@@ -612,7 +606,6 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     );
   }
   const dashboard = options?.dashboard ?? virtualConfig?.dashboard;
-  const workspaces = defineJuniorWorkspaces(options?.workspaces ?? []);
   const configuredPlugins = options?.plugins ?? virtualConfig?.pluginSet;
   const plugins = pluginRuntimeRegistrationsFromPluginSet(configuredPlugins);
   const pluginConfig = configuredPlugins
@@ -710,7 +703,6 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     bindSpawnAgent: (request) =>
       bindSpawnAgent(request, { queue: conversationWorkQueue }),
     tracePropagation,
-    workspaces,
   });
   const runtimeServiceOverrides = {
     replyExecutor: { agentRunner },
