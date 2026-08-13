@@ -35,6 +35,7 @@ import type {
 } from "@/chat/tools/types";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
+import type { PublishedImageStorage } from "@/chat/published-images/storage";
 
 /** One attachment the model may see for the current instruction. */
 export type AgentAttachment = {
@@ -174,6 +175,8 @@ export type AgentEvent =
 /** Resolved environment and optional per-run tool test overrides. */
 export type AgentEnvironment = {
   attachmentStorage?: AttachmentStorage;
+  /** Storage used by publishImage for durable public image URLs. */
+  publishedImageStorage?: PublishedImageStorage;
   configuration?: Record<string, unknown>;
   locationConfiguration?: LocationConfigurationService;
   skillDirs?: string[];

@@ -50,6 +50,7 @@ with `publishExternally: false`. Continues keep the conversation destination
 - `agent/` and `pi/`: model execution and Pi state conversion.
 - `services/`: consumer-owned domain decisions.
 - `attachments/`: provider-neutral attachment metadata, object storage, and garbage collection.
+- `published-images/`: content-addressed public image objects and the unauthenticated read path used by destinations such as GitHub.
 - `state/` and `conversations/`: persistence by concern.
 - `slack/` and `local/`: platform adapters.
 - `plugins/`, `credentials/`, `sandbox/`, and `mcp/`: external capability

@@ -42,12 +42,12 @@ related:
 | `CRON_SECRET` or `JUNIOR_SCHEDULER_SECRET`  | Conditional | Bearer token for the internal heartbeat route; use `CRON_SECRET` with Vercel Cron, or `JUNIOR_SCHEDULER_SECRET` for a non-Vercel heartbeat caller.                                               |
 | `JUNIOR_TIMEZONE`                           | No          | Default IANA timezone for scheduler authoring when the scheduler plugin is enabled. Defaults to `America/Los_Angeles`.                                                                           |
 | `AI_GATEWAY_API_KEY`                        | No          | Fallback AI Gateway auth when Vercel OIDC is unavailable (local/CI/non-Vercel hosts). On Vercel, prefer project OIDC so usage attributes to the project.                                         |
-| `BLOB_STORE_ID`                             | Conditional | Vercel Blob store for durable conversation attachments. Vercel sets this when an OIDC-enabled Blob store is connected to the project.                                                           |
+| `BLOB_STORE_ID`                             | Conditional | Vercel Blob store for durable conversation attachments and published public images. Vercel sets this when an OIDC-enabled Blob store is connected to the project.                               |
 | `BLOB_READ_WRITE_TOKEN`                     | Conditional | Static Vercel Blob credential when OIDC is unavailable. Vercel sets this for a token-connected store.                                                                                           |
 
 For Vercel deployments, create a private Blob store and connect it to the
-project before using `sendFiles`. Prefer an OIDC connection. It supplies
-`BLOB_STORE_ID` and uses Vercel's short-lived OIDC credential. Use
+project before using `sendFiles` or `publishImage`. Prefer an OIDC connection.
+It supplies `BLOB_STORE_ID` and uses Vercel's short-lived OIDC credential. Use
 `BLOB_READ_WRITE_TOKEN` for local development, CI, non-Vercel hosts, or as a
 fallback. See [Deploy to Vercel](/start-here/deploy-to-vercel/#configure-attachment-storage).
 

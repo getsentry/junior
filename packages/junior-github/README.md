@@ -1,7 +1,7 @@
 # @sentry/junior-github
 
 `@sentry/junior-github` adds GitHub deployment, issue, pull request, release,
-repository, and user-attachment workflows to Junior using a GitHub App.
+and repository workflows to Junior using a GitHub App.
 
 Install it alongside `@sentry/junior`:
 

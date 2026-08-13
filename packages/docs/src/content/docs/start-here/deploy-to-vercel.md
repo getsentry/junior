@@ -121,7 +121,10 @@ Set the core runtime variables in Vercel:
 ### Configure attachment storage
 
 Junior stores files sent with `sendFiles` as private conversation attachments in
-Vercel Blob. File delivery fails if the project has no Blob store credentials.
+Vercel Blob. The same store also backs `publishImage`, which writes
+content-addressed public image objects and serves them from
+`/public/images/<sha256>.<ext>`. File delivery and public image publishing fail
+if the project has no Blob store credentials.
 
 1. Open the Vercel project and select **Storage**.
 2. Create a **Blob** store with **Private** access.

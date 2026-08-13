@@ -21,6 +21,7 @@ import type {
   LocalToolResult,
 } from "@/chat/local/runner";
 import { executeAgentRun } from "@/chat/agent";
+import { createVercelAttachmentStorage } from "@/chat/attachments/vercel";
 import { createAgentRunner } from "@/chat/runtime/agent-runner";
 import type { JuniorPluginSet } from "@/plugins";
 
@@ -271,7 +272,10 @@ async function prepareLocalChatRun(
       run,
     });
   });
+  const attachmentStorage = createVercelAttachmentStorage();
   agentRunner = createAgentRunner(executeAgentRun, {
+    attachmentStorage,
+    publishedImageStorage: attachmentStorage,
     bindSpawnAgent: (request) =>
       bindSpawnAgent(request, { queue: localConversationWork.queue }),
   });

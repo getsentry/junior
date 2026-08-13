@@ -17,7 +17,9 @@ App: issues, pull requests, reviews, branch pushes, workflow dispatches,
 reruns, and cancellations, deployment and release lookups, and resource subscriptions.
 
 Junior uses the App installation for bot-owned work. Human OAuth is only for
-operations that must run as the requesting user, such as user-attachment uploads.
+operations that must run as the requesting user. To embed local images in GitHub
+markdown, use the core `publishImage` tool, which publishes a durable public
+image URL. Do not rely on GitHub user-attachment uploads.
 
 ## Setup
 
