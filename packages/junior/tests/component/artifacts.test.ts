@@ -81,7 +81,7 @@ describe("public artifact route", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe("image/png");
     expect(response.headers.get("cache-control")).toBe(
-      "public, max-age=31536000, immutable",
+      "public, max-age=300, must-revalidate",
     );
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
     expect(Buffer.from(await response.arrayBuffer())).toEqual(PNG_BYTES);

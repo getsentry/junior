@@ -242,10 +242,12 @@ export async function readPublicArtifact(args: {
   return { body, contentType: row.contentType };
 }
 
-/** Build immutable public response headers for one live public artifact. */
+/** Build public response headers for one live public artifact. */
 export function publicArtifactHeaders(contentType: string): Headers {
   return new Headers({
-    "cache-control": "public, max-age=31536000, immutable",
+    // Keep TTL short so unpublish can take effect. Do not mark immutable:
+    // content-addressed URLs still need revalidation after tombstone.
+    "cache-control": "public, max-age=300, must-revalidate",
     "content-type": contentType,
     "x-content-type-options": "nosniff",
   });
