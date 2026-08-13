@@ -28,6 +28,21 @@ export interface UnfinishedWorkHookContext extends PluginContext {
 export interface UnfinishedWorkResult {
   /** Candidate conversations that have plugin-owned work to finish. */
   conversationIds: string[];
+  /**
+   * Candidate conversations that have any associated plugin-owned work,
+   * finished or unfinished. Omit when the plugin cannot distinguish assignment.
+   *
+   * The host uses this with unfinished work and finish times to set feed
+   * `isPriority`. Finished assigned work stays out of Priority unless the
+   * conversation has activity after the finish time.
+   */
+  assignedConversationIds?: string[];
+  /**
+   * Latest time when all known work finished, keyed by conversation id.
+   * ISO-8601 timestamps. Used with conversation activity to decide whether
+   * finished work still belongs in Priority.
+   */
+  finishedWorkAtByConversationId?: Record<string, string>;
 }
 
 export type PluginOperationalTone = "danger" | "good" | "neutral" | "warning";

@@ -7,6 +7,7 @@ import {
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
+import type { AttachmentStorage } from "@/chat/attachments/storage";
 
 const AGENT_ABORT_SETTLE_GRACE_MS = 5_000;
 
@@ -19,11 +20,13 @@ export interface AgentRunner {
 export function createAgentRunner(
   execute: (run: AgentRun, streamFn?: StreamFn) => Promise<AgentRunOutcome>,
   options?: {
+    attachmentStorage?: AttachmentStorage;
     bindSpawnAgent?: (run: AgentRun) => SpawnAgent | undefined;
     streamFn?: StreamFn;
     tracePropagation?: SandboxEgressTracePropagationConfig;
   },
 ): AgentRunner {
+  const attachmentStorage = options?.attachmentStorage;
   const streamFn = options?.streamFn;
   const tracePropagation = options?.tracePropagation;
   const bindSpawnAgent = options?.bindSpawnAgent;
@@ -41,6 +44,8 @@ export function createAgentRunner(
         ...run,
         environment: {
           ...run.environment,
+          attachmentStorage:
+            run.environment?.attachmentStorage ?? attachmentStorage,
           sandboxTracePropagation:
             run.environment?.sandboxTracePropagation ?? tracePropagation,
         },

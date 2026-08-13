@@ -471,7 +471,21 @@ describe("dashboard canonical event reporting", () => {
       (conversation) => conversation.conversationId === rootConversationId,
     );
     expect(rootParticipantSummary).toBeDefined();
-    expect(rootParticipantDetail).toMatchObject(rootParticipantSummary ?? {});
+    expect(rootParticipantSummary).toMatchObject({
+      isPriority: expect.any(Boolean),
+    });
+    // Feed-only Priority/work fields are absent on detail reports.
+    expect(rootParticipantDetail).toMatchObject({
+      conversationId: rootParticipantSummary!.conversationId,
+      cumulativeDurationMs: rootParticipantSummary!.cumulativeDurationMs,
+      displayTitle: rootParticipantSummary!.displayTitle,
+      isParticipant: rootParticipantSummary!.isParticipant,
+      lastProgressAt: rootParticipantSummary!.lastProgressAt,
+      lastSeenAt: rootParticipantSummary!.lastSeenAt,
+      startedAt: rootParticipantSummary!.startedAt,
+      status: rootParticipantSummary!.status,
+      surface: rootParticipantSummary!.surface,
+    });
     const childParticipantDetail = await readConversationDetail(
       childConversationId,
       { viewer: rootViewer! },

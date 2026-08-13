@@ -126,7 +126,6 @@ function activeConversation(nowMs: number): ConversationDetailReport {
     lastSeenAt: iso(nowMs, -10_000),
     status: "active",
     surface: "slack",
-    unfinishedWork: true,
     channel: "CQA123",
     channelName: "proj-checkout",
     actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),
@@ -272,6 +271,31 @@ function activeConversation(nowMs: number): ConversationDetailReport {
           "Next step: compare the pre/post deploy spans, then decide whether to",
           "roll back or patch the slow serializer path.",
         ].join("\n"),
+      }),
+      reportEvent(7, iso(Date.parse(startedAt), 40_000), {
+        type: "message",
+        messageId: "active-user-followup",
+        role: "user",
+        text: "Compare the pre/post deploy spans next.",
+      }),
+      reportEvent(8, iso(Date.parse(startedAt), 42_000), {
+        type: "turn_lifecycle",
+        turnId: "active-followup-turn",
+        state: "started",
+      }),
+      reportEvent(9, iso(Date.parse(startedAt), 45_000), {
+        type: "tool_calls",
+        calls: [
+          {
+            toolCallId: "active-span-compare",
+            name: "executeTool",
+            status: "running",
+            input: {
+              tool_name: "github_getPullRequest",
+              arguments: { repo: "getsentry/payments", number: 42 },
+            },
+          },
+        ],
       }),
     ],
   });

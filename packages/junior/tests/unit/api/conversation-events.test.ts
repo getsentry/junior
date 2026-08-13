@@ -664,6 +664,31 @@ describe("conversation report event projection", () => {
     });
   });
 
+  it("projects known Slack source with visible message metadata", () => {
+    const [projected] = projectConversationReportEventPage({
+      canExposePayload: true,
+      events: [
+        event(1, {
+          type: "message",
+          messageId: "event-1",
+          role: "user",
+          text: "from slack",
+          meta: {
+            source: "slack",
+          },
+        }),
+      ],
+    });
+
+    expect(projected?.data).toEqual({
+      type: "message",
+      messageId: "event-1",
+      role: "user",
+      source: "slack",
+      text: "from slack",
+    });
+  });
+
   it("keeps projected prefixes byte-equivalent when later facts arrive", () => {
     const events = [
       event(1, {

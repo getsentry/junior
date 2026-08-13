@@ -360,6 +360,7 @@ export async function wireAgentTools(
   const toolRuntimeContext = {
     ...commonToolRuntimeContext,
     ...toolRoute,
+    attachmentStorage: args.run.environment?.attachmentStorage,
   } as ToolRuntimeContext;
   const actionReview = createToolActionReview({
     context: {

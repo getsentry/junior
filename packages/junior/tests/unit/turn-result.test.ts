@@ -327,10 +327,7 @@ describe("buildTurnResult", () => {
           isError: false,
           content: [{ type: "text", text: "uploaded file" }],
           details: {
-            channel_id: "C123",
-            thread_ts: "1700000000.321",
-            file_count: 1,
-            file_ids: ["F123"],
+            attachment_refs: [{ id: "att-1", name: "chart.png" }],
           },
         },
         {

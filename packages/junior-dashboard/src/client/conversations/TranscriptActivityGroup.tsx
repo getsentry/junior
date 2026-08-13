@@ -1,7 +1,11 @@
 import { Fragment, useState, type ReactNode } from "react";
-import { ChevronRight, Layers } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 
+import { ShimmerText } from "../components/ShimmerText";
+import { Tooltip } from "../components/Tooltip";
+import { formatMs } from "../format";
 import type { RenderedTranscriptEntry } from "./transcriptRenderModel";
+import { cn } from "../styles";
 import { useTranscriptSearch } from "./transcriptSearch";
 
 function countLabel(count: number, singular: string, plural: string): string {
@@ -14,16 +18,63 @@ export function isCollapsibleActivityEntry(
 ): boolean {
   if (entry.kind === "failure") return false;
   if (entry.kind === "message") return Boolean(entry.message.eventType);
-  // Keep terminal failures visible; collapsed chips hide the red tool status.
-  if (entry.kind === "tool") return entry.part.status !== "error";
-  if (entry.kind === "subagent") {
-    return entry.part.status !== "error" && entry.part.status !== "aborted";
-  }
   return true;
 }
 
-/** Build a compact summary for one collapsed activity group. */
+function entryStartMs(entry: RenderedTranscriptEntry): number | undefined {
+  if (entry.kind === "tool") {
+    return entry.part.startedTimestamp ?? entry.timestamp;
+  }
+  if (entry.kind === "message") return entry.message.timestamp;
+  return entry.timestamp;
+}
+
+function entryEndMs(entry: RenderedTranscriptEntry): number | undefined {
+  if (entry.kind === "tool") {
+    return entry.part.resultTimestamp ?? entry.timestamp;
+  }
+  if (entry.kind === "message") return entry.message.timestamp;
+  return entry.timestamp;
+}
+
+/** Span one activity group from the earliest start to the latest end. */
+export function activityGroupDurationMs(
+  entries: RenderedTranscriptEntry[],
+): number | undefined {
+  let startedAt: number | undefined;
+  let endedAt: number | undefined;
+  for (const entry of entries) {
+    const start = entryStartMs(entry);
+    const end = entryEndMs(entry);
+    if (typeof start === "number" && Number.isFinite(start)) {
+      startedAt = startedAt === undefined ? start : Math.min(startedAt, start);
+    }
+    if (typeof end === "number" && Number.isFinite(end)) {
+      endedAt = endedAt === undefined ? end : Math.max(endedAt, end);
+    }
+  }
+  if (
+    typeof startedAt !== "number" ||
+    typeof endedAt !== "number" ||
+    endedAt < startedAt
+  ) {
+    return undefined;
+  }
+  return endedAt - startedAt;
+}
+
+/** Build a uniform collapsed label for one activity group. */
 export function activityGroupLabel(entries: RenderedTranscriptEntry[]): string {
+  const count = countLabel(entries.length, "1 event", "events");
+  const durationMs = activityGroupDurationMs(entries);
+  if (typeof durationMs !== "number" || durationMs <= 0) return count;
+  return `${count} · ${formatMs(durationMs)}`;
+}
+
+/** Build a breakdown of what one collapsed activity group contains. */
+export function activityGroupSummary(
+  entries: RenderedTranscriptEntry[],
+): string {
   const toolCount = entries.filter((entry) => entry.kind === "tool").length;
   const reasoningCount = entries.filter(
     (entry) => entry.kind === "reasoning",
@@ -45,35 +96,15 @@ export function activityGroupLabel(entries: RenderedTranscriptEntry[]): string {
     (entry) => entry.kind === "message",
   ).length;
 
-  const onlyToolsAndReasoning =
-    toolCount + reasoningCount === entries.length && entries.length > 0;
-  if (onlyToolsAndReasoning) {
-    const tools =
-      toolCount === 0
-        ? undefined
-        : countLabel(toolCount, "1 tool call", "tool calls");
-    const reasoning =
-      reasoningCount === 0
-        ? undefined
-        : countLabel(reasoningCount, "1 reasoning entry", "reasoning entries");
-    if (tools && reasoning) return `${tools} and ${reasoning}`;
-    return tools ?? reasoning ?? "1 action";
-  }
-
-  if (entries.length === 1) {
-    if (compactionCount === 1) return "context compacted";
-    if (handoffCount === 1) return "model handoff";
-    if (subagentCount === 1) return "1 subagent";
-    if (structuredCount === 1) return "1 event";
-    if (resourceEventCount === 1) return "1 resource event";
-    if (toolCount === 1) return "1 tool call";
-    if (reasoningCount === 1) return "1 reasoning entry";
-  }
-
-  const actions = countLabel(entries.length, "1 action", "actions");
-  const preferred = [
+  const parts = [
     toolCount > 0
       ? countLabel(toolCount, "1 tool call", "tool calls")
+      : undefined,
+    reasoningCount > 0
+      ? countLabel(reasoningCount, "1 reasoning entry", "reasoning entries")
+      : undefined,
+    subagentCount > 0
+      ? countLabel(subagentCount, "1 subagent", "subagents")
       : undefined,
     compactionCount > 0
       ? countLabel(compactionCount, "context compacted", "context compacted")
@@ -81,15 +112,15 @@ export function activityGroupLabel(entries: RenderedTranscriptEntry[]): string {
     handoffCount > 0
       ? countLabel(handoffCount, "model handoff", "model handoffs")
       : undefined,
-    subagentCount > 0
-      ? countLabel(subagentCount, "1 subagent", "subagents")
+    structuredCount > 0
+      ? countLabel(structuredCount, "1 structured event", "structured events")
+      : undefined,
+    resourceEventCount > 0
+      ? countLabel(resourceEventCount, "1 resource event", "resource events")
       : undefined,
   ].filter((value): value is string => value !== undefined);
 
-  if (preferred.length > 0) {
-    return `${actions} · ${preferred.join(" · ")}`;
-  }
-  return actions;
+  return parts.length > 0 ? parts.join(" · ") : activityGroupLabel(entries);
 }
 
 function hasLiveActivity(entries: RenderedTranscriptEntry[]): boolean {
@@ -100,18 +131,19 @@ function hasLiveActivity(entries: RenderedTranscriptEntry[]): boolean {
   });
 }
 
-/** Resolve automatic activity visibility without overriding a user choice. */
+/**
+ * Open only while tools/subagents are live, or when the user forced it open.
+ * Completed historical activity stays collapsed so messages stay primary.
+ */
 export function activityGroupOpen(args: {
-  activeTail: boolean;
   hasLiveActivity: boolean;
   userOpen: boolean | null;
 }): boolean {
-  return args.userOpen ?? (args.activeTail || args.hasLiveActivity);
+  return args.userOpen ?? args.hasLiveActivity;
 }
 
 /** Collapse completed non-message activity so chat messages stay primary. */
 export function TranscriptActivityGroup(props: {
-  activeTail: boolean;
   entries: RenderedTranscriptEntry[];
   renderEntry: (entry: RenderedTranscriptEntry) => ReactNode;
 }) {
@@ -121,46 +153,47 @@ export function TranscriptActivityGroup(props: {
     <Fragment key={entry.key}>{props.renderEntry(entry)}</Fragment>
   ));
   const label = activityGroupLabel(props.entries);
+  const summary = activityGroupSummary(props.entries);
+  const live = hasLiveActivity(props.entries);
 
   if (searchActive) {
-    return <>{rows}</>;
+    return <div className="grid min-w-0 gap-1">{rows}</div>;
   }
 
   const open = activityGroupOpen({
-    activeTail: props.activeTail,
-    hasLiveActivity: hasLiveActivity(props.entries),
+    hasLiveActivity: live,
     userOpen,
   });
 
   return (
     <details className="group/activity-run min-w-0" open={open}>
       <summary
-        className="group flex w-fit max-w-full cursor-pointer list-none items-center gap-1.5 rounded-full border border-dashboard-border-medium bg-dashboard-fill-subtle px-2.5 py-1 text-left text-xs leading-tight text-dashboard-text-muted transition-colors hover:border-dashboard-border-hover hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55 [&::-webkit-details-marker]:hidden"
+        className={cn(
+          "flex w-fit max-w-full cursor-pointer list-none items-center gap-1 py-0.5 text-left text-xs leading-tight text-dashboard-text-muted transition-colors hover:text-dashboard-text focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55 [&::-webkit-details-marker]:hidden",
+          live && "text-cyan-100/80",
+        )}
         onClick={(event) => {
           event.preventDefault();
           setUserOpen(!open);
         }}
       >
-        <Layers
-          aria-hidden="true"
-          className="size-3 shrink-0 opacity-70"
-          strokeWidth={2.2}
-        />
-        <span className="min-w-0 truncate group-open/activity-run:hidden">
-          {label}
-        </span>
-        <span className="hidden min-w-0 truncate group-open/activity-run:inline">
-          Hide {label}
-        </span>
-        <ChevronRight
-          aria-hidden="true"
-          className="size-3 shrink-0 opacity-60 transition-transform group-open/activity-run:rotate-90"
-          strokeWidth={2.2}
-        />
+        <Tooltip content={summary} placement="above">
+          <span className="inline-flex min-w-0 max-w-full items-center gap-1">
+            <span className="min-w-0 truncate group-open/activity-run:hidden">
+              <ShimmerText active={live}>{label}</ShimmerText>
+            </span>
+            <span className="hidden min-w-0 truncate group-open/activity-run:inline">
+              <ShimmerText active={live}>Hide {label}</ShimmerText>
+            </span>
+            <ChevronRight
+              aria-hidden="true"
+              className="size-3 shrink-0 opacity-55 transition-transform group-open/activity-run:rotate-90"
+              strokeWidth={2.2}
+            />
+          </span>
+        </Tooltip>
       </summary>
-      <div className="mt-2 grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
-        {rows}
-      </div>
+      <div className="mt-1.5 grid min-w-0 gap-1">{rows}</div>
     </details>
   );
 }

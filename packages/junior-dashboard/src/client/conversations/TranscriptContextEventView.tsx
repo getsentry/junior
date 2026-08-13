@@ -18,16 +18,10 @@ export function TranscriptContextEventView(props: {
       ? ` using the ${event.modelProfile} profile (${event.modelId})`
       : "";
   return (
-    <article
-      className={`min-w-0 rounded-lg border px-3 py-3 first:mt-1 ${
-        handoff
-          ? "border-sky-300/10 bg-sky-300/[0.035]"
-          : "border-amber-300/10 bg-amber-300/[0.035]"
-      }`}
-    >
+    <article className="min-w-0 px-0.5 py-1 first:mt-0.5">
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1">
         <strong
-          className={`font-display text-sm font-semibold ${
+          className={`font-display text-xs font-semibold ${
             handoff ? "text-sky-100" : "text-amber-100"
           }`}
         >
@@ -39,17 +33,17 @@ export function TranscriptContextEventView(props: {
           </span>
         ) : null}
       </div>
-      <div className="mt-1.5 text-sm text-dashboard-text-muted">
+      <div className="mt-1 text-xs leading-relaxed text-dashboard-text-muted">
         {handoff
           ? `Execution continued with the ${event.modelProfile} profile (${event.modelId}${event.reasoningLevel ? `, ${event.reasoningLevel}` : ""}).`
           : `Earlier context was summarized${compactionDetail}${compactionModel} before execution continued.`}
       </div>
       {event.summary ? (
-        <details className="mt-2 border-t border-dashboard-border-subtle pt-2">
+        <details className="mt-2">
           <summary className="cursor-pointer select-none text-xs font-medium text-dashboard-text-muted">
             Continuation summary
           </summary>
-          <div className="mt-2 text-sm leading-relaxed text-dashboard-text-muted">
+          <div className="mt-1.5 whitespace-pre-wrap text-xs leading-relaxed text-dashboard-text-muted">
             <TranscriptText role="system" text={event.summary} />
           </div>
         </details>

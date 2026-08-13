@@ -20,6 +20,7 @@ import {
   verifySlackSignature,
   type SlackInstallationContext,
 } from "@/chat/slack/adapter-context";
+import { textMentionsBot } from "@/chat/ingress/bot-mention";
 import {
   extractMessageChangedMention,
   isMessageChangedEnvelope,
@@ -172,13 +173,6 @@ function isDmEvent(event: SlackMessageEvent): boolean {
   return event.channel_type === "im" || event.channel?.startsWith("D") === true;
 }
 
-function textMentionsBot(
-  event: SlackMessageEvent,
-  botUserId: string | undefined,
-): boolean {
-  return Boolean(botUserId && event.text?.includes(`<@${botUserId}>`));
-}
-
 function shouldIgnoreMessageSubtype(event: SlackMessageEvent): boolean {
   return Boolean(event.subtype && IGNORED_MESSAGE_SUBTYPES.has(event.subtype));
 }
@@ -304,9 +298,12 @@ async function routeParsedMessage(args: {
     conversationStore: args.conversationStore,
     installation: args.installation,
   });
-  const isMention =
-    args.event.type === "app_mention" ||
-    textMentionsBot(args.event, args.adapter.botUserId);
+  // Slack still emits app_mention for tokens inside code spans/blocks. Only
+  // count mentions that sit outside code as activations.
+  const botUserId = args.adapter.botUserId;
+  const isMention = Boolean(
+    botUserId && textMentionsBot(args.event.text ?? "", botUserId),
+  );
   if (isMention) {
     args.message.isMention = true;
   }

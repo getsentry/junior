@@ -1,5 +1,6 @@
 import { Message, type Adapter, type Attachment } from "chat";
 import { parseActorUserId } from "@/chat/actor";
+import { textMentionsBot } from "@/chat/ingress/bot-mention";
 
 /**
  * Parsed result from a Slack `message_changed` event that contains a newly
@@ -67,15 +68,6 @@ export function isMessageChangedEnvelope(
     typeof event.previous_message === "object" &&
     event.previous_message !== null
   );
-}
-
-/**
- * Return true if `text` contains a Slack user mention token for `botUserId`.
- *
- * Slack encodes @mentions as `<@UXXXXXXXX>` in message text.
- */
-function textMentionsBot(text: string, botUserId: string): boolean {
-  return text.includes(`<@${botUserId}>`);
 }
 
 function getAttachmentType(mimeType: string | undefined): Attachment["type"] {

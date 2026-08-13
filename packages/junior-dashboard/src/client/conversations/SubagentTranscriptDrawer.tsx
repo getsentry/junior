@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Bot, ExternalLink } from "lucide-react";
 import { Link } from "react-router";
 
@@ -6,9 +7,15 @@ import { conversationPath, formatMessageTimestamp } from "../format";
 import { buildConversationMarkdown } from "../markdownExport";
 import type { TranscriptViewSubagentPart } from "../types";
 import { Drawer } from "../components/Drawer";
+import { SearchInput } from "../components/SearchInput";
 import { CopyMarkdownButton } from "./CopyMarkdownButton";
+import {
+  TranscriptSearchToggle,
+  TranscriptViewToggle,
+} from "./ConversationHeaderActions";
 import { Transcript } from "./TranscriptView";
 import { TranscriptLoading } from "./TranscriptLoading";
+import type { TranscriptViewMode } from "./transcriptRenderModel";
 import { transcriptEmptyClass } from "./transcriptStyles";
 
 export interface SubagentTranscriptTarget {
@@ -21,9 +28,25 @@ export function SubagentTranscriptDrawer(props: {
   onClose: () => void;
   target: SubagentTranscriptTarget | undefined;
 }) {
-  const query = useConversationData(props.target?.conversationId);
-
   if (!props.target) return null;
+  // Remount per child so search/view state does not leak across drawer reuse.
+  return (
+    <SubagentTranscriptDrawerContent
+      key={props.target.conversationId}
+      onClose={props.onClose}
+      target={props.target}
+    />
+  );
+}
+
+function SubagentTranscriptDrawerContent(props: {
+  onClose: () => void;
+  target: SubagentTranscriptTarget;
+}) {
+  const query = useConversationData(props.target.conversationId);
+  const [view, setView] = useState<TranscriptViewMode>("rich");
+  const [search, setSearch] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
 
   const detail = query.data;
   const label = detail?.displayTitle || props.target.part.subagentKind;
@@ -31,23 +54,38 @@ export function SubagentTranscriptDrawer(props: {
     statusLabel(props.target.part, detail?.status),
     detail ? formatMessageTimestamp(Date.parse(detail.startedAt)) : undefined,
   ].filter(isString);
+  const searchOpenVisible = searchOpen || search.length > 0;
 
   const titleId = "subagent-transcript-drawer-title";
 
   return (
     <Drawer
       actions={
-        <CopyMarkdownButton
-          key={props.target.conversationId}
-          getMarkdown={
-            detail
-              ? async () =>
-                  buildConversationMarkdown(
-                    await query.loadCompleteTranscript(),
-                  )
-              : undefined
-          }
-        />
+        <>
+          <TranscriptSearchToggle
+            onClick={() => {
+              if (searchOpenVisible) {
+                setSearchOpen(false);
+                if (search.length > 0) setSearch("");
+                return;
+              }
+              setSearchOpen(true);
+            }}
+            open={searchOpenVisible}
+          />
+          <TranscriptViewToggle onChange={setView} value={view} />
+          <CopyMarkdownButton
+            key={props.target.conversationId}
+            getMarkdown={
+              detail
+                ? async () =>
+                    buildConversationMarkdown(
+                      await query.loadCompleteTranscript(),
+                    )
+                : undefined
+            }
+          />
+        </>
       }
       closeLabel="Close subagent transcript"
       dismissLabel="Dismiss subagent transcript"
@@ -83,6 +121,18 @@ export function SubagentTranscriptDrawer(props: {
           <div className="mt-1 break-words font-mono text-xs leading-snug text-dashboard-text-muted">
             {meta.join(" · ")}
           </div>
+          {searchOpenVisible ? (
+            <div className="mt-3 min-w-0">
+              <SearchInput
+                className="min-w-0"
+                label="Search transcript"
+                onChange={setSearch}
+                placeholder="Search transcript…"
+                size="compact"
+                value={search}
+              />
+            </div>
+          ) : null}
         </>
       }
       onClose={props.onClose}
@@ -103,7 +153,9 @@ export function SubagentTranscriptDrawer(props: {
           historyVersion={query.historyVersion}
           loadingPreviousPage={query.isLoadingPreviousPage}
           onLoadPreviousPage={query.loadPreviousPage}
+          search={search}
           transcript={detail}
+          view={view}
         />
       ) : (
         <DrawerEmptyState>Conversation unavailable.</DrawerEmptyState>

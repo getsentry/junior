@@ -20,6 +20,9 @@ provider mailbox worker.
   success, no-reply, or privacy-safe failure after the owning boundary.
 - Intentional no-reply turns do not call the stdout sink and do not synthesize
   an assistant transcript message.
+- Follow-up turns reuse the full accepted agent history, including the final
+  assistant reply. The new instruction provides the next user message. Removing
+  an accepted reply would create a conflicting history branch.
 - Event appends are idempotent when explicitly retried, but stdout acceptance
   and SQL persistence are not one transaction. A process death in that interval
   can strand a started turn; lifecycle history does not claim otherwise.

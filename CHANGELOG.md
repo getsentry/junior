@@ -1,4 +1,134 @@
 # Changelog
+
+## 0.158.0
+
+### Bug Fixes 🐛
+
+- (dashboard) Prioritize user messages after work finishes by @sentry-junior in [#1509](https://github.com/getsentry/junior/pull/1509)
+
+### Internal Changes 🔧
+
+- (local) Run delivery rollback through real agent by @dcramer in [#1507](https://github.com/getsentry/junior/pull/1507)
+
+## 0.157.0
+
+### New Features ✨
+
+- (attachments) Serve conversation attachment bytes by @sentry-junior in [#1496](https://github.com/getsentry/junior/pull/1496)
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Simplify transcript hierarchy and header by @sentry-junior in [#1491](https://github.com/getsentry/junior/pull/1491)
+- Prioritize updates after work finishes by @sentry-junior in [#1492](https://github.com/getsentry/junior/pull/1492)
+- Finish sends before cache refresh by @sentry-junior in [#1493](https://github.com/getsentry/junior/pull/1493)
+
+#### Github
+
+- Deny pull request approvals at egress by @sentry-junior in [#1500](https://github.com/getsentry/junior/pull/1500)
+- Route PR metadata updates through the owned tool by @sentry-junior in [#1501](https://github.com/getsentry/junior/pull/1501)
+
+### Documentation 📚
+
+- (vercel) Document Blob attachment storage by @sentry-junior in [#1494](https://github.com/getsentry/junior/pull/1494)
+
+### Internal Changes 🔧
+
+#### Local
+
+- Run tool events through real agent by @dcramer in [#1505](https://github.com/getsentry/junior/pull/1505)
+- Exercise completion paths through real agent by @dcramer in [#1502](https://github.com/getsentry/junior/pull/1502)
+- Remove scripted agent runner by @dcramer in [#1499](https://github.com/getsentry/junior/pull/1499)
+- Exercise normal turns through real agent by @dcramer in [#1495](https://github.com/getsentry/junior/pull/1495)
+
+#### Other
+
+- (api) Run turn workers through real agent by @dcramer in [#1490](https://github.com/getsentry/junior/pull/1490)
+- (slack) Run finalized replies through real agent by @dcramer in [#1497](https://github.com/getsentry/junior/pull/1497)
+
+## 0.156.0
+
+### New Features ✨
+
+#### Dashboard
+
+- Tighten conversation visual hierarchy by @sentry-junior in [#1486](https://github.com/getsentry/junior/pull/1486)
+- Use a full-screen mobile navigation sheet by @sentry-junior in [#1482](https://github.com/getsentry/junior/pull/1482)
+
+#### Other
+
+- (attachments) Add conversation attachment storage by @sentry-junior in [#1465](https://github.com/getsentry/junior/pull/1465)
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Rank priority by assigned work and recency by @sentry-junior in [#1489](https://github.com/getsentry/junior/pull/1489)
+- Require known Slack message source by @sentry-junior in [#1488](https://github.com/getsentry/junior/pull/1488)
+- Keep mobile composer above keyboard by @sentry-junior in [#1483](https://github.com/getsentry/junior/pull/1483)
+- Expire archive undo notices by @sentry-junior in [#1481](https://github.com/getsentry/junior/pull/1481)
+
+#### Other
+
+- (memory) Admit recall by prompt budget instead of fixed N by @sentry-junior in [#1477](https://github.com/getsentry/junior/pull/1477)
+- (slack) Ignore bot mentions inside code blocks by @sentry-junior in [#1484](https://github.com/getsentry/junior/pull/1484)
+
+### Internal Changes 🔧
+
+- (dashboard) Add common notice component by @sentry-junior in [#1485](https://github.com/getsentry/junior/pull/1485)
+- (oauth) Exercise callback resumes through real agent by @dcramer in [#1487](https://github.com/getsentry/junior/pull/1487)
+- Run MCP OAuth callback through real agent by @dcramer in [#1479](https://github.com/getsentry/junior/pull/1479)
+
+## 0.155.0
+
+### New Features ✨
+
+#### Dashboard
+
+- Show Slack source icon in transcripts by @sentry-junior in [#1476](https://github.com/getsentry/junior/pull/1476)
+- Prioritize recent unfinished work by @sentry-junior in [#1439](https://github.com/getsentry/junior/pull/1439)
+- Add installable shell manifest and icons by @sentry-junior in [#1462](https://github.com/getsentry/junior/pull/1462)
+- Show connection loss and protect drafts by @sentry-junior in [#1457](https://github.com/getsentry/junior/pull/1457)
+
+#### Other
+
+- (notion) Expose limited write tools by @sentry-junior in [#1480](https://github.com/getsentry/junior/pull/1480)
+- (sentry) Instrument Nitro app scaffolds by @dcramer in [#1463](https://github.com/getsentry/junior/pull/1463)
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Respect mobile safe-area insets by @sentry-junior in [#1474](https://github.com/getsentry/junior/pull/1474)
+- Pin secondary navigation to shell chrome by @sentry-junior in [#1469](https://github.com/getsentry/junior/pull/1469)
+- Materialize conversation participants for feed membership by @sentry-junior in [#1449](https://github.com/getsentry/junior/pull/1449)
+
+#### Other
+
+- (chat) Serialize conversation writes by @dcramer in [#1471](https://github.com/getsentry/junior/pull/1471)
+- (github) Resolve requester names via identity storage by @sentry-junior in [#1470](https://github.com/getsentry/junior/pull/1470)
+
+### Documentation 📚
+
+- (pi) Refresh agent integration skill by @dcramer in [#1467](https://github.com/getsentry/junior/pull/1467)
+
+### Internal Changes 🔧
+
+#### Dashboard
+
+- Cap e2e job at 15 minutes by @sentry-junior in [#1464](https://github.com/getsentry/junior/pull/1464)
+- Keep E2E focused on behavior by @sentry-junior in [#1458](https://github.com/getsentry/junior/pull/1458)
+
+#### Other
+
+- (deps) Bump pi packages to 0.84.1 by @sentry-junior in [#1473](https://github.com/getsentry/junior/pull/1473)
+- Run MCP tools through real agent loop by @dcramer in [#1475](https://github.com/getsentry/junior/pull/1475)
+- Harden agent integration boundaries by @dcramer in [#1472](https://github.com/getsentry/junior/pull/1472)
+- Run OAuth Slack resume through real agent by @dcramer in [#1466](https://github.com/getsentry/junior/pull/1466)
+- Remove simulated Slack file resume coverage by @dcramer in [#1459](https://github.com/getsentry/junior/pull/1459)
+- Run Slack continuation through real agent by @dcramer in [#1452](https://github.com/getsentry/junior/pull/1452)
+
 ## 0.154.0
 
 ### New Features ✨
@@ -1180,4 +1310,3 @@
 - Organize and shard end-to-end suites by @sentry-junior in [#968](https://github.com/getsentry/junior/pull/968)
 - Accept explicit Slack URL links by @dcramer in [#967](https://github.com/getsentry/junior/pull/967)
 - Add isolated global sandbox egress by @dcramer in [#943](https://github.com/getsentry/junior/pull/943)
-

@@ -66,6 +66,8 @@ Canonical words used across Junior's code and documentation.
   such as mailbox state, worker lease, checkpoints, and activity status.
 - **Unfinished work**: plugin-owned work associated with a conversation that
   is not complete.
+- **Assigned work**: plugin-owned work associated with a conversation, whether
+  finished or unfinished.
 - **Agent binding**: a named reference, scoped to one parent agent
   conversation, that reuses one child conversation and its history.
 - **Agent invocation**: one retry-safe delegated task sent from a parent agent

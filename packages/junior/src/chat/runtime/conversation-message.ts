@@ -64,6 +64,7 @@ export function toConversationMessage(
       imageAttachmentCount:
         imageAttachmentCount > 0 ? imageAttachmentCount : undefined,
       imagesHydrated: !messageHasPotentialImageAttachment,
+      source: "slack",
       ...(slackTs ? { slackTs } : {}),
     },
   };

@@ -366,18 +366,14 @@ export function ComponentsPage() {
 /** Render typed transcript tool states for visual regression and interaction checks. */
 export function ToolCallGallery() {
   return (
-    <div className="grid min-w-0 grid-cols-[0.875rem_minmax(0,1fr)] gap-3">
-      <div aria-hidden="true" className="flex justify-center">
-        <span className="w-px bg-cyan-300/15" />
+    <div className="min-w-0 overflow-hidden rounded-lg border border-dashboard-border-medium bg-dashboard-fill-faint">
+      <div className="border-b border-dashboard-border-subtle px-2.5 py-1.5 font-mono text-xs text-dashboard-text-muted">
+        Activity lane · click a row for arguments and result
       </div>
-      <div className="grid min-w-0 gap-3">
-        <p className="m-0 text-xs leading-relaxed text-dashboard-text-muted">
-          Click any row to compare its collapsed signature with the full
-          arguments and result.
-        </p>
+      <div className="grid min-w-0 gap-1 px-2 py-1.5">
         {TOOL_CALL_FIXTURES.map((fixture) => (
           <div className="grid min-w-0 gap-1" key={fixture.part.id}>
-            <div className="font-mono text-xs uppercase tracking-[0.08em] text-dashboard-text-muted">
+            <div className="font-mono text-2xs uppercase tracking-[0.08em] text-dashboard-text-muted">
               {fixture.description}
             </div>
             <TranscriptToolView

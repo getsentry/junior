@@ -6,6 +6,7 @@
 import {
   defineJuniorPlugin,
   EgressPolicyDenied,
+  enforceEgressPolicy,
   type EgressHookContext,
   type EgressResponseHookContext,
   type PluginGrantAccess,
@@ -16,6 +17,7 @@ import {
   normalizePermissions,
   readGrantPermissions,
 } from "./permissions.js";
+import { assertGitHubPullRequestApprovalDenied } from "./pull-request-review-policy.js";
 import { createGitHubTools } from "./tools.js";
 import { createGitHubWebhookRoute } from "./webhooks/handler.js";
 import {
@@ -37,7 +39,11 @@ import {
 import type { GitHubDb } from "./db/database.js";
 import { buildGitHubOutcomeReport } from "./outcomes/report.js";
 import { classifyGitHubPullRequestCommitComposition } from "./pull-request-outcomes/commit-composition.js";
-import { listGitHubUnfinishedWork } from "./pull-request-outcomes/store.js";
+import {
+  listGitHubAssignedWork,
+  listGitHubFinishedWork,
+  listGitHubUnfinishedWork,
+} from "./pull-request-outcomes/store.js";
 import { loadFailingChecksForSuite } from "./webhooks/check-suite-enrichment.js";
 import {
   additionalActorCoauthorTrailers,
@@ -327,6 +333,54 @@ function shouldInspectGitHubGraphqlResponse(
   return contentType ? /\bjson\b/i.test(contentType) : false;
 }
 
+/** GitHub body writes that must go through a typed tool. */
+type GitHubBodyWrite = {
+  denialMessage: string;
+  graphqlField:
+    | "createIssue"
+    | "createPullRequest"
+    | "updateIssue"
+    | "updatePullRequest";
+  method: "PATCH" | "POST";
+  operation:
+    | "github.issue.create"
+    | "github.issue.update"
+    | "github.pull.create"
+    | "github.pull.update";
+  restPath: RegExp;
+};
+
+const GITHUB_BODY_WRITES = [
+  {
+    denialMessage: `GitHub issue creation must use the github_createIssue tool so Junior can own idempotency and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
+    graphqlField: "createIssue",
+    method: "POST",
+    operation: "github.issue.create",
+    restPath: /^\/repos\/[^/]+\/[^/]+\/issues$/,
+  },
+  {
+    denialMessage: `GitHub pull request creation must use the github_createPullRequest tool so Junior can own idempotency and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
+    graphqlField: "createPullRequest",
+    method: "POST",
+    operation: "github.pull.create",
+    restPath: /^\/repos\/[^/]+\/[^/]+\/pulls$/,
+  },
+  {
+    denialMessage: `GitHub issue updates must use the github_updateIssue tool so Junior can own requester attribution and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
+    graphqlField: "updateIssue",
+    method: "PATCH",
+    operation: "github.issue.update",
+    restPath: /^\/repos\/[^/]+\/[^/]+\/issues\/[^/]+$/,
+  },
+  {
+    denialMessage: `GitHub pull request updates must use the github_updatePullRequest tool so Junior can own requester attribution and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
+    graphqlField: "updatePullRequest",
+    method: "PATCH",
+    operation: "github.pull.update",
+    restPath: /^\/repos\/[^/]+\/[^/]+\/pulls\/[^/]+$/,
+  },
+] as const satisfies readonly GitHubBodyWrite[];
+
 function githubApiWriteGrantName(
   method: string,
   upstreamUrl: URL,
@@ -353,7 +407,11 @@ function githubApiWriteGrantName(
     // Actions run control uses run-level cancel/rerun and job-level rerun endpoints.
     return "installation-write";
   }
-  if (method === "POST" && /^\/repos\/[^/]+\/[^/]+\/issues$/.test(pathname)) {
+  if (
+    GITHUB_BODY_WRITES.some(
+      (write) => write.method === method && write.restPath.test(pathname),
+    )
+  ) {
     return "installation-write";
   }
   if (
@@ -363,25 +421,10 @@ function githubApiWriteGrantName(
     return "installation-write";
   }
   if (
-    method === "PATCH" &&
-    /^\/repos\/[^/]+\/[^/]+\/issues\/[^/]+$/.test(pathname)
-  ) {
-    return "installation-write";
-  }
-  if (
     (method === "POST" || method === "DELETE") &&
     /^\/repos\/[^/]+\/[^/]+\/issues\/[^/]+\/(labels|assignees)(?:\/[^/]+)?$/.test(
       pathname,
     )
-  ) {
-    return "installation-write";
-  }
-  if (method === "POST" && /^\/repos\/[^/]+\/[^/]+\/pulls$/.test(pathname)) {
-    return "installation-write";
-  }
-  if (
-    method === "PATCH" &&
-    /^\/repos\/[^/]+\/[^/]+\/pulls\/[^/]+$/.test(pathname)
   ) {
     return "installation-write";
   }
@@ -426,110 +469,58 @@ function githubApiWriteGrantName(
   return undefined;
 }
 
-function isGitHubIssueCreateRestRequest(
-  method: string,
-  upstreamUrl: URL,
-): boolean {
-  return (
-    method === "POST" &&
-    isGitHubApiUrl(upstreamUrl) &&
-    /^\/repos\/[^/]+\/[^/]+\/issues$/.test(upstreamUrl.pathname.toLowerCase())
-  );
-}
-
-function isGitHubPullCreateRestRequest(
-  method: string,
-  upstreamUrl: URL,
-): boolean {
-  return (
-    method === "POST" &&
-    isGitHubApiUrl(upstreamUrl) &&
-    /^\/repos\/[^/]+\/[^/]+\/pulls$/.test(upstreamUrl.pathname.toLowerCase())
-  );
-}
-
-function isGitHubIssueCreateGraphqlMutation(
+function isGitHubGraphqlMutation(
   method: string,
   upstreamUrl: URL,
   bodyText: string | undefined,
+  field:
+    | "createIssue"
+    | "createPullRequest"
+    | "updateIssue"
+    | "updatePullRequest",
 ): boolean {
-  if (method !== "POST" || !isGitHubGraphqlUrl(upstreamUrl)) {
-    return false;
-  }
+  if (method !== "POST" || !isGitHubGraphqlUrl(upstreamUrl)) return false;
   const parsed = parseGitHubGraphqlRequest(bodyText);
-  if (!parsed) {
+  if (!parsed || !new RegExp(`\\b${field}\\b`).test(parsed.normalized)) {
     return false;
   }
-  if (!/\bcreateIssue\b/.test(parsed.normalized)) {
-    return false;
-  }
-  if (!parsed.operationName) {
-    return /\bmutation\b/.test(parsed.normalized);
-  }
+  if (!parsed.operationName) return /\bmutation\b/.test(parsed.normalized);
   return new RegExp(
     `\\bmutation\\s+${escapeRegExp(parsed.operationName)}\\b`,
   ).test(parsed.normalized);
 }
 
-function isGitHubPullCreateGraphqlMutation(
-  method: string,
-  upstreamUrl: URL,
-  bodyText: string | undefined,
-): boolean {
-  if (method !== "POST" || !isGitHubGraphqlUrl(upstreamUrl)) {
-    return false;
-  }
-  const parsed = parseGitHubGraphqlRequest(bodyText);
-  if (!parsed) {
-    return false;
-  }
-  if (!/\bcreatePullRequest\b/.test(parsed.normalized)) {
-    return false;
-  }
-  if (!parsed.operationName) {
-    return /\bmutation\b/.test(parsed.normalized);
-  }
-  return new RegExp(
-    `\\bmutation\\s+${escapeRegExp(parsed.operationName)}\\b`,
-  ).test(parsed.normalized);
-}
-
-function assertGitHubWriteAllowed(input: {
+function applyGitHubEgressPolicy(input: {
   bodyText?: string;
   method: string;
   operation?: string;
   upstreamUrl: URL;
 }): void {
-  if (input.operation === "github.issue.create") {
-    return;
-  }
-  if (input.operation === "github.pull.create") {
-    return;
-  }
-  if (
-    isGitHubIssueCreateRestRequest(input.method, input.upstreamUrl) ||
-    isGitHubIssueCreateGraphqlMutation(
-      input.method,
-      input.upstreamUrl,
-      input.bodyText,
-    )
-  ) {
-    throw new EgressPolicyDenied(
-      `GitHub issue creation must use the github_createIssue tool so Junior can own idempotency and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
-    );
-  }
-  if (
-    isGitHubPullCreateRestRequest(input.method, input.upstreamUrl) ||
-    isGitHubPullCreateGraphqlMutation(
-      input.method,
-      input.upstreamUrl,
-      input.bodyText,
-    )
-  ) {
-    throw new EgressPolicyDenied(
-      `GitHub pull request creation must use the github_createPullRequest tool so Junior can own idempotency and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
-    );
-  }
+  assertGitHubPullRequestApprovalDenied({
+    ...(input.bodyText !== undefined ? { bodyText: input.bodyText } : {}),
+    method: input.method,
+    upstreamUrl: input.upstreamUrl,
+  });
+
+  const pathname = input.upstreamUrl.pathname.toLowerCase();
+  const write = GITHUB_BODY_WRITES.find(
+    (candidate) =>
+      (candidate.method === input.method &&
+        isGitHubApiUrl(input.upstreamUrl) &&
+        candidate.restPath.test(pathname)) ||
+      isGitHubGraphqlMutation(
+        input.method,
+        input.upstreamUrl,
+        input.bodyText,
+        candidate.graphqlField,
+      ),
+  );
+  if (!write) return;
+
+  enforceEgressPolicy({
+    allowed: input.operation === write.operation,
+    denialMessage: write.denialMessage,
+  });
 }
 
 function grantForAccess(
@@ -562,7 +553,7 @@ async function githubGrantForEgress(
 ): Promise<GitHubGrant> {
   const method = ctx.request.method.toUpperCase();
   const upstreamUrl = new URL(ctx.request.url);
-  assertGitHubWriteAllowed({
+  applyGitHubEgressPolicy({
     ...(ctx.request.bodyText !== undefined
       ? { bodyText: ctx.request.bodyText }
       : {}),
@@ -745,11 +736,20 @@ export function githubPlugin(
     },
     hooks: {
       async unfinishedWork(ctx) {
+        const db = ctx.db as GitHubDb;
+        const [
+          conversationIds,
+          assignedConversationIds,
+          finishedWorkAtByConversationId,
+        ] = await Promise.all([
+          listGitHubUnfinishedWork(db, ctx.conversationIds),
+          listGitHubAssignedWork(db, ctx.conversationIds),
+          listGitHubFinishedWork(db, ctx.conversationIds),
+        ]);
         return {
-          conversationIds: await listGitHubUnfinishedWork(
-            ctx.db as GitHubDb,
-            ctx.conversationIds,
-          ),
+          conversationIds,
+          assignedConversationIds,
+          finishedWorkAtByConversationId,
         };
       },
       routes(ctx) {

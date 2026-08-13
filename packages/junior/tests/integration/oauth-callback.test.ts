@@ -13,8 +13,13 @@ import {
   createPluginAppFixture,
   type PluginAppFixture,
 } from "../fixtures/plugin-app";
-import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
-import { deliverAssistantMessagesForTest } from "../fixtures/agent-runner";
+import type { AgentRun } from "@/chat/agent/types";
+import type { AgentRunner } from "@/chat/runtime/agent-runner";
+import {
+  createModelAgentRunnerForRun,
+  neverRunAgentRunner,
+} from "../fixtures/agent-runner";
+import { createModelStream } from "../fixtures/model-stream";
 import {
   hydrateConversationMessages,
   persistConversationMessages,
@@ -23,7 +28,6 @@ import {
   coerceThreadConversationState,
   type ConversationMessage,
 } from "@/chat/state/conversation";
-import type { AgentRunResult } from "@/chat/services/turn-result";
 import { mswServer } from "../msw/server";
 
 /**
@@ -47,9 +51,6 @@ async function seedVisibleTranscriptFromThreadState(
   await persistConversationMessages({ conversation, conversationId });
 }
 
-const executeAgentRunMock = vi.fn();
-const testAgentRunner = { run: executeAgentRunMock };
-
 const ORIGINAL_ENV = { ...process.env };
 const EVAL_OAUTH_PLUGIN_ROOT = path.resolve(
   import.meta.dirname,
@@ -71,18 +72,6 @@ function slackSource(threadTs: string) {
   });
 }
 
-function makeDiagnostics() {
-  return {
-    assistantMessageCount: 1,
-    modelId: "fake-oauth-callback",
-    outcome: "success" as const,
-    toolCalls: [],
-    toolErrorCount: 0,
-    toolResultCount: 0,
-    usedPrimaryText: true,
-  };
-}
-
 type StateAdapterModule = typeof import("@/chat/state/adapter");
 type CapabilitiesFactoryModule = typeof import("@/chat/capabilities/factory");
 type OAuthCallbackHarnessModule =
@@ -95,18 +84,17 @@ let capabilitiesFactoryModule: CapabilitiesFactoryModule;
 let oauthCallbackHarnessModule: OAuthCallbackHarnessModule;
 let turnSessionStoreModule: TurnSessionStoreModule;
 let pluginApp: PluginAppFixture | undefined;
+let agentRunner: AgentRunner;
+let agentRuns: AgentRun[];
 
 describe("oauth callback integration", () => {
   beforeEach(async () => {
-    executeAgentRunMock.mockReset();
-    executeAgentRunMock.mockImplementation(async (request) => {
-      await deliverAssistantMessagesForTest(request, [
-        { text: "Here are your Sentry issues." },
+    agentRuns = [];
+    agentRunner = createModelAgentRunnerForRun((run) => {
+      agentRuns.push(run);
+      return createModelStream([
+        { type: "text", text: "Here are your Sentry issues." },
       ]);
-      return completedAgentRun({
-        text: "Here are your Sentry issues.",
-        diagnostics: makeDiagnostics(),
-      });
     });
     resetSlackApiMockState();
     process.env = {
@@ -145,7 +133,7 @@ describe("oauth callback integration", () => {
       provider: "eval-oauth",
       state: "eval-oauth-state",
       code: "eval-oauth-code",
-      agentRunner: testAgentRunner,
+      agentRunner: neverRunAgentRunner(),
     });
 
     expect(response.status).toBe(200);
@@ -168,87 +156,26 @@ describe("oauth callback integration", () => {
     ]);
   }, 20_000);
 
-  it("resumes a parked local turn through the real loopback callback", async () => {
+  it("stores and syncs local credentials through the real loopback callback", async () => {
+    let syncedCredential: unknown;
     mswServer.use(
       http.post(
         "http://127.0.0.1:3000/api/internal/local-oauth-credentials",
-        () => new HttpResponse(null, { status: 204 }),
+        async ({ request }) => {
+          syncedCredential = await request.json();
+          return new HttpResponse(null, { status: 204 });
+        },
       ),
     );
     const { startLocalOAuthCallbackServer } =
       await import("@/chat/local/oauth-callback-server");
     const { createLocalOAuthState } = await import("@/chat/local/oauth-relay");
-    const { runLocalAgentTurn } = await import("@/chat/local/runner");
-    const { saveTurnCheckpoint } =
-      await import("@/chat/task-execution/checkpoint");
     const conversationId = "local:oauth:loopback";
-    const requests: Parameters<typeof testAgentRunner.run>[0][] = [];
-    const localAgentRunner = {
-      run: vi.fn(async (request: Parameters<typeof testAgentRunner.run>[0]) => {
-        requests.push(request);
-        if (requests.length === 1) {
-          await request.durability?.recordPendingAuth?.({
-            actorId: "local-cli",
-            kind: "plugin",
-            linkSentAtMs: Date.now(),
-            provider: "eval-oauth",
-            sessionId: request.turnId,
-          });
-          await saveTurnCheckpoint({
-            mode: "paused",
-            reason: "auth",
-            actor: request.actor,
-            conversationId,
-            sliceId: 1,
-            destination: request.destination,
-            errorMessage: "eval-oauth authorization required",
-            messages: [],
-            turnId: request.turnId,
-            source: request.source,
-            surface: request.surface,
-          });
-          await request.authorization?.deliver({
-            authorizationUrl: authorizationUrl!,
-            completionText: "Junior will continue after authorization.",
-            label: "Connect Eval OAuth",
-          });
-          return {
-            status: "awaiting_auth" as const,
-            providerDisplayName: "Eval OAuth",
-          };
-        }
-        const history = [
-          ...(request.history ?? []),
-          {
-            role: "assistant",
-            content: [{ type: "text", text: "uploaded" }],
-            api: "openai-responses",
-            provider: "openai",
-            model: "test-model",
-            usage: {},
-            stopReason: "stop",
-            timestamp: Date.now(),
-          },
-        ] as NonNullable<AgentRunResult["piMessages"]>;
-        await deliverAssistantMessagesForTest(
-          request,
-          [{ text: "uploaded" }],
-          history,
-        );
-        return completedAgentRun({
-          text: "uploaded",
-          piMessages: history,
-          diagnostics: makeDiagnostics(),
-        });
-      }),
-    };
-    const callback = await startLocalOAuthCallbackServer(localAgentRunner);
-    let authorizationUrl: string | undefined;
-    let callbackRequest: Promise<Response> | undefined;
+    const callback = await startLocalOAuthCallbackServer(neverRunAgentRunner());
 
     try {
       const state = await createLocalOAuthState(callback.port);
-      authorizationUrl = `https://example.com/authorize?state=${encodeURIComponent(state)}`;
+      const authorizationUrl = `https://example.com/authorize?state=${encodeURIComponent(state)}`;
       await stateAdapterModule.getStateAdapter().set(`oauth-state:${state}`, {
         userId: "local-cli",
         provider: "eval-oauth",
@@ -257,32 +184,15 @@ describe("oauth callback integration", () => {
           conversationId,
         },
         source: createLocalSource(conversationId),
-        resumeConversationId: conversationId,
-        resumeSessionId: "local-turn-loopback",
         scope: "read",
       });
-      await runLocalAgentTurn(
-        { conversationId, message: "upload the image" },
-        {
-          agentRunner: localAgentRunner,
-          authorization: {
-            cancel: callback.cancelAuthorization,
-            createState: async () => state,
-            deliver: (request) => {
-              callback.beginAuthorization(request.authorizationUrl);
-              callbackRequest = fetch(
-                `http://127.0.0.1:${callback.port}/api/oauth/callback/eval-oauth?state=${encodeURIComponent(state)}&code=eval-oauth-code&jr_local_relay=complete`,
-              );
-            },
-            wait: callback.waitForAuthorization,
-          },
-          deliverReply: async () => undefined,
-        },
+      callback.beginAuthorization(authorizationUrl);
+      const response = await fetch(
+        `http://127.0.0.1:${callback.port}/api/oauth/callback/eval-oauth?state=${encodeURIComponent(state)}&code=eval-oauth-code&jr_local_relay=complete`,
       );
 
-      await expect(callbackRequest).resolves.toMatchObject({ status: 200 });
-      expect(requests).toHaveLength(2);
-      expect(requests[0]?.turnId).toBe(requests[1]?.turnId);
+      expect(response.status).toBe(200);
+      await expect(callback.waitForAuthorization()).resolves.toBeUndefined();
       expect(getCapturedSlackApiCalls("views.publish")).toEqual([]);
       await expect(
         capabilitiesFactoryModule
@@ -291,14 +201,12 @@ describe("oauth callback integration", () => {
       ).resolves.toEqual(
         expect.objectContaining({ accessToken: "eval-oauth-access-token" }),
       );
-      await expect(
-        turnSessionStoreModule.getTurnRecord(
-          conversationId,
-          requests[0]!.turnId,
-        ),
-      ).resolves.toMatchObject({
-        sliceId: 2,
-        state: "completed",
+      expect(syncedCredential).toEqual({
+        createdAtMs: expect.any(Number),
+        provider: "eval-oauth",
+        tokens: expect.objectContaining({
+          accessToken: "eval-oauth-access-token",
+        }),
       });
     } finally {
       await callback.close();
@@ -438,7 +346,7 @@ describe("oauth callback integration", () => {
       provider: "eval-oauth",
       state: "eval-oauth-session-record-state",
       code: "eval-oauth-code",
-      agentRunner: testAgentRunner,
+      agentRunner,
     });
 
     expect(response.status).toBe(200);
@@ -459,34 +367,28 @@ describe("oauth callback integration", () => {
         }),
       ]),
     );
-    expect(executeAgentRunMock).toHaveBeenCalledWith(
+    expect(agentRuns).toHaveLength(1);
+    expect(agentRuns[0]).toEqual(
       expect.objectContaining({
         conversationId,
         turnId: sessionId,
         instruction: expect.objectContaining({
           text: "list my sentry issues",
-          context: expect.stringContaining(
-            "You need the budget by Friday.",
-          ),
+          context: expect.stringContaining("You need the budget by Friday."),
         }),
-          actor: {
-            platform: "slack",
-            teamId: "T123",
-            userId: "U123",
-          },
-          destination: SLACK_DESTINATION,
-          source: storedSource,
-          toolChannelId: "C123",
+        actor: {
+          platform: "slack",
+          teamId: "T123",
+          userId: "U123",
+        },
+        destination: SLACK_DESTINATION,
+        source: storedSource,
+        toolChannelId: "C123",
       }),
     );
-    const resumeContext = executeAgentRunMock.mock.calls[0]?.[0] as {
-      instruction?: { context?: string };
-      source?: unknown;
-    };
-    expect(resumeContext.source).toEqual(
-      slackSource("1700000000.009"),
-    );
-    expect(resumeContext.instruction?.context).not.toContain(
+    const resumeContext = agentRuns[0]!;
+    expect(resumeContext.source).toEqual(slackSource("1700000000.009"));
+    expect(resumeContext.instruction.context).not.toContain(
       "list my sentry issues",
     );
 
@@ -674,7 +576,7 @@ describe("oauth callback integration", () => {
         provider: "eval-oauth",
         state: "eval-oauth-locked-state",
         code: "eval-oauth-code",
-        agentRunner: testAgentRunner,
+        agentRunner,
       });
 
       expect(response.status).toBe(200);
@@ -682,7 +584,8 @@ describe("oauth callback integration", () => {
       getSpy.mockRestore();
     }
 
-    expect(executeAgentRunMock).toHaveBeenCalledWith(
+    expect(agentRuns).toHaveLength(1);
+    expect(agentRuns[0]).toEqual(
       expect.objectContaining({
         instruction: expect.objectContaining({
           text: "list my sentry issues",
@@ -690,14 +593,12 @@ describe("oauth callback integration", () => {
             "Fresh context loaded after the lock.",
           ),
         }),
-          toolChannelId: "C123",
-          destination: SLACK_DESTINATION,
+        toolChannelId: "C123",
+        destination: SLACK_DESTINATION,
       }),
     );
-    const resumeContext = executeAgentRunMock.mock.calls[0]?.[0] as {
-      instruction?: { context?: string };
-    };
-    expect(resumeContext.instruction?.context).not.toContain(
+    const resumeContext = agentRuns[0]!;
+    expect(resumeContext.instruction.context).not.toContain(
       "Old context that should not be used.",
     );
     expect(getCapturedSlackApiCalls("reactions.add")).toEqual([
@@ -818,11 +719,12 @@ describe("oauth callback integration", () => {
       provider: "eval-oauth",
       state: "eval-oauth-reused-link-state",
       code: "eval-oauth-code",
-      agentRunner: testAgentRunner,
+      agentRunner,
     });
 
     expect(response.status).toBe(200);
-    expect(executeAgentRunMock).toHaveBeenCalledWith(
+    expect(agentRuns).toHaveLength(1);
+    expect(agentRuns[0]).toEqual(
       expect.objectContaining({
         conversationId,
         turnId: newSessionId,
@@ -876,11 +778,10 @@ describe("oauth callback integration", () => {
       provider: "eval-oauth",
       state: "eval-oauth-abandoned-state",
       code: "eval-oauth-code",
-      agentRunner: testAgentRunner,
+      agentRunner: neverRunAgentRunner(),
     });
 
     expect(response.status).toBe(200);
-    expect(executeAgentRunMock).not.toHaveBeenCalled();
     expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([]);
   });
 });

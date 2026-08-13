@@ -7,7 +7,6 @@ export type ConversationSection = {
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const PRIORITY_WINDOW_MS = DAY_MS;
 const SECTION_ORDER = [
   "priority",
   "today",
@@ -34,7 +33,6 @@ export function buildConversationSections(
     const section = conversationSection(
       conversation,
       time,
-      options.nowMs,
       nowDay,
       options.timeZone,
     );
@@ -59,13 +57,13 @@ function activityTime(conversation: Conversation): number {
 function conversationSection(
   conversation: Conversation,
   time: number,
-  nowMs: number,
   nowDay: number,
   timeZone: string,
 ): Pick<ConversationSection, "key" | "label"> {
   if (!Number.isFinite(time)) return { key: "older", label: "Older" };
 
-  if (conversation.unfinishedWork && nowMs - time <= PRIORITY_WINDOW_MS) {
+  // Priority membership is decided by the conversation feed API.
+  if (conversation.isPriority) {
     return { key: "priority", label: "Priority" };
   }
 

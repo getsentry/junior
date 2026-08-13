@@ -14,6 +14,26 @@ const focusableSelector = [
   "[tabindex]:not([tabindex='-1'])",
 ].join(",");
 
+// Nested drawers share one body scroll lock so unmounting the first open
+// drawer does not unlock the page under a still-open sibling drawer.
+let bodyScrollLockCount = 0;
+let previousBodyOverflow: string | undefined;
+
+function lockBodyScroll() {
+  if (bodyScrollLockCount === 0) {
+    previousBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+  }
+  bodyScrollLockCount += 1;
+}
+
+function unlockBodyScroll() {
+  bodyScrollLockCount = Math.max(0, bodyScrollLockCount - 1);
+  if (bodyScrollLockCount > 0) return;
+  document.body.style.overflow = previousBodyOverflow ?? "";
+  previousBodyOverflow = undefined;
+}
+
 /** Render an accessible modal drawer and own its focus and scroll lifecycle. */
 export function Drawer(props: {
   actions?: ReactNode;
@@ -36,8 +56,7 @@ export function Drawer(props: {
       document.activeElement instanceof HTMLElement
         ? document.activeElement
         : undefined;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    lockBodyScroll();
     const focusFrame = requestAnimationFrame(() => {
       dialogRef.current
         ?.querySelector<HTMLElement>("[data-drawer-close]")
@@ -80,7 +99,7 @@ export function Drawer(props: {
     return () => {
       cancelAnimationFrame(focusFrame);
       window.removeEventListener("keydown", onKeyDown);
-      document.body.style.overflow = previousOverflow;
+      unlockBodyScroll();
       const previousFocus = previousFocusRef.current;
       previousFocusRef.current = undefined;
       if (previousFocus?.isConnected) previousFocus.focus();

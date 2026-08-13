@@ -13,17 +13,13 @@ export function TranscriptStructuredEventView(props: {
   const presentation = props.part.presentation;
   const timestamp = formatMessageTimestamp(props.timestamp);
   const details = presentation.details ?? [];
-  const surfaceClass =
-    "min-w-0 rounded-lg border border-violet-300/10 bg-violet-300/[0.035] px-3 py-2 font-mono text-sm leading-tight";
+  const surfaceClass = "min-w-0 px-0.5 py-1 font-mono text-xs leading-tight";
   const body =
     details.length > 0 ? (
-      <div className="grid gap-2 pb-1 pt-2">
+      <div className="grid gap-4 pb-1 pt-3">
         {details.map((detail, index) => (
-          <div
-            className="rounded border border-dashboard-border-subtle bg-dashboard-fill-soft px-3 py-2.5"
-            key={`${detail.title}:${index}`}
-          >
-            <div className="whitespace-pre-wrap break-words text-sm text-dashboard-text">
+          <section key={`${detail.title}:${index}`}>
+            <div className="whitespace-pre-wrap break-words font-sans text-sm font-medium text-dashboard-text">
               <HighlightText text={detail.title} />
             </div>
             {detail.description ? (
@@ -32,7 +28,7 @@ export function TranscriptStructuredEventView(props: {
               </div>
             ) : null}
             {detail.content ? (
-              <pre className="mt-2 max-h-[32rem] overflow-auto whitespace-pre-wrap break-words rounded bg-dashboard-overlay p-3 font-mono text-xs leading-relaxed text-dashboard-text-muted">
+              <pre className="mt-2 max-h-[32rem] overflow-auto whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-dashboard-text-muted">
                 <HighlightText text={detail.content} />
               </pre>
             ) : null}
@@ -40,7 +36,7 @@ export function TranscriptStructuredEventView(props: {
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {detail.metadata.map((value) => (
                   <span
-                    className="rounded bg-dashboard-fill-hover px-1.5 py-0.5 font-mono text-xs text-dashboard-text-muted"
+                    className="font-mono text-xs text-dashboard-text-muted"
                     key={value}
                   >
                     <HighlightText text={value} />
@@ -48,14 +44,14 @@ export function TranscriptStructuredEventView(props: {
                 ))}
               </div>
             ) : null}
-          </div>
+          </section>
         ))}
       </div>
     ) : null;
   const header = (
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-2 max-md:grid-cols-[minmax(0,1fr)]">
       <div className="min-w-0">
-        <div className="font-display text-sm font-semibold text-violet-100">
+        <div className="font-display text-sm font-semibold text-dashboard-text">
           <HighlightText text={presentation.title} />
         </div>
         {presentation.preview ? (

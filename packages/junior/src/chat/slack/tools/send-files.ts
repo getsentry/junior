@@ -1,4 +1,7 @@
 import { createHash } from "node:crypto";
+import { storeAttachments } from "@/chat/attachments/store";
+import type { AttachmentStorage } from "@/chat/attachments/storage";
+import type { JuniorSqlDatabase } from "@/db/db";
 import { uploadFilesToConversation } from "@/chat/slack/outbound";
 import type { SlackToolContext } from "@/chat/slack/tool-support/context";
 import { z } from "zod";
@@ -20,12 +23,13 @@ export type MaterializeFile = (
 ) => Promise<SandboxFileUpload>;
 
 const sendFilesResultSchema = juniorToolOutputSchema.extend({
-  target: z.string().min(1),
-  channel_id: z.string().min(1),
   deduplicated: z.boolean().optional(),
-  file_count: z.number().int().nonnegative(),
-  file_ids: z.array(z.string().min(1)).optional(),
-  thread_ts: z.string().min(1),
+  attachment_refs: z.array(
+    z.object({
+      id: z.string().min(1),
+      name: z.string().min(1),
+    }),
+  ),
 });
 
 type SendFilesResult = z.output<typeof sendFilesResultSchema>;
@@ -60,6 +64,11 @@ export function createSendFilesTool(
   context: SlackToolContext,
   state: ToolState,
   materializeFile: MaterializeFile,
+  attachments?: {
+    conversationId: string;
+    db: JuniorSqlDatabase;
+    storage: AttachmentStorage;
+  },
 ) {
   return zodTool({
     annotations: {
@@ -107,24 +116,28 @@ export function createSendFilesTool(
         });
       }
 
+      const stored = attachments
+        ? await storeAttachments({
+            conversationId: attachments.conversationId,
+            db: attachments.db,
+            files: materializedFiles,
+            storage: attachments.storage,
+          })
+        : [];
       const uploads = materializedFiles.map((file) => ({
         data: file.data,
         filename: file.filename,
       }));
-      const uploaded = await uploadFilesToConversation({
+      await uploadFilesToConversation({
         channelId: activeChannelId,
         files: uploads,
         threadTs,
       });
-      const fileIds = uploaded?.files
-        ?.map((file) => file.id)
-        .filter((id): id is string => Boolean(id));
       const response: SendFilesResult = {
-        target: `${activeChannelId}:${threadTs}`,
-        channel_id: activeChannelId,
-        thread_ts: threadTs,
-        file_count: uploads.length,
-        ...(fileIds ? { file_ids: fileIds } : {}),
+        attachment_refs: stored.map((attachment, index) => ({
+          id: attachment.id,
+          name: materializedFiles[index]!.filename,
+        })),
       };
       state.setOperationResult(operationKey, response);
       return response;

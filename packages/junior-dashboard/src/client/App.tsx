@@ -67,9 +67,7 @@ export function DashboardShell() {
     location.pathname === "/conversations" ||
     location.pathname.startsWith("/conversations/");
   const primaryNavItems = [
-    ...(loggedIn
-      ? [{ key: "tasks", label: "Tasks", to: "/tasks" }]
-      : []),
+    ...(loggedIn ? [{ key: "tasks", label: "Tasks", to: "/tasks" }] : []),
     ...primaryUserPages.map((page) => ({
       key: `${page.pluginName}:${page.id}`,
       label: page.label,
@@ -107,10 +105,10 @@ export function DashboardShell() {
     <DashboardChromeProvider>
       <main
         className={cn(
-          "dashboard-shell-bg relative grid font-sans text-dashboard-text",
+          "dashboard-shell-bg grid font-sans text-dashboard-text",
           workspace
-            ? "h-[var(--dashboard-viewport-height,100dvh)] min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden"
-            : "min-h-screen grid-rows-[auto_1fr]",
+            ? "fixed inset-x-0 top-[var(--dashboard-viewport-offset-top,0px)] h-[var(--dashboard-viewport-height,100dvh)] min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden md:relative md:inset-auto md:h-dvh"
+            : "relative min-h-screen grid-rows-[auto_1fr]",
         )}
         ref={shellRef}
       >
@@ -137,252 +135,252 @@ export function DashboardShell() {
           }
         />
         <Routes>
-        <Route
-          element={
-            loading ? (
-              <TasksPageLayout>
-                <LoadingView label="Loading task executions" />
-              </TasksPageLayout>
-            ) : loggedIn ? (
-              <TasksPageLayout>
-                <TaskExecutionsPage enabled={loggedIn} />
-              </TasksPageLayout>
-            ) : (
-              <Navigate replace to="/" />
-            )
-          }
-          path="/tasks/:kind/:taskId/executions"
-        />
-        <Route
-          element={
-            loading ? (
-              <TasksPageLayout>
-                <LoadingView label="Loading task runs" />
-              </TasksPageLayout>
-            ) : loggedIn ? (
-              <TasksPageLayout>
-                <TaskRunsPage enabled={loggedIn} />
-              </TasksPageLayout>
-            ) : (
-              <Navigate replace to="/" />
-            )
-          }
-          path="/tasks/runs"
-        />
-        <Route
-          element={
-            loading ? (
-              <TasksPageLayout>
-                <LoadingView label="Loading tasks" />
-              </TasksPageLayout>
-            ) : loggedIn ? (
-              <TasksPageLayout>
-                <TasksPage enabled={loggedIn} view="list" />
-              </TasksPageLayout>
-            ) : (
-              <Navigate replace to="/" />
-            )
-          }
-          path="/tasks/list/:taskId?"
-        />
-        <Route
-          element={
-            loading ? (
-              <TasksPageLayout>
-                <LoadingView label="Loading tasks" />
-              </TasksPageLayout>
-            ) : loggedIn ? (
-              <TasksPageLayout>
-                <TasksPage enabled={loggedIn} view="overview" />
-              </TasksPageLayout>
-            ) : (
-              <Navigate replace to="/" />
-            )
-          }
-          path="/tasks"
-        />
-        <Route
-          element={<LegacySystemRedirect section="locations" />}
-          path="/locations"
-        />
-        <Route
-          element={<LegacySystemRedirect section="locations" />}
-          path="/locations/:locationId"
-        />
-        <Route
-          element={
-            loading ? (
-              <SystemPageLayout>
-                <LoadingView label="Loading locations" />
-              </SystemPageLayout>
-            ) : (
-              <LocationsPage />
-            )
-          }
-          path="/system/locations"
-        />
-        <Route
-          element={
-            loading ? (
-              <SystemPageLayout>
-                <LoadingView label="Loading location" />
-              </SystemPageLayout>
-            ) : (
-              <LocationDetailPage />
-            )
-          }
-          path="/system/locations/:locationId"
-        />
-        <Route
-          element={
-            loading ? (
-              <LoadingView label="Loading your conversations" />
-            ) : data ? (
-              <ConversationWorkspace data={data} />
-            ) : (
-              <LoadingView
-                label={query.error?.message ?? "Dashboard unavailable"}
-              />
-            )
-          }
-          path="/"
-        />
-        <Route
-          element={
-            loading ? (
-              <LoadingView label="Loading your conversations" />
-            ) : data ? (
-              <ConversationWorkspace data={data} />
-            ) : (
-              <LoadingView
-                label={query.error?.message ?? "Dashboard unavailable"}
-              />
-            )
-          }
-          path="/conversations/:conversationId"
-        />
-        <Route element={<Navigate replace to="/" />} path="/conversations" />
-        <Route
-          element={
-            loading ? (
-              <LoadingView label="Loading components" />
-            ) : !data ? (
-              <LoadingView
-                label={query.error?.message ?? "Dashboard unavailable"}
-              />
-            ) : data.config.componentGallery ? (
-              <ComponentsPage />
-            ) : (
-              <Navigate replace to="/" />
-            )
-          }
-          path="/dev/*"
-        />
-        <Route
-          element={<LegacySystemRedirect section="people" />}
-          path="/people"
-        />
-        <Route
-          element={
-            loading ? (
-              <LoadingView label="Loading profile" />
-            ) : (
-              <PersonProfilePage />
-            )
-          }
-          path="/people/:email"
-        />
-        <Route
-          element={
-            loading ? (
-              <SystemPageLayout>
-                <LoadingView label="Loading people" />
-              </SystemPageLayout>
-            ) : (
-              <PeoplePage />
-            )
-          }
-          path="/system/people"
-        />
-        <Route
-          element={
-            loading ? (
-              <SystemPageLayout>
-                <LoadingView label="Loading system" />
-              </SystemPageLayout>
-            ) : data ? (
-              <SystemRoute coreData={data} />
-            ) : (
-              <SystemPageLayout>
+          <Route
+            element={
+              loading ? (
+                <TasksPageLayout>
+                  <LoadingView label="Loading task executions" />
+                </TasksPageLayout>
+              ) : loggedIn ? (
+                <TasksPageLayout>
+                  <TaskExecutionsPage enabled={loggedIn} />
+                </TasksPageLayout>
+              ) : (
+                <Navigate replace to="/" />
+              )
+            }
+            path="/tasks/:kind/:taskId/executions"
+          />
+          <Route
+            element={
+              loading ? (
+                <TasksPageLayout>
+                  <LoadingView label="Loading task runs" />
+                </TasksPageLayout>
+              ) : loggedIn ? (
+                <TasksPageLayout>
+                  <TaskRunsPage enabled={loggedIn} />
+                </TasksPageLayout>
+              ) : (
+                <Navigate replace to="/" />
+              )
+            }
+            path="/tasks/runs"
+          />
+          <Route
+            element={
+              loading ? (
+                <TasksPageLayout>
+                  <LoadingView label="Loading tasks" />
+                </TasksPageLayout>
+              ) : loggedIn ? (
+                <TasksPageLayout>
+                  <TasksPage enabled={loggedIn} view="list" />
+                </TasksPageLayout>
+              ) : (
+                <Navigate replace to="/" />
+              )
+            }
+            path="/tasks/list/:taskId?"
+          />
+          <Route
+            element={
+              loading ? (
+                <TasksPageLayout>
+                  <LoadingView label="Loading tasks" />
+                </TasksPageLayout>
+              ) : loggedIn ? (
+                <TasksPageLayout>
+                  <TasksPage enabled={loggedIn} view="overview" />
+                </TasksPageLayout>
+              ) : (
+                <Navigate replace to="/" />
+              )
+            }
+            path="/tasks"
+          />
+          <Route
+            element={<LegacySystemRedirect section="locations" />}
+            path="/locations"
+          />
+          <Route
+            element={<LegacySystemRedirect section="locations" />}
+            path="/locations/:locationId"
+          />
+          <Route
+            element={
+              loading ? (
+                <SystemPageLayout>
+                  <LoadingView label="Loading locations" />
+                </SystemPageLayout>
+              ) : (
+                <LocationsPage />
+              )
+            }
+            path="/system/locations"
+          />
+          <Route
+            element={
+              loading ? (
+                <SystemPageLayout>
+                  <LoadingView label="Loading location" />
+                </SystemPageLayout>
+              ) : (
+                <LocationDetailPage />
+              )
+            }
+            path="/system/locations/:locationId"
+          />
+          <Route
+            element={
+              loading ? (
+                <LoadingView label="Loading your conversations" />
+              ) : data ? (
+                <ConversationWorkspace data={data} />
+              ) : (
                 <LoadingView
                   label={query.error?.message ?? "Dashboard unavailable"}
                 />
-              </SystemPageLayout>
-            )
-          }
-          path="/system/*"
-        />
-        <Route
-          element={
-            loading ? (
-              <LoadingView label="Loading settings" />
-            ) : loggedIn ? (
-              <SettingsPage identity={data!.me} />
-            ) : (
-              <Navigate replace to="/" />
-            )
-          }
-          path="/settings"
-        />
-        <Route
-          element={
-            loading ? (
-              <LoadingView label="Loading API tokens" />
-            ) : loggedIn ? (
-              <PersonalTokensPage />
-            ) : (
-              <Navigate replace to="/" />
-            )
-          }
-          path="/settings/api-tokens"
-        />
-        <Route
-          element={
-            loading || userPagesQuery.isPending ? (
-              <LoadingView label="Loading memory" />
-            ) : loggedIn && userPagesQuery.data ? (
-              <MemoryPermalinkRoute pages={userPagesQuery.data} />
-            ) : (
-              <Navigate replace to="/" />
-            )
-          }
-          path="/memories/:memoryId?"
-        />
-        <Route
-          element={
-            loading || userPagesQuery.isPending ? (
-              <LoadingView label="Loading memories" />
-            ) : loggedIn && userPagesQuery.data ? (
-              <MemoryPermalinkRoute pages={userPagesQuery.data} />
-            ) : (
-              <Navigate replace to="/" />
-            )
-          }
-          path="/memories/library"
-        />
-        <Route
-          element={
-            loading || userPagesQuery.isPending ? (
-              <LoadingView label="Loading page" />
-            ) : loggedIn && userPagesQuery.data ? (
-              <PluginUserPageRoute pages={userPagesQuery.data} />
-            ) : (
-              <Navigate replace to="/" />
-            )
-          }
-          path="/plugins/:pluginName/:pageId/*"
-        />
-        <Route element={<Navigate replace to="/" />} path="*" />
+              )
+            }
+            path="/"
+          />
+          <Route
+            element={
+              loading ? (
+                <LoadingView label="Loading your conversations" />
+              ) : data ? (
+                <ConversationWorkspace data={data} />
+              ) : (
+                <LoadingView
+                  label={query.error?.message ?? "Dashboard unavailable"}
+                />
+              )
+            }
+            path="/conversations/:conversationId"
+          />
+          <Route element={<Navigate replace to="/" />} path="/conversations" />
+          <Route
+            element={
+              loading ? (
+                <LoadingView label="Loading components" />
+              ) : !data ? (
+                <LoadingView
+                  label={query.error?.message ?? "Dashboard unavailable"}
+                />
+              ) : data.config.componentGallery ? (
+                <ComponentsPage />
+              ) : (
+                <Navigate replace to="/" />
+              )
+            }
+            path="/dev/*"
+          />
+          <Route
+            element={<LegacySystemRedirect section="people" />}
+            path="/people"
+          />
+          <Route
+            element={
+              loading ? (
+                <LoadingView label="Loading profile" />
+              ) : (
+                <PersonProfilePage />
+              )
+            }
+            path="/people/:email"
+          />
+          <Route
+            element={
+              loading ? (
+                <SystemPageLayout>
+                  <LoadingView label="Loading people" />
+                </SystemPageLayout>
+              ) : (
+                <PeoplePage />
+              )
+            }
+            path="/system/people"
+          />
+          <Route
+            element={
+              loading ? (
+                <SystemPageLayout>
+                  <LoadingView label="Loading system" />
+                </SystemPageLayout>
+              ) : data ? (
+                <SystemRoute coreData={data} />
+              ) : (
+                <SystemPageLayout>
+                  <LoadingView
+                    label={query.error?.message ?? "Dashboard unavailable"}
+                  />
+                </SystemPageLayout>
+              )
+            }
+            path="/system/*"
+          />
+          <Route
+            element={
+              loading ? (
+                <LoadingView label="Loading settings" />
+              ) : loggedIn ? (
+                <SettingsPage identity={data!.me} />
+              ) : (
+                <Navigate replace to="/" />
+              )
+            }
+            path="/settings"
+          />
+          <Route
+            element={
+              loading ? (
+                <LoadingView label="Loading API tokens" />
+              ) : loggedIn ? (
+                <PersonalTokensPage />
+              ) : (
+                <Navigate replace to="/" />
+              )
+            }
+            path="/settings/api-tokens"
+          />
+          <Route
+            element={
+              loading || userPagesQuery.isPending ? (
+                <LoadingView label="Loading memory" />
+              ) : loggedIn && userPagesQuery.data ? (
+                <MemoryPermalinkRoute pages={userPagesQuery.data} />
+              ) : (
+                <Navigate replace to="/" />
+              )
+            }
+            path="/memories/:memoryId?"
+          />
+          <Route
+            element={
+              loading || userPagesQuery.isPending ? (
+                <LoadingView label="Loading memories" />
+              ) : loggedIn && userPagesQuery.data ? (
+                <MemoryPermalinkRoute pages={userPagesQuery.data} />
+              ) : (
+                <Navigate replace to="/" />
+              )
+            }
+            path="/memories/library"
+          />
+          <Route
+            element={
+              loading || userPagesQuery.isPending ? (
+                <LoadingView label="Loading page" />
+              ) : loggedIn && userPagesQuery.data ? (
+                <PluginUserPageRoute pages={userPagesQuery.data} />
+              ) : (
+                <Navigate replace to="/" />
+              )
+            }
+            path="/plugins/:pluginName/:pageId/*"
+          />
+          <Route element={<Navigate replace to="/" />} path="*" />
         </Routes>
         <span
           aria-hidden="true"

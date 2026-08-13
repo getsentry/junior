@@ -1,5 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { runRetentionPurge } from "@/chat/conversations/retention";
+import { createVercelAttachmentStorage } from "@/chat/attachments/vercel";
+import type { AttachmentStorage } from "@/chat/attachments/storage";
 import { getSqlExecutor } from "@/chat/db";
 import { logException } from "@/chat/logging";
 
@@ -30,13 +32,18 @@ function verifyRetentionRequest(request: Request): boolean {
  * bounded purge batch and returns its counts. Failures are contained here so
  * retention can never affect task execution, heartbeat recovery, or delivery.
  */
-export async function GET(request: Request): Promise<Response> {
+export async function GET(
+  request: Request,
+  options: { attachmentStorage?: AttachmentStorage } = {},
+): Promise<Response> {
   if (!verifyRetentionRequest(request)) {
     return new Response("Unauthorized", { status: 401 });
   }
 
   try {
     const result = await runRetentionPurge(getSqlExecutor(), {
+      attachmentStorage:
+        options.attachmentStorage ?? createVercelAttachmentStorage(),
       nowMs: Date.now(),
     });
     return Response.json(result, { status: 200 });

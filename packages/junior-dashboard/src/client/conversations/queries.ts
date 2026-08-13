@@ -146,18 +146,14 @@ export function useCreateConversation() {
       message: string;
       visibility?: "private" | "public";
     }) => post(acceptedConversationMessageSchema, "/api/conversations", args),
-    onSuccess: async (accepted) => {
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: ["dashboard", "conversations"],
-        }),
-        queryClient.invalidateQueries({
-          exact: true,
-          queryKey: conversationPendingMessagesQueryKey(
-            accepted.conversationId,
-          ),
-        }),
-      ]);
+    onSuccess: (accepted) => {
+      void queryClient.invalidateQueries({
+        queryKey: ["dashboard", "conversations"],
+      });
+      void queryClient.invalidateQueries({
+        exact: true,
+        queryKey: conversationPendingMessagesQueryKey(accepted.conversationId),
+      });
     },
   });
 }
@@ -172,20 +168,18 @@ export function useAppendConversationMessage(conversationId: string) {
         `/api/conversations/${encodeURIComponent(conversationId)}/messages`,
         args,
       ),
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: ["dashboard", "conversations"],
-        }),
-        queryClient.invalidateQueries({
-          exact: true,
-          queryKey: conversationDetailQueryKey(conversationId),
-        }),
-        queryClient.invalidateQueries({
-          exact: true,
-          queryKey: conversationPendingMessagesQueryKey(conversationId),
-        }),
-      ]);
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: ["dashboard", "conversations"],
+      });
+      void queryClient.invalidateQueries({
+        exact: true,
+        queryKey: conversationDetailQueryKey(conversationId),
+      });
+      void queryClient.invalidateQueries({
+        exact: true,
+        queryKey: conversationPendingMessagesQueryKey(conversationId),
+      });
     },
   });
 }

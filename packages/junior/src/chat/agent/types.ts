@@ -34,6 +34,7 @@ import type {
   WebSearchToolDeps,
 } from "@/chat/tools/types";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
+import type { AttachmentStorage } from "@/chat/attachments/storage";
 
 /** One attachment the model may see for the current instruction. */
 export type AgentAttachment = {
@@ -131,9 +132,7 @@ export type AgentRunState = {
  * The runner must commit the preceding agent boundary before invoking this
  * port; the accepted reply transaction appends only this message.
  */
-export type AgentDelivery = (
-  message: AssistantMessage,
-) => void | Promise<void>;
+export type AgentDelivery = (message: AssistantMessage) => void | Promise<void>;
 
 /** Resume the agent turn after a transient or ambiguous delivery failure. */
 export class RetryableDeliveryError extends Error {
@@ -172,6 +171,7 @@ export type AgentEvent =
 
 /** Resolved environment and optional per-run tool test overrides. */
 export type AgentEnvironment = {
+  attachmentStorage?: AttachmentStorage;
   configuration?: Record<string, unknown>;
   locationConfiguration?: LocationConfigurationService;
   skillDirs?: string[];
@@ -301,7 +301,9 @@ export function assertRunConsistency(
   switch (source.platform) {
     case "slack": {
       if (destination.platform !== "slack") {
-        throw new TypeError("Run source and destination platforms do not match");
+        throw new TypeError(
+          "Run source and destination platforms do not match",
+        );
       }
       if (source.teamId !== destination.teamId) {
         throw new TypeError("Slack source and destination teams do not match");
@@ -310,7 +312,9 @@ export function assertRunConsistency(
     }
     case "local": {
       if (destination.platform !== "local") {
-        throw new TypeError("Run source and destination platforms do not match");
+        throw new TypeError(
+          "Run source and destination platforms do not match",
+        );
       }
       if (source.conversationId !== destination.conversationId) {
         throw new TypeError(

@@ -355,8 +355,7 @@ function githubToolsContext(input?: {
     model: {},
     resourceEvents: { canSubscribe: true },
     users: {
-      resolveActor:
-        input?.resolveActor ?? (async () => undefined),
+      resolveActor: input?.resolveActor ?? (async () => undefined),
     },
     state: {
       async delete(key: string) {
@@ -594,9 +593,33 @@ describe("github plugin", () => {
     });
     expect(
       await grantForEgress({
+        method: "PATCH",
+        operation: "github.issue.update",
+        url: "https://api.github.com/repos/getsentry/junior/issues/780",
+      }),
+    ).toMatchObject({
+      name: "installation-write",
+      access: "write",
+      leaseScope: "repository:getsentry/junior",
+      reason: "github.installation-write",
+    });
+    expect(
+      await grantForEgress({
         method: "POST",
         operation: "github.pull.create",
         url: "https://api.github.com/repos/getsentry/junior/pulls",
+      }),
+    ).toMatchObject({
+      name: "installation-write",
+      access: "write",
+      leaseScope: "repository:getsentry/junior",
+      reason: "github.installation-write",
+    });
+    expect(
+      await grantForEgress({
+        method: "PATCH",
+        operation: "github.pull.update",
+        url: "https://api.github.com/repos/getsentry/junior/pulls/780",
       }),
     ).toMatchObject({
       name: "installation-write",
@@ -1800,7 +1823,7 @@ Conversation: \`local:test:old-conversation\`
             "fragment prFields on PullRequest { number } mutation UpdatePullRequest($input: UpdatePullRequestInput!) { updatePullRequest(input: $input) { pullRequest { ...prFields } } }",
         }),
       }),
-    ).rejects.toThrow("GraphQL mutations are not enabled");
+    ).rejects.toThrow("must use the github_updatePullRequest tool");
     await expect(
       grantForEgress({
         method: "POST",
@@ -1860,18 +1883,29 @@ Conversation: \`local:test:old-conversation\`
     ).rejects.toThrow("must use the github_createPullRequest tool");
   });
 
-  it("keeps unsupported repository writes outside the allowlist", async () => {
+  it("denies raw issue and pull request metadata updates", async () => {
     await expect(
       grantForEgress({
         method: "PATCH",
         url: "https://api.github.com/repos/getsentry/junior/issues/780",
       }),
-    ).resolves.toMatchObject({
-      name: "installation-write",
-      access: "write",
-      leaseScope: "repository:getsentry/junior",
-      reason: "github.installation-write",
-    });
+    ).rejects.toThrow("must use the github_updateIssue tool");
+    await expect(
+      grantForEgress({
+        method: "PATCH",
+        operation: "github.pull.update",
+        url: "https://api.github.com/repos/getsentry/junior/issues/780",
+      }),
+    ).rejects.toThrow("must use the github_updateIssue tool");
+    await expect(
+      grantForEgress({
+        method: "PATCH",
+        url: "https://api.github.com/repos/getsentry/junior/pulls/780",
+      }),
+    ).rejects.toThrow("must use the github_updatePullRequest tool");
+  });
+
+  it("keeps unsupported repository writes outside the allowlist", async () => {
     await expect(
       grantForEgress({
         method: "POST",
@@ -1885,17 +1919,6 @@ Conversation: \`local:test:old-conversation\`
   it("treats pull request review writes as bot-owned installation identity", async () => {
     await expect(
       grantForEgress({
-        method: "PATCH",
-        url: "https://api.github.com/repos/getsentry/junior/pulls/780",
-      }),
-    ).resolves.toMatchObject({
-      name: "installation-write",
-      access: "write",
-      leaseScope: "repository:getsentry/junior",
-      reason: "github.installation-write",
-    });
-    await expect(
-      grantForEgress({
         method: "POST",
         url: "https://api.github.com/repos/getsentry/junior/pulls/780/reviews",
       }),
@@ -1907,6 +1930,19 @@ Conversation: \`local:test:old-conversation\`
     });
     await expect(
       grantForEgress({
+        bodyText: JSON.stringify({ event: "REQUEST_CHANGES", body: "nits" }),
+        method: "POST",
+        url: "https://api.github.com/repos/getsentry/junior/pulls/780/reviews",
+      }),
+    ).resolves.toMatchObject({
+      name: "installation-write",
+      access: "write",
+      leaseScope: "repository:getsentry/junior",
+      reason: "github.installation-write",
+    });
+    await expect(
+      grantForEgress({
+        bodyText: JSON.stringify({ event: "COMMENT", body: "looks fine" }),
         method: "POST",
         url: "https://api.github.com/repos/getsentry/junior/pulls/780/reviews/99/events",
       }),
@@ -1978,6 +2014,47 @@ Conversation: \`local:test:old-conversation\`
       }),
     ).rejects.toThrow(
       "GitHub write request is not an explicitly allowed Junior operation.",
+    );
+  });
+
+  it("denies GitHub pull request approvals while allowing non-approve reviews", async () => {
+    await expect(
+      grantForEgress({
+        bodyText: JSON.stringify({ event: "APPROVE", body: "lgtm" }),
+        method: "POST",
+        url: "https://api.github.com/repos/getsentry/junior/pulls/780/reviews",
+      }),
+    ).rejects.toThrow("Junior cannot approve GitHub pull requests");
+    await expect(
+      grantForEgress({
+        bodyText: JSON.stringify({ event: "approve" }),
+        method: "POST",
+        url: "https://api.github.com/repos/getsentry/junior/pulls/780/reviews/99/events",
+      }),
+    ).rejects.toThrow("Junior cannot approve GitHub pull requests");
+    await expect(
+      grantForEgress({
+        method: "POST",
+        url: "https://api.github.com/repos/getsentry/junior/pulls/780/reviews/99/events",
+      }),
+    ).rejects.toThrow(
+      "review submissions must include a parseable non-APPROVE event",
+    );
+    await expect(
+      grantForEgress({
+        bodyText: "event=APPROVE",
+        method: "POST",
+        url: "https://api.github.com/repos/getsentry/junior/pulls/780/reviews",
+      }),
+    ).rejects.toThrow("must use JSON bodies");
+    await expect(
+      grantForEgress({
+        bodyText: JSON.stringify({ event: 1 }),
+        method: "POST",
+        url: "https://api.github.com/repos/getsentry/junior/pulls/780/reviews",
+      }),
+    ).rejects.toThrow(
+      "review submissions must include a parseable non-APPROVE event",
     );
   });
 

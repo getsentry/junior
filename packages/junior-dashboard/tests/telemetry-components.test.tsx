@@ -19,7 +19,12 @@ import {
   type SubagentTranscriptTarget,
 } from "../src/client/conversations/SubagentTranscriptDrawer";
 import { Transcript } from "../src/client/conversations/TranscriptView";
-import { TranscriptHeader } from "../src/client/conversations/TranscriptHeader";
+import { ConversationHeader } from "../src/client/conversations/ConversationHeader";
+import {
+  ConversationAnnotations,
+  ConversationStats,
+} from "../src/client/conversations/ConversationMeta";
+import { conversationFromDetail } from "../src/client/format";
 import { TranscriptMarkdown } from "../src/client/conversations/TranscriptMarkdown";
 import { TranscriptText } from "../src/client/conversations/TranscriptText";
 import { TranscriptToolView } from "../src/client/conversations/TranscriptToolView";
@@ -320,19 +325,33 @@ describe("dashboard canonical-event components", () => {
 
   it("exposes pressed state for transcript view controls", () => {
     const html = renderToStaticMarkup(
-      <TranscriptHeader
-        onChange={() => {}}
+      <ConversationHeader
+        annotations={null}
+        archive={{
+          archived: false,
+          disabled: false,
+          error: false,
+          onClick: () => {},
+          pending: false,
+        }}
+        conversationId="conversation-1"
+        identity={null}
+        live={false}
         onSearchChange={() => {}}
-        redacted={false}
+        onViewChange={() => {}}
+        privacy={null}
         search=""
-        value="raw"
+        stats={null}
+        title="Header QA"
+        view="raw"
       />,
     );
-    expect(html.match(/aria-pressed="true"/g) ?? []).toHaveLength(1);
-    expect(html.match(/aria-pressed="false"/g) ?? []).toHaveLength(1);
-    expect(html).toContain("Conversation");
-    expect(html).toContain("Event log");
+    expect(html).toContain('aria-pressed="true"');
+    expect(html).toContain('aria-label="Conversation"');
+    expect(html).toContain('aria-label="Event log"');
     expect(html).toContain('aria-label="Search transcript"');
+    expect(html).toContain('aria-label="Conversation details"');
+    expect(html).toContain('aria-label="Archive"');
   });
 
   it("shows responding state independently from live transcript following", () => {
@@ -397,15 +416,16 @@ describe("dashboard canonical-event components", () => {
     );
     const completeTranscriptHtml = renderTranscript(conversation(events));
 
-    // Conversation-level totals only render from complete history. Turns are the
-    // unique header signal; tool chips may still label visible activity on partial pages.
+    // Conversation header no longer shows turn or tool totals.
     expect(partialHtml).not.toContain("1 turn");
-    expect(completeHtml).toContain("1 turn");
-    // Transcript does not mirror conversation turn totals in a segment row.
+    expect(completeHtml).not.toContain("1 turn");
+    expect(partialHtml).not.toContain("1 tool call");
+    expect(completeHtml).not.toContain("1 tool call");
+    // Transcript collapses activity to a uniform event count.
     expect(partialTranscriptHtml).not.toContain("1 turn");
     expect(completeTranscriptHtml).not.toContain("1 turn");
-    expect(partialTranscriptHtml).toContain("1 tool call");
-    expect(completeTranscriptHtml).toContain("1 tool call");
+    expect(partialTranscriptHtml).toContain("1 event");
+    expect(completeTranscriptHtml).toContain("1 event");
   });
 
   it("renders each user message with its own actor", () => {
@@ -431,30 +451,38 @@ describe("dashboard canonical-event components", () => {
     expect(html).not.toContain("Morgan Lee");
   });
 
-  it("shows a Slack icon for Slack user messages and Slack-outbound assistants", () => {
+  it("shows a Slack icon for Slack-origin messages only", () => {
     const slackHtml = renderTranscript(
       conversation(
         [
           event(0, {
-            messageId: "slack-user",
+            messageId: "unknown-user-source",
             role: "user",
-            text: "From Slack.",
+            text: "Unknown source.",
             type: "message",
           }),
           event(1, {
-            messageId: "slack-assistant",
-            role: "assistant",
-            text: "Posted to Slack.",
+            messageId: "slack-user",
+            role: "user",
+            source: "slack",
+            text: "From Slack.",
             type: "message",
           }),
           event(2, {
+            messageId: "slack-assistant",
+            role: "assistant",
+            source: "slack",
+            text: "Posted to Slack.",
+            type: "message",
+          }),
+          event(3, {
             messageId: "dashboard-user",
             role: "user",
             source: "web",
             text: "Continued from the dashboard.",
             type: "message",
           }),
-          event(3, {
+          event(4, {
             messageId: "dashboard-assistant",
             role: "assistant",
             source: "web",
@@ -479,7 +507,8 @@ describe("dashboard canonical-event components", () => {
 
     expect(slackHtml).toContain('aria-label="Slack"');
     expect(slackHtml).not.toContain(">Slack<");
-    expect(slackHtml.match(/aria-label="Slack"/g)).toHaveLength(3);
+    // Known Slack user + assistant only. Null/web stay unmarked.
+    expect(slackHtml.match(/aria-label="Slack"/g)).toHaveLength(2);
     expect(dashboardRootHtml).not.toContain("Dashboard");
     expect(dashboardRootHtml).not.toContain('aria-label="Slack"');
   });
@@ -505,26 +534,24 @@ describe("dashboard canonical-event components", () => {
   });
 
   it("renders conversation resource links without pull request assumptions", () => {
-    const queryClient = conversationQueryClient();
-    queryClient.setQueryData(
-      conversationDetailQueryKey("conversation-1"),
-      conversation([], {
-        annotations: [
-          {
-            kind: "resource_link",
-            key: "getsentry/junior#1081",
-            label: "getsentry/junior#1081",
-            plugin: "github",
-            status: "open",
-            url: "https://github.com/getsentry/junior/issues/1081",
-            createdAt: "2026-01-01T00:00:00.000Z",
-            updatedAt: "2026-01-01T00:00:01.000Z",
-          },
-        ],
-      }),
+    const html = renderToStaticMarkup(
+      <ConversationAnnotations
+        detail={conversation([], {
+          annotations: [
+            {
+              kind: "resource_link",
+              key: "getsentry/junior#1081",
+              label: "getsentry/junior#1081",
+              plugin: "github",
+              status: "open",
+              url: "https://github.com/getsentry/junior/issues/1081",
+              createdAt: "2026-01-01T00:00:00.000Z",
+              updatedAt: "2026-01-01T00:00:01.000Z",
+            },
+          ],
+        })}
+      />,
     );
-
-    const html = renderConversationPageWithClient(queryClient);
 
     expect(html).toContain("getsentry/junior#1081");
     expect(html).toContain('title="Open"');
@@ -909,6 +936,9 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain("child detail answer");
     expect(html).toContain("/conversations/child-1");
     expect(html).toContain("Open conversation");
+    expect(html).toContain('aria-label="Search transcript"');
+    expect(html).toContain('aria-label="Conversation"');
+    expect(html).toContain('aria-label="Event log"');
   });
 
   it("keeps the terminal parent error when child detail says completed", () => {
@@ -1739,12 +1769,14 @@ describe("dashboard canonical-event components", () => {
         title: "Refresh YC company data",
       },
     });
-    client.setQueryData(
-      conversationDetailQueryKey(detail.conversationId),
-      detail,
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <ConversationStats
+          conversation={conversationFromDetail(detail)}
+          detail={detail}
+        />
+      </MemoryRouter>,
     );
-
-    const html = renderConversationPageWithClient(client);
 
     expect(html).toMatch(
       /href="\/tasks\/sched_source_task"[^>]*>Triggered by Scheduled Task<\/a>/,

@@ -23,7 +23,9 @@ import { conversationFeedSchema } from "../schema/conversation";
 import type { ConversationFeed } from "../schema/conversation";
 import { readRootConversationMetricsFromSql } from "./usage";
 import { readConversationAuxiliaryCostsFromSql } from "./auxiliary-costs";
-import { listUnfinishedWork } from "@/chat/plugins/unfinished-work";
+import { listConversationWork } from "@/chat/plugins/unfinished-work";
+import { isConversationPriority } from "./priority";
+import { readLastUserMessageAtByConversation } from "./user-message-activity";
 
 const CONVERSATION_FEED_LIMIT = 50;
 
@@ -243,7 +245,8 @@ export async function readConversationFeedFromSql(
     auxiliaryCostsByRoot,
     metricsByRoot,
     teamDomainByTeamId,
-    unfinishedWorkIds,
+    conversationWork,
+    lastUserMessageAtByConversation,
   ] = await Promise.all([
     readConversationAccessFromSql(db, conversationIds, options.viewer),
     readConversationAuxiliaryCostsFromSql(db, conversationIds, {
@@ -257,28 +260,53 @@ export async function readConversationFeedFromSql(
           : [],
       ),
     ),
-    listUnfinishedWork(conversationIds),
+    listConversationWork(conversationIds),
+    readLastUserMessageAtByConversation(db, conversationIds),
   ]);
-  const unfinishedWork = new Set(unfinishedWorkIds);
+  const assignedWork = new Set(conversationWork.assignedIds);
+  const unfinishedWork = new Set(conversationWork.unfinishedIds);
   return {
     conversations: conversations.map((conversation, index) => {
       const row = rows[index]!;
       const metrics = metricsByRoot.get(conversation.conversationId);
-      return {
-        ...conversationSummaryFromStoredConversation({
-          conversation,
-          access: accessByConversation.get(conversation.conversationId),
-          auxiliaryCosts: auxiliaryCostsByRoot.get(conversation.conversationId),
-          durationMs: metrics?.durationMs ?? row.conversation.durationMs,
-          teamDomainByTeamId,
-          ...(row.destination?.visibility === "public"
-            ? { locationId: row.destination.id }
-            : {}),
-          usage: metrics?.usage ?? row.conversation.usage ?? undefined,
-        }),
-        ...(unfinishedWork.has(conversation.conversationId)
-          ? { unfinishedWork: true }
+      const summary = conversationSummaryFromStoredConversation({
+        conversation,
+        access: accessByConversation.get(conversation.conversationId),
+        auxiliaryCosts: auxiliaryCostsByRoot.get(conversation.conversationId),
+        durationMs: metrics?.durationMs ?? row.conversation.durationMs,
+        teamDomainByTeamId,
+        ...(row.destination?.visibility === "public"
+          ? { locationId: row.destination.id }
           : {}),
+        usage: metrics?.usage ?? row.conversation.usage ?? undefined,
+      });
+      const work = {
+        ...(assignedWork.has(conversation.conversationId)
+          ? { assignedWork: true as const }
+          : {}),
+        ...(conversationWork.finishedAtById[conversation.conversationId]
+          ? {
+              finishedWorkAt:
+                conversationWork.finishedAtById[conversation.conversationId],
+            }
+          : {}),
+        ...(unfinishedWork.has(conversation.conversationId)
+          ? { unfinishedWork: true as const }
+          : {}),
+      };
+      return {
+        ...summary,
+        ...work,
+        isPriority: isConversationPriority(
+          {
+            lastSeenAt: summary.lastSeenAt,
+            lastUserMessageAt: lastUserMessageAtByConversation.get(
+              conversation.conversationId,
+            ),
+            ...work,
+          },
+          nowMs,
+        ),
       };
     }),
     generatedAt: new Date(nowMs).toISOString(),

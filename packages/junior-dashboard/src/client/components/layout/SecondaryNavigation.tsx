@@ -30,7 +30,7 @@ export function SecondaryNavigation(props: {
     );
   const mobileLinkClass = ({ isActive }: { isActive: boolean }) =>
     cn(
-      "rounded-md px-2.5 py-2 pl-5 font-mono text-xs font-medium no-underline transition-colors",
+      "rounded-lg px-3 py-3 pl-6 font-mono text-sm font-medium no-underline transition-colors",
       isActive
         ? "bg-cyan-300/[0.1] text-cyan-50"
         : cn("hover:bg-dashboard-fill-muted", dashboardInteractiveTextClass),
@@ -63,7 +63,7 @@ export function SecondaryNavigation(props: {
       mobile={
         <nav
           aria-label={props.ariaLabel}
-          className="mt-2 grid gap-1 border-t border-dashboard-border pt-2"
+          className="mt-3 grid gap-1 border-t border-dashboard-border pt-3"
         >
           {props.items.map((item) => (
             <NavLink

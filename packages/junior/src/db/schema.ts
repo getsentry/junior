@@ -1,3 +1,4 @@
+import { juniorAttachments } from "./schema/attachments";
 import { juniorConversationAnnotations } from "./schema/conversation-annotations";
 import { juniorApiTokens } from "./schema/api-tokens";
 import { juniorConversationEvents } from "./schema/conversation-events";
@@ -21,6 +22,7 @@ import {
 import { juniorUsers } from "./schema/users";
 
 export {
+  juniorAttachments,
   juniorConversationAnnotations,
   juniorApiTokens,
   juniorAgentBindings,
@@ -41,6 +43,7 @@ export {
 };
 
 export const juniorSqlSchema = {
+  juniorAttachments,
   juniorConversationAnnotations,
   juniorApiTokens,
   juniorAgentBindings,

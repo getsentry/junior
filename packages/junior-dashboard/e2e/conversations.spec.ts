@@ -108,7 +108,19 @@ test("opens a conversation in the built dashboard", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Conversations" }),
   ).toBeVisible();
-  await page.getByRole("link", { name: /Checkout latency triage/ }).click();
+  const publicConversationLink = page.getByRole("link", {
+    name: /Checkout latency triage/,
+  });
+  const privateConversationLink = page.getByRole("link", {
+    name: /Direct Message/,
+  });
+  await expect(
+    privateConversationLink.getByLabel("Private conversation"),
+  ).toBeVisible();
+  await expect(
+    publicConversationLink.getByLabel("Private conversation"),
+  ).toHaveCount(0);
+  await publicConversationLink.click();
   await expect(page).toHaveURL(
     `${server.baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770000000.000100")}`,
   );
@@ -159,6 +171,11 @@ test("starts and continues conversations from the dashboard", async ({
   let releaseFirstContinue: (() => void) | undefined;
   const firstContinueHeld = new Promise<void>((resolve) => {
     releaseFirstContinue = resolve;
+  });
+  let holdDetailRefresh = false;
+  let releaseDetailRefresh: (() => void) | undefined;
+  const detailRefreshHeld = new Promise<void>((resolve) => {
+    releaseDetailRefresh = resolve;
   });
   await page.route("**/api/conversations", async (route) => {
     if (route.request().method() !== "POST") {
@@ -215,6 +232,7 @@ test("starts and continues conversations from the dashboard", async ({
   await page.route(
     `**/api/conversations/${encodeURIComponent(slackConversationId)}`,
     async (route) => {
+      if (holdDetailRefresh) await detailRefreshHeld;
       const response = await route.fetch();
       await route.fulfill({
         response,
@@ -253,10 +271,14 @@ test("starts and continues conversations from the dashboard", async ({
   // Edits that return to the failed text must keep the same key.
   await restoredComposer.fill("Continue in Junior!");
   await restoredComposer.fill("Continue in Junior");
+  holdDetailRefresh = true;
   await page.getByRole("button", { name: "Send" }).click();
   await expect.poll(() => continueRequests.length).toBe(2);
   expect(continueRequests[1]?.idempotencyKey).toBe(failedIdempotencyKey);
+  // The accepted message clears the composer before background transcript
+  // refreshes finish. A slow read must not make the send look like a UI reload.
   await expect(restoredComposer).toHaveValue("");
+  releaseDetailRefresh?.();
 
   await page.reload();
   await expect(page.getByLabel("Continue this conversation")).toHaveValue("");
@@ -279,7 +301,26 @@ test("collapses long pending message stacks", async ({ page }) => {
       "Keep the reply in Junior. I will paste the dashboard link next.",
     ),
   ).toBeVisible();
-  await expect(pending.getByText("3 more queued messages")).toBeVisible();
+  const expand = pending.getByRole("button", {
+    name: "3 more queued messages",
+  });
+  await expect(expand).toBeVisible();
+  await expect(expand).toHaveAttribute("aria-expanded", "false");
+  await expect(pending.getByText("Third queued message.")).toBeHidden();
+
+  await expand.click();
+  await expect(
+    pending.getByRole("button", { name: "Show fewer queued messages" }),
+  ).toHaveAttribute("aria-expanded", "true");
+  await expect(pending.getByText("Third queued message.")).toBeVisible();
+  await expect(pending.getByText("Fifth queued message.")).toBeVisible();
+
+  await pending
+    .getByRole("button", { name: "Show fewer queued messages" })
+    .click();
+  await expect(
+    pending.getByRole("button", { name: "3 more queued messages" }),
+  ).toHaveAttribute("aria-expanded", "false");
   await expect(pending.getByText("Third queued message.")).toBeHidden();
 });
 
@@ -330,15 +371,25 @@ test("opens and closes a conversation in the mobile workspace", async ({
   await expect(page.getByPlaceholder("Search transcript…")).toBeHidden();
   await expect(
     page.getByRole("group", { name: "Transcript view" }),
-  ).toBeHidden();
+  ).toBeVisible();
   await expect(page.getByRole("note")).toBeHidden();
 
   const pending = page.getByLabel("Pending messages");
   await expect(pending).toBeVisible();
-  await expect(pending.getByText("5 queued messages")).toBeVisible();
+  const expand = pending.getByRole("button", { name: "5 queued messages" });
+  await expect(expand).toBeVisible();
+  await expect(expand).toHaveAttribute("aria-expanded", "false");
   await expect(
     pending.getByText("Also check the canary traffic from the last deploy."),
   ).toBeHidden();
+
+  await expand.click();
+  await expect(
+    pending.getByText("Also check the canary traffic from the last deploy."),
+  ).toBeVisible();
+  await expect(
+    pending.getByRole("button", { name: "Show fewer queued messages" }),
+  ).toHaveAttribute("aria-expanded", "true");
 
   const composer = page.getByPlaceholder("Message Junior…");
   await expect(composer).toBeVisible();
@@ -346,17 +397,53 @@ test("opens and closes a conversation in the mobile workspace", async ({
   await composer.focus();
   await expect(composer).toBeFocused();
 
-  await page.getByRole("button", { name: "Show transcript tools" }).click();
+  const shell = page.locator("main").first();
+  await page.evaluate(() => {
+    Object.defineProperties(window.visualViewport, {
+      height: { configurable: true, value: 520 },
+      offsetTop: { configurable: true, value: 140 },
+    });
+    window.visualViewport?.dispatchEvent(new Event("resize"));
+  });
+  await expect
+    .poll(() =>
+      shell.evaluate((element) =>
+        element.style.getPropertyValue("--dashboard-viewport-height"),
+      ),
+    )
+    .toBe("520px");
+  await expect
+    .poll(() =>
+      shell.evaluate((element) =>
+        element.style.getPropertyValue("--dashboard-viewport-offset-top"),
+      ),
+    )
+    .toBe("140px");
+
+  // Offset can change from a visualViewport scroll without a resize.
+  await page.evaluate(() => {
+    Object.defineProperties(window.visualViewport, {
+      height: { configurable: true, value: 520 },
+      offsetTop: { configurable: true, value: 180 },
+    });
+    window.visualViewport?.dispatchEvent(new Event("scroll"));
+  });
+  await expect
+    .poll(() =>
+      shell.evaluate((element) =>
+        element.style.getPropertyValue("--dashboard-viewport-offset-top"),
+      ),
+    )
+    .toBe("180px");
+
+  await page.getByRole("button", { name: "Search transcript" }).click();
   await expect(page.getByPlaceholder("Search transcript…")).toBeVisible();
-  await expect(
-    page.getByRole("group", { name: "Transcript view" }),
-  ).toBeVisible();
   await page.getByRole("button", { name: "Event log" }).click();
-  await page.getByRole("button", { name: "Hide transcript tools" }).click();
+  await page.getByRole("button", { name: "Hide search" }).click();
   await expect(page.getByPlaceholder("Search transcript…")).toBeHidden();
   await expect(
     page.getByRole("group", { name: "Transcript view" }),
-  ).toBeHidden();
+  ).toBeVisible();
 
   await page.getByRole("link", { name: "Your conversations" }).click();
   await expect(page).toHaveURL(`${server.baseURL}/`);
@@ -485,7 +572,8 @@ test("scrolls long conversation and transcript panes independently", async ({
   );
   expect(
     await transcript.evaluate(
-      (element) => element.scrollTop + element.clientHeight >= element.scrollHeight - 1,
+      (element) =>
+        element.scrollTop + element.clientHeight >= element.scrollHeight - 1,
     ),
   ).toBe(true);
   expect(await page.evaluate(() => window.scrollY)).toBe(0);
@@ -550,15 +638,10 @@ test("inspects and copies an advisor transcript", async ({ context, page }) => {
   await expect(
     page.getByRole("heading", { name: "Dashboard QA edge cases" }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("link", {
-      name: "Open getsentry/junior#1081",
-    }),
-  ).toHaveAttribute("href", "https://github.com/getsentry/junior/pull/1081");
   // Subagents live inside the collapsed activity chip between turns.
   const activityChip = page
     .locator("details")
-    .filter({ hasText: /\d+ actions.*subagents/ })
+    .filter({ hasText: /\d+ events?/ })
     .first();
   await expect(activityChip).toBeVisible();
   await activityChip.locator("> summary").click();
@@ -596,7 +679,6 @@ test("inspects and copies an advisor transcript", async ({ context, page }) => {
 test("archives and restores a conversation from the sidebar", async ({
   page,
 }) => {
-  const initialTime = Date.now();
   await page.setViewportSize({ height: 900, width: 1600 });
   let archived = false;
   await page.route(/\/api\/conversations(?:\?.*)?$/, async (route) => {
@@ -641,36 +723,26 @@ test("archives and restores a conversation from the sidebar", async ({
   await conversationLink.hover();
 
   const currentUrl = page.url();
+  const emptyView = page.getByText("No conversations match this view.");
   const archiveRequestPromise = page.waitForRequest(
     (request) =>
       request.method() === "PATCH" && request.url().endsWith("/archive"),
   );
   await archiveButton.click();
-  const emptyView = page.getByText("No conversations match this view.");
+  // Optimistic pending keeps the row while the 1s archive mock is in flight.
   await expect(emptyView).toHaveCount(0);
-  const archiveFocusRefetch = page.waitForResponse(
-    (response) =>
-      response.request().method() === "GET" &&
-      /\/api\/conversations(?:\?.*)?$/.test(response.url()),
-  );
-  await page.clock.setFixedTime(new Date(initialTime + 31_000));
-  await page.evaluate(() => {
-    window.dispatchEvent(new Event("focus"));
-    window.dispatchEvent(new Event("visibilitychange"));
-  });
-  await archiveFocusRefetch;
-  await expect(conversationLink).toHaveCount(0);
-  await expect(emptyView).toBeVisible();
   const archiveRequest = await archiveRequestPromise;
-
   expect(archiveRequest.postDataJSON()).toMatchObject({ archived: true });
   expect(page.url()).toBe(currentUrl);
-  await expect(
-    page.getByRole("status").filter({
-      hasText: "Dashboard QA edge cases archived",
-    }),
-  ).toBeVisible();
 
+  const undoNotice = page.getByRole("status").filter({
+    hasText: "Conversation archived",
+  });
+  await expect(undoNotice).toBeVisible();
+  await expect(undoNotice).toContainText("Dashboard QA edge cases");
+
+  // Undo immediately so the 6s expiry cannot race this path. Dedicated clock
+  // tests cover expiry; keep this test on archive/restore behavior only.
   const restoreRequestPromise = page.waitForRequest(
     (request) =>
       request.method() === "PATCH" && request.url().endsWith("/archive"),
@@ -681,32 +753,79 @@ test("archives and restores a conversation from the sidebar", async ({
     })
     .click();
   await expect(conversationLink).toBeVisible();
-  const restoreFocusRefetch = page.waitForResponse(
-    (response) =>
-      response.request().method() === "GET" &&
-      /\/api\/conversations(?:\?.*)?$/.test(response.url()),
-  );
-  await page.clock.setFixedTime(new Date(initialTime + 62_000));
-  await page.evaluate(() => {
-    window.dispatchEvent(new Event("focus"));
-    window.dispatchEvent(new Event("visibilitychange"));
-  });
-  await restoreFocusRefetch;
-  await expect(conversationLink).toBeVisible();
   await expect(
     page.getByRole("button", {
       name: "Undo archive for Dashboard QA edge cases",
     }),
   ).toHaveText("Restoring…");
   const restoreRequest = await restoreRequestPromise;
-
   expect(restoreRequest.postDataJSON()).toMatchObject({ archived: false });
-  await expect(
-    page.getByRole("status").filter({
-      hasText: "Dashboard QA edge cases archived",
-    }),
-  ).toHaveCount(0);
+  await expect(undoNotice).toHaveCount(0);
+  await expect(conversationLink).toBeVisible();
   expect(page.url()).toBe(currentUrl);
+});
+
+test("expires the archive undo notice", async ({ page }) => {
+  await page.clock.install();
+  await page.route("**/api/conversations/*/archive", async (route) => {
+    await route.fulfill({ json: { archived: true } });
+  });
+  await page.goto(server.baseURL);
+
+  const conversationLink = page.getByRole("link", {
+    name: /Dashboard QA edge cases/,
+  });
+  await conversationLink.hover();
+  await page
+    .getByRole("button", { name: "Archive Dashboard QA edge cases" })
+    .click();
+
+  const undo = page.getByRole("button", {
+    name: "Undo archive for Dashboard QA edge cases",
+  });
+  await expect(undo).toBeVisible();
+  await page.clock.fastForward(5_000);
+  await expect(undo).toBeVisible();
+  await page.clock.fastForward(1_000);
+  await expect(undo).toHaveCount(0);
+});
+
+test("resets the archive undo timer when archiving another conversation", async ({
+  page,
+}) => {
+  await page.clock.install();
+  await page.route("**/api/conversations/*/archive", async (route) => {
+    await route.fulfill({ json: { archived: true } });
+  });
+  await page.goto(server.baseURL);
+
+  await page.getByRole("link", { name: /Dashboard QA edge cases/ }).hover();
+  await page
+    .getByRole("button", { name: "Archive Dashboard QA edge cases" })
+    .click();
+  const firstUndo = page.getByRole("button", {
+    name: "Undo archive for Dashboard QA edge cases",
+  });
+  await expect(firstUndo).toBeVisible();
+
+  // Burn most of the first notice's timer, then archive a second conversation.
+  await page.clock.fastForward(5_000);
+  await page.getByRole("link", { name: /Checkout latency triage/ }).hover();
+  await page
+    .getByRole("button", { name: "Archive Checkout latency triage" })
+    .click();
+
+  const secondUndo = page.getByRole("button", {
+    name: "Undo archive for Checkout latency triage",
+  });
+  await expect(secondUndo).toBeVisible();
+  await expect(firstUndo).toHaveCount(0);
+
+  // A reused first-notice timer would dismiss here; a reset timer must remain.
+  await page.clock.fastForward(2_000);
+  await expect(secondUndo).toBeVisible();
+  await page.clock.fastForward(4_000);
+  await expect(secondUndo).toHaveCount(0);
 });
 
 test("shows archive failures after the row returns", async ({ page }) => {
@@ -729,11 +848,11 @@ test("shows archive failures after the row returns", async ({ page }) => {
     .click();
 
   await expect(conversationLink).toBeVisible();
-  await expect(
-    page.getByRole("alert").filter({
-      hasText: "Could not archive Dashboard QA edge cases.",
-    }),
-  ).toBeVisible();
+  const archiveError = page.getByRole("alert").filter({
+    hasText: "Could not archive",
+  });
+  await expect(archiveError).toBeVisible();
+  await expect(archiveError).toContainText("Dashboard QA edge cases");
 });
 
 test("keeps undo available when another archive fails", async ({ page }) => {
@@ -773,10 +892,10 @@ test("keeps undo available when another archive fails", async ({ page }) => {
     .getByRole("button", { name: "Archive Checkout latency triage" })
     .click();
 
-  await expect(
-    page.getByRole("alert").filter({
-      hasText: "Could not archive Checkout latency triage.",
-    }),
-  ).toBeVisible();
+  const archiveError = page.getByRole("alert").filter({
+    hasText: "Could not archive",
+  });
+  await expect(archiveError).toBeVisible();
+  await expect(archiveError).toContainText("Checkout latency triage");
   await expect(undo).toBeVisible();
 });

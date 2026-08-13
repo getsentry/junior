@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Check, Copy } from "lucide-react";
 
 import { Button } from "../components/Button";
+import { IconButtonTooltip } from "../components/Tooltip";
 
 /** Copy an available Markdown document while exposing clipboard result state. */
 export function CopyMarkdownButton(props: {
@@ -33,14 +34,15 @@ export function CopyMarkdownButton(props: {
   }
 
   return (
-    <Button
-      aria-label={label}
-      disabled={!props.getMarkdown || status === "copying"}
-      onClick={() => void copyMarkdown()}
-      size="icon"
-      title={label}
-    >
-      <Icon aria-hidden="true" size={15} strokeWidth={2} />
-    </Button>
+    <IconButtonTooltip label={label}>
+      <Button
+        aria-label={label}
+        disabled={!props.getMarkdown || status === "copying"}
+        onClick={() => void copyMarkdown()}
+        size="icon"
+      >
+        <Icon aria-hidden="true" size={15} strokeWidth={2} />
+      </Button>
+    </IconButtonTooltip>
   );
 }

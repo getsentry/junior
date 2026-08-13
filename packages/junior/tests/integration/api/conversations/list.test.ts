@@ -51,14 +51,69 @@ describe("conversation list API", () => {
     }
   });
 
-  test("marks conversations with unfinished plugin work", async () => {
+  test("marks conversations with assigned work and feed priority", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
     const store = createSqlStore(fixture.sql);
-    const conversationId = "slack:C123:unfinished-work";
+    const unfinishedId = "slack:C123:unfinished-work";
+    const finishedId = "slack:C123:finished-work";
+    const finishedUpdatedId = "slack:C123:finished-updated";
     const seenConversationIds: string[][] = [];
+    const nowMs = Date.now();
     try {
       await migrateSchema(fixture.sql);
-      await store.recordActivity({ conversationId, nowMs: 1_000 });
+      await store.recordActivity({
+        conversationId: unfinishedId,
+        nowMs: nowMs - 60_000,
+      });
+      await store.recordActivity({
+        conversationId: finishedUpdatedId,
+        nowMs: nowMs - 30_000,
+      });
+      await store.recordActivity({
+        conversationId: finishedId,
+        nowMs: nowMs - 120_000,
+      });
+      await fixture.sql
+        .db()
+        .insert(juniorConversationEvents)
+        .values([
+          {
+            conversationId: finishedUpdatedId,
+            createdAt: new Date(nowMs - 30_000),
+            historyVersion: 0,
+            payload: {
+              content: "Please follow up.",
+              provenance: {
+                authority: "instruction",
+                actor: {
+                  platform: "slack",
+                  teamId: "T123",
+                  userId: "U123456",
+                },
+              },
+              timestamp: nowMs - 30_000,
+            },
+            schemaVersion: 1,
+            seq: 0,
+            type: "user_message",
+          },
+          {
+            conversationId: finishedId,
+            createdAt: new Date(nowMs - 30_000),
+            historyVersion: 0,
+            payload: {
+              content: "Pull request merged.",
+              provenance: {
+                authority: "instruction",
+                actor: { name: "resource-event", platform: "system" },
+              },
+              timestamp: nowMs - 30_000,
+            },
+            schemaVersion: 1,
+            seq: 0,
+            type: "user_message",
+          },
+        ]);
       setPlugins([
         defineJuniorPlugin({
           manifest: {
@@ -69,7 +124,18 @@ describe("conversation list API", () => {
           hooks: {
             unfinishedWork(ctx) {
               seenConversationIds.push([...ctx.conversationIds]);
-              return { conversationIds: [conversationId] };
+              return {
+                assignedConversationIds: [
+                  unfinishedId,
+                  finishedId,
+                  finishedUpdatedId,
+                ],
+                conversationIds: [unfinishedId],
+                finishedWorkAtByConversationId: {
+                  [finishedId]: new Date(nowMs - 120_000).toISOString(),
+                  [finishedUpdatedId]: new Date(nowMs - 90_000).toISOString(),
+                },
+              };
             },
           },
         }),
@@ -78,12 +144,28 @@ describe("conversation list API", () => {
       await expect(readConversationFeedFromSql()).resolves.toMatchObject({
         conversations: [
           expect.objectContaining({
-            conversationId,
+            conversationId: finishedUpdatedId,
+            assignedWork: true,
+            finishedWorkAt: new Date(nowMs - 90_000).toISOString(),
+            isPriority: true,
+          }),
+          expect.objectContaining({
+            conversationId: unfinishedId,
+            assignedWork: true,
             unfinishedWork: true,
+            isPriority: true,
+          }),
+          expect.objectContaining({
+            conversationId: finishedId,
+            assignedWork: true,
+            finishedWorkAt: new Date(nowMs - 120_000).toISOString(),
+            isPriority: false,
           }),
         ],
       });
-      expect(seenConversationIds).toEqual([[conversationId]]);
+      expect(seenConversationIds).toEqual([
+        [finishedUpdatedId, unfinishedId, finishedId],
+      ]);
     } finally {
       setPlugins([]);
       await fixture.close();
@@ -485,46 +567,55 @@ describe("conversation list API", () => {
         .returning({ id: juniorUsers.id });
       const participantUserId = participant[0]?.id;
       expect(participantUserId).toBeDefined();
-      await fixture.sql.db().insert(juniorIdentities).values({
-        id: "identity-participant-slack",
-        createdAt: new Date(1_000),
-        email: "participant@example.com",
-        emailNormalized: "participant@example.com",
-        emailVerified: true,
-        kind: "user",
-        provider: "slack",
-        providerSubjectId: "U-PARTICIPANT",
-        providerTenantId: "T1",
-        updatedAt: new Date(1_000),
-        userId: participantUserId!,
-      });
-      await fixture.sql.db().insert(juniorConversationEvents).values({
-        actorIdentityId: "identity-participant-slack",
-        conversationId: "slack:C1:shared-thread",
-        createdAt: new Date(5_500),
-        historyVersion: 0,
-        payload: {
-          messageId: "1786500342.616849",
-          meta: {
-            author: {
-              fullName: "Participant",
-              isBot: false,
-              userId: "U-PARTICIPANT",
-              userName: "participant",
+      await fixture.sql
+        .db()
+        .insert(juniorIdentities)
+        .values({
+          id: "identity-participant-slack",
+          createdAt: new Date(1_000),
+          email: "participant@example.com",
+          emailNormalized: "participant@example.com",
+          emailVerified: true,
+          kind: "user",
+          provider: "slack",
+          providerSubjectId: "U-PARTICIPANT",
+          providerTenantId: "T1",
+          updatedAt: new Date(1_000),
+          userId: participantUserId!,
+        });
+      await fixture.sql
+        .db()
+        .insert(juniorConversationEvents)
+        .values({
+          actorIdentityId: "identity-participant-slack",
+          conversationId: "slack:C1:shared-thread",
+          createdAt: new Date(5_500),
+          historyVersion: 0,
+          payload: {
+            messageId: "1786500342.616849",
+            meta: {
+              author: {
+                fullName: "Participant",
+                isBot: false,
+                userId: "U-PARTICIPANT",
+                userName: "participant",
+              },
+              explicitMention: true,
             },
-            explicitMention: true,
+            role: "user",
+            text: "@junior make urls clickable",
           },
-          role: "user",
-          text: "@junior make urls clickable",
-        },
-        seq: 0,
-        type: "message",
-      });
-      await fixture.sql.db().insert(juniorConversationParticipants).values({
-        lastMessageAt: new Date(5_500),
-        rootConversationId: "slack:C1:shared-thread",
-        userId: participantUserId!,
-      });
+          seq: 0,
+          type: "message",
+        });
+      await fixture.sql
+        .db()
+        .insert(juniorConversationParticipants)
+        .values({
+          lastMessageAt: new Date(5_500),
+          rootConversationId: "slack:C1:shared-thread",
+          userId: participantUserId!,
+        });
 
       const viewer = {
         ...testViewer("participant@example.com"),
@@ -582,19 +673,22 @@ describe("conversation list API", () => {
         .returning({ id: juniorUsers.id });
       const participantUserId = participant[0]?.id;
       expect(participantUserId).toBeDefined();
-      await fixture.sql.db().insert(juniorIdentities).values({
-        id: "identity-dashboard-participant",
-        createdAt: new Date(1_000),
-        email: "dashboard-participant@example.com",
-        emailNormalized: "dashboard-participant@example.com",
-        emailVerified: true,
-        kind: "user",
-        provider: "junior",
-        providerSubjectId: "dashboard-participant@example.com",
-        providerTenantId: "",
-        updatedAt: new Date(1_000),
-        userId: participantUserId!,
-      });
+      await fixture.sql
+        .db()
+        .insert(juniorIdentities)
+        .values({
+          id: "identity-dashboard-participant",
+          createdAt: new Date(1_000),
+          email: "dashboard-participant@example.com",
+          emailNormalized: "dashboard-participant@example.com",
+          emailVerified: true,
+          kind: "user",
+          provider: "junior",
+          providerSubjectId: "dashboard-participant@example.com",
+          providerTenantId: "",
+          updatedAt: new Date(1_000),
+          userId: participantUserId!,
+        });
 
       await eventStore.append("slack:C1:dashboard-author", [
         {
@@ -623,7 +717,12 @@ describe("conversation list API", () => {
           actorIdentityId: juniorConversationEvents.actorIdentityId,
         })
         .from(juniorConversationEvents)
-        .where(eq(juniorConversationEvents.conversationId, "slack:C1:dashboard-author"))
+        .where(
+          eq(
+            juniorConversationEvents.conversationId,
+            "slack:C1:dashboard-author",
+          ),
+        )
         .limit(1);
       expect(event?.actorIdentityId).toBe("identity-dashboard-participant");
 

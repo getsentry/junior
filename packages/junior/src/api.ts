@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
+import { createVercelAttachmentStorage } from "./chat/attachments/vercel";
 import { createConversationRoutes } from "./api/conversations/routes";
 import { jsonResponse } from "./api/http";
 import { createLocationRoutes } from "./api/locations/routes";
@@ -61,7 +62,12 @@ export function createJuniorApi(): Hono<JuniorApiEnv> {
     jsonResponse(statsReportSchema, await readStatsReport()),
   );
 
-  app.route("/api/conversations", createConversationRoutes());
+  app.route(
+    "/api/conversations",
+    createConversationRoutes({
+      attachmentStorage: createVercelAttachmentStorage(),
+    }),
+  );
   app.route("/api/personal-tokens", createPersonalTokenRoutes());
   app.route("/api/people", createPeopleRoutes());
   app.route("/api/locations", createLocationRoutes());

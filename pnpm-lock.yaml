@@ -214,6 +214,9 @@ importers:
       '@slack/web-api':
         specifier: ^7.16.0
         version: 7.16.0
+      '@vercel/blob':
+        specifier: ^2.4.0
+        version: 2.4.0
       '@vercel/functions':
         specifier: ^3.6.0
         version: 3.6.0
@@ -298,7 +301,7 @@ importers:
         version: 2.14.6(@types/node@25.9.1)(typescript@6.0.3)
       nitro:
         specifier: 3.0.260522-beta
-        version: 3.0.260522-beta(@vercel/functions@3.6.0)(@vercel/queue@0.2.0)(drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.15.6)(pg@8.21.0))(jiti@2.7.0)
+        version: 3.0.260522-beta(@vercel/blob@2.4.0)(@vercel/functions@3.6.0)(@vercel/queue@0.2.0)(drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.15.6)(pg@8.21.0))(jiti@2.7.0)
       oxlint:
         specifier: ^1.66.0
         version: 1.66.0
@@ -11458,6 +11461,7 @@ snapshots:
       '@sentry/node': 10.65.0(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1))
       '@sinclair/typebox': 0.34.49
       '@slack/web-api': 7.16.0
+      '@vercel/blob': 2.4.0
       '@vercel/functions': 3.6.0
       '@vercel/oidc': 3.4.1
       '@vercel/queue': 0.2.0
@@ -15281,7 +15285,7 @@ snapshots:
       - sqlite3
       - uploadthing
 
-  nitro@3.0.260522-beta(@vercel/functions@3.6.0)(@vercel/queue@0.2.0)(drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.15.6)(pg@8.21.0))(jiti@2.7.0):
+  nitro@3.0.260522-beta(@vercel/blob@2.4.0)(@vercel/functions@3.6.0)(@vercel/queue@0.2.0)(drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.15.6)(pg@8.21.0))(jiti@2.7.0):
     dependencies:
       consola: 3.4.2
       crossws: 0.4.5(srvx@0.11.16)
@@ -15296,7 +15300,7 @@ snapshots:
       rolldown: 1.0.2
       srvx: 0.11.16
       unenv: 2.0.0-rc.24
-      unstorage: 2.0.0-alpha.7(@vercel/functions@3.6.0)(db0@0.3.4(drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.15.6)(pg@8.21.0)))(ofetch@2.0.0-alpha.3)
+      unstorage: 2.0.0-alpha.7(@vercel/blob@2.4.0)(@vercel/functions@3.6.0)(db0@0.3.4(drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.15.6)(pg@8.21.0)))(ofetch@2.0.0-alpha.3)
     optionalDependencies:
       '@vercel/queue': 0.2.0
       jiti: 2.7.0
@@ -17014,8 +17018,9 @@ snapshots:
       ofetch: 1.5.1
       ufo: 1.6.4
 
-  unstorage@2.0.0-alpha.7(@vercel/functions@3.6.0)(db0@0.3.4(drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.15.6)(pg@8.21.0)))(ofetch@2.0.0-alpha.3):
+  unstorage@2.0.0-alpha.7(@vercel/blob@2.4.0)(@vercel/functions@3.6.0)(db0@0.3.4(drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.15.6)(pg@8.21.0)))(ofetch@2.0.0-alpha.3):
     optionalDependencies:
+      '@vercel/blob': 2.4.0
       '@vercel/functions': 3.6.0
       db0: 0.3.4(drizzle-orm@0.45.2(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.15.6)(pg@8.21.0))
       ofetch: 2.0.0-alpha.3
