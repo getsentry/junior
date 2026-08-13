@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
@@ -54,25 +53,39 @@ function memoryDb(): JuniorSqlDatabase & {
 } {
   const rows = new Map<string, typeof juniorArtifacts.$inferInsert>();
   const db = {
+    select() {
+      return {
+        from(table: unknown) {
+          if (table !== juniorArtifacts) throw new Error("unexpected table");
+          return {
+            where() {
+              return Promise.resolve([]);
+            },
+          };
+        },
+      };
+    },
     insert(table: unknown) {
       if (table !== juniorArtifacts) {
         throw new Error("unexpected table");
       }
       return {
         values(values: typeof juniorArtifacts.$inferInsert) {
+          rows.set(values.id, values);
           return {
             onConflictDoUpdate(args: {
               set: Partial<typeof juniorArtifacts.$inferInsert>;
-              setWhere?: unknown;
             }) {
-              const existing = rows.get(values.sha256);
-              if (!existing) {
-                rows.set(values.sha256, values);
-              } else if (existing.deleteRequestedAt != null) {
-                // Mirror SQL setWhere: only reclaim tombstoned rows.
-                rows.set(values.sha256, { ...existing, ...args.set });
-              }
-              return Promise.resolve();
+              const current = rows.get(values.id) ?? values;
+              const next = { ...current, ...args.set };
+              rows.set(next.id, next);
+              return {
+                returning() {
+                  return Promise.resolve([
+                    { ext: next.ext, id: next.id },
+                  ]);
+                },
+              };
             },
           };
         },
@@ -88,7 +101,7 @@ function memoryDb(): JuniorSqlDatabase & {
 }
 
 describe("publishImage tool", () => {
-  it("publishes a sandbox image to a public artifact URL", async () => {
+  it("publishes a sandbox image to a conversation-owned public URL", async () => {
     const imageStorage = storage();
     const db = memoryDb();
     const tool = createPublishImageTool({
@@ -100,19 +113,22 @@ describe("publishImage tool", () => {
     });
 
     const result = await tool.execute?.({ path: "chart.png" }, {});
-    const sha256 = createHash("sha256").update(PNG_BYTES).digest("hex");
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       bytes: PNG_BYTES.byteLength,
       content_type: "image/png",
       public: true,
-      url: `https://junior.example.com/public/artifacts/${sha256}.png`,
     });
-    expect(imageStorage.objects.has(`artifacts/${sha256}.png`)).toBe(true);
-    expect(db.rows.get(sha256)).toMatchObject({
+    expect(result?.url).toMatch(
+      /^https:\/\/junior\.example\.com\/public\/artifacts\/[0-9a-f-]{36}\.png$/,
+    );
+    const filename = result!.url.split("/").at(-1)!;
+    expect(imageStorage.objects.has(`artifacts/${filename}`)).toBe(true);
+    const row = [...db.rows.values()][0];
+    expect(row).toMatchObject({
       conversationId: CONVERSATION_ID,
       deleteRequestedAt: null,
       public: true,
-      storageKey: `artifacts/${sha256}.png`,
+      storageKey: `artifacts/${filename}`,
     });
     expect(tool.description).toContain("Anyone on the internet");
     expect(tool.approvalMode).toBe("review");

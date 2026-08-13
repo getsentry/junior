@@ -122,8 +122,8 @@ Set the core runtime variables in Vercel:
 
 Junior stores files sent with `sendFiles` as private conversation attachments in
 Vercel Blob. The same store also backs `publishImage`, which writes
-content-addressed public artifacts and serves them from
-`/public/artifacts/<sha256>.<ext>`. File delivery and public image publishing fail
+conversation-owned public artifacts and serves them from
+`/public/artifacts/<id>.<ext>`. File delivery and public image publishing fail
 if the project has no Blob store credentials.
 
 1. Open the Vercel project and select **Storage**.

@@ -1,5 +1,5 @@
 {
-  "id": "5f1ba616-23a8-4516-80d8-c94f83e24f42",
+  "id": "963c3e75-9ad9-4851-ba96-50c87ef04855",
   "prevId": "0027_attachment_storage",
   "version": "7",
   "dialect": "postgresql",
@@ -373,10 +373,22 @@
       "name": "junior_artifacts",
       "schema": "",
       "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "conversation_id": {
+          "name": "conversation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "sha256": {
           "name": "sha256",
           "type": "text",
-          "primaryKey": true,
+          "primaryKey": false,
           "notNull": true
         },
         "ext": {
@@ -409,12 +421,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "conversation_id": {
-          "name": "conversation_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -429,6 +435,27 @@
         }
       },
       "indexes": {
+        "junior_artifacts_conversation_sha_uidx": {
+          "name": "junior_artifacts_conversation_sha_uidx",
+          "columns": [
+            {
+              "expression": "conversation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "sha256",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "junior_artifacts_gc_idx": {
           "name": "junior_artifacts_gc_idx",
           "columns": [

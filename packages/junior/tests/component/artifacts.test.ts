@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
@@ -46,6 +45,10 @@ function storage(): AttachmentStorage & {
   };
 }
 
+function filenameFromUrl(url: string): string {
+  return url.split("/").at(-1)!;
+}
+
 describe("public artifact route", () => {
   let fixture: LocalJuniorSqlFixture | undefined;
 
@@ -70,14 +73,14 @@ describe("public artifact route", () => {
       publicBaseUrl: "https://junior.example.com",
       storage: imageStorage,
     });
-    const sha256 = createHash("sha256").update(PNG_BYTES).digest("hex");
-    expect(published.url).toBe(
-      `https://junior.example.com/public/artifacts/${sha256}.png`,
+    const filename = filenameFromUrl(published.url);
+    expect(published.url).toMatch(
+      /^https:\/\/junior\.example\.com\/public\/artifacts\/[0-9a-f-]{36}\.png$/,
     );
 
     const response = await publicArtifactGET({
       db: sql.sql,
-      filename: `${sha256}.png`,
+      filename,
       storage: imageStorage,
     });
 
@@ -93,32 +96,31 @@ describe("public artifact route", () => {
       .db()
       .select()
       .from(juniorArtifacts)
-      .where(eq(juniorArtifacts.sha256, sha256));
+      .where(eq(juniorArtifacts.conversationId, OWNER_CONVERSATION_ID));
     expect(row).toMatchObject({
       conversationId: OWNER_CONVERSATION_ID,
       deleteRequestedAt: null,
       public: true,
-      storageKey: `artifacts/${sha256}.png`,
+      storageKey: `artifacts/${filename}`,
     });
   });
 
   it("returns no-store 404 after unpublish and restores on republish", async () => {
     const sql = await setup();
     const imageStorage = storage();
-    const sha256 = createHash("sha256").update(PNG_BYTES).digest("hex");
-    const filename = `${sha256}.png`;
 
-    await publishImage({
+    const first = await publishImage({
       body: PNG_BYTES,
       conversationId: OWNER_CONVERSATION_ID,
       db: sql.sql,
       publicBaseUrl: "https://junior.example.com",
       storage: imageStorage,
     });
+    const filename = filenameFromUrl(first.url);
     await unpublishArtifact({
       conversationId: OWNER_CONVERSATION_ID,
       db: sql.sql,
-      ref: `https://junior.example.com/public/artifacts/${filename}`,
+      ref: first.url,
     });
 
     const unpublished = await publicArtifactGET({
@@ -129,13 +131,14 @@ describe("public artifact route", () => {
     expect(unpublished.status).toBe(404);
     expect(unpublished.headers.get("cache-control")).toBe("private, no-store");
 
-    await publishImage({
+    const restoredPublish = await publishImage({
       body: PNG_BYTES,
       conversationId: OWNER_CONVERSATION_ID,
       db: sql.sql,
       publicBaseUrl: "https://junior.example.com",
       storage: imageStorage,
     });
+    expect(filenameFromUrl(restoredPublish.url)).toBe(filename);
 
     const restored = await publicArtifactGET({
       db: sql.sql,
@@ -149,16 +152,14 @@ describe("public artifact route", () => {
   it("rejects unpublish from a different conversation", async () => {
     const sql = await setup();
     const imageStorage = storage();
-    const sha256 = createHash("sha256").update(PNG_BYTES).digest("hex");
-    const filename = `${sha256}.png`;
-
-    await publishImage({
+    const published = await publishImage({
       body: PNG_BYTES,
       conversationId: OWNER_CONVERSATION_ID,
       db: sql.sql,
       publicBaseUrl: "https://junior.example.com",
       storage: imageStorage,
     });
+    const filename = filenameFromUrl(published.url);
 
     await expect(
       unpublishArtifact({
@@ -179,20 +180,18 @@ describe("public artifact route", () => {
     expect(response.status).toBe(200);
   });
 
-  it("does not transfer live ownership on cross-conversation republish", async () => {
+  it("gives each conversation its own artifact for the same bytes", async () => {
     const sql = await setup();
     const imageStorage = storage();
-    const sha256 = createHash("sha256").update(PNG_BYTES).digest("hex");
-    const filename = `${sha256}.png`;
 
-    await publishImage({
+    const owner = await publishImage({
       body: PNG_BYTES,
       conversationId: OWNER_CONVERSATION_ID,
       db: sql.sql,
       publicBaseUrl: "https://junior.example.com",
       storage: imageStorage,
     });
-    await publishImage({
+    const other = await publishImage({
       body: PNG_BYTES,
       conversationId: OTHER_CONVERSATION_ID,
       db: sql.sql,
@@ -200,82 +199,28 @@ describe("public artifact route", () => {
       storage: imageStorage,
     });
 
-    const [row] = await sql.sql
-      .db()
-      .select()
-      .from(juniorArtifacts)
-      .where(eq(juniorArtifacts.sha256, sha256));
-    expect(row).toMatchObject({
-      conversationId: OWNER_CONVERSATION_ID,
-      deleteRequestedAt: null,
-    });
-
-    await expect(
-      unpublishArtifact({
-        conversationId: OTHER_CONVERSATION_ID,
-        db: sql.sql,
-        ref: filename,
-      }),
-    ).rejects.toMatchObject({
-      name: "ToolInputError",
-      message: expect.stringContaining("not found for this conversation"),
-    });
-
-    const response = await publicArtifactGET({
-      db: sql.sql,
-      filename,
-      storage: imageStorage,
-    });
-    expect(response.status).toBe(200);
-  });
-
-  it("lets another conversation reclaim a tombstoned artifact", async () => {
-    const sql = await setup();
-    const imageStorage = storage();
-    const sha256 = createHash("sha256").update(PNG_BYTES).digest("hex");
-    const filename = `${sha256}.png`;
-
-    await publishImage({
-      body: PNG_BYTES,
-      conversationId: OWNER_CONVERSATION_ID,
-      db: sql.sql,
-      publicBaseUrl: "https://junior.example.com",
-      storage: imageStorage,
-    });
-    await unpublishArtifact({
-      conversationId: OWNER_CONVERSATION_ID,
-      db: sql.sql,
-      ref: filename,
-    });
-    await publishImage({
-      body: PNG_BYTES,
-      conversationId: OTHER_CONVERSATION_ID,
-      db: sql.sql,
-      publicBaseUrl: "https://junior.example.com",
-      storage: imageStorage,
-    });
-
-    const [row] = await sql.sql
-      .db()
-      .select()
-      .from(juniorArtifacts)
-      .where(eq(juniorArtifacts.sha256, sha256));
-    expect(row).toMatchObject({
-      conversationId: OTHER_CONVERSATION_ID,
-      deleteRequestedAt: null,
-    });
+    const ownerFilename = filenameFromUrl(owner.url);
+    const otherFilename = filenameFromUrl(other.url);
+    expect(ownerFilename).not.toBe(otherFilename);
 
     await unpublishArtifact({
       conversationId: OTHER_CONVERSATION_ID,
       db: sql.sql,
-      ref: filename,
+      ref: other.url,
     });
-    const response = await publicArtifactGET({
+
+    const ownerResponse = await publicArtifactGET({
       db: sql.sql,
-      filename,
+      filename: ownerFilename,
       storage: imageStorage,
     });
-    expect(response.status).toBe(404);
+    const otherResponse = await publicArtifactGET({
+      db: sql.sql,
+      filename: otherFilename,
+      storage: imageStorage,
+    });
+    expect(ownerResponse.status).toBe(200);
+    expect(otherResponse.status).toBe(404);
   });
 
   it("returns 404 for an invalid filename", async () => {

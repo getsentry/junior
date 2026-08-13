@@ -23,7 +23,7 @@ export function createUnpublishImageTool(args: {
     },
     approvalMode: "review",
     description:
-      "Unpublish one public image previously published in this conversation so its public URL stops serving. Pass the public artifact URL or `<sha256>.<ext>` filename. Only images last published by this conversation can be unpublished. Republishing the same image bytes later is allowed and restores the same URL. Does not remove copies already fetched by browsers or GitHub.",
+      "Unpublish one public image previously published in this conversation so its public URL stops serving. Pass the public artifact URL or `<id>.<ext>` filename. Only images owned by this conversation can be unpublished. Republishing the same image bytes later in this conversation restores a live URL for this conversation. Does not remove copies already fetched by browsers or GitHub.",
     describeProposal: ({ ref }) => `Unpublish public image ${ref}.`,
     executionMode: "sequential",
     inputSchema: z
@@ -32,7 +32,7 @@ export function createUnpublishImageTool(args: {
           .string()
           .min(1)
           .describe(
-            "Public artifact URL or content-addressed filename (`<sha256>.<ext>`).",
+            "Public artifact URL or artifact filename (`<id>.<ext>`).",
           ),
       })
       .strict(),
