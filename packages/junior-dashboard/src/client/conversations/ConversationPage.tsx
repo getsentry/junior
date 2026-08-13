@@ -82,7 +82,7 @@ export function ConversationPage(props: {
   }, []);
 
   return (
-    <div className="grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_auto]">
+    <div className="grid min-h-0 min-w-0 grid-rows-[minmax(7rem,1fr)_minmax(0,auto)]">
       <div
         aria-label="Conversation transcript"
         className="min-h-0 overflow-y-auto overscroll-contain px-3 pb-3 md:px-7 md:pb-5"
@@ -318,7 +318,7 @@ function ConversationReplyFooter(props: {
   );
 
   return (
-    <div className="px-2 py-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] md:px-7 md:py-4 md:pb-4">
+    <div className="min-h-0 max-h-[min(55%,24rem)] overflow-y-auto overscroll-contain px-2 py-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] md:max-h-none md:overflow-visible md:px-7 md:py-4 md:pb-4">
       {props.live ? (
         <div className="mb-1.5 flex items-center gap-2 font-sans text-xs text-dashboard-text-muted md:hidden">
           <span
