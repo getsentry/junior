@@ -13,6 +13,8 @@ import { closeDb } from "@/chat/db";
 import {
   appendInboundMessage,
   getConversation,
+  releaseConversationWork,
+  startConversationWork,
 } from "@/chat/task-execution/store";
 import {
   closeApiTurnWorkFixture,
@@ -46,6 +48,25 @@ describe("conversation cancel pending messages API", () => {
       },
       { conversationStore, queue, state },
     );
+
+    const lease = await startConversationWork({
+      conversationId: created.conversationId,
+      nowMs: 2_000,
+      state,
+    });
+    expect(lease.status).toBe("acquired");
+    if (lease.status !== "acquired") throw new Error("Expected work lease");
+    await releaseConversationWork({
+      conversationId: created.conversationId,
+      leaseToken: lease.leaseToken,
+      nowMs: 3_000,
+      state,
+    });
+    await expect(
+      getConversation({ conversationId: created.conversationId, state }),
+    ).resolves.toMatchObject({
+      execution: { runId: expect.any(String), status: "pending" },
+    });
 
     const app = new Hono<{ Variables: JuniorApiVariables }>();
     app.use("*", async (context, next) => {
@@ -87,6 +108,8 @@ describe("conversation cancel pending messages API", () => {
     });
     expect(work?.execution.pendingMessages).toEqual([]);
     expect(work?.execution.status).toBe("idle");
+    expect(work?.execution.retryCount).toBe(0);
+    expect(work?.execution.runId).toBeUndefined();
     expect(work?.execution.inboundMessageIds).toEqual(
       expect.arrayContaining([created.messageId, continued.messageId]),
     );
@@ -188,9 +211,9 @@ describe("conversation cancel pending messages API", () => {
       conversationId: created.conversationId,
       state,
     });
-    expect(work?.execution.pendingMessages.map((m) => m.inboundMessageId)).toEqual([
-      "internal:keep-me",
-    ]);
+    expect(
+      work?.execution.pendingMessages.map((m) => m.inboundMessageId),
+    ).toEqual(["internal:keep-me"]);
     expect(work?.execution.status).toBe("pending");
   });
 

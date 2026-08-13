@@ -1633,9 +1633,11 @@ export async function cancelHumanFacingPendingMessages(args: {
     const cancelledInboundMessageIds: string[] = [];
     const pendingMessages: InboundMessage[] = [];
     for (const message of current.execution.pendingMessages) {
-      const isHumanFacing = message.source === "web" || message.source === "slack";
+      const isHumanFacing =
+        message.source === "web" || message.source === "slack";
       const isRequested =
-        requestedIds === undefined || requestedIds.has(message.inboundMessageId);
+        requestedIds === undefined ||
+        requestedIds.has(message.inboundMessageId);
       if (isHumanFacing && isRequested) {
         cancelledInboundMessageIds.push(message.inboundMessageId);
         continue;
@@ -1647,10 +1649,8 @@ export async function cancelHumanFacingPendingMessages(args: {
       return { cancelledInboundMessageIds };
     }
 
-    const nextStatus =
-      current.execution.status === "pending" && pendingMessages.length === 0
-        ? "idle"
-        : current.execution.status;
+    const becomesIdle =
+      current.execution.status === "pending" && pendingMessages.length === 0;
 
     await writeConversation(
       state,
@@ -1664,7 +1664,9 @@ export async function cancelHumanFacingPendingMessages(args: {
               ? undefined
               : current.execution.lastEnqueuedAtMs,
           pendingMessages,
-          status: nextStatus,
+          retryCount: becomesIdle ? 0 : current.execution.retryCount,
+          runId: becomesIdle ? undefined : current.execution.runId,
+          status: becomesIdle ? "idle" : current.execution.status,
         },
         nowMs,
       ),
