@@ -18,7 +18,6 @@ import type { PiMessage } from "@/chat/pi/messages";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import type { AgentRun } from "@/chat/agent/types";
-import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import {
   getPersistedSandboxState,
   getPersistedThreadState,
@@ -32,7 +31,6 @@ import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { NO_REPLY_MARKER } from "@/chat/no-reply";
-import { createProviderError } from "@/chat/services/provider-error";
 import {
   createModelAgentRunnerForRun,
   neverRunAgentRunner,
@@ -97,26 +95,6 @@ function successReply(
   };
 }
 
-function providerFailureReply(
-  rawError: string,
-  providerError: unknown = new Error(rawError),
-): AgentRunResult {
-  return {
-    text: rawError,
-    diagnostics: {
-      assistantMessageCount: 0,
-      errorMessage: rawError,
-      modelId: "fake-local-agent",
-      outcome: "provider_error",
-      providerError,
-      toolCalls: [],
-      toolErrorCount: 0,
-      toolResultCount: 0,
-      usedPrimaryText: false,
-    },
-  };
-}
-
 async function loadLifecycleEvents(conversationId: string) {
   return (await getConversationEventStore().loadHistory(conversationId)).filter(
     (event) => event.data.type.startsWith("turn_"),
@@ -144,24 +122,6 @@ async function deliverAssistantText(
     throw new Error("fake delivery text must match its assistant message");
   }
   await request.delivery(message);
-}
-
-async function persistRunningSessionForFakeReply(
-  run: CapturedAgentRun,
-  piMessages: PiMessage[],
-): Promise<void> {
-  await saveTurnCheckpoint({
-    mode: "running",
-    conversationId: run.conversationId,
-    destination: run.destination,
-    actor: run.actor && "platform" in run.actor ? run.actor : undefined,
-    source: run.source,
-    turnId: run.turnId,
-    sliceId: 1,
-    messages: piMessages.slice(0, -1),
-    surface: run.surface,
-    turnStartMessageIndex: run.history?.length ?? 0,
-  });
 }
 
 describe("local agent runner", () => {
@@ -394,19 +354,15 @@ describe("local agent runner", () => {
       cwd: "/tmp/local-agent-runner-model-failure",
     });
     const rawError =
-      "503 raw-error-sentinel https://provider.invalid/private?token=secret";
-    const providerError = createProviderError(rawError, {
-      modelId: "xai/grok-4.5",
-    });
+      "upstream request failed: raw-error-sentinel https://provider.invalid/private?token=secret";
     const delivered: LocalAgentReply[] = [];
 
     await runLocalAgentTurn(
       { conversationId: conversationId!, message: "please try" },
       {
-        agentRunner: {
-          run: async () =>
-            completedAgentRun(providerFailureReply(rawError, providerError)),
-        },
+        agentRunner: createModelAgentRunnerForRun(() =>
+          createModelStream([{ type: "error", errorMessage: rawError }]),
+        ),
         deliverReply: async (reply) => {
           delivered.push(reply);
         },
@@ -503,21 +459,15 @@ describe("local agent runner", () => {
       .fn()
       .mockReturnValueOnce(modelEventId)
       .mockReturnValueOnce(persistenceEventId);
-    const reply = providerFailureReply("raw-model-error-sentinel");
-    reply.piMessages = [
-      {
-        role: "user",
-        content: [{ type: "text", text: "please try" }],
-      } as PiMessage,
-    ];
+    const rawModelError = "raw-model-error-sentinel";
 
     await expect(
       runLocalAgentTurn(
         { conversationId: conversationId!, message: "please try" },
         {
-          agentRunner: {
-            run: async () => completedAgentRun(reply),
-          },
+          agentRunner: createModelAgentRunnerForRun(() =>
+            createModelStream([{ type: "error", errorMessage: rawModelError }]),
+          ),
           saveTurnCheckpoint: async () => {
             throw new Error("session-persistence-error-sentinel");
           },
@@ -543,7 +493,7 @@ describe("local agent runner", () => {
     });
     expect(JSON.stringify(visible.messages)).toContain(modelEventId);
     expect(JSON.stringify(visible.messages)).not.toContain(persistenceEventId);
-    expect(JSON.stringify(lifecycle)).not.toContain("raw-model-error-sentinel");
+    expect(JSON.stringify(lifecycle)).not.toContain(rawModelError);
     expect(JSON.stringify(lifecycle)).not.toContain(
       "session-persistence-error-sentinel",
     );
@@ -557,20 +507,14 @@ describe("local agent runner", () => {
     const eventId = "44444444444444444444444444444444";
     const capture = vi.fn().mockReturnValue(eventId);
     const rawError = "raw-session-persistence-error-sentinel";
-    const reply = successReply("delivered", {
-      piMessages: [assistantPiMessage("delivered")],
-    });
 
     await expect(
       runLocalAgentTurn(
         { conversationId: conversationId!, message: "please try" },
         {
-          agentRunner: {
-            run: async (request) => {
-              await deliverAssistantText(request, reply.text);
-              return completedAgentRun(reply);
-            },
-          },
+          agentRunner: createModelAgentRunnerForRun(() =>
+            createModelStream([{ type: "text", text: "delivered" }]),
+          ),
           saveTurnCheckpoint: async () => {
             throw new Error(rawError);
           },
@@ -691,29 +635,9 @@ describe("local agent runner", () => {
         },
         {
           deliverReply: async () => undefined,
-          agentRunner: {
-            run: async (request) => {
-              const context = request;
-
-              const replyMessage = assistantPiMessage("captured", 2);
-              const piMessages: PiMessage[] = [
-                userPiMessage("capture this local turn"),
-                replyMessage,
-              ];
-              await persistRunningSessionForFakeReply(context, piMessages);
-              await deliverAssistantText(
-                request,
-                "captured",
-                replyMessage,
-                piMessages.slice(0, -1),
-              );
-              return completedAgentRun(
-                successReply("captured", {
-                  piMessages,
-                }),
-              );
-            },
-          },
+          agentRunner: createModelAgentRunnerForRun(() =>
+            createModelStream([{ type: "text", text: "captured" }]),
+          ),
         },
       );
     } finally {
@@ -1005,11 +929,6 @@ describe("local agent runner", () => {
     });
     expect(conversationId).toBeDefined();
 
-    const generatedMessage = assistantPiMessage("visible reply", 2);
-    const generatedMessages: PiMessage[] = [
-      userPiMessage("hello"),
-      generatedMessage,
-    ];
     const delivered: LocalAgentReply[] = [];
     let taskRuns = 0;
     setPlugins([
@@ -1041,27 +960,9 @@ describe("local agent runner", () => {
             deliverReply: async (reply) => {
               delivered.push(reply);
             },
-            agentRunner: {
-              run: async (request) => {
-                const context = request;
-
-                await persistRunningSessionForFakeReply(
-                  context,
-                  generatedMessages,
-                );
-                await deliverAssistantText(
-                  request,
-                  "visible reply",
-                  generatedMessage,
-                  generatedMessages.slice(0, -1),
-                );
-                return completedAgentRun(
-                  successReply("visible reply", {
-                    piMessages: generatedMessages,
-                  }),
-                );
-              },
-            },
+            agentRunner: createModelAgentRunnerForRun(() =>
+              createModelStream([{ type: "text", text: "visible reply" }]),
+            ),
           },
         ),
       ).resolves.toEqual({
