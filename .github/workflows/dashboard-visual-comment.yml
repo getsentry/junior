@@ -8,7 +8,7 @@ on:
     types: [completed]
 
 concurrency:
-  group: dashboard-visual-comment-${{ github.event.workflow_run.id }}
+  group: dashboard-visual-comment-${{ github.event.workflow_run.head_repository.full_name }}-${{ github.event.workflow_run.head_branch }}
   cancel-in-progress: true
 
 jobs:
