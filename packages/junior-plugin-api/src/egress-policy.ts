@@ -1,16 +1,16 @@
 import { EgressPolicyDenied } from "./credentials";
 
-/** One plugin-owned egress route that requires a specific operation. */
-export interface ToolOwnedEgressRule {
-  message: string;
-  operation: string;
+/** One plugin-defined egress rule and its denial message. */
+export interface EgressPolicyRule {
+  denialMessage: string;
 }
 
-/** Match and enforce one plugin-owned route before credentials are issued. */
-export function enforceToolOwnedEgress<
-  Request extends { operation?: string },
-  Rule extends ToolOwnedEgressRule,
+/** Apply the first plugin-defined rule that matches an egress request. */
+export function enforceEgressPolicy<
+  Request,
+  Rule extends EgressPolicyRule,
 >(input: {
+  allows(rule: Rule, request: Request): boolean;
   matches(rule: Rule, request: Request): boolean;
   request: Request;
   rules: readonly Rule[];
@@ -19,8 +19,8 @@ export function enforceToolOwnedEgress<
     input.matches(candidate, input.request),
   );
   if (!rule) return undefined;
-  if (input.request.operation !== rule.operation) {
-    throw new EgressPolicyDenied(rule.message);
+  if (!input.allows(rule, input.request)) {
+    throw new EgressPolicyDenied(rule.denialMessage);
   }
   return rule;
 }

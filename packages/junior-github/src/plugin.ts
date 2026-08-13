@@ -6,7 +6,7 @@
 import {
   defineJuniorPlugin,
   EgressPolicyDenied,
-  enforceToolOwnedEgress,
+  enforceEgressPolicy,
   type EgressHookContext,
   type EgressResponseHookContext,
   type PluginGrantAccess,
@@ -333,14 +333,14 @@ function shouldInspectGitHubGraphqlResponse(
   return contentType ? /\bjson\b/i.test(contentType) : false;
 }
 
-type GitHubToolOwnedWriteRule = {
+type GitHubBodyWritePolicy = {
   graphqlField:
     | "createIssue"
     | "createPullRequest"
     | "updateIssue"
     | "updatePullRequest";
   grantName: "installation-write";
-  message: string;
+  denialMessage: string;
   method: "PATCH" | "POST";
   operation:
     | "github.issue.create"
@@ -350,11 +350,11 @@ type GitHubToolOwnedWriteRule = {
   restPath: RegExp;
 };
 
-const GITHUB_TOOL_OWNED_WRITE_RULES = [
+const GITHUB_BODY_WRITE_POLICIES = [
   {
     graphqlField: "createIssue",
     grantName: "installation-write",
-    message: `GitHub issue creation must use the github_createIssue tool so Junior can own idempotency and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
+    denialMessage: `GitHub issue creation must use the github_createIssue tool so Junior can own idempotency and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
     method: "POST",
     operation: "github.issue.create",
     restPath: /^\/repos\/[^/]+\/[^/]+\/issues$/,
@@ -362,7 +362,7 @@ const GITHUB_TOOL_OWNED_WRITE_RULES = [
   {
     graphqlField: "createPullRequest",
     grantName: "installation-write",
-    message: `GitHub pull request creation must use the github_createPullRequest tool so Junior can own idempotency and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
+    denialMessage: `GitHub pull request creation must use the github_createPullRequest tool so Junior can own idempotency and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
     method: "POST",
     operation: "github.pull.create",
     restPath: /^\/repos\/[^/]+\/[^/]+\/pulls$/,
@@ -370,7 +370,7 @@ const GITHUB_TOOL_OWNED_WRITE_RULES = [
   {
     graphqlField: "updateIssue",
     grantName: "installation-write",
-    message: `GitHub issue updates must use the github_updateIssue tool so Junior can own requester attribution and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
+    denialMessage: `GitHub issue updates must use the github_updateIssue tool so Junior can own requester attribution and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
     method: "PATCH",
     operation: "github.issue.update",
     restPath: /^\/repos\/[^/]+\/[^/]+\/issues\/[^/]+$/,
@@ -378,20 +378,20 @@ const GITHUB_TOOL_OWNED_WRITE_RULES = [
   {
     graphqlField: "updatePullRequest",
     grantName: "installation-write",
-    message: `GitHub pull request updates must use the github_updatePullRequest tool so Junior can own requester attribution and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
+    denialMessage: `GitHub pull request updates must use the github_updatePullRequest tool so Junior can own requester attribution and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
     method: "PATCH",
     operation: "github.pull.update",
     restPath: /^\/repos\/[^/]+\/[^/]+\/pulls\/[^/]+$/,
   },
-] as const satisfies readonly GitHubToolOwnedWriteRule[];
+] as const satisfies readonly GitHubBodyWritePolicy[];
 
-function githubToolOwnedRestWriteRule(
+function githubBodyWritePolicy(
   method: string,
   upstreamUrl: URL,
-): GitHubToolOwnedWriteRule | undefined {
+): GitHubBodyWritePolicy | undefined {
   if (!isGitHubApiUrl(upstreamUrl)) return undefined;
   const pathname = upstreamUrl.pathname.toLowerCase();
-  return GITHUB_TOOL_OWNED_WRITE_RULES.find(
+  return GITHUB_BODY_WRITE_POLICIES.find(
     (rule) => rule.method === method && rule.restPath.test(pathname),
   );
 }
@@ -422,8 +422,8 @@ function githubApiWriteGrantName(
     // Actions run control uses run-level cancel/rerun and job-level rerun endpoints.
     return "installation-write";
   }
-  const toolOwnedRule = githubToolOwnedRestWriteRule(method, upstreamUrl);
-  if (toolOwnedRule) return toolOwnedRule.grantName;
+  const bodyWritePolicy = githubBodyWritePolicy(method, upstreamUrl);
+  if (bodyWritePolicy) return bodyWritePolicy.grantName;
   if (
     method === "POST" &&
     /^\/repos\/[^/]+\/[^/]+\/issues\/[^/]+\/comments$/.test(pathname)
@@ -500,7 +500,7 @@ function isGitHubGraphqlMutation(
   ).test(parsed.normalized);
 }
 
-function assertGitHubWriteAllowed(input: {
+function applyGitHubEgressPolicy(input: {
   bodyText?: string;
   method: string;
   operation?: string;
@@ -511,22 +511,25 @@ function assertGitHubWriteAllowed(input: {
     method: input.method,
     upstreamUrl: input.upstreamUrl,
   });
-  enforceToolOwnedEgress({
-    matches(rule, request) {
+  enforceEgressPolicy({
+    allows(policy, request) {
+      return request.operation === policy.operation;
+    },
+    matches(policy, request) {
       return (
-        (rule.method === request.method &&
+        (policy.method === request.method &&
           isGitHubApiUrl(request.upstreamUrl) &&
-          rule.restPath.test(request.upstreamUrl.pathname.toLowerCase())) ||
+          policy.restPath.test(request.upstreamUrl.pathname.toLowerCase())) ||
         isGitHubGraphqlMutation(
           request.method,
           request.upstreamUrl,
           request.bodyText,
-          rule.graphqlField,
+          policy.graphqlField,
         )
       );
     },
     request: input,
-    rules: GITHUB_TOOL_OWNED_WRITE_RULES,
+    rules: GITHUB_BODY_WRITE_POLICIES,
   });
 }
 
@@ -560,7 +563,7 @@ async function githubGrantForEgress(
 ): Promise<GitHubGrant> {
   const method = ctx.request.method.toUpperCase();
   const upstreamUrl = new URL(ctx.request.url);
-  assertGitHubWriteAllowed({
+  applyGitHubEgressPolicy({
     ...(ctx.request.bodyText !== undefined
       ? { bodyText: ctx.request.bodyText }
       : {}),
