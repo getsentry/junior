@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   isNearScrollBottom,
   prependViewportIntent,
+  programmaticSettleScrollAction,
   scrollTopAfterPrepend,
   shouldAutoPinTranscriptBottom,
   shouldShowJumpToLatest,
@@ -295,5 +296,11 @@ describe("transcript bottom pinning", () => {
         hasPendingUpdate: true,
       }),
     ).toBe(false);
+  });
+
+  it("lets a real upward scroll pause follow during a pin settle window", () => {
+    expect(programmaticSettleScrollAction("pause")).toBe("pause");
+    expect(programmaticSettleScrollAction("follow")).toBe("ignore");
+    expect(programmaticSettleScrollAction("preserve")).toBe("ignore");
   });
 });

@@ -115,6 +115,17 @@ export function transcriptFollowIntent(input: {
   return "preserve";
 }
 
+/**
+ * Decide how a scroll event interacts with an open programmatic pin settle.
+ *
+ * Pin settle noise must not pause follow, but a real upward move must still win.
+ */
+export function programmaticSettleScrollAction(
+  intent: TranscriptFollowIntent,
+): "ignore" | "pause" {
+  return intent === "pause" ? "pause" : "ignore";
+}
+
 /** Decide when a requested history prepend can restore or discard its viewport snapshot. */
 export function prependViewportIntent(input: {
   currentHistoryVersion: string;
@@ -178,13 +189,6 @@ export function usePinnedTranscriptBottom(input: {
       if (!root) return;
 
       const snapshot = scrollSnapshot(root);
-      // Ignore scroll events caused by our own bottom pin. Those deltas can look
-      // like an upward user scroll while content is still settling.
-      if (source === "scroll" && programmaticScrollGenerationRef.current > 0) {
-        previousScrollTopRef.current = snapshot.scrollTop;
-        return;
-      }
-
       const previousScrollTop = previousScrollTopRef.current;
       previousScrollTopRef.current = snapshot.scrollTop;
 
@@ -193,6 +197,17 @@ export function usePinnedTranscriptBottom(input: {
         snapshot,
         source,
       });
+
+      // While a pin settle is open, ignore noise from our own bottom scroll, but
+      // still honor a real upward move so the reader can leave follow mode.
+      if (source === "scroll" && programmaticScrollGenerationRef.current > 0) {
+        if (programmaticSettleScrollAction(intent) === "pause") {
+          programmaticScrollGenerationRef.current = 0;
+          setFollowingIntent(false);
+        }
+        return;
+      }
+
       if (intent === "follow") {
         setFollowingIntent(true);
         setHasPendingUpdate(false);
@@ -211,15 +226,29 @@ export function usePinnedTranscriptBottom(input: {
       const root = scrollRootFor(contentElementRef.current);
       if (!root) return;
 
-      const generation = ++programmaticScrollGenerationRef.current;
+      // Only suppress pin-settle noise while still following. After the reader
+      // leaves the bottom, do not open a window that can ignore their scroll.
+      const suppressSettleNoise = followingRef.current;
+      const generation = suppressSettleNoise
+        ? ++programmaticScrollGenerationRef.current
+        : 0;
       setScrollTop(root, scrollSnapshot(root).scrollHeight, behavior);
 
       const settleProgrammaticScroll = () => {
-        if (programmaticScrollGenerationRef.current !== generation) return;
-        programmaticScrollGenerationRef.current = 0;
+        if (
+          suppressSettleNoise &&
+          programmaticScrollGenerationRef.current !== generation
+        ) {
+          return;
+        }
+        if (suppressSettleNoise) programmaticScrollGenerationRef.current = 0;
         const settled = scrollSnapshot(root);
         previousScrollTopRef.current = settled.scrollTop;
-        if (enabledRef.current && isNearScrollBottom(settled)) {
+        if (
+          enabledRef.current &&
+          followingRef.current &&
+          isNearScrollBottom(settled)
+        ) {
           setFollowingIntent(true);
           setHasPendingUpdate(false);
         }
