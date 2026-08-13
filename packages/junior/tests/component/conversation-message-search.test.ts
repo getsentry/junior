@@ -186,10 +186,9 @@ describe("conversation message search", () => {
       const annotated = await search.search({
         currentConversationId: "slack:CREQUEST:1700000000.100000",
         filters: {
-          activeAfterMs: 1_749_999_999_000,
-          activeBeforeMs: 1_750_000_001_000,
-          annotationKeyPrefix: "ACME/WIDGET_V2",
-          annotationPlugin: "code-host",
+          afterMs: 1_749_999_999_000,
+          beforeMs: 1_750_000_001_000,
+          annotation: "ACME/WIDGET_V2",
         },
         limit: 10,
         scope: {

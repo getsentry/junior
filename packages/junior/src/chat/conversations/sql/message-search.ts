@@ -72,47 +72,35 @@ class SqlConversationMessageSearchStore implements ConversationMessageSearchStor
       );
     }
     if (
-      args.filters.activeAfterMs !== undefined &&
-      Number.isFinite(args.filters.activeAfterMs)
+      args.filters.afterMs !== undefined &&
+      Number.isFinite(args.filters.afterMs)
     ) {
       conditions.push(
-        gte(
-          juniorConversations.lastActivityAt,
-          new Date(args.filters.activeAfterMs),
-        ),
+        gte(juniorConversations.lastActivityAt, new Date(args.filters.afterMs)),
       );
     }
     if (
-      args.filters.activeBeforeMs !== undefined &&
-      Number.isFinite(args.filters.activeBeforeMs)
+      args.filters.beforeMs !== undefined &&
+      Number.isFinite(args.filters.beforeMs)
     ) {
       conditions.push(
-        lt(
-          juniorConversations.lastActivityAt,
-          new Date(args.filters.activeBeforeMs),
-        ),
+        lt(juniorConversations.lastActivityAt, new Date(args.filters.beforeMs)),
       );
     }
-    if (args.filters.annotationKeyPrefix) {
-      const annotationKeyPrefix = args.filters.annotationKeyPrefix.toLowerCase();
-      const annotationConditions: SQL[] = [
-        eq(
-          juniorConversationAnnotations.conversationId,
-          juniorConversations.conversationId,
-        ),
-        // Prefix match avoids LIKE wildcards in plugin-owned annotation keys.
-        sql`starts_with(lower(${juniorConversationAnnotations.key}), ${annotationKeyPrefix})`,
-      ];
-      if (args.filters.annotationPlugin) {
-        annotationConditions.push(
-          eq(juniorConversationAnnotations.plugin, args.filters.annotationPlugin),
-        );
-      }
+    if (args.filters.annotation) {
+      const annotation = args.filters.annotation.toLowerCase();
       conditions.push(
         sql`exists (
           select 1
           from ${juniorConversationAnnotations}
-          where ${and(...annotationConditions)}
+          where ${and(
+            eq(
+              juniorConversationAnnotations.conversationId,
+              juniorConversations.conversationId,
+            ),
+            // Prefix match avoids LIKE wildcards in plugin-owned annotation keys.
+            sql`starts_with(lower(${juniorConversationAnnotations.key}), ${annotation})`,
+          )}
         )`,
       );
     }

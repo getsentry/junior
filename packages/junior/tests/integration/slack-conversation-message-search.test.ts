@@ -97,10 +97,9 @@ describe("searchConversationMessages", () => {
     });
 
     const filtered = await executeTool(tool, {
-      active_after: null,
-      active_before: null,
-      annotation_key_prefix: null,
-      annotation_plugin: null,
+      after: null,
+      annotation: null,
+      before: null,
       channel_id: "CARCHIVE",
       query: null,
       limit: null,
@@ -118,10 +117,9 @@ describe("searchConversationMessages", () => {
 
     await expect(
       executeTool(tool, {
-        active_after: null,
-        active_before: null,
-        annotation_key_prefix: null,
-        annotation_plugin: null,
+        after: null,
+        annotation: null,
+        before: null,
         channel_id: null,
         query: null,
         limit: null,
@@ -130,10 +128,9 @@ describe("searchConversationMessages", () => {
 
     await expect(
       executeTool(tool, {
-        active_after: null,
-        active_before: null,
-        annotation_key_prefix: null,
-        annotation_plugin: null,
+        after: null,
+        annotation: null,
+        before: null,
         channel_id: "not-a-channel",
         query: null,
         limit: null,
@@ -142,10 +139,9 @@ describe("searchConversationMessages", () => {
 
     await expect(
       executeTool(tool, {
-        active_after: "2024-13-01T00:00:00.000Z",
-        active_before: null,
-        annotation_key_prefix: null,
-        annotation_plugin: null,
+        after: "2024-13-01T00:00:00.000Z",
+        annotation: null,
+        before: null,
         channel_id: "CARCHIVE",
         query: null,
         limit: null,

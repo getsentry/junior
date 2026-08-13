@@ -19,13 +19,11 @@ export interface ConversationMessageSearchScope {
 /** Optional filters that narrow retained public workspace search. */
 export interface ConversationMessageSearchFilters {
   /** Only conversations active at or after this time. */
-  activeAfterMs?: number;
-  /** Only conversations active before this time. */
-  activeBeforeMs?: number;
+  afterMs?: number;
   /** Annotation key prefix, matched case-insensitively. */
-  annotationKeyPrefix?: string;
-  /** Plugin that owns the annotation key. */
-  annotationPlugin?: string;
+  annotation?: string;
+  /** Only conversations active before this time. */
+  beforeMs?: number;
   /** Slack channel id of the conversation destination. */
   channelId?: string;
   /** Full-text query over retained visible message text. */
