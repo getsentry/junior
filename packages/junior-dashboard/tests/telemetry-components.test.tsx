@@ -570,7 +570,7 @@ describe("dashboard canonical-event components", () => {
     );
     expect(html).toContain("2 repos");
     expect(html).toContain("Merged");
-    expect(html).toContain("min-w-0 truncate");
+    expect(html).toContain("min-w-0 truncate whitespace-nowrap font-sans");
   });
 
   it("distinguishes initial detail failures from stale refresh failures", () => {

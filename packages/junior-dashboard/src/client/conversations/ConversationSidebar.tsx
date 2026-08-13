@@ -229,10 +229,15 @@ function ConversationSidebarRow(props: {
                 className="size-3 shrink-0"
               />
             ) : null}
+            {location ? <span className="truncate">{location}</span> : null}
+            {location && props.conversation.sidebarAnnotations?.length ? (
+              <span aria-hidden="true" className="shrink-0 opacity-50">
+                ·
+              </span>
+            ) : null}
             <ConversationSidebarAnnotations
               annotations={props.conversation.sidebarAnnotations}
             />
-            {location ? <span className="truncate">{location}</span> : null}
           </div>
         ) : null}
       </Link>

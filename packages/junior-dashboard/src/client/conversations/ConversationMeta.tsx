@@ -107,7 +107,7 @@ export function ConversationSidebarAnnotations(props: {
       title={summary.label}
     >
       {summary.icon ? <SidebarAnnotationIcon icon={summary.icon} /> : null}
-      <span className="min-w-0 truncate text-dashboard-text-muted">
+      <span className="min-w-0 truncate whitespace-nowrap font-sans text-dashboard-text-muted">
         {summary.label}
       </span>
     </span>
