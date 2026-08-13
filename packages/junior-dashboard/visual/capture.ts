@@ -110,7 +110,7 @@ async function captureScenario(options: {
     const file = shotName(scenario.id, viewport);
     await page.screenshot({
       animations: "disabled",
-      fullPage: false,
+      fullPage: true,
       path: path.join(outDir, file),
       type: "png",
     });
