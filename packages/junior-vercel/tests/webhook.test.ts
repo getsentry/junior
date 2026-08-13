@@ -108,6 +108,13 @@ Deployment: dpl_123abc`,
     },
   );
 
+  it("ignores whitespace-only project IDs", () => {
+    const body = webhookBody();
+    body.payload.project.id = " ";
+
+    expect(normalizeVercelResourceEvents({ body })).toEqual([]);
+  });
+
   it("accepts an opaque Vercel project ID", () => {
     const body = webhookBody();
     body.payload.project.id = "QmLegacyProject123";

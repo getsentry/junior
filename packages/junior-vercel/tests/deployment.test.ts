@@ -65,6 +65,17 @@ describe("Vercel deployment", () => {
     });
   });
 
+  it("rejects whitespace-only project IDs from Vercel", async () => {
+    const { tool } = toolFixture(Response.json({ id: " " }));
+
+    await expect(
+      tool.execute?.(
+        { project: "sentry-docs" },
+        { toolCallId: "deployment-blank-project" },
+      ),
+    ).rejects.toThrow("Too small");
+  });
+
   it("accepts an opaque project ID returned by Vercel", async () => {
     const { tool } = toolFixture(Response.json({ id: "QmLegacyProject123" }));
 
