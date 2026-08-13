@@ -114,29 +114,41 @@ export function ConversationSidebarAnnotations(props: {
   ));
 }
 
+type SidebarAnnotationIconName = NonNullable<
+  NonNullable<ConversationDetailReport["sidebarAnnotations"]>[number]["icon"]
+>;
+
+const SIDEBAR_ICON_PRESENTATION = {
+  "circle-dot": { className: "text-[#3fb950]", Icon: CircleDot, label: "Open" },
+  "circle-dashed": {
+    className: "text-[#8c959f]",
+    Icon: CircleDashed,
+    label: "Draft",
+  },
+  "circle-x": { className: "text-[#f85149]", Icon: CircleX, label: "Closed" },
+  "git-merge": { className: "text-[#a371f7]", Icon: GitMerge, label: "Merged" },
+  "triangle-alert": {
+    className: "text-[#d29922]",
+    Icon: TriangleAlert,
+    label: "Needs attention",
+  },
+} satisfies Record<
+  SidebarAnnotationIconName,
+  { className: string; Icon: typeof CircleDot; label: string }
+>;
+
 function SidebarAnnotationIcon(props: {
-  icon: NonNullable<
-    NonNullable<ConversationDetailReport["sidebarAnnotations"]>[number]["icon"]
-  >;
+  icon: SidebarAnnotationIconName;
+  size?: number;
 }) {
-  const presentation = {
-    "circle-dot": { className: "text-[#3fb950]", Icon: CircleDot, label: "Open" },
-    "circle-dashed": {
-      className: "text-[#8c959f]",
-      Icon: CircleDashed,
-      label: "Draft",
-    },
-    "circle-x": { className: "text-[#f85149]", Icon: CircleX, label: "Closed" },
-    "git-merge": { className: "text-[#a371f7]", Icon: GitMerge, label: "Merged" },
-    "triangle-alert": {
-      className: "text-[#d29922]",
-      Icon: TriangleAlert,
-      label: "Needs attention",
-    },
-  }[props.icon];
+  const presentation = SIDEBAR_ICON_PRESENTATION[props.icon];
   return (
     <span className={`shrink-0 ${presentation.className}`} title={presentation.label}>
-      <presentation.Icon aria-hidden="true" size={11} strokeWidth={2.25} />
+      <presentation.Icon
+        aria-hidden="true"
+        size={props.size ?? 11}
+        strokeWidth={2.25}
+      />
       <span className="sr-only">{presentation.label}</span>
     </span>
   );
@@ -190,48 +202,16 @@ function resourceLinkTitle(link: {
     .join(" · ");
 }
 
-function ResourceStatus(props: {
-  size?: number;
-  status: ResourceLinkStatus;
-}) {
-  const status = {
-    open: {
-      className: "text-[#3fb950]",
-      Icon: CircleDot,
-      label: "Open",
-    },
-    draft: {
-      className: "text-[#8c959f]",
-      Icon: CircleDashed,
-      label: "Draft",
-    },
-    closed: {
-      className: "text-[#f85149]",
-      Icon: CircleX,
-      label: "Closed",
-    },
-    merged: {
-      className: "text-[#a371f7]",
-      Icon: GitMerge,
-      label: "Merged",
-    },
-    warning: {
-      className: "text-[#d29922]",
-      Icon: TriangleAlert,
-      label: "Needs attention",
-    },
-  }[props.status];
+const RESOURCE_STATUS_ICON = {
+  open: "circle-dot",
+  draft: "circle-dashed",
+  closed: "circle-x",
+  merged: "git-merge",
+  warning: "triangle-alert",
+} as const satisfies Record<ResourceLinkStatus, SidebarAnnotationIconName>;
 
-  return (
-    <span className={status.className} title={status.label}>
-      <status.Icon
-        aria-hidden="true"
-        size={props.size ?? 12}
-        strokeWidth={2.25}
-      />
-      <span className="sr-only">{status.label}</span>
-    </span>
-  );
+function ResourceStatus(props: { status: ResourceLinkStatus }) {
+  return <SidebarAnnotationIcon icon={RESOURCE_STATUS_ICON[props.status]} size={12} />;
 }
 
 /** True when identity has content for the requested presentation. */
