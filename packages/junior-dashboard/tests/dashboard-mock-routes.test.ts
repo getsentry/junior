@@ -261,11 +261,9 @@ describe("dashboard canonical-event mock routes", () => {
       ]),
     );
     expect(dashboardQa.annotations).toHaveLength(2);
-    expect(dashboardQa.annotations?.[0]?.sidebar).toEqual({
-      group: "github-repositories",
-      label: "junior",
-      pluralLabel: "repos",
-    });
+    expect(dashboardQa.sidebarAnnotations).toEqual([
+      { key: "github", label: "junior", status: "open" },
+    ]);
     expect(dashboardQa.unfinishedWork).toBe(true);
 
     const failed = await readDetail("slack:CQA777:1770014400.000500");

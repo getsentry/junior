@@ -95,79 +95,15 @@ export function hasConversationAnnotations(
   );
 }
 
-type SidebarAnnotation = NonNullable<
-  NonNullable<ConversationDetailReport["annotations"]>[number]["sidebar"]
-> & { status?: ResourceLinkStatus };
-
-const SIDEBAR_STATUS_RANK: Record<ResourceLinkStatus, number> = {
-  warning: 5,
-  open: 4,
-  draft: 3,
-  merged: 2,
-  closed: 1,
-};
-
-function preferredSidebarStatus(
-  current: ResourceLinkStatus | undefined,
-  candidate: ResourceLinkStatus | undefined,
-): ResourceLinkStatus | undefined {
-  if (!candidate) return current;
-  if (!current) return candidate;
-  return SIDEBAR_STATUS_RANK[candidate] > SIDEBAR_STATUS_RANK[current]
-    ? candidate
-    : current;
-}
-
-/** Group plugin-owned annotation summaries for a conversation row. */
-export function conversationSidebarAnnotations(
-  annotations: ConversationDetailReport["annotations"] | undefined,
-): SidebarAnnotation[] {
-  const groups = new Map<
-    string,
-    {
-      labels: Set<string>;
-      pluralLabel: string;
-      status?: ResourceLinkStatus;
-    }
-  >();
-  for (const annotation of annotations ?? []) {
-    if (!annotation.sidebar) continue;
-    const current = groups.get(annotation.sidebar.group);
-    if (current) {
-      current.labels.add(annotation.sidebar.label);
-      current.status = preferredSidebarStatus(
-        current.status,
-        annotation.status,
-      );
-    } else {
-      groups.set(annotation.sidebar.group, {
-        labels: new Set([annotation.sidebar.label]),
-        pluralLabel: annotation.sidebar.pluralLabel,
-        status: annotation.status,
-      });
-    }
-  }
-  return [...groups.entries()].map(([group, summary]) => ({
-    group,
-    label:
-      summary.labels.size === 1
-        ? [...summary.labels][0]!
-        : `${summary.labels.size} ${summary.pluralLabel}`,
-    pluralLabel: summary.pluralLabel,
-    status: summary.status,
-  }));
-}
-
-/** Render compact plugin-owned annotation summaries in a conversation row. */
+/** Render annotations selected by plugins for a conversation row. */
 export function ConversationSidebarAnnotations(props: {
-  annotations: ConversationDetailReport["annotations"] | undefined;
+  annotations: ConversationDetailReport["sidebarAnnotations"] | undefined;
 }) {
-  const summaries = conversationSidebarAnnotations(props.annotations);
-  if (summaries.length === 0) return null;
-  return summaries.map((summary) => (
+  if (!props.annotations?.length) return null;
+  return props.annotations.map((summary) => (
     <span
       className="inline-flex min-w-0 max-w-full items-center gap-1 truncate"
-      key={summary.group}
+      key={summary.key}
       title={summary.label}
     >
       {summary.status ? (

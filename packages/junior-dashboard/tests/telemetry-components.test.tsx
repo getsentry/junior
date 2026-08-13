@@ -24,7 +24,6 @@ import {
   ConversationAnnotations,
   ConversationSidebarAnnotations,
   ConversationStats,
-  conversationSidebarAnnotations,
 } from "../src/client/conversations/ConversationMeta";
 import { conversationFromDetail } from "../src/client/format";
 import { TranscriptMarkdown } from "../src/client/conversations/TranscriptMarkdown";
@@ -563,69 +562,14 @@ describe("dashboard canonical-event components", () => {
     expect(html).not.toContain("Open pull request");
   });
 
-  it("renders server-owned annotation summaries for one or more repos", () => {
-    const annotations = [
-      {
-        kind: "resource_link" as const,
-        key: "getsentry/junior#1",
-        label: "getsentry/junior#1",
-        plugin: "github",
-        status: "open" as const,
-        sidebar: {
-          group: "github-repositories",
-          label: "junior",
-          pluralLabel: "repos",
-        },
-        url: "https://github.com/getsentry/junior/pull/1",
-        createdAt: "2026-01-01T00:00:00.000Z",
-        updatedAt: "2026-01-01T00:00:01.000Z",
-      },
-      {
-        kind: "resource_link" as const,
-        key: "getsentry/payments#2",
-        label: "getsentry/payments#2",
-        plugin: "github",
-        status: "open" as const,
-        sidebar: {
-          group: "github-repositories",
-          label: "payments",
-          pluralLabel: "repos",
-        },
-        url: "https://github.com/getsentry/payments/issues/2",
-        createdAt: "2026-01-01T00:00:00.000Z",
-        updatedAt: "2026-01-01T00:00:01.000Z",
-      },
-    ];
-    expect(conversationSidebarAnnotations([annotations[0]!])).toEqual([
-      expect.objectContaining({ label: "junior", status: "open" }),
-    ]);
-    expect(conversationSidebarAnnotations(annotations)).toEqual([
-      expect.objectContaining({ label: "2 repos", status: "open" }),
-    ]);
-    expect(
-      conversationSidebarAnnotations([
-        { ...annotations[0]!, status: "merged" as const },
-        { ...annotations[1]!, status: "merged" as const },
-      ]),
-    ).toEqual([expect.objectContaining({ status: "merged" })]);
-    expect(
-      conversationSidebarAnnotations([
-        { ...annotations[0]!, status: "merged" as const },
-        { ...annotations[1]!, status: "closed" as const },
-      ]),
-    ).toEqual([expect.objectContaining({ status: "merged" })]);
-    expect(
-      conversationSidebarAnnotations([
-        { ...annotations[0]!, status: "open" as const },
-        { ...annotations[1]!, status: "merged" as const },
-      ]),
-    ).toEqual([expect.objectContaining({ status: "open" })]);
-
+  it("renders plugin-selected sidebar annotations", () => {
     const html = renderToStaticMarkup(
-      <ConversationSidebarAnnotations annotations={annotations} />,
+      <ConversationSidebarAnnotations
+        annotations={[{ key: "github", label: "2 repos", status: "merged" }]}
+      />,
     );
     expect(html).toContain("2 repos");
-    expect(html).not.toContain("junior#");
+    expect(html).toContain("Merged");
   });
 
   it("distinguishes initial detail failures from stale refresh failures", () => {

@@ -176,6 +176,29 @@ describe("conversation list API", () => {
     const publicId = "slack:C123:annotated-public";
     const privateId = "slack:D123:annotated-private";
     try {
+      setPlugins([
+        defineJuniorPlugin({
+          manifest: {
+            name: "github",
+            displayName: "GitHub",
+            description: "GitHub sidebar test plugin",
+          },
+          hooks: {
+            conversationSidebar(ctx) {
+              return {
+                annotationsByConversationId: Object.fromEntries(
+                  Object.keys(ctx.annotationsByConversationId).map(
+                    (conversationId) => [
+                      conversationId,
+                      [{ key: "github", label: "junior", status: "open" }],
+                    ],
+                  ),
+                ),
+              };
+            },
+          },
+        }),
+      ]);
       await migrateSchema(fixture.sql);
       await store.recordActivity({
         conversationId: publicId,
@@ -220,6 +243,9 @@ describe("conversation list API", () => {
         conversations: [
           expect.objectContaining({
             conversationId: publicId,
+            sidebarAnnotations: [
+              { key: "github", label: "junior", status: "open" },
+            ],
             annotations: [
               expect.objectContaining({
                 key: "getsentry/junior#1081",
@@ -241,6 +267,7 @@ describe("conversation list API", () => {
         feed.conversations.find((item) => item.conversationId === privateId),
       ).not.toHaveProperty("annotations");
     } finally {
+      setPlugins([]);
       await fixture.close();
     }
   });

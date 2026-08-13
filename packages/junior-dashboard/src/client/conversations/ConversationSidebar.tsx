@@ -193,7 +193,7 @@ function ConversationSidebarRow(props: {
   const hasMeta =
     Boolean(location) ||
     props.conversation.visibility === "private" ||
-    Boolean(props.conversation.annotations?.some((annotation) => annotation.sidebar));
+    Boolean(props.conversation.sidebarAnnotations?.length);
   return (
     <div className="group relative min-w-0">
       <Link
@@ -230,7 +230,7 @@ function ConversationSidebarRow(props: {
               />
             ) : null}
             <ConversationSidebarAnnotations
-              annotations={props.conversation.annotations}
+              annotations={props.conversation.sidebarAnnotations}
             />
             {location ? <span className="truncate">{location}</span> : null}
           </div>

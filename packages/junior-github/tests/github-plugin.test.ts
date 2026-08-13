@@ -790,11 +790,6 @@ describe("github plugin", () => {
         key: "getsentry/junior#660",
         label: "getsentry/junior#660",
         status: "open",
-        sidebar: {
-          group: "github-repositories",
-          label: "junior",
-          pluralLabel: "repos",
-        },
         url: "https://github.com/getsentry/junior/issues/660",
       },
     ]);
@@ -916,11 +911,6 @@ Conversation: \`local:test:old-conversation\`
         key: "getsentry/junior#660",
         label: "getsentry/junior#660",
         status: "open",
-        sidebar: {
-          group: "github-repositories",
-          label: "junior",
-          pluralLabel: "repos",
-        },
         url: "https://github.com/getsentry/junior/issues/660",
       },
       {
@@ -928,11 +918,6 @@ Conversation: \`local:test:old-conversation\`
         key: "getsentry/junior#660",
         label: "getsentry/junior#660",
         status: "open",
-        sidebar: {
-          group: "github-repositories",
-          label: "junior",
-          pluralLabel: "repos",
-        },
         url: "https://github.com/getsentry/junior/issues/660",
       },
     ]);
@@ -1250,11 +1235,6 @@ Conversation: \`local:test:old-conversation\`
         key: "getsentry/junior#691",
         label: "getsentry/junior#691",
         status: "draft",
-        sidebar: {
-          group: "github-repositories",
-          label: "junior",
-          pluralLabel: "repos",
-        },
         url: "https://github.com/getsentry/junior/pull/691",
       },
     ]);

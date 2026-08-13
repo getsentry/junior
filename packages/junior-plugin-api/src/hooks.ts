@@ -1,4 +1,8 @@
 import type {
+  ConversationSidebarHookContext,
+  ConversationSidebarResult,
+} from "./annotations";
+import type {
   EgressHookContext,
   EgressResponseHookContext,
   IssueCredentialHookContext,
@@ -36,6 +40,9 @@ import type {
 } from "./prompt";
 
 export interface PluginHooks {
+  conversationSidebar?(
+    ctx: ConversationSidebarHookContext,
+  ): Promise<ConversationSidebarResult> | ConversationSidebarResult;
   systemPrompt?(
     ctx: SystemPromptContext,
   ): Promise<PromptMessage[]> | PromptMessage[];

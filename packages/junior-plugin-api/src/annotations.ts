@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { PluginContext } from "./context";
 
 function usesHttpProtocol(value: string): boolean {
   try {
@@ -21,15 +22,6 @@ export const resourceLinkAnnotationSchema = z
       .refine(usesHttpProtocol, "URL must use HTTP or HTTPS."),
     description: z.string().trim().min(1).max(512).optional(),
     status: z.enum(["open", "draft", "closed", "merged", "warning"]).optional(),
-    /** Plugin-owned compact grouping for conversation feed rows. */
-    sidebar: z
-      .object({
-        group: z.string().trim().min(1).max(64),
-        label: z.string().trim().min(1).max(64),
-        pluralLabel: z.string().trim().min(1).max(64),
-      })
-      .strict()
-      .optional(),
   })
   .strict();
 
@@ -52,4 +44,28 @@ export interface PluginAnnotations {
 }
 export interface PluginConversationAnnotations {
   forConversation(conversationId: string): PluginAnnotations;
+}
+
+export const conversationSidebarAnnotationSchema = z
+  .object({
+    key: z.string().trim().min(1).max(256),
+    label: z.string().trim().min(1).max(64),
+    status: resourceLinkAnnotationSchema.shape.status,
+  })
+  .strict();
+export type ConversationSidebarAnnotation = z.output<
+  typeof conversationSidebarAnnotationSchema
+>;
+
+export interface ConversationSidebarHookContext extends PluginContext {
+  /** Stored annotations owned by this plugin, keyed by candidate conversation. */
+  annotationsByConversationId: Record<string, ConversationAnnotation[]>;
+  conversationIds: string[];
+}
+
+export interface ConversationSidebarResult {
+  annotationsByConversationId: Record<
+    string,
+    ConversationSidebarAnnotation[]
+  >;
 }

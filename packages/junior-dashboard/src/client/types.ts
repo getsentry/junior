@@ -140,6 +140,7 @@ export type ConversationTranscript = ConversationDetailReport;
 
 export type Conversation = {
   annotations?: ConversationSummaryReport["annotations"];
+  sidebarAnnotations?: ConversationSummaryReport["sidebarAnnotations"];
   archivedAt?: string;
   auxiliaryCosts?: ConversationSummaryReport["auxiliaryCosts"];
   channel?: string;

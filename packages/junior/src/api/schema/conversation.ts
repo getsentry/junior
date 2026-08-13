@@ -2,6 +2,7 @@ import { z } from "zod";
 import { usageCostSchema, usageSchema } from "@/usage-schema";
 import {
   conversationAnnotationInputSchema,
+  conversationSidebarAnnotationSchema,
   conversationEventPresentationSchema,
 } from "@sentry/junior-plugin-api";
 
@@ -243,6 +244,8 @@ export const conversationSummaryReportSchema = z
      * Clients must not fetch provider state while rendering these links.
      */
     annotations: z.array(conversationAnnotationReportSchema).optional(),
+    /** Plugin-selected annotations for the compact conversation row. */
+    sidebarAnnotations: z.array(conversationSidebarAnnotationSchema).optional(),
     assignedWork: z.boolean().optional(),
     finishedWorkAt: z.string().datetime().optional(),
     /**

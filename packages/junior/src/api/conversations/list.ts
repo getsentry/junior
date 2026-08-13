@@ -24,6 +24,7 @@ import type { ConversationFeed } from "../schema/conversation";
 import { readRootConversationMetricsFromSql } from "./usage";
 import { readConversationAuxiliaryCostsFromSql } from "./auxiliary-costs";
 import { listConversationAnnotationsById } from "@/chat/plugins/annotations";
+import { listConversationSidebarAnnotations } from "@/chat/plugins/conversation-sidebar";
 import { listConversationWork } from "@/chat/plugins/unfinished-work";
 import { isConversationPriority } from "./priority";
 import { readLastUserMessageAtByConversation } from "./user-message-activity";
@@ -266,6 +267,19 @@ export async function readConversationFeedFromSql(
     listConversationWork(conversationIds),
     readLastUserMessageAtByConversation(db, conversationIds),
   ]);
+  const visibleAnnotationsByConversation = new Map(
+    conversationIds.map((conversationId) => [
+      conversationId,
+      accessByConversation.get(conversationId)?.canViewPrivateContent
+        ? (annotationsByConversation.get(conversationId) ?? [])
+        : [],
+    ]),
+  );
+  const sidebarAnnotationsByConversation =
+    await listConversationSidebarAnnotations(
+      conversationIds,
+      visibleAnnotationsByConversation,
+    );
   const assignedWork = new Set(conversationWork.assignedIds);
   const unfinishedWork = new Set(conversationWork.unfinishedIds);
   return {
@@ -305,6 +319,12 @@ export async function readConversationFeedFromSql(
         ...summary,
         ...work,
         ...(annotations.length > 0 ? { annotations } : {}),
+        ...(sidebarAnnotationsByConversation[conversation.conversationId]
+          ? {
+              sidebarAnnotations:
+                sidebarAnnotationsByConversation[conversation.conversationId],
+            }
+          : {}),
         isPriority: isConversationPriority(
           {
             lastSeenAt: summary.lastSeenAt,

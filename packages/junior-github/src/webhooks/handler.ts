@@ -7,7 +7,6 @@ import type {
 } from "@sentry/junior-plugin-api";
 import type { GitHubDb } from "../db/database.js";
 import type { GitHubPullRequestCommitComposition } from "../db/schema.js";
-import { githubRepositorySidebar } from "../annotations.js";
 import {
   recordGitHubIssueConversations,
   recordGitHubIssueOutcome,
@@ -158,9 +157,6 @@ export function createGitHubWebhookRoute(args: {
                 label: `${pullRequestOutcome.repositoryFullName}#${pullRequestOutcome.number}`,
                 url: `https://github.com/${pullRequestOutcome.repositoryFullName}/pull/${pullRequestOutcome.number}`,
                 status,
-                sidebar: githubRepositorySidebar(
-                  pullRequestOutcome.repositoryFullName,
-                ),
               }),
             ),
           );
@@ -207,7 +203,6 @@ export function createGitHubWebhookRoute(args: {
                 label: `${issueOutcome.repositoryFullName}#${issueOutcome.number}`,
                 url: `https://github.com/${issueOutcome.repositoryFullName}/issues/${issueOutcome.number}`,
                 status: "closed",
-                sidebar: githubRepositorySidebar(issueOutcome.repositoryFullName),
               }),
             ),
           );

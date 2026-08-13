@@ -39,6 +39,7 @@ import {
 import type { GitHubDb } from "./db/database.js";
 import { buildGitHubOutcomeReport } from "./outcomes/report.js";
 import { classifyGitHubPullRequestCommitComposition } from "./pull-request-outcomes/commit-composition.js";
+import { githubSidebarAnnotation } from "./annotations.js";
 import {
   listGitHubAssignedWork,
   listGitHubFinishedWork,
@@ -735,6 +736,18 @@ export function githubPlugin(
       ],
     },
     hooks: {
+      conversationSidebar(ctx) {
+        return {
+          annotationsByConversationId: Object.fromEntries(
+            ctx.conversationIds.flatMap((conversationId) => {
+              const annotation = githubSidebarAnnotation(
+                ctx.annotationsByConversationId[conversationId] ?? [],
+              );
+              return annotation ? [[conversationId, [annotation]]] : [];
+            }),
+          ),
+        };
+      },
       async unfinishedWork(ctx) {
         const db = ctx.db as GitHubDb;
         const [

@@ -845,6 +845,7 @@ export function buildConversations(
   return summaries
     .map((summary) => ({
       annotations: summary.annotations,
+      sidebarAnnotations: summary.sidebarAnnotations,
       archivedAt: summary.archivedAt,
       auxiliaryCosts: summary.auxiliaryCosts,
       channel: summary.channel,
