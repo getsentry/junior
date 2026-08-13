@@ -49,7 +49,7 @@ export interface PluginConversationAnnotations {
 export const conversationSidebarAnnotationSchema = z
   .object({
     key: z.string().trim().min(1).max(256),
-    label: z.string().trim().min(1).max(64),
+    label: z.string().trim().min(1).max(256),
     status: resourceLinkAnnotationSchema.shape.status,
   })
   .strict();

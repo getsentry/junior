@@ -1,4 +1,7 @@
-import type { ConversationAnnotation } from "@sentry/junior-plugin-api";
+import {
+  conversationSidebarAnnotationSchema,
+  type ConversationAnnotation,
+} from "@sentry/junior-plugin-api";
 import { describe, expect, it } from "vitest";
 import { githubSidebarAnnotation } from "../src/annotations";
 
@@ -39,5 +42,12 @@ describe("GitHub conversation sidebar", () => {
         annotation("junior", 2, "closed"),
       ]),
     ).toEqual({ key: "github", label: "junior", status: "closed" });
+  });
+
+  it("keeps valid 100-character GitHub repository names", () => {
+    const repo = "r".repeat(100);
+    const sidebar = githubSidebarAnnotation([annotation(repo, 1, "open")]);
+    expect(sidebar).toEqual({ key: "github", label: repo, status: "open" });
+    expect(() => conversationSidebarAnnotationSchema.parse(sidebar)).not.toThrow();
   });
 });
