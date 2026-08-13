@@ -226,7 +226,7 @@ export function PendingMailboxStack(props: {
   return (
     <div
       aria-label="Pending messages"
-      className="mx-2 max-h-[min(40vh,16rem)] overflow-y-auto overscroll-contain rounded-t-lg bg-amber-300/[0.055] md:mx-3 md:max-h-none"
+      className="mx-2 overflow-hidden rounded-t-lg bg-amber-300/[0.055] md:mx-3"
     >
       {showCancel ? (
         <div className="flex items-center justify-between gap-2 px-3 py-2 md:px-3.5">
