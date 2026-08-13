@@ -262,6 +262,8 @@ function ConversationReplyFooter(props: {
   // composer does not re-render while the reader is still typing.
   const appendMessageRef = useRef(appendMessage);
   appendMessageRef.current = appendMessage;
+  const cancelPendingMessagesRef = useRef(cancelPendingMessages);
+  cancelPendingMessagesRef.current = cancelPendingMessages;
   const onPinRequestRef = useRef(props.onPinRequest);
   onPinRequestRef.current = props.onPinRequest;
   const onSubmit = useCallback(
@@ -284,8 +286,25 @@ function ConversationReplyFooter(props: {
     onPinRequestRef.current();
   }, []);
   const onSubmitStart = useCallback(() => {
+    cancelPendingMessagesRef.current.reset();
     onPinRequestRef.current();
   }, []);
+  const cancellableMessageIds = props.pendingMessages
+    .filter((message) => message.clientStatus === undefined)
+    .map((message) => message.inboundMessageId);
+  const cancellableMessageIdsRef = useRef(cancellableMessageIds);
+  cancellableMessageIdsRef.current = cancellableMessageIds;
+  const onCancelQueue = useCallback(() => {
+    const inboundMessageIds = cancellableMessageIdsRef.current;
+    if (inboundMessageIds.length === 0) return;
+    cancelPendingMessagesRef.current.mutate({ inboundMessageIds });
+  }, []);
+  const cancelError = Boolean(
+    cancelPendingMessages.error &&
+    cancelPendingMessages.variables?.inboundMessageIds?.some((id) =>
+      cancellableMessageIds.includes(id),
+    ),
+  );
 
   return (
     <div className="px-2 py-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] md:px-7 md:py-4 md:pb-4">
@@ -303,11 +322,11 @@ function ConversationReplyFooter(props: {
           <PendingAuthorization authorization={props.pendingAuthorization} />
         ) : null}
         <PendingMailboxStack
-          cancelError={Boolean(cancelPendingMessages.error)}
+          cancelError={cancelError}
           cancelPending={cancelPendingMessages.isPending}
           conversation={props.conversation}
           messages={props.pendingMessages}
-          onCancelQueue={() => cancelPendingMessages.mutate({})}
+          onCancelQueue={onCancelQueue}
           onRetry={onRetry}
         />
         <ConversationComposer

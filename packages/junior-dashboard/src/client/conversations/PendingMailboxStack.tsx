@@ -212,7 +212,10 @@ export function PendingMailboxStack(props: {
   const visibleRows = showCollapsed ? previewRows : rows;
   const hiddenCount = Math.max(0, rows.length - COLLAPSED_PENDING_ROW_COUNT);
   const toggleExpanded = () => setExpanded((value) => !value);
-  const showCancel = Boolean(props.onCancelQueue);
+  const cancellableCount = rows.filter(
+    (message) => message.clientStatus === undefined,
+  ).length;
+  const showCancel = cancellableCount > 0 && Boolean(props.onCancelQueue);
   const countLabel =
     rows.length === 1 ? "1 queued message" : `${rows.length} queued messages`;
 
@@ -236,7 +239,7 @@ export function PendingMailboxStack(props: {
           </Button>
         </div>
       ) : null}
-      {props.cancelError ? (
+      {showCancel && props.cancelError ? (
         <div className="border-t border-amber-300/15 px-3 py-1.5 font-sans text-xs text-amber-100/75 md:px-3.5">
           Could not cancel queued messages. Try again.
         </div>

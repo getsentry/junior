@@ -23,7 +23,13 @@ import {
   conversationPendingMessagesReportSchema,
 } from "@sentry/junior/api/schema";
 
-import { DashboardApiError, del, fetchDashboardJson, patch, post } from "../http";
+import {
+  DashboardApiError,
+  del,
+  fetchDashboardJson,
+  patch,
+  post,
+} from "../http";
 import {
   conversationOutboxMessageForSubmit,
   conversationOutboxQueryKey,
@@ -224,7 +230,7 @@ export function useCancelConversationPendingMessages(conversationId: string) {
         `/api/conversations/${encodeURIComponent(conversationId)}/pending-messages`,
         args ?? {},
       ),
-    onMutate: async () => {
+    onMutate: async (args) => {
       await queryClient.cancelQueries({
         exact: true,
         queryKey: conversationPendingMessagesQueryKey(conversationId),
@@ -238,7 +244,12 @@ export function useCancelConversationPendingMessages(conversationId: string) {
           conversationPendingMessagesQueryKey(conversationId),
           {
             ...previousPending,
-            messages: [],
+            messages: args?.inboundMessageIds
+              ? previousPending.messages.filter(
+                  (message) =>
+                    !args.inboundMessageIds!.includes(message.inboundMessageId),
+                )
+              : [],
           },
         );
       }
