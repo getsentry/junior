@@ -5,10 +5,8 @@ import {
   createTestThread,
   createTestDestination,
 } from "../../fixtures/slack-harness";
-import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
-import {
-  deliverAssistantMessagesForTest,
-} from "../../fixtures/agent-runner";
+import { createModelAgentRunnerForRun } from "../../fixtures/agent-runner";
+import { createModelStream } from "../../fixtures/model-stream";
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -64,39 +62,26 @@ describe("Slack behavior: attachment handling", () => {
           completeText: completeTextMock,
         },
         replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              const _prompt = request.instruction.text;
-              const context = request;
-
-              const attachments = context?.instruction.attachments ?? [];
-              capturedAttachmentCounts.push(attachments.length);
-              if (attachments[0]) {
-                capturedAttachmentMediaTypes.push(attachments[0].mediaType);
-              }
-
-              await deliverAssistantMessagesForTest(request, [
-                { text: "Image received. The chart trend is upward." },
-              ]);
-              return completedAgentRun({
+          agentRunner: createModelAgentRunnerForRun((request) => {
+            const attachments = request.instruction.attachments ?? [];
+            capturedAttachmentCounts.push(attachments.length);
+            if (attachments[0]) {
+              capturedAttachmentMediaTypes.push(attachments[0].mediaType);
+            }
+            return createModelStream([
+              {
+                type: "text",
                 text: "Image received. The chart trend is upward.",
-                diagnostics: {
-                  assistantMessageCount: 1,
-                  modelId: "fake-agent-model",
-                  outcome: "success" as const,
-                  toolCalls: [],
-                  toolErrorCount: 0,
-                  toolResultCount: 0,
-                  usedPrimaryText: true,
-                },
-              });
-            },
-          },
+              },
+            ]);
+          }),
         },
       },
     });
 
-    const thread = await createTestThread({ id: "slack:C0BEHAVIOR:1700004000.000" });
+    const thread = await createTestThread({
+      id: "slack:C0BEHAVIOR:1700004000.000",
+    });
     const message = createTestMessage({
       id: "m-attachment-1",
       text: "<@U0APP> summarize this chart",
@@ -131,8 +116,8 @@ describe("Slack behavior: attachment handling", () => {
     const completeTextMock = vi.fn(async () => {
       throw new Error("vision unavailable");
     });
-    const executeAgentRun = vi.fn(async (request) => {
-      const attachments = request?.instruction?.attachments ?? [];
+    const streamForRun = vi.fn((request) => {
+      const attachments = request.instruction.attachments ?? [];
       expect(attachments).toEqual([
         expect.objectContaining({
           filename: "error.png",
@@ -142,23 +127,12 @@ describe("Slack behavior: attachment handling", () => {
           ),
         }),
       ]);
-      await deliverAssistantMessagesForTest(request, [
+      return createModelStream([
         {
+          type: "text",
           text: "I couldn’t inspect the attached image. Please try uploading it again.",
         },
       ]);
-      return completedAgentRun({
-        text: "I couldn’t inspect the attached image. Please try uploading it again.",
-        diagnostics: {
-          assistantMessageCount: 1,
-          modelId: "fake-agent-model",
-          outcome: "success" as const,
-          toolCalls: [],
-          toolErrorCount: 0,
-          toolResultCount: 0,
-          usedPrimaryText: true,
-        },
-      });
     });
 
     const { slackRuntime } = await createRuntime({
@@ -167,12 +141,14 @@ describe("Slack behavior: attachment handling", () => {
           completeText: completeTextMock,
         },
         replyExecutor: {
-          agentRunner: { run: executeAgentRun },
+          agentRunner: createModelAgentRunnerForRun(streamForRun),
         },
       },
     });
 
-    const thread = await createTestThread({ id: "slack:C0BEHAVIOR:1700004001.000" });
+    const thread = await createTestThread({
+      id: "slack:C0BEHAVIOR:1700004001.000",
+    });
     const message = createTestMessage({
       id: "m-attachment-2",
       text: "<@U0APP> what does this screenshot mean?",
@@ -196,7 +172,7 @@ describe("Slack behavior: attachment handling", () => {
 
     expect(attachmentFetch).toHaveBeenCalledTimes(1);
     expect(completeTextMock).toHaveBeenCalledTimes(1);
-    expect(executeAgentRun).toHaveBeenCalledTimes(1);
+    expect(streamForRun).toHaveBeenCalledTimes(1);
     expect(thread.posts).toHaveLength(1);
     expect(toPostedText(thread.posts[0])).toContain(
       "I couldn’t inspect the attached image.",
