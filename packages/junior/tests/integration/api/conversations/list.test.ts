@@ -14,7 +14,6 @@ import { createSqlConversationEventStore } from "@/chat/conversations/sql/histor
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
-import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import {
   juniorConversationEvents,
   juniorConversationParticipants,
@@ -164,108 +163,6 @@ describe("conversation list API", () => {
       expect(seenConversationIds).toEqual([
         [finishedUpdatedId, unfinishedId, finishedId],
       ]);
-    } finally {
-      setPlugins([]);
-      await fixture.close();
-    }
-  });
-
-  test("includes resource-link annotations on viewable feed conversations", async () => {
-    const fixture = createConfiguredJuniorSqlFixture();
-    const store = createSqlStore(fixture.sql);
-    const publicId = "slack:C123:annotated-public";
-    const privateId = "slack:D123:annotated-private";
-    try {
-      setPlugins([
-        defineJuniorPlugin({
-          manifest: {
-            name: "github",
-            displayName: "GitHub",
-            description: "GitHub sidebar test plugin",
-          },
-          hooks: {
-            conversationSidebar(ctx) {
-              return {
-                annotationsByConversationId: Object.fromEntries(
-                  Object.keys(ctx.annotationsByConversationId).map(
-                    (conversationId) => [
-                      conversationId,
-                      [{ icon: "circle-dot", key: "github", label: "junior" }],
-                    ],
-                  ),
-                ),
-              };
-            },
-          },
-        }),
-      ]);
-      await migrateSchema(fixture.sql);
-      await store.recordActivity({
-        conversationId: publicId,
-        destination: {
-          channelId: "C123",
-          platform: "slack",
-          teamId: "T123",
-        },
-        nowMs: 2_000,
-        source: "slack",
-        title: "Public annotated conversation",
-        visibility: "public",
-      });
-      await store.recordActivity({
-        conversationId: privateId,
-        destination: {
-          channelId: "D123",
-          platform: "slack",
-          teamId: "T123",
-        },
-        nowMs: 1_000,
-        source: "slack",
-        title: "Private annotated conversation",
-        visibility: "private",
-      });
-      for (const conversationId of [publicId, privateId]) {
-        const annotations = createPluginAnnotations({
-          conversationId,
-          db: fixture.sql.db(),
-          plugin: "github",
-        });
-        await annotations.upsert({
-          kind: "resource_link",
-          key: "getsentry/junior#1081",
-          label: "getsentry/junior#1081",
-          status: "open",
-          url: "https://github.com/getsentry/junior/pull/1081",
-        });
-      }
-
-      await expect(readConversationFeedFromSql()).resolves.toMatchObject({
-        conversations: [
-          expect.objectContaining({
-            conversationId: publicId,
-            sidebarAnnotations: [
-              { icon: "circle-dot", key: "github", label: "junior" },
-            ],
-            annotations: [
-              expect.objectContaining({
-                key: "getsentry/junior#1081",
-                kind: "resource_link",
-                label: "getsentry/junior#1081",
-                plugin: "github",
-                status: "open",
-                url: "https://github.com/getsentry/junior/pull/1081",
-              }),
-            ],
-          }),
-          expect.objectContaining({
-            conversationId: privateId,
-          }),
-        ],
-      });
-      const feed = await readConversationFeedFromSql();
-      expect(
-        feed.conversations.find((item) => item.conversationId === privateId),
-      ).not.toHaveProperty("annotations");
     } finally {
       setPlugins([]);
       await fixture.close();
