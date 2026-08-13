@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
+import { publishImage } from "@/chat/artifacts/store";
 import { resolveBaseUrl } from "@/chat/oauth-flow";
-import { publishImage } from "@/chat/published-images/store";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import {
@@ -9,6 +9,7 @@ import {
   SandboxFileNotFoundError,
 } from "@/chat/tools/sandbox/file-uploads";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
+import type { JuniorSqlDatabase } from "@/db/db";
 
 const outputSchema = juniorToolOutputSchema.extend({
   bytes: z.number().int().positive(),
@@ -19,6 +20,7 @@ const outputSchema = juniorToolOutputSchema.extend({
 
 /** Create a tool that publishes one sandbox image at a public internet URL. */
 export function createPublishImageTool(args: {
+  db: JuniorSqlDatabase;
   publicBaseUrl?: () => string | undefined;
   storage: Pick<AttachmentStorage, "put">;
   workspace: SandboxWorkspace;
@@ -59,10 +61,11 @@ export function createPublishImageTool(args: {
         throw new SandboxFileNotFoundError(targetPath);
       }
 
-      // Validation failures throw ToolInputError. Storage and host-config failures
-      // stay system errors so they reach Sentry.
+      // Validation failures throw ToolInputError. Storage, SQL, and host-config
+      // failures stay system errors so they reach Sentry.
       const image = await publishImage({
         body,
+        db: args.db,
         publicBaseUrl,
         storage: args.storage,
       });

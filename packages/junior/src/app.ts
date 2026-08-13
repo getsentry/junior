@@ -84,7 +84,7 @@ import {
 } from "@/chat/app/production";
 import { createAgentRunner } from "@/chat/runtime/agent-runner";
 import { createVercelAttachmentStorage } from "@/chat/attachments/vercel";
-import { publishedImageGET } from "@/handlers/published-images";
+import { publicArtifactGET } from "@/handlers/artifacts";
 import type { WaitUntilFn } from "@/handlers/types";
 import { ingestResourceEvent } from "@/chat/resource-events/ingest";
 import { createResourceEventTeamIdResolver } from "@/chat/resource-events/workspace";
@@ -739,8 +739,8 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
 
   app.get("/", () => healthGET());
   app.get("/health", () => healthGET());
-  app.get("/public/images/:filename", (c) =>
-    publishedImageGET({
+  app.get("/public/artifacts/:filename", (c) =>
+    publicArtifactGET({
       filename: c.req.param("filename"),
       storage: attachmentStorage,
     }),

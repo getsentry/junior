@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { createPublishImageTool } from "@/chat/tools/publish-image";
+import type { JuniorSqlDatabase } from "@/db/db";
+import { juniorArtifacts } from "@/db/schema";
 
 const PNG_BYTES = Buffer.from([
   137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 0, 0, 0, 0, 1,
@@ -46,10 +48,48 @@ function storage(): AttachmentStorage & {
   };
 }
 
+function memoryDb(): JuniorSqlDatabase & {
+  rows: Map<string, typeof juniorArtifacts.$inferInsert>;
+} {
+  const rows = new Map<string, typeof juniorArtifacts.$inferInsert>();
+  const db = {
+    insert(table: unknown) {
+      if (table !== juniorArtifacts) {
+        throw new Error("unexpected table");
+      }
+      return {
+        values(values: typeof juniorArtifacts.$inferInsert) {
+          return {
+            onConflictDoUpdate(args: {
+              set: Partial<typeof juniorArtifacts.$inferInsert>;
+            }) {
+              const existing = rows.get(values.sha256);
+              if (existing) {
+                rows.set(values.sha256, { ...existing, ...args.set });
+              } else {
+                rows.set(values.sha256, values);
+              }
+              return Promise.resolve();
+            },
+          };
+        },
+      };
+    },
+  };
+  return {
+    rows,
+    db: () => db as never,
+    transaction: async (callback) => callback(),
+    withLock: async (_name, callback) => callback(),
+  };
+}
+
 describe("publishImage tool", () => {
-  it("publishes a sandbox image to a public URL", async () => {
+  it("publishes a sandbox image to a public artifact URL", async () => {
     const imageStorage = storage();
+    const db = memoryDb();
     const tool = createPublishImageTool({
+      db,
       publicBaseUrl: () => "https://junior.example.com",
       storage: imageStorage,
       workspace: workspace(PNG_BYTES),
@@ -61,17 +101,21 @@ describe("publishImage tool", () => {
       bytes: PNG_BYTES.byteLength,
       content_type: "image/png",
       public: true,
-      url: `https://junior.example.com/public/images/${sha256}.png`,
+      url: `https://junior.example.com/public/artifacts/${sha256}.png`,
     });
-    expect(imageStorage.objects.has(`published-images/${sha256}.png`)).toBe(
-      true,
-    );
+    expect(imageStorage.objects.has(`artifacts/${sha256}.png`)).toBe(true);
+    expect(db.rows.get(sha256)).toMatchObject({
+      deleteRequestedAt: null,
+      public: true,
+      storageKey: `artifacts/${sha256}.png`,
+    });
     expect(tool.description).toContain("Anyone on the internet");
     expect(tool.approvalMode).toBe("review");
   });
 
   it("rejects a missing file as input error", async () => {
     const tool = createPublishImageTool({
+      db: memoryDb(),
       publicBaseUrl: () => "https://junior.example.com",
       storage: storage(),
       workspace: workspace(null),
@@ -87,6 +131,7 @@ describe("publishImage tool", () => {
 
   it("rejects unsupported image bytes as input error", async () => {
     const tool = createPublishImageTool({
+      db: memoryDb(),
       publicBaseUrl: () => "https://junior.example.com",
       storage: storage(),
       workspace: workspace(Buffer.from("not-an-image")),
@@ -104,6 +149,7 @@ describe("publishImage tool", () => {
       throw new Error("blob unavailable");
     });
     const tool = createPublishImageTool({
+      db: memoryDb(),
       publicBaseUrl: () => "https://junior.example.com",
       storage: imageStorage,
       workspace: workspace(PNG_BYTES),

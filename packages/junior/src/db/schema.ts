@@ -1,3 +1,4 @@
+import { juniorArtifacts } from "./schema/artifacts";
 import { juniorAttachments } from "./schema/attachments";
 import { juniorConversationAnnotations } from "./schema/conversation-annotations";
 import { juniorApiTokens } from "./schema/api-tokens";
@@ -22,6 +23,7 @@ import {
 import { juniorUsers } from "./schema/users";
 
 export {
+  juniorArtifacts,
   juniorAttachments,
   juniorConversationAnnotations,
   juniorApiTokens,
@@ -43,6 +45,7 @@ export {
 };
 
 export const juniorSqlSchema = {
+  juniorArtifacts,
   juniorAttachments,
   juniorConversationAnnotations,
   juniorApiTokens,
