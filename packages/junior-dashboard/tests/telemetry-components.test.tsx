@@ -334,6 +334,7 @@ describe("dashboard canonical-event components", () => {
           onClick: () => {},
           pending: false,
         }}
+        conversationId="conversation-1"
         identity={null}
         live={false}
         onSearchChange={() => {}}

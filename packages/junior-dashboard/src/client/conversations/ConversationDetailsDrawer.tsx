@@ -5,6 +5,7 @@ import { Drawer } from "../components/Drawer";
 /** Show advanced identity, runtime, and resource details for a conversation. */
 export function ConversationDetailsDrawer(props: {
   annotations: ReactNode;
+  conversationId: string;
   identity: ReactNode;
   onClose(): void;
   privacy: ReactNode;
@@ -36,7 +37,7 @@ export function ConversationDetailsDrawer(props: {
         </>
       }
       onClose={props.onClose}
-      openKey={props.title}
+      openKey={props.conversationId}
       titleId={titleId}
     >
       {sections.length > 0 ? (

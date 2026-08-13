@@ -81,6 +81,7 @@ export function ConversationPage(props: {
       >
         <section className="min-w-0">
           <ConversationHeader
+            conversationId={conversationId}
             copyAction={
               <CopyMarkdownButton
                 key={conversationDetail?.conversationId ?? "loading"}

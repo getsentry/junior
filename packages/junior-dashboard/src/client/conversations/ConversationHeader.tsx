@@ -13,6 +13,7 @@ export function ConversationHeader(props: {
   copyAction?: ReactNode;
   annotations: ReactNode;
   archive: ConversationArchiveAction;
+  conversationId: string;
   identity: ReactNode;
   live: boolean;
   meta?: ReactNode;
@@ -104,6 +105,7 @@ export function ConversationHeader(props: {
       {detailsOpen ? (
         <ConversationDetailsDrawer
           annotations={props.annotations}
+          conversationId={props.conversationId}
           identity={props.identity}
           onClose={() => setDetailsOpen(false)}
           privacy={props.privacy}
