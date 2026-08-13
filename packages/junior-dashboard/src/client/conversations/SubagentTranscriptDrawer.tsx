@@ -27,12 +27,25 @@ export function SubagentTranscriptDrawer(props: {
   onClose: () => void;
   target: SubagentTranscriptTarget | undefined;
 }) {
-  const query = useConversationData(props.target?.conversationId);
+  if (!props.target) return null;
+  // Remount per child so search/view state does not leak across drawer reuse.
+  return (
+    <SubagentTranscriptDrawerContent
+      key={props.target.conversationId}
+      onClose={props.onClose}
+      target={props.target}
+    />
+  );
+}
+
+function SubagentTranscriptDrawerContent(props: {
+  onClose: () => void;
+  target: SubagentTranscriptTarget;
+}) {
+  const query = useConversationData(props.target.conversationId);
   const [view, setView] = useState<TranscriptViewMode>("rich");
   const [search, setSearch] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
-
-  if (!props.target) return null;
 
   const detail = query.data;
   const label = detail?.displayTitle || props.target.part.subagentKind;
