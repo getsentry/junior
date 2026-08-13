@@ -97,7 +97,13 @@ export function Tooltip({
     };
   }, [open, tooltipId]);
 
-  if (!available) return children;
+  // Keep chart/layout wrappers even when tooltips are off.
+  if (!available) {
+    if (svgTrigger) return children;
+    return (
+      <span className={cn("inline-flex", triggerClassName)}>{children}</span>
+    );
+  }
 
   const card = (
     <HoverCard.Root
