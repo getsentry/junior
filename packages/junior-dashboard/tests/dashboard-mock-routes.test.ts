@@ -262,7 +262,7 @@ describe("dashboard canonical-event mock routes", () => {
     );
     expect(dashboardQa.annotations).toHaveLength(2);
     expect(dashboardQa.sidebarAnnotations).toEqual([
-      { key: "github", label: "junior", status: "open" },
+      { icon: "circle-dot", key: "github", label: "junior" },
     ]);
     expect(dashboardQa.unfinishedWork).toBe(true);
 

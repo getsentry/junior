@@ -565,11 +565,12 @@ describe("dashboard canonical-event components", () => {
   it("renders plugin-selected sidebar annotations", () => {
     const html = renderToStaticMarkup(
       <ConversationSidebarAnnotations
-        annotations={[{ key: "github", label: "2 repos", status: "merged" }]}
+        annotations={[{ icon: "git-merge", key: "github", label: "2 repos" }]}
       />,
     );
     expect(html).toContain("2 repos");
     expect(html).toContain("Merged");
+    expect(html).toContain("min-w-0 truncate");
   });
 
   it("distinguishes initial detail failures from stale refresh failures", () => {

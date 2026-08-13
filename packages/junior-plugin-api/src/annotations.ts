@@ -46,11 +46,19 @@ export interface PluginConversationAnnotations {
   forConversation(conversationId: string): PluginAnnotations;
 }
 
+export const conversationSidebarIconSchema = z.enum([
+  "circle-dot",
+  "circle-dashed",
+  "circle-x",
+  "git-merge",
+  "triangle-alert",
+]);
+
 export const conversationSidebarAnnotationSchema = z
   .object({
+    icon: conversationSidebarIconSchema.optional(),
     key: z.string().trim().min(1).max(256),
     label: z.string().trim().min(1).max(256),
-    status: resourceLinkAnnotationSchema.shape.status,
   })
   .strict();
 export type ConversationSidebarAnnotation = z.output<

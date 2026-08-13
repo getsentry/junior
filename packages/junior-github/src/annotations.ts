@@ -11,6 +11,14 @@ const STATUS_RANK = {
   closed: 1,
 } as const;
 
+const STATUS_ICON = {
+  warning: "triangle-alert",
+  open: "circle-dot",
+  draft: "circle-dashed",
+  merged: "git-merge",
+  closed: "circle-x",
+} as const;
+
 type GitHubAnnotationStatus = keyof typeof STATUS_RANK;
 
 function repositoryName(annotation: ConversationAnnotation): string | undefined {
@@ -39,8 +47,8 @@ export function githubSidebarAnnotation(
     "closed",
   );
   return {
+    icon: STATUS_ICON[status],
     key: "github",
     label: repos.size === 1 ? [...repos][0]! : `${repos.size} repos`,
-    status,
   };
 }

@@ -190,7 +190,7 @@ describe("conversation list API", () => {
                   Object.keys(ctx.annotationsByConversationId).map(
                     (conversationId) => [
                       conversationId,
-                      [{ key: "github", label: "junior", status: "open" }],
+                      [{ icon: "circle-dot", key: "github", label: "junior" }],
                     ],
                   ),
                 ),
@@ -244,7 +244,7 @@ describe("conversation list API", () => {
           expect.objectContaining({
             conversationId: publicId,
             sidebarAnnotations: [
-              { key: "github", label: "junior", status: "open" },
+              { icon: "circle-dot", key: "github", label: "junior" },
             ],
             annotations: [
               expect.objectContaining({

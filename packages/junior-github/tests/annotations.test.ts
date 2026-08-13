@@ -29,25 +29,25 @@ describe("GitHub conversation sidebar", () => {
         annotation("junior", 1, "merged"),
         annotation("junior", 2, "closed"),
       ]),
-    ).toEqual({ key: "github", label: "junior", status: "merged" });
+    ).toEqual({ icon: "git-merge", key: "github", label: "junior" });
     expect(
       githubSidebarAnnotation([
         annotation("junior", 1, "merged"),
         annotation("payments", 2, "open"),
       ]),
-    ).toEqual({ key: "github", label: "2 repos", status: "open" });
+    ).toEqual({ icon: "circle-dot", key: "github", label: "2 repos" });
     expect(
       githubSidebarAnnotation([
         annotation("junior", 1, "closed"),
         annotation("junior", 2, "closed"),
       ]),
-    ).toEqual({ key: "github", label: "junior", status: "closed" });
+    ).toEqual({ icon: "circle-x", key: "github", label: "junior" });
   });
 
   it("keeps valid 100-character GitHub repository names", () => {
     const repo = "r".repeat(100);
     const sidebar = githubSidebarAnnotation([annotation(repo, 1, "open")]);
-    expect(sidebar).toEqual({ key: "github", label: repo, status: "open" });
+    expect(sidebar).toEqual({ icon: "circle-dot", key: "github", label: repo });
     expect(() => conversationSidebarAnnotationSchema.parse(sidebar)).not.toThrow();
   });
 });

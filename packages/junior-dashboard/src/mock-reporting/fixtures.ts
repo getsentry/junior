@@ -132,7 +132,7 @@ function activeConversation(nowMs: number): ConversationDetailReport {
     assignedWork: true,
     unfinishedWork: true,
     isPriority: true,
-    sidebarAnnotations: [{ key: "github", label: "payments", status: "open" }],
+    sidebarAnnotations: [{ icon: "circle-dot", key: "github", label: "payments" }],
     annotations: [
       {
         kind: "resource_link",
@@ -330,7 +330,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
     assignedWork: true,
     unfinishedWork: true,
     isPriority: true,
-    sidebarAnnotations: [{ key: "github", label: "junior", status: "open" }],
+    sidebarAnnotations: [{ icon: "circle-dot", key: "github", label: "junior" }],
     annotations: [
       {
         kind: "resource_link",
@@ -762,7 +762,7 @@ function longConversation(nowMs: number): ConversationDetailReport {
     assignedWork: true,
     unfinishedWork: true,
     isPriority: true,
-    sidebarAnnotations: [{ key: "github", label: "2 repos", status: "open" }],
+    sidebarAnnotations: [{ icon: "circle-dot", key: "github", label: "2 repos" }],
     annotations: [
       {
         kind: "resource_link",
@@ -838,7 +838,7 @@ function incidentConversation(nowMs: number): ConversationDetailReport {
     // Finished links show the final annotation state in the sidebar.
     assignedWork: true,
     finishedWorkAt: iso(nowMs, -42 * 60_000),
-    sidebarAnnotations: [{ key: "github", label: "payments", status: "merged" }],
+    sidebarAnnotations: [{ icon: "git-merge", key: "github", label: "payments" }],
     annotations: [
       {
         kind: "resource_link",
