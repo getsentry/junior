@@ -50,7 +50,7 @@ import {
   configureGit,
   prepareCommitMsgHook,
 } from "./git-config.js";
-import { linkifyGitHubReferences } from "./slack-reply-markdown.js";
+import { linkifyGitHubReferences } from "./reply-markdown.js";
 import {
   CREATE_TOOL_ROUTING_GUIDANCE,
   GITHUB_APP_ID_ENV,
@@ -736,7 +736,7 @@ export function githubPlugin(
       ],
     },
     hooks: {
-      slackReplyMarkdown(ctx) {
+      formatMarkdown(ctx) {
         return linkifyGitHubReferences(ctx.text);
       },
       async unfinishedWork(ctx) {

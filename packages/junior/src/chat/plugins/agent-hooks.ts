@@ -390,12 +390,12 @@ export function getPlugins(): PluginRegistration[] {
   return [...registeredPlugins];
 }
 
-/** Apply provider-owned reference formatting before core formats a Slack reply. */
-export function applyPluginSlackReplyMarkdown(text: string): string {
+/** Apply destination-neutral plugin Markdown rewrites before delivery formatting. */
+export function applyPluginFormatMarkdown(text: string): string {
   let transformed = text;
   for (const plugin of getPlugins()) {
     const pluginName = plugin.manifest.name;
-    const hook = plugin.hooks?.slackReplyMarkdown;
+    const hook = plugin.hooks?.formatMarkdown;
     if (!hook) {
       continue;
     }
@@ -407,14 +407,14 @@ export function applyPluginSlackReplyMarkdown(text: string): string {
       if (typeof next === "string") {
         transformed = next;
       } else {
-        logWarn("plugin.slack_reply_markdown.contribution_result.invalid", {
+        logWarn("plugin.format_markdown.contribution_result.invalid", {
           "app.plugin.name": pluginName,
           "app.plugin.validation_reason": "invalid_shape",
         });
       }
     } catch (error) {
       // Fail open: reply delivery must not depend on optional provider formatting.
-      logWarn("plugin.slack_reply_markdown.hook.failed", {
+      logWarn("plugin.format_markdown.hook.failed", {
         "app.plugin.name": pluginName,
         "exception.message": safeErrorMessage(error),
       });

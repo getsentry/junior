@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { githubPlugin } from "../src/plugin.js";
-import { linkifyGitHubReferences } from "../src/slack-reply-markdown.js";
+import { linkifyGitHubReferences } from "../src/reply-markdown.js";
 
-describe("GitHub Slack reply markdown", () => {
+describe("GitHub reply markdown", () => {
   it("turns repository issue references into links", () => {
     expect(linkifyGitHubReferences("opened getsentry/junior#1509 for review")).toBe(
       "opened [getsentry/junior#1509](https://github.com/getsentry/junior/issues/1509) for review",
     );
   });
 
-  it("does not rewrite references in code, links, Slack tokens, or URLs", () => {
+  it("does not rewrite references in code, links, angle tokens, or URLs", () => {
     expect(
       linkifyGitHubReferences(
         [
@@ -42,7 +42,7 @@ describe("GitHub Slack reply markdown", () => {
   });
 
   it("registers linkification on the GitHub plugin", () => {
-    const hook = githubPlugin().hooks?.slackReplyMarkdown;
+    const hook = githubPlugin().hooks?.formatMarkdown;
 
     expect(hook).toBeDefined();
     expect(

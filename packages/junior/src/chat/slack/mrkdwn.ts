@@ -1,5 +1,5 @@
 import { truncateStatusText } from "@/chat/slack/status-format";
-import { applyPluginSlackReplyMarkdown } from "@/chat/plugins/agent-hooks";
+import { applyPluginFormatMarkdown } from "@/chat/plugins/agent-hooks";
 
 /** Escape dynamic text for Slack mrkdwn without changing intended formatting. */
 export function escapeSlackMrkdwnText(text: string): string {
@@ -283,13 +283,12 @@ export function ensureBlockSpacing(text: string): string {
  * Normalize model-authored Slack markdown for delivery via `markdown_text`
  * or `{ type: "markdown" }` blocks.
  *
- * Plugins first transform provider-owned references. Core then pre-wraps bare
- * URLs as Slack explicit links so Slack's auto-linker does not consume adjacent
- * formatting markers. Slack reply delivery owns chunking and continuation
- * markers separately.
+ * Plugins first rewrite provider-owned references into ordinary Markdown. Core
+ * then applies Slack-only delivery shaping: bare URL wrapping and block spacing.
+ * Slack reply delivery owns chunking and continuation markers separately.
  */
 export function normalizeSlackReplyMarkdown(text: string): string {
-  let normalized = applyPluginSlackReplyMarkdown(text)
+  let normalized = applyPluginFormatMarkdown(text)
     .replace(/\r\n?/g, "\n")
     .replace(/[ \t]+$/gm, "");
   normalized = wrapBareUrls(normalized);

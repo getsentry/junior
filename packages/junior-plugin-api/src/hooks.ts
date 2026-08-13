@@ -36,8 +36,8 @@ import type {
 } from "./prompt";
 import type { PluginContext } from "./context";
 
-/** One plugin-owned transformation of a Slack reply before core formatting. */
-export interface SlackReplyMarkdownHookContext
+/** One plugin-owned markdown rewrite before destination delivery formatting. */
+export interface FormatMarkdownHookContext
   extends Pick<PluginContext, "db" | "log" | "plugin"> {
   text: string;
 }
@@ -92,8 +92,11 @@ export interface PluginHooks {
   slackConversationLink?(
     ctx: SlackConversationLinkHookContext,
   ): SlackConversationLink | undefined;
-  /** Transform provider-owned references before core formats a Slack reply. */
-  slackReplyMarkdown?(ctx: SlackReplyMarkdownHookContext): string;
+  /**
+   * Rewrite provider-owned references into ordinary Markdown before destination
+   * delivery formatting. Keep this destination-neutral; do not emit Slack mrkdwn.
+   */
+  formatMarkdown?(ctx: FormatMarkdownHookContext): string;
   tools?(
     ctx: ToolRegistrationHookContext,
   ): Record<string, PluginToolDefinition>;

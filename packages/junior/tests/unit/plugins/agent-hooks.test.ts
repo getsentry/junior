@@ -30,7 +30,7 @@ vi.mock("@/chat/plugins/viewer", () => ({
   resolveViewerUser: resolveViewerUserMock,
 }));
 import {
-  applyPluginSlackReplyMarkdown,
+  applyPluginFormatMarkdown,
   createPluginHookRunner,
   getPluginApiRoutes,
   getPluginSystemPromptContributions,
@@ -213,7 +213,7 @@ describe("agent plugin hooks", () => {
     ).toBe("private");
   });
 
-  it("applies slack reply markdown transforms and fails open on plugin errors", () => {
+  it("applies formatMarkdown transforms and fails open on plugin errors", () => {
     const previous = setPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -222,7 +222,7 @@ describe("agent plugin hooks", () => {
           description: "A demo",
         },
         hooks: {
-          slackReplyMarkdown({ text }) {
+          formatMarkdown({ text }) {
             return text.replaceAll("alpha", "beta");
           },
         },
@@ -234,16 +234,16 @@ describe("agent plugin hooks", () => {
           description: "Z demo",
         },
         hooks: {
-          slackReplyMarkdown() {
+          formatMarkdown() {
             throw new Error("boom");
           },
         },
       }),
     ]);
     try {
-      expect(applyPluginSlackReplyMarkdown("alpha one")).toBe("beta one");
+      expect(applyPluginFormatMarkdown("alpha one")).toBe("beta one");
       expect(logWarnMock).toHaveBeenCalledWith(
-        "plugin.slack_reply_markdown.hook.failed",
+        "plugin.format_markdown.hook.failed",
         expect.objectContaining({
           "app.plugin.name": "z-demo",
         }),
