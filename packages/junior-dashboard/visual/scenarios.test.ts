@@ -16,6 +16,14 @@ describe("selectVisualScenarioIds", () => {
     ).toEqual(["conversations", "conversation-detail"]);
   });
 
+  it("selects the person profile for people page changes", () => {
+    expect(
+      selectVisualScenarioIds([
+        "packages/junior-dashboard/src/client/pages/people/PersonProfilePage.tsx",
+      ]),
+    ).toEqual(["person-profile"]);
+  });
+
   it("selects the component gallery for shared component changes", () => {
     expect(
       selectVisualScenarioIds([

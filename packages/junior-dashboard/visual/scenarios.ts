@@ -45,6 +45,14 @@ export const VISUAL_SCENARIOS: VisualScenario[] = [
     viewports: [DESKTOP, MOBILE],
   },
   {
+    id: "person-profile",
+    label: "Person profile",
+    path: `/people/${encodeURIComponent("avery@sentry.io")}`,
+    // Wait for the plugin section so async profile reports are present.
+    ready: "GitHub",
+    viewports: [DESKTOP, MOBILE],
+  },
+  {
     id: "system",
     label: "System",
     path: "/system",
@@ -91,6 +99,11 @@ const PATH_RULES: PathRule[] = [
         "packages/junior-dashboard/src/client/conversations/",
       ) || filePath.includes("/mock-reporting/"),
     scenarioIds: ["conversations", "conversation-detail"],
+  },
+  {
+    match: (filePath) =>
+      filePath.startsWith("packages/junior-dashboard/src/client/pages/people/"),
+    scenarioIds: ["person-profile"],
   },
   {
     match: (filePath) =>
