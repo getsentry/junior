@@ -44,6 +44,7 @@ reports, and other typed hook surfaces exported by this package.
   database, logging, and only the host capabilities required by that hook.
 - Prompt hooks return bounded structured prompt messages rather than mutate the
   core prompt.
+- `formatMarkdown` is a pure text rewrite into ordinary Markdown before delivery.
 - User prompt hooks for durable turns may emit registered structured events
   through `ctx.events` for auxiliary work completed while building context.
 - Tool hooks return model-visible schemas aligned with their executor inputs.
@@ -58,6 +59,9 @@ reports, and other typed hook surfaces exported by this package.
   binds the plugin namespace and owns access to the conversation event log.
   Event `costUsd` is additive operation cost and must not duplicate cost
   already recorded in the conversation's agent model usage.
+- Profile report hooks return the same bounded operational report content for
+  one subject user on a person profile. Core owns viewer authorization,
+  collection, sanitization, and browser rendering.
 - Tool hooks may lazily resolve the active actor's canonical identity and linked
   user through `ctx.users.resolveActor()`.
 - Authenticated API route hooks receive `ctx.users.resolve(email)` for lazy

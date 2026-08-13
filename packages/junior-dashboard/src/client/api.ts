@@ -162,6 +162,21 @@ export function useActorProfileData(email: string | undefined) {
   });
 }
 
+/** Fetch person-scoped plugin reports for one People profile. */
+export function useActorPluginReportsData(email: string | undefined) {
+  return useQuery({
+    enabled: Boolean(email),
+    queryKey: ["dashboard", "people", email, "plugin-reports"],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        pluginOperationalReportFeedSchema,
+        `/api/people/${encodeURIComponent(email!)}/plugin-reports`,
+        signal,
+      ),
+    retry: false,
+  });
+}
+
 /** Fetch and refresh the authenticated viewer's rolling model spend. */
 export function usePersonalSpendData(enabled: boolean) {
   return useQuery({

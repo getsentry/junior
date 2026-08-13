@@ -138,34 +138,10 @@ describe("normalizeSlackReplyMarkdown", () => {
     );
   });
 
-  it("turns bare owner/repo#number mentions into Markdown links", () => {
+  it("leaves provider-owned references unchanged without a plugin", () => {
     expect(
       normalizeSlackReplyMarkdown("opened getsentry/junior#1509 for review"),
-    ).toBe(
-      "opened [getsentry/junior#1509](https://github.com/getsentry/junior/issues/1509) for review",
-    );
-  });
-
-  it("does not rewrite owner/repo#number inside code or existing links", () => {
-    expect(normalizeSlackReplyMarkdown("`getsentry/junior#1509`")).toBe(
-      "`getsentry/junior#1509`",
-    );
-    expect(
-      normalizeSlackReplyMarkdown(
-        "[getsentry/junior#1509](https://github.com/getsentry/junior/pull/1509)",
-      ),
-    ).toBe(
-      "[getsentry/junior#1509](https://github.com/getsentry/junior/pull/1509)",
-    );
-    expect(
-      normalizeSlackReplyMarkdown(
-        "before\n```\ngetsentry/junior#1509\n```\nafter",
-      ),
-    ).toBe("before\n\n```\ngetsentry/junior#1509\n```\n\nafter");
-  });
-
-  it("leaves bare PR #number text alone without a repo", () => {
-    expect(normalizeSlackReplyMarkdown("see PR #1509")).toBe("see PR #1509");
+    ).toBe("opened getsentry/junior#1509 for review");
   });
 });
 

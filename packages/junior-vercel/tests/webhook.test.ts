@@ -108,6 +108,28 @@ Deployment: dpl_123abc`,
     },
   );
 
+  it("ignores whitespace-only project IDs", () => {
+    const body = webhookBody();
+    body.payload.project.id = " ";
+
+    expect(normalizeVercelResourceEvents({ body })).toEqual([]);
+  });
+
+  it("accepts an opaque Vercel project ID", () => {
+    const body = webhookBody();
+    body.payload.project.id = "QmLegacyProject123";
+
+    expect(normalizeVercelResourceEvents({ body })).toEqual([
+      expect.objectContaining({ identifier: "QmLegacyProject123" }),
+      expect.objectContaining({
+        identifier: "QmLegacyProject123:production",
+      }),
+      expect.objectContaining({
+        identifier: `QmLegacyProject123:production:${COMMIT_SHA}`,
+      }),
+    ]);
+  });
+
   it("maps a null Vercel target and alternate Git provider metadata to preview", () => {
     const body = webhookBody("deployment.succeeded", null);
     body.payload.deployment.meta = {

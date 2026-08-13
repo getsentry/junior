@@ -24,6 +24,8 @@ type TooltipProps = {
 const VIEWPORT_GAP = 8;
 const ANCHOR_GAP = 10;
 const CLOSE_DELAY_MS = 150;
+const TOOLTIP_MEDIA_QUERY =
+  "(min-width: 768px) and (hover: hover) and (pointer: fine)";
 
 /** SVG hosts cannot wrap triggers in an HTML span without collapsing geometry. */
 const SVG_TRIGGER_TAGS = new Set([
@@ -58,7 +60,23 @@ export function Tooltip({
   const touchStartedOpenRef = useRef<boolean | null>(null);
   const suppressOpenUntilRef = useRef(0);
   const [open, setOpen] = useState(false);
+  const [available, setAvailable] = useState(() =>
+    typeof window === "undefined"
+      ? false
+      : window.matchMedia(TOOLTIP_MEDIA_QUERY).matches,
+  );
   const svgTrigger = isSvgTrigger(children);
+
+  useEffect(() => {
+    const media = window.matchMedia(TOOLTIP_MEDIA_QUERY);
+    const syncAvailable = () => {
+      setAvailable(media.matches);
+      if (!media.matches) setOpen(false);
+    };
+    syncAvailable();
+    media.addEventListener("change", syncAvailable);
+    return () => media.removeEventListener("change", syncAvailable);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -78,6 +96,14 @@ export function Tooltip({
       document.removeEventListener("pointerdown", onPointerDown, true);
     };
   }, [open, tooltipId]);
+
+  // Keep chart/layout wrappers even when tooltips are off.
+  if (!available) {
+    if (svgTrigger) return children;
+    return (
+      <span className={cn("inline-flex", triggerClassName)}>{children}</span>
+    );
+  }
 
   const card = (
     <HoverCard.Root

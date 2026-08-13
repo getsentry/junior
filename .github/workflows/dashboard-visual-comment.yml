@@ -1,0 +1,114 @@
+name: Dashboard Visual Comment
+
+# Runs only from the default branch after a successful Dashboard Visual capture.
+# Write tokens never execute PR-head code or install PR packages.
+on:
+  workflow_run:
+    workflows: ["Dashboard Visual"]
+    types: [completed]
+
+concurrency:
+  group: dashboard-visual-comment-${{ github.event.workflow_run.head_repository.full_name }}-${{ github.event.workflow_run.head_branch }}-${{ github.event.workflow_run.conclusion }}
+  cancel-in-progress: true
+
+jobs:
+  comment:
+    name: visual / comment
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 10
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request'
+    permissions:
+      actions: read
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.repository.default_branch }}
+          sparse-checkout: |
+            packages/junior-dashboard/visual/post-pr-comment.mjs
+          sparse-checkout-cone-mode: false
+
+      - name: Check trusted publisher
+        id: publisher
+        run: |
+          set -euo pipefail
+          if [[ -f packages/junior-dashboard/visual/post-pr-comment.mjs ]]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "Trusted publisher missing on default branch; skip comment until merge."
+          fi
+
+      - name: Resolve PR number from workflow_run
+        id: pr
+        if: steps.publisher.outputs.present == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          REPOSITORY: ${{ github.repository }}
+          EVENT_PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
+        run: |
+          set -euo pipefail
+
+          pr_number=""
+          if [[ -n "${EVENT_PR_NUMBER:-}" ]]; then
+            pr_number="$EVENT_PR_NUMBER"
+          else
+            # workflow_run.pull_requests can be empty; resolve by head SHA.
+            pr_number="$(
+              gh api "repos/${REPOSITORY}/commits/${HEAD_SHA}/pulls" \
+                --jq 'map(select(.state == "open" or .merged_at != null)) | .[0].number // empty'
+            )"
+          fi
+
+          if [[ ! "$pr_number" =~ ^[0-9]+$ ]]; then
+            echo "Could not resolve a trusted PR number for ${HEAD_SHA}; skip comment."
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          head_sha="$(
+            gh api "repos/${REPOSITORY}/pulls/${pr_number}" --jq .head.sha
+          )"
+          if [[ "$head_sha" != "$HEAD_SHA" ]]; then
+            echo "Resolved PR #${pr_number} head ${head_sha} does not match run head ${HEAD_SHA}; skip comment."
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "found=true" >> "$GITHUB_OUTPUT"
+          echo "number=$pr_number" >> "$GITHUB_OUTPUT"
+
+      - name: Download visual artifacts
+        id: download
+        if: steps.publisher.outputs.present == 'true' && steps.pr.outputs.found == 'true'
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: dashboard-visual
+          path: .playwright/visual-dashboard
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Comment screenshots on PR
+        if: >-
+          steps.publisher.outputs.present == 'true' &&
+          steps.pr.outputs.found == 'true' &&
+          steps.download.outcome == 'success'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.event.workflow_run.head_sha }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+        run: |
+          set -euo pipefail
+          out_dir=.playwright/visual-dashboard
+          if [[ ! -f "$out_dir/manifest.json" ]]; then
+            echo "No visual manifest in artifacts; skip comment."
+            exit 0
+          fi
+          node packages/junior-dashboard/visual/post-pr-comment.mjs "$out_dir"

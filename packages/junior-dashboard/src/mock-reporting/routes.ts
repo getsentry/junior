@@ -18,6 +18,7 @@ import {
   locationParamsSchema,
   personalSpendReportSchema,
   personParamsSchema,
+  pluginOperationalReportFeedSchema,
   taskExecutionListSchema,
   taskListSchema,
   taskParamsSchema,
@@ -33,6 +34,7 @@ import {
   readMockLocationDetail,
   readMockLocationDirectory,
   readMockPeopleDirectory,
+  readMockPeoplePluginReports,
   readMockPeopleProfile,
   readMockPersonalSpend,
   readMockTaskExecutions,
@@ -58,6 +60,16 @@ export function createMockReportingApi(): Hono<{
     return report
       ? jsonResponse(personalSpendReportSchema, report)
       : errorResponse("Person not found.", 404);
+  });
+  app.get("/people/:email/plugin-reports", (c) => {
+    const params = personParamsSchema.safeParse(c.req.param());
+    if (!params.success) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    return jsonResponse(
+      pluginOperationalReportFeedSchema,
+      readMockPeoplePluginReports(params.data.email),
+    );
   });
   app.get("/people/:email", (c) => {
     const params = personParamsSchema.safeParse(c.req.param());

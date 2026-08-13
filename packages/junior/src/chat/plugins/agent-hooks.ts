@@ -22,6 +22,7 @@ import type {
   PluginRegistration,
   SlackToolRegistrationHookContext,
   ToolRegistrationHookContext,
+  User,
   UserPromptContext,
 } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
@@ -388,6 +389,30 @@ export function setPlugins(
 /** Return the current runtime hook plugins without exposing mutable state. */
 export function getPlugins(): PluginRegistration[] {
   return [...registeredPlugins];
+}
+
+/** Apply plugin Markdown rewrites before destination delivery formatting. */
+export function applyPluginFormatMarkdown(text: string): string {
+  let transformed = text;
+  for (const plugin of getPlugins()) {
+    const hook = plugin.hooks?.formatMarkdown;
+    if (!hook) {
+      continue;
+    }
+    try {
+      const next = hook({ text: transformed });
+      if (typeof next === "string") {
+        transformed = next;
+      }
+    } catch (error) {
+      // Fail open: reply delivery must not depend on optional provider formatting.
+      logWarn("plugin.format_markdown.hook.failed", {
+        "app.plugin.name": plugin.manifest.name,
+        "exception.message": safeErrorMessage(error),
+      });
+    }
+  }
+  return transformed;
 }
 
 /** Collect stable plugin prompt contributions for the static system prompt. */
@@ -1211,6 +1236,48 @@ export async function getPluginOperationalReports(
         error: error instanceof Error ? error.message : String(error),
       });
       reports.push(failedOperationalReport({ nowMs, pluginName }));
+    }
+  }
+  return reports;
+}
+
+/** Collect person-scoped plugin reports for one profile subject. */
+export async function getPluginProfileReports(args: {
+  nowMs: number;
+  subject: User;
+  viewer: User;
+}): Promise<PluginOperationalReport[]> {
+  const reports: PluginOperationalReport[] = [];
+  for (const plugin of getPlugins()) {
+    const pluginName = plugin.manifest.name;
+    const hook = plugin.hooks?.profileReport;
+    if (!hook) {
+      continue;
+    }
+    try {
+      const state = createPluginState(pluginName);
+      const report = await hook({
+        ...basePluginContext(plugin),
+        nowMs: args.nowMs,
+        state: pluginReadState(state),
+        subject: args.subject,
+        viewer: args.viewer,
+      });
+      if (!report) {
+        continue;
+      }
+      reports.push(
+        sanitizeOperationalReport({
+          pluginName,
+          report,
+        }),
+      );
+    } catch (error) {
+      const log = createPluginLogger(pluginName);
+      log.error("Plugin profile report failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      // Keep profile usable when one plugin fails; skip the failed card.
     }
   }
   return reports;

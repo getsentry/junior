@@ -37,6 +37,7 @@ import {
   GITHUB_RELEASE_SUGGESTED_EVENTS,
 } from "./resource-events/release.js";
 import type { GitHubDb } from "./db/database.js";
+import { buildGitHubProfileReport } from "./outcomes/profile-report.js";
 import { buildGitHubOutcomeReport } from "./outcomes/report.js";
 import { classifyGitHubPullRequestCommitComposition } from "./pull-request-outcomes/commit-composition.js";
 import { githubSidebarAnnotation } from "./annotations.js";
@@ -51,6 +52,7 @@ import {
   configureGit,
   prepareCommitMsgHook,
 } from "./git-config.js";
+import { linkifyGitHubReferences } from "./reply-markdown.js";
 import {
   CREATE_TOOL_ROUTING_GUIDANCE,
   GITHUB_APP_ID_ENV,
@@ -748,6 +750,9 @@ export function githubPlugin(
           ),
         };
       },
+      formatMarkdown({ text }) {
+        return linkifyGitHubReferences(text);
+      },
       async unfinishedWork(ctx) {
         const db = ctx.db as GitHubDb;
         const [
@@ -817,6 +822,13 @@ export function githubPlugin(
         return await buildGitHubOutcomeReport({
           db: ctx.db as GitHubDb,
           nowMs: ctx.nowMs,
+        });
+      },
+      async profileReport(ctx) {
+        return await buildGitHubProfileReport({
+          db: ctx.db as GitHubDb,
+          nowMs: ctx.nowMs,
+          userId: ctx.subject.id,
         });
       },
       tools(ctx) {

@@ -380,7 +380,6 @@ function buildOutputSection(platform: PromptPlatform): string {
       `<output format="markdown">`,
       "- Start with the answer or result, not internal process narration.",
       "- Use concise Markdown suitable for terminal output: short paragraphs, bullets, links, and fenced code blocks when helpful.",
-      "- When you mention a pull request, include a direct link. Prefer the full PR URL or a Markdown link; do not leave bare `PR #123` text without a URL or repo.",
       "- End every turn with a final user-facing response.",
       "</output>",
     ].join("\n");
@@ -391,7 +390,6 @@ function buildOutputSection(platform: PromptPlatform): string {
     "- Default to the shortest complete reply—usually 1–5 sentences and under 800 characters. Include only the outcome, decisive evidence, and any blocker or required next action. If useful detail would exceed that, put it in a Slack canvas and reply with the link. An explicit user request for detail overrides this target.",
     "- Start with the answer or result, not internal process narration.",
     "- Use Slack-flavored Markdown: **bold** section labels, `code`, [text](url) links, bullet lists, and fenced code blocks. No hash-prefixed headings and no tables. When the answer primarily lists several URLs, show each URL bare instead of as a labeled link.",
-    "- When you mention a pull request, include a direct link. Prefer the full PR URL or a Markdown link; `owner/repo#number` is also accepted and is linkified on delivery. Do not leave bare `PR #123` text without a URL or repo.",
     "- End every turn with a final user-facing markdown response unless the Slack action rules allow a no-reply completion.",
     "</output>",
   ].join("\n");

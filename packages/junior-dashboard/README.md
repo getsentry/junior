@@ -50,6 +50,11 @@ component integration without standing in for browser E2E.
 Run `JUNIOR_DASHBOARD_COMPONENT_GALLERY=true pnpm dev` from the repository root
 and open `/dev` to inspect the typed component fixtures.
 
+PR visual evidence lives in `visual/`. Capture runs in the standalone
+`Dashboard Visual` workflow; commenting runs from the default branch via
+`Dashboard Visual Comment`. Add the `trigger-visual` label to force every
+registered scenario. See `visual/README.md`.
+
 ## Type scale
 
 Font sizes come from the named scale in `src/tailwind.css` (`text-2xs` through

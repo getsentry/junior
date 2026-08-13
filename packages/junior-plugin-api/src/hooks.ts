@@ -15,6 +15,7 @@ import type {
   HeartbeatHookContext,
   HeartbeatResult,
   OperationalReportHookContext,
+  ProfileReportHookContext,
   ApiRouteRegistrationHookContext,
   PluginOperationalReportContent,
   PluginRoute,
@@ -38,6 +39,11 @@ import type {
   UserPromptContext,
   UserPromptContribution,
 } from "./prompt";
+
+/** Input for a pure Markdown rewrite before destination delivery formatting. */
+export interface FormatMarkdownHookContext {
+  text: string;
+}
 
 export interface PluginHooks {
   conversationSidebar?(
@@ -79,6 +85,16 @@ export interface PluginHooks {
     | Promise<PluginOperationalReportContent | undefined>
     | PluginOperationalReportContent
     | undefined;
+  /**
+   * Return one person-scoped operational report for a profile page.
+   * Omit or return undefined when the plugin has nothing to show for the subject.
+   */
+  profileReport?(
+    ctx: ProfileReportHookContext,
+  ):
+    | Promise<PluginOperationalReportContent | undefined>
+    | PluginOperationalReportContent
+    | undefined;
   /** Return plugin-owned product API routes mounted under Junior's authenticated plugin namespace. */
   apiRoutes?(ctx: ApiRouteRegistrationHookContext): PluginRouteApp | undefined;
   resolveOAuthAccount?(
@@ -92,6 +108,8 @@ export interface PluginHooks {
   slackConversationLink?(
     ctx: SlackConversationLinkHookContext,
   ): SlackConversationLink | undefined;
+  /** Pure Markdown rewrite. Emit ordinary Markdown only. */
+  formatMarkdown?(ctx: FormatMarkdownHookContext): string;
   tools?(
     ctx: ToolRegistrationHookContext,
   ): Record<string, PluginToolDefinition>;

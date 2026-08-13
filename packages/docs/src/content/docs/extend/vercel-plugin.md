@@ -119,8 +119,8 @@ Set `VERCEL_WEBHOOK_SECRET` to enable resource subscriptions. See
 [Resource Subscriptions](/concepts/resource-subscriptions/) for the difference
 between temporary subscriptions and durable event tasks.
 
-Deployment watches use Vercel's `prj_...` project ID. Users can give a project
-name or ID. Junior gets the project ID from Vercel's authenticated project API.
+Deployment watches use Vercel's project ID. Users can give a project name or
+ID. Junior gets the project ID from Vercel's authenticated project API.
 Include the team slug or ID when projects with the same name may exist in more
 than one account.
 
@@ -128,11 +128,12 @@ than one account.
 
 One Vercel project, optionally limited to a target or one commit. Identifier:
 
-`prj_...[:preview|production|staging][:full-commit-sha]`
+`<project-id>[:preview|production|staging][:full-commit-sha]`
 
-- `prj_...` watches every deployment for the project.
-- `prj_...:production` watches every production deployment.
-- `prj_...:production:<sha>` watches one production deployment for that commit.
+- `<project-id>` watches every deployment for the project.
+- `<project-id>:production` watches every production deployment.
+- `<project-id>:production:<sha>` watches one production deployment for that
+  commit.
 
 <details class="resource-event">
 <summary><code>deployment.succeeded</code></summary>

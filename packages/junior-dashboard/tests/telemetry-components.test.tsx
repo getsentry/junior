@@ -1297,9 +1297,8 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain("Back to people");
     expect(html).not.toContain("System / people");
     expect(html).not.toContain('aria-label="Search recent conversations"');
-    expect(html).toContain(">Places<");
+    expect(html).not.toContain(">Places<");
     expect(html).toContain(">Surfaces<");
-    expect(html.indexOf(">Places<")).toBeGreaterThan(activityStart);
     expect(html.indexOf(">Surfaces<")).toBeGreaterThan(activityStart);
     expect(html).not.toContain(">active days<");
     expect(html).not.toContain(">runs<");

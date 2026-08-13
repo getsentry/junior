@@ -113,6 +113,16 @@ export interface OperationalReportHookContext extends PluginContext {
   state: PluginReadState;
 }
 
+/** Read-only context for one person-scoped plugin report on a profile page. */
+export interface ProfileReportHookContext extends PluginContext {
+  nowMs: number;
+  state: PluginReadState;
+  /** Canonical user for the profile being viewed. */
+  subject: User;
+  /** Canonical user for the authenticated viewer. */
+  viewer: User;
+}
+
 export type PluginRouteMethod =
   | "GET"
   | "POST"

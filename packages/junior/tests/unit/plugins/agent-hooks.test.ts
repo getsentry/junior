@@ -30,11 +30,13 @@ vi.mock("@/chat/plugins/viewer", () => ({
   resolveViewerUser: resolveViewerUserMock,
 }));
 import {
+  applyPluginFormatMarkdown,
   createPluginHookRunner,
   getPluginApiRoutes,
   getPluginSystemPromptContributions,
   getPluginUserPromptContributions,
   getPluginOperationalReports,
+  getPluginProfileReports,
   getPluginRoutes,
   getPluginSlackConversationLink,
   getPluginTools,
@@ -210,6 +212,44 @@ describe("agent plugin hooks", () => {
         visibility: "private",
       }).visibility,
     ).toBe("private");
+  });
+
+  it("applies formatMarkdown transforms and fails open on plugin errors", () => {
+    const previous = setPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "a-demo",
+          displayName: "A Demo",
+          description: "A demo",
+        },
+        hooks: {
+          formatMarkdown({ text }) {
+            return text.replaceAll("alpha", "beta");
+          },
+        },
+      }),
+      defineJuniorPlugin({
+        manifest: {
+          name: "z-demo",
+          displayName: "Z Demo",
+          description: "Z demo",
+        },
+        hooks: {
+          formatMarkdown() {
+            throw new Error("boom");
+          },
+        },
+      }),
+    ]);
+    try {
+      expect(applyPluginFormatMarkdown("alpha one")).toBe("beta one");
+      expect(logWarnMock).toHaveBeenCalledWith(
+        "plugin.format_markdown.hook.failed",
+        expect.objectContaining({ "app.plugin.name": "z-demo" }),
+      );
+    } finally {
+      setPlugins(previous);
+    }
   });
 
   it("collects system prompt contributions from configured plugins", async () => {
@@ -1485,6 +1525,77 @@ describe("agent plugin hooks", () => {
           ],
           metrics: [{ label: "report", tone: "danger", value: "failed" }],
           title: "broken-demo",
+        },
+      ]);
+    } finally {
+      setPlugins(previous);
+    }
+  });
+
+  it("collects profile reports and skips plugin failures", async () => {
+    const subject = {
+      email: "subject@example.com",
+      id: "user-subject",
+      identities: [],
+    };
+    const viewer = {
+      email: "viewer@example.com",
+      id: "user-viewer",
+      identities: [],
+    };
+    const previous = setPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "agent-demo",
+          displayName: "Agent Demo",
+          description: "Agent demo",
+        },
+        hooks: {
+          async profileReport(ctx) {
+            expect(ctx.nowMs).toBe(123);
+            expect(ctx.subject).toEqual(subject);
+            expect(ctx.viewer).toEqual(viewer);
+            expect("set" in ctx.state).toBe(false);
+            return {
+              title: "Agent Demo",
+              metrics: [{ label: "prs", value: "2" }],
+            };
+          },
+        },
+      }),
+      defineJuniorPlugin({
+        manifest: {
+          name: "broken-demo",
+          displayName: "Broken Demo",
+          description: "Broken demo",
+        },
+        hooks: {
+          profileReport() {
+            throw new Error("database unavailable");
+          },
+        },
+      }),
+      defineJuniorPlugin({
+        manifest: {
+          name: "empty-demo",
+          displayName: "Empty Demo",
+          description: "Empty demo",
+        },
+        hooks: {
+          profileReport() {
+            return undefined;
+          },
+        },
+      }),
+    ]);
+    try {
+      await expect(
+        getPluginProfileReports({ nowMs: 123, subject, viewer }),
+      ).resolves.toEqual([
+        {
+          pluginName: "agent-demo",
+          title: "Agent Demo",
+          metrics: [{ label: "prs", value: "2" }],
         },
       ]);
     } finally {
