@@ -2,7 +2,11 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { SANDBOX_WORKSPACE_ROOT, sandboxSkillDir } from "@/chat/sandbox/paths";
+import {
+  SANDBOX_REPOS_ROOT,
+  SANDBOX_WORKSPACE_ROOT,
+  sandboxSkillDir,
+} from "@/chat/sandbox/paths";
 import type { SandboxSession } from "@/chat/sandbox/workspace";
 import type { SkillMetadata } from "@/chat/skills";
 
@@ -1227,9 +1231,14 @@ describe("createTestSandbox", () => {
     await setupStarted;
     const setupCommand = buildSandbox.runCommand.mock.calls[0]?.[0] as {
       cmd?: string;
+      env?: Record<string, string>;
       signal?: AbortSignal;
     };
     expect(setupCommand.cmd).toBe("bash");
+    expect(setupCommand.env).toEqual({
+      JUNIOR_REPOS_ROOT: SANDBOX_REPOS_ROOT,
+      JUNIOR_WORKSPACE_ROOT: SANDBOX_WORKSPACE_ROOT,
+    });
     expect(setupCommand.signal).toBeInstanceOf(AbortSignal);
     expect(setupCommand.signal?.aborted).toBe(false);
 

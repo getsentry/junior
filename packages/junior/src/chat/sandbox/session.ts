@@ -36,7 +36,7 @@ import { sleep } from "@/chat/sleep";
 import type { SkillMetadata } from "@/chat/skills";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import type { Workspace } from "@/chat/workspaces/types";
-import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
+import { SANDBOX_REPOS_ROOT, SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 
 const DEFAULT_MAX_OUTPUT_LENGTH = 30_000;
 const DEFAULT_BASH_COMMAND_TIMEOUT_MS = 5 * 60 * 1000;
@@ -486,6 +486,10 @@ export function createSandboxRuntime(
       cmd: "bash",
       args: ["-euo", "pipefail", "-c", workspace.setupScript],
       cwd: SANDBOX_WORKSPACE_ROOT,
+      env: {
+        JUNIOR_REPOS_ROOT: SANDBOX_REPOS_ROOT,
+        JUNIOR_WORKSPACE_ROOT: SANDBOX_WORKSPACE_ROOT,
+      },
       signal,
     });
     if (result.exitCode !== 0) {
