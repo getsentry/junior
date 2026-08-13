@@ -21,7 +21,25 @@ function readInlineCode(text: string, start: number): number | undefined {
   return end === -1 ? undefined : end + markerLength;
 }
 
-/** Skip one existing Markdown link whose destination starts with http(s). */
+/** Read a fenced code opener/closer length of three or more backticks. */
+function readFenceLength(line: string): number | undefined {
+  const trimmed = line.trimStart();
+  if (!trimmed.startsWith("```")) {
+    return undefined;
+  }
+  let length = 0;
+  while (trimmed[length] === "`") {
+    length++;
+  }
+  return length >= 3 ? length : undefined;
+}
+
+/**
+ * Skip one existing Markdown link.
+ *
+ * Labels must not contain brackets or newlines so a bare earlier `[` cannot bind
+ * to a later real link. Destinations may be absolute or relative.
+ */
 function readMarkdownLink(text: string, start: number): number | undefined {
   if (text[start] !== "[") {
     return undefined;
@@ -32,20 +50,12 @@ function readMarkdownLink(text: string, start: number): number | undefined {
     return undefined;
   }
 
-  // Reject bare or nested brackets so an earlier `[` cannot bind to a later link.
   const label = text.slice(start + 1, labelEnd);
   if (label.includes("[") || label.includes("]") || label.includes("\n")) {
     return undefined;
   }
 
   const destStart = labelEnd + 2;
-  if (
-    !text.startsWith("http://", destStart) &&
-    !text.startsWith("https://", destStart)
-  ) {
-    return undefined;
-  }
-
   const closeParens = text.indexOf(")", destStart);
   return closeParens === -1 ? undefined : closeParens + 1;
 }
@@ -112,15 +122,20 @@ function linkifyLine(line: string): string {
 
 /** Linkify GitHub issue and pull request shorthand outside Markdown code. */
 export function linkifyGitHubReferences(text: string): string {
-  let inCodeBlock = false;
+  let openFenceLength = 0;
   return text
     .split("\n")
     .map((line) => {
-      if (line.trimStart().startsWith("```")) {
-        inCodeBlock = !inCodeBlock;
+      const fenceLength = readFenceLength(line);
+      if (fenceLength !== undefined) {
+        if (openFenceLength === 0) {
+          openFenceLength = fenceLength;
+        } else if (fenceLength >= openFenceLength) {
+          openFenceLength = 0;
+        }
         return line;
       }
-      return inCodeBlock ? line : linkifyLine(line);
+      return openFenceLength > 0 ? line : linkifyLine(line);
     })
     .join("\n");
 }

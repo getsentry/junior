@@ -16,6 +16,7 @@ describe("GitHub reply markdown", () => {
           "`getsentry/junior#1509`",
           "[getsentry/junior#1509](https://github.com/getsentry/junior/pull/1509)",
           "[PR (draft) getsentry/junior#1509](https://github.com/getsentry/junior/pull/1509)",
+          "[see getsentry/junior#1509](/issues/1509)",
           "<https://example.com/getsentry/junior#1509>",
           "https://example.com/getsentry/junior#1509",
           "```",
@@ -28,6 +29,7 @@ describe("GitHub reply markdown", () => {
         "`getsentry/junior#1509`",
         "[getsentry/junior#1509](https://github.com/getsentry/junior/pull/1509)",
         "[PR (draft) getsentry/junior#1509](https://github.com/getsentry/junior/pull/1509)",
+        "[see getsentry/junior#1509](/issues/1509)",
         "<https://example.com/getsentry/junior#1509>",
         "https://example.com/getsentry/junior#1509",
         "```",
@@ -35,6 +37,14 @@ describe("GitHub reply markdown", () => {
         "```",
       ].join("\n"),
     );
+  });
+
+  it("keeps refs inside longer outer fences with inner fences", () => {
+    expect(
+      linkifyGitHubReferences(
+        ["````md", "```", "getsentry/sentry#123", "```", "````"].join("\n"),
+      ),
+    ).toBe(["````md", "```", "getsentry/sentry#123", "```", "````"].join("\n"));
   });
 
   it("still linkifies refs after a bare bracketed token", () => {
