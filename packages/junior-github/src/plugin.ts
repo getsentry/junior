@@ -42,7 +42,7 @@ import { classifyGitHubPullRequestCommitComposition } from "./pull-request-outco
 import {
   listGitHubAssignedWork,
   listGitHubFinishedWork,
-  listGitHubUnfinishedWork,
+  listGitHubUnfinishedWorkLabels,
 } from "./pull-request-outcomes/store.js";
 import { loadFailingChecksForSuite } from "./webhooks/check-suite-enrichment.js";
 import {
@@ -738,18 +738,19 @@ export function githubPlugin(
       async unfinishedWork(ctx) {
         const db = ctx.db as GitHubDb;
         const [
-          conversationIds,
+          unfinishedWorkLabelsByConversationId,
           assignedConversationIds,
           finishedWorkAtByConversationId,
         ] = await Promise.all([
-          listGitHubUnfinishedWork(db, ctx.conversationIds),
+          listGitHubUnfinishedWorkLabels(db, ctx.conversationIds),
           listGitHubAssignedWork(db, ctx.conversationIds),
           listGitHubFinishedWork(db, ctx.conversationIds),
         ]);
         return {
-          conversationIds,
+          conversationIds: Object.keys(unfinishedWorkLabelsByConversationId),
           assignedConversationIds,
           finishedWorkAtByConversationId,
+          unfinishedWorkLabelsByConversationId,
         };
       },
       routes(ctx) {

@@ -82,22 +82,9 @@ export function ConversationPrivacyChip(props: {
   );
 }
 
-type ResourceLinkAnnotation = NonNullable<
-  ConversationDetailReport["annotations"]
->[number] &
-  {
-    kind: "resource_link";
-  };
-
-type ResourceLinkStatus = NonNullable<ResourceLinkAnnotation["status"]>;
-
-const RESOURCE_STATUS_RANK: Record<ResourceLinkStatus, number> = {
-  warning: 0,
-  open: 1,
-  draft: 2,
-  closed: 3,
-  merged: 4,
-};
+type ResourceLinkStatus = NonNullable<
+  NonNullable<ConversationDetailReport["annotations"]>[number]["status"]
+>;
 
 /** True when the conversation has at least one resource-link annotation. */
 export function hasConversationAnnotations(
@@ -108,60 +95,41 @@ export function hasConversationAnnotations(
   );
 }
 
-/** Select resource links for compact list rows, newest actionable first. */
-export function selectSidebarResourceLinks(
-  annotations: ConversationDetailReport["annotations"] | undefined,
-  limit = 1,
-): { links: ResourceLinkAnnotation[]; extraCount: number } {
-  const links = (annotations ?? []).filter(
-    (annotation): annotation is ResourceLinkAnnotation =>
-      annotation.kind === "resource_link",
-  );
-  if (links.length === 0) return { links: [], extraCount: 0 };
-
-  const ranked = [...links].sort((left, right) => {
-    const leftRank =
-      left.status === undefined
-        ? Number.POSITIVE_INFINITY
-        : RESOURCE_STATUS_RANK[left.status];
-    const rightRank =
-      right.status === undefined
-        ? Number.POSITIVE_INFINITY
-        : RESOURCE_STATUS_RANK[right.status];
-    if (leftRank !== rightRank) return leftRank - rightRank;
-    return Date.parse(right.updatedAt) - Date.parse(left.updatedAt);
-  });
-  const selected = ranked.slice(0, Math.max(limit, 0));
-  return {
-    links: selected,
-    extraCount: Math.max(ranked.length - selected.length, 0),
-  };
+/** Compact unfinished-work label for dense conversation rows. */
+export function unfinishedWorkSidebarLabel(
+  labels: readonly string[] | undefined,
+): string | undefined {
+  const unique = [
+    ...new Set(
+      (labels ?? [])
+        .map((label) => label.trim())
+        .filter((label) => label.length > 0),
+    ),
+  ];
+  if (unique.length === 0) return undefined;
+  if (unique.length === 1) return unique[0];
+  return `${unique.length} repos`;
 }
 
-/** Compact resource-link chips for dense conversation rows. */
-export function ConversationAnnotationChips(props: {
-  annotations: ConversationDetailReport["annotations"] | undefined;
-  limit?: number;
+/** Compact unfinished-work chip for dense conversation rows. */
+export function ConversationUnfinishedWorkChip(props: {
+  unfinishedWork?: boolean;
+  unfinishedWorkLabels?: readonly string[];
 }) {
-  const { extraCount, links } = selectSidebarResourceLinks(
-    props.annotations,
-    props.limit ?? 1,
-  );
-  if (links.length === 0) return null;
+  if (!props.unfinishedWork) return null;
+  const label = unfinishedWorkSidebarLabel(props.unfinishedWorkLabels);
+  const title = label
+    ? `Unfinished work · ${label}`
+    : "Unfinished work";
   return (
-    <span className="inline-flex min-w-0 max-w-full items-center gap-1">
-      {links.map((link) => (
-        <span
-          className="inline-flex min-w-0 max-w-full items-center gap-1 truncate"
-          key={`${link.plugin}:${link.key}`}
-          title={resourceLinkTitle(link)}
-        >
-          {link.status ? <ResourceStatus size={11} status={link.status} /> : null}
-          <span className="truncate">{compactResourceLinkLabel(link.label)}</span>
-        </span>
-      ))}
-      {extraCount > 0 ? (
-        <span className="shrink-0 text-dashboard-text-muted/70">+{extraCount}</span>
+    <span
+      className="inline-flex min-w-0 max-w-full items-center gap-1 truncate text-[#3fb950]"
+      title={title}
+    >
+      <CircleDot aria-hidden="true" size={11} strokeWidth={2.25} />
+      <span className="sr-only">Unfinished work</span>
+      {label ? (
+        <span className="truncate text-dashboard-text-muted">{label}</span>
       ) : null}
     </span>
   );
@@ -193,12 +161,6 @@ export function ConversationAnnotations(props: {
       ))}
     </div>
   );
-}
-
-function compactResourceLinkLabel(label: string): string {
-  const slash = label.lastIndexOf("/");
-  if (slash === -1) return label;
-  return label.slice(slash + 1);
 }
 
 function resourceLinkTitle(link: {

@@ -43,6 +43,12 @@ export interface UnfinishedWorkResult {
    * finished work still belongs in Priority.
    */
   finishedWorkAtByConversationId?: Record<string, string>;
+  /**
+   * Compact labels for unfinished work scopes, keyed by conversation id.
+   * Plugins own the wording (for example repository names). The host unions
+   * labels across plugins for feed display and does not interpret them.
+   */
+  unfinishedWorkLabelsByConversationId?: Record<string, string[]>;
 }
 
 export type PluginOperationalTone = "danger" | "good" | "neutral" | "warning";

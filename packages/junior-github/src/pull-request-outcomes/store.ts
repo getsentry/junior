@@ -149,18 +149,40 @@ function conversationIdsForPullRequests(
   ];
 }
 
+function repositoryLabel(repositoryFullName: string): string {
+  const trimmed = repositoryFullName.trim();
+  const slash = trimmed.lastIndexOf("/");
+  if (slash === -1) return trimmed;
+  const name = trimmed.slice(slash + 1).trim();
+  return name || trimmed;
+}
+
 /** Return candidate conversations that have an associated unmerged pull request. */
 export async function listGitHubUnfinishedWork(
   db: GitHubDb,
   conversationIds: string[],
 ): Promise<string[]> {
-  if (conversationIds.length === 0) return [];
+  return Object.keys(await listGitHubUnfinishedWorkLabels(db, conversationIds));
+}
+
+/**
+ * Return repository labels for unmerged pull requests linked to candidates.
+ * Labels stay plugin-owned and compact for feed rows.
+ */
+export async function listGitHubUnfinishedWorkLabels(
+  db: GitHubDb,
+  conversationIds: string[],
+): Promise<Record<string, string[]>> {
+  if (conversationIds.length === 0) return {};
   const values = sql.join(
     conversationIds.map((id) => sql`${id}`),
     sql`, `,
   );
   const rows = await db
-    .select({ conversationIds: juniorGitHubPullRequests.conversationIds })
+    .select({
+      conversationIds: juniorGitHubPullRequests.conversationIds,
+      repositoryFullName: juniorGitHubPullRequests.repositoryFullName,
+    })
     .from(juniorGitHubPullRequests)
     .where(
       and(
@@ -168,7 +190,30 @@ export async function listGitHubUnfinishedWork(
         sql`${juniorGitHubPullRequests.conversationIds} && ARRAY[${values}]::text[]`,
       ),
     );
-  return conversationIdsForPullRequests(rows, conversationIds);
+  const candidates = new Set(conversationIds);
+  const labelsById = new Map<string, Set<string>>();
+  for (const row of rows) {
+    const label = repositoryLabel(row.repositoryFullName);
+    if (!label) continue;
+    for (const conversationId of row.conversationIds) {
+      if (!candidates.has(conversationId)) continue;
+      let labels = labelsById.get(conversationId);
+      if (!labels) {
+        labels = new Set();
+        labelsById.set(conversationId, labels);
+      }
+      labels.add(label);
+    }
+  }
+  return Object.fromEntries(
+    conversationIds.flatMap((conversationId) => {
+      const labels = labelsById.get(conversationId);
+      if (!labels || labels.size === 0) return [];
+      return [
+        [conversationId, [...labels].sort((left, right) => left.localeCompare(right))],
+      ];
+    }),
+  );
 }
 
 /** Return the latest merge time for each candidate conversation. */

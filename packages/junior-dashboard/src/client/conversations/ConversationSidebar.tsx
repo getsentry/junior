@@ -26,7 +26,7 @@ import {
 } from "./conversationSections";
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
 import { SearchInput } from "../components/SearchInput";
-import { ConversationAnnotationChips } from "./ConversationMeta";
+import { ConversationUnfinishedWorkChip } from "./ConversationMeta";
 
 type ConversationSidebarEntry =
   | { first: boolean; key: string; kind: "section"; label: string }
@@ -193,7 +193,7 @@ function ConversationSidebarRow(props: {
   const hasMeta =
     Boolean(location) ||
     props.conversation.visibility === "private" ||
-    Boolean(props.conversation.annotations?.length);
+    Boolean(props.conversation.unfinishedWork);
   return (
     <div className="group relative min-w-0">
       <Link
@@ -229,8 +229,9 @@ function ConversationSidebarRow(props: {
                 className="size-3 shrink-0"
               />
             ) : null}
-            <ConversationAnnotationChips
-              annotations={props.conversation.annotations}
+            <ConversationUnfinishedWorkChip
+              unfinishedWork={props.conversation.unfinishedWork}
+              unfinishedWorkLabels={props.conversation.unfinishedWorkLabels}
             />
             {location ? <span className="truncate">{location}</span> : null}
           </div>

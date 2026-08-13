@@ -160,6 +160,8 @@ export type Conversation = {
   surface: ConversationSummaryReport["surface"];
   traceId?: string;
   isPriority?: boolean;
+  unfinishedWork?: boolean;
+  unfinishedWorkLabels?: string[];
   visibility?: ConversationSummaryReport["visibility"];
 };
 

@@ -133,6 +133,9 @@ describe("conversation list API", () => {
                   [finishedId]: new Date(nowMs - 120_000).toISOString(),
                   [finishedUpdatedId]: new Date(nowMs - 90_000).toISOString(),
                 },
+                unfinishedWorkLabelsByConversationId: {
+                  [unfinishedId]: ["junior", "payments"],
+                },
               };
             },
           },
@@ -151,6 +154,7 @@ describe("conversation list API", () => {
             conversationId: unfinishedId,
             assignedWork: true,
             unfinishedWork: true,
+            unfinishedWorkLabels: ["junior", "payments"],
             isPriority: true,
           }),
           expect.objectContaining({

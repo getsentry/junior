@@ -8,7 +8,28 @@ export type ConversationWork = {
   /** Latest finish time per conversation, used with activity for Priority. */
   finishedAtById: Record<string, string>;
   unfinishedIds: string[];
+  /**
+   * Compact unfinished-work labels for feed rows, keyed by conversation id.
+   * Only present for unfinished conversations that plugins labeled.
+   */
+  unfinishedLabelsById: Record<string, string[]>;
 };
+
+function addUnfinishedLabels(
+  labelsById: Map<string, Set<string>>,
+  conversationId: string,
+  labels: readonly string[],
+): void {
+  let current = labelsById.get(conversationId);
+  if (!current) {
+    current = new Set();
+    labelsById.set(conversationId, current);
+  }
+  for (const label of labels) {
+    const trimmed = label.trim();
+    if (trimmed) current.add(trimmed);
+  }
+}
 
 /**
  * Return assigned and unfinished plugin work for the candidate conversations.
@@ -18,12 +39,18 @@ export async function listConversationWork(
   conversationIds: string[],
 ): Promise<ConversationWork> {
   if (conversationIds.length === 0) {
-    return { assignedIds: [], finishedAtById: {}, unfinishedIds: [] };
+    return {
+      assignedIds: [],
+      finishedAtById: {},
+      unfinishedIds: [],
+      unfinishedLabelsById: {},
+    };
   }
   const candidates = new Set(conversationIds);
   const assigned = new Set<string>();
   const finishedAtById = new Map<string, string>();
   const unfinished = new Set<string>();
+  const unfinishedLabelsById = new Map<string, Set<string>>();
   for (const plugin of getPlugins()) {
     const hook = plugin.hooks?.unfinishedWork;
     if (!hook) continue;
@@ -53,6 +80,12 @@ export async function listConversationWork(
           finishedAtById.set(conversationId, finishedAt);
         }
       }
+      for (const [conversationId, labels] of Object.entries(
+        result.unfinishedWorkLabelsByConversationId ?? {},
+      )) {
+        if (!candidates.has(conversationId) || !Array.isArray(labels)) continue;
+        addUnfinishedLabels(unfinishedLabelsById, conversationId, labels);
+      }
     } catch (error) {
       // Fail open: a broken plugin must not invent assigned or unfinished work
       // and demote recent conversations out of Priority.
@@ -75,6 +108,14 @@ export async function listConversationWork(
     ),
     unfinishedIds: conversationIds.filter((conversationId) =>
       unfinished.has(conversationId),
+    ),
+    unfinishedLabelsById: Object.fromEntries(
+      conversationIds.flatMap((conversationId) => {
+        if (!unfinished.has(conversationId)) return [];
+        const labels = unfinishedLabelsById.get(conversationId);
+        if (!labels || labels.size === 0) return [];
+        return [[conversationId, [...labels].sort((a, b) => a.localeCompare(b))]];
+      }),
     ),
   };
 }

@@ -284,6 +284,9 @@ export async function readConversationFeedFromSql(
           : {}),
         usage: metrics?.usage ?? row.conversation.usage ?? undefined,
       });
+      const unfinishedLabels =
+        conversationWork.unfinishedLabelsById[conversation.conversationId] ??
+        [];
       const work = {
         ...(assignedWork.has(conversation.conversationId)
           ? { assignedWork: true as const }
@@ -295,7 +298,12 @@ export async function readConversationFeedFromSql(
             }
           : {}),
         ...(unfinishedWork.has(conversation.conversationId)
-          ? { unfinishedWork: true as const }
+          ? {
+              unfinishedWork: true as const,
+              ...(unfinishedLabels.length > 0
+                ? { unfinishedWorkLabels: unfinishedLabels }
+                : {}),
+            }
           : {}),
       };
       const annotations = access?.canViewPrivateContent

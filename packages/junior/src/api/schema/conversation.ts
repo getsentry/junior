@@ -256,6 +256,11 @@ export const conversationSummaryReportSchema = z
      */
     isPriority: z.boolean().optional(),
     unfinishedWork: z.boolean().optional(),
+    /**
+     * Plugin-owned unfinished work scope labels for dense feed rows.
+     * Present only with unfinishedWork. Clients must not recompute them.
+     */
+    unfinishedWorkLabels: z.array(z.string().trim().min(1)).optional(),
   })
   .strict();
 
