@@ -1009,6 +1009,110 @@ describe("GitHub-owned issue outcomes", () => {
       await fixture.close();
     }
   });
+
+  it("marks associated conversation resource annotations closed", async () => {
+    const fixture = await createGitHubFixture();
+    try {
+      const annotations: Array<{
+        annotation: ConversationAnnotationInput;
+        conversationId: string;
+      }> = [];
+      const route = webhookRoute(
+        fixture,
+        [],
+        undefined,
+        undefined,
+        undefined,
+        annotations,
+      );
+      const opened = issueLifecyclePayload({
+        createdAt: "2026-07-01T12:00:00.000Z",
+        id: 3020,
+        number: 990,
+      });
+      expect(
+        (await route.handler(signedRequest(opened, "issues"))).status,
+      ).toBe(202);
+
+      const associatedConversation = issueLifecyclePayload({
+        body: "<!-- junior-session-footer:start -->\n<!-- junior-conversation-id:slack%3AC456%3A1719999.0002 -->\n<!-- junior-session-footer:end -->",
+        createdAt: "2026-07-01T12:00:00.000Z",
+        id: 3020,
+        number: 990,
+        updatedAt: "2026-07-02T06:00:00.000Z",
+      });
+      expect(
+        (
+          await route.handler(
+            signedRequest(
+              {
+                ...associatedConversation,
+                action: "edited",
+              },
+              "issues",
+            ),
+          )
+        ).status,
+      ).toBe(202);
+
+      expect(
+        (
+          await route.handler(
+            signedRequest(
+              issueLifecyclePayload({
+                action: "closed",
+                closedAt: "2026-07-03T12:00:00.000Z",
+                createdAt: "2026-07-01T12:00:00.000Z",
+                id: 3020,
+                number: 990,
+                updatedAt: "2026-07-03T12:00:00.000Z",
+              }),
+              "issues",
+            ),
+          )
+        ).status,
+      ).toBe(202);
+
+      await expect(
+        fixture.db().select().from(juniorGitHubIssues),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          conversationIds: [
+            "slack:C123:1712345.0001",
+            "slack:C456:1719999.0002",
+          ],
+          issueId: "3020",
+          state: "closed",
+        }),
+      ]);
+      expect(annotations).toEqual(
+        expect.arrayContaining([
+          {
+            annotation: {
+              kind: "resource_link",
+              key: "getsentry/junior#990",
+              label: "getsentry/junior#990",
+              status: "closed",
+              url: "https://github.com/getsentry/junior/issues/990",
+            },
+            conversationId: "slack:C123:1712345.0001",
+          },
+          {
+            annotation: {
+              kind: "resource_link",
+              key: "getsentry/junior#990",
+              label: "getsentry/junior#990",
+              status: "closed",
+              url: "https://github.com/getsentry/junior/issues/990",
+            },
+            conversationId: "slack:C456:1719999.0002",
+          },
+        ]),
+      );
+    } finally {
+      await fixture.close();
+    }
+  });
 });
 
 describe("GitHub-owned pull request outcomes", () => {

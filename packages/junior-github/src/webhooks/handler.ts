@@ -189,12 +189,37 @@ export function createGitHubWebhookRoute(args: {
           }
         }
       }
-      if (issueOutcome) {
-        await recordGitHubIssueOutcome(args.db, issueOutcome);
-      }
+      const recordedIssueOutcome = issueOutcome
+        ? await recordGitHubIssueOutcome(args.db, issueOutcome)
+        : undefined;
       const recordedIssueConversations = issueConversations
         ? await recordGitHubIssueConversations(args.db, issueConversations)
         : false;
+      if (
+        issueOutcome &&
+        recordedIssueOutcome?.applied &&
+        issueOutcome.state === "closed"
+      ) {
+        const conversationIds = [
+          ...new Set([
+            ...recordedIssueOutcome.conversationIds,
+            ...(recordedIssueConversations && issueConversations
+              ? issueConversations.conversationIds
+              : []),
+          ]),
+        ];
+        await Promise.all(
+          conversationIds.map((conversationId) =>
+            args.annotations.forConversation(conversationId).upsert({
+              kind: "resource_link",
+              key: `${issueOutcome.repositoryFullName.toLowerCase()}#${issueOutcome.number}`,
+              label: `${issueOutcome.repositoryFullName}#${issueOutcome.number}`,
+              url: `https://github.com/${issueOutcome.repositoryFullName}/issues/${issueOutcome.number}`,
+              status: "closed",
+            }),
+          ),
+        );
+      }
       const recordedPullRequestConversations = pullRequestConversations
         ? await recordGitHubPullRequestConversations(
             args.db,

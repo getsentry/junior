@@ -55,15 +55,17 @@ function projectionValues(input: GitHubIssueOutcomeInput) {
  * Record the newest lifecycle projection for one Junior-owned issue.
  * Ownership-qualified opening or closing events insert; later events update
  * existing rows, and older provider timestamps cannot regress them.
+ * Returns the written row state so follow-up annotation updates stay scoped to
+ * associated conversations.
  */
 export async function recordGitHubIssueOutcome(
   db: GitHubDb,
   input: GitHubIssueOutcomeInput,
-): Promise<void> {
+): Promise<{ applied: boolean; conversationIds: string[] }> {
   const outcome = githubIssueOutcomeInputSchema.parse(input);
   const values = projectionValues(outcome);
   if (!outcome.candidateOwned) {
-    await db
+    const updated = await db
       .update(juniorGitHubIssues)
       .set(values)
       .where(
@@ -71,18 +73,31 @@ export async function recordGitHubIssueOutcome(
           eq(juniorGitHubIssues.issueId, outcome.issueId),
           lte(juniorGitHubIssues.updatedAt, outcome.updatedAt),
         ),
-      );
-    return;
+      )
+      .returning({
+        conversationIds: juniorGitHubIssues.conversationIds,
+      });
+    return {
+      applied: updated.length > 0,
+      conversationIds: updated[0]?.conversationIds ?? [],
+    };
   }
 
-  await db
+  const inserted = await db
     .insert(juniorGitHubIssues)
     .values({ issueId: outcome.issueId, ...values })
     .onConflictDoUpdate({
       target: juniorGitHubIssues.issueId,
       set: values,
       where: lte(juniorGitHubIssues.updatedAt, outcome.updatedAt),
+    })
+    .returning({
+      conversationIds: juniorGitHubIssues.conversationIds,
     });
+  return {
+    applied: inserted.length > 0,
+    conversationIds: inserted[0]?.conversationIds ?? [],
+  };
 }
 
 /** Append native conversation ids to an existing Junior-owned issue projection. */
