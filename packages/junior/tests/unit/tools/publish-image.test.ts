@@ -70,7 +70,7 @@ describe("publishImage tool", () => {
     expect(tool.approvalMode).toBe("review");
   });
 
-  it("rejects a missing file", async () => {
+  it("rejects a missing file as input error", async () => {
     const tool = createPublishImageTool({
       publicBaseUrl: () => "https://junior.example.com",
       storage: storage(),
@@ -79,6 +79,39 @@ describe("publishImage tool", () => {
 
     await expect(
       tool.execute?.({ path: "missing.png" }, {}),
-    ).rejects.toThrow("failed to read file");
+    ).rejects.toMatchObject({
+      name: "ToolInputError",
+      message: expect.stringContaining("failed to read file"),
+    });
+  });
+
+  it("rejects unsupported image bytes as input error", async () => {
+    const tool = createPublishImageTool({
+      publicBaseUrl: () => "https://junior.example.com",
+      storage: storage(),
+      workspace: workspace(Buffer.from("not-an-image")),
+    });
+
+    await expect(tool.execute?.({ path: "notes.txt" }, {})).rejects.toMatchObject({
+      name: "ToolInputError",
+      message: expect.stringContaining("unsupported image format"),
+    });
+  });
+
+  it("keeps storage outages as system errors", async () => {
+    const imageStorage = storage();
+    imageStorage.put = vi.fn(async () => {
+      throw new Error("blob unavailable");
+    });
+    const tool = createPublishImageTool({
+      publicBaseUrl: () => "https://junior.example.com",
+      storage: imageStorage,
+      workspace: workspace(PNG_BYTES),
+    });
+
+    await expect(tool.execute?.({ path: "chart.png" }, {})).rejects.toMatchObject({
+      name: "Error",
+      message: "blob unavailable",
+    });
   });
 });

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const IMAGE_TYPES = {
@@ -61,20 +62,27 @@ export async function publishImage(args: {
   url: string;
 }> {
   if (args.body.byteLength === 0) {
-    throw new Error("image is empty");
+    throw new ToolInputError("image is empty");
   }
   if (args.body.byteLength > MAX_IMAGE_BYTES) {
-    throw new Error(
+    throw new ToolInputError(
       `image exceeds ${MAX_IMAGE_BYTES} bytes (${args.body.byteLength} bytes)`,
     );
   }
   const imageType = detectImageType(args.body);
   if (!imageType) {
-    throw new Error("unsupported image format; use PNG, JPEG, GIF, or WebP");
+    throw new ToolInputError(
+      "unsupported image format; use PNG, JPEG, GIF, or WebP",
+    );
   }
 
   const baseUrl = args.publicBaseUrl.trim().replace(/\/+$/, "");
-  const parsedBaseUrl = new URL(baseUrl);
+  let parsedBaseUrl: URL;
+  try {
+    parsedBaseUrl = new URL(baseUrl);
+  } catch {
+    throw new Error("public base URL must be an absolute HTTP(S) URL");
+  }
   if (parsedBaseUrl.protocol !== "http:" && parsedBaseUrl.protocol !== "https:") {
     throw new Error("public base URL must use HTTP(S)");
   }

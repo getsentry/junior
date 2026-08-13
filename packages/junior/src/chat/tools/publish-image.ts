@@ -4,7 +4,6 @@ import { resolveBaseUrl } from "@/chat/oauth-flow";
 import { publishImage } from "@/chat/published-images/store";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import {
   normalizeSandboxPath,
   SandboxFileNotFoundError,
@@ -49,7 +48,7 @@ export function createPublishImageTool(args: {
     async execute({ path }) {
       const publicBaseUrl = (args.publicBaseUrl ?? resolveBaseUrl)()?.trim();
       if (!publicBaseUrl) {
-        throw new ToolInputError(
+        throw new Error(
           "publishImage requires JUNIOR_BASE_URL or a Vercel deployment URL.",
         );
       }
@@ -60,18 +59,13 @@ export function createPublishImageTool(args: {
         throw new SandboxFileNotFoundError(targetPath);
       }
 
-      let image;
-      try {
-        image = await publishImage({
-          body,
-          publicBaseUrl,
-          storage: args.storage,
-        });
-      } catch (error) {
-        throw new ToolInputError(
-          error instanceof Error ? error.message : "failed to publish image",
-        );
-      }
+      // Validation failures throw ToolInputError. Storage and host-config failures
+      // stay system errors so they reach Sentry.
+      const image = await publishImage({
+        body,
+        publicBaseUrl,
+        storage: args.storage,
+      });
       return {
         bytes: image.bytes,
         content_type: image.contentType,
