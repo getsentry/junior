@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import { storeAttachments } from "@/chat/attachments/store";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import { recordAttachmentsDelivered } from "@/chat/conversations/projection";
-import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { uploadFilesToConversation } from "@/chat/slack/outbound";
 import type { SlackToolContext } from "@/chat/slack/tool-support/context";
@@ -148,7 +147,6 @@ export function createSendFilesTool(
         await recordAttachmentsDelivered({
           attachments: delivered,
           conversationId: attachments.conversationId,
-          eventStore: createSqlConversationEventStore(attachments.db),
           ...(options.toolCallId ? { toolCallId: options.toolCallId } : {}),
         });
       }

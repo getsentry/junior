@@ -14,7 +14,6 @@ import {
 import type {
   AuthorizationKind,
   ConversationEvent,
-  ConversationEventStore,
 } from "@/chat/conversations/history";
 import type { RepositoryInstructions } from "@/chat/repository-instructions";
 import {
@@ -854,14 +853,11 @@ export async function recordAttachmentsDelivered(args: {
   }>;
   conversationId: string;
   createdAtMs?: number;
-  /** Defaults to the process conversation event store. */
-  eventStore?: ConversationEventStore;
   toolCallId?: string;
   turnId?: string;
 }): Promise<void> {
   if (args.attachments.length === 0) return;
-  const eventStore = args.eventStore ?? getConversationEventStore();
-  await eventStore.append(args.conversationId, [
+  await getConversationEventStore().append(args.conversationId, [
     {
       data: {
         type: "attachments_delivered",

@@ -672,6 +672,44 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain("2 memories captured");
   });
 
+  it("renders delivered attachments as transcript media, not tool chrome", () => {
+    const html = renderTranscript(
+      conversation([
+        event(0, {
+          type: "attachments_delivered",
+          toolCallId: "call-send-1",
+          attachments: [
+            {
+              id: "att-1",
+              name: "chart.png",
+              contentType: "image/png",
+              bytes: 18211,
+            },
+            {
+              id: "att-2",
+              name: "notes.txt",
+              contentType: "text/plain",
+              bytes: 42,
+            },
+          ],
+        }),
+      ]),
+    );
+
+    expect(html).toContain(
+      'data-transcript-rail-event="attachments_delivered"',
+    );
+    expect(html).toContain("2 files delivered");
+    expect(html).toContain("chart.png");
+    expect(html).toContain("notes.txt");
+    expect(html).toContain(
+      "/api/conversations/conversation-1/attachments/att-1",
+    );
+    expect(html).toContain(
+      "/api/conversations/conversation-1/attachments/att-2",
+    );
+  });
+
   it("keeps recalled memory context collapsed on its user message", () => {
     const html = renderTranscript(
       conversation([
