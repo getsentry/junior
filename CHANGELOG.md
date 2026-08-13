@@ -1,5 +1,4 @@
 # Changelog
-
 ## 0.158.0
 
 ### Bug Fixes 🐛
@@ -1310,3 +1309,4 @@
 - Organize and shard end-to-end suites by @sentry-junior in [#968](https://github.com/getsentry/junior/pull/968)
 - Accept explicit Slack URL links by @dcramer in [#967](https://github.com/getsentry/junior/pull/967)
 - Add isolated global sandbox egress by @dcramer in [#943](https://github.com/getsentry/junior/pull/943)
+

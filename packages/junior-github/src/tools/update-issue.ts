@@ -16,12 +16,7 @@ const inputSchema = z
   .object({
     repo: z.string().describe('Repository in "owner/name" format.'),
     number: z.number().int().positive().describe("Issue number."),
-    title: z
-      .string()
-      .trim()
-      .min(1)
-      .optional()
-      .describe("Replacement issue title."),
+    title: z.string().trim().min(1).optional().describe("Replacement issue title."),
     body: z
       .string()
       .optional()

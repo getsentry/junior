@@ -421,8 +421,7 @@ describe("slack channel tools", () => {
       }),
     });
     const tool = createSlackChannelListMessagesTool(
-      createContext("list private channel"),
-    );
+      createContext("list private channel"));
 
     await expect(
       executeTool(tool, { channel_id: "C0PRIVATE" }),
@@ -531,12 +530,7 @@ describe("slack channel tools", () => {
     queueSlackApiResponse("conversations.list", {
       body: conversationsListPage({
         channels: [
-          {
-            id: "C0PROJ",
-            name: "proj-foo",
-            is_member: true,
-            is_private: false,
-          },
+          { id: "C0PROJ", name: "proj-foo", is_member: true, is_private: false },
         ],
       }),
     });
@@ -554,8 +548,7 @@ describe("slack channel tools", () => {
       }),
     });
     const tool = createSlackChannelListMessagesTool(
-      createContext("list by name in channel_id"),
-    );
+      createContext("list by name in channel_id"));
     const result = await executeTool(tool, {
       channel_id: "#proj-foo",
       limit: 5,
@@ -594,12 +587,7 @@ describe("slack channel tools", () => {
     queueSlackApiResponse("conversations.list", {
       body: conversationsListPage({
         channels: [
-          {
-            id: "C0JOINNAME",
-            name: "join-me",
-            is_member: false,
-            is_private: false,
-          },
+          { id: "C0JOINNAME", name: "join-me", is_member: false, is_private: false },
         ],
       }),
     });
@@ -642,12 +630,8 @@ describe("slack channel tools", () => {
       }),
     });
     const tool = createSlackChannelListMessagesTool(
-      createContext("history after join"),
-    );
-    const result = await executeTool(tool, {
-      channel_id: "C0JOINME",
-      limit: 5,
-    });
+      createContext("history after join"));
+    const result = await executeTool(tool, { channel_id: "C0JOINME", limit: 5 });
     expect(result).toMatchObject({
       channel_id: "C0JOINME",
       joined_channel: true,
@@ -656,4 +640,5 @@ describe("slack channel tools", () => {
     expect(getCapturedSlackApiCalls("conversations.join")).toHaveLength(1);
     expect(getCapturedSlackApiCalls("conversations.history")).toHaveLength(2);
   });
+
 });

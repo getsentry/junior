@@ -22,43 +22,43 @@ Treat explicit repo flags as command-targeting safety rails, not as a credential
 
 ## Command matrix
 
-| Operation                          | Command                                                                                                                                    |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| Clone repository (default shallow) | `gh repo clone owner/repo [DIRECTORY] -- --depth=1`                                                                                        |
-| Fetch bounded base history         | `git -C DIRECTORY fetch --depth=N origin BASE:refs/remotes/origin/BASE`                                                                    |
-| Deepen base history                | `git -C DIRECTORY fetch --deepen=N origin BASE:refs/remotes/origin/BASE`                                                                   |
-| Convert shallow clone to full      | `git -C DIRECTORY fetch --unshallow origin`                                                                                                |
-| Check shallow state                | `git -C DIRECTORY rev-parse --is-shallow-repository`                                                                                       |
-| Check branch                       | `git -C DIRECTORY branch --show-current`                                                                                                   |
-| Check worktree state               | `git -C DIRECTORY status --short --branch`                                                                                                 |
-| View commit log against base       | `git -C DIRECTORY log origin/BASE..HEAD --oneline`                                                                                         |
-| Diff against base                  | `git -C DIRECTORY diff origin/BASE...HEAD`                                                                                                 |
-| Resolve default branch             | `gh repo view owner/repo --json defaultBranchRef --jq .defaultBranchRef.name`                                                              |
-| Create branch                      | `git -C DIRECTORY checkout -b BRANCH`                                                                                                      |
-| Stage and commit                   | `git -C DIRECTORY add -A && git -C DIRECTORY commit -m "message"`                                                                          |
-| Push branch before PR creation     | `git -C DIRECTORY push -u origin BRANCH`                                                                                                   |
-| Dispatch workflow                  | `gh workflow run WORKFLOW --repo owner/repo --ref REF [-f key=value]`                                                                      |
-| Rerun workflow run                 | `gh run rerun RUN_ID -R owner/repo [--failed]`                                                                                             |
-| Rerun workflow job                 | `gh run rerun --job JOB_ID -R owner/repo`                                                                                                  |
-| Cancel workflow run                | `gh run cancel RUN_ID -R owner/repo`                                                                                                       |
-| Create pull request (draft)        | `github_createPullRequest({ repo: "owner/repo", head: "BRANCH", base: "BASE", title: "...", body: "...", draft: true })`                   |
+| Operation                          | Command                                                                                                                  |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Clone repository (default shallow) | `gh repo clone owner/repo [DIRECTORY] -- --depth=1`                                                                      |
+| Fetch bounded base history         | `git -C DIRECTORY fetch --depth=N origin BASE:refs/remotes/origin/BASE`                                                  |
+| Deepen base history                | `git -C DIRECTORY fetch --deepen=N origin BASE:refs/remotes/origin/BASE`                                                 |
+| Convert shallow clone to full      | `git -C DIRECTORY fetch --unshallow origin`                                                                              |
+| Check shallow state                | `git -C DIRECTORY rev-parse --is-shallow-repository`                                                                     |
+| Check branch                       | `git -C DIRECTORY branch --show-current`                                                                                 |
+| Check worktree state               | `git -C DIRECTORY status --short --branch`                                                                               |
+| View commit log against base       | `git -C DIRECTORY log origin/BASE..HEAD --oneline`                                                                       |
+| Diff against base                  | `git -C DIRECTORY diff origin/BASE...HEAD`                                                                               |
+| Resolve default branch             | `gh repo view owner/repo --json defaultBranchRef --jq .defaultBranchRef.name`                                            |
+| Create branch                      | `git -C DIRECTORY checkout -b BRANCH`                                                                                    |
+| Stage and commit                   | `git -C DIRECTORY add -A && git -C DIRECTORY commit -m "message"`                                                        |
+| Push branch before PR creation     | `git -C DIRECTORY push -u origin BRANCH`                                                                                 |
+| Dispatch workflow                  | `gh workflow run WORKFLOW --repo owner/repo --ref REF [-f key=value]`                                                    |
+| Rerun workflow run                 | `gh run rerun RUN_ID -R owner/repo [--failed]`                                                                          |
+| Rerun workflow job                 | `gh run rerun --job JOB_ID -R owner/repo`                                                                               |
+| Cancel workflow run                | `gh run cancel RUN_ID -R owner/repo`                                                                                     |
+| Create pull request (draft)        | `github_createPullRequest({ repo: "owner/repo", head: "BRANCH", base: "BASE", title: "...", body: "...", draft: true })` |
 | Update pull request                | `github_updatePullRequest({ repo: "owner/repo", number: NUMBER, title?: "...", body?: "...", base?: "BASE", state?: "open" \| "closed" })` |
-| Mark ready for review              | `gh api repos/owner/repo/pulls/NUMBER/ready_for_review --method POST`                                                                      |
-| Request reviewers                  | `gh api repos/owner/repo/pulls/NUMBER/requested_reviewers --method POST --input reviewers.json`                                            |
-| Remove requested reviewers         | `gh api repos/owner/repo/pulls/NUMBER/requested_reviewers --method DELETE --input reviewers.json`                                          |
-| Close pull request                 | `github_updatePullRequest({ repo: "owner/repo", number: NUMBER, state: "closed" })`                                                        |
-| Submit pull request review         | `gh api repos/owner/repo/pulls/NUMBER/reviews --method POST --input review.json`                                                           |
-| Post inline review comment         | `gh api repos/owner/repo/pulls/NUMBER/comments --method POST --input comment.json`                                                         |
-| Reply to inline review comment     | `gh api repos/owner/repo/pulls/NUMBER/comments/COMMENT_ID/replies --method POST --input reply.json`                                        |
-| View pull request                  | `gh pr view NUMBER --repo owner/repo [--json ...]`                                                                                         |
-| List pull requests                 | `gh pr list --repo owner/repo [--state open \| closed \| merged]`                                                                          |
-| Diff pull request                  | `gh pr diff NUMBER --repo owner/repo`                                                                                                      |
-| Check pull request status          | `gh pr checks NUMBER --repo owner/repo`                                                                                                    |
-| View PR review comments            | `gh api repos/{owner}/{repo}/pulls/{number}/comments`                                                                                      |
-| View PR reviews                    | `gh api repos/{owner}/{repo}/pulls/{number}/reviews`                                                                                       |
-| List workflow runs                 | `gh run list -R owner/repo --workflow WORKFLOW [--limit N] [--json ...]`                                                                   |
-| View workflow run                  | `gh run view RUN_ID -R owner/repo [--json ...] [--log-failed]`                                                                             |
-| Watch workflow run                 | `gh run watch RUN_ID -R owner/repo --exit-status`                                                                                          |
+| Mark ready for review              | `gh api repos/owner/repo/pulls/NUMBER/ready_for_review --method POST`                                                    |
+| Request reviewers                  | `gh api repos/owner/repo/pulls/NUMBER/requested_reviewers --method POST --input reviewers.json`                          |
+| Remove requested reviewers         | `gh api repos/owner/repo/pulls/NUMBER/requested_reviewers --method DELETE --input reviewers.json`                        |
+| Close pull request                 | `github_updatePullRequest({ repo: "owner/repo", number: NUMBER, state: "closed" })`                                      |
+| Submit pull request review         | `gh api repos/owner/repo/pulls/NUMBER/reviews --method POST --input review.json`                                         |
+| Post inline review comment         | `gh api repos/owner/repo/pulls/NUMBER/comments --method POST --input comment.json`                                       |
+| Reply to inline review comment     | `gh api repos/owner/repo/pulls/NUMBER/comments/COMMENT_ID/replies --method POST --input reply.json`                      |
+| View pull request                  | `gh pr view NUMBER --repo owner/repo [--json ...]`                                                                       |
+| List pull requests                 | `gh pr list --repo owner/repo [--state open \| closed \| merged]`                                                        |
+| Diff pull request                  | `gh pr diff NUMBER --repo owner/repo`                                                                                    |
+| Check pull request status          | `gh pr checks NUMBER --repo owner/repo`                                                                                  |
+| View PR review comments            | `gh api repos/{owner}/{repo}/pulls/{number}/comments`                                                                    |
+| View PR reviews                    | `gh api repos/{owner}/{repo}/pulls/{number}/reviews`                                                                     |
+| List workflow runs                 | `gh run list -R owner/repo --workflow WORKFLOW [--limit N] [--json ...]`                                                 |
+| View workflow run                  | `gh run view RUN_ID -R owner/repo [--json ...] [--log-failed]`                                                           |
+| Watch workflow run                 | `gh run watch RUN_ID -R owner/repo --exit-status`                                                                        |
 
 ## Config helpers
 

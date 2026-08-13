@@ -101,22 +101,22 @@ The heartbeat endpoint returns `401` unless the incoming Vercel Cron request has
 
 Set the core runtime variables in Vercel:
 
-| Variable                                    | Required    | Purpose                                                                                             |
-| ------------------------------------------- | ----------- | --------------------------------------------------------------------------------------------------- |
-| `SLACK_SIGNING_SECRET`                      | Yes         | Verifies Slack requests.                                                                            |
-| `SLACK_BOT_TOKEN` or `SLACK_BOT_USER_TOKEN` | Yes         | Posts replies and calls Slack APIs.                                                                 |
-| `REDIS_URL`                                 | Yes         | Queue and runtime state storage.                                                                    |
-| `DATABASE_URL`                              | Yes         | Standard Neon/Vercel Postgres URL for Junior SQL records and reporting.                             |
-| `JUNIOR_DATABASE_DRIVER`                    | No          | SQL client driver: `neon` or `postgres`. Defaults to `neon`.                                        |
-| `JUNIOR_SQL_STATEMENT_TIMEOUT_MS`           | No          | Runtime PostgreSQL statement timeout. Defaults to `30000`; set `0` to disable.                      |
-| `JUNIOR_SECRET`                             | Yes         | Signs internal callbacks and sandbox actor context.                                                 |
-| `CRON_SECRET`                               | Yes         | Authenticates Vercel Cron requests to the internal heartbeat route.                                 |
-| `JUNIOR_BASE_URL`                           | Conditional | Main URL for OAuth and callback URLs when Vercel URL values are not enough.                         |
-| `JUNIOR_STATE_KEY_PREFIX`                   | No          | Redis key namespace for this deployment when sharing one Redis database.                            |
-| `AI_GATEWAY_API_KEY`                        | Optional    | Fallback AI Gateway auth when OIDC is unavailable. Prefer project OIDC on Vercel.                   |
+| Variable                                    | Required    | Purpose                                                                           |
+| ------------------------------------------- | ----------- | --------------------------------------------------------------------------------- |
+| `SLACK_SIGNING_SECRET`                      | Yes         | Verifies Slack requests.                                                          |
+| `SLACK_BOT_TOKEN` or `SLACK_BOT_USER_TOKEN` | Yes         | Posts replies and calls Slack APIs.                                               |
+| `REDIS_URL`                                 | Yes         | Queue and runtime state storage.                                                  |
+| `DATABASE_URL`                              | Yes         | Standard Neon/Vercel Postgres URL for Junior SQL records and reporting.           |
+| `JUNIOR_DATABASE_DRIVER`                    | No          | SQL client driver: `neon` or `postgres`. Defaults to `neon`.                      |
+| `JUNIOR_SQL_STATEMENT_TIMEOUT_MS`           | No          | Runtime PostgreSQL statement timeout. Defaults to `30000`; set `0` to disable.    |
+| `JUNIOR_SECRET`                             | Yes         | Signs internal callbacks and sandbox actor context.                               |
+| `CRON_SECRET`                               | Yes         | Authenticates Vercel Cron requests to the internal heartbeat route.               |
+| `JUNIOR_BASE_URL`                           | Conditional | Main URL for OAuth and callback URLs when Vercel URL values are not enough.       |
+| `JUNIOR_STATE_KEY_PREFIX`                   | No          | Redis key namespace for this deployment when sharing one Redis database.          |
+| `AI_GATEWAY_API_KEY`                        | Optional    | Fallback AI Gateway auth when OIDC is unavailable. Prefer project OIDC on Vercel. |
 | `BLOB_STORE_ID`                             | Conditional | Blob store used for durable conversation attachments. Vercel sets this for an OIDC-connected store. |
-| `BLOB_READ_WRITE_TOKEN`                     | Conditional | Static fallback for Blob when OIDC is unavailable. Vercel sets this for a token-connected store.    |
-| `VERCEL_SANDBOX_KEEPALIVE_MS`               | Recommended | Extends an active sandbox on each tool acquire. Set to `900000` (15 minutes).                       |
+| `BLOB_READ_WRITE_TOKEN`                     | Conditional | Static fallback for Blob when OIDC is unavailable. Vercel sets this for a token-connected store. |
+| `VERCEL_SANDBOX_KEEPALIVE_MS`               | Recommended | Extends an active sandbox on each tool acquire. Set to `900000` (15 minutes).     |
 
 ### Configure attachment storage
 

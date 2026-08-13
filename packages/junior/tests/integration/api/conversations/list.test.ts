@@ -73,47 +73,44 @@ describe("conversation list API", () => {
         conversationId: finishedId,
         nowMs: nowMs - 120_000,
       });
-      await fixture.sql
-        .db()
-        .insert(juniorConversationEvents)
-        .values([
-          {
-            conversationId: finishedUpdatedId,
-            createdAt: new Date(nowMs - 30_000),
-            historyVersion: 0,
-            payload: {
-              content: "Please follow up.",
-              provenance: {
-                authority: "instruction",
-                actor: {
-                  platform: "slack",
-                  teamId: "T123",
-                  userId: "U123456",
-                },
+      await fixture.sql.db().insert(juniorConversationEvents).values([
+        {
+          conversationId: finishedUpdatedId,
+          createdAt: new Date(nowMs - 30_000),
+          historyVersion: 0,
+          payload: {
+            content: "Please follow up.",
+            provenance: {
+              authority: "instruction",
+              actor: {
+                platform: "slack",
+                teamId: "T123",
+                userId: "U123456",
               },
-              timestamp: nowMs - 30_000,
             },
-            schemaVersion: 1,
-            seq: 0,
-            type: "user_message",
+            timestamp: nowMs - 30_000,
           },
-          {
-            conversationId: finishedId,
-            createdAt: new Date(nowMs - 30_000),
-            historyVersion: 0,
-            payload: {
-              content: "Pull request merged.",
-              provenance: {
-                authority: "instruction",
-                actor: { name: "resource-event", platform: "system" },
-              },
-              timestamp: nowMs - 30_000,
+          schemaVersion: 1,
+          seq: 0,
+          type: "user_message",
+        },
+        {
+          conversationId: finishedId,
+          createdAt: new Date(nowMs - 30_000),
+          historyVersion: 0,
+          payload: {
+            content: "Pull request merged.",
+            provenance: {
+              authority: "instruction",
+              actor: { name: "resource-event", platform: "system" },
             },
-            schemaVersion: 1,
-            seq: 0,
-            type: "user_message",
+            timestamp: nowMs - 30_000,
           },
-        ]);
+          schemaVersion: 1,
+          seq: 0,
+          type: "user_message",
+        },
+      ]);
       setPlugins([
         defineJuniorPlugin({
           manifest: {
@@ -567,55 +564,46 @@ describe("conversation list API", () => {
         .returning({ id: juniorUsers.id });
       const participantUserId = participant[0]?.id;
       expect(participantUserId).toBeDefined();
-      await fixture.sql
-        .db()
-        .insert(juniorIdentities)
-        .values({
-          id: "identity-participant-slack",
-          createdAt: new Date(1_000),
-          email: "participant@example.com",
-          emailNormalized: "participant@example.com",
-          emailVerified: true,
-          kind: "user",
-          provider: "slack",
-          providerSubjectId: "U-PARTICIPANT",
-          providerTenantId: "T1",
-          updatedAt: new Date(1_000),
-          userId: participantUserId!,
-        });
-      await fixture.sql
-        .db()
-        .insert(juniorConversationEvents)
-        .values({
-          actorIdentityId: "identity-participant-slack",
-          conversationId: "slack:C1:shared-thread",
-          createdAt: new Date(5_500),
-          historyVersion: 0,
-          payload: {
-            messageId: "1786500342.616849",
-            meta: {
-              author: {
-                fullName: "Participant",
-                isBot: false,
-                userId: "U-PARTICIPANT",
-                userName: "participant",
-              },
-              explicitMention: true,
+      await fixture.sql.db().insert(juniorIdentities).values({
+        id: "identity-participant-slack",
+        createdAt: new Date(1_000),
+        email: "participant@example.com",
+        emailNormalized: "participant@example.com",
+        emailVerified: true,
+        kind: "user",
+        provider: "slack",
+        providerSubjectId: "U-PARTICIPANT",
+        providerTenantId: "T1",
+        updatedAt: new Date(1_000),
+        userId: participantUserId!,
+      });
+      await fixture.sql.db().insert(juniorConversationEvents).values({
+        actorIdentityId: "identity-participant-slack",
+        conversationId: "slack:C1:shared-thread",
+        createdAt: new Date(5_500),
+        historyVersion: 0,
+        payload: {
+          messageId: "1786500342.616849",
+          meta: {
+            author: {
+              fullName: "Participant",
+              isBot: false,
+              userId: "U-PARTICIPANT",
+              userName: "participant",
             },
-            role: "user",
-            text: "@junior make urls clickable",
+            explicitMention: true,
           },
-          seq: 0,
-          type: "message",
-        });
-      await fixture.sql
-        .db()
-        .insert(juniorConversationParticipants)
-        .values({
-          lastMessageAt: new Date(5_500),
-          rootConversationId: "slack:C1:shared-thread",
-          userId: participantUserId!,
-        });
+          role: "user",
+          text: "@junior make urls clickable",
+        },
+        seq: 0,
+        type: "message",
+      });
+      await fixture.sql.db().insert(juniorConversationParticipants).values({
+        lastMessageAt: new Date(5_500),
+        rootConversationId: "slack:C1:shared-thread",
+        userId: participantUserId!,
+      });
 
       const viewer = {
         ...testViewer("participant@example.com"),
@@ -673,22 +661,19 @@ describe("conversation list API", () => {
         .returning({ id: juniorUsers.id });
       const participantUserId = participant[0]?.id;
       expect(participantUserId).toBeDefined();
-      await fixture.sql
-        .db()
-        .insert(juniorIdentities)
-        .values({
-          id: "identity-dashboard-participant",
-          createdAt: new Date(1_000),
-          email: "dashboard-participant@example.com",
-          emailNormalized: "dashboard-participant@example.com",
-          emailVerified: true,
-          kind: "user",
-          provider: "junior",
-          providerSubjectId: "dashboard-participant@example.com",
-          providerTenantId: "",
-          updatedAt: new Date(1_000),
-          userId: participantUserId!,
-        });
+      await fixture.sql.db().insert(juniorIdentities).values({
+        id: "identity-dashboard-participant",
+        createdAt: new Date(1_000),
+        email: "dashboard-participant@example.com",
+        emailNormalized: "dashboard-participant@example.com",
+        emailVerified: true,
+        kind: "user",
+        provider: "junior",
+        providerSubjectId: "dashboard-participant@example.com",
+        providerTenantId: "",
+        updatedAt: new Date(1_000),
+        userId: participantUserId!,
+      });
 
       await eventStore.append("slack:C1:dashboard-author", [
         {
@@ -717,12 +702,7 @@ describe("conversation list API", () => {
           actorIdentityId: juniorConversationEvents.actorIdentityId,
         })
         .from(juniorConversationEvents)
-        .where(
-          eq(
-            juniorConversationEvents.conversationId,
-            "slack:C1:dashboard-author",
-          ),
-        )
+        .where(eq(juniorConversationEvents.conversationId, "slack:C1:dashboard-author"))
         .limit(1);
       expect(event?.actorIdentityId).toBe("identity-dashboard-participant");
 

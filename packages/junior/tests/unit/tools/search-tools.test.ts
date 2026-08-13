@@ -142,7 +142,8 @@ function mixedCatalog() {
       inputSchema: Type.Object({ repo: Type.String() }),
     }),
     github_updateIssue: tool({
-      description: "Update an existing GitHub issue's title, body, or state.",
+      description:
+        "Update an existing GitHub issue's title, body, or state.",
       source: githubSource,
       exposure: "deferred",
       inputSchema: Type.Object({

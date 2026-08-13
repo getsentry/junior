@@ -471,9 +471,7 @@ describe("dashboard canonical event reporting", () => {
       (conversation) => conversation.conversationId === rootConversationId,
     );
     expect(rootParticipantSummary).toBeDefined();
-    expect(rootParticipantSummary).toMatchObject({
-      isPriority: expect.any(Boolean),
-    });
+    expect(rootParticipantSummary).toMatchObject({ isPriority: expect.any(Boolean) });
     // Feed-only Priority/work fields are absent on detail reports.
     expect(rootParticipantDetail).toMatchObject({
       conversationId: rootParticipantSummary!.conversationId,

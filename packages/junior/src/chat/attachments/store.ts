@@ -499,7 +499,10 @@ export async function collectAttachmentGarbage(args: {
     .from(juniorAttachments)
     .innerJoin(
       juniorConversations,
-      eq(juniorAttachments.conversationId, juniorConversations.conversationId),
+      eq(
+        juniorAttachments.conversationId,
+        juniorConversations.conversationId,
+      ),
     )
     .where(
       and(
@@ -521,7 +524,10 @@ export async function collectAttachmentGarbage(args: {
     .from(juniorAttachments)
     .innerJoin(
       juniorConversations,
-      eq(juniorAttachments.conversationId, juniorConversations.conversationId),
+      eq(
+        juniorAttachments.conversationId,
+        juniorConversations.conversationId,
+      ),
     )
     .where(
       and(
