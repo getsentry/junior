@@ -104,6 +104,7 @@ function resolvePublicBaseUrl(publicBaseUrl: string): string {
 /** Publish validated image bytes as a public content-addressed artifact. */
 export async function publishImage(args: {
   body: Buffer;
+  conversationId: string;
   db: JuniorSqlDatabase;
   now?: Date;
   publicBaseUrl: string;
@@ -140,12 +141,14 @@ export async function publishImage(args: {
     key: storageKey,
   });
 
+  // Last successful publish owns unpublish rights for this content hash.
   await args.db
     .db()
     .insert(juniorArtifacts)
     .values({
       bytes: args.body.byteLength,
       contentType: imageType.contentType,
+      conversationId: args.conversationId,
       createdAt: now,
       deleteRequestedAt: null,
       ext: imageType.extension,
@@ -158,6 +161,7 @@ export async function publishImage(args: {
       set: {
         bytes: args.body.byteLength,
         contentType: imageType.contentType,
+        conversationId: args.conversationId,
         deleteRequestedAt: null,
         ext: imageType.extension,
         public: true,
@@ -172,8 +176,12 @@ export async function publishImage(args: {
   };
 }
 
-/** Mark one public artifact unavailable for unauthenticated reads. */
+/**
+ * Mark one public artifact unavailable for unauthenticated reads.
+ * Only the conversation that last published the artifact may unpublish it.
+ */
 export async function unpublishArtifact(args: {
+  conversationId: string;
   db: JuniorSqlDatabase;
   now?: Date;
   ref: string;
@@ -196,11 +204,18 @@ export async function unpublishArtifact(args: {
     .db()
     .update(juniorArtifacts)
     .set({ deleteRequestedAt: now })
-    .where(eq(juniorArtifacts.sha256, parsed.sha256))
+    .where(
+      and(
+        eq(juniorArtifacts.sha256, parsed.sha256),
+        eq(juniorArtifacts.conversationId, args.conversationId),
+      ),
+    )
     .returning({ sha256: juniorArtifacts.sha256 });
 
   if (updated.length === 0) {
-    throw new ToolInputError(`artifact not found: ${filename}`);
+    throw new ToolInputError(
+      `artifact not found for this conversation: ${filename}`,
+    );
   }
 
   return { filename };

@@ -10,7 +10,10 @@ const outputSchema = juniorToolOutputSchema.extend({
 });
 
 /** Create a tool that stops serving one previously published public image. */
-export function createUnpublishImageTool(args: { db: JuniorSqlDatabase }) {
+export function createUnpublishImageTool(args: {
+  conversationId: string;
+  db: JuniorSqlDatabase;
+}) {
   return zodTool({
     annotations: {
       destructiveHint: true,
@@ -20,7 +23,7 @@ export function createUnpublishImageTool(args: { db: JuniorSqlDatabase }) {
     },
     approvalMode: "review",
     description:
-      "Unpublish one previously published public image so its public URL stops serving. Pass the public artifact URL or `<sha256>.<ext>` filename. Republishing the same image bytes later is allowed and restores the same URL. Does not remove copies already fetched by browsers or GitHub.",
+      "Unpublish one public image previously published in this conversation so its public URL stops serving. Pass the public artifact URL or `<sha256>.<ext>` filename. Only images last published by this conversation can be unpublished. Republishing the same image bytes later is allowed and restores the same URL. Does not remove copies already fetched by browsers or GitHub.",
     describeProposal: ({ ref }) => `Unpublish public image ${ref}.`,
     executionMode: "sequential",
     inputSchema: z
@@ -36,6 +39,7 @@ export function createUnpublishImageTool(args: { db: JuniorSqlDatabase }) {
     outputSchema,
     async execute({ ref }) {
       const result = await unpublishArtifact({
+        conversationId: args.conversationId,
         db: args.db,
         ref,
       });

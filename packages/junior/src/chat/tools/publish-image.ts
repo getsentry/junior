@@ -20,6 +20,7 @@ const outputSchema = juniorToolOutputSchema.extend({
 
 /** Create a tool that publishes one sandbox image at a public internet URL. */
 export function createPublishImageTool(args: {
+  conversationId: string;
   db: JuniorSqlDatabase;
   publicBaseUrl?: () => string | undefined;
   storage: Pick<AttachmentStorage, "put">;
@@ -65,6 +66,7 @@ export function createPublishImageTool(args: {
       // failures stay system errors so they reach Sentry.
       const image = await publishImage({
         body,
+        conversationId: args.conversationId,
         db: args.db,
         publicBaseUrl,
         storage: args.storage,

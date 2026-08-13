@@ -11,6 +11,11 @@ export const juniorArtifacts = pgTable(
     contentType: text("content_type").notNull(),
     bytes: integer("bytes").notNull(),
     public: boolean("public").notNull(),
+    /**
+     * Conversation that last published this artifact.
+     * Unpublish is limited to this conversation id.
+     */
+    conversationId: text("conversation_id").notNull(),
     createdAt: timestamptz("created_at").notNull(),
     /** Set when the artifact should stop being served publicly. */
     deleteRequestedAt: timestamptz("delete_requested_at"),
@@ -20,5 +25,6 @@ export const juniorArtifacts = pgTable(
       table.deleteRequestedAt,
       table.createdAt,
     ),
+    index("junior_artifacts_conversation_idx").on(table.conversationId),
   ],
 );

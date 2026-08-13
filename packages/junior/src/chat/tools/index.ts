@@ -140,13 +140,15 @@ export function createTools(
       hooks.toolOverrides?.imageGenerate,
     );
   }
-  if (context.attachmentStorage) {
+  if (context.attachmentStorage && context.conversationId) {
     tools.publishImage = createPublishImageTool({
+      conversationId: context.conversationId,
       db: getSqlExecutor(),
       storage: context.attachmentStorage,
       workspace: context.workspace,
     });
     tools.unpublishImage = createUnpublishImageTool({
+      conversationId: context.conversationId,
       db: getSqlExecutor(),
     });
   }

@@ -9,6 +9,7 @@ import { juniorArtifacts } from "@/db/schema";
 const PNG_BYTES = Buffer.from([
   137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 0, 0, 0, 0, 1,
 ]);
+const CONVERSATION_ID = "slack:C123:1718123456.000000";
 
 function workspace(data: Buffer | null): SandboxWorkspace {
   return {
@@ -89,6 +90,7 @@ describe("publishImage tool", () => {
     const imageStorage = storage();
     const db = memoryDb();
     const tool = createPublishImageTool({
+      conversationId: CONVERSATION_ID,
       db,
       publicBaseUrl: () => "https://junior.example.com",
       storage: imageStorage,
@@ -105,6 +107,7 @@ describe("publishImage tool", () => {
     });
     expect(imageStorage.objects.has(`artifacts/${sha256}.png`)).toBe(true);
     expect(db.rows.get(sha256)).toMatchObject({
+      conversationId: CONVERSATION_ID,
       deleteRequestedAt: null,
       public: true,
       storageKey: `artifacts/${sha256}.png`,
@@ -115,6 +118,7 @@ describe("publishImage tool", () => {
 
   it("rejects a missing file as input error", async () => {
     const tool = createPublishImageTool({
+      conversationId: CONVERSATION_ID,
       db: memoryDb(),
       publicBaseUrl: () => "https://junior.example.com",
       storage: storage(),
@@ -131,6 +135,7 @@ describe("publishImage tool", () => {
 
   it("rejects unsupported image bytes as input error", async () => {
     const tool = createPublishImageTool({
+      conversationId: CONVERSATION_ID,
       db: memoryDb(),
       publicBaseUrl: () => "https://junior.example.com",
       storage: storage(),
@@ -149,6 +154,7 @@ describe("publishImage tool", () => {
       throw new Error("blob unavailable");
     });
     const tool = createPublishImageTool({
+      conversationId: CONVERSATION_ID,
       db: memoryDb(),
       publicBaseUrl: () => "https://junior.example.com",
       storage: imageStorage,

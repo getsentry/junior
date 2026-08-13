@@ -9,9 +9,12 @@ public.
 - A public GET serves bytes only when the row exists, `public = true`, and
   `delete_requested_at` is null. Path/blob alone is never enough.
 - `publishImage` is the first writer. It validates image bytes, puts the object,
-  and upserts a public row (`public = true`, `delete_requested_at = null`).
-- `unpublishImage` sets `delete_requested_at`. Republish of the same bytes is
-  allowed and clears the tombstone.
+  and upserts a public row owned by the active conversation
+  (`public = true`, `delete_requested_at = null`, `conversation_id` set).
+- `unpublishImage` sets `delete_requested_at` only when the active conversation
+  last published that artifact. Cross-conversation unpublish is rejected.
+- Republish of the same bytes is allowed, clears the tombstone, and transfers
+  ownership to the republishing conversation.
 - Conversation attachments stay private and conversation-scoped.
 
 Anyone with a live public URL can fetch the artifact. Do not publish private
