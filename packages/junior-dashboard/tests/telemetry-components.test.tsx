@@ -597,11 +597,29 @@ describe("dashboard canonical-event components", () => {
       },
     ];
     expect(conversationSidebarAnnotations([annotations[0]!])).toEqual([
-      expect.objectContaining({ label: "junior" }),
+      expect.objectContaining({ label: "junior", status: "open" }),
     ]);
     expect(conversationSidebarAnnotations(annotations)).toEqual([
-      expect.objectContaining({ label: "2 repos" }),
+      expect.objectContaining({ label: "2 repos", status: "open" }),
     ]);
+    expect(
+      conversationSidebarAnnotations([
+        { ...annotations[0]!, status: "merged" as const },
+        { ...annotations[1]!, status: "merged" as const },
+      ]),
+    ).toEqual([expect.objectContaining({ status: "merged" })]);
+    expect(
+      conversationSidebarAnnotations([
+        { ...annotations[0]!, status: "merged" as const },
+        { ...annotations[1]!, status: "closed" as const },
+      ]),
+    ).toEqual([expect.objectContaining({ status: "merged" })]);
+    expect(
+      conversationSidebarAnnotations([
+        { ...annotations[0]!, status: "open" as const },
+        { ...annotations[1]!, status: "merged" as const },
+      ]),
+    ).toEqual([expect.objectContaining({ status: "open" })]);
 
     const html = renderToStaticMarkup(
       <ConversationSidebarAnnotations annotations={annotations} />,

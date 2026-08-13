@@ -862,7 +862,7 @@ function incidentConversation(nowMs: number): ConversationDetailReport {
     channel: "CQA123",
     channelName: "proj-checkout",
     actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),
-    // Finished assigned work with linked resources, but no unfinished chip.
+    // Finished links show the final annotation state in the sidebar.
     assignedWork: true,
     finishedWorkAt: iso(nowMs, -42 * 60_000),
     annotations: [
@@ -872,6 +872,11 @@ function incidentConversation(nowMs: number): ConversationDetailReport {
         label: "getsentry/payments#77",
         plugin: "github",
         status: "merged",
+        sidebar: {
+          group: "github-repositories",
+          label: "payments",
+          pluralLabel: "repos",
+        },
         url: "https://github.com/getsentry/payments/pull/77",
         createdAt: startedAt,
         updatedAt: iso(Date.parse(startedAt), 30_000),
@@ -882,6 +887,11 @@ function incidentConversation(nowMs: number): ConversationDetailReport {
         label: "getsentry/payments#61",
         plugin: "github",
         status: "closed",
+        sidebar: {
+          group: "github-repositories",
+          label: "payments",
+          pluralLabel: "repos",
+        },
         url: "https://github.com/getsentry/payments/issues/61",
         createdAt: startedAt,
         updatedAt: iso(Date.parse(startedAt), 28_000),

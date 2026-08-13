@@ -97,7 +97,26 @@ export function hasConversationAnnotations(
 
 type SidebarAnnotation = NonNullable<
   NonNullable<ConversationDetailReport["annotations"]>[number]["sidebar"]
->;
+> & { status?: ResourceLinkStatus };
+
+const SIDEBAR_STATUS_RANK: Record<ResourceLinkStatus, number> = {
+  warning: 5,
+  open: 4,
+  draft: 3,
+  merged: 2,
+  closed: 1,
+};
+
+function preferredSidebarStatus(
+  current: ResourceLinkStatus | undefined,
+  candidate: ResourceLinkStatus | undefined,
+): ResourceLinkStatus | undefined {
+  if (!candidate) return current;
+  if (!current) return candidate;
+  return SIDEBAR_STATUS_RANK[candidate] > SIDEBAR_STATUS_RANK[current]
+    ? candidate
+    : current;
+}
 
 /** Group plugin-owned annotation summaries for a conversation row. */
 export function conversationSidebarAnnotations(
@@ -105,17 +124,26 @@ export function conversationSidebarAnnotations(
 ): SidebarAnnotation[] {
   const groups = new Map<
     string,
-    { labels: Set<string>; pluralLabel: string }
+    {
+      labels: Set<string>;
+      pluralLabel: string;
+      status?: ResourceLinkStatus;
+    }
   >();
   for (const annotation of annotations ?? []) {
     if (!annotation.sidebar) continue;
     const current = groups.get(annotation.sidebar.group);
     if (current) {
       current.labels.add(annotation.sidebar.label);
+      current.status = preferredSidebarStatus(
+        current.status,
+        annotation.status,
+      );
     } else {
       groups.set(annotation.sidebar.group, {
         labels: new Set([annotation.sidebar.label]),
         pluralLabel: annotation.sidebar.pluralLabel,
+        status: annotation.status,
       });
     }
   }
@@ -126,6 +154,7 @@ export function conversationSidebarAnnotations(
         ? [...summary.labels][0]!
         : `${summary.labels.size} ${summary.pluralLabel}`,
     pluralLabel: summary.pluralLabel,
+    status: summary.status,
   }));
 }
 
@@ -137,11 +166,13 @@ export function ConversationSidebarAnnotations(props: {
   if (summaries.length === 0) return null;
   return summaries.map((summary) => (
     <span
-      className="inline-flex min-w-0 max-w-full items-center gap-1 truncate text-[#3fb950]"
+      className="inline-flex min-w-0 max-w-full items-center gap-1 truncate"
       key={summary.group}
       title={summary.label}
     >
-      <CircleDot aria-hidden="true" size={11} strokeWidth={2.25} />
+      {summary.status ? (
+        <ResourceStatus size={11} status={summary.status} />
+      ) : null}
       <span className="truncate text-dashboard-text-muted">
         {summary.label}
       </span>
