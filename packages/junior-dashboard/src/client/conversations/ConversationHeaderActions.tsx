@@ -60,7 +60,8 @@ export function ConversationHeaderActions(props: {
   );
 }
 
-function TranscriptViewToggle(props: {
+/** Icon-only conversation / event-log toggle shared by transcript surfaces. */
+export function TranscriptViewToggle(props: {
   onChange(value: TranscriptViewMode): void;
   value: TranscriptViewMode;
 }) {

@@ -935,6 +935,9 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain("child detail answer");
     expect(html).toContain("/conversations/child-1");
     expect(html).toContain("Open conversation");
+    expect(html).toContain('aria-label="Search transcript"');
+    expect(html).toContain('aria-label="Conversation"');
+    expect(html).toContain('aria-label="Event log"');
   });
 
   it("keeps the terminal parent error when child detail says completed", () => {

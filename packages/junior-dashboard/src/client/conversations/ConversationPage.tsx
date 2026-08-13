@@ -20,6 +20,7 @@ import {
   ConversationIdentity,
   ConversationPrivacyChip,
   ConversationStats,
+  hasConversationAnnotations,
   PendingAuthorization,
 } from "./ConversationMeta";
 import { PendingMailboxStack } from "./PendingMailboxStack";
@@ -93,7 +94,11 @@ export function ConversationPage(props: {
                 }
               />
             }
-            annotations={<ConversationAnnotations detail={detail.data} />}
+            annotations={
+              hasConversationAnnotations(detail.data) ? (
+                <ConversationAnnotations detail={detail.data} />
+              ) : null
+            }
             archive={{
               archived: Boolean(conversation?.archivedAt),
               disabled: !conversation || archive.isPending,
@@ -106,11 +111,13 @@ export function ConversationPage(props: {
               pending: archive.isPending,
             }}
             identity={
-              <ConversationIdentity
-                conversation={conversation}
-                conversationId={conversationId}
-                detail={detail.data}
-              />
+              conversation || conversationId || detail.data ? (
+                <ConversationIdentity
+                  conversation={conversation}
+                  conversationId={conversationId}
+                  detail={detail.data}
+                />
+              ) : null
             }
             live={conversationIsLive(visualStatus, detail.data)}
             meta={
@@ -126,11 +133,13 @@ export function ConversationPage(props: {
                   ) : null
                 }
                 stats={
-                  <ConversationStats
-                    conversation={conversation}
-                    detail={detail.data}
-                    variant="compact"
-                  />
+                  conversation ? (
+                    <ConversationStats
+                      conversation={conversation}
+                      detail={detail.data}
+                      variant="compact"
+                    />
+                  ) : null
                 }
               />
             }
@@ -141,10 +150,12 @@ export function ConversationPage(props: {
             }
             search={search}
             stats={
-              <ConversationStats
-                conversation={conversation}
-                detail={detail.data}
-              />
+              conversation ? (
+                <ConversationStats
+                  conversation={conversation}
+                  detail={detail.data}
+                />
+              ) : null
             }
             title={conversationDisplayTitle(conversation)}
             view={view}

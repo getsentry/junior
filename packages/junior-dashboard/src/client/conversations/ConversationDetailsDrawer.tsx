@@ -12,6 +12,12 @@ export function ConversationDetailsDrawer(props: {
   title: string;
 }) {
   const titleId = "conversation-details-drawer-title";
+  const sections = [
+    { content: props.identity, title: "Identity" },
+    { content: props.stats, title: "Runtime" },
+    { content: props.annotations, title: "Links" },
+  ].filter((section) => section.content != null);
+
   return (
     <Drawer
       closeLabel="Close conversation details"
@@ -33,38 +39,24 @@ export function ConversationDetailsDrawer(props: {
       openKey={props.title}
       titleId={titleId}
     >
-      <div className="grid min-w-0 gap-5">
-        {props.identity ? (
-          <DetailsSection title="Identity">
-            <div className="min-w-0 break-words font-sans text-sm leading-relaxed text-dashboard-text-muted">
-              {props.identity}
-            </div>
-          </DetailsSection>
-        ) : null}
-        {props.stats ? (
-          <DetailsSection title="Runtime">
-            <div className="min-w-0 break-words font-sans text-sm leading-relaxed text-dashboard-text-muted">
-              {props.stats}
-            </div>
-          </DetailsSection>
-        ) : null}
-        {props.annotations ? (
-          <DetailsSection title="Links">
-            <div className="min-w-0">{props.annotations}</div>
-          </DetailsSection>
-        ) : null}
-      </div>
+      {sections.length > 0 ? (
+        <div className="grid min-w-0 gap-5">
+          {sections.map((section) => (
+            <section className="grid min-w-0 gap-2" key={section.title}>
+              <h3 className="m-0 font-mono text-xs font-medium uppercase tracking-[0.14em] text-dashboard-text-muted">
+                {section.title}
+              </h3>
+              <div className="min-w-0 break-words font-sans text-sm leading-relaxed text-dashboard-text-muted">
+                {section.content}
+              </div>
+            </section>
+          ))}
+        </div>
+      ) : (
+        <p className="m-0 font-sans text-sm leading-relaxed text-dashboard-text-muted">
+          No additional conversation details.
+        </p>
+      )}
     </Drawer>
-  );
-}
-
-function DetailsSection(props: { children: ReactNode; title: string }) {
-  return (
-    <section className="grid min-w-0 gap-2">
-      <h3 className="m-0 font-mono text-xs font-medium uppercase tracking-[0.14em] text-dashboard-text-muted">
-        {props.title}
-      </h3>
-      {props.children}
-    </section>
   );
 }

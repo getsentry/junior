@@ -82,14 +82,26 @@ export function ConversationPrivacyChip(props: {
   );
 }
 
+/** True when the conversation has at least one resource-link annotation. */
+export function hasConversationAnnotations(
+  detail: ConversationDetailReport | undefined,
+): boolean {
+  return Boolean(
+    detail?.annotations?.some(
+      (annotation) => annotation.kind === "resource_link",
+    ),
+  );
+}
+
 /** Render resource-link annotations under the conversation title. */
 export function ConversationAnnotations(props: {
   detail: ConversationDetailReport | undefined;
 }) {
-  const links = props.detail?.annotations?.filter(
-    (annotation) => annotation.kind === "resource_link",
-  );
-  if (!links?.length) return null;
+  const links =
+    props.detail?.annotations?.filter(
+      (annotation) => annotation.kind === "resource_link",
+    ) ?? [];
+  if (links.length === 0) return null;
   return (
     <div className="flex flex-wrap gap-1.5">
       {links.map((link) => (
@@ -188,6 +200,7 @@ export function ConversationIdentity(props: {
       View in Sentry
     </a>
   ) : null;
+  if (!ownerNode && !id && !sentryLink) return null;
 
   return (
     <span className="inline-flex min-w-0 max-w-full flex-wrap items-center gap-x-1.5 gap-y-1">
