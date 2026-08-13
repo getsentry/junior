@@ -63,12 +63,14 @@ function memoryDb(): JuniorSqlDatabase & {
           return {
             onConflictDoUpdate(args: {
               set: Partial<typeof juniorArtifacts.$inferInsert>;
+              setWhere?: unknown;
             }) {
               const existing = rows.get(values.sha256);
-              if (existing) {
-                rows.set(values.sha256, { ...existing, ...args.set });
-              } else {
+              if (!existing) {
                 rows.set(values.sha256, values);
+              } else if (existing.deleteRequestedAt != null) {
+                // Mirror SQL setWhere: only reclaim tombstoned rows.
+                rows.set(values.sha256, { ...existing, ...args.set });
               }
               return Promise.resolve();
             },

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { JuniorSqlDatabase } from "@/db/db";
@@ -141,7 +141,7 @@ export async function publishImage(args: {
     key: storageKey,
   });
 
-  // Last successful publish owns unpublish rights for this content hash.
+  // Live rows keep their publisher. Only a tombstoned row can be reclaimed.
   await args.db
     .db()
     .insert(juniorArtifacts)
@@ -167,6 +167,7 @@ export async function publishImage(args: {
         public: true,
         storageKey,
       },
+      setWhere: isNotNull(juniorArtifacts.deleteRequestedAt),
     });
 
   return {
@@ -178,7 +179,7 @@ export async function publishImage(args: {
 
 /**
  * Mark one public artifact unavailable for unauthenticated reads.
- * Only the conversation that last published the artifact may unpublish it.
+ * Only the conversation that currently owns the artifact may unpublish it.
  */
 export async function unpublishArtifact(args: {
   conversationId: string;
