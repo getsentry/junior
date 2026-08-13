@@ -28,7 +28,7 @@ import {
   throwSandboxOperationError,
 } from "@/chat/sandbox/errors";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
-import { workspaceRepoCheckoutPath } from "@/chat/workspaces/checkout-path";
+import { tryWorkspaceRepoCheckoutPath } from "@/chat/workspaces/checkout-path";
 import {
   findSingleRepositoryDirectory,
   resolveRepositoryInstructions,
@@ -800,8 +800,11 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       }
       const { fs } = await runtime.tools();
       const primary = activeWorkspace?.repos.find((repo) => repo.isPrimary);
-      const selected = primary
-        ? `${SANDBOX_WORKSPACE_ROOT}/${workspaceRepoCheckoutPath(primary.repo)}`
+      const primaryPath = primary
+        ? tryWorkspaceRepoCheckoutPath(primary.repo)
+        : undefined;
+      const selected = primaryPath
+        ? `${SANDBOX_WORKSPACE_ROOT}/${primaryPath}`
         : await findSingleRepositoryDirectory(fs);
       if (!selected) return undefined;
       return await resolveRepositoryInstructions({
