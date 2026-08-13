@@ -15,9 +15,14 @@ import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
-const DEFAULT_LIMIT = 5;
+const DEFAULT_LIMIT = 20;
+const MAX_LIMIT = 50;
 
 const conversationMessageSearchOutputSchema = juniorToolOutputSchema.extend({
+  active_after: z.string().datetime().optional(),
+  active_before: z.string().datetime().optional(),
+  annotation_key_prefix: z.string().min(1).optional(),
+  annotation_plugin: z.string().min(1).optional(),
   channel_id: z.string().min(1).optional(),
   count: z.number().int().nonnegative(),
   query: z.string().optional(),
@@ -39,10 +44,22 @@ const conversationMessageSearchOutputSchema = juniorToolOutputSchema.extend({
 });
 
 async function resolveSearchFilters(input: {
+  active_after?: string | null;
+  active_before?: string | null;
+  annotation_key_prefix?: string | null;
+  annotation_plugin?: string | null;
   channel_id?: string | null;
   query?: string | null;
 }): Promise<ConversationMessageSearchFilters> {
   const query = input.query?.trim() || undefined;
+  const annotationKeyPrefix = input.annotation_key_prefix?.trim() || undefined;
+  const annotationPlugin = input.annotation_plugin?.trim() || undefined;
+  const activeAfterMs = input.active_after
+    ? Date.parse(input.active_after)
+    : undefined;
+  const activeBeforeMs = input.active_before
+    ? Date.parse(input.active_before)
+    : undefined;
   let channelId: string | undefined;
 
   if (input.channel_id != null && input.channel_id.trim() !== "") {
@@ -53,13 +70,29 @@ async function resolveSearchFilters(input: {
     channelId = target.channelId;
   }
 
-  if (!query && !channelId) {
+  if (
+    activeAfterMs !== undefined &&
+    activeBeforeMs !== undefined &&
+    activeAfterMs >= activeBeforeMs
+  ) {
+    throw new ToolInputError("active_after must be before active_before");
+  }
+  if (!query && !channelId && !annotationKeyPrefix) {
     throw new ToolInputError(
-      "Provide at least one of `query` or `channel_id`.",
+      "Provide at least one of `query`, `channel_id`, or `annotation_key_prefix`.",
+    );
+  }
+  if (annotationPlugin && !annotationKeyPrefix) {
+    throw new ToolInputError(
+      "annotation_plugin requires annotation_key_prefix",
     );
   }
 
   return {
+    ...(activeAfterMs !== undefined ? { activeAfterMs } : {}),
+    ...(activeBeforeMs !== undefined ? { activeBeforeMs } : {}),
+    ...(annotationKeyPrefix ? { annotationKeyPrefix } : {}),
+    ...(annotationPlugin ? { annotationPlugin } : {}),
     ...(channelId ? { channelId } : {}),
     ...(query ? { query } : {}),
   };
@@ -72,7 +105,7 @@ export function createSlackConversationMessageSearchTool(
 ) {
   return zodTool({
     description:
-      "Search retained user and assistant messages from public conversations in this Slack workspace. Excludes the current conversation. Not live Slack workspace search.",
+      "Search retained user and assistant messages from public conversations in this Slack workspace. Filter by message text, channel, activity time, or conversation annotation such as a GitHub repository. Excludes the current conversation. Not live Slack workspace search.",
     exposure: "deferred",
     source: CONVERSATIONS_TOOL_SOURCE,
     annotations: {
@@ -83,6 +116,36 @@ export function createSlackConversationMessageSearchTool(
     },
     inputSchema: z
       .object({
+        active_after: z
+          .string()
+          .datetime()
+          .nullable()
+          .describe("Include conversations active at or after this timestamp.")
+          .optional(),
+        active_before: z
+          .string()
+          .datetime()
+          .nullable()
+          .describe("Include conversations active before this timestamp.")
+          .optional(),
+        annotation_key_prefix: z
+          .string()
+          .trim()
+          .min(1)
+          .max(256)
+          .nullable()
+          .describe(
+            'Annotation key prefix. For GitHub repository work, use "owner/repo".',
+          )
+          .optional(),
+        annotation_plugin: z
+          .string()
+          .trim()
+          .min(1)
+          .max(64)
+          .nullable()
+          .describe('Annotation owner, such as "github".')
+          .optional(),
         channel_id: slackChannelRefParam.nullable().optional(),
         query: z
           .string()
@@ -96,8 +159,10 @@ export function createSlackConversationMessageSearchTool(
           .number()
           .int()
           .min(1)
-          .max(10)
-          .describe(`Maximum matches. Default ${DEFAULT_LIMIT}; max 10.`)
+          .max(MAX_LIMIT)
+          .describe(
+            `Maximum conversations. Default ${DEFAULT_LIMIT}; max ${MAX_LIMIT}.`,
+          )
           .nullable()
           .optional(),
       })
@@ -142,6 +207,18 @@ export function createSlackConversationMessageSearchTool(
       );
 
       return {
+        ...(filters.activeAfterMs !== undefined
+          ? { active_after: new Date(filters.activeAfterMs).toISOString() }
+          : {}),
+        ...(filters.activeBeforeMs !== undefined
+          ? { active_before: new Date(filters.activeBeforeMs).toISOString() }
+          : {}),
+        ...(filters.annotationKeyPrefix
+          ? { annotation_key_prefix: filters.annotationKeyPrefix }
+          : {}),
+        ...(filters.annotationPlugin
+          ? { annotation_plugin: filters.annotationPlugin }
+          : {}),
         ...(filters.query ? { query: filters.query } : {}),
         ...(filters.channelId ? { channel_id: filters.channelId } : {}),
         count: matchesOutput.length,

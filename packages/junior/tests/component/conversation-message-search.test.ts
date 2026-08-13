@@ -5,6 +5,7 @@ import { createSqlConversationEventStore } from "@/chat/conversations/sql/histor
 import { createSqlConversationMessageSearchStore } from "@/chat/conversations/sql/message-search";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
+import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { createLocalJuniorSqlFixture } from "../fixtures/sql";
 
 describe("conversation message search", () => {
@@ -158,6 +159,48 @@ describe("conversation message search", () => {
       expect(combined).toEqual([
         expect.objectContaining({
           conversationId: "slack:CREQUEST:1700000000.200000",
+        }),
+      ]);
+
+      await createPluginAnnotations({
+        conversationId: "slack:CARCHIVE:1700000000.300000",
+        db: fixture.sql.db(),
+        plugin: "github",
+      }).upsert({
+        kind: "resource_link",
+        key: "getsentry/junior#1234",
+        label: "getsentry/junior#1234",
+        url: "https://github.com/getsentry/junior/pull/1234",
+      });
+      await createPluginAnnotations({
+        conversationId: "slack:CREQUEST:1700000000.200000",
+        db: fixture.sql.db(),
+        plugin: "github",
+      }).upsert({
+        kind: "resource_link",
+        key: "getsentry/other#9",
+        label: "getsentry/other#9",
+        url: "https://github.com/getsentry/other/issues/9",
+      });
+
+      const annotated = await search.search({
+        currentConversationId: "slack:CREQUEST:1700000000.100000",
+        filters: {
+          activeAfterMs: 1_749_999_999_000,
+          activeBeforeMs: 1_750_000_001_000,
+          annotationKeyPrefix: "GETSENTRY/JUNIOR",
+          annotationPlugin: "github",
+        },
+        limit: 10,
+        scope: {
+          kind: "public_provider_tenant",
+          provider: "slack",
+          providerTenantId: "T123",
+        },
+      });
+      expect(annotated).toEqual([
+        expect.objectContaining({
+          conversationId: "slack:CARCHIVE:1700000000.300000",
         }),
       ]);
     } finally {

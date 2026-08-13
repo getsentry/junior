@@ -1,6 +1,18 @@
-import { and, desc, eq, isNull, ne, sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  gte,
+  ilike,
+  isNull,
+  lt,
+  ne,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import {
+  juniorConversationAnnotations,
   juniorConversationEvents,
   juniorConversations,
   juniorDestinations,
@@ -13,6 +25,10 @@ import type {
 } from "../message-search";
 
 const EXCERPT_WITHOUT_QUERY_CHARS = 240;
+
+function escapeLikePrefix(value: string): string {
+  return value.replace(/[\\%_]/g, "\\$&");
+}
 
 class SqlConversationMessageSearchStore implements ConversationMessageSearchStore {
   constructor(private readonly executor: JuniorSqlDatabase) {}
@@ -58,6 +74,46 @@ class SqlConversationMessageSearchStore implements ConversationMessageSearchStor
     if (args.filters.channelId) {
       conditions.push(
         eq(juniorDestinations.providerDestinationId, args.filters.channelId),
+      );
+    }
+    if (args.filters.activeAfterMs !== undefined) {
+      conditions.push(
+        gte(
+          juniorConversations.lastActivityAt,
+          new Date(args.filters.activeAfterMs),
+        ),
+      );
+    }
+    if (args.filters.activeBeforeMs !== undefined) {
+      conditions.push(
+        lt(
+          juniorConversations.lastActivityAt,
+          new Date(args.filters.activeBeforeMs),
+        ),
+      );
+    }
+    if (args.filters.annotationKeyPrefix) {
+      const annotationConditions: SQL[] = [
+        eq(
+          juniorConversationAnnotations.conversationId,
+          juniorConversations.conversationId,
+        ),
+        ilike(
+          juniorConversationAnnotations.key,
+          `${escapeLikePrefix(args.filters.annotationKeyPrefix)}%`,
+        ),
+      ];
+      if (args.filters.annotationPlugin) {
+        annotationConditions.push(
+          eq(juniorConversationAnnotations.plugin, args.filters.annotationPlugin),
+        );
+      }
+      conditions.push(
+        sql`exists (
+          select 1
+          from ${juniorConversationAnnotations}
+          where ${and(...annotationConditions)}
+        )`,
       );
     }
 
