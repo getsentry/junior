@@ -105,7 +105,7 @@ export function createSlackConversationMessageSearchTool(
 ) {
   return zodTool({
     description:
-      "Search retained user and assistant messages from public conversations in this Slack workspace. Filter by message text, channel, activity time, or conversation annotation such as a GitHub repository. Excludes the current conversation. Not live Slack workspace search.",
+      "Search retained user and assistant messages from public conversations in this Slack workspace. Filter by message text, channel, activity time, or plugin-owned conversation annotation. Excludes the current conversation. Not live Slack workspace search.",
     exposure: "deferred",
     source: CONVERSATIONS_TOOL_SOURCE,
     annotations: {
@@ -134,9 +134,7 @@ export function createSlackConversationMessageSearchTool(
           .min(1)
           .max(256)
           .nullable()
-          .describe(
-            'Annotation key prefix. For GitHub repository work, use "owner/repo".',
-          )
+          .describe("Plugin-owned annotation key prefix.")
           .optional(),
         annotation_plugin: z
           .string()
@@ -144,7 +142,7 @@ export function createSlackConversationMessageSearchTool(
           .min(1)
           .max(64)
           .nullable()
-          .describe('Annotation owner, such as "github".')
+          .describe("Plugin that owns the annotation.")
           .optional(),
         channel_id: slackChannelRefParam.nullable().optional(),
         query: z

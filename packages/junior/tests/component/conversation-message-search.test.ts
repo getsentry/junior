@@ -165,22 +165,22 @@ describe("conversation message search", () => {
       await createPluginAnnotations({
         conversationId: "slack:CARCHIVE:1700000000.300000",
         db: fixture.sql.db(),
-        plugin: "github",
+        plugin: "code-host",
       }).upsert({
         kind: "resource_link",
-        key: "getsentry/junior#1234",
-        label: "getsentry/junior#1234",
-        url: "https://github.com/getsentry/junior/pull/1234",
+        key: "acme/widget#1234",
+        label: "acme/widget#1234",
+        url: "https://code.example/acme/widget/changes/1234",
       });
       await createPluginAnnotations({
         conversationId: "slack:CREQUEST:1700000000.200000",
         db: fixture.sql.db(),
-        plugin: "github",
+        plugin: "code-host",
       }).upsert({
         kind: "resource_link",
-        key: "getsentry/other#9",
-        label: "getsentry/other#9",
-        url: "https://github.com/getsentry/other/issues/9",
+        key: "acme/other#9",
+        label: "acme/other#9",
+        url: "https://code.example/acme/other/issues/9",
       });
 
       const annotated = await search.search({
@@ -188,8 +188,8 @@ describe("conversation message search", () => {
         filters: {
           activeAfterMs: 1_749_999_999_000,
           activeBeforeMs: 1_750_000_001_000,
-          annotationKeyPrefix: "GETSENTRY/JUNIOR",
-          annotationPlugin: "github",
+          annotationKeyPrefix: "ACME/WIDGET",
+          annotationPlugin: "code-host",
         },
         limit: 10,
         scope: {
