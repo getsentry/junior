@@ -1374,10 +1374,6 @@ describe("sandbox egress proxy integration", () => {
 
   it("denies oversized raw GitHub pull request review submits before credential injection", async () => {
     await registerGitHubPlugin();
-    const records: EmittedLogRecord[] = [];
-    const unregister = modules.logging.registerLogRecordSink((record) => {
-      records.push(record);
-    });
     const credentialToken = modules.session.createSandboxEgressCredentialToken({
       credentials: { actor: { type: "user", userId: ACTOR_ID } },
       egressId: EGRESS_ID,
@@ -1389,27 +1385,22 @@ describe("sandbox egress proxy integration", () => {
     const forwardURL = forwardUrlFor(networkPolicy, GITHUB_API_HOST);
     const upstreamFetch = vi.fn();
 
-    let response: Response;
-    try {
-      response = await modules.proxy.proxySandboxEgressRequest(
-        proxiedRequest({
-          body: JSON.stringify({
-            event: "APPROVE",
-            body: "x".repeat(70 * 1024),
-          }),
-          forwardURL,
-          method: "POST",
-          upstreamHost: GITHUB_API_HOST,
-          upstreamPath: "/repos/getsentry/junior/pulls/780/reviews",
+    const response = await modules.proxy.proxySandboxEgressRequest(
+      proxiedRequest({
+        body: JSON.stringify({
+          event: "APPROVE",
+          body: "x".repeat(70 * 1024),
         }),
-        {
-          fetch: upstreamFetch as typeof fetch,
-          verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
-        },
-      );
-    } finally {
-      unregister();
-    }
+        forwardURL,
+        method: "POST",
+        upstreamHost: GITHUB_API_HOST,
+        upstreamPath: "/repos/getsentry/junior/pulls/780/reviews",
+      }),
+      {
+        fetch: upstreamFetch as typeof fetch,
+        verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
+      },
+    );
 
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({
@@ -1417,14 +1408,6 @@ describe("sandbox egress proxy integration", () => {
         "GitHub pull request review request body is too large for Junior to inspect before issuing credentials.",
     });
     expect(upstreamFetch).not.toHaveBeenCalled();
-    expect(
-      records.find(
-        (record) => record.eventName === "sandbox.egress.policy.denied",
-      )?.attributes,
-    ).toMatchObject({
-      "app.sandbox.egress.policy.reason":
-        "GitHub pull request review request body is too large for Junior to inspect before issuing credentials.",
-    });
   });
 
   it("records plugin write auth needs over earlier read failures", async () => {

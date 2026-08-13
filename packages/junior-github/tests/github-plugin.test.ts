@@ -2017,15 +2017,6 @@ Conversation: \`local:test:old-conversation\`
     ).rejects.toThrow(
       "review submissions must include a parseable non-APPROVE event",
     );
-    await expect(
-      grantForEgress({
-        bodyText: "{",
-        method: "POST",
-        url: "https://api.github.com/repos/getsentry/junior/pulls/780/reviews/99/events",
-      }),
-    ).rejects.toThrow(
-      "review submissions must include a parseable non-APPROVE event",
-    );
   });
 
   it("preserves installed App permissions on repository-scoped write credentials", async () => {

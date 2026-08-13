@@ -314,68 +314,40 @@ async function requestBodyBytes(
   return await request.arrayBuffer();
 }
 
-function isGitHubApiHost(upstreamUrl: URL): boolean {
-  return upstreamUrl.hostname.toLowerCase() === "api.github.com";
-}
+type GitHubBodyInspection = "graphql" | "pull-request-review";
 
-function isGitHubGraphqlPath(upstreamUrl: URL): boolean {
-  return upstreamUrl.pathname.toLowerCase().endsWith("/graphql");
-}
-
-/** REST review submits need body inspection so Junior can deny APPROVE. */
-function isGitHubPullRequestReviewSubmitPath(upstreamUrl: URL): boolean {
-  const pathname = upstreamUrl.pathname.toLowerCase();
-  return (
-    /^\/repos\/[^/]+\/[^/]+\/pulls\/[^/]+\/reviews$/.test(pathname) ||
-    /^\/repos\/[^/]+\/[^/]+\/pulls\/[^/]+\/reviews\/[^/]+\/events$/.test(
-      pathname,
-    )
-  );
-}
-
-function isGrantSelectionBodyVisible(input: {
+/** Identify raw GitHub writes whose body determines whether a grant is safe. */
+function githubBodyInspection(input: {
+  operation?: string;
   provider: string;
   requestMethod: string;
   upstreamUrl: URL;
-}): boolean {
-  if (input.provider !== "github" || !isGitHubApiHost(input.upstreamUrl)) {
-    return false;
+}): GitHubBodyInspection | undefined {
+  if (
+    input.operation ||
+    input.provider !== "github" ||
+    input.requestMethod.toUpperCase() !== "POST" ||
+    input.upstreamUrl.hostname.toLowerCase() !== "api.github.com"
+  ) {
+    return undefined;
   }
-  if (isGitHubGraphqlPath(input.upstreamUrl)) {
-    return true;
+  const pathname = input.upstreamUrl.pathname.toLowerCase();
+  if (pathname.endsWith("/graphql")) {
+    return "graphql";
   }
-  return (
-    input.requestMethod.toUpperCase() === "POST" &&
-    isGitHubPullRequestReviewSubmitPath(input.upstreamUrl)
-  );
+  return /^\/repos\/[^/]+\/[^/]+\/pulls\/[^/]+\/reviews(?:\/[^/]+\/events)?$/.test(
+    pathname,
+  )
+    ? "pull-request-review"
+    : undefined;
 }
 
-function grantSelectionBodyRequiresInspection(input: {
-  operation?: string;
-  provider: string;
-  request: Request;
-  upstreamUrl: URL;
-}): boolean {
-  if (input.operation || input.provider !== "github") {
-    return false;
-  }
-  if (input.request.method.toUpperCase() !== "POST") {
-    return false;
-  }
-  if (!isGitHubApiHost(input.upstreamUrl)) {
-    return false;
-  }
-  return (
-    isGitHubGraphqlPath(input.upstreamUrl) ||
-    isGitHubPullRequestReviewSubmitPath(input.upstreamUrl)
-  );
-}
-
-function grantSelectionBodyTooLargeMessage(upstreamUrl: URL): string {
-  if (isGitHubGraphqlPath(upstreamUrl)) {
-    return "GitHub GraphQL request body is too large for Junior to inspect before issuing credentials.";
-  }
-  return "GitHub pull request review request body is too large for Junior to inspect before issuing credentials.";
+function grantSelectionBodyTooLargeMessage(
+  inspection: GitHubBodyInspection,
+): string {
+  return inspection === "graphql"
+    ? "GitHub GraphQL request body is too large for Junior to inspect before issuing credentials."
+    : "GitHub pull request review request body is too large for Junior to inspect before issuing credentials.";
 }
 
 function grantSelectionBodyText(input: {
@@ -389,9 +361,15 @@ function grantSelectionBodyText(input: {
     return undefined;
   }
   if (input.body.byteLength > GRANT_SELECTION_BODY_TEXT_LIMIT_BYTES) {
-    if (grantSelectionBodyRequiresInspection(input)) {
+    const inspection = githubBodyInspection({
+      ...(input.operation ? { operation: input.operation } : {}),
+      provider: input.provider,
+      requestMethod: input.request.method,
+      upstreamUrl: input.upstreamUrl,
+    });
+    if (inspection) {
       throw new EgressPolicyDenied(
-        grantSelectionBodyTooLargeMessage(input.upstreamUrl),
+        grantSelectionBodyTooLargeMessage(inspection),
       );
     }
     return undefined;
@@ -626,7 +604,8 @@ export async function executeCredentialedEgressRequest(input: {
     request,
     upstreamUrl,
   } = input;
-  const bodyForGrantSelection = isGrantSelectionBodyVisible({
+  const bodyForGrantSelection = githubBodyInspection({
+    ...(operation ? { operation } : {}),
     provider,
     requestMethod: request.method,
     upstreamUrl,

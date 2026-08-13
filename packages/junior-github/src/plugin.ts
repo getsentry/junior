@@ -78,7 +78,6 @@ import {
   type GitHubGrantName,
   type GitHubGrantReason,
 } from "./credential-support.js";
-import { assertGitHubPullRequestApprovalDenied } from "./write-policy.js";
 
 /** Configure the built-in GitHub plugin manifest and hooks. */
 export interface GitHubPluginOptions {
@@ -497,6 +496,45 @@ function isGitHubPullCreateGraphqlMutation(
   return new RegExp(
     `\\bmutation\\s+${escapeRegExp(parsed.operationName)}\\b`,
   ).test(parsed.normalized);
+}
+
+/** Deny APPROVE while allowing change requests, comments, and dismissals. */
+function assertGitHubPullRequestApprovalDenied(input: {
+  bodyText?: string;
+  method: string;
+  upstreamUrl: URL;
+}): void {
+  if (input.method !== "POST" || !isGitHubApiUrl(input.upstreamUrl)) {
+    return;
+  }
+  const match = input.upstreamUrl.pathname
+    .toLowerCase()
+    .match(
+      /^\/repos\/[^/]+\/[^/]+\/pulls\/[^/]+\/reviews(?:\/[^/]+\/(events))?$/,
+    );
+  if (!match) return;
+
+  let event: string | undefined;
+  if (input.bodyText?.trim()) {
+    try {
+      const body: unknown = JSON.parse(input.bodyText);
+      if (isRecord(body) && typeof body.event === "string") {
+        event = body.event.trim().toUpperCase() || undefined;
+      }
+    } catch {
+      // The events endpoint fails closed below. A create without event is pending.
+    }
+  }
+  if (event === "APPROVE") {
+    throw new EgressPolicyDenied(
+      "Junior cannot approve GitHub pull requests. Request changes, leave a comment review, or dismiss Junior's own review instead.",
+    );
+  }
+  if (match[1] === "events" && event === undefined) {
+    throw new EgressPolicyDenied(
+      "GitHub pull request review submissions must include a parseable non-APPROVE event so Junior can enforce the no-approve policy.",
+    );
+  }
 }
 
 function assertGitHubWriteAllowed(input: {
