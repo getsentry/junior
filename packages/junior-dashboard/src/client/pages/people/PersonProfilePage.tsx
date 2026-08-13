@@ -22,7 +22,7 @@ import { SectionIntro } from "../../components/layout/SectionIntro";
 import { SectionTitle } from "../../components/layout/SectionTitle";
 import { StatCard } from "../../components/metrics/StatCard";
 import { formatCompactNumber } from "../../format";
-import { PluginReports } from "../system/PluginReports";
+import { ProfilePluginReports } from "./ProfilePluginReports";
 
 function runtimeLabel(durationMs: number, conversations: number): string {
   if (durationMs <= 0 && conversations > 0) return "unknown";
@@ -109,13 +109,8 @@ export function Profile(props: {
           </div>
         </Card>
       ) : null}
-      {!props.pluginReportsLoading && pluginReports.length > 0 ? (
-        <PluginReports
-          fallbackTitle="Plugin activity"
-          range={range}
-          reports={pluginReports}
-          title="Work via Junior"
-        />
+      {!props.pluginReportsLoading ? (
+        <ProfilePluginReports range={range} reports={pluginReports} />
       ) : null}
 
       <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_19rem] lg:items-start">
