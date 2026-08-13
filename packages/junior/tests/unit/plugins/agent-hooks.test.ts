@@ -1726,7 +1726,6 @@ describe("agent plugin hooks", () => {
           {
             provider: "agent-demo",
             repo: "example/demo",
-            checkoutPath: "demo",
           },
         ],
         controller.signal,
@@ -1767,18 +1766,47 @@ describe("agent plugin hooks", () => {
           {
             provider: "agent-demo",
             repo: "example/demo",
-            checkoutPath: "demo",
           },
           {
             provider: "missing-provider",
             repo: "example/missing",
-            checkoutPath: "missing",
           },
         ]),
       ).rejects.toThrow(
         "Workspace repository providers have no preparation hook: missing-provider",
       );
       expect(workspacePrepare).not.toHaveBeenCalled();
+    } finally {
+      setPlugins(previous);
+    }
+  });
+
+  it("rejects colliding Workspace checkout paths from short repository names", async () => {
+    const previous = setPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "github",
+          displayName: "GitHub",
+          description: "GitHub",
+        },
+        hooks: {
+          async workspacePrepare() {},
+        },
+      }),
+    ]);
+    try {
+      await expect(
+        createPluginHookRunner().prepareWorkspace?.(fakeSandbox([]), [
+          {
+            provider: "github",
+            repo: "getsentry/sentry",
+          },
+          {
+            provider: "github",
+            repo: "acme/sentry",
+          },
+        ]),
+      ).rejects.toThrow("Workspace checkout path collision: repos/sentry");
     } finally {
       setPlugins(previous);
     }

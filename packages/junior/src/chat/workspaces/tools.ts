@@ -5,6 +5,7 @@ import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRegistry } from "@/chat/tools/definition";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
+import { workspaceRepoCheckoutPath } from "./checkout-path";
 import { getWorkspaceByName, listWorkspaces } from "./store";
 
 const repoSchema = z.object({
@@ -26,7 +27,7 @@ function view(workspace: Awaited<ReturnType<typeof listWorkspaces>>[number]) {
     repos: workspace.repos.map((repo) => ({
       provider: repo.provider,
       repo: repo.repo,
-      checkout_path: repo.checkoutPath,
+      checkout_path: workspaceRepoCheckoutPath(repo.repo),
       is_primary: repo.isPrimary,
     })),
   };

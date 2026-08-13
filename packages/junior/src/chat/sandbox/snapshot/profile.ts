@@ -89,17 +89,14 @@ function workspaceRecipe(workspace: Workspace) {
   // Sort repos so profile hashes stay stable when query order differs.
   // Omit isPrimary: it only selects AGENTS.md at runtime, not snapshot contents.
   const repos = [...workspace.repos]
-    .map(({ provider, repo, checkoutPath }) => ({
+    .map(({ provider, repo }) => ({
       provider,
       repo,
-      checkoutPath,
     }))
     .sort((left, right) => {
       const provider = compareCodePoints(left.provider, right.provider);
       if (provider !== 0) return provider;
-      const repo = compareCodePoints(left.repo, right.repo);
-      if (repo !== 0) return repo;
-      return compareCodePoints(left.checkoutPath, right.checkoutPath);
+      return compareCodePoints(left.repo, right.repo);
     });
   return {
     id: workspace.id,

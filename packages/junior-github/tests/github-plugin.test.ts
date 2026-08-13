@@ -2834,8 +2834,8 @@ Conversation: \`local:test:old-conversation\`
       log: pluginLog,
       plugin: { name: "github" },
       repos: [
-        { repo: "getsentry/sentry", path: "sentry" },
-        { repo: "getsentry/junior", path: "junior" },
+        { repo: "getsentry/sentry", path: "repos/sentry" },
+        { repo: "getsentry/junior", path: "repos/junior" },
       ],
       sandbox: {
         juniorRoot: "/vercel/sandbox/.junior",
@@ -2853,8 +2853,27 @@ Conversation: \`local:test:old-conversation\`
 
     await githubPlugin().hooks?.workspacePrepare?.(ctx);
 
-    expect(runs.map((run) => run.args?.at(-1))).toEqual(["sentry", "junior"]);
-    expect(runs[0]?.env).toBeUndefined();
+    expect(runs.map((run) => run.args)).toEqual([
+      ["-p", "--", "repos"],
+      [
+        "clone",
+        "--quiet",
+        "--depth=1",
+        "--",
+        "https://github.com/getsentry/sentry.git",
+        "repos/sentry",
+      ],
+      ["-p", "--", "repos"],
+      [
+        "clone",
+        "--quiet",
+        "--depth=1",
+        "--",
+        "https://github.com/getsentry/junior.git",
+        "repos/junior",
+      ],
+    ]);
+    expect(runs.every((run) => run.env === undefined)).toBe(true);
   });
 
   it("rejects reserved workspace checkout paths", async () => {
@@ -2902,6 +2921,33 @@ Conversation: \`local:test:old-conversation\`
 
     await expect(githubPlugin().hooks?.workspacePrepare?.(ctx)).rejects.toThrow(
       "Invalid workspace checkout path: Skills",
+    );
+  });
+
+  it("rejects colliding workspace checkout paths case-insensitively", async () => {
+    const ctx = {
+      db,
+      log: pluginLog,
+      plugin: { name: "github" },
+      repos: [
+        { repo: "getsentry/sentry", path: "repos/sentry" },
+        { repo: "acme/sentry", path: "repos/Sentry" },
+      ],
+      sandbox: {
+        juniorRoot: "/vercel/sandbox/.junior",
+        root: "/vercel/sandbox",
+        async readFile() {
+          return null;
+        },
+        async run() {
+          throw new Error("workspace clone should not start");
+        },
+        async writeFile() {},
+      },
+    } as WorkspacePrepareHookContext;
+
+    await expect(githubPlugin().hooks?.workspacePrepare?.(ctx)).rejects.toThrow(
+      "Workspace checkout path collision: repos/Sentry",
     );
   });
 

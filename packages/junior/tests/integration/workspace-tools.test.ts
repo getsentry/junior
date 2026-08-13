@@ -21,7 +21,6 @@ describe("Workspace tools", () => {
         {
           provider: "github",
           repo: "getsentry/sentry",
-          checkoutPath: "sentry",
           isPrimary: true,
         },
       ],
@@ -88,7 +87,7 @@ describe("Workspace tools", () => {
                 {
                   provider: "github",
                   repo: "getsentry/sentry",
-                  checkout_path: "sentry",
+                  checkout_path: "repos/sentry",
                   is_primary: true,
                 },
               ],

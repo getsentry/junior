@@ -50,6 +50,8 @@ traffic through verified host egress.
 - A Workspace recipe is part of the profile hash. One build installs runtime
   dependencies, prepares repositories, runs setup, and captures the complete
   snapshot.
+- Workspace repositories clone to fixed `repos/{name}` paths so setup scripts
+  can find them without a stored checkout path.
 - Repository preparation uses host egress for provider credentials. Snapshot
   state and Sandbox commands do not receive real provider credentials. Setup
   runs after Junior removes the credential route from the build Sandbox.

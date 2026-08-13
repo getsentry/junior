@@ -13,11 +13,17 @@ const inputSchema = z
     repo: z.string().describe('Repository in "owner/name" format.'),
     directory: z
       .string()
-      .regex(/^[A-Za-z0-9._-]+$/)
-      .refine((value) => value !== "." && value !== "..", {
-        message: "Directory must be a single directory name.",
-      })
-      .describe("Optional destination directory under the sandbox root.")
+      .regex(/^(?:[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*)$/)
+      .refine(
+        (value) =>
+          !value.split("/").some((part) => part === "." || part === ".."),
+        {
+          message: "Directory must be a relative path without . or .. segments.",
+        },
+      )
+      .describe(
+        "Optional destination directory under the sandbox root. Defaults to repos/{name}.",
+      )
       .optional(),
   })
   .strict();
@@ -43,9 +49,9 @@ function parseRepo(value: string): { name: string; owner: string } {
 }
 
 function defaultDirectory(repoName: string): string {
-  return isReservedSandboxDirectory(repoName)
-    ? `${repoName}-repo`
-    : repoName;
+  // Keep ad-hoc clones under repos/ so they match Workspace layout and stay
+  // clear of reserved sandbox roots (skills, data, .junior).
+  return `repos/${repoName}`;
 }
 
 function commandSignal(
@@ -112,7 +118,29 @@ export function createGitHubCloneRepositoryTool(
     async execute(input, options): Promise<Result> {
       const repo = parseRepo(input.repo);
       const directory = input.directory ?? defaultDirectory(repo.name);
+      const rootSegment = directory.split("/")[0] ?? directory;
+      if (isReservedSandboxDirectory(rootSegment)) {
+        throw new PluginToolInputError(
+          `Directory conflicts with a reserved sandbox path: ${directory}`,
+        );
+      }
       const path = `${ctx.sandbox.root}/${directory}`;
+      const parentDirectory = directory.includes("/")
+        ? directory.slice(0, directory.lastIndexOf("/"))
+        : undefined;
+      if (parentDirectory) {
+        const mkdir = await ctx.sandbox.run({
+          cmd: "mkdir",
+          args: ["-p", "--", `${ctx.sandbox.root}/${parentDirectory}`],
+          cwd: ctx.sandbox.root,
+          signal: commandSignal(options.signal, 30_000),
+        });
+        if (mkdir.exitCode !== 0) {
+          throw new PluginToolInputError(
+            `Failed to create clone parent directory: ${parentDirectory}`,
+          );
+        }
+      }
       const exists = await ctx.sandbox.run({
         cmd: "bash",
         args: ["-c", `test -e "$1"`, "bash", path],

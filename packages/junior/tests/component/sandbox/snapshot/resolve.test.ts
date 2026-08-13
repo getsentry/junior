@@ -426,7 +426,6 @@ describe("snapshot resolution", () => {
         {
           provider: "github",
           repo: "getsentry/sentry",
-          checkoutPath: "sentry",
           isPrimary: true,
         },
       ],

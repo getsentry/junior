@@ -86,7 +86,6 @@ describe("snapshot dependency profile", () => {
         {
           provider: "github",
           repo: "getsentry/sentry",
-          checkoutPath: "sentry",
           isPrimary: true,
         },
       ],
@@ -112,13 +111,11 @@ describe("snapshot dependency profile", () => {
       {
         provider: "github",
         repo: "getsentry/sentry",
-        checkoutPath: "sentry",
         isPrimary: true,
       },
       {
         provider: "github",
         repo: "getsentry/relay",
-        checkoutPath: "relay",
         isPrimary: false,
       },
     ];
@@ -147,13 +144,11 @@ describe("snapshot dependency profile", () => {
       {
         provider: "github",
         repo: "getsentry/Zulu",
-        checkoutPath: "Zulu",
         isPrimary: true,
       },
       {
         provider: "github",
         repo: "getsentry/alpha",
-        checkoutPath: "alpha",
         isPrimary: false,
       },
     ];

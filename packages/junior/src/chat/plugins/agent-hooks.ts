@@ -50,6 +50,7 @@ import { createSlackDirectCredentialSubject } from "@/chat/credentials/subject";
 import { resolveChannelCapabilities } from "@/chat/slack/tool-support/channel-capabilities";
 import type { Actor } from "@/chat/actor";
 import { z } from "zod";
+import { workspaceRepoCheckoutPath } from "@/chat/workspaces/checkout-path";
 
 /** Signal that a plugin intentionally denied a tool execution. */
 export class PluginHookDeniedError extends Error {
@@ -97,7 +98,6 @@ export interface PluginHookRunner {
     repos: Array<{
       provider: string;
       repo: string;
-      checkoutPath: string;
     }>,
     signal?: AbortSignal,
   ): Promise<void>;
@@ -1425,14 +1425,28 @@ export function createPluginHookRunner(
         );
       }
 
+      const selectedRepos = repos.map((repo) => ({
+        provider: repo.provider,
+        repo: repo.repo,
+        path: workspaceRepoCheckoutPath(repo.repo),
+      }));
+      const paths = new Set<string>();
+      for (const entry of selectedRepos) {
+        const key = entry.path.toLowerCase();
+        if (paths.has(key)) {
+          throw new Error(`Workspace checkout path collision: ${entry.path}`);
+        }
+        paths.add(key);
+      }
+
       const sandboxCapability = createSandboxCapability(sandbox, signal);
       for (const plugin of loaded) {
         const hook = plugin.hooks?.workspacePrepare;
         if (!hook) continue;
-        const selected = repos
+        const selected = selectedRepos
           .filter((repo) => repo.provider === plugin.manifest.name)
           .map((repo) => ({
-            path: repo.checkoutPath,
+            path: repo.path,
             repo: repo.repo,
           }));
         if (selected.length === 0) continue;

@@ -30,15 +30,10 @@ export const juniorWorkspaceRepos = pgTable(
       .references(() => juniorWorkspaces.id, { onDelete: "cascade" }),
     provider: text("provider").notNull(),
     repo: text("repo").notNull(),
-    checkoutPath: text("checkout_path").notNull(),
     isPrimary: boolean("is_primary").notNull().default(false),
   },
   (table) => [
     primaryKey({ columns: [table.workspaceId, table.provider, table.repo] }),
-    uniqueIndex("junior_workspace_repos_checkout_path_idx").on(
-      table.workspaceId,
-      table.checkoutPath,
-    ),
     uniqueIndex("junior_workspace_repos_primary_idx")
       .on(table.workspaceId)
       .where(sql`${table.isPrimary}`),
