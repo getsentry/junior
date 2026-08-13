@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type {
   ConversationDetailReport,
   ConversationFeed,
+  ConversationPendingMessagesReport,
 } from "@sentry/junior/api/schema";
 
 import {
@@ -10,6 +11,7 @@ import {
   useConversationData,
   type PendingArchiveConversationUpdate,
 } from "./queries";
+import type { ConversationMailboxMessage } from "./conversationOutbox";
 import { buildConversationMarkdown } from "../markdownExport";
 import { CopyMarkdownButton } from "./CopyMarkdownButton";
 import { ConversationComposer } from "./ConversationComposer";
@@ -40,7 +42,7 @@ import {
   SubagentTranscriptDrawer,
   type SubagentTranscriptTarget,
 } from "./SubagentTranscriptDrawer";
-import type { Conversation } from "../types";
+import type { Conversation, ConversationTranscript } from "../types";
 
 export { liveModelId } from "./ConversationMeta";
 
@@ -60,7 +62,6 @@ export function ConversationPage(props: {
   const conversations = buildConversations(summaries);
   const detail = useConversationData(conversationId);
   const archive = useArchiveConversation(conversationId);
-  const appendMessage = useAppendConversationMessage(conversationId);
   const feedConversation = conversations.find(
     (item) => item.id === conversationId,
   );
@@ -72,6 +73,12 @@ export function ConversationPage(props: {
   const visualStatus = conversation
     ? visualStatusForConversation(conversation)
     : undefined;
+  // Keep live flags and transcript data on the same render. Composer isolation
+  // in the reply footer is what keeps typing urgent during live polls.
+  const live = conversationIsLive(visualStatus, detail.data);
+  const requestPin = useCallback(() => {
+    setPinRequestVersion((version) => version + 1);
+  }, []);
 
   return (
     <div className="grid min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_auto]">
@@ -126,7 +133,7 @@ export function ConversationPage(props: {
                 />
               ) : null
             }
-            live={conversationIsLive(visualStatus, detail.data)}
+            live={live}
             meta={
               <ConversationHeaderMeta
                 identity={
@@ -197,13 +204,11 @@ export function ConversationPage(props: {
                 hasPreviousPage={detail.hasPreviousPage}
                 historyError={detail.historyError}
                 historyVersion={detail.historyVersion}
-                live={conversationIsLive(visualStatus, detail.data)}
+                live={live}
                 loadingPreviousPage={detail.isLoadingPreviousPage}
                 onLoadPreviousPage={detail.loadPreviousPage}
                 pinRequestVersion={pinRequestVersion}
-                responding={
-                  !detail.error && conversationIsLive(visualStatus, detail.data)
-                }
+                responding={!detail.error && live}
                 onOpenSubagentTranscript={({ part }) => {
                   setSubagentTarget({
                     conversationId: part.childConversationId,
@@ -219,57 +224,94 @@ export function ConversationPage(props: {
         </section>
       </div>
       {detail.data?.isParticipant ? (
-        <div className="px-2 py-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] md:px-7 md:py-4 md:pb-4">
-          {conversationIsLive(visualStatus, detail.data) ? (
-            <div className="mb-1.5 flex items-center gap-2 font-sans text-xs text-dashboard-text-muted md:hidden">
-              <span
-                aria-hidden="true"
-                className="size-1.5 shrink-0 animate-pulse rounded-full bg-emerald-300"
-              />
-              <span>Junior is working…</span>
-            </div>
-          ) : null}
-          <div className="grid min-w-0">
-            {detail.pendingAuthorization ? (
-              <PendingAuthorization
-                authorization={detail.pendingAuthorization}
-              />
-            ) : null}
-            {detail.data ? (
-              <PendingMailboxStack
-                conversation={detail.data}
-                messages={detail.pendingMessages}
-                onRetry={(message) => {
-                  if (!message.idempotencyKey || !message.text) return;
-                  void appendMessage.mutateAsync({
-                    idempotencyKey: message.idempotencyKey,
-                    message: message.text,
-                  });
-                }}
-              />
-            ) : null}
-            <ConversationComposer
-              draftId={conversationId}
-              label="Continue this conversation"
-              submitLabel="Send"
-              onFocus={() => setPinRequestVersion((version) => version + 1)}
-              onSubmitStart={() =>
-                setPinRequestVersion((version) => version + 1)
-              }
-              onSubmit={async (message, idempotencyKey) => {
-                await appendMessage.mutateAsync({
-                  idempotencyKey,
-                  message,
-                });
-              }}
-            />
-          </div>
-        </div>
+        <ConversationReplyFooter
+          conversation={detail.data}
+          conversationId={conversationId}
+          live={live}
+          onPinRequest={requestPin}
+          pendingAuthorization={detail.pendingAuthorization}
+          pendingMessages={detail.pendingMessages}
+        />
       ) : null}
       <SubagentTranscriptDrawer
         onClose={() => setSubagentTarget(undefined)}
         target={subagentTarget}
       />
+    </div>
+  );
+}
+
+/**
+ * Own mutation state and mailbox chrome outside the page tree that re-renders
+ * on every live transcript poll. Keeps composer props stable while typing.
+ */
+function ConversationReplyFooter(props: {
+  conversation: ConversationTranscript;
+  conversationId: string;
+  live: boolean;
+  onPinRequest: () => void;
+  pendingAuthorization?: ConversationPendingMessagesReport["authorization"];
+  pendingMessages: ConversationMailboxMessage[];
+}) {
+  const appendMessage = useAppendConversationMessage(props.conversationId);
+  // Keep submit identity stable across mutation status flips so the memoized
+  // composer does not re-render while the reader is still typing.
+  const appendMessageRef = useRef(appendMessage);
+  appendMessageRef.current = appendMessage;
+  const onPinRequestRef = useRef(props.onPinRequest);
+  onPinRequestRef.current = props.onPinRequest;
+  const onSubmit = useCallback(
+    async (message: string, idempotencyKey: string) => {
+      await appendMessageRef.current.mutateAsync({
+        idempotencyKey,
+        message,
+      });
+    },
+    [],
+  );
+  const onRetry = useCallback((message: ConversationMailboxMessage) => {
+    if (!message.idempotencyKey || !message.text) return;
+    void appendMessageRef.current.mutateAsync({
+      idempotencyKey: message.idempotencyKey,
+      message: message.text,
+    });
+  }, []);
+  const onFocus = useCallback(() => {
+    onPinRequestRef.current();
+  }, []);
+  const onSubmitStart = useCallback(() => {
+    onPinRequestRef.current();
+  }, []);
+
+  return (
+    <div className="px-2 py-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] md:px-7 md:py-4 md:pb-4">
+      {props.live ? (
+        <div className="mb-1.5 flex items-center gap-2 font-sans text-xs text-dashboard-text-muted md:hidden">
+          <span
+            aria-hidden="true"
+            className="size-1.5 shrink-0 animate-pulse rounded-full bg-emerald-300"
+          />
+          <span>Junior is working…</span>
+        </div>
+      ) : null}
+      <div className="grid min-w-0">
+        {props.pendingAuthorization ? (
+          <PendingAuthorization authorization={props.pendingAuthorization} />
+        ) : null}
+        <PendingMailboxStack
+          conversation={props.conversation}
+          messages={props.pendingMessages}
+          onRetry={onRetry}
+        />
+        <ConversationComposer
+          draftId={props.conversationId}
+          label="Continue this conversation"
+          submitLabel="Send"
+          onFocus={onFocus}
+          onSubmitStart={onSubmitStart}
+          onSubmit={onSubmit}
+        />
+      </div>
     </div>
   );
 }

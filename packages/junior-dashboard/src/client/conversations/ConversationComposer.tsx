@@ -1,4 +1,5 @@
 import {
+  memo,
   useEffect,
   useId,
   useRef,
@@ -14,6 +15,8 @@ import { useDashboardOnline } from "../connection";
 const MOBILE_COMPOSER_MAX_HEIGHT_PX = 112;
 const DESKTOP_MEDIA_QUERY = "(min-width: 768px)";
 const DRAFT_STORAGE_PREFIX = "junior:dashboard:conversation-draft:";
+// Keep keystrokes off the storage path. Mobile Safari pays for every write.
+const DRAFT_STORAGE_DEBOUNCE_MS = 250;
 
 type ConversationDraft = {
   /** Key issued for `lastSubmittedText`. Reused while the next send matches it. */
@@ -40,8 +43,7 @@ export function conversationAttemptForSubmit(
   };
 }
 
-/** Render the dashboard message composer for a new or existing conversation. */
-export function ConversationComposer(props: {
+type ConversationComposerProps = {
   draftId: string;
   error?: string;
   label: string;
@@ -55,7 +57,12 @@ export function ConversationComposer(props: {
   onFocus?: () => void;
   onSubmit(message: string, idempotencyKey: string): Promise<void>;
   onSubmitStart?: () => void;
-}) {
+};
+
+/** Render the dashboard message composer for a new or existing conversation. */
+export const ConversationComposer = memo(function ConversationComposer(
+  props: ConversationComposerProps,
+) {
   const storageKey = `${DRAFT_STORAGE_PREFIX}${encodeURIComponent(props.draftId)}`;
   const [draft, setDraft] = useState<ConversationDraft>(() =>
     readStoredDraft(storageKey),
@@ -79,10 +86,22 @@ export function ConversationComposer(props: {
   // Monotonic token so a late failed create never restores over a newer submit.
   const submitTokenRef = useRef(0);
   const sendLocked = props.restoreDraftOnError && createPending;
+  draftRef.current = draft;
 
+  // Persist drafts after typing settles so storage never contends with keystrokes.
   useEffect(() => {
-    storeDraft(storageKey, draft);
+    const timer = window.setTimeout(() => {
+      storeDraft(storageKey, draftRef.current);
+    }, DRAFT_STORAGE_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
   }, [draft, storageKey]);
+
+  // Flush the latest draft if the reader leaves before the debounce lands.
+  useEffect(() => {
+    return () => {
+      storeDraft(storageKey, draftRef.current);
+    };
+  }, [storageKey]);
 
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -90,15 +109,23 @@ export function ConversationComposer(props: {
 
     const syncHeight = () => {
       if (window.matchMedia(DESKTOP_MEDIA_QUERY).matches) {
-        textarea.style.height = "";
+        if (textarea.style.height) textarea.style.height = "";
         return;
       }
-      textarea.style.height = "0px";
+      // Measure from auto height only when the value changed. Avoid layout work
+      // on parent re-renders that leave the draft text alone.
+      const previous = textarea.style.height;
+      textarea.style.height = "auto";
       const nextHeight = Math.min(
         textarea.scrollHeight,
         MOBILE_COMPOSER_MAX_HEIGHT_PX,
       );
-      textarea.style.height = `${nextHeight}px`;
+      const next = `${nextHeight}px`;
+      if (previous === next) {
+        textarea.style.height = previous;
+        return;
+      }
+      textarea.style.height = next;
     };
 
     syncHeight();
@@ -201,12 +228,13 @@ export function ConversationComposer(props: {
           id={id}
           maxLength={32_000}
           onChange={(event) => {
-            const nextDraft = {
-              ...draftRef.current,
-              text: event.target.value,
-            };
-            draftRef.current = nextDraft;
-            setDraft(nextDraft);
+            const text = event.target.value;
+            setDraft((current) => {
+              if (current.text === text) return current;
+              const next = { ...current, text };
+              draftRef.current = next;
+              return next;
+            });
           }}
           onFocus={props.onFocus}
           onKeyDown={handleKeyDown}
@@ -240,7 +268,7 @@ export function ConversationComposer(props: {
       </form>
     </div>
   );
-}
+});
 
 function emptyDraft(): ConversationDraft {
   return {
