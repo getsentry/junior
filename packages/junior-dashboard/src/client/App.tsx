@@ -105,7 +105,7 @@ export function DashboardShell() {
     <DashboardChromeProvider>
       <main
         className={cn(
-          "grid bg-dashboard-bg bg-[image:radial-gradient(ellipse_at_50%_0%,transparent_0%,var(--color-dashboard-bg)_70%),linear-gradient(var(--color-dashboard-grid-line)_1px,transparent_1px),linear-gradient(90deg,var(--color-dashboard-grid-line)_1px,transparent_1px)] bg-[size:100%_100%,40px_40px,40px_40px] font-sans text-dashboard-text",
+          "dashboard-shell-bg grid font-sans text-dashboard-text",
           workspace
             ? "fixed inset-x-0 top-[var(--dashboard-viewport-offset-top,0px)] h-[var(--dashboard-viewport-height,100dvh)] min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden md:relative md:inset-auto md:h-dvh"
             : "relative min-h-screen grid-rows-[auto_1fr]",

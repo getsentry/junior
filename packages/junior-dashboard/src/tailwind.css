@@ -183,6 +183,30 @@
   }
 }
 
+/*
+ * Keep the shell's coordinated background layers together.
+ * Tailwind utilities make this multi-layer image and size contract hard to read.
+ */
+.dashboard-shell-bg {
+  background-color: var(--color-dashboard-bg);
+  background-image:
+    radial-gradient(
+      ellipse at 50% 0%,
+      transparent 0%,
+      var(--color-dashboard-bg) 70%
+    ),
+    linear-gradient(var(--color-dashboard-grid-line) 1px, transparent 1px),
+    linear-gradient(
+      90deg,
+      var(--color-dashboard-grid-line) 1px,
+      transparent 1px
+    );
+  background-size:
+    100% 100%,
+    40px 40px,
+    40px 40px;
+}
+
 @source "./app.ts";
 @source "./dashboardLoader.ts";
 @source "./client.tsx";
