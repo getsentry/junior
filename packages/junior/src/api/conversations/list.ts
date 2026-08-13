@@ -25,6 +25,7 @@ import { readRootConversationMetricsFromSql } from "./usage";
 import { readConversationAuxiliaryCostsFromSql } from "./auxiliary-costs";
 import { listConversationWork } from "@/chat/plugins/unfinished-work";
 import { isConversationPriority } from "./priority";
+import { readLastUserMessageAtByConversation } from "./user-message-activity";
 
 const CONVERSATION_FEED_LIMIT = 50;
 
@@ -245,6 +246,7 @@ export async function readConversationFeedFromSql(
     metricsByRoot,
     teamDomainByTeamId,
     conversationWork,
+    lastUserMessageAtByConversation,
   ] = await Promise.all([
     readConversationAccessFromSql(db, conversationIds, options.viewer),
     readConversationAuxiliaryCostsFromSql(db, conversationIds, {
@@ -259,6 +261,7 @@ export async function readConversationFeedFromSql(
       ),
     ),
     listConversationWork(conversationIds),
+    readLastUserMessageAtByConversation(db, conversationIds),
   ]);
   const assignedWork = new Set(conversationWork.assignedIds);
   const unfinishedWork = new Set(conversationWork.unfinishedIds);
@@ -297,6 +300,9 @@ export async function readConversationFeedFromSql(
         isPriority: isConversationPriority(
           {
             lastSeenAt: summary.lastSeenAt,
+            lastUserMessageAt: lastUserMessageAtByConversation.get(
+              conversation.conversationId,
+            ),
             ...work,
           },
           nowMs,

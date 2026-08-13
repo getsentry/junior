@@ -73,6 +73,44 @@ describe("conversation list API", () => {
         conversationId: finishedId,
         nowMs: nowMs - 120_000,
       });
+      await fixture.sql.db().insert(juniorConversationEvents).values([
+        {
+          conversationId: finishedUpdatedId,
+          createdAt: new Date(nowMs - 30_000),
+          historyVersion: 0,
+          payload: {
+            content: "Please follow up.",
+            provenance: {
+              authority: "instruction",
+              actor: {
+                platform: "slack",
+                teamId: "T123",
+                userId: "U123456",
+              },
+            },
+            timestamp: nowMs - 30_000,
+          },
+          schemaVersion: 1,
+          seq: 0,
+          type: "user_message",
+        },
+        {
+          conversationId: finishedId,
+          createdAt: new Date(nowMs - 30_000),
+          historyVersion: 0,
+          payload: {
+            content: "Pull request merged.",
+            provenance: {
+              authority: "instruction",
+              actor: { name: "resource-event", platform: "system" },
+            },
+            timestamp: nowMs - 30_000,
+          },
+          schemaVersion: 1,
+          seq: 0,
+          type: "user_message",
+        },
+      ]);
       setPlugins([
         defineJuniorPlugin({
           manifest: {

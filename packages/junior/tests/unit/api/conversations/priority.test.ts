@@ -26,13 +26,14 @@ describe("isConversationPriority", () => {
     ).toBe(false);
   });
 
-  it("keeps finished assigned work only when activity is after the finish time", () => {
+  it("keeps finished assigned work only when a user message is after the finish time", () => {
     expect(
       isConversationPriority(
         {
           assignedWork: true,
           finishedWorkAt: "2026-08-03T17:00:00.000Z",
           lastSeenAt: "2026-08-03T18:00:00.000Z",
+          lastUserMessageAt: "2026-08-03T17:30:00.000Z",
         },
         NOW_MS,
       ),
@@ -41,7 +42,18 @@ describe("isConversationPriority", () => {
       isConversationPriority(
         {
           assignedWork: true,
-          finishedWorkAt: "2026-08-03T18:00:00.000Z",
+          finishedWorkAt: "2026-08-03T17:00:00.000Z",
+          lastSeenAt: "2026-08-03T18:00:00.000Z",
+          lastUserMessageAt: "2026-08-03T16:30:00.000Z",
+        },
+        NOW_MS,
+      ),
+    ).toBe(false);
+    expect(
+      isConversationPriority(
+        {
+          assignedWork: true,
+          finishedWorkAt: "2026-08-03T17:00:00.000Z",
           lastSeenAt: "2026-08-03T18:00:00.000Z",
         },
         NOW_MS,

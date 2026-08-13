@@ -7,6 +7,7 @@ export type ConversationPriorityInput = {
   assignedWork?: boolean;
   finishedWorkAt?: string;
   lastSeenAt: string;
+  lastUserMessageAt?: string;
   unfinishedWork?: boolean;
 };
 
@@ -15,7 +16,7 @@ export type ConversationPriorityInput = {
  *
  * Priority includes only:
  * - unfinished work last seen within 48 hours
- * - finished assigned work with conversation activity after the finish time
+ * - finished assigned work with a user message after the finish time
  * - no known work last seen within 3 hours
  *
  * Finished assigned work with no later activity stays out of Priority.
@@ -33,7 +34,12 @@ export function isConversationPriority(
 
   if (conversation.assignedWork) {
     const finishedAt = Date.parse(conversation.finishedWorkAt ?? "");
-    return Number.isFinite(finishedAt) && lastSeenAt > finishedAt;
+    const lastUserMessageAt = Date.parse(conversation.lastUserMessageAt ?? "");
+    return (
+      Number.isFinite(finishedAt) &&
+      Number.isFinite(lastUserMessageAt) &&
+      lastUserMessageAt > finishedAt
+    );
   }
 
   return nowMs - lastSeenAt <= UNASSIGNED_PRIORITY_WINDOW_MS;
