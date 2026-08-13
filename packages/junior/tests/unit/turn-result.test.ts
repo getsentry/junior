@@ -327,7 +327,7 @@ describe("buildTurnResult", () => {
           isError: false,
           content: [{ type: "text", text: "uploaded file" }],
           details: {
-            attachment_refs: [{ id: "att-1", name: "chart.png" }],
+            attachment_refs: [{ id: "att-1", filename: "chart.png" }],
           },
         },
         {

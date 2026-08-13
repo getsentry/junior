@@ -23,6 +23,7 @@ import {
   taskParamsSchema,
   taskRunListSchema,
 } from "@sentry/junior/api/schema";
+import { mockChartPng } from "./chart-png";
 import {
   readMockConversationDetail,
   readMockConversationEvents,
@@ -144,7 +145,7 @@ export function createMockReportingApi(): Hono<{
       ? jsonResponse(conversationDetailReportSchema, report)
       : errorResponse("Conversation not found.", 404);
   });
-  // Tiny fixed bodies so dashboard mock can exercise image/file attachment cards.
+  // Fixed bodies so dashboard mock can exercise image/file attachment cards.
   app.get("/conversations/:conversationId/attachments/:attachmentId", (c) => {
     const conversationId = c.req.param("conversationId");
     const attachmentId = c.req.param("attachmentId");
@@ -154,30 +155,28 @@ export function createMockReportingApi(): Hono<{
     if (!readMockConversationDetail(conversationId)) {
       return errorResponse("Conversation not found.", 404);
     }
-    if (attachmentId.endsWith("-png") || attachmentId.includes("png")) {
-      // 640x360 mock chart PNG so image cards exercise natural aspect preview.
-      const png = Buffer.from(
-        "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",
-        "base64",
-      );
-      return new Response(png, {
+    if (attachmentId === "qa-chart-png") {
+      return new Response(mockChartPng, {
         headers: {
           "cache-control": "private, no-store",
           "content-disposition": 'inline; filename="chart.png"',
           "content-type": "image/png",
-          "content-length": String(png.byteLength),
+          "content-length": String(mockChartPng.byteLength),
         },
       });
     }
-    const body = "mock attachment notes\n";
-    return new Response(body, {
-      headers: {
-        "cache-control": "private, no-store",
-        "content-disposition": 'attachment; filename="notes.txt"',
-        "content-type": "text/plain",
-        "content-length": String(Buffer.byteLength(body)),
-      },
-    });
+    if (attachmentId === "qa-notes-txt") {
+      const body = "mock attachment notes\n";
+      return new Response(body, {
+        headers: {
+          "cache-control": "private, no-store",
+          "content-disposition": 'attachment; filename="notes.txt"',
+          "content-type": "text/plain",
+          "content-length": String(Buffer.byteLength(body)),
+        },
+      });
+    }
+    return errorResponse("Attachment not found.", 404);
   });
   app.get("/tasks", () => jsonResponse(taskListSchema, readMockTaskList()));
   app.get("/tasks/runs", () => {

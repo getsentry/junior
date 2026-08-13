@@ -440,10 +440,10 @@ const conversationReportStructuredEventDataSchema = z
   })
   .strict();
 
+/** Public attachment metadata on conversation reports and transcript media. */
 const conversationReportDeliveredAttachmentSchema = z
   .object({
     id: z.string().min(1),
-    // Stable public fields: same names as attachment storage metadata.
     filename: z.string().min(1),
     contentType: z.string().min(1),
     bytes: z.number().int().nonnegative(),

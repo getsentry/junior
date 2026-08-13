@@ -241,7 +241,6 @@ describe("conversation report event projection", () => {
           bytes: 18211,
         },
       ],
-      // Stored for write-path idempotency; not part of the report surface.
       toolCallId: "call-send-1",
     });
 

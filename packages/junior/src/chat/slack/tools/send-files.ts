@@ -28,7 +28,8 @@ const sendFilesResultSchema = juniorToolOutputSchema.extend({
   attachment_refs: z.array(
     z.object({
       id: z.string().min(1),
-      name: z.string().min(1),
+      // Same noun as storage, delivery events, and the report API.
+      filename: z.string().min(1),
     }),
   ),
 });
@@ -174,7 +175,7 @@ export function createSendFilesTool(
         // Tool result stays minimal; transcript/report carries full metadata.
         attachment_refs: delivered.map((attachment) => ({
           id: attachment.id,
-          name: attachment.filename,
+          filename: attachment.filename,
         })),
       };
       // Cache before host bookkeeping so a later event-write failure cannot

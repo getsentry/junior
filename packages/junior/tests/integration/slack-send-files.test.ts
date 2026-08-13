@@ -354,10 +354,10 @@ describe("Slack sendFiles", () => {
 
     const rows = await getSqlExecutor().db().select().from(juniorAttachments);
     expect(result.attachment_refs).toEqual([
-      { id: rows[0]?.id, name: "report.txt" },
+      { id: rows[0]?.id, filename: "report.txt" },
     ]);
     expect(retry.attachment_refs).toEqual([
-      { id: rows[0]?.id, name: "report.txt" },
+      { id: rows[0]?.id, filename: "report.txt" },
     ]);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
@@ -443,7 +443,7 @@ describe("Slack sendFiles", () => {
     );
 
     expect(first.attachment_refs).toEqual([
-      { id: expect.any(String), name: "report.txt" },
+      { id: expect.any(String), filename: "report.txt" },
     ]);
     expect(second).toMatchObject({
       deduplicated: true,
@@ -514,7 +514,7 @@ describe("Slack sendFiles", () => {
     });
     const attachmentId = first.attachment_refs[0]?.id;
     expect(first.attachment_refs).toEqual([
-      { id: expect.any(String), name: "report.txt" },
+      { id: expect.any(String), filename: "report.txt" },
     ]);
 
     await getSqlExecutor()
@@ -541,7 +541,7 @@ describe("Slack sendFiles", () => {
 
     const rows = await getSqlExecutor().db().select().from(juniorAttachments);
     expect(retry.attachment_refs).toEqual([
-      { id: attachmentId, name: "report.txt" },
+      { id: attachmentId, filename: "report.txt" },
     ]);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({

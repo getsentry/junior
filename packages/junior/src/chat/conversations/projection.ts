@@ -843,6 +843,7 @@ export async function recordToolExecutionStarted(args: {
   ]);
 }
 
+/** Stable write key so retries do not mint duplicate delivery rows. */
 function attachmentsDeliveredIdempotencyKey(args: {
   attachments: Array<{ id: string }>;
   conversationId: string;
@@ -901,7 +902,6 @@ export async function recordAttachmentsDelivered(args: {
           contentType: attachment.contentType,
           bytes: attachment.bytes,
         })),
-        // toolCallId/turnId are write-path only; report projection strips them.
         ...(args.toolCallId ? { toolCallId: args.toolCallId } : {}),
         ...(args.turnId ? { turnId: args.turnId } : {}),
       },
