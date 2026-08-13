@@ -73,7 +73,7 @@ jobs:
       - uses: actions/setup-node@v4
         if: steps.mode.outputs.run == 'true'
         with:
-          node-version: "24.18.0"
+          node-version: "24"
 
       - name: Install dependencies
         if: steps.mode.outputs.run == 'true'

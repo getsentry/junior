@@ -135,11 +135,13 @@ function publishImages(outDir, branch, commitSha) {
 }
 
 function upsertComment(repo, prNumber, body) {
-  const comments = ghJson([
+  const commentPages = ghJson([
     "api",
     `repos/${repo}/issues/${prNumber}/comments`,
     "--paginate",
+    "--slurp",
   ]);
+  const comments = commentPages.flat();
   const existing = comments.find(
     (comment) =>
       typeof comment.body === "string" && comment.body.includes(MARKER),
