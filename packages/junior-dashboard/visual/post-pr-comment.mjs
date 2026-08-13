@@ -37,7 +37,7 @@ function ghInput(args, body) {
 }
 
 function git(args, options = {}) {
-  execFileSync("git", args, {
+  return execFileSync("git", args, {
     cwd: options.cwd,
     encoding: "utf8",
     env: process.env,
@@ -64,6 +64,8 @@ function buildBody(manifest, imageBaseUrl) {
           .join("\n")
       : "- _(changed paths unavailable)_";
 
+  // Point at the published commit, not the mutable branch tip, so CDN/browser
+  // caches do not keep serving prior PNGs after a force-push.
   const shotBlocks = manifest.shots
     .map((shot) => {
       const url = `${imageBaseUrl}/${shot.file}`;
@@ -120,11 +122,16 @@ function publishImages(outDir, branch, commitSha) {
     ],
     { cwd: tmp },
   );
+  const publishedSha = git(["rev-parse", "HEAD"], {
+    cwd: tmp,
+    stdio: ["ignore", "pipe", "pipe"],
+  }).trim();
 
   const remote = `https://x-access-token:${requiredEnv("GITHUB_TOKEN")}@github.com/${requiredEnv("GITHUB_REPOSITORY")}.git`;
   git(["remote", "add", "origin", remote], { cwd: tmp });
   git(["push", "-f", "origin", `HEAD:${branch}`], { cwd: tmp });
   fs.rmSync(tmp, { force: true, recursive: true });
+  return publishedSha;
 }
 
 function upsertComment(repo, prNumber, body) {
@@ -183,10 +190,11 @@ function main() {
 
   const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
   const hasShots = !manifest.skipped && manifest.shots.length > 0;
+  let imageRef = branch;
   if (hasShots) {
-    publishImages(outDir, branch, commitSha);
+    imageRef = publishImages(outDir, branch, commitSha);
   }
-  const imageBaseUrl = `https://raw.githubusercontent.com/${repo}/${branch}`;
+  const imageBaseUrl = `https://raw.githubusercontent.com/${repo}/${imageRef}`;
   const body = buildBody(manifest, imageBaseUrl);
   upsertComment(repo, prNumber, body);
   console.log(
