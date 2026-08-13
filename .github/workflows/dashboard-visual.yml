@@ -115,7 +115,7 @@ jobs:
           if [[ "$ALL" == "true" ]]; then
             args+=(--all)
           fi
-          pnpm visual:dashboard -- "${args[@]}"
+          pnpm run visual:dashboard -- "${args[@]}"
 
       - name: Upload visual artifacts
         if: steps.mode.outputs.run == 'true' && always()

@@ -42,6 +42,10 @@ function parseArgs(argv: string[]) {
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
+    // pnpm/npm may forward the option separator into the script argv.
+    if (arg === "--") {
+      continue;
+    }
     if (arg === "--all") {
       all = true;
       continue;
