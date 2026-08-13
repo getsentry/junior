@@ -5,17 +5,11 @@ import { createGitHubApiTestAdapter } from "./github-api-adapter";
 
 function toolContext(responses: Array<{ body?: unknown; status?: number }>) {
   const adapter = createGitHubApiTestAdapter(responses);
-  const annotations: unknown[] = [];
   const ctx = {
-    annotations: {
-      upsert(annotation: unknown) {
-        annotations.push(annotation);
-      },
-    },
     egress: adapter.egress,
     resourceEvents: { canSubscribe: true },
   } as unknown as ToolRegistrationHookContext;
-  return { annotations, adapter, tool: createGitHubGetRepositoryTool(ctx) };
+  return { adapter, tool: createGitHubGetRepositoryTool(ctx) };
 }
 
 describe("getRepository", () => {
@@ -25,7 +19,7 @@ describe("getRepository", () => {
 
   it("returns repository metadata and a subscription hint", async () => {
     vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
-    const { annotations, adapter, tool } = toolContext([
+    const { adapter, tool } = toolContext([
       {
         body: {
           default_branch: "main",
@@ -89,14 +83,6 @@ describe("getRepository", () => {
         operation: "github.repository.get",
         provider: "github",
       }),
-    ]);
-    expect(annotations).toEqual([
-      {
-        kind: "resource_link",
-        key: "getsentry/junior",
-        label: "GetSentry/Junior",
-        url: "https://github.com/getsentry/junior",
-      },
     ]);
   });
 

@@ -2,12 +2,8 @@ import type { ToolRegistrationHookContext } from "@sentry/junior-plugin-api";
 import { describe, expect, it, vi } from "vitest";
 import { createGitHubCloneRepositoryTool } from "../src/tools/clone-repository.js";
 
-function context(
-  run: ReturnType<typeof vi.fn>,
-  upsert: ReturnType<typeof vi.fn> = vi.fn(),
-): ToolRegistrationHookContext {
+function context(run: ReturnType<typeof vi.fn>): ToolRegistrationHookContext {
   return {
-    annotations: { upsert },
     log: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
     sandbox: {
       root: "/vercel/sandbox",
@@ -45,8 +41,7 @@ describe("cloneRepository", () => {
       .fn()
       .mockResolvedValueOnce({ exitCode: 1, stdout: "", stderr: "" })
       .mockResolvedValueOnce({ exitCode: 0, stdout: "", stderr: "" });
-    const upsert = vi.fn();
-    const tool = createGitHubCloneRepositoryTool(context(run, upsert));
+    const tool = createGitHubCloneRepositoryTool(context(run));
 
     const result = await tool.execute!(
       { repo: "getsentry/junior", directory: "junior" },
@@ -69,12 +64,6 @@ describe("cloneRepository", () => {
     expect(result).toMatchObject({
       path: "/vercel/sandbox/junior",
       repo: "getsentry/junior",
-    });
-    expect(upsert).toHaveBeenCalledWith({
-      kind: "resource_link",
-      key: "getsentry/junior",
-      label: "getsentry/junior",
-      url: "https://github.com/getsentry/junior",
     });
   });
 

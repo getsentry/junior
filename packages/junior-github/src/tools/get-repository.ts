@@ -109,12 +109,6 @@ export function createGitHubGetRepositoryTool(
         ...(subscribable ? { subscribable } : {}),
         url: providerResult.html_url,
       };
-      await ctx.annotations?.upsert({
-        kind: "resource_link",
-        key: providerResult.full_name.toLowerCase(),
-        label: providerResult.full_name,
-        url: providerResult.html_url,
-      });
       return {
         target: "getRepository",
         ...data,

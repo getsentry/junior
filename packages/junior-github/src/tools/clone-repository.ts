@@ -152,14 +152,7 @@ export function createGitHubCloneRepositoryTool(
           `GitHub repository clone failed: ${clone.stderr.trim() || `exit ${clone.exitCode}`}`,
         );
       }
-      const fullName = `${repo.owner}/${repo.name}`;
-      const data = { repo: fullName, path };
-      await ctx.annotations?.upsert({
-        kind: "resource_link",
-        key: fullName.toLowerCase(),
-        label: fullName,
-        url: `https://github.com/${fullName}`,
-      });
+      const data = { repo: `${repo.owner}/${repo.name}`, path };
       return { target: "cloneRepository", ...data };
     },
   });
