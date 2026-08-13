@@ -6,6 +6,7 @@
 import {
   defineJuniorPlugin,
   EgressPolicyDenied,
+  enforceToolOwnedEgress,
   type EgressHookContext,
   type EgressResponseHookContext,
   type PluginGrantAccess,
@@ -332,6 +333,69 @@ function shouldInspectGitHubGraphqlResponse(
   return contentType ? /\bjson\b/i.test(contentType) : false;
 }
 
+type GitHubToolOwnedWriteRule = {
+  graphqlField:
+    | "createIssue"
+    | "createPullRequest"
+    | "updateIssue"
+    | "updatePullRequest";
+  grantName: "installation-write";
+  message: string;
+  method: "PATCH" | "POST";
+  operation:
+    | "github.issue.create"
+    | "github.issue.update"
+    | "github.pull.create"
+    | "github.pull.update";
+  restPath: RegExp;
+};
+
+const GITHUB_TOOL_OWNED_WRITE_RULES = [
+  {
+    graphqlField: "createIssue",
+    grantName: "installation-write",
+    message: `GitHub issue creation must use the github_createIssue tool so Junior can own idempotency and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
+    method: "POST",
+    operation: "github.issue.create",
+    restPath: /^\/repos\/[^/]+\/[^/]+\/issues$/,
+  },
+  {
+    graphqlField: "createPullRequest",
+    grantName: "installation-write",
+    message: `GitHub pull request creation must use the github_createPullRequest tool so Junior can own idempotency and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
+    method: "POST",
+    operation: "github.pull.create",
+    restPath: /^\/repos\/[^/]+\/[^/]+\/pulls$/,
+  },
+  {
+    graphqlField: "updateIssue",
+    grantName: "installation-write",
+    message: `GitHub issue updates must use the github_updateIssue tool so Junior can own requester attribution and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
+    method: "PATCH",
+    operation: "github.issue.update",
+    restPath: /^\/repos\/[^/]+\/[^/]+\/issues\/[^/]+$/,
+  },
+  {
+    graphqlField: "updatePullRequest",
+    grantName: "installation-write",
+    message: `GitHub pull request updates must use the github_updatePullRequest tool so Junior can own requester attribution and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
+    method: "PATCH",
+    operation: "github.pull.update",
+    restPath: /^\/repos\/[^/]+\/[^/]+\/pulls\/[^/]+$/,
+  },
+] as const satisfies readonly GitHubToolOwnedWriteRule[];
+
+function githubToolOwnedRestWriteRule(
+  method: string,
+  upstreamUrl: URL,
+): GitHubToolOwnedWriteRule | undefined {
+  if (!isGitHubApiUrl(upstreamUrl)) return undefined;
+  const pathname = upstreamUrl.pathname.toLowerCase();
+  return GITHUB_TOOL_OWNED_WRITE_RULES.find(
+    (rule) => rule.method === method && rule.restPath.test(pathname),
+  );
+}
+
 function githubApiWriteGrantName(
   method: string,
   upstreamUrl: URL,
@@ -358,18 +422,11 @@ function githubApiWriteGrantName(
     // Actions run control uses run-level cancel/rerun and job-level rerun endpoints.
     return "installation-write";
   }
-  if (method === "POST" && /^\/repos\/[^/]+\/[^/]+\/issues$/.test(pathname)) {
-    return "installation-write";
-  }
+  const toolOwnedRule = githubToolOwnedRestWriteRule(method, upstreamUrl);
+  if (toolOwnedRule) return toolOwnedRule.grantName;
   if (
     method === "POST" &&
     /^\/repos\/[^/]+\/[^/]+\/issues\/[^/]+\/comments$/.test(pathname)
-  ) {
-    return "installation-write";
-  }
-  if (
-    method === "PATCH" &&
-    /^\/repos\/[^/]+\/[^/]+\/issues\/[^/]+$/.test(pathname)
   ) {
     return "installation-write";
   }
@@ -378,15 +435,6 @@ function githubApiWriteGrantName(
     /^\/repos\/[^/]+\/[^/]+\/issues\/[^/]+\/(labels|assignees)(?:\/[^/]+)?$/.test(
       pathname,
     )
-  ) {
-    return "installation-write";
-  }
-  if (method === "POST" && /^\/repos\/[^/]+\/[^/]+\/pulls$/.test(pathname)) {
-    return "installation-write";
-  }
-  if (
-    method === "PATCH" &&
-    /^\/repos\/[^/]+\/[^/]+\/pulls\/[^/]+$/.test(pathname)
   ) {
     return "installation-write";
   }
@@ -431,47 +479,15 @@ function githubApiWriteGrantName(
   return undefined;
 }
 
-function isGitHubIssueCreateRestRequest(
-  method: string,
-  upstreamUrl: URL,
-): boolean {
-  return (
-    method === "POST" &&
-    isGitHubApiUrl(upstreamUrl) &&
-    /^\/repos\/[^/]+\/[^/]+\/issues$/.test(upstreamUrl.pathname.toLowerCase())
-  );
-}
-
-function isGitHubPullCreateRestRequest(
-  method: string,
-  upstreamUrl: URL,
-): boolean {
-  return (
-    method === "POST" &&
-    isGitHubApiUrl(upstreamUrl) &&
-    /^\/repos\/[^/]+\/[^/]+\/pulls$/.test(upstreamUrl.pathname.toLowerCase())
-  );
-}
-
-function isGitHubResourceUpdateRestRequest(
-  method: string,
-  upstreamUrl: URL,
-  resource: "issues" | "pulls",
-): boolean {
-  return (
-    method === "PATCH" &&
-    isGitHubApiUrl(upstreamUrl) &&
-    new RegExp(`^/repos/[^/]+/[^/]+/${resource}/[^/]+$`).test(
-      upstreamUrl.pathname.toLowerCase(),
-    )
-  );
-}
-
 function isGitHubGraphqlMutation(
   method: string,
   upstreamUrl: URL,
   bodyText: string | undefined,
-  field: "createIssue" | "createPullRequest" | "updateIssue" | "updatePullRequest",
+  field:
+    | "createIssue"
+    | "createPullRequest"
+    | "updateIssue"
+    | "updatePullRequest",
 ): boolean {
   if (method !== "POST" || !isGitHubGraphqlUrl(upstreamUrl)) return false;
   const parsed = parseGitHubGraphqlRequest(bodyText);
@@ -495,70 +511,23 @@ function assertGitHubWriteAllowed(input: {
     method: input.method,
     upstreamUrl: input.upstreamUrl,
   });
-  if (input.operation === "github.issue.create") return;
-  if (input.operation === "github.issue.update") return;
-  if (input.operation === "github.pull.create") return;
-  if (input.operation === "github.pull.update") return;
-  if (
-    isGitHubIssueCreateRestRequest(input.method, input.upstreamUrl) ||
-    isGitHubGraphqlMutation(
-      input.method,
-      input.upstreamUrl,
-      input.bodyText,
-      "createIssue",
-    )
-  ) {
-    throw new EgressPolicyDenied(
-      `GitHub issue creation must use the github_createIssue tool so Junior can own idempotency and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
-    );
-  }
-  if (
-    isGitHubPullCreateRestRequest(input.method, input.upstreamUrl) ||
-    isGitHubGraphqlMutation(
-      input.method,
-      input.upstreamUrl,
-      input.bodyText,
-      "createPullRequest",
-    )
-  ) {
-    throw new EgressPolicyDenied(
-      `GitHub pull request creation must use the github_createPullRequest tool so Junior can own idempotency and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
-    );
-  }
-  if (
-    isGitHubResourceUpdateRestRequest(
-      input.method,
-      input.upstreamUrl,
-      "issues",
-    ) ||
-    isGitHubGraphqlMutation(
-      input.method,
-      input.upstreamUrl,
-      input.bodyText,
-      "updateIssue",
-    )
-  ) {
-    throw new EgressPolicyDenied(
-      `GitHub issue updates must use the github_updateIssue tool so Junior can own requester attribution and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
-    );
-  }
-  if (
-    isGitHubResourceUpdateRestRequest(
-      input.method,
-      input.upstreamUrl,
-      "pulls",
-    ) ||
-    isGitHubGraphqlMutation(
-      input.method,
-      input.upstreamUrl,
-      input.bodyText,
-      "updatePullRequest",
-    )
-  ) {
-    throw new EgressPolicyDenied(
-      `GitHub pull request updates must use the github_updatePullRequest tool so Junior can own requester attribution and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
-    );
-  }
+  enforceToolOwnedEgress({
+    matches(rule, request) {
+      return (
+        (rule.method === request.method &&
+          isGitHubApiUrl(request.upstreamUrl) &&
+          rule.restPath.test(request.upstreamUrl.pathname.toLowerCase())) ||
+        isGitHubGraphqlMutation(
+          request.method,
+          request.upstreamUrl,
+          request.bodyText,
+          rule.graphqlField,
+        )
+      );
+    },
+    request: input,
+    rules: GITHUB_TOOL_OWNED_WRITE_RULES,
+  });
 }
 
 function grantForAccess(

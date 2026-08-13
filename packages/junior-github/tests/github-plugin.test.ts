@@ -355,8 +355,7 @@ function githubToolsContext(input?: {
     model: {},
     resourceEvents: { canSubscribe: true },
     users: {
-      resolveActor:
-        input?.resolveActor ?? (async () => undefined),
+      resolveActor: input?.resolveActor ?? (async () => undefined),
     },
     state: {
       async delete(key: string) {
@@ -1888,6 +1887,13 @@ Conversation: \`local:test:old-conversation\`
     await expect(
       grantForEgress({
         method: "PATCH",
+        url: "https://api.github.com/repos/getsentry/junior/issues/780",
+      }),
+    ).rejects.toThrow("must use the github_updateIssue tool");
+    await expect(
+      grantForEgress({
+        method: "PATCH",
+        operation: "github.pull.update",
         url: "https://api.github.com/repos/getsentry/junior/issues/780",
       }),
     ).rejects.toThrow("must use the github_updateIssue tool");
