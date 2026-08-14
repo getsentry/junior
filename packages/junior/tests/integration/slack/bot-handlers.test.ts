@@ -9,6 +9,7 @@ import { executeAgentRun } from "@/chat/agent";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { acquireActiveLock } from "@/chat/state/locks";
+import { buildDeterministicTurnId } from "@/chat/runtime/turn";
 import { instructionActors } from "@/chat/conversations/provenance";
 import {
   loadProjection,
@@ -1541,18 +1542,21 @@ describe("bot handlers (integration)", () => {
       state: createAwaitingContinuationState({ activeSessionId }),
     });
 
-    await slackRuntime.handleNewMention(
-      thread,
-      createTestMessage({
-        id: "msg-retry-fail",
-        threadId: conversationId,
-        text: "what happened?",
-        isMention: true,
-      }),
-      { destination },
-    );
+    const followUp = createTestMessage({
+      id: "msg-retry-fail",
+      threadId: conversationId,
+      text: "what happened?",
+      isMention: true,
+    });
+    await slackRuntime.handleNewMention(thread, followUp, { destination });
 
     expect(queue.queuedMessages()).toEqual([]);
+    await expect(
+      getTurnRecord(conversationId, buildDeterministicTurnId(followUp.id)),
+    ).resolves.toBeUndefined();
+    await expect(
+      getTurnRecord(conversationId, activeSessionId),
+    ).resolves.toMatchObject({ state: "paused" });
     expect(thread.posts).toEqual([
       expect.stringContaining(
         "I ran into an internal error while processing that.",
