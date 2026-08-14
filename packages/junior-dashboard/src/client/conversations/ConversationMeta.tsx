@@ -270,7 +270,7 @@ function SidebarAnnotationStatusDisc(props: {
           size={11}
         />
       ) : (
-        <span className="font-sans text-[9px] font-semibold leading-none text-dashboard-text-muted">
+        <span className="font-sans text-2xs font-semibold leading-none text-dashboard-text-muted">
           {props.annotation.label.slice(0, 1)}
         </span>
       )}
