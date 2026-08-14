@@ -248,29 +248,51 @@ describe("dashboard canonical-event mock routes", () => {
       expect.arrayContaining([
         expect.objectContaining({
           kind: "resource_link",
-          key: "getsentry/junior#1081",
+          key: "getsentry/getsentry#21571",
+          plugin: "github",
+          status: "merged",
+        }),
+        expect.objectContaining({
+          kind: "resource_link",
+          key: "getsentry/getsentry#21572",
           plugin: "github",
           status: "open",
         }),
         expect.objectContaining({
           kind: "resource_link",
-          key: "getsentry/junior#1090",
+          key: "getsentry/getsentry#21569",
           plugin: "github",
-          status: "open",
+          status: "draft",
+        }),
+        expect.objectContaining({
+          kind: "resource_link",
+          key: "getsentry/sentry#121727",
+          plugin: "github",
+          status: "merged",
         }),
       ]),
     );
-    expect(dashboardQa.annotations).toHaveLength(2);
+    expect(dashboardQa.annotations).toHaveLength(4);
     expect(dashboardQa.sidebarAnnotations).toEqual([
       {
-        icon: "git-pull-request",
-        key: "getsentry/junior#1081",
-        label: "junior",
+        icon: "git-merge",
+        key: "getsentry/getsentry#21571",
+        label: "getsentry",
       },
       {
-        icon: "circle-dot",
-        key: "getsentry/junior#1090",
-        label: "junior",
+        icon: "git-pull-request",
+        key: "getsentry/getsentry#21572",
+        label: "getsentry",
+      },
+      {
+        icon: "circle-dashed",
+        key: "getsentry/getsentry#21569",
+        label: "getsentry",
+      },
+      {
+        icon: "git-merge",
+        key: "getsentry/sentry#121727",
+        label: "sentry",
       },
     ]);
     expect(dashboardQa.unfinishedWork).toBe(true);
