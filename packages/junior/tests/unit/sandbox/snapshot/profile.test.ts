@@ -241,6 +241,44 @@ describe("snapshot dependency profile", () => {
     expect(first?.hash).not.toBe(second?.hash);
   });
 
+  it("omits workspace from base profile hashes when unset", async () => {
+    const { createHash } = await import("node:crypto");
+    dependenciesMock.mockReturnValue([
+      { type: "npm", package: "example", version: "1.2.3" },
+    ]);
+
+    const profile = create("node22");
+    const expected = createHash("sha256")
+      .update(
+        JSON.stringify({
+          version: 1,
+          runtime: "node22",
+          rebuildEpoch: "",
+          dependencies: [{ type: "npm", package: "example", version: "1.2.3" }],
+          postinstall: [],
+        }),
+      )
+      .digest("hex");
+
+    expect(profile?.hash).toBe(expected);
+    expect(profile?.hash).not.toBe(
+      createHash("sha256")
+        .update(
+          JSON.stringify({
+            version: 1,
+            runtime: "node22",
+            rebuildEpoch: "",
+            dependencies: [
+              { type: "npm", package: "example", version: "1.2.3" },
+            ],
+            postinstall: [],
+            workspace: null,
+          }),
+        )
+        .digest("hex"),
+    );
+  });
+
   it("rejects conflicting npm versions", () => {
     dependenciesMock.mockReturnValue([
       { type: "npm", package: "example", version: "1.2.3" },

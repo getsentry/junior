@@ -124,6 +124,7 @@ export function create(runtime: string, workspace?: Workspace): Profile | null {
     dependencies.some((dependency) => isFloating(dependency)) ||
     pluginPostinstall.length > 0 ||
     Boolean(workspace);
+  // Omit workspace when unset so base profiles keep pre-workspace hashes.
   const hash = createHash("sha256")
     .update(
       JSON.stringify({
@@ -132,7 +133,7 @@ export function create(runtime: string, workspace?: Workspace): Profile | null {
         rebuildEpoch,
         dependencies,
         postinstall,
-        workspace: workspace ? workspaceRecipe(workspace) : null,
+        ...(workspace ? { workspace: workspaceRecipe(workspace) } : {}),
       }),
     )
     .digest("hex");
