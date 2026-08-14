@@ -166,7 +166,7 @@ export function createGitHubResolvePullRequestReviewThreadTool(
           repo.ref.toLowerCase() &&
         pullRequest.author.login.toLowerCase() === botLogin;
       if (!ownsPullRequest) {
-        throw new Error(
+        throw new PluginToolInputError(
           "Junior can only resolve review threads on pull requests it authored.",
         );
       }
