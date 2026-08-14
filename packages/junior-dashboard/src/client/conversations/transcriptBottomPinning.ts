@@ -13,6 +13,7 @@ import type { ConversationTranscript, TranscriptViewPart } from "../types";
 import { conversationTranscriptMessages } from "./eventTranscript";
 
 const BOTTOM_PROXIMITY_PX = 96;
+const MOBILE_MEDIA_QUERY = "(max-width: 767px)";
 const USER_SCROLL_DELTA_PX = 2;
 
 type ScrollRoot = HTMLElement | Window;
@@ -166,6 +167,7 @@ export function usePinnedTranscriptBottom(input: {
   const previousScrollTopRef = useRef<number | null>(null);
   const prependSnapshotRef = useRef<PrependSnapshot | null>(null);
   const pinRequestVersionRef = useRef(input.pinRequestVersion ?? 0);
+  const versionRef = useRef(input.version);
   const programmaticScrollGenerationRef = useRef(0);
   const [following, setFollowing] = useState(false);
   const [hasPendingUpdate, setHasPendingUpdate] = useState(false);
@@ -337,6 +339,20 @@ export function usePinnedTranscriptBottom(input: {
 
     measurePosition("measure");
   }, [measurePosition, scrollToBottom]);
+
+  useBrowserLayoutEffect(() => {
+    if (versionRef.current === input.version) return;
+    versionRef.current = input.version;
+    if (
+      typeof window === "undefined" ||
+      !window.matchMedia(MOBILE_MEDIA_QUERY).matches
+    ) {
+      return;
+    }
+    setFollowingIntent(true);
+    setHasPendingUpdate(false);
+    scrollToBottom("auto");
+  }, [input.version, scrollToBottom, setFollowingIntent]);
 
   useBrowserLayoutEffect(() => {
     const wasEnabled = enabledRef.current;

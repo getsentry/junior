@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   ConversationDetailReport,
   ConversationFeed,
@@ -268,6 +268,23 @@ function ConversationReplyFooter(props: {
   cancelPendingMessagesRef.current = cancelPendingMessages;
   const onPinRequestRef = useRef(props.onPinRequest);
   onPinRequestRef.current = props.onPinRequest;
+  const pendingMessageVersion = props.pendingMessages
+    .map((message) =>
+      [
+        message.inboundMessageId,
+        message.messageId,
+        message.clientStatus,
+        message.delivery,
+      ].join(":"),
+    )
+    .join("|");
+  const pendingMessageVersionRef = useRef(pendingMessageVersion);
+  useEffect(() => {
+    if (pendingMessageVersionRef.current === pendingMessageVersion) return;
+    pendingMessageVersionRef.current = pendingMessageVersion;
+    if (!window.matchMedia("(max-width: 767px)").matches) return;
+    onPinRequestRef.current();
+  }, [pendingMessageVersion]);
   const onSubmit = useCallback(
     async (message: string, idempotencyKey: string) => {
       await appendMessageRef.current.mutateAsync({
