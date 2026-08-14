@@ -1,0 +1,38 @@
+{
+  "commitSha": "e2b846f64523904b6a9117a1a262784f4734a423",
+  "mode": "path",
+  "reasons": [
+    "packages/junior-dashboard/e2e/conversations.spec.ts",
+    "packages/junior-dashboard/src/client/conversations/ConversationMeta.tsx",
+    "packages/junior-dashboard/src/client/conversations/ConversationPage.tsx",
+    "packages/junior-dashboard/src/client/conversations/ConversationSidebar.tsx",
+    "packages/junior-dashboard/src/client/conversations/PendingMailboxStack.tsx",
+    "packages/junior-dashboard/src/mock-reporting/fixtures.ts",
+    "packages/junior-dashboard/tests/dashboard-mock-routes.test.ts",
+    "packages/junior-dashboard/tests/pending-mailbox-stack.test.tsx",
+    "packages/junior-dashboard/tests/telemetry-components.test.tsx"
+  ],
+  "scenarioIds": [
+    "conversations",
+    "conversation-detail"
+  ],
+  "shots": [
+    {
+      "file": "conversations__desktop.png",
+      "label": "Conversations · desktop"
+    },
+    {
+      "file": "conversations__mobile.png",
+      "label": "Conversations · mobile"
+    },
+    {
+      "file": "conversation-detail__desktop.png",
+      "label": "Conversation detail · desktop"
+    },
+    {
+      "file": "conversation-detail__mobile.png",
+      "label": "Conversation detail · mobile"
+    }
+  ],
+  "skipped": false
+}
