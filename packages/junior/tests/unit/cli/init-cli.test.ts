@@ -28,9 +28,13 @@ function normalizeText(source: string): string {
   return source.trim().replace(/\n{3,}/g, "\n\n");
 }
 
-function removeExampleDashboardServerConfig(source: string): string {
+function removeExampleOnlyServerConfig(source: string): string {
   return normalizeText(
     source
+      .replace(
+        '  experimental: { acp: process.env.NODE_ENV === "development" },\n',
+        "",
+      )
       .replace(
         /  \{\n    exampleDashboardAuthRequired,\n    exampleDashboardComponentGallery,\n    exampleDashboardMockConversations,\n  \},\n/,
         "",
@@ -303,7 +307,7 @@ allowBuilds:
       "utf8",
     );
     expect(normalizeText(scaffoldServer)).toEqual(
-      removeExampleDashboardServerConfig(exampleServer),
+      removeExampleOnlyServerConfig(exampleServer),
     );
 
     const scaffoldTsConfig = readJsonFile<Record<string, unknown>>(

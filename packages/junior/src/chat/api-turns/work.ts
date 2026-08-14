@@ -299,7 +299,8 @@ export function buildApiTurnInboundMessage(args: {
   };
 }
 
-async function recordApiConversationActivity(args: {
+/** Record web activity and materialize a new API Conversation root when needed. */
+export async function recordApiConversationActivity(args: {
   actor: WebActor;
   conversationId: string;
   conversationStore?: ConversationStore;

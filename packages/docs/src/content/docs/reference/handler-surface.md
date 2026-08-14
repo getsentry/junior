@@ -29,6 +29,12 @@ Handled `POST` routes:
 - `/api/internal/plugin/tasks`
 - `/api/webhooks/:platform` (Slack path is `/api/webhooks/slack`)
 
+When `createApp({ experimental: { acp: true } })` is set, `GET`, `POST`, and
+`DELETE /api/acp` expose ACP v1 Streamable HTTP. Every request requires a Junior
+personal token in the bearer authorization header. This experimental route
+keeps connection state in one Node process. Do not enable it on a multi-process
+deployment.
+
 ## Expected behavior
 
 - Unknown routes return `404`.

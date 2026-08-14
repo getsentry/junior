@@ -166,6 +166,9 @@ importers:
 
   packages/junior:
     dependencies:
+      '@agentclientprotocol/sdk':
+        specifier: 1.3.0
+        version: 1.3.0(zod@4.4.3)
       '@ai-sdk/gateway':
         specifier: ^3.0.119
         version: 3.0.119(zod@4.4.3)
@@ -272,6 +275,9 @@ importers:
       '@emnapi/runtime':
         specifier: ^1.10.0
         version: 1.10.0
+      '@hono/node-server':
+        specifier: 1.19.14
+        version: 1.19.14(hono@4.12.27)
       '@sentry/junior-github':
         specifier: workspace:*
         version: file:packages/junior-github(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.15.6)(pg@8.21.0)
@@ -664,6 +670,11 @@ importers:
         version: 4.1.7(@types/node@25.9.1)(tsx@4.22.3)
 
 packages:
+
+  '@agentclientprotocol/sdk@1.3.0':
+    resolution: {integrity: sha512-i3h/efaeuMUFAO1HSfo97QZQnnvMd7wWBYtBsdL6UMZg3a78sk3Ffya5Xu7C7tYsXomXoDXJBAzQF2PcFKAhIQ==}
+    peerDependencies:
+      zod: ^3.25.0 || ^4.0.0
 
   '@ai-sdk/gateway@3.0.119':
     resolution: {integrity: sha512-VAhfRWC+JexZakkVfmjaJKaTj00x7/UHdE8kMWL3NhuQAlf8oXtg9r4dfvFZrByXxchGRBvYE3biEUyibkg0xg==}
@@ -8418,6 +8429,10 @@ packages:
 
 snapshots:
 
+  '@agentclientprotocol/sdk@1.3.0(zod@4.4.3)':
+    dependencies:
+      zod: 4.4.3
+
   '@ai-sdk/gateway@3.0.119(zod@4.4.3)':
     dependencies:
       '@ai-sdk/provider': 3.0.10
@@ -11447,6 +11462,7 @@ snapshots:
 
   '@sentry/junior@file:packages/junior':
     dependencies:
+      '@agentclientprotocol/sdk': 1.3.0(zod@4.4.3)
       '@ai-sdk/gateway': 3.0.119(zod@4.4.3)
       '@chat-adapter/slack': 4.29.0(ai@6.0.190(zod@4.4.3))(zod@4.4.3)
       '@chat-adapter/state-memory': 4.29.0(ai@6.0.190(zod@4.4.3))(zod@4.4.3)

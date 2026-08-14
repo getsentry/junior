@@ -17,6 +17,7 @@ const [
 ]);
 
 const app = await createApp({
+  experimental: { acp: process.env.NODE_ENV === "development" },
   dashboard: {
     authRequired: exampleDashboardAuthRequired(),
     allowedGoogleDomains: ["sentry.io"],

@@ -20,6 +20,7 @@ import { executeAgentRun } from "@/chat/agent";
 import { normalizeSandboxEgressTracePropagationDomains } from "@/chat/sandbox/egress/tracing";
 import {
   getExperimentalFeatures,
+  isExperimentalFeatureEnabled,
   setExperimentalFeatures,
   type ExperimentalFeaturesConfig,
 } from "@/chat/experimental";
@@ -90,6 +91,7 @@ import { ingestResourceEvent } from "@/chat/resource-events/ingest";
 import { createResourceEventTeamIdResolver } from "@/chat/resource-events/workspace";
 import { ingestEventTasks } from "@/chat/event-tasks/ingest";
 import { receiveLocalOAuthCredential } from "@/chat/local/credential-sync";
+import { createAcpHttpHandler } from "@/api/acp/route";
 
 export { defineJuniorPlugins } from "./plugins";
 export { JUNIOR_VERSION } from "./version";
@@ -798,6 +800,17 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       });
     return conversationWorkOptions;
   };
+  if (isExperimentalFeatureEnabled("acp")) {
+    const work = getConversationWorkOptions();
+    const handleAcpRequest = createAcpHttpHandler({
+      conversationStore: work.conversationStore,
+      queue: work.queue ?? getVercelConversationWorkQueue(),
+      state: work.state,
+    });
+    app.on(["GET", "POST", "DELETE"], "/api/acp", (c) =>
+      handleAcpRequest(c.req.raw),
+    );
+  }
   if (process.env.NODE_ENV === "development") {
     registerVercelConversationWorkDevConsumer(getConversationWorkOptions());
     registerVercelPluginTaskDevConsumer();
