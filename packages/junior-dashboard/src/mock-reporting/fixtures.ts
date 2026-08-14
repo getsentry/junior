@@ -133,7 +133,7 @@ function activeConversation(nowMs: number): ConversationDetailReport {
     assignedWork: true,
     unfinishedWork: true,
     isPriority: true,
-    sidebarAnnotations: [{ icon: "circle-dot", key: "github", label: "payments" }],
+    sidebarAnnotations: [{ icon: "git-pull-request", key: "github", label: "payments" }],
     annotations: [
       {
         kind: "resource_link",
@@ -331,7 +331,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
     assignedWork: true,
     unfinishedWork: true,
     isPriority: true,
-    sidebarAnnotations: [{ icon: "circle-dot", key: "github", label: "junior" }],
+    sidebarAnnotations: [{ icon: "git-pull-request", key: "github", label: "junior" }],
     annotations: [
       {
         kind: "resource_link",
@@ -763,7 +763,7 @@ function longConversation(nowMs: number): ConversationDetailReport {
     assignedWork: true,
     unfinishedWork: true,
     isPriority: true,
-    sidebarAnnotations: [{ icon: "circle-dot", key: "github", label: "2 repos" }],
+    sidebarAnnotations: [{ icon: "git-pull-request", key: "github", label: "2 repos" }],
     annotations: [
       {
         kind: "resource_link",

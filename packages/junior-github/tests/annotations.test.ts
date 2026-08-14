@@ -10,6 +10,7 @@ function annotation(
   number: number,
   status: NonNullable<ConversationAnnotation["status"]>,
   owner = "getsentry",
+  kind: "pull" | "issues" = "pull",
 ): ConversationAnnotation {
   return {
     createdAt: "2026-01-01T00:00:00.000Z",
@@ -19,7 +20,7 @@ function annotation(
     plugin: "github",
     status,
     updatedAt: "2026-01-01T00:00:01.000Z",
-    url: `https://github.com/${owner}/${repo}/pull/${number}`,
+    url: `https://github.com/${owner}/${repo}/${kind}/${number}`,
   };
 }
 
@@ -36,7 +37,7 @@ describe("GitHub conversation sidebar", () => {
         annotation("junior", 1, "merged"),
         annotation("payments", 2, "open"),
       ]),
-    ).toEqual({ icon: "circle-dot", key: "github", label: "2 repos" });
+    ).toEqual({ icon: "git-pull-request", key: "github", label: "2 repos" });
     expect(
       githubSidebarAnnotation([
         annotation("junior", 1, "closed"),
@@ -45,19 +46,46 @@ describe("GitHub conversation sidebar", () => {
     ).toEqual({ icon: "circle-x", key: "github", label: "junior" });
   });
 
+  it("uses the pull request icon for open pull requests", () => {
+    expect(githubSidebarAnnotation([annotation("junior", 1, "open")])).toEqual({
+      icon: "git-pull-request",
+      key: "github",
+      label: "junior",
+    });
+  });
+
+  it("keeps the issue icon for open issues", () => {
+    expect(
+      githubSidebarAnnotation([annotation("junior", 1, "open", "getsentry", "issues")]),
+    ).toEqual({ icon: "circle-dot", key: "github", label: "junior" });
+  });
+
+  it("prefers the pull request icon when open issues and pull requests mix", () => {
+    expect(
+      githubSidebarAnnotation([
+        annotation("junior", 1, "open", "getsentry", "issues"),
+        annotation("junior", 2, "open"),
+      ]),
+    ).toEqual({ icon: "git-pull-request", key: "github", label: "junior" });
+  });
+
   it("counts repositories with the same name under different owners", () => {
     expect(
       githubSidebarAnnotation([
         annotation("shared", 1, "merged", "getsentry"),
         annotation("shared", 2, "open", "example"),
       ]),
-    ).toEqual({ icon: "circle-dot", key: "github", label: "2 repos" });
+    ).toEqual({ icon: "git-pull-request", key: "github", label: "2 repos" });
   });
 
   it("keeps valid 100-character GitHub repository names", () => {
     const repo = "r".repeat(100);
     const sidebar = githubSidebarAnnotation([annotation(repo, 1, "open")]);
-    expect(sidebar).toEqual({ icon: "circle-dot", key: "github", label: repo });
+    expect(sidebar).toEqual({
+      icon: "git-pull-request",
+      key: "github",
+      label: repo,
+    });
     expect(() => conversationSidebarAnnotationSchema.parse(sidebar)).not.toThrow();
   });
 });

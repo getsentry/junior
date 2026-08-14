@@ -51,6 +51,7 @@ export const conversationSidebarIconSchema = z.enum([
   "circle-dashed",
   "circle-x",
   "git-merge",
+  "git-pull-request",
   "triangle-alert",
 ]);
 
