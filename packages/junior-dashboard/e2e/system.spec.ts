@@ -67,6 +67,55 @@ test("shows system usage and plugin details", async ({ page }) => {
   await expect(page.getByText("github.organization")).toBeVisible();
 });
 
+test("creates a Workspace recipe", async ({ page }) => {
+  let createdBody: unknown;
+  await page.route("**/api/workspaces", async (route) => {
+    if (route.request().method() === "POST") {
+      createdBody = route.request().postDataJSON();
+      await route.fulfill({
+        json: {
+          id: "11111111-1111-4111-8111-111111111111",
+          name: "sentry",
+          setupScript: "pnpm install",
+          repos: [
+            {
+              checkoutPath: "repos/sentry",
+              isPrimary: true,
+              provider: "github",
+              repo: "getsentry/sentry",
+            },
+          ],
+        },
+        status: 201,
+      });
+      return;
+    }
+    await route.fulfill({ json: { workspaces: [] } });
+  });
+
+  await page.goto(`${server.baseURL}/system/workspaces`);
+  await page.getByRole("button", { name: "New Workspace" }).click();
+  await page.getByLabel("Name").fill("sentry");
+  await page
+    .getByLabel("Repository 1", { exact: true })
+    .fill("getsentry/sentry");
+  await page.getByLabel("Setup script").fill("pnpm install");
+  await page.getByRole("button", { name: "Create Workspace" }).click();
+
+  await expect(page.getByText("github:getsentry/sentry")).toBeVisible();
+  expect(createdBody).toEqual({
+    name: "sentry",
+    repos: [
+      {
+        isPrimary: true,
+        provider: "github",
+        repo: "getsentry/sentry",
+      },
+    ],
+    setupScript: "pnpm install",
+  });
+});
+
 test("keeps System navigation usable on mobile", async ({ page }) => {
   await page.setViewportSize({ height: 844, width: 390 });
   await page.goto(`${server.baseURL}/system`);

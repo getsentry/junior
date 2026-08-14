@@ -540,6 +540,9 @@ export async function mockDashboardApis(page: Page) {
       },
     });
   });
+  await page.route("**/api/workspaces", async (route) => {
+    await route.fulfill({ json: { workspaces: [] } });
+  });
   await page.route("**/api/plugins", async (route) => {
     await route.fulfill({
       json: [

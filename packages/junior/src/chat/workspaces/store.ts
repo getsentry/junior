@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { asc, eq } from "drizzle-orm";
 import { getSqlExecutor } from "@/chat/db";
-import type { JuniorDatabase, JuniorSqlDatabase } from "@/db/db";
+import type { JuniorDatabase } from "@/db/db";
 import { juniorWorkspaceRepos, juniorWorkspaces } from "@/db/schema";
 import type { Workspace } from "./types";
 import {
@@ -136,24 +136,18 @@ export async function getWorkspace(
 }
 
 /** Create one install-wide Workspace recipe. */
-export async function createWorkspace(
-  input: {
-    name: string;
-    setupScript?: string;
-    repos: Array<{
-      provider: string;
-      repo: string;
-      isPrimary?: boolean;
-    }>;
-  },
-  options: {
-    executor?: JuniorSqlDatabase;
-    now?: Date;
-  } = {},
-): Promise<Workspace> {
+export async function createWorkspace(input: {
+  name: string;
+  setupScript?: string;
+  repos: Array<{
+    provider: string;
+    repo: string;
+    isPrimary?: boolean;
+  }>;
+}): Promise<Workspace> {
   const recipe = normalizeWorkspaceRecipe(input);
-  const executor = options.executor ?? getSqlExecutor();
-  const now = options.now ?? new Date();
+  const executor = getSqlExecutor();
+  const now = new Date();
   const id = randomUUID();
 
   try {
@@ -192,14 +186,10 @@ export async function updateWorkspace(
       isPrimary?: boolean;
     }>;
   },
-  options: {
-    executor?: JuniorSqlDatabase;
-    now?: Date;
-  } = {},
 ): Promise<Workspace | undefined> {
   const recipe = normalizeWorkspaceRecipe(input);
-  const executor = options.executor ?? getSqlExecutor();
-  const now = options.now ?? new Date();
+  const executor = getSqlExecutor();
+  const now = new Date();
 
   try {
     const updated = await executor.transaction(async () => {
@@ -231,13 +221,8 @@ export async function updateWorkspace(
 }
 
 /** Delete one install-wide Workspace recipe. */
-export async function deleteWorkspace(
-  id: string,
-  options: {
-    executor?: JuniorSqlDatabase;
-  } = {},
-): Promise<boolean> {
-  const executor = options.executor ?? getSqlExecutor();
+export async function deleteWorkspace(id: string): Promise<boolean> {
+  const executor = getSqlExecutor();
   return await executor.transaction(async () => {
     const rows = await executor
       .db()

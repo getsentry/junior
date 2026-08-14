@@ -2,8 +2,8 @@ import { z } from "zod";
 
 const workspaceRepoInputSchema = z
   .object({
-    provider: z.string().trim().min(1).max(64),
-    repo: z.string().trim().min(1).max(200),
+    provider: z.string(),
+    repo: z.string(),
     isPrimary: z.boolean().optional(),
   })
   .strict();
@@ -32,9 +32,9 @@ export const workspaceListSchema = z
 
 export const workspaceBodySchema = z
   .object({
-    name: z.string().trim().min(1).max(64),
-    setupScript: z.string().max(65_536).optional(),
-    repos: z.array(workspaceRepoInputSchema).max(32),
+    name: z.string(),
+    setupScript: z.string().optional(),
+    repos: z.array(workspaceRepoInputSchema),
   })
   .strict();
 
@@ -47,4 +47,3 @@ export const deleteWorkspaceResponseSchema = z
   .strict();
 
 export type WorkspaceReport = z.infer<typeof workspaceSchema>;
-export type WorkspaceListReport = z.infer<typeof workspaceListSchema>;

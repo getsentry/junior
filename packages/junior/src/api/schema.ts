@@ -108,10 +108,7 @@ export {
   workspaceRepoSchema,
   workspaceSchema,
 } from "./schema/workspace";
-export type {
-  WorkspaceListReport,
-  WorkspaceReport,
-} from "./schema/workspace";
+export type { WorkspaceReport } from "./schema/workspace";
 export {
   eventTaskSummarySchema,
   scheduledTaskSummarySchema,
