@@ -15,7 +15,7 @@ describe("Workspace tools", () => {
   it("runs Workspace tools through the real agent tool path", async () => {
     const now = new Date("2026-08-13T12:00:00.000Z");
     const workspace = {
-      id: "workspace-1",
+      id: "11111111-1111-4111-8111-111111111111",
       name: "sentry",
       setupScript: "pnpm install",
       repos: [
@@ -66,6 +66,37 @@ describe("Workspace tools", () => {
       {
         agentRunner: createModelAgentRunner(
           createModelStream([
+            {
+              type: "toolCall",
+              name: "createWorkspace",
+              arguments: {
+                name: "relay",
+                setup_script: "cargo fetch",
+                repos: [
+                  {
+                    provider: "github",
+                    repo: "getsentry/relay",
+                    is_primary: true,
+                  },
+                ],
+              },
+            },
+            {
+              type: "toolCall",
+              name: "updateWorkspace",
+              arguments: {
+                id: workspace.id,
+                name: "sentry-web",
+                setup_script: "pnpm install",
+                repos: [
+                  {
+                    provider: "github",
+                    repo: "getsentry/sentry",
+                    is_primary: true,
+                  },
+                ],
+              },
+            },
             { type: "toolCall", name: "listWorkspaces", arguments: {} },
             {
               type: "toolCall",
@@ -88,14 +119,68 @@ describe("Workspace tools", () => {
       expect.objectContaining({
         ok: true,
         toolCallId: expect.any(String),
+        toolName: "createWorkspace",
+        result: {
+          workspace: {
+            id: expect.any(String),
+            name: "relay",
+            setup_script: "cargo fetch",
+            repos: [
+              {
+                provider: "github",
+                repo: "getsentry/relay",
+                checkout_path: "repos/relay",
+                is_primary: true,
+              },
+            ],
+          },
+        },
+      }),
+      expect.objectContaining({
+        ok: true,
+        toolCallId: expect.any(String),
+        toolName: "updateWorkspace",
+        result: {
+          workspace: {
+            id: workspace.id,
+            name: "sentry-web",
+            setup_script: "pnpm install",
+            repos: [
+              {
+                provider: "github",
+                repo: "getsentry/sentry",
+                checkout_path: "repos/sentry",
+                is_primary: true,
+              },
+            ],
+          },
+        },
+      }),
+      expect.objectContaining({
+        ok: true,
+        toolCallId: expect.any(String),
         toolName: "listWorkspaces",
         params: {},
         result: {
           active_workspace_id: null,
           workspaces: [
             {
-              id: "workspace-1",
-              name: "sentry",
+              id: expect.any(String),
+              name: "relay",
+              setup_script: "cargo fetch",
+              repos: [
+                {
+                  provider: "github",
+                  repo: "getsentry/relay",
+                  checkout_path: "repos/relay",
+                  is_primary: true,
+                },
+              ],
+            },
+            {
+              id: workspace.id,
+              name: "sentry-web",
+              setup_script: "pnpm install",
               repos: [
                 {
                   provider: "github",

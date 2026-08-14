@@ -6,9 +6,32 @@ import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRegistry } from "@/chat/tools/definition";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { workspaceRepoCheckoutPath } from "./checkout-path";
-import { getWorkspaceByName, listWorkspaces } from "./store";
+import {
+  createWorkspace,
+  getWorkspaceByName,
+  listWorkspaces,
+  updateWorkspace,
+  WorkspaceValidationError,
+} from "./store";
 import type { Workspace } from "./types";
 
+const repoInputSchema = z
+  .object({
+    provider: z.string().trim().min(1),
+    repo: z.string().trim().min(1).describe("Repository in owner/name format."),
+    is_primary: z.boolean().optional(),
+  })
+  .strict();
+const workspaceInputSchema = z
+  .object({
+    name: z.string().trim().min(1).describe("Workspace name."),
+    setup_script: z
+      .string()
+      .describe("Shell script to run after repository checkout.")
+      .optional(),
+    repos: z.array(repoInputSchema).max(32),
+  })
+  .strict();
 const repoSchema = z.object({
   provider: z.string(),
   repo: z.string(),
@@ -18,6 +41,7 @@ const repoSchema = z.object({
 const workspaceSchema = z.object({
   id: z.string(),
   name: z.string(),
+  setup_script: z.string(),
   repos: z.array(repoSchema),
 });
 
@@ -25,6 +49,7 @@ function view(workspace: Workspace) {
   return {
     id: workspace.id,
     name: workspace.name,
+    setup_script: workspace.setupScript,
     repos: workspace.repos.map((repo) => ({
       provider: repo.provider,
       repo: repo.repo,
@@ -34,12 +59,80 @@ function view(workspace: Workspace) {
   };
 }
 
-/** Build tools for listing and selecting registered workspaces. */
+function writeInput(input: z.infer<typeof workspaceInputSchema>) {
+  return {
+    name: input.name,
+    setupScript: input.setup_script,
+    repos: input.repos.map((repo) => ({
+      provider: repo.provider,
+      repo: repo.repo,
+      isPrimary: repo.is_primary,
+    })),
+  };
+}
+
+async function workspaceWrite<T>(operation: () => Promise<T>): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (error instanceof WorkspaceValidationError) {
+      throw new ToolInputError(error.message);
+    }
+    throw error;
+  }
+}
+
+/** Build tools for listing, writing, and selecting registered workspaces. */
 export function createWorkspaceTools(
   context: ToolRuntimeContext,
 ): ToolRegistry {
   if (!context.workspaces) return {};
   return {
+    createWorkspace: zodTool({
+      executionMode: "sequential",
+      annotations: {
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+        readOnlyHint: false,
+      },
+      description:
+        "Create an install-wide Workspace recipe. The Workspace becomes available to future conversations.",
+      inputSchema: workspaceInputSchema,
+      outputSchema: juniorToolOutputSchema.extend({
+        workspace: workspaceSchema,
+      }),
+      async execute(input) {
+        const workspace = await workspaceWrite(() =>
+          createWorkspace(writeInput(input)),
+        );
+        return { workspace: view(workspace) };
+      },
+    }),
+    updateWorkspace: zodTool({
+      executionMode: "sequential",
+      annotations: {
+        destructiveHint: true,
+        idempotentHint: true,
+        openWorldHint: false,
+        readOnlyHint: false,
+      },
+      description:
+        "Replace an install-wide Workspace recipe. Use the Workspace ID returned by listWorkspaces.",
+      inputSchema: workspaceInputSchema.extend({
+        id: z.string().uuid().describe("Workspace ID from listWorkspaces."),
+      }),
+      outputSchema: juniorToolOutputSchema.extend({
+        workspace: workspaceSchema,
+      }),
+      async execute({ id, ...input }) {
+        const workspace = await workspaceWrite(() =>
+          updateWorkspace(id, writeInput(input)),
+        );
+        if (!workspace) throw new ToolInputError(`Workspace not found: ${id}`);
+        return { workspace: view(workspace) };
+      },
+    }),
     listWorkspaces: zodTool({
       annotations: {
         destructiveHint: false,
