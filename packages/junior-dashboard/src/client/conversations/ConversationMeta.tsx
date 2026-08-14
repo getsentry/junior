@@ -252,18 +252,29 @@ function SidebarAnnotationStatusDisc(props: {
     <span
       aria-hidden="true"
       className={cn(
-        // Pure status color + box-shadow cutout. No nested glyph — at 16px the
-        // color is the signal; tooltip carries identity.
-        "relative inline-flex size-4 shrink-0 rounded-full",
+        // Raised face + colored status glyph. Face must differ from cutoutColor
+        // or the ring disappears and stacked discs mush together.
+        "relative inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-dashboard-surface-hover",
         props.stacked && "-ml-1.5",
       )}
       style={{
-        backgroundColor: tone?.disc ?? "#3a3a42",
         boxShadow: `0 0 0 2px ${props.cutoutColor}`,
         zIndex: props.zIndex,
       }}
       title={tone?.label}
-    />
+    >
+      {props.annotation.icon ? (
+        <SidebarAnnotationIcon
+          decorative
+          icon={props.annotation.icon}
+          size={11}
+        />
+      ) : (
+        <span className="font-sans text-[9px] font-semibold leading-none text-dashboard-text-muted">
+          {props.annotation.label.slice(0, 1)}
+        </span>
+      )}
+    </span>
   );
 }
 
@@ -309,50 +320,27 @@ type SidebarAnnotationIconName = NonNullable<
 >;
 
 const SIDEBAR_ICON_PRESENTATION = {
-  "circle-dot": {
-    className: "text-[#3fb950]",
-    disc: "#3fb950",
-    Icon: CircleDot,
-    label: "Open",
-  },
+  "circle-dot": { className: "text-[#3fb950]", Icon: CircleDot, label: "Open" },
   "circle-dashed": {
     className: "text-[#8c959f]",
-    disc: "#8c959f",
     Icon: CircleDashed,
     label: "Draft",
   },
-  "circle-x": {
-    className: "text-[#f85149]",
-    disc: "#f85149",
-    Icon: CircleX,
-    label: "Closed",
-  },
-  "git-merge": {
-    className: "text-[#a371f7]",
-    disc: "#a371f7",
-    Icon: GitMerge,
-    label: "Merged",
-  },
+  "circle-x": { className: "text-[#f85149]", Icon: CircleX, label: "Closed" },
+  "git-merge": { className: "text-[#a371f7]", Icon: GitMerge, label: "Merged" },
   "git-pull-request": {
     className: "text-[#3fb950]",
-    disc: "#3fb950",
     Icon: GitPullRequest,
     label: "Open pull request",
   },
   "triangle-alert": {
     className: "text-[#d29922]",
-    disc: "#d29922",
     Icon: TriangleAlert,
     label: "Needs attention",
   },
 } satisfies Record<
   SidebarAnnotationIconName,
-  {
-    className: string;
-    disc: string;
-    Icon: typeof CircleDot;
-    label: string;
-  }
+  { className: string; Icon: typeof CircleDot; label: string }
 >;
 
 function SidebarAnnotationIcon(props: {
