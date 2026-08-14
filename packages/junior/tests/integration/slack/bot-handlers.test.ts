@@ -80,14 +80,6 @@ function postIncludes(thread: { posts: unknown[] }, text: string): boolean {
   });
 }
 
-function createTurnLifecycleMock() {
-  return {
-    complete: vi.fn(),
-    fail: vi.fn(),
-    start: vi.fn(),
-  };
-}
-
 /**
  * Load a conversation's runtime scratch from thread-state and its visible
  * transcript from SQL, matching how the runtime hydrates the working set.
@@ -112,6 +104,15 @@ async function seedVisibleConversation(
   const conversation = coerceThreadConversationState({});
   conversation.messages.push(...messages);
   await persistConversationMessages({ conversation, conversationId });
+}
+
+async function loadTurnLifecycleEvents(conversationId: string) {
+  return (await getConversationEventStore().loadHistory(conversationId)).filter(
+    (event) =>
+      event.data.type === "turn_started" ||
+      event.data.type === "turn_completed" ||
+      event.data.type === "turn_failed",
+  );
 }
 
 function createRuntime(
@@ -439,17 +440,16 @@ describe("bot handlers (integration)", () => {
     expect(fakeAdapter.promptCalls[0].prompts.length).toBe(3);
   });
 
-  it("error recovery: posts safe error message when executeAgentRun throws", async () => {
-    const turnLifecycle = createTurnLifecycleMock();
+  it("posts a sanitized error message when the model fails", async () => {
+    const conversationId = "slack:C0ERR:1700000000.000";
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
-          turnLifecycle,
-          agentRunner: {
-            run: async () => {
-              throw new Error("LLM unavailable");
-            },
-          },
+          agentRunner: createModelAgentRunner(
+            createModelStream([
+              { type: "error", errorMessage: "LLM unavailable" },
+            ]),
+          ),
         },
         visionContext: {
           listThreadReplies: async () => [],
@@ -457,43 +457,48 @@ describe("bot handlers (integration)", () => {
       },
     });
 
-    const thread = await createTestThread({ id: "slack:C0ERR:1700000000.000" });
+    const thread = await createTestThread({ id: conversationId });
 
     await slackRuntime.handleNewMention(
       thread,
       createTestMessage({
         id: "msg-err",
-        threadId: "slack:C0ERR:1700000000.000",
+        threadId: conversationId,
         text: "trigger an error",
         isMention: true,
       }),
       { destination: createTestDestination(thread) },
     );
 
-    const errorPost = thread.posts.find(
-      (p) =>
-        typeof p === "string" &&
-        p.includes("I ran into an internal error while processing that."),
-    );
-    expect(errorPost).toBeDefined();
-    expect(String(errorPost)).not.toContain("LLM unavailable");
-    expect(turnLifecycle.fail).toHaveBeenCalledWith(
+    expect(
+      postIncludes(
+        thread,
+        "I ran into an internal error while processing that.",
+      ),
+    ).toBe(true);
+    expect(JSON.stringify(thread.posts)).not.toContain("LLM unavailable");
+    const lifecycle = await loadTurnLifecycleEvents(conversationId);
+    expect(lifecycle.map((event) => event.data)).toEqual([
       expect.objectContaining({
-        eventId: expect.stringMatching(/^[a-f0-9]{32}$/i),
-        failureCode: "agent_run_failed",
+        type: "turn_started",
+        turnId: "turn_msg-err",
       }),
-    );
+      expect.objectContaining({
+        type: "turn_failed",
+        turnId: "turn_msg-err",
+        eventId: expect.stringMatching(/^[a-f0-9]{32}$/i),
+        failureCode: "model_execution_failed",
+      }),
+    ]);
   });
 
   it("does not persist an assistant message when final Slack delivery fails", async () => {
     const conversationId = "slack:C0DELIVERYFAIL:1700000000.000";
     const sessionId = "turn_msg-delivery-fail";
     const finalText = "This reply never reaches Slack.";
-    const turnLifecycle = createTurnLifecycleMock();
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
-          turnLifecycle,
           agentRunner: createModelAgentRunner(
             createModelStream([{ type: "text", text: finalText }]),
           ),
@@ -550,23 +555,28 @@ describe("bot handlers (integration)", () => {
     expect(sessionRecord?.state).toBe("failed");
     const projection = await loadProjection({ conversationId });
     expect(JSON.stringify(projection)).not.toContain(finalText);
-    expect(turnLifecycle.fail).toHaveBeenCalledWith(
+    const lifecycle = await loadTurnLifecycleEvents(conversationId);
+    expect(lifecycle.map((event) => event.data)).toEqual([
       expect.objectContaining({
+        type: "turn_started",
+        turnId: sessionId,
+      }),
+      expect.objectContaining({
+        type: "turn_failed",
+        turnId: sessionId,
         eventId: expect.stringMatching(/^[a-f0-9]{32}$/i),
         failureCode: "delivery_failed",
       }),
-    );
+    ]);
   });
 
   it("commits real agent history before the Slack reply when later state persistence fails", async () => {
     const conversationId = "slack:C0POSTDELIVERY:1700000000.000";
     const sessionId = "turn_msg-post-delivery";
     const finalText = "Delivered before the state store failed.";
-    const turnLifecycle = createTurnLifecycleMock();
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
-          turnLifecycle,
           agentRunner: {
             run: async (request) => {
               await recordTurnRoute({
@@ -687,13 +697,19 @@ describe("bot handlers (integration)", () => {
         text: finalText,
       },
     ]);
-    expect(turnLifecycle.fail).toHaveBeenCalledWith(
+    const lifecycle = await loadTurnLifecycleEvents(conversationId);
+    expect(lifecycle.map((event) => event.data)).toEqual([
       expect.objectContaining({
+        type: "turn_started",
+        turnId: sessionId,
+      }),
+      expect.objectContaining({
+        type: "turn_failed",
+        turnId: sessionId,
         eventId: expect.stringMatching(/^[a-f0-9]{32}$/i),
         failureCode: "persistence_failed",
       }),
-    );
-    expect(turnLifecycle.complete).not.toHaveBeenCalled();
+    ]);
   });
 
   it("passes conversation and turn identity into assistant reply context", async () => {
@@ -1219,123 +1235,6 @@ describe("bot handlers (integration)", () => {
     expect(
       JSON.stringify(await loadProjection({ conversationId })),
     ).not.toContain("bob pending ask");
-  });
-
-  it("suppresses the visible failure reply when the mailbox will retry the delivery", async () => {
-    const { slackRuntime } = createRuntime({
-      services: {
-        replyExecutor: {
-          agentRunner: {
-            run: async () => {
-              throw new Error("transient turn failure");
-            },
-          },
-        },
-      },
-    });
-
-    const thread = await createTestThread({
-      id: "slack:C0RETRYQUIET:1700000000.000",
-    });
-
-    await slackRuntime.handleNewMention(
-      thread,
-      createTestMessage({
-        id: "msg-retryable-failure",
-        threadId: "slack:C0RETRYQUIET:1700000000.000",
-        text: "do work",
-        isMention: true,
-      }),
-      {
-        destination: createTestDestination(thread),
-        isFinalAttempt: false,
-      },
-    );
-
-    expect(thread.posts).toEqual([]);
-  });
-
-  it("posts the failure fallback after ack even when the attempt is not final", async () => {
-    const ack = vi.fn().mockResolvedValue(undefined);
-    const { slackRuntime } = createRuntime({
-      services: {
-        replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              const _input = request.instruction.text;
-              const context = request;
-
-              await context.durability?.onInputCommitted?.();
-              throw new Error("post-ack turn failure");
-            },
-          },
-        },
-      },
-    });
-
-    const thread = await createTestThread({
-      id: "slack:C0RETRYACKED:1700000000.000",
-    });
-
-    await slackRuntime.handleNewMention(
-      thread,
-      createTestMessage({
-        id: "msg-acked-failure",
-        threadId: "slack:C0RETRYACKED:1700000000.000",
-        text: "do work",
-        isMention: true,
-      }),
-      {
-        ack,
-        destination: createTestDestination(thread),
-        isFinalAttempt: false,
-      },
-    );
-
-    expect(ack).toHaveBeenCalledOnce();
-    expect(thread.posts).toEqual([
-      expect.stringContaining(
-        "I ran into an internal error while processing that.",
-      ),
-    ]);
-  });
-
-  it("posts the failure fallback on the final delivery attempt", async () => {
-    const { slackRuntime } = createRuntime({
-      services: {
-        replyExecutor: {
-          agentRunner: {
-            run: async () => {
-              throw new Error("persistent turn failure");
-            },
-          },
-        },
-      },
-    });
-
-    const thread = await createTestThread({
-      id: "slack:C0RETRYFINAL:1700000000.000",
-    });
-
-    await slackRuntime.handleNewMention(
-      thread,
-      createTestMessage({
-        id: "msg-final-failure",
-        threadId: "slack:C0RETRYFINAL:1700000000.000",
-        text: "do work",
-        isMention: true,
-      }),
-      {
-        destination: createTestDestination(thread),
-        isFinalAttempt: true,
-      },
-    );
-
-    expect(thread.posts).toEqual([
-      expect.stringContaining(
-        "I ran into an internal error while processing that.",
-      ),
-    ]);
   });
 
   it("fails malformed awaiting continuations before handling the follow-up", async () => {

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import {
   getSlackContinuationMarker,
@@ -13,6 +13,7 @@ import {
 } from "../../fixtures/slack-harness";
 import { createModelAgentRunner } from "../../fixtures/agent-runner";
 import { createModelStream } from "../../fixtures/model-stream";
+import { getConversationEventStore } from "@/chat/db";
 
 function toPostedText(value: unknown): string {
   if (typeof value === "string") {
@@ -36,17 +37,20 @@ function toPostedText(value: unknown): string {
   return String(value);
 }
 
+async function loadTurnLifecycleEvents(conversationId: string) {
+  return (await getConversationEventStore().loadHistory(conversationId)).filter(
+    (event) =>
+      event.data.type === "turn_started" ||
+      event.data.type === "turn_completed" ||
+      event.data.type === "turn_failed",
+  );
+}
+
 describe("Slack behavior: finalized thread replies", () => {
   it("posts a completed assistant message", async () => {
-    const turnLifecycle = {
-      complete: vi.fn(),
-      fail: vi.fn(),
-      start: vi.fn(),
-    };
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
-          turnLifecycle,
           agentRunner: createModelAgentRunner(
             createModelStream([{ type: "text", text: "Hello world" }]),
           ),
@@ -70,20 +74,20 @@ describe("Slack behavior: finalized thread replies", () => {
 
     expect(thread.postKinds).toEqual(["value"]);
     expect(thread.posts.map(toPostedText)).toEqual(["Hello world"]);
-    expect(turnLifecycle.start).toHaveBeenCalledWith(
+    const lifecycle = await loadTurnLifecycleEvents(thread.id);
+    expect(lifecycle.map((event) => event.data)).toEqual([
       expect.objectContaining({
-        conversationId: thread.id,
+        type: "turn_started",
+        turnId: "turn_m-final-1",
         inputMessageIds: ["m-final-1"],
         surface: "slack",
       }),
-    );
-    expect(turnLifecycle.complete).toHaveBeenCalledWith(
       expect.objectContaining({
-        conversationId: thread.id,
+        type: "turn_completed",
+        turnId: "turn_m-final-1",
         outcome: "success",
       }),
-    );
-    expect(turnLifecycle.fail).not.toHaveBeenCalled();
+    ]);
   });
 
   it("splits long completed messages into continuation posts", async () => {
@@ -166,15 +170,9 @@ describe("Slack behavior: finalized thread replies", () => {
     const partialStart = "The budget review is complete.";
     const partialEnd = "This should continue into a second post.";
     const longReply = `${partialStart} ${"A".repeat(slackOutputPolicy.maxInlineChars)}\n\n${partialEnd}`;
-    const turnLifecycle = {
-      complete: vi.fn(),
-      fail: vi.fn(),
-      start: vi.fn(),
-    };
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
-          turnLifecycle,
           agentRunner: createModelAgentRunner(
             createModelStream([
               {
@@ -211,13 +209,20 @@ describe("Slack behavior: finalized thread replies", () => {
     expect(postedText).toContain(partialEnd);
     expect(postedText).toContain(getSlackInterruptionMarker().trim());
     expect(postedText).not.toContain("event_id=");
-    expect(turnLifecycle.fail).toHaveBeenCalledWith(
+    const lifecycle = await loadTurnLifecycleEvents(thread.id);
+    expect(lifecycle.map((event) => event.data)).toEqual([
       expect.objectContaining({
-        conversationId: thread.id,
+        type: "turn_started",
+        turnId: "turn_m-final-8",
+        inputMessageIds: ["m-final-8"],
+        surface: "slack",
+      }),
+      expect.objectContaining({
+        type: "turn_failed",
+        turnId: "turn_m-final-8",
         eventId: expect.stringMatching(/^[a-f0-9]{32}$/i),
         failureCode: "model_execution_failed",
       }),
-    );
-    expect(turnLifecycle.complete).not.toHaveBeenCalled();
+    ]);
   });
 });

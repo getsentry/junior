@@ -115,6 +115,66 @@ describe("createSlackTurnRuntime", () => {
         }),
       );
     });
+
+    it.each([
+      {
+        name: "suppresses the fallback before ack while the mailbox can retry",
+        ackBeforeFailure: false,
+        isFinalAttempt: false,
+        shouldPostFallback: false,
+      },
+      {
+        name: "posts the fallback after ack even before the final attempt",
+        ackBeforeFailure: true,
+        isFinalAttempt: false,
+        shouldPostFallback: true,
+      },
+      {
+        name: "posts the fallback on the final attempt",
+        ackBeforeFailure: false,
+        isFinalAttempt: true,
+        shouldPostFallback: true,
+      },
+    ])(
+      "$name",
+      async ({ ackBeforeFailure, isFinalAttempt, shouldPostFallback }) => {
+        const deps = createMockDeps({
+          replyToThread: vi.fn(async (_thread, _message, hooks) => {
+            if (ackBeforeFailure) {
+              await hooks.ack?.();
+            }
+            throw new Error("turn failed");
+          }),
+        });
+        const runtime = createSlackTurnRuntime<TestState>(deps);
+        const thread = await createTestThread({});
+        const message = createTestMessage({ id: "m-failed-turn" });
+
+        await runtime.handleNewMention(thread, message, {
+          destination: createTestDestination(thread),
+          isFinalAttempt,
+        });
+
+        const expectedFailure = {
+          conversationId: message.threadId,
+          createdAtMs: 1700000000000,
+          eventId: "evt_test",
+          failureCode: "agent_run_failed",
+          turnId: "turn_m-failed-turn",
+        };
+        expect(thread.posts).toEqual(
+          shouldPostFallback
+            ? [
+                "I ran into an internal error while processing that. " +
+                  "Reference: `event_id=evt_test`.",
+              ]
+            : [],
+        );
+        expect(vi.mocked(deps.failConversationTurn).mock.calls).toEqual(
+          shouldPostFallback ? [[expectedFailure]] : [],
+        );
+      },
+    );
   });
 
   describe("handleSubscribedMessage", () => {
