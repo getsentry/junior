@@ -102,4 +102,20 @@ describe("getPullRequest", () => {
       name: "PluginToolInputError",
     });
   });
+
+  it("reports non-404 pull request lookup failures as runtime errors", async () => {
+    const { tool } = toolContext(true, [
+      { body: { message: "Internal Server Error" }, status: 500 },
+    ]);
+
+    await expect(
+      tool.execute?.(
+        { repo: "getsentry/junior", number: 691 },
+        { toolCallId: "pr-lookup-500" },
+      ),
+    ).rejects.toMatchObject({
+      message: "GitHub pull request lookup failed with HTTP 500",
+      name: "Error",
+    });
+  });
 });

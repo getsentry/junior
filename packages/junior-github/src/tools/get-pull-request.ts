@@ -87,9 +87,12 @@ export function createGitHubGetPullRequestTool(
       });
       const parsed = await readJson(response);
       if (!response.ok) {
-        throw new PluginToolInputError(
-          `GitHub pull request lookup failed with HTTP ${response.status}`,
-        );
+        const message = `GitHub pull request lookup failed with HTTP ${response.status}`;
+        // Missing PR/repo is model-repairable. Auth, rate limit, and 5xx stay system errors.
+        if (response.status === 404) {
+          throw new PluginToolInputError(message);
+        }
+        throw new Error(message);
       }
       const providerResult = z
         .object({

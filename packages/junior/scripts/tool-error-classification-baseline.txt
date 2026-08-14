@@ -11,6 +11,7 @@ packages/junior-github/src/tools/create-pull-request.ts	throw new Error( "GitHub
 packages/junior-github/src/tools/create-pull-request.ts	throw new Error( "GitHub pull request was created, but Junior could not persist the completed pull request state.", { cause: error }, );
 packages/junior-github/src/tools/create-pull-request.ts	throw new Error("Invalid GitHub createPullRequest idempotency state.", { cause: error, });
 packages/junior-github/src/tools/get-deployment.ts	throw new Error(message);
+packages/junior-github/src/tools/get-pull-request.ts	throw new Error(message);
 packages/junior-github/src/tools/get-release.ts	throw new Error( `GitHub release lookup failed with HTTP ${response.status}`, );
 packages/junior-github/src/tools/resolve-pull-request-review-thread.ts	throw new Error( `GitHub review thread lookup failed with HTTP ${lookupResponse.status}: ${githubError(lookupPayload)}`, );
 packages/junior-github/src/tools/resolve-pull-request-review-thread.ts	throw new Error( `GitHub review thread resolution failed with HTTP ${resolveResponse.status}: ${githubError(resolvePayload)}`, );
@@ -18,6 +19,7 @@ packages/junior-github/src/tools/resolve-pull-request-review-thread.ts	throw new
 packages/junior-github/src/tools/resolve-pull-request-review-thread.ts	throw new Error("GitHub did not resolve the requested review thread.");
 packages/junior-github/src/tools/update-issue.ts	throw new Error( `GitHub issue update failed with HTTP ${response.status}: ${githubApiErrorMessage(parsed)}`, );
 packages/junior-github/src/tools/update-pull-request.ts	throw new Error( `GitHub pull request update failed with HTTP ${response.status}: ${githubApiErrorMessage(parsed)}`, );
+packages/junior-vercel/src/tools/deployment.ts	throw new Error(message);
 packages/junior/src/chat/slack/tools/canvas/create.ts	throw new Error( "Cannot create a canvas without an active assistant channel context (C/G/D).", );
 packages/junior/src/chat/slack/tools/conversation-message-search.ts	throw new Error( "Stored Slack conversation search returned an invalid destination", );
 packages/junior/src/chat/tools/create-event-task.ts	throw new Error("Event task creation requires a tool-call identity.");
