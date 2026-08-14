@@ -15,7 +15,6 @@ type WorkspaceEditorProps = {
   draft: WorkspaceDraft;
   error?: string;
   editing: boolean;
-  onCancel(): void;
   onChange(draft: WorkspaceDraft): void;
   onSubmit(): void;
 };
@@ -61,20 +60,10 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
   return (
     <Card className="p-5" padding="none">
       <form className="space-y-5" onSubmit={submit}>
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h3 className="m-0 text-lg font-semibold">
-              {props.editing ? "Edit Workspace" : "New Workspace"}
-            </h3>
-            <p className="mt-1 mb-0 text-sm text-dashboard-text-muted">
-              Repositories use fixed <code>repos/{"{name}"}</code> paths. Mark
-              one primary repository for AGENTS.md.
-            </p>
-          </div>
-          <Button disabled={props.busy} onClick={props.onCancel} type="button">
-            Cancel
-          </Button>
-        </div>
+        <p className="m-0 text-sm text-dashboard-text-muted">
+          Repositories use fixed <code>repos/{"{name}"}</code> paths. Mark one
+          primary repository for AGENTS.md.
+        </p>
 
         <label className="block text-sm font-semibold" htmlFor="workspace-name">
           Name

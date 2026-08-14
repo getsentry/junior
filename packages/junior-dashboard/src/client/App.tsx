@@ -27,6 +27,7 @@ import { PersonProfilePage } from "./pages/people/PersonProfilePage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { SystemPage } from "./pages/system/SystemPage";
 import { SystemPageLayout } from "./pages/system/SystemPageLayout";
+import { WorkspaceFormPage } from "./pages/system/WorkspaceFormPage";
 import { WorkspacesPage } from "./pages/system/WorkspacesPage";
 import { TaskExecutionsPage } from "./pages/tasks/TaskExecutionsPage";
 import { TaskRunsPage } from "./pages/tasks/TaskRunsPage";
@@ -325,6 +326,30 @@ export function DashboardShell() {
             )
           }
           path="/system/workspaces"
+        />
+        <Route
+          element={
+            loading ? (
+              <SystemPageLayout>
+                <LoadingView label="Loading Workspace" />
+              </SystemPageLayout>
+            ) : (
+              <WorkspaceFormPage />
+            )
+          }
+          path="/system/workspaces/new"
+        />
+        <Route
+          element={
+            loading ? (
+              <SystemPageLayout>
+                <LoadingView label="Loading Workspace" />
+              </SystemPageLayout>
+            ) : (
+              <WorkspaceFormPage />
+            )
+          }
+          path="/system/workspaces/:workspaceId"
         />
         <Route
           element={

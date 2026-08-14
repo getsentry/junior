@@ -94,7 +94,8 @@ test("creates a Workspace recipe", async ({ page }) => {
   });
 
   await page.goto(`${server.baseURL}/system/workspaces`);
-  await page.getByRole("button", { name: "New Workspace" }).click();
+  await page.getByRole("link", { name: "New Workspace" }).click();
+  await expect(page).toHaveURL(`${server.baseURL}/system/workspaces/new`);
   await page.getByLabel("Name").fill("sentry");
   await page
     .getByLabel("Repository 1", { exact: true })
@@ -102,6 +103,7 @@ test("creates a Workspace recipe", async ({ page }) => {
   await page.getByLabel("Setup script").fill("pnpm install");
   await page.getByRole("button", { name: "Create Workspace" }).click();
 
+  await expect(page).toHaveURL(`${server.baseURL}/system/workspaces`);
   await expect(page.getByText("github:getsentry/sentry")).toBeVisible();
   expect(createdBody).toEqual({
     name: "sentry",
