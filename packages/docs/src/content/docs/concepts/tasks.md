@@ -15,10 +15,10 @@ Tasks are saved instructions that Junior runs later. They are built into `@sentr
 
 ## Task Types
 
-| Type | Trigger | Example |
-| ---- | ------- | ------- |
-| Scheduled task | A date or recurring schedule | “Every Monday at 9am, post a project recap” |
-| Event task | A resource event from a plugin | “When this issue closes, summarize it here” |
+| Type           | Trigger                        | Example                                     |
+| -------------- | ------------------------------ | ------------------------------------------- |
+| Scheduled task | A date or recurring schedule   | “Every Monday at 9am, post a project recap” |
+| Event task     | A resource event from a plugin | “When this issue closes, summarize it here” |
 
 A resource subscription is different: it follows one resource temporarily without storing an instruction. See [Resource Subscriptions](/concepts/resource-subscriptions/).
 
@@ -48,9 +48,10 @@ Event tasks require a plugin that publishes the selected resource and event:
 
 ```text
 when ACME-42 closes, summarize the resolution in this channel
+whenever a new issue is created in Linear team SRE, investigate it and comment findings on the issue
 ```
 
-If the plugin is disabled, the task remains visible but cannot receive events until a compatible plugin is enabled again.
+If the plugin is disabled, the task remains visible but cannot receive events until a compatible plugin is enabled again. Each plugin page lists the resources and events it can publish.
 
 ## Access and Delivery
 

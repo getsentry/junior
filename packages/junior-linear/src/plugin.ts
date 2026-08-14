@@ -68,7 +68,8 @@ export function linearPlugin(): PluginRegistration {
     },
     manifest: {
       configKeys: ["team", "project"],
-      description: "Linear issue tracking via hosted MCP server",
+      description:
+        "Linear issue tracking via hosted MCP server and issue webhooks",
       displayName: "Linear",
       envVars: {
         LINEAR_WEBHOOK_SECRET: {},
