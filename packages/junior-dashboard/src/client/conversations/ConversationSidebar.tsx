@@ -190,10 +190,14 @@ function ConversationSidebarRow(props: {
     includeId: false,
   });
   const title = conversationDisplayTitle(props.conversation);
+  const hasAnnotations = Boolean(props.conversation.sidebarAnnotations?.length);
+  // Linked work is denser and more actionable than channel; hide channel when
+  // annotations own the meta row.
+  const showLocation = Boolean(location) && !hasAnnotations;
   const hasMeta =
-    Boolean(location) ||
+    showLocation ||
     props.conversation.visibility === "private" ||
-    Boolean(props.conversation.sidebarAnnotations?.length);
+    hasAnnotations;
   return (
     <div className="group relative min-w-0">
       <Link
@@ -229,12 +233,7 @@ function ConversationSidebarRow(props: {
                 className="size-3 shrink-0"
               />
             ) : null}
-            {location ? <span className="truncate">{location}</span> : null}
-            {location && props.conversation.sidebarAnnotations?.length ? (
-              <span aria-hidden="true" className="shrink-0 opacity-50">
-                ·
-              </span>
-            ) : null}
+            {showLocation ? <span className="truncate">{location}</span> : null}
             <ConversationSidebarAnnotations
               annotations={props.conversation.sidebarAnnotations}
             />

@@ -586,7 +586,7 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain('title="Open pull request"');
   });
 
-  it("renders plugin-selected sidebar annotations in order", () => {
+  it("renders plugin-selected sidebar annotations as an icon stack", () => {
     const html = renderToStaticMarkup(
       <ConversationSidebarAnnotations
         annotations={[
@@ -606,7 +606,9 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain(
       'aria-label="Linked work, newest first: getsentry/junior#2, getsentry/payments#1"',
     );
-    expect(html.indexOf(">junior<")).toBeLessThan(html.indexOf(">payments<"));
+    // Stack chips stay icon-only; labels live in the desktop tooltip body.
+    expect(html).not.toContain(">junior<");
+    expect(html).not.toContain(">payments<");
     expect(html).toContain("getsentry/junior#2");
     expect(html).toContain("getsentry/payments#1");
     expect(html).toContain("Open");

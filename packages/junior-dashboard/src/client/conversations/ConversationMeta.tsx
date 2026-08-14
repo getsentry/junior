@@ -96,15 +96,15 @@ export function hasConversationAnnotations(
   );
 }
 
-/** Render plugin annotations as a newest-first stack in a conversation row. */
+/** Render plugin annotations as a newest-first icon stack in a conversation row. */
 export function ConversationSidebarAnnotations(props: {
   annotations: ConversationDetailReport["sidebarAnnotations"] | undefined;
 }) {
   const annotations = props.annotations;
   if (!annotations?.length) return null;
-  const labels = annotations
-    .map((annotation) => sidebarAnnotationDetail(annotation))
-    .join(", ");
+  const details = annotations.map((annotation) =>
+    sidebarAnnotationDetail(annotation),
+  );
   return (
     <Tooltip
       align="left"
@@ -118,32 +118,31 @@ export function ConversationSidebarAnnotations(props: {
               {annotation.icon ? (
                 <SidebarAnnotationIcon icon={annotation.icon} />
               ) : null}
-              <span className="min-w-0 truncate">
-                {sidebarAnnotationDetail(annotation)}
-              </span>
+              <span className="min-w-0 truncate">{details[index]}</span>
             </li>
           ))}
         </ul>
       }
       label="Linked work"
-      triggerClassName="min-w-0"
+      triggerClassName="min-w-0 shrink-0"
     >
       <span
-        aria-label={`Linked work, newest first: ${labels}`}
-        className="inline-flex min-w-0 max-w-full items-center pl-2"
+        aria-label={`Linked work, newest first: ${details.join(", ")}`}
+        className="inline-flex shrink-0 items-center pl-1.5"
       >
         {annotations.map((annotation, index) => (
           <span
-            className="inline-flex min-w-0 max-w-24 shrink items-center gap-1 truncate rounded-full border border-white/15 bg-dashboard-surface px-2 py-0.5 font-sans text-dashboard-text-muted shadow-sm shadow-black/40 first:max-w-28 first:shrink-0 [&:not(:first-child)]:-ml-2"
+            className="inline-flex size-5 shrink-0 items-center justify-center rounded-full border border-white/15 bg-dashboard-surface shadow-sm shadow-black/40 [&:not(:first-child)]:-ml-1.5"
             key={`${annotation.key}:${index}`}
             style={{ zIndex: annotations.length - index }}
           >
             {annotation.icon ? (
-              <SidebarAnnotationIcon icon={annotation.icon} />
-            ) : null}
-            <span className="min-w-0 truncate whitespace-nowrap">
-              {annotation.label}
-            </span>
+              <SidebarAnnotationIcon icon={annotation.icon} size={12} />
+            ) : (
+              <span className="px-1 font-sans text-2xs text-dashboard-text-muted">
+                {annotation.label.slice(0, 1)}
+              </span>
+            )}
           </span>
         ))}
       </span>
@@ -156,7 +155,7 @@ function sidebarAnnotationDetail(annotation: {
   label: string;
 }): string {
   // Prefer the plugin key when it carries a fuller resource identity than the
-  // compact stack label (for example owner/repo#123 vs repo).
+  // compact label (for example owner/repo#123 vs repo).
   return annotation.key.includes("/") || annotation.key.includes("#")
     ? annotation.key
     : annotation.label;
