@@ -76,7 +76,9 @@ describe("buildUserTurnText", () => {
         text: "what now?",
         context: [
           '<thread-context authority="evidence-only">',
-          "  <message>add customer impact</message>",
+          '  <message index="1" role="user" author="David" actor_id="U_DAVID">',
+          "add customer impact",
+          "  </message>",
           "</thread-context>",
         ].join("\n"),
         includeConversationContextWithHistory: true,
@@ -89,7 +91,9 @@ describe("buildUserTurnText", () => {
         type: "text",
         text: [
           '<thread-context authority="evidence-only">',
-          "  <message>add customer impact</message>",
+          '  <message index="1" role="user" author="David" actor_id="U_DAVID">',
+          "add customer impact",
+          "  </message>",
           "</thread-context>",
         ].join("\n"),
       },
