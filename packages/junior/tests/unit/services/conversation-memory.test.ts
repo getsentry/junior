@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  appendThreadContextMessages,
   buildConversationContext,
   getThreadTitleSourceMessage,
   normalizeConversationText,
@@ -209,6 +210,52 @@ describe("buildConversationContext", () => {
     const context = buildConversationContext(conversation);
     const renderedText = /\[assistant\][^\n]*: (x+)/.exec(context ?? "")?.[1];
     expect(renderedText).toHaveLength(3_200);
+  });
+});
+
+describe("appendThreadContextMessages", () => {
+  it("merges passive messages into one existing thread-context envelope", () => {
+    const base = [
+      '<thread-context authority="evidence-only">',
+      "  <message>durable history</message>",
+      "</thread-context>",
+    ].join("\n");
+
+    const merged = appendThreadContextMessages(base, [
+      "  <message>passive follow-up</message>",
+    ]);
+
+    expect(merged).toBe(
+      [
+        '<thread-context authority="evidence-only">',
+        "  <message>durable history</message>",
+        "  <message>passive follow-up</message>",
+        "</thread-context>",
+      ].join("\n"),
+    );
+    expect(merged?.match(/<thread-context/g)).toHaveLength(1);
+  });
+
+  it("wraps passive messages when durable context has no thread-context envelope", () => {
+    const base = [
+      "<thread-compactions>",
+      "  <compaction>summary</compaction>",
+      "</thread-compactions>",
+    ].join("\n");
+
+    expect(
+      appendThreadContextMessages(base, ["  <message>passive only</message>"]),
+    ).toBe(
+      [
+        "<thread-compactions>",
+        "  <compaction>summary</compaction>",
+        "</thread-compactions>",
+        "",
+        '<thread-context authority="evidence-only">',
+        "  <message>passive only</message>",
+        "</thread-context>",
+      ].join("\n"),
+    );
   });
 });
 

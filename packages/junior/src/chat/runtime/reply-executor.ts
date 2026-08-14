@@ -77,6 +77,7 @@ import {
   type TurnToolInvocation,
 } from "@/chat/runtime/turn-input";
 import {
+  appendThreadContextMessages,
   markConversationMessage,
   normalizeConversationText,
   recordDeliveredAssistantMessage,
@@ -194,10 +195,10 @@ function parkedInputKey(message: PiMessage): string | undefined {
   return `${message.timestamp}:${text}`;
 }
 
-function renderRecentThreadMessages(
+function renderRecentThreadMessageLines(
   conversationContext: string | undefined,
   messages: QueuedTurnMessage[],
-): string | undefined {
+): string[] {
   const passiveMessages = messages.filter((queued) => {
     if (queued.explicitMention) {
       return false;
@@ -206,9 +207,9 @@ function renderRecentThreadMessages(
     return !slackTs || !conversationContext?.includes(`slack_ts="${slackTs}"`);
   });
   if (passiveMessages.length === 0) {
-    return undefined;
+    return [];
   }
-  const lines = ['<thread-context authority="evidence-only">'];
+  const lines: string[] = [];
   for (const queued of passiveMessages) {
     const actor = queuedInstructionActor(queued);
     const attrs = [
@@ -226,8 +227,7 @@ function renderRecentThreadMessages(
       "  </message>",
     );
   }
-  lines.push("</thread-context>");
-  return lines.join("\n");
+  return lines;
 }
 
 function appendRecentThreadMessagesToContext(
@@ -235,17 +235,14 @@ function appendRecentThreadMessagesToContext(
   messages: QueuedTurnMessage[],
   options?: { includeConversationContext?: boolean },
 ): string | undefined {
-  const recentThreadMessages = renderRecentThreadMessages(
-    conversationContext,
-    messages,
-  );
-  const contextParts = [
+  const baseContext =
     options?.includeConversationContext === false
       ? undefined
-      : conversationContext?.trim(),
-    recentThreadMessages,
-  ].filter((part): part is string => Boolean(part));
-  return contextParts.length > 0 ? contextParts.join("\n\n") : undefined;
+      : conversationContext;
+  return appendThreadContextMessages(
+    baseContext,
+    renderRecentThreadMessageLines(conversationContext, messages),
+  );
 }
 
 function queuedInstructionActor(

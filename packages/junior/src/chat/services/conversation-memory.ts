@@ -272,6 +272,38 @@ export function buildConversationContext(
   return lines.join("\n");
 }
 
+const THREAD_CONTEXT_OPEN = '<thread-context authority="evidence-only">';
+const THREAD_CONTEXT_CLOSE = "</thread-context>";
+
+/**
+ * Keep ambient history as one evidence-only block.
+ *
+ * When durable context already ends a thread-context envelope, append message
+ * lines inside that envelope. Otherwise wrap the new messages in one envelope.
+ */
+export function appendThreadContextMessages(
+  baseContext: string | undefined,
+  messageLines: string[],
+): string | undefined {
+  const base = baseContext?.trim();
+  if (messageLines.length === 0) {
+    return base || undefined;
+  }
+  const entryBlock = messageLines.join("\n");
+  if (!base) {
+    return [THREAD_CONTEXT_OPEN, entryBlock, THREAD_CONTEXT_CLOSE].join("\n");
+  }
+  const closeIdx = base.lastIndexOf(THREAD_CONTEXT_CLOSE);
+  if (closeIdx >= 0) {
+    const before = base.slice(0, closeIdx).replace(/\s*$/, "");
+    const after = base.slice(closeIdx);
+    return `${before}\n${entryBlock}\n${after}`;
+  }
+  return [base, "", THREAD_CONTEXT_OPEN, entryBlock, THREAD_CONTEXT_CLOSE].join(
+    "\n",
+  );
+}
+
 function pruneCompactions(
   compactions: ConversationCompaction[],
 ): ConversationCompaction[] {
