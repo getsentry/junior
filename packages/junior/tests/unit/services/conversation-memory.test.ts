@@ -217,19 +217,27 @@ describe("appendThreadContextMessages", () => {
   it("merges passive messages into one existing thread-context envelope", () => {
     const base = [
       '<thread-context authority="evidence-only">',
-      "  <message>durable history</message>",
+      '  <message index="1" ts="2026-08-14T21:00:00.000Z" role="user" author="Lamberto" actor_id="ULAMBERTO" slack_ts="1712345.000100">',
+      "[user] Lamberto: durable history",
+      "  </message>",
       "</thread-context>",
     ].join("\n");
 
     const merged = appendThreadContextMessages(base, [
-      "  <message>passive follow-up</message>",
+      '  <message role="user" author="Bruno" actor_id="UBRUNO" slack_ts="1712345.000200">',
+      "[user] Bruno: passive follow-up",
+      "  </message>",
     ]);
 
     expect(merged).toBe(
       [
         '<thread-context authority="evidence-only">',
-        "  <message>durable history</message>",
-        "  <message>passive follow-up</message>",
+        '  <message index="1" ts="2026-08-14T21:00:00.000Z" role="user" author="Lamberto" actor_id="ULAMBERTO" slack_ts="1712345.000100">',
+        "[user] Lamberto: durable history",
+        "  </message>",
+        '  <message role="user" author="Bruno" actor_id="UBRUNO" slack_ts="1712345.000200">',
+        "[user] Bruno: passive follow-up",
+        "  </message>",
         "</thread-context>",
       ].join("\n"),
     );
@@ -244,7 +252,11 @@ describe("appendThreadContextMessages", () => {
     ].join("\n");
 
     expect(
-      appendThreadContextMessages(base, ["  <message>passive only</message>"]),
+      appendThreadContextMessages(base, [
+        '  <message role="user" author="Bruno" actor_id="UBRUNO" slack_ts="1712345.000200">',
+        "[user] Bruno: passive only",
+        "  </message>",
+      ]),
     ).toBe(
       [
         "<thread-compactions>",
@@ -252,7 +264,9 @@ describe("appendThreadContextMessages", () => {
         "</thread-compactions>",
         "",
         '<thread-context authority="evidence-only">',
-        "  <message>passive only</message>",
+        '  <message role="user" author="Bruno" actor_id="UBRUNO" slack_ts="1712345.000200">',
+        "[user] Bruno: passive only",
+        "  </message>",
         "</thread-context>",
       ].join("\n"),
     );

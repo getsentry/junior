@@ -212,18 +212,19 @@ function renderRecentThreadMessageLines(
   const lines: string[] = [];
   for (const queued of passiveMessages) {
     const actor = queuedInstructionActor(queued);
+    const author = escapeXml(actor?.authorName ?? "user");
     const attrs = [
-      actor?.authorId ? `author_id="${escapeXml(actor.authorId)}"` : undefined,
-      actor?.authorName
-        ? `author_name="${escapeXml(actor.authorName)}"`
-        : undefined,
+      `role="user"`,
+      `author="${author}"`,
+      actor?.authorId ? `actor_id="${escapeXml(actor.authorId)}"` : undefined,
       actor?.slackTs ? `slack_ts="${escapeXml(actor.slackTs)}"` : undefined,
     ]
       .filter((attr): attr is string => Boolean(attr))
       .join(" ");
+    const text = escapeXml(queued.userText.replace(/\s+/g, " "));
     lines.push(
-      attrs ? `  <message ${attrs}>` : "  <message>",
-      escapeXml(queued.userText),
+      `  <message ${attrs}>`,
+      `[user] ${author}: ${text}`,
       "  </message>",
     );
   }
