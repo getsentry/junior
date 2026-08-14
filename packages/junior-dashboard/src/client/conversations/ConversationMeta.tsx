@@ -96,7 +96,7 @@ export function hasConversationAnnotations(
   );
 }
 
-/** Render plugin annotations as a newest-first icon stack in a conversation row. */
+/** Render plugin annotations as a newest-first stack in a conversation row. */
 export function ConversationSidebarAnnotations(props: {
   annotations: ConversationDetailReport["sidebarAnnotations"] | undefined;
 }) {
@@ -105,6 +105,13 @@ export function ConversationSidebarAnnotations(props: {
   const details = annotations.map((annotation) =>
     sidebarAnnotationDetail(annotation),
   );
+  // Collapse same-label scopes for the stack so one repo doesn't become two
+  // chips. The tooltip still lists every annotation.
+  const stack = collapseSidebarAnnotationStack(annotations);
+  // One or two distinct scopes stay labeled. Longer stacks keep the newest
+  // label and tuck the rest under as icon peeks.
+  const dualDistinctLabels =
+    stack.length === 2 && stack[0]!.label !== stack[1]!.label;
   return (
     <Tooltip
       align="left"
@@ -124,30 +131,56 @@ export function ConversationSidebarAnnotations(props: {
         </ul>
       }
       label="Linked work"
-      triggerClassName="min-w-0 shrink-0"
+      triggerClassName="min-w-0"
     >
       <span
         aria-label={`Linked work, newest first: ${details.join(", ")}`}
-        className="inline-flex shrink-0 items-center pl-1.5"
+        className="inline-flex min-w-0 max-w-full items-center pl-1.5"
       >
-        {annotations.map((annotation, index) => (
-          <span
-            className="inline-flex size-5 shrink-0 items-center justify-center rounded-full border border-white/15 bg-dashboard-surface shadow-sm shadow-black/40 [&:not(:first-child)]:-ml-1.5"
-            key={`${annotation.key}:${index}`}
-            style={{ zIndex: annotations.length - index }}
-          >
-            {annotation.icon ? (
-              <SidebarAnnotationIcon icon={annotation.icon} size={12} />
-            ) : (
-              <span className="px-1 font-sans text-2xs text-dashboard-text-muted">
-                {annotation.label.slice(0, 1)}
-              </span>
-            )}
-          </span>
-        ))}
+        {stack.map((annotation, index) => {
+          const showLabel = index === 0 || (dualDistinctLabels && index === 1);
+          return (
+            <span
+              className={
+                showLabel
+                  ? "inline-flex min-w-0 max-w-28 shrink items-center gap-1 truncate rounded-full border border-white/15 bg-dashboard-surface px-2 py-0.5 font-sans text-dashboard-text-muted shadow-sm shadow-black/40 first:shrink-0 [&:not(:first-child)]:-ml-2"
+                  : "inline-flex size-5 shrink-0 items-center justify-center rounded-full border border-white/15 bg-dashboard-surface shadow-sm shadow-black/40 [&:not(:first-child)]:-ml-1.5"
+              }
+              key={`${annotation.key}:${index}`}
+              style={{ zIndex: stack.length - index }}
+            >
+              {annotation.icon ? (
+                <SidebarAnnotationIcon
+                  icon={annotation.icon}
+                  size={showLabel ? 11 : 12}
+                />
+              ) : showLabel ? null : (
+                <span className="px-1 font-sans text-2xs text-dashboard-text-muted">
+                  {annotation.label.slice(0, 1)}
+                </span>
+              )}
+              {showLabel ? (
+                <span className="min-w-0 truncate whitespace-nowrap">
+                  {annotation.label}
+                </span>
+              ) : null}
+            </span>
+          );
+        })}
       </span>
     </Tooltip>
   );
+}
+
+function collapseSidebarAnnotationStack(
+  annotations: NonNullable<ConversationDetailReport["sidebarAnnotations"]>,
+): NonNullable<ConversationDetailReport["sidebarAnnotations"]> {
+  const seen = new Set<string>();
+  return annotations.filter((annotation) => {
+    if (seen.has(annotation.label)) return false;
+    seen.add(annotation.label);
+    return true;
+  });
 }
 
 function sidebarAnnotationDetail(annotation: {

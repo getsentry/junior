@@ -586,8 +586,22 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain('title="Open pull request"');
   });
 
-  it("renders plugin-selected sidebar annotations as an icon stack", () => {
-    const html = renderToStaticMarkup(
+  it("labels one or two distinct scopes and peeks the rest as icons", () => {
+    const single = renderToStaticMarkup(
+      <ConversationSidebarAnnotations
+        annotations={[
+          {
+            icon: "circle-dot",
+            key: "getsentry/junior#2",
+            label: "junior",
+          },
+        ]}
+      />,
+    );
+    expect(single).toContain(">junior<");
+    expect(single).toContain("getsentry/junior#2");
+
+    const dual = renderToStaticMarkup(
       <ConversationSidebarAnnotations
         annotations={[
           {
@@ -603,16 +617,59 @@ describe("dashboard canonical-event components", () => {
         ]}
       />,
     );
-    expect(html).toContain(
+    expect(dual).toContain(
       'aria-label="Linked work, newest first: getsentry/junior#2, getsentry/payments#1"',
     );
-    // Stack chips stay icon-only; labels live in the desktop tooltip body.
-    expect(html).not.toContain(">junior<");
-    expect(html).not.toContain(">payments<");
-    expect(html).toContain("getsentry/junior#2");
-    expect(html).toContain("getsentry/payments#1");
-    expect(html).toContain("Open");
-    expect(html).toContain("Merged");
+    expect(dual.indexOf(">junior<")).toBeLessThan(dual.indexOf(">payments<"));
+    expect(dual).toContain("Open");
+    expect(dual).toContain("Merged");
+
+    const stacked = renderToStaticMarkup(
+      <ConversationSidebarAnnotations
+        annotations={[
+          {
+            icon: "circle-dashed",
+            key: "getsentry/junior#3",
+            label: "junior",
+          },
+          {
+            icon: "circle-dot",
+            key: "getsentry/payments#2",
+            label: "payments",
+          },
+          {
+            icon: "git-merge",
+            key: "getsentry/relay#1",
+            label: "relay",
+          },
+        ]}
+      />,
+    );
+    expect(stacked).toContain(">junior<");
+    expect(stacked).not.toContain(">payments<");
+    expect(stacked).not.toContain(">relay<");
+    expect(stacked).toContain("getsentry/payments#2");
+    expect(stacked).toContain("getsentry/relay#1");
+
+    const sameRepo = renderToStaticMarkup(
+      <ConversationSidebarAnnotations
+        annotations={[
+          {
+            icon: "circle-dot",
+            key: "getsentry/junior#2",
+            label: "junior",
+          },
+          {
+            icon: "git-merge",
+            key: "getsentry/junior#1",
+            label: "junior",
+          },
+        ]}
+      />,
+    );
+    expect(sameRepo).toContain(">junior<");
+    expect(sameRepo.match(/>junior</g)).toHaveLength(1);
+    expect(sameRepo).toContain("getsentry/junior#1");
   });
 
   it("distinguishes initial detail failures from stale refresh failures", () => {
