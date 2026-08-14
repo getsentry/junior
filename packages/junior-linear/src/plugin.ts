@@ -4,6 +4,9 @@ import {
   type PluginRegistration,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
+import { LINEAR_ISSUE_EVENTS } from "./resource-events/issue.js";
+import { createLinearWebhookRoute } from "./webhooks/handler.js";
+import { linearWebhookSecret } from "./webhooks/secret.js";
 
 const saveIssueResultSchema = z
   .object({
@@ -47,10 +50,29 @@ async function annotateCreatedIssue(
 export function linearPlugin(): PluginRegistration {
   return defineJuniorPlugin({
     packageName: "@sentry/junior-linear",
+    resourceEvents: {
+      resourceTypes: [
+        {
+          type: "issue",
+          supportedEvents: [...LINEAR_ISSUE_EVENTS],
+          suggestedEvents: [...LINEAR_ISSUE_EVENTS],
+        },
+        {
+          type: "team",
+          supportedEvents: [...LINEAR_ISSUE_EVENTS],
+          suggestedEvents: [...LINEAR_ISSUE_EVENTS],
+        },
+      ],
+      isEnabled: () => Boolean(linearWebhookSecret()),
+      normalizeIdentifier: (identifier) => identifier.toUpperCase(),
+    },
     manifest: {
       configKeys: ["team", "project"],
       description: "Linear issue tracking via hosted MCP server",
       displayName: "Linear",
+      envVars: {
+        LINEAR_WEBHOOK_SECRET: {},
+      },
       mcp: {
         transport: "http",
         url: "https://mcp.linear.app/mcp",
@@ -59,6 +81,14 @@ export function linearPlugin(): PluginRegistration {
     },
     hooks: {
       afterMcpTool: annotateCreatedIssue,
+      routes(ctx) {
+        return [
+          createLinearWebhookRoute({
+            resourceEvents: ctx.resourceEvents,
+            webhookSecret: linearWebhookSecret,
+          }),
+        ];
+      },
     },
   });
 }
