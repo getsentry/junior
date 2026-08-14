@@ -35,7 +35,8 @@ export function editWorkspaceDraft(workspace: WorkspaceReport): WorkspaceDraft {
     repos:
       workspace.repos.length > 0
         ? workspace.repos.map((repo) => ({
-            key: crypto.randomUUID(),
+            // Stable keys keep focused inputs mounted across draft reseeds.
+            key: `${repo.provider}:${repo.repo.toLowerCase()}`,
             provider: repo.provider,
             repo: repo.repo,
           }))

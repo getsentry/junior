@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { getDb } from "@/chat/db";
+import { logException } from "@/chat/logging";
 import { hash as workspaceProfileHash } from "@/chat/sandbox/snapshot/profile";
 import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
 import { getCachedSnapshot } from "@/chat/sandbox/snapshot/resolve";
@@ -41,17 +42,27 @@ function view(workspace: Workspace) {
 
 async function detailView(workspace: Workspace) {
   const profileHash = workspaceProfileHash(SANDBOX_RUNTIME, workspace);
-  const snapshot = profileHash
-    ? await getCachedSnapshot(profileHash)
-    : undefined;
+  let snapshot = null;
+  if (profileHash) {
+    try {
+      // Snapshot metadata is optional UI enrichment. Cache/Redis failures must
+      // not block loading recipe data that already lives in SQL.
+      const cached = await getCachedSnapshot(profileHash);
+      if (cached) {
+        snapshot = {
+          id: cached.snapshotId,
+          generatedAt: new Date(cached.createdAtMs).toISOString(),
+        };
+      }
+    } catch (error) {
+      logException(error, "api.workspaces.snapshot_lookup.failed", {
+        "app.workspace.id": workspace.id,
+      });
+    }
+  }
   return {
     ...view(workspace),
-    snapshot: snapshot
-      ? {
-          id: snapshot.snapshotId,
-          generatedAt: new Date(snapshot.createdAtMs).toISOString(),
-        }
-      : null,
+    snapshot,
   };
 }
 

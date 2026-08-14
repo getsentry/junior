@@ -5,15 +5,18 @@ import {
   apiErrorSchema,
   deleteWorkspaceResponseSchema,
   workspaceListSchema,
-  workspaceSchema
+  workspaceSchema,
 } from "@/api/schema";
 import { closeDb, getDb, getSqlExecutor } from "@/chat/db";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
+import { hash as workspaceProfileHash } from "@/chat/sandbox/snapshot/profile";
+import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
+import { getStateAdapter } from "@/chat/state/adapter";
 import {
   createWorkspace,
   getWorkspace,
   getWorkspaceByName,
-  updateWorkspace
+  updateWorkspace,
 } from "@/chat/workspaces/store";
 
 function authenticatedApi(email = "person@example.com") {
@@ -129,6 +132,48 @@ describe("workspace admin API", () => {
     expect(missing.status).toBe(404);
     expect(apiErrorSchema.parse(await missing.json())).toEqual({
       error: "Workspace not found."
+    });
+  });
+
+  it("returns Workspace detail when snapshot cache lookup fails", async () => {
+    const app = authenticatedApi();
+    const createResponse = await app.request("http://localhost/api/workspaces", {
+      body: JSON.stringify({
+        name: "snapshot-cache",
+        repos: [{ provider: "github", repo: "getsentry/sentry" }],
+      }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+    expect(createResponse.status).toBe(201);
+    const created = workspaceSchema.parse(await createResponse.json());
+    const workspace = await getWorkspace(getDb(), created.id);
+    expect(workspace).toBeDefined();
+
+    const profileHash = workspaceProfileHash(SANDBOX_RUNTIME, workspace!);
+    expect(profileHash).toBeTruthy();
+    const state = getStateAdapter();
+    await state.connect();
+    await state.set(
+      `junior:sandbox_snapshot_profile:${profileHash}`,
+      "{not-json",
+    );
+
+    const detailResponse = await app.request(
+      `http://localhost/api/workspaces/${created.id}`,
+    );
+    expect(detailResponse.status).toBe(200);
+    expect(workspaceSchema.parse(await detailResponse.json())).toMatchObject({
+      id: created.id,
+      name: "snapshot-cache",
+      snapshot: null,
+      repos: [
+        {
+          provider: "github",
+          repo: "getsentry/sentry",
+          checkoutPath: "repos/sentry",
+        },
+      ],
     });
   });
 

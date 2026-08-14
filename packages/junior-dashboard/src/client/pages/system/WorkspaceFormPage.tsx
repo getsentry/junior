@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import {
   workspaceSchema,
@@ -50,13 +50,22 @@ export function WorkspaceFormPage() {
       ),
     retry: false,
   });
+
+  // Seed the edit draft once per Workspace id. editWorkspaceDraft assigns fresh
+  // repo keys, so calling it during every query-driven render remounts fields.
+  useEffect(() => {
+    if (!editing || !workspaceId || !workspaceQuery.data) return;
+    if (editedDraft?.workspaceId === workspaceId) return;
+    setEditedDraft({
+      draft: editWorkspaceDraft(workspaceQuery.data),
+      workspaceId,
+    });
+  }, [editing, editedDraft?.workspaceId, workspaceId, workspaceQuery.data]);
+
   const draft = editing
-    ? (editedDraft?.workspaceId === workspaceId
-        ? editedDraft.draft
-        : undefined) ??
-      (workspaceQuery.data
-        ? editWorkspaceDraft(workspaceQuery.data)
-        : undefined)
+    ? editedDraft?.workspaceId === workspaceId
+      ? editedDraft.draft
+      : undefined
     : newDraft;
 
   const saveMutation = useMutation({
