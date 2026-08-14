@@ -96,23 +96,55 @@ export function hasConversationAnnotations(
   );
 }
 
-/** Render annotations selected by plugins for a conversation row. */
+/** Render plugin annotations as a newest-first stack in a conversation row. */
 export function ConversationSidebarAnnotations(props: {
   annotations: ConversationDetailReport["sidebarAnnotations"] | undefined;
 }) {
-  if (!props.annotations?.length) return null;
-  return props.annotations.map((summary) => (
-    <span
-      className="inline-flex min-w-0 max-w-full items-center gap-1 truncate"
-      key={summary.key}
-      title={summary.label}
+  const annotations = props.annotations;
+  if (!annotations?.length) return null;
+  const labels = annotations.map((annotation) => annotation.label).join(", ");
+  return (
+    <Tooltip
+      align="left"
+      content={
+        <ul className="m-0 list-none space-y-1 p-0">
+          {annotations.map((annotation, index) => (
+            <li
+              className="flex items-center gap-1.5"
+              key={`${annotation.key}:${index}`}
+            >
+              {annotation.icon ? (
+                <SidebarAnnotationIcon icon={annotation.icon} />
+              ) : null}
+              <span>{annotation.label}</span>
+            </li>
+          ))}
+        </ul>
+      }
+      label="Linked work"
+      triggerClassName="min-w-0"
     >
-      {summary.icon ? <SidebarAnnotationIcon icon={summary.icon} /> : null}
-      <span className="min-w-0 truncate whitespace-nowrap font-sans text-dashboard-text-muted">
-        {summary.label}
+      <span
+        aria-label={`Linked work, newest first: ${labels}`}
+        className="inline-flex min-w-0 items-center pl-2"
+      >
+        {annotations.map((annotation, index) => (
+          <span
+            className="inline-flex min-w-0 max-w-28 items-center gap-1 truncate rounded-full border border-white/15 bg-dashboard-surface px-2 py-0.5 font-sans text-dashboard-text-muted shadow-sm shadow-black/40 [&:not(:first-child)]:-ml-2"
+            key={`${annotation.key}:${index}`}
+            style={{ zIndex: annotations.length - index }}
+          >
+            {annotation.icon ? (
+              <SidebarAnnotationIcon icon={annotation.icon} />
+            ) : null}
+            <span className="min-w-0 truncate whitespace-nowrap">
+              {annotation.label}
+            </span>
+          </span>
+        ))}
       </span>
-    </span>
-  ));
+    </Tooltip>
+  );
 }
 
 type SidebarAnnotationIconName = NonNullable<
@@ -149,7 +181,10 @@ function SidebarAnnotationIcon(props: {
 }) {
   const presentation = SIDEBAR_ICON_PRESENTATION[props.icon];
   return (
-    <span className={`shrink-0 ${presentation.className}`} title={presentation.label}>
+    <span
+      className={`shrink-0 ${presentation.className}`}
+      title={presentation.label}
+    >
       <presentation.Icon
         aria-hidden="true"
         size={props.size ?? 11}

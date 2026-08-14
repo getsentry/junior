@@ -586,19 +586,23 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain('title="Open pull request"');
   });
 
-  it("renders plugin-selected sidebar annotations", () => {
+  it("renders plugin-selected sidebar annotations in order", () => {
     const html = renderToStaticMarkup(
       <ConversationSidebarAnnotations
         annotations={[
-          { icon: "git-merge", key: "github", label: "2 repos" },
-          { icon: "git-pull-request", key: "open-pr", label: "junior" },
+          { icon: "circle-dot", key: "new", label: "getsentry/junior#2" },
+          { icon: "git-merge", key: "old", label: "getsentry/junior#1" },
         ]}
       />,
     );
-    expect(html).toContain("2 repos");
+    expect(html).toContain(
+      'aria-label="Linked work, newest first: getsentry/junior#2, getsentry/junior#1"',
+    );
+    expect(html.indexOf("getsentry/junior#2")).toBeLessThan(
+      html.indexOf("getsentry/junior#1"),
+    );
+    expect(html).toContain("Open");
     expect(html).toContain("Merged");
-    expect(html).toContain("Open pull request");
-    expect(html).toContain("min-w-0 truncate whitespace-nowrap font-sans");
   });
 
   it("distinguishes initial detail failures from stale refresh failures", () => {

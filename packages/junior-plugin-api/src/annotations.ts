@@ -73,8 +73,6 @@ export interface ConversationSidebarHookContext extends PluginContext {
 }
 
 export interface ConversationSidebarResult {
-  annotationsByConversationId: Record<
-    string,
-    ConversationSidebarAnnotation[]
-  >;
+  /** Sidebar annotations in display order. Put the newest annotation first. */
+  annotationsByConversationId: Record<string, ConversationSidebarAnnotation[]>;
 }

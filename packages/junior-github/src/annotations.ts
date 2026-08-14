@@ -3,14 +3,6 @@ import type {
   ConversationSidebarAnnotation,
 } from "@sentry/junior-plugin-api";
 
-const STATUS_RANK = {
-  warning: 5,
-  open: 4,
-  draft: 3,
-  merged: 2,
-  closed: 1,
-} as const;
-
 const STATUS_ICON = {
   warning: "triangle-alert",
   open: "circle-dot",
@@ -19,18 +11,7 @@ const STATUS_ICON = {
   closed: "circle-x",
 } as const;
 
-type GitHubAnnotationStatus = keyof typeof STATUS_RANK;
-
-function repositoryScope(
-  annotation: ConversationAnnotation,
-): { key: string; label: string } | undefined {
-  try {
-    const [, owner, repo] = new URL(annotation.url).pathname.split("/");
-    return owner && repo ? { key: `${owner}/${repo}`, label: repo } : undefined;
-  } catch {
-    return undefined;
-  }
-}
+type GitHubAnnotationStatus = keyof typeof STATUS_ICON;
 
 function isPullRequestUrl(url: string): boolean {
   try {
@@ -42,38 +23,32 @@ function isPullRequestUrl(url: string): boolean {
 
 function sidebarIconForStatus(
   status: GitHubAnnotationStatus,
-  links: Array<{ isPullRequest: boolean; status: GitHubAnnotationStatus }>,
+  url: string,
 ): ConversationSidebarAnnotation["icon"] {
-  if (
-    status === "open" &&
-    links.some((link) => link.status === "open" && link.isPullRequest)
-  ) {
-    return "git-pull-request";
-  }
+  if (status === "open" && isPullRequestUrl(url)) return "git-pull-request";
   return STATUS_ICON[status];
 }
 
-/** Select the one GitHub annotation summary shown in a conversation row. */
-export function githubSidebarAnnotation(
+/** Return GitHub annotations for a conversation row, newest first. */
+export function githubSidebarAnnotations(
   annotations: ConversationAnnotation[],
-): ConversationSidebarAnnotation | undefined {
-  const links = annotations.flatMap((annotation) => {
-    const repo = repositoryScope(annotation);
-    const status = annotation.status as GitHubAnnotationStatus | undefined;
-    return repo && status
-      ? [{ isPullRequest: isPullRequestUrl(annotation.url), repo, status }]
-      : [];
-  });
-  if (links.length === 0) return undefined;
-  const repos = new Map(links.map((link) => [link.repo.key, link.repo.label]));
-  const status = links.reduce<GitHubAnnotationStatus>(
-    (current, link) =>
-      STATUS_RANK[link.status] > STATUS_RANK[current] ? link.status : current,
-    "closed",
-  );
-  return {
-    icon: sidebarIconForStatus(status, links),
-    key: "github",
-    label: repos.size === 1 ? [...repos.values()][0]! : `${repos.size} repos`,
-  };
+): ConversationSidebarAnnotation[] {
+  return annotations
+    .flatMap((annotation) => {
+      const status = annotation.status as GitHubAnnotationStatus | undefined;
+      return status
+        ? [
+            {
+              annotation: {
+                icon: sidebarIconForStatus(status, annotation.url),
+                key: annotation.key,
+                label: annotation.label,
+              },
+              updatedAt: annotation.updatedAt,
+            },
+          ]
+        : [];
+    })
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+    .map(({ annotation }) => annotation);
 }
