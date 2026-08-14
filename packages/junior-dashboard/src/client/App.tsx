@@ -320,10 +320,8 @@ export function DashboardShell() {
               <SystemPageLayout>
                 <LoadingView label="Loading Workspaces" />
               </SystemPageLayout>
-            ) : loggedIn ? (
-              <WorkspacesPage />
             ) : (
-              <Navigate replace to="/" />
+              <WorkspacesPage />
             )
           }
           path="/system/workspaces"
