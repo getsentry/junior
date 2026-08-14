@@ -6,7 +6,6 @@ import {
   type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
-import { GITHUB_SESSION_FOOTER_START } from "./footer.js";
 import { botLoginFromEmail } from "../webhooks/ownership.js";
 
 /**
@@ -119,7 +118,6 @@ export function createGitHubResolvePullRequestReviewThreadTool(
               number
               repository { nameWithOwner }
               author { login }
-              body
             }
           }
         }
@@ -152,7 +150,6 @@ export function createGitHubResolvePullRequestReviewThreadTool(
                 isResolved: z.boolean(),
                 pullRequest: z.object({
                   author: z.object({ login: z.string() }),
-                  body: z.string().nullable(),
                   number: z.number(),
                   repository: z.object({ nameWithOwner: z.string() }),
                 }),
@@ -167,8 +164,7 @@ export function createGitHubResolvePullRequestReviewThreadTool(
       const ownsPullRequest =
         pullRequest.repository.nameWithOwner.toLowerCase() ===
           repo.ref.toLowerCase() &&
-        pullRequest.author.login.toLowerCase() === botLogin &&
-        pullRequest.body?.includes(GITHUB_SESSION_FOOTER_START);
+        pullRequest.author.login.toLowerCase() === botLogin;
       if (!ownsPullRequest) {
         throw new Error(
           "Junior can only resolve review threads on pull requests it authored.",

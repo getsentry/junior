@@ -1,7 +1,6 @@
 import type { ToolRegistrationHookContext } from "@sentry/junior-plugin-api";
 import { describe, expect, it, vi } from "vitest";
 import { createGitHubResolvePullRequestReviewThreadTool } from "../src/tools/resolve-pull-request-review-thread";
-import { GITHUB_SESSION_FOOTER_START } from "../src/tools/footer";
 
 const BOT_EMAIL = "123+junior[bot]@users.noreply.github.com";
 
@@ -28,7 +27,6 @@ function toolContext(responses: Response[]) {
 
 function threadLookup(overrides?: {
   author?: string;
-  body?: string;
   number?: number;
   repo?: string;
 }) {
@@ -39,7 +37,6 @@ function threadLookup(overrides?: {
         isResolved: false,
         pullRequest: {
           author: { login: overrides?.author ?? "junior[bot]" },
-          body: overrides?.body ?? `${GITHUB_SESSION_FOOTER_START}\nfooter`,
           number: overrides?.number ?? 1572,
           repository: { nameWithOwner: overrides?.repo ?? "getsentry/junior" },
         },
@@ -91,7 +88,6 @@ describe("resolvePullRequestReviewThread", () => {
   it.each([
     ["another author", { author: "davidcramer" }],
     ["another repository", { repo: "getsentry/sentry" }],
-    ["no Junior footer", { body: "ordinary PR" }],
   ])("denies %s before mutation", async (_name, overrides) => {
     const { fetch, tool } = toolContext([threadLookup(overrides)]);
 
