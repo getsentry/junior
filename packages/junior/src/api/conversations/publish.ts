@@ -54,60 +54,57 @@ export async function publishConversationForViewer(
   if (!destination?.destinationId) {
     throwApiError(409, "Conversation has no destination to publish.");
   }
+  const destinationId = destination.destinationId;
 
-  // Already public is success without re-checking shared roots: the flip is
-  // one-way and the destination is already exposed.
-  if (root.visibility === "public") {
-    return { visibility: "public" };
-  }
-
-  const [shared] = await executor
-    .db()
-    .select({
-      count: sql<number>`count(*)::int`,
-    })
-    .from(juniorConversations)
-    .where(
-      and(
-        eq(juniorConversations.destinationId, destination.destinationId),
-        isNull(juniorConversations.parentConversationId),
-        ne(juniorConversations.conversationId, root.rootConversationId),
-      ),
-    );
-  if ((shared?.count ?? 0) > 0) {
-    throwApiError(
-      409,
-      "This destination is shared by other conversations, so it cannot be made public from one conversation.",
-    );
-  }
-
-  const updated = await executor
-    .db()
-    .update(juniorDestinations)
-    .set({
-      updatedAt: sql`now()`,
-      visibility: "public",
-    })
-    .where(
-      and(
-        eq(juniorDestinations.id, destination.destinationId),
-        ne(juniorDestinations.visibility, "public"),
-      ),
-    )
-    .returning({ id: juniorDestinations.id });
-
-  // Concurrent publish can win the race; treat already-public as success.
-  if (updated.length === 0) {
-    const [existing] = await executor
+  await executor.transaction(async () => {
+    // Root creation upserts the destination before it inserts the conversation.
+    // Locking this row makes the shared-root check and visibility update atomic
+    // against a concurrent root that targets the same destination.
+    const [lockedDestination] = await executor
       .db()
       .select({ visibility: juniorDestinations.visibility })
       .from(juniorDestinations)
-      .where(eq(juniorDestinations.id, destination.destinationId))
-      .limit(1);
-    if (!existing) {
+      .where(eq(juniorDestinations.id, destinationId))
+      .for("update");
+    if (!lockedDestination) {
       throwApiError(404, "Conversation not found.");
     }
-  }
+
+    // Already public is success without re-checking shared roots: the flip is
+    // one-way and the destination is already exposed.
+    if (lockedDestination.visibility === "public") {
+      return;
+    }
+
+    const [shared] = await executor
+      .db()
+      .select({
+        count: sql<number>`count(*)::int`,
+      })
+      .from(juniorConversations)
+      .where(
+        and(
+          eq(juniorConversations.destinationId, destinationId),
+          isNull(juniorConversations.parentConversationId),
+          ne(juniorConversations.conversationId, root.rootConversationId),
+        ),
+      );
+    if ((shared?.count ?? 0) > 0) {
+      throwApiError(
+        409,
+        "This destination is shared by other conversations, so it cannot be made public from one conversation.",
+      );
+    }
+
+    await executor
+      .db()
+      .update(juniorDestinations)
+      .set({
+        updatedAt: sql`now()`,
+        visibility: "public",
+      })
+      .where(eq(juniorDestinations.id, destinationId));
+  });
 
   return { visibility: "public" };
 }
