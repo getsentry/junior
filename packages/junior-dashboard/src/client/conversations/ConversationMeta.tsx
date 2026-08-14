@@ -8,6 +8,7 @@ import {
   LockKeyhole,
   TriangleAlert,
 } from "lucide-react";
+import { useSyncExternalStore } from "react";
 import { Link } from "react-router";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 
@@ -22,8 +23,11 @@ import {
 } from "../format";
 import { Tooltip } from "../components/Tooltip";
 import { MetricList, type MetricListItem } from "../components/Metric";
+import { cn } from "../styles";
 import { CostMetric, DurationMetric, TokenMetric } from "./TelemetryMetrics";
 import type { Conversation } from "../types";
+
+const MOBILE_MEDIA_QUERY = "(max-width: 767px)";
 
 /** Show a pending OAuth authorization call-to-action above the composer. */
 export function PendingAuthorization(props: {
@@ -101,17 +105,16 @@ export function ConversationSidebarAnnotations(props: {
   annotations: ConversationDetailReport["sidebarAnnotations"] | undefined;
 }) {
   const annotations = props.annotations;
+  const isMobile = useIsMobileViewport();
   if (!annotations?.length) return null;
+
   const details = annotations.map((annotation) =>
     sidebarAnnotationDetail(annotation),
   );
   // Collapse same-label scopes for the stack so one repo doesn't become two
   // chips. The tooltip still lists every annotation.
   const stack = collapseSidebarAnnotationStack(annotations);
-  // One or two distinct scopes stay labeled. Longer stacks keep the newest
-  // label and tuck the rest under as icon peeks.
-  const dualDistinctLabels =
-    stack.length === 2 && stack[0]!.label !== stack[1]!.label;
+
   return (
     <Tooltip
       align="left"
@@ -137,38 +140,121 @@ export function ConversationSidebarAnnotations(props: {
         aria-label={`Linked work, newest first: ${details.join(", ")}`}
         className="inline-flex min-w-0 max-w-full items-center pl-1.5"
       >
-        {stack.map((annotation, index) => {
-          const showLabel = index === 0 || (dualDistinctLabels && index === 1);
-          return (
-            <span
-              className={
+        {isMobile ? (
+          <SidebarAnnotationIconFacepile annotations={stack} />
+        ) : stack.length <= 2 ? (
+          <span className="inline-flex min-w-0 items-center gap-1">
+            {stack.map((annotation) => (
+              <SidebarAnnotationChip
+                annotation={annotation}
+                key={annotation.key}
                 showLabel
-                  ? "inline-flex min-w-0 max-w-28 shrink items-center gap-1 truncate rounded-full border border-white/15 bg-dashboard-surface px-2 py-0.5 font-sans text-dashboard-text-muted shadow-sm shadow-black/40 first:shrink-0 [&:not(:first-child)]:-ml-2"
-                  : "inline-flex size-5 shrink-0 items-center justify-center rounded-full border border-white/15 bg-dashboard-surface shadow-sm shadow-black/40 [&:not(:first-child)]:-ml-1.5"
-              }
-              key={`${annotation.key}:${index}`}
-              style={{ zIndex: stack.length - index }}
-            >
-              {annotation.icon ? (
-                <SidebarAnnotationIcon
-                  icon={annotation.icon}
-                  size={showLabel ? 11 : 12}
-                />
-              ) : showLabel ? null : (
-                <span className="px-1 font-sans text-2xs text-dashboard-text-muted">
-                  {annotation.label.slice(0, 1)}
-                </span>
-              )}
-              {showLabel ? (
-                <span className="min-w-0 truncate whitespace-nowrap">
-                  {annotation.label}
-                </span>
-              ) : null}
-            </span>
-          );
-        })}
+              />
+            ))}
+          </span>
+        ) : (
+          <>
+            <SidebarAnnotationChip annotation={stack[0]!} showLabel />
+            <SidebarAnnotationOverflowCluster annotations={stack.slice(1)} />
+          </>
+        )}
       </span>
     </Tooltip>
+  );
+}
+
+function SidebarAnnotationIconFacepile(props: {
+  annotations: NonNullable<ConversationDetailReport["sidebarAnnotations"]>;
+}) {
+  return (
+    <span className="inline-flex items-center">
+      {props.annotations.map((annotation, index) => (
+        <SidebarAnnotationChip
+          annotation={annotation}
+          key={annotation.key}
+          showLabel={false}
+          stacked={index > 0}
+          zIndex={props.annotations.length - index}
+        />
+      ))}
+    </span>
+  );
+}
+
+function SidebarAnnotationOverflowCluster(props: {
+  annotations: NonNullable<ConversationDetailReport["sidebarAnnotations"]>;
+}) {
+  if (props.annotations.length === 0) return null;
+  return (
+    <span className="ml-1.5 inline-flex h-5 shrink-0 items-center gap-1 rounded-full border border-white/15 bg-dashboard-surface py-0 pl-1.5 pr-1 font-mono text-2xs text-dashboard-text-muted shadow-sm shadow-black/40">
+      <span>+{props.annotations.length}</span>
+      <span className="inline-flex items-center">
+        {props.annotations.map((annotation, index) => (
+          <SidebarAnnotationChip
+            annotation={annotation}
+            key={annotation.key}
+            showLabel={false}
+            stacked={index > 0}
+            zIndex={props.annotations.length - index}
+          />
+        ))}
+      </span>
+    </span>
+  );
+}
+
+function SidebarAnnotationChip(props: {
+  annotation: NonNullable<
+    ConversationDetailReport["sidebarAnnotations"]
+  >[number];
+  showLabel: boolean;
+  /** Overlap this chip under the previous one like an avatar stack. */
+  stacked?: boolean;
+  zIndex?: number;
+}) {
+  return (
+    <span
+      className={
+        props.showLabel
+          ? "inline-flex min-w-0 max-w-28 shrink-0 items-center gap-1 truncate rounded-full border border-white/15 bg-dashboard-surface px-2 py-0.5 font-sans text-dashboard-text-muted shadow-sm shadow-black/40"
+          : cn(
+              "inline-flex size-5 shrink-0 items-center justify-center rounded-full border border-white/15 bg-dashboard-surface shadow-sm shadow-black/40",
+              props.stacked && "-ml-1.5",
+            )
+      }
+      style={props.zIndex === undefined ? undefined : { zIndex: props.zIndex }}
+    >
+      {props.annotation.icon ? (
+        <SidebarAnnotationIcon
+          icon={props.annotation.icon}
+          size={props.showLabel ? 11 : 12}
+        />
+      ) : props.showLabel ? null : (
+        <span className="px-1 font-sans text-2xs text-dashboard-text-muted">
+          {props.annotation.label.slice(0, 1)}
+        </span>
+      )}
+      {props.showLabel ? (
+        <span className="min-w-0 truncate whitespace-nowrap">
+          {props.annotation.label}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+function useIsMobileViewport(): boolean {
+  return useSyncExternalStore(
+    (onStoreChange) => {
+      if (typeof window === "undefined") return () => {};
+      const media = window.matchMedia(MOBILE_MEDIA_QUERY);
+      media.addEventListener("change", onStoreChange);
+      return () => media.removeEventListener("change", onStoreChange);
+    },
+    () =>
+      typeof window !== "undefined" &&
+      window.matchMedia(MOBILE_MEDIA_QUERY).matches,
+    () => false,
   );
 }
 
