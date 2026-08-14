@@ -78,12 +78,19 @@ export interface PromptAssembly {
 }
 
 /**
- * Mark host-owned thread history as evidence only.
+ * Keep host-owned thread history as one evidence-only block.
  *
- * Ambient messages stay available for references, but they must not look like
- * more of the current actor's instruction.
+ * Producers already emit `<thread-context>`. Only wrap plain unstructured
+ * background text so ambient messages never look like more instruction.
  */
 function renderThreadContextForPrompt(context: string): string {
+  if (
+    /^<(?:thread-context|thread-compactions|thread-transcript|thread-background|recent-thread-messages)(?:\s|>)/.test(
+      context,
+    )
+  ) {
+    return context;
+  }
   return [
     '<thread-context authority="evidence-only">',
     context,

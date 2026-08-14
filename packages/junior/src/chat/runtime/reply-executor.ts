@@ -208,7 +208,7 @@ function renderRecentThreadMessages(
   if (passiveMessages.length === 0) {
     return undefined;
   }
-  const lines = ["<recent-thread-messages>"];
+  const lines = ['<thread-context authority="evidence-only">'];
   for (const queued of passiveMessages) {
     const actor = queuedInstructionActor(queued);
     const attrs = [
@@ -226,7 +226,7 @@ function renderRecentThreadMessages(
       "  </message>",
     );
   }
-  lines.push("</recent-thread-messages>");
+  lines.push("</thread-context>");
   return lines.join("\n");
 }
 
@@ -629,19 +629,16 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   !isVisionEnabled() && hasPotentialImageAttachment(attachments)
                     ? countPotentialImageAttachments(attachments)
                     : 0,
-                attachments: await deps.resolveUserAttachments(
-                  attachments,
-                  {
-                    threadId,
-                    actorId: isResourceEventSlackMessage(queued.message)
-                      ? undefined
-                      : queued.message.author.userId,
-                    channelId,
-                    runId,
-                    conversation: preparedState.conversation,
-                    messageTs: getMessageTimestamp(queued.message),
-                  },
-                ),
+                attachments: await deps.resolveUserAttachments(attachments, {
+                  threadId,
+                  actorId: isResourceEventSlackMessage(queued.message)
+                    ? undefined
+                    : queued.message.author.userId,
+                  channelId,
+                  runId,
+                  conversation: preparedState.conversation,
+                  messageTs: getMessageTimestamp(queued.message),
+                }),
               };
             }),
           );
@@ -1053,7 +1050,8 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 slackMessageTs = await sendSlackReply({
                   channelId,
                   conversationId,
-                  replyAttribution: options.execution?.dispatch?.replyAttribution,
+                  replyAttribution:
+                    options.execution?.dispatch?.replyAttribution,
                   text,
                   ...(threadTs ? { threadTs } : {}),
                 });
@@ -1324,7 +1322,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             slackConversation,
             source,
             destination,
-            publishExternally: shouldPublishExternally(options.publishExternally),
+            publishExternally: shouldPublishExternally(
+              options.publishExternally,
+            ),
             ...(destinationVisibility ? { destinationVisibility } : {}),
             surface: options.execution?.surface ?? "slack",
             dispatch: options.execution?.dispatch,

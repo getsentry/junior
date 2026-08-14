@@ -74,8 +74,11 @@ describe("buildUserTurnText", () => {
     const input = buildPromptInput({
       instruction: {
         text: "what now?",
-        context:
-          "<recent-thread-messages>\n  <message>add customer impact</message>\n</recent-thread-messages>",
+        context: [
+          '<thread-context authority="evidence-only">',
+          "  <message>add customer impact</message>",
+          "</thread-context>",
+        ].join("\n"),
         includeConversationContextWithHistory: true,
       },
       history: [{ role: "user" } as never],
@@ -86,9 +89,7 @@ describe("buildUserTurnText", () => {
         type: "text",
         text: [
           '<thread-context authority="evidence-only">',
-          "<recent-thread-messages>",
           "  <message>add customer impact</message>",
-          "</recent-thread-messages>",
           "</thread-context>",
         ].join("\n"),
       },

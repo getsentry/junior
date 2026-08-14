@@ -251,7 +251,7 @@ export function buildConversationContext(
     if (lines.length > 0) {
       lines.push("");
     }
-    lines.push("<thread-transcript>");
+    lines.push('<thread-context authority="evidence-only">');
     for (const [index, message] of messages.entries()) {
       const author = escapeXml(conversationAuthorDisplayName(message));
       const actorIdAttr = message.author?.userId
@@ -267,7 +267,7 @@ export function buildConversationContext(
         "  </message>",
       );
     }
-    lines.push("</thread-transcript>");
+    lines.push("</thread-context>");
   }
   return lines.join("\n");
 }

@@ -73,7 +73,8 @@ function isStandaloneRuntimeContextMessage(
 // Prior-thread context blocks the runtime embeds beside the <current-instruction>
 // block (see buildUserTurnText and renderThreadContextForPrompt). Each holds
 // other participants' verbatim messages, so completed-run projections must drop
-// them and keep only the instruction.
+// them and keep only the instruction. Legacy tag names stay stripable for older
+// durable history.
 const EMBEDDED_THREAD_CONTEXT_TAGS = [
   "thread-context",
   "recent-thread-messages",
@@ -211,8 +212,8 @@ export function retainRuntimeTurnContext(messages: PiMessage[]): PiMessage[] {
 /**
  * Reduce a runtime user-turn prompt to only the current turn's instruction.
  *
- * Live user prompts embed prior-thread context in an evidence-only
- * `<thread-context>` envelope (or legacy transcript/background blocks) beside
+ * Live user prompts embed prior-thread context as `<thread-context
+ * authority="evidence-only">` (or legacy transcript/background blocks) beside
  * the `<current-instruction>` block. Those blocks hold other participants'
  * verbatim messages, so completed-run projections consumed by plugins must
  * expose only the instruction authored by this turn's actor — otherwise

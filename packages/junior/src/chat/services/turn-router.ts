@@ -146,12 +146,20 @@ function buildClassifierPrompt(args: {
 
   if (args.conversationContext) {
     const contextText = args.conversationContext.text;
-    sections.push(
-      '<thread-context authority="evidence-only">',
-      contextText,
-      "</thread-context>",
-      "",
-    );
+    if (
+      /^<(?:thread-context|thread-compactions|thread-transcript|thread-background|recent-thread-messages)(?:\s|>)/.test(
+        contextText,
+      )
+    ) {
+      sections.push(contextText, "");
+    } else {
+      sections.push(
+        '<thread-context authority="evidence-only">',
+        contextText,
+        "</thread-context>",
+        "",
+      );
+    }
   }
 
   sections.push(renderCurrentInstruction(args.messageText.trim() || "[empty]"));
