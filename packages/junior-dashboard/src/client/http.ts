@@ -6,7 +6,7 @@ export class DashboardApiError extends Error {
   readonly apiError?: string;
 
   constructor(path: string, status: number, apiError?: string) {
-    super(apiError?.trim() || `${path} returned ${status}`);
+    super(`${path} returned ${status}`);
     this.status = status;
     if (apiError?.trim()) this.apiError = apiError.trim();
   }
