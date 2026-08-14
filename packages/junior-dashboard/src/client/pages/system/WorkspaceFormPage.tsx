@@ -97,58 +97,64 @@ export function WorkspaceFormPage() {
 
   return (
     <SystemPageLayout>
-      <Link
-        className="flex w-fit items-center gap-2 font-display text-sm font-medium text-dashboard-text-muted no-underline transition-colors hover:text-dashboard-text"
-        to="/system/workspaces"
-      >
-        <ArrowLeft aria-hidden="true" size={15} strokeWidth={1.8} />
-        Back to Workspaces
-      </Link>
+      <div className="grid min-w-0 gap-5">
+        <Link
+          className="flex w-fit items-center gap-2 font-display text-sm font-medium text-dashboard-text-muted no-underline transition-colors hover:text-dashboard-text"
+          to="/system/workspaces"
+        >
+          <ArrowLeft aria-hidden="true" size={15} strokeWidth={1.8} />
+          Back to Workspaces
+        </Link>
 
-      <PageHeader
-        description={
-          editing
-            ? "View this Workspace and update how Junior prepares it."
-            : "Define the repositories and setup used to prepare a new Workspace."
-        }
-        title={editing ? (workspaceQuery.data?.name ?? "Workspace") : "New Workspace"}
-      />
-
-      {editing && workspaceQuery.data ? (
-        <WorkspaceDetails workspace={workspaceQuery.data} />
-      ) : null}
-
-      {workspaceQuery.error ? (
-        <Card padding="sm">
-          <EmptyTelemetry>
-            {readWorkspaceApiError(
-              workspaceQuery.error,
-              "Workspace not found. It may have been deleted.",
-            )}
-          </EmptyTelemetry>
-        </Card>
-      ) : draft ? (
-        <WorkspaceEditor
-          busy={saveMutation.isPending}
-          canSave={canSaveWorkspaceDraft(draft, saveMutation.isPending)}
-          draft={draft}
-          editing={editing}
-          error={
-            saveMutation.error
-              ? readWorkspaceApiError(
-                  saveMutation.error,
-                  "Could not save the Workspace. Try again.",
-                )
-              : undefined
-          }
-          onChange={
+        <PageHeader
+          description={
             editing
-              ? (value) => setEditedDraft({ draft: value, workspaceId })
-              : setNewDraft
+              ? "Inspect the current snapshot and update how Junior prepares this Workspace."
+              : "Name the recipe, choose repositories, and optionally add a one-time setup script."
           }
-          onSubmit={() => saveMutation.mutate(draft)}
+          title={
+            editing
+              ? (workspaceQuery.data?.name ?? "Workspace")
+              : "New Workspace"
+          }
         />
-      ) : null}
+
+        {editing && workspaceQuery.data ? (
+          <WorkspaceDetails workspace={workspaceQuery.data} />
+        ) : null}
+
+        {workspaceQuery.error ? (
+          <Card padding="sm">
+            <EmptyTelemetry>
+              {readWorkspaceApiError(
+                workspaceQuery.error,
+                "Workspace not found. It may have been deleted.",
+              )}
+            </EmptyTelemetry>
+          </Card>
+        ) : draft ? (
+          <WorkspaceEditor
+            busy={saveMutation.isPending}
+            canSave={canSaveWorkspaceDraft(draft, saveMutation.isPending)}
+            draft={draft}
+            editing={editing}
+            error={
+              saveMutation.error
+                ? readWorkspaceApiError(
+                    saveMutation.error,
+                    "Could not save the Workspace. Try again.",
+                  )
+                : undefined
+            }
+            onChange={
+              editing
+                ? (value) => setEditedDraft({ draft: value, workspaceId })
+                : setNewDraft
+            }
+            onSubmit={() => saveMutation.mutate(draft)}
+          />
+        ) : null}
+      </div>
     </SystemPageLayout>
   );
 }
