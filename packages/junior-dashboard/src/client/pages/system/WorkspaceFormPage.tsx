@@ -108,7 +108,7 @@ export function WorkspaceFormPage() {
       <PageHeader
         description={
           editing
-            ? "Update the repositories and setup used to prepare this Workspace."
+            ? "View this Workspace and update how Junior prepares it."
             : "Define the repositories and setup used to prepare a new Workspace."
         }
         title={editing ? (workspaceQuery.data?.name ?? "Workspace") : "New Workspace"}

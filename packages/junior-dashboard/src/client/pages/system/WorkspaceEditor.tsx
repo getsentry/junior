@@ -60,6 +60,15 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
   return (
     <Card className="p-5" padding="none">
       <form className="space-y-5" onSubmit={submit}>
+        {props.editing ? (
+          <div>
+            <h2 className="m-0 text-base font-semibold">Configuration</h2>
+            <p className="mt-1 mb-0 text-sm text-dashboard-text-muted">
+              Update the repositories and setup used to prepare this Workspace.
+            </p>
+          </div>
+        ) : null}
+
         <p className="m-0 text-sm text-dashboard-text-muted">
           Repositories use fixed <code>repos/{"{name}"}</code> paths. Mark one
           primary repository for AGENTS.md.
