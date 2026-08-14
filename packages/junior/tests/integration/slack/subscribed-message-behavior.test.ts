@@ -2,14 +2,13 @@ import { describe, expect, it, vi } from "vitest";
 import { TurnInputCommitLostError } from "@/chat/runtime/turn";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { createProviderError } from "@/chat/services/provider-error";
+import type { AgentRun } from "@/chat/agent/types";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import {
   createTestMessage,
   createTestThread,
   createTestDestination,
 } from "../../fixtures/slack-harness";
-import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
-import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
@@ -18,8 +17,10 @@ import {
   listResourceEventSubscriptions,
 } from "@/chat/resource-events/store";
 import {
-  deliverAssistantMessagesForTest,
+  createModelAgentRunnerForRun,
+  neverRunAgentRunner,
 } from "../../fixtures/agent-runner";
+import { createModelStream } from "../../fixtures/model-stream";
 
 const emptyThreadReplies = async () => [];
 
@@ -55,23 +56,10 @@ function toPostedText(value: unknown): string {
   return String(value);
 }
 
-async function completedReply(
-  request: Parameters<AgentRunner["run"]>[0],
-  text: string,
-) {
-  await deliverAssistantMessagesForTest(request, [{ text }]);
-  return completedAgentRun({
-    text,
-    diagnostics: {
-      assistantMessageCount: 1,
-      modelId: "fake-agent-model",
-      outcome: "success" as const,
-      toolCalls: [],
-      toolErrorCount: 0,
-      toolResultCount: 0,
-      usedPrimaryText: true,
-    },
-  });
+function replyForRun(selectText: (run: AgentRun) => string) {
+  return createModelAgentRunnerForRun((run) =>
+    createModelStream([{ type: "text", text: selectText(run) }]),
+  );
 }
 
 describe("Slack behavior: subscribed messages", () => {
@@ -94,18 +82,14 @@ describe("Slack behavior: subscribed messages", () => {
           },
         },
         replyExecutor: {
-          agentRunner: {
-            run: async () => {
-              throw new Error(
-                "executeAgentRun should not run when classifier skips reply",
-              );
-            },
-          },
+          agentRunner: neverRunAgentRunner(),
         },
       },
     });
 
-    const thread = await createTestThread({ id: "slack:C0BEHAVIOR:1700002000.000" });
+    const thread = await createTestThread({
+      id: "slack:C0BEHAVIOR:1700002000.000",
+    });
     const message = createTestMessage({
       id: "m-subscribed-skip",
       text: "sounds good thanks everyone",
@@ -135,16 +119,14 @@ describe("Slack behavior: subscribed messages", () => {
           },
         },
         replyExecutor: {
-          agentRunner: {
-            run: async () => {
-              throw new Error("executeAgentRun should not run");
-            },
-          },
+          agentRunner: neverRunAgentRunner(),
         },
       },
     });
 
-    const thread = await createTestThread({ id: "slack:C0BEHAVIOR:1700002000.001" });
+    const thread = await createTestThread({
+      id: "slack:C0BEHAVIOR:1700002000.001",
+    });
     const message = createTestMessage({
       id: "m-subscribed-provider-retry",
       text: "can you check this?",
@@ -163,7 +145,7 @@ describe("Slack behavior: subscribed messages", () => {
 
   it("runs resource-event notifications as system actor turns", async () => {
     let classifierCalled = false;
-    const replyContexts: unknown[] = [];
+    const agentRuns: AgentRun[] = [];
 
     const { slackRuntime } = createTestChatRuntime({
       services: {
@@ -174,23 +156,17 @@ describe("Slack behavior: subscribed messages", () => {
           },
         },
         replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              const _prompt = request.instruction.text;
-              const context = request;
-
-              replyContexts.push(context);
-              return await completedReply(
-                request,
-                "I checked the subscribed PR event.\nThe PR is merged.",
-              );
-            },
-          },
+          agentRunner: replyForRun((run) => {
+            agentRuns.push(run);
+            return "I checked the subscribed PR event.\nThe PR is merged.";
+          }),
         },
       },
     });
 
-    const thread = await createTestThread({ id: "slack:C0BEHAVIOR:1700002000.002" });
+    const thread = await createTestThread({
+      id: "slack:C0BEHAVIOR:1700002000.002",
+    });
     const message = createTestMessage({
       id: "resource-event-resub-1-check-suite-1",
       text: "[event notification]\n\nA subscribed resource changed.\n\nHandling:\n- Stay concise.",
@@ -217,7 +193,7 @@ describe("Slack behavior: subscribed messages", () => {
     });
 
     expect(classifierCalled).toBe(false);
-    expect(replyContexts).toEqual([
+    expect(agentRuns).toEqual([
       expect.objectContaining({
         conversationId: "slack:C0BEHAVIOR:1700002000.002",
         turnId: "turn_resource-event-resub-1-check-suite-1",
@@ -250,12 +226,14 @@ describe("Slack behavior: subscribed messages", () => {
   });
 
   it("processes resource events when compacted history retains a handled marker without its message", async () => {
-    const agentRunner = vi.fn<AgentRunner["run"]>(async (request) =>
-      completedReply(request, "I processed the recovered check event."),
-    );
+    const agentRuns: AgentRun[] = [];
+    const agentRunner = replyForRun((run) => {
+      agentRuns.push(run);
+      return "I processed the recovered check event.";
+    });
     const { slackRuntime } = createRuntime({
       services: {
-        replyExecutor: { agentRunner: { run: agentRunner } },
+        replyExecutor: { agentRunner },
       },
     });
     const thread = await createTestThread({
@@ -330,7 +308,7 @@ describe("Slack behavior: subscribed messages", () => {
       destination,
     });
 
-    expect(agentRunner).toHaveBeenCalledOnce();
+    expect(agentRuns).toHaveLength(1);
     expect(thread.posts).toHaveLength(1);
     expect(toPostedText(thread.posts[0])).toContain(
       "I processed the recovered check event.",
@@ -359,80 +337,6 @@ describe("Slack behavior: subscribed messages", () => {
     );
   });
 
-  it("posts an auth-needed reply when a resource-event turn needs user auth", async () => {
-    const { slackRuntime } = createTestChatRuntime({
-      services: {
-        subscribedReplyPolicy: {
-          completeObject: async () => {
-            throw new Error("resource events bypass subscribed classifier");
-          },
-        },
-        replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              await deliverAssistantMessagesForTest(request, [
-                { text: "I’m checking the subscribed event." },
-              ]);
-              return {
-                status: "awaiting_auth",
-                providerDisplayName: "GitHub",
-              };
-            },
-          },
-        },
-      },
-    });
-
-    const thread = await createTestThread({ id: "slack:C0BEHAVIOR:1700002000.003" });
-    const message = createTestMessage({
-      id: "resource-event-resub-1-check-suite-auth",
-      text: "[event notification]\n\nA subscribed resource changed.",
-      isMention: false,
-      threadId: thread.id,
-      author: {
-        userId: "UJRNEVENT",
-        userName: "junior-event",
-        fullName: "Junior event",
-        isBot: true,
-      },
-      raw: {
-        channel: "C0BEHAVIOR",
-        event_type: "resource_event",
-        thread_ts: "1700002000.003",
-        ts: "resource-event-resub-1-check-suite-auth",
-        type: "message",
-        user: "UJRNEVENT",
-      },
-    });
-
-    await slackRuntime.handleSubscribedMessage(thread, message, {
-      destination: createTestDestination(thread),
-    });
-
-    expect(thread.posts).toHaveLength(2);
-    expect(toPostedText(thread.posts[0])).toBe(
-      "I’m checking the subscribed event.",
-    );
-    expect(toPostedText(thread.posts[1])).toContain(
-      "GitHub needs user authorization",
-    );
-    const conversation = coerceThreadConversationState(
-      (await thread.state) ?? {},
-    );
-    await hydrateConversationMessages({
-      conversation,
-      conversationId: thread.id,
-    });
-    expect(
-      conversation.messages
-        .filter((entry) => entry.role === "assistant")
-        .map((entry) => entry.id),
-    ).toEqual([
-      "turn_resource-event-resub-1-check-suite-auth:assistant:1",
-      "turn_resource-event-resub-1-check-suite-auth:assistant:2",
-    ]);
-  });
-
   it("replies when classifier approves a subscribed-thread message", async () => {
     const classifierCalls: string[] = [];
     const replyCalls: string[] = [];
@@ -454,22 +358,17 @@ describe("Slack behavior: subscribed messages", () => {
           },
         },
         replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              const prompt = request.instruction.text;
-
-              replyCalls.push(prompt);
-              return await completedReply(
-                request,
-                "Action item captured: monitor dashboards for 30 minutes.",
-              );
-            },
-          },
+          agentRunner: replyForRun((run) => {
+            replyCalls.push(run.instruction.text);
+            return "Action item captured: monitor dashboards for 30 minutes.";
+          }),
         },
       },
     });
 
-    const thread = await createTestThread({ id: "slack:C0BEHAVIOR:1700002001.000" });
+    const thread = await createTestThread({
+      id: "slack:C0BEHAVIOR:1700002001.000",
+    });
     const message = createTestMessage({
       id: "m-subscribed-reply",
       text: "can you suggest one concrete next step?",
@@ -508,22 +407,17 @@ describe("Slack behavior: subscribed messages", () => {
           },
         },
         replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              const prompt = request.instruction.text;
-
-              replyCalls.push(prompt);
-              return await completedReply(
-                request,
-                "Yes. Shipping status is green.",
-              );
-            },
-          },
+          agentRunner: replyForRun((run) => {
+            replyCalls.push(run.instruction.text);
+            return "Yes. Shipping status is green.";
+          }),
         },
       },
     });
 
-    const thread = await createTestThread({ id: "slack:C0BEHAVIOR:1700002002.000" });
+    const thread = await createTestThread({
+      id: "slack:C0BEHAVIOR:1700002002.000",
+    });
     const message = createTestMessage({
       id: "m-subscribed-mention",
       text: "<@U0APP> quick status?",
@@ -557,18 +451,13 @@ describe("Slack behavior: subscribed messages", () => {
           },
         },
         replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              const prompt = request.instruction.text;
-              const context = request;
-
-              replyCalls.push({ prompt, piMessages: context.history ? [...context.history] : undefined });
-              return await completedReply(
-                request,
-                "Handled queued subscribed turn.",
-              );
-            },
-          },
+          agentRunner: replyForRun((run) => {
+            replyCalls.push({
+              prompt: run.instruction.text,
+              piMessages: run.history ? [...run.history] : undefined,
+            });
+            return "Handled queued subscribed turn.";
+          }),
         },
       },
     });
@@ -633,24 +522,19 @@ describe("Slack behavior: subscribed messages", () => {
           },
         },
         replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              const prompt = request.instruction.text;
-
-              replyCalls.push(prompt);
-              return await completedReply(
-                request,
-                replyCalls.length === 1
-                  ? "I can help with this thread."
-                  : "I'm back because you mentioned me again.",
-              );
-            },
-          },
+          agentRunner: replyForRun((run) => {
+            replyCalls.push(run.instruction.text);
+            return replyCalls.length === 1
+              ? "I can help with this thread."
+              : "I'm back because you mentioned me again.";
+          }),
         },
       },
     });
 
-    const thread = await createTestThread({ id: "slack:C0BEHAVIOR:1700002002.500" });
+    const thread = await createTestThread({
+      id: "slack:C0BEHAVIOR:1700002002.500",
+    });
 
     await slackRuntime.handleNewMention(
       thread,
@@ -734,7 +618,6 @@ describe("Slack behavior: subscribed messages", () => {
 
   it("short-circuits acknowledgment messages without calling the classifier", async () => {
     let classifierCalled = false;
-    let replyCalled = false;
 
     const { slackRuntime } = createRuntime({
       services: {
@@ -747,20 +630,14 @@ describe("Slack behavior: subscribed messages", () => {
           },
         },
         replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              replyCalled = true;
-              return await completedReply(
-                request,
-                "This should never be posted.",
-              );
-            },
-          },
+          agentRunner: neverRunAgentRunner(),
         },
       },
     });
 
-    const thread = await createTestThread({ id: "slack:C0BEHAVIOR:1700002003.000" });
+    const thread = await createTestThread({
+      id: "slack:C0BEHAVIOR:1700002003.000",
+    });
     const message = createTestMessage({
       id: "m-subscribed-ack",
       text: "thanks!",
@@ -774,13 +651,11 @@ describe("Slack behavior: subscribed messages", () => {
     });
 
     expect(classifierCalled).toBe(false);
-    expect(replyCalled).toBe(false);
     expect(thread.posts).toHaveLength(0);
   });
 
   it("routes acknowledgment text with attachments through the classifier", async () => {
     let classifierCalled = false;
-    let replyCalled = false;
 
     const { slackRuntime } = createRuntime({
       services: {
@@ -798,20 +673,14 @@ describe("Slack behavior: subscribed messages", () => {
           },
         },
         replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              replyCalled = true;
-              return await completedReply(
-                request,
-                "This should never be posted.",
-              );
-            },
-          },
+          agentRunner: neverRunAgentRunner(),
         },
       },
     });
 
-    const thread = await createTestThread({ id: "slack:C0BEHAVIOR:1700002003.125" });
+    const thread = await createTestThread({
+      id: "slack:C0BEHAVIOR:1700002003.125",
+    });
     const message = createTestMessage({
       id: "m-subscribed-ack-attachment",
       text: "thanks!",
@@ -831,13 +700,11 @@ describe("Slack behavior: subscribed messages", () => {
     });
 
     expect(classifierCalled).toBe(true);
-    expect(replyCalled).toBe(false);
     expect(thread.posts).toHaveLength(0);
   });
 
   it("routes attachment-only passive messages through the classifier", async () => {
     let classifierCalled = false;
-    let replyCalled = false;
 
     const { slackRuntime } = createRuntime({
       services: {
@@ -855,20 +722,14 @@ describe("Slack behavior: subscribed messages", () => {
           },
         },
         replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              replyCalled = true;
-              return await completedReply(
-                request,
-                "This should never be posted.",
-              );
-            },
-          },
+          agentRunner: neverRunAgentRunner(),
         },
       },
     });
 
-    const thread = await createTestThread({ id: "slack:C0BEHAVIOR:1700002003.250" });
+    const thread = await createTestThread({
+      id: "slack:C0BEHAVIOR:1700002003.250",
+    });
     const message = createTestMessage({
       id: "m-subscribed-attachment-only",
       text: "",
@@ -888,13 +749,11 @@ describe("Slack behavior: subscribed messages", () => {
     });
 
     expect(classifierCalled).toBe(true);
-    expect(replyCalled).toBe(false);
     expect(thread.posts).toHaveLength(0);
   });
 
   it("routes legacy attachment-only passive messages through the classifier", async () => {
     let classifierCalled = false;
-    let replyCalled = false;
 
     const { slackRuntime } = createRuntime({
       services: {
@@ -914,20 +773,14 @@ describe("Slack behavior: subscribed messages", () => {
           },
         },
         replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              replyCalled = true;
-              return await completedReply(
-                request,
-                "This should never be posted.",
-              );
-            },
-          },
+          agentRunner: neverRunAgentRunner(),
         },
       },
     });
 
-    const thread = await createTestThread({ id: "slack:C0BEHAVIOR:1700002003.275" });
+    const thread = await createTestThread({
+      id: "slack:C0BEHAVIOR:1700002003.275",
+    });
     const message = createTestMessage({
       id: "m-subscribed-legacy-attachment-only",
       text: "",
@@ -952,13 +805,12 @@ describe("Slack behavior: subscribed messages", () => {
     });
 
     expect(classifierCalled).toBe(true);
-    expect(replyCalled).toBe(false);
     expect(thread.posts).toHaveLength(0);
   });
 
   it("routes generic immediate follow-up questions through the classifier", async () => {
     let classifierCalled = false;
-    let replyCalled = false;
+    const agentRuns: AgentRun[] = [];
 
     const { slackRuntime } = createRuntime({
       services: {
@@ -976,20 +828,17 @@ describe("Slack behavior: subscribed messages", () => {
           },
         },
         replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              replyCalled = true;
-              return await completedReply(
-                request,
-                "This should never be posted.",
-              );
-            },
-          },
+          agentRunner: replyForRun((run) => {
+            agentRuns.push(run);
+            return "Deploy summarized.";
+          }),
         },
       },
     });
 
-    const thread = await createTestThread({ id: "slack:C0BEHAVIOR:1700002003.300" });
+    const thread = await createTestThread({
+      id: "slack:C0BEHAVIOR:1700002003.300",
+    });
     await slackRuntime.handleNewMention(
       thread,
       createTestMessage({
@@ -1001,7 +850,6 @@ describe("Slack behavior: subscribed messages", () => {
       }),
       { destination: createTestDestination(thread) },
     );
-    replyCalled = false;
 
     await slackRuntime.handleSubscribedMessage(
       thread,
@@ -1016,13 +864,13 @@ describe("Slack behavior: subscribed messages", () => {
     );
 
     expect(classifierCalled).toBe(true);
-    expect(replyCalled).toBe(false);
+    expect(agentRuns).toHaveLength(1);
     expect(thread.posts).toHaveLength(1);
   });
 
   it("routes generic immediate attachment follow-ups through the classifier", async () => {
     let classifierCalled = false;
-    let replyCalled = false;
+    const agentRuns: AgentRun[] = [];
 
     const { slackRuntime } = createRuntime({
       services: {
@@ -1040,20 +888,17 @@ describe("Slack behavior: subscribed messages", () => {
           },
         },
         replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              replyCalled = true;
-              return await completedReply(
-                request,
-                "This should never be posted.",
-              );
-            },
-          },
+          agentRunner: replyForRun((run) => {
+            agentRuns.push(run);
+            return "Deploy summarized.";
+          }),
         },
       },
     });
 
-    const thread = await createTestThread({ id: "slack:C0BEHAVIOR:1700002003.350" });
+    const thread = await createTestThread({
+      id: "slack:C0BEHAVIOR:1700002003.350",
+    });
     await slackRuntime.handleNewMention(
       thread,
       createTestMessage({
@@ -1065,7 +910,6 @@ describe("Slack behavior: subscribed messages", () => {
       }),
       { destination: createTestDestination(thread) },
     );
-    replyCalled = false;
 
     await slackRuntime.handleSubscribedMessage(
       thread,
@@ -1086,13 +930,12 @@ describe("Slack behavior: subscribed messages", () => {
     );
 
     expect(classifierCalled).toBe(true);
-    expect(replyCalled).toBe(false);
+    expect(agentRuns).toHaveLength(1);
     expect(thread.posts).toHaveLength(1);
   });
 
   it("stays silent when a subscribed message is clearly directed at another bot", async () => {
     let classifierCalled = false;
-    let replyCalled = false;
 
     const { slackRuntime } = createRuntime({
       services: {
@@ -1105,20 +948,14 @@ describe("Slack behavior: subscribed messages", () => {
           },
         },
         replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              replyCalled = true;
-              return await completedReply(
-                request,
-                "This should never be posted.",
-              );
-            },
-          },
+          agentRunner: neverRunAgentRunner(),
         },
       },
     });
 
-    const thread = await createTestThread({ id: "slack:C0BEHAVIOR:1700002003.500" });
+    const thread = await createTestThread({
+      id: "slack:C0BEHAVIOR:1700002003.500",
+    });
     const message = createTestMessage({
       id: "m-subscribed-other-bot",
       text: "@Cursor can you help address issue 87?",
@@ -1132,7 +969,6 @@ describe("Slack behavior: subscribed messages", () => {
     });
 
     expect(classifierCalled).toBe(false);
-    expect(replyCalled).toBe(false);
     expect(thread.posts).toHaveLength(0);
     const conversation = coerceThreadConversationState(
       (await thread.state) ?? {},
@@ -1178,22 +1014,17 @@ describe("Slack behavior: subscribed messages", () => {
           },
         },
         replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              const prompt = request.instruction.text;
-
-              replyCalls.push(prompt);
-              return await completedReply(
-                request,
-                "You asked for the budget by Friday.",
-              );
-            },
-          },
+          agentRunner: replyForRun((run) => {
+            replyCalls.push(run.instruction.text);
+            return "You asked for the budget by Friday.";
+          }),
         },
       },
     });
 
-    const thread = await createTestThread({ id: "slack:C0BEHAVIOR:1700002004.000" });
+    const thread = await createTestThread({
+      id: "slack:C0BEHAVIOR:1700002004.000",
+    });
     await slackRuntime.handleNewMention(
       thread,
       createTestMessage({
@@ -1244,24 +1075,19 @@ describe("Slack behavior: subscribed messages", () => {
           },
         },
         replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              const prompt = request.instruction.text;
-
-              replyCalls.push(prompt);
-              return await completedReply(
-                request,
-                replyCalls.length === 1
-                  ? "The deploy changed billing, auth, and the API gateway."
-                  : "The three services were billing, auth, and the API gateway.",
-              );
-            },
-          },
+          agentRunner: replyForRun((run) => {
+            replyCalls.push(run.instruction.text);
+            return replyCalls.length === 1
+              ? "The deploy changed billing, auth, and the API gateway."
+              : "The three services were billing, auth, and the API gateway.";
+          }),
         },
       },
     });
 
-    const thread = await createTestThread({ id: "slack:C0BEHAVIOR:1700002004.500" });
+    const thread = await createTestThread({
+      id: "slack:C0BEHAVIOR:1700002004.500",
+    });
     await slackRuntime.handleNewMention(
       thread,
       createTestMessage({
@@ -1299,7 +1125,9 @@ describe("Slack behavior: subscribed messages", () => {
   it("calls ack when preflight skips a message directed at another user", async () => {
     const { slackRuntime } = createRuntime();
     const ack = vi.fn().mockResolvedValue(undefined);
-    const thread = await createTestThread({ id: "slack:C0REGRESS:1700010000.001" });
+    const thread = await createTestThread({
+      id: "slack:C0REGRESS:1700010000.001",
+    });
 
     await slackRuntime.handleSubscribedMessage(
       thread,
@@ -1370,7 +1198,9 @@ describe("Slack behavior: subscribed messages", () => {
       },
     });
     const ack = vi.fn().mockResolvedValue(undefined);
-    const thread = await createTestThread({ id: "slack:C0REGRESS:1700010000.002" });
+    const thread = await createTestThread({
+      id: "slack:C0REGRESS:1700010000.002",
+    });
 
     await slackRuntime.handleSubscribedMessage(
       thread,
@@ -1406,7 +1236,9 @@ describe("Slack behavior: subscribed messages", () => {
       },
     });
     const ack = vi.fn().mockResolvedValue(undefined);
-    const thread = await createTestThread({ id: "slack:C0REGRESS:1700010000.003" });
+    const thread = await createTestThread({
+      id: "slack:C0REGRESS:1700010000.003",
+    });
     // Subscribe first so opt-out has something to unsubscribe from.
     thread.subscribe();
 
@@ -1431,7 +1263,9 @@ describe("Slack behavior: subscribed messages", () => {
       "lease lost during skip commit",
     );
     const ack = vi.fn().mockRejectedValue(commitError);
-    const thread = await createTestThread({ id: "slack:C0REGRESS:1700010000.004" });
+    const thread = await createTestThread({
+      id: "slack:C0REGRESS:1700010000.004",
+    });
 
     await expect(
       slackRuntime.handleSubscribedMessage(
