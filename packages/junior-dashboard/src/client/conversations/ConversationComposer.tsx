@@ -226,8 +226,15 @@ export const ConversationComposer = memo(function ConversationComposer(
           {props.label}
         </label>
         <textarea
+          // Chat is technical: ids, paths, code. Keep the keyboard chat-like
+          // (Send) and suppress browser IME assist that fights identifiers.
+          autoCapitalize="off"
+          autoComplete="off"
+          autoCorrect="off"
           className="min-h-11 max-h-28 w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-2.5 font-mono text-sm leading-relaxed text-dashboard-text outline-none placeholder:text-dashboard-text-muted/65 md:min-h-24 md:max-h-none md:resize-y md:overflow-visible md:px-3.5 md:py-3"
+          enterKeyHint="send"
           id={id}
+          inputMode="text"
           maxLength={32_000}
           onChange={(event) => {
             const text = event.target.value;
@@ -243,6 +250,7 @@ export const ConversationComposer = memo(function ConversationComposer(
           placeholder="Message Junior…"
           ref={textareaRef}
           rows={1}
+          spellCheck={false}
           value={message}
         />
         <div className="flex min-w-0 items-center justify-end gap-3 border-l border-white/[0.07] bg-black/15 px-2 py-1.5 md:justify-between md:border-l-0 md:border-t md:px-3 md:py-2">
