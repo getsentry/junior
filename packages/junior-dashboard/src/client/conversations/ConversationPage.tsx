@@ -129,7 +129,7 @@ export function ConversationPage(props: {
               onClick: () => {
                 if (
                   !window.confirm(
-                    "Make this conversation public? Anyone with the link can read it. You cannot undo this.",
+                    "Make this conversation public? Anyone in this workspace can read it. You cannot undo this.",
                   )
                 ) {
                   return;
