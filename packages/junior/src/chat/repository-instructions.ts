@@ -134,6 +134,7 @@ async function readInstructionFile(
 export async function resolveRepositoryInstructions(args: {
   cwd: string;
   fs: SandboxFileSystem;
+  maxBytes?: number;
 }): Promise<RepositoryInstructions | undefined> {
   const gitRoot = await findGitRoot(args.fs, args.cwd);
   if (!gitRoot) {
@@ -152,7 +153,10 @@ export async function resolveRepositoryInstructions(args: {
   directories.reverse();
 
   const sources: RepositoryInstructions["sources"] = [];
-  let remaining = MAX_REPOSITORY_INSTRUCTIONS_BYTES;
+  let remaining = Math.max(
+    0,
+    args.maxBytes ?? MAX_REPOSITORY_INSTRUCTIONS_BYTES,
+  );
   for (const directory of directories) {
     if (remaining <= 0) {
       break;
@@ -234,15 +238,28 @@ export async function resolveRepositoryInstructionsForDirectories(args: {
     ),
   ].sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
 
+  // One shared budget across every selected repository. Without this, N repos
+  // could each contribute the full single-repo limit.
+  let remaining = MAX_REPOSITORY_INSTRUCTIONS_BYTES;
   const bundles: RepositoryInstructions[] = [];
   for (const directory of uniqueDirectories) {
+    if (remaining <= 0) {
+      break;
+    }
     const instructions = await resolveRepositoryInstructions({
       cwd: directory,
       fs: args.fs,
+      maxBytes: remaining,
     });
-    if (instructions) {
-      bundles.push(instructions);
+    if (!instructions) {
+      continue;
     }
+    bundles.push(instructions);
+    // Charge source content only. Directory labels are tiny and applied later.
+    remaining -= instructions.sources.reduce(
+      (total, source) => total + Buffer.byteLength(source.content, "utf8"),
+      0,
+    );
   }
   return mergeRepositoryInstructions(bundles);
 }

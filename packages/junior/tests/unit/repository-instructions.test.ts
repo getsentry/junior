@@ -156,6 +156,35 @@ describe("repository instructions", () => {
     expect(instructions?.directory).toBeUndefined();
   });
 
+  it("shares one AGENTS.md byte budget across selected repositories", async () => {
+    const first = "a".repeat(30 * 1024);
+    const second = "b".repeat(8 * 1024);
+    const fs = new MemoryFileSystem()
+      .directory("/vercel/sandbox")
+      .directory("/vercel/sandbox/repos")
+      .directory("/vercel/sandbox/repos/alpha")
+      .directory("/vercel/sandbox/repos/alpha/.git")
+      .directory("/vercel/sandbox/repos/beta")
+      .directory("/vercel/sandbox/repos/beta/.git")
+      .file("/vercel/sandbox/repos/alpha/AGENTS.md", first)
+      .file("/vercel/sandbox/repos/beta/AGENTS.md", second);
+
+    const instructions = await resolveRepositoryInstructionsForDirectories({
+      directories: [
+        "/vercel/sandbox/repos/alpha",
+        "/vercel/sandbox/repos/beta",
+      ],
+      fs,
+    });
+
+    expect(instructions?.sources).toHaveLength(2);
+    expect(instructions?.sources[0]?.content).toBe(first);
+    expect(instructions?.sources[1]?.content.length).toBe(2 * 1024);
+    expect(Buffer.byteLength(instructions!.text, "utf8")).toBeLessThanOrEqual(
+      32 * 1024 + 256,
+    );
+  });
+
   it("lists Git worktrees under repos/", async () => {
     const fs = new MemoryFileSystem()
       .directory("/vercel/sandbox")
