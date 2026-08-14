@@ -1,5 +1,8 @@
 import { Hono } from "hono";
 import { getDb } from "@/chat/db";
+import { hash as workspaceProfileHash } from "@/chat/sandbox/snapshot/profile";
+import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
+import { getCachedSnapshot } from "@/chat/sandbox/snapshot/resolve";
 import { workspaceRepoCheckoutPath } from "@/chat/workspaces/checkout-path";
 import {
   createWorkspace,
@@ -33,6 +36,23 @@ function view(workspace: Workspace) {
       checkoutPath: workspaceRepoCheckoutPath(repo.repo),
       isPrimary: repo.isPrimary,
     })),
+    snapshot: null,
+  };
+}
+
+async function detailView(workspace: Workspace) {
+  const profileHash = workspaceProfileHash(SANDBOX_RUNTIME, workspace);
+  const snapshot = profileHash
+    ? await getCachedSnapshot(profileHash)
+    : undefined;
+  return {
+    ...view(workspace),
+    snapshot: snapshot
+      ? {
+          id: snapshot.snapshotId,
+          generatedAt: new Date(snapshot.createdAtMs).toISOString(),
+        }
+      : null,
   };
 }
 
@@ -80,7 +100,7 @@ export function createWorkspaceRoutes(): Hono<JuniorApiEnv> {
       const { id } = context.req.valid("param");
       const workspace = await getWorkspace(getDb(), id);
       if (!workspace) throwApiError(404, "Workspace not found.");
-      return jsonResponse(workspaceSchema, view(workspace));
+      return jsonResponse(workspaceSchema, await detailView(workspace));
     },
   );
 

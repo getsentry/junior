@@ -77,6 +77,7 @@ test("creates a Workspace recipe", async ({ page }) => {
           id: "11111111-1111-4111-8111-111111111111",
           name: "sentry",
           setupScript: "pnpm install",
+          snapshot: null,
           repos: [
             {
               checkoutPath: "repos/sentry",
@@ -116,6 +117,42 @@ test("creates a Workspace recipe", async ({ page }) => {
     ],
     setupScript: "pnpm install",
   });
+});
+
+test("shows Workspace snapshot details on its direct route", async ({ page }) => {
+  const workspaceId = "11111111-1111-4111-8111-111111111111";
+  await page.route(`**/api/workspaces/${workspaceId}`, async (route) => {
+    await route.fulfill({
+      json: {
+        id: workspaceId,
+        name: "sentry",
+        setupScript: "pnpm install",
+        snapshot: {
+          id: "snap_workspace_123",
+          generatedAt: new Date(Date.now() - 60_000).toISOString(),
+        },
+        repos: [
+          {
+            checkoutPath: "repos/sentry",
+            isPrimary: true,
+            provider: "github",
+            repo: "getsentry/sentry",
+          },
+        ],
+      },
+    });
+  });
+
+  await page.goto(`${server.baseURL}/system/workspaces/${workspaceId}`);
+
+  await expect(
+    page.getByRole("heading", { name: "Current snapshot" }),
+  ).toBeVisible();
+  await expect(page.getByText("snap_workspace_123")).toBeVisible();
+  await expect(page.getByLabel("Name")).toHaveValue("sentry");
+  await expect(
+    page.getByRole("link", { name: "Back to Workspaces" }),
+  ).toHaveAttribute("href", "/system/workspaces");
 });
 
 test("keeps System navigation usable on mobile", async ({ page }) => {

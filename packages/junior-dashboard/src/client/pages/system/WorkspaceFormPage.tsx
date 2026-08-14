@@ -13,6 +13,7 @@ import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { fetchDashboardJson, post, put } from "../../http";
 import { SystemPageLayout } from "./SystemPageLayout";
+import { WorkspaceDetails } from "./WorkspaceDetails";
 import { WorkspaceEditor } from "./WorkspaceEditor";
 import {
   readWorkspaceApiError,
@@ -112,6 +113,10 @@ export function WorkspaceFormPage() {
         }
         title={editing ? (workspaceQuery.data?.name ?? "Workspace") : "New Workspace"}
       />
+
+      {editing && workspaceQuery.data ? (
+        <WorkspaceDetails workspace={workspaceQuery.data} />
+      ) : null}
 
       {workspaceQuery.error ? (
         <Card padding="sm">

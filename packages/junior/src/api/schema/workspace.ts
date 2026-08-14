@@ -17,12 +17,20 @@ export const workspaceRepoSchema = z
   })
   .strict();
 
+const workspaceSnapshotSchema = z
+  .object({
+    id: z.string(),
+    generatedAt: z.iso.datetime(),
+  })
+  .strict();
+
 export const workspaceSchema = z
   .object({
     id: z.string().uuid(),
     name: z.string(),
     setupScript: z.string(),
     repos: z.array(workspaceRepoSchema),
+    snapshot: workspaceSnapshotSchema.nullable(),
   })
   .strict();
 

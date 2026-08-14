@@ -76,7 +76,7 @@ function profileLockKey(profileHash: string): string {
 }
 
 /** Read one cached snapshot pointer; only a missing key is a cache miss. */
-async function getCachedSnapshot(
+export async function getCachedSnapshot(
   profileHash: string,
 ): Promise<CachedSnapshot | null> {
   const state = getStateAdapter();
