@@ -34,7 +34,6 @@ function view(workspace: Workspace) {
       provider: repo.provider,
       repo: repo.repo,
       checkoutPath: workspaceRepoCheckoutPath(repo.repo),
-      isPrimary: repo.isPrimary,
     })),
     snapshot: null,
   };

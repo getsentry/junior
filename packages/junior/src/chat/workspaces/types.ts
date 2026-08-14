@@ -2,7 +2,6 @@
 export interface WorkspaceRepo {
   provider: string;
   repo: string;
-  isPrimary: boolean;
 }
 
 /** Named recipe used to prepare reusable sandbox contents. */

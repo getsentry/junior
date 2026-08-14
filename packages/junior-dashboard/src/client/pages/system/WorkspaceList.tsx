@@ -1,4 +1,4 @@
-import { FolderGit2, Star, Trash2 } from "lucide-react";
+import { FolderGit2, Trash2 } from "lucide-react";
 import { Link } from "react-router";
 import type { WorkspaceReport } from "@sentry/junior/api/schema";
 
@@ -70,13 +70,6 @@ function WorkspaceListItem(props: {
                 className="inline-flex items-center gap-1 rounded border border-white/10 px-2 py-1 font-mono text-xs text-dashboard-text-muted"
                 key={`${repo.provider}:${repo.repo}`}
               >
-                {repo.isPrimary ? (
-                  <Star
-                    aria-label="Primary"
-                    className="text-[#beaaff]"
-                    size={12}
-                  />
-                ) : null}
                 {repo.provider}:{repo.repo}
               </span>
             ))

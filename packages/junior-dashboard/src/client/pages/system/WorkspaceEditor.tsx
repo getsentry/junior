@@ -1,4 +1,4 @@
-import { Plus, Star, Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import type { FormEvent, ReactNode } from "react";
 
 import { Button } from "../../components/Button";
@@ -33,26 +33,12 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
     });
   }
 
-  function setPrimary(key: string) {
-    props.onChange({
-      ...props.draft,
-      repos: props.draft.repos.map((repo) => ({
-        ...repo,
-        isPrimary: repo.key === key,
-      })),
-    });
-  }
-
   function removeRepo(key: string) {
     const repos = props.draft.repos.filter((repo) => repo.key !== key);
-    if (repos.length === 0) {
-      props.onChange({ ...props.draft, repos: [createRepoDraft(true)] });
-      return;
-    }
-    if (!repos.some((repo) => repo.isPrimary)) {
-      repos[0] = { ...repos[0]!, isPrimary: true };
-    }
-    props.onChange({ ...props.draft, repos });
+    props.onChange({
+      ...props.draft,
+      repos: repos.length > 0 ? repos : [createRepoDraft()],
+    });
   }
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -105,8 +91,9 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
               <p className="m-0 text-xs leading-relaxed text-dashboard-text-muted sm:text-sm">
                 Each repository clones to a fixed{" "}
                 <code className="text-dashboard-text">repos/{"{name}"}</code>{" "}
-                path. Mark one primary repository so Junior knows where to load{" "}
-                <code className="text-dashboard-text">AGENTS.md</code>.
+                path. Junior loads{" "}
+                <code className="text-dashboard-text">AGENTS.md</code> from each
+                repository and labels those instructions with that directory.
               </p>
             </div>
             <Button
@@ -115,10 +102,7 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
               onClick={() =>
                 props.onChange({
                   ...props.draft,
-                  repos: [
-                    ...props.draft.repos,
-                    createRepoDraft(props.draft.repos.length === 0),
-                  ],
+                  repos: [...props.draft.repos, createRepoDraft()],
                 })
               }
               type="button"
@@ -134,7 +118,7 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
                 className="grid gap-3 rounded-lg border border-white/10 bg-black/20 p-3 sm:p-4"
                 key={repo.key}
               >
-                <div className="grid gap-3 sm:grid-cols-[minmax(0,8.5rem)_minmax(0,1fr)]">
+                <div className="grid gap-3 sm:grid-cols-[minmax(0,8.5rem)_minmax(0,1fr)_auto] sm:items-end">
                   <div className="grid gap-1.5">
                     <span className="font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted">
                       Provider
@@ -163,23 +147,6 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
                       value={repo.repo}
                     />
                   </div>
-                </div>
-
-                <div className="grid gap-2 border-t border-white/[0.06] pt-3 sm:flex sm:items-center sm:justify-between">
-                  <button
-                    aria-label={`Use repository ${index + 1} for AGENTS.md`}
-                    aria-pressed={repo.isPrimary}
-                    className={`inline-flex h-9 w-full items-center justify-center gap-1.5 rounded border px-3 text-xs font-semibold transition-colors sm:w-auto ${
-                      repo.isPrimary
-                        ? "border-[#beaaff]/50 bg-[#beaaff]/15 text-[#beaaff]"
-                        : "border-white/10 bg-transparent text-dashboard-text-muted hover:border-white/25 hover:text-dashboard-text"
-                    }`}
-                    onClick={() => setPrimary(repo.key)}
-                    type="button"
-                  >
-                    <Star aria-hidden="true" size={14} />
-                    {repo.isPrimary ? "Primary for AGENTS.md" : "Make primary"}
-                  </button>
                   <button
                     aria-label={`Remove repository ${index + 1}`}
                     className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded border border-white/10 bg-transparent px-3 text-xs font-semibold text-dashboard-text-muted transition-colors hover:border-rose-300/40 hover:text-rose-300 sm:w-auto"
@@ -222,7 +189,7 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
               })
             }
             placeholder={
-              "pnpm install --dir \"$JUNIOR_REPOS_ROOT/sentry\"\n# cwd is $JUNIOR_WORKSPACE_ROOT"
+              'pnpm install --dir "$JUNIOR_REPOS_ROOT/sentry"\n# cwd is $JUNIOR_WORKSPACE_ROOT'
             }
             value={props.draft.setupScript}
           />

@@ -18,7 +18,8 @@ export const AGENTS_REMOVAL_NOTICE =
 
 /** Effective AGENTS.md instructions plus host-only discovery provenance. */
 export interface RepositoryInstructions {
-  directory: string;
+  /** Selected directory when instructions come from one repository tree. */
+  directory?: string;
   fingerprint: string;
   sources: Array<{ content: string; path: string }>;
   text: string;
@@ -82,12 +83,12 @@ async function findGitRoot(
   }
 }
 
-/** Return the only Git worktree under repos/, without guessing when ambiguous. */
-export async function findSingleRepositoryDirectory(
+/** Return Git worktrees under repos/, sorted for stable instruction capture. */
+export async function listRepositoryDirectories(
   fs: SandboxFileSystem,
-): Promise<string | undefined> {
+): Promise<string[]> {
   if (!(await directoryExists(fs, SANDBOX_REPOS_ROOT))) {
-    return undefined;
+    return [];
   }
 
   const entries = await fs.readdir(SANDBOX_REPOS_ROOT);
@@ -99,12 +100,19 @@ export async function findSingleRepositoryDirectory(
       (await pathExists(fs, path.posix.join(candidate, ".git")))
     ) {
       repositories.push(candidate);
-      if (repositories.length > 1) {
-        return undefined;
-      }
     }
   }
-  return repositories[0];
+  return repositories.sort((left, right) =>
+    left < right ? -1 : left > right ? 1 : 0,
+  );
+}
+
+/** Return the only Git worktree under repos/, without guessing when ambiguous. */
+export async function findSingleRepositoryDirectory(
+  fs: SandboxFileSystem,
+): Promise<string | undefined> {
+  const repositories = await listRepositoryDirectories(fs);
+  return repositories.length === 1 ? repositories[0] : undefined;
 }
 
 async function readInstructionFile(
@@ -166,11 +174,77 @@ export async function resolveRepositoryInstructions(args: {
     return undefined;
   }
 
-  const text = sources.map((source) => source.content).join("\n\n");
+  const text = formatInstructionSources(sources);
   const fingerprint = createHash("sha256")
     .update(JSON.stringify({ directory: args.cwd, sources }))
     .digest("hex");
   return { directory: args.cwd, fingerprint, sources, text };
+}
+
+function formatInstructionSources(
+  sources: Array<{ content: string; path: string }>,
+): string {
+  if (sources.length === 1) {
+    return sources[0]!.content;
+  }
+  return sources
+    .map(
+      (source) =>
+        `## ${path.posix.dirname(source.path)}\n\n${source.content}`,
+    )
+    .join("\n\n");
+}
+
+/** Combine AGENTS.md bundles from one or more repository directories. */
+export function mergeRepositoryInstructions(
+  bundles: RepositoryInstructions[],
+): RepositoryInstructions | undefined {
+  if (bundles.length === 0) {
+    return undefined;
+  }
+  if (bundles.length === 1) {
+    return bundles[0];
+  }
+
+  const sources = bundles.flatMap((bundle) => bundle.sources);
+  const text = formatInstructionSources(sources);
+  const fingerprint = createHash("sha256")
+    .update(
+      JSON.stringify({
+        directories: bundles.map((bundle) => bundle.directory ?? null),
+        sources,
+      }),
+    )
+    .digest("hex");
+  return { fingerprint, sources, text };
+}
+
+/** Resolve AGENTS.md instructions for each selected repository directory. */
+export async function resolveRepositoryInstructionsForDirectories(args: {
+  directories: string[];
+  fs: SandboxFileSystem;
+}): Promise<RepositoryInstructions | undefined> {
+  const uniqueDirectories = [
+    ...new Set(
+      args.directories.filter(
+        (directory) =>
+          directory === SANDBOX_WORKSPACE_ROOT ||
+          directory.startsWith(`${SANDBOX_WORKSPACE_ROOT}/`),
+      ),
+    ),
+  ].sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+
+  const bundles: RepositoryInstructions[] = [];
+  for (const directory of uniqueDirectories) {
+    const instructions = await resolveRepositoryInstructions({
+      cwd: directory,
+      fs: args.fs,
+    });
+    if (instructions) {
+      bundles.push(instructions);
+    }
+  }
+  return mergeRepositoryInstructions(bundles);
 }
 
 /** Render repository instructions with Codex's exact model-visible wrapper. */

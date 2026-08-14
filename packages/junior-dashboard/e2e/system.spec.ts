@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import {
   type DashboardE2eServer,
   mockDashboardApis,
-  startDashboardE2eServer,
+  startDashboardE2eServer
 } from "./harness";
 
 let server: DashboardE2eServer;
@@ -42,7 +42,7 @@ test("shows system usage and plugin details", async ({ page }) => {
   ]);
   const pluginsLink = systemNavigation.getByRole("link", {
     name: "Plugins",
-    exact: true,
+    exact: true
   });
   await pluginsLink.click();
   await expect(page).toHaveURL(`${server.baseURL}/system/plugins`);
@@ -53,7 +53,7 @@ test("shows system usage and plugin details", async ({ page }) => {
 
   const pluginPanels = page.getByRole("region", { name: "Plugins" });
   const githubPanel = pluginPanels.getByRole("link", {
-    name: /GitHub/,
+    name: /GitHub/
   });
 
   await githubPanel.click();
@@ -81,13 +81,12 @@ test("creates a Workspace recipe", async ({ page }) => {
           repos: [
             {
               checkoutPath: "repos/sentry",
-              isPrimary: true,
               provider: "github",
-              repo: "getsentry/sentry",
+              repo: "getsentry/sentry"
             },
-          ],
+          ]
         },
-        status: 201,
+        status: 201
       });
       return;
     }
@@ -110,12 +109,11 @@ test("creates a Workspace recipe", async ({ page }) => {
     name: "sentry",
     repos: [
       {
-        isPrimary: true,
         provider: "github",
-        repo: "getsentry/sentry",
+        repo: "getsentry/sentry"
       },
     ],
-    setupScript: "pnpm install",
+    setupScript: "pnpm install"
   });
 });
 
@@ -129,17 +127,16 @@ test("shows Workspace snapshot details on its direct route", async ({ page }) =>
         setupScript: "pnpm install",
         snapshot: {
           id: "snap_workspace_123",
-          generatedAt: new Date(Date.now() - 60_000).toISOString(),
+          generatedAt: new Date(Date.now() - 60_000).toISOString()
         },
         repos: [
           {
             checkoutPath: "repos/sentry",
-            isPrimary: true,
             provider: "github",
-            repo: "getsentry/sentry",
+            repo: "getsentry/sentry"
           },
-        ],
-      },
+        ]
+      }
     });
   });
 

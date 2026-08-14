@@ -13,7 +13,6 @@ const repoSchema = z.object({
   provider: z.string(),
   repo: z.string(),
   checkout_path: z.string(),
-  is_primary: z.boolean(),
 });
 const workspaceSchema = z.object({
   id: z.string(),
@@ -29,7 +28,6 @@ function view(workspace: Workspace) {
       provider: repo.provider,
       repo: repo.repo,
       checkout_path: workspaceRepoCheckoutPath(repo.repo),
-      is_primary: repo.isPrimary,
     })),
   };
 }

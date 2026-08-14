@@ -4,7 +4,6 @@ const workspaceRepoInputSchema = z
   .object({
     provider: z.string(),
     repo: z.string(),
-    isPrimary: z.boolean().optional(),
   })
   .strict();
 
@@ -13,7 +12,6 @@ export const workspaceRepoSchema = z
     provider: z.string(),
     repo: z.string(),
     checkoutPath: z.string(),
-    isPrimary: z.boolean(),
   })
   .strict();
 
