@@ -1,7 +1,7 @@
 import { http, HttpResponse } from "msw";
 import { mswServer } from "../msw/server";
 
-/** Return a fixed route decision from the external model edge. */
+/** Return a fixed route decision from the model service. */
 export function mockTurnRouterModel(): void {
   mswServer.use(
     http.post("https://ai-gateway.vercel.sh/v3/ai/language-model", () =>

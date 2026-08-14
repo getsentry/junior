@@ -10,7 +10,7 @@ type TitleModelFixtureOptions = {
   waitFor?: Promise<unknown>;
 };
 
-/** Return fixed title text from the external model edge. */
+/** Return fixed title text from the model service. */
 export function mockTitleModel(
   text: string,
   options: TitleModelFixtureOptions = {},
