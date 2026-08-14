@@ -160,7 +160,7 @@ describe("Slack contract: edited-message reply delivery", () => {
     );
   });
 
-  it("suspends the turn when Slack reply delivery fails transiently", async () => {
+  it("wakes a suspended turn with its Slack destination after a transient delivery failure", async () => {
     for (let attempt = 0; attempt < 3; attempt += 1) {
       queueSlackApiError("chat.postMessage", {
         error: "internal_error",
@@ -190,7 +190,15 @@ describe("Slack contract: edited-message reply delivery", () => {
 
     expect(response.status).toBe(200);
     expect(wakePausedTurn).toHaveBeenCalledWith(
-      expect.objectContaining({ expectedVersion: 2 }),
+      expect.objectContaining({
+        conversationId: "slack:D12345:1700000100.000102",
+        destination: {
+          platform: "slack",
+          teamId: "TTEST",
+          channelId: "D12345",
+        },
+        expectedVersion: 2,
+      }),
     );
   });
 });

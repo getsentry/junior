@@ -16,9 +16,8 @@ documents the package-local harness and commands.
 Integration tests may fake an external boundary through the shared harnesses,
 but may not mock Junior-owned `@/` modules. `pnpm test-architecture:check`
 also blocks Pi agent mocks, manufactured agent outcomes, scripted agent runners,
-and unsafe Slack double casts. Existing exceptions and their exact counts live
-in `../../../scripts/test-architecture-debt.json`. Do not increase them. Lower
-or remove an exception when its test moves to real wiring.
+and unsafe Slack double casts. These rules have no exceptions. Rewrite a test
+through real wiring or remove it when stronger coverage owns the behavior.
 
 A test that needs internal module replacement belongs in `component/` unless it
 is rewritten to use real wiring.
