@@ -562,14 +562,42 @@ describe("dashboard canonical-event components", () => {
     expect(html).not.toContain("Open pull request");
   });
 
+  it("renders open pull request resource links with the pull request icon", () => {
+    const html = renderToStaticMarkup(
+      <ConversationAnnotations
+        detail={conversation([], {
+          annotations: [
+            {
+              kind: "resource_link",
+              key: "getsentry/junior#1081",
+              label: "getsentry/junior#1081",
+              plugin: "github",
+              status: "open",
+              url: "https://github.com/getsentry/junior/pull/1081",
+              createdAt: "2026-01-01T00:00:00.000Z",
+              updatedAt: "2026-01-01T00:00:01.000Z",
+            },
+          ],
+        })}
+      />,
+    );
+
+    expect(html).toContain("getsentry/junior#1081");
+    expect(html).toContain('title="Open pull request"');
+  });
+
   it("renders plugin-selected sidebar annotations", () => {
     const html = renderToStaticMarkup(
       <ConversationSidebarAnnotations
-        annotations={[{ icon: "git-merge", key: "github", label: "2 repos" }]}
+        annotations={[
+          { icon: "git-merge", key: "github", label: "2 repos" },
+          { icon: "git-pull-request", key: "open-pr", label: "junior" },
+        ]}
       />,
     );
     expect(html).toContain("2 repos");
     expect(html).toContain("Merged");
+    expect(html).toContain("Open pull request");
     expect(html).toContain("min-w-0 truncate whitespace-nowrap font-sans");
   });
 

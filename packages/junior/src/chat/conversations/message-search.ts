@@ -18,6 +18,12 @@ export interface ConversationMessageSearchScope {
 
 /** Optional filters that narrow retained public workspace search. */
 export interface ConversationMessageSearchFilters {
+  /** Only conversations active at or after this time. */
+  afterMs?: number;
+  /** Annotation key, matched case-insensitively. Nested keys may continue with `#`. */
+  annotation?: string;
+  /** Only conversations active before this time. */
+  beforeMs?: number;
   /** Slack channel id of the conversation destination. */
   channelId?: string;
   /** Full-text query over retained visible message text. */

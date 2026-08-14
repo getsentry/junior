@@ -1,6 +1,17 @@
-import { and, desc, eq, isNull, ne, sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  gte,
+  isNull,
+  lt,
+  ne,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import {
+  juniorConversationAnnotations,
   juniorConversationEvents,
   juniorConversations,
   juniorDestinations,
@@ -58,6 +69,47 @@ class SqlConversationMessageSearchStore implements ConversationMessageSearchStor
     if (args.filters.channelId) {
       conditions.push(
         eq(juniorDestinations.providerDestinationId, args.filters.channelId),
+      );
+    }
+    if (
+      args.filters.afterMs !== undefined &&
+      Number.isFinite(args.filters.afterMs)
+    ) {
+      conditions.push(
+        gte(juniorConversations.lastActivityAt, new Date(args.filters.afterMs)),
+      );
+    }
+    if (
+      args.filters.beforeMs !== undefined &&
+      Number.isFinite(args.filters.beforeMs)
+    ) {
+      conditions.push(
+        lt(juniorConversations.lastActivityAt, new Date(args.filters.beforeMs)),
+      );
+    }
+    if (args.filters.annotation) {
+      const annotation = args.filters.annotation.toLowerCase();
+      const nestedAnnotationPrefix = `${annotation}#`;
+      conditions.push(
+        sql`exists (
+          select 1
+          from ${juniorConversationAnnotations}
+          where ${and(
+            eq(
+              juniorConversationAnnotations.conversationId,
+              juniorConversations.conversationId,
+            ),
+            // Exact key, or a nested child that continues with "#".
+            // Avoids sibling key collisions and partial nested-id prefixes.
+            sql`(
+              lower(${juniorConversationAnnotations.key}) = ${annotation}
+              or starts_with(
+                lower(${juniorConversationAnnotations.key}),
+                ${nestedAnnotationPrefix}
+              )
+            )`,
+          )}
+        )`,
       );
     }
 

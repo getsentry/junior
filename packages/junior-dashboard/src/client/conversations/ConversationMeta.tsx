@@ -3,6 +3,7 @@ import {
   CircleDot,
   CircleX,
   GitMerge,
+  GitPullRequest,
   Globe2,
   LockKeyhole,
   TriangleAlert,
@@ -127,6 +128,11 @@ const SIDEBAR_ICON_PRESENTATION = {
   },
   "circle-x": { className: "text-[#f85149]", Icon: CircleX, label: "Closed" },
   "git-merge": { className: "text-[#a371f7]", Icon: GitMerge, label: "Merged" },
+  "git-pull-request": {
+    className: "text-[#3fb950]",
+    Icon: GitPullRequest,
+    label: "Open pull request",
+  },
   "triangle-alert": {
     className: "text-[#d29922]",
     Icon: TriangleAlert,
@@ -174,7 +180,9 @@ export function ConversationAnnotations(props: {
           target="_blank"
           title={resourceLinkTitle(link)}
         >
-          {link.status ? <ResourceStatus status={link.status} /> : null}
+          {link.status ? (
+            <ResourceStatus status={link.status} url={link.url} />
+          ) : null}
           <span>{link.label}</span>
         </a>
       ))}
@@ -210,8 +218,29 @@ const RESOURCE_STATUS_ICON = {
   warning: "triangle-alert",
 } as const satisfies Record<ResourceLinkStatus, SidebarAnnotationIconName>;
 
-function ResourceStatus(props: { status: ResourceLinkStatus }) {
-  return <SidebarAnnotationIcon icon={RESOURCE_STATUS_ICON[props.status]} size={12} />;
+function isPullRequestUrl(url: string): boolean {
+  try {
+    return /^\/[^/]+\/[^/]+\/pull\/\d+(?:\/|$)/.test(new URL(url).pathname);
+  } catch {
+    return false;
+  }
+}
+
+function resourceStatusIcon(
+  status: ResourceLinkStatus,
+  url: string,
+): SidebarAnnotationIconName {
+  if (status === "open" && isPullRequestUrl(url)) return "git-pull-request";
+  return RESOURCE_STATUS_ICON[status];
+}
+
+function ResourceStatus(props: { status: ResourceLinkStatus; url: string }) {
+  return (
+    <SidebarAnnotationIcon
+      icon={resourceStatusIcon(props.status, props.url)}
+      size={12}
+    />
+  );
 }
 
 /** True when identity has content for the requested presentation. */

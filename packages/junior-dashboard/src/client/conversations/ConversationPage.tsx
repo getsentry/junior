@@ -305,28 +305,27 @@ function ConversationReplyFooter(props: {
     onPinRequestRef.current();
   }, []);
   const onSubmitStart = useCallback(() => {
-    cancelPendingMessagesRef.current.reset();
+    // Keep an in-flight remove intact so optimistic cache rollback stays coherent.
+    if (!cancelPendingMessagesRef.current.isPending) {
+      cancelPendingMessagesRef.current.reset();
+    }
     onPinRequestRef.current();
   }, []);
   const cancellableMessageIds = props.pendingMessages
     .filter((message) => message.clientStatus === undefined)
     .map((message) => message.inboundMessageId);
-  const cancellableMessageIdsRef = useRef(cancellableMessageIds);
-  cancellableMessageIdsRef.current = cancellableMessageIds;
-  const hasSendingOutboxMessage = props.pendingMessages.some(
-    (message) => message.clientStatus === "sending",
-  );
   const pendingGeneratedAtRef = useRef(props.pendingGeneratedAt);
   pendingGeneratedAtRef.current = props.pendingGeneratedAt;
-  const onCancelQueue = useCallback(() => {
-    const inboundMessageIds = cancellableMessageIdsRef.current;
+  const onCancelMessage = useCallback((message: ConversationMailboxMessage) => {
     const receivedBefore = pendingGeneratedAtRef.current;
-    if (!receivedBefore || inboundMessageIds.length === 0) return;
+    if (!receivedBefore) return;
     cancelPendingMessagesRef.current.mutate({
-      inboundMessageIds,
+      inboundMessageIds: [message.inboundMessageId],
       receivedBefore,
     });
   }, []);
+  const cancelTargetInboundMessageId =
+    cancelPendingMessages.variables?.inboundMessageIds[0];
   const cancelError = Boolean(
     cancelPendingMessages.error &&
     cancelPendingMessages.variables?.inboundMessageIds.some((id) =>
@@ -340,8 +339,9 @@ function ConversationReplyFooter(props: {
   }, []);
 
   return (
-    <div className="flex min-h-0 max-h-[min(55%,24rem)] shrink-0 flex-col overflow-hidden px-2 py-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] md:max-h-none md:overflow-visible md:px-7 md:py-4 md:pb-4">
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain md:overflow-visible">
+    <div className="flex w-full min-h-0 max-h-[min(55dvh,24rem)] flex-col overflow-hidden self-end px-2 pt-1.5 pb-[calc(0.375rem+env(safe-area-inset-bottom))] md:max-h-none md:overflow-visible md:self-auto md:px-7 md:py-4 md:pb-4">
+      {/* Queue chrome may scroll; keep the composer pinned below it on mobile. */}
+      <div className="min-h-0 min-w-0 shrink overflow-y-auto overscroll-contain md:overflow-visible">
         {props.live ? (
           <div className="mb-1.5 flex items-center gap-2 font-sans text-xs text-dashboard-text-muted md:hidden">
             <span
@@ -351,24 +351,22 @@ function ConversationReplyFooter(props: {
             <span>Junior is working…</span>
           </div>
         ) : null}
-        <div className="grid min-w-0">
-          {props.pendingAuthorization ? (
-            <PendingAuthorization authorization={props.pendingAuthorization} />
-          ) : null}
-          <PendingMailboxStack
-            cancelError={cancelError}
-            cancelPending={cancelPendingMessages.isPending}
-            conversation={props.conversation}
-            messages={props.pendingMessages}
-            onCancelQueue={hasSendingOutboxMessage ? undefined : onCancelQueue}
-            onLayoutChange={onMailboxLayoutChange}
-            onRetry={onRetry}
-          />
-        </div>
+        {props.pendingAuthorization ? (
+          <PendingAuthorization authorization={props.pendingAuthorization} />
+        ) : null}
+        <PendingMailboxStack
+          cancelError={cancelError}
+          cancelPending={cancelPendingMessages.isPending}
+          cancelTargetInboundMessageId={cancelTargetInboundMessageId}
+          conversation={props.conversation}
+          messages={props.pendingMessages}
+          onCancelMessage={onCancelMessage}
+          onLayoutChange={onMailboxLayoutChange}
+          onRetry={onRetry}
+        />
       </div>
-      <div className="shrink-0 pt-1.5 md:pt-0">
+      <div className="min-w-0 shrink-0">
         <ConversationComposer
-          disabled={cancelPendingMessages.isPending}
           draftId={props.conversationId}
           label="Continue this conversation"
           submitLabel="Send"

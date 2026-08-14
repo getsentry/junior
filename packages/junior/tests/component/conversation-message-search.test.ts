@@ -5,6 +5,7 @@ import { createSqlConversationEventStore } from "@/chat/conversations/sql/histor
 import { createSqlConversationMessageSearchStore } from "@/chat/conversations/sql/message-search";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
+import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { createLocalJuniorSqlFixture } from "../fixtures/sql";
 
 describe("conversation message search", () => {
@@ -158,6 +159,88 @@ describe("conversation message search", () => {
       expect(combined).toEqual([
         expect.objectContaining({
           conversationId: "slack:CREQUEST:1700000000.200000",
+        }),
+      ]);
+
+      await createPluginAnnotations({
+        conversationId: "slack:CARCHIVE:1700000000.300000",
+        db: fixture.sql.db(),
+        plugin: "code-host",
+      }).upsert({
+        kind: "resource_link",
+        key: "acme/widget_v2#12",
+        label: "acme/widget_v2#12",
+        url: "https://code.example/acme/widget_v2/changes/12",
+      });
+      await createPluginAnnotations({
+        conversationId: "slack:CREQUEST:1700000000.200000",
+        db: fixture.sql.db(),
+        plugin: "code-host",
+      }).upsert({
+        kind: "resource_link",
+        key: "acme/widget_v2extra#9",
+        label: "acme/widget_v2extra#9",
+        url: "https://code.example/acme/widget_v2extra/issues/9",
+      });
+      await seed({
+        channelId: "CNEST",
+        channelName: "nested",
+        conversationId: "slack:CNEST:1700000000.700000",
+        message: "A longer nested resource id should stay distinct.",
+        visibility: "public",
+      });
+      await createPluginAnnotations({
+        conversationId: "slack:CNEST:1700000000.700000",
+        db: fixture.sql.db(),
+        plugin: "code-host",
+      }).upsert({
+        kind: "resource_link",
+        key: "acme/widget_v2#123",
+        label: "acme/widget_v2#123",
+        url: "https://code.example/acme/widget_v2/changes/123",
+      });
+
+      const annotated = await search.search({
+        currentConversationId: "slack:CREQUEST:1700000000.100000",
+        filters: {
+          afterMs: 1_749_999_999_000,
+          beforeMs: 1_750_000_001_000,
+          annotation: "ACME/WIDGET_V2",
+        },
+        limit: 10,
+        scope: {
+          kind: "public_provider_tenant",
+          provider: "slack",
+          providerTenantId: "T123",
+        },
+      });
+      expect(annotated).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            conversationId: "slack:CARCHIVE:1700000000.300000",
+          }),
+          expect.objectContaining({
+            conversationId: "slack:CNEST:1700000000.700000",
+          }),
+        ]),
+      );
+      expect(annotated).toHaveLength(2);
+
+      const exactNested = await search.search({
+        currentConversationId: "slack:CREQUEST:1700000000.100000",
+        filters: {
+          annotation: "acme/widget_v2#12",
+        },
+        limit: 10,
+        scope: {
+          kind: "public_provider_tenant",
+          provider: "slack",
+          providerTenantId: "T123",
+        },
+      });
+      expect(exactNested).toEqual([
+        expect.objectContaining({
+          conversationId: "slack:CARCHIVE:1700000000.300000",
         }),
       ]);
     } finally {

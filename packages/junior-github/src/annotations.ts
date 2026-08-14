@@ -32,6 +32,27 @@ function repositoryScope(
   }
 }
 
+function isPullRequestUrl(url: string): boolean {
+  try {
+    return /^\/[^/]+\/[^/]+\/pull\/\d+(?:\/|$)/.test(new URL(url).pathname);
+  } catch {
+    return false;
+  }
+}
+
+function sidebarIconForStatus(
+  status: GitHubAnnotationStatus,
+  links: Array<{ isPullRequest: boolean; status: GitHubAnnotationStatus }>,
+): ConversationSidebarAnnotation["icon"] {
+  if (
+    status === "open" &&
+    links.some((link) => link.status === "open" && link.isPullRequest)
+  ) {
+    return "git-pull-request";
+  }
+  return STATUS_ICON[status];
+}
+
 /** Select the one GitHub annotation summary shown in a conversation row. */
 export function githubSidebarAnnotation(
   annotations: ConversationAnnotation[],
@@ -39,7 +60,9 @@ export function githubSidebarAnnotation(
   const links = annotations.flatMap((annotation) => {
     const repo = repositoryScope(annotation);
     const status = annotation.status as GitHubAnnotationStatus | undefined;
-    return repo && status ? [{ repo, status }] : [];
+    return repo && status
+      ? [{ isPullRequest: isPullRequestUrl(annotation.url), repo, status }]
+      : [];
   });
   if (links.length === 0) return undefined;
   const repos = new Map(links.map((link) => [link.repo.key, link.repo.label]));
@@ -49,7 +72,7 @@ export function githubSidebarAnnotation(
     "closed",
   );
   return {
-    icon: STATUS_ICON[status],
+    icon: sidebarIconForStatus(status, links),
     key: "github",
     label: repos.size === 1 ? [...repos.values()][0]! : `${repos.size} repos`,
   };

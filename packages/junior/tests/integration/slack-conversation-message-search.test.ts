@@ -97,6 +97,9 @@ describe("searchConversationMessages", () => {
     });
 
     const filtered = await executeTool(tool, {
+      after: null,
+      annotation: null,
+      before: null,
       channel_id: "CARCHIVE",
       query: null,
       limit: null,
@@ -114,6 +117,9 @@ describe("searchConversationMessages", () => {
 
     await expect(
       executeTool(tool, {
+        after: null,
+        annotation: null,
+        before: null,
         channel_id: null,
         query: null,
         limit: null,
@@ -122,7 +128,21 @@ describe("searchConversationMessages", () => {
 
     await expect(
       executeTool(tool, {
+        after: null,
+        annotation: null,
+        before: null,
         channel_id: "not-a-channel",
+        query: null,
+        limit: null,
+      }),
+    ).rejects.toBeInstanceOf(ToolInputError);
+
+    await expect(
+      executeTool(tool, {
+        after: "2024-13-01T00:00:00.000Z",
+        annotation: null,
+        before: null,
+        channel_id: "CARCHIVE",
         query: null,
         limit: null,
       }),
