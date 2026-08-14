@@ -98,4 +98,68 @@ describe("conversation publish API", () => {
       error: "Conversation not found.",
     });
   });
+
+  it("refuses destinations shared by other private roots", async () => {
+    const store = getConversationStore();
+    await store.recordActivity({
+      actor: {
+        email: "owner@example.com",
+        fullName: "Owner Example",
+        platform: "slack",
+        slackUserId: "UOWNER",
+        teamId: "TSHARE",
+      },
+      conversationId: "slack:CSHARE:1700000000.000100",
+      destination: {
+        channelId: "CSHARE",
+        platform: "slack",
+        teamId: "TSHARE",
+      },
+      nowMs: 1_000,
+      source: "slack",
+      title: "First private thread",
+      visibility: "private",
+    });
+    await store.recordActivity({
+      actor: {
+        email: "owner@example.com",
+        fullName: "Owner Example",
+        platform: "slack",
+        slackUserId: "UOWNER",
+        teamId: "TSHARE",
+      },
+      conversationId: "slack:CSHARE:1700000000.000200",
+      destination: {
+        channelId: "CSHARE",
+        platform: "slack",
+        teamId: "TSHARE",
+      },
+      nowMs: 2_000,
+      source: "slack",
+      title: "Second private thread",
+      visibility: "private",
+    });
+
+    const owner = authenticatedApi("owner@example.com");
+    const response = await owner.request(
+      "http://localhost/api/conversations/slack%3ACSHARE%3A1700000000.000100/publish",
+      { method: "POST" },
+    );
+    expect(response.status).toBe(409);
+    expect(apiErrorSchema.parse(await response.json())).toEqual({
+      error:
+        "This destination is shared by other conversations, so it cannot be made public from one conversation.",
+    });
+
+    const detail = await owner.request(
+      "http://localhost/api/conversations/slack%3ACSHARE%3A1700000000.000100",
+    );
+    expect(detail.status).toBe(200);
+    expect(
+      conversationDetailReportSchema.parse(await detail.json()),
+    ).toMatchObject({
+      conversationId: "slack:CSHARE:1700000000.000100",
+      visibility: "private",
+    });
+  });
 });

@@ -1,4 +1,4 @@
-import { and, eq, ne, sql } from "drizzle-orm";
+import { and, eq, isNull, ne, sql } from "drizzle-orm";
 import type { User } from "@sentry/junior-plugin-api";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { resolveRootVisibility } from "@/chat/conversations/sql/privacy";
@@ -10,6 +10,9 @@ import { readConversationAccessFromSql } from "./access";
 /**
  * Make one conversation public by flipping its root destination visibility.
  * One-way only: non-public becomes public; already-public stays public.
+ *
+ * Refuses destinations shared by other roots so one publish cannot expose
+ * unrelated private conversations on the same channel.
  */
 export async function publishConversationForViewer(
   viewer: User,
@@ -52,6 +55,32 @@ export async function publishConversationForViewer(
     throwApiError(409, "Conversation has no destination to publish.");
   }
 
+  // Already public is success without re-checking shared roots: the flip is
+  // one-way and the destination is already exposed.
+  if (root.visibility === "public") {
+    return { visibility: "public" };
+  }
+
+  const [shared] = await executor
+    .db()
+    .select({
+      count: sql<number>`count(*)::int`,
+    })
+    .from(juniorConversations)
+    .where(
+      and(
+        eq(juniorConversations.destinationId, destination.destinationId),
+        isNull(juniorConversations.parentConversationId),
+        ne(juniorConversations.conversationId, root.rootConversationId),
+      ),
+    );
+  if ((shared?.count ?? 0) > 0) {
+    throwApiError(
+      409,
+      "This destination is shared by other conversations, so it cannot be made public from one conversation.",
+    );
+  }
+
   const updated = await executor
     .db()
     .update(juniorDestinations)
@@ -67,7 +96,7 @@ export async function publishConversationForViewer(
     )
     .returning({ id: juniorDestinations.id });
 
-  // Already public is success: one-way publish is idempotent for participants.
+  // Concurrent publish can win the race; treat already-public as success.
   if (updated.length === 0) {
     const [existing] = await executor
       .db()
