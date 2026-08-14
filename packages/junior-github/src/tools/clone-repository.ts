@@ -31,7 +31,7 @@ const inputSchema = z
 const cloneSchema = z.object({
   path: z.string(),
   repo: z.string(),
-  associatedWorkspaces: z.array(z.string()),
+  workspaces: z.array(z.string()),
 });
 type Clone = z.output<typeof cloneSchema>;
 interface Result extends PluginToolOutput, Clone {
@@ -104,7 +104,7 @@ export function createGitHubCloneRepositoryTool(
       readOnlyHint: true,
     },
     description:
-      "Clone a GitHub repository into the sandbox workspace. The destination must not already exist. The result lists associated Workspaces that can replace the sandbox with a prepared snapshot.",
+      "Clone a GitHub repository into the sandbox workspace. The destination must not already exist.",
     describeProposal(input) {
       const directory =
         typeof input.directory === "string" && input.directory.length > 0
@@ -182,17 +182,21 @@ export function createGitHubCloneRepositoryTool(
         );
       }
       const repoId = `${repo.owner}/${repo.name}`;
-      let associatedWorkspaces;
+      let workspaces: string[] = [];
       try {
-        associatedWorkspaces = await ctx.workspaces.findByRepository({
+        workspaces = await ctx.workspaces.findByRepository({
           provider: "github",
           repo: repoId,
         });
       } catch (error) {
-        await removePartialClone(ctx, path);
-        throw error;
+        // Clone already succeeded; keep the checkout and surface the lookup as a
+        // host diagnostic rather than failing the tool.
+        ctx.log.error("github.clone.workspaces_lookup.failed", {
+          repo: repoId,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
-      const data = { repo: repoId, path, associatedWorkspaces };
+      const data = { repo: repoId, path, workspaces };
       return { target: "cloneRepository", ...data };
     },
   });

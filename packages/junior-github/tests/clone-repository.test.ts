@@ -78,7 +78,7 @@ describe("cloneRepository", () => {
     });
   });
 
-  it("returns associated Workspace hints", async () => {
+  it("returns Workspace hints", async () => {
     const run = vi
       .fn()
       .mockResolvedValueOnce({ exitCode: 0, stdout: "", stderr: "" })
@@ -99,7 +99,7 @@ describe("cloneRepository", () => {
       repo: "getsentry/junior",
     });
     expect(result).toMatchObject({
-      associatedWorkspaces: ["junior", "sentry"],
+      workspaces: ["junior", "sentry"],
     });
   });
 
@@ -178,27 +178,34 @@ describe("cloneRepository", () => {
     });
   });
 
-  it("removes the clone when associated Workspace lookup fails", async () => {
+  it("keeps the clone when Workspace lookup fails", async () => {
     const lookup = new Error("workspace lookup failed");
     const run = vi
       .fn()
       .mockResolvedValueOnce({ exitCode: 0, stdout: "", stderr: "" })
       .mockResolvedValueOnce({ exitCode: 1, stdout: "", stderr: "" })
-      .mockResolvedValueOnce({ exitCode: 0, stdout: "", stderr: "" })
       .mockResolvedValueOnce({ exitCode: 0, stdout: "", stderr: "" });
     const findByRepository = vi.fn().mockRejectedValue(lookup);
-    const tool = createGitHubCloneRepositoryTool(
-      context(run, findByRepository),
+    const ctx = context(run, findByRepository);
+    const tool = createGitHubCloneRepositoryTool(ctx);
+
+    const result = await tool.execute!(
+      { repo: "getsentry/junior" },
+      {} as never,
     );
 
-    await expect(
-      tool.execute!({ repo: "getsentry/junior" }, {} as never),
-    ).rejects.toBe(lookup);
-    expect(run).toHaveBeenNthCalledWith(4, {
-      cmd: "rm",
-      args: ["-rf", "--", "/vercel/sandbox/repos/junior"],
-      cwd: "/vercel/sandbox",
-      signal: expect.any(AbortSignal),
+    expect(result).toMatchObject({
+      path: "/vercel/sandbox/repos/junior",
+      repo: "getsentry/junior",
+      workspaces: [],
     });
+    expect(ctx.log.error).toHaveBeenCalledWith(
+      "github.clone.workspaces_lookup.failed",
+      {
+        repo: "getsentry/junior",
+        error: "workspace lookup failed",
+      },
+    );
+    expect(run).toHaveBeenCalledTimes(3);
   });
 });
