@@ -96,7 +96,7 @@ export function WorkspaceFormPage() {
     },
   });
 
-  if (editing && !workspaceQuery.data && !workspaceQuery.error) {
+  if (editing && !workspaceQuery.error && (!workspaceQuery.data || !draft)) {
     return (
       <SystemPageLayout>
         <LoadingView label="Loading Workspace" />
