@@ -520,6 +520,14 @@ export interface PluginResourceEventToolContext {
   canSubscribe: boolean;
 }
 
+export interface PluginWorkspaceToolContext {
+  /** Find named Workspaces that include one provider repository. */
+  findByRepository(input: {
+    provider: string;
+    repo: string;
+  }): Promise<string[]>;
+}
+
 interface BaseToolRegistrationHookContext extends PluginContext {
   /**
    * Opaque Junior conversation/session identity for this turn.
@@ -542,6 +550,7 @@ interface BaseToolRegistrationHookContext extends PluginContext {
     resolveActor(): Promise<{ identity: Identity; user?: User } | undefined>;
   };
   userText?: string;
+  workspaces: PluginWorkspaceToolContext;
 }
 
 interface SlackToolRegistrationContext

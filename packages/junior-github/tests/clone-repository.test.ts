@@ -2,7 +2,10 @@ import type { ToolRegistrationHookContext } from "@sentry/junior-plugin-api";
 import { describe, expect, it, vi } from "vitest";
 import { createGitHubCloneRepositoryTool } from "../src/tools/clone-repository.js";
 
-function context(run: ReturnType<typeof vi.fn>): ToolRegistrationHookContext {
+function context(
+  run: ReturnType<typeof vi.fn>,
+  findByRepository = vi.fn().mockResolvedValue([]),
+): ToolRegistrationHookContext {
   return {
     log: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
     sandbox: {
@@ -12,6 +15,7 @@ function context(run: ReturnType<typeof vi.fn>): ToolRegistrationHookContext {
       readFile: vi.fn(),
       writeFile: vi.fn(),
     },
+    workspaces: { findByRepository },
   } as unknown as ToolRegistrationHookContext;
 }
 
@@ -71,6 +75,31 @@ describe("cloneRepository", () => {
     expect(result).toMatchObject({
       path: "/vercel/sandbox/repos/junior",
       repo: "getsentry/junior",
+    });
+  });
+
+  it("returns associated Workspace hints", async () => {
+    const run = vi
+      .fn()
+      .mockResolvedValueOnce({ exitCode: 0, stdout: "", stderr: "" })
+      .mockResolvedValueOnce({ exitCode: 1, stdout: "", stderr: "" })
+      .mockResolvedValueOnce({ exitCode: 0, stdout: "", stderr: "" });
+    const findByRepository = vi.fn().mockResolvedValue(["junior", "sentry"]);
+    const tool = createGitHubCloneRepositoryTool(
+      context(run, findByRepository),
+    );
+
+    const result = await tool.execute!(
+      { repo: "getsentry/junior" },
+      {} as never,
+    );
+
+    expect(findByRepository).toHaveBeenCalledWith({
+      provider: "github",
+      repo: "getsentry/junior",
+    });
+    expect(result).toMatchObject({
+      associatedWorkspaces: ["junior", "sentry"],
     });
   });
 

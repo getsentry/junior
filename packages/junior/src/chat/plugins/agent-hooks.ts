@@ -51,6 +51,7 @@ import { resolveChannelCapabilities } from "@/chat/slack/tool-support/channel-ca
 import type { Actor } from "@/chat/actor";
 import { z } from "zod";
 import { workspaceRepoCheckoutPath } from "@/chat/workspaces/checkout-path";
+import { listWorkspaceNamesByRepository } from "@/chat/workspaces/store";
 
 /** Signal that a plugin intentionally denied a tool execution. */
 export class PluginHookDeniedError extends Error {
@@ -632,6 +633,11 @@ export function getPluginTools(
       sandbox,
       state: createPluginState(pluginName),
       users: { resolveActor },
+      workspaces: {
+        async findByRepository(input: { provider: string; repo: string }) {
+          return await listWorkspaceNamesByRepository(getDb(), input);
+        },
+      },
     };
     let pluginContext: ToolRegistrationHookContext;
     switch (context.source.platform) {

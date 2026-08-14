@@ -18,7 +18,8 @@ const inputSchema = z
         (value) =>
           !value.split("/").some((part) => part === "." || part === ".."),
         {
-          message: "Directory must be a relative path without . or .. segments.",
+          message:
+            "Directory must be a relative path without . or .. segments.",
         },
       )
       .describe(
@@ -30,6 +31,7 @@ const inputSchema = z
 const cloneSchema = z.object({
   path: z.string(),
   repo: z.string(),
+  associatedWorkspaces: z.array(z.string()),
 });
 type Clone = z.output<typeof cloneSchema>;
 interface Result extends PluginToolOutput, Clone {
@@ -102,7 +104,7 @@ export function createGitHubCloneRepositoryTool(
       readOnlyHint: true,
     },
     description:
-      "Clone a GitHub repository into the sandbox workspace. The destination must not already exist.",
+      "Clone a GitHub repository into the sandbox workspace. The destination must not already exist. The result lists associated Workspaces that can replace the sandbox with a prepared snapshot.",
     describeProposal(input) {
       const directory =
         typeof input.directory === "string" && input.directory.length > 0
@@ -179,7 +181,12 @@ export function createGitHubCloneRepositoryTool(
           `GitHub repository clone failed: ${clone.stderr.trim() || `exit ${clone.exitCode}`}`,
         );
       }
-      const data = { repo: `${repo.owner}/${repo.name}`, path };
+      const repoId = `${repo.owner}/${repo.name}`;
+      const associatedWorkspaces = await ctx.workspaces.findByRepository({
+        provider: "github",
+        repo: repoId,
+      });
+      const data = { repo: repoId, path, associatedWorkspaces };
       return { target: "cloneRepository", ...data };
     },
   });
