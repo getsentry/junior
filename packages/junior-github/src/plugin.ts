@@ -473,6 +473,43 @@ function githubApiWriteGrantName(
   return undefined;
 }
 
+function reviewThreadResolveRepository(
+  operation: string | undefined,
+  method: string,
+  upstreamUrl: URL,
+  bodyText: string | undefined,
+): string | undefined {
+  const prefix = "github.pull.review-thread.resolve:";
+  if (
+    method !== "POST" ||
+    !isGitHubGraphqlUrl(upstreamUrl) ||
+    !operation?.startsWith(prefix)
+  ) {
+    return undefined;
+  }
+  const repository = operation.slice(prefix.length);
+  if (!/^[^/]+\/[^/]+$/.test(repository)) return undefined;
+  const parsed = parseGitHubGraphqlRequest(bodyText);
+  if (
+    parsed?.operationName !== "ResolveReviewThread" ||
+    !/\bmutation\s+ResolveReviewThread\b/.test(parsed.normalized) ||
+    !/\bresolveReviewThread\b/.test(parsed.normalized)
+  ) {
+    return undefined;
+  }
+  return repository;
+}
+
+function repositoryLeaseScopeFromRef(repository: string): string {
+  const [owner, name] = repository.split("/");
+  if (!owner || !name) {
+    throw new EgressPolicyDenied(
+      "GitHub review thread resolution does not identify a target repository.",
+    );
+  }
+  return githubRepositoryLeaseScope({ owner, name });
+}
+
 function isGitHubGraphqlMutation(
   method: string,
   upstreamUrl: URL,
@@ -600,6 +637,21 @@ async function githubGrantForEgress(
         : "github.installation-write",
       writeGrantName,
       repositoryLeaseScope(upstreamUrl),
+    );
+  }
+
+  const reviewThreadRepository = reviewThreadResolveRepository(
+    ctx.request.operation,
+    method,
+    upstreamUrl,
+    ctx.request.bodyText,
+  );
+  if (reviewThreadRepository) {
+    return grantForAccess(
+      "write",
+      "github.installation-write",
+      "installation-write",
+      repositoryLeaseScopeFromRef(reviewThreadRepository),
     );
   }
 
@@ -835,7 +887,7 @@ export function githubPlugin(
         });
       },
       tools(ctx) {
-        return createGitHubTools(ctx);
+        return createGitHubTools(ctx, readEnv(botEmailEnv));
       },
       workspacePrepare: prepareWorkspace,
       async sandboxPrepare(ctx) {

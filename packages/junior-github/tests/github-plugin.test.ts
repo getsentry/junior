@@ -1801,6 +1801,47 @@ Conversation: \`local:test:old-conversation\`
     });
   });
 
+  it("allows only the typed resolveReviewThread mutation with repository scope", async () => {
+    const bodyText = JSON.stringify({
+      operationName: "ResolveReviewThread",
+      query:
+        "mutation ResolveReviewThread($threadId: ID!) { resolveReviewThread(input: {threadId: $threadId}) { thread { id isResolved } } }",
+      variables: { threadId: "PRRT_kwDOthread" },
+    });
+    await expect(
+      grantForEgress({
+        method: "POST",
+        operation: "github.pull.review-thread.resolve:getsentry/junior",
+        url: "https://api.github.com/graphql",
+        bodyText,
+      }),
+    ).resolves.toMatchObject({
+      name: "installation-write",
+      access: "write",
+      leaseScope: "repository:getsentry/junior",
+      reason: "github.installation-write",
+    });
+    await expect(
+      grantForEgress({
+        method: "POST",
+        url: "https://api.github.com/graphql",
+        bodyText,
+      }),
+    ).rejects.toThrow("GraphQL mutations are not enabled");
+    await expect(
+      grantForEgress({
+        method: "POST",
+        operation: "github.pull.review-thread.resolve:getsentry/junior",
+        url: "https://api.github.com/graphql",
+        bodyText: JSON.stringify({
+          operationName: "AddIssueComment",
+          query:
+            "mutation AddIssueComment { addComment(input: {subjectId: \"I_kwDO\", body: \"test\"}) { clientMutationId } }",
+        }),
+      }),
+    ).rejects.toThrow("GraphQL mutations are not enabled");
+  });
+
   it("denies GitHub GraphQL mutations and unparseable bodies", async () => {
     await expect(
       grantForEgress({

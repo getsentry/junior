@@ -11,10 +11,12 @@ import { createGitHubGetReleaseTool } from "./tools/get-release.js";
 import { createGitHubGetRepositoryTool } from "./tools/get-repository.js";
 import { createGitHubUpdateIssueTool } from "./tools/update-issue.js";
 import { createGitHubUpdatePullRequestTool } from "./tools/update-pull-request.js";
+import { createGitHubResolvePullRequestReviewThreadTool } from "./tools/resolve-pull-request-review-thread.js";
 
 /** Build the GitHub plugin's runtime tools from their per-tool modules. */
 export function createGitHubTools(
   ctx: ToolRegistrationHookContext,
+  botEmail?: string,
 ): Record<string, PluginToolDefinition> {
   return {
     cloneRepository: createGitHubCloneRepositoryTool(ctx),
@@ -24,6 +26,8 @@ export function createGitHubTools(
     getPullRequest: createGitHubGetPullRequestTool(ctx),
     getRelease: createGitHubGetReleaseTool(ctx),
     getRepository: createGitHubGetRepositoryTool(ctx),
+    resolvePullRequestReviewThread:
+      createGitHubResolvePullRequestReviewThreadTool(ctx, botEmail),
     updateIssue: createGitHubUpdateIssueTool(ctx),
     updatePullRequest: createGitHubUpdatePullRequestTool(ctx),
   };
