@@ -204,15 +204,15 @@ function SidebarAnnotationOverflowCluster(props: {
 }) {
   if (props.annotations.length === 0) return null;
   return (
-    <span className="inline-flex h-5 shrink-0 items-center gap-1 overflow-visible rounded-full border border-white/10 bg-dashboard-control py-0 pl-1.5 pr-1 font-mono text-2xs leading-none text-dashboard-text-muted">
+    <span className="inline-flex h-5 shrink-0 items-center gap-1 overflow-visible rounded-full border border-white/10 bg-dashboard-control py-0 pl-1 pr-1.5 font-mono text-2xs leading-none text-dashboard-text-muted">
+      <SidebarAnnotationIconFacepile
+        annotations={props.annotations}
+        // Every chip belongs to one continuous stack on the cluster fill.
+        cutoutColor="var(--color-dashboard-control)"
+      />
       <span className="tabular-nums leading-none">
         +{props.annotations.length}
       </span>
-      <SidebarAnnotationIconFacepile
-        annotations={props.annotations}
-        // Chips live on the cluster fill (#111114).
-        cutoutColor="var(--color-dashboard-control)"
-      />
     </span>
   );
 }
