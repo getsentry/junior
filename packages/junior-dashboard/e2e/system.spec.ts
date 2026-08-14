@@ -37,6 +37,7 @@ test("shows system usage and plugin details", async ({ page }) => {
     "Overview",
     "People",
     "Locations",
+    "Workspaces",
     "Plugins",
   ]);
   const pluginsLink = systemNavigation.getByRole("link", {
@@ -79,6 +80,7 @@ test("keeps System navigation usable on mobile", async ({ page }) => {
     "Overview",
     "People",
     "Locations",
+    "Workspaces",
     "Plugins",
   ]);
   await systemNavigation.getByRole("link", { name: "Plugins" }).click();

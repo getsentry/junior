@@ -1608,6 +1608,7 @@ describe("dashboard canonical-event components", () => {
     expect(systemHtml).toContain('aria-label="System navigation"');
     expect(systemHtml).toContain('href="/system/people"');
     expect(systemHtml).toContain('href="/system/locations"');
+    expect(systemHtml).toContain('href="/system/workspaces"');
     expect(systemHtml).toContain('href="/system/plugins"');
     expect(systemHtml).toContain(">Plugins</a>");
     expect(systemHtml).not.toContain(">Capabilities<");

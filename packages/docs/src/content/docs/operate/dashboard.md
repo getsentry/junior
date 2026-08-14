@@ -87,6 +87,7 @@ The dashboard package owns these routes:
 | `/system/people/:email`         | Actor activity profile.                     |
 | `/system/locations`             | Public location activity directory.         |
 | `/system/locations/:location`   | Public location activity detail.            |
+| `/system/workspaces`            | Install-wide repository Workspace recipes.  |
 | `/system/plugins`               | Loaded plugin and skill inventory.          |
 | `/system/plugins/:plugin`       | Plugin details and operational reports.     |
 | `/_junior/dashboard/client.js`  | Authenticated dashboard browser bundle.     |

@@ -458,6 +458,8 @@ function dashboardHostRoutePaths(dashboard: JuniorDashboardOptions): string[] {
     "/api/people/*",
     "/api/personal-tokens",
     "/api/personal-tokens/*",
+    "/api/workspaces",
+    "/api/workspaces/*",
     "/api/config",
     "/api/me",
     authPath,

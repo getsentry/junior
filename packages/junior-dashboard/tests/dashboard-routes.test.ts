@@ -72,6 +72,7 @@ describe("dashboard routes", () => {
       "/memories/memory-1",
       "/settings",
       "/settings/api-tokens",
+      "/system/workspaces",
     ]) {
       const response = await app.fetch(new Request(`http://localhost${path}`));
       expect(response.status).toBe(302);
@@ -436,6 +437,7 @@ describe("dashboard routes", () => {
       "/memories/memory-1",
       "/settings",
       "/settings/api-tokens",
+      "/system/workspaces",
       "/plugins/memory/memories",
       "/plugins/memory/memories/library",
     ]) {

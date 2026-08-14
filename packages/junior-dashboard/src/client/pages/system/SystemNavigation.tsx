@@ -5,6 +5,7 @@ const systemNavigationItems = [
   { end: true, label: "Overview", to: "/system" },
   { label: "People", to: "/system/people" },
   { label: "Locations", to: "/system/locations" },
+  { label: "Workspaces", to: "/system/workspaces" },
   { label: "Plugins", to: systemPluginsPath },
 ];
 

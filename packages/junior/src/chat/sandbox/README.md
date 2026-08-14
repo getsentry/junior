@@ -50,7 +50,8 @@ traffic through verified host egress.
   steps for that profile.
 - A Workspace recipe is part of the profile hash. One build installs runtime
   dependencies, prepares repositories, runs setup, and captures the complete
-  snapshot.
+  snapshot. Operators manage recipes from `/system/workspaces` or
+  `/api/workspaces`.
 - Workspace repositories clone to fixed `repos/{name}` paths. Setup scripts
   receive `JUNIOR_WORKSPACE_ROOT` and `JUNIOR_REPOS_ROOT` so they do not depend
   on the provider's absolute Sandbox path.
