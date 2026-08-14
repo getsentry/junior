@@ -46,9 +46,8 @@ export interface AgentSandboxOptions {
     recipe: Workspace,
     signal?: AbortSignal,
   ): Promise<void>;
-  /** In-memory run hint. null means cleared; undefined means unknown/unchanged. */
-  onSandboxRefChanged(sandboxRef: SandboxRef | null | undefined): void;
-  persistSandboxRef?(sandboxRef: SandboxRef | null): void | Promise<void>;
+  onSandboxRefChanged(sandboxRef: SandboxRef): void;
+  persistSandboxRef?(sandboxRef: SandboxRef): void | Promise<void>;
 }
 
 export interface AgentSandbox {
@@ -158,7 +157,6 @@ export function createAgentSandbox(options: AgentSandboxOptions): AgentSandbox {
     prepare: options.prepareSandbox,
     prepareWorkspace: options.prepareWorkspace,
     onSandboxRefChanged: async (sandboxRef) => {
-      // Keep null as a clear signal for the final post-run persist fallback.
       options.onSandboxRefChanged(sandboxRef);
       await options.persistSandboxRef?.(sandboxRef);
     },

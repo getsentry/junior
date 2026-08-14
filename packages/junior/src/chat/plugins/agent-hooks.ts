@@ -93,7 +93,7 @@ export interface PluginHookRunner {
   afterMcpTool(input: AfterMcpToolHookInput): Promise<void>;
   beforeToolExecute(input: ToolHookInput): Promise<ToolHookResult>;
   prepareSandbox(workspace: SandboxWorkspace): Promise<void>;
-  prepareWorkspace?(
+  prepareWorkspace(
     workspace: SandboxWorkspace,
     repos: Array<{
       provider: string;

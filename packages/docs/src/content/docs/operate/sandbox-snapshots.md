@@ -37,7 +37,7 @@ Junior computes the snapshot profile from its global baseline and loaded plugin 
 | npm dependencies     | Global and plugin `runtime-dependencies` entries with `type: npm`.    |
 | system dependencies  | Global and plugin `runtime-dependencies` entries with `type: system`. |
 | postinstall commands | Global and plugin `runtime-postinstall` entries.                      |
-| Workspace recipe     | Repository providers, names, checkout paths, and setup script.        |
+| Workspace recipe     | Repository providers, identifiers, and setup script.                  |
 | manual rebuild epoch | `SANDBOX_SNAPSHOT_REBUILD_EPOCH`, when set.                           |
 
 Any change to those inputs produces a new profile hash and a new snapshot.

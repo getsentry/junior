@@ -290,7 +290,7 @@ export function createAgentInvocationWorker(options: {
     const lifecycle = new ConversationTurnLifecycleService(
       getConversationEventStore(),
     );
-    let sandboxRef: SandboxRef | null | undefined;
+    let sandboxRef: SandboxRef | undefined;
     let history: PiMessage[];
     try {
       if (invocation.childConversationId !== context.conversationId) {
@@ -376,14 +376,12 @@ export function createAgentInvocationWorker(options: {
         disabledFeatures: ["handoff", "interactive-auth", "subagents"],
         reasoning: invocation.reasoningLevel,
         state: {
-          // Agent run state only tracks a live/absent ref, not an explicit clear.
-          sandboxRef: sandboxRef ?? undefined,
+          sandboxRef,
         },
         durability: {
           onInputCommitted: acknowledge,
           shouldYield: context.shouldYield,
           onSandboxRefChanged: async (nextSandboxRef) => {
-            // Keep null so a failed inline persist still clears on final write.
             sandboxRef = nextSandboxRef;
             await persistThreadStateById(invocation.childConversationId, {
               sandboxRef,
@@ -444,8 +442,7 @@ export function createAgentInvocationWorker(options: {
     const result = outcome.result;
     const failed = result.diagnostics.outcome !== "success";
     await persistThreadStateById(invocation.childConversationId, {
-      sandboxRef:
-        result.sandboxRef !== undefined ? result.sandboxRef : sandboxRef,
+      sandboxRef: result.sandboxRef ?? sandboxRef,
     });
     if (result.piMessages?.length) {
       await saveTurnCheckpoint({

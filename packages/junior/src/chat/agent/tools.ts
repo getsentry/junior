@@ -95,7 +95,7 @@ interface ToolWiringArgs {
   invokedSkill: SkillMetadata | null;
   onEvent?: (event: AgentEvent) => void | Promise<void>;
   onFatalToolError(error: Error): void;
-  onSandboxRefChanged: (sandboxRef: SandboxRef | null | undefined) => void;
+  onSandboxRefChanged: (sandboxRef: SandboxRef) => void;
   preAgentPromptMessages: () => PiMessage[];
   recordConnectedMcpProvider: (provider: string) => Promise<void>;
   requestHandoff?: ToolRuntimeContext["handoff"];
@@ -240,7 +240,7 @@ export async function wireAgentTools(
     getActiveSkill: () => args.skillSandbox.getActiveSkill(),
     prepareSandbox: pluginHooks.prepareSandbox,
     prepareWorkspace: async (sandbox, recipe, signal) =>
-      await pluginHooks.prepareWorkspace?.(sandbox, recipe.repos, signal),
+      await pluginHooks.prepareWorkspace(sandbox, recipe.repos, signal),
     onSandboxRefChanged: args.onSandboxRefChanged,
     persistSandboxRef: args.durability.onSandboxRefChanged,
   });

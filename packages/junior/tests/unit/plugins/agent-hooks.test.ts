@@ -1720,7 +1720,7 @@ describe("agent plugin hooks", () => {
         runCommand,
       };
 
-      await createPluginHookRunner().prepareWorkspace?.(
+      await createPluginHookRunner().prepareWorkspace(
         sandbox,
         [
           {
@@ -1762,7 +1762,7 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       await expect(
-        createPluginHookRunner().prepareWorkspace?.(fakeSandbox([]), [
+        createPluginHookRunner().prepareWorkspace(fakeSandbox([]), [
           {
             provider: "agent-demo",
             repo: "example/demo",
@@ -1796,7 +1796,7 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       await expect(
-        createPluginHookRunner().prepareWorkspace?.(fakeSandbox([]), [
+        createPluginHookRunner().prepareWorkspace(fakeSandbox([]), [
           {
             provider: "github",
             repo: "getsentry/sentry",

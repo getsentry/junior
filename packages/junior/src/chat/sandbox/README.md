@@ -19,9 +19,10 @@ traffic through verified host egress.
   to this module.
 - An unavailable session fails the current operation without replay, retains
   its sandbox identifier, and reacquires a session only on a later operation.
-- New or replacement references are persisted before session preparation can
-  perform further asynchronous work. Reacquiring a VM session for the same
-  reference does not rewrite durable state.
+- New base Sandbox references are persisted before session preparation can
+  perform further asynchronous work. A Workspace switch persists its prepared
+  candidate before replacing the live Sandbox. Reacquiring a VM session for
+  the same reference does not rewrite durable state.
 - Agent runs do not stop sandboxes when they finish. Explicit temporary owners,
   such as dependency snapshot creation, own their own stop lifecycle.
 - Do not treat the sandbox filesystem as product storage.

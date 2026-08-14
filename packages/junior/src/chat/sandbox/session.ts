@@ -17,6 +17,7 @@ import {
   wrapSandboxSetupError,
 } from "@/chat/sandbox/errors";
 import { buildNonInteractiveShellScript } from "@/chat/sandbox/noninteractive-command";
+import { prepareWorkspaceSnapshot } from "@/chat/sandbox/prepare-workspace";
 import { getSandboxResources } from "@/chat/sandbox/resources";
 import { hash as profileHash } from "@/chat/sandbox/snapshot/profile";
 import {
@@ -36,7 +37,7 @@ import { sleep } from "@/chat/sleep";
 import type { SkillMetadata } from "@/chat/skills";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import type { Workspace } from "@/chat/workspaces/types";
-import { SANDBOX_REPOS_ROOT, SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
+import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 
 const DEFAULT_MAX_OUTPUT_LENGTH = 30_000;
 const DEFAULT_BASH_COMMAND_TIMEOUT_MS = 5 * 60 * 1000;
@@ -399,6 +400,7 @@ export function createSandboxRuntime(
     sandboxName: string;
     signal?: AbortSignal;
     workspace?: Workspace;
+    prepareWorkspace?: (sandbox: SandboxSession) => Promise<void>;
   }): Promise<SandboxSession> => {
     const {
       runtime,
@@ -407,6 +409,7 @@ export function createSandboxRuntime(
       sandboxName,
       signal,
       workspace,
+      prepareWorkspace,
     } = params;
     signal?.throwIfAborted();
 
@@ -449,10 +452,7 @@ export function createSandboxRuntime(
         staleSnapshotId: snapshot.snapshotId,
         signal,
         workspace,
-        prepareWorkspace: workspace
-          ? async (sandbox) =>
-              await prepareWorkspaceSnapshot(sandbox, workspace, signal)
-          : undefined,
+        prepareWorkspace,
       });
       if (!rebuiltSnapshot.snapshotId) {
         throw error;
@@ -468,37 +468,6 @@ export function createSandboxRuntime(
     }
   };
 
-  const prepareWorkspaceSnapshot = async (
-    sandbox: SandboxSession,
-    workspace: Workspace,
-    signal?: AbortSignal,
-  ): Promise<void> => {
-    signal?.throwIfAborted();
-    await applyNetworkPolicy(sandbox);
-    await options.onWorkspacePrepare?.(sandbox, workspace, signal);
-    // The provider hook is trusted and runs through credential egress. Remove
-    // that route before the app-owned setup script runs and before capture.
-    if (options.createNetworkPolicy) {
-      await sandbox.update({ networkPolicy: "allow-all" });
-    }
-    if (!workspace.setupScript.trim()) return;
-    const result = await sandbox.runCommand({
-      cmd: "bash",
-      args: ["-euo", "pipefail", "-c", workspace.setupScript],
-      cwd: SANDBOX_WORKSPACE_ROOT,
-      env: {
-        JUNIOR_REPOS_ROOT: SANDBOX_REPOS_ROOT,
-        JUNIOR_WORKSPACE_ROOT: SANDBOX_WORKSPACE_ROOT,
-      },
-      signal,
-    });
-    if (result.exitCode !== 0) {
-      throw new Error(
-        `Workspace setup failed: ${result.stderr.trim() || `exit ${result.exitCode}`}`,
-      );
-    }
-  };
-
   const createSandboxCandidate = async (
     workspace: Workspace | undefined,
     hash: string | undefined,
@@ -507,6 +476,17 @@ export function createSandboxRuntime(
     const runtime = SANDBOX_RUNTIME;
     const sandboxCredentials = getVercelSandboxCredentials();
     const sandboxName = createSandboxName();
+    const prepareWorkspace = workspace
+      ? async (sandbox: SandboxSession) =>
+          await prepareWorkspaceSnapshot({
+            sandbox,
+            workspace,
+            signal,
+            applyNetworkPolicy,
+            prepareRepositories: options.onWorkspacePrepare,
+            removeCredentialRoute: Boolean(options.createNetworkPolicy),
+          })
+      : undefined;
 
     let createdSandbox: SandboxSession;
     try {
@@ -524,10 +504,7 @@ export function createSandboxRuntime(
             timeoutMs,
             signal,
             workspace,
-            prepareWorkspace: workspace
-              ? async (sandbox) =>
-                  await prepareWorkspaceSnapshot(sandbox, workspace, signal)
-              : undefined,
+            prepareWorkspace,
           });
           signal?.throwIfAborted();
           setSnapshotAttributes(snapshot);
@@ -538,6 +515,7 @@ export function createSandboxRuntime(
             sandboxName,
             signal,
             workspace,
+            prepareWorkspace,
           });
         },
       );
@@ -545,12 +523,23 @@ export function createSandboxRuntime(
       return failSetup(error);
     }
 
+    const ref = sandboxReference(createdSandbox, workspace, hash);
+    if (!workspace) {
+      try {
+        await persistSandboxRef(ref);
+      } catch (error) {
+        await stopSession(createdSandbox);
+        throw error;
+      }
+    }
+
     let networkPolicyKey: string | undefined;
     try {
       networkPolicyKey = await applyNetworkPolicy(createdSandbox);
       await prepareSandbox(createdSandbox);
     } catch (error) {
-      await stopSession(createdSandbox);
+      // A Workspace candidate has no durable owner until preparation succeeds.
+      if (workspace) await stopSession(createdSandbox);
       return failSetup(error);
     }
 
@@ -558,7 +547,7 @@ export function createSandboxRuntime(
       session: createdSandbox,
       networkPolicyKey,
       profileHash: hash,
-      ref: sandboxReference(createdSandbox, workspace, hash),
+      ref,
       workspace,
     };
   };

@@ -204,6 +204,13 @@
       "when": 1786662452154,
       "tag": "0028_artifacts",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1786688945040,
+      "tag": "0029_dizzy_barracuda",
+      "breakpoints": true
     }
   ]
 }

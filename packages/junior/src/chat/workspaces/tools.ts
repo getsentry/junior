@@ -7,6 +7,7 @@ import type { ToolRegistry } from "@/chat/tools/definition";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { workspaceRepoCheckoutPath } from "./checkout-path";
 import { getWorkspaceByName, listWorkspaces } from "./store";
+import type { Workspace } from "./types";
 
 const repoSchema = z.object({
   provider: z.string(),
@@ -20,7 +21,7 @@ const workspaceSchema = z.object({
   repos: z.array(repoSchema),
 });
 
-function view(workspace: Awaited<ReturnType<typeof listWorkspaces>>[number]) {
+function view(workspace: Workspace) {
   return {
     id: workspace.id,
     name: workspace.name,

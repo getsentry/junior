@@ -621,7 +621,7 @@ export function createApiTurnWorker(options: {
           conversation,
           conversationId: context.conversationId,
         });
-        let sandboxRef: SandboxRef | null | undefined =
+        let sandboxRef: SandboxRef | undefined =
           getPersistedSandboxState(persisted);
         const initialSandboxRef = sandboxRef;
 
@@ -787,7 +787,7 @@ export function createApiTurnWorker(options: {
             }),
             state: {
               pendingAuth: conversation.processing.pendingAuth,
-              sandboxRef: sandboxRef ?? undefined,
+              sandboxRef,
             },
             delivery: deliverAssistantMessage,
             durability: {
@@ -849,8 +849,7 @@ export function createApiTurnWorker(options: {
           });
           await persistThreadStateById(context.conversationId, {
             conversation: completedState.conversation,
-            sandboxRef:
-              reply.sandboxRef !== undefined ? reply.sandboxRef : sandboxRef,
+            sandboxRef: reply.sandboxRef ?? sandboxRef,
           });
           if (reply.piMessages?.length) {
             // Prefer the live checkpoint slice after yield/resume; first

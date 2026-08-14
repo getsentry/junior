@@ -197,7 +197,6 @@ function createTestSandboxRuntime(options: SandboxFixtureOptions = {}) {
       createNetworkPolicy: options.createNetworkPolicy,
       onSandboxPrepare: options.onSandboxPrepare,
       onSandboxRefChanged: async (ref) => {
-        if (!ref) return;
         await options.onSandboxAcquired?.({
           sandboxId: ref.id,
           ...(ref.profileHash
@@ -251,7 +250,6 @@ function createTestSandbox(options: SandboxFixtureOptions = {}) {
             await options.agentHooks?.prepareSandbox(workspace)
         : undefined,
       onSandboxRefChanged: async (ref) => {
-        if (!ref) return;
         await options.onSandboxAcquired?.({
           sandboxId: ref.id,
           ...(ref.profileHash
@@ -598,7 +596,7 @@ describe("createTestSandbox", () => {
     expect(executor.getSandboxId()).toBe("sbx_stopped");
   });
 
-  it("reports a fresh sandbox reference only after preparation succeeds", async () => {
+  it("reports a fresh sandbox reference before session preparation can fail", async () => {
     const unavailable = createClosedStreamError();
     const freshSandbox = makeSandbox("sbx_prepare_failure");
     const callOrder: string[] = [];
@@ -622,9 +620,9 @@ describe("createTestSandbox", () => {
       ToolInputError,
     );
 
-    expect(callOrder).toEqual(["prepare"]);
-    expect(executor.getSandboxId()).toBeUndefined();
-    expect(freshSandbox.stop).toHaveBeenCalledTimes(1);
+    expect(callOrder).toEqual(["reference", "prepare"]);
+    expect(executor.getSandboxId()).toBe("sbx_prepare_failure");
+    expect(freshSandbox.stop).not.toHaveBeenCalled();
   });
 
   it("retries durable reference reporting after persistence fails", async () => {

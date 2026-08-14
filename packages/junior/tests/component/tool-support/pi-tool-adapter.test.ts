@@ -434,6 +434,7 @@ describe("Pi tool adapter", () => {
         env: { SECRET_TOKEN: "must-not-reach-guardian" },
       })),
       prepareSandbox: vi.fn(),
+      prepareWorkspace: vi.fn(),
     } as PluginHookRunner;
     const [demoTool] = createPiAgentTools(
       {
