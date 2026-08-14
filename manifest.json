@@ -1,0 +1,51 @@
+{
+  "commitSha": "5f5befd508e9c846caf343c98a6f04d9a9309dd9",
+  "mode": "path",
+  "reasons": [
+    "packages/junior-dashboard/e2e/harness.ts",
+    "packages/junior-dashboard/e2e/system.spec.ts",
+    "packages/junior-dashboard/package.json",
+    "packages/junior-dashboard/src/client/App.tsx",
+    "packages/junior-dashboard/src/client/http.ts",
+    "packages/junior-dashboard/src/client/pages/system/SystemNavigation.tsx",
+    "packages/junior-dashboard/src/client/pages/system/WorkspaceEditor.tsx",
+    "packages/junior-dashboard/src/client/pages/system/WorkspaceList.tsx",
+    "packages/junior-dashboard/src/client/pages/system/WorkspacesPage.tsx",
+    "packages/junior-dashboard/src/client/pages/system/workspaceDraft.ts",
+    "packages/junior-dashboard/tests/dashboard-routes.test.ts",
+    "packages/junior-dashboard/tests/telemetry-components.test.tsx"
+  ],
+  "scenarioIds": [
+    "conversations",
+    "conversation-detail",
+    "system",
+    "component-gallery"
+  ],
+  "shots": [
+    {
+      "file": "conversations__desktop.png",
+      "label": "Conversations · desktop"
+    },
+    {
+      "file": "conversations__mobile.png",
+      "label": "Conversations · mobile"
+    },
+    {
+      "file": "conversation-detail__desktop.png",
+      "label": "Conversation detail · desktop"
+    },
+    {
+      "file": "conversation-detail__mobile.png",
+      "label": "Conversation detail · mobile"
+    },
+    {
+      "file": "system__desktop.png",
+      "label": "System · desktop"
+    },
+    {
+      "file": "component-gallery__desktop.png",
+      "label": "Component gallery · desktop"
+    }
+  ],
+  "skipped": false
+}
