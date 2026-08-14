@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { getDb } from "@/chat/db";
+import { getPlugins } from "@/chat/plugins/agent-hooks";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -15,43 +16,6 @@ import {
 } from "./store";
 import type { Workspace } from "./types";
 
-const repoInputSchema = z
-  .object({
-    provider: z
-      .string()
-      .trim()
-      .min(1)
-      .describe("Repository provider, for example github."),
-    repo: z.string().trim().min(1).describe("Repository in owner/name format."),
-    is_primary: z
-      .boolean()
-      .describe("Whether this repository supplies AGENTS.md instructions.")
-      .optional(),
-  })
-  .strict();
-const workspaceInputSchema = z
-  .object({
-    name: z
-      .string()
-      .trim()
-      .min(1)
-      .describe(
-        "Workspace name. Use lowercase letters, digits, underscores, or hyphens.",
-      ),
-    setup_script: z
-      .string()
-      .describe(
-        "Optional shell script to run after repository checkout whenever this Workspace starts.",
-      )
-      .optional(),
-    repos: z
-      .array(repoInputSchema)
-      .max(32)
-      .describe(
-        "Complete repository list. Select one primary repository when the list is not empty.",
-      ),
-  })
-  .strict();
 const repoSchema = z.object({
   provider: z.string(),
   repo: z.string(),
@@ -79,7 +43,66 @@ function view(workspace: Workspace) {
   };
 }
 
-function writeInput(input: z.infer<typeof workspaceInputSchema>) {
+function workspaceProviderNames(): [string, ...string[]] | undefined {
+  const providers = getPlugins()
+    .filter((plugin) => plugin.hooks?.workspacePrepare)
+    .map((plugin) => plugin.manifest.name)
+    .sort((left, right) => left.localeCompare(right));
+  if (providers.length === 0) return undefined;
+  return providers as [string, ...string[]];
+}
+
+function workspaceWriteSchemas(providers: [string, ...string[]]) {
+  const providerNames = providers
+    .map((provider) => `\`${provider}\``)
+    .join(", ");
+  const repoInputSchema = z
+    .object({
+      provider: z
+        .enum(providers)
+        .describe(`Repository provider. Supported: ${providerNames}.`),
+      repo: z
+        .string()
+        .trim()
+        .min(1)
+        .describe("Repository in owner/name format."),
+      is_primary: z
+        .boolean()
+        .describe("Whether this repository supplies AGENTS.md instructions.")
+        .optional(),
+    })
+    .strict();
+  const workspaceInputSchema = z
+    .object({
+      name: z
+        .string()
+        .trim()
+        .min(1)
+        .describe(
+          "Workspace name. Use lowercase letters, digits, underscores, or hyphens.",
+        ),
+      setup_script: z
+        .string()
+        .describe(
+          "Optional shell script to run after repository checkout whenever this Workspace starts.",
+        )
+        .optional(),
+      repos: z
+        .array(repoInputSchema)
+        .max(32)
+        .describe(
+          "Complete repository list. Select one primary repository when the list is not empty.",
+        ),
+    })
+    .strict();
+  return { providerNames, workspaceInputSchema };
+}
+
+type WorkspaceWriteInput = z.infer<
+  ReturnType<typeof workspaceWriteSchemas>["workspaceInputSchema"]
+>;
+
+function writeInput(input: WorkspaceWriteInput) {
   return {
     name: input.name,
     setupScript: input.setup_script,
@@ -104,7 +127,7 @@ async function workspaceWrite<T>(operation: () => Promise<T>): Promise<T> {
 
 function describeWorkspaceWrite(
   action: "Create" | "Replace",
-  input: z.infer<typeof workspaceInputSchema>,
+  input: WorkspaceWriteInput,
 ): string {
   const primary = input.repos.find((repo) => repo.is_primary)?.repo;
   const repositories = `${input.repos.length} ${input.repos.length === 1 ? "repository" : "repositories"}`;
@@ -113,11 +136,12 @@ function describeWorkspaceWrite(
   return `${action} Workspace ${input.name} (${repositories}${primaryText}${setupText}).`;
 }
 
-/** Build tools for listing, writing, and selecting registered workspaces. */
-export function createWorkspaceTools(
-  context: ToolRuntimeContext,
+/** Build create/update tools for the currently preparable repository providers. */
+function createWorkspaceWriteTools(
+  providers: [string, ...string[]],
 ): ToolRegistry {
-  if (!context.workspaces) return {};
+  const { providerNames, workspaceInputSchema } =
+    workspaceWriteSchemas(providers);
   return {
     createWorkspace: zodTool({
       approvalMode: "review",
@@ -129,8 +153,7 @@ export function createWorkspaceTools(
         openWorldHint: false,
         readOnlyHint: false,
       },
-      description:
-        "Create an install-wide Workspace recipe. The Workspace becomes available to future conversations.",
+      description: `Create an install-wide Workspace recipe. Repository providers: ${providerNames}. The Workspace becomes available to future conversations.`,
       inputSchema: workspaceInputSchema,
       outputSchema: juniorToolOutputSchema.extend({
         workspace: workspaceSchema,
@@ -153,8 +176,7 @@ export function createWorkspaceTools(
         openWorldHint: false,
         readOnlyHint: false,
       },
-      description:
-        "Replace an install-wide Workspace recipe. Use the Workspace ID returned by listWorkspaces.",
+      description: `Replace an install-wide Workspace recipe. Repository providers: ${providerNames}. Use the Workspace ID returned by listWorkspaces.`,
       inputSchema: workspaceInputSchema.extend({
         id: z.string().uuid().describe("Workspace ID from listWorkspaces."),
       }),
@@ -165,10 +187,23 @@ export function createWorkspaceTools(
         const workspace = await workspaceWrite(() =>
           updateWorkspace(id, writeInput(input)),
         );
-        if (!workspace) throw new ToolInputError(`Workspace not found: ${id}`);
+        if (!workspace) {
+          throw new ToolInputError(`Workspace not found: ${id}`);
+        }
         return { workspace: view(workspace) };
       },
     }),
+  };
+}
+
+/** Build tools for listing, writing, and selecting registered workspaces. */
+export function createWorkspaceTools(
+  context: ToolRuntimeContext,
+): ToolRegistry {
+  if (!context.workspaces) return {};
+  const providers = workspaceProviderNames();
+  return {
+    ...(providers ? createWorkspaceWriteTools(providers) : {}),
     listWorkspaces: zodTool({
       annotations: {
         destructiveHint: false,
