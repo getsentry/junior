@@ -428,7 +428,9 @@ test("opens and closes a conversation in the mobile workspace", async ({
 
   const pending = page.getByLabel("Pending messages");
   await expect(pending).toBeVisible();
-  const expand = pending.getByRole("button", { name: "5 queued messages" });
+  // Cancel bar owns the total count on mobile; expand uses a distinct label.
+  await expect(pending.getByText("5 queued messages")).toHaveCount(1);
+  const expand = pending.getByRole("button", { name: "Show queued messages" });
   await expect(expand).toBeVisible();
   await expect(expand).toHaveAttribute("aria-expanded", "false");
   await expect(

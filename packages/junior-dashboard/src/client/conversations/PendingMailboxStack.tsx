@@ -150,6 +150,8 @@ function PendingRow(props: {
 }
 
 function ExpandQueuedMessagesButton(props: {
+  /** When the cancel bar already shows the total count, avoid repeating it on mobile. */
+  countShownInCancelBar: boolean;
   expanded: boolean;
   hiddenCount: number;
   onClick(): void;
@@ -163,6 +165,11 @@ function ExpandQueuedMessagesButton(props: {
     props.hiddenCount > 0
       ? `${props.hiddenCount} more queued messages`
       : totalLabel;
+  // Mobile collapses previews and uses the total count as the expand control.
+  // When cancel already owns that count, keep a distinct expand action label.
+  const mobileCollapsedLabel = props.countShownInCancelBar
+    ? "Show queued messages"
+    : totalLabel;
   const label = props.expanded ? "Show fewer queued messages" : moreLabel;
 
   return (
@@ -176,7 +183,7 @@ function ExpandQueuedMessagesButton(props: {
         label
       ) : (
         <>
-          <span className="md:hidden">{totalLabel}</span>
+          <span className="md:hidden">{mobileCollapsedLabel}</span>
           <span className="hidden md:inline">{moreLabel}</span>
         </>
       )}
@@ -272,6 +279,7 @@ export function PendingMailboxStack(props: {
       )}
       {canCollapse ? (
         <ExpandQueuedMessagesButton
+          countShownInCancelBar={showCancel}
           expanded={expanded}
           hiddenCount={hiddenCount}
           onClick={toggleExpanded}

@@ -105,4 +105,25 @@ describe("PendingMailboxStack cancel control", () => {
 
     expect(html).not.toContain("Could not cancel queued messages");
   });
+
+  it("does not repeat the queue count on the mobile expand control when cancel shows it", () => {
+    const messages = Array.from({ length: 5 }, (_, index) =>
+      message({
+        inboundMessageId: `accepted-${index + 1}`,
+        messageId: `accepted-${index + 1}`,
+        text: `queued ${index + 1}`,
+      }),
+    );
+    const html = renderToStaticMarkup(
+      <PendingMailboxStack
+        conversation={conversation()}
+        messages={messages}
+        onCancelQueue={() => undefined}
+      />,
+    );
+
+    expect(html).toContain("5 queued messages");
+    expect(html).toContain("Show queued messages");
+    expect(html.match(/5 queued messages/g)).toHaveLength(1);
+  });
 });
