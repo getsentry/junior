@@ -55,17 +55,17 @@ describe("GitHub conversation sidebar", () => {
       {
         icon: "circle-x",
         key: "getsentry/junior#3",
-        label: "getsentry/junior#3",
+        label: "junior",
       },
       {
         icon: "git-pull-request",
         key: "getsentry/payments#2",
-        label: "getsentry/payments#2",
+        label: "payments",
       },
       {
         icon: "git-merge",
         key: "getsentry/junior#1",
-        label: "getsentry/junior#1",
+        label: "junior",
       },
     ]);
     expect(() =>
@@ -79,7 +79,7 @@ describe("GitHub conversation sidebar", () => {
         {
           icon: "git-pull-request",
           key: "getsentry/junior#1",
-          label: "getsentry/junior#1",
+          label: "junior",
         },
       ],
     );
@@ -88,13 +88,20 @@ describe("GitHub conversation sidebar", () => {
   it("keeps the issue icon for open issues", () => {
     expect(
       githubSidebarAnnotations([
-        annotation("junior", 1, "open", "getsentry", undefined, "issues"),
+        annotation(
+          "junior",
+          1,
+          "open",
+          "getsentry",
+          "2026-01-01T00:00:01.000Z",
+          "issues",
+        ),
       ]),
     ).toEqual([
       {
         icon: "circle-dot",
         key: "getsentry/junior#1",
-        label: "getsentry/junior#1",
+        label: "junior",
       },
     ]);
   });

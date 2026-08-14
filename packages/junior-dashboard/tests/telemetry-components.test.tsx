@@ -590,17 +590,25 @@ describe("dashboard canonical-event components", () => {
     const html = renderToStaticMarkup(
       <ConversationSidebarAnnotations
         annotations={[
-          { icon: "circle-dot", key: "new", label: "getsentry/junior#2" },
-          { icon: "git-merge", key: "old", label: "getsentry/junior#1" },
+          {
+            icon: "circle-dot",
+            key: "getsentry/junior#2",
+            label: "junior",
+          },
+          {
+            icon: "git-merge",
+            key: "getsentry/payments#1",
+            label: "payments",
+          },
         ]}
       />,
     );
     expect(html).toContain(
-      'aria-label="Linked work, newest first: getsentry/junior#2, getsentry/junior#1"',
+      'aria-label="Linked work, newest first: getsentry/junior#2, getsentry/payments#1"',
     );
-    expect(html.indexOf("getsentry/junior#2")).toBeLessThan(
-      html.indexOf("getsentry/junior#1"),
-    );
+    expect(html.indexOf(">junior<")).toBeLessThan(html.indexOf(">payments<"));
+    expect(html).toContain("getsentry/junior#2");
+    expect(html).toContain("getsentry/payments#1");
     expect(html).toContain("Open");
     expect(html).toContain("Merged");
   });

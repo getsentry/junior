@@ -133,7 +133,13 @@ function activeConversation(nowMs: number): ConversationDetailReport {
     assignedWork: true,
     unfinishedWork: true,
     isPriority: true,
-    sidebarAnnotations: [{ icon: "git-pull-request", key: "github", label: "payments" }],
+    sidebarAnnotations: [
+      {
+        icon: "git-pull-request",
+        key: "getsentry/payments#42",
+        label: "payments",
+      },
+    ],
     annotations: [
       {
         kind: "resource_link",
@@ -331,7 +337,18 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
     assignedWork: true,
     unfinishedWork: true,
     isPriority: true,
-    sidebarAnnotations: [{ icon: "git-pull-request", key: "github", label: "junior" }],
+    sidebarAnnotations: [
+      {
+        icon: "git-pull-request",
+        key: "getsentry/junior#1081",
+        label: "junior",
+      },
+      {
+        icon: "circle-dot",
+        key: "getsentry/junior#1090",
+        label: "junior",
+      },
+    ],
     annotations: [
       {
         kind: "resource_link",
@@ -763,7 +780,23 @@ function longConversation(nowMs: number): ConversationDetailReport {
     assignedWork: true,
     unfinishedWork: true,
     isPriority: true,
-    sidebarAnnotations: [{ icon: "git-pull-request", key: "github", label: "2 repos" }],
+    sidebarAnnotations: [
+      {
+        icon: "circle-dashed",
+        key: "getsentry/junior#2201",
+        label: "junior",
+      },
+      {
+        icon: "git-pull-request",
+        key: "getsentry/payments#91",
+        label: "payments",
+      },
+      {
+        icon: "git-pull-request",
+        key: "getsentry/payments#88",
+        label: "payments",
+      },
+    ],
     annotations: [
       {
         kind: "resource_link",
@@ -839,7 +872,18 @@ function incidentConversation(nowMs: number): ConversationDetailReport {
     // Finished links show the final annotation state in the sidebar.
     assignedWork: true,
     finishedWorkAt: iso(nowMs, -42 * 60_000),
-    sidebarAnnotations: [{ icon: "git-merge", key: "github", label: "payments" }],
+    sidebarAnnotations: [
+      {
+        icon: "git-merge",
+        key: "getsentry/payments#77",
+        label: "payments",
+      },
+      {
+        icon: "circle-x",
+        key: "getsentry/payments#61",
+        label: "payments",
+      },
+    ],
     annotations: [
       {
         kind: "resource_link",
@@ -1736,7 +1780,8 @@ export function readMockPeoplePluginReports(
             id: "pull-requests-created",
             type: "bar_chart",
             title: "Pull requests opened",
-            description: "Junior-owned pull requests opened for this person per day",
+            description:
+              "Junior-owned pull requests opened for this person per day",
             timeRangeDays: [7, 30, 90],
             series: [{ key: "created", label: "Opened" }],
             categories: days,

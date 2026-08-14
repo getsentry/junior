@@ -29,6 +29,17 @@ function sidebarIconForStatus(
   return STATUS_ICON[status];
 }
 
+function repositoryName(
+  annotation: ConversationAnnotation,
+): string | undefined {
+  try {
+    const [, , repo] = new URL(annotation.url).pathname.split("/");
+    return repo || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Return GitHub annotations for a conversation row, newest first. */
 export function githubSidebarAnnotations(
   annotations: ConversationAnnotation[],
@@ -36,13 +47,14 @@ export function githubSidebarAnnotations(
   return annotations
     .flatMap((annotation) => {
       const status = annotation.status as GitHubAnnotationStatus | undefined;
-      return status
+      const label = repositoryName(annotation);
+      return status && label
         ? [
             {
               annotation: {
                 icon: sidebarIconForStatus(status, annotation.url),
                 key: annotation.key,
-                label: annotation.label,
+                label,
               },
               updatedAt: annotation.updatedAt,
             },

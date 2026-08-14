@@ -102,7 +102,9 @@ export function ConversationSidebarAnnotations(props: {
 }) {
   const annotations = props.annotations;
   if (!annotations?.length) return null;
-  const labels = annotations.map((annotation) => annotation.label).join(", ");
+  const labels = annotations
+    .map((annotation) => sidebarAnnotationDetail(annotation))
+    .join(", ");
   return (
     <Tooltip
       align="left"
@@ -110,13 +112,15 @@ export function ConversationSidebarAnnotations(props: {
         <ul className="m-0 list-none space-y-1 p-0">
           {annotations.map((annotation, index) => (
             <li
-              className="flex items-center gap-1.5"
+              className="flex min-w-0 items-center gap-1.5"
               key={`${annotation.key}:${index}`}
             >
               {annotation.icon ? (
                 <SidebarAnnotationIcon icon={annotation.icon} />
               ) : null}
-              <span>{annotation.label}</span>
+              <span className="min-w-0 truncate">
+                {sidebarAnnotationDetail(annotation)}
+              </span>
             </li>
           ))}
         </ul>
@@ -126,11 +130,11 @@ export function ConversationSidebarAnnotations(props: {
     >
       <span
         aria-label={`Linked work, newest first: ${labels}`}
-        className="inline-flex min-w-0 items-center pl-2"
+        className="inline-flex min-w-0 max-w-full items-center pl-2"
       >
         {annotations.map((annotation, index) => (
           <span
-            className="inline-flex min-w-0 max-w-28 items-center gap-1 truncate rounded-full border border-white/15 bg-dashboard-surface px-2 py-0.5 font-sans text-dashboard-text-muted shadow-sm shadow-black/40 [&:not(:first-child)]:-ml-2"
+            className="inline-flex min-w-0 max-w-24 shrink items-center gap-1 truncate rounded-full border border-white/15 bg-dashboard-surface px-2 py-0.5 font-sans text-dashboard-text-muted shadow-sm shadow-black/40 first:max-w-28 first:shrink-0 [&:not(:first-child)]:-ml-2"
             key={`${annotation.key}:${index}`}
             style={{ zIndex: annotations.length - index }}
           >
@@ -145,6 +149,17 @@ export function ConversationSidebarAnnotations(props: {
       </span>
     </Tooltip>
   );
+}
+
+function sidebarAnnotationDetail(annotation: {
+  key: string;
+  label: string;
+}): string {
+  // Prefer the plugin key when it carries a fuller resource identity than the
+  // compact stack label (for example owner/repo#123 vs repo).
+  return annotation.key.includes("/") || annotation.key.includes("#")
+    ? annotation.key
+    : annotation.label;
 }
 
 type SidebarAnnotationIconName = NonNullable<
