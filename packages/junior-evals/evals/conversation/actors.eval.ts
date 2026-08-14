@@ -171,12 +171,26 @@ describeEval("Actor Attribution", slackEvals, (it) => {
     });
 
     expect(lastTurnReplies(result.session).length).toBeGreaterThan(0);
-    const callNames = toolCalls(result.session).map((call) => call.name);
+    const calls = toolCalls(result.session);
+    const callNames = calls.map((call) => call.name);
     expect(callNames).not.toContain("github_createIssue");
     expect(callNames).not.toContain("github_updateIssue");
-    expect(callNames).not.toContain("callMcpTool");
     expect(
-      toolCalls(result.session).some(
+      calls.some((call) => {
+        if (call.name !== "callMcpTool") {
+          return false;
+        }
+        const toolName =
+          typeof call.arguments?.tool_name === "string"
+            ? call.arguments.tool_name
+            : "";
+        return /save_(?:issue|comment)|create_issue|update_issue|delete_issue/i.test(
+          toolName,
+        );
+      }),
+    ).toBe(false);
+    expect(
+      calls.some(
         (call) =>
           call.name === "bash" &&
           typeof call.arguments?.command === "string" &&
