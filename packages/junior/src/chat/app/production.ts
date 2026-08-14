@@ -12,11 +12,13 @@ import { createChatSdkLogger } from "@/chat/logging";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import type { SlackWebhookServices } from "@/chat/ingress/slack-webhook";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
-import type { VercelConversationWorkCallbackOptions } from "@/chat/task-execution/vercel-callback";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { getConversationStore } from "@/chat/db";
 import type { ConversationStore } from "@/chat/conversations/store";
-import { createConversationWork } from "@/chat/app/conversation-work";
+import {
+  createConversationWork,
+  type ConversationWorkCallbackOptions,
+} from "@/chat/app/conversation-work";
 
 let productionSlackAdapter: SlackAdapter | undefined;
 let productionSlackRuntime: ReturnType<typeof createSlackRuntime> | undefined;
@@ -95,7 +97,7 @@ export function getProductionSlackWebhookServices(): SlackWebhookServices {
 export function createProductionConversationWorkOptions(options: {
   agentRunner: AgentRunner;
   services?: JuniorRuntimeServiceOverrides;
-}): VercelConversationWorkCallbackOptions {
+}): ConversationWorkCallbackOptions {
   const conversationStore = getProductionConversationStore();
   return createConversationWork({
     agentRunner: options.agentRunner,

@@ -19,10 +19,11 @@ import {
   createAgentInvocationWorker,
   routeAgentInvocationWork,
 } from "@/chat/agent-invocations/work";
+import { createApiTurnWorker, routeApiTurnWork } from "@/chat/api-turns/work";
 import {
-  createApiTurnWorker,
-  routeApiTurnWork,
-} from "@/chat/api-turns/work";
+  createApiTurnCancellation,
+  type ApiTurnCancellation,
+} from "@/chat/api-turns/cancellation";
 import {
   getDispatchConversationId,
   getDispatchInputMessageIds,
@@ -39,15 +40,22 @@ interface ConversationWorkOptions {
   state?: StateAdapter;
 }
 
+export type ConversationWorkCallbackOptions =
+  VercelConversationWorkCallbackOptions & {
+    /** App-scoped control required by the experimental ACP route. */
+    apiTurnCancellation?: ApiTurnCancellation;
+  };
+
 /**
  * Compose conversation work once for production and integration tests.
  * Environment-specific queue, state, Slack, and agent adapters stop here.
  */
 export function createConversationWork(
   options: ConversationWorkOptions,
-): VercelConversationWorkCallbackOptions & {
+): ConversationWorkCallbackOptions & {
   runtime: ReturnType<typeof createSlackRuntime>;
 } {
+  const apiTurnCancellation = createApiTurnCancellation();
   const services: JuniorRuntimeServiceOverrides = {
     ...options.services,
     replyExecutor: {
@@ -112,11 +120,13 @@ export function createConversationWork(
     fallbackWorker: slackWorker,
   });
   return {
+    apiTurnCancellation,
     conversationStore: options.conversationStore,
     queue: options.queue,
     run: routeApiTurnWork({
       apiTurnWorker: createApiTurnWorker({
         agentRunner: options.agentRunner,
+        cancellation: apiTurnCancellation,
       }),
       fallbackWorker: routeAgentInvocationWork({
         invocationWorker: createAgentInvocationWorker({

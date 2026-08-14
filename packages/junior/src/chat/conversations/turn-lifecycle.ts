@@ -16,7 +16,7 @@ export interface StartConversationTurnInput {
 export interface CompleteConversationTurnInput {
   conversationId: string;
   createdAtMs: number;
-  outcome: "success" | "no_reply";
+  outcome: "success" | "no_reply" | "cancelled";
   turnId: string;
 }
 

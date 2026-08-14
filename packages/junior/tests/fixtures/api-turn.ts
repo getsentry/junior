@@ -14,7 +14,10 @@ import {
   createAndEnqueueApiConversation,
   webActorFromEmail,
 } from "@/chat/api-turns/work";
-import { createConversationWork } from "@/chat/app/conversation-work";
+import {
+  createConversationWork,
+  type ConversationWorkCallbackOptions,
+} from "@/chat/app/conversation-work";
 import type { ConversationStore } from "@/chat/conversations/store";
 import {
   closeDb,
@@ -24,10 +27,7 @@ import {
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import type { AgentRun } from "@/chat/agent/types";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
-import {
-  processConversationQueueMessage,
-  type VercelConversationWorkCallbackOptions,
-} from "@/chat/task-execution/vercel-callback";
+import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
 import {
   createConversationWorkQueueTestAdapter,
@@ -97,7 +97,7 @@ export type ConversationWorkWebHarness = {
   actor: typeof apiTurnTestActor;
   agentRuns: AgentRun[];
   agentRunner: AgentRunner;
-  conversationWork: VercelConversationWorkCallbackOptions;
+  conversationWork: ConversationWorkCallbackOptions;
   conversationStore: ConversationStore;
   queue: ConversationWorkQueueTestAdapter;
   state: StateAdapter;
@@ -168,6 +168,7 @@ export async function createConversationWorkWebHarness(
     agentRuns,
     agentRunner,
     conversationWork: {
+      apiTurnCancellation: work.apiTurnCancellation,
       conversationStore,
       queue,
       run: work.run,

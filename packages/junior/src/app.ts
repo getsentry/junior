@@ -71,7 +71,6 @@ import { JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE } from "@/deployment";
 import {
   createVercelConversationWorkCallback,
   registerVercelConversationWorkDevConsumer,
-  type VercelConversationWorkCallbackOptions,
 } from "@/chat/task-execution/vercel-callback";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
@@ -83,6 +82,7 @@ import {
   createProductionConversationWorkOptions,
   createProductionSlackWebhookServices,
 } from "@/chat/app/production";
+import type { ConversationWorkCallbackOptions } from "@/chat/app/conversation-work";
 import { createAgentRunner } from "@/chat/runtime/agent-runner";
 import { createVercelAttachmentStorage } from "@/chat/attachments/vercel";
 import { publicArtifactGET } from "@/handlers/artifacts";
@@ -120,7 +120,7 @@ export interface JuniorAppOptions {
   /** Install-wide provider defaults. Unregistered `provider.key` entries warn at startup. */
   configDefaults?: Record<string, unknown>;
   /** Queue consumer wiring for the durable conversation worker. */
-  conversationWork?: VercelConversationWorkCallbackOptions;
+  conversationWork?: ConversationWorkCallbackOptions;
   /** Direct plugin set override. Usually omitted when `juniorNitro()` uses a plugin module. */
   plugins?: JuniorPluginSet;
   /** Sandbox execution options. */
@@ -788,9 +788,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   let pluginTaskPOST:
     | ReturnType<typeof createVercelPluginTaskCallback>
     | undefined;
-  let conversationWorkOptions:
-    | VercelConversationWorkCallbackOptions
-    | undefined;
+  let conversationWorkOptions: ConversationWorkCallbackOptions | undefined;
   const getConversationWorkOptions = () => {
     conversationWorkOptions ??=
       options?.conversationWork ??
@@ -802,7 +800,12 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   };
   if (isExperimentalFeatureEnabled("acp")) {
     const work = getConversationWorkOptions();
+    const cancellation = work.apiTurnCancellation;
+    if (!cancellation) {
+      throw new Error("Experimental ACP requires API Turn cancellation wiring");
+    }
     const handleAcpRequest = createAcpHttpHandler({
+      cancellation,
       conversationStore: work.conversationStore,
       queue: work.queue ?? getVercelConversationWorkQueue(),
       state: work.state,

@@ -9,7 +9,7 @@ import {
   closeApiTurnWorkFixture,
   createConversationWorkWebHarness,
 } from "../fixtures/api-turn";
-import { streamReplies } from "../fixtures/conversation-work";
+import { deferred, streamReplies } from "../fixtures/conversation-work";
 import { createModelStream } from "../fixtures/model-stream";
 
 const ACP_URL = "http://junior.test/api/acp";
@@ -568,6 +568,126 @@ describe("remote ACP HTTP", () => {
         sessionUpdate: "agent_message_chunk",
         content: { type: "text", text: "Completed after disconnect." },
       }),
+    ]);
+  }, 20_000);
+
+  it("cancels the active Turn and accepts a later prompt", async () => {
+    const modelStarted = deferred();
+    const releaseModel = deferred();
+    const harness = await createConversationWorkWebHarness({
+      modelStream: createModelStream([
+        {
+          type: "text",
+          text: "This reply must not be stored.",
+          onRequest: () => modelStarted.resolve(),
+          waitFor: releaseModel.promise,
+        },
+      ]),
+    });
+    const app = await createApp({
+      conversationWork: harness.conversationWork,
+      experimental: { acp: true, subagents: true },
+    });
+    const token = await createPersonalToken({
+      email: harness.actor.email,
+      name: "ACP cancellation",
+    });
+    const sessionCreated = deferred<string>();
+    let cancelActiveTurn: (() => Promise<void>) | undefined;
+
+    const cancelledRun = withAcpClient({
+      app,
+      token: token.token,
+      run: async (context) => {
+        await context.request(acp.methods.agent.initialize, {
+          protocolVersion: acp.PROTOCOL_VERSION,
+          clientCapabilities: {},
+        });
+        const session = await context.request(acp.methods.agent.session.new, {
+          cwd: "/client/workspace",
+          mcpServers: [],
+        });
+        sessionCreated.resolve(session.sessionId);
+        cancelActiveTurn = async () => {
+          await context.notify(acp.methods.agent.session.cancel, {
+            sessionId: session.sessionId,
+          });
+        };
+        return await context.request(acp.methods.agent.session.prompt, {
+          sessionId: session.sessionId,
+          prompt: [{ type: "text", text: "Cancel this Turn." }],
+        });
+      },
+    });
+
+    const sessionId = await sessionCreated.promise;
+    await vi.waitFor(() => {
+      expect(harness.queue.hasQueuedMessages()).toBe(true);
+    });
+    const draining = harness.drain();
+    await modelStarted.promise;
+    if (!cancelActiveTurn) {
+      throw new Error("ACP cancellation handler was not ready");
+    }
+    await cancelActiveTurn();
+    await vi.waitFor(() => {
+      expect(harness.agentRuns[0]?.signal?.aborted).toBe(true);
+    });
+    releaseModel.resolve();
+    await draining;
+
+    await expect(cancelledRun).resolves.toEqual({ stopReason: "cancelled" });
+    expect(harness.agentRuns).toHaveLength(1);
+    await expect(harness.historyTexts(sessionId)).resolves.toEqual([
+      "Cancel this Turn.",
+    ]);
+    const terminalEvents = await getConversationEventStore().query(sessionId, {
+      limit: 50,
+      types: ["turn_completed", "turn_failed"],
+    });
+    expect(terminalEvents.events).toEqual([
+      expect.objectContaining({
+        data: expect.objectContaining({
+          outcome: "cancelled",
+          type: "turn_completed",
+        }),
+      }),
+    ]);
+
+    harness.setModelStream(streamReplies("Reply after cancellation."));
+    const followUpStarted = deferred();
+    const followUp = withAcpClient({
+      app,
+      token: token.token,
+      run: async (context) => {
+        await context.request(acp.methods.agent.initialize, {
+          protocolVersion: acp.PROTOCOL_VERSION,
+          clientCapabilities: {},
+        });
+        await context.request(acp.methods.agent.session.load, {
+          sessionId,
+          cwd: "/client/workspace",
+          mcpServers: [],
+        });
+        followUpStarted.resolve();
+        return await context.request(acp.methods.agent.session.prompt, {
+          sessionId,
+          prompt: [{ type: "text", text: "Continue after cancellation." }],
+        });
+      },
+    });
+
+    await followUpStarted.promise;
+    await vi.waitFor(() => {
+      expect(harness.queue.hasQueuedMessages()).toBe(true);
+    });
+    await harness.drain();
+    await expect(followUp).resolves.toEqual({ stopReason: "end_turn" });
+    expect(harness.agentRuns).toHaveLength(2);
+    await expect(harness.historyTexts(sessionId)).resolves.toEqual([
+      "Cancel this Turn.",
+      "Continue after cancellation.",
+      "Reply after cancellation.",
     ]);
   }, 20_000);
 

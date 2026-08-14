@@ -8,7 +8,6 @@
  * location context and never publish back to Slack.
  */
 import { createHash } from "node:crypto";
-import { z } from "zod";
 import type { StateAdapter } from "chat";
 import {
   createWebSource,
@@ -89,19 +88,17 @@ import {
   createWebAuthorization,
   deleteWebAuthorization,
 } from "@/chat/api-turns/authorization";
+import {
+  completeCancelledApiTurn,
+  type ApiTurnCancellation,
+} from "@/chat/api-turns/cancellation";
+import {
+  isApiTurnWork,
+  resolveApiTurnWork,
+  type ApiTurnMailboxMetadata,
+} from "@/chat/api-turns/routing";
 
-const apiTurnMailboxMetadataSchema = z
-  .object({
-    authorEmail: z.string().email(),
-    authorFullName: z.string().min(1).optional(),
-    authorUserId: z.string().min(1),
-    authorUserName: z.string().min(1).optional(),
-    kind: z.literal("api_turn"),
-    messageId: z.string().min(1),
-  })
-  .strict();
-
-type ApiTurnMailboxMetadata = z.output<typeof apiTurnMailboxMetadataSchema>;
+export { resolveApiTurnWork } from "@/chat/api-turns/routing";
 
 type EnqueueOptions = {
   conversationStore?: ConversationStore;
@@ -407,94 +404,6 @@ export async function appendAndEnqueueApiConversationMessage(
   };
 }
 
-function parseApiTurnMessages(
-  messages: readonly InboundMessage[],
-): Array<{ message: InboundMessage; metadata: ApiTurnMailboxMetadata }> {
-  if (messages.length === 0) {
-    return [];
-  }
-  const parsed = messages.map((message) => ({
-    message,
-    metadata: apiTurnMailboxMetadataSchema.safeParse(message.input.metadata),
-  }));
-  if (parsed.every((entry) => !entry.metadata.success)) {
-    return [];
-  }
-  if (parsed.some((entry) => !entry.metadata.success)) {
-    throw new Error("Conversation mailbox mixes web turns and other input");
-  }
-  return parsed.map((entry) => {
-    if (!entry.metadata.success) {
-      throw new Error("API turn mailbox metadata failed validation");
-    }
-    return { message: entry.message, metadata: entry.metadata.data };
-  });
-}
-
-/**
- * Resolve API turn work from mailbox metadata or an active API turn checkpoint.
- *
- * Empty resume wakes after yield carry no mailbox rows; match agent-invocation
- * and look up durable active turn state instead of falling through to Slack.
- */
-export async function resolveApiTurnWork(
-  context: ConversationWorkerContext,
-): Promise<
-  | {
-      kind: "mailbox";
-      batch: Array<{
-        message: InboundMessage;
-        metadata: ApiTurnMailboxMetadata;
-      }>;
-    }
-  | { kind: "resume"; turnId: string }
-  | undefined
-> {
-  const batch = parseApiTurnMessages(context.attempt.messages);
-  if (batch.length > 0) {
-    return { kind: "mailbox", batch };
-  }
-  if (context.attempt.messages.length > 0) {
-    return undefined;
-  }
-
-  const summaries = await listTurnSummaries(context.conversationId);
-  // Agent-dispatch also writes surface "api". Those turns own a dispatchId and
-  // must stay on the dispatch router (this route runs first).
-  const active = summaries.filter(
-    (summary) =>
-      summary.surface === "api" &&
-      !summary.dispatchId &&
-      (summary.state === "paused" || summary.state === "running"),
-  );
-  if (active.length > 1) {
-    throw new Error(
-      `Conversation ${context.conversationId} has multiple active web turns`,
-    );
-  }
-  const turnId = active[0]?.turnId;
-  if (!turnId) {
-    return undefined;
-  }
-  const record = await getTurnRecord(context.conversationId, turnId);
-  if (
-    !record ||
-    record.surface !== "api" ||
-    Boolean(record.dispatchId) ||
-    (record.state !== "paused" && record.state !== "running")
-  ) {
-    return undefined;
-  }
-  return { kind: "resume", turnId };
-}
-
-/** True when this leased attempt is API-authored root work. */
-export async function isApiTurnWork(
-  context: ConversationWorkerContext,
-): Promise<boolean> {
-  return (await resolveApiTurnWork(context)) !== undefined;
-}
-
 function captureApiBoundaryFailure(args: {
   conversationId: string;
   error: unknown;
@@ -513,6 +422,7 @@ function captureApiBoundaryFailure(args: {
 /** Build the mailbox consumer for API-authored root turns. */
 export function createApiTurnWorker(options: {
   agentRunner: AgentRunner;
+  cancellation?: ApiTurnCancellation;
   turnLifecycle?: ConversationTurnLifecycle;
 }) {
   return async (
@@ -714,6 +624,34 @@ export function createApiTurnWorker(options: {
         let modelFailureEventId: string | undefined;
         let modelFailureCaptureAttempted = false;
         let reply: AgentRunResult | undefined;
+        const cancellationSignal = options.cancellation?.signal(
+          context.conversationId,
+        );
+        const finishCancellation = (): void => {
+          if (cancellationSignal) {
+            options.cancellation?.finish(
+              context.conversationId,
+              cancellationSignal,
+            );
+          }
+        };
+
+        const completeCancelledTurn =
+          async (): Promise<ConversationWorkerResult> => {
+            await completeCancelledApiTurn({
+              acknowledge,
+              actorId: actor.userId,
+              cancellation: options.cancellation,
+              conversation,
+              conversationId: context.conversationId,
+              lifecycle,
+              sandboxRef,
+              signal: cancellationSignal,
+              turnId,
+              userMessageId,
+            });
+            return { status: "completed" };
+          };
 
         const deliverAssistantMessage = async (
           value: AssistantMessage | string,
@@ -758,6 +696,9 @@ export function createApiTurnWorker(options: {
           await persistThreadStateById(context.conversationId, {
             conversation,
           });
+          if (cancellationSignal?.aborted) {
+            return await completeCancelledTurn();
+          }
           const piMessages = await loadProjection({
             conversationId: context.conversationId,
           });
@@ -782,6 +723,7 @@ export function createApiTurnWorker(options: {
             publishExternally: false,
             source,
             surface: "api",
+            ...(cancellationSignal ? { signal: cancellationSignal } : {}),
             authorization: createWebAuthorization({
               actorId: actor.userId,
               conversationId: context.conversationId,
@@ -810,6 +752,10 @@ export function createApiTurnWorker(options: {
               },
             },
           });
+
+          if (cancellationSignal?.aborted) {
+            return await completeCancelledTurn();
+          }
 
           if (outcome.status === "suspended") {
             return { status: "yielded" };
@@ -840,6 +786,9 @@ export function createApiTurnWorker(options: {
           modelFailureEventId = finalized.eventId;
           if (reply.diagnostics.outcome !== "success") {
             await deliverAssistantMessage(reply.text);
+            if (cancellationSignal?.aborted) {
+              return await completeCancelledTurn();
+            }
           }
 
           const completedState = buildDeliveredTurnStatePatch({
@@ -852,6 +801,9 @@ export function createApiTurnWorker(options: {
             conversation: completedState.conversation,
             sandboxRef: reply.sandboxRef ?? sandboxRef,
           });
+          if (cancellationSignal?.aborted) {
+            return await completeCancelledTurn();
+          }
           if (reply.piMessages?.length) {
             // Prefer the live checkpoint slice after yield/resume; first
             // completion has no prior record and starts at slice 1.
@@ -870,6 +822,9 @@ export function createApiTurnWorker(options: {
               actor,
               surface: "api",
             });
+            if (cancellationSignal?.aborted) {
+              return await completeCancelledTurn();
+            }
           }
 
           if (reply.diagnostics.outcome === "success") {
@@ -879,6 +834,7 @@ export function createApiTurnWorker(options: {
               outcome: assistantMessageDelivered ? "success" : "no_reply",
               turnId,
             });
+            finishCancellation();
             try {
               await scheduleSessionCompletedPluginTasks(
                 {
@@ -918,11 +874,15 @@ export function createApiTurnWorker(options: {
               failureCode: "model_execution_failed",
               turnId,
             });
+            finishCancellation();
           }
 
           await acknowledge();
           return { status: "completed" };
         } catch (error) {
+          if (cancellationSignal?.aborted) {
+            return await completeCancelledTurn();
+          }
           const cause = getConversationTurnBoundaryError(error)?.cause ?? error;
           if (
             isTurnInputCommitLostError(error) ||
@@ -972,6 +932,7 @@ export function createApiTurnWorker(options: {
             failureCode,
             turnId,
           });
+          finishCancellation();
           await acknowledge();
           return { status: "completed" };
         }

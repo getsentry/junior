@@ -30,6 +30,8 @@ import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { logException, withSpan } from "@/chat/logging";
 import { sleep } from "@/chat/sleep";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import { ensureConversationWake } from "@/chat/task-execution/store";
+import type { ApiTurnCancellation } from "@/chat/api-turns/cancellation";
 import { authenticatePersonalToken } from "@/personal-tokens/store";
 import { JUNIOR_VERSION } from "@/version";
 
@@ -40,6 +42,7 @@ const EVENT_POLL_INTERVAL_MS = 25;
 const MAX_PROMPT_TEXT_LENGTH = 32_000;
 
 interface AcpRouteOptions {
+  cancellation: ApiTurnCancellation;
   conversationStore?: ConversationStore;
   queue: ConversationWorkQueue;
   state?: StateAdapter;
@@ -52,6 +55,7 @@ interface AuthenticatedAcpActor {
 
 type AcpOperation =
   | "initialize"
+  | "session_cancel"
   | "session_load"
   | "session_new"
   | "session_prompt";
@@ -181,6 +185,8 @@ async function replaySession(
 /** Stream durable assistant Messages until the matching Turn ends or fails. */
 async function waitForTurn(args: {
   afterSeq: number;
+  cancellation: ApiTurnCancellation;
+  cancellationSignal: AbortSignal;
   client: acp.AgentContext;
   eventStore: ConversationEventStore;
   sessionId: string;
@@ -233,9 +239,13 @@ async function waitForTurn(args: {
         continue;
       }
       if (data.type === "turn_completed" && data.turnId === args.turnId) {
-        return { stopReason: "end_turn" };
+        args.cancellation.finish(args.sessionId, args.cancellationSignal);
+        return {
+          stopReason: data.outcome === "cancelled" ? "cancelled" : "end_turn",
+        };
       }
       if (data.type === "turn_failed" && data.turnId === args.turnId) {
+        args.cancellation.finish(args.sessionId, args.cancellationSignal);
         throw acp.RequestError.internalError(
           { failureCode: data.failureCode },
           "Junior Turn failed",
@@ -355,28 +365,76 @@ function createActorAgent(
             eventStore,
             context.params.sessionId,
           );
-          const accepted = await appendAndEnqueueApiConversationMessage(
-            {
-              actor: authenticated.actor,
-              conversationId: context.params.sessionId,
-              idempotencyKey: `${connectionNonce}:${requestIdKey(context.requestId)}`,
-              message: text,
-            },
-            {
-              conversationStore,
-              queue: options.queue,
-              state: options.state,
-            },
+          const cancellationSignal = options.cancellation.begin(
+            context.params.sessionId,
           );
+          if (!cancellationSignal) {
+            throw acp.RequestError.invalidParams(
+              { field: "sessionId" },
+              "This ACP session already has an active prompt",
+            );
+          }
+          let accepted: Awaited<
+            ReturnType<typeof appendAndEnqueueApiConversationMessage>
+          >;
+          try {
+            accepted = await appendAndEnqueueApiConversationMessage(
+              {
+                actor: authenticated.actor,
+                conversationId: context.params.sessionId,
+                idempotencyKey: `${connectionNonce}:${requestIdKey(context.requestId)}`,
+                message: text,
+              },
+              {
+                conversationStore,
+                queue: options.queue,
+                state: options.state,
+              },
+            );
+          } catch (error) {
+            options.cancellation.finish(
+              context.params.sessionId,
+              cancellationSignal,
+            );
+            throw error;
+          }
           // A duplicate request can refer to a Turn that ended before currentSeq.
           const afterSeq = accepted.status === "duplicate" ? 0 : currentSeq;
           return await waitForTurn({
             afterSeq,
+            cancellation: options.cancellation,
+            cancellationSignal,
             client: context.client,
             eventStore,
             sessionId: context.params.sessionId,
             signal: context.signal,
             turnId: apiTurnIdForMessage(accepted.messageId),
+          });
+        },
+      );
+    })
+    .onNotification(acp.methods.agent.session.cancel, async (context) => {
+      await runAcpOperation(
+        authenticated,
+        "session_cancel",
+        context.params.sessionId,
+        async () => {
+          await requireOwnedSession(
+            context.params.sessionId,
+            authenticated.user,
+          );
+          if (!options.cancellation.cancel(context.params.sessionId)) {
+            return;
+          }
+          const nowMs = Date.now();
+          await ensureConversationWake({
+            conversationId: context.params.sessionId,
+            conversationStore,
+            idempotencyKey: `acp-cancel:${context.params.sessionId}:${nowMs}`,
+            nowMs,
+            queue: options.queue,
+            replaceExistingWake: true,
+            state: options.state,
           });
         },
       );
