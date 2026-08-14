@@ -307,15 +307,42 @@ function useIsMobileViewport(): boolean {
   );
 }
 
-function collapseSidebarAnnotationStack(
+const UNFINISHED_SIDEBAR_ICONS = new Set<SidebarAnnotationIconName>([
+  "circle-dashed",
+  "circle-dot",
+  "git-pull-request",
+  "triangle-alert",
+]);
+
+/** Collapse each label to one annotation and prefer unfinished work. */
+export function collapseSidebarAnnotationStack(
   annotations: NonNullable<ConversationDetailReport["sidebarAnnotations"]>,
 ): NonNullable<ConversationDetailReport["sidebarAnnotations"]> {
-  const seen = new Set<string>();
-  return annotations.filter((annotation) => {
-    if (seen.has(annotation.label)) return false;
-    seen.add(annotation.label);
-    return true;
-  });
+  const selected = new Map<
+    string,
+    NonNullable<ConversationDetailReport["sidebarAnnotations"]>[number]
+  >();
+  for (const annotation of annotations) {
+    const current = selected.get(annotation.label);
+    if (
+      !current ||
+      (!isUnfinishedSidebarAnnotation(current) &&
+        isUnfinishedSidebarAnnotation(annotation))
+    ) {
+      selected.set(annotation.label, annotation);
+    }
+  }
+  return [...selected.values()];
+}
+
+function isUnfinishedSidebarAnnotation(
+  annotation: NonNullable<
+    ConversationDetailReport["sidebarAnnotations"]
+  >[number],
+): boolean {
+  return Boolean(
+    annotation.icon && UNFINISHED_SIDEBAR_ICONS.has(annotation.icon),
+  );
 }
 
 function sidebarAnnotationDetail(annotation: {
