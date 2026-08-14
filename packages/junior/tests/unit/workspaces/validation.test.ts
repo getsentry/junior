@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  normalizeWorkspaceRecipe,
-  WorkspaceValidationError,
-} from "@/chat/workspaces/validation";
+import { normalizeWorkspaceRecipe } from "@/chat/workspaces/validation";
 
 describe("normalizeWorkspaceRecipe", () => {
   it("normalizes names and providers", () => {
