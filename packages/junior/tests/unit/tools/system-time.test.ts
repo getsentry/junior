@@ -46,6 +46,9 @@ describe("systemTime", () => {
         systemTime.prepareArguments!({ timezone: "not/a-zone" }),
         {},
       ),
-    ).rejects.toThrow("timezone must be a valid IANA time zone.");
+    ).rejects.toMatchObject({
+      name: "ToolInputError",
+      message: "timezone must be a valid IANA time zone.",
+    });
   });
 });

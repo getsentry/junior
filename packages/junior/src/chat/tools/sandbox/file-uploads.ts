@@ -106,7 +106,7 @@ export class SandboxFileNotFoundError extends ToolInputError {
 export function normalizeSandboxPath(inputPath: string): string {
   const trimmed = inputPath.trim();
   if (!trimmed) {
-    throw new Error("path is required");
+    throw new ToolInputError("path is required");
   }
 
   if (path.posix.isAbsolute(trimmed)) {

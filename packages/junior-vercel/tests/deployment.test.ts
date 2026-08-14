@@ -205,7 +205,10 @@ describe("Vercel deployment", () => {
         { project: "missing", target: "production" },
         { toolCallId: "deployment-missing-project" },
       ),
-    ).rejects.toThrow("Vercel project lookup failed with HTTP 404");
+    ).rejects.toMatchObject({
+      message: "Vercel project lookup failed with HTTP 404",
+      name: "PluginToolInputError",
+    });
   });
 
   it("registers runtime hooks and the canonical inline manifest", () => {

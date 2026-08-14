@@ -106,4 +106,28 @@ describe("resolvePullRequestReviewThread", () => {
     });
     expect(fetch).toHaveBeenCalledTimes(1);
   });
+
+  it("reports a missing review thread as a repairable tool error", async () => {
+    const { fetch, tool } = toolContext([
+      response({
+        data: {
+          node: null,
+        },
+      }),
+    ]);
+
+    await expect(
+      tool.execute?.(
+        {
+          repo: "getsentry/junior",
+          threadId: "PRRT_missing",
+        },
+        { toolCallId: "missing-thread" },
+      ),
+    ).rejects.toMatchObject({
+      name: "PluginToolInputError",
+      message: "GitHub review thread was not found.",
+    });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
 });

@@ -3,6 +3,7 @@ import http from "node:http";
 import https from "node:https";
 import net from "node:net";
 import { FETCH_TIMEOUT_MS, USER_AGENT } from "@/chat/tools/web/constants";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 function isPrivateIpv4(ip: string): boolean {
   const parts = ip.split(".").map((chunk) => Number.parseInt(chunk, 10));
@@ -84,17 +85,17 @@ async function resolvePublicHostname(
 ): Promise<ResolvedAddress[]> {
   const records = await dns.lookup(hostname, { all: true, verbatim: true });
   if (records.length === 0) {
-    throw new Error("Could not resolve hostname");
+    throw new ToolInputError("Could not resolve hostname");
   }
 
   const deduped = new Map<string, ResolvedAddress>();
   for (const record of records) {
     const family = record.family === 6 ? 6 : 4;
     if (family === 4 && isPrivateIpv4(record.address)) {
-      throw new Error("Resolved to a private IPv4 address");
+      throw new ToolInputError("Resolved to a private IPv4 address");
     }
     if (family === 6 && isPrivateIpv6(record.address)) {
-      throw new Error("Resolved to a private IPv6 address");
+      throw new ToolInputError("Resolved to a private IPv6 address");
     }
     deduped.set(`${family}:${record.address}`, {
       address: record.address,
@@ -233,7 +234,7 @@ export async function assertPublicUrl(rawUrl: string): Promise<URL> {
   const parsed = new URL(rawUrl);
 
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new Error("Only http(s) URLs are allowed");
+    throw new ToolInputError("Only http(s) URLs are allowed");
   }
 
   const hostname = normalizeHostname(parsed.hostname);
@@ -243,15 +244,15 @@ export async function assertPublicUrl(rawUrl: string): Promise<URL> {
     hostname.endsWith(".local") ||
     hostname.endsWith(".internal")
   ) {
-    throw new Error("Local/private hostnames are blocked");
+    throw new ToolInputError("Local/private hostnames are blocked");
   }
 
   const hostIpType = net.isIP(hostname);
   if (hostIpType === 4 && isPrivateIpv4(hostname)) {
-    throw new Error("Private IPv4 addresses are blocked");
+    throw new ToolInputError("Private IPv4 addresses are blocked");
   }
   if (hostIpType === 6 && isPrivateIpv6(hostname)) {
-    throw new Error("Private IPv6 addresses are blocked");
+    throw new ToolInputError("Private IPv6 addresses are blocked");
   }
 
   if (hostIpType === 0) {
@@ -305,12 +306,12 @@ export async function fetchTextWithRedirects(
   }
 
   if (redirectsLeft <= 0) {
-    throw new Error("Too many redirects");
+    throw new ToolInputError("Too many redirects");
   }
 
   const location = response.headers.get("location");
   if (!location) {
-    throw new Error("Redirect missing location");
+    throw new ToolInputError("Redirect missing location");
   }
 
   const nextUrl = new URL(location, url);
@@ -337,7 +338,7 @@ export async function readResponseBody(
 
     total += value.byteLength;
     if (total > maxBytes) {
-      throw new Error("Response body too large");
+      throw new ToolInputError("Response body too large");
     }
     chunks.push(value);
   }

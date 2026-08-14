@@ -6,6 +6,7 @@ import {
   MAX_FETCH_BYTES,
   MAX_REDIRECTS,
 } from "@/chat/tools/web/constants";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import {
   assertPublicUrl,
   fetchTextWithRedirects,
@@ -75,7 +76,7 @@ export function createWebFetchTool(
       if (response.ok && contentType.startsWith("image/")) {
         const bytes = Buffer.from(await response.arrayBuffer());
         if (bytes.byteLength > MAX_FETCH_BYTES) {
-          throw new Error("image response body too large");
+          throw new ToolInputError("image response body too large");
         }
 
         const filename = filenameForUrl(

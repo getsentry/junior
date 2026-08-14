@@ -86,10 +86,11 @@ export function createGitHubGetPullRequestTool(
         ),
       });
       const parsed = await readJson(response);
-      if (!response.ok)
-        throw new Error(
+      if (!response.ok) {
+        throw new PluginToolInputError(
           `GitHub pull request lookup failed with HTTP ${response.status}`,
         );
+      }
       const providerResult = z
         .object({
           base: z.object({ ref: z.string() }),

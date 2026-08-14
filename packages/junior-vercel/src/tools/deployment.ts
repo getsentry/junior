@@ -1,5 +1,6 @@
 import {
   definePluginTool,
+  PluginToolInputError,
   pluginToolOutputSchema,
   subscribableResourceSchema,
   type PluginToolOutput,
@@ -92,7 +93,7 @@ export function createVercelDeploymentTool(ctx: ToolRegistrationHookContext) {
       });
       const parsed = await readJson(response);
       if (!response.ok) {
-        throw new Error(
+        throw new PluginToolInputError(
           `Vercel project lookup failed with HTTP ${response.status}`,
         );
       }

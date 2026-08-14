@@ -99,7 +99,7 @@ export async function grepFiles(params: {
   runCommand?: SandboxCommandRunner;
 }): Promise<GrepResult> {
   if (!params.pattern) {
-    throw new Error("pattern is required");
+    throw new ToolInputError("pattern is required");
   }
 
   const root = resolveWorkspacePath(params.path);
