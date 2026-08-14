@@ -2,13 +2,21 @@
 export interface ApiTurnCancellation {
   begin(conversationId: string): AbortSignal | undefined;
   cancel(conversationId: string): boolean;
+  disconnect(conversationId: string, signal: AbortSignal): void;
   finish(conversationId: string, signal: AbortSignal): void;
+  park(conversationId: string, signal: AbortSignal): void;
   signal(conversationId: string): AbortSignal | undefined;
+}
+
+interface ActiveApiTurnCancellation {
+  connected: boolean;
+  controller: AbortController;
+  parked: boolean;
 }
 
 /** Create in-process cancellation state for active API Turns. */
 export function createApiTurnCancellation(): ApiTurnCancellation {
-  const active = new Map<string, AbortController>();
+  const active = new Map<string, ActiveApiTurnCancellation>();
 
   return {
     begin(conversationId) {
@@ -16,25 +24,49 @@ export function createApiTurnCancellation(): ApiTurnCancellation {
         return undefined;
       }
       const controller = new AbortController();
-      active.set(conversationId, controller);
+      active.set(conversationId, {
+        connected: true,
+        controller,
+        parked: false,
+      });
       return controller.signal;
     },
     cancel(conversationId) {
-      const controller = active.get(conversationId);
-      if (!controller) {
+      const entry = active.get(conversationId);
+      if (!entry) {
         return false;
       }
-      controller.abort(new Error("API Turn cancelled"));
+      entry.controller.abort(new Error("API Turn cancelled"));
       return true;
     },
+    disconnect(conversationId, signal) {
+      const entry = active.get(conversationId);
+      if (entry?.controller.signal !== signal) {
+        return;
+      }
+      entry.connected = false;
+      if (entry.parked) {
+        active.delete(conversationId);
+      }
+    },
     finish(conversationId, signal) {
-      const controller = active.get(conversationId);
-      if (controller?.signal === signal) {
+      const entry = active.get(conversationId);
+      if (entry?.controller.signal === signal) {
+        active.delete(conversationId);
+      }
+    },
+    park(conversationId, signal) {
+      const entry = active.get(conversationId);
+      if (entry?.controller.signal !== signal) {
+        return;
+      }
+      entry.parked = true;
+      if (!entry.connected) {
         active.delete(conversationId);
       }
     },
     signal(conversationId) {
-      return active.get(conversationId)?.signal;
+      return active.get(conversationId)?.controller.signal;
     },
   };
 }

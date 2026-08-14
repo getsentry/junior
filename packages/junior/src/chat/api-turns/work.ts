@@ -772,9 +772,16 @@ export function createApiTurnWorker(options: {
               conversation,
               sandboxRef,
             });
+            if (cancellationSignal) {
+              options.cancellation?.park(
+                context.conversationId,
+                cancellationSignal,
+              );
+            }
             await acknowledge();
             return { status: "completed" };
           }
+          finishCancellation();
           reply = outcome.result;
           modelFailureCaptureAttempted =
             reply.diagnostics.outcome !== "success";
@@ -786,9 +793,6 @@ export function createApiTurnWorker(options: {
           modelFailureEventId = finalized.eventId;
           if (reply.diagnostics.outcome !== "success") {
             await deliverAssistantMessage(reply.text);
-            if (cancellationSignal?.aborted) {
-              return await completeCancelledTurn();
-            }
           }
 
           const completedState = buildDeliveredTurnStatePatch({
@@ -801,9 +805,6 @@ export function createApiTurnWorker(options: {
             conversation: completedState.conversation,
             sandboxRef: reply.sandboxRef ?? sandboxRef,
           });
-          if (cancellationSignal?.aborted) {
-            return await completeCancelledTurn();
-          }
           if (reply.piMessages?.length) {
             // Prefer the live checkpoint slice after yield/resume; first
             // completion has no prior record and starts at slice 1.
@@ -822,9 +823,6 @@ export function createApiTurnWorker(options: {
               actor,
               surface: "api",
             });
-            if (cancellationSignal?.aborted) {
-              return await completeCancelledTurn();
-            }
           }
 
           if (reply.diagnostics.outcome === "success") {
@@ -834,7 +832,6 @@ export function createApiTurnWorker(options: {
               outcome: assistantMessageDelivered ? "success" : "no_reply",
               turnId,
             });
-            finishCancellation();
             try {
               await scheduleSessionCompletedPluginTasks(
                 {
@@ -874,7 +871,6 @@ export function createApiTurnWorker(options: {
               failureCode: "model_execution_failed",
               turnId,
             });
-            finishCancellation();
           }
 
           await acknowledge();

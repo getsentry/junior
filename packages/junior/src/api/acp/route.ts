@@ -374,6 +374,18 @@ function createActorAgent(
               "This ACP session already has an active prompt",
             );
           }
+          const recordDisconnect = () =>
+            options.cancellation.disconnect(
+              context.params.sessionId,
+              cancellationSignal,
+            );
+          if (context.signal.aborted) {
+            recordDisconnect();
+          } else {
+            context.signal.addEventListener("abort", recordDisconnect, {
+              once: true,
+            });
+          }
           let accepted: Awaited<
             ReturnType<typeof appendAndEnqueueApiConversationMessage>
           >;
