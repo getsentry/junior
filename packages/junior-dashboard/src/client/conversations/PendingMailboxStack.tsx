@@ -4,10 +4,10 @@ import {
   Clock3,
   LoaderCircle,
   SkipForward,
+  X,
   type LucideIcon,
 } from "lucide-react";
 
-import { Button } from "../components/Button";
 import { Tooltip } from "../components/Tooltip";
 import { transcriptMessageActorLabel } from "../format";
 import type { ConversationTranscript, TranscriptViewMessage } from "../types";
@@ -55,7 +55,11 @@ function PendingMetaIcon(props: { children: ReactElement; label: string }) {
 }
 
 function PendingMetaIcons(props: {
+  cancelDisabled: boolean;
+  cancelError: boolean;
+  cancelPending: boolean;
   message: ConversationMailboxMessage;
+  onCancel?: () => void;
   showSlack: boolean;
 }) {
   const delivery = pendingDeliveryMeta(props.message);
@@ -78,13 +82,45 @@ function PendingMetaIcons(props: {
           strokeWidth={2.2}
         />
       </PendingMetaIcon>
+      {props.onCancel ? (
+        <Tooltip
+          content={
+            props.cancelError
+              ? "Could not remove. Try again."
+              : "Remove queued message"
+          }
+          placement="above"
+        >
+          <button
+            aria-label="Remove queued message"
+            className="inline-flex size-5 cursor-pointer items-center justify-center rounded border-0 bg-transparent p-0 text-dashboard-text-muted transition-colors hover:bg-white/[0.06] hover:text-amber-50 focus-visible:outline focus-visible:outline-1 focus-visible:outline-amber-200/55 disabled:cursor-default disabled:opacity-50"
+            disabled={props.cancelDisabled}
+            onClick={props.onCancel}
+            type="button"
+          >
+            {props.cancelPending ? (
+              <LoaderCircle
+                aria-hidden="true"
+                className="animate-spin"
+                size={13}
+              />
+            ) : (
+              <X aria-hidden="true" size={14} strokeWidth={2.2} />
+            )}
+          </button>
+        </Tooltip>
+      ) : null}
     </TranscriptHeadingMeta>
   );
 }
 
 function PendingRow(props: {
+  cancelDisabled: boolean;
+  cancelError: boolean;
+  cancelPending: boolean;
   conversation: ConversationTranscript;
   message: ConversationMailboxMessage;
+  onCancel?(message: ConversationMailboxMessage): void;
   onRetry?(message: ConversationMailboxMessage): void;
 }) {
   const text = props.message.text ?? "";
@@ -119,7 +155,16 @@ function PendingRow(props: {
         }
         leftClassName="text-sm leading-snug text-dashboard-text"
         right={
-          <PendingMetaIcons message={props.message} showSlack={showSlack} />
+          <PendingMetaIcons
+            cancelDisabled={props.cancelDisabled}
+            cancelError={props.cancelError}
+            cancelPending={props.cancelPending}
+            message={props.message}
+            onCancel={
+              props.onCancel ? () => props.onCancel?.(props.message) : undefined
+            }
+            showSlack={showSlack}
+          />
         }
       />
       {redacted ? (
@@ -150,8 +195,6 @@ function PendingRow(props: {
 }
 
 function ExpandQueuedMessagesButton(props: {
-  /** When the cancel bar already shows the total count, avoid repeating it on mobile. */
-  countShownInCancelBar: boolean;
   expanded: boolean;
   hiddenCount: number;
   onClick(): void;
@@ -166,10 +209,7 @@ function ExpandQueuedMessagesButton(props: {
       ? `${props.hiddenCount} more queued messages`
       : totalLabel;
   // Mobile collapses previews and uses the total count as the expand control.
-  // When cancel already owns that count, keep a distinct expand action label.
-  const mobileCollapsedLabel = props.countShownInCancelBar
-    ? "Show queued messages"
-    : totalLabel;
+  const mobileCollapsedLabel = totalLabel;
   const label = props.expanded ? "Show fewer queued messages" : moreLabel;
 
   return (
@@ -195,9 +235,10 @@ function ExpandQueuedMessagesButton(props: {
 export function PendingMailboxStack(props: {
   cancelError?: boolean;
   cancelPending?: boolean;
+  cancelTargetInboundMessageId?: string;
   conversation: ConversationTranscript;
   messages: readonly ConversationMailboxMessage[];
-  onCancelQueue?: () => void;
+  onCancelMessage?: (message: ConversationMailboxMessage) => void;
   onRetry?(message: ConversationMailboxMessage): void;
 }): ReactNode {
   const [expanded, setExpanded] = useState(false);
@@ -219,50 +260,34 @@ export function PendingMailboxStack(props: {
   const visibleRows = showCollapsed ? previewRows : rows;
   const hiddenCount = Math.max(0, rows.length - COLLAPSED_PENDING_ROW_COUNT);
   const toggleExpanded = () => setExpanded((value) => !value);
-  const cancellableCount = rows.filter(
-    (message) => message.clientStatus === undefined,
-  ).length;
-  const hasSendingRow = rows.some(
-    (message) => message.clientStatus === "sending",
-  );
-  const showCancel =
-    cancellableCount > 0 && !hasSendingRow && Boolean(props.onCancelQueue);
-  const countLabel =
-    rows.length === 1 ? "1 queued message" : `${rows.length} queued messages`;
 
   return (
     <div
       aria-label="Pending messages"
       className="mx-2 overflow-hidden rounded-t-lg bg-amber-300/[0.055] md:mx-3"
     >
-      {showCancel ? (
-        <div className="flex items-center justify-between gap-2 px-3 py-2 md:px-3.5">
-          <div className="min-w-0 font-sans text-xs font-medium text-amber-100/80">
-            {countLabel}
-          </div>
-          <Button
-            aria-label="Cancel queued messages"
-            className="h-7 shrink-0 border-white/10 bg-transparent px-2 text-xs font-medium text-amber-100/85 hover:border-white/25 hover:bg-white/[0.06] hover:text-amber-50"
-            disabled={props.cancelPending}
-            onClick={props.onCancelQueue}
-          >
-            {props.cancelPending ? "Cancelling…" : "Cancel queue"}
-          </Button>
-        </div>
-      ) : null}
-      {showCancel && props.cancelError ? (
-        <div className="border-t border-amber-300/15 px-3 py-1.5 font-sans text-xs text-amber-100/75 md:px-3.5">
-          Could not cancel queued messages. Try again.
-        </div>
-      ) : null}
       {showCollapsed ? (
         // Desktop keeps a two-row preview; mobile collapses to the control only.
         <div className="hidden md:block">
           {previewRows.map((message, index) => (
             <PendingRow
+              cancelDisabled={Boolean(props.cancelPending)}
+              cancelError={Boolean(
+                props.cancelError &&
+                props.cancelTargetInboundMessageId === message.inboundMessageId,
+              )}
+              cancelPending={Boolean(
+                props.cancelPending &&
+                props.cancelTargetInboundMessageId === message.inboundMessageId,
+              )}
               conversation={props.conversation}
               key={message.messageId ?? `${message.inboundMessageId}:${index}`}
               message={message}
+              onCancel={
+                message.clientStatus === undefined
+                  ? props.onCancelMessage
+                  : undefined
+              }
               onRetry={props.onRetry}
             />
           ))}
@@ -270,16 +295,29 @@ export function PendingMailboxStack(props: {
       ) : (
         visibleRows.map((message, index) => (
           <PendingRow
+            cancelDisabled={Boolean(props.cancelPending)}
+            cancelError={Boolean(
+              props.cancelError &&
+              props.cancelTargetInboundMessageId === message.inboundMessageId,
+            )}
+            cancelPending={Boolean(
+              props.cancelPending &&
+              props.cancelTargetInboundMessageId === message.inboundMessageId,
+            )}
             conversation={props.conversation}
             key={message.messageId ?? `${message.inboundMessageId}:${index}`}
             message={message}
+            onCancel={
+              message.clientStatus === undefined
+                ? props.onCancelMessage
+                : undefined
+            }
             onRetry={props.onRetry}
           />
         ))
       )}
       {canCollapse ? (
         <ExpandQueuedMessagesButton
-          countShownInCancelBar={showCancel}
           expanded={expanded}
           hiddenCount={hiddenCount}
           onClick={toggleExpanded}

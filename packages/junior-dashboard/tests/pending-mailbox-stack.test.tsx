@@ -40,13 +40,13 @@ function message(
   };
 }
 
-describe("PendingMailboxStack cancel control", () => {
-  it("shows cancel only when an accepted mailbox row exists", () => {
+describe("PendingMailboxStack remove control", () => {
+  it("shows remove only for an accepted mailbox row", () => {
     const accepted = renderToStaticMarkup(
       <PendingMailboxStack
         conversation={conversation()}
         messages={[message()]}
-        onCancelQueue={() => undefined}
+        onCancelMessage={() => undefined}
       />,
     );
     const localOnly = renderToStaticMarkup(
@@ -59,15 +59,15 @@ describe("PendingMailboxStack cancel control", () => {
             messageId: "client:1",
           }),
         ]}
-        onCancelQueue={() => undefined}
+        onCancelMessage={() => undefined}
       />,
     );
 
-    expect(accepted).toContain("Cancel queue");
-    expect(localOnly).not.toContain("Cancel queue");
+    expect(accepted).toContain("Remove queued message");
+    expect(localOnly).not.toContain("Remove queued message");
   });
 
-  it("hides cancel while a local send can still become accepted", () => {
+  it("keeps remove available for accepted rows while a local send is pending", () => {
     const html = renderToStaticMarkup(
       <PendingMailboxStack
         conversation={conversation()}
@@ -79,14 +79,14 @@ describe("PendingMailboxStack cancel control", () => {
             messageId: "client:2",
           }),
         ]}
-        onCancelQueue={() => undefined}
+        onCancelMessage={() => undefined}
       />,
     );
 
-    expect(html).not.toContain("Cancel queue");
+    expect(html.match(/aria-label="Remove queued message"/g)).toHaveLength(1);
   });
 
-  it("hides a stale cancel error when only local outbox rows remain", () => {
+  it("does not show remove for failed local outbox rows", () => {
     const html = renderToStaticMarkup(
       <PendingMailboxStack
         cancelError
@@ -99,14 +99,14 @@ describe("PendingMailboxStack cancel control", () => {
             messageId: "client:retry-1",
           }),
         ]}
-        onCancelQueue={() => undefined}
+        onCancelMessage={() => undefined}
       />,
     );
 
-    expect(html).not.toContain("Could not cancel queued messages");
+    expect(html).not.toContain("Remove queued message");
   });
 
-  it("does not repeat the queue count on the mobile expand control when cancel shows it", () => {
+  it("uses the queue count on the mobile expand control", () => {
     const messages = Array.from({ length: 5 }, (_, index) =>
       message({
         inboundMessageId: `accepted-${index + 1}`,
@@ -118,12 +118,12 @@ describe("PendingMailboxStack cancel control", () => {
       <PendingMailboxStack
         conversation={conversation()}
         messages={messages}
-        onCancelQueue={() => undefined}
+        onCancelMessage={() => undefined}
       />,
     );
 
     expect(html).toContain("5 queued messages");
-    expect(html).toContain("Show queued messages");
+    expect(html).not.toContain("Show queued messages");
     expect(html.match(/5 queued messages/g)).toHaveLength(1);
   });
 });
