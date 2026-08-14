@@ -294,6 +294,17 @@ export function usePublishConversation(conversationId: string) {
         `/api/conversations/${encodeURIComponent(conversationId)}/publish`,
         {},
       ),
+    onMutate: async () => {
+      await Promise.all([
+        queryClient.cancelQueries({
+          queryKey: ["dashboard", "conversations"],
+        }),
+        queryClient.cancelQueries({
+          exact: true,
+          queryKey: conversationDetailQueryKey(conversationId),
+        }),
+      ]);
+    },
     onSuccess: () => {
       const detailQueryKey = conversationDetailQueryKey(conversationId);
       queryClient.setQueryData<ConversationDetailReport>(
