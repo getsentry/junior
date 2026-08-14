@@ -66,6 +66,11 @@ export const archiveConversationResponseSchema = z
   .object({ archived: z.boolean() })
   .strict();
 
+/** One-way private→public publish for a conversation root destination. */
+export const publishConversationResponseSchema = z
+  .object({ visibility: z.literal("public") })
+  .strict();
+
 export const createConversationBodySchema = z
   .object({
     idempotencyKey: z.string().trim().min(1).max(200),
@@ -832,6 +837,9 @@ export type ArchiveConversationBody = z.infer<
 >;
 export type ArchiveConversationResponse = z.infer<
   typeof archiveConversationResponseSchema
+>;
+export type PublishConversationResponse = z.infer<
+  typeof publishConversationResponseSchema
 >;
 export type CreateConversationBody = z.infer<
   typeof createConversationBodySchema

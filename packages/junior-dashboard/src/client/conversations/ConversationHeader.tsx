@@ -4,6 +4,7 @@ import { SearchInput } from "../components/SearchInput";
 import {
   ConversationHeaderActions,
   type ConversationArchiveAction,
+  type ConversationPublishAction,
 } from "./ConversationHeaderActions";
 import { ConversationDetailsDrawer } from "./ConversationDetailsDrawer";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
@@ -20,6 +21,7 @@ export function ConversationHeader(props: {
   onSearchChange(value: string): void;
   onViewChange(value: TranscriptViewMode): void;
   privacy: ReactNode;
+  publish?: ConversationPublishAction;
   search: string;
   stats: ReactNode;
   title: string;
@@ -70,6 +72,7 @@ export function ConversationHeader(props: {
               setSearchOpen(true);
             }}
             onViewChange={props.onViewChange}
+            publish={props.publish}
             searchOpen={searchOpenVisible}
             view={props.view}
           />
@@ -92,6 +95,12 @@ export function ConversationHeader(props: {
         {props.archive.error ? (
           <div className="mt-1.5 text-xs text-red-300/80">
             Could not update archive state.
+          </div>
+        ) : null}
+
+        {props.publish?.error ? (
+          <div className="mt-1.5 text-xs text-red-300/80">
+            Could not make this conversation public.
           </div>
         ) : null}
 

@@ -21,6 +21,7 @@ import {
   conversationDetailReportSchema,
   conversationEventPageSchema,
   conversationPendingMessagesReportSchema,
+  publishConversationResponseSchema,
 } from "@sentry/junior/api/schema";
 
 import {
@@ -276,6 +277,63 @@ export function useCancelConversationPendingMessages(conversationId: string) {
         queryClient.invalidateQueries({
           exact: true,
           queryKey: conversationPendingMessagesQueryKey(conversationId),
+        }),
+      ]);
+    },
+  });
+}
+
+/** One-way private→public publish for a conversation the viewer participates in. */
+export function usePublishConversation(conversationId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationKey: ["dashboard", "publish-conversation", conversationId],
+    mutationFn: () =>
+      post(
+        publishConversationResponseSchema,
+        `/api/conversations/${encodeURIComponent(conversationId)}/publish`,
+        {},
+      ),
+    onMutate: async () => {
+      await Promise.all([
+        queryClient.cancelQueries({
+          queryKey: ["dashboard", "conversations"],
+        }),
+        queryClient.cancelQueries({
+          exact: true,
+          queryKey: conversationDetailQueryKey(conversationId),
+        }),
+      ]);
+    },
+    onSuccess: () => {
+      const detailQueryKey = conversationDetailQueryKey(conversationId);
+      queryClient.setQueryData<ConversationDetailReport>(
+        detailQueryKey,
+        (detail) => (detail ? { ...detail, visibility: "public" } : detail),
+      );
+      const conversationQueries = { queryKey: ["dashboard", "conversations"] };
+      const feeds =
+        queryClient.getQueriesData<ConversationFeed>(conversationQueries);
+      for (const [queryKey, feed] of feeds) {
+        if (!feed) continue;
+        queryClient.setQueryData<ConversationFeed>(queryKey, {
+          ...feed,
+          conversations: feed.conversations.map((conversation) =>
+            conversation.conversationId === conversationId
+              ? { ...conversation, visibility: "public" }
+              : conversation,
+          ),
+        });
+      }
+    },
+    onSettled: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["dashboard", "conversations"],
+        }),
+        queryClient.invalidateQueries({
+          exact: true,
+          queryKey: conversationDetailQueryKey(conversationId),
         }),
       ]);
     },

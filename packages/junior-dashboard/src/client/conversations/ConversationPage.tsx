@@ -10,6 +10,7 @@ import {
   useArchiveConversation,
   useCancelConversationPendingMessages,
   useConversationData,
+  usePublishConversation,
   type PendingArchiveConversationUpdate,
 } from "./queries";
 import type { ConversationMailboxMessage } from "./conversationOutbox";
@@ -63,6 +64,7 @@ export function ConversationPage(props: {
   const conversations = buildConversations(summaries);
   const detail = useConversationData(conversationId);
   const archive = useArchiveConversation(conversationId);
+  const publish = usePublishConversation(conversationId);
   const feedConversation = conversations.find(
     (item) => item.id === conversationId,
   );
@@ -120,6 +122,25 @@ export function ConversationPage(props: {
                   lastSeenAt: conversation!.lastSeenAt,
                 }),
               pending: archive.isPending,
+            }}
+            publish={{
+              disabled: publish.isPending,
+              error: Boolean(publish.error),
+              onClick: () => {
+                if (
+                  !window.confirm(
+                    "Make this conversation public? Anyone in this workspace can read it. You cannot undo this.",
+                  )
+                ) {
+                  return;
+                }
+                publish.mutate();
+              },
+              pending: publish.isPending,
+              visible: Boolean(
+                detail.data?.isParticipant &&
+                  conversation?.visibility === "private",
+              ),
             }}
             identity={
               hasConversationIdentity({
