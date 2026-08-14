@@ -166,12 +166,12 @@ export function ConversationSidebarAnnotations(props: {
   );
 }
 
-/** Compact overlapping status discs used by mobile and overflow clusters. */
+/** Compact overlapping status chips used by mobile and overflow clusters. */
 function SidebarAnnotationIconFacepile(props: {
   annotations: NonNullable<ConversationDetailReport["sidebarAnnotations"]>;
   /**
    * CSS color for the avatar-stack cutout ring. Must match the surface under
-   * the facepile so lower discs read as clean silhouettes.
+   * the facepile so lower chips read as clean silhouettes.
    */
   cutoutColor: string;
   className?: string;
@@ -179,17 +179,18 @@ function SidebarAnnotationIconFacepile(props: {
   return (
     <span
       className={cn(
-        // Isolate stacking context so z-index only orders discs inside the pile.
-        "relative isolate inline-flex h-4 items-center",
+        // Isolate stacking context so z-index only orders chips inside the pile.
+        // Extra right pad keeps the last chip's cutout ring from clipping.
+        "relative isolate inline-flex h-[18px] items-center pr-0.5",
         props.className,
       )}
     >
       {props.annotations.map((annotation, index) => (
-        <SidebarAnnotationStatusDisc
+        <SidebarAnnotationStatusChip
           annotation={annotation}
           cutoutColor={props.cutoutColor}
           key={annotation.key}
-          // 16px disc with -6px pull → 10px advance / 37.5% overlap.
+          // 18px chip with -8px pull → 10px advance / ~44% overlap.
           stacked={index > 0}
           zIndex={props.annotations.length - index}
         />
@@ -203,13 +204,13 @@ function SidebarAnnotationOverflowCluster(props: {
 }) {
   if (props.annotations.length === 0) return null;
   return (
-    <span className="inline-flex h-5 shrink-0 items-center gap-1 rounded-full border border-white/10 bg-dashboard-control py-0 pl-1.5 pr-1 font-mono text-2xs leading-none text-dashboard-text-muted">
+    <span className="inline-flex h-5 shrink-0 items-center gap-1 overflow-visible rounded-full border border-white/10 bg-dashboard-control py-0 pl-1.5 pr-1 font-mono text-2xs leading-none text-dashboard-text-muted">
       <span className="tabular-nums leading-none">
         +{props.annotations.length}
       </span>
       <SidebarAnnotationIconFacepile
         annotations={props.annotations}
-        // Discs live on the cluster fill (#111114).
+        // Chips live on the cluster fill (#111114).
         cutoutColor="var(--color-dashboard-control)"
       />
     </span>
@@ -237,7 +238,8 @@ function SidebarAnnotationChip(props: {
   );
 }
 
-function SidebarAnnotationStatusDisc(props: {
+/** Icon-only chip that matches labeled-chip chrome and stacks like a facepile. */
+function SidebarAnnotationStatusChip(props: {
   annotation: NonNullable<
     ConversationDetailReport["sidebarAnnotations"]
   >[number];
@@ -252,10 +254,12 @@ function SidebarAnnotationStatusDisc(props: {
     <span
       aria-hidden="true"
       className={cn(
-        // Raised face + colored status glyph. Face must differ from cutoutColor
-        // or the ring disappears and stacked discs mush together.
-        "relative inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-dashboard-surface-hover",
-        props.stacked && "-ml-1.5",
+        // Same border + fill language as labeled chips so the stack reads as
+        // real chips, not floating glyphs. Box-shadow cutout (not border) keeps
+        // layout at 18px while punching a surface-colored ring through the chip
+        // underneath — classic avatar-facepile silhouette.
+        "relative box-border inline-flex size-[18px] shrink-0 items-center justify-center rounded-full border border-white/12 bg-dashboard-control",
+        props.stacked && "-ml-2",
       )}
       style={{
         boxShadow: `0 0 0 2px ${props.cutoutColor}`,
