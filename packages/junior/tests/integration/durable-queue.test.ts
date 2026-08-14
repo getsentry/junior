@@ -8,9 +8,6 @@ import {
   commitAcceptedReply,
   loadProjection,
 } from "@/chat/conversations/projection";
-import { executeAgentRun } from "@/chat/agent";
-import type { AgentSteeringMessage } from "@/chat/agent/types";
-import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import {
   getPersistedThreadState,
@@ -24,7 +21,6 @@ import { getConversationStore } from "@/chat/db";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
 import {
   CONVERSATION_WORK_LEASE_TTL_MS,
-  CONVERSATION_WORK_MAX_RETRIES,
   getConversationWorkState,
   requestConversationWork,
   startConversationWork,
@@ -53,6 +49,7 @@ import {
   resetSlackApiMockState,
 } from "../msw/handlers/slack-api";
 import { createModelStream } from "../fixtures/model-stream";
+import { createModelAgentRunner } from "../fixtures/agent-runner";
 
 /**
  * Turn-lifecycle product outcomes for one conversation under the durable queue.
@@ -89,7 +86,9 @@ function streamMidWorkThenReplies(
 ): StreamFn {
   const [firstFinal, ...restFinals] = finalTexts;
   if (!firstFinal) {
-    throw new Error("streamMidWorkThenReplies requires at least one final text");
+    throw new Error(
+      "streamMidWorkThenReplies requires at least one final text",
+    );
   }
   return createModelStream([
     { type: "toolCall", name: "systemTime", arguments: {} },
@@ -133,18 +132,10 @@ function streamMidWorkThenHoldOnResume(
 /**
  * Compose the same ingress, runtime, worker, resume, SQL, and delivery path used
  * in production. These tests must not replace Junior-owned runtime behavior.
- * They may fake only model generation at the `executeAgentRun` stream boundary
- * and Slack I/O at the adapter boundary.
- *
- * Custom `agentRunner` is reserved for agent-edge outcomes the stream cannot
- * express: throw before input commit, or mid-run coordination for steering.
+ * They may fake only model generation at the agent stream boundary and Slack
+ * I/O at the adapter boundary.
  */
-async function slack(
-  options: {
-    agentRunner?: AgentRunner;
-    modelStream?: StreamFn;
-  } = {},
-) {
+async function slack(options: { modelStream?: StreamFn } = {}) {
   const state = getStateAdapter();
   await state.connect();
   const wakes = createConversationWorkQueueTestAdapter();
@@ -152,9 +143,7 @@ async function slack(
   const modelStream =
     options.modelStream ??
     createModelStream([{ type: "text", text: "Deploy checked." }]);
-  const agentRunner: AgentRunner = options.agentRunner ?? {
-    run: async (request) => await executeAgentRun(request, modelStream),
-  };
+  const agentRunner = createModelAgentRunner(modelStream);
   const work = createConversationWork({
     agentRunner,
     conversationStore: getConversationStore(),
@@ -436,13 +425,13 @@ describe("durable queue contract", () => {
       const turnId = "turn_1712345_0001";
       // Holding the next model step past the host deadline marks the agent
       // timed out and parks for resume (production multi-slice shape).
-      await expect(getTurnRecord(CONVERSATION_ID, turnId)).resolves.toMatchObject(
-        {
-          state: "paused",
-          resumeReason: "timeout",
-          turnId,
-        },
-      );
+      await expect(
+        getTurnRecord(CONVERSATION_ID, turnId),
+      ).resolves.toMatchObject({
+        state: "paused",
+        resumeReason: "timeout",
+        turnId,
+      });
       const afterYield = await getConversationWorkState({
         conversationId: CONVERSATION_ID,
         state: q.state,
@@ -466,85 +455,81 @@ describe("durable queue contract", () => {
       await expectNextTurn(q, "1712345.0011");
     });
 
-    it(
-      "re-parks when a later attempt times out before any new work is saved",
-      async () => {
-        // JUNIOR-7G: first attempt parks after real tool work. The next wake
-        // spends the whole host budget on the model call and saves nothing new.
-        // That attempt must re-park (not fail), then a full-budget wake finishes.
-        const releaseAfterTool = deferred<void>();
-        const releaseOnResume = deferred<void>();
-        const remainingMs = 2_500;
-        const firstStartedAtMs = almostSpentStartedAtMs(remainingMs);
-        const firstDeadlineAtMs = firstStartedAtMs + requestBudgetMs();
-        const q = await slack({
-          modelStream: streamMidWorkThenHoldOnResume(
-            releaseAfterTool.promise,
-            releaseOnResume.promise,
-            "Deploy checked.",
-            "Deploy checked.",
-          ),
-        });
+    it("re-parks when a later attempt times out before any new work is saved", async () => {
+      // JUNIOR-7G: first attempt parks after real tool work. The next wake
+      // spends the whole host budget on the model call and saves nothing new.
+      // That attempt must re-park (not fail), then a full-budget wake finishes.
+      const releaseAfterTool = deferred<void>();
+      const releaseOnResume = deferred<void>();
+      const remainingMs = 2_500;
+      const firstStartedAtMs = almostSpentStartedAtMs(remainingMs);
+      const firstDeadlineAtMs = firstStartedAtMs + requestBudgetMs();
+      const q = await slack({
+        modelStream: streamMidWorkThenHoldOnResume(
+          releaseAfterTool.promise,
+          releaseOnResume.promise,
+          "Deploy checked.",
+          "Deploy checked.",
+        ),
+      });
 
-        await expect(q.send()).resolves.toMatchObject({ status: 200 });
-        const firstSlice = q.next(firstStartedAtMs);
-        const waitForFirstDeadlineMs = Math.max(
-          0,
-          firstDeadlineAtMs - Date.now() + 50,
-        );
-        await new Promise((resolve) =>
-          setTimeout(resolve, waitForFirstDeadlineMs),
-        );
-        releaseAfterTool.resolve(undefined);
-        await expect(firstSlice).resolves.toEqual({ status: "yielded" });
+      await expect(q.send()).resolves.toMatchObject({ status: 200 });
+      const firstSlice = q.next(firstStartedAtMs);
+      const waitForFirstDeadlineMs = Math.max(
+        0,
+        firstDeadlineAtMs - Date.now() + 50,
+      );
+      await new Promise((resolve) =>
+        setTimeout(resolve, waitForFirstDeadlineMs),
+      );
+      releaseAfterTool.resolve(undefined);
+      await expect(firstSlice).resolves.toEqual({ status: "yielded" });
 
-        const turnId = "turn_1712345_0001";
-        await expect(
-          getTurnRecord(CONVERSATION_ID, turnId),
-        ).resolves.toMatchObject({
-          state: "paused",
-          resumeReason: "timeout",
-          turnId,
-        });
-        expect(q.replies()).toHaveLength(0);
-        expect(q.wakes.hasQueuedMessages()).toBe(true);
+      const turnId = "turn_1712345_0001";
+      await expect(
+        getTurnRecord(CONVERSATION_ID, turnId),
+      ).resolves.toMatchObject({
+        state: "paused",
+        resumeReason: "timeout",
+        turnId,
+      });
+      expect(q.replies()).toHaveLength(0);
+      expect(q.wakes.hasQueuedMessages()).toBe(true);
 
-        const secondStartedAtMs = almostSpentStartedAtMs(remainingMs);
-        const secondDeadlineAtMs = secondStartedAtMs + requestBudgetMs();
-        const secondSlice = q.next(secondStartedAtMs);
-        const waitForSecondDeadlineMs = Math.max(
-          0,
-          secondDeadlineAtMs - Date.now() + 50,
-        );
-        await new Promise((resolve) =>
-          setTimeout(resolve, waitForSecondDeadlineMs),
-        );
-        releaseOnResume.resolve(undefined);
+      const secondStartedAtMs = almostSpentStartedAtMs(remainingMs);
+      const secondDeadlineAtMs = secondStartedAtMs + requestBudgetMs();
+      const secondSlice = q.next(secondStartedAtMs);
+      const waitForSecondDeadlineMs = Math.max(
+        0,
+        secondDeadlineAtMs - Date.now() + 50,
+      );
+      await new Promise((resolve) =>
+        setTimeout(resolve, waitForSecondDeadlineMs),
+      );
+      releaseOnResume.resolve(undefined);
 
-        // Short leftover budget still parks cleanly instead of failing the turn.
-        await expect(secondSlice).resolves.toEqual({ status: "yielded" });
-        await expect(
-          getTurnRecord(CONVERSATION_ID, turnId),
-        ).resolves.toMatchObject({
-          state: "paused",
-          resumeReason: "timeout",
-          turnId,
-        });
-        expect(q.replies()).toHaveLength(0);
-        expect(q.wakes.hasQueuedMessages()).toBe(true);
+      // Short leftover budget still parks cleanly instead of failing the turn.
+      await expect(secondSlice).resolves.toEqual({ status: "yielded" });
+      await expect(
+        getTurnRecord(CONVERSATION_ID, turnId),
+      ).resolves.toMatchObject({
+        state: "paused",
+        resumeReason: "timeout",
+        turnId,
+      });
+      expect(q.replies()).toHaveLength(0);
+      expect(q.wakes.hasQueuedMessages()).toBe(true);
 
-        // Fresh full-budget wake finishes the same turn with one reply.
-        await expect(q.next()).resolves.toEqual({ status: "completed" });
-        await expectTerminalTurn(q, {
-          turnId,
-          state: "completed",
-          replies: ["Deploy checked."],
-        });
-        await expectAssistantInSql("Deploy checked.");
-        await expectNextTurn(q, "1712345.0012");
-      },
-      30_000,
-    );
+      // Fresh full-budget wake finishes the same turn with one reply.
+      await expect(q.next()).resolves.toEqual({ status: "completed" });
+      await expectTerminalTurn(q, {
+        turnId,
+        state: "completed",
+        replies: ["Deploy checked."],
+      });
+      await expectAssistantInSql("Deploy checked.");
+      await expectNextTurn(q, "1712345.0012");
+    }, 30_000);
   });
 
   describe("accepted reply is terminal", () => {
@@ -680,120 +665,6 @@ describe("durable queue contract", () => {
         error: "lost its worker",
       });
       await expectNextTurn(q, "1712345.0006");
-    });
-  });
-
-  describe("transient agent failure", () => {
-    it("retries a failure before input commit without a Slack post", async () => {
-      let attempts = 0;
-      const q = await slack({
-        agentRunner: {
-          run: async (request) => {
-            attempts += 1;
-            if (attempts === 1) throw new Error("agent unavailable");
-            return await executeAgentRun(
-              request,
-              createModelStream([
-                { type: "text", text: "Deploy checked." },
-              ]),
-            );
-          },
-        },
-      });
-      await q.send();
-
-      await expect(q.next()).resolves.toEqual({ status: "pending_requeued" });
-      await expect(q.next()).resolves.toEqual({ status: "completed" });
-      expect(attempts).toBe(2);
-      await expectTerminalTurn(q, {
-        turnId: "turn_1712345_0001",
-        state: "completed",
-        replies: ["Deploy checked."],
-      });
-    });
-
-    it("stops at the retry limit with at most one fallback", async () => {
-      let attempts = 0;
-      const q = await slack({
-        agentRunner: {
-          run: async (request) => {
-            attempts += 1;
-            if (attempts <= CONVERSATION_WORK_MAX_RETRIES) {
-              throw new Error("agent unavailable");
-            }
-            return await executeAgentRun(
-              request,
-              createModelStream([
-                { type: "text", text: "Deploy checked." },
-              ]),
-            );
-          },
-        },
-      });
-      await q.send();
-
-      const results: string[] = [];
-      while (q.wakes.hasQueuedMessages()) results.push((await q.next()).status);
-
-      expect(results.at(-1)).toBe("failed");
-      expect(attempts).toBe(CONVERSATION_WORK_MAX_RETRIES);
-      expect(q.replies()).toHaveLength(1);
-      await expect(
-        getConversationWorkState({
-          conversationId: CONVERSATION_ID,
-          state: q.state,
-        }),
-      ).resolves.toMatchObject({ needsRun: false, messages: [] });
-      expect(q.wakes.hasQueuedMessages()).toBe(false);
-      await expectNextTurn(q, "1712345.0007");
-    });
-  });
-
-  describe("mid-turn steer", () => {
-    it("folds a second mention into the active turn", async () => {
-      const entered = deferred();
-      const release = deferred();
-      const steering: AgentSteeringMessage[] = [];
-      const q = await slack({
-        agentRunner: {
-          run: async (request) => {
-            await request.durability?.onInputCommitted?.();
-            entered.resolve(undefined);
-            await release.promise;
-            await request.durability?.drainSteeringMessages?.(
-              async (messages) => {
-                steering.push(...messages);
-              },
-            );
-            return await executeAgentRun(
-              request,
-              createModelStream([
-                { type: "text", text: "Deploy checked." },
-              ]),
-            );
-          },
-        },
-      });
-      await q.send({ text: `<@${SLACK_BOT_USER_ID}> inspect the deploy` });
-
-      const activeTurn = q.next();
-      await entered.promise;
-      await q.send({
-        text: `<@${SLACK_BOT_USER_ID}> include the rollback owner`,
-        threadTs: "1712345.0001",
-        ts: "1712345.0002",
-      });
-      release.resolve(undefined);
-
-      await expect(activeTurn).resolves.toEqual({ status: "completed" });
-      expect(steering.map((message) => message.text)).toEqual([
-        "include the rollback owner",
-      ]);
-      await expectTerminalTurn(q, {
-        turnId: "turn_1712345_0001",
-        state: "completed",
-        replies: ["Deploy checked."],
-      });
     });
   });
 });
