@@ -854,11 +854,8 @@ export function githubPlugin(
         if (ctx.tool.name !== "bash") {
           return;
         }
-        const botName = readEnv(botNameEnv);
-        const botEmail = readEnv(botEmailEnv);
-        if (!botName || !botEmail) {
-          return;
-        }
+        const botName = requireEnv(botNameEnv);
+        const botEmail = requireEnv(botEmailEnv);
         ctx.env.set("GIT_AUTHOR_NAME", botName);
         ctx.env.set("GIT_AUTHOR_EMAIL", botEmail);
         ctx.env.set("JUNIOR_GIT_AUTHOR_NAME", botName);

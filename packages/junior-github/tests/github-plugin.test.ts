@@ -2951,6 +2951,23 @@ Conversation: \`local:test:old-conversation\`
     );
   });
 
+  it("throws GitHubPluginSetupError when bot identity environment variables are missing", () => {
+    delete process.env.GITHUB_APP_BOT_NAME;
+    delete process.env.GITHUB_APP_BOT_EMAIL;
+
+    const plugin = githubPlugin();
+    const before = beforeToolContext({
+      email: "david@example.com",
+      fullName: "David Cramer",
+      userId: "U039RR91S",
+      userName: "dcramer",
+    });
+
+    expect(() => {
+      plugin.hooks?.beforeToolExecute?.(before.ctx as never);
+    }).toThrow("Missing GITHUB_APP_BOT_NAME");
+  });
+
   it("injects Junior author and committer identity", () => {
     process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
     process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
