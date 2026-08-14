@@ -82,10 +82,10 @@ export function ConversationPage(props: {
   }, []);
 
   return (
-    <div className="grid min-h-0 min-w-0 grid-rows-[minmax(7rem,1fr)_minmax(0,auto)]">
+    <div className="flex min-h-0 min-w-0 flex-col">
       <div
         aria-label="Conversation transcript"
-        className="min-h-0 overflow-y-auto overscroll-contain px-3 pb-3 md:px-7 md:pb-5"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-3 md:px-7 md:pb-5"
         tabIndex={0}
       >
         <section className="min-w-0">
@@ -334,29 +334,39 @@ function ConversationReplyFooter(props: {
     ),
   );
 
+  const onMailboxLayoutChange = useCallback(() => {
+    if (!window.matchMedia("(max-width: 767px)").matches) return;
+    onPinRequestRef.current();
+  }, []);
+
   return (
-    <div className="min-h-0 max-h-[min(55%,24rem)] overflow-y-auto overscroll-contain px-2 py-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] md:max-h-none md:overflow-visible md:px-7 md:py-4 md:pb-4">
-      {props.live ? (
-        <div className="mb-1.5 flex items-center gap-2 font-sans text-xs text-dashboard-text-muted md:hidden">
-          <span
-            aria-hidden="true"
-            className="size-1.5 shrink-0 animate-pulse rounded-full bg-emerald-300"
-          />
-          <span>Junior is working…</span>
-        </div>
-      ) : null}
-      <div className="grid min-w-0">
-        {props.pendingAuthorization ? (
-          <PendingAuthorization authorization={props.pendingAuthorization} />
+    <div className="flex min-h-0 max-h-[min(55%,24rem)] shrink-0 flex-col overflow-hidden px-2 py-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] md:max-h-none md:overflow-visible md:px-7 md:py-4 md:pb-4">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain md:overflow-visible">
+        {props.live ? (
+          <div className="mb-1.5 flex items-center gap-2 font-sans text-xs text-dashboard-text-muted md:hidden">
+            <span
+              aria-hidden="true"
+              className="size-1.5 shrink-0 animate-pulse rounded-full bg-emerald-300"
+            />
+            <span>Junior is working…</span>
+          </div>
         ) : null}
-        <PendingMailboxStack
-          cancelError={cancelError}
-          cancelPending={cancelPendingMessages.isPending}
-          conversation={props.conversation}
-          messages={props.pendingMessages}
-          onCancelQueue={hasSendingOutboxMessage ? undefined : onCancelQueue}
-          onRetry={onRetry}
-        />
+        <div className="grid min-w-0">
+          {props.pendingAuthorization ? (
+            <PendingAuthorization authorization={props.pendingAuthorization} />
+          ) : null}
+          <PendingMailboxStack
+            cancelError={cancelError}
+            cancelPending={cancelPendingMessages.isPending}
+            conversation={props.conversation}
+            messages={props.pendingMessages}
+            onCancelQueue={hasSendingOutboxMessage ? undefined : onCancelQueue}
+            onLayoutChange={onMailboxLayoutChange}
+            onRetry={onRetry}
+          />
+        </div>
+      </div>
+      <div className="shrink-0 pt-1.5 md:pt-0">
         <ConversationComposer
           disabled={cancelPendingMessages.isPending}
           draftId={props.conversationId}

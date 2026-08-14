@@ -414,6 +414,10 @@ export function usePinnedTranscriptBottom(input: {
       syncAfterLayoutChange();
     });
     observer.observe(contentElement);
+    // Footer growth shrinks the transcript scroll root without resizing the
+    // transcript content node. Watch the root so follow mode stays pinned.
+    const root = scrollRootFor(contentElement);
+    if (root && !isWindowRoot(root)) observer.observe(root);
     return () => observer.disconnect();
   }, [contentElement, syncAfterLayoutChange]);
 
