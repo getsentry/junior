@@ -224,6 +224,13 @@ export function retainRuntimeTurnContext(messages: PiMessage[]): PiMessage[] {
  * a live run.
  */
 export function instructionTextForProjection(text: string): string {
+  // Prefer the instruction boundary first. Ambient bodies are escaped, but
+  // older durable history may still embed raw tags; unwrapping avoids a lazy
+  // context-strip match ending early on message text.
+  const unwrapped = unwrapCurrentInstruction(text);
+  if (unwrapped !== undefined) {
+    return unwrapped;
+  }
   const withoutContext = text
     .replace(EMBEDDED_THREAD_CONTEXT_PATTERN, "")
     .trim();

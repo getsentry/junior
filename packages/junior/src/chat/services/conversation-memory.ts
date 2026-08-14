@@ -75,10 +75,10 @@ function renderConversationMessageLine(
   message: ConversationMessage,
   conversation?: ThreadConversationState,
 ): string {
-  const displayName = conversationAuthorDisplayName(message);
-  const text = message.text
-    .replace(/\s+/g, " ")
-    .slice(0, CONTEXT_MAX_MESSAGE_CHARS);
+  const displayName = escapeXml(conversationAuthorDisplayName(message));
+  const text = escapeXml(
+    message.text.replace(/\s+/g, " ").slice(0, CONTEXT_MAX_MESSAGE_CHARS),
+  );
 
   const markers: string[] = [];
   if (message.meta?.replied === false) {
