@@ -318,17 +318,18 @@ function ConversationReplyFooter(props: {
   );
 
   return (
-    <div className="min-h-0 max-h-[min(55%,24rem)] overflow-y-auto overscroll-contain px-2 py-1.5 pb-[calc(0.375rem+env(safe-area-inset-bottom))] md:max-h-none md:overflow-visible md:px-7 md:py-4 md:pb-4">
-      {props.live ? (
-        <div className="mb-1.5 flex items-center gap-2 font-sans text-xs text-dashboard-text-muted md:hidden">
-          <span
-            aria-hidden="true"
-            className="size-1.5 shrink-0 animate-pulse rounded-full bg-emerald-300"
-          />
-          <span>Junior is working…</span>
-        </div>
-      ) : null}
-      <div className="grid min-w-0">
+    <div className="flex w-full min-h-0 max-h-[min(55dvh,24rem)] flex-col overflow-hidden self-end px-2 pt-1.5 pb-[calc(0.375rem+env(safe-area-inset-bottom))] md:max-h-none md:overflow-visible md:self-auto md:px-7 md:py-4 md:pb-4">
+      {/* Queue chrome may scroll; keep the composer pinned below it on mobile. */}
+      <div className="min-h-0 min-w-0 shrink overflow-y-auto overscroll-contain md:overflow-visible">
+        {props.live ? (
+          <div className="mb-1.5 flex items-center gap-2 font-sans text-xs text-dashboard-text-muted md:hidden">
+            <span
+              aria-hidden="true"
+              className="size-1.5 shrink-0 animate-pulse rounded-full bg-emerald-300"
+            />
+            <span>Junior is working…</span>
+          </div>
+        ) : null}
         {props.pendingAuthorization ? (
           <PendingAuthorization authorization={props.pendingAuthorization} />
         ) : null}
@@ -340,6 +341,8 @@ function ConversationReplyFooter(props: {
           onCancelQueue={hasSendingOutboxMessage ? undefined : onCancelQueue}
           onRetry={onRetry}
         />
+      </div>
+      <div className="min-w-0 shrink-0">
         <ConversationComposer
           disabled={cancelPendingMessages.isPending}
           draftId={props.conversationId}
