@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   workspaceListSchema,
   workspaceSchema,
@@ -46,6 +46,7 @@ function readApiError(error: unknown, fallback: string): string {
 /** Manage install-wide repository Workspace recipes. */
 export function WorkspacesPage() {
   const queryClient = useQueryClient();
+  const editorSessionRef = useRef(0);
   const [editingId, setEditingId] = useState<string | undefined>();
   const [draft, setDraft] = useState<WorkspaceDraft>();
   const [formError, setFormError] = useState<string>();
@@ -59,19 +60,23 @@ export function WorkspacesPage() {
   });
 
   const saveMutation = useMutation({
-    mutationFn: async () => {
-      if (!draft) throw new Error("Workspace draft is required");
-      const body = workspaceDraftBody(draft);
-      return editingId
+    mutationFn: async (input: {
+      draft: WorkspaceDraft;
+      editingId?: string;
+      session: number;
+    }) => {
+      const body = workspaceDraftBody(input.draft);
+      return input.editingId
         ? put(
             workspaceSchema,
-            `/api/workspaces/${encodeURIComponent(editingId)}`,
+            `/api/workspaces/${encodeURIComponent(input.editingId)}`,
             body,
           )
         : post(workspaceSchema, "/api/workspaces", body);
     },
-    onSuccess: async (workspace) => {
-      closeEditor();
+    onSuccess: async (workspace, input) => {
+      // Only dismiss the editor that started this save.
+      if (editorSessionRef.current === input.session) closeEditor();
       setActionError(undefined);
       await queryClient.cancelQueries({ queryKey: workspacesQueryKey });
       queryClient.setQueryData<{ workspaces: WorkspaceReport[] }>(
@@ -86,7 +91,8 @@ export function WorkspacesPage() {
         }),
       );
     },
-    onError: (error) => {
+    onError: (error, input) => {
+      if (editorSessionRef.current !== input.session) return;
       setFormError(
         readApiError(error, "Could not save the Workspace. Try again."),
       );
@@ -124,18 +130,21 @@ export function WorkspacesPage() {
   const busy = saveMutation.isPending || deleteMutation.isPending;
 
   function closeEditor() {
+    editorSessionRef.current += 1;
     setDraft(undefined);
     setEditingId(undefined);
     setFormError(undefined);
   }
 
   function openCreate() {
+    editorSessionRef.current += 1;
     setEditingId(undefined);
     setDraft(createWorkspaceDraft());
     setFormError(undefined);
   }
 
   function openEdit(workspace: WorkspaceReport) {
+    editorSessionRef.current += 1;
     setEditingId(workspace.id);
     setDraft(editWorkspaceDraft(workspace));
     setFormError(undefined);
@@ -195,7 +204,14 @@ export function WorkspacesPage() {
           error={formError}
           onCancel={closeEditor}
           onChange={setDraft}
-          onSubmit={() => saveMutation.mutate()}
+          onSubmit={() => {
+            if (!draft) return;
+            saveMutation.mutate({
+              draft,
+              editingId,
+              session: editorSessionRef.current,
+            });
+          }}
         />
       ) : null}
 
