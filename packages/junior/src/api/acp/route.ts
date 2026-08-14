@@ -201,7 +201,14 @@ async function waitForTurn(args: {
       types: ["message", "turn_completed", "turn_failed"],
     });
     if (page.events.length === 0) {
-      await sleep(EVENT_POLL_INTERVAL_MS, args.signal);
+      try {
+        await sleep(EVENT_POLL_INTERVAL_MS, args.signal);
+      } catch (error) {
+        if (args.signal.aborted) {
+          throw acp.RequestError.requestCancelled();
+        }
+        throw error;
+      }
       continue;
     }
 
