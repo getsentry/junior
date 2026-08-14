@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { getSqlExecutor } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorWorkspaceRepos, juniorWorkspaces } from "@/db/schema";
@@ -104,6 +104,8 @@ export async function listWorkspaceNamesByRepository(
   db: JuniorDatabase,
   input: { provider: string; repo: string },
 ): Promise<string[]> {
+  const provider = input.provider.trim().toLowerCase();
+  const repo = input.repo.trim();
   const rows = await db
     .select({ name: juniorWorkspaces.name })
     .from(juniorWorkspaceRepos)
@@ -113,8 +115,9 @@ export async function listWorkspaceNamesByRepository(
     )
     .where(
       and(
-        eq(juniorWorkspaceRepos.provider, input.provider),
-        eq(juniorWorkspaceRepos.repo, input.repo),
+        eq(juniorWorkspaceRepos.provider, provider),
+        // Recipes store the provided repo casing; identity is case-insensitive.
+        sql`lower(${juniorWorkspaceRepos.repo}) = lower(${repo})`,
       ),
     )
     .orderBy(asc(juniorWorkspaces.name));

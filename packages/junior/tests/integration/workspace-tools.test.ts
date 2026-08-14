@@ -44,6 +44,12 @@ describe("Workspace tools", () => {
         repo: "getsentry/sentry",
       }),
     ).resolves.toEqual(["sentry"]);
+    await expect(
+      listWorkspaceNamesByRepository(db, {
+        provider: "GitHub",
+        repo: "GetSentry/Sentry",
+      }),
+    ).resolves.toEqual(["sentry"]);
     const conversationId = normalizeLocalConversationId({
       alias: "workspace-tools",
       cwd: "/tmp/local-agent-workspace-tools",

@@ -177,4 +177,28 @@ describe("cloneRepository", () => {
       signal: expect.any(AbortSignal),
     });
   });
+
+  it("removes the clone when associated Workspace lookup fails", async () => {
+    const lookup = new Error("workspace lookup failed");
+    const run = vi
+      .fn()
+      .mockResolvedValueOnce({ exitCode: 0, stdout: "", stderr: "" })
+      .mockResolvedValueOnce({ exitCode: 1, stdout: "", stderr: "" })
+      .mockResolvedValueOnce({ exitCode: 0, stdout: "", stderr: "" })
+      .mockResolvedValueOnce({ exitCode: 0, stdout: "", stderr: "" });
+    const findByRepository = vi.fn().mockRejectedValue(lookup);
+    const tool = createGitHubCloneRepositoryTool(
+      context(run, findByRepository),
+    );
+
+    await expect(
+      tool.execute!({ repo: "getsentry/junior" }, {} as never),
+    ).rejects.toBe(lookup);
+    expect(run).toHaveBeenNthCalledWith(4, {
+      cmd: "rm",
+      args: ["-rf", "--", "/vercel/sandbox/repos/junior"],
+      cwd: "/vercel/sandbox",
+      signal: expect.any(AbortSignal),
+    });
+  });
 });

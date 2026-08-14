@@ -182,10 +182,16 @@ export function createGitHubCloneRepositoryTool(
         );
       }
       const repoId = `${repo.owner}/${repo.name}`;
-      const associatedWorkspaces = await ctx.workspaces.findByRepository({
-        provider: "github",
-        repo: repoId,
-      });
+      let associatedWorkspaces;
+      try {
+        associatedWorkspaces = await ctx.workspaces.findByRepository({
+          provider: "github",
+          repo: repoId,
+        });
+      } catch (error) {
+        await removePartialClone(ctx, path);
+        throw error;
+      }
       const data = { repo: repoId, path, associatedWorkspaces };
       return { target: "cloneRepository", ...data };
     },
