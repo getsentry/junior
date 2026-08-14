@@ -1,11 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  fauxAssistantMessage,
-  fauxText,
-  fauxThinking,
-} from "@earendil-works/pi-ai/providers/faux";
 import { createSlackSource, type Destination } from "@sentry/junior-plugin-api";
-import { executeAgentRun } from "@/chat/agent";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { acquireActiveLock } from "@/chat/state/locks";
@@ -14,7 +8,6 @@ import { instructionActors } from "@/chat/conversations/provenance";
 import {
   loadProjection,
   loadConversationProjection,
-  recordTurnRoute,
 } from "@/chat/conversations/projection";
 import { projectConversationReportEventPage } from "@/api/conversations/events";
 import { getConversationEventStore } from "@/chat/db";
@@ -486,7 +479,6 @@ describe("bot handlers (integration)", () => {
       expect.objectContaining({
         type: "turn_failed",
         turnId: "turn_msg-err",
-        eventId: expect.stringMatching(/^[a-f0-9]{32}$/i),
         failureCode: "model_execution_failed",
       }),
     ]);
@@ -564,150 +556,7 @@ describe("bot handlers (integration)", () => {
       expect.objectContaining({
         type: "turn_failed",
         turnId: sessionId,
-        eventId: expect.stringMatching(/^[a-f0-9]{32}$/i),
         failureCode: "delivery_failed",
-      }),
-    ]);
-  });
-
-  it("commits real agent history before the Slack reply when later state persistence fails", async () => {
-    const conversationId = "slack:C0POSTDELIVERY:1700000000.000";
-    const sessionId = "turn_msg-post-delivery";
-    const finalText = "Delivered before the state store failed.";
-    const { slackRuntime } = createTestChatRuntime({
-      services: {
-        replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              await recordTurnRoute({
-                conversationId,
-                turnId: request.turnId,
-                modelProfile: "standard",
-                modelId: "test/model",
-                reasoningLevel: "medium",
-                source: "configured",
-              });
-              const modelStream = createModelStream([
-                {
-                  type: "message",
-                  message: fauxAssistantMessage([
-                    fauxThinking("Check the final answer."),
-                    fauxText(finalText),
-                  ]),
-                },
-              ]);
-              return executeAgentRun(request, modelStream);
-            },
-          },
-        },
-        visionContext: {
-          listThreadReplies: async () => [],
-        },
-      },
-    });
-    const thread = await createTestThread({ id: conversationId });
-    const originalPost = thread.post.bind(thread);
-    const { getStateAdapter } = await import("@/chat/state/adapter");
-    const stateAdapter = getStateAdapter();
-    const originalSet = stateAdapter.set.bind(stateAdapter);
-    let replyPosted = false;
-    let postDeliveryStateAttempted = false;
-    thread.post = (async (message: unknown) => {
-      const sent = await originalPost(
-        message as Parameters<typeof originalPost>[0],
-      );
-      replyPosted = true;
-      return sent;
-    }) as typeof thread.post;
-    stateAdapter.set = (async (key, value, ttlMs) => {
-      if (
-        replyPosted &&
-        typeof key === "string" &&
-        key.startsWith(`thread-state:${conversationId}`)
-      ) {
-        postDeliveryStateAttempted = true;
-        throw new Error("state store unavailable");
-      }
-      return originalSet(key, value, ttlMs);
-    }) as typeof stateAdapter.set;
-
-    // The user already saw the answer: post-delivery persistence failures are
-    // logged, the turn stays successful, and no fallback failure reply posts.
-    await expect(
-      slackRuntime.handleNewMention(
-        thread,
-        createTestMessage({
-          id: "msg-post-delivery",
-          threadId: conversationId,
-          text: "please answer",
-          isMention: true,
-        }),
-        { destination: createTestDestination(thread) },
-      ),
-    ).resolves.toBeUndefined();
-
-    expect(postIncludes(thread, finalText)).toBe(true);
-    expect(postDeliveryStateAttempted).toBe(true);
-    expect(
-      postIncludes(
-        thread,
-        "I ran into an internal error while processing that.",
-      ),
-    ).toBe(false);
-
-    const conversation = await loadVisibleConversation(thread);
-    expect(conversation.messages).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          role: "assistant",
-          text: finalText,
-        }),
-        expect.objectContaining({
-          id: "msg-post-delivery",
-          meta: expect.objectContaining({ replied: true }),
-        }),
-      ]),
-    );
-    await expect(
-      getTurnRecord(conversationId, sessionId),
-    ).resolves.toMatchObject({ state: "completed" });
-    await expect(loadProjection({ conversationId })).resolves.toEqual(
-      expect.arrayContaining([expect.objectContaining({ role: "assistant" })]),
-    );
-    const report = projectConversationReportEventPage({
-      canExposePayload: true,
-      events: await getConversationEventStore().loadHistory(conversationId),
-    });
-    expect(
-      report
-        .filter(
-          (event) =>
-            event.data.type === "assistant_message" ||
-            (event.data.type === "message" && event.data.role === "assistant"),
-        )
-        .map((event) => event.data),
-    ).toMatchObject([
-      {
-        type: "assistant_message",
-        parts: [{ type: "reasoning", text: "Check the final answer." }],
-      },
-      {
-        type: "message",
-        role: "assistant",
-        text: finalText,
-      },
-    ]);
-    const lifecycle = await loadTurnLifecycleEvents(conversationId);
-    expect(lifecycle.map((event) => event.data)).toEqual([
-      expect.objectContaining({
-        type: "turn_started",
-        turnId: sessionId,
-      }),
-      expect.objectContaining({
-        type: "turn_failed",
-        turnId: sessionId,
-        eventId: expect.stringMatching(/^[a-f0-9]{32}$/i),
-        failureCode: "persistence_failed",
       }),
     ]);
   });

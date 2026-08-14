@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { deliverAssistantMessagesForTest } from "../../fixtures/agent-runner";
 import { getCapturedSlackApiCalls } from "../../msw/handlers/slack-api";
 
 const ORIGINAL_STATE_ADAPTER = process.env.JUNIOR_STATE_ADAPTER;
@@ -30,6 +31,21 @@ function makeDiagnostics() {
     toolResultCount: 0,
     usedPrimaryText: false,
   };
+}
+
+function successfulAgentRun(text: string) {
+  return completedAgentRun({
+    text,
+    diagnostics: {
+      assistantMessageCount: 1,
+      modelId: "fake-agent-model",
+      outcome: "success",
+      toolCalls: [],
+      toolErrorCount: 0,
+      toolResultCount: 0,
+      usedPrimaryText: true,
+    },
+  });
 }
 
 describe("Slack resume result handling", () => {
@@ -87,7 +103,7 @@ describe("Slack resume result handling", () => {
           channel: "C123",
           thread_ts: "1700000000.009",
           text: expect.stringContaining(
-            "I ran into an internal error while processing that. Reference: `event_id=",
+            "I ran into an internal error while processing that.",
           ),
         }),
       }),
@@ -107,7 +123,6 @@ describe("Slack resume result handling", () => {
         type: "turn_failed",
         turnId,
         failureCode: "persistence_failed",
-        eventId: expect.stringMatching(/^[a-f0-9]{32}$/i),
       }),
     ]);
   });
@@ -185,10 +200,52 @@ describe("Slack resume result handling", () => {
         channel: "C123",
         thread_ts: "1700000000.006",
         text: expect.stringContaining(
-          "I ran into an internal error while processing that. Reference: `event_id=",
+          "I ran into an internal error while processing that.",
         ),
       }),
     );
+  });
+
+  it("keeps the delivered reply when the result commit fails", async () => {
+    const { resumeSlackTurn } = await import("@/chat/runtime/slack-resume");
+    const onFailure = vi.fn(async () => undefined);
+
+    await expect(
+      resumeSlackTurn({
+        messageText: "continue this turn",
+        conversationId: "slack:C123:1700000000.011",
+        turnId: "turn-resume-commit-fail",
+        channelId: "C123",
+        threadTs: "1700000000.011",
+        replyContext: {
+          credentialContext: {
+            actor: { type: "user", userId: "U123" },
+          },
+          destination: TEST_SLACK_DESTINATION,
+          source: testSlackSource("1700000000.011"),
+          actor: { platform: "slack", teamId: "T123", userId: "U123" },
+        },
+        agentRunner: {
+          run: async (run) => {
+            await deliverAssistantMessagesForTest(run, [
+              { text: "Final resumed answer" },
+            ]);
+            return successfulAgentRun("Final resumed answer");
+          },
+        },
+        commitResult: async () => {
+          throw new Error("state write failed");
+        },
+        onFailure,
+      }),
+    ).rejects.toThrow("state write failed");
+
+    expect(onFailure).not.toHaveBeenCalled();
+    expect(
+      getCapturedSlackApiCalls("chat.postMessage").map(
+        (call) => call.params.text,
+      ),
+    ).toEqual([expect.stringContaining("Final resumed answer")]);
   });
 
   it("releases the thread lock before scheduling a suspended continuation", async () => {
@@ -274,7 +331,7 @@ describe("Slack resume result handling", () => {
       ),
     ).toEqual([
       expect.stringContaining(
-        "I ran into an internal error while processing that. Reference: `event_id=",
+        "I ran into an internal error while processing that.",
       ),
     ]);
   });

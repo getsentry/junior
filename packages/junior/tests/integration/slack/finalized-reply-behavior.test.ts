@@ -208,7 +208,6 @@ describe("Slack behavior: finalized thread replies", () => {
     expect(postedText).toContain(partialStart);
     expect(postedText).toContain(partialEnd);
     expect(postedText).toContain(getSlackInterruptionMarker().trim());
-    expect(postedText).not.toContain("event_id=");
     const lifecycle = await loadTurnLifecycleEvents(thread.id);
     expect(lifecycle.map((event) => event.data)).toEqual([
       expect.objectContaining({
@@ -220,7 +219,6 @@ describe("Slack behavior: finalized thread replies", () => {
       expect.objectContaining({
         type: "turn_failed",
         turnId: "turn_m-final-8",
-        eventId: expect.stringMatching(/^[a-f0-9]{32}$/i),
         failureCode: "model_execution_failed",
       }),
     ]);
