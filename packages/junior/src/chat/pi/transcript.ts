@@ -70,11 +70,12 @@ function isStandaloneRuntimeContextMessage(
   );
 }
 
-// Prior-thread context blocks the runtime embeds inside the same user-turn text
-// that carries the <current-instruction> block (see buildUserTurnText and
-// buildConversationContext). Each holds other participants' verbatim messages,
-// so completed-run projections must drop them and keep only the instruction.
+// Prior-thread context blocks the runtime embeds beside the <current-instruction>
+// block (see buildUserTurnText and renderThreadContextForPrompt). Each holds
+// other participants' verbatim messages, so completed-run projections must drop
+// them and keep only the instruction.
 const EMBEDDED_THREAD_CONTEXT_TAGS = [
+  "thread-context",
   "recent-thread-messages",
   "thread-compactions",
   "thread-transcript",
@@ -210,16 +211,16 @@ export function retainRuntimeTurnContext(messages: PiMessage[]): PiMessage[] {
 /**
  * Reduce a runtime user-turn prompt to only the current turn's instruction.
  *
- * Live user prompts embed prior-thread context blocks (`<thread-transcript>`,
- * `<recent-thread-messages>`, `<thread-compactions>`, `<thread-background>`) in
- * the same message that carries the `<current-instruction>` block. Those blocks
- * hold other participants' verbatim messages, so completed-run projections
- * consumed by plugins must expose only the instruction authored by this turn's
- * actor — otherwise per-entry provenance can be defeated by reading another
- * user's text out of an instruction-authority entry. Prior thread context is
- * projected separately as per-author context-authority entries, so dropping it
- * here is non-lossy for plugins. This is projection-only; it never touches what
- * the model sees during a live run.
+ * Live user prompts embed prior-thread context in an evidence-only
+ * `<thread-context>` envelope (or legacy transcript/background blocks) beside
+ * the `<current-instruction>` block. Those blocks hold other participants'
+ * verbatim messages, so completed-run projections consumed by plugins must
+ * expose only the instruction authored by this turn's actor — otherwise
+ * per-entry provenance can be defeated by reading another user's text out of an
+ * instruction-authority entry. Prior thread context is projected separately as
+ * per-author context-authority entries, so dropping it here is non-lossy for
+ * plugins. This is projection-only; it never touches what the model sees during
+ * a live run.
  */
 export function instructionTextForProjection(text: string): string {
   const withoutContext = text

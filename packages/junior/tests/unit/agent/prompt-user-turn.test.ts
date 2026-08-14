@@ -85,9 +85,11 @@ describe("buildUserTurnText", () => {
       {
         type: "text",
         text: [
+          '<thread-context authority="evidence-only">',
           "<recent-thread-messages>",
           "  <message>add customer impact</message>",
           "</recent-thread-messages>",
+          "</thread-context>",
         ].join("\n"),
       },
     ]);
@@ -99,5 +101,27 @@ describe("buildUserTurnText", () => {
         "</current-instruction>",
       ].join("\n"),
     });
+  });
+
+  it("marks unstructured thread background as evidence only", () => {
+    const input = buildPromptInput({
+      instruction: {
+        text: "summarize",
+        context: "earlier humans discussed filing a ticket",
+        includeConversationContextWithHistory: true,
+      },
+      history: [{ role: "user" } as never],
+    });
+
+    expect(input.contextContentParts).toEqual([
+      {
+        type: "text",
+        text: [
+          '<thread-context authority="evidence-only">',
+          "earlier humans discussed filing a ticket",
+          "</thread-context>",
+        ].join("\n"),
+      },
+    ]);
   });
 });

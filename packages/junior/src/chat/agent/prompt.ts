@@ -77,17 +77,18 @@ export interface PromptAssembly {
   userContentParts: UserContentPart[];
 }
 
-function isStructuredThreadContext(context: string): boolean {
-  return /^<(recent-thread-messages|thread-(compactions|transcript))>/.test(
-    context,
-  );
-}
-
+/**
+ * Mark host-owned thread history as evidence only.
+ *
+ * Ambient messages stay available for references, but they must not look like
+ * more of the current actor's instruction.
+ */
 function renderThreadContextForPrompt(context: string): string {
-  if (isStructuredThreadContext(context)) {
-    return context;
-  }
-  return ["<thread-background>", context, "</thread-background>"].join("\n");
+  return [
+    '<thread-context authority="evidence-only">',
+    context,
+    "</thread-context>",
+  ].join("\n");
 }
 
 /** Render the current actor's instruction without host-owned thread context. */
@@ -449,7 +450,10 @@ export async function assemblePrompt(args: {
   explicitSkill: Skill | null;
   priorPiMessages?: PiMessage[];
   resumedFromSessionRecord: boolean;
-  run: Pick<AgentRun, "source" | "destination" | "dispatch" | "slackConversation">;
+  run: Pick<
+    AgentRun,
+    "source" | "destination" | "dispatch" | "slackConversation"
+  >;
   spanContext: LogContext;
   turnId: string;
   toolGuidance: Array<{

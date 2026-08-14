@@ -137,7 +137,9 @@ delegation without becoming the execution actor or a general task owner.
 - Host-owned runtime context and the actor's current instruction are separate
   user messages. The context message immediately precedes the instruction,
   remains context-authority on resume, and may be replaced before a later model
-  sample without replaying the actor's instruction.
+  sample without replaying the actor's instruction. Ambient thread history in
+  that context message is evidence only; only `<current-instruction>` authorizes
+  work.
 - Action review sees the validated, hook-adjusted semantic input immediately
   before execution; hook-injected environment values stay execution-only.
   Plugin tools with omitted approval modes use auto policy; core tools must opt
