@@ -11,22 +11,26 @@ type FixedModelOutput =
   | {
       type: "text";
       text: string;
+      onRequest?: () => void;
       waitFor?: Promise<unknown>;
     }
   | {
       type: "toolCall";
       name: string;
       arguments: Parameters<typeof fauxToolCall>[1];
+      onRequest?: () => void;
       waitFor?: Promise<unknown>;
     }
   | {
       type: "error";
       errorMessage: string;
+      onRequest?: () => void;
       waitFor?: Promise<unknown>;
     }
   | {
       type: "message";
       message: AssistantMessage;
+      onRequest?: () => void;
       waitFor?: Promise<unknown>;
     };
 
@@ -50,12 +54,15 @@ function createAssistantMessage(output: FixedModelOutput): AssistantMessage {
 
 function createResponseStep(output: FixedModelOutput): FauxResponseStep {
   const message = createAssistantMessage(output);
-  const { waitFor } = output;
-  if (!waitFor) {
+  const { onRequest, waitFor } = output;
+  if (!onRequest && !waitFor) {
     return message;
   }
   return async () => {
-    await waitFor;
+    onRequest?.();
+    if (waitFor) {
+      await waitFor;
+    }
     return message;
   };
 }
