@@ -5,7 +5,7 @@ description: Work with GitHub repositories, source code, branches, commits, pull
 
 # GitHub Code Operations
 
-Use `git` and `gh` for repository work. Use `github_createPullRequest`, not `gh pr create`, for new PRs. Use `github_updatePullRequest`, not raw `gh api`/`gh pr edit`, when changing PR title, body, base, or open/closed state.
+Use `git` and `gh` for repository work. Use `github_createPullRequest`, not `gh pr create`, for new PRs. Use `github_updatePullRequest`, not raw `gh api`/`gh pr edit`, when changing PR title, body, base, or open/closed state. Use `github_resolvePullRequestReviewThread`, not raw `gh api graphql` `resolveReviewThread`, when resolving review threads on Junior-authored PRs.
 
 ## References
 

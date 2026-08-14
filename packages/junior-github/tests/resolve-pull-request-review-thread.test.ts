@@ -65,7 +65,6 @@ describe("resolvePullRequestReviewThread", () => {
       tool.execute?.(
         {
           repo: "getsentry/junior",
-          number: 1572,
           threadId: "PRRT_kwDOthread",
         },
         { toolCallId: "resolve-thread" },
@@ -91,7 +90,6 @@ describe("resolvePullRequestReviewThread", () => {
 
   it.each([
     ["another author", { author: "davidcramer" }],
-    ["another PR", { number: 1573 }],
     ["another repository", { repo: "getsentry/sentry" }],
     ["no Junior footer", { body: "ordinary PR" }],
   ])("denies %s before mutation", async (_name, overrides) => {
@@ -101,7 +99,6 @@ describe("resolvePullRequestReviewThread", () => {
       tool.execute?.(
         {
           repo: "getsentry/junior",
-          number: 1572,
           threadId: "PRRT_kwDOthread",
         },
         { toolCallId: "resolve-thread" },

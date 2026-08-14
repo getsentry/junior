@@ -1,6 +1,6 @@
 # GitHub API Surface — code & pull requests
 
-PR creation uses Junior's `github_createPullRequest` tool. PR title, body, base, and open/closed state updates use `github_updatePullRequest` so Junior keeps requester attribution and the conversation footer. Other supported mutations use allowlisted REST endpoints through `gh api`; generic GraphQL-backed `gh pr` mutations are not supported.
+PR creation uses Junior's `github_createPullRequest` tool. PR title, body, base, and open/closed state updates use `github_updatePullRequest` so Junior keeps requester attribution and the conversation footer. Review-thread resolve uses `github_resolvePullRequestReviewThread` because GitHub exposes only the GraphQL `resolveReviewThread` mutation (no REST endpoint and no first-class `gh pr` subcommand). Other supported mutations use allowlisted REST endpoints through `gh api`; generic GraphQL-backed `gh pr` mutations are not supported.
 
 ## Repo scoping
 
@@ -50,6 +50,7 @@ Treat explicit repo flags as command-targeting safety rails, not as a credential
 | Submit pull request review         | `gh api repos/owner/repo/pulls/NUMBER/reviews --method POST --input review.json`                                         |
 | Post inline review comment         | `gh api repos/owner/repo/pulls/NUMBER/comments --method POST --input comment.json`                                       |
 | Reply to inline review comment     | `gh api repos/owner/repo/pulls/NUMBER/comments/COMMENT_ID/replies --method POST --input reply.json`                      |
+| Resolve review thread              | `github_resolvePullRequestReviewThread({ repo: "owner/repo", threadId: "PRRT_..." })` (GraphQL `resolveReviewThread` substitute; Junior-authored PRs only) |
 | View pull request                  | `gh pr view NUMBER --repo owner/repo [--json ...]`                                                                       |
 | List pull requests                 | `gh pr list --repo owner/repo [--state open \| closed \| merged]`                                                        |
 | Diff pull request                  | `gh pr diff NUMBER --repo owner/repo`                                                                                    |
@@ -78,6 +79,7 @@ jr-rpc config set github.repo owner/repo
 - Use `github_updatePullRequest` for title, body, base, or open/closed state changes. Do not raw-`PATCH` `/repos/.../pulls/NUMBER`; that path is denied so Junior can keep the conversation footer.
 - Merge, fork creation, REST contents/Git database writes, and repository administration are outside the current write allowlist.
 - Pull request reviews and inline review comments use the same repository-scoped `installation-write` credential as other bot-owned PR writes, so they post as Junior even on headless turns. Merge remains denied.
+- Resolve review threads with `github_resolvePullRequestReviewThread`. That tool is the Junior equivalent of `gh api graphql` `resolveReviewThread`; raw GraphQL mutations stay denied, and the tool only succeeds on Junior-authored PRs.
 - If the explicit `git push` fails with 401/403 or another access/permission error, verify the repo context and retry once. If it still fails, load troubleshooting guidance and report the exact command failure.
 - PR comments, labels, and assignees use GitHub's issue endpoints; use the `github-issues` REST guidance for those operations. All allowlisted bot writes share the same repository-scoped `installation-write` credential.
 - To embed a local image in a GitHub issue, pull request, review, or comment, call `publishImage` first. That tool returns a durable public URL. The published image is public to anyone on the internet who has the URL. Embed the URL with normal GitHub Markdown. Do not use private Slack file links or conversation attachment URLs.

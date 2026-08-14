@@ -9,11 +9,33 @@ import { z } from "zod";
 import { GITHUB_SESSION_FOOTER_START } from "./footer.js";
 import { botLoginFromEmail } from "../webhooks/ownership.js";
 
+/**
+ * GraphQL-only GitHub mutation. There is no REST endpoint and no first-class
+ * `gh pr` subcommand yet, so this tool is the Junior substitute for:
+ *
+ * ```
+ * gh api graphql \
+ *   -f query='mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{id isResolved}}}' \
+ *   -F id=THREAD_ID
+ * ```
+ *
+ * `repo` is required so Junior can issue a repository-scoped installation
+ * credential; GraphQL has no repo path to derive that from.
+ */
 const inputSchema = z
   .object({
-    repo: z.string().describe('Repository in "owner/name" format.'),
-    number: z.number().int().positive().describe("Pull request number."),
-    threadId: z.string().trim().min(1).describe("GitHub review thread node ID."),
+    repo: z
+      .string()
+      .describe(
+        'Repository in "owner/name" format. Required for repository-scoped credentials (GraphQL has no repo path).',
+      ),
+    threadId: z
+      .string()
+      .trim()
+      .min(1)
+      .describe(
+        "GitHub pull request review thread node ID (the same `threadId` / `id` variable used by `gh api graphql` resolveReviewThread).",
+      ),
   })
   .strict();
 
@@ -71,7 +93,7 @@ export function createGitHubResolvePullRequestReviewThreadTool(
       readOnlyHint: false,
     },
     description:
-      "Resolve a GitHub pull request review thread. This only works when Junior authored the pull request.",
+      "Resolve a GitHub pull request review thread. Use this instead of shelling out to `gh api graphql` for resolveReviewThread (GraphQL-only; no REST or `gh pr` equivalent). Only works on pull requests Junior authored.",
     inputSchema,
     outputSchema,
     async execute(input): Promise<Result> {
@@ -143,7 +165,6 @@ export function createGitHubResolvePullRequestReviewThreadTool(
 
       const pullRequest = thread.pullRequest;
       const ownsPullRequest =
-        pullRequest.number === parsedInput.data.number &&
         pullRequest.repository.nameWithOwner.toLowerCase() ===
           repo.ref.toLowerCase() &&
         pullRequest.author.login.toLowerCase() === botLogin &&
@@ -163,6 +184,7 @@ export function createGitHubResolvePullRequestReviewThreadTool(
         };
       }
 
+      // Same mutation shape as `gh api graphql` resolveReviewThread.
       const mutation = `mutation ResolveReviewThread($threadId: ID!) {
         resolveReviewThread(input: {threadId: $threadId}) {
           thread { id isResolved }
