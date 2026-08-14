@@ -622,8 +622,9 @@ describe("dashboard canonical-event components", () => {
     );
     expect(dual.indexOf(">junior<")).toBeLessThan(dual.indexOf(">payments<"));
     expect(dual).not.toContain(">+1<");
-    expect(dual).toContain("Open");
-    expect(dual).toContain("Merged");
+    // Chip icons are decorative; the parent aria-label carries the identity.
+    expect(dual).toContain("lucide-circle-dot");
+    expect(dual).toContain("lucide-git-merge");
 
     const stacked = renderToStaticMarkup(
       <ConversationSidebarAnnotations

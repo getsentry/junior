@@ -138,41 +138,58 @@ export function ConversationSidebarAnnotations(props: {
     >
       <span
         aria-label={`Linked work, newest first: ${details.join(", ")}`}
-        className="inline-flex min-w-0 max-w-full items-center pl-1.5"
+        className="inline-flex min-w-0 max-w-full items-center"
       >
         {isMobile ? (
-          <SidebarAnnotationIconFacepile annotations={stack} />
+          <SidebarAnnotationIconFacepile
+            annotations={stack}
+            // Discs sit on the sidebar panel / row surface (#09090b).
+            cutoutColor="var(--color-dashboard-surface-panel)"
+          />
         ) : stack.length <= 2 ? (
           <span className="inline-flex min-w-0 items-center gap-1">
             {stack.map((annotation) => (
               <SidebarAnnotationChip
                 annotation={annotation}
                 key={annotation.key}
-                showLabel
               />
             ))}
           </span>
         ) : (
-          <>
-            <SidebarAnnotationChip annotation={stack[0]!} showLabel />
+          <span className="inline-flex min-w-0 items-center gap-1.5">
+            <SidebarAnnotationChip annotation={stack[0]!} />
             <SidebarAnnotationOverflowCluster annotations={stack.slice(1)} />
-          </>
+          </span>
         )}
       </span>
     </Tooltip>
   );
 }
 
+/** Compact overlapping status discs used by mobile and overflow clusters. */
 function SidebarAnnotationIconFacepile(props: {
   annotations: NonNullable<ConversationDetailReport["sidebarAnnotations"]>;
+  /**
+   * CSS color for the avatar-stack cutout ring. Must match the surface under
+   * the facepile so lower discs read as clean silhouettes.
+   */
+  cutoutColor: string;
+  className?: string;
 }) {
   return (
-    <span className="inline-flex items-center">
+    <span
+      className={cn(
+        // Isolate stacking context so z-index only orders discs inside the pile.
+        "relative isolate inline-flex h-4 items-center",
+        props.className,
+      )}
+    >
       {props.annotations.map((annotation, index) => (
-        <SidebarAnnotationChip
+        <SidebarAnnotationStatusDisc
           annotation={annotation}
+          cutoutColor={props.cutoutColor}
           key={annotation.key}
-          showLabel={false}
+          // 16px disc with -6px pull → 10px advance / 37.5% overlap.
           stacked={index > 0}
           zIndex={props.annotations.length - index}
         />
@@ -186,19 +203,15 @@ function SidebarAnnotationOverflowCluster(props: {
 }) {
   if (props.annotations.length === 0) return null;
   return (
-    <span className="ml-1.5 inline-flex h-5 shrink-0 items-center gap-1 rounded-full border border-white/15 bg-dashboard-surface py-0 pl-1.5 pr-1 font-mono text-2xs text-dashboard-text-muted shadow-sm shadow-black/40">
-      <span>+{props.annotations.length}</span>
-      <span className="inline-flex items-center">
-        {props.annotations.map((annotation, index) => (
-          <SidebarAnnotationChip
-            annotation={annotation}
-            key={annotation.key}
-            showLabel={false}
-            stacked={index > 0}
-            zIndex={props.annotations.length - index}
-          />
-        ))}
+    <span className="inline-flex h-5 shrink-0 items-center gap-1 rounded-full border border-white/10 bg-dashboard-control py-0 pl-1.5 pr-1 font-mono text-2xs leading-none text-dashboard-text-muted">
+      <span className="tabular-nums leading-none">
+        +{props.annotations.length}
       </span>
+      <SidebarAnnotationIconFacepile
+        annotations={props.annotations}
+        // Discs live on the cluster fill (#111114).
+        cutoutColor="var(--color-dashboard-control)"
+      />
     </span>
   );
 }
@@ -207,39 +220,50 @@ function SidebarAnnotationChip(props: {
   annotation: NonNullable<
     ConversationDetailReport["sidebarAnnotations"]
   >[number];
-  showLabel: boolean;
-  /** Overlap this chip under the previous one like an avatar stack. */
-  stacked?: boolean;
-  zIndex?: number;
 }) {
   return (
-    <span
-      className={
-        props.showLabel
-          ? "inline-flex min-w-0 max-w-28 shrink-0 items-center gap-1 truncate rounded-full border border-white/15 bg-dashboard-surface px-2 py-0.5 font-sans text-dashboard-text-muted shadow-sm shadow-black/40"
-          : cn(
-              "inline-flex size-5 shrink-0 items-center justify-center rounded-full border border-white/15 bg-dashboard-surface shadow-sm shadow-black/40",
-              props.stacked && "-ml-1.5",
-            )
-      }
-      style={props.zIndex === undefined ? undefined : { zIndex: props.zIndex }}
-    >
+    <span className="inline-flex h-5 min-w-0 max-w-28 shrink-0 items-center gap-1 truncate rounded-full border border-white/10 bg-dashboard-control px-1.5 font-sans text-2xs leading-none text-dashboard-text-muted">
       {props.annotation.icon ? (
         <SidebarAnnotationIcon
+          decorative
           icon={props.annotation.icon}
-          size={props.showLabel ? 11 : 12}
+          size={11}
         />
-      ) : props.showLabel ? null : (
-        <span className="px-1 font-sans text-2xs text-dashboard-text-muted">
-          {props.annotation.label.slice(0, 1)}
-        </span>
-      )}
-      {props.showLabel ? (
-        <span className="min-w-0 truncate whitespace-nowrap">
-          {props.annotation.label}
-        </span>
       ) : null}
+      <span className="min-w-0 truncate whitespace-nowrap">
+        {props.annotation.label}
+      </span>
     </span>
+  );
+}
+
+function SidebarAnnotationStatusDisc(props: {
+  annotation: NonNullable<
+    ConversationDetailReport["sidebarAnnotations"]
+  >[number];
+  cutoutColor: string;
+  stacked?: boolean;
+  zIndex: number;
+}) {
+  const tone = props.annotation.icon
+    ? SIDEBAR_ICON_PRESENTATION[props.annotation.icon]
+    : undefined;
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        // Pure status color + box-shadow cutout. No nested glyph — at 16px the
+        // color is the signal; tooltip carries identity.
+        "relative inline-flex size-4 shrink-0 rounded-full",
+        props.stacked && "-ml-1.5",
+      )}
+      style={{
+        backgroundColor: tone?.disc ?? "#3a3a42",
+        boxShadow: `0 0 0 2px ${props.cutoutColor}`,
+        zIndex: props.zIndex,
+      }}
+      title={tone?.label}
+    />
   );
 }
 
@@ -285,45 +309,80 @@ type SidebarAnnotationIconName = NonNullable<
 >;
 
 const SIDEBAR_ICON_PRESENTATION = {
-  "circle-dot": { className: "text-[#3fb950]", Icon: CircleDot, label: "Open" },
+  "circle-dot": {
+    className: "text-[#3fb950]",
+    disc: "#3fb950",
+    Icon: CircleDot,
+    label: "Open",
+  },
   "circle-dashed": {
     className: "text-[#8c959f]",
+    disc: "#8c959f",
     Icon: CircleDashed,
     label: "Draft",
   },
-  "circle-x": { className: "text-[#f85149]", Icon: CircleX, label: "Closed" },
-  "git-merge": { className: "text-[#a371f7]", Icon: GitMerge, label: "Merged" },
+  "circle-x": {
+    className: "text-[#f85149]",
+    disc: "#f85149",
+    Icon: CircleX,
+    label: "Closed",
+  },
+  "git-merge": {
+    className: "text-[#a371f7]",
+    disc: "#a371f7",
+    Icon: GitMerge,
+    label: "Merged",
+  },
   "git-pull-request": {
     className: "text-[#3fb950]",
+    disc: "#3fb950",
     Icon: GitPullRequest,
     label: "Open pull request",
   },
   "triangle-alert": {
     className: "text-[#d29922]",
+    disc: "#d29922",
     Icon: TriangleAlert,
     label: "Needs attention",
   },
 } satisfies Record<
   SidebarAnnotationIconName,
-  { className: string; Icon: typeof CircleDot; label: string }
+  {
+    className: string;
+    disc: string;
+    Icon: typeof CircleDot;
+    label: string;
+  }
 >;
 
 function SidebarAnnotationIcon(props: {
   icon: SidebarAnnotationIconName;
   size?: number;
+  /** Hide accessible name when a parent already labels the control. */
+  decorative?: boolean;
 }) {
   const presentation = SIDEBAR_ICON_PRESENTATION[props.icon];
+  const size = props.size ?? 11;
   return (
     <span
-      className={`shrink-0 ${presentation.className}`}
-      title={presentation.label}
+      aria-hidden={props.decorative ? true : undefined}
+      className={cn(
+        "inline-flex shrink-0 items-center justify-center leading-none",
+        presentation.className,
+      )}
+      // Fixed box stops lucide/svg metrics from shifting chip/disc baselines.
+      style={{ width: size, height: size }}
+      title={props.decorative ? undefined : presentation.label}
     >
       <presentation.Icon
         aria-hidden="true"
-        size={props.size ?? 11}
+        className="block"
+        size={size}
         strokeWidth={2.25}
       />
-      <span className="sr-only">{presentation.label}</span>
+      {props.decorative ? null : (
+        <span className="sr-only">{presentation.label}</span>
+      )}
     </span>
   );
 }
