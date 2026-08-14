@@ -16,8 +16,7 @@ import type { StreamFn } from "@earendil-works/pi-agent-core";
 import { createModelAgentRunner } from "../../fixtures/agent-runner";
 import { createModelStream } from "../../fixtures/model-stream";
 import { mockTitleModel } from "../../fixtures/title-model";
-import { http, HttpResponse } from "msw";
-import { mswServer } from "../../msw/server";
+import { mockTurnRouterModel } from "../../fixtures/turn-router-model";
 
 const SIGNING_SECRET = "test-signing-secret";
 const BOT_USER_ID = "U0BOT";
@@ -57,36 +56,6 @@ function createChannelMentionRequest(
       text,
       ...(options?.threadTs ? { threadTs: options.threadTs } : {}),
     }),
-  );
-}
-
-function mockTurnRouterModel(): void {
-  mswServer.use(
-    http.post("https://ai-gateway.vercel.sh/v3/ai/language-model", () =>
-      HttpResponse.json({
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify({
-              reasoning_level: "medium",
-              profile: "standard",
-              confidence: 0.9,
-              reason: "Representative integration test request",
-            }),
-          },
-        ],
-        finishReason: { unified: "stop", raw: "stop" },
-        usage: {
-          inputTokens: {
-            total: 1,
-            noCache: 1,
-            cacheRead: 0,
-            cacheWrite: 0,
-          },
-          outputTokens: { total: 1, text: 1, reasoning: 0 },
-        },
-      }),
-    ),
   );
 }
 

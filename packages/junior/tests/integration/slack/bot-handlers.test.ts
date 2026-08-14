@@ -50,10 +50,12 @@ import {
   deliverAssistantMessagesForTest,
 } from "../../fixtures/agent-runner";
 import { createModelStream } from "../../fixtures/model-stream";
+import { deferred } from "../../fixtures/conversation-work";
 import {
   mockTitleModel,
   type TitleModelRequest,
 } from "../../fixtures/title-model";
+import { mockTurnRouterModel } from "../../fixtures/turn-router-model";
 
 const emptyThreadReplies = async () => [];
 const ORIGINAL_AI_GATEWAY_API_KEY = process.env.AI_GATEWAY_API_KEY;
@@ -218,6 +220,9 @@ function turnPiMessages(text: string) {
 
 describe("bot handlers (integration)", () => {
   beforeEach(async () => {
+    process.env.AI_GATEWAY_API_KEY = "test-gateway-key";
+    mockTurnRouterModel();
+    mockTitleModel("Test conversation");
     resetConversationTitleStateForTests();
     resetAssistantTitleProjectionForTests();
     await disconnectStateAdapter();
@@ -2332,7 +2337,6 @@ describe("bot handlers (integration)", () => {
   });
 
   it("thread title: uses the first human message we know about in the thread", async () => {
-    process.env.AI_GATEWAY_API_KEY = "test-gateway-key";
     const fakeAdapter = new FakeSlackAdapter();
     let titleRequest: TitleModelRequest | undefined;
     mockTitleModel("Production Issue Summary", {
@@ -2396,7 +2400,6 @@ describe("bot handlers (integration)", () => {
   });
 
   it("thread title: still generates for a new thread with starter assistant content", async () => {
-    process.env.AI_GATEWAY_API_KEY = "test-gateway-key";
     const fakeAdapter = new FakeSlackAdapter();
     mockTitleModel("Today's Date");
 
@@ -2454,8 +2457,15 @@ describe("bot handlers (integration)", () => {
   });
 
   it("thread title: preserves artifact updates when title resolves before completion", async () => {
-    process.env.AI_GATEWAY_API_KEY = "test-gateway-key";
     const fakeAdapter = new FakeSlackAdapter();
+    const titleReady = deferred();
+    const recordTitle = fakeAdapter.setAssistantTitle.bind(fakeAdapter);
+    fakeAdapter.setAssistantTitle = async (channelId, threadTs, title) => {
+      await recordTitle(channelId, threadTs, title);
+      if (title === "Today's Date") {
+        titleReady.resolve();
+      }
+    };
     mockTitleModel("Today's Date");
 
     const { slackRuntime } = createRuntime({
@@ -2467,13 +2477,7 @@ describe("bot handlers (integration)", () => {
               {
                 type: "text",
                 text: "Today is April 16, 2026.",
-                waitFor: vi.waitFor(() => {
-                  expect(
-                    fakeAdapter.titleCalls.some(
-                      (call) => call.title === "Today's Date",
-                    ),
-                  ).toBe(true);
-                }),
+                waitFor: titleReady.promise,
               },
             ]),
           ),
@@ -2500,7 +2504,6 @@ describe("bot handlers (integration)", () => {
   });
 
   it("thread title: does not generate title on subsequent replies", async () => {
-    process.env.AI_GATEWAY_API_KEY = "test-gateway-key";
     const fakeAdapter = new FakeSlackAdapter();
     let turnCount = 0;
     mockTitleModel("Some Title");
@@ -2561,7 +2564,6 @@ describe("bot handlers (integration)", () => {
   });
 
   it("thread title: ignores Slack permission errors when setting title", async () => {
-    process.env.AI_GATEWAY_API_KEY = "test-gateway-key";
     const fakeAdapter = new FakeSlackAdapter();
     fakeAdapter.setAssistantTitle = async () => {
       const error = new Error(
@@ -2607,7 +2609,6 @@ describe("bot handlers (integration)", () => {
   });
 
   it("thread title: does not regenerate after stable Slack permission failures", async () => {
-    process.env.AI_GATEWAY_API_KEY = "test-gateway-key";
     const fakeAdapter = new FakeSlackAdapter();
     fakeAdapter.setAssistantTitle = async () => {
       const error = new Error(
