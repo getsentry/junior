@@ -134,7 +134,8 @@ test("opens a conversation in the built dashboard", async ({ page }) => {
     .filter({ hasText: /^\$0\.03$/ });
   await expect(costMetric).toHaveCount(1);
   await costMetric.focus();
-  const costTooltip = page.getByRole("tooltip");
+  // Scope past sidebar linked-work tooltips that can stay open on the selected row.
+  const costTooltip = page.getByRole("tooltip").filter({ hasText: /\$/ });
   await expect(costTooltip).toBeVisible();
   const tooltipId = await costTooltip.getAttribute("id");
   expect(tooltipId).toBeTruthy();
