@@ -82,10 +82,10 @@ export function ConversationPage(props: {
   }, []);
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-col">
+    <div className="grid min-h-0 min-w-0 grid-rows-[minmax(7rem,1fr)_minmax(0,auto)]">
       <div
         aria-label="Conversation transcript"
-        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-3 md:px-7 md:pb-5"
+        className="min-h-0 overflow-y-auto overscroll-contain px-3 pb-3 md:px-7 md:pb-5"
         tabIndex={0}
       >
         <section className="min-w-0">

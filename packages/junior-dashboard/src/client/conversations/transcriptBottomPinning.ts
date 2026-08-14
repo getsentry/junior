@@ -340,10 +340,13 @@ export function usePinnedTranscriptBottom(input: {
     measurePosition("measure");
   }, [measurePosition, scrollToBottom]);
 
+  // Mobile product contract: while live, new tail content always follows.
+  // Still require live mode so a completed/status-only version flip does not jump.
   useBrowserLayoutEffect(() => {
     if (versionRef.current === input.version) return;
     versionRef.current = input.version;
     if (
+      !input.enabled ||
       typeof window === "undefined" ||
       !window.matchMedia(MOBILE_MEDIA_QUERY).matches
     ) {
@@ -352,7 +355,7 @@ export function usePinnedTranscriptBottom(input: {
     setFollowingIntent(true);
     setHasPendingUpdate(false);
     scrollToBottom("auto");
-  }, [input.version, scrollToBottom, setFollowingIntent]);
+  }, [input.enabled, input.version, scrollToBottom, setFollowingIntent]);
 
   useBrowserLayoutEffect(() => {
     const wasEnabled = enabledRef.current;
