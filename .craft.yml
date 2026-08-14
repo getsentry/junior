@@ -29,6 +29,9 @@ targets:
     id: "@sentry/junior-github"
     includeNames: /^sentry-junior-github-\d.*\.tgz$/
   - name: npm
+    id: "@sentry/junior-gocd"
+    includeNames: /^sentry-junior-gocd-\d.*\.tgz$/
+  - name: npm
     id: "@sentry/junior-hex"
     includeNames: /^sentry-junior-hex-\d.*\.tgz$/
   - name: npm

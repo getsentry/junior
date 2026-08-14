@@ -17,6 +17,7 @@ const files = [
   "packages/junior-dashboard/package.json",
   "packages/junior-datadog/package.json",
   "packages/junior-github/package.json",
+  "packages/junior-gocd/package.json",
   "packages/junior-hex/package.json",
   "packages/junior-linear/package.json",
   "packages/junior-memory/package.json",
