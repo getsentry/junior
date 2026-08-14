@@ -156,10 +156,7 @@ export function ConversationSidebarAnnotations(props: {
             ))}
           </span>
         ) : (
-          <span className="inline-flex min-w-0 items-center gap-1.5">
-            <SidebarAnnotationChip annotation={stack[0]!} />
-            <SidebarAnnotationOverflowCluster annotations={stack.slice(1)} />
-          </span>
+          <SidebarAnnotationOverflowStack annotations={stack} />
         )}
       </span>
     </Tooltip>
@@ -190,28 +187,41 @@ function SidebarAnnotationIconFacepile(props: {
           annotation={annotation}
           cutoutColor={props.cutoutColor}
           key={annotation.key}
-          // 18px chip with -8px pull → 10px advance / ~44% overlap.
+          // Each chip to the right layers above the chip before it.
           stacked={index > 0}
-          zIndex={props.annotations.length - index}
+          zIndex={index + 1}
         />
       ))}
     </span>
   );
 }
 
-function SidebarAnnotationOverflowCluster(props: {
+/** One continuous stack: labeled chip, icon chips, then the count chip. */
+function SidebarAnnotationOverflowStack(props: {
   annotations: NonNullable<ConversationDetailReport["sidebarAnnotations"]>;
 }) {
-  if (props.annotations.length === 0) return null;
+  const [primary, ...overflow] = props.annotations;
+  if (!primary || overflow.length === 0) return null;
   return (
-    <span className="inline-flex h-5 shrink-0 items-center gap-1 overflow-visible rounded-full border border-white/10 bg-dashboard-control py-0 pl-1 pr-1.5 font-mono text-2xs leading-none text-dashboard-text-muted">
-      <SidebarAnnotationIconFacepile
-        annotations={props.annotations}
-        // Every chip belongs to one continuous stack on the cluster fill.
-        cutoutColor="var(--color-dashboard-control)"
-      />
-      <span className="tabular-nums leading-none">
-        +{props.annotations.length}
+    <span className="isolate inline-flex h-5 min-w-0 items-center pr-0.5">
+      <SidebarAnnotationChip annotation={primary} />
+      {overflow.map((annotation, index) => (
+        <SidebarAnnotationStatusChip
+          annotation={annotation}
+          cutoutColor="var(--color-dashboard-surface-panel)"
+          key={annotation.key}
+          stacked
+          zIndex={index + 1}
+        />
+      ))}
+      <span
+        className="relative -ml-1.5 inline-flex h-5 min-w-7 shrink-0 items-center justify-center rounded-full border border-white/12 bg-dashboard-control px-1.5 font-mono text-2xs leading-none text-dashboard-text-muted"
+        style={{
+          boxShadow: "0 0 0 2px var(--color-dashboard-surface-panel)",
+          zIndex: overflow.length + 1,
+        }}
+      >
+        +{overflow.length}
       </span>
     </span>
   );
