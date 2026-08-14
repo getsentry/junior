@@ -318,7 +318,7 @@ function ConversationReplyFooter(props: {
   );
 
   return (
-    <div className="min-h-0 max-h-[min(55%,24rem)] overflow-y-auto overscroll-contain px-2 py-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] md:max-h-none md:overflow-visible md:px-7 md:py-4 md:pb-4">
+    <div className="min-h-0 max-h-[min(55%,24rem)] overflow-y-auto overscroll-contain px-2 py-1.5 pb-[calc(0.375rem+env(safe-area-inset-bottom))] md:max-h-none md:overflow-visible md:px-7 md:py-4 md:pb-4">
       {props.live ? (
         <div className="mb-1.5 flex items-center gap-2 font-sans text-xs text-dashboard-text-muted md:hidden">
           <span
