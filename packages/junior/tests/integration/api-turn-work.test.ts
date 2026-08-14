@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createWebSource } from "@sentry/junior-plugin-api";
+import { createApiTurnCancellation } from "@/chat/api-turns/cancellation";
 import {
   appendAndEnqueueApiConversationMessage,
   apiTurnIdForMessage,
@@ -251,6 +252,66 @@ describe("api turn conversation work", () => {
     expect(agentRuns[0]?.source).toEqual(
       createWebSource(accepted.conversationId, "private"),
     );
+  });
+
+  it("reports a lost lease and releases cancellation when ack fails", async () => {
+    const { actor, conversationStore, queue, state } =
+      await createApiTurnWorkFixture();
+    const accepted = await createAndEnqueueApiConversation(
+      {
+        actor,
+        idempotencyKey: "cancel-lost-lease-1",
+        message: "Cancel before this Turn starts.",
+      },
+      { conversationStore, queue, state },
+    );
+    const destination = {
+      platform: "local" as const,
+      conversationId: accepted.conversationId,
+    };
+    const inbound = buildApiTurnInboundMessage({
+      actor,
+      conversationId: accepted.conversationId,
+      destination,
+      message: "Cancel before this Turn starts.",
+      messageId: accepted.messageId,
+    });
+    const cancellation = createApiTurnCancellation();
+    const signal = cancellation.begin(accepted.conversationId);
+    if (!signal) throw new Error("Expected an active Turn signal");
+    cancellation.cancel(accepted.conversationId);
+    const agentRuns: AgentRun[] = [];
+    const worker = createApiTurnWorker({
+      agentRunner: createModelAgentRunnerForRun((run) => {
+        agentRuns.push(run);
+        return createModelStream([
+          { type: "text", text: "Cancelled Turn must not reach the agent." },
+        ]);
+      }),
+      cancellation,
+    });
+
+    await expect(
+      worker({
+        attempt: {
+          ack: async () => {
+            throw new Error("lease lost");
+          },
+          conversationId: accepted.conversationId,
+          destination,
+          drain: async () => [],
+          isFinalAttempt: false,
+          messages: [inbound],
+        },
+        checkIn: async () => true,
+        conversationId: accepted.conversationId,
+        destination,
+        publishExternally: false,
+        shouldYield: () => false,
+      }),
+    ).resolves.toEqual({ status: "lost_lease" });
+    expect(agentRuns).toHaveLength(0);
+    expect(cancellation.begin(accepted.conversationId)).toBeDefined();
   });
 
   it("routes empty resume wakes to the active API turn", async () => {

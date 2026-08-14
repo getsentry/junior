@@ -419,6 +419,11 @@ function captureApiBoundaryFailure(args: {
   return typeof eventId === "string" ? eventId : undefined;
 }
 
+function hasLostTurnInputCommit(error: unknown): boolean {
+  const cause = getConversationTurnBoundaryError(error)?.cause ?? error;
+  return isTurnInputCommitLostError(error) || isTurnInputCommitLostError(cause);
+}
+
 /** Build the mailbox consumer for API-authored root turns. */
 export function createApiTurnWorker(options: {
   agentRunner: AgentRunner;
@@ -638,18 +643,25 @@ export function createApiTurnWorker(options: {
 
         const completeCancelledTurn =
           async (): Promise<ConversationWorkerResult> => {
-            await completeCancelledApiTurn({
-              acknowledge,
-              actorId: actor.userId,
-              cancellation: options.cancellation,
-              conversation,
-              conversationId: context.conversationId,
-              lifecycle,
-              sandboxRef,
-              signal: cancellationSignal,
-              turnId,
-              userMessageId,
-            });
+            try {
+              await completeCancelledApiTurn({
+                acknowledge,
+                actorId: actor.userId,
+                cancellation: options.cancellation,
+                conversation,
+                conversationId: context.conversationId,
+                lifecycle,
+                sandboxRef,
+                signal: cancellationSignal,
+                turnId,
+                userMessageId,
+              });
+            } catch (error) {
+              if (hasLostTurnInputCommit(error)) {
+                return { status: "lost_lease" };
+              }
+              throw error;
+            }
             return { status: "completed" };
           };
 
@@ -876,15 +888,11 @@ export function createApiTurnWorker(options: {
           await acknowledge();
           return { status: "completed" };
         } catch (error) {
+          if (hasLostTurnInputCommit(error)) {
+            return { status: "lost_lease" };
+          }
           if (cancellationSignal?.aborted) {
             return await completeCancelledTurn();
-          }
-          const cause = getConversationTurnBoundaryError(error)?.cause ?? error;
-          if (
-            isTurnInputCommitLostError(error) ||
-            isTurnInputCommitLostError(cause)
-          ) {
-            return { status: "lost_lease" };
           }
           if (!context.attempt.isFinalAttempt) {
             throw error;

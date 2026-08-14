@@ -84,37 +84,40 @@ export async function completeCancelledApiTurn(args: {
   turnId: string;
   userMessageId: string;
 }): Promise<void> {
-  await abandonTurnRecord({
-    conversationId: args.conversationId,
-    turnId: args.turnId,
-    errorMessage: "API Turn cancelled",
-  });
-  clearPendingAuth(args.conversation, args.turnId);
-  markConversationMessage(args.conversation, args.userMessageId, {
-    replied: false,
-    skippedReason: "turn cancelled",
-  });
-  markTurnClosed({
-    conversation: args.conversation,
-    nowMs: Date.now(),
-    sessionId: args.turnId,
-  });
-  await deleteWebAuthorization({
-    actorId: args.actorId,
-    conversationId: args.conversationId,
-  });
-  await persistThreadStateById(args.conversationId, {
-    conversation: args.conversation,
-    sandboxRef: args.sandboxRef,
-  });
-  await args.lifecycle.complete({
-    conversationId: args.conversationId,
-    createdAtMs: Date.now(),
-    outcome: "cancelled",
-    turnId: args.turnId,
-  });
-  if (args.signal) {
-    args.cancellation?.finish(args.conversationId, args.signal);
+  try {
+    await abandonTurnRecord({
+      conversationId: args.conversationId,
+      turnId: args.turnId,
+      errorMessage: "API Turn cancelled",
+    });
+    clearPendingAuth(args.conversation, args.turnId);
+    markConversationMessage(args.conversation, args.userMessageId, {
+      replied: false,
+      skippedReason: "turn cancelled",
+    });
+    markTurnClosed({
+      conversation: args.conversation,
+      nowMs: Date.now(),
+      sessionId: args.turnId,
+    });
+    await deleteWebAuthorization({
+      actorId: args.actorId,
+      conversationId: args.conversationId,
+    });
+    await persistThreadStateById(args.conversationId, {
+      conversation: args.conversation,
+      sandboxRef: args.sandboxRef,
+    });
+    await args.lifecycle.complete({
+      conversationId: args.conversationId,
+      createdAtMs: Date.now(),
+      outcome: "cancelled",
+      turnId: args.turnId,
+    });
+  } finally {
+    if (args.signal) {
+      args.cancellation?.finish(args.conversationId, args.signal);
+    }
   }
   await args.acknowledge();
 }

@@ -107,7 +107,7 @@ function exitAfterShutdown(code: number): void {
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => {
-    exitAfterShutdown(0);
+    exitAfterShutdown(signal === "SIGINT" ? 130 : 143);
   });
 }
 

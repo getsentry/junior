@@ -58,7 +58,7 @@ const child = spawn(
 
 child.on("error", (error) => {
   console.error(`Could not start local ACP server: ${error.message}`);
-  process.exitCode = 1;
+  process.exit(1);
 });
 child.on("exit", (code, signal) => {
   if (signal) {
