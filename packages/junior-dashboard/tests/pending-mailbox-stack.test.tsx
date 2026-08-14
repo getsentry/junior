@@ -104,6 +104,22 @@ describe("PendingMailboxStack remove control", () => {
     );
 
     expect(html).not.toContain("Remove queued message");
+    expect(html).not.toContain("Could not remove. Try again.");
+  });
+
+  it("shows an inline remove error on the target accepted row", () => {
+    const html = renderToStaticMarkup(
+      <PendingMailboxStack
+        cancelError
+        cancelTargetInboundMessageId="accepted-1"
+        conversation={conversation()}
+        messages={[message()]}
+        onCancelMessage={() => undefined}
+      />,
+    );
+
+    expect(html).toContain("Could not remove. Try again.");
+    expect(html).toContain('aria-label="Could not remove. Try again."');
   });
 
   it("uses the queue count on the mobile expand control", () => {

@@ -288,7 +288,10 @@ function ConversationReplyFooter(props: {
     onPinRequestRef.current();
   }, []);
   const onSubmitStart = useCallback(() => {
-    cancelPendingMessagesRef.current.reset();
+    // Keep an in-flight remove intact so optimistic cache rollback stays coherent.
+    if (!cancelPendingMessagesRef.current.isPending) {
+      cancelPendingMessagesRef.current.reset();
+    }
     onPinRequestRef.current();
   }, []);
   const cancellableMessageIds = props.pendingMessages
