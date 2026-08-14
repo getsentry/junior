@@ -48,10 +48,7 @@ import {
 } from "@/chat/conversations/projection";
 import { credentialContextForActor } from "@/chat/credentials/context";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
-import {
-  ConversationTurnLifecycleService,
-  type ConversationTurnLifecycle,
-} from "@/chat/conversations/turn-lifecycle";
+import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
 import { persistConversationMessages } from "@/chat/conversations/messages";
 import { persistWithRetry } from "@/chat/services/persist-retry";
@@ -95,17 +92,8 @@ export interface LocalAgentTurnDeps {
     cancel: () => void;
     wait: () => Promise<void>;
   };
-  /** Post-delivery checkpoint write. */
-  saveTurnCheckpoint?: typeof saveTurnCheckpoint;
   deliverReply: (reply: LocalAgentReply) => Promise<void>;
   sandboxEgressSignals?: SandboxEgressSignalTransport;
-  /** Pre-agent durable Pi projection boundary. */
-  loadPiMessages?: typeof loadLocalPiMessages;
-  /** Injectable failure capture boundary for deterministic runtime integration tests. */
-  logException?: typeof logException;
-  /** Canonical lifecycle writer; defaults to the production SQL service. */
-  turnLifecycle?: ConversationTurnLifecycle;
-  now?: () => number;
   onStatus?: (status: string) => void | Promise<void>;
   onToolInvocation?: (invocation: LocalToolInvocation) => void | Promise<void>;
   onToolResult?: (result: LocalToolResult) => void | Promise<void>;
@@ -193,20 +181,16 @@ async function runLocalAgentTurnInContext(
   if (!text) {
     throw new Error("Local agent message must not be empty");
   }
-  if (!deps.deliverReply) {
-    throw new Error("Local reply delivery is required");
-  }
   const destination = localDestination(input.conversationId);
   const source = createLocalSource(destination.conversationId);
-  const lifecycle =
-    deps.turnLifecycle ??
-    new ConversationTurnLifecycleService(getConversationEventStore());
+  const lifecycle = new ConversationTurnLifecycleService(
+    getConversationEventStore(),
+  );
 
-  const now = deps.now ?? (() => Date.now());
   await getConversationStore().recordActivity({
     conversationId: input.conversationId,
     destination,
-    nowMs: now(),
+    nowMs: Date.now(),
     source: "local",
   });
   const persisted = await getPersistedThreadState(input.conversationId);
@@ -220,7 +204,7 @@ async function runLocalAgentTurnInContext(
 
   const turnId = localTurnId();
   const userMessageId = `${turnId}:user`;
-  const startedAtMs = now();
+  const startedAtMs = Date.now();
   upsertConversationMessage(conversation, {
     id: userMessageId,
     role: "user",
@@ -244,7 +228,7 @@ async function runLocalAgentTurnInContext(
   });
   await lifecycle.start({
     conversationId: input.conversationId,
-    createdAtMs: now(),
+    createdAtMs: Date.now(),
     inputMessageIds: [userMessageId],
     surface: "internal",
     turnId,
@@ -312,7 +296,7 @@ async function runLocalAgentTurnInContext(
   };
   try {
     await persistThreadStateById(input.conversationId, { conversation });
-    const piMessages = await (deps.loadPiMessages ?? loadLocalPiMessages)({
+    const piMessages = await loadLocalPiMessages({
       conversationId: input.conversationId,
     });
     failureCode = "agent_run_failed";
@@ -416,7 +400,7 @@ async function runLocalAgentTurnInContext(
       // Resuming after authorization starts the next durable session slice.
       completionSliceId += 1;
       outcome = await runAgent(
-        await (deps.loadPiMessages ?? loadLocalPiMessages)({
+        await loadLocalPiMessages({
           conversationId: input.conversationId,
         }),
       );
@@ -431,7 +415,7 @@ async function runLocalAgentTurnInContext(
     modelFailureCaptureAttempted = reply.diagnostics.outcome !== "success";
     const finalized = finalizeFailedTurnReplyWithEvent({
       reply,
-      logException: deps.logException ?? logException,
+      logException,
     });
     reply = finalized.reply;
     modelFailureEventId = finalized.eventId;
@@ -452,7 +436,7 @@ async function runLocalAgentTurnInContext(
       modelFailureCaptureAttempted && failureCode === "agent_run_failed"
         ? modelFailureEventId
         : captureLocalBoundaryFailure({
-            capture: deps.logException ?? logException,
+            capture: logException,
             conversationId: input.conversationId,
             error,
             failureCode,
@@ -461,7 +445,7 @@ async function runLocalAgentTurnInContext(
     try {
       markTurnFailed({
         conversation,
-        nowMs: now(),
+        nowMs: Date.now(),
         sessionId: turnId,
         userMessageId,
         markConversationMessage,
@@ -472,7 +456,7 @@ async function runLocalAgentTurnInContext(
       });
     } catch (persistenceError) {
       const persistenceEventId = captureLocalBoundaryFailure({
-        capture: deps.logException ?? logException,
+        capture: logException,
         conversationId: input.conversationId,
         error: persistenceError,
         failureCode: "persistence_failed",
@@ -480,7 +464,7 @@ async function runLocalAgentTurnInContext(
       });
       await lifecycle.fail({
         conversationId: input.conversationId,
-        createdAtMs: now(),
+        createdAtMs: Date.now(),
         ...(persistenceEventId ? { eventId: persistenceEventId } : {}),
         failureCode: "persistence_failed",
         turnId,
@@ -492,7 +476,7 @@ async function runLocalAgentTurnInContext(
     }
     await lifecycle.fail({
       conversationId: input.conversationId,
-      createdAtMs: now(),
+      createdAtMs: Date.now(),
       ...(failureEventId ? { eventId: failureEventId } : {}),
       failureCode,
       turnId,
@@ -510,7 +494,7 @@ async function runLocalAgentTurnInContext(
       // Destination acceptance is the completion boundary: this first commits
       // the final assistant messages to the event log and marks the session
       // record completed only after the CLI sink accepted the reply.
-      await (deps.saveTurnCheckpoint ?? saveTurnCheckpoint)({
+      await saveTurnCheckpoint({
         mode: "completed",
         conversationId: input.conversationId,
         turnId,
@@ -526,7 +510,7 @@ async function runLocalAgentTurnInContext(
     }
   } catch (error) {
     const persistenceEventId = captureLocalBoundaryFailure({
-      capture: deps.logException ?? logException,
+      capture: logException,
       conversationId: input.conversationId,
       error,
       failureCode: "persistence_failed",
@@ -534,7 +518,7 @@ async function runLocalAgentTurnInContext(
     });
     await lifecycle.fail({
       conversationId: input.conversationId,
-      createdAtMs: now(),
+      createdAtMs: Date.now(),
       ...(persistenceEventId ? { eventId: persistenceEventId } : {}),
       failureCode: "persistence_failed",
       turnId,
@@ -545,14 +529,14 @@ async function runLocalAgentTurnInContext(
   if (reply.diagnostics.outcome === "success") {
     await lifecycle.complete({
       conversationId: input.conversationId,
-      createdAtMs: now(),
+      createdAtMs: Date.now(),
       outcome: assistantMessageDelivered ? "success" : "no_reply",
       turnId,
     });
   } else {
     await lifecycle.fail({
       conversationId: input.conversationId,
-      createdAtMs: now(),
+      createdAtMs: Date.now(),
       ...(modelFailureEventId ? { eventId: modelFailureEventId } : {}),
       failureCode: "model_execution_failed",
       turnId,

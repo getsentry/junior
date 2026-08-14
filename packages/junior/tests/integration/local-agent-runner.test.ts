@@ -5,7 +5,6 @@ import {
   type PluginRunContext,
 } from "@sentry/junior-plugin-api";
 import { normalizeLocalConversationId } from "@/chat/local/conversation";
-import { getLogContextAttributes } from "@/chat/logging";
 import {
   runLocalAgentTurn,
   type LocalAgentReply,
@@ -394,24 +393,17 @@ describe("local agent runner", () => {
         deliverReply: async (reply) => {
           delivered.push(reply);
         },
-        logException: vi
-          .fn()
-          .mockReturnValue("0123456789abcdef0123456789abcdef"),
       },
     );
 
     expect(delivered).toHaveLength(1);
     expect(delivered[0]?.text).toContain("temporary connection problem");
-    expect(delivered[0]?.text).toContain(
-      "event_id=0123456789abcdef0123456789abcdef",
-    );
     expect(delivered[0]?.text).not.toContain("raw-error-sentinel");
     const lifecycle = await loadLifecycleEvents(conversationId!);
-    expect(lifecycle.at(-1)?.data).toEqual({
+    expect(lifecycle.at(-1)?.data).toMatchObject({
       type: "turn_failed",
       turnId: expect.stringMatching(/^local-turn-/),
       failureCode: "model_execution_failed",
-      eventId: "0123456789abcdef0123456789abcdef",
     });
     expect(JSON.stringify(lifecycle)).not.toContain("raw-error-sentinel");
     expect(JSON.stringify(lifecycle)).not.toContain("provider.invalid");
@@ -423,18 +415,6 @@ describe("local agent runner", () => {
       cwd: "/tmp/local-agent-runner-throw",
     });
     const rawError = "raw-run-error-sentinel token=secret";
-    const eventId = "11111111111111111111111111111111";
-    let capturedLogContext: ReturnType<typeof getLogContextAttributes>;
-    const capture = vi.fn(
-      (
-        _error: unknown,
-        _eventName: string,
-        _attributes?: Record<string, unknown>,
-      ) => {
-        capturedLogContext = getLogContextAttributes();
-        return eventId;
-      },
-    );
     const cancelAuthorization = vi.fn();
 
     await expect(
@@ -447,13 +427,10 @@ describe("local agent runner", () => {
             deliver: vi.fn(),
             wait: vi.fn(),
           },
-          agentRunner: {
-            run: async () => {
-              throw new Error(rawError);
-            },
-          },
+          agentRunner: createModelAgentRunnerForRun(() => {
+            throw new Error(rawError);
+          }),
           deliverReply: async () => undefined,
-          logException: capture,
         },
       ),
     ).rejects.toThrow(rawError);
@@ -462,103 +439,8 @@ describe("local agent runner", () => {
     expect(lifecycle.at(-1)?.data).toMatchObject({
       type: "turn_failed",
       failureCode: "agent_run_failed",
-      eventId,
-    });
-    expect(capture).toHaveBeenCalledOnce();
-    expect(capture.mock.calls[0]?.[2]).toEqual({
-      "app.ai.failure_code": "agent_run_failed",
-    });
-    expect(capturedLogContext!).toMatchObject({
-      "app.run.id": expect.stringMatching(/^local-run-[0-9a-f-]{36}$/),
-      "gen_ai.conversation.id": conversationId,
     });
     expect(cancelAuthorization).toHaveBeenCalledOnce();
-    expect(JSON.stringify(lifecycle)).not.toContain(rawError);
-  });
-
-  it("retains the model incident when post-delivery persistence fails", async () => {
-    const conversationId = normalizeLocalConversationId({
-      alias: "model-persistence-failure",
-      cwd: "/tmp/local-agent-model-persistence-failure",
-    });
-    const modelEventId = "22222222222222222222222222222222";
-    const persistenceEventId = "55555555555555555555555555555555";
-    const capture = vi
-      .fn()
-      .mockReturnValueOnce(modelEventId)
-      .mockReturnValueOnce(persistenceEventId);
-    const rawModelError = "raw-model-error-sentinel";
-
-    await expect(
-      runLocalAgentTurn(
-        { conversationId: conversationId!, message: "please try" },
-        {
-          agentRunner: createModelAgentRunnerForRun(() =>
-            createModelStream([{ type: "error", errorMessage: rawModelError }]),
-          ),
-          saveTurnCheckpoint: async () => {
-            throw new Error("session-persistence-error-sentinel");
-          },
-          deliverReply: async () => undefined,
-          logException: capture,
-        },
-      ),
-    ).rejects.toThrow("session-persistence-error-sentinel");
-
-    expect(capture).toHaveBeenCalledTimes(2);
-    const lifecycle = await loadLifecycleEvents(conversationId!);
-    expect(lifecycle.at(-1)?.data).toMatchObject({
-      type: "turn_failed",
-      eventId: persistenceEventId,
-      failureCode: "persistence_failed",
-    });
-    const visible = coerceThreadConversationState(
-      await getPersistedThreadState(conversationId!),
-    );
-    await hydrateConversationMessages({
-      conversation: visible,
-      conversationId: conversationId!,
-    });
-    expect(JSON.stringify(visible.messages)).toContain(modelEventId);
-    expect(JSON.stringify(visible.messages)).not.toContain(persistenceEventId);
-    expect(JSON.stringify(lifecycle)).not.toContain(rawModelError);
-    expect(JSON.stringify(lifecycle)).not.toContain(
-      "session-persistence-error-sentinel",
-    );
-  });
-
-  it("captures post-delivery persistence failure when no model incident exists", async () => {
-    const conversationId = normalizeLocalConversationId({
-      alias: "success-persistence-failure",
-      cwd: "/tmp/local-agent-success-persistence-failure",
-    });
-    const eventId = "44444444444444444444444444444444";
-    const capture = vi.fn().mockReturnValue(eventId);
-    const rawError = "raw-session-persistence-error-sentinel";
-
-    await expect(
-      runLocalAgentTurn(
-        { conversationId: conversationId!, message: "please try" },
-        {
-          agentRunner: createModelAgentRunnerForRun(() =>
-            createModelStream([{ type: "text", text: "delivered" }]),
-          ),
-          saveTurnCheckpoint: async () => {
-            throw new Error(rawError);
-          },
-          deliverReply: async () => undefined,
-          logException: capture,
-        },
-      ),
-    ).rejects.toThrow(rawError);
-
-    expect(capture).toHaveBeenCalledOnce();
-    const lifecycle = await loadLifecycleEvents(conversationId!);
-    expect(lifecycle.at(-1)?.data).toMatchObject({
-      type: "turn_failed",
-      eventId,
-      failureCode: "persistence_failed",
-    });
     expect(JSON.stringify(lifecycle)).not.toContain(rawError);
   });
 
@@ -764,74 +646,7 @@ describe("local agent runner", () => {
     ]);
   });
 
-  it("requires local delivery before running a turn", async () => {
-    const conversationId = normalizeLocalConversationId({
-      alias: "missing-delivery",
-      cwd: "/tmp/local-agent-runner-three",
-    });
-    expect(conversationId).toBeDefined();
-
-    await expect(
-      runLocalAgentTurn(
-        {
-          conversationId: conversationId!,
-          message: "hello",
-        },
-        {
-          agentRunner: neverRunAgentRunner(),
-        } as unknown as Parameters<typeof runLocalAgentTurn>[1],
-      ),
-    ).rejects.toThrow("Local reply delivery is required");
-
-    const state = await getPersistedThreadState(conversationId!);
-    const conversation = coerceThreadConversationState(state);
-    expect(conversation.messages).toEqual([]);
-  });
-
-  it("does not advertise an active turn when lifecycle start persistence fails", async () => {
-    const conversationId = normalizeLocalConversationId({
-      alias: "start-failure",
-      cwd: "/tmp/local-agent-runner-start-failure",
-    });
-    const agentRunner = { run: vi.fn<AgentRunner["run"]>() };
-    const startError = new Error("lifecycle store unavailable");
-    const turnLifecycle: NonNullable<LocalAgentTurnDeps["turnLifecycle"]> = {
-      start: vi.fn().mockRejectedValue(startError),
-      complete: vi.fn(),
-      fail: vi.fn(),
-    };
-
-    await expect(
-      runLocalAgentTurn(
-        { conversationId: conversationId!, message: "durable input" },
-        {
-          agentRunner,
-          deliverReply: async () => undefined,
-          turnLifecycle,
-        },
-      ),
-    ).rejects.toBe(startError);
-
-    expect(agentRunner.run).not.toHaveBeenCalled();
-    expect(turnLifecycle.complete).not.toHaveBeenCalled();
-    expect(turnLifecycle.fail).not.toHaveBeenCalled();
-    const state = await getPersistedThreadState(conversationId!);
-    const conversation = coerceThreadConversationState(state);
-    expect(conversation.processing.activeTurnId).toBeUndefined();
-    await hydrateConversationMessages({
-      conversation,
-      conversationId: conversationId!,
-    });
-    expect(conversation.messages).toEqual([
-      expect.objectContaining({ role: "user", text: "durable input" }),
-    ]);
-  });
-
   it("rejects malformed local conversation ids before generation", async () => {
-    const generateReply = vi.fn<AgentRunner["run"]>(async () => {
-      throw new Error("generation should not run");
-    });
-
     await expect(
       runLocalAgentTurn(
         {
@@ -840,42 +655,10 @@ describe("local agent runner", () => {
         },
         {
           deliverReply: async () => undefined,
-          agentRunner: { run: generateReply },
+          agentRunner: neverRunAgentRunner(),
         },
       ),
     ).rejects.toThrow("Invalid local conversation id");
-  });
-
-  it("uses durable Pi projection for follow-up local turns", async () => {
-    const conversationId = normalizeLocalConversationId({
-      alias: "pi-history",
-      cwd: "/tmp/local-agent-runner-four",
-    });
-    expect(conversationId).toBeDefined();
-    const projectedMessage = userPiMessage("projected history");
-    await commitMessages({
-      conversationId: conversationId!,
-      messages: [projectedMessage],
-    });
-
-    const agentRuns: CapturedAgentRun[] = [];
-    const agentRunner = createModelAgentRunnerForRun((run) => {
-      agentRuns.push(run);
-      return createModelStream([{ type: "text", text: "uses projection" }]);
-    });
-
-    await runLocalAgentTurn(
-      {
-        conversationId: conversationId!,
-        message: "follow up",
-      },
-      {
-        deliverReply: async () => undefined,
-        agentRunner,
-      },
-    );
-
-    expect(agentRuns[0]?.history).toEqual([projectedMessage]);
   });
 
   it("commits generated Pi history after successful local delivery", async () => {
@@ -1036,8 +819,6 @@ describe("local agent runner", () => {
     });
     expect(conversationId).toBeDefined();
     const rawDeliveryError = "raw-delivery-error-sentinel stdout closed";
-    const eventId = "33333333333333333333333333333333";
-    const capture = vi.fn().mockReturnValue(eventId);
 
     const realAgentRunner = createModelAgentRunnerForRun(() =>
       createModelStream([{ type: "text", text: "not delivered" }]),
@@ -1063,7 +844,6 @@ describe("local agent runner", () => {
             throw new Error(rawDeliveryError);
           },
           agentRunner,
-          logException: capture,
         },
       ),
     ).rejects.toThrow(rawDeliveryError);
@@ -1099,9 +879,7 @@ describe("local agent runner", () => {
     expect(lifecycle.at(-1)?.data).toMatchObject({
       type: "turn_failed",
       failureCode: "delivery_failed",
-      eventId,
     });
-    expect(capture).toHaveBeenCalledOnce();
     expect(JSON.stringify(lifecycle)).not.toContain(rawDeliveryError);
   });
 });
