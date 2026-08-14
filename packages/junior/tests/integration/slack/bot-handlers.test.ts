@@ -44,13 +44,19 @@ import {
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import { resetConversationTitleStateForTests } from "@/chat/services/conversation-title";
 import { resetAssistantTitleProjectionForTests } from "@/chat/slack/assistant-thread/title";
-import * as piClient from "@/chat/pi/client";
 import {
+  createModelAgentRunner,
+  createModelAgentRunnerForRun,
   deliverAssistantMessagesForTest,
 } from "../../fixtures/agent-runner";
 import { createModelStream } from "../../fixtures/model-stream";
+import {
+  mockTitleModel,
+  type TitleModelRequest,
+} from "../../fixtures/title-model";
 
 const emptyThreadReplies = async () => [];
+const ORIGINAL_AI_GATEWAY_API_KEY = process.env.AI_GATEWAY_API_KEY;
 
 function postIncludes(thread: { posts: unknown[] }, text: string): boolean {
   return thread.posts.some((post) => {
@@ -108,14 +114,6 @@ function expectBlocksIncludeConversationId(
 ): void {
   expect(params.blocks).toBeDefined();
   expect(JSON.stringify(params.blocks)).toContain(conversationId);
-}
-
-function mockTitleCompleteText(
-  impl: (...args: any[]) => Promise<any> | any,
-) {
-  return vi
-    .spyOn(piClient, "completeText")
-    .mockImplementation(async (...args) => await impl(...args));
 }
 
 function createRuntime(
@@ -226,6 +224,11 @@ describe("bot handlers (integration)", () => {
   });
 
   afterEach(async () => {
+    if (ORIGINAL_AI_GATEWAY_API_KEY === undefined) {
+      delete process.env.AI_GATEWAY_API_KEY;
+    } else {
+      process.env.AI_GATEWAY_API_KEY = ORIGINAL_AI_GATEWAY_API_KEY;
+    }
     resetSlackApiMockState();
     resetConversationTitleStateForTests();
     resetAssistantTitleProjectionForTests();
@@ -1044,7 +1047,11 @@ describe("bot handlers (integration)", () => {
           wakePausedTurn,
           agentRunner: {
             run: async () => {
-              return { status: "suspended", reason: "timeout", resumeVersion: 3 };
+              return {
+                status: "suspended",
+                reason: "timeout",
+                resumeVersion: 3,
+              };
             },
           },
         },
@@ -1096,7 +1103,11 @@ describe("bot handlers (integration)", () => {
           wakePausedTurn,
           agentRunner: {
             run: async () => {
-              return { status: "suspended", reason: "timeout", resumeVersion: 4 };
+              return {
+                status: "suspended",
+                reason: "timeout",
+                resumeVersion: 4,
+              };
             },
           },
         },
@@ -1141,7 +1152,11 @@ describe("bot handlers (integration)", () => {
           wakePausedTurn,
           agentRunner: {
             run: async () => {
-              return { status: "suspended", reason: "timeout", resumeVersion: 3 };
+              return {
+                status: "suspended",
+                reason: "timeout",
+                resumeVersion: 3,
+              };
             },
           },
         },
@@ -1548,7 +1563,9 @@ describe("bot handlers (integration)", () => {
         replyExecutor: {
           agentRunner: {
             run: async (request) => {
-              capturedInput = { piMessages: request.history ? [...request.history] : undefined };
+              capturedInput = {
+                piMessages: request.history ? [...request.history] : undefined,
+              };
               const runActor = request.actor;
               capturedActorUserId =
                 runActor && "userId" in runActor ? runActor.userId : undefined;
@@ -2196,26 +2213,9 @@ describe("bot handlers (integration)", () => {
       slackAdapter: fakeAdapter,
       services: {
         replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              const _prompt = request.instruction.text;
-              const context = request;
-
-              await context?.onEvent?.({ type: "status", text: "reading channel messages" });
-              return completedAgentRun({
-                text: "Done.",
-                diagnostics: {
-                  assistantMessageCount: 1,
-                  modelId: "test-model",
-                  outcome: "success" as const,
-                  toolCalls: [],
-                  toolErrorCount: 0,
-                  toolResultCount: 0,
-                  usedPrimaryText: true,
-                },
-              });
-            },
-          },
+          agentRunner: createModelAgentRunner(
+            createModelStream([{ type: "text", text: "Done." }]),
+          ),
         },
       },
     });
@@ -2248,81 +2248,6 @@ describe("bot handlers (integration)", () => {
       text: "",
       loadingMessages: undefined,
     });
-  });
-
-  it("does not block assistant reply generation on slow assistant status writes", async () => {
-    const fakeAdapter = new FakeSlackAdapter();
-    let releaseFirstStatus: (() => void) | undefined;
-    let statusCallCount = 0;
-    fakeAdapter.setAssistantStatus = async () => {
-      statusCallCount += 1;
-      if (statusCallCount !== 1) {
-        return;
-      }
-      await new Promise<void>((resolve) => {
-        releaseFirstStatus = resolve;
-      });
-    };
-
-    let replyStarted = false;
-    const { slackRuntime } = createRuntime({
-      slackAdapter: fakeAdapter,
-      services: {
-        conversationMemory: {
-          completeText: async () => ({ text: "Status thread" }) as never,
-        },
-        replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              replyStarted = true;
-              await deliverAssistantMessagesForTest(request, [
-                { text: "Reply lands after the pending status is drained." },
-              ]);
-              return completedAgentRun({
-                text: "Still replied while status was pending.",
-                diagnostics: {
-                  assistantMessageCount: 1,
-                  modelId: "test-model",
-                  outcome: "success" as const,
-                  toolCalls: [],
-                  toolErrorCount: 0,
-                  toolResultCount: 0,
-                  usedPrimaryText: true,
-                },
-              });
-            },
-          },
-        },
-      },
-    });
-
-    let settled = false;
-    const thread = await createTestThread({
-      id: "slack:D0STATUSBLOCK:1700000000.000",
-    });
-    const turnPromise = slackRuntime
-      .handleNewMention(
-        thread,
-        createTestMessage({
-          id: "msg-status-block",
-          threadId: "slack:D0STATUSBLOCK:1700000000.000",
-          text: "show the channel",
-          isMention: true,
-        }),
-        { destination: createTestDestination(thread) },
-      )
-      .then(() => {
-        settled = true;
-      });
-
-    await vi.waitFor(() => {
-      expect(replyStarted).toBe(true);
-    });
-
-    expect(settled).toBe(false);
-
-    releaseFirstStatus!();
-    await turnPromise;
   });
 
   it("posts a completed message even while the initial assistant status write is pending", async () => {
@@ -2360,26 +2285,17 @@ describe("bot handlers (integration)", () => {
           completeText: async () => ({ text: "Status thread" }) as never,
         },
         replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              replyStarted = true;
-              await deliverAssistantMessagesForTest(request, [
-                { text: "Reply lands after the pending status is drained." },
-              ]);
-              return completedAgentRun({
+          agentRunner: createModelAgentRunner(
+            createModelStream([
+              {
+                type: "text",
                 text: "Reply lands after the pending status is drained.",
-                diagnostics: {
-                  assistantMessageCount: 1,
-                  modelId: "test-model",
-                  outcome: "success" as const,
-                  toolCalls: [],
-                  toolErrorCount: 0,
-                  toolResultCount: 0,
-                  usedPrimaryText: true,
+                onRequest: () => {
+                  replyStarted = true;
                 },
-              });
-            },
-          },
+              },
+            ]),
+          ),
         },
       },
     });
@@ -2415,98 +2331,25 @@ describe("bot handlers (integration)", () => {
     await turnPromise;
   });
 
-  it("thread title: generates and sets title after first assistant reply", async () => {
+  it("thread title: uses the first human message we know about in the thread", async () => {
+    process.env.AI_GATEWAY_API_KEY = "test-gateway-key";
     const fakeAdapter = new FakeSlackAdapter();
-    mockTitleCompleteText(async () =>
-      ({
-        text: "Debugging Node.js Memory Leaks",
-        message: { role: "assistant", content: "" },
-      }) as any,
-    );
-
-    const { slackRuntime } = createRuntime({
-      slackAdapter: fakeAdapter,
-      services: {
-        replyExecutor: {
-          agentRunner: {
-            run: async () =>
-              completedAgentRun({
-                text: "Here is how to debug memory leaks.",
-                diagnostics: {
-                  assistantMessageCount: 1,
-                  modelId: "test-model",
-                  outcome: "success" as const,
-                  toolCalls: [],
-                  toolErrorCount: 0,
-                  toolResultCount: 0,
-                  usedPrimaryText: true,
-                },
-              }),
-          },
-        },
+    let titleRequest: TitleModelRequest | undefined;
+    mockTitleModel("Production Issue Summary", {
+      onRequest: (request) => {
+        titleRequest = request;
       },
     });
 
-    const thread = await createTestThread({
-      id: "slack:D0TITLE:1700000000.000",
-    });
-
-    await slackRuntime.handleNewMention(
-      thread,
-      createTestMessage({
-        id: "msg-title-1",
-        threadId: "slack:D0TITLE:1700000000.000",
-        text: "How do I debug memory leaks in Node?",
-        isMention: true,
-      }),
-      { destination: createTestDestination(thread) },
-    );
-
-    await new Promise((r) => setTimeout(r, 0));
-
-    const generatedTitleCall = fakeAdapter.titleCalls.find(
-      (c) => c.title !== "Junior",
-    );
-    expect(generatedTitleCall).toBeDefined();
-    expect(generatedTitleCall!.title).toBe("Debugging Node.js Memory Leaks");
-    expect(generatedTitleCall!.channelId).toBe("D0TITLE");
-    expect(generatedTitleCall!.threadTs).toBe("1700000000.000");
-  });
-
-  it("thread title: uses the first human message we know about in the thread", async () => {
-    const fakeAdapter = new FakeSlackAdapter();
-    mockTitleCompleteText(async (params) => {
-      const prompt =
-        typeof params.messages[0]?.content === "string"
-          ? params.messages[0].content
-          : "";
-      return {
-        text: prompt.includes("Original production issue summary")
-          ? "Production Issue Summary"
-          : "Follow-up Clarification",
-        message: { role: "assistant", content: "" },
-      } as any;
-    });
-
     const { slackRuntime } = createRuntime({
       slackAdapter: fakeAdapter,
       services: {
         replyExecutor: {
-          agentRunner: {
-            run: async () =>
-              completedAgentRun({
-                text: "Here is the updated answer.",
-                diagnostics: {
-                  assistantMessageCount: 1,
-                  modelId: "test-model",
-                  outcome: "success" as const,
-                  toolCalls: [],
-                  toolErrorCount: 0,
-                  toolResultCount: 0,
-                  usedPrimaryText: true,
-                },
-              }),
-          },
+          agentRunner: createModelAgentRunner(
+            createModelStream([
+              { type: "text", text: "Here is the updated answer." },
+            ]),
+          ),
         },
       },
     });
@@ -2534,47 +2377,38 @@ describe("bot handlers (integration)", () => {
       { destination: createTestDestination(thread) },
     );
 
-    await new Promise((r) => setTimeout(r, 0));
-
+    await vi.waitFor(() => {
+      expect(
+        fakeAdapter.titleCalls.some((call) => call.title !== "Junior"),
+      ).toBe(true);
+    });
     const generatedTitleCall = fakeAdapter.titleCalls.find(
-      (c) => c.title !== "Junior",
+      (call) => call.title !== "Junior",
     );
     expect(generatedTitleCall).toBeDefined();
     expect(generatedTitleCall!.title).toBe("Production Issue Summary");
+    expect(JSON.stringify(titleRequest)).toContain(
+      "Original production issue summary",
+    );
+    expect(JSON.stringify(titleRequest)).not.toContain(
+      "Can you also include the regression window?",
+    );
   });
 
   it("thread title: still generates for a new thread with starter assistant content", async () => {
+    process.env.AI_GATEWAY_API_KEY = "test-gateway-key";
     const fakeAdapter = new FakeSlackAdapter();
-    mockTitleCompleteText(async () =>
-      ({
-        text: "Today's Date",
-        message: { role: "assistant", content: "" },
-      }) as any,
-    );
+    mockTitleModel("Today's Date");
 
     const { slackRuntime } = createRuntime({
       slackAdapter: fakeAdapter,
       services: {
         replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              await deliverAssistantMessagesForTest(request, [
-                { text: "Today is April 16, 2026." },
-              ]);
-              return completedAgentRun({
-                text: "Today is April 16, 2026.",
-                diagnostics: {
-                  assistantMessageCount: 1,
-                  modelId: "test-model",
-                  outcome: "success" as const,
-                  toolCalls: [],
-                  toolErrorCount: 0,
-                  toolResultCount: 0,
-                  usedPrimaryText: true,
-                },
-              });
-            },
-          },
+          agentRunner: createModelAgentRunner(
+            createModelStream([
+              { type: "text", text: "Today is April 16, 2026." },
+            ]),
+          ),
         },
       },
     });
@@ -2607,129 +2441,42 @@ describe("bot handlers (integration)", () => {
       { destination: createTestDestination(thread) },
     );
 
-    await new Promise((r) => setTimeout(r, 0));
-
+    await vi.waitFor(() => {
+      expect(
+        fakeAdapter.titleCalls.some((call) => call.title !== "Junior"),
+      ).toBe(true);
+    });
     const generatedTitleCall = fakeAdapter.titleCalls.find(
-      (c) => c.title !== "Junior",
+      (call) => call.title !== "Junior",
     );
     expect(generatedTitleCall).toBeDefined();
     expect(generatedTitleCall!.title).toBe("Today's Date");
   });
 
-  it("thread title: does not block reply delivery when generation is slow", async () => {
-    const fakeAdapter = new FakeSlackAdapter();
-    let resolveTitle: (() => void) | undefined;
-    mockTitleCompleteText(async () =>
-      await new Promise((resolve) => {
-        resolveTitle = () =>
-          resolve({
-            text: "Today's Date",
-            message: { role: "assistant", content: "" },
-          } as any);
-      }),
-    );
-    const { slackRuntime } = createRuntime({
-      slackAdapter: fakeAdapter,
-      services: {
-        replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              await deliverAssistantMessagesForTest(request, [
-                { text: "Today is April 16, 2026." },
-              ]);
-              return completedAgentRun({
-                text: "Today is April 16, 2026.",
-                diagnostics: {
-                  assistantMessageCount: 1,
-                  modelId: "test-model",
-                  outcome: "success" as const,
-                  toolCalls: [],
-                  toolErrorCount: 0,
-                  toolResultCount: 0,
-                  usedPrimaryText: true,
-                },
-              });
-            },
-          },
-        },
-      },
-    });
-
-    const thread = await createTestThread({
-      id: "slack:D0TITLE6:1700000000.000",
-    });
-    let settled = false;
-    const turnPromise = slackRuntime
-      .handleNewMention(
-        thread,
-        createTestMessage({
-          id: "msg-title-6",
-          threadId: "slack:D0TITLE6:1700000000.000",
-          text: "what's today's date",
-          isMention: true,
-        }),
-        { destination: createTestDestination(thread) },
-      )
-      .then(() => {
-        settled = true;
-      });
-
-    await vi.waitFor(() => {
-      expect(postIncludes(thread, "Today is April 16, 2026.")).toBe(true);
-    });
-    await vi.waitFor(() => {
-      expect(settled).toBe(true);
-    });
-    expect(
-      fakeAdapter.titleCalls.some((call) => call.title === "Today's Date"),
-    ).toBe(false);
-
-    resolveTitle!();
-    await turnPromise;
-    await vi.waitFor(() => {
-      expect(
-        fakeAdapter.titleCalls.some((call) => call.title === "Today's Date"),
-      ).toBe(true);
-    });
-  });
-
   it("thread title: preserves artifact updates when title resolves before completion", async () => {
+    process.env.AI_GATEWAY_API_KEY = "test-gateway-key";
     const fakeAdapter = new FakeSlackAdapter();
-    mockTitleCompleteText(async () =>
-      ({
-        text: "Today's Date",
-        message: { role: "assistant", content: "" },
-      }) as any,
-    );
+    mockTitleModel("Today's Date");
 
     const { slackRuntime } = createRuntime({
       slackAdapter: fakeAdapter,
       services: {
         replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              const _text = request.instruction.text;
-              await vi.waitFor(() => {
-                expect(
-                  fakeAdapter.titleCalls.some(
-                    (call) => call.title === "Today's Date",
-                  ),
-                ).toBe(true);
-              });
-              return completedAgentRun({
+          agentRunner: createModelAgentRunner(
+            createModelStream([
+              {
+                type: "text",
                 text: "Today is April 16, 2026.",
-                diagnostics: {
-                  assistantMessageCount: 1,
-                  modelId: "test-model",
-                  outcome: "success" as const,
-                  toolCalls: [],
-                  toolErrorCount: 0,
-                  toolResultCount: 0,
-                  usedPrimaryText: true,
-                },
-              });
-            },
-          },
+                waitFor: vi.waitFor(() => {
+                  expect(
+                    fakeAdapter.titleCalls.some(
+                      (call) => call.title === "Today's Date",
+                    ),
+                  ).toBe(true);
+                }),
+              },
+            ]),
+          ),
         },
       },
     });
@@ -2753,35 +2500,20 @@ describe("bot handlers (integration)", () => {
   });
 
   it("thread title: does not generate title on subsequent replies", async () => {
+    process.env.AI_GATEWAY_API_KEY = "test-gateway-key";
     const fakeAdapter = new FakeSlackAdapter();
     let turnCount = 0;
-    mockTitleCompleteText(async () =>
-      ({
-        text: "Some Title",
-        message: { role: "assistant", content: "" },
-      }) as any,
-    );
+    mockTitleModel("Some Title");
     const { slackRuntime } = createRuntime({
       slackAdapter: fakeAdapter,
       services: {
         replyExecutor: {
-          agentRunner: {
-            run: async () => {
-              turnCount += 1;
-              return completedAgentRun({
-                text: `reply-${turnCount}`,
-                diagnostics: {
-                  assistantMessageCount: 1,
-                  modelId: "test-model",
-                  outcome: "success" as const,
-                  toolCalls: [],
-                  toolErrorCount: 0,
-                  toolResultCount: 0,
-                  usedPrimaryText: true,
-                },
-              });
-            },
-          },
+          agentRunner: createModelAgentRunnerForRun(() => {
+            turnCount += 1;
+            return createModelStream([
+              { type: "text", text: `reply-${turnCount}` },
+            ]);
+          }),
         },
       },
     });
@@ -2800,10 +2532,13 @@ describe("bot handlers (integration)", () => {
       }),
       { destination: createTestDestination(thread) },
     );
-    await new Promise((r) => setTimeout(r, 0));
-
+    await vi.waitFor(() => {
+      expect(
+        fakeAdapter.titleCalls.filter((call) => call.title !== "Junior"),
+      ).toHaveLength(1);
+    });
     const titleCallsAfterFirst = fakeAdapter.titleCalls.filter(
-      (c) => c.title !== "Junior",
+      (call) => call.title !== "Junior",
     ).length;
     expect(titleCallsAfterFirst).toBe(1);
 
@@ -2820,12 +2555,13 @@ describe("bot handlers (integration)", () => {
     await new Promise((r) => setTimeout(r, 0));
 
     const titleCallsAfterSecond = fakeAdapter.titleCalls.filter(
-      (c) => c.title !== "Junior",
+      (call) => call.title !== "Junior",
     ).length;
     expect(titleCallsAfterSecond).toBe(1);
   });
 
   it("thread title: ignores Slack permission errors when setting title", async () => {
+    process.env.AI_GATEWAY_API_KEY = "test-gateway-key";
     const fakeAdapter = new FakeSlackAdapter();
     fakeAdapter.setAssistantTitle = async () => {
       const error = new Error(
@@ -2836,35 +2572,16 @@ describe("bot handlers (integration)", () => {
       error.data = { error: "no_permission" };
       throw error;
     };
-    mockTitleCompleteText(async () =>
-      ({
-        text: "Permission Safe Title",
-        message: { role: "assistant", content: "" },
-      }) as any,
-    );
+    mockTitleModel("Permission Safe Title");
     const { slackRuntime } = createRuntime({
       slackAdapter: fakeAdapter,
       services: {
         replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              await deliverAssistantMessagesForTest(request, [
-                { text: "This reply should still succeed." },
-              ]);
-              return completedAgentRun({
-                text: "This reply should still succeed.",
-                diagnostics: {
-                  assistantMessageCount: 1,
-                  modelId: "test-model",
-                  outcome: "success" as const,
-                  toolCalls: [],
-                  toolErrorCount: 0,
-                  toolResultCount: 0,
-                  usedPrimaryText: true,
-                },
-              });
-            },
-          },
+          agentRunner: createModelAgentRunner(
+            createModelStream([
+              { type: "text", text: "This reply should still succeed." },
+            ]),
+          ),
         },
       },
     });
@@ -2890,6 +2607,7 @@ describe("bot handlers (integration)", () => {
   });
 
   it("thread title: does not regenerate after stable Slack permission failures", async () => {
+    process.env.AI_GATEWAY_API_KEY = "test-gateway-key";
     const fakeAdapter = new FakeSlackAdapter();
     fakeAdapter.setAssistantTitle = async () => {
       const error = new Error(
@@ -2902,32 +2620,20 @@ describe("bot handlers (integration)", () => {
     };
 
     let titleGenerationCount = 0;
-    mockTitleCompleteText(async () => {
-      titleGenerationCount += 1;
-      return {
-        text: "Stable Permission Title",
-        message: { role: "assistant", content: "" },
-      } as any;
+    mockTitleModel("Stable Permission Title", {
+      onRequest: () => {
+        titleGenerationCount += 1;
+      },
     });
     const { slackRuntime } = createRuntime({
       slackAdapter: fakeAdapter,
       services: {
         replyExecutor: {
-          agentRunner: {
-            run: async () =>
-              completedAgentRun({
-                text: "Reply still succeeds.",
-                diagnostics: {
-                  assistantMessageCount: 1,
-                  modelId: "test-model",
-                  outcome: "success" as const,
-                  toolCalls: [],
-                  toolErrorCount: 0,
-                  toolResultCount: 0,
-                  usedPrimaryText: true,
-                },
-              }),
-          },
+          agentRunner: createModelAgentRunner(
+            createModelStream([
+              { type: "text", text: "Reply still succeeds." },
+            ]),
+          ),
         },
       },
     });
@@ -2965,26 +2671,10 @@ describe("bot handlers (integration)", () => {
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              const _prompt = request.instruction.text;
-              const context = request;
-
-              capturedContexts.push(context?.instruction.context);
-              return completedAgentRun({
-                text: "First reply.",
-                diagnostics: {
-                  assistantMessageCount: 1,
-                  modelId: "test-model",
-                  outcome: "success" as const,
-                  toolCalls: [],
-                  toolErrorCount: 0,
-                  toolResultCount: 0,
-                  usedPrimaryText: true,
-                },
-              });
-            },
-          },
+          agentRunner: createModelAgentRunnerForRun((run) => {
+            capturedContexts.push(run.instruction.context);
+            return createModelStream([{ type: "text", text: "First reply." }]);
+          }),
         },
       },
     });
@@ -3011,26 +2701,12 @@ describe("bot handlers (integration)", () => {
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              const _prompt = request.instruction.text;
-              const context = request;
-
-              capturedContexts.push(context?.instruction.context);
-              return completedAgentRun({
-                text: "Follow-up reply.",
-                diagnostics: {
-                  assistantMessageCount: 1,
-                  modelId: "test-model",
-                  outcome: "success" as const,
-                  toolCalls: [],
-                  toolErrorCount: 0,
-                  toolResultCount: 0,
-                  usedPrimaryText: true,
-                },
-              });
-            },
-          },
+          agentRunner: createModelAgentRunnerForRun((run) => {
+            capturedContexts.push(run.instruction.context);
+            return createModelStream([
+              { type: "text", text: "Follow-up reply." },
+            ]);
+          }),
         },
       },
     });
@@ -3119,26 +2795,12 @@ describe("bot handlers (integration)", () => {
             }) as any,
         },
         replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              const _prompt = request.instruction.text;
-              const context = request;
-
-              capturedContexts.push(context?.instruction.context);
-              return completedAgentRun({
-                text: "Responding to first message only.",
-                diagnostics: {
-                  assistantMessageCount: 1,
-                  modelId: "test-model",
-                  outcome: "success" as const,
-                  toolCalls: [],
-                  toolErrorCount: 0,
-                  toolResultCount: 0,
-                  usedPrimaryText: true,
-                },
-              });
-            },
-          },
+          agentRunner: createModelAgentRunnerForRun((run) => {
+            capturedContexts.push(run.instruction.context);
+            return createModelStream([
+              { type: "text", text: "Responding to first message only." },
+            ]);
+          }),
         },
       },
     });
@@ -3182,23 +2844,12 @@ describe("bot handlers (integration)", () => {
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
-          agentRunner: {
-            run: async () => {
-              turnCount += 1;
-              return completedAgentRun({
-                text: `reply-${turnCount}`,
-                diagnostics: {
-                  assistantMessageCount: 1,
-                  modelId: "test-model",
-                  outcome: "success" as const,
-                  toolCalls: [],
-                  toolErrorCount: 0,
-                  toolResultCount: 0,
-                  usedPrimaryText: true,
-                },
-              });
-            },
-          },
+          agentRunner: createModelAgentRunnerForRun(() => {
+            turnCount += 1;
+            return createModelStream([
+              { type: "text", text: `reply-${turnCount}` },
+            ]);
+          }),
         },
       },
     });

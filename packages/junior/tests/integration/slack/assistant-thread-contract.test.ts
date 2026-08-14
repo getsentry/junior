@@ -15,6 +15,7 @@ import { resetAssistantTitleProjectionForTests } from "@/chat/slack/assistant-th
 import type { StreamFn } from "@earendil-works/pi-agent-core";
 import { createModelAgentRunner } from "../../fixtures/agent-runner";
 import { createModelStream } from "../../fixtures/model-stream";
+import { mockTitleModel } from "../../fixtures/title-model";
 import { http, HttpResponse } from "msw";
 import { mswServer } from "../../msw/server";
 
@@ -86,54 +87,6 @@ function mockTurnRouterModel(): void {
         },
       }),
     ),
-  );
-}
-
-function mockTitleModel(text: string, waitFor?: Promise<unknown>): void {
-  mswServer.use(
-    http.post("https://ai-gateway.vercel.sh/v1/messages", async () => {
-      await waitFor;
-      const events = [
-        {
-          type: "message_start",
-          message: {
-            id: "msg_title_fixture",
-            type: "message",
-            role: "assistant",
-            model: "title-fixture",
-            content: [],
-            stop_reason: null,
-            stop_sequence: null,
-            usage: { input_tokens: 1, output_tokens: 0 },
-          },
-        },
-        {
-          type: "content_block_start",
-          index: 0,
-          content_block: { type: "text", text: "" },
-        },
-        {
-          type: "content_block_delta",
-          index: 0,
-          delta: { type: "text_delta", text },
-        },
-        { type: "content_block_stop", index: 0 },
-        {
-          type: "message_delta",
-          delta: { stop_reason: "end_turn", stop_sequence: null },
-          usage: { output_tokens: 1 },
-        },
-        { type: "message_stop" },
-      ];
-      const body = events
-        .map(
-          (event) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`,
-        )
-        .join("");
-      return HttpResponse.text(body, {
-        headers: { "content-type": "text/event-stream" },
-      });
-    }),
   );
 }
 
@@ -358,7 +311,7 @@ describe("Slack contract: assistant-thread delivery", () => {
     const titleGate = new Promise<void>((resolve) => {
       resolveTitle = resolve;
     });
-    mockTitleModel("Debugging Node.js Memory Leaks", titleGate);
+    mockTitleModel("Debugging Node.js Memory Leaks", { waitFor: titleGate });
     const bot = await createDirectMessageBot(
       createModelStream([
         { type: "text", text: "Here is how to debug memory leaks." },
