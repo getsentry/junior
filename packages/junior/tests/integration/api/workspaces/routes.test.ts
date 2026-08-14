@@ -7,8 +7,14 @@ import {
   workspaceListSchema,
   workspaceSchema,
 } from "@/api/schema";
-import { closeDb } from "@/chat/db";
+import { closeDb, getDb, getSqlExecutor } from "@/chat/db";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
+import {
+  createWorkspace,
+  getWorkspace,
+  getWorkspaceByName,
+  updateWorkspace,
+} from "@/chat/workspaces/store";
 
 function authenticatedApi(email = "person@example.com") {
   const app = new Hono<{ Variables: JuniorApiVariables }>();
@@ -148,6 +154,75 @@ describe("workspace admin API", () => {
     expect(apiErrorSchema.parse(await response.json()).error).toMatch(
       /name must start with a letter/i,
     );
+  });
+
+  it("rolls back recipe writes when repository replacement fails", async () => {
+    const executor = getSqlExecutor();
+    const original = await createWorkspace({
+      name: "original",
+      setupScript: "pnpm install",
+      repos: [
+        {
+          provider: "github",
+          repo: "getsentry/junior",
+          isPrimary: true,
+        },
+      ],
+    });
+
+    await executor.execute(`
+CREATE OR REPLACE FUNCTION junior_test_reject_workspace_repo()
+RETURNS trigger AS $$
+BEGIN
+  RAISE EXCEPTION 'reject workspace repo for rollback test';
+END;
+$$ LANGUAGE plpgsql
+`);
+    await executor.execute(`
+CREATE TRIGGER junior_test_reject_workspace_repo
+BEFORE INSERT ON junior_workspace_repos
+FOR EACH ROW EXECUTE FUNCTION junior_test_reject_workspace_repo()
+`);
+
+    try {
+      await expect(
+        createWorkspace({
+          name: "partial-create",
+          repos: [
+            {
+              provider: "github",
+              repo: "getsentry/sentry",
+              isPrimary: true,
+            },
+          ],
+        }),
+      ).rejects.toThrow(/junior_workspace_repos/);
+      expect(
+        await getWorkspaceByName(getDb(), "partial-create"),
+      ).toBeUndefined();
+
+      await expect(
+        updateWorkspace(original.id, {
+          name: "partial-update",
+          setupScript: "changed",
+          repos: [
+            {
+              provider: "github",
+              repo: "getsentry/sentry",
+              isPrimary: true,
+            },
+          ],
+        }),
+      ).rejects.toThrow(/junior_workspace_repos/);
+      expect(await getWorkspace(getDb(), original.id)).toEqual(original);
+    } finally {
+      await executor.execute(
+        "DROP TRIGGER IF EXISTS junior_test_reject_workspace_repo ON junior_workspace_repos",
+      );
+      await executor.execute(
+        "DROP FUNCTION IF EXISTS junior_test_reject_workspace_repo()",
+      );
+    }
   });
 
   it("rejects duplicate names", async () => {

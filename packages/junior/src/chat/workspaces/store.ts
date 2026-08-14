@@ -147,19 +147,18 @@ export async function createWorkspace(
     }>;
   },
   options: {
-    db?: JuniorDatabase;
     executor?: JuniorSqlDatabase;
     now?: Date;
   } = {},
 ): Promise<Workspace> {
   const recipe = normalizeWorkspaceRecipe(input);
   const executor = options.executor ?? getSqlExecutor();
-  const db = options.db ?? executor.db();
   const now = options.now ?? new Date();
   const id = randomUUID();
 
   try {
     await executor.transaction(async () => {
+      const db = executor.db();
       await db.insert(juniorWorkspaces).values({
         id,
         name: recipe.name,
@@ -178,7 +177,7 @@ export async function createWorkspace(
     throw error;
   }
 
-  return (await getWorkspace(db, id))!;
+  return (await getWorkspace(executor.db(), id))!;
 }
 
 /** Replace one install-wide Workspace recipe. */
@@ -194,18 +193,17 @@ export async function updateWorkspace(
     }>;
   },
   options: {
-    db?: JuniorDatabase;
     executor?: JuniorSqlDatabase;
     now?: Date;
   } = {},
 ): Promise<Workspace | undefined> {
   const recipe = normalizeWorkspaceRecipe(input);
   const executor = options.executor ?? getSqlExecutor();
-  const db = options.db ?? executor.db();
   const now = options.now ?? new Date();
 
   try {
     const updated = await executor.transaction(async () => {
+      const db = executor.db();
       const rows = await db
         .update(juniorWorkspaces)
         .set({
@@ -229,21 +227,20 @@ export async function updateWorkspace(
     throw error;
   }
 
-  return await getWorkspace(db, id);
+  return await getWorkspace(executor.db(), id);
 }
 
 /** Delete one install-wide Workspace recipe. */
 export async function deleteWorkspace(
   id: string,
   options: {
-    db?: JuniorDatabase;
     executor?: JuniorSqlDatabase;
   } = {},
 ): Promise<boolean> {
   const executor = options.executor ?? getSqlExecutor();
-  const db = options.db ?? executor.db();
   return await executor.transaction(async () => {
-    const rows = await db
+    const rows = await executor
+      .db()
       .delete(juniorWorkspaces)
       .where(eq(juniorWorkspaces.id, id))
       .returning({ id: juniorWorkspaces.id });
