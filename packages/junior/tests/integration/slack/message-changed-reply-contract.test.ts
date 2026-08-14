@@ -1,5 +1,5 @@
 import { createTestDestination } from "../../fixtures/slack-harness";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { createMemoryState } from "@chat-adapter/state-memory";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { slackEventsApiEnvelope } from "../../fixtures/slack/factories/events";
@@ -13,7 +13,15 @@ import { handleChatSdkPlatformWebhook } from "@/handlers/webhooks";
 import { createModelAgentRunner } from "../../fixtures/agent-runner";
 import { createModelStream } from "../../fixtures/model-stream";
 import { queueSlackApiError } from "../../msw/handlers/slack-api";
-import type { PausedTurnRequest } from "@/chat/task-execution/turn-wake";
+import {
+  getPausedTurnRequest,
+  wakePausedTurn as schedulePausedTurnWake,
+} from "@/chat/task-execution/turn-wake";
+import { buildDeterministicTurnId } from "@/chat/runtime/turn";
+import {
+  createConversationWorkQueueTestAdapter,
+  type ConversationWorkQueueTestAdapter,
+} from "../../fixtures/conversation-work";
 
 const SIGNING_SECRET = "test-signing-secret";
 const BOT_USER_ID = "U0BOT";
@@ -56,7 +64,7 @@ function createEditedMentionRequest(args: {
 
 async function createEditedDmBot(args: {
   agentRunner: AgentRunner;
-  wakePausedTurn?: (request: PausedTurnRequest) => Promise<void>;
+  queue?: ConversationWorkQueueTestAdapter;
 }) {
   const state = createMemoryState();
   await state.connect();
@@ -76,7 +84,16 @@ async function createEditedDmBot(args: {
     services: {
       replyExecutor: {
         agentRunner: args.agentRunner,
-        ...(args.wakePausedTurn ? { wakePausedTurn: args.wakePausedTurn } : {}),
+        ...(args.queue
+          ? {
+              wakePausedTurn: async (request) => {
+                await schedulePausedTurnWake(request, {
+                  queue: args.queue,
+                  state,
+                });
+              },
+            }
+          : {}),
       },
     },
   });
@@ -167,12 +184,12 @@ describe("Slack contract: edited-message reply delivery", () => {
         status: 503,
       });
     }
-    const wakePausedTurn = vi.fn().mockResolvedValue(undefined);
+    const queue = createConversationWorkQueueTestAdapter();
     const bot = await createEditedDmBot({
       agentRunner: createModelAgentRunner(
         createModelStream([{ type: "text", text: "Hello world" }]),
       ),
-      wakePausedTurn,
+      queue,
     });
     const waitUntil = slackWebhookClient.waitUntil();
 
@@ -189,16 +206,29 @@ describe("Slack contract: edited-message reply delivery", () => {
     await waitUntil.flush();
 
     expect(response.status).toBe(200);
-    expect(wakePausedTurn).toHaveBeenCalledWith(
-      expect.objectContaining({
-        conversationId: "slack:D12345:1700000100.000102",
-        destination: {
-          platform: "slack",
-          teamId: "TTEST",
-          channelId: "D12345",
-        },
-        expectedVersion: 2,
-      }),
+    const conversationId = "slack:D12345:1700000100.000102";
+    const turnId = buildDeterministicTurnId(
+      "1700000100.000102:message_changed_mention",
     );
+    await expect(
+      getPausedTurnRequest({ conversationId, turnId }),
+    ).resolves.toMatchObject({
+      conversationId,
+      destination: {
+        platform: "slack",
+        teamId: "TTEST",
+        channelId: "D12345",
+      },
+      expectedVersion: 2,
+      turnId,
+    });
+    expect(queue.sentRecords()).toEqual([
+      expect.objectContaining({
+        conversationId,
+        idempotencyKey: expect.stringContaining(
+          `agent-continue:${conversationId}:${turnId}:2:`,
+        ),
+      }),
+    ]);
   });
 });

@@ -29,6 +29,10 @@ import {
   getTurnRecord,
   upsertTurnRecord,
 } from "@/chat/task-execution/turn-cursor";
+import {
+  wakePausedTurn as schedulePausedTurnWake,
+  type PausedTurnRequest,
+} from "@/chat/task-execution/turn-wake";
 import { resetSlackApiMockState } from "../../msw/handlers/slack-api";
 import {
   FakeSlackAdapter,
@@ -42,9 +46,14 @@ import { resetAssistantTitleProjectionForTests } from "@/chat/slack/assistant-th
 import {
   createModelAgentRunner,
   createModelAgentRunnerForRun,
+  neverRunAgentRunner,
 } from "../../fixtures/agent-runner";
 import { createModelStream } from "../../fixtures/model-stream";
-import { deferred } from "../../fixtures/conversation-work";
+import {
+  createConversationWorkQueueTestAdapter,
+  deferred,
+  type ConversationWorkQueueTestAdapter,
+} from "../../fixtures/conversation-work";
 import {
   mockTitleModel,
   type TitleModelRequest,
@@ -139,6 +148,12 @@ function slackDestination(channelId: string) {
     teamId: "T123",
     channelId,
   } satisfies Destination;
+}
+
+function bindPausedTurnQueue(queue: ConversationWorkQueueTestAdapter) {
+  return async (request: PausedTurnRequest): Promise<void> => {
+    await schedulePausedTurnWake(request, { queue });
+  };
 }
 
 function createAwaitingContinuationState(args: {
@@ -727,77 +742,6 @@ describe("bot handlers (integration)", () => {
     expect(capturedIdentity[0].turnId).toBe("turn_msg-correlation");
   });
 
-  it("reschedules an awaiting paused turn without replying to the follow-up", async () => {
-    const conversationId = "slack:C9TIMERTY:1700000000.000";
-    const destination = slackDestination("C9TIMERTY");
-    const activeSessionId = "turn_msg-original";
-    const wakePausedTurn = vi.fn().mockResolvedValue(undefined);
-    const getPausedTurnRequest = vi.fn().mockResolvedValue({
-      conversationId,
-      destination,
-      turnId: activeSessionId,
-      expectedVersion: 4,
-    });
-    const executeAgentRun = vi.fn();
-    const ack = vi.fn();
-    const onTurnStatePersisted = vi.fn();
-    const { slackRuntime } = createRuntime({
-      services: {
-        replyExecutor: {
-          agentRunner: { run: executeAgentRun },
-          getPausedTurnRequest,
-          wakePausedTurn,
-        },
-      },
-    });
-
-    const thread = await createTestThread({
-      id: conversationId,
-      state: createAwaitingContinuationState({ activeSessionId }),
-    });
-
-    await expect(
-      slackRuntime.handleNewMention(
-        thread,
-        createTestMessage({
-          id: "msg-retry",
-          threadId: conversationId,
-          text: "what happened?",
-          isMention: true,
-        }),
-        {
-          destination,
-          ack,
-          onTurnStatePersisted,
-        },
-      ),
-    ).resolves.toBeUndefined();
-
-    expect(getPausedTurnRequest).toHaveBeenCalledWith({
-      conversationId,
-      turnId: activeSessionId,
-    });
-    expect(wakePausedTurn).toHaveBeenCalledWith({
-      conversationId,
-      destination,
-      turnId: activeSessionId,
-      expectedVersion: 4,
-    });
-    expect(executeAgentRun).not.toHaveBeenCalled();
-    expect(onTurnStatePersisted).toHaveBeenCalledOnce();
-    expect(ack).toHaveBeenCalledOnce();
-    expect(thread.posts).toEqual([]);
-
-    const conversation = await loadVisibleConversation(thread);
-    expect(conversation?.processing?.activeTurnId).toBe(activeSessionId);
-    const followUp = conversation?.messages?.find(
-      (message) => message.id === "msg-retry",
-    );
-    expect(followUp).toBeDefined();
-    expect(followUp?.meta?.replied).toBeUndefined();
-    expect(followUp?.meta?.skippedReason).toBeUndefined();
-  });
-
   it("answers a follow-up as a fresh turn when the active session is auth-parked", async () => {
     const conversationId = "slack:C0AUTHPARKED:1700000000.000";
     const activeSessionId = "turn_msg-auth-original";
@@ -879,22 +823,15 @@ describe("bot handlers (integration)", () => {
       piMessages: turnPiMessages("please keep working"),
       turnStartMessageIndex: 0,
     });
-    const order: string[] = [];
-    const wakePausedTurn = vi.fn(async () => {
-      expect(
-        JSON.stringify(await loadProjection({ conversationId })),
-      ).toContain("also check the logs");
-      order.push("schedule");
-    });
-    const ack = vi.fn(async () => {
-      order.push("ack");
-    });
-    const executeAgentRun = vi.fn();
+    const queue = createConversationWorkQueueTestAdapter();
+    const finishQueueSend = deferred();
+    const queueSendEntered = queue.holdNextSendUntil(finishQueueSend.promise);
+    const ack = vi.fn();
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
-          agentRunner: { run: executeAgentRun },
-          wakePausedTurn,
+          agentRunner: neverRunAgentRunner(),
+          wakePausedTurn: bindPausedTurnQueue(queue),
         },
       },
     });
@@ -910,19 +847,30 @@ describe("bot handlers (integration)", () => {
       isMention: true,
     });
 
-    await slackRuntime.handleNewMention(thread, followUp, {
+    const handlePromise = slackRuntime.handleNewMention(thread, followUp, {
       destination,
       ack,
     });
+    await queueSendEntered;
 
-    expect(executeAgentRun).not.toHaveBeenCalled();
-    expect(thread.posts).toEqual([]);
-    expect(ack).toHaveBeenCalledOnce();
-    expect(order).toEqual(["schedule", "ack"]);
-    expect(wakePausedTurn).toHaveBeenCalledOnce();
+    // Input reaches the durable transcript before the queue handoff completes.
     expect(JSON.stringify(await loadProjection({ conversationId }))).toContain(
       "also check the logs",
     );
+    expect(ack).not.toHaveBeenCalled();
+    finishQueueSend.resolve();
+    await handlePromise;
+
+    expect(thread.posts).toEqual([]);
+    expect(ack).toHaveBeenCalledOnce();
+    expect(queue.sentRecords()).toEqual([
+      expect.objectContaining({
+        conversationId,
+        idempotencyKey: expect.stringContaining(
+          `agent-continue:${conversationId}:${activeSessionId}:1:`,
+        ),
+      }),
+    ]);
 
     // The resumed continue() replays the record's Pi history, which must now
     // end with the follow-up at a continuable user boundary.
@@ -945,6 +893,7 @@ describe("bot handlers (integration)", () => {
     expect(
       JSON.stringify(projection).split("also check the logs"),
     ).toHaveLength(2);
+    expect(queue.sentRecords()).toHaveLength(1);
   });
 
   it("appends only the missing parked messages on a partial-overlap redelivery", async () => {
@@ -962,12 +911,12 @@ describe("bot handlers (integration)", () => {
       piMessages: turnPiMessages("please keep working"),
       turnStartMessageIndex: 0,
     });
-    const wakePausedTurn = vi.fn();
+    const queue = createConversationWorkQueueTestAdapter();
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
-          agentRunner: { run: vi.fn() },
-          wakePausedTurn,
+          agentRunner: neverRunAgentRunner(),
+          wakePausedTurn: bindPausedTurnQueue(queue),
         },
       },
     });
@@ -1001,6 +950,7 @@ describe("bot handlers (integration)", () => {
     const serialized = JSON.stringify(await loadProjection({ conversationId }));
     expect(serialized.split("first follow-up")).toHaveLength(2);
     expect(serialized.split("second follow-up")).toHaveLength(2);
+    expect(queue.sentRecords()).toHaveLength(1);
   });
 
   it("records each parked follow-up author's own instruction provenance", async () => {
@@ -1018,11 +968,12 @@ describe("bot handlers (integration)", () => {
       piMessages: turnPiMessages("please keep working"),
       turnStartMessageIndex: 0,
     });
+    const queue = createConversationWorkQueueTestAdapter();
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
-          agentRunner: { run: vi.fn() },
-          wakePausedTurn: vi.fn(),
+          agentRunner: neverRunAgentRunner(),
+          wakePausedTurn: bindPausedTurnQueue(queue),
         },
       },
     });
@@ -1073,6 +1024,7 @@ describe("bot handlers (integration)", () => {
       authority: "instruction",
       actor: { platform: "slack", teamId: "T123", userId: "U-bob" },
     });
+    expect(queue.sentRecords()).toHaveLength(1);
   });
 
   it("carries a batched mention's own author provenance into a fresh turn", async () => {
@@ -1167,13 +1119,13 @@ describe("bot handlers (integration)", () => {
       piMessages: turnPiMessages("please keep working"),
       turnStartMessageIndex: 0,
     });
-    const wakePausedTurn = vi.fn();
+    const queue = createConversationWorkQueueTestAdapter();
     const ack = vi.fn();
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
-          agentRunner: { run: vi.fn() },
-          wakePausedTurn,
+          agentRunner: neverRunAgentRunner(),
+          wakePausedTurn: bindPausedTurnQueue(queue),
         },
       },
     });
@@ -1207,7 +1159,7 @@ describe("bot handlers (integration)", () => {
     // The message was not consumed and nothing was appended or scheduled: it
     // stays pending in the mailbox for the next drain.
     expect(ack).not.toHaveBeenCalled();
-    expect(wakePausedTurn).not.toHaveBeenCalled();
+    expect(queue.sentRecords()).toEqual([]);
     expect(
       JSON.stringify(await loadProjection({ conversationId })),
     ).not.toContain("also check the logs");
@@ -1444,20 +1396,23 @@ describe("bot handlers (integration)", () => {
     const conversationId = "slack:C9TIMEDUP:1700000000.000";
     const destination = slackDestination("C9TIMEDUP");
     const activeSessionId = "turn_msg-duplicate";
-    const wakePausedTurn = vi.fn().mockResolvedValue(undefined);
-    const getPausedTurnRequest = vi.fn().mockResolvedValue({
+    await upsertTurnRecord({
       conversationId,
       destination,
       turnId: activeSessionId,
-      expectedVersion: 4,
+      sliceId: 1,
+      state: "paused",
+      resumeReason: "yield",
+      source: createSlackSourceForTest("C9TIMEDUP"),
+      piMessages: turnPiMessages("please keep working"),
+      turnStartMessageIndex: 0,
     });
-    const executeAgentRun = vi.fn();
+    const queue = createConversationWorkQueueTestAdapter();
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
-          agentRunner: { run: executeAgentRun },
-          getPausedTurnRequest,
-          wakePausedTurn,
+          agentRunner: neverRunAgentRunner(),
+          wakePausedTurn: bindPausedTurnQueue(queue),
         },
       },
     });
@@ -1481,34 +1436,38 @@ describe("bot handlers (integration)", () => {
       { destination },
     );
 
-    expect(wakePausedTurn).toHaveBeenCalledWith({
-      conversationId,
-      destination,
-      turnId: activeSessionId,
-      expectedVersion: 4,
-    });
-    expect(executeAgentRun).not.toHaveBeenCalled();
+    expect(queue.sentRecords()).toEqual([
+      expect.objectContaining({
+        conversationId,
+        idempotencyKey: expect.stringContaining(
+          `agent-continue:${conversationId}:${activeSessionId}:1:`,
+        ),
+      }),
+    ]);
   });
 
   it("does not reschedule an awaiting continuation for an already-replied duplicate", async () => {
     const conversationId = "slack:C9TIMEREPD:1700000000.000";
     const destination = slackDestination("C9TIMEREPD");
     const activeSessionId = "turn_msg-replied-duplicate";
-    const wakePausedTurn = vi.fn().mockResolvedValue(undefined);
-    const getPausedTurnRequest = vi.fn().mockResolvedValue({
+    await upsertTurnRecord({
       conversationId,
       destination,
       turnId: activeSessionId,
-      expectedVersion: 4,
+      sliceId: 1,
+      state: "paused",
+      resumeReason: "yield",
+      source: createSlackSourceForTest("C9TIMEREPD"),
+      piMessages: turnPiMessages("please keep working"),
+      turnStartMessageIndex: 0,
     });
-    const executeAgentRun = vi.fn();
+    const queue = createConversationWorkQueueTestAdapter();
     const onTurnStatePersisted = vi.fn();
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
-          agentRunner: { run: executeAgentRun },
-          getPausedTurnRequest,
-          wakePausedTurn,
+          agentRunner: neverRunAgentRunner(),
+          wakePausedTurn: bindPausedTurnQueue(queue),
         },
       },
     });
@@ -1546,91 +1505,33 @@ describe("bot handlers (integration)", () => {
       },
     );
 
-    expect(getPausedTurnRequest).not.toHaveBeenCalled();
-    expect(wakePausedTurn).not.toHaveBeenCalled();
-    expect(executeAgentRun).not.toHaveBeenCalled();
+    expect(queue.sentRecords()).toEqual([]);
     expect(onTurnStatePersisted).toHaveBeenCalledOnce();
     expect(thread.posts).toEqual([]);
-  });
-
-  it("keeps awaiting continuation state without a visible acknowledgement", async () => {
-    const conversationId = "slack:C9TIMENOTI:1700000000.000";
-    const destination = slackDestination("C9TIMENOTI");
-    const activeSessionId = "turn_msg-original";
-    const wakePausedTurn = vi.fn().mockResolvedValue(undefined);
-    const getPausedTurnRequest = vi.fn().mockResolvedValue({
-      conversationId,
-      destination,
-      turnId: activeSessionId,
-      expectedVersion: 4,
-    });
-    const executeAgentRun = vi.fn();
-    const { slackRuntime } = createRuntime({
-      services: {
-        replyExecutor: {
-          agentRunner: { run: executeAgentRun },
-          getPausedTurnRequest,
-          wakePausedTurn,
-        },
-      },
-    });
-
-    const thread = await createTestThread({
-      id: conversationId,
-      state: createAwaitingContinuationState({ activeSessionId }),
-    });
-
-    await slackRuntime.handleNewMention(
-      thread,
-      createTestMessage({
-        id: "msg-retry-notice-fail",
-        threadId: conversationId,
-        text: "what happened?",
-        isMention: true,
-      }),
-      { destination },
-    );
-
-    expect(wakePausedTurn).toHaveBeenCalledWith({
-      conversationId,
-      destination,
-      turnId: activeSessionId,
-      expectedVersion: 4,
-    });
-    expect(executeAgentRun).not.toHaveBeenCalled();
-    expect(thread.posts).toEqual([]);
-
-    const state = await thread.getState();
-    const conversation = (
-      state as {
-        conversation?: {
-          processing?: { activeTurnId?: string };
-        };
-      }
-    ).conversation;
-    expect(conversation?.processing?.activeTurnId).toBe(activeSessionId);
   });
 
   it("does not start a new turn when rescheduling an active continuation fails", async () => {
     const conversationId = "slack:C9TIMEFAIL:1700000000.000";
     const destination = slackDestination("C9TIMEFAIL");
     const activeSessionId = "turn_msg-original";
-    const wakePausedTurn = vi
-      .fn()
-      .mockRejectedValue(new Error("resume callback unavailable"));
-    const getPausedTurnRequest = vi.fn().mockResolvedValue({
+    await upsertTurnRecord({
       conversationId,
       destination,
       turnId: activeSessionId,
-      expectedVersion: 4,
+      sliceId: 1,
+      state: "paused",
+      resumeReason: "yield",
+      source: createSlackSourceForTest("C9TIMEFAIL"),
+      piMessages: turnPiMessages("please keep working"),
+      turnStartMessageIndex: 0,
     });
-    const executeAgentRun = vi.fn();
+    const queue = createConversationWorkQueueTestAdapter();
+    queue.rejectSends();
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
-          agentRunner: { run: executeAgentRun },
-          getPausedTurnRequest,
-          wakePausedTurn,
+          agentRunner: neverRunAgentRunner(),
+          wakePausedTurn: bindPausedTurnQueue(queue),
         },
       },
     });
@@ -1651,7 +1552,7 @@ describe("bot handlers (integration)", () => {
       { destination },
     );
 
-    expect(executeAgentRun).not.toHaveBeenCalled();
+    expect(queue.queuedMessages()).toEqual([]);
     expect(thread.posts).toEqual([
       expect.stringContaining(
         "I ran into an internal error while processing that.",
