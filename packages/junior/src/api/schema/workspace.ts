@@ -19,8 +19,7 @@ const workspaceSnapshotSchema = z
   .object({
     id: z.string(),
     generatedAt: z.iso.datetime(),
-    // Null when the cached snapshot predated duration tracking.
-    buildDurationMs: z.number().int().nonnegative().nullable(),
+    buildDurationMs: z.number().int().nonnegative(),
   })
   .strict();
 

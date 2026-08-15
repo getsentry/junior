@@ -40,9 +40,7 @@ export function WorkspaceDetails(props: { workspace: WorkspaceReport }) {
             <Detail label="Build time">
               <span className="inline-flex items-center gap-2">
                 <Timer aria-hidden="true" size={14} />
-                {snapshot.buildDurationMs == null
-                  ? "unknown"
-                  : formatMs(snapshot.buildDurationMs)}
+                {formatMs(snapshot.buildDurationMs)}
               </span>
             </Detail>
             <Detail label="Snapshot ID" valueClassName="font-mono text-xs">

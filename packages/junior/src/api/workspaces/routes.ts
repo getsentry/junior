@@ -52,7 +52,7 @@ async function detailView(workspace: Workspace) {
         snapshot = {
           id: cached.snapshotId,
           generatedAt: new Date(cached.createdAtMs).toISOString(),
-          buildDurationMs: cached.buildDurationMs ?? null,
+          buildDurationMs: cached.buildDurationMs,
         };
       }
     } catch (error) {

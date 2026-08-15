@@ -15,7 +15,8 @@ import { getStateAdapter } from "@/chat/state/adapter";
 
 // Snapshot resolution owns cache and lock coordination. Profile selection and
 // sandbox installation stay in their neighboring modules.
-const SNAPSHOT_CACHE_PREFIX = "junior:sandbox_snapshot_profile";
+// v2 adds required buildDurationMs. Old v1 keys age out via TTL.
+const SNAPSHOT_CACHE_PREFIX = "junior:sandbox_snapshot_profile:v2";
 const SNAPSHOT_LOCK_PREFIX = "junior:sandbox_snapshot_lock";
 const SNAPSHOT_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const SNAPSHOT_BUILD_LOCK_BUFFER_MS = 30 * 1000;
@@ -28,8 +29,7 @@ const cachedSnapshotSchema = z
     runtime: z.string(),
     createdAtMs: z.number(),
     dependencyCount: z.number(),
-    // Optional so snapshots written before duration tracking still load.
-    buildDurationMs: z.number().int().nonnegative().optional(),
+    buildDurationMs: z.number().int().nonnegative(),
   })
   .strict();
 
