@@ -77,8 +77,9 @@ function workspaceWriteSchemas(providers: [string, ...string[]]) {
         ),
       setup_script: z
         .string()
+        .nullable()
         .describe(
-          "Optional shell script to run after repository checkout whenever this Workspace starts.",
+          "Optional shell script to run after repository checkout whenever this Workspace starts. Omit or use null for no setup script.",
         )
         .optional(),
       repos: z
@@ -97,12 +98,21 @@ type WorkspaceWriteInput = z.infer<
 function writeInput(input: WorkspaceWriteInput) {
   return {
     name: input.name,
-    setupScript: input.setup_script,
+    ...(input.setup_script == null ? {} : { setupScript: input.setup_script }),
     repos: input.repos.map((repo) => ({
       provider: repo.provider,
       repo: repo.repo,
     })),
   };
+}
+
+function prepareWorkspaceWriteArguments(args: unknown): WorkspaceWriteInput {
+  const input = args as WorkspaceWriteInput;
+  const prepared = { ...input };
+  if (prepared.setup_script == null) {
+    delete prepared.setup_script;
+  }
+  return prepared;
 }
 
 async function workspaceWrite<T>(operation: () => Promise<T>): Promise<T> {
@@ -144,6 +154,7 @@ function createWorkspaceWriteTools(
       },
       description: `Create an install-wide Workspace recipe. Repository providers: ${providerNames}. The Workspace becomes available to future conversations.`,
       inputSchema: workspaceInputSchema,
+      prepareArguments: prepareWorkspaceWriteArguments,
       outputSchema: juniorToolOutputSchema.extend({
         workspace: workspaceSchema,
       }),
@@ -169,6 +180,13 @@ function createWorkspaceWriteTools(
       inputSchema: workspaceInputSchema.extend({
         id: z.string().uuid().describe("Workspace ID from listWorkspaces."),
       }),
+      prepareArguments(args) {
+        const input = args as WorkspaceWriteInput & { id: string };
+        return {
+          ...prepareWorkspaceWriteArguments(input),
+          id: input.id,
+        };
+      },
       outputSchema: juniorToolOutputSchema.extend({
         workspace: workspaceSchema,
       }),

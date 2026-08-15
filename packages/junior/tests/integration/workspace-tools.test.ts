@@ -122,6 +122,40 @@ describe("Workspace tools", () => {
       expect(updateTool.describeProposal?.(updateInput)).toBe(
         "Replace Workspace sentry-web (1 repository; includes a setup script).",
       );
+      expect(
+        createTool.prepareArguments!({
+          name: "relay",
+          setup_script: null,
+          repos: [
+            {
+              provider: "github",
+              repo: "getsentry/relay",
+            },
+          ],
+        }),
+      ).toEqual({
+        name: "relay",
+        repos: [
+          {
+            provider: "github",
+            repo: "getsentry/relay",
+          },
+        ],
+      });
+      expect(
+        createTool.describeProposal?.(
+          createTool.prepareArguments!({
+            name: "relay",
+            setup_script: null,
+            repos: [
+              {
+                provider: "github",
+                repo: "getsentry/relay",
+              },
+            ],
+          }),
+        ),
+      ).toBe("Create Workspace relay (1 repository).");
       expect(() =>
         createTool.prepareArguments!({
           name: "broken",
