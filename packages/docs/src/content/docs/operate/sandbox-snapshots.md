@@ -50,7 +50,7 @@ Manage recipes from the authenticated dashboard at `/system/workspaces`, or thro
 
 Junior builds one complete snapshot for each selected Workspace. The build installs runtime dependencies, prepares repositories, runs the setup script, and then captures the snapshot. The first switch builds the snapshot on demand. Later switches reuse it until its floating profile becomes stale.
 
-After a successful Workspace prepare, Junior records the current snapshot id, generation time, build duration, and profile hash on the Workspace SQL row. The dashboard Workspace details page reads those fields. Recipe changes clear the recorded snapshot so the page does not show stale build data.
+After a successful Workspace prepare, Junior records the current snapshot id, generation time, build duration, and profile hash on the Workspace SQL row. The dashboard Workspace details page reads those fields. Repository or setup-script changes clear the recorded snapshot so the page does not show stale build data. Renames preserve it because the Workspace name is not part of the snapshot profile.
 
 Provider plugins prepare repositories through Junior's host egress proxy. Junior removes the credential route before it runs the setup script and captures the snapshot. Real provider credentials do not enter the Sandbox or the captured snapshot.
 

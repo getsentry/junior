@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { getSqlExecutor } from "@/chat/db";
+import { logException } from "@/chat/logging";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorWorkspaceRepos, juniorWorkspaces } from "@/db/schema";
 import type { Workspace, WorkspaceSnapshot } from "./types";
@@ -75,6 +76,18 @@ async function replaceWorkspaceRepos(
       repo: repo.repo,
     })),
   );
+}
+
+function sameWorkspaceRepos(
+  current: Workspace["repos"],
+  next: WorkspaceRecipeInput["repos"],
+): boolean {
+  if (current.length !== next.length) return false;
+  const identity = (repo: Workspace["repos"][number]) =>
+    `${repo.provider}:${repo.repo.toLowerCase()}`;
+  const currentIds = current.map(identity).sort();
+  const nextIds = next.map(identity).sort();
+  return currentIds.every((value, index) => value === nextIds[index]);
 }
 
 function isUniqueViolation(error: unknown): boolean {
@@ -235,21 +248,34 @@ export async function updateWorkspace(
   try {
     const updated = await executor.transaction(async () => {
       const db = executor.db();
+      const existingRows = await db
+        .select()
+        .from(juniorWorkspaces)
+        .where(eq(juniorWorkspaces.id, id))
+        .limit(1);
+      const existing = existingRows[0];
+      if (!existing) return undefined;
+      const existingRepos = await loadWorkspaceRepos(db, id);
+      const snapshotChanged =
+        existing.setupScript !== recipe.setupScript ||
+        !sameWorkspaceRepos(existingRepos, recipe.repos);
       const rows = await db
         .update(juniorWorkspaces)
         .set({
           name: recipe.name,
           setupScript: recipe.setupScript,
-          // Recipe changes invalidate the recorded snapshot for the dashboard.
-          snapshotId: null,
-          snapshotGeneratedAt: null,
-          snapshotBuildDurationMs: null,
-          snapshotProfileHash: null,
+          ...(snapshotChanged
+            ? {
+                snapshotId: null,
+                snapshotGeneratedAt: null,
+                snapshotBuildDurationMs: null,
+                snapshotProfileHash: null,
+              }
+            : {}),
           updatedAt: now,
         })
         .where(eq(juniorWorkspaces.id, id))
         .returning();
-      if (!rows[0]) return undefined;
       await replaceWorkspaceRepos(db, id, recipe.repos);
       return rows[0];
     });
@@ -316,12 +342,19 @@ export async function recordResolvedWorkspaceSnapshot(
   ) {
     return;
   }
-  await setWorkspaceSnapshot(workspaceId, {
-    id: snapshot.snapshotId,
-    generatedAt: new Date(snapshot.createdAtMs),
-    buildDurationMs: snapshot.buildDurationMs,
-    profileHash: snapshot.profileHash,
-  });
+  try {
+    await setWorkspaceSnapshot(workspaceId, {
+      id: snapshot.snapshotId,
+      generatedAt: new Date(snapshot.createdAtMs),
+      buildDurationMs: snapshot.buildDurationMs,
+      profileHash: snapshot.profileHash,
+    });
+  } catch (error) {
+    // Dashboard enrichment must not fail a prepared Workspace Sandbox.
+    logException(error, "sandbox.workspace_snapshot.persist.failed", {
+      "app.workspace.id": workspaceId,
+    });
+  }
 }
 
 export { WorkspaceValidationError };

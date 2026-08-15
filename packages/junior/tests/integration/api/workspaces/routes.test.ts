@@ -175,7 +175,7 @@ describe("workspace admin API", () => {
     });
   });
 
-  it("hides snapshot metadata after the Workspace recipe changes", async () => {
+  it("preserves snapshot metadata for a rename and clears it after the recipe changes", async () => {
     const app = authenticatedApi();
     const createResponse = await app.request("http://localhost/api/workspaces", {
       body: JSON.stringify({
@@ -199,11 +199,31 @@ describe("workspace admin API", () => {
       profileHash: profileHash!,
     });
 
+    const renameResponse = await app.request(
+      `http://localhost/api/workspaces/${created.id}`,
+      {
+        body: JSON.stringify({
+          name: "snapshot-renamed",
+          repos: [{ provider: "github", repo: "getsentry/sentry" }],
+        }),
+        headers: { "content-type": "application/json" },
+        method: "PUT",
+      },
+    );
+    expect(renameResponse.status).toBe(200);
+    const renamedDetail = await app.request(
+      `http://localhost/api/workspaces/${created.id}`,
+    );
+    expect(workspaceSchema.parse(await renamedDetail.json())).toMatchObject({
+      name: "snapshot-renamed",
+      snapshot: { id: "snap_old", buildDurationMs: 9_000 },
+    });
+
     const updateResponse = await app.request(
       `http://localhost/api/workspaces/${created.id}`,
       {
         body: JSON.stringify({
-          name: "snapshot-stale",
+          name: "snapshot-renamed",
           setupScript: "pnpm install",
           repos: [{ provider: "github", repo: "getsentry/sentry" }],
         }),
@@ -212,7 +232,6 @@ describe("workspace admin API", () => {
       },
     );
     expect(updateResponse.status).toBe(200);
-
     const detailResponse = await app.request(
       `http://localhost/api/workspaces/${created.id}`,
     );
