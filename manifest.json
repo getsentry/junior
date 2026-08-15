@@ -1,0 +1,44 @@
+{
+  "commitSha": "e89050d4a0a2bc9e12b4f53bd461c85b8c010e0d",
+  "mode": "path",
+  "reasons": [
+    "packages/junior-dashboard/e2e/harness.ts",
+    "packages/junior-dashboard/src/client/api.ts",
+    "packages/junior-dashboard/src/client/components/charts/WorkspaceUsageChart.tsx",
+    "packages/junior-dashboard/src/client/components/charts/workspaceUsage.ts",
+    "packages/junior-dashboard/src/client/pages/system/SnapshotSummary.tsx",
+    "packages/junior-dashboard/src/client/pages/system/WorkspaceDetails.tsx",
+    "packages/junior-dashboard/src/client/pages/system/WorkspaceFormPage.tsx",
+    "packages/junior-dashboard/tests/workspace-details.test.tsx",
+    "packages/junior-dashboard/tests/workspace-usage-chart.test.tsx",
+    "packages/junior-dashboard/tests/workspace-usage.test.ts"
+  ],
+  "scenarioIds": [
+    "workspaces",
+    "workspace-detail",
+    "component-gallery"
+  ],
+  "shots": [
+    {
+      "file": "workspaces__desktop.png",
+      "label": "Workspaces · desktop"
+    },
+    {
+      "file": "workspaces__mobile.png",
+      "label": "Workspaces · mobile"
+    },
+    {
+      "file": "workspace-detail__desktop.png",
+      "label": "Workspace detail · desktop"
+    },
+    {
+      "file": "workspace-detail__mobile.png",
+      "label": "Workspace detail · mobile"
+    },
+    {
+      "file": "component-gallery__desktop.png",
+      "label": "Component gallery · desktop"
+    }
+  ],
+  "skipped": false
+}
