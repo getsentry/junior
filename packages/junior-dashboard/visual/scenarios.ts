@@ -56,7 +56,16 @@ export const VISUAL_SCENARIOS: VisualScenario[] = [
     id: "system",
     label: "System",
     path: "/system",
-    ready: "Model spend",
+    // Page header, not a buried chart/stat label.
+    ready: "System",
+    viewports: [DESKTOP],
+  },
+  {
+    id: "workspaces",
+    label: "Workspaces",
+    path: "/system/workspaces",
+    // Baseline card heading proves the list payload rendered.
+    ready: "Baseline snapshot",
     viewports: [DESKTOP],
   },
   {
@@ -104,6 +113,14 @@ const PATH_RULES: PathRule[] = [
     match: (filePath) =>
       filePath.startsWith("packages/junior-dashboard/src/client/pages/people/"),
     scenarioIds: ["person-profile"],
+  },
+  {
+    match: (filePath) =>
+      filePath.startsWith(
+        "packages/junior-dashboard/src/client/pages/system/",
+      ) &&
+      /(?:^|\/)(?:BaselineSnapshot|Workspace|workspace)/.test(filePath),
+    scenarioIds: ["workspaces"],
   },
   {
     match: (filePath) =>

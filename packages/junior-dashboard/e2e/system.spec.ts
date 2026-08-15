@@ -94,6 +94,9 @@ test("creates a Workspace recipe", async ({ page }) => {
   });
 
   await page.goto(`${server.baseURL}/system/workspaces`);
+  await expect(
+    page.getByRole("heading", { name: "Baseline snapshot" }),
+  ).toBeVisible();
   await page.getByRole("link", { name: "New Workspace" }).click();
   await expect(page).toHaveURL(`${server.baseURL}/system/workspaces/new`);
   await page.getByLabel("Name").fill("sentry");

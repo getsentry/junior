@@ -68,6 +68,24 @@ describe("selectVisualScenarioIds", () => {
     ).toEqual([]);
   });
 
+  it("selects workspaces for Workspace page changes", () => {
+    expect(
+      selectVisualScenarioIds([
+        "packages/junior-dashboard/src/client/pages/system/WorkspacesPage.tsx",
+        "packages/junior-dashboard/src/client/pages/system/BaselineSnapshotCard.tsx",
+        "packages/junior-dashboard/src/client/pages/system/workspaceDraft.ts",
+      ]),
+    ).toEqual(["workspaces"]);
+  });
+
+  it("keeps generic system pages on the system scenario", () => {
+    expect(
+      selectVisualScenarioIds([
+        "packages/junior-dashboard/src/client/pages/system/SystemPage.tsx",
+      ]),
+    ).toEqual(["system"]);
+  });
+
   it("keeps registry order and dedupes across multiple files", () => {
     expect(
       selectVisualScenarioIds([

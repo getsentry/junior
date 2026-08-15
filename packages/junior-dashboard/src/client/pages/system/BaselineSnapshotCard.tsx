@@ -12,13 +12,19 @@ export function BaselineSnapshotCard(props: {
   const { snapshot } = props;
   return (
     <Card padding="md" variant="section">
-      <div className="grid gap-4">
+      <section
+        aria-labelledby="baseline-snapshot-heading"
+        className="grid gap-4"
+      >
         <div className="flex items-start gap-3">
           <div className="grid size-9 shrink-0 place-items-center rounded border border-white/10 bg-white/[0.03] text-[#beaaff]">
             <Box aria-hidden="true" size={16} />
           </div>
           <div className="min-w-0 grid gap-1">
-            <h2 className="m-0 text-base font-semibold text-dashboard-text">
+            <h2
+              className="m-0 text-base font-semibold text-dashboard-text"
+              id="baseline-snapshot-heading"
+            >
               Baseline snapshot
             </h2>
             <p className="m-0 text-sm leading-relaxed text-dashboard-text-muted">
@@ -64,7 +70,7 @@ export function BaselineSnapshotCard(props: {
             demand, but deploy warmup should publish it first.
           </div>
         )}
-      </div>
+      </section>
     </Card>
   );
 }

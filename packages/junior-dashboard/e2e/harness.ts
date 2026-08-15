@@ -541,7 +541,38 @@ export async function mockDashboardApis(page: Page) {
     });
   });
   await page.route("**/api/workspaces", async (route) => {
-    await route.fulfill({ json: { baselineSnapshot: null, workspaces: [] } });
+    await route.fulfill({
+      json: {
+        baselineSnapshot: {
+          buildDurationMs: 102_799,
+          dependencyCount: 38,
+          generatedAt: "2026-08-15T05:30:21.000Z",
+          id: "snap_baseline_Sj16Uz0PH1P3AKI6LgNoTvnqZ46h",
+          profileHash:
+            "eac1a0fe0c6edee90a7f8b96c9ec35a2be79036dd245314b882891c3b1dae9d2",
+        },
+        workspaces: [
+          {
+            id: "11111111-1111-4111-8111-111111111111",
+            name: "sentry",
+            repos: [
+              {
+                checkoutPath: "repos/sentry",
+                provider: "github",
+                repo: "getsentry/sentry",
+              },
+              {
+                checkoutPath: "repos/getsentry",
+                provider: "github",
+                repo: "getsentry/getsentry",
+              },
+            ],
+            setupScript: "pnpm install",
+            snapshot: null,
+          },
+        ],
+      },
+    });
   });
   await page.route("**/api/plugins", async (route) => {
     await route.fulfill({
