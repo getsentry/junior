@@ -23,6 +23,9 @@ type WorkspaceEditorProps = {
 const fieldClassName =
   "block w-full rounded border border-white/15 bg-black px-3 py-2 text-sm text-dashboard-text focus:border-[#beaaff] focus:outline-none";
 
+/** Known Workspace repository providers shown in the editor. */
+const WORKSPACE_PROVIDERS = ["github"] as const;
+
 /** Edit one Workspace recipe without owning persistence. */
 export function WorkspaceEditor(props: WorkspaceEditorProps) {
   function updateRepo(key: string, patch: Partial<RepoDraft>) {
@@ -124,15 +127,24 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
                     <span className="font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted">
                       Provider
                     </span>
-                    <input
+                    <select
                       aria-label={`Provider ${index + 1}`}
-                      className={fieldClassName}
+                      className={`${fieldClassName} [color-scheme:dark]`}
                       onChange={(event) =>
                         updateRepo(repo.key, { provider: event.target.value })
                       }
-                      placeholder="github"
-                      value={repo.provider}
-                    />
+                      value={repo.provider || "github"}
+                    >
+                      {providerOptions(repo.provider).map((provider) => (
+                        <option
+                          className="bg-black text-dashboard-text"
+                          key={provider}
+                          value={provider}
+                        >
+                          {provider}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   <div className="grid gap-1.5">
                     <span className="font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted">
@@ -215,6 +227,14 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
       </form>
     </Card>
   );
+}
+
+function providerOptions(current: string): string[] {
+  const provider = current.trim().toLowerCase();
+  if (!provider || WORKSPACE_PROVIDERS.includes(provider as "github")) {
+    return [...WORKSPACE_PROVIDERS];
+  }
+  return [provider, ...WORKSPACE_PROVIDERS];
 }
 
 function Field(props: {

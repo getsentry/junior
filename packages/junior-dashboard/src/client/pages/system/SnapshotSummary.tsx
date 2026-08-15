@@ -1,4 +1,4 @@
-import { Box, CalendarClock, Fingerprint, Layers3, Timer } from "lucide-react";
+import { CalendarClock, Fingerprint, Layers3, Timer } from "lucide-react";
 
 import { Detail, DetailList } from "../../components/DetailList";
 import { Card } from "../../components/layout/Card";
@@ -28,21 +28,16 @@ export function SnapshotSummary(props: {
   return (
     <Card as="section" className="mb-0" padding="md" variant="section">
       <div aria-labelledby={props.headingId} className="grid gap-4">
-        <div className="flex items-start gap-3">
-          <div className="grid size-9 shrink-0 place-items-center rounded border border-white/10 bg-white/[0.03] text-[#beaaff]">
-            <Box aria-hidden="true" size={16} />
-          </div>
-          <div className="min-w-0 grid gap-1">
-            <h2
-              className="m-0 text-base font-semibold text-dashboard-text"
-              id={props.headingId}
-            >
-              {props.title}
-            </h2>
-            <p className="m-0 text-sm leading-relaxed text-dashboard-text-muted">
-              {snapshot ? props.description : props.emptyDescription}
-            </p>
-          </div>
+        <div className="min-w-0 grid gap-1">
+          <h2
+            className="m-0 text-base font-semibold text-dashboard-text"
+            id={props.headingId}
+          >
+            {props.title}
+          </h2>
+          <p className="m-0 text-sm leading-relaxed text-dashboard-text-muted">
+            {snapshot ? props.description : props.emptyDescription}
+          </p>
         </div>
 
         {snapshot ? (

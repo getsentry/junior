@@ -16,10 +16,10 @@ describe("WorkspaceSwitchChart", () => {
         workspaceName="sentry"
       />,
     );
-    expect(empty).toContain("Workspace switches");
-    expect(empty).toContain("No Workspace switches in this period.");
+    expect(empty).toContain("Usage");
+    expect(empty).toContain("No usage in this period.");
     expect(empty).toContain(
-      'aria-label="Workspace switches for sentry during the last 3 days"',
+      'aria-label="Usage for sentry during the last 3 days"',
     );
 
     const populated = renderToStaticMarkup(
@@ -36,6 +36,6 @@ describe("WorkspaceSwitchChart", () => {
     expect(populated).toContain(">6</div>");
     expect(populated).toContain("last 3 days");
     expect(populated).toContain('aria-label="Jul 28: 4 switches"');
-    expect(populated).not.toContain("No Workspace switches in this period.");
+    expect(populated).not.toContain("No usage in this period.");
   });
 });

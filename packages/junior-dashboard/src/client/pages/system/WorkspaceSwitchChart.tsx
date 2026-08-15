@@ -36,19 +36,19 @@ export function WorkspaceSwitchChart(props: {
   const maximum = Math.max(1, ...values);
   const average = activityChartAverage(values);
   const total = values.reduce((sum, value) => sum + value, 0);
-  const hasSwitches = total > 0;
+  const hasUsage = total > 0;
 
   return (
     <Card>
       <ChartHeader
-        description={`Successful switchWorkspace calls into “${props.workspaceName}”, bucketed by UTC day.`}
-        title="Workspace switches"
+        description={`Successful switches into “${props.workspaceName}”.`}
+        title="Usage"
         total={formatCompactNumber(total)}
         totalLabel={`last ${props.range} days`}
       />
       <div className="relative px-2 py-3 sm:px-4 sm:py-4">
         <ChartSvg
-          aria-label={`Workspace switches for ${props.workspaceName} during the last ${props.range} days`}
+          aria-label={`Usage for ${props.workspaceName} during the last ${props.range} days`}
           className="min-h-40 overflow-visible"
           layout={layout}
         >
@@ -60,7 +60,7 @@ export function WorkspaceSwitchChart(props: {
             return (
               <Tooltip
                 content={
-                  <ActivityTooltipRows rows={[["switches", day.count]]} />
+                  <ActivityTooltipRows rows={[["usage", day.count]]} />
                 }
                 key={day.date}
                 label={formatActivityDate(day.date)}
@@ -102,9 +102,9 @@ export function WorkspaceSwitchChart(props: {
             xPosition={(index) => layout.left + index * step + step / 2}
           />
         </ChartSvg>
-        {!hasSwitches ? (
+        {!hasUsage ? (
           <div className="pointer-events-none absolute inset-0 grid place-items-center pt-12 font-mono text-xs text-dashboard-text-muted">
-            No Workspace switches in this period.
+            No usage in this period.
           </div>
         ) : null}
       </div>
