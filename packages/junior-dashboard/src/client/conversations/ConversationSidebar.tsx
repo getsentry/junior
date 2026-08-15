@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import {
   Archive,
   ArchiveRestore,
@@ -52,11 +52,26 @@ export function ConversationSidebar(props: {
     () => setArchivedConversation(undefined),
     [],
   );
-  const entries = conversationSidebarEntries(
-    buildConversationSections(props.conversations, {
-      nowMs: Date.now(),
-      timeZone: props.timeZone,
-    }),
+  const handleArchiveError = useCallback((conversation: Conversation) => {
+    setArchiveError(conversation);
+  }, []);
+  const handleArchived = useCallback((conversation: Conversation) => {
+    setArchiveError((current) =>
+      current?.id === conversation.id ? undefined : current,
+    );
+    setArchivedConversation(conversation);
+  }, []);
+  // Rebuild section rows only when the feed or timezone changes. Avoid fresh
+  // Date.now() arrays on unrelated parent renders while the reader is scrolling.
+  const entries = useMemo(
+    () =>
+      conversationSidebarEntries(
+        buildConversationSections(props.conversations, {
+          nowMs: Date.now(),
+          timeZone: props.timeZone,
+        }),
+      ),
+    [props.conversations, props.timeZone],
   );
   return (
     <aside className="relative grid h-full min-h-0 min-w-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-white/[0.07] bg-white/[0.02]">
@@ -118,13 +133,8 @@ export function ConversationSidebar(props: {
               ) : (
                 <ConversationSidebarRow
                   conversation={entry.conversation}
-                  onArchiveError={setArchiveError}
-                  onArchived={(conversation) => {
-                    setArchiveError((current) =>
-                      current?.id === conversation.id ? undefined : current,
-                    );
-                    setArchivedConversation(conversation);
-                  }}
+                  onArchiveError={handleArchiveError}
+                  onArchived={handleArchived}
                   selected={entry.conversation.id === props.selectedId}
                 />
               )
@@ -173,7 +183,7 @@ function conversationSidebarEntries(
   ]);
 }
 
-function ConversationSidebarRow(props: {
+const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
   conversation: Conversation;
   onArchiveError(conversation: Conversation): void;
   onArchived(conversation: Conversation): void;
@@ -199,11 +209,11 @@ function ConversationSidebarRow(props: {
     props.conversation.visibility === "private" ||
     hasAnnotations;
   return (
-    <div className="group relative min-w-0">
+    <div className="mobile-conversation-row group relative min-w-0">
       <Link
         aria-current={props.selected ? "page" : undefined}
         className={cn(
-          "block min-w-0 rounded-md px-2.5 py-1.5 text-inherit no-underline transition-colors hover:bg-white/[0.04]",
+          "block min-w-0 rounded-md px-2.5 py-1.5 text-inherit no-underline transition-colors hover:bg-white/[0.04] max-sm:pr-10",
           props.selected && "bg-white/[0.06]",
         )}
         to={conversationPath(props.conversation.id)}
@@ -242,7 +252,7 @@ function ConversationSidebarRow(props: {
       </Link>
       <button
         aria-label={`Archive ${title}`}
-        className="pointer-events-none absolute right-1.5 top-1/2 z-10 grid size-7 -translate-y-1/2 cursor-pointer place-items-center rounded-md bg-[#111719] text-dashboard-text-muted opacity-0 shadow-[-8px_0_12px_rgba(9,12,14,0.8)] transition hover:text-dashboard-text focus:pointer-events-auto focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-cyan-300/35 group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100 disabled:cursor-not-allowed"
+        className="absolute right-1.5 top-1/2 z-10 grid size-7 -translate-y-1/2 cursor-pointer place-items-center rounded-md bg-[#111719] text-dashboard-text-muted shadow-[-8px_0_12px_rgba(9,12,14,0.8)] transition hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-cyan-300/35 sm:pointer-events-none sm:opacity-0 sm:focus:pointer-events-auto sm:focus:opacity-100 sm:group-focus-within:pointer-events-auto sm:group-focus-within:opacity-100 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100 disabled:cursor-not-allowed"
         disabled={archive.isPending}
         onClick={() =>
           archive.mutate({
@@ -257,7 +267,7 @@ function ConversationSidebarRow(props: {
       </button>
     </div>
   );
-}
+});
 
 function ArchiveConversationErrorNotice(props: {
   conversation: Conversation;

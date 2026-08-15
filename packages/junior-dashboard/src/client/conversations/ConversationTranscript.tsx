@@ -1,4 +1,4 @@
-import { Fragment, useRef, type ReactNode } from "react";
+import { memo, useRef, type ReactNode } from "react";
 
 import { unavailableTranscriptLabel } from "../format";
 import { conversationTranscriptMessages } from "./eventTranscript";
@@ -60,7 +60,7 @@ function renderReasoningEntry(entry: TranscriptReasoningEntry): ReactNode {
 }
 
 /** Render one conversation transcript segment as actor messages and tool events. */
-export function ConversationTranscriptView(props: {
+export const ConversationTranscriptView = memo(function ConversationTranscriptView(props: {
   onOpenSubagentTranscript?: (args: {
     part: TranscriptViewSubagentPart;
     conversation: ConversationTranscript;
@@ -84,7 +84,7 @@ export function ConversationTranscriptView(props: {
       </div>
     </section>
   );
-}
+});
 
 function SegmentEvents(props: {
   onOpenSubagentTranscript?: (args: {
@@ -281,11 +281,12 @@ function TranscriptEntryList(props: {
           knownKeys: activityKeys.current,
         });
         rows.push(
-          <TranscriptActivityGroup
-            entries={visibleEntries}
-            key={activityKey}
-            renderEntry={renderEntry}
-          />,
+          <div className="mobile-transcript-row" key={activityKey}>
+            <TranscriptActivityGroup
+              entries={visibleEntries}
+              renderEntry={renderEntry}
+            />
+          </div>,
         );
       }
       continue;
@@ -293,9 +294,12 @@ function TranscriptEntryList(props: {
 
     if (!search.active || entryMatchesSearch(entry, search.normalizedQuery)) {
       rows.push(
-        <Fragment key={`${props.keyPrefix}:${entry.key}`}>
+        <div
+          className="mobile-transcript-row"
+          key={`${props.keyPrefix}:${entry.key}`}
+        >
           {renderEntry(entry)}
-        </Fragment>,
+        </div>,
       );
     }
     index += 1;

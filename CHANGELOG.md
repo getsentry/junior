@@ -1,4 +1,24 @@
 # Changelog
+## 0.166.0
+
+### New Features ✨
+
+#### Workspaces
+
+- Store snapshot build facts in SQL by @sentry-junior in [#1580](https://github.com/getsentry/junior/pull/1580)
+- Teach agent what Workspaces are by @sentry-junior in [#1581](https://github.com/getsentry/junior/pull/1581)
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Show conversation archive action on mobile by @sentry-junior in [#1582](https://github.com/getsentry/junior/pull/1582)
+- Keep mobile conversations at latest by @sentry-junior in [#1549](https://github.com/getsentry/junior/pull/1549)
+
+#### Other
+
+- (prompt) Treat ambient thread context as evidence only by @sentry-junior in [#1575](https://github.com/getsentry/junior/pull/1575)
+
 ## 0.165.0
 
 ### New Features ✨

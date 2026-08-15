@@ -1,9 +1,9 @@
-import { Box, CalendarClock, Fingerprint } from "lucide-react";
+import { Box, CalendarClock, Fingerprint, Timer } from "lucide-react";
 import type { WorkspaceReport } from "@sentry/junior/api/schema";
 
 import { Detail, DetailList } from "../../components/DetailList";
 import { Card } from "../../components/layout/Card";
-import { formatRelativeTime, formatTime } from "../../format";
+import { formatMs, formatRelativeTime, formatTime } from "../../format";
 
 /** Show the reusable Sandbox snapshot selected by one Workspace recipe. */
 export function WorkspaceDetails(props: { workspace: WorkspaceReport }) {
@@ -37,6 +37,12 @@ export function WorkspaceDetails(props: { workspace: WorkspaceReport }) {
                 </span>
               </span>
             </Detail>
+            <Detail label="Build time">
+              <span className="inline-flex items-center gap-2">
+                <Timer aria-hidden="true" size={14} />
+                {formatMs(snapshot.buildDurationMs)}
+              </span>
+            </Detail>
             <Detail label="Snapshot ID" valueClassName="font-mono text-xs">
               <span className="inline-flex items-center gap-2 break-all">
                 <Fingerprint aria-hidden="true" className="shrink-0" size={14} />
@@ -47,7 +53,7 @@ export function WorkspaceDetails(props: { workspace: WorkspaceReport }) {
         ) : (
           <div className="rounded-lg border border-dashed border-white/10 bg-black/20 px-4 py-3 text-sm leading-relaxed text-dashboard-text-muted">
             No snapshot generated yet. After the first successful prepare, the
-            snapshot ID and generation time appear here.
+            snapshot ID, generation time, and build duration appear here.
           </div>
         )}
       </div>

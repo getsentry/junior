@@ -23,6 +23,7 @@ Use `git` and `gh` for repository work. Use `github_createPullRequest`, not `gh 
 - Base conclusions on repository evidence. Do not claim a check ran unless it did.
 - For Junior-owned pull requests, push the branch before creating the PR. The runtime supplies repository-scoped GitHub App credentials for both; try the operations before requesting remediation and never ask for a user token.
 - Use `github_cloneRepository` instead of shelling out to `git clone` when a repository is not already available in the sandbox.
+- When a tool result shows a Workspace exists for the repo, prefer it via `switchWorkspace` over an ad-hoc checkout.
 - A tool-routing denial requires the named tool; only an upstream denial justifies permission remediation.
 - Stop for ambiguous targets, missing access, destructive operations, or unresolved upstream permission failures.
 

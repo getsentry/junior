@@ -82,6 +82,7 @@ describe("snapshot dependency profile", () => {
       id: "workspace-1",
       name: "sentry",
       setupScript: "pnpm install",
+      snapshot: null,
       repos: [
         {
           provider: "github",
@@ -93,7 +94,8 @@ describe("snapshot dependency profile", () => {
     const first = create("node22", workspace);
     const changedSetup = create("node22", {
       ...workspace,
-      setupScript: "pnpm install --frozen-lockfile"
+      setupScript: "pnpm install --frozen-lockfile",
+      snapshot: null,
     });
     const changedRepo = create("node22", {
       ...workspace,
@@ -120,12 +122,14 @@ describe("snapshot dependency profile", () => {
       id: "workspace-1",
       name: "sentry",
       setupScript: "",
+      snapshot: null,
       repos,
     });
     const reordered = create("node22", {
       id: "workspace-1",
       name: "sentry",
       setupScript: "",
+      snapshot: null,
       repos: [...repos].reverse(),
     });
 
@@ -149,12 +153,14 @@ describe("snapshot dependency profile", () => {
       id: "workspace-1",
       name: "sentry",
       setupScript: "pnpm install",
+      snapshot: null,
       repos: reposA
     });
     const second = create("node22", {
       id: "workspace-1",
       name: "sentry",
       setupScript: "pnpm install",
+      snapshot: null,
       repos: reposB
     });
     expect(first?.hash).toBe(second?.hash);
@@ -168,6 +174,7 @@ describe("snapshot dependency profile", () => {
       id: "workspace-1",
       name: "sentry",
       setupScript: "",
+      snapshot: null,
       repos: []
     };
     const first = create("node22", workspace);

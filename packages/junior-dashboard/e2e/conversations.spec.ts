@@ -334,7 +334,6 @@ test("collapses long pending message stacks", async ({ page }) => {
   await page.goto(
     `${server.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
   );
-
   const pending = page.getByLabel("Pending messages");
   await expect(pending).toBeVisible();
   await expect(
@@ -397,6 +396,9 @@ test("opens and closes a conversation in the mobile workspace", async ({
   await expect(
     page.getByRole("link", { name: "Conversations", exact: true }),
   ).toBeHidden();
+  await expect(
+    page.getByRole("button", { name: "Archive Investigate checkout latency" }),
+  ).toBeVisible();
   await navigationTrigger.click();
   await expect(page.getByText(/^junior version /)).toBeVisible();
   const closeNavigation = page.getByRole("button", {
@@ -404,8 +406,7 @@ test("opens and closes a conversation in the mobile workspace", async ({
   });
   await expect(closeNavigation).toBeVisible();
   await closeNavigation.click();
-
-  // Participant fixture so the compact mobile composer is present.
+  // Compact mobile composer needs a participant fixture.
   await page
     .getByRole("link", { name: /Investigate checkout latency/ })
     .click();
@@ -415,7 +416,6 @@ test("opens and closes a conversation in the mobile workspace", async ({
   await expect(
     page.getByRole("heading", { name: "Investigate checkout latency" }),
   ).toBeVisible();
-
   const transcript = page.getByLabel("Conversation transcript");
   await expect(transcript.getByText("1.9k tokens")).toBeHidden();
   await expect(page.getByRole("button", { name: "Archive" })).toBeHidden();
@@ -429,7 +429,7 @@ test("opens and closes a conversation in the mobile workspace", async ({
 
   const pending = page.getByLabel("Pending messages");
   await expect(pending).toBeVisible();
-  // Mobile collapsed control owns the total count (no separate cancel bar).
+  // Mobile collapsed control owns the total count.
   const expand = pending.getByRole("button", { name: "5 queued messages" });
   await expect(expand).toBeVisible();
   await expect(expand).toHaveAttribute("aria-expanded", "false");
@@ -475,7 +475,6 @@ test("opens and closes a conversation in the mobile workspace", async ({
     )
     .toBe("140px");
 
-  // Offset can change from a visualViewport scroll without a resize.
   await page.evaluate(() => {
     Object.defineProperties(window.visualViewport, {
       height: { configurable: true, value: 520 },
