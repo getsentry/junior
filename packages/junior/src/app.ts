@@ -92,6 +92,7 @@ import { createResourceEventTeamIdResolver } from "@/chat/resource-events/worksp
 import { ingestEventTasks } from "@/chat/event-tasks/ingest";
 import { receiveLocalOAuthCredential } from "@/chat/local/credential-sync";
 import { createAcpHttpHandler } from "@/api/acp/route";
+import { prebuildConfiguredWorkspaces } from "@/chat/workspaces/prebuild";
 
 export { defineJuniorPlugins } from "./plugins";
 export { JUNIOR_VERSION } from "./version";
@@ -699,6 +700,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   }
 
   const waitUntil = options?.waitUntil ?? (await defaultWaitUntil());
+  waitUntil(prebuildConfiguredWorkspaces());
   const tracePropagation = { domains: sandboxEgressTracePropagationDomains };
   const conversationWorkQueue = getVercelConversationWorkQueue();
   const attachmentStorage = createVercelAttachmentStorage();

@@ -89,6 +89,7 @@ export interface SandboxAccess {
   sandboxRef(): SandboxRef | undefined;
   switchWorkspace(workspace: Workspace, signal?: AbortSignal): Promise<void>;
   close(): void;
+  stop(): Promise<void>;
 }
 
 export interface SandboxOptions {
@@ -831,6 +832,9 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     },
     close() {
       runtime.close();
+    },
+    async stop() {
+      await runtime.stop();
     },
   };
 }

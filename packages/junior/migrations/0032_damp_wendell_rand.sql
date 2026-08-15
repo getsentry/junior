@@ -1,0 +1,1 @@
+ALTER TABLE "junior_workspaces" ADD COLUMN "prebuild" boolean DEFAULT false NOT NULL;

@@ -38,6 +38,7 @@ function workspaceFromRows(
     id: row.id,
     name: row.name,
     setupScript: row.setupScript,
+    prebuild: row.prebuild,
     repos: repos.map((repo) => ({
       provider: repo.provider,
       repo: repo.repo,
@@ -195,6 +196,7 @@ export async function getWorkspace(
 export async function createWorkspace(input: {
   name: string;
   setupScript?: string;
+  prebuild?: boolean;
   repos: Array<{
     provider: string;
     repo: string;
@@ -212,6 +214,7 @@ export async function createWorkspace(input: {
         id,
         name: recipe.name,
         setupScript: recipe.setupScript,
+        prebuild: recipe.prebuild,
         createdAt: now,
         updatedAt: now,
       });
@@ -235,6 +238,7 @@ export async function updateWorkspace(
   input: {
     name: string;
     setupScript?: string;
+    prebuild?: boolean;
     repos: Array<{
       provider: string;
       repo: string;
@@ -264,6 +268,7 @@ export async function updateWorkspace(
         .set({
           name: recipe.name,
           setupScript: recipe.setupScript,
+          prebuild: recipe.prebuild,
           ...(snapshotChanged
             ? {
                 snapshotId: null,

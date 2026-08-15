@@ -9,6 +9,7 @@ export type RepoDraft = {
 export type WorkspaceDraft = {
   name: string;
   setupScript: string;
+  prebuild: boolean;
   repos: RepoDraft[];
 };
 
@@ -24,6 +25,7 @@ export function createWorkspaceDraft(): WorkspaceDraft {
   return {
     name: "",
     setupScript: "",
+    prebuild: false,
     repos: [createRepoDraft()],
   };
 }
@@ -32,6 +34,7 @@ export function editWorkspaceDraft(workspace: WorkspaceReport): WorkspaceDraft {
   return {
     name: workspace.name,
     setupScript: workspace.setupScript,
+    prebuild: workspace.prebuild,
     repos:
       workspace.repos.length > 0
         ? workspace.repos.map((repo) => ({
@@ -48,6 +51,7 @@ export function workspaceDraftBody(draft: WorkspaceDraft) {
   return {
     name: draft.name.trim(),
     setupScript: draft.setupScript,
+    prebuild: draft.prebuild,
     repos: draft.repos.map((repo) => ({
       provider: repo.provider.trim(),
       repo: repo.repo.trim(),
