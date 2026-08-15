@@ -38,5 +38,6 @@ packages/junior/src/chat/tools/sandbox/read-file.ts	throw new Error( "readFile c
 packages/junior/src/chat/tools/sandbox/write-file.ts	throw new Error( "writeFile can only run when sandbox execution is enabled.", );
 packages/junior/src/chat/tools/skill/load-skill.ts	throw new Error(`failed to load ${skill.name}`);
 packages/junior/src/chat/tools/user-lookup.ts	throw new Error( `Multiple Slack users share verified email ${emailNormalized} in workspace ${teamId}`, );
+packages/junior/src/chat/tools/web/fetch-content.ts	throw new Error(message);
 packages/junior/src/chat/tools/web/image-generate.ts	throw new Error( parseImageGenerationError(response.status, text, model), );
 packages/junior/src/chat/tools/web/image-generate.ts	throw new Error(MISSING_GATEWAY_CREDENTIALS_ERROR);

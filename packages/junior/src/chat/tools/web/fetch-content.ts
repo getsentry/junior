@@ -228,7 +228,12 @@ export async function extractWebFetchResponse(
   const safeMaxChars = Math.max(500, Math.min(maxChars, MAX_FETCH_CHARS));
 
   if (!response.ok) {
-    throw new ToolInputError(`fetch failed: ${response.status}`);
+    const message = `fetch failed: ${response.status}`;
+    // Client-side misses are model-repairable. Upstream 5xx stays a system error.
+    if (response.status >= 400 && response.status < 500) {
+      throw new ToolInputError(message);
+    }
+    throw new Error(message);
   }
 
   const contentType = (
