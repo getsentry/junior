@@ -65,7 +65,8 @@ traffic through verified host egress.
 - Missing or invalid snapshots rebuild through the owning snapshot path;
   callers do not mutate a cached snapshot in place.
 - The hot Redis registry is install-wide and ignores `JUNIOR_STATE_KEY_PREFIX`.
-  Build-time warmup requires durable Redis, not the memory adapter.
+  Build-time warmup requires durable Redis, not the memory adapter. Hosted
+  Vercel/CI builds skip local development defaults that force memory state.
 - Snapshot state never contains real provider credentials.
 - The global baseline installs Docker and Compose clients plus
   `junior-ensure-docker`. Sandbox prepare starts `dockerd` so nested

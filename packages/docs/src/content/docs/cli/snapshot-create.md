@@ -75,7 +75,7 @@ If snapshot resolution fails, the CLI exits non-zero and prints the underlying e
 junior command failed: OIDC missing
 ```
 
-Treat that as a real deploy blocker. The usual checks are the build environment, durable Redis (`REDIS_URL`, and `JUNIOR_STATE_ADAPTER` unset or `redis`), and any platform auth required for snapshot creation. The snapshot registry is install-wide and ignores `JUNIOR_STATE_KEY_PREFIX`.
+Treat that as a real deploy blocker. The usual checks are the build environment, durable Redis (`REDIS_URL`, and `JUNIOR_STATE_ADAPTER` unset or `redis`), and any platform auth required for snapshot creation. The snapshot registry is install-wide and ignores `JUNIOR_STATE_KEY_PREFIX`. On Vercel/CI, Junior skips local development defaults that would otherwise force the memory adapter when `NODE_ENV` is unset.
 
 ## Verification
 

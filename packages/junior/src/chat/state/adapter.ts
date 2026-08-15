@@ -324,9 +324,9 @@ export function getStateAdapter(): StateAdapter {
 
 /**
  * Return state storage for install-wide registries such as sandbox snapshots.
- * Uses Redis without JUNIOR_STATE_KEY_PREFIX so deploy-scoped prefixes cannot
- * force a cache miss on every build. Falls back to the default adapter for the
- * local memory path.
+ * Uses Redis without JUNIOR_STATE_KEY_PREFIX so optional env isolation cannot
+ * split the snapshot registry from the rest of runtime state. Falls back to the
+ * default adapter for the local memory path.
  */
 export function getInstallStateAdapter(): StateAdapter {
   getStateAdapter();

@@ -10,6 +10,7 @@ import {
 } from "@/cli/env";
 
 const TEST_ENV_KEYS = [
+  "CI",
   "CRON_SECRET",
   "CLI_ENV_APP_ONLY",
   "CLI_ENV_WORKSPACE_ONLY",
@@ -21,6 +22,8 @@ const TEST_ENV_KEYS = [
   "JUNIOR_SCHEDULER_SECRET",
   "JUNIOR_SECRET",
   "JUNIOR_STATE_ADAPTER",
+  "REDIS_URL",
+  "VERCEL",
 ];
 
 const originalNodeEnv = process.env.NODE_ENV;
@@ -147,6 +150,8 @@ describe("loadCliEnvFiles", () => {
   it("applies development defaults after loading env files", () => {
     clearTestEnv();
     delete mutableEnv.NODE_ENV;
+    delete mutableEnv.VERCEL;
+    delete mutableEnv.CI;
 
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "junior-cli-env-"));
     writeFile(path.join(tempRoot, "package.json"), "{}\n");
@@ -163,6 +168,8 @@ describe("loadCliEnvFiles", () => {
   it("preserves explicit config values when applying defaults", () => {
     clearTestEnv();
     delete mutableEnv.NODE_ENV;
+    delete mutableEnv.VERCEL;
+    delete mutableEnv.CI;
 
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "junior-cli-env-"));
     writeFile(path.join(tempRoot, "package.json"), "{}\n");
@@ -181,6 +188,38 @@ describe("loadCliEnvFiles", () => {
     expect(process.env.JUNIOR_SECRET).toBe("explicit-secret");
     expect(process.env.JUNIOR_STATE_ADAPTER).toBe("redis");
     expect(process.env.CRON_SECRET).toBe("cron-secret");
+    expect(process.env.JUNIOR_SCHEDULER_SECRET).toBeUndefined();
+  });
+
+  it("keeps redis when REDIS_URL is set even without an explicit adapter", () => {
+    clearTestEnv();
+    delete mutableEnv.NODE_ENV;
+    delete mutableEnv.VERCEL;
+    delete mutableEnv.CI;
+    process.env.REDIS_URL = "redis://localhost:6379";
+
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "junior-cli-env-"));
+    writeFile(path.join(tempRoot, "package.json"), "{}\n");
+
+    loadCliEnvFiles(tempRoot);
+
+    expect(process.env.JUNIOR_STATE_ADAPTER).toBeUndefined();
+    expect(process.env.REDIS_URL).toBe("redis://localhost:6379");
+  });
+
+  it("skips development defaults on vercel builds when NODE_ENV is unset", () => {
+    clearTestEnv();
+    delete mutableEnv.NODE_ENV;
+    process.env.VERCEL = "1";
+    process.env.REDIS_URL = "redis://localhost:6379";
+
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "junior-cli-env-"));
+    writeFile(path.join(tempRoot, "package.json"), "{}\n");
+
+    loadCliEnvFiles(tempRoot);
+
+    expect(process.env.JUNIOR_SECRET).toBeUndefined();
+    expect(process.env.JUNIOR_STATE_ADAPTER).toBeUndefined();
     expect(process.env.JUNIOR_SCHEDULER_SECRET).toBeUndefined();
   });
 });
@@ -209,6 +248,19 @@ describe("applyJuniorDevelopmentDefaults", () => {
     expect(env.JUNIOR_STATE_ADAPTER).toBeUndefined();
     expect(env.JUNIOR_SCHEDULER_SECRET).toBeUndefined();
     expect(env.JUNIOR_BASE_URL).toBeUndefined();
+  });
+
+  it("does not apply development defaults on vercel or ci hosts", () => {
+    for (const env of [{ VERCEL: "1" }, { CI: "true" }] as const) {
+      applyJuniorDevelopmentDefaults(env, {
+        baseUrl: "http://localhost:3000",
+      });
+
+      expect(env.JUNIOR_SECRET).toBeUndefined();
+      expect(env.JUNIOR_STATE_ADAPTER).toBeUndefined();
+      expect(env.JUNIOR_SCHEDULER_SECRET).toBeUndefined();
+      expect(env.JUNIOR_BASE_URL).toBeUndefined();
+    }
   });
 
   it("applies a base URL only when the caller provides one", () => {
