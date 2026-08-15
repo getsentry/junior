@@ -556,7 +556,7 @@ export async function mockDashboardApis(page: Page) {
         count,
         date,
         metric: "workspace_switch",
-        name: "sentry",
+        name: "11111111-1111-4111-8111-111111111111",
         namespace: "junior",
       };
     }).filter((stat) => stat.count > 0);

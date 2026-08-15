@@ -26,7 +26,7 @@ async function tryRecordWorkspaceSwitchStat(workspace: Workspace) {
     await incrementStat({
       namespace: "junior",
       metric: "workspace_switch",
-      name: workspace.name,
+      name: workspace.id,
     });
   } catch (error) {
     logWarn("workspace.switch.stat.failed", {

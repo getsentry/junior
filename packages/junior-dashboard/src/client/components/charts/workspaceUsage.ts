@@ -1,7 +1,7 @@
 import type { StatReport } from "@sentry/junior/api/schema";
-import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
+import type { TimeRangeDays } from "../controls/TimeRangeSelector";
 
-export type WorkspaceSwitchDay = {
+export type WorkspaceUsageDay = {
   count: number;
   date: string;
 };
@@ -20,19 +20,19 @@ export function trailingUtcDates(
   });
 }
 
-/** Project daily switch counts for one Workspace name over a trailing window. */
-export function workspaceSwitchDays(args: {
-  name: string;
+/** Project daily switch counts for one Workspace over a trailing window. */
+export function workspaceUsageDays(args: {
+  workspaceId: string;
   nowMs?: number;
   range: TimeRangeDays;
   stats: StatReport[];
-}): WorkspaceSwitchDay[] {
+}): WorkspaceUsageDay[] {
   const byDate = new Map<string, number>();
   for (const stat of args.stats) {
     if (
       stat.namespace !== "junior" ||
       stat.metric !== "workspace_switch" ||
-      stat.name !== args.name
+      stat.name !== args.workspaceId
     ) {
       continue;
     }

@@ -1,8 +1,8 @@
-import { describe, expect, it } from "vitest";
 import {
   createLocalSource,
   defineJuniorPlugin,
 } from "@sentry/junior-plugin-api";
+import { describe, expect, it, vi } from "vitest";
 import { getDb } from "@/chat/db";
 import { normalizeLocalConversationId } from "@/chat/local/conversation";
 import {
@@ -17,6 +17,7 @@ import { createModelStream } from "../fixtures/model-stream";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { createWorkspaceTools } from "@/chat/workspaces/tools";
 import { listWorkspaceNamesByRepository } from "@/chat/workspaces/store";
+import { readStats } from "@/stats";
 
 describe("Workspace tools", () => {
   it("runs Workspace tools through the real agent tool path", async () => {
@@ -277,5 +278,61 @@ describe("Workspace tools", () => {
     } finally {
       setPlugins(previousPlugins);
     }
+  });
+
+  it("records successful Workspace switches in daily stats", async () => {
+    const now = new Date();
+    const workspace = {
+      id: "11111111-1111-4111-8111-111111111111",
+      name: "sentry",
+      setupScript: "",
+      snapshot: null,
+      repos: [{ provider: "github", repo: "getsentry/sentry" }],
+    };
+    const db = getDb();
+    await db.insert(juniorWorkspaces).values({
+      id: workspace.id,
+      name: workspace.name,
+      setupScript: workspace.setupScript,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await db.insert(juniorWorkspaceRepos).values({
+      workspaceId: workspace.id,
+      ...workspace.repos[0]!,
+    });
+    const switchWorkspace = vi.fn().mockResolvedValue(undefined);
+    const context = {
+      destination: {
+        platform: "local",
+        conversationId: "local:test:workspace-stats",
+      },
+      source: createLocalSource("local:test:workspace-stats"),
+      egress: {
+        async fetch() {
+          return new Response("ok");
+        },
+      },
+      workspace: {} as ToolRuntimeContext["workspace"],
+      workspaces: {
+        activeWorkspaceId: () => undefined,
+        switch: switchWorkspace,
+      },
+    } satisfies ToolRuntimeContext;
+
+    const tools = createWorkspaceTools(context);
+    await expect(
+      tools.switchWorkspace!.execute!({ name: workspace.name }, {}),
+    ).resolves.toMatchObject({ workspace: { id: workspace.id } });
+
+    expect(switchWorkspace).toHaveBeenCalledWith(workspace, undefined);
+    const date = now.toISOString().slice(0, 10);
+    await expect(readStats(date, date)).resolves.toContainEqual({
+      count: 1,
+      date,
+      metric: "workspace_switch",
+      name: workspace.id,
+      namespace: "junior",
+    });
   });
 });

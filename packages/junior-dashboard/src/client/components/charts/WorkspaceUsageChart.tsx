@@ -7,22 +7,22 @@ import {
   ChartSvg,
   createActivityChartLayout,
   formatActivityDate,
-} from "../../components/charts/ActivityChart";
-import { ChartHeader } from "../../components/charts/ChartHeader";
-import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
-import { Card } from "../../components/layout/Card";
-import { Tooltip } from "../../components/Tooltip";
+} from "./ActivityChart";
+import { ChartHeader } from "./ChartHeader";
+import type { TimeRangeDays } from "../controls/TimeRangeSelector";
+import { Card } from "../layout/Card";
+import { Tooltip } from "../Tooltip";
 import {
   formatActivityChartAverage,
   formatCompactNumber,
 } from "../../format";
-import type { WorkspaceSwitchDay } from "./workspaceSwitchStats";
+import type { WorkspaceUsageDay } from "./workspaceUsage";
 
-const SWITCH_COLOR = "#a78bfa";
+const USAGE_COLOR = "#a78bfa";
 
 /** Plot successful Workspace switches for one recipe over a trailing window. */
-export function WorkspaceSwitchChart(props: {
-  days: WorkspaceSwitchDay[];
+export function WorkspaceUsageChart(props: {
+  days: WorkspaceUsageDay[];
   range: TimeRangeDays;
   workspaceName: string;
 }) {
@@ -70,7 +70,7 @@ export function WorkspaceSwitchChart(props: {
                   tabIndex={0}
                 >
                   <rect
-                    fill={SWITCH_COLOR}
+                    fill={USAGE_COLOR}
                     height={renderedHeight}
                     opacity={day.count ? 0.82 : 0.08}
                     rx="2"
@@ -94,7 +94,7 @@ export function WorkspaceSwitchChart(props: {
             format={formatActivityChartAverage}
             layout={layout}
             maximum={maximum}
-            stroke={SWITCH_COLOR}
+            stroke={USAGE_COLOR}
           />
           <ActivityChartDateLabels
             dates={props.days.map((day) => day.date)}

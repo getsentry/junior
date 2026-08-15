@@ -5,12 +5,12 @@ import {
 } from "@sentry/junior/api/schema";
 
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
+import { WorkspaceUsageChart } from "../../components/charts/WorkspaceUsageChart";
+import { workspaceUsageDays } from "../../components/charts/workspaceUsage";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { fetchDashboardJson } from "../../http";
 import { SnapshotSummary } from "./SnapshotSummary";
-import { WorkspaceSwitchChart } from "./WorkspaceSwitchChart";
-import { workspaceSwitchDays } from "./workspaceSwitchStats";
 
 /** Show snapshot metadata and switch volume for one Workspace recipe. */
 export function WorkspaceDetails(props: {
@@ -23,8 +23,8 @@ export function WorkspaceDetails(props: {
       fetchDashboardJson(statsReportSchema, "/api/stats", signal),
     retry: false,
   });
-  const days = workspaceSwitchDays({
-    name: props.workspace.name,
+  const days = workspaceUsageDays({
+    workspaceId: props.workspace.id,
     range: props.range,
     stats: statsQuery.data?.stats ?? [],
   });
@@ -45,7 +45,7 @@ export function WorkspaceDetails(props: {
           </EmptyTelemetry>
         </Card>
       ) : (
-        <WorkspaceSwitchChart
+        <WorkspaceUsageChart
           days={days}
           range={props.range}
           workspaceName={props.workspace.name}
