@@ -83,8 +83,10 @@ const EMBEDDED_THREAD_CONTEXT_TAGS = [
   "thread-background",
 ] as const;
 
+// Greedy body so a raw closing tag inside ambient text cannot end the match
+// early; the last matching closer wins for that envelope name.
 const EMBEDDED_THREAD_CONTEXT_PATTERN = new RegExp(
-  `<(${EMBEDDED_THREAD_CONTEXT_TAGS.join("|")})(?:\\s[^>]*)?>[\\s\\S]*?</\\1>`,
+  `<(${EMBEDDED_THREAD_CONTEXT_TAGS.join("|")})(?:\\s[^>]*)?>[\\s\\S]*</\\1>`,
   "g",
 );
 
@@ -224,13 +226,9 @@ export function retainRuntimeTurnContext(messages: PiMessage[]): PiMessage[] {
  * a live run.
  */
 export function instructionTextForProjection(text: string): string {
-  // Prefer the instruction boundary first. Ambient bodies are escaped, but
-  // older durable history may still embed raw tags; unwrapping avoids a lazy
-  // context-strip match ending early on message text.
-  const unwrapped = unwrapCurrentInstruction(text);
-  if (unwrapped !== undefined) {
-    return unwrapped;
-  }
+  // Drop ambient envelopes first, then read the instruction. Unwrapping before
+  // strip would let ambient text that embeds a full <current-instruction>
+  // block win over the real turn instruction.
   const withoutContext = text
     .replace(EMBEDDED_THREAD_CONTEXT_PATTERN, "")
     .trim();
