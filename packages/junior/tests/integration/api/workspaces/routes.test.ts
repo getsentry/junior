@@ -145,14 +145,14 @@ describe("workspace admin API", () => {
     await state.connect();
     await state.set(
       `junior:sandbox_snapshot_profile:v2:${profile!.hash}`,
-      {
+      JSON.stringify({
         profileHash: profile!.hash,
         snapshotId: "snap_baseline",
         runtime: SANDBOX_RUNTIME,
         createdAtMs: Date.parse("2026-03-01T00:00:00.000Z"),
         dependencyCount: profile!.dependencyCount,
         buildDurationMs: 45_000,
-      },
+      }),
       60_000,
     );
 
