@@ -43,8 +43,12 @@ describe("WorkspaceDetails", () => {
     const client = new QueryClient();
     const queryKey = ["dashboard", "stats", "workspace-switch"] as const;
     client.setQueryData(queryKey, emptyStats);
-    client.getQueryCache().find({ queryKey })?.setState({
+    const query = client.getQueryCache().find({ queryKey });
+    query?.setState({
+      ...query.state,
       error: new Error("refresh failed"),
+      errorUpdatedAt: Date.now(),
+      fetchStatus: "idle",
       status: "error",
     });
 
