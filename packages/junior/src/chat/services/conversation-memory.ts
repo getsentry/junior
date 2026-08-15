@@ -68,7 +68,7 @@ function buildImageContextSuffix(
     return "";
   }
 
-  return ` [image context: ${summaries.join(" | ")}]`;
+  return ` [image context: ${escapeXml(summaries.join(" | "))}]`;
 }
 
 function renderConversationMessageLine(
@@ -83,7 +83,9 @@ function renderConversationMessageLine(
   const markers: string[] = [];
   if (message.meta?.replied === false) {
     markers.push(
-      `assistant skipped: ${message.meta?.skippedReason ?? "no-reply route"}`,
+      escapeXml(
+        `assistant skipped: ${message.meta?.skippedReason ?? "no-reply route"}`,
+      ),
     );
   }
   if (message.meta?.explicitMention) {
