@@ -41,7 +41,7 @@ vi.mock("@/chat/logging", () => ({
   withSpan: withSpanMock
 }));
 
-const store = new Map<string, unknown>();
+const store = new Map<string, string>();
 const heldLocks = new Set<string>();
 let getError: Error | undefined;
 const acquiredLockTtls: number[] = [];
@@ -55,7 +55,7 @@ vi.mock("@/chat/state/adapter", () => ({
       }
       return store.get(key);
     }),
-    set: vi.fn(async (key: string, value: unknown) => {
+    set: vi.fn(async (key: string, value: string) => {
       store.set(key, value);
     }),
     acquireLock: vi.fn(async (key: string, ttlMs: number) => {
@@ -144,7 +144,7 @@ describe("snapshot resolution", () => {
     expect(first.cacheHit).toBe(false);
     expect(first.resolveOutcome).toBe("rebuilt");
     const [cacheKey] = [...store.keys()];
-    const cached = store.get(cacheKey) as {
+    const cached = JSON.parse(store.get(cacheKey) ?? "") as {
       buildDurationMs?: number;
     };
     expect(cached.buildDurationMs).toEqual(expect.any(Number));
@@ -214,30 +214,6 @@ describe("snapshot resolution", () => {
     ).rejects.toEqual(
       new Error(`Invalid cached sandbox snapshot for ${first.profileHash}`),
     );
-    expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
-  });
-
-  it("reuses legacy string-encoded cache values", async () => {
-    getRuntimeDependenciesMock.mockReturnValue([
-      { type: "npm", package: "sentry", version: "latest" },
-    ]);
-    sandboxCreateMock.mockResolvedValueOnce(makeSandbox("snap_legacy"));
-
-    await resolveSnapshot({
-      runtime: "node22",
-      timeoutMs: 60_000,
-    });
-    const [cacheKey] = [...store.keys()];
-    const cached = store.get(cacheKey);
-    store.set(cacheKey, JSON.stringify(cached));
-
-    const second = await resolveSnapshot({
-      runtime: "node22",
-      timeoutMs: 60_000,
-    });
-    expect(second.snapshotId).toBe("snap_legacy");
-    expect(second.cacheHit).toBe(true);
-    expect(second.resolveOutcome).toBe("cache_hit");
     expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
   });
 
@@ -390,7 +366,7 @@ describe("snapshot resolution", () => {
     expect(first.resolveOutcome).toBe("rebuilt");
 
     const [cacheKey] = [...store.keys()];
-    const initialCached = store.get(cacheKey) as {
+    const initialCached = JSON.parse(store.get(cacheKey) ?? "") as {
       snapshotId: string;
       createdAtMs: number;
     };
@@ -398,10 +374,13 @@ describe("snapshot resolution", () => {
 
     heldLocks.add(lockKey);
     setTimeout(() => {
-      store.set(cacheKey, {
-        ...initialCached,
-        snapshotId: "snap_from_other_worker",
-      });
+      store.set(
+        cacheKey,
+        JSON.stringify({
+          ...initialCached,
+          snapshotId: "snap_from_other_worker"
+        }),
+      );
     }, 100);
     setTimeout(() => {
       heldLocks.delete(lockKey);

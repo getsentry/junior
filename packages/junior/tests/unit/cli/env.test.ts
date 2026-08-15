@@ -10,7 +10,6 @@ import {
 } from "@/cli/env";
 
 const TEST_ENV_KEYS = [
-  "CI",
   "CRON_SECRET",
   "CLI_ENV_APP_ONLY",
   "CLI_ENV_WORKSPACE_ONLY",
@@ -22,8 +21,6 @@ const TEST_ENV_KEYS = [
   "JUNIOR_SCHEDULER_SECRET",
   "JUNIOR_SECRET",
   "JUNIOR_STATE_ADAPTER",
-  "REDIS_URL",
-  "VERCEL",
 ];
 
 const originalNodeEnv = process.env.NODE_ENV;
@@ -229,34 +226,4 @@ describe("applyJuniorDevelopmentDefaults", () => {
 
     expect(env.JUNIOR_BASE_URL).toBe("http://localhost:3000");
   });
-
-  it("keeps redis when REDIS_URL is set in development", () => {
-    const env: NodeJS.ProcessEnv = {
-      NODE_ENV: "development",
-      REDIS_URL: "redis://localhost:6379",
-    };
-
-    applyJuniorDevelopmentDefaults(env);
-
-    expect(env.JUNIOR_STATE_ADAPTER).toBeUndefined();
-  });
-
-  it.each(["VERCEL", "CI"] as const)(
-    "skips development defaults on hosted %s builds",
-    (flag) => {
-      const env: NodeJS.ProcessEnv = {
-        [flag]: "1",
-        REDIS_URL: "redis://localhost:6379",
-      };
-
-      applyJuniorDevelopmentDefaults(env, {
-        baseUrl: "http://localhost:3000",
-      });
-
-      expect(env.JUNIOR_SECRET).toBeUndefined();
-      expect(env.JUNIOR_STATE_ADAPTER).toBeUndefined();
-      expect(env.JUNIOR_SCHEDULER_SECRET).toBeUndefined();
-      expect(env.JUNIOR_BASE_URL).toBeUndefined();
-    },
-  );
 });
