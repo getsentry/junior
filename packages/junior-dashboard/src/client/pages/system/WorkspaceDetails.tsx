@@ -23,11 +23,13 @@ export function WorkspaceDetails(props: {
       fetchDashboardJson(statsReportSchema, "/api/stats", signal),
     retry: false,
   });
-  const days = workspaceUsageDays({
-    workspaceId: props.workspace.id,
-    range: props.range,
-    stats: statsQuery.data?.stats ?? [],
-  });
+  const days = statsQuery.data
+    ? workspaceUsageDays({
+        workspaceId: props.workspace.id,
+        range: props.range,
+        stats: statsQuery.data.stats,
+      })
+    : [];
 
   return (
     <div className="grid min-w-0 gap-4">
@@ -38,10 +40,12 @@ export function WorkspaceDetails(props: {
         snapshot={props.workspace.snapshot}
         title="Current snapshot"
       />
-      {statsQuery.error ? (
+      {!statsQuery.data ? (
         <Card padding="sm">
           <EmptyTelemetry>
-            Workspace switch stats failed to load.
+            {statsQuery.error
+              ? "Workspace usage failed to load."
+              : "Loading Workspace usage."}
           </EmptyTelemetry>
         </Card>
       ) : (
