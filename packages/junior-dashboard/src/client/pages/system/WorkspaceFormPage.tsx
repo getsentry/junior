@@ -8,6 +8,7 @@ import {
 } from "@sentry/junior/api/schema";
 
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
+import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { LoadingView } from "../../components/LoadingView";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
@@ -33,6 +34,7 @@ export function WorkspaceFormPage() {
   const editing = workspaceId !== undefined;
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [range, setRange] = useState<TimeRangeDays>(30);
   const [newDraft, setNewDraft] = useState(createWorkspaceDraft);
   const [editedDraft, setEditedDraft] = useState<{
     draft: WorkspaceDraft;
@@ -114,6 +116,9 @@ export function WorkspaceFormPage() {
               ? "Inspect the current snapshot and update how Junior prepares this Workspace."
               : "Name the recipe, choose repositories, and optionally add a one-time setup script."
           }
+          {...(editing
+            ? { onRangeChange: setRange, range }
+            : {})}
           title={
             editing
               ? (workspaceQuery.data?.name ?? "Workspace")
@@ -122,7 +127,7 @@ export function WorkspaceFormPage() {
         />
 
         {editing && workspaceQuery.data ? (
-          <WorkspaceDetails workspace={workspaceQuery.data} />
+          <WorkspaceDetails range={range} workspace={workspaceQuery.data} />
         ) : null}
 
         {workspaceQuery.error ? (
