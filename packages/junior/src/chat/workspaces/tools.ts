@@ -1,11 +1,13 @@
 import { z } from "zod";
 import { getDb } from "@/chat/db";
+import { logWarn } from "@/chat/logging";
 import { getPlugins } from "@/chat/plugins/agent-hooks";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRegistry } from "@/chat/tools/definition";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
+import { incrementStat } from "@/stats";
 import { workspaceRepoCheckoutPath } from "./checkout-path";
 import {
   createWorkspace,
@@ -16,6 +18,25 @@ import {
   WorkspaceValidationError,
 } from "./store";
 import type { Workspace } from "./types";
+
+/** Record optional reporting without changing the switchWorkspace outcome. */
+async function tryRecordWorkspaceSwitchStat(workspace: Workspace) {
+  if (!process.env.DATABASE_URL) return;
+  try {
+    await incrementStat({
+      namespace: "junior",
+      metric: "workspace_switch",
+      name: workspace.name,
+    });
+  } catch (error) {
+    logWarn("workspace.switch.stat.failed", {
+      "app.workspace.id": workspace.id,
+      "app.workspace.name": workspace.name,
+      "exception.message":
+        error instanceof Error ? error.message : String(error),
+    });
+  }
+}
 
 const repoSchema = z.object({
   provider: z.string(),
@@ -286,6 +307,7 @@ export function createWorkspaceTools(
         if (!workspace)
           throw new ToolInputError(`Workspace not found: ${name}`);
         await context.workspaces!.switch(workspace, options.signal);
+        await tryRecordWorkspaceSwitchStat(workspace);
         return { workspace: view(workspace) };
       },
     }),
