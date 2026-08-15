@@ -1,0 +1,30 @@
+{
+  "commitSha": "2777df0cb6160b08d87abd17496e543f7f402484",
+  "mode": "path",
+  "reasons": [
+    "packages/junior-dashboard/src/client/conversations/TranscriptView.tsx"
+  ],
+  "scenarioIds": [
+    "conversations",
+    "conversation-detail"
+  ],
+  "shots": [
+    {
+      "file": "conversations__desktop.png",
+      "label": "Conversations · desktop"
+    },
+    {
+      "file": "conversations__mobile.png",
+      "label": "Conversations · mobile"
+    },
+    {
+      "file": "conversation-detail__desktop.png",
+      "label": "Conversation detail · desktop"
+    },
+    {
+      "file": "conversation-detail__mobile.png",
+      "label": "Conversation detail · mobile"
+    }
+  ],
+  "skipped": false
+}
