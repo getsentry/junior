@@ -1,0 +1,59 @@
+{
+  "commitSha": "c4a06b490df120a701dab9e87b6e25034fa00882",
+  "mode": "path",
+  "reasons": [
+    "packages/junior-dashboard/e2e/harness.ts",
+    "packages/junior-dashboard/e2e/system.spec.ts",
+    "packages/junior-dashboard/src/client/components/Button.tsx",
+    "packages/junior-dashboard/src/client/components/InlineError.tsx",
+    "packages/junior-dashboard/src/client/pages/PersonalTokensPage.tsx",
+    "packages/junior-dashboard/src/client/pages/SettingsPage.tsx",
+    "packages/junior-dashboard/src/client/pages/memory/MemoryPage.tsx",
+    "packages/junior-dashboard/src/client/pages/system/BaselineSnapshotCard.tsx",
+    "packages/junior-dashboard/src/client/pages/system/SnapshotSummary.tsx",
+    "packages/junior-dashboard/src/client/pages/system/WorkspaceDetails.tsx",
+    "packages/junior-dashboard/src/client/pages/system/WorkspaceEditor.tsx",
+    "packages/junior-dashboard/src/client/pages/system/WorkspaceFormPage.tsx",
+    "packages/junior-dashboard/src/client/pages/system/WorkspaceList.tsx",
+    "packages/junior-dashboard/src/client/pages/system/WorkspacesPage.tsx",
+    "packages/junior-dashboard/src/client/pages/tasks/TaskExecutionsPage.tsx",
+    "packages/junior-dashboard/src/client/pages/tasks/TaskRunsPage.tsx",
+    "packages/junior-dashboard/src/client/pages/tasks/TasksPage.tsx",
+    "packages/junior-dashboard/src/client/pages/user/PluginUserPage.tsx",
+    "packages/junior-dashboard/visual/README.md",
+    "packages/junior-dashboard/visual/scenarios.test.ts"
+  ],
+  "scenarioIds": [
+    "workspaces",
+    "workspace-detail",
+    "memories",
+    "settings"
+  ],
+  "shots": [
+    {
+      "file": "workspaces__desktop.png",
+      "label": "Workspaces · desktop"
+    },
+    {
+      "file": "workspaces__mobile.png",
+      "label": "Workspaces · mobile"
+    },
+    {
+      "file": "workspace-detail__desktop.png",
+      "label": "Workspace detail · desktop"
+    },
+    {
+      "file": "workspace-detail__mobile.png",
+      "label": "Workspace detail · mobile"
+    },
+    {
+      "file": "memories__desktop.png",
+      "label": "Memories · desktop"
+    },
+    {
+      "file": "settings__desktop.png",
+      "label": "Settings · desktop"
+    }
+  ],
+  "skipped": false
+}
