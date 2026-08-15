@@ -251,7 +251,8 @@ describe("applyJuniorDevelopmentDefaults", () => {
   });
 
   it("does not apply development defaults on vercel or ci hosts", () => {
-    for (const env of [{ VERCEL: "1" }, { CI: "true" }] as const) {
+    const cases: NodeJS.ProcessEnv[] = [{ VERCEL: "1" }, { CI: "true" }];
+    for (const env of cases) {
       applyJuniorDevelopmentDefaults(env, {
         baseUrl: "http://localhost:3000",
       });
