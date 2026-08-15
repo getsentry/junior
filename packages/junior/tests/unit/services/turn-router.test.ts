@@ -346,6 +346,10 @@ describe("selectTurnRoute", () => {
     expect(capturedPrompt).toContain(headMarker);
     expect(capturedPrompt).toContain(tailMarker);
     expect(capturedPrompt).toContain("…[truncated]…");
+    expect(capturedPrompt).toContain(
+      '<thread-context authority="evidence-only">',
+    );
+    expect(capturedPrompt).toContain("</thread-context>");
   });
 
   it("does not floor xhigh classifications", async () => {

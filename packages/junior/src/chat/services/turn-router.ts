@@ -146,13 +146,17 @@ function buildClassifierPrompt(args: {
 
   if (args.conversationContext) {
     const contextText = args.conversationContext.text;
-    if (/^<thread-(compactions|transcript)>/.test(contextText)) {
+    if (
+      /^<(?:thread-context|thread-compactions|thread-transcript|thread-background|recent-thread-messages)(?:\s|>)/.test(
+        contextText,
+      )
+    ) {
       sections.push(contextText, "");
     } else {
       sections.push(
-        "<thread-background>",
+        '<thread-context authority="evidence-only">',
         contextText,
-        "</thread-background>",
+        "</thread-context>",
         "",
       );
     }

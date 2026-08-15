@@ -189,7 +189,7 @@ describe("subscribed reply decision", () => {
           rawText: "can you check on this?",
           text: "can you check on this?",
           conversationContext: [
-            "<thread-transcript>",
+            '<thread-context authority="evidence-only">',
             '  <message role="user" author="David">',
             "[user] David: investigate the passive router",
             "  </message>",
@@ -197,7 +197,7 @@ describe("subscribed reply decision", () => {
             "[assistant] junior: the confidence gate looks too strict",
             "  </message>",
             "[tool] grep result: must-not-reach-router",
-            "</thread-transcript>",
+            "</thread-context>",
           ].join("\n"),
         }),
         completeObject,

@@ -1,4 +1,10 @@
-import { useState, type ReactElement, type ReactNode } from "react";
+import {
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 import {
   AlertCircle,
   Clock3,
@@ -241,9 +247,23 @@ export function PendingMailboxStack(props: {
   conversation: ConversationTranscript;
   messages: readonly ConversationMailboxMessage[];
   onCancelMessage?: (message: ConversationMailboxMessage) => void;
+  /** Fires after expand/collapse changes the stack height above the composer. */
+  onLayoutChange?: () => void;
   onRetry?(message: ConversationMailboxMessage): void;
 }): ReactNode {
   const [expanded, setExpanded] = useState(false);
+  const onLayoutChangeRef = useRef(props.onLayoutChange);
+  onLayoutChangeRef.current = props.onLayoutChange;
+  const hasMountedExpandedRef = useRef(false);
+  // Expand/collapse changes footer height. Pin after layout so the transcript
+  // scroll root already has the new client height.
+  useLayoutEffect(() => {
+    if (!hasMountedExpandedRef.current) {
+      hasMountedExpandedRef.current = true;
+      return;
+    }
+    onLayoutChangeRef.current?.();
+  }, [expanded]);
   const unresolvedIds = new Set(
     unresolvedPendingTranscriptMessages(
       conversationTranscriptMessages(props.conversation),

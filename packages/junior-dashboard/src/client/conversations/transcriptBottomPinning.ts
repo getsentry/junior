@@ -13,6 +13,7 @@ import type { ConversationTranscript, TranscriptViewPart } from "../types";
 import { conversationTranscriptMessages } from "./eventTranscript";
 
 const BOTTOM_PROXIMITY_PX = 96;
+const MOBILE_MEDIA_QUERY = "(max-width: 767px)";
 const USER_SCROLL_DELTA_PX = 2;
 
 type ScrollRoot = HTMLElement | Window;
@@ -166,6 +167,7 @@ export function usePinnedTranscriptBottom(input: {
   const previousScrollTopRef = useRef<number | null>(null);
   const prependSnapshotRef = useRef<PrependSnapshot | null>(null);
   const pinRequestVersionRef = useRef(input.pinRequestVersion ?? 0);
+  const versionRef = useRef(input.version);
   const programmaticScrollGenerationRef = useRef(0);
   const [following, setFollowing] = useState(false);
   const [hasPendingUpdate, setHasPendingUpdate] = useState(false);
@@ -338,6 +340,23 @@ export function usePinnedTranscriptBottom(input: {
     measurePosition("measure");
   }, [measurePosition, scrollToBottom]);
 
+  // Mobile product contract: while live, new tail content always follows.
+  // Still require live mode so a completed/status-only version flip does not jump.
+  useBrowserLayoutEffect(() => {
+    if (versionRef.current === input.version) return;
+    versionRef.current = input.version;
+    if (
+      !input.enabled ||
+      typeof window === "undefined" ||
+      !window.matchMedia(MOBILE_MEDIA_QUERY).matches
+    ) {
+      return;
+    }
+    setFollowingIntent(true);
+    setHasPendingUpdate(false);
+    scrollToBottom("auto");
+  }, [input.enabled, input.version, scrollToBottom, setFollowingIntent]);
+
   useBrowserLayoutEffect(() => {
     const wasEnabled = enabledRef.current;
     const shouldTrack = input.enabled || wasEnabled;
@@ -398,6 +417,10 @@ export function usePinnedTranscriptBottom(input: {
       syncAfterLayoutChange();
     });
     observer.observe(contentElement);
+    // Footer growth shrinks the transcript scroll root without resizing the
+    // transcript content node. Watch the root so follow mode stays pinned.
+    const root = scrollRootFor(contentElement);
+    if (root && !isWindowRoot(root)) observer.observe(root);
     return () => observer.disconnect();
   }, [contentElement, syncAfterLayoutChange]);
 

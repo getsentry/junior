@@ -1848,7 +1848,9 @@ describe("bot handlers (integration)", () => {
     });
 
     expect(capturedContexts).toHaveLength(1);
-    expect(capturedContexts[0]).toContain("<thread-transcript>");
+    expect(capturedContexts[0]).toContain(
+      '<thread-context authority="evidence-only">',
+    );
     expect(capturedContexts[0]).toContain('author="Test User"');
     expect(capturedContexts[0]).toContain("[user] Test User:");
     expect(capturedContexts[0]).toContain("Original production issue summary.");

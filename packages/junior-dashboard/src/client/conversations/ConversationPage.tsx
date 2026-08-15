@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   ConversationDetailReport,
   ConversationFeed,
@@ -268,6 +268,23 @@ function ConversationReplyFooter(props: {
   cancelPendingMessagesRef.current = cancelPendingMessages;
   const onPinRequestRef = useRef(props.onPinRequest);
   onPinRequestRef.current = props.onPinRequest;
+  const pendingMessageVersion = props.pendingMessages
+    .map((message) =>
+      [
+        message.inboundMessageId,
+        message.messageId,
+        message.clientStatus,
+        message.delivery,
+      ].join(":"),
+    )
+    .join("|");
+  const pendingMessageVersionRef = useRef(pendingMessageVersion);
+  useEffect(() => {
+    if (pendingMessageVersionRef.current === pendingMessageVersion) return;
+    pendingMessageVersionRef.current = pendingMessageVersion;
+    if (!window.matchMedia("(max-width: 767px)").matches) return;
+    onPinRequestRef.current();
+  }, [pendingMessageVersion]);
   const onSubmit = useCallback(
     async (message: string, idempotencyKey: string) => {
       await appendMessageRef.current.mutateAsync({
@@ -316,6 +333,11 @@ function ConversationReplyFooter(props: {
     ),
   );
 
+  const onMailboxLayoutChange = useCallback(() => {
+    if (!window.matchMedia("(max-width: 767px)").matches) return;
+    onPinRequestRef.current();
+  }, []);
+
   return (
     <div className="flex w-full min-h-0 max-h-[min(55dvh,24rem)] flex-col overflow-hidden self-end px-2 pt-1.5 pb-[calc(0.375rem+env(safe-area-inset-bottom))] md:max-h-none md:overflow-visible md:self-auto md:px-7 md:py-4 md:pb-4">
       {/* Queue chrome may scroll; keep the composer pinned below it on mobile. */}
@@ -339,6 +361,7 @@ function ConversationReplyFooter(props: {
           conversation={props.conversation}
           messages={props.pendingMessages}
           onCancelMessage={onCancelMessage}
+          onLayoutChange={onMailboxLayoutChange}
           onRetry={onRetry}
         />
       </div>

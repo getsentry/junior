@@ -77,6 +77,7 @@ import {
   type TurnToolInvocation,
 } from "@/chat/runtime/turn-input";
 import {
+  appendThreadContextMessages,
   markConversationMessage,
   normalizeConversationText,
   recordDeliveredAssistantMessage,
@@ -194,10 +195,10 @@ function parkedInputKey(message: PiMessage): string | undefined {
   return `${message.timestamp}:${text}`;
 }
 
-function renderRecentThreadMessages(
+function renderRecentThreadMessageLines(
   conversationContext: string | undefined,
   messages: QueuedTurnMessage[],
-): string | undefined {
+): string[] {
   const passiveMessages = messages.filter((queued) => {
     if (queued.explicitMention) {
       return false;
@@ -206,28 +207,28 @@ function renderRecentThreadMessages(
     return !slackTs || !conversationContext?.includes(`slack_ts="${slackTs}"`);
   });
   if (passiveMessages.length === 0) {
-    return undefined;
+    return [];
   }
-  const lines = ["<recent-thread-messages>"];
+  const lines: string[] = [];
   for (const queued of passiveMessages) {
     const actor = queuedInstructionActor(queued);
+    const author = escapeXml(actor?.authorName ?? "user");
     const attrs = [
-      actor?.authorId ? `author_id="${escapeXml(actor.authorId)}"` : undefined,
-      actor?.authorName
-        ? `author_name="${escapeXml(actor.authorName)}"`
-        : undefined,
+      `role="user"`,
+      `author="${author}"`,
+      actor?.authorId ? `actor_id="${escapeXml(actor.authorId)}"` : undefined,
       actor?.slackTs ? `slack_ts="${escapeXml(actor.slackTs)}"` : undefined,
     ]
       .filter((attr): attr is string => Boolean(attr))
       .join(" ");
+    const text = escapeXml(queued.userText.replace(/\s+/g, " "));
     lines.push(
-      attrs ? `  <message ${attrs}>` : "  <message>",
-      escapeXml(queued.userText),
+      `  <message ${attrs}>`,
+      `[user] ${author}: ${text}`,
       "  </message>",
     );
   }
-  lines.push("</recent-thread-messages>");
-  return lines.join("\n");
+  return lines;
 }
 
 function appendRecentThreadMessagesToContext(
@@ -235,17 +236,14 @@ function appendRecentThreadMessagesToContext(
   messages: QueuedTurnMessage[],
   options?: { includeConversationContext?: boolean },
 ): string | undefined {
-  const recentThreadMessages = renderRecentThreadMessages(
-    conversationContext,
-    messages,
-  );
-  const contextParts = [
+  const baseContext =
     options?.includeConversationContext === false
       ? undefined
-      : conversationContext?.trim(),
-    recentThreadMessages,
-  ].filter((part): part is string => Boolean(part));
-  return contextParts.length > 0 ? contextParts.join("\n\n") : undefined;
+      : conversationContext;
+  return appendThreadContextMessages(
+    baseContext,
+    renderRecentThreadMessageLines(conversationContext, messages),
+  );
 }
 
 function queuedInstructionActor(
@@ -629,19 +627,16 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   !isVisionEnabled() && hasPotentialImageAttachment(attachments)
                     ? countPotentialImageAttachments(attachments)
                     : 0,
-                attachments: await deps.resolveUserAttachments(
-                  attachments,
-                  {
-                    threadId,
-                    actorId: isResourceEventSlackMessage(queued.message)
-                      ? undefined
-                      : queued.message.author.userId,
-                    channelId,
-                    runId,
-                    conversation: preparedState.conversation,
-                    messageTs: getMessageTimestamp(queued.message),
-                  },
-                ),
+                attachments: await deps.resolveUserAttachments(attachments, {
+                  threadId,
+                  actorId: isResourceEventSlackMessage(queued.message)
+                    ? undefined
+                    : queued.message.author.userId,
+                  channelId,
+                  runId,
+                  conversation: preparedState.conversation,
+                  messageTs: getMessageTimestamp(queued.message),
+                }),
               };
             }),
           );
@@ -1053,7 +1048,8 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 slackMessageTs = await sendSlackReply({
                   channelId,
                   conversationId,
-                  replyAttribution: options.execution?.dispatch?.replyAttribution,
+                  replyAttribution:
+                    options.execution?.dispatch?.replyAttribution,
                   text,
                   ...(threadTs ? { threadTs } : {}),
                 });
@@ -1324,7 +1320,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             slackConversation,
             source,
             destination,
-            publishExternally: shouldPublishExternally(options.publishExternally),
+            publishExternally: shouldPublishExternally(
+              options.publishExternally,
+            ),
             ...(destinationVisibility ? { destinationVisibility } : {}),
             surface: options.execution?.surface ?? "slack",
             dispatch: options.execution?.dispatch,
