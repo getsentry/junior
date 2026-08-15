@@ -15,9 +15,10 @@ const WORKSPACE_PREBUILD_ACTOR = {
   name: "workspace-prebuild",
 } as const;
 
-// One enqueue pass per process. Queue idempotency and snapshot cache still
-// dedupe across instances and deliveries.
-let scheduled = false;
+// Remember successful enqueues in this process. Failed sends stay eligible for
+// the next heartbeat. Queue idempotency and snapshot cache still dedupe work.
+const enqueuedWorkspaceIds = new Set<string>();
+let scheduleInFlight = false;
 
 export interface ScheduleWorkspacePrebuildsOptions {
   send?: (message: WorkspacePrebuildQueueMessage) => Promise<void>;
@@ -70,22 +71,23 @@ export async function processWorkspacePrebuild(
 }
 
 /**
- * Enqueue Workspace prebuild once for this process.
+ * Enqueue Workspace prebuild for this process.
  *
  * Heartbeat only schedules queue work. The queue callback owns the snapshot
- * build and its full function lifetime.
+ * build and its full function lifetime. Successful enqueues are remembered so
+ * later heartbeats skip them; failed enqueues retry on the next pass.
  */
 export async function scheduleWorkspacePrebuilds(
   options: ScheduleWorkspacePrebuildsOptions = {},
 ): Promise<void> {
-  if (scheduled) return;
+  if (scheduleInFlight) return;
+  scheduleInFlight = true;
 
   try {
     const workspaces = (await listWorkspaces(getDb())).filter(
-      (workspace) => workspace.prebuild,
+      (workspace) =>
+        workspace.prebuild && !enqueuedWorkspaceIds.has(workspace.id),
     );
-    // Only lock the process after SQL succeeds so a transient miss can retry.
-    scheduled = true;
     if (workspaces.length === 0) return;
 
     const send = options.send ?? sendVercelWorkspacePrebuildTask;
@@ -96,6 +98,7 @@ export async function scheduleWorkspacePrebuilds(
       workspaces.map(async (workspace) => {
         try {
           await send({ workspaceId: workspace.id });
+          enqueuedWorkspaceIds.add(workspace.id);
         } catch (error) {
           logException(error, "sandbox.workspace_prebuild.enqueue.failed", {
             "app.workspace.id": workspace.id,
@@ -106,10 +109,7 @@ export async function scheduleWorkspacePrebuilds(
   } catch (error) {
     // Callers must stay up when SQL is unavailable.
     logException(error, "sandbox.workspace_prebuild.schedule.failed");
+  } finally {
+    scheduleInFlight = false;
   }
-}
-
-/** Test helper: allow another enqueue pass in the same process. */
-export function resetWorkspacePrebuildScheduleForTests(): void {
-  scheduled = false;
 }

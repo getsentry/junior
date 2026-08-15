@@ -31,7 +31,7 @@ vi.mock("@/chat/logging", () => ({
 }));
 
 describe("workspace prebuild scheduling", () => {
-  beforeEach(async () => {
+  beforeEach(() => {
     vi.resetModules();
     listWorkspaces.mockReset();
     getWorkspace.mockReset();
@@ -39,11 +39,6 @@ describe("workspace prebuild scheduling", () => {
     createPluginHookRunner.mockClear();
     credentialContextForActor.mockClear();
     getDb.mockClear();
-
-    const { resetWorkspacePrebuildScheduleForTests } = await import(
-      "@/chat/workspaces/prebuild"
-    );
-    resetWorkspacePrebuildScheduleForTests();
   });
 
   afterEach(() => {
@@ -67,6 +62,29 @@ describe("workspace prebuild scheduling", () => {
     expect(send).toHaveBeenCalledTimes(2);
     expect(send).toHaveBeenCalledWith({ workspaceId: "ws_a" });
     expect(send).toHaveBeenCalledWith({ workspaceId: "ws_c" });
+  });
+
+  it("retries only Workspaces whose enqueue failed", async () => {
+    listWorkspaces.mockResolvedValue([
+      { id: "ws_a", prebuild: true },
+      { id: "ws_c", prebuild: true },
+    ]);
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error("queue unavailable"))
+      .mockResolvedValueOnce(undefined);
+    const { scheduleWorkspacePrebuilds } = await import(
+      "@/chat/workspaces/prebuild"
+    );
+
+    await scheduleWorkspacePrebuilds({ send });
+    await scheduleWorkspacePrebuilds({ send });
+
+    expect(send).toHaveBeenCalledTimes(3);
+    expect(send).toHaveBeenNthCalledWith(1, { workspaceId: "ws_a" });
+    expect(send).toHaveBeenNthCalledWith(2, { workspaceId: "ws_c" });
+    expect(send).toHaveBeenNthCalledWith(3, { workspaceId: "ws_c" });
   });
 
   it("builds only opted-in Workspaces from queue messages", async () => {
