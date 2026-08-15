@@ -169,6 +169,32 @@ describe("workspace admin API", () => {
     });
   });
 
+  it("keeps Workspace list available when baseline registry read fails", async () => {
+    const app = authenticatedApi();
+    const created = await createWorkspace({
+      name: "baseline-optional",
+      repos: [{ provider: "github", repo: "getsentry/sentry" }],
+    });
+    const profile = createSnapshotProfile(SANDBOX_RUNTIME);
+    expect(profile).toBeTruthy();
+    const state = getStateAdapter();
+    await state.connect();
+    // Corrupt cache value makes getCachedSnapshot throw.
+    await state.set(
+      `junior:sandbox_snapshot_profile:v2:${profile!.hash}`,
+      "not-json",
+      60_000,
+    );
+
+    const listResponse = await app.request("http://localhost/api/workspaces");
+    expect(listResponse.status).toBe(200);
+    const listed = workspaceListSchema.parse(await listResponse.json());
+    expect(listed.baselineSnapshot).toBeNull();
+    expect(listed.workspaces.map((workspace) => workspace.id)).toContain(
+      created.id,
+    );
+  });
+
   it("returns SQL-backed snapshot metadata on Workspace detail", async () => {
     const app = authenticatedApi();
     const createResponse = await app.request("http://localhost/api/workspaces", {

@@ -30,7 +30,7 @@ export function BaselineSnapshotCard(props: {
             <p className="m-0 text-sm leading-relaxed text-dashboard-text-muted">
               {snapshot
                 ? "Default Sandboxes start from this install-wide snapshot when no Workspace is selected."
-                : "No baseline snapshot is registered yet. Deploy-time warmup or the first base Sandbox prepare creates it."}
+                : "No baseline snapshot is registered yet. The first base Sandbox prepare creates one."}
             </p>
           </div>
         </div>
@@ -64,12 +64,7 @@ export function BaselineSnapshotCard(props: {
               </span>
             </Detail>
           </DetailList>
-        ) : (
-          <div className="rounded-lg border border-dashed border-white/10 bg-black/20 px-4 py-3 text-sm leading-relaxed text-dashboard-text-muted">
-            Missing baseline registry entry. Runtime can still build one on
-            demand, but deploy warmup should publish it first.
-          </div>
-        )}
+        ) : null}
       </section>
     </Card>
   );

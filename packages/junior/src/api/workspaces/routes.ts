@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { getDb } from "@/chat/db";
+import { logException } from "@/chat/logging";
 import {
   create as createSnapshotProfile,
   hash as workspaceProfileHash,
@@ -42,17 +43,23 @@ function snapshotView(workspace: Workspace) {
 }
 
 async function baselineSnapshotView() {
-  const profile = createSnapshotProfile(SANDBOX_RUNTIME);
-  if (!profile) return null;
-  const cached = await getCachedSnapshot(profile.hash);
-  if (!cached) return null;
-  return {
-    id: cached.snapshotId,
-    generatedAt: new Date(cached.createdAtMs).toISOString(),
-    buildDurationMs: cached.buildDurationMs,
-    profileHash: cached.profileHash,
-    dependencyCount: cached.dependencyCount,
-  };
+  try {
+    const profile = createSnapshotProfile(SANDBOX_RUNTIME);
+    if (!profile) return null;
+    const cached = await getCachedSnapshot(profile.hash);
+    if (!cached) return null;
+    return {
+      id: cached.snapshotId,
+      generatedAt: new Date(cached.createdAtMs).toISOString(),
+      buildDurationMs: cached.buildDurationMs,
+      profileHash: cached.profileHash,
+      dependencyCount: cached.dependencyCount,
+    };
+  } catch (error) {
+    // Baseline summary is optional. Do not fail Workspace recipe admin on Redis.
+    logException(error, "sandbox.baseline_snapshot.read.failed");
+    return null;
+  }
 }
 
 function view(workspace: Workspace) {
