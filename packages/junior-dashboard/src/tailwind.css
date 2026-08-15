@@ -109,3 +109,16 @@
       0 0 14px rgba(110, 231, 183, 0.65);
   }
 }
+
+@media (max-width: 767px) {
+  /* Keep long mobile feeds cheap while preserving their full scroll range. */
+  .mobile-conversation-row {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 3.5rem;
+  }
+
+  .mobile-transcript-row {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 12rem;
+  }
+}

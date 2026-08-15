@@ -199,7 +199,7 @@ function ConversationSidebarRow(props: {
     props.conversation.visibility === "private" ||
     hasAnnotations;
   return (
-    <div className="group relative min-w-0">
+    <div className="mobile-conversation-row group relative min-w-0">
       <Link
         aria-current={props.selected ? "page" : undefined}
         className={cn(
