@@ -1,0 +1,17 @@
+{
+  "commitSha": "65a8d865434c41cf5124ad50200b4a24208a3c52",
+  "mode": "path",
+  "reasons": [
+    "packages/junior-dashboard/src/client/pages/system/WorkspaceList.tsx"
+  ],
+  "scenarioIds": [
+    "system"
+  ],
+  "shots": [
+    {
+      "file": "system__desktop.png",
+      "label": "System · desktop"
+    }
+  ],
+  "skipped": false
+}
