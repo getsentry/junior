@@ -52,7 +52,7 @@ function WorkspaceListItem(props: {
   return (
     <li className="border-b border-white/[0.055] last:border-b-0">
       <SelectableRow
-        className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 px-4 py-3.5"
+        className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3.5"
         onSelect={openWorkspace}
         selected={false}
       >
@@ -83,14 +83,11 @@ function WorkspaceListItem(props: {
                 : "No repositories"}
             </span>
           </span>
-        </button>
-        <button
-          aria-label={`Manage ${workspace.name}`}
-          className="grid size-8 cursor-pointer place-items-center rounded border border-transparent bg-transparent text-dashboard-text-muted transition-colors hover:border-white/10 hover:bg-white/[0.04] hover:text-dashboard-text"
-          onClick={openWorkspace}
-          type="button"
-        >
-          <ChevronRight aria-hidden="true" size={16} />
+          <ChevronRight
+            aria-hidden="true"
+            className="shrink-0 text-dashboard-text-muted transition-transform group-hover:translate-x-0.5 group-hover:text-dashboard-text"
+            size={16}
+          />
         </button>
         <Button
           aria-label={`Delete ${workspace.name}`}

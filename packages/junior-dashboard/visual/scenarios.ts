@@ -127,7 +127,9 @@ const PATH_RULES: PathRule[] = [
       filePath.startsWith(
         "packages/junior-dashboard/src/client/pages/system/",
       ) &&
-      /(?:^|\/)(?:BaselineSnapshot|Workspace|workspace)/.test(filePath),
+      /(?:^|\/)(?:BaselineSnapshot|SnapshotSummary|Workspace|workspace)/.test(
+        filePath,
+      ),
     scenarioIds: ["workspaces", "workspace-detail"],
   },
   {

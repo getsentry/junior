@@ -73,6 +73,7 @@ describe("selectVisualScenarioIds", () => {
       selectVisualScenarioIds([
         "packages/junior-dashboard/src/client/pages/system/WorkspacesPage.tsx",
         "packages/junior-dashboard/src/client/pages/system/BaselineSnapshotCard.tsx",
+        "packages/junior-dashboard/src/client/pages/system/SnapshotSummary.tsx",
         "packages/junior-dashboard/src/client/pages/system/workspaceDraft.ts",
       ]),
     ).toEqual(["workspaces", "workspace-detail"]);
