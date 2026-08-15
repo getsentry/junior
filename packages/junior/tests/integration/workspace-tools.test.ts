@@ -82,18 +82,6 @@ describe("Workspace tools", () => {
         destination,
         egress: { fetch: async () => new Response("ok") },
         source: createLocalSource(destination.conversationId),
-        resolveActorIdentity: async () => ({
-          identity: {
-            id: "identity-1",
-            provider: "local",
-            providerSubjectId: "viewer-1",
-          },
-          user: {
-            id: "user-1",
-            email: "viewer@example.com",
-            identities: [],
-          },
-        }),
         workspace: {} as ToolRuntimeContext["workspace"],
         workspaces: {
           activeWorkspaceId: () => undefined,
@@ -273,52 +261,6 @@ describe("Workspace tools", () => {
           { toolCallId: "delete-workspace" },
         ),
       ).resolves.toEqual({ deleted: true });
-    } finally {
-      setPlugins(previousPlugins);
-    }
-  });
-
-  it("requires a signed-in user for Workspace recipe writes", async () => {
-    const previousPlugins = setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "github",
-          displayName: "GitHub",
-          description: "GitHub",
-        },
-        hooks: {
-          async workspacePrepare() {},
-        },
-      }),
-    ]);
-    try {
-      const destination = {
-        platform: "local",
-        conversationId: "workspace-write-authorization",
-      } as const;
-      const workspaceTools = createWorkspaceTools({
-        destination,
-        egress: { fetch: async () => new Response("ok") },
-        source: createLocalSource(destination.conversationId),
-        resolveActorIdentity: async () => undefined,
-        workspace: {} as ToolRuntimeContext["workspace"],
-        workspaces: {
-          activeWorkspaceId: () => undefined,
-          switch: async () => undefined,
-        },
-      });
-
-      await expect(
-        workspaceTools.createWorkspace!.execute!(
-          {
-            name: "relay",
-            repos: [{ provider: "github", repo: "getsentry/relay" }],
-          },
-          { toolCallId: "unauthorized-create-workspace" },
-        ),
-      ).rejects.toThrow(
-        "Workspace recipe changes require a signed-in Junior user.",
-      );
     } finally {
       setPlugins(previousPlugins);
     }

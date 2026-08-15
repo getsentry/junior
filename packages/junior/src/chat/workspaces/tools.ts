@@ -116,22 +116,7 @@ function prepareWorkspaceWriteArguments(args: unknown): WorkspaceWriteInput {
   return prepared;
 }
 
-async function requireWorkspaceWriter(
-  context: ToolRuntimeContext,
-): Promise<void> {
-  const actorIdentity = await context.resolveActorIdentity?.();
-  if (!actorIdentity?.user) {
-    throw new ToolInputError(
-      "Workspace recipe changes require a signed-in Junior user.",
-    );
-  }
-}
-
-async function workspaceWrite<T>(
-  context: ToolRuntimeContext,
-  operation: () => Promise<T>,
-): Promise<T> {
-  await requireWorkspaceWriter(context);
+async function workspaceWrite<T>(operation: () => Promise<T>): Promise<T> {
   try {
     return await operation();
   } catch (error) {
@@ -151,9 +136,8 @@ function describeWorkspaceWrite(
   return `${action} Workspace ${input.name} (${repositories}${setupText}).`;
 }
 
-/** Build create/update tools for the currently preparable repository providers. */
+/** Build create/update/delete tools for the currently preparable repository providers. */
 function createWorkspaceWriteTools(
-  context: ToolRuntimeContext,
   providers: [string, ...string[]],
 ): ToolRegistry {
   const { providerNames, workspaceInputSchema } =
@@ -176,7 +160,7 @@ function createWorkspaceWriteTools(
         workspace: workspaceSchema,
       }),
       async execute(input) {
-        const workspace = await workspaceWrite(context, () =>
+        const workspace = await workspaceWrite(() =>
           createWorkspace(writeInput(input)),
         );
         return { workspace: view(workspace) };
@@ -208,7 +192,7 @@ function createWorkspaceWriteTools(
         workspace: workspaceSchema,
       }),
       async execute({ id, ...input }) {
-        const workspace = await workspaceWrite(context, () =>
+        const workspace = await workspaceWrite(() =>
           updateWorkspace(id, writeInput(input)),
         );
         if (!workspace) {
@@ -238,9 +222,7 @@ function createWorkspaceWriteTools(
         deleted: z.literal(true),
       }),
       async execute({ id }) {
-        const deleted = await workspaceWrite(context, () =>
-          deleteWorkspace(id),
-        );
+        const deleted = await workspaceWrite(() => deleteWorkspace(id));
         if (!deleted) {
           throw new ToolInputError(`Workspace not found: ${id}`);
         }
@@ -257,9 +239,7 @@ export function createWorkspaceTools(
   if (!context.workspaces) return {};
   const providers = workspaceProviderNames();
   return {
-    ...(providers && context.resolveActorIdentity
-      ? createWorkspaceWriteTools(context, providers)
-      : {}),
+    ...(providers ? createWorkspaceWriteTools(providers) : {}),
     listWorkspaces: zodTool({
       annotations: {
         destructiveHint: false,
