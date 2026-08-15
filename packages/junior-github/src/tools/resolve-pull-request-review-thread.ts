@@ -158,7 +158,9 @@ export function createGitHubResolvePullRequestReviewThreadTool(
           }),
         })
         .parse(lookupPayload).data.node;
-      if (!thread) throw new Error("GitHub review thread was not found.");
+      if (!thread) {
+        throw new PluginToolInputError("GitHub review thread was not found.");
+      }
 
       const pullRequest = thread.pullRequest;
       const ownsPullRequest =

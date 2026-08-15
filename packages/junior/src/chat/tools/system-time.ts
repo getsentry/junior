@@ -2,6 +2,7 @@ import { z } from "zod";
 import { getZonedDateTimeParts } from "@/chat/scheduled-tasks/cadence";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 const systemTimeInputSchema = z.object({
   timezone: z
@@ -52,7 +53,7 @@ export function createSystemTimeTool() {
       const timezone = input.timezone?.trim() || null;
       if (timezone) {
         if (!isValidTimeZone(timezone)) {
-          throw new Error("timezone must be a valid IANA time zone.");
+          throw new ToolInputError("timezone must be a valid IANA time zone.");
         }
         const parts = getZonedDateTimeParts(now.getTime(), timezone);
         const isoLocal = [

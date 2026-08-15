@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior",
-  "version": "0.164.0",
+  "version": "0.165.0",
   "private": false,
   "publishConfig": {
     "access": "public"
@@ -64,6 +64,7 @@
     "typecheck": "tsc --noEmit",
     "skills:check": "node --test scripts/check-skills.test.mjs && node scripts/check-skills.mjs",
     "tool-annotations:check": "node --test scripts/check-tool-annotations.test.mjs && node scripts/check-tool-annotations.mjs",
+    "tool-error-classification:check": "node --test scripts/check-tool-error-classification.test.mjs && node scripts/check-tool-error-classification.mjs",
     "test:coverage": "vitest run --maxWorkers=4 --coverage --reporter=default --reporter=junit --outputFile.junit=coverage/results.junit.xml"
   },
   "dependencies": {

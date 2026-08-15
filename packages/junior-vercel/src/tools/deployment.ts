@@ -1,5 +1,6 @@
 import {
   definePluginTool,
+  PluginToolInputError,
   pluginToolOutputSchema,
   subscribableResourceSchema,
   type PluginToolOutput,
@@ -92,9 +93,12 @@ export function createVercelDeploymentTool(ctx: ToolRegistrationHookContext) {
       });
       const parsed = await readJson(response);
       if (!response.ok) {
-        throw new Error(
-          `Vercel project lookup failed with HTTP ${response.status}`,
-        );
+        const message = `Vercel project lookup failed with HTTP ${response.status}`;
+        // Missing project is model-repairable. Auth, rate limit, and 5xx stay system errors.
+        if (response.status === 404) {
+          throw new PluginToolInputError(message);
+        }
+        throw new Error(message);
       }
       const projectId = z
         .object({ id: vercelProjectIdSchema })

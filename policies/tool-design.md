@@ -82,6 +82,17 @@ unsafe requests.
   agent receives a failed tool result and can correct its call. Throw
   `ToolInputError` or another expected tool error for invalid arguments, missing
   active context, unsupported values, or absent target state.
+- Plugin packages use `PluginToolInputError` for the same model-repairable cases.
+  A plain `Error` is a system failure. The tool error handler reports plain
+  `Error` throws to Sentry.
+- Do not throw a plain `Error` for ownership denials, missing targets chosen by
+  the model, invalid values the model can correct, or provider lookup misses
+  that mean "try another input". Those cases must use `ToolInputError` or
+  `PluginToolInputError`.
+- Repo lint keeps a baseline of remaining plain `Error` throws under tool
+  source paths. New plain `Error` throws fail
+  `tool-error-classification:check` unless the baseline is updated for a true
+  system, config, or integrity failure.
 - Do not return sentinel success payloads such as `{ ok: false, error }` for a
   failed model-facing tool execution. Structured result unions remain valid in
   private helpers and non-agent HTTP handlers.

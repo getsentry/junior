@@ -49,7 +49,7 @@ export async function findFiles(params: {
   runCommand?: SandboxCommandRunner;
 }): Promise<FindFilesResult> {
   if (!params.pattern.trim()) {
-    throw new Error("pattern is required");
+    throw new ToolInputError("pattern is required");
   }
 
   const root = resolveWorkspacePath(params.path);

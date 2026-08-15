@@ -1,4 +1,15 @@
 # Changelog
+## 0.165.0
+
+### New Features ✨
+
+- (workspaces) Improve Workspace settings and multi-repo AGENTS.md by @sentry-junior in [#1576](https://github.com/getsentry/junior/pull/1576)
+
+### Bug Fixes 🐛
+
+- (github) Classify review thread ownership denial as input error by @sentry-junior in [#1577](https://github.com/getsentry/junior/pull/1577)
+- (tools) Classify repairable tool failures as input errors by @sentry-junior in [#1579](https://github.com/getsentry/junior/pull/1579)
+
 ## 0.164.0
 
 ### New Features ✨
