@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import type {
   ConversationDetailReport,
   ConversationFeed,
@@ -43,7 +49,11 @@ import {
   SubagentTranscriptDrawer,
   type SubagentTranscriptTarget,
 } from "./SubagentTranscriptDrawer";
-import type { Conversation, ConversationTranscript } from "../types";
+import type {
+  Conversation,
+  ConversationTranscript,
+  TranscriptViewSubagentPart,
+} from "../types";
 
 export { liveModelId } from "./ConversationMeta";
 
@@ -71,15 +81,34 @@ export function ConversationPage(props: {
     props.pendingArchiveUpdate,
   );
   const conversationDetail = detail.data;
+  // Live polls can rebuild a large transcript tree every 2s. Defer that paint so
+  // composer keystrokes stay urgent without changing visible transcript content.
+  // Fall back to the latest detail on first load so the body is never blank while
+  // the deferred value catches up from undefined.
+  const deferredTranscript = useDeferredValue(detail.data);
+  const transcript = deferredTranscript ?? detail.data;
   const visualStatus = conversation
     ? visualStatusForConversation(conversation)
     : undefined;
-  // Keep live flags and transcript data on the same render. Composer isolation
-  // in the reply footer is what keeps typing urgent during live polls.
+  // Keep live flags and mailbox chrome urgent. Only the heavy transcript body is deferred.
   const live = conversationIsLive(visualStatus, detail.data);
   const requestPin = useCallback(() => {
     setPinRequestVersion((version) => version + 1);
   }, []);
+  const onOpenSubagentTranscript = useCallback(
+    ({
+      part,
+    }: {
+      part: TranscriptViewSubagentPart;
+      conversation: ConversationTranscript;
+    }) => {
+      setSubagentTarget({
+        conversationId: part.childConversationId,
+        part,
+      });
+    },
+    [],
+  );
 
   return (
     <div className="grid min-h-0 min-w-0 grid-rows-[minmax(7rem,1fr)_minmax(0,auto)]">
@@ -210,14 +239,9 @@ export function ConversationPage(props: {
                 onLoadPreviousPage={detail.loadPreviousPage}
                 pinRequestVersion={pinRequestVersion}
                 responding={!detail.error && live}
-                onOpenSubagentTranscript={({ part }) => {
-                  setSubagentTarget({
-                    conversationId: part.childConversationId,
-                    part,
-                  });
-                }}
+                onOpenSubagentTranscript={onOpenSubagentTranscript}
                 search={search}
-                transcript={detail.data}
+                transcript={transcript}
                 view={view}
               />
             </>

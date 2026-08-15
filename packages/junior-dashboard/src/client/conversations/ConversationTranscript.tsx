@@ -1,4 +1,4 @@
-import { useRef, type ReactNode } from "react";
+import { memo, useRef, type ReactNode } from "react";
 
 import { unavailableTranscriptLabel } from "../format";
 import { conversationTranscriptMessages } from "./eventTranscript";
@@ -60,7 +60,7 @@ function renderReasoningEntry(entry: TranscriptReasoningEntry): ReactNode {
 }
 
 /** Render one conversation transcript segment as actor messages and tool events. */
-export function ConversationTranscriptView(props: {
+export const ConversationTranscriptView = memo(function ConversationTranscriptView(props: {
   onOpenSubagentTranscript?: (args: {
     part: TranscriptViewSubagentPart;
     conversation: ConversationTranscript;
@@ -84,7 +84,7 @@ export function ConversationTranscriptView(props: {
       </div>
     </section>
   );
-}
+});
 
 function SegmentEvents(props: {
   onOpenSubagentTranscript?: (args: {

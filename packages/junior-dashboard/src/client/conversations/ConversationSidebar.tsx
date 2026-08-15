@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import {
   Archive,
   ArchiveRestore,
@@ -52,11 +52,26 @@ export function ConversationSidebar(props: {
     () => setArchivedConversation(undefined),
     [],
   );
-  const entries = conversationSidebarEntries(
-    buildConversationSections(props.conversations, {
-      nowMs: Date.now(),
-      timeZone: props.timeZone,
-    }),
+  const handleArchiveError = useCallback((conversation: Conversation) => {
+    setArchiveError(conversation);
+  }, []);
+  const handleArchived = useCallback((conversation: Conversation) => {
+    setArchiveError((current) =>
+      current?.id === conversation.id ? undefined : current,
+    );
+    setArchivedConversation(conversation);
+  }, []);
+  // Rebuild section rows only when the feed or timezone changes. Avoid fresh
+  // Date.now() arrays on unrelated parent renders while the reader is scrolling.
+  const entries = useMemo(
+    () =>
+      conversationSidebarEntries(
+        buildConversationSections(props.conversations, {
+          nowMs: Date.now(),
+          timeZone: props.timeZone,
+        }),
+      ),
+    [props.conversations, props.timeZone],
   );
   return (
     <aside className="relative grid h-full min-h-0 min-w-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-white/[0.07] bg-white/[0.02]">
@@ -118,13 +133,8 @@ export function ConversationSidebar(props: {
               ) : (
                 <ConversationSidebarRow
                   conversation={entry.conversation}
-                  onArchiveError={setArchiveError}
-                  onArchived={(conversation) => {
-                    setArchiveError((current) =>
-                      current?.id === conversation.id ? undefined : current,
-                    );
-                    setArchivedConversation(conversation);
-                  }}
+                  onArchiveError={handleArchiveError}
+                  onArchived={handleArchived}
                   selected={entry.conversation.id === props.selectedId}
                 />
               )
@@ -173,7 +183,7 @@ function conversationSidebarEntries(
   ]);
 }
 
-function ConversationSidebarRow(props: {
+const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
   conversation: Conversation;
   onArchiveError(conversation: Conversation): void;
   onArchived(conversation: Conversation): void;
@@ -257,7 +267,7 @@ function ConversationSidebarRow(props: {
       </button>
     </div>
   );
-}
+});
 
 function ArchiveConversationErrorNotice(props: {
   conversation: Conversation;
