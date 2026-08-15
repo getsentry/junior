@@ -56,6 +56,9 @@ export interface Snapshot {
   cacheHit: boolean;
   resolveOutcome: ResolveOutcome;
   rebuildReason?: RebuildReason;
+  /** Present when the Redis registry has a concrete snapshot entry. */
+  createdAtMs?: number;
+  buildDurationMs?: number;
 }
 export type ProgressPhase =
   | "resolve_start"
@@ -67,6 +70,8 @@ export type ProgressPhase =
 type LockResult = {
   snapshotId: string;
   source: "cache_hit" | "cache_hit_after_lock_wait" | "built";
+  createdAtMs: number;
+  buildDurationMs: number;
 };
 
 function profileCacheKey(profileHash: string): string {
@@ -176,6 +181,8 @@ async function withBuildLock(
   callback: () => Promise<{
     snapshotId: string;
     source: "cache_hit" | "built";
+    createdAtMs: number;
+    buildDurationMs: number;
   }>,
   canUseCachedSnapshot: (cached: CachedSnapshot) => boolean,
   onWaitingForLock?: () => void | Promise<void>,
@@ -215,6 +222,8 @@ async function withBuildLock(
           return {
             snapshotId: cached.snapshotId,
             source: "cache_hit_after_lock_wait",
+            createdAtMs: cached.createdAtMs,
+            buildDurationMs: cached.buildDurationMs,
           };
         }
 
@@ -228,6 +237,8 @@ async function withBuildLock(
                 result.source === "built"
                   ? "built"
                   : "cache_hit_after_lock_wait",
+              createdAtMs: result.createdAtMs,
+              buildDurationMs: result.buildDurationMs,
             };
           } finally {
             await state.releaseLock(lock);
@@ -243,6 +254,8 @@ async function withBuildLock(
         return {
           snapshotId: cached.snapshotId,
           source: "cache_hit_after_lock_wait",
+          createdAtMs: cached.createdAtMs,
+          buildDurationMs: cached.buildDurationMs,
         };
       }
 
@@ -323,6 +336,8 @@ export async function resolve(params: {
           dependencyCount: currentProfile.dependencyCount,
           cacheHit: true,
           resolveOutcome: "cache_hit",
+          createdAtMs: cached.createdAtMs,
+          buildDurationMs: cached.buildDurationMs,
         };
       }
 
@@ -355,6 +370,8 @@ export async function resolve(params: {
             return {
               snapshotId: latest.snapshotId,
               source: "cache_hit",
+              createdAtMs: latest.createdAtMs,
+              buildDurationMs: latest.buildDurationMs,
             };
           }
 
@@ -366,16 +383,22 @@ export async function resolve(params: {
             params.signal,
             params.prepareWorkspace,
           );
+          const createdAtMs = Date.now();
           await setCachedSnapshot({
             profileHash: currentProfile.hash,
             snapshotId: built.snapshotId,
             runtime: params.runtime,
-            createdAtMs: Date.now(),
+            createdAtMs,
             dependencyCount: currentProfile.dependencyCount,
             buildDurationMs: built.buildDurationMs,
           });
           await params.onProgress?.("build_complete");
-          return { snapshotId: built.snapshotId, source: "built" };
+          return {
+            snapshotId: built.snapshotId,
+            source: "built",
+            createdAtMs,
+            buildDurationMs: built.buildDurationMs,
+          };
         },
         canUseCachedSnapshot,
         async () => {
@@ -393,6 +416,8 @@ export async function resolve(params: {
           Boolean(params.forceRebuild),
           lockResult.source,
         ),
+        createdAtMs: lockResult.createdAtMs,
+        buildDurationMs: lockResult.buildDurationMs,
         ...(rebuildReason ? { rebuildReason } : {}),
       };
     },

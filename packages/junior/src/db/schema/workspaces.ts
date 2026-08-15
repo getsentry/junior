@@ -1,4 +1,10 @@
-import { pgTable, primaryKey, text, uniqueIndex } from "drizzle-orm/pg-core";
+import {
+  integer,
+  pgTable,
+  primaryKey,
+  text,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
 import { timestamptz } from "./timestamps";
 
 /** Named recipe used to prepare a reusable Sandbox. */
@@ -8,6 +14,11 @@ export const juniorWorkspaces = pgTable(
     id: text("id").primaryKey(),
     name: text("name").notNull(),
     setupScript: text("setup_script").notNull().default(""),
+    // Last successful Workspace snapshot for the dashboard. Resolve still uses Redis.
+    snapshotId: text("snapshot_id"),
+    snapshotGeneratedAt: timestamptz("snapshot_generated_at"),
+    snapshotBuildDurationMs: integer("snapshot_build_duration_ms"),
+    snapshotProfileHash: text("snapshot_profile_hash"),
     createdAt: timestamptz("created_at").notNull(),
     updatedAt: timestamptz("updated_at").notNull(),
   },

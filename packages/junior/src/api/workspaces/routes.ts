@@ -1,9 +1,7 @@
 import { Hono } from "hono";
 import { getDb } from "@/chat/db";
-import { logException } from "@/chat/logging";
 import { hash as workspaceProfileHash } from "@/chat/sandbox/snapshot/profile";
 import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
-import { getCachedSnapshot } from "@/chat/sandbox/snapshot/resolve";
 import { workspaceRepoCheckoutPath } from "@/chat/workspaces/checkout-path";
 import {
   createWorkspace,
@@ -26,6 +24,19 @@ import {
 import { validateRequest } from "../validation";
 import { requireViewer } from "../viewer";
 
+function snapshotView(workspace: Workspace) {
+  const recorded = workspace.snapshot;
+  if (!recorded) return null;
+  const profileHash = workspaceProfileHash(SANDBOX_RUNTIME, workspace);
+  // Hide a recorded snapshot when the recipe no longer matches its profile.
+  if (!profileHash || recorded.profileHash !== profileHash) return null;
+  return {
+    id: recorded.id,
+    generatedAt: recorded.generatedAt.toISOString(),
+    buildDurationMs: recorded.buildDurationMs,
+  };
+}
+
 function view(workspace: Workspace) {
   return {
     id: workspace.id,
@@ -36,34 +47,14 @@ function view(workspace: Workspace) {
       repo: repo.repo,
       checkoutPath: workspaceRepoCheckoutPath(repo.repo),
     })),
-    snapshot: null,
+    snapshot: null as ReturnType<typeof snapshotView>,
   };
 }
 
-async function detailView(workspace: Workspace) {
-  const profileHash = workspaceProfileHash(SANDBOX_RUNTIME, workspace);
-  let snapshot = null;
-  if (profileHash) {
-    try {
-      // Snapshot metadata is optional UI enrichment. Cache/Redis failures must
-      // not block loading recipe data that already lives in SQL.
-      const cached = await getCachedSnapshot(profileHash);
-      if (cached) {
-        snapshot = {
-          id: cached.snapshotId,
-          generatedAt: new Date(cached.createdAtMs).toISOString(),
-          buildDurationMs: cached.buildDurationMs,
-        };
-      }
-    } catch (error) {
-      logException(error, "api.workspaces.snapshot_lookup.failed", {
-        "app.workspace.id": workspace.id,
-      });
-    }
-  }
+function detailView(workspace: Workspace) {
   return {
     ...view(workspace),
-    snapshot,
+    snapshot: snapshotView(workspace),
   };
 }
 
@@ -111,7 +102,7 @@ export function createWorkspaceRoutes(): Hono<JuniorApiEnv> {
       const { id } = context.req.valid("param");
       const workspace = await getWorkspace(getDb(), id);
       if (!workspace) throwApiError(404, "Workspace not found.");
-      return jsonResponse(workspaceSchema, await detailView(workspace));
+      return jsonResponse(workspaceSchema, detailView(workspace));
     },
   );
 

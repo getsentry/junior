@@ -11,11 +11,11 @@ import { closeDb, getDb, getSqlExecutor } from "@/chat/db";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { hash as workspaceProfileHash } from "@/chat/sandbox/snapshot/profile";
 import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
-import { getStateAdapter } from "@/chat/state/adapter";
 import {
   createWorkspace,
   getWorkspace,
   getWorkspaceByName,
+  setWorkspaceSnapshot,
   updateWorkspace,
 } from "@/chat/workspaces/store";
 
@@ -135,7 +135,7 @@ describe("workspace admin API", () => {
     });
   });
 
-  it("returns snapshot build duration on Workspace detail", async () => {
+  it("returns SQL-backed snapshot metadata on Workspace detail", async () => {
     const app = authenticatedApi();
     const createResponse = await app.request("http://localhost/api/workspaces", {
       body: JSON.stringify({
@@ -147,24 +147,19 @@ describe("workspace admin API", () => {
     });
     expect(createResponse.status).toBe(201);
     const created = workspaceSchema.parse(await createResponse.json());
+    expect(created.snapshot).toBeNull();
+
     const workspace = await getWorkspace(getDb(), created.id);
     expect(workspace).toBeDefined();
-
     const profileHash = workspaceProfileHash(SANDBOX_RUNTIME, workspace!);
     expect(profileHash).toBeTruthy();
-    const state = getStateAdapter();
-    await state.connect();
-    await state.set(
-      `junior:sandbox_snapshot_profile:v2:${profileHash}`,
-      JSON.stringify({
-        profileHash,
-        snapshotId: "snap_duration",
-        runtime: SANDBOX_RUNTIME,
-        createdAtMs: Date.parse("2026-03-01T00:00:00.000Z"),
-        dependencyCount: 1,
-        buildDurationMs: 12_345,
-      }),
-    );
+
+    await setWorkspaceSnapshot(created.id, {
+      id: "snap_duration",
+      generatedAt: new Date("2026-03-01T00:00:00.000Z"),
+      buildDurationMs: 12_345,
+      profileHash: profileHash!,
+    });
 
     const detailResponse = await app.request(
       `http://localhost/api/workspaces/${created.id}`,
@@ -180,11 +175,11 @@ describe("workspace admin API", () => {
     });
   });
 
-  it("returns Workspace detail when snapshot cache lookup fails", async () => {
+  it("hides snapshot metadata after the Workspace recipe changes", async () => {
     const app = authenticatedApi();
     const createResponse = await app.request("http://localhost/api/workspaces", {
       body: JSON.stringify({
-        name: "snapshot-cache",
+        name: "snapshot-stale",
         repos: [{ provider: "github", repo: "getsentry/sentry" }],
       }),
       headers: { "content-type": "application/json" },
@@ -194,15 +189,29 @@ describe("workspace admin API", () => {
     const created = workspaceSchema.parse(await createResponse.json());
     const workspace = await getWorkspace(getDb(), created.id);
     expect(workspace).toBeDefined();
-
     const profileHash = workspaceProfileHash(SANDBOX_RUNTIME, workspace!);
     expect(profileHash).toBeTruthy();
-    const state = getStateAdapter();
-    await state.connect();
-    await state.set(
-      `junior:sandbox_snapshot_profile:v2:${profileHash}`,
-      "{not-json",
+
+    await setWorkspaceSnapshot(created.id, {
+      id: "snap_old",
+      generatedAt: new Date("2026-03-01T00:00:00.000Z"),
+      buildDurationMs: 9_000,
+      profileHash: profileHash!,
+    });
+
+    const updateResponse = await app.request(
+      `http://localhost/api/workspaces/${created.id}`,
+      {
+        body: JSON.stringify({
+          name: "snapshot-stale",
+          setupScript: "pnpm install",
+          repos: [{ provider: "github", repo: "getsentry/sentry" }],
+        }),
+        headers: { "content-type": "application/json" },
+        method: "PUT",
+      },
     );
+    expect(updateResponse.status).toBe(200);
 
     const detailResponse = await app.request(
       `http://localhost/api/workspaces/${created.id}`,
@@ -210,15 +219,7 @@ describe("workspace admin API", () => {
     expect(detailResponse.status).toBe(200);
     expect(workspaceSchema.parse(await detailResponse.json())).toMatchObject({
       id: created.id,
-      name: "snapshot-cache",
       snapshot: null,
-      repos: [
-        {
-          provider: "github",
-          repo: "getsentry/sentry",
-          checkoutPath: "repos/sentry",
-        },
-      ],
     });
   });
 

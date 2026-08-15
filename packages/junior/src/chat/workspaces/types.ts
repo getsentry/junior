@@ -4,10 +4,19 @@ export interface WorkspaceRepo {
   repo: string;
 }
 
+/** Last successful Sandbox snapshot recorded for one Workspace recipe. */
+export interface WorkspaceSnapshot {
+  id: string;
+  generatedAt: Date;
+  buildDurationMs: number;
+  profileHash: string;
+}
+
 /** Named recipe used to prepare reusable sandbox contents. */
 export interface Workspace {
   id: string;
   name: string;
   setupScript: string;
   repos: WorkspaceRepo[];
+  snapshot: WorkspaceSnapshot | null;
 }

@@ -37,9 +37,9 @@ import {
 import { sleep } from "@/chat/sleep";
 import type { SkillMetadata } from "@/chat/skills";
 import type { SandboxRef } from "@/chat/sandbox/ref";
+import { recordResolvedWorkspaceSnapshot } from "@/chat/workspaces/store";
 import type { Workspace } from "@/chat/workspaces/types";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
-
 const DEFAULT_MAX_OUTPUT_LENGTH = 30_000;
 const DEFAULT_BASH_COMMAND_TIMEOUT_MS = 5 * 60 * 1000;
 const SANDBOX_RUNTIME_BIN_DIR = `${SANDBOX_WORKSPACE_ROOT}/.junior/bin`;
@@ -401,22 +401,14 @@ export function createSandboxRuntime(
     signal?: AbortSignal;
     workspace?: Workspace;
     prepareWorkspace?: (sandbox: SandboxSession) => Promise<void>;
-  }): Promise<SandboxSession> => {
-    const {
-      runtime,
-      snapshot,
-      sandboxCredentials,
-      sandboxName,
-      signal,
-      workspace,
-      prepareWorkspace,
-    } = params;
+  }): Promise<{ session: SandboxSession; snapshot: Snapshot }> => {
+    const { runtime, snapshot, sandboxCredentials, sandboxName, signal } =
+      params;
     signal?.throwIfAborted();
-
     if (!snapshot.snapshotId) {
       const networkPolicy = preflightNetworkPolicy(sandboxName);
       const resources = getSandboxResources();
-      return adaptSandbox(
+      const session = adaptSandbox(
         await Sandbox.create({
           timeout: timeoutMs,
           runtime,
@@ -428,43 +420,38 @@ export function createSandboxRuntime(
           ...sandboxFetchOptions(signal),
         }),
       );
+      return { session, snapshot };
     }
 
     try {
-      return await createSandboxFromSnapshot(
+      const session = await createSandboxFromSnapshot(
         snapshot.snapshotId,
         sandboxCredentials,
         sandboxName,
         signal,
       );
+      return { session, snapshot };
     } catch (error) {
-      if (!isMissingError(error)) {
-        throw error;
-      }
-
-      setSpanAttributes({
-        "app.sandbox.snapshot.rebuild_after_missing": true,
-      });
-      const rebuiltSnapshot = await resolveSnapshot({
+      if (!isMissingError(error)) throw error;
+      setSpanAttributes({ "app.sandbox.snapshot.rebuild_after_missing": true });
+      const rebuilt = await resolveSnapshot({
         runtime,
         timeoutMs,
         forceRebuild: true,
         staleSnapshotId: snapshot.snapshotId,
         signal,
-        workspace,
-        prepareWorkspace,
+        workspace: params.workspace,
+        prepareWorkspace: params.prepareWorkspace,
       });
-      if (!rebuiltSnapshot.snapshotId) {
-        throw error;
-      }
+      if (!rebuilt.snapshotId) throw error;
       signal?.throwIfAborted();
-
-      return await createSandboxFromSnapshot(
-        rebuiltSnapshot.snapshotId,
+      const session = await createSandboxFromSnapshot(
+        rebuilt.snapshotId,
         sandboxCredentials,
         sandboxName,
         signal,
       );
+      return { session, snapshot: rebuilt };
     }
   };
 
@@ -508,7 +495,7 @@ export function createSandboxRuntime(
           });
           signal?.throwIfAborted();
           setSnapshotAttributes(snapshot);
-          return await createSandboxFromResolvedSnapshot({
+          const created = await createSandboxFromResolvedSnapshot({
             runtime,
             snapshot,
             sandboxCredentials,
@@ -517,6 +504,14 @@ export function createSandboxRuntime(
             workspace,
             prepareWorkspace,
           });
+          // Durable dashboard facts belong in SQL. Redis remains the hot registry.
+          if (workspace) {
+            await recordResolvedWorkspaceSnapshot(
+              workspace.id,
+              created.snapshot,
+            );
+          }
+          return created.session;
         },
       );
     } catch (error) {

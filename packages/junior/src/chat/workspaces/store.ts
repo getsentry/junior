@@ -3,12 +3,31 @@ import { and, asc, eq, sql } from "drizzle-orm";
 import { getSqlExecutor } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorWorkspaceRepos, juniorWorkspaces } from "@/db/schema";
-import type { Workspace } from "./types";
+import type { Workspace, WorkspaceSnapshot } from "./types";
 import {
   normalizeWorkspaceRecipe,
   WorkspaceValidationError,
   type WorkspaceRecipeInput,
 } from "./validation";
+
+function snapshotFromRow(
+  row: typeof juniorWorkspaces.$inferSelect,
+): WorkspaceSnapshot | null {
+  if (
+    !row.snapshotId ||
+    !row.snapshotGeneratedAt ||
+    row.snapshotBuildDurationMs == null ||
+    !row.snapshotProfileHash
+  ) {
+    return null;
+  }
+  return {
+    id: row.snapshotId,
+    generatedAt: row.snapshotGeneratedAt,
+    buildDurationMs: row.snapshotBuildDurationMs,
+    profileHash: row.snapshotProfileHash,
+  };
+}
 
 function workspaceFromRows(
   row: typeof juniorWorkspaces.$inferSelect,
@@ -22,6 +41,7 @@ function workspaceFromRows(
       provider: repo.provider,
       repo: repo.repo,
     })),
+    snapshot: snapshotFromRow(row),
   };
 }
 
@@ -220,6 +240,11 @@ export async function updateWorkspace(
         .set({
           name: recipe.name,
           setupScript: recipe.setupScript,
+          // Recipe changes invalidate the recorded snapshot for the dashboard.
+          snapshotId: null,
+          snapshotGeneratedAt: null,
+          snapshotBuildDurationMs: null,
+          snapshotProfileHash: null,
           updatedAt: now,
         })
         .where(eq(juniorWorkspaces.id, id))
@@ -251,6 +276,51 @@ export async function deleteWorkspace(id: string): Promise<boolean> {
       .where(eq(juniorWorkspaces.id, id))
       .returning({ id: juniorWorkspaces.id });
     return rows.length > 0;
+  });
+}
+
+/** Record the current Sandbox snapshot after a successful Workspace prepare. */
+export async function setWorkspaceSnapshot(
+  workspaceId: string,
+  snapshot: WorkspaceSnapshot,
+): Promise<void> {
+  const executor = getSqlExecutor();
+  await executor
+    .db()
+    .update(juniorWorkspaces)
+    .set({
+      snapshotId: snapshot.id,
+      snapshotGeneratedAt: snapshot.generatedAt,
+      snapshotBuildDurationMs: snapshot.buildDurationMs,
+      snapshotProfileHash: snapshot.profileHash,
+      updatedAt: new Date(),
+    })
+    .where(eq(juniorWorkspaces.id, workspaceId));
+}
+
+/** Persist dashboard snapshot facts when resolve returned a concrete entry. */
+export async function recordResolvedWorkspaceSnapshot(
+  workspaceId: string,
+  snapshot: {
+    snapshotId?: string;
+    profileHash?: string;
+    createdAtMs?: number;
+    buildDurationMs?: number;
+  },
+): Promise<void> {
+  if (
+    !snapshot.snapshotId ||
+    !snapshot.profileHash ||
+    snapshot.createdAtMs == null ||
+    snapshot.buildDurationMs == null
+  ) {
+    return;
+  }
+  await setWorkspaceSnapshot(workspaceId, {
+    id: snapshot.snapshotId,
+    generatedAt: new Date(snapshot.createdAtMs),
+    buildDurationMs: snapshot.buildDurationMs,
+    profileHash: snapshot.profileHash,
   });
 }
 

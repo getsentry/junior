@@ -428,6 +428,7 @@ describe("snapshot resolution", () => {
       id: "workspace-1",
       name: "sentry",
       setupScript: "pnpm install",
+      snapshot: null,
       repos: [
         {
           provider: "github",

@@ -991,6 +991,7 @@ describe("createTestSandbox", () => {
       id: "workspace-1",
       name: "sentry",
       setupScript: "",
+      snapshot: null,
       repos: [],
     };
     const runtime = createSandboxRuntime({
@@ -1029,6 +1030,7 @@ describe("createTestSandbox", () => {
       id: "workspace-initial",
       name: "initial",
       setupScript: "",
+      snapshot: null,
       repos: [],
     };
     const runtime = createSandboxRuntime({
@@ -1064,6 +1066,7 @@ describe("createTestSandbox", () => {
       id: "workspace-1",
       name: "sentry",
       setupScript: "",
+      snapshot: null,
       repos: [],
     };
     const runtime = createSandboxRuntime({
@@ -1163,6 +1166,7 @@ describe("createTestSandbox", () => {
         id: "workspace-1",
         name: "sentry",
         setupScript: "",
+      snapshot: null,
         repos: [],
       },
       skills: [],
@@ -1219,6 +1223,7 @@ describe("createTestSandbox", () => {
         id: "workspace-setup",
         name: "setup",
         setupScript: "echo ready",
+      snapshot: null,
         repos: [],
       },
       skills: [],
@@ -1270,6 +1275,7 @@ describe("createTestSandbox", () => {
         id: "workspace-provider",
         name: "provider",
         setupScript: "",
+      snapshot: null,
         repos: [],
       },
       skills: [],
@@ -1307,6 +1313,7 @@ describe("createTestSandbox", () => {
       id: "workspace-initial",
       name: "initial",
       setupScript: "",
+      snapshot: null,
       repos: [],
     };
     const nextWorkspace = {
@@ -1363,6 +1370,7 @@ describe("createTestSandbox", () => {
       id: "workspace-initial",
       name: "initial",
       setupScript: "",
+      snapshot: null,
       repos: [],
     };
     const nextWorkspace = {

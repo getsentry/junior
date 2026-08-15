@@ -51,7 +51,9 @@ traffic through verified host egress.
 - A Workspace recipe is part of the profile hash. One build installs runtime
   dependencies, prepares repositories, runs setup, and captures the complete
   snapshot. Operators manage recipes from `/system/workspaces` or
-  `/api/workspaces`.
+  `/api/workspaces`. After a successful Workspace prepare, Junior records the
+  current snapshot id, generation time, build duration, and profile hash on
+  the Workspace SQL row for the dashboard.
 - Workspace repositories clone to fixed `repos/{name}` paths. Setup scripts
   receive `JUNIOR_WORKSPACE_ROOT` and `JUNIOR_REPOS_ROOT` so they do not depend
   on the provider's absolute Sandbox path.
