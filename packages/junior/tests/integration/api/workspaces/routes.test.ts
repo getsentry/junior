@@ -9,6 +9,9 @@ import {
 } from "@/api/schema";
 import { closeDb, getDb, getSqlExecutor } from "@/chat/db";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
+import { hash as workspaceProfileHash } from "@/chat/sandbox/snapshot/profile";
+import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
+import { getStateAdapter } from "@/chat/state/adapter";
 import {
   createWorkspace,
   getWorkspace,
@@ -45,17 +48,16 @@ describe("workspace admin API", () => {
         repos: [
           {
             provider: "github",
-            repo: "getsentry/sentry",
-            isPrimary: true,
+            repo: "getsentry/sentry"
           },
           {
             provider: "github",
-            repo: "getsentry/getsentry",
+            repo: "getsentry/getsentry"
           },
-        ],
+        ]
       }),
       headers: { "content-type": "application/json" },
-      method: "POST",
+      method: "POST"
     });
     expect(createResponse.status).toBe(201);
     const created = workspaceSchema.parse(await createResponse.json());
@@ -66,16 +68,14 @@ describe("workspace admin API", () => {
         {
           provider: "github",
           repo: "getsentry/getsentry",
-          checkoutPath: "repos/getsentry",
-          isPrimary: false,
+          checkoutPath: "repos/getsentry"
         },
         {
           provider: "github",
           repo: "getsentry/sentry",
-          checkoutPath: "repos/sentry",
-          isPrimary: true,
+          checkoutPath: "repos/sentry"
         },
-      ],
+      ]
     });
 
     const listResponse = await app.request("http://localhost/api/workspaces");
@@ -94,13 +94,12 @@ describe("workspace admin API", () => {
           repos: [
             {
               provider: "github",
-              repo: "getsentry/sentry",
-              isPrimary: true,
+              repo: "getsentry/sentry"
             },
-          ],
+          ]
         }),
         headers: { "content-type": "application/json" },
-        method: "PUT",
+        method: "PUT"
       },
     );
     expect(updateResponse.status).toBe(200);
@@ -113,10 +112,9 @@ describe("workspace admin API", () => {
         {
           provider: "github",
           repo: "getsentry/sentry",
-          checkoutPath: "repos/sentry",
-          isPrimary: true,
+          checkoutPath: "repos/sentry"
         },
-      ],
+      ]
     });
 
     const deleteResponse = await app.request(
@@ -133,7 +131,49 @@ describe("workspace admin API", () => {
     );
     expect(missing.status).toBe(404);
     expect(apiErrorSchema.parse(await missing.json())).toEqual({
-      error: "Workspace not found.",
+      error: "Workspace not found."
+    });
+  });
+
+  it("returns Workspace detail when snapshot cache lookup fails", async () => {
+    const app = authenticatedApi();
+    const createResponse = await app.request("http://localhost/api/workspaces", {
+      body: JSON.stringify({
+        name: "snapshot-cache",
+        repos: [{ provider: "github", repo: "getsentry/sentry" }],
+      }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+    expect(createResponse.status).toBe(201);
+    const created = workspaceSchema.parse(await createResponse.json());
+    const workspace = await getWorkspace(getDb(), created.id);
+    expect(workspace).toBeDefined();
+
+    const profileHash = workspaceProfileHash(SANDBOX_RUNTIME, workspace!);
+    expect(profileHash).toBeTruthy();
+    const state = getStateAdapter();
+    await state.connect();
+    await state.set(
+      `junior:sandbox_snapshot_profile:${profileHash}`,
+      "{not-json",
+    );
+
+    const detailResponse = await app.request(
+      `http://localhost/api/workspaces/${created.id}`,
+    );
+    expect(detailResponse.status).toBe(200);
+    expect(workspaceSchema.parse(await detailResponse.json())).toMatchObject({
+      id: created.id,
+      name: "snapshot-cache",
+      snapshot: null,
+      repos: [
+        {
+          provider: "github",
+          repo: "getsentry/sentry",
+          checkoutPath: "repos/sentry",
+        },
+      ],
     });
   });
 
@@ -143,10 +183,10 @@ describe("workspace admin API", () => {
       {
         body: JSON.stringify({
           name: "bad name",
-          repos: [{ provider: "github", repo: "getsentry/sentry" }],
+          repos: [{ provider: "github", repo: "getsentry/sentry" }]
         }),
         headers: { "content-type": "application/json" },
-        method: "POST",
+        method: "POST"
       },
     );
 
@@ -164,10 +204,9 @@ describe("workspace admin API", () => {
       repos: [
         {
           provider: "github",
-          repo: "getsentry/junior",
-          isPrimary: true,
+          repo: "getsentry/junior"
         },
-      ],
+      ]
     });
 
     await executor.execute(`
@@ -191,10 +230,9 @@ FOR EACH ROW EXECUTE FUNCTION junior_test_reject_workspace_repo()
           repos: [
             {
               provider: "github",
-              repo: "getsentry/sentry",
-              isPrimary: true,
+              repo: "getsentry/sentry"
             },
-          ],
+          ]
         }),
       ).rejects.toThrow(/junior_workspace_repos/);
       expect(
@@ -208,10 +246,9 @@ FOR EACH ROW EXECUTE FUNCTION junior_test_reject_workspace_repo()
           repos: [
             {
               provider: "github",
-              repo: "getsentry/sentry",
-              isPrimary: true,
+              repo: "getsentry/sentry"
             },
-          ],
+          ]
         }),
       ).rejects.toThrow(/junior_workspace_repos/);
       expect(await getWorkspace(getDb(), original.id)).toEqual(original);
@@ -232,26 +269,25 @@ FOR EACH ROW EXECUTE FUNCTION junior_test_reject_workspace_repo()
       repos: [
         {
           provider: "github",
-          repo: "getsentry/sentry",
-          isPrimary: true,
+          repo: "getsentry/sentry"
         },
-      ],
+      ]
     };
     const first = await app.request("http://localhost/api/workspaces", {
       body: JSON.stringify(body),
       headers: { "content-type": "application/json" },
-      method: "POST",
+      method: "POST"
     });
     expect(first.status).toBe(201);
 
     const second = await app.request("http://localhost/api/workspaces", {
       body: JSON.stringify(body),
       headers: { "content-type": "application/json" },
-      method: "POST",
+      method: "POST"
     });
     expect(second.status).toBe(400);
     expect(apiErrorSchema.parse(await second.json())).toEqual({
-      error: "Workspace name already exists: shared",
+      error: "Workspace name already exists: shared"
     });
   });
 });

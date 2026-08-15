@@ -29,7 +29,6 @@ export function normalizeWorkspaceRecipe(input: {
   repos: Array<{
     provider: string;
     repo: string;
-    isPrimary?: boolean;
   }>;
 }): WorkspaceRecipeInput {
   const name = input.name.trim().toLowerCase();
@@ -79,7 +78,6 @@ export function normalizeWorkspaceRecipe(input: {
     return {
       provider,
       repo,
-      isPrimary: entry.isPrimary === true,
     };
   });
 
@@ -104,18 +102,6 @@ export function normalizeWorkspaceRecipe(input: {
       );
     }
     checkoutPaths.add(key);
-  }
-
-  const primaryCount = repos.filter((repo) => repo.isPrimary).length;
-  if (repos.length > 0 && primaryCount === 0) {
-    throw new WorkspaceValidationError(
-      "Select one primary repository for AGENTS.md instructions.",
-    );
-  }
-  if (primaryCount > 1) {
-    throw new WorkspaceValidationError(
-      "A Workspace can have only one primary repository.",
-    );
   }
 
   return { name, setupScript, repos };

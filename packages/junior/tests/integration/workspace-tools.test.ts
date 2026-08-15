@@ -42,7 +42,6 @@ describe("Workspace tools", () => {
           {
             provider: "github",
             repo: "getsentry/sentry",
-            isPrimary: true,
           },
         ],
       };
@@ -100,7 +99,6 @@ describe("Workspace tools", () => {
           {
             provider: "github",
             repo: "getsentry/relay",
-            is_primary: true,
           },
         ],
       });
@@ -112,18 +110,17 @@ describe("Workspace tools", () => {
           {
             provider: "github",
             repo: "getsentry/sentry",
-            is_primary: true,
           },
         ],
       });
 
       expect(createTool.approvalMode).toBe("review");
       expect(createTool.describeProposal?.(createInput)).toBe(
-        "Create Workspace relay (1 repository; primary: getsentry/relay; includes a setup script).",
+        "Create Workspace relay (1 repository; includes a setup script).",
       );
       expect(updateTool.approvalMode).toBe("review");
       expect(updateTool.describeProposal?.(updateInput)).toBe(
-        "Replace Workspace sentry-web (1 repository; primary: getsentry/sentry; includes a setup script).",
+        "Replace Workspace sentry-web (1 repository; includes a setup script).",
       );
       expect(() =>
         createTool.prepareArguments!({
@@ -132,7 +129,6 @@ describe("Workspace tools", () => {
             {
               provider: "missing",
               repo: "getsentry/relay",
-              is_primary: true,
             },
           ],
         }),
@@ -191,7 +187,6 @@ describe("Workspace tools", () => {
                     provider: "github",
                     repo: "getsentry/relay",
                     checkout_path: "repos/relay",
-                    is_primary: true,
                   },
                 ],
               },
@@ -204,7 +199,6 @@ describe("Workspace tools", () => {
                     provider: "github",
                     repo: "getsentry/sentry",
                     checkout_path: "repos/sentry",
-                    is_primary: true,
                   },
                 ],
               },

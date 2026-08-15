@@ -4,7 +4,6 @@ export type RepoDraft = {
   key: string;
   provider: string;
   repo: string;
-  isPrimary: boolean;
 };
 
 export type WorkspaceDraft = {
@@ -13,12 +12,11 @@ export type WorkspaceDraft = {
   repos: RepoDraft[];
 };
 
-export function createRepoDraft(isPrimary = false): RepoDraft {
+export function createRepoDraft(): RepoDraft {
   return {
     key: crypto.randomUUID(),
     provider: "github",
     repo: "",
-    isPrimary,
   };
 }
 
@@ -26,7 +24,7 @@ export function createWorkspaceDraft(): WorkspaceDraft {
   return {
     name: "",
     setupScript: "",
-    repos: [createRepoDraft(true)],
+    repos: [createRepoDraft()],
   };
 }
 
@@ -37,12 +35,12 @@ export function editWorkspaceDraft(workspace: WorkspaceReport): WorkspaceDraft {
     repos:
       workspace.repos.length > 0
         ? workspace.repos.map((repo) => ({
-            key: crypto.randomUUID(),
+            // Stable keys keep focused inputs mounted across draft reseeds.
+            key: `${repo.provider}:${repo.repo.toLowerCase()}`,
             provider: repo.provider,
             repo: repo.repo,
-            isPrimary: repo.isPrimary,
           }))
-        : [createRepoDraft(true)],
+        : [createRepoDraft()],
   };
 }
 
@@ -53,7 +51,6 @@ export function workspaceDraftBody(draft: WorkspaceDraft) {
     repos: draft.repos.map((repo) => ({
       provider: repo.provider.trim(),
       repo: repo.repo.trim(),
-      isPrimary: repo.isPrimary,
     })),
   };
 }
@@ -66,5 +63,5 @@ export function canSaveWorkspaceDraft(
   if (draft.repos.some((repo) => !repo.provider.trim() || !repo.repo.trim())) {
     return false;
   }
-  return draft.repos.length === 0 || draft.repos.some((repo) => repo.isPrimary);
+  return true;
 }

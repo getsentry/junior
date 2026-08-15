@@ -1,14 +1,13 @@
-import { FolderGit2, Star, Trash2 } from "lucide-react";
+import { FolderGit2, Trash2 } from "lucide-react";
+import { Link } from "react-router";
 import type { WorkspaceReport } from "@sentry/junior/api/schema";
 
-import { Button } from "../../components/Button";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { Card } from "../../components/layout/Card";
 
 type WorkspaceListProps = {
   busy: boolean;
   onDelete(workspace: WorkspaceReport): void;
-  onEdit(workspace: WorkspaceReport): void;
   workspaces: WorkspaceReport[];
 };
 
@@ -30,7 +29,6 @@ export function WorkspaceList(props: WorkspaceListProps) {
               busy={props.busy}
               key={workspace.id}
               onDelete={props.onDelete}
-              onEdit={props.onEdit}
               workspace={workspace}
             />
           ))}
@@ -43,12 +41,11 @@ export function WorkspaceList(props: WorkspaceListProps) {
 function WorkspaceListItem(props: {
   busy: boolean;
   onDelete(workspace: WorkspaceReport): void;
-  onEdit(workspace: WorkspaceReport): void;
   workspace: WorkspaceReport;
 }) {
   const { workspace } = props;
   return (
-    <li className="flex items-start gap-3 p-4">
+    <li className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-3 p-4 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
       <div className="grid size-9 shrink-0 place-items-center rounded border border-white/10 bg-white/[0.03] text-[#beaaff]">
         <FolderGit2 aria-hidden="true" size={16} />
       </div>
@@ -73,35 +70,19 @@ function WorkspaceListItem(props: {
                 className="inline-flex items-center gap-1 rounded border border-white/10 px-2 py-1 font-mono text-xs text-dashboard-text-muted"
                 key={`${repo.provider}:${repo.repo}`}
               >
-                {repo.isPrimary ? (
-                  <Star
-                    aria-label="Primary"
-                    className="text-[#beaaff]"
-                    size={12}
-                  />
-                ) : null}
                 {repo.provider}:{repo.repo}
-                <span className="text-dashboard-text-muted/70">
-                  → {repo.checkoutPath}
-                </span>
               </span>
             ))
           )}
         </div>
-        {workspace.setupScript.trim() ? (
-          <p className="mt-2 mb-0 line-clamp-2 font-mono text-xs text-dashboard-text-muted">
-            {workspace.setupScript.trim()}
-          </p>
-        ) : null}
       </div>
-      <div className="flex shrink-0 items-center gap-2">
-        <Button
-          disabled={props.busy}
-          onClick={() => props.onEdit(workspace)}
-          type="button"
+      <div className="col-start-2 row-start-2 flex items-center gap-2 sm:col-start-3 sm:row-start-1">
+        <Link
+          className="inline-flex h-9 items-center rounded border border-white/15 bg-dashboard-surface-raised px-3 font-mono text-sm font-semibold leading-none text-dashboard-text no-underline transition-colors hover:border-white/30 hover:bg-dashboard-surface-hover"
+          to={`/system/workspaces/${encodeURIComponent(workspace.id)}`}
         >
-          Edit
-        </Button>
+          Manage
+        </Link>
         <button
           aria-label={`Delete ${workspace.name}`}
           className="inline-flex size-9 items-center justify-center rounded border border-white/10 bg-transparent text-dashboard-text-muted hover:border-rose-300/40 hover:text-rose-300 disabled:cursor-not-allowed disabled:opacity-50"

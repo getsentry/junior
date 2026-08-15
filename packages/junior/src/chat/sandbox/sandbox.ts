@@ -30,8 +30,8 @@ import {
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import { tryWorkspaceRepoCheckoutPath } from "@/chat/workspaces/checkout-path";
 import {
-  findSingleRepositoryDirectory,
-  resolveRepositoryInstructions,
+  listRepositoryDirectories,
+  resolveRepositoryInstructionsForDirectories,
   type RepositoryInstructions,
 } from "@/chat/repository-instructions";
 import { createSandboxRuntime } from "@/chat/sandbox/session";
@@ -82,7 +82,7 @@ export interface SandboxTools {
 }
 
 export interface SandboxAccess {
-  /** Resolve the AGENTS.md bundle for the selected repository directory. */
+  /** Resolve AGENTS.md instructions for each repository directory in the Workspace. */
   captureRepositoryInstructions(): Promise<RepositoryInstructions | undefined>;
   readonly tools: SandboxTools;
   readonly workspace: SandboxWorkspace;
@@ -799,16 +799,19 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
         return undefined;
       }
       const { fs } = await runtime.tools();
-      const primary = activeWorkspace?.repos.find((repo) => repo.isPrimary);
-      const primaryPath = primary
-        ? tryWorkspaceRepoCheckoutPath(primary.repo)
-        : undefined;
-      const selected = primaryPath
-        ? `${SANDBOX_WORKSPACE_ROOT}/${primaryPath}`
-        : await findSingleRepositoryDirectory(fs);
-      if (!selected) return undefined;
-      return await resolveRepositoryInstructions({
-        cwd: selected,
+      const workspaceDirectories =
+        activeWorkspace?.repos
+          .map((repo) => tryWorkspaceRepoCheckoutPath(repo.repo))
+          .filter((checkoutPath): checkoutPath is string => Boolean(checkoutPath))
+          .map(
+            (checkoutPath) => `${SANDBOX_WORKSPACE_ROOT}/${checkoutPath}`,
+          ) ?? [];
+      const directories =
+        workspaceDirectories.length > 0
+          ? workspaceDirectories
+          : await listRepositoryDirectories(fs);
+      return await resolveRepositoryInstructionsForDirectories({
+        directories,
         fs,
       });
     },

@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  normalizeWorkspaceRecipe,
-  WorkspaceValidationError,
-} from "@/chat/workspaces/validation";
+import { normalizeWorkspaceRecipe } from "@/chat/workspaces/validation";
 
 describe("normalizeWorkspaceRecipe", () => {
   it("normalizes names and providers", () => {
@@ -14,7 +11,6 @@ describe("normalizeWorkspaceRecipe", () => {
           {
             provider: " GitHub ",
             repo: " getsentry/sentry ",
-            isPrimary: true,
           },
         ],
       }),
@@ -25,19 +21,28 @@ describe("normalizeWorkspaceRecipe", () => {
         {
           provider: "github",
           repo: "getsentry/sentry",
-          isPrimary: true,
         },
       ],
     });
   });
 
-  it("requires one primary repository when repos exist", () => {
-    expect(() =>
+  it("allows repositories without a primary selection", () => {
+    expect(
       normalizeWorkspaceRecipe({
         name: "sentry",
-        repos: [{ provider: "github", repo: "getsentry/sentry" }],
+        repos: [
+          { provider: "github", repo: "getsentry/sentry" },
+          { provider: "github", repo: "getsentry/relay" },
+        ],
       }),
-    ).toThrow(WorkspaceValidationError);
+    ).toEqual({
+      name: "sentry",
+      setupScript: "",
+      repos: [
+        { provider: "github", repo: "getsentry/sentry" },
+        { provider: "github", repo: "getsentry/relay" },
+      ],
+    });
   });
 
   it("rejects checkout path collisions", () => {
@@ -48,7 +53,6 @@ describe("normalizeWorkspaceRecipe", () => {
           {
             provider: "github",
             repo: "getsentry/sentry",
-            isPrimary: true,
           },
           {
             provider: "github",

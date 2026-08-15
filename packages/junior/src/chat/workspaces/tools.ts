@@ -20,7 +20,6 @@ const repoSchema = z.object({
   provider: z.string(),
   repo: z.string(),
   checkout_path: z.string(),
-  is_primary: z.boolean(),
 });
 const workspaceSchema = z.object({
   id: z.string(),
@@ -38,7 +37,6 @@ function view(workspace: Workspace) {
       provider: repo.provider,
       repo: repo.repo,
       checkout_path: workspaceRepoCheckoutPath(repo.repo),
-      is_primary: repo.isPrimary,
     })),
   };
 }
@@ -66,10 +64,6 @@ function workspaceWriteSchemas(providers: [string, ...string[]]) {
         .trim()
         .min(1)
         .describe("Repository in owner/name format."),
-      is_primary: z
-        .boolean()
-        .describe("Whether this repository supplies AGENTS.md instructions.")
-        .optional(),
     })
     .strict();
   const workspaceInputSchema = z
@@ -90,9 +84,7 @@ function workspaceWriteSchemas(providers: [string, ...string[]]) {
       repos: z
         .array(repoInputSchema)
         .max(32)
-        .describe(
-          "Complete repository list. Select one primary repository when the list is not empty.",
-        ),
+        .describe("Complete repository list."),
     })
     .strict();
   return { providerNames, workspaceInputSchema };
@@ -109,7 +101,6 @@ function writeInput(input: WorkspaceWriteInput) {
     repos: input.repos.map((repo) => ({
       provider: repo.provider,
       repo: repo.repo,
-      isPrimary: repo.is_primary,
     })),
   };
 }
@@ -129,11 +120,9 @@ function describeWorkspaceWrite(
   action: "Create" | "Replace",
   input: WorkspaceWriteInput,
 ): string {
-  const primary = input.repos.find((repo) => repo.is_primary)?.repo;
   const repositories = `${input.repos.length} ${input.repos.length === 1 ? "repository" : "repositories"}`;
-  const primaryText = primary ? `; primary: ${primary}` : "";
   const setupText = input.setup_script ? "; includes a setup script" : "";
-  return `${action} Workspace ${input.name} (${repositories}${primaryText}${setupText}).`;
+  return `${action} Workspace ${input.name} (${repositories}${setupText}).`;
 }
 
 /** Build create/update tools for the currently preparable repository providers. */

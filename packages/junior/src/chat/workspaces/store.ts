@@ -21,7 +21,6 @@ function workspaceFromRows(
     repos: repos.map((repo) => ({
       provider: repo.provider,
       repo: repo.repo,
-      isPrimary: repo.isPrimary,
     })),
   };
 }
@@ -54,7 +53,6 @@ async function replaceWorkspaceRepos(
       workspaceId,
       provider: repo.provider,
       repo: repo.repo,
-      isPrimary: repo.isPrimary,
     })),
   );
 }
@@ -167,7 +165,6 @@ export async function createWorkspace(input: {
   repos: Array<{
     provider: string;
     repo: string;
-    isPrimary?: boolean;
   }>;
 }): Promise<Workspace> {
   const recipe = normalizeWorkspaceRecipe(input);
@@ -208,7 +205,6 @@ export async function updateWorkspace(
     repos: Array<{
       provider: string;
       repo: string;
-      isPrimary?: boolean;
     }>;
   },
 ): Promise<Workspace | undefined> {

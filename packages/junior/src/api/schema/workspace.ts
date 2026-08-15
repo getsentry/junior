@@ -4,7 +4,6 @@ const workspaceRepoInputSchema = z
   .object({
     provider: z.string(),
     repo: z.string(),
-    isPrimary: z.boolean().optional(),
   })
   .strict();
 
@@ -13,7 +12,13 @@ export const workspaceRepoSchema = z
     provider: z.string(),
     repo: z.string(),
     checkoutPath: z.string(),
-    isPrimary: z.boolean(),
+  })
+  .strict();
+
+const workspaceSnapshotSchema = z
+  .object({
+    id: z.string(),
+    generatedAt: z.iso.datetime(),
   })
   .strict();
 
@@ -23,6 +28,7 @@ export const workspaceSchema = z
     name: z.string(),
     setupScript: z.string(),
     repos: z.array(workspaceRepoSchema),
+    snapshot: workspaceSnapshotSchema.nullable(),
   })
   .strict();
 

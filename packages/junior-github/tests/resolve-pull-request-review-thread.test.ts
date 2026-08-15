@@ -99,9 +99,11 @@ describe("resolvePullRequestReviewThread", () => {
         },
         { toolCallId: "resolve-thread" },
       ),
-    ).rejects.toThrow(
-      "Junior can only resolve review threads on pull requests it authored.",
-    );
+    ).rejects.toMatchObject({
+      name: "PluginToolInputError",
+      message:
+        "Junior can only resolve review threads on pull requests it authored.",
+    });
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 });
