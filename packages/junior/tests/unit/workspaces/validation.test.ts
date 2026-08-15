@@ -78,4 +78,14 @@ describe("normalizeWorkspaceRecipe", () => {
       repos: [],
     });
   });
+
+  it("keeps an explicit prebuild value", () => {
+    expect(
+      normalizeWorkspaceRecipe({
+        name: "sentry",
+        prebuild: true,
+        repos: [],
+      }).prebuild,
+    ).toBe(true);
+  });
 });

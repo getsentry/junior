@@ -4,13 +4,17 @@ import { logException, logInfo } from "@/chat/logging";
 import { createPluginHookRunner } from "@/chat/plugins/agent-hooks";
 import { createSandbox } from "@/chat/sandbox/sandbox";
 import { listWorkspaces } from "@/chat/workspaces/store";
+import type { WaitUntilFn } from "@/handlers/types";
 
 const WORKSPACE_PREBUILD_ACTOR = {
   platform: "system",
   name: "workspace-prebuild",
 } as const;
 
-/** Build snapshots for Workspaces that opt into app-start background work. */
+// One attempt per process. Snapshot cache still dedupes across instances.
+let scheduled = false;
+
+/** Build snapshots for Workspaces that opt into background prebuild work. */
 export async function prebuildConfiguredWorkspaces(): Promise<void> {
   try {
     const workspaces = (await listWorkspaces(getDb())).filter(
@@ -47,7 +51,19 @@ export async function prebuildConfiguredWorkspaces(): Promise<void> {
       }),
     );
   } catch (error) {
-    // App startup must stay up when SQL or sandbox prep is unavailable.
+    // Callers must stay up when SQL or sandbox prep is unavailable.
     logException(error, "sandbox.workspace_prebuild.failed");
   }
+}
+
+/**
+ * Schedule Workspace prebuild once for this process.
+ *
+ * Call from a request-owned `waitUntil` (heartbeat). Vercel only extends
+ * lifetime for work registered during a request.
+ */
+export function scheduleWorkspacePrebuilds(waitUntil: WaitUntilFn): void {
+  if (scheduled) return;
+  scheduled = true;
+  waitUntil(prebuildConfiguredWorkspaces());
 }

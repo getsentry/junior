@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { logException } from "@/chat/logging";
+import { scheduleWorkspacePrebuilds } from "@/chat/workspaces/prebuild";
 import type { WaitUntilFn } from "@/handlers/types";
 
 export interface HeartbeatHandlerOptions {
@@ -41,6 +42,8 @@ export async function GET(
   }
 
   const nowMs = Date.now();
+  // Request-owned waitUntil keeps long Workspace snapshot builds alive on Vercel.
+  scheduleWorkspacePrebuilds(waitUntil);
   waitUntil(() =>
     runHeartbeat({
       conversationWorkQueue: options.conversationWorkQueue,

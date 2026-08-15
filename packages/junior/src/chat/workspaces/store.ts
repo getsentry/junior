@@ -245,9 +245,9 @@ export async function updateWorkspace(
     }>;
   },
 ): Promise<Workspace | undefined> {
-  const recipe = normalizeWorkspaceRecipe(input);
   const executor = getSqlExecutor();
   const now = new Date();
+  let recipeName = input.name;
 
   try {
     const updated = await executor.transaction(async () => {
@@ -259,6 +259,12 @@ export async function updateWorkspace(
         .limit(1);
       const existing = existingRows[0];
       if (!existing) return undefined;
+      // Keep the stored prebuild flag when a full-replace PUT omits it.
+      const recipe = normalizeWorkspaceRecipe({
+        ...input,
+        prebuild: input.prebuild ?? existing.prebuild,
+      });
+      recipeName = recipe.name;
       const existingRepos = await loadWorkspaceRepos(db, id);
       const snapshotChanged =
         existing.setupScript !== recipe.setupScript ||
@@ -288,7 +294,7 @@ export async function updateWorkspace(
   } catch (error) {
     if (isUniqueViolation(error)) {
       throw new WorkspaceValidationError(
-        `Workspace name already exists: ${recipe.name}`,
+        `Workspace name already exists: ${recipeName}`,
       );
     }
     throw error;
