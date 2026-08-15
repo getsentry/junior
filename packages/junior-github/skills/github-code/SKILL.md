@@ -23,7 +23,7 @@ Use `git` and `gh` for repository work. Use `github_createPullRequest`, not `gh 
 - Base conclusions on repository evidence. Do not claim a check ran unless it did.
 - For Junior-owned pull requests, push the branch before creating the PR. The runtime supplies repository-scoped GitHub App credentials for both; try the operations before requesting remediation and never ask for a user token.
 - Use `github_cloneRepository` instead of shelling out to `git clone` when a repository is not already available in the sandbox.
-- When `github_cloneRepository` reports matching Workspaces, call `switchWorkspace` before cloning. Pass `allowAdHoc=true` only for an intentional ad-hoc checkout.
+- If `github_cloneRepository` returns a tool input error about matching Workspaces, call `switchWorkspace`. The checkout is already present after a successful switch. Pass `allowAdHoc=true` only for an intentional ad-hoc checkout.
 - A tool-routing denial requires the named tool; only an upstream denial justifies permission remediation.
 - Stop for ambiguous targets, missing access, destructive operations, or unresolved upstream permission failures.
 
@@ -31,7 +31,7 @@ Use `git` and `gh` for repository work. Use `github_createPullRequest`, not `gh 
 
 ### 1. Resolve and inspect
 
-Identify the repo, checkout, default/current branches, worktree state, repo instructions, package manager, and relevant checks. Prefer an existing checkout or matching Workspace; otherwise clone shallowly. If clone refuses because Workspaces match, switch first or pass `allowAdHoc=true`.
+Identify the repo, checkout, default/current branches, worktree state, repo instructions, package manager, and relevant checks. Prefer an existing checkout or matching Workspace; otherwise clone shallowly. If clone returns a Workspace tool input error, switch Workspace instead of cloning again, or pass `allowAdHoc=true`.
 
 A shallow clone is for fast inspection, not history rewriting. Before rebasing, merge-base analysis, blame/history work, or comparing against a base absent locally, fetch the needed refs and deepen incrementally. Use `--unshallow` only when bounded deepening is insufficient. Never use a force push to compensate for incomplete history.
 

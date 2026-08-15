@@ -1,4 +1,7 @@
-import type { ToolRegistrationHookContext } from "@sentry/junior-plugin-api";
+import {
+  PluginToolInputError,
+  type ToolRegistrationHookContext,
+} from "@sentry/junior-plugin-api";
 import { describe, expect, it, vi } from "vitest";
 import { createGitHubCloneRepositoryTool } from "../src/tools/clone-repository.js";
 
@@ -93,21 +96,43 @@ describe("cloneRepository", () => {
     });
   });
 
-  it("rejects matching Workspaces before cloning", async () => {
+  it("rejects matching Workspaces as a tool input error before cloning", async () => {
     const run = vi.fn();
     const findByRepository = vi.fn().mockResolvedValue(["junior", "sentry"]);
     const tool = createGitHubCloneRepositoryTool(
       context(run, findByRepository),
     );
 
-    await expect(
-      tool.execute!({ repo: "getsentry/junior" }, {} as never),
-    ).rejects.toThrow(
-      'Repository getsentry/junior is part of Workspaces "junior", "sentry". Call switchWorkspace with one of those names before cloning, or pass allowAdHoc=true for an intentional ad-hoc checkout.',
-    );
+    const error = await tool.execute!(
+      { repo: "getsentry/junior" },
+      {} as never,
+    ).catch((value) => value);
+    expect(error).toBeInstanceOf(PluginToolInputError);
+    expect(error).toMatchObject({
+      name: "PluginToolInputError",
+      message:
+        'Repository getsentry/junior is part of Workspaces "junior", "sentry". Call switchWorkspace with one of those names; the checkout is already present after the switch. Pass allowAdHoc=true only for an intentional ad-hoc checkout.',
+    });
     expect(findByRepository).toHaveBeenCalledWith({
       provider: "github",
       repo: "getsentry/junior",
+    });
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it("rejects a single matching Workspace as a tool input error", async () => {
+    const run = vi.fn();
+    const findByRepository = vi.fn().mockResolvedValue(["junior"]);
+    const tool = createGitHubCloneRepositoryTool(
+      context(run, findByRepository),
+    );
+
+    await expect(
+      tool.execute!({ repo: "getsentry/junior" }, {} as never),
+    ).rejects.toMatchObject({
+      name: "PluginToolInputError",
+      message:
+        'Repository getsentry/junior is part of Workspace "junior". Call switchWorkspace with that name; the checkout is already present after the switch. Pass allowAdHoc=true only for an intentional ad-hoc checkout.',
     });
     expect(run).not.toHaveBeenCalled();
   });

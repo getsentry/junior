@@ -30,7 +30,7 @@ const inputSchema = z
       .boolean()
       .optional()
       .describe(
-        "Set true to clone without a Workspace when matching recipes exist. Prefer switchWorkspace first; use this only when an ad-hoc checkout is intentional.",
+        "Set true to keep an intentional ad-hoc checkout when matching Workspaces exist. Prefer switchWorkspace; the checkout is already present after a successful switch.",
       ),
   })
   .strict();
@@ -53,6 +53,22 @@ function parseRepo(value: string): { name: string; owner: string } {
     throw new PluginToolInputError('repo must use "owner/name" format');
   }
   return { owner: parts[0], name: parts[1] };
+}
+
+/** Agent-facing input rejection when a matching Workspace should be used instead. */
+function workspaceRequiredError(
+  repoId: string,
+  workspaces: string[],
+): PluginToolInputError {
+  const names = workspaces.map((name) => `"${name}"`).join(", ");
+  if (workspaces.length === 1) {
+    return new PluginToolInputError(
+      `Repository ${repoId} is part of Workspace ${names}. Call switchWorkspace with that name; the checkout is already present after the switch. Pass allowAdHoc=true only for an intentional ad-hoc checkout.`,
+    );
+  }
+  return new PluginToolInputError(
+    `Repository ${repoId} is part of Workspaces ${names}. Call switchWorkspace with one of those names; the checkout is already present after the switch. Pass allowAdHoc=true only for an intentional ad-hoc checkout.`,
+  );
 }
 
 function defaultDirectory(repoName: string): string {
@@ -109,7 +125,7 @@ export function createGitHubCloneRepositoryTool(
       readOnlyHint: true,
     },
     description:
-      "Clone a GitHub repository into the sandbox as an ad-hoc checkout. The destination must not already exist. When matching Workspaces exist, call switchWorkspace first, or pass allowAdHoc=true to keep an intentional ad-hoc clone.",
+      "Clone a GitHub repository into the sandbox as an ad-hoc checkout. The destination must not already exist. When matching Workspaces exist this is a tool input error: call switchWorkspace instead, or pass allowAdHoc=true for an intentional ad-hoc checkout.",
     describeProposal(input) {
       const directory =
         typeof input.directory === "string" && input.directory.length > 0
@@ -143,12 +159,7 @@ export function createGitHubCloneRepositoryTool(
         });
       }
       if (workspaces.length > 0 && input.allowAdHoc !== true) {
-        const names = workspaces.map((name) => `"${name}"`).join(", ");
-        throw new PluginToolInputError(
-          workspaces.length === 1
-            ? `Repository ${repoId} is part of Workspace ${names}. Call switchWorkspace with that name before cloning, or pass allowAdHoc=true for an intentional ad-hoc checkout.`
-            : `Repository ${repoId} is part of Workspaces ${names}. Call switchWorkspace with one of those names before cloning, or pass allowAdHoc=true for an intentional ad-hoc checkout.`,
-        );
+        throw workspaceRequiredError(repoId, workspaces);
       }
       const directory = input.directory ?? defaultDirectory(repo.name);
       const rootSegment = directory.split("/")[0] ?? directory;
