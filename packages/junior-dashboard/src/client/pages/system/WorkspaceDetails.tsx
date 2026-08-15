@@ -49,11 +49,18 @@ export function WorkspaceDetails(props: {
           </EmptyTelemetry>
         </Card>
       ) : (
-        <WorkspaceUsageChart
-          days={days}
-          range={props.range}
-          workspaceName={props.workspace.name}
-        />
+        <div className="grid min-w-0 gap-3">
+          {statsQuery.error ? (
+            <p className="m-0 font-mono text-xs text-rose-200/65">
+              Workspace usage refresh failed. Showing cached data.
+            </p>
+          ) : null}
+          <WorkspaceUsageChart
+            days={days}
+            range={props.range}
+            workspaceName={props.workspace.name}
+          />
+        </div>
       )}
     </div>
   );
