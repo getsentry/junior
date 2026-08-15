@@ -26,12 +26,17 @@ const inputSchema = z
         "Optional destination directory under the sandbox root. Defaults to repos/{name}.",
       )
       .optional(),
+    allowAdHoc: z
+      .boolean()
+      .optional()
+      .describe(
+        "Set true to clone without a Workspace when matching recipes exist. Prefer switchWorkspace first; use this only when an ad-hoc checkout is intentional.",
+      ),
   })
   .strict();
 const cloneSchema = z.object({
   path: z.string(),
   repo: z.string(),
-  workspaces: z.array(z.string()),
 });
 type Clone = z.output<typeof cloneSchema>;
 interface Result extends PluginToolOutput, Clone {
@@ -89,7 +94,7 @@ async function removePartialClone(
   }
 }
 
-/** Clone one GitHub repository into the sandbox workspace. */
+/** Clone one GitHub repository into the sandbox as an ad-hoc checkout. */
 export function createGitHubCloneRepositoryTool(
   ctx: ToolRegistrationHookContext,
 ) {
@@ -104,21 +109,47 @@ export function createGitHubCloneRepositoryTool(
       readOnlyHint: true,
     },
     description:
-      "Clone a GitHub repository into the sandbox workspace. The destination must not already exist.",
+      "Clone a GitHub repository into the sandbox as an ad-hoc checkout. The destination must not already exist. When matching Workspaces exist, call switchWorkspace first, or pass allowAdHoc=true to keep an intentional ad-hoc clone.",
     describeProposal(input) {
       const directory =
         typeof input.directory === "string" && input.directory.length > 0
           ? input.directory
           : undefined;
+      const adHoc =
+        input.allowAdHoc === true ? " as an intentional ad-hoc checkout" : "";
       return directory
-        ? `Shallow-clone ${input.repo} into the local sandbox at ${directory} for inspection (no GitHub mutation).`
-        : `Shallow-clone ${input.repo} into the local sandbox for inspection (no GitHub mutation).`;
+        ? `Shallow-clone ${input.repo} into the local sandbox at ${directory}${adHoc} for inspection (no GitHub mutation).`
+        : `Shallow-clone ${input.repo} into the local sandbox${adHoc} for inspection (no GitHub mutation).`;
     },
     executionMode: "sequential",
     inputSchema,
     outputSchema,
     async execute(input, options): Promise<Result> {
       const repo = parseRepo(input.repo);
+      const repoId = `${repo.owner}/${repo.name}`;
+      // Look up matching recipes before any sandbox write so a later
+      // switchWorkspace does not discard a just-created ad-hoc clone.
+      let workspaces: string[] = [];
+      try {
+        workspaces = await ctx.workspaces.findByRepository({
+          provider: "github",
+          repo: repoId,
+        });
+      } catch (error) {
+        // Fail open: a lookup outage must not block inspection clones.
+        ctx.log.error("github.clone.workspaces_lookup.failed", {
+          repo: repoId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      if (workspaces.length > 0 && input.allowAdHoc !== true) {
+        const names = workspaces.map((name) => `"${name}"`).join(", ");
+        throw new PluginToolInputError(
+          workspaces.length === 1
+            ? `Repository ${repoId} is part of Workspace ${names}. Call switchWorkspace with that name before cloning, or pass allowAdHoc=true for an intentional ad-hoc checkout.`
+            : `Repository ${repoId} is part of Workspaces ${names}. Call switchWorkspace with one of those names before cloning, or pass allowAdHoc=true for an intentional ad-hoc checkout.`,
+        );
+      }
       const directory = input.directory ?? defaultDirectory(repo.name);
       const rootSegment = directory.split("/")[0] ?? directory;
       if (isReservedSandboxDirectory(rootSegment)) {
@@ -181,23 +212,7 @@ export function createGitHubCloneRepositoryTool(
           `GitHub repository clone failed: ${clone.stderr.trim() || `exit ${clone.exitCode}`}`,
         );
       }
-      const repoId = `${repo.owner}/${repo.name}`;
-      let workspaces: string[] = [];
-      try {
-        workspaces = await ctx.workspaces.findByRepository({
-          provider: "github",
-          repo: repoId,
-        });
-      } catch (error) {
-        // Clone already succeeded; keep the checkout and surface the lookup as a
-        // host diagnostic rather than failing the tool.
-        ctx.log.error("github.clone.workspaces_lookup.failed", {
-          repo: repoId,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-      const data = { repo: repoId, path, workspaces };
-      return { target: "cloneRepository", ...data };
+      return { target: "cloneRepository", repo: repoId, path };
     },
   });
 }

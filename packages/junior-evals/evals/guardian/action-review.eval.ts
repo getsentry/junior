@@ -217,7 +217,7 @@ describeEval("Guardian Action Review Snapshots", guardianEvals, (it) => {
             readOnlyHint: true,
           },
           description:
-            "Clone a GitHub repository into the sandbox workspace. The destination must not already exist.",
+            "Clone a GitHub repository into the sandbox as an ad-hoc checkout. The destination must not already exist. When matching Workspaces exist, call switchWorkspace first, or pass allowAdHoc=true to keep an intentional ad-hoc clone.",
           identity: {
             id: "github.cloneRepository",
             name: "cloneRepository",
