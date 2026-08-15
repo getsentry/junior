@@ -397,6 +397,9 @@ test("opens and closes a conversation in the mobile workspace", async ({
   await expect(
     page.getByRole("link", { name: "Conversations", exact: true }),
   ).toBeHidden();
+  await expect(
+    page.getByRole("button", { name: "Archive Investigate checkout latency" }),
+  ).toBeVisible();
   await navigationTrigger.click();
   await expect(page.getByText(/^junior version /)).toBeVisible();
   const closeNavigation = page.getByRole("button", {
