@@ -1,0 +1,43 @@
+{
+  "commitSha": "417e0bfac035f6bd845757d6c2cd35425b62906b",
+  "mode": "path",
+  "reasons": [
+    "packages/junior-dashboard/src/client/conversations/ConversationPage.tsx",
+    "packages/junior-dashboard/src/client/conversations/ConversationSidebar.tsx",
+    "packages/junior-dashboard/src/client/conversations/ConversationTranscript.tsx",
+    "packages/junior-dashboard/src/tailwind.css"
+  ],
+  "scenarioIds": [
+    "conversations",
+    "conversation-detail",
+    "system",
+    "component-gallery"
+  ],
+  "shots": [
+    {
+      "file": "conversations__desktop.png",
+      "label": "Conversations · desktop"
+    },
+    {
+      "file": "conversations__mobile.png",
+      "label": "Conversations · mobile"
+    },
+    {
+      "file": "conversation-detail__desktop.png",
+      "label": "Conversation detail · desktop"
+    },
+    {
+      "file": "conversation-detail__mobile.png",
+      "label": "Conversation detail · mobile"
+    },
+    {
+      "file": "system__desktop.png",
+      "label": "System · desktop"
+    },
+    {
+      "file": "component-gallery__desktop.png",
+      "label": "Component gallery · desktop"
+    }
+  ],
+  "skipped": false
+}
