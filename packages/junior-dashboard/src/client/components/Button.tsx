@@ -1,4 +1,5 @@
-import type { ButtonHTMLAttributes } from "react";
+import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { Link, type LinkProps } from "react-router";
 
 import { cn } from "../styles";
 
@@ -14,6 +15,13 @@ export type ToggleButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant: ToggleButtonVariant;
 };
 
+export type ButtonLinkProps = LinkProps & {
+  children: ReactNode;
+};
+
+const buttonClassName =
+  "inline-flex h-9 max-w-full items-center gap-2 rounded border border-white/15 bg-dashboard-surface-raised px-3 font-mono text-sm font-semibold leading-none text-dashboard-text transition-colors hover:border-white/30 hover:bg-dashboard-surface-hover hover:text-dashboard-text";
+
 /** Render the dashboard's standard bordered command button surface. */
 export function Button({
   className,
@@ -28,11 +36,24 @@ export function Button({
         "font-mono transition-colors disabled:cursor-not-allowed disabled:opacity-50",
         size === "icon"
           ? "grid size-9 place-items-center rounded-md border-0 bg-transparent p-0 text-dashboard-text-muted hover:!bg-white/10 hover:!text-dashboard-text focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55 disabled:hover:!bg-transparent disabled:hover:!text-dashboard-text-muted"
-          : "inline-flex h-9 max-w-full items-center gap-2 rounded border border-white/15 bg-dashboard-surface-raised px-3 text-sm font-semibold leading-none text-dashboard-text hover:border-white/30 hover:bg-dashboard-surface-hover hover:text-dashboard-text disabled:hover:border-white/15 disabled:hover:bg-dashboard-surface-raised disabled:hover:text-dashboard-text",
+          : cn(
+              buttonClassName,
+              "disabled:hover:border-white/15 disabled:hover:bg-dashboard-surface-raised disabled:hover:text-dashboard-text",
+            ),
         props.disabled ? "" : "cursor-pointer",
         className,
       )}
       type={type}
+    />
+  );
+}
+
+/** Render a dashboard navigation link with the standard button surface. */
+export function ButtonLink({ className, ...props }: ButtonLinkProps) {
+  return (
+    <Link
+      {...props}
+      className={cn(buttonClassName, "no-underline", className)}
     />
   );
 }

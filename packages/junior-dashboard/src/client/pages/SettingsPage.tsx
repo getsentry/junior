@@ -6,6 +6,7 @@ import {
   type DashboardIdentity,
 } from "../../api/schema";
 import { Button } from "../components/Button";
+import { InlineError } from "../components/InlineError";
 import { patch } from "../http";
 import { dashboardContainerClass } from "../styles";
 import type { DashboardCoreData } from "../types";
@@ -90,9 +91,9 @@ export function SettingsPage({ identity }: SettingsPageProps) {
               <p className="m-0 text-sm text-emerald-300">Changes saved.</p>
             ) : null}
             {updateProfile.isError ? (
-              <p className="m-0 text-sm text-rose-300">
+              <InlineError>
                 Could not save your display name. Try again.
-              </p>
+              </InlineError>
             ) : null}
           </div>
         </form>

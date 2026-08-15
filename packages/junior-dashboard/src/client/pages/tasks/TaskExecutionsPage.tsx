@@ -13,6 +13,7 @@ import type {
 } from "@sentry/junior/api/schema";
 
 import { useTaskExecutionsData } from "../../api";
+import { InlineError } from "../../components/InlineError";
 import { LoadingView } from "../../components/LoadingView";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
@@ -52,12 +53,12 @@ export function TaskExecutionsPage(props: { enabled: boolean }) {
           title="Task executions"
         />
         <Card padding="md">
-          <p className="m-0 text-sm text-rose-300">
+          <InlineError>
             {query.error instanceof DashboardApiError &&
             query.error.status === 404
               ? "This task was not found or is not visible to you."
               : "Task executions could not be loaded. Try again."}
-          </p>
+          </InlineError>
           <Link
             className="mt-3 inline-flex items-center gap-2 font-mono text-xs text-dashboard-text-muted no-underline hover:text-dashboard-text"
             to="/tasks/list"

@@ -5,6 +5,7 @@ import type { TaskRun } from "@sentry/junior/api/schema";
 import { useTaskRunsData } from "../../api";
 import { ToggleButton } from "../../components/Button";
 import { FilterBar, FilterGroup } from "../../components/FilterBar";
+import { InlineError } from "../../components/InlineError";
 import { LoadingView } from "../../components/LoadingView";
 import {
   pageCount,
@@ -124,9 +125,7 @@ export function TaskRunsPage(props: { enabled: boolean }) {
       </div>
       {query.error ? (
         <Card padding="md">
-          <p className="m-0 text-sm text-rose-300">
-            Task runs could not be loaded. Try again.
-          </p>
+          <InlineError>Task runs could not be loaded. Try again.</InlineError>
         </Card>
       ) : visibleRuns.length === 0 ? (
         <Card padding="md">

@@ -14,6 +14,7 @@ import {
 import { useTasksData } from "../../api";
 import { Button, ToggleButton } from "../../components/Button";
 import { FilterBar, FilterGroup } from "../../components/FilterBar";
+import { InlineError } from "../../components/InlineError";
 import { LoadingView } from "../../components/LoadingView";
 import {
   pageCount,
@@ -268,9 +269,7 @@ export function TasksPage(props: {
           </div>
           {query.error ? (
             <Card padding="md">
-              <p className="m-0 text-sm text-rose-300">
-                Tasks could not be loaded. Try again.
-              </p>
+              <InlineError>Tasks could not be loaded. Try again.</InlineError>
             </Card>
           ) : visibleTaskCount === 0 ? (
             <Card padding="md">
@@ -325,9 +324,9 @@ export function TasksPage(props: {
             </p>
           ) : null}
           {deletion.error ? (
-            <p className="m-0 text-center text-sm text-rose-300">
+            <InlineError className="text-center">
               The task could not be deleted. Try again.
-            </p>
+            </InlineError>
           ) : null}
           <TaskDetailsDrawer
             onClose={() => navigate(tasksPath(listPath))}

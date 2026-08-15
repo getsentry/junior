@@ -2,6 +2,7 @@ import { Plus, Trash2 } from "lucide-react";
 import type { FormEvent, ReactNode } from "react";
 
 import { Button } from "../../components/Button";
+import { InlineError } from "../../components/InlineError";
 import { Card } from "../../components/layout/Card";
 import {
   createRepoDraft,
@@ -195,11 +196,7 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
           />
         </Field>
 
-        {props.error ? (
-          <p className="m-0 text-sm text-rose-300" role="alert">
-            {props.error}
-          </p>
-        ) : null}
+        {props.error ? <InlineError>{props.error}</InlineError> : null}
 
         <div className="flex flex-wrap items-center gap-3 border-t border-white/[0.06] pt-5">
           <Button disabled={!props.canSave} type="submit">

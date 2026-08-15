@@ -10,6 +10,7 @@ import { deleteDashboardResource, fetchDashboardJson, post } from "../http";
 import { dashboardContainerClass } from "../styles";
 import { getDashboardAgentName } from "../agentName";
 import { Button } from "../components/Button";
+import { InlineError } from "../components/InlineError";
 
 const personalTokensQueryKey = ["dashboard", "personal-tokens"] as const;
 
@@ -146,7 +147,7 @@ export function PersonalTokensPage() {
           )}
 
           {displayedError ? (
-            <p className="mb-0 text-sm text-rose-300">{displayedError}</p>
+            <InlineError className="mt-4">{displayedError}</InlineError>
           ) : null}
 
           <div className="mt-5 space-y-2">
