@@ -143,6 +143,12 @@ describe("snapshot resolution", () => {
     expect(first.snapshotId).toBe("snap_new");
     expect(first.cacheHit).toBe(false);
     expect(first.resolveOutcome).toBe("rebuilt");
+    const [cacheKey] = [...store.keys()];
+    const cached = JSON.parse(store.get(cacheKey) ?? "") as {
+      buildDurationMs?: number;
+    };
+    expect(cached.buildDurationMs).toEqual(expect.any(Number));
+    expect(cached.buildDurationMs).toBeGreaterThanOrEqual(0);
 
     const forced = await resolveSnapshot({
       runtime: "node22",

@@ -28,6 +28,8 @@ const cachedSnapshotSchema = z
     runtime: z.string(),
     createdAtMs: z.number(),
     dependencyCount: z.number(),
+    // Optional so snapshots written before duration tracking still load.
+    buildDurationMs: z.number().int().nonnegative().optional(),
   })
   .strict();
 
@@ -115,7 +117,7 @@ async function build(
   timeoutMs: number,
   signal?: AbortSignal,
   prepare?: (sandbox: SandboxSession) => Promise<void>,
-): Promise<string> {
+): Promise<{ snapshotId: string; buildDurationMs: number }> {
   return await trace(
     "sandbox.snapshot.build",
     "sandbox.snapshot.build",
@@ -124,6 +126,7 @@ async function build(
       "app.sandbox.snapshot.dependency_count": value.dependencyCount,
     },
     async () => {
+      const startedAtMs = Date.now();
       const sandboxCredentials = getVercelSandboxCredentials();
       const resources = getSandboxResources();
       const sandbox = createSandboxSession(
@@ -140,7 +143,7 @@ async function build(
         await install.dependencies(sandbox, value.dependencies, signal);
         await install.postinstall(sandbox, value.postinstall, signal);
         await prepare?.(sandbox);
-        return await trace(
+        const snapshotId = await trace(
           "sandbox.snapshot.capture",
           "sandbox.snapshot.capture",
           {
@@ -151,6 +154,10 @@ async function build(
             return snapshot.snapshotId;
           },
         );
+        return {
+          snapshotId,
+          buildDurationMs: Math.max(0, Date.now() - startedAtMs),
+        };
       } finally {
         try {
           await sandbox.stop();
@@ -352,7 +359,7 @@ export async function resolve(params: {
           }
 
           await params.onProgress?.("building_snapshot");
-          const nextSnapshotId = await build(
+          const built = await build(
             currentProfile,
             params.runtime,
             params.timeoutMs,
@@ -361,13 +368,14 @@ export async function resolve(params: {
           );
           await setCachedSnapshot({
             profileHash: currentProfile.hash,
-            snapshotId: nextSnapshotId,
+            snapshotId: built.snapshotId,
             runtime: params.runtime,
             createdAtMs: Date.now(),
             dependencyCount: currentProfile.dependencyCount,
+            buildDurationMs: built.buildDurationMs,
           });
           await params.onProgress?.("build_complete");
-          return { snapshotId: nextSnapshotId, source: "built" };
+          return { snapshotId: built.snapshotId, source: "built" };
         },
         canUseCachedSnapshot,
         async () => {

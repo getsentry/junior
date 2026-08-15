@@ -127,7 +127,8 @@ test("shows Workspace snapshot details on its direct route", async ({ page }) =>
         setupScript: "pnpm install",
         snapshot: {
           id: "snap_workspace_123",
-          generatedAt: new Date(Date.now() - 60_000).toISOString()
+          generatedAt: new Date(Date.now() - 60_000).toISOString(),
+          buildDurationMs: 45_000
         },
         repos: [
           {
@@ -146,6 +147,7 @@ test("shows Workspace snapshot details on its direct route", async ({ page }) =>
     page.getByRole("heading", { name: "Current snapshot" }),
   ).toBeVisible();
   await expect(page.getByText("snap_workspace_123")).toBeVisible();
+  await expect(page.getByText("45s")).toBeVisible();
   await expect(page.getByLabel("Name")).toHaveValue("sentry");
   await expect(
     page.getByRole("link", { name: "Back to Workspaces" }),

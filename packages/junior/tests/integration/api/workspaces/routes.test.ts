@@ -135,6 +135,95 @@ describe("workspace admin API", () => {
     });
   });
 
+  it("returns snapshot build duration on Workspace detail", async () => {
+    const app = authenticatedApi();
+    const createResponse = await app.request("http://localhost/api/workspaces", {
+      body: JSON.stringify({
+        name: "snapshot-duration",
+        repos: [{ provider: "github", repo: "getsentry/sentry" }],
+      }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+    expect(createResponse.status).toBe(201);
+    const created = workspaceSchema.parse(await createResponse.json());
+    const workspace = await getWorkspace(getDb(), created.id);
+    expect(workspace).toBeDefined();
+
+    const profileHash = workspaceProfileHash(SANDBOX_RUNTIME, workspace!);
+    expect(profileHash).toBeTruthy();
+    const state = getStateAdapter();
+    await state.connect();
+    await state.set(
+      `junior:sandbox_snapshot_profile:${profileHash}`,
+      JSON.stringify({
+        profileHash,
+        snapshotId: "snap_duration",
+        runtime: SANDBOX_RUNTIME,
+        createdAtMs: Date.parse("2026-03-01T00:00:00.000Z"),
+        dependencyCount: 1,
+        buildDurationMs: 12_345,
+      }),
+    );
+
+    const detailResponse = await app.request(
+      `http://localhost/api/workspaces/${created.id}`,
+    );
+    expect(detailResponse.status).toBe(200);
+    expect(workspaceSchema.parse(await detailResponse.json())).toMatchObject({
+      id: created.id,
+      snapshot: {
+        id: "snap_duration",
+        generatedAt: "2026-03-01T00:00:00.000Z",
+        buildDurationMs: 12_345,
+      },
+    });
+  });
+
+  it("returns null build duration for legacy snapshot cache entries", async () => {
+    const app = authenticatedApi();
+    const createResponse = await app.request("http://localhost/api/workspaces", {
+      body: JSON.stringify({
+        name: "snapshot-legacy",
+        repos: [{ provider: "github", repo: "getsentry/sentry" }],
+      }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+    expect(createResponse.status).toBe(201);
+    const created = workspaceSchema.parse(await createResponse.json());
+    const workspace = await getWorkspace(getDb(), created.id);
+    expect(workspace).toBeDefined();
+
+    const profileHash = workspaceProfileHash(SANDBOX_RUNTIME, workspace!);
+    expect(profileHash).toBeTruthy();
+    const state = getStateAdapter();
+    await state.connect();
+    await state.set(
+      `junior:sandbox_snapshot_profile:${profileHash}`,
+      JSON.stringify({
+        profileHash,
+        snapshotId: "snap_legacy",
+        runtime: SANDBOX_RUNTIME,
+        createdAtMs: Date.parse("2026-03-01T00:00:00.000Z"),
+        dependencyCount: 1,
+      }),
+    );
+
+    const detailResponse = await app.request(
+      `http://localhost/api/workspaces/${created.id}`,
+    );
+    expect(detailResponse.status).toBe(200);
+    expect(workspaceSchema.parse(await detailResponse.json())).toMatchObject({
+      id: created.id,
+      snapshot: {
+        id: "snap_legacy",
+        generatedAt: "2026-03-01T00:00:00.000Z",
+        buildDurationMs: null,
+      },
+    });
+  });
+
   it("returns Workspace detail when snapshot cache lookup fails", async () => {
     const app = authenticatedApi();
     const createResponse = await app.request("http://localhost/api/workspaces", {
