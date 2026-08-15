@@ -1,36 +1,41 @@
-import { useQuery } from "@tanstack/react-query";
-import {
-  statsReportSchema,
-  type WorkspaceReport,
+import type {
+  StatsReport,
+  WorkspaceReport,
 } from "@sentry/junior/api/schema";
 
+import { useStatsData } from "../../api";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { WorkspaceUsageChart } from "../../components/charts/WorkspaceUsageChart";
 import { workspaceUsageDays } from "../../components/charts/workspaceUsage";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
-import { fetchDashboardJson } from "../../http";
 import { SnapshotSummary } from "./SnapshotSummary";
 
-/** Show snapshot metadata and switch volume for one Workspace recipe. */
+/** Load Workspace usage stats and render snapshot plus switch volume. */
 export function WorkspaceDetails(props: {
   range: TimeRangeDays;
   workspace: WorkspaceReport;
 }) {
-  const statsQuery = useQuery({
-    queryKey: ["dashboard", "stats", "workspace-switch"],
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(statsReportSchema, "/api/stats", signal),
-    retry: false,
-  });
-  const days = statsQuery.data
-    ? workspaceUsageDays({
-        workspaceId: props.workspace.id,
-        range: props.range,
-        stats: statsQuery.data.stats,
-      })
-    : [];
+  const statsQuery = useStatsData();
+  return (
+    <WorkspaceDetailsContent
+      error={Boolean(statsQuery.error)}
+      loading={statsQuery.isPending}
+      range={props.range}
+      stats={statsQuery.data}
+      workspace={props.workspace}
+    />
+  );
+}
 
+/** Present snapshot metadata and switch volume for one Workspace recipe. */
+export function WorkspaceDetailsContent(props: {
+  error: boolean;
+  loading: boolean;
+  range: TimeRangeDays;
+  stats: StatsReport | undefined;
+  workspace: WorkspaceReport;
+}) {
   return (
     <div className="grid min-w-0 gap-4">
       <SnapshotSummary
@@ -40,23 +45,29 @@ export function WorkspaceDetails(props: {
         snapshot={props.workspace.snapshot}
         title="Current snapshot"
       />
-      {!statsQuery.data ? (
+      {!props.stats ? (
         <Card padding="sm">
           <EmptyTelemetry>
-            {statsQuery.error
+            {props.error
               ? "Workspace usage failed to load."
-              : "Loading Workspace usage."}
+              : props.loading
+                ? "Loading Workspace usage."
+                : "No usage in this period."}
           </EmptyTelemetry>
         </Card>
       ) : (
         <div className="grid min-w-0 gap-3">
-          {statsQuery.error ? (
+          {props.error ? (
             <p className="m-0 font-mono text-xs text-rose-200/65">
               Workspace usage refresh failed. Showing cached data.
             </p>
           ) : null}
           <WorkspaceUsageChart
-            days={days}
+            days={workspaceUsageDays({
+              workspaceId: props.workspace.id,
+              range: props.range,
+              stats: props.stats.stats,
+            })}
             range={props.range}
             workspaceName={props.workspace.name}
           />

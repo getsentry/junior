@@ -4,6 +4,7 @@ import type { LocationDetailReport } from "@sentry/junior/api/schema";
 import {
   conversationFeedSchema,
   conversationStatsReportSchema,
+  statsReportSchema,
 } from "@sentry/junior/api/schema";
 import {
   actorDirectoryReportSchema,
@@ -245,6 +246,16 @@ export function usePluginReportsData() {
         "/api/plugin-reports",
         signal,
       ),
+    retry: false,
+  });
+}
+
+/** Fetch named daily counters used by Workspace usage charts. */
+export function useStatsData() {
+  return useQuery({
+    queryKey: ["dashboard", "stats"],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(statsReportSchema, "/api/stats", signal),
     retry: false,
   });
 }

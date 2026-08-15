@@ -1,9 +1,8 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { StatsReport, WorkspaceReport } from "@sentry/junior/api/schema";
 
-import { WorkspaceDetails } from "../src/client/pages/system/WorkspaceDetails";
+import { WorkspaceDetailsContent } from "../src/client/pages/system/WorkspaceDetails";
 
 const workspace: WorkspaceReport = {
   id: "11111111-1111-4111-8111-111111111111",
@@ -13,14 +12,6 @@ const workspace: WorkspaceReport = {
   snapshot: null,
 };
 
-function render(client: QueryClient): string {
-  return renderToStaticMarkup(
-    <QueryClientProvider client={client}>
-      <WorkspaceDetails range={30} workspace={workspace} />
-    </QueryClientProvider>,
-  );
-}
-
 const emptyStats: StatsReport = {
   generatedAt: "2026-08-15T12:00:00.000Z",
   stats: [],
@@ -28,35 +19,48 @@ const emptyStats: StatsReport = {
   windowStart: "2026-05-18",
 };
 
-describe("WorkspaceDetails", () => {
-  it("keeps pending stats distinct from empty usage", () => {
-    const pending = render(new QueryClient());
+function render(props: {
+  error?: boolean;
+  loading?: boolean;
+  stats?: StatsReport;
+}): string {
+  return renderToStaticMarkup(
+    <WorkspaceDetailsContent
+      error={props.error ?? false}
+      loading={props.loading ?? false}
+      range={30}
+      stats={props.stats}
+      workspace={workspace}
+    />,
+  );
+}
+
+describe("WorkspaceDetailsContent", () => {
+  it("keeps pending, empty, failed, and stale refresh states distinct", () => {
+    const pending = render({ loading: true });
     expect(pending).toContain("Loading Workspace usage.");
     expect(pending).not.toContain("No usage in this period.");
+    expect(pending).not.toContain("Workspace usage failed to load.");
 
-    const loadedClient = new QueryClient();
-    loadedClient.setQueryData(["dashboard", "stats", "workspace-switch"], emptyStats);
-    expect(render(loadedClient)).toContain("No usage in this period.");
-  });
-
-  it("keeps cached usage visible when a background refresh fails", () => {
-    const client = new QueryClient();
-    const queryKey = ["dashboard", "stats", "workspace-switch"] as const;
-    client.setQueryData(queryKey, emptyStats);
-    const query = client.getQueryCache().find({ queryKey });
-    query?.setState({
-      ...query.state,
-      error: new Error("refresh failed"),
-      errorUpdatedAt: Date.now(),
-      fetchStatus: "idle",
-      status: "error",
-    });
-
-    const html = render(client);
-    expect(html).toContain(
+    const empty = render({ stats: emptyStats });
+    expect(empty).toContain("No usage in this period.");
+    expect(empty).not.toContain("Loading Workspace usage.");
+    expect(empty).not.toContain("Workspace usage failed to load.");
+    expect(empty).not.toContain(
       "Workspace usage refresh failed. Showing cached data.",
     );
-    expect(html).toContain("No usage in this period.");
-    expect(html).not.toContain("Workspace usage failed to load.");
+
+    const failed = render({ error: true });
+    expect(failed).toContain("Workspace usage failed to load.");
+    expect(failed).not.toContain("Loading Workspace usage.");
+    expect(failed).not.toContain("No usage in this period.");
+
+    const stale = render({ error: true, stats: emptyStats });
+    expect(stale).toContain(
+      "Workspace usage refresh failed. Showing cached data.",
+    );
+    expect(stale).toContain("No usage in this period.");
+    expect(stale).not.toContain("Workspace usage failed to load.");
+    expect(stale).not.toContain("Loading Workspace usage.");
   });
 });
