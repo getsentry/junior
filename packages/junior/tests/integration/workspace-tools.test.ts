@@ -172,6 +172,19 @@ describe("Workspace tools", () => {
           ],
         }),
       ).toThrow(/Invalid tool arguments/);
+      expect(() =>
+        updateTool.prepareArguments!({
+          id: workspace.id,
+          name: "sentry-web",
+          repos: [
+            {
+              provider: "github",
+              repo: "getsentry/sentry",
+            },
+          ],
+          extra: true,
+        }),
+      ).toThrow(/Invalid tool arguments/);
       await expect(
         createTool.execute!(createInput, { toolCallId: "create-workspace" }),
       ).resolves.toMatchObject({ workspace: { name: "relay" } });

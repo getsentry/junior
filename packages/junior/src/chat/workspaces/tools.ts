@@ -178,9 +178,11 @@ function createWorkspaceWriteTools(
         readOnlyHint: false,
       },
       description: `Replace an install-wide Workspace recipe. Repository providers: ${providerNames}. Use the Workspace ID returned by listWorkspaces.`,
-      inputSchema: workspaceInputSchema.extend({
-        id: z.string().uuid().describe("Workspace ID from listWorkspaces."),
-      }),
+      inputSchema: workspaceInputSchema
+        .extend({
+          id: z.string().uuid().describe("Workspace ID from listWorkspaces."),
+        })
+        .strict(),
       prepareArguments(args) {
         const input = args as WorkspaceWriteInput & { id: string };
         return {
