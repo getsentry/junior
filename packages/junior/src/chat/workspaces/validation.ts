@@ -11,6 +11,7 @@ const MAX_REPOS = 32;
 export interface WorkspaceRecipeInput {
   name: string;
   setupScript: string;
+  prebuild: boolean;
   repos: WorkspaceRepo[];
 }
 
@@ -26,6 +27,7 @@ export class WorkspaceValidationError extends Error {
 export function normalizeWorkspaceRecipe(input: {
   name: string;
   setupScript?: string;
+  prebuild?: boolean;
   repos: Array<{
     provider: string;
     repo: string;
@@ -46,6 +48,11 @@ export function normalizeWorkspaceRecipe(input: {
     throw new WorkspaceValidationError(
       `Setup script must be at most ${MAX_SETUP_SCRIPT_BYTES} bytes.`,
     );
+  }
+
+  const prebuild = input.prebuild ?? false;
+  if (typeof prebuild !== "boolean") {
+    throw new WorkspaceValidationError("Prebuild must be a boolean.");
   }
 
   if (!Array.isArray(input.repos)) {
@@ -104,5 +111,5 @@ export function normalizeWorkspaceRecipe(input: {
     checkoutPaths.add(key);
   }
 
-  return { name, setupScript, repos };
+  return { name, setupScript, prebuild, repos };
 }

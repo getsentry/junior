@@ -17,6 +17,8 @@ export interface Workspace {
   id: string;
   name: string;
   setupScript: string;
+  /** Build this Workspace snapshot in background work when the app starts. */
+  prebuild?: boolean;
   repos: WorkspaceRepo[];
   snapshot: WorkspaceSnapshot | null;
 }

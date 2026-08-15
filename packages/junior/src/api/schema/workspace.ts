@@ -28,6 +28,7 @@ export const workspaceSchema = z
     id: z.string().uuid(),
     name: z.string(),
     setupScript: z.string(),
+    prebuild: z.boolean(),
     repos: z.array(workspaceRepoSchema),
     snapshot: workspaceSnapshotSchema.nullable(),
   })
@@ -41,6 +42,7 @@ export const workspaceBodySchema = z
   .object({
     name: z.string(),
     setupScript: z.string().optional(),
+    prebuild: z.boolean().optional(),
     repos: z.array(workspaceRepoInputSchema),
   })
   .strict();

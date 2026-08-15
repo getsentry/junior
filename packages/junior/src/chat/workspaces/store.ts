@@ -38,6 +38,7 @@ function workspaceFromRows(
     id: row.id,
     name: row.name,
     setupScript: row.setupScript,
+    prebuild: row.prebuild,
     repos: repos.map((repo) => ({
       provider: repo.provider,
       repo: repo.repo,
@@ -195,6 +196,7 @@ export async function getWorkspace(
 export async function createWorkspace(input: {
   name: string;
   setupScript?: string;
+  prebuild?: boolean;
   repos: Array<{
     provider: string;
     repo: string;
@@ -212,6 +214,7 @@ export async function createWorkspace(input: {
         id,
         name: recipe.name,
         setupScript: recipe.setupScript,
+        prebuild: recipe.prebuild,
         createdAt: now,
         updatedAt: now,
       });
@@ -235,15 +238,16 @@ export async function updateWorkspace(
   input: {
     name: string;
     setupScript?: string;
+    prebuild?: boolean;
     repos: Array<{
       provider: string;
       repo: string;
     }>;
   },
 ): Promise<Workspace | undefined> {
-  const recipe = normalizeWorkspaceRecipe(input);
   const executor = getSqlExecutor();
   const now = new Date();
+  let recipeName = input.name;
 
   try {
     const updated = await executor.transaction(async () => {
@@ -255,6 +259,12 @@ export async function updateWorkspace(
         .limit(1);
       const existing = existingRows[0];
       if (!existing) return undefined;
+      // Keep the stored prebuild flag when a full-replace PUT omits it.
+      const recipe = normalizeWorkspaceRecipe({
+        ...input,
+        prebuild: input.prebuild ?? existing.prebuild,
+      });
+      recipeName = recipe.name;
       const existingRepos = await loadWorkspaceRepos(db, id);
       const snapshotChanged =
         existing.setupScript !== recipe.setupScript ||
@@ -264,6 +274,7 @@ export async function updateWorkspace(
         .set({
           name: recipe.name,
           setupScript: recipe.setupScript,
+          prebuild: recipe.prebuild,
           ...(snapshotChanged
             ? {
                 snapshotId: null,
@@ -283,7 +294,7 @@ export async function updateWorkspace(
   } catch (error) {
     if (isUniqueViolation(error)) {
       throw new WorkspaceValidationError(
-        `Workspace name already exists: ${recipe.name}`,
+        `Workspace name already exists: ${recipeName}`,
       );
     }
     throw error;

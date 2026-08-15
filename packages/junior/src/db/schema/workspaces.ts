@@ -1,4 +1,5 @@
 import {
+  boolean,
   integer,
   pgTable,
   primaryKey,
@@ -14,6 +15,7 @@ export const juniorWorkspaces = pgTable(
     id: text("id").primaryKey(),
     name: text("name").notNull(),
     setupScript: text("setup_script").notNull().default(""),
+    prebuild: boolean("prebuild").notNull().default(false),
     // Last successful Workspace snapshot for the dashboard. Resolve still uses Redis.
     snapshotId: text("snapshot_id"),
     snapshotGeneratedAt: timestamptz("snapshot_generated_at"),

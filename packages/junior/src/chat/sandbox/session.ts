@@ -108,6 +108,7 @@ interface SandboxRuntime {
   tools(signal?: AbortSignal): Promise<SandboxToolExecutors>;
   refreshNetworkPolicy(traceHeaders?: TracePropagationHeaders): Promise<void>;
   close(): void;
+  stop(): Promise<void>;
 }
 
 interface ActiveSandbox {
@@ -978,6 +979,16 @@ export function createSandboxRuntime(
         clearTimeout(keepAliveTimer);
         keepAliveTimer = undefined;
       }
+    },
+    async stop() {
+      closed = true;
+      if (keepAliveTimer) {
+        clearTimeout(keepAliveTimer);
+        keepAliveTimer = undefined;
+      }
+      const active = activeSandbox;
+      activeSandbox = null;
+      await stopSession(active?.session);
     },
   };
 }

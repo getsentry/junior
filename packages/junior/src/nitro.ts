@@ -12,6 +12,7 @@ import {
 } from "@/build/virtual-config";
 import { PLUGIN_TASK_QUEUE_TOPIC } from "@/chat/plugins/task-queue";
 import { resolveConversationWorkQueueTopic } from "@/chat/task-execution/vercel-queue";
+import { WORKSPACE_PREBUILD_QUEUE_TOPIC } from "@/chat/workspaces/prebuild-queue";
 import {
   JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE,
   JUNIOR_HEARTBEAT_CRON_SCHEDULE,
@@ -19,6 +20,7 @@ import {
   JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE,
   JUNIOR_RETENTION_CRON_SCHEDULE,
   JUNIOR_RETENTION_ROUTE,
+  JUNIOR_WORKSPACE_PREBUILD_CALLBACK_ROUTE,
 } from "@/deployment";
 import {
   pluginCatalogConfigFromPluginSet,
@@ -227,6 +229,32 @@ function configureVercelDeployment(
       },
     ],
   };
+
+  const existingWorkspacePrebuildRule =
+    nitro.options.vercel.functionRules[
+      JUNIOR_WORKSPACE_PREBUILD_CALLBACK_ROUTE
+    ] ?? {};
+  const existingWorkspacePrebuildTriggers = Array.isArray(
+    existingWorkspacePrebuildRule.experimentalTriggers,
+  )
+    ? existingWorkspacePrebuildRule.experimentalTriggers
+    : [];
+  const otherWorkspacePrebuildTriggers = existingWorkspacePrebuildTriggers.filter(
+    (trigger) => trigger.type !== VERCEL_QUEUE_TRIGGER_TYPE,
+  );
+
+  nitro.options.vercel.functionRules[JUNIOR_WORKSPACE_PREBUILD_CALLBACK_ROUTE] =
+    {
+      ...existingWorkspacePrebuildRule,
+      maxDuration: defaultMaxDuration,
+      experimentalTriggers: [
+        ...otherWorkspacePrebuildTriggers,
+        {
+          type: VERCEL_QUEUE_TRIGGER_TYPE,
+          topic: WORKSPACE_PREBUILD_QUEUE_TOPIC,
+        },
+      ],
+    };
 
   return defaultMaxDuration;
 }

@@ -162,6 +162,31 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
           </div>
         </section>
 
+        <label className="flex items-start gap-3 rounded border border-white/10 bg-black/20 p-3 sm:p-4">
+          <input
+            checked={props.draft.prebuild}
+            className="mt-1"
+            disabled={props.busy}
+            onChange={(event) =>
+              props.onChange({
+                ...props.draft,
+                prebuild: event.target.checked,
+              })
+            }
+            type="checkbox"
+          />
+          <span className="grid gap-1">
+            <span className="text-sm font-semibold text-dashboard-text">
+              Prebuild after deploy
+            </span>
+            <span className="text-xs leading-relaxed text-dashboard-text-muted sm:text-sm">
+              Build this Workspace snapshot in background work when the app
+              starts. This avoids paying the full build cost on the first
+              switch.
+            </span>
+          </span>
+        </label>
+
         <Field
           help={
             <>

@@ -17,6 +17,7 @@ describe("normalizeWorkspaceRecipe", () => {
     ).toEqual({
       name: "sentry",
       setupScript: "pnpm install",
+      prebuild: false,
       repos: [
         {
           provider: "github",
@@ -38,6 +39,7 @@ describe("normalizeWorkspaceRecipe", () => {
     ).toEqual({
       name: "sentry",
       setupScript: "",
+      prebuild: false,
       repos: [
         { provider: "github", repo: "getsentry/sentry" },
         { provider: "github", repo: "getsentry/relay" },
@@ -72,7 +74,18 @@ describe("normalizeWorkspaceRecipe", () => {
     ).toEqual({
       name: "empty",
       setupScript: "",
+      prebuild: false,
       repos: [],
     });
+  });
+
+  it("keeps an explicit prebuild value", () => {
+    expect(
+      normalizeWorkspaceRecipe({
+        name: "sentry",
+        prebuild: true,
+        repos: [],
+      }).prebuild,
+    ).toBe(true);
   });
 });
