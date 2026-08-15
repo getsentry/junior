@@ -5,6 +5,7 @@ import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it } from "vitest";
 import { PLUGIN_TASK_QUEUE_TOPIC } from "@/chat/plugins/task-queue";
 import { DEFAULT_CONVERSATION_WORK_QUEUE_TOPIC } from "@/chat/task-execution/vercel-queue";
+import { WORKSPACE_PREBUILD_QUEUE_TOPIC } from "@/chat/workspaces/prebuild-queue";
 import {
   JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE,
   JUNIOR_HEARTBEAT_CRON_SCHEDULE,
@@ -12,6 +13,7 @@ import {
   JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE,
   JUNIOR_RETENTION_CRON_SCHEDULE,
   JUNIOR_RETENTION_ROUTE,
+  JUNIOR_WORKSPACE_PREBUILD_CALLBACK_ROUTE,
 } from "@/deployment";
 import { juniorNitro } from "@/nitro";
 import { defineJuniorPlugins } from "@/plugins";
@@ -127,6 +129,17 @@ describe("juniorNitro plugin modules", () => {
         },
       ],
     });
+    expect(
+      vercel.functionRules?.[JUNIOR_WORKSPACE_PREBUILD_CALLBACK_ROUTE],
+    ).toEqual({
+      maxDuration: 300,
+      experimentalTriggers: [
+        {
+          type: "queue/v2beta",
+          topic: WORKSPACE_PREBUILD_QUEUE_TOPIC,
+        },
+      ],
+    });
   });
 
   it("preserves existing Vercel route function settings", () => {
@@ -173,6 +186,15 @@ describe("juniorNitro plugin modules", () => {
                 },
               ],
             },
+            [JUNIOR_WORKSPACE_PREBUILD_CALLBACK_ROUTE]: {
+              memory: 768,
+              experimentalTriggers: [
+                {
+                  type: "queue/v2beta",
+                  topic: WORKSPACE_PREBUILD_QUEUE_TOPIC,
+                },
+              ],
+            },
           },
         },
         virtual,
@@ -215,6 +237,18 @@ describe("juniorNitro plugin modules", () => {
         {
           type: "queue/v2beta",
           topic: PLUGIN_TASK_QUEUE_TOPIC,
+        },
+      ],
+    });
+    expect(
+      vercel.functionRules?.[JUNIOR_WORKSPACE_PREBUILD_CALLBACK_ROUTE],
+    ).toEqual({
+      maxDuration: 300,
+      memory: 768,
+      experimentalTriggers: [
+        {
+          type: "queue/v2beta",
+          topic: WORKSPACE_PREBUILD_QUEUE_TOPIC,
         },
       ],
     });
@@ -281,6 +315,14 @@ describe("juniorNitro plugin modules", () => {
                 },
               ],
             },
+            [JUNIOR_WORKSPACE_PREBUILD_CALLBACK_ROUTE]: {
+              experimentalTriggers: [
+                {
+                  type: "queue/v2beta",
+                  topic: "old_prebuild",
+                },
+              ],
+            },
           },
         },
         virtual,
@@ -308,6 +350,15 @@ describe("juniorNitro plugin modules", () => {
       {
         type: "queue/v2beta",
         topic: PLUGIN_TASK_QUEUE_TOPIC,
+      },
+    ]);
+    expect(
+      vercel.functionRules?.[JUNIOR_WORKSPACE_PREBUILD_CALLBACK_ROUTE]
+        ?.experimentalTriggers,
+    ).toEqual([
+      {
+        type: "queue/v2beta",
+        topic: WORKSPACE_PREBUILD_QUEUE_TOPIC,
       },
     ]);
   });
@@ -342,6 +393,10 @@ describe("juniorNitro plugin modules", () => {
     ).toBe(800);
     expect(
       vercel.functionRules?.[JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE]?.maxDuration,
+    ).toBe(800);
+    expect(
+      vercel.functionRules?.[JUNIOR_WORKSPACE_PREBUILD_CALLBACK_ROUTE]
+        ?.maxDuration,
     ).toBe(800);
     expect(typeof template).toBe("function");
     if (typeof template !== "function") {

@@ -67,7 +67,10 @@ import {
   GET as sandboxEgressSignalsGET,
 } from "@/handlers/sandbox-egress-signals";
 import { POST as slackWebhookPOST } from "@/handlers/slack-webhook";
-import { JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE } from "@/deployment";
+import {
+  JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE,
+  JUNIOR_WORKSPACE_PREBUILD_CALLBACK_ROUTE,
+} from "@/deployment";
 import {
   createVercelConversationWorkCallback,
   registerVercelConversationWorkDevConsumer,
@@ -78,6 +81,10 @@ import {
   createVercelPluginTaskCallback,
   registerVercelPluginTaskDevConsumer,
 } from "@/chat/plugins/task-callback";
+import {
+  createVercelWorkspacePrebuildCallback,
+  registerVercelWorkspacePrebuildDevConsumer,
+} from "@/chat/workspaces/prebuild-callback";
 import {
   createProductionConversationWorkOptions,
   createProductionSlackWebhookServices,
@@ -790,6 +797,9 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   let pluginTaskPOST:
     | ReturnType<typeof createVercelPluginTaskCallback>
     | undefined;
+  let workspacePrebuildPOST:
+    | ReturnType<typeof createVercelWorkspacePrebuildCallback>
+    | undefined;
   let conversationWorkOptions: ConversationWorkCallbackOptions | undefined;
   const getConversationWorkOptions = () => {
     conversationWorkOptions ??=
@@ -819,6 +829,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   if (process.env.NODE_ENV === "development") {
     registerVercelConversationWorkDevConsumer(getConversationWorkOptions());
     registerVercelPluginTaskDevConsumer();
+    registerVercelWorkspacePrebuildDevConsumer();
   }
   app.post("/api/internal/agent/continue", (c) => {
     agentContinuePOST ??= createVercelConversationWorkCallback(
@@ -829,6 +840,10 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   app.post(JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE, (c) => {
     pluginTaskPOST ??= createVercelPluginTaskCallback();
     return pluginTaskPOST(c.req.raw);
+  });
+  app.post(JUNIOR_WORKSPACE_PREBUILD_CALLBACK_ROUTE, (c) => {
+    workspacePrebuildPOST ??= createVercelWorkspacePrebuildCallback();
+    return workspacePrebuildPOST(c.req.raw);
   });
 
   app.get("/api/internal/heartbeat", (c) => {

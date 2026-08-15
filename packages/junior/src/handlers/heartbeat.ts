@@ -42,8 +42,12 @@ export async function GET(
   }
 
   const nowMs = Date.now();
-  // Request-owned waitUntil keeps long Workspace snapshot builds alive on Vercel.
-  scheduleWorkspacePrebuilds(waitUntil);
+  // Heartbeat only enqueues. The queue callback owns the snapshot build.
+  waitUntil(() =>
+    scheduleWorkspacePrebuilds().catch((error) => {
+      logException(error, "sandbox.workspace_prebuild.schedule.failed");
+    }),
+  );
   waitUntil(() =>
     runHeartbeat({
       conversationWorkQueue: options.conversationWorkQueue,

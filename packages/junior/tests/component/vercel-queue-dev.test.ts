@@ -21,6 +21,7 @@ afterEach(async () => {
   }
   vi.doUnmock("@vercel/queue");
   vi.doUnmock("@/chat/plugins/task-runner");
+  vi.doUnmock("@/chat/workspaces/prebuild");
   vi.resetModules();
 });
 
@@ -158,6 +159,137 @@ describe("plugin task Vercel queue integration", () => {
       },
       {
         idempotencyKey: pluginTaskId(message),
+        retentionSeconds: 3600,
+      },
+    );
+  });
+});
+
+describe("workspace prebuild Vercel queue integration", () => {
+  it("passes parsed workspace prebuild payloads through the Vercel callback", async () => {
+    const routeHandler = vi.fn();
+    const handleCallback = vi.fn(() => routeHandler);
+    const processWorkspacePrebuild = vi.fn(async () => undefined);
+
+    vi.doMock("@vercel/queue", () => ({
+      QueueClient: vi.fn(),
+      handleCallback,
+      registerDevConsumer: vi.fn(),
+    }));
+    vi.doMock("@/chat/workspaces/prebuild", () => ({
+      processWorkspacePrebuild,
+    }));
+
+    const { createVercelWorkspacePrebuildCallback } = await import(
+      "@/chat/workspaces/prebuild-callback"
+    );
+    const { signWorkspacePrebuildQueueMessage } = await import(
+      "@/chat/workspaces/prebuild-signing"
+    );
+
+    expect(createVercelWorkspacePrebuildCallback()).toBe(routeHandler);
+
+    type TestQueueMetadata = {
+      consumerGroup: string;
+      createdAt: Date;
+      deliveryCount: number;
+      expiresAt: Date;
+      messageId: string;
+      region: string;
+      topicName: string;
+    };
+    const metadata: TestQueueMetadata = {
+      consumerGroup: "consumer",
+      createdAt: new Date(1_000),
+      deliveryCount: 1,
+      expiresAt: new Date(2_000),
+      messageId: "msg_1",
+      region: "iad1",
+      topicName: "topic",
+    };
+    const call = handleCallback.mock.calls[0] as unknown as
+      | [
+          (message: unknown, metadata: TestQueueMetadata) => Promise<void>,
+          {
+            retry?: (error: unknown, metadata: TestQueueMetadata) => unknown;
+          },
+        ]
+      | undefined;
+    const handler = call?.[0];
+    const retry = call?.[1].retry;
+    expect(handler).toEqual(expect.any(Function));
+    expect(retry).toEqual(expect.any(Function));
+    if (!handler || !retry) {
+      throw new Error("Expected workspace prebuild queue handler and retry hook");
+    }
+
+    await expect(
+      handler({ malformed: true }, metadata),
+    ).resolves.toBeUndefined();
+    expect(processWorkspacePrebuild).not.toHaveBeenCalled();
+
+    const message = { workspaceId: "ws_prebuild_1" };
+    await expect(handler(message, metadata)).resolves.toBeUndefined();
+    expect(processWorkspacePrebuild).not.toHaveBeenCalled();
+
+    process.env.JUNIOR_SECRET = "workspace-prebuild-secret";
+    const signedMessage = signWorkspacePrebuildQueueMessage(message);
+    await expect(handler(signedMessage, metadata)).resolves.toBeUndefined();
+    expect(processWorkspacePrebuild).toHaveBeenCalledWith(message);
+
+    await expect(
+      handler({ ...signedMessage, unexpected: true }, metadata),
+    ).resolves.toBeUndefined();
+    expect(processWorkspacePrebuild).toHaveBeenCalledTimes(1);
+
+    processWorkspacePrebuild.mockRejectedValueOnce(new Error("task failed"));
+    await expect(handler(signedMessage, metadata)).rejects.toThrow(
+      "task failed",
+    );
+    expect(retry(new Error("still failing"), metadata)).toBeUndefined();
+    expect(
+      retry(new Error("still failing"), { ...metadata, deliveryCount: 5 }),
+    ).toEqual({ acknowledge: true });
+  });
+
+  it("sends workspace prebuild messages with the derived idempotency key", async () => {
+    const send = vi.fn(async () => ({ messageId: "msg_1" }));
+    const QueueClient = vi.fn(function QueueClientMock() {
+      return { send };
+    });
+
+    vi.doMock("@vercel/queue", () => ({
+      QueueClient,
+      handleCallback: vi.fn(),
+      registerDevConsumer: vi.fn(),
+    }));
+
+    process.env.JUNIOR_SECRET = "workspace-prebuild-secret";
+    delete process.env.VERCEL_DEPLOYMENT_ID;
+
+    const [
+      { WORKSPACE_PREBUILD_QUEUE_TOPIC, sendVercelWorkspacePrebuildTask },
+      { workspacePrebuildTaskId },
+    ] = await Promise.all([
+      import("@/chat/workspaces/prebuild-queue"),
+      import("@/chat/workspaces/prebuild-message"),
+    ]);
+    const message = { workspaceId: "ws_prebuild_send" };
+
+    await sendVercelWorkspacePrebuildTask(message);
+
+    expect(send).toHaveBeenCalledWith(
+      WORKSPACE_PREBUILD_QUEUE_TOPIC,
+      {
+        ...message,
+        signedAtMs: expect.any(Number),
+        signatureVersion: "v1",
+        signature: expect.any(String),
+      },
+      {
+        idempotencyKey: workspacePrebuildTaskId({
+          workspaceId: message.workspaceId,
+        }),
         retentionSeconds: 3600,
       },
     );
