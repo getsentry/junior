@@ -575,8 +575,6 @@ export async function mockDashboardApis(page: Page) {
           dependencyCount: 38,
           generatedAt: "2026-08-15T05:30:21.000Z",
           id: "snap_baseline_Sj16Uz0PH1P3AKI6LgNoTvnqZ46h",
-          profileHash:
-            "eac1a0fe0c6edee90a7f8b96c9ec35a2be79036dd245314b882891c3b1dae9d2",
         },
         workspaces: [{ ...workspace, snapshot: null }],
       },

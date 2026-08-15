@@ -29,7 +29,6 @@ export const baselineSnapshotSchema = z
     id: z.string(),
     generatedAt: z.iso.datetime(),
     buildDurationMs: z.number().int().nonnegative(),
-    profileHash: z.string(),
     dependencyCount: z.number().int().nonnegative(),
   })
   .strict();

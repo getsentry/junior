@@ -52,7 +52,6 @@ async function baselineSnapshotView() {
       id: cached.snapshotId,
       generatedAt: new Date(cached.createdAtMs).toISOString(),
       buildDurationMs: cached.buildDurationMs,
-      profileHash: cached.profileHash,
       dependencyCount: cached.dependencyCount,
     };
   } catch (error) {

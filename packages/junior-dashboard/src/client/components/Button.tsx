@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import type { ButtonHTMLAttributes } from "react";
 import { Link, type LinkProps } from "react-router";
 
 import { cn } from "../styles";
@@ -13,10 +13,6 @@ export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 export type ToggleButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   pressed: boolean;
   variant: ToggleButtonVariant;
-};
-
-export type ButtonLinkProps = LinkProps & {
-  children: ReactNode;
 };
 
 const buttonClassName =
@@ -49,7 +45,7 @@ export function Button({
 }
 
 /** Render a dashboard navigation link with the standard button surface. */
-export function ButtonLink({ className, ...props }: ButtonLinkProps) {
+export function ButtonLink({ className, ...props }: LinkProps) {
   return (
     <Link
       {...props}

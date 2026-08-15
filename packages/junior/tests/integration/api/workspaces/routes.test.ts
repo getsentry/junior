@@ -163,7 +163,6 @@ describe("workspace admin API", () => {
         id: "snap_baseline",
         generatedAt: "2026-03-01T00:00:00.000Z",
         buildDurationMs: 45_000,
-        profileHash: profile!.hash,
         dependencyCount: profile!.dependencyCount,
       },
     });
