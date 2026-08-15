@@ -223,7 +223,7 @@ describe("snapshot resolution", () => {
     ]);
     sandboxCreateMock.mockResolvedValueOnce(makeSandbox("snap_legacy"));
 
-    const first = await resolveSnapshot({
+    await resolveSnapshot({
       runtime: "node22",
       timeoutMs: 60_000,
     });
