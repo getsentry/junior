@@ -11,7 +11,7 @@ import {
 } from "@/chat/sandbox/workspace";
 import type { Workspace } from "@/chat/workspaces/types";
 import { sleep } from "@/chat/sleep";
-import { getStateAdapter } from "@/chat/state/adapter";
+import { getInstallStateAdapter } from "@/chat/state/adapter";
 
 // Snapshot resolution owns cache and lock coordination. Profile selection and
 // sandbox installation stay in their neighboring modules.
@@ -82,21 +82,36 @@ function profileLockKey(profileHash: string): string {
   return `${SNAPSHOT_LOCK_PREFIX}:${profileHash}`;
 }
 
+/** Normalize adapter values written as objects or legacy JSON strings. */
+function readCachedSnapshotValue(
+  raw: unknown,
+  profileHash: string,
+): unknown | null {
+  if (raw == null) {
+    return null;
+  }
+  if (typeof raw === "string") {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      throw new Error(`Invalid cached sandbox snapshot for ${profileHash}`);
+    }
+  }
+  return raw;
+}
+
 /** Read one cached snapshot pointer; only a missing key is a cache miss. */
 export async function getCachedSnapshot(
   profileHash: string,
 ): Promise<CachedSnapshot | null> {
-  const state = getStateAdapter();
+  const state = getInstallStateAdapter();
   await state.connect();
-  const raw = await state.get(profileCacheKey(profileHash));
-  if (typeof raw !== "string") {
+  const value = readCachedSnapshotValue(
+    await state.get(profileCacheKey(profileHash)),
+    profileHash,
+  );
+  if (value == null) {
     return null;
-  }
-  let value: unknown;
-  try {
-    value = JSON.parse(raw);
-  } catch {
-    throw new Error(`Invalid cached sandbox snapshot for ${profileHash}`);
   }
   const parsed = cachedSnapshotSchema.safeParse(value);
   if (!parsed.success || parsed.data.profileHash !== profileHash) {
@@ -107,11 +122,12 @@ export async function getCachedSnapshot(
 
 /** Persist one dependency profile's reusable snapshot pointer. */
 async function setCachedSnapshot(entry: CachedSnapshot): Promise<void> {
-  const state = getStateAdapter();
+  const state = getInstallStateAdapter();
   await state.connect();
+  // Store the object directly. Redis and memory adapters serialize values.
   await state.set(
     profileCacheKey(entry.profileHash),
-    JSON.stringify(entry),
+    entry,
     SNAPSHOT_CACHE_TTL_MS,
   );
 }
@@ -189,7 +205,7 @@ async function withBuildLock(
   signal?: AbortSignal,
 ): Promise<LockResult> {
   signal?.throwIfAborted();
-  const state = getStateAdapter();
+  const state = getInstallStateAdapter();
   await state.connect();
   const lockKey = profileLockKey(profileHash);
   const lockTtlMs = timeoutMs + SNAPSHOT_BUILD_LOCK_BUFFER_MS;

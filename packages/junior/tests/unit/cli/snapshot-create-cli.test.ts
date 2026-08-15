@@ -5,11 +5,15 @@ const {
   getRuntimeDependenciesMock,
   getRuntimePostinstallMock,
   resolveMock,
+  hasDurableStateAdapterMock,
+  getChatConfigMock,
 } = vi.hoisted(() => ({
   getProvidersMock: vi.fn(),
   getRuntimeDependenciesMock: vi.fn(),
   getRuntimePostinstallMock: vi.fn(),
   resolveMock: vi.fn(),
+  hasDurableStateAdapterMock: vi.fn(),
+  getChatConfigMock: vi.fn(),
 }));
 
 vi.mock("@/chat/plugins/catalog-runtime", () => ({
@@ -29,6 +33,15 @@ vi.mock("@/chat/sandbox/runtime-dependencies", () => ({
   GLOBAL_RUNTIME_POSTINSTALL: [],
 }));
 
+vi.mock("@/chat/state/adapter", () => ({
+  disconnectStateAdapter: vi.fn(async () => {}),
+  hasDurableStateAdapter: hasDurableStateAdapterMock,
+}));
+
+vi.mock("@/chat/config", () => ({
+  getChatConfig: getChatConfigMock,
+}));
+
 import { runSnapshotCreate } from "@/cli/snapshot-create";
 
 describe("snapshot create cli", () => {
@@ -37,10 +50,19 @@ describe("snapshot create cli", () => {
     getRuntimeDependenciesMock.mockReset();
     getRuntimePostinstallMock.mockReset();
     resolveMock.mockReset();
+    hasDurableStateAdapterMock.mockReset();
+    getChatConfigMock.mockReset();
 
     getProvidersMock.mockReturnValue([]);
     getRuntimeDependenciesMock.mockReturnValue([]);
     getRuntimePostinstallMock.mockReturnValue([]);
+    hasDurableStateAdapterMock.mockReturnValue(true);
+    getChatConfigMock.mockReturnValue({
+      state: {
+        adapter: "redis",
+        redisUrl: "redis://localhost:6379",
+      },
+    });
   });
 
   it("uses default runtime and timeout", async () => {
@@ -143,5 +165,26 @@ describe("snapshot create cli", () => {
     resolveMock.mockRejectedValue(new Error("OIDC missing"));
 
     await expect(runSnapshotCreate()).rejects.toThrow("OIDC missing");
+  });
+
+  it("rejects memory state adapter before resolving", async () => {
+    hasDurableStateAdapterMock.mockReturnValue(false);
+
+    await expect(runSnapshotCreate()).rejects.toThrow(
+      /requires durable Redis state/,
+    );
+    expect(resolveMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects missing REDIS_URL before resolving", async () => {
+    getChatConfigMock.mockReturnValue({
+      state: {
+        adapter: "redis",
+        redisUrl: undefined,
+      },
+    });
+
+    await expect(runSnapshotCreate()).rejects.toThrow(/requires REDIS_URL/);
+    expect(resolveMock).not.toHaveBeenCalled();
   });
 });

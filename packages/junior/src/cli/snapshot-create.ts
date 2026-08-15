@@ -4,7 +4,11 @@ import {
   type ProgressPhase,
 } from "@/chat/sandbox/snapshot/resolve";
 import * as profile from "@/chat/sandbox/snapshot/profile";
-import { disconnectStateAdapter } from "@/chat/state/adapter";
+import {
+  disconnectStateAdapter,
+  hasDurableStateAdapter,
+} from "@/chat/state/adapter";
+import { getChatConfig } from "@/chat/config";
 
 const DEFAULT_RUNTIME = "node22";
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
@@ -113,8 +117,24 @@ export async function runSnapshotCreate(
 
   const runtime = DEFAULT_RUNTIME;
   const timeoutMs = DEFAULT_TIMEOUT_MS;
+  const state = getChatConfig().state;
+
+  // Snapshot registry must outlive one build process. Memory adapter is local-only.
+  if (!hasDurableStateAdapter()) {
+    throw new Error(
+      "junior snapshot create requires durable Redis state. Set REDIS_URL and leave JUNIOR_STATE_ADAPTER unset (or set it to redis).",
+    );
+  }
+  if (!state.redisUrl) {
+    throw new Error(
+      "junior snapshot create requires REDIS_URL for the sandbox snapshot registry.",
+    );
+  }
 
   try {
+    log(
+      `Sandbox snapshot registry: adapter=redis install_wide=true key_prefix=${state.keyPrefix ? "ignored" : "none"}`,
+    );
     logSnapshotProfile(runtime, log);
     const emitted = new Set<ProgressPhase>();
     const snapshot = await resolveSnapshot({

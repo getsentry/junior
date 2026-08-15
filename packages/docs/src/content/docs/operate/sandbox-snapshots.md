@@ -56,7 +56,7 @@ Provider plugins prepare repositories through Junior's host egress proxy. Junior
 
 ## Cache and rebuild behavior
 
-The hot snapshot registry is stored in Redis by profile hash for locks and fast reuse across instances. Junior serializes rebuilds for the same profile so concurrent builds do not create duplicate snapshots. Workspace operator facts for the dashboard live in SQL, not Redis.
+The hot snapshot registry is stored in Redis by profile hash for locks and fast reuse across instances. The registry is install-wide: it ignores `JUNIOR_STATE_KEY_PREFIX` so deploy-scoped prefixes cannot force a rebuild on every build. Junior serializes rebuilds for the same profile so concurrent builds do not create duplicate snapshots. Workspace operator facts for the dashboard live in SQL, not Redis. `junior snapshot create` requires durable Redis (`REDIS_URL`, and `JUNIOR_STATE_ADAPTER` unset or `redis`).
 
 Rebuilds happen when:
 

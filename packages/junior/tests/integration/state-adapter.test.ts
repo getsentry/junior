@@ -178,4 +178,18 @@ describe("state adapter lifecycle and lock lease", () => {
       message: { id: "entry-1" },
     });
   });
+
+  it("reports durable state only for redis adapter config", async () => {
+    const memory = await loadMemoryStateAdapter();
+    expect(memory.hasDurableStateAdapter()).toBe(false);
+
+    process.env = {
+      ...ORIGINAL_ENV,
+      JUNIOR_STATE_ADAPTER: "redis",
+      REDIS_URL: "redis://localhost:6379",
+    };
+    vi.resetModules();
+    stateAdapterModule = await import("@/chat/state/adapter");
+    expect(stateAdapterModule.hasDurableStateAdapter()).toBe(true);
+  });
 });

@@ -322,6 +322,25 @@ export function getStateAdapter(): StateAdapter {
   return stateAdapter;
 }
 
+/**
+ * Return state storage for install-wide registries such as sandbox snapshots.
+ * Uses Redis without JUNIOR_STATE_KEY_PREFIX so deploy-scoped prefixes cannot
+ * force a cache miss on every build. Falls back to the default adapter for the
+ * local memory path.
+ */
+export function getInstallStateAdapter(): StateAdapter {
+  getStateAdapter();
+  if (redisStateAdapter) {
+    return createConnectingStateAdapter(redisStateAdapter);
+  }
+  return getStateAdapter();
+}
+
+/** True when the process is configured for durable Redis state. */
+export function hasDurableStateAdapter(): boolean {
+  return getChatConfig().state.adapter === "redis";
+}
+
 export async function disconnectStateAdapter(): Promise<void> {
   if (!stateAdapter) {
     return;

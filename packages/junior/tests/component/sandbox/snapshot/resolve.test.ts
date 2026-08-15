@@ -3,11 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const {
   sandboxCreateMock,
   getRuntimeDependenciesMock,
-  getRuntimePostinstallMock
+  getRuntimePostinstallMock,
 } = vi.hoisted(() => ({
   sandboxCreateMock: vi.fn(),
   getRuntimeDependenciesMock: vi.fn(),
-  getRuntimePostinstallMock: vi.fn()
+  getRuntimePostinstallMock: vi.fn(),
 }));
 const { withSpanMock } = vi.hoisted(() => ({
   withSpanMock: vi.fn(
@@ -17,37 +17,37 @@ const { withSpanMock } = vi.hoisted(() => ({
       _context: unknown,
       callback: () => Promise<unknown>,
     ) => callback(),
-  )
+  ),
 }));
 
 vi.mock("@vercel/sandbox", () => ({
   FileSystem: class {},
   Sandbox: {
-    create: sandboxCreateMock
-  }
+    create: sandboxCreateMock,
+  },
 }));
 
 vi.mock("@/chat/plugins/catalog-runtime", () => ({
   pluginCatalogRuntime: {
     getRuntimeDependencies: getRuntimeDependenciesMock,
-    getRuntimePostinstall: getRuntimePostinstallMock
-  }
+    getRuntimePostinstall: getRuntimePostinstallMock,
+  },
 }));
 vi.mock("@/chat/sandbox/runtime-dependencies", () => ({
   GLOBAL_RUNTIME_DEPENDENCIES: [],
-  GLOBAL_RUNTIME_POSTINSTALL: []
+  GLOBAL_RUNTIME_POSTINSTALL: [],
 }));
 vi.mock("@/chat/logging", () => ({
-  withSpan: withSpanMock
+  withSpan: withSpanMock,
 }));
 
-const store = new Map<string, string>();
+const store = new Map<string, unknown>();
 const heldLocks = new Set<string>();
 let getError: Error | undefined;
 const acquiredLockTtls: number[] = [];
 
 vi.mock("@/chat/state/adapter", () => ({
-  getStateAdapter: () => ({
+  getInstallStateAdapter: () => ({
     connect: vi.fn(async () => {}),
     get: vi.fn(async (key: string) => {
       if (getError) {
@@ -55,7 +55,7 @@ vi.mock("@/chat/state/adapter", () => ({
       }
       return store.get(key);
     }),
-    set: vi.fn(async (key: string, value: string) => {
+    set: vi.fn(async (key: string, value: unknown) => {
       store.set(key, value);
     }),
     acquireLock: vi.fn(async (key: string, ttlMs: number) => {
@@ -68,8 +68,8 @@ vi.mock("@/chat/state/adapter", () => ({
     }),
     releaseLock: vi.fn(async (lock: { key: string }) => {
       heldLocks.delete(lock.key);
-    })
-  })
+    }),
+  }),
 }));
 
 import { resolve as resolveSnapshot } from "@/chat/sandbox/snapshot/resolve";
@@ -78,7 +78,7 @@ function makeSandbox(snapshotId: string) {
   const runCommand = vi.fn(async () => ({
     exitCode: 0,
     stdout: async () => "",
-    stderr: async () => ""
+    stderr: async () => "",
   }));
   const snapshot = vi.fn(async () => ({ snapshotId }));
   const stop = vi.fn(async () => {});
@@ -88,11 +88,11 @@ function makeSandbox(snapshotId: string) {
       sessionId: `sbx_${snapshotId}_session`,
       runCommand,
       snapshot,
-      stop
+      stop,
     })),
     runCommand,
     snapshot,
-    stop
+    stop,
   };
 }
 
@@ -138,13 +138,13 @@ describe("snapshot resolution", () => {
 
     const first = await resolveSnapshot({
       runtime: "node22",
-      timeoutMs: 60_000
+      timeoutMs: 60_000,
     });
     expect(first.snapshotId).toBe("snap_new");
     expect(first.cacheHit).toBe(false);
     expect(first.resolveOutcome).toBe("rebuilt");
     const [cacheKey] = [...store.keys()];
-    const cached = JSON.parse(store.get(cacheKey) ?? "") as {
+    const cached = store.get(cacheKey) as {
       buildDurationMs?: number;
     };
     expect(cached.buildDurationMs).toEqual(expect.any(Number));
@@ -154,7 +154,7 @@ describe("snapshot resolution", () => {
       runtime: "node22",
       timeoutMs: 60_000,
       forceRebuild: true,
-      staleSnapshotId: "snap_old"
+      staleSnapshotId: "snap_old",
     });
     expect(forced.snapshotId).toBe("snap_new");
     expect(forced.cacheHit).toBe(true);
@@ -172,7 +172,7 @@ describe("snapshot resolution", () => {
 
     const snapshot = await resolveSnapshot({
       runtime: "node22",
-      timeoutMs: 60_000
+      timeoutMs: 60_000,
     });
     expect(snapshot.snapshotId).toBe("snap_stopped");
     expect(sandbox.stop).toHaveBeenCalledTimes(1);
@@ -187,7 +187,7 @@ describe("snapshot resolution", () => {
     await expect(
       resolveSnapshot({
         runtime: "node22",
-        timeoutMs: 60_000
+        timeoutMs: 60_000,
       }),
     ).rejects.toThrow("state unavailable");
     expect(sandboxCreateMock).not.toHaveBeenCalled();
@@ -201,7 +201,7 @@ describe("snapshot resolution", () => {
 
     const first = await resolveSnapshot({
       runtime: "node22",
-      timeoutMs: 60_000
+      timeoutMs: 60_000,
     });
     const [cacheKey] = [...store.keys()];
     store.set(cacheKey, "private-token-abc");
@@ -209,11 +209,35 @@ describe("snapshot resolution", () => {
     await expect(
       resolveSnapshot({
         runtime: "node22",
-        timeoutMs: 60_000
+        timeoutMs: 60_000,
       }),
     ).rejects.toEqual(
       new Error(`Invalid cached sandbox snapshot for ${first.profileHash}`),
     );
+    expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("reuses legacy string-encoded cache values", async () => {
+    getRuntimeDependenciesMock.mockReturnValue([
+      { type: "npm", package: "sentry", version: "latest" },
+    ]);
+    sandboxCreateMock.mockResolvedValueOnce(makeSandbox("snap_legacy"));
+
+    const first = await resolveSnapshot({
+      runtime: "node22",
+      timeoutMs: 60_000,
+    });
+    const [cacheKey] = [...store.keys()];
+    const cached = store.get(cacheKey);
+    store.set(cacheKey, JSON.stringify(cached));
+
+    const second = await resolveSnapshot({
+      runtime: "node22",
+      timeoutMs: 60_000,
+    });
+    expect(second.snapshotId).toBe("snap_legacy");
+    expect(second.cacheHit).toBe(true);
+    expect(second.resolveOutcome).toBe("cache_hit");
     expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
   });
 
@@ -225,7 +249,7 @@ describe("snapshot resolution", () => {
 
     await resolveSnapshot({
       runtime: "node22",
-      timeoutMs: 60_000
+      timeoutMs: 60_000,
     });
 
     expect(acquiredLockTtls).toEqual([90_000]);
@@ -248,7 +272,7 @@ describe("snapshot resolution", () => {
         if (phase === "waiting_for_lock") {
           controller.abort(reason);
         }
-      }
+      },
     });
 
     await expect(resolving).rejects.toBe(reason);
@@ -265,7 +289,7 @@ describe("snapshot resolution", () => {
       async ({ signal }: { signal?: AbortSignal }) =>
         await new Promise((_resolve, reject) => {
           signal?.addEventListener("abort", () => reject(signal.reason), {
-            once: true
+            once: true,
           });
         }),
     );
@@ -273,7 +297,7 @@ describe("snapshot resolution", () => {
     const resolving = resolveSnapshot({
       runtime: "node22",
       timeoutMs: 60_000,
-      signal: controller.signal
+      signal: controller.signal,
     });
     await vi.waitFor(() => {
       expect(sandboxCreateMock).toHaveBeenCalledWith(
@@ -296,7 +320,7 @@ describe("snapshot resolution", () => {
 
     const first = await resolveSnapshot({
       runtime: "node22",
-      timeoutMs: 60_000
+      timeoutMs: 60_000,
     });
     expect(first.snapshotId).toBe("snap_old");
     expect(first.cacheHit).toBe(false);
@@ -312,7 +336,7 @@ describe("snapshot resolution", () => {
       runtime: "node22",
       timeoutMs: 60_000,
       forceRebuild: true,
-      staleSnapshotId: "snap_old"
+      staleSnapshotId: "snap_old",
     });
     expect(second.snapshotId).toBe("snap_new");
     expect(second.cacheHit).toBe(false);
@@ -331,7 +355,7 @@ describe("snapshot resolution", () => {
 
     const first = await resolveSnapshot({
       runtime: "node22",
-      timeoutMs: 60_000
+      timeoutMs: 60_000,
     });
     expect(first.snapshotId).toBe("snap_initial");
     expect(first.cacheHit).toBe(false);
@@ -340,7 +364,7 @@ describe("snapshot resolution", () => {
     const forced = await resolveSnapshot({
       runtime: "node22",
       timeoutMs: 60_000,
-      forceRebuild: true
+      forceRebuild: true,
     });
     expect(forced.snapshotId).toBe("snap_forced");
     expect(forced.cacheHit).toBe(false);
@@ -359,14 +383,14 @@ describe("snapshot resolution", () => {
 
     const first = await resolveSnapshot({
       runtime: "node22",
-      timeoutMs: 60_000
+      timeoutMs: 60_000,
     });
     expect(first.snapshotId).toBe("snap_initial");
     expect(first.cacheHit).toBe(false);
     expect(first.resolveOutcome).toBe("rebuilt");
 
     const [cacheKey] = [...store.keys()];
-    const initialCached = JSON.parse(store.get(cacheKey) ?? "") as {
+    const initialCached = store.get(cacheKey) as {
       snapshotId: string;
       createdAtMs: number;
     };
@@ -374,13 +398,10 @@ describe("snapshot resolution", () => {
 
     heldLocks.add(lockKey);
     setTimeout(() => {
-      store.set(
-        cacheKey,
-        JSON.stringify({
-          ...initialCached,
-          snapshotId: "snap_from_other_worker"
-        }),
-      );
+      store.set(cacheKey, {
+        ...initialCached,
+        snapshotId: "snap_from_other_worker",
+      });
     }, 100);
     setTimeout(() => {
       heldLocks.delete(lockKey);
@@ -389,7 +410,7 @@ describe("snapshot resolution", () => {
     const concurrent = resolveSnapshot({
       runtime: "node22",
       timeoutMs: 60_000,
-      forceRebuild: true
+      forceRebuild: true,
     });
 
     await vi.advanceTimersByTimeAsync(2_000);
@@ -406,13 +427,13 @@ describe("snapshot resolution", () => {
 
     const snapshot = await resolveSnapshot({
       runtime: "node22",
-      timeoutMs: 60_000
+      timeoutMs: 60_000,
     });
 
     expect(snapshot).toMatchObject({
       dependencyCount: 0,
       cacheHit: false,
-      resolveOutcome: "no_profile"
+      resolveOutcome: "no_profile",
     });
     expect(sandboxCreateMock).not.toHaveBeenCalled();
   });
@@ -432,16 +453,16 @@ describe("snapshot resolution", () => {
       repos: [
         {
           provider: "github",
-          repo: "getsentry/sentry"
+          repo: "getsentry/sentry",
         },
-      ]
+      ],
     };
 
     const snapshot = await resolveSnapshot({
       runtime: "node22",
       timeoutMs: 60_000,
       workspace,
-      prepareWorkspace
+      prepareWorkspace,
     });
 
     expect(snapshot.snapshotId).toBe("snap_workspace");
@@ -458,7 +479,7 @@ describe("snapshot resolution", () => {
       runtime: "node22",
       timeoutMs: 60_000,
       workspace,
-      prepareWorkspace
+      prepareWorkspace,
     });
     expect(reused.snapshotId).toBe("snap_workspace");
     expect(reused.cacheHit).toBe(true);
