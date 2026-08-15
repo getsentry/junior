@@ -153,8 +153,14 @@ test("shows Workspace snapshot details on its direct route", async ({ page }) =>
   await expect(page.getByText("45s")).toBeVisible();
   await expect(page.getByLabel("Name")).toHaveValue("sentry");
   await expect(
-    page.getByRole("link", { name: "Back to Workspaces" }),
+    page.getByLabel("System navigation").getByRole("link", {
+      name: "Workspaces",
+      exact: true,
+    }),
   ).toHaveAttribute("href", "/system/workspaces");
+  await expect(
+    page.getByRole("link", { name: "Back to Workspaces" }),
+  ).toHaveCount(0);
 });
 
 test("keeps System navigation usable on mobile", async ({ page }) => {

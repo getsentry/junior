@@ -75,7 +75,7 @@ describe("selectVisualScenarioIds", () => {
         "packages/junior-dashboard/src/client/pages/system/BaselineSnapshotCard.tsx",
         "packages/junior-dashboard/src/client/pages/system/workspaceDraft.ts",
       ]),
-    ).toEqual(["workspaces"]);
+    ).toEqual(["workspaces", "workspace-detail"]);
   });
 
   it("keeps generic system pages on the system scenario", () => {

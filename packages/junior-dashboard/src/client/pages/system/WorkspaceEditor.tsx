@@ -47,7 +47,7 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
   }
 
   return (
-    <Card padding="md" variant="section">
+    <Card className="mb-0" padding="md" variant="section">
       <form className="grid gap-6" onSubmit={submit}>
         {props.editing ? (
           <div className="grid gap-1">

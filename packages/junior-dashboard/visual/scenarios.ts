@@ -27,6 +27,7 @@ export const MOBILE: VisualViewport = {
 };
 
 const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
+const WORKSPACE_ID = "11111111-1111-4111-8111-111111111111";
 
 /** Named dashboard surfaces CI can screenshot for a PR. */
 export const VISUAL_SCENARIOS: VisualScenario[] = [
@@ -66,7 +67,14 @@ export const VISUAL_SCENARIOS: VisualScenario[] = [
     path: "/system/workspaces",
     // Baseline card heading proves the list payload rendered.
     ready: "Baseline snapshot",
-    viewports: [DESKTOP],
+    viewports: [DESKTOP, MOBILE],
+  },
+  {
+    id: "workspace-detail",
+    label: "Workspace detail",
+    path: `/system/workspaces/${WORKSPACE_ID}`,
+    ready: "Current snapshot",
+    viewports: [DESKTOP, MOBILE],
   },
   {
     id: "memories",
@@ -120,7 +128,7 @@ const PATH_RULES: PathRule[] = [
         "packages/junior-dashboard/src/client/pages/system/",
       ) &&
       /(?:^|\/)(?:BaselineSnapshot|Workspace|workspace)/.test(filePath),
-    scenarioIds: ["workspaces"],
+    scenarioIds: ["workspaces", "workspace-detail"],
   },
   {
     match: (filePath) =>

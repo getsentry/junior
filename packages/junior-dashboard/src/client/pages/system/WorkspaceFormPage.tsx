@@ -1,7 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router";
+import { useNavigate, useParams } from "react-router";
 import {
   workspaceSchema,
   type BaselineSnapshotReport,
@@ -108,15 +107,7 @@ export function WorkspaceFormPage() {
 
   return (
     <SystemPageLayout>
-      <div className="grid min-w-0 gap-5">
-        <Link
-          className="flex w-fit items-center gap-2 font-display text-sm font-medium text-dashboard-text-muted no-underline transition-colors hover:text-dashboard-text"
-          to="/system/workspaces"
-        >
-          <ArrowLeft aria-hidden="true" size={15} strokeWidth={1.8} />
-          Back to Workspaces
-        </Link>
-
+      <div className="grid min-w-0 gap-4 sm:gap-5">
         <PageHeader
           description={
             editing
