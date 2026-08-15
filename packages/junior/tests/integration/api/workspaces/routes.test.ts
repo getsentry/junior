@@ -9,8 +9,9 @@ import {
 } from "@/api/schema";
 import { closeDb, getDb, getSqlExecutor } from "@/chat/db";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
-import { hash as workspaceProfileHash } from "@/chat/sandbox/snapshot/profile";
+import { create as createSnapshotProfile, hash as workspaceProfileHash } from "@/chat/sandbox/snapshot/profile";
 import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
+import { getStateAdapter } from "@/chat/state/adapter";
 import {
   createWorkspace,
   getWorkspace,
@@ -81,6 +82,7 @@ describe("workspace admin API", () => {
     const listResponse = await app.request("http://localhost/api/workspaces");
     expect(listResponse.status).toBe(200);
     const listed = workspaceListSchema.parse(await listResponse.json());
+    expect(listed.baselineSnapshot).toBeNull();
     expect(listed.workspaces.map((workspace) => workspace.id)).toContain(
       created.id,
     );
@@ -132,6 +134,38 @@ describe("workspace admin API", () => {
     expect(missing.status).toBe(404);
     expect(apiErrorSchema.parse(await missing.json())).toEqual({
       error: "Workspace not found."
+    });
+  });
+
+  it("returns the baseline snapshot registry entry on the Workspace list", async () => {
+    const app = authenticatedApi();
+    const profile = createSnapshotProfile(SANDBOX_RUNTIME);
+    expect(profile).toBeTruthy();
+    const state = getStateAdapter();
+    await state.connect();
+    await state.set(
+      `junior:sandbox_snapshot_profile:v2:${profile!.hash}`,
+      {
+        profileHash: profile!.hash,
+        snapshotId: "snap_baseline",
+        runtime: SANDBOX_RUNTIME,
+        createdAtMs: Date.parse("2026-03-01T00:00:00.000Z"),
+        dependencyCount: profile!.dependencyCount,
+        buildDurationMs: 45_000,
+      },
+      60_000,
+    );
+
+    const listResponse = await app.request("http://localhost/api/workspaces");
+    expect(listResponse.status).toBe(200);
+    expect(workspaceListSchema.parse(await listResponse.json())).toMatchObject({
+      baselineSnapshot: {
+        id: "snap_baseline",
+        generatedAt: "2026-03-01T00:00:00.000Z",
+        buildDurationMs: 45_000,
+        profileHash: profile!.hash,
+        dependencyCount: profile!.dependencyCount,
+      },
     });
   });
 

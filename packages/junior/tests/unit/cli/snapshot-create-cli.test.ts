@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   getProvidersMock,
@@ -29,9 +29,21 @@ vi.mock("@/chat/sandbox/runtime-dependencies", () => ({
   GLOBAL_RUNTIME_POSTINSTALL: [],
 }));
 
+vi.mock("@/chat/config", () => ({
+  getChatConfig: () => ({
+    state: {
+      adapter: process.env.JUNIOR_STATE_ADAPTER === "memory" ? "memory" : "redis",
+      redisUrl: process.env.REDIS_URL,
+    },
+  }),
+}));
+
 import { runSnapshotCreate } from "@/cli/snapshot-create";
 
 describe("snapshot create cli", () => {
+  const originalAdapter = process.env.JUNIOR_STATE_ADAPTER;
+  const originalRedisUrl = process.env.REDIS_URL;
+
   beforeEach(() => {
     getProvidersMock.mockReset();
     getRuntimeDependenciesMock.mockReset();
@@ -41,6 +53,21 @@ describe("snapshot create cli", () => {
     getProvidersMock.mockReturnValue([]);
     getRuntimeDependenciesMock.mockReturnValue([]);
     getRuntimePostinstallMock.mockReturnValue([]);
+    delete process.env.JUNIOR_STATE_ADAPTER;
+    process.env.REDIS_URL = "redis://localhost:6379";
+  });
+
+  afterEach(() => {
+    if (originalAdapter === undefined) {
+      delete process.env.JUNIOR_STATE_ADAPTER;
+    } else {
+      process.env.JUNIOR_STATE_ADAPTER = originalAdapter;
+    }
+    if (originalRedisUrl === undefined) {
+      delete process.env.REDIS_URL;
+    } else {
+      process.env.REDIS_URL = originalRedisUrl;
+    }
   });
 
   it("uses default runtime and timeout", async () => {
@@ -143,5 +170,15 @@ describe("snapshot create cli", () => {
     resolveMock.mockRejectedValue(new Error("OIDC missing"));
 
     await expect(runSnapshotCreate()).rejects.toThrow("OIDC missing");
+  });
+
+  it("fails when state is not durable redis", async () => {
+    process.env.JUNIOR_STATE_ADAPTER = "memory";
+    delete process.env.REDIS_URL;
+
+    await expect(runSnapshotCreate()).rejects.toThrow(
+      /requires durable Redis state/,
+    );
+    expect(resolveMock).not.toHaveBeenCalled();
   });
 });

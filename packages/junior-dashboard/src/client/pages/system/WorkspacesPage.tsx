@@ -3,6 +3,7 @@ import { Plus } from "lucide-react";
 import { Link } from "react-router";
 import {
   workspaceListSchema,
+  type BaselineSnapshotReport,
   type WorkspaceReport,
 } from "@sentry/junior/api/schema";
 
@@ -16,6 +17,7 @@ import {
   deleteDashboardResource,
   fetchDashboardJson,
 } from "../../http";
+import { BaselineSnapshotCard } from "./BaselineSnapshotCard";
 import { SystemPageLayout } from "./SystemPageLayout";
 import { WorkspaceList } from "./WorkspaceList";
 
@@ -53,14 +55,15 @@ export function WorkspacesPage() {
     },
     onSuccess: async (workspace) => {
       await queryClient.cancelQueries({ queryKey: workspacesQueryKey });
-      queryClient.setQueryData<{ workspaces: WorkspaceReport[] }>(
-        workspacesQueryKey,
-        (current) => ({
-          workspaces: (current?.workspaces ?? []).filter(
-            (item) => item.id !== workspace.id,
-          ),
-        }),
-      );
+      queryClient.setQueryData<{
+        baselineSnapshot: BaselineSnapshotReport | null;
+        workspaces: WorkspaceReport[];
+      }>(workspacesQueryKey, (current) => ({
+        baselineSnapshot: current?.baselineSnapshot ?? null,
+        workspaces: (current?.workspaces ?? []).filter(
+          (item) => item.id !== workspace.id,
+        ),
+      }));
     },
   });
 
@@ -73,6 +76,7 @@ export function WorkspacesPage() {
   }
 
   const workspaces = workspacesQuery.data?.workspaces ?? [];
+  const baselineSnapshot = workspacesQuery.data?.baselineSnapshot ?? null;
   return (
     <SystemPageLayout>
       <PageHeader
@@ -104,6 +108,10 @@ export function WorkspacesPage() {
             "Could not delete the Workspace. Try again.",
           )}
         </p>
+      ) : null}
+
+      {!workspacesQuery.error ? (
+        <BaselineSnapshotCard snapshot={baselineSnapshot} />
       ) : null}
 
       <WorkspaceList

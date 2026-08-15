@@ -1,3 +1,4 @@
+import { getChatConfig } from "@/chat/config";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import {
   resolve as resolveSnapshot,
@@ -113,8 +114,17 @@ export async function runSnapshotCreate(
 
   const runtime = DEFAULT_RUNTIME;
   const timeoutMs = DEFAULT_TIMEOUT_MS;
+  const state = getChatConfig().state;
+
+  // Snapshot registry must outlive one build process.
+  if (state.adapter !== "redis" || !state.redisUrl) {
+    throw new Error(
+      "junior snapshot create requires durable Redis state. Set REDIS_URL and leave JUNIOR_STATE_ADAPTER unset (or set it to redis).",
+    );
+  }
 
   try {
+    log(`Sandbox snapshot registry: adapter=redis`);
     logSnapshotProfile(runtime, log);
     const emitted = new Set<ProgressPhase>();
     const snapshot = await resolveSnapshot({

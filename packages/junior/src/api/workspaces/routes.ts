@@ -1,6 +1,10 @@
 import { Hono } from "hono";
 import { getDb } from "@/chat/db";
-import { hash as workspaceProfileHash } from "@/chat/sandbox/snapshot/profile";
+import {
+  create as createSnapshotProfile,
+  hash as workspaceProfileHash,
+} from "@/chat/sandbox/snapshot/profile";
+import { getCachedSnapshot } from "@/chat/sandbox/snapshot/resolve";
 import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
 import { workspaceRepoCheckoutPath } from "@/chat/workspaces/checkout-path";
 import {
@@ -37,6 +41,20 @@ function snapshotView(workspace: Workspace) {
   };
 }
 
+async function baselineSnapshotView() {
+  const profile = createSnapshotProfile(SANDBOX_RUNTIME);
+  if (!profile) return null;
+  const cached = await getCachedSnapshot(profile.hash);
+  if (!cached) return null;
+  return {
+    id: cached.snapshotId,
+    generatedAt: new Date(cached.createdAtMs).toISOString(),
+    buildDurationMs: cached.buildDurationMs,
+    profileHash: cached.profileHash,
+    dependencyCount: cached.dependencyCount,
+  };
+}
+
 function view(workspace: Workspace) {
   return {
     id: workspace.id,
@@ -70,8 +88,13 @@ export function createWorkspaceRoutes(): Hono<JuniorApiEnv> {
   const app = new Hono<JuniorApiEnv>();
 
   app.get("/", requireViewer, async () => {
+    const [baselineSnapshot, workspaces] = await Promise.all([
+      baselineSnapshotView(),
+      listWorkspaces(getDb()),
+    ]);
     return jsonResponse(workspaceListSchema, {
-      workspaces: (await listWorkspaces(getDb())).map(view),
+      baselineSnapshot,
+      workspaces: workspaces.map(view),
     });
   });
 

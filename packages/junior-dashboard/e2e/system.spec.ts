@@ -90,7 +90,7 @@ test("creates a Workspace recipe", async ({ page }) => {
       });
       return;
     }
-    await route.fulfill({ json: { workspaces: [] } });
+    await route.fulfill({ json: { baselineSnapshot: null, workspaces: [] } });
   });
 
   await page.goto(`${server.baseURL}/system/workspaces`);

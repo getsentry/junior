@@ -18,11 +18,32 @@ function hasValue(value: string | undefined): value is string {
   return typeof value === "string" && value.trim() !== "";
 }
 
+function isTruthyEnvFlag(value: string | undefined): boolean {
+  if (!value) {
+    return false;
+  }
+  const normalized = value.trim().toLowerCase();
+  return normalized !== "" && normalized !== "0" && normalized !== "false";
+}
+
+/** True for hosted CI/build hosts where local development defaults must not apply. */
+export function isHostedBuildEnvironment(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  return isTruthyEnvFlag(env.VERCEL) || isTruthyEnvFlag(env.CI);
+}
+
 /** Apply global development defaults after env files have been loaded. */
 export function applyJuniorDevelopmentDefaults(
   env: NodeJS.ProcessEnv,
   options: { baseUrl?: string } = {},
 ): void {
+  // Hosted builds often leave NODE_ENV unset until the framework build step.
+  // Skip local defaults so snapshot create keeps durable Redis.
+  if (isHostedBuildEnvironment(env)) {
+    return;
+  }
+
   const nodeEnv = env.NODE_ENV ?? "development";
   if (nodeEnv !== "development") {
     return;
@@ -31,7 +52,8 @@ export function applyJuniorDevelopmentDefaults(
   if (!hasValue(env.JUNIOR_SECRET)) {
     env.JUNIOR_SECRET = JUNIOR_LOCAL_DEV_INTERNAL_SECRET;
   }
-  if (!hasValue(env.JUNIOR_STATE_ADAPTER)) {
+  // Keep Redis when it is already configured for durable CLI work.
+  if (!hasValue(env.JUNIOR_STATE_ADAPTER) && !hasValue(env.REDIS_URL)) {
     env.JUNIOR_STATE_ADAPTER = "memory";
   }
   if (!hasValue(env.JUNIOR_SCHEDULER_SECRET) && !hasValue(env.CRON_SECRET)) {

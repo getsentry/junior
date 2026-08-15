@@ -101,6 +101,7 @@ export {
 } from "./schema/personal-token";
 export type { PersonalTokenMetadata } from "./schema/personal-token";
 export {
+  baselineSnapshotSchema,
   deleteWorkspaceResponseSchema,
   workspaceBodySchema,
   workspaceListSchema,
@@ -108,7 +109,10 @@ export {
   workspaceRepoSchema,
   workspaceSchema,
 } from "./schema/workspace";
-export type { WorkspaceReport } from "./schema/workspace";
+export type {
+  BaselineSnapshotReport,
+  WorkspaceReport,
+} from "./schema/workspace";
 export {
   eventTaskSummarySchema,
   scheduledTaskSummarySchema,

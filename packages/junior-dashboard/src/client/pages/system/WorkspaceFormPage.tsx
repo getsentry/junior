@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import {
   workspaceSchema,
+  type BaselineSnapshotReport,
   type WorkspaceReport,
 } from "@sentry/junior/api/schema";
 
@@ -81,17 +82,18 @@ export function WorkspaceFormPage() {
     },
     onSuccess: async (workspace) => {
       await queryClient.cancelQueries({ queryKey: workspacesQueryKey });
-      queryClient.setQueryData<{ workspaces: WorkspaceReport[] }>(
-        workspacesQueryKey,
-        (current) => ({
-          workspaces: [
-            workspace,
-            ...(current?.workspaces ?? []).filter(
-              (item) => item.id !== workspace.id,
-            ),
-          ].sort((left, right) => left.name.localeCompare(right.name)),
-        }),
-      );
+      queryClient.setQueryData<{
+        baselineSnapshot: BaselineSnapshotReport | null;
+        workspaces: WorkspaceReport[];
+      }>(workspacesQueryKey, (current) => ({
+        baselineSnapshot: current?.baselineSnapshot ?? null,
+        workspaces: [
+          workspace,
+          ...(current?.workspaces ?? []).filter(
+            (item) => item.id !== workspace.id,
+          ),
+        ].sort((left, right) => left.name.localeCompare(right.name)),
+      }));
       navigate("/system/workspaces");
     },
   });

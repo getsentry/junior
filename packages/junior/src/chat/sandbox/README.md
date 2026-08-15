@@ -64,6 +64,9 @@ traffic through verified host egress.
   live state. A failed candidate leaves the current Sandbox unchanged.
 - Missing or invalid snapshots rebuild through the owning snapshot path;
   callers do not mutate a cached snapshot in place.
+- Build-time `junior snapshot create` warms the install-wide baseline profile
+  in durable Redis. Hosted builds must not force the memory state adapter.
+  The Workspaces dashboard list reads that baseline registry entry.
 - Snapshot state never contains real provider credentials.
 - The global baseline installs Docker and Compose clients plus
   `junior-ensure-docker`. Sandbox prepare starts `dockerd` so nested
