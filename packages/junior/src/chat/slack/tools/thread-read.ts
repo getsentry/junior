@@ -132,9 +132,10 @@ export function createSlackThreadReadTool(context: SlackToolContext) {
         if (!parsedTs.ok) {
           throw new ToolInputError(parsedTs.error);
         }
-        const target = resolveSlackChannelRef({
+        const target = await resolveSlackChannelRef({
           field: "channel_id",
           value: channel_id,
+          teamId: context.teamId,
         });
         channelId = target.channelId;
         messageTs = parsedTs.value;

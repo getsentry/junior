@@ -554,13 +554,56 @@ describe("slack channel tools", () => {
     expect(getCapturedSlackApiCalls("conversations.list")).toHaveLength(0);
   });
 
-  it("rejects plain channel names without scanning the workspace", async () => {
+  it("lists history when channel_id is a known destination name", async () => {
+    const { getConversationStore } = await import("@/chat/db");
+    await getConversationStore().recordActivity({
+      conversationId: "slack:C0KNOWN:1700000000.100",
+      channelName: "proj-foo",
+      destination: {
+        platform: "slack",
+        teamId: "T123",
+        channelId: "C0KNOWN",
+      },
+      nowMs: Date.parse("2026-08-16T00:00:00.000Z"),
+      source: "slack",
+      visibility: "public",
+    });
+    queueSlackApiResponse("conversations.info", {
+      body: conversationsInfoOk({
+        channelId: "C0KNOWN",
+        name: "proj-foo",
+        isPrivate: false,
+        isMember: true,
+      }),
+    });
+    queueSlackApiResponse("conversations.history", {
+      body: conversationsHistoryPage({
+        messages: [{ ts: "1700000000.720", text: "known-name", user: "U3" }],
+      }),
+    });
+
     const tool = createSlackChannelListMessagesTool(
-      createContext("reject plain channel name"),
+      createContext("list by known destination name"),
+    );
+    const result = await executeTool(tool, {
+      channel_id: "#proj-foo",
+      limit: 5,
+    });
+    expect(result).toMatchObject({
+      channel_id: "C0KNOWN",
+      channel_name: "proj-foo",
+      count: 1,
+    });
+    expect(getCapturedSlackApiCalls("conversations.list")).toHaveLength(0);
+  });
+
+  it("rejects unknown plain channel names without scanning Slack", async () => {
+    const tool = createSlackChannelListMessagesTool(
+      createContext("reject unknown plain channel name"),
     );
     await expect(
-      executeTool(tool, { channel_id: "#proj-foo", limit: 5 }),
-    ).rejects.toThrow(/Plain channel names are not resolved/i);
+      executeTool(tool, { channel_id: "#never-seen-channel", limit: 5 }),
+    ).rejects.toThrow(/Unknown `channel_id`/i);
     expect(getCapturedSlackApiCalls("conversations.list")).toHaveLength(0);
     expect(getCapturedSlackApiCalls("conversations.history")).toHaveLength(0);
   });

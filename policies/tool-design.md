@@ -27,10 +27,11 @@ unsafe requests.
   same tool-selection rule in the system prompt; see `agent-steering.md`.
 - Prefer provider identifiers that the product already emits (ids, native
   mentions, permalinks, or internal references) over free-text labels that need
-  a workspace scan to resolve. When a plain name is not an identifier, reject it
-  with a repairable tool error that steers the model to an id-bearing form or a
-  discovery tool. Do not paginate provider inventory APIs to invent completeness
-  for name lookup.
+  a workspace scan to resolve. A plain name may resolve only against local known
+  state the product already stored. When that local match is missing or
+  ambiguous, reject with a repairable tool error that steers the model to an
+  id-bearing form or a discovery tool. Do not paginate provider inventory APIs
+  to invent completeness for name lookup.
 - Author first-party model-facing tools through the local Zod tool helper for
   their runtime edge: `zodTool(...)` for host-owned Junior tools and the plugin
   API's Zod helper for first-party plugin package tools. Do not add new raw

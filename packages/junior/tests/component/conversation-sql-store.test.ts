@@ -814,6 +814,92 @@ describe("conversation SQL store", () => {
     }
   });
 
+  it("resolves a known Slack destination by exact display name", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      const store = createSqlStore(fixture.sql);
+      await migrateSchema(fixture.sql);
+
+      await store.recordActivity({
+        conversationId: "slack:C0KNOWN:1700000000.100",
+        channelName: "proj-foo",
+        destination: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: "C0KNOWN",
+        },
+        nowMs: 1_000,
+        visibility: "public",
+      });
+
+      await expect(
+        store.findSlackDestinationByName({
+          teamId: "T123",
+          channelName: "#proj-foo",
+        }),
+      ).resolves.toEqual({
+        channelId: "C0KNOWN",
+        channelName: "proj-foo",
+      });
+      await expect(
+        store.findSlackDestinationByName({
+          teamId: "T123",
+          channelName: "never-seen",
+        }),
+      ).resolves.toBeUndefined();
+      await expect(
+        store.findSlackDestinationByName({
+          teamId: "TOTHER",
+          channelName: "proj-foo",
+        }),
+      ).resolves.toBeUndefined();
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("fails closed when a destination display name is ambiguous", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      const store = createSqlStore(fixture.sql);
+      await migrateSchema(fixture.sql);
+
+      await store.recordActivity({
+        conversationId: "slack:C0ONE:1700000000.100",
+        channelName: "dupes",
+        destination: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: "C0ONE",
+        },
+        nowMs: 1_000,
+        visibility: "public",
+      });
+      await store.recordActivity({
+        conversationId: "slack:C0TWO:1700000000.200",
+        channelName: "#dupes",
+        destination: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: "C0TWO",
+        },
+        nowMs: 2_000,
+        visibility: "public",
+      });
+
+      await expect(
+        store.findSlackDestinationByName({
+          teamId: "T123",
+          channelName: "dupes",
+        }),
+      ).resolves.toBeUndefined();
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("rejects legacy JSON metadata that was not migrated to foreign keys", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 

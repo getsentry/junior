@@ -7,6 +7,10 @@ import { CONVERSATIONS_TOOL_SOURCE } from "@/chat/conversations/tool-source";
 import { getConversationMessageSearchStore } from "@/chat/db";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import {
+  parseSlackTeamId,
+  type SlackTeamId,
+} from "@/chat/slack/ids";
+import {
   resolveSlackChannelRef,
   slackChannelRefParam,
 } from "@/chat/slack/tool-support/channel-target";
@@ -62,6 +66,7 @@ async function resolveSearchFilters(input: {
   before?: string | null;
   channel_id?: string | null;
   query?: string | null;
+  teamId: SlackTeamId;
 }): Promise<ConversationMessageSearchFilters> {
   const query = input.query?.trim() || undefined;
   const annotation = input.annotation?.trim() || undefined;
@@ -70,9 +75,10 @@ async function resolveSearchFilters(input: {
   let channelId: string | undefined;
 
   if (input.channel_id != null && input.channel_id.trim() !== "") {
-    const target = resolveSlackChannelRef({
+    const target = await resolveSlackChannelRef({
       field: "channel_id",
       value: input.channel_id,
+      teamId: input.teamId,
     });
     channelId = target.channelId;
   }
@@ -162,7 +168,13 @@ export function createSlackConversationMessageSearchTool(
       .strict(),
     outputSchema: conversationMessageSearchOutputSchema,
     execute: async (input) => {
-      const filters = await resolveSearchFilters(input);
+      const teamId = parseSlackTeamId(scope.providerTenantId);
+      if (!teamId) {
+        throw new ToolInputError(
+          "Cannot search retained messages without a valid Slack workspace id.",
+        );
+      }
+      const filters = await resolveSearchFilters({ ...input, teamId });
       const store = getConversationMessageSearchStore();
       const matches = await store.search({
         currentConversationId,
