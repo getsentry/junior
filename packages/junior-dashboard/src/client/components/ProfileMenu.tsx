@@ -18,7 +18,7 @@ import type { PluginUserPageLink } from "@sentry/junior-plugin-api";
 
 import { formatCostSummary, peoplePath } from "../format";
 import { pluginUserPagePath } from "../pages/user/PluginUserPage";
-import { cn } from "../styles";
+import { cn, dashboardInteractiveTextClass } from "../styles";
 import type { Identity } from "../types";
 
 type ProfileMenuProps = {
@@ -216,40 +216,65 @@ export function ProfileMenu({
   );
 
   if (variant === "sheet-links") {
-    // Mobile drawer prior art (Gmail/Linear/Material): plain destination rows
-    // matching primary nav. No purple hero avatar, spend card, or icon stack.
-    const sheetItemClass =
-      "rounded-lg border-0 bg-transparent px-3 py-3 text-left font-mono text-sm font-medium tracking-normal text-dashboard-text no-underline transition-colors hover:bg-white/[0.035] focus-visible:bg-white/[0.035] focus-visible:outline-none";
+    // Match primary sheet rows exactly, with spend as a quiet top callout.
+    const sheetItemClass = cn(
+      "rounded-lg border-0 bg-transparent px-3 py-3 text-left font-mono text-sm font-medium tracking-normal no-underline transition-colors hover:bg-white/[0.035] focus-visible:bg-white/[0.035] focus-visible:outline-none",
+      dashboardInteractiveTextClass,
+    );
     return (
-      <nav aria-label={`Account menu for ${name}`} className="grid gap-1">
-        <Link className={sheetItemClass} to={peoplePath(email)}>
-          My profile
-        </Link>
-        <Link className={sheetItemClass} to="/settings">
-          Settings
-        </Link>
-        <Link className={sheetItemClass} to="/settings/api-tokens">
-          API tokens
-        </Link>
-        {profilePages.map((page) => (
-          <Link
-            className={sheetItemClass}
-            key={`${page.pluginName}:${page.id}`}
-            to={pluginUserPagePath(page.pluginName, page.id)}
-          >
-            {page.label}
-          </Link>
-        ))}
-        <button
-          className={cn(sheetItemClass, "w-full cursor-pointer")}
-          onClick={() => {
-            void onSignOut();
-          }}
-          type="button"
+      <div aria-label={`Account menu for ${name}`} className="grid gap-3">
+        <div
+          aria-label={`Personal model spend: 7 days ${sevenDaySpend}, 30 days ${thirtyDaySpend}`}
+          className="flex items-center justify-between gap-3 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2.5 font-mono text-xs tabular-nums text-dashboard-text-muted"
         >
-          Log out
-        </button>
-      </nav>
+          <span className="text-[11px] font-medium uppercase tracking-[0.08em]">
+            Spend
+          </span>
+          <span className="flex items-center gap-3">
+            <span className="whitespace-nowrap">
+              7d{" "}
+              <span className="font-semibold text-dashboard-text">
+                {sevenDaySpend}
+              </span>
+            </span>
+            <span className="whitespace-nowrap">
+              30d{" "}
+              <span className="font-semibold text-dashboard-text">
+                {thirtyDaySpend}
+              </span>
+            </span>
+          </span>
+        </div>
+        <nav className="grid gap-1">
+          <Link className={sheetItemClass} to={peoplePath(email)}>
+            My profile
+          </Link>
+          <Link className={sheetItemClass} to="/settings">
+            Settings
+          </Link>
+          <Link className={sheetItemClass} to="/settings/api-tokens">
+            API tokens
+          </Link>
+          {profilePages.map((page) => (
+            <Link
+              className={sheetItemClass}
+              key={`${page.pluginName}:${page.id}`}
+              to={pluginUserPagePath(page.pluginName, page.id)}
+            >
+              {page.label}
+            </Link>
+          ))}
+          <button
+            className={cn(sheetItemClass, "w-full cursor-pointer")}
+            onClick={() => {
+              void onSignOut();
+            }}
+            type="button"
+          >
+            Log out
+          </button>
+        </nav>
+      </div>
     );
   }
 
@@ -257,7 +282,7 @@ export function ProfileMenu({
     return (
       <div
         aria-label={`Signed in as ${name}`}
-        className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 px-1"
+        className="flex min-w-0 items-center gap-2.5 px-1"
       >
         <span
           aria-hidden="true"
@@ -274,20 +299,6 @@ export function ProfileMenu({
               {email}
             </p>
           ) : null}
-        </div>
-        <div className="flex shrink-0 items-center gap-2.5 font-mono text-[10px] tabular-nums text-dashboard-text-muted">
-          <span className="whitespace-nowrap">
-            7d{" "}
-            <span className="font-semibold text-dashboard-text">
-              {sevenDaySpend}
-            </span>
-          </span>
-          <span className="whitespace-nowrap">
-            30d{" "}
-            <span className="font-semibold text-dashboard-text">
-              {thirtyDaySpend}
-            </span>
-          </span>
         </div>
       </div>
     );

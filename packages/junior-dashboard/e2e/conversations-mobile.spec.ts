@@ -53,13 +53,18 @@ test("opens and closes a conversation in the mobile workspace", async ({
   ).toBeVisible();
   await navigationTrigger.click();
   await expect(page.getByText(/^junior version /)).toBeVisible();
+  const accountMenu = page.getByLabel("Account menu for Dashboard User");
+  await expect(accountMenu).toBeVisible();
   await expect(
-    page.getByLabel("Account menu for Dashboard User"),
+    accountMenu.getByLabel(
+      "Personal model spend: 7 days $0.07, 30 days $0.07",
+    ),
   ).toBeVisible();
-  const signedInIdentity = page.getByLabel("Signed in as Dashboard User");
-  await expect(signedInIdentity).toBeVisible();
-  await expect(signedInIdentity.getByText("7d $0.07")).toBeVisible();
-  await expect(signedInIdentity.getByText("30d $0.07")).toBeVisible();
+  await expect(accountMenu.getByText("7d $0.07")).toBeVisible();
+  await expect(accountMenu.getByText("30d $0.07")).toBeVisible();
+  await expect(
+    page.getByLabel("Signed in as Dashboard User"),
+  ).toBeVisible();
   await expect(page.getByRole("link", { name: "My profile" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Settings" })).toBeVisible();
   await expect(page.getByRole("link", { name: "API tokens" })).toBeVisible();
