@@ -60,7 +60,10 @@ export function DashboardHeader(props: {
   const previousFocusRef = useRef<HTMLElement | undefined>(undefined);
   const onOpenChangeRef = useRef(props.onMobileNavigationOpenChange);
   onOpenChangeRef.current = props.onMobileNavigationOpenChange;
-  const conversationMode = Boolean(props.mobileTitle && props.mobileBackTo);
+  // Conversation chrome is path-driven. An empty title must still keep back +
+  // overflow tools mounted while the detail query settles.
+  const conversationMode = Boolean(props.mobileBackTo);
+  const mobileTitle = props.mobileTitle?.trim() || "Conversation";
 
   useRegisterOpenMobileNavigation(() => {
     onOpenChangeRef.current(true);
@@ -181,7 +184,7 @@ export function DashboardHeader(props: {
         {conversationMode ? (
           <div className="col-start-2 row-start-1 flex min-w-0 items-center gap-2 md:hidden">
             <h1 className="m-0 min-w-0 truncate text-left font-display text-sm font-medium text-dashboard-text">
-              {props.mobileTitle}
+              {mobileTitle}
             </h1>
             <MobileHeaderLiveSlot />
           </div>

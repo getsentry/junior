@@ -87,13 +87,21 @@ export function findDashboardUtilityAssertions(files) {
   );
 }
 
+function isCommentOnlyLine(line) {
+  const trimmed = line.trimStart();
+  return (
+    trimmed.startsWith("//") ||
+    trimmed.startsWith("/*") ||
+    trimmed.startsWith("*") ||
+    trimmed.startsWith("{/*")
+  );
+}
+
 /** Report classic 100vh usage that should prefer dvh on mobile. */
 export function findClassicViewportHeights(files) {
   return files.flatMap((file) =>
     file.contents.split("\n").flatMap((line, index) => {
-      if (line.trimStart().startsWith("//") || line.trimStart().startsWith("*")) {
-        return [];
-      }
+      if (isCommentOnlyLine(line)) return [];
       return CLASSIC_VIEWPORT_HEIGHT_PATTERN.test(line)
         ? [`${file.path}:${index + 1}: ${line.trim()}`]
         : [];
