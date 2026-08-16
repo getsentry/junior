@@ -29,7 +29,9 @@ const focusableSelector = [
 /** Render the primary dashboard shell header and optional mobile nav sheet. */
 export function DashboardHeader(props: {
   compact?: boolean;
+  mobileCloseTo?: string;
   mobileNavigationOpen: boolean;
+  mobileTitle?: string;
   navItems: DashboardHeaderNavItem[];
   onMobileNavigationOpenChange(open: boolean): void;
   profile?: ReactNode;
@@ -145,9 +147,17 @@ export function DashboardHeader(props: {
         >
           <Menu aria-hidden="true" size={20} strokeWidth={2} />
         </button>
+        {props.mobileTitle ? (
+          <div className="col-start-2 row-start-1 min-w-0 truncate text-center font-display text-sm font-medium text-dashboard-text md:hidden">
+            {props.mobileTitle}
+          </div>
+        ) : null}
         <Link
           aria-label={`${getDashboardAgentName()} home`}
-          className="flex min-w-0 max-w-full items-center justify-self-center text-inherit no-underline md:justify-self-start"
+          className={cn(
+            "col-start-2 row-start-1 min-w-0 max-w-full items-center justify-self-center text-inherit no-underline md:col-start-1 md:flex md:justify-self-start",
+            props.mobileTitle ? "hidden" : "flex",
+          )}
           to="/"
         >
           <JuniorLogo />
@@ -169,8 +179,19 @@ export function DashboardHeader(props: {
             </NavLink>
           ))}
         </nav>
+        {props.mobileCloseTo ? (
+          <Link
+            aria-label="Close conversation"
+            className="grid size-10 place-items-center justify-self-end rounded-lg text-dashboard-text no-underline transition-colors hover:bg-white/[0.06] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#beaaff]/70 md:hidden"
+            to={props.mobileCloseTo}
+          >
+            <X aria-hidden="true" size={20} strokeWidth={2} />
+          </Link>
+        ) : null}
         {props.profile ? (
-          <div className="col-start-3 justify-self-end">{props.profile}</div>
+          <div className="col-start-3 hidden justify-self-end md:block">
+            {props.profile}
+          </div>
         ) : null}
       </div>
       {props.mobileNavigationOpen ? (
@@ -225,6 +246,11 @@ export function DashboardHeader(props: {
               ))}
             </nav>
             <MobileSecondaryNavigationSlot />
+            {props.profile ? (
+              <div className="mt-3 border-t border-white/[0.07] pt-3">
+                {props.profile}
+              </div>
+            ) : null}
           </div>
           {props.version ? (
             <p className="m-0 border-t border-white/[0.07] px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] font-mono text-xs text-dashboard-text-muted">

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Globe2, LockKeyhole } from "lucide-react";
-import { Link, useNavigate, useParams } from "react-router";
+import { useNavigate, useParams } from "react-router";
 
 import { useConversationsData } from "../api";
 import { ConversationSidebar } from "./ConversationSidebar";
@@ -93,22 +93,15 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
       <section
         aria-label="Selected conversation"
         className={
-          selectedId || creating
-            ? "grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-white/[0.012]"
-            : "hidden min-h-0 overflow-hidden bg-white/[0.012] md:grid md:grid-rows-[minmax(0,1fr)]"
+          selectedId
+            ? "grid min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden bg-white/[0.012]"
+            : creating
+              ? "grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-white/[0.012]"
+              : "hidden min-h-0 overflow-hidden bg-white/[0.012] md:grid md:grid-rows-[minmax(0,1fr)]"
         }
       >
         {selectedId && !creating ? (
           <>
-            <div className="border-b border-white/[0.07] bg-white/[0.025] px-3 py-2.5 md:hidden">
-              <Link
-                className="inline-flex items-center gap-2 font-mono text-xs text-dashboard-text-muted no-underline hover:text-dashboard-text"
-                to="/"
-              >
-                <ArrowLeft aria-hidden="true" size={15} />
-                Your conversations
-              </Link>
-            </div>
             <ConversationPage
               key={selectedId}
               conversationId={selectedId}

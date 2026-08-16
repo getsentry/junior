@@ -392,7 +392,7 @@ test("opens and closes a conversation in the mobile workspace", async ({
   await expect(page.getByLabel("Junior home")).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Open profile menu for Dashboard User" }),
-  ).toBeVisible();
+  ).toBeHidden();
   await expect(
     page.getByRole("link", { name: "Conversations", exact: true }),
   ).toBeHidden();
@@ -401,6 +401,9 @@ test("opens and closes a conversation in the mobile workspace", async ({
   ).toBeVisible();
   await navigationTrigger.click();
   await expect(page.getByText(/^junior version /)).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Open profile menu for Dashboard User" }),
+  ).toBeVisible();
   const closeNavigation = page.getByRole("button", {
     name: "Close navigation",
   });
@@ -416,6 +419,11 @@ test("opens and closes a conversation in the mobile workspace", async ({
   await expect(
     page.getByRole("heading", { name: "Investigate checkout latency" }),
   ).toBeVisible();
+  await expect(page.getByText("Conversation", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Close conversation" }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Junior home")).toBeHidden();
   const transcript = page.getByLabel("Conversation transcript");
   await expect(transcript.getByText("1.9k tokens")).toBeHidden();
   await expect(page.getByRole("button", { name: "Archive" })).toBeHidden();
@@ -569,7 +577,7 @@ test("opens and closes a conversation in the mobile workspace", async ({
     page.getByRole("group", { name: "Transcript view" }),
   ).toBeVisible();
 
-  await page.getByRole("link", { name: "Your conversations" }).click();
+  await page.getByRole("link", { name: "Close conversation" }).click();
   await expect(page).toHaveURL(`${server.baseURL}/`);
   await expect(
     page.getByRole("heading", { name: "Conversations" }),

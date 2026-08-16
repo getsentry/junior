@@ -129,6 +129,14 @@ export function DashboardShell() {
           header={
             <DashboardHeader
               compact={workspace}
+              mobileCloseTo={
+                location.pathname.startsWith("/conversations/") ? "/" : undefined
+              }
+              mobileTitle={
+                location.pathname.startsWith("/conversations/")
+                  ? "Conversation"
+                  : undefined
+              }
               mobileNavigationOpen={mobileNavigationOpen}
               navItems={primaryNavItems}
               onMobileNavigationOpenChange={setMobileNavigationOpen}
