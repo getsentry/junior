@@ -1176,7 +1176,11 @@ describe("createTestSandbox", () => {
       await params.applyNetworkPolicy(buildSandbox);
       await params.prepareRepositories?.(buildSandbox, params.workspace);
       if (params.removeCredentialRoute) {
-        await buildSandbox.update({ networkPolicy: "allow-all" });
+        await (
+          buildSandbox.update as (input: {
+            networkPolicy: string;
+          }) => Promise<void>
+        )({ networkPolicy: "allow-all" });
       }
       return {
         snapshotId: "snap_workspace",
