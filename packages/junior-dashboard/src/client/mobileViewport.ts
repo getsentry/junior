@@ -16,8 +16,8 @@ export type MobileViewportMetrics = {
  * Only follow visualViewport offset/height while the keyboard is open so
  * rubber-band pans cannot move the fixed conversation shell.
  *
- * Focus-time Safari pan freezes while typing stay in the live-poll lag work
- * (see #1594). This helper only owns the closed-keyboard rubber-band case.
+ * Focus-time Safari pan freezes while typing use `mobileViewportOffsetTop`
+ * (from #1594). This helper owns the closed-keyboard rubber-band case.
  */
 export function mobileViewportMetrics(input: {
   layoutHeight: number;
@@ -45,6 +45,15 @@ export function mobileViewportMetrics(input: {
   };
 }
 
+/** Keep Safari focus panning from moving the fixed workspace with the keyboard. */
+export function mobileViewportOffsetTop(input: {
+  editableFocused: boolean;
+  nextOffsetTop: number;
+  previousOffsetTop: number;
+}): number {
+  return input.editableFocused ? input.previousOffsetTop : input.nextOffsetTop;
+}
+
 /** Keep the mobile workspace inside the visual viewport while the keyboard is open. */
 export function useMobileViewportHeight(
   rootRef: RefObject<HTMLElement | null>,
@@ -65,6 +74,7 @@ export function useMobileViewportHeight(
     let frame: number | undefined;
     let lastHeight = "";
     let lastOffsetTop = "";
+    let appliedOffsetTopPx = 0;
     let documentScrollLocked = false;
 
     const setDocumentScrollLocked = (locked: boolean) => {
@@ -92,6 +102,7 @@ export function useMobileViewportHeight(
         root.style.removeProperty(viewportOffsetTopProperty);
         lastOffsetTop = "";
       }
+      appliedOffsetTopPx = 0;
     };
 
     const syncHeight = () => {
@@ -112,8 +123,13 @@ export function useMobileViewportHeight(
         }
 
         setDocumentScrollLocked(true);
+        const offsetTopPx = mobileViewportOffsetTop({
+          editableFocused: isEditableElement(document.activeElement),
+          nextOffsetTop: metrics.offsetTopPx,
+          previousOffsetTop: appliedOffsetTopPx,
+        });
         const nextHeight = `${metrics.heightPx}px`;
-        const nextOffsetTop = `${metrics.offsetTopPx}px`;
+        const nextOffsetTop = `${offsetTopPx}px`;
         if (lastHeight !== nextHeight) {
           root.style.setProperty(viewportHeightProperty, nextHeight);
           lastHeight = nextHeight;
@@ -122,6 +138,7 @@ export function useMobileViewportHeight(
           root.style.setProperty(viewportOffsetTopProperty, nextOffsetTop);
           lastOffsetTop = nextOffsetTop;
         }
+        appliedOffsetTopPx = offsetTopPx;
         frame = undefined;
       });
     };
@@ -129,18 +146,28 @@ export function useMobileViewportHeight(
     syncHeight();
     mobile.addEventListener("change", syncHeight);
     window.addEventListener("resize", syncHeight);
-    // Mobile Safari pans the visual viewport with scroll events while the
-    // keyboard is open, so offsetTop can change without a resize.
+    // Keep height current during keyboard animation. Ignore Safari's focus pan
+    // offset until focus leaves the editor, or the fixed shell chases the pan.
     viewport?.addEventListener("resize", syncHeight);
     viewport?.addEventListener("scroll", syncHeight);
+    document.addEventListener("focusout", syncHeight);
     return () => {
       if (frame !== undefined) cancelAnimationFrame(frame);
       mobile.removeEventListener("change", syncHeight);
       window.removeEventListener("resize", syncHeight);
       viewport?.removeEventListener("resize", syncHeight);
       viewport?.removeEventListener("scroll", syncHeight);
+      document.removeEventListener("focusout", syncHeight);
       setDocumentScrollLocked(false);
       clearViewportProperties();
     };
   }, [enabled, rootRef]);
+}
+
+function isEditableElement(element: Element | null): boolean {
+  return (
+    element instanceof HTMLInputElement ||
+    element instanceof HTMLTextAreaElement ||
+    (element instanceof HTMLElement && element.isContentEditable)
+  );
 }

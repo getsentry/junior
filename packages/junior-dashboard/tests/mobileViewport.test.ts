@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { mobileViewportMetrics } from "../src/client/mobileViewport";
+import {
+  mobileViewportMetrics,
+  mobileViewportOffsetTop,
+} from "../src/client/mobileViewport";
 
 describe("mobileViewportMetrics", () => {
   it("clears shell geometry off mobile", () => {
@@ -68,5 +71,27 @@ describe("mobileViewportMetrics", () => {
       heightPx: 480,
       offsetTopPx: 0,
     });
+  });
+});
+
+describe("mobileViewportOffsetTop", () => {
+  it("keeps the shell still while Safari pans a focused editor", () => {
+    expect(
+      mobileViewportOffsetTop({
+        editableFocused: true,
+        nextOffsetTop: 128,
+        previousOffsetTop: 0,
+      }),
+    ).toBe(0);
+  });
+
+  it("accepts the settled offset after the editor loses focus", () => {
+    expect(
+      mobileViewportOffsetTop({
+        editableFocused: false,
+        nextOffsetTop: 0,
+        previousOffsetTop: 128,
+      }),
+    ).toBe(0);
   });
 });

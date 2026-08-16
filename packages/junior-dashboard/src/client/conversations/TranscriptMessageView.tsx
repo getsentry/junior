@@ -1,4 +1,4 @@
-import type { ClipboardEventHandler, ReactNode } from "react";
+import { memo, type ClipboardEventHandler, type ReactNode } from "react";
 
 import { HighlightedCode } from "../code";
 import {
@@ -25,60 +25,67 @@ import { TranscriptTurnContextView } from "./TranscriptTurnContextView";
 import { showsSlackSourceIcon } from "./transcriptSource";
 
 /** Render one primary chat message bubble and its attached turn context. */
-export function TranscriptMessageView(props: {
-  message: TranscriptViewMessage;
-  conversation: ConversationTranscript;
-  view: TranscriptViewMode;
-}) {
-  const rawText = messageRawText(props.message);
-  const role = props.message.role;
+export const TranscriptMessageView = memo(
+  function TranscriptMessageView(props: {
+    message: TranscriptViewMessage;
+    conversation: ConversationTranscript;
+    view: TranscriptViewMode;
+  }) {
+    const rawText = messageRawText(props.message);
+    const role = props.message.role;
 
-  return (
-    <TranscriptMessageShell
-      role={props.message.role}
-      onCopy={(event) => {
-        const selection = event.currentTarget.ownerDocument.getSelection();
-        if (
-          !shouldCopyRawTranscript(
-            props.view,
-            rawText,
-            selection,
-            event.currentTarget,
-          )
-        ) {
-          return;
-        }
-        event.clipboardData.setData("text/plain", rawText);
-        event.preventDefault();
-      }}
-    >
-      <TranscriptMessageHeader
-        meta={[formatMessageTimestamp(props.message.timestamp)]}
-        message={props.message}
-        conversation={props.conversation}
-      />
-      {props.view === "raw" ? (
-        <HighlightedCode
-          code={rawText}
-          language={detectLanguage(rawText)}
+    return (
+      <TranscriptMessageShell
+        role={props.message.role}
+        onCopy={(event) => {
+          const selection = event.currentTarget.ownerDocument.getSelection();
+          if (
+            !shouldCopyRawTranscript(
+              props.view,
+              rawText,
+              selection,
+              event.currentTarget,
+            )
+          ) {
+            return;
+          }
+          event.clipboardData.setData("text/plain", rawText);
+          event.preventDefault();
+        }}
+      >
+        <TranscriptMessageHeader
+          meta={[formatMessageTimestamp(props.message.timestamp)]}
+          message={props.message}
+          conversation={props.conversation}
         />
-      ) : (
-        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
-          {props.message.parts.map((part, index) =>
-            part.type === "text" ? (
-              <TranscriptText key={index} role={role} text={part.text ?? ""} />
-            ) : null,
-          )}
-        </div>
-      )}
-      {props.view === "rich" &&
-      props.message.role === "user" &&
-      props.message.contexts?.length ? (
-        <TranscriptTurnContextView contexts={props.message.contexts} />
-      ) : null}
-    </TranscriptMessageShell>
-  );
-}
+        {props.view === "raw" ? (
+          <HighlightedCode
+            code={rawText}
+            language={detectLanguage(rawText)}
+          />
+        ) : (
+          <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
+            {props.message.parts.map((part, index) =>
+              part.type === "text" ? (
+                <TranscriptText key={index} role={role} text={part.text ?? ""} />
+              ) : null,
+            )}
+          </div>
+        )}
+        {props.view === "rich" &&
+        props.message.role === "user" &&
+        props.message.contexts?.length ? (
+          <TranscriptTurnContextView contexts={props.message.contexts} />
+        ) : null}
+      </TranscriptMessageShell>
+    );
+  },
+  (previous, next) =>
+    previous.view === next.view &&
+    previous.message === next.message &&
+    previous.conversation.surface === next.conversation.surface &&
+    previous.conversation.actorIdentity === next.conversation.actorIdentity,
+);
 
 /** Render a redacted primary chat message without exposing body content. */
 export function RedactedMessageView(props: {
