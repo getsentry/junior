@@ -311,11 +311,12 @@ export function createWorkspaceTools(
           await context.workspaces!.switch(workspace, options.signal);
         } catch (error) {
           // Soft deadline while the builder is still running. Return a normal
-          // timed_out tool result so the agent yields after a toolResult
-          // boundary and requeues. Do not throw CooperativeTurnYieldError here.
+          // timed_out tool result so the host can yield at a toolResult
+          // boundary and continue the same wait without model mediation.
           if (isWorkspaceSnapshotWaitingError(error)) {
             return {
               workspace: view(workspace),
+              waiting: "workspace_snapshot" as const,
               timed_out: true as const,
             };
           }

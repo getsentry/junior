@@ -130,7 +130,7 @@ describe("Workspace snapshot wait", () => {
     sleepMock.mockResolvedValue(undefined);
   });
 
-  it("waits across start, prep, poll, then snapshots and stops the builder", async () => {
+  it("waits across start, checkpointed prep, poll, then snapshots and stops the builder", async () => {
     sandboxCreateMock.mockResolvedValue({ name: "junior-ws-1" });
 
     let recordedBuild: Workspace["snapshotBuild"];
@@ -147,12 +147,35 @@ describe("Workspace snapshot wait", () => {
     };
     const stopMock = vi.fn(async () => undefined);
     const detachedCommand = { cmdId: "cmd-1" };
+    const markerPaths = new Set<string>();
     const builder = {
       extendTimeout: vi.fn(async () => undefined),
-      runCommand: vi.fn(async () => detachedCommand),
+      runCommand: vi.fn(async (input: { args?: string[] }) => {
+        const script = input.args?.at(-1) ?? "";
+        if (script.includes("deps.done")) {
+          markerPaths.add("deps.done");
+          return { exitCode: 0, stdout: async () => "", stderr: async () => "" };
+        }
+        if (script.includes("repos.done")) {
+          markerPaths.add("repos.done");
+          return { exitCode: 0, stdout: async () => "", stderr: async () => "" };
+        }
+        return detachedCommand;
+      }),
       getCommand: vi.fn(async () => command),
       snapshot: vi.fn(async () => ({ snapshotId: "snap-sentry" })),
       stop: stopMock,
+      fs: {
+        readFile: vi.fn(async (path: string) => {
+          if (path.endsWith("deps.done") && markerPaths.has("deps.done")) {
+            return "";
+          }
+          if (path.endsWith("repos.done") && markerPaths.has("repos.done")) {
+            return "";
+          }
+          throw new Error("missing");
+        }),
+      },
     };
     sandboxGetMock.mockResolvedValue(builder);
 
@@ -201,6 +224,24 @@ describe("Workspace snapshot wait", () => {
     );
     expect(stopMock).toHaveBeenCalled();
     expect(sleepMock).toHaveBeenCalled();
+  });
+
+  it("boots legacy SQL ready rows that omit runtime and dependency count", async () => {
+    getWorkspaceMock.mockResolvedValue({
+      ...workspace,
+      snapshot: {
+        id: "snap-legacy",
+        generatedAt: new Date("2026-03-01T00:00:00.000Z"),
+        buildDurationMs: 9_000,
+        profileHash: "profile-sentry",
+        runtime: "node22",
+        dependencyCount: 0,
+      },
+    });
+
+    const snapshot = await resolve();
+    expect(snapshot.snapshotId).toBe("snap-legacy");
+    expect(sandboxCreateMock).not.toHaveBeenCalled();
   });
 
   it("soft-yields a waiting error after advancing one slice", async () => {

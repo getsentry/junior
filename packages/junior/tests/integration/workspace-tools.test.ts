@@ -390,6 +390,7 @@ describe("Workspace tools", () => {
       tools.switchWorkspace!.execute!({ name: workspace.name }, {}),
     ).resolves.toMatchObject({
       workspace: { id: workspace.id },
+      waiting: "workspace_snapshot",
       timed_out: true,
     });
   });

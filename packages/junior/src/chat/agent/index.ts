@@ -85,8 +85,10 @@ import {
 } from "@/chat/services/provider-error";
 import { nextProviderRetry } from "@/chat/services/provider-retry";
 import { nextEmptyOutputContinuation } from "@/chat/services/empty-output-continuation";
+import { continueWorkspaceSnapshotWait } from "@/chat/services/workspace-snapshot-wait";
 import { getDiscardedRetryUsage } from "@/chat/agent/retry-usage";
 import { projectTimedOutToolResult } from "@/chat/tool-support/timed-out-tool-result";
+import { CooperativeTurnYieldError } from "@/chat/runtime/turn";
 import {
   configuredTurnRoute,
   selectTurnRoute,
@@ -1206,6 +1208,30 @@ async function executeAgentRunInPrivacyContext(
       },
       prepareNextTurnWithContext: async (nextTurn, hookSignal) => {
         try {
+          // Host-owned Workspace snapshot wait runs before the model sees the
+          // timed_out tool result, so soft yield requeues without model mediation.
+          for (;;) {
+            const snapshotWait = await continueWorkspaceSnapshotWait({
+              messages: currentAgentMessages(),
+              tools: toolsForActiveProfile(),
+              signal: hookSignal,
+            });
+            if (snapshotWait.kind === "none") break;
+            if (snapshotWait.kind === "failed") {
+              agent!.state.messages = snapshotWait.messages;
+              await runResume.persistSafeBoundary(snapshotWait.messages);
+              throw snapshotWait.error;
+            }
+            agent!.state.messages = snapshotWait.messages;
+            await runResume.persistSafeBoundary(snapshotWait.messages);
+            if (snapshotWait.kind === "ready") break;
+            if (runResume.prepareYieldIfDue(snapshotWait.messages)) {
+              throw new CooperativeTurnYieldError(
+                "Workspace snapshot wait yielded for requeue",
+              );
+            }
+          }
+
           const handoffUpdate = applyPendingHandoff();
           const pendingMessages = await drainSteeringMessages();
           const capacityUpdate = await applyActiveContextCompaction(

@@ -43,19 +43,18 @@ export function snapshotFromRow(
     row.status !== "ready" ||
     !row.snapshotId ||
     !row.generatedAt ||
-    row.buildDurationMs == null ||
-    !row.runtime ||
-    row.dependencyCount == null
+    row.buildDurationMs == null
   ) {
     return null;
   }
+  // Legacy ready rows may omit runtime/deps; boot still needs the snapshot id.
   return {
     id: row.snapshotId,
     generatedAt: row.generatedAt,
     buildDurationMs: row.buildDurationMs,
     profileHash: row.profileHash,
-    runtime: row.runtime,
-    dependencyCount: row.dependencyCount,
+    runtime: row.runtime ?? "node22",
+    dependencyCount: row.dependencyCount ?? 0,
   };
 }
 
