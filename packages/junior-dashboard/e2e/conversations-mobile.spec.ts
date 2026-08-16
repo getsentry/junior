@@ -54,8 +54,12 @@ test("opens and closes a conversation in the mobile workspace", async ({
   await navigationTrigger.click();
   await expect(page.getByText(/^junior version /)).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Open profile menu for Dashboard User" }),
+    page.getByLabel("Account menu for Dashboard User"),
   ).toBeVisible();
+  await expect(page.getByRole("link", { name: "My profile" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Settings" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "API tokens" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Log out" })).toBeVisible();
   const closeNavigation = page.getByRole("button", {
     name: "Close navigation",
   });
@@ -71,7 +75,13 @@ test("opens and closes a conversation in the mobile workspace", async ({
   await expect(
     page.getByRole("heading", { name: "Investigate checkout latency" }),
   ).toBeVisible();
-  await expect(page.getByText("Conversation", { exact: true })).toBeVisible();
+  // Shell header shows the truncated conversation title, not a generic label.
+  await expect(
+    page
+      .locator("header.relative")
+      .getByText("Investigate checkout latency", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("Conversation", { exact: true })).toHaveCount(0);
   await expect(
     page.getByRole("link", { name: "Close conversation" }),
   ).toBeVisible();

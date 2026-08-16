@@ -32,8 +32,11 @@ export function DashboardHeader(props: {
   mobileCloseTo?: string;
   mobileNavigationOpen: boolean;
   mobileTitle?: string;
+  /** Expanded account block for the mobile navigation sheet. */
+  mobileProfile?: ReactNode;
   navItems: DashboardHeaderNavItem[];
   onMobileNavigationOpenChange(open: boolean): void;
+  /** Compact desktop header control. */
   profile?: ReactNode;
   version?: string;
   workspaceActive: boolean;
@@ -246,9 +249,9 @@ export function DashboardHeader(props: {
               ))}
             </nav>
             <MobileSecondaryNavigationSlot />
-            {props.profile ? (
+            {props.mobileProfile ?? props.profile ? (
               <div className="mt-3 border-t border-white/[0.07] pt-3">
-                {props.profile}
+                {props.mobileProfile ?? props.profile}
               </div>
             ) : null}
           </div>

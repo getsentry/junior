@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router";
 
 import {
+  useConversationsData,
   useDashboardCoreData,
   usePersonalSpendData,
   usePluginUserPagesData,
@@ -15,7 +16,11 @@ import {
   DashboardChromeProvider,
 } from "./components/layout/DashboardChrome";
 import { DashboardHeader } from "./components/layout/DashboardHeader";
-import { setDashboardTimeZone } from "./format";
+import {
+  buildConversations,
+  conversationDisplayTitle,
+  setDashboardTimeZone,
+} from "./format";
 import { ConversationWorkspace } from "./conversations/ConversationWorkspace";
 import { useMobileViewportHeight } from "./mobileViewport";
 import { ComponentsPage } from "./pages/dev/ComponentsPage";
@@ -75,6 +80,15 @@ export function DashboardShell() {
     location.pathname === "/" ||
     location.pathname === "/conversations" ||
     location.pathname.startsWith("/conversations/");
+  const conversationId = conversationIdFromPath(location.pathname);
+  const conversationsQuery = useConversationsData();
+  const mobileConversationTitle = useMemo(() => {
+    if (!conversationId) return undefined;
+    const conversation = buildConversations(
+      conversationsQuery.data?.conversations ?? [],
+    ).find((item) => item.id === conversationId);
+    return conversationDisplayTitle(conversation);
+  }, [conversationId, conversationsQuery.data?.conversations]);
   const primaryNavItems = [
     ...(loggedIn
       ? [{ key: "tasks", label: "Tasks", to: "/tasks" }]
@@ -129,17 +143,22 @@ export function DashboardShell() {
           header={
             <DashboardHeader
               compact={workspace}
-              mobileCloseTo={
-                location.pathname.startsWith("/conversations/") ? "/" : undefined
-              }
-              mobileTitle={
-                location.pathname.startsWith("/conversations/")
-                  ? "Conversation"
-                  : undefined
-              }
+              mobileCloseTo={conversationId ? "/" : undefined}
+              mobileTitle={mobileConversationTitle}
               mobileNavigationOpen={mobileNavigationOpen}
               navItems={primaryNavItems}
               onMobileNavigationOpenChange={setMobileNavigationOpen}
+              mobileProfile={
+                loggedIn ? (
+                  <ProfileMenu
+                    identity={data!.me}
+                    onSignOut={signOut}
+                    spend={personalSpendQuery.data}
+                    userPages={userPages}
+                    variant="inline"
+                  />
+                ) : undefined
+              }
               profile={
                 loggedIn ? (
                   <ProfileMenu
@@ -447,6 +466,17 @@ export function DashboardShell() {
       </main>
     </DashboardChromeProvider>
   );
+}
+
+/** Read the selected conversation id from a workspace detail path. */
+function conversationIdFromPath(pathname: string): string | undefined {
+  const match = pathname.match(/^\/conversations\/([^/]+)$/);
+  if (!match?.[1]) return undefined;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return match[1];
+  }
 }
 
 function LegacySystemRedirect(props: { section: "locations" | "people" }) {

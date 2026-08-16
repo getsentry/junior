@@ -26,6 +26,11 @@ type ProfileMenuProps = {
   onSignOut(): Promise<void>;
   spend?: PersonalSpendReport;
   userPages: PluginUserPageLink[];
+  /**
+   * `popover` is the desktop header control. `inline` expands the profile
+   * links in place for the mobile navigation sheet.
+   */
+  variant?: "popover" | "inline";
 };
 
 const HOVER_OPEN_DELAY_MS = 80;
@@ -43,12 +48,16 @@ function initials(name: string | null | undefined, email: string): string {
   return email.slice(0, 1).toUpperCase();
 }
 
+const profileLinkClass =
+  "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-semibold text-dashboard-text no-underline transition-colors hover:bg-white/10 hover:text-dashboard-text focus-visible:bg-white/10 focus-visible:text-dashboard-text focus-visible:outline-none";
+
 /** Group the signed-in identity, personal profile, and session actions. */
 export function ProfileMenu({
   identity,
   onSignOut,
   spend,
   userPages,
+  variant = "popover",
 }: ProfileMenuProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -67,6 +76,7 @@ export function ProfileMenu({
   const thirtyDaySpend = spend
     ? formatCostSummary({ total: spend.thirtyDaysUsd })
     : "—";
+  const profilePages = userPages.filter((page) => page.navigation === "profile");
 
   function clearHoverTimers() {
     if (openTimerRef.current) clearTimeout(openTimerRef.current);
@@ -93,7 +103,7 @@ export function ProfileMenu({
   useEffect(() => clearHoverTimers, []);
 
   useEffect(() => {
-    if (!open) return;
+    if (variant !== "popover" || !open) return;
 
     function closeOnOutsideClick(event: PointerEvent) {
       if (!rootRef.current?.contains(event.target as Node)) {
@@ -114,7 +124,104 @@ export function ProfileMenu({
       document.removeEventListener("pointerdown", closeOnOutsideClick);
       document.removeEventListener("keydown", closeOnEscape);
     };
-  }, [open]);
+  }, [open, variant]);
+
+  const identityBlock = (
+    <div className="border-b border-white/10 px-2.5 py-2.5">
+      <div className="flex min-w-0 items-center gap-2.5">
+        <span
+          aria-hidden="true"
+          className="grid size-8 shrink-0 place-items-center rounded-full bg-[#beaaff] text-xs font-bold tracking-wide text-black shadow-sm shadow-black/40"
+        >
+          {initials(identity.user.name, email)}
+        </span>
+        <div className="min-w-0">
+          <p className="m-0 truncate text-sm font-semibold text-dashboard-text">
+            {name}
+          </p>
+          {name !== email ? (
+            <p className="mt-0.5 mb-0 truncate text-xs text-dashboard-text-muted">
+              {email}
+            </p>
+          ) : null}
+        </div>
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-xs tabular-nums text-dashboard-text-muted">
+        <span>
+          7d{" "}
+          <span className="font-semibold text-dashboard-text">
+            {sevenDaySpend}
+          </span>
+        </span>
+        <span>
+          30d{" "}
+          <span className="font-semibold text-dashboard-text">
+            {thirtyDaySpend}
+          </span>
+        </span>
+      </div>
+    </div>
+  );
+
+  const menuLinks = (
+    <>
+      <Link
+        className={cn(profileLinkClass, "mt-1")}
+        onClick={() => setOpen(false)}
+        to={peoplePath(email)}
+      >
+        <UserRound aria-hidden="true" size={16} strokeWidth={2} />
+        My profile
+      </Link>
+      <Link
+        className={profileLinkClass}
+        onClick={() => setOpen(false)}
+        to="/settings"
+      >
+        <Settings aria-hidden="true" size={16} strokeWidth={2} />
+        Settings
+      </Link>
+      <Link
+        className={profileLinkClass}
+        onClick={() => setOpen(false)}
+        to="/settings/api-tokens"
+      >
+        <KeyRound aria-hidden="true" size={16} strokeWidth={2} />
+        API tokens
+      </Link>
+      {profilePages.map((page) => (
+        <Link
+          className={profileLinkClass}
+          key={`${page.pluginName}:${page.id}`}
+          onClick={() => setOpen(false)}
+          to={pluginUserPagePath(page.pluginName, page.id)}
+        >
+          <Boxes aria-hidden="true" size={16} strokeWidth={2} />
+          {page.label}
+        </Link>
+      ))}
+      <button
+        className="flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold text-dashboard-text transition-colors hover:bg-white/10 hover:text-dashboard-text focus-visible:bg-white/10 focus-visible:text-dashboard-text focus-visible:outline-none"
+        onClick={() => {
+          setOpen(false);
+          void onSignOut();
+        }}
+        type="button"
+      >
+        <LogOut aria-hidden="true" size={16} strokeWidth={2} />
+        Log out
+      </button>
+    </>
+  );
+
+  if (variant === "inline") {
+    return (
+      <div aria-label={`Account menu for ${name}`} className="grid gap-0.5">
+        {identityBlock}
+        {menuLinks}
+      </div>
+    );
+  }
 
   return (
     <div
@@ -185,64 +292,8 @@ export function ProfileMenu({
           className="absolute right-0 top-[calc(100%+0.5rem)] z-40 w-64 rounded-xl bg-dashboard-surface-raised/95 p-1.5 shadow-2xl shadow-black/75 backdrop-blur-xl"
           id="profile-popover"
         >
-          <div className="border-b border-white/10 px-2.5 py-2.5">
-            <p className="m-0 truncate text-sm font-semibold text-dashboard-text">
-              {name}
-            </p>
-            {name !== email ? (
-              <p className="mt-1 mb-0 truncate text-xs text-dashboard-text-muted">
-                {email}
-              </p>
-            ) : null}
-          </div>
-          <Link
-            className="mt-1 flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-semibold text-dashboard-text no-underline transition-colors hover:bg-white/10 hover:text-dashboard-text focus-visible:bg-white/10 focus-visible:text-dashboard-text focus-visible:outline-none"
-            onClick={() => setOpen(false)}
-            to={peoplePath(email)}
-          >
-            <UserRound aria-hidden="true" size={16} strokeWidth={2} />
-            My profile
-          </Link>
-          <Link
-            className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-semibold text-dashboard-text no-underline transition-colors hover:bg-white/10 hover:text-dashboard-text focus-visible:bg-white/10 focus-visible:text-dashboard-text focus-visible:outline-none"
-            onClick={() => setOpen(false)}
-            to="/settings"
-          >
-            <Settings aria-hidden="true" size={16} strokeWidth={2} />
-            Settings
-          </Link>
-          <Link
-            className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-semibold text-dashboard-text no-underline transition-colors hover:bg-white/10 hover:text-dashboard-text focus-visible:bg-white/10 focus-visible:text-dashboard-text focus-visible:outline-none"
-            onClick={() => setOpen(false)}
-            to="/settings/api-tokens"
-          >
-            <KeyRound aria-hidden="true" size={16} strokeWidth={2} />
-            API tokens
-          </Link>
-          {userPages
-            .filter((page) => page.navigation === "profile")
-            .map((page) => (
-              <Link
-                className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-semibold text-dashboard-text no-underline transition-colors hover:bg-white/10 hover:text-dashboard-text focus-visible:bg-white/10 focus-visible:text-dashboard-text focus-visible:outline-none"
-                key={`${page.pluginName}:${page.id}`}
-                onClick={() => setOpen(false)}
-                to={pluginUserPagePath(page.pluginName, page.id)}
-              >
-                <Boxes aria-hidden="true" size={16} strokeWidth={2} />
-                {page.label}
-              </Link>
-            ))}
-          <button
-            className="flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold text-dashboard-text transition-colors hover:bg-white/10 hover:text-dashboard-text focus-visible:bg-white/10 focus-visible:text-dashboard-text focus-visible:outline-none"
-            onClick={() => {
-              setOpen(false);
-              void onSignOut();
-            }}
-            type="button"
-          >
-            <LogOut aria-hidden="true" size={16} strokeWidth={2} />
-            Log out
-          </button>
+          {identityBlock}
+          {menuLinks}
         </div>
       ) : null}
     </div>
