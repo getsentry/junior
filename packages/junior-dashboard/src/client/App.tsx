@@ -91,7 +91,6 @@ export function DashboardShell() {
   const mobileConversationTitle = conversationId
     ? conversationDisplayTitle(mobileConversation)
     : undefined;
-  const mobileConversationLive = mobileConversation?.status === "active";
   const primaryNavItems = [
     ...(loggedIn
       ? [{ key: "tasks", label: "Tasks", to: "/tasks" }]
@@ -147,7 +146,6 @@ export function DashboardShell() {
             <DashboardHeader
               compact={workspace}
               mobileBackTo={conversationId ? "/" : undefined}
-              mobileLive={mobileConversationLive}
               mobileTitle={mobileConversationTitle}
               mobileNavigationOpen={mobileNavigationOpen}
               navItems={primaryNavItems}

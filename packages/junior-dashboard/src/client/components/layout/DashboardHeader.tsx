@@ -6,6 +6,7 @@ import { getDashboardAgentName } from "../../agentName";
 import { JuniorLogo } from "../JuniorLogo";
 import {
   MobileHeaderActionsSlot,
+  MobileHeaderLiveSlot,
   MobileSecondaryNavigationSlot,
   useRegisterOpenMobileNavigation,
 } from "./DashboardChrome";
@@ -35,7 +36,6 @@ export function DashboardHeader(props: {
   compact?: boolean;
   /** Back target used on mobile conversation detail. */
   mobileBackTo?: string;
-  mobileLive?: boolean;
   mobileNavigationOpen: boolean;
   mobileTitle?: string;
   /** Quiet signed-in strip pinned above the sheet version footer. */
@@ -180,13 +180,7 @@ export function DashboardHeader(props: {
             <h1 className="m-0 min-w-0 truncate text-left font-display text-sm font-medium text-dashboard-text">
               {props.mobileTitle}
             </h1>
-            {props.mobileLive ? (
-              <span
-                aria-label="Conversation is live"
-                className="inline-flex size-2 shrink-0 rounded-full bg-emerald-300"
-                title="Live"
-              />
-            ) : null}
+            <MobileHeaderLiveSlot />
           </div>
         ) : null}
         <Link

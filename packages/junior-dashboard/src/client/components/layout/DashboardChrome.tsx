@@ -14,6 +14,8 @@ import { createPortal } from "react-dom";
 type DashboardChromeContextValue = {
   mobileHeaderActionsSlot: HTMLElement | null;
   mobileHeaderActionsSlotRef: RefCallback<HTMLDivElement>;
+  mobileHeaderLiveSlot: HTMLElement | null;
+  mobileHeaderLiveSlotRef: RefCallback<HTMLDivElement>;
   mobileSecondarySlot: HTMLElement | null;
   mobileSecondarySlotRef: RefCallback<HTMLDivElement>;
   openMobileNavigation(): void;
@@ -32,6 +34,8 @@ export function DashboardChromeProvider(props: { children: ReactNode }) {
     useState<HTMLElement | null>(null);
   const [mobileHeaderActionsSlot, setMobileHeaderActionsSlot] =
     useState<HTMLElement | null>(null);
+  const [mobileHeaderLiveSlot, setMobileHeaderLiveSlot] =
+    useState<HTMLElement | null>(null);
   const openMobileNavigationRef = useRef<(() => void) | null>(null);
   const secondarySlotRef = useCallback<RefCallback<HTMLDivElement>>((node) => {
     setSecondarySlot(node);
@@ -48,6 +52,12 @@ export function DashboardChromeProvider(props: { children: ReactNode }) {
     },
     [],
   );
+  const mobileHeaderLiveSlotRef = useCallback<RefCallback<HTMLDivElement>>(
+    (node) => {
+      setMobileHeaderLiveSlot(node);
+    },
+    [],
+  );
   const registerOpenMobileNavigation = useCallback(
     (open: (() => void) | null) => {
       openMobileNavigationRef.current = open;
@@ -61,6 +71,8 @@ export function DashboardChromeProvider(props: { children: ReactNode }) {
     () => ({
       mobileHeaderActionsSlot,
       mobileHeaderActionsSlotRef,
+      mobileHeaderLiveSlot,
+      mobileHeaderLiveSlotRef,
       mobileSecondarySlot,
       mobileSecondarySlotRef,
       openMobileNavigation,
@@ -71,6 +83,8 @@ export function DashboardChromeProvider(props: { children: ReactNode }) {
     [
       mobileHeaderActionsSlot,
       mobileHeaderActionsSlotRef,
+      mobileHeaderLiveSlot,
+      mobileHeaderLiveSlotRef,
       mobileSecondarySlot,
       mobileSecondarySlotRef,
       openMobileNavigation,
@@ -131,11 +145,32 @@ export function MobileHeaderActionsSlot() {
   );
 }
 
+/** Live-indicator slot next to the mobile conversation title. */
+export function MobileHeaderLiveSlot() {
+  const chrome = useContext(DashboardChromeContext);
+  if (!chrome) {
+    throw new Error("MobileHeaderLiveSlot requires DashboardChromeProvider");
+  }
+  return (
+    <div
+      className="flex shrink-0 items-center md:hidden"
+      ref={chrome.mobileHeaderLiveSlotRef}
+    />
+  );
+}
+
 /** Mount conversation tools into the mobile shell header trailing slot. */
 export function MobileHeaderActionsPortal(props: { children: ReactNode }) {
   const chrome = useContext(DashboardChromeContext);
   if (!chrome?.mobileHeaderActionsSlot) return null;
   return createPortal(props.children, chrome.mobileHeaderActionsSlot);
+}
+
+/** Mount the polled live indicator into the mobile shell title row. */
+export function MobileHeaderLivePortal(props: { children: ReactNode }) {
+  const chrome = useContext(DashboardChromeContext);
+  if (!chrome?.mobileHeaderLiveSlot) return null;
+  return createPortal(props.children, chrome.mobileHeaderLiveSlot);
 }
 
 /** Open the mobile app navigation sheet from conversation chrome. */

@@ -12,6 +12,7 @@ import { Ellipsis, Menu } from "lucide-react";
 import { SearchInput } from "../components/SearchInput";
 import {
   MobileHeaderActionsPortal,
+  MobileHeaderLivePortal,
   useOpenMobileNavigation,
 } from "../components/layout/DashboardChrome";
 import {
@@ -142,9 +143,18 @@ export function ConversationHeader(props: {
 
   const showMobileChrome = searchOpenVisible || props.archive.error;
 
+  const liveIndicator = props.live ? (
+    <span
+      aria-label="Conversation is live"
+      className="inline-flex size-2 shrink-0 rounded-full bg-emerald-300"
+      title="Live"
+    />
+  ) : null;
+
   return (
     <>
       <MobileHeaderActionsPortal>{mobileOverflow}</MobileHeaderActionsPortal>
+      <MobileHeaderLivePortal>{liveIndicator}</MobileHeaderLivePortal>
       <header
         className={
           showMobileChrome
@@ -158,13 +168,7 @@ export function ConversationHeader(props: {
               <h2 className="m-0 line-clamp-1 min-w-0 font-display text-xl font-medium leading-tight tracking-[-0.03em]">
                 {props.title}
               </h2>
-              {props.live ? (
-                <span
-                  aria-label="Conversation is live"
-                  className="inline-flex size-2 shrink-0 rounded-full bg-emerald-300"
-                  title="Live"
-                />
-              ) : null}
+              {liveIndicator}
               <span className="hidden shrink-0 sm:inline-flex">
                 {props.privacy}
               </span>
