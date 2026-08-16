@@ -116,6 +116,9 @@ async function finishBuild(
     generatedAt: new Date(createdAtMs),
     buildDurationMs,
     profileHash: value.hash,
+    runtime,
+    dependencyCount: value.dependencyCount,
+    previousSnapshotIds: [],
   });
   return {
     snapshotId: snapshot.snapshotId,

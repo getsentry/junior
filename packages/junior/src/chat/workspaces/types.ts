@@ -4,12 +4,19 @@ export interface WorkspaceRepo {
   repo: string;
 }
 
-/** Last successful Sandbox snapshot recorded for one Workspace recipe. */
+/** Full Sandbox snapshot record owned by one Workspace recipe. */
 export interface WorkspaceSnapshot {
   id: string;
   generatedAt: Date;
   buildDurationMs: number;
   profileHash: string;
+  runtime: string;
+  dependencyCount: number;
+  /**
+   * Prior snapshot ids left behind by recipe or rebuild changes.
+   * TODO: garbage-collect these Vercel snapshots once retention policy exists.
+   */
+  previousSnapshotIds: string[];
 }
 
 export type WorkspaceSnapshotStatus = "building" | "failed" | "ready";

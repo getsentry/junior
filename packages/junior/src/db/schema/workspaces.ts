@@ -1,5 +1,6 @@
 import {
   integer,
+  jsonb,
   pgTable,
   primaryKey,
   text,
@@ -15,11 +16,18 @@ export const juniorWorkspaces = pgTable(
     id: text("id").primaryKey(),
     name: text("name").notNull(),
     setupScript: text("setup_script").notNull().default(""),
-    // Last successful Workspace snapshot for the dashboard. Resolve still uses Redis.
+    // Full Workspace snapshot record. Redis remains a hot cache for resolve.
     snapshotId: text("snapshot_id"),
     snapshotGeneratedAt: timestamptz("snapshot_generated_at"),
     snapshotBuildDurationMs: integer("snapshot_build_duration_ms"),
     snapshotProfileHash: text("snapshot_profile_hash"),
+    snapshotRuntime: text("snapshot_runtime"),
+    snapshotDependencyCount: integer("snapshot_dependency_count"),
+    // TODO: garbage-collect these Vercel snapshots once retention policy exists.
+    previousSnapshotIds: jsonb("previous_snapshot_ids")
+      .$type<string[]>()
+      .notNull()
+      .default([]),
     snapshotStatus: text("snapshot_status").$type<WorkspaceSnapshotStatus>(),
     snapshotBuildProfileHash: text("snapshot_build_profile_hash"),
     snapshotBuildStartedAt: timestamptz("snapshot_build_started_at"),

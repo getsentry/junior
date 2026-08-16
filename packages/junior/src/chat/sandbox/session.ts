@@ -517,10 +517,10 @@ export function createSandboxRuntime(
           });
           // Durable dashboard facts belong in SQL. Redis remains the hot registry.
           if (workspace) {
-            await recordResolvedWorkspaceSnapshot(
-              workspace.id,
-              created.snapshot,
-            );
+            await recordResolvedWorkspaceSnapshot(workspace.id, {
+              ...created.snapshot,
+              runtime,
+            });
           }
           return created.session;
         },

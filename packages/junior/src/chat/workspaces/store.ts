@@ -15,6 +15,14 @@ import {
   type WorkspaceRecipeInput,
 } from "./validation";
 
+function previousSnapshotIdsFromRow(
+  value: typeof juniorWorkspaces.$inferSelect.previousSnapshotIds,
+): string[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string")
+    : [];
+}
+
 function snapshotFromRow(
   row: typeof juniorWorkspaces.$inferSelect,
 ): WorkspaceSnapshot | null {
@@ -22,7 +30,9 @@ function snapshotFromRow(
     !row.snapshotId ||
     !row.snapshotGeneratedAt ||
     row.snapshotBuildDurationMs == null ||
-    !row.snapshotProfileHash
+    !row.snapshotProfileHash ||
+    !row.snapshotRuntime ||
+    row.snapshotDependencyCount == null
   ) {
     return null;
   }
@@ -31,6 +41,9 @@ function snapshotFromRow(
     generatedAt: row.snapshotGeneratedAt,
     buildDurationMs: row.snapshotBuildDurationMs,
     profileHash: row.snapshotProfileHash,
+    runtime: row.snapshotRuntime,
+    dependencyCount: row.snapshotDependencyCount,
+    previousSnapshotIds: previousSnapshotIdsFromRow(row.previousSnapshotIds),
   };
 }
 
@@ -295,6 +308,15 @@ export async function updateWorkspace(
                 snapshotGeneratedAt: null,
                 snapshotBuildDurationMs: null,
                 snapshotProfileHash: null,
+                snapshotRuntime: null,
+                snapshotDependencyCount: null,
+                // Keep prior ids for later GC; do not delete Vercel snapshots here.
+                previousSnapshotIds: existing.snapshotId
+                  ? [
+                      ...previousSnapshotIdsFromRow(existing.previousSnapshotIds),
+                      existing.snapshotId,
+                    ]
+                  : previousSnapshotIdsFromRow(existing.previousSnapshotIds),
                 snapshotStatus: null,
                 snapshotBuildProfileHash: null,
                 snapshotBuildStartedAt: null,
@@ -336,26 +358,56 @@ export async function deleteWorkspace(id: string): Promise<boolean> {
   });
 }
 
-/** Record the current Sandbox snapshot after a successful Workspace prepare. */
+/** Record the full Sandbox snapshot after a successful Workspace prepare. */
 export async function setWorkspaceSnapshot(
   workspaceId: string,
   snapshot: WorkspaceSnapshot,
 ): Promise<void> {
   const executor = getSqlExecutor();
-  await executor
-    .db()
-    .update(juniorWorkspaces)
-    .set({
-      snapshotId: snapshot.id,
-      snapshotGeneratedAt: snapshot.generatedAt,
-      snapshotBuildDurationMs: snapshot.buildDurationMs,
-      snapshotProfileHash: snapshot.profileHash,
-      snapshotStatus: "ready",
-      snapshotBuildProfileHash: snapshot.profileHash,
-      snapshotBuildError: null,
-      updatedAt: new Date(),
-    })
-    .where(eq(juniorWorkspaces.id, workspaceId));
+  await executor.transaction(async () => {
+    const db = executor.db();
+    const existingRows = await db
+      .select({
+        snapshotId: juniorWorkspaces.snapshotId,
+        previousSnapshotIds: juniorWorkspaces.previousSnapshotIds,
+      })
+      .from(juniorWorkspaces)
+      .where(eq(juniorWorkspaces.id, workspaceId))
+      .limit(1);
+    const existing = existingRows[0];
+    if (!existing) return;
+
+    const previousSnapshotIds = previousSnapshotIdsFromRow(
+      existing.previousSnapshotIds,
+    );
+    // TODO: garbage-collect retired Vercel snapshots once retention policy exists.
+    if (
+      existing.snapshotId &&
+      existing.snapshotId !== snapshot.id &&
+      !previousSnapshotIds.includes(existing.snapshotId)
+    ) {
+      previousSnapshotIds.push(existing.snapshotId);
+    }
+
+    await db
+      .update(juniorWorkspaces)
+      .set({
+        snapshotId: snapshot.id,
+        snapshotGeneratedAt: snapshot.generatedAt,
+        snapshotBuildDurationMs: snapshot.buildDurationMs,
+        snapshotProfileHash: snapshot.profileHash,
+        snapshotRuntime: snapshot.runtime,
+        snapshotDependencyCount: snapshot.dependencyCount,
+        previousSnapshotIds,
+        snapshotStatus: "ready",
+        snapshotBuildProfileHash: snapshot.profileHash,
+        snapshotBuildError: null,
+        snapshotBuildSandboxName: null,
+        snapshotBuildCommandId: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(juniorWorkspaces.id, workspaceId));
+  });
 }
 
 /** Record a Workspace snapshot build that can continue outside one function invocation. */
@@ -387,13 +439,17 @@ export async function recordResolvedWorkspaceSnapshot(
     profileHash?: string;
     createdAtMs?: number;
     buildDurationMs?: number;
+    runtime?: string;
+    dependencyCount?: number;
   },
 ): Promise<void> {
   if (
     !snapshot.snapshotId ||
     !snapshot.profileHash ||
     snapshot.createdAtMs == null ||
-    snapshot.buildDurationMs == null
+    snapshot.buildDurationMs == null ||
+    !snapshot.runtime ||
+    snapshot.dependencyCount == null
   ) {
     return;
   }
@@ -403,6 +459,9 @@ export async function recordResolvedWorkspaceSnapshot(
       generatedAt: new Date(snapshot.createdAtMs),
       buildDurationMs: snapshot.buildDurationMs,
       profileHash: snapshot.profileHash,
+      runtime: snapshot.runtime,
+      dependencyCount: snapshot.dependencyCount,
+      previousSnapshotIds: [],
     });
   } catch (error) {
     // Dashboard enrichment must not fail a prepared Workspace Sandbox.

@@ -1,5 +1,5 @@
 {
-  "id": "7c933898-3e37-48de-8c33-2b69bd46a686",
+  "id": "ffdb32bf-9be3-4d25-a09a-6154e6b207cd",
   "prevId": "6fe6b9af-5375-4f04-bc6e-3db5c77d5193",
   "version": "7",
   "dialect": "postgresql",
@@ -2770,6 +2770,25 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "snapshot_runtime": {
+          "name": "snapshot_runtime",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "snapshot_dependency_count": {
+          "name": "snapshot_dependency_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "previous_snapshot_ids": {
+          "name": "previous_snapshot_ids",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
         },
         "snapshot_status": {
           "name": "snapshot_status",

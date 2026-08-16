@@ -174,7 +174,12 @@ describe("Workspace snapshot check-in", () => {
     );
     expect(setWorkspaceSnapshotMock).toHaveBeenCalledWith(
       workspace.id,
-      expect.objectContaining({ id: "snap-sentry" }),
+      expect.objectContaining({
+        id: "snap-sentry",
+        runtime: "node22",
+        dependencyCount: 0,
+        previousSnapshotIds: [],
+      }),
     );
   });
 });

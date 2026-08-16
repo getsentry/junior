@@ -218,6 +218,9 @@ describe("workspace admin API", () => {
       generatedAt: new Date("2026-03-01T00:00:00.000Z"),
       buildDurationMs: 12_345,
       profileHash: profileHash!,
+      runtime: SANDBOX_RUNTIME,
+      dependencyCount: 0,
+      previousSnapshotIds: [],
     });
 
     const detailResponse = await app.request(
@@ -256,6 +259,9 @@ describe("workspace admin API", () => {
       generatedAt: new Date("2026-03-01T00:00:00.000Z"),
       buildDurationMs: 9_000,
       profileHash: profileHash!,
+      runtime: SANDBOX_RUNTIME,
+      dependencyCount: 0,
+      previousSnapshotIds: [],
     });
 
     const renameResponse = await app.request(
