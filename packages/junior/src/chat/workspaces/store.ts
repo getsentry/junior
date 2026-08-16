@@ -302,9 +302,3 @@ export async function deleteWorkspace(id: string): Promise<boolean> {
 }
 
 export { WorkspaceValidationError };
-// Snapshot mutations live in `@/chat/sandbox/snapshot/store`.
-export {
-  recordResolvedWorkspaceSnapshot,
-  setWorkspaceSnapshot,
-  setWorkspaceSnapshotBuild,
-} from "@/chat/sandbox/snapshot/store";

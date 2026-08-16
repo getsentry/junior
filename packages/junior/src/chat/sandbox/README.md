@@ -55,8 +55,8 @@ traffic through verified host egress.
   (`building` | `failed` | `ready`) with full ready details for the dashboard
   and for Redis miss recovery. Cold builds use a long-lived builder Sandbox and
   short control-plane check-ins. `switchWorkspace` waits while budget remains,
-  then returns `timed_out` with `status: building` near the host deadline so the
-  agent can yield at a toolResult boundary and call switch again on the next wake.
+  then returns `timed_out` near the host deadline so the agent can yield at a
+  toolResult boundary and resume on the next wake.
 - Workspace repositories clone to fixed `repos/{name}` paths. Setup scripts
   receive `JUNIOR_WORKSPACE_ROOT` and `JUNIOR_REPOS_ROOT` so they do not depend
   on the provider's absolute Sandbox path.

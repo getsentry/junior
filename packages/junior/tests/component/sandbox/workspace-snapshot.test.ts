@@ -93,10 +93,8 @@ vi.mock("@/chat/workspaces/store", () => ({
   getWorkspace: getWorkspaceMock,
 }));
 
-import {
-  resolveWorkspaceSnapshot,
-  WorkspaceSnapshotWaitingError,
-} from "@/chat/sandbox/snapshot/workspace";
+import { resolveWorkspaceSnapshot } from "@/chat/sandbox/snapshot/workspace";
+import { WorkspaceSnapshotWaitingError } from "@/chat/sandbox/snapshot/waiting-error";
 import type { Workspace } from "@/chat/workspaces/types";
 
 const workspace: Workspace = {

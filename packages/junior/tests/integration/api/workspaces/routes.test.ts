@@ -11,12 +11,12 @@ import { closeDb, getDb, getSqlExecutor } from "@/chat/db";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { create as createSnapshotProfile, hash as workspaceProfileHash } from "@/chat/sandbox/snapshot/profile";
 import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
+import { setWorkspaceSnapshot } from "@/chat/sandbox/snapshot/store";
 import { getStateAdapter } from "@/chat/state/adapter";
 import {
   createWorkspace,
   getWorkspace,
   getWorkspaceByName,
-  setWorkspaceSnapshot,
   updateWorkspace,
 } from "@/chat/workspaces/store";
 

@@ -326,7 +326,6 @@ describe("Workspace tools", () => {
       tools.switchWorkspace!.execute!({ name: workspace.name }, {}),
     ).resolves.toMatchObject({
       workspace: { id: workspace.id },
-      status: "ready",
     });
 
     expect(switchWorkspace).toHaveBeenCalledWith(workspace, undefined);
@@ -342,7 +341,7 @@ describe("Workspace tools", () => {
 
   it("returns timed_out building when the snapshot wait soft-yields", async () => {
     const { WorkspaceSnapshotWaitingError } = await import(
-      "@/chat/sandbox/snapshot/workspace"
+      "@/chat/sandbox/snapshot/waiting-error"
     );
     const now = new Date();
     const workspace = {
@@ -391,7 +390,6 @@ describe("Workspace tools", () => {
       tools.switchWorkspace!.execute!({ name: workspace.name }, {}),
     ).resolves.toMatchObject({
       workspace: { id: workspace.id },
-      status: "building",
       timed_out: true,
     });
   });
