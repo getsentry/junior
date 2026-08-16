@@ -28,10 +28,11 @@ type ProfileMenuProps = {
   userPages: PluginUserPageLink[];
   /**
    * `popover` is the desktop header control.
+   * `sheet-spend` is the vertical spend callout at the top of the mobile sheet.
    * `sheet-links` is plain account destinations for the mobile nav sheet.
    * `sheet-identity` is the quiet signed-in strip at the bottom of that sheet.
    */
-  variant?: "popover" | "sheet-links" | "sheet-identity";
+  variant?: "popover" | "sheet-spend" | "sheet-links" | "sheet-identity";
 };
 
 const HOVER_OPEN_DELAY_MS = 80;
@@ -215,66 +216,66 @@ export function ProfileMenu({
     </>
   );
 
+  if (variant === "sheet-spend") {
+    // Vertical mobile callout pinned above every sheet destination.
+    return (
+      <div
+        aria-label={`Personal model spend: 7 days ${sevenDaySpend}, 30 days ${thirtyDaySpend}`}
+        className="grid gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2.5 font-mono text-xs tabular-nums text-dashboard-text-muted"
+      >
+        <span className="text-[11px] font-medium uppercase tracking-[0.08em]">
+          Spend
+        </span>
+        <span className="whitespace-nowrap">
+          7d{" "}
+          <span className="font-semibold text-dashboard-text">{sevenDaySpend}</span>
+        </span>
+        <span className="whitespace-nowrap">
+          30d{" "}
+          <span className="font-semibold text-dashboard-text">
+            {thirtyDaySpend}
+          </span>
+        </span>
+      </div>
+    );
+  }
+
   if (variant === "sheet-links") {
-    // Match primary sheet rows exactly, with spend as a quiet top callout.
+    // Match primary sheet rows exactly.
     const sheetItemClass = cn(
       "rounded-lg border-0 bg-transparent px-3 py-3 text-left font-mono text-sm font-medium tracking-normal no-underline transition-colors hover:bg-white/[0.035] focus-visible:bg-white/[0.035] focus-visible:outline-none",
       dashboardInteractiveTextClass,
     );
     return (
-      <div aria-label={`Account menu for ${name}`} className="grid gap-3">
-        <div
-          aria-label={`Personal model spend: 7 days ${sevenDaySpend}, 30 days ${thirtyDaySpend}`}
-          className="flex items-center justify-between gap-3 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2.5 font-mono text-xs tabular-nums text-dashboard-text-muted"
-        >
-          <span className="text-[11px] font-medium uppercase tracking-[0.08em]">
-            Spend
-          </span>
-          <span className="flex items-center gap-3">
-            <span className="whitespace-nowrap">
-              7d{" "}
-              <span className="font-semibold text-dashboard-text">
-                {sevenDaySpend}
-              </span>
-            </span>
-            <span className="whitespace-nowrap">
-              30d{" "}
-              <span className="font-semibold text-dashboard-text">
-                {thirtyDaySpend}
-              </span>
-            </span>
-          </span>
-        </div>
-        <nav className="grid gap-1">
-          <Link className={sheetItemClass} to={peoplePath(email)}>
-            My profile
-          </Link>
-          <Link className={sheetItemClass} to="/settings">
-            Settings
-          </Link>
-          <Link className={sheetItemClass} to="/settings/api-tokens">
-            API tokens
-          </Link>
-          {profilePages.map((page) => (
-            <Link
-              className={sheetItemClass}
-              key={`${page.pluginName}:${page.id}`}
-              to={pluginUserPagePath(page.pluginName, page.id)}
-            >
-              {page.label}
-            </Link>
-          ))}
-          <button
-            className={cn(sheetItemClass, "w-full cursor-pointer")}
-            onClick={() => {
-              void onSignOut();
-            }}
-            type="button"
+      <nav aria-label={`Account menu for ${name}`} className="grid gap-1">
+        <Link className={sheetItemClass} to={peoplePath(email)}>
+          My profile
+        </Link>
+        <Link className={sheetItemClass} to="/settings">
+          Settings
+        </Link>
+        <Link className={sheetItemClass} to="/settings/api-tokens">
+          API tokens
+        </Link>
+        {profilePages.map((page) => (
+          <Link
+            className={sheetItemClass}
+            key={`${page.pluginName}:${page.id}`}
+            to={pluginUserPagePath(page.pluginName, page.id)}
           >
-            Log out
-          </button>
-        </nav>
-      </div>
+            {page.label}
+          </Link>
+        ))}
+        <button
+          className={cn(sheetItemClass, "w-full cursor-pointer")}
+          onClick={() => {
+            void onSignOut();
+          }}
+          type="button"
+        >
+          Log out
+        </button>
+      </nav>
     );
   }
 

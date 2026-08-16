@@ -42,6 +42,8 @@ export function DashboardHeader(props: {
   mobileIdentity?: ReactNode;
   /** Plain account destinations inside the mobile navigation sheet. */
   mobileProfile?: ReactNode;
+  /** Vertical spend callout pinned above every mobile sheet destination. */
+  mobileSpend?: ReactNode;
   navItems: DashboardHeaderNavItem[];
   onMobileNavigationOpenChange(open: boolean): void;
   /** Compact desktop header control. */
@@ -259,6 +261,9 @@ export function DashboardHeader(props: {
           </div>
           <div className="flex min-h-0 flex-1 flex-col">
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3">
+              {props.mobileSpend ? (
+                <div className="mb-3">{props.mobileSpend}</div>
+              ) : null}
               <nav aria-label="Primary" className="grid gap-1">
                 <Link
                   aria-current={props.workspaceActive ? "page" : undefined}

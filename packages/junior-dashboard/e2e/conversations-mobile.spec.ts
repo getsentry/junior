@@ -53,15 +53,27 @@ test("opens and closes a conversation in the mobile workspace", async ({
   ).toBeVisible();
   await navigationTrigger.click();
   await expect(page.getByText(/^junior version /)).toBeVisible();
-  const accountMenu = page.getByLabel("Account menu for Dashboard User");
-  await expect(accountMenu).toBeVisible();
+  const navigationSheet = page.getByRole("dialog", { name: "Navigation" });
+  const spendCallout = navigationSheet.getByLabel(
+    "Personal model spend: 7 days $0.07, 30 days $0.07",
+    { exact: true },
+  );
+  await expect(spendCallout).toBeVisible();
+  await expect(spendCallout.getByText("7d $0.07")).toBeVisible();
+  await expect(spendCallout.getByText("30d $0.07")).toBeVisible();
+  // Spend sits above every destination, including primary nav.
+  const spendAbovePrimary = await spendCallout.evaluate((node) => {
+    const dialog = node.closest('[role="dialog"]');
+    const primary = dialog?.querySelector('nav[aria-label="Primary"]');
+    if (!dialog || !primary) return false;
+    return Boolean(
+      node.compareDocumentPosition(primary) & Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  });
+  expect(spendAbovePrimary).toBe(true);
   await expect(
-    accountMenu.getByLabel(
-      "Personal model spend: 7 days $0.07, 30 days $0.07",
-    ),
+    page.getByLabel("Account menu for Dashboard User"),
   ).toBeVisible();
-  await expect(accountMenu.getByText("7d $0.07")).toBeVisible();
-  await expect(accountMenu.getByText("30d $0.07")).toBeVisible();
   await expect(
     page.getByLabel("Signed in as Dashboard User"),
   ).toBeVisible();

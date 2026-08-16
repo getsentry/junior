@@ -174,6 +174,17 @@ export function DashboardShell() {
                   />
                 ) : undefined
               }
+              mobileSpend={
+                loggedIn ? (
+                  <ProfileMenu
+                    identity={data!.me}
+                    onSignOut={signOut}
+                    spend={personalSpendQuery.data}
+                    userPages={userPages}
+                    variant="sheet-spend"
+                  />
+                ) : undefined
+              }
               profile={
                 loggedIn ? (
                   <ProfileMenu
