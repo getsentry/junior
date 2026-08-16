@@ -223,7 +223,7 @@ export function ProfileMenu({
         aria-label={`Personal model spend: 7 days ${sevenDaySpend}, 30 days ${thirtyDaySpend}`}
         className="grid gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2.5 font-mono text-xs tabular-nums text-dashboard-text-muted"
       >
-        <span className="text-[11px] font-medium uppercase tracking-[0.08em]">
+        <span className="text-xs font-medium uppercase tracking-[0.08em]">
           Spend
         </span>
         <span className="whitespace-nowrap">
@@ -287,7 +287,7 @@ export function ProfileMenu({
       >
         <span
           aria-hidden="true"
-          className="grid size-7 shrink-0 place-items-center rounded-full bg-[#beaaff] text-[11px] font-bold tracking-wide text-black shadow-sm shadow-black/40"
+          className="grid size-7 shrink-0 place-items-center rounded-full bg-[#beaaff] text-xs font-bold tracking-wide text-black shadow-sm shadow-black/40"
         >
           {initials(identity.user.name, email)}
         </span>
@@ -296,7 +296,7 @@ export function ProfileMenu({
             {name}
           </p>
           {name !== email ? (
-            <p className="mt-0.5 mb-0 truncate font-mono text-[11px] text-dashboard-text-muted">
+            <p className="mt-0.5 mb-0 truncate font-mono text-xs text-dashboard-text-muted">
               {email}
             </p>
           ) : null}
