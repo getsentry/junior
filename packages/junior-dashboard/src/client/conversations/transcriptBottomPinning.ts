@@ -57,7 +57,6 @@ export function isNearScrollBottom(
   return remaining <= thresholdPx;
 }
 
-/** Build a compact transcript-tail key so polling without content changes does not look new. */
 /** Build a version that changes only when a visible Junior message appears. */
 export function transcriptJuniorMessageVersion(
   conversation: ConversationTranscript | undefined,
@@ -66,26 +65,42 @@ export function transcriptJuniorMessageVersion(
   for (let index = conversation.events.length - 1; index >= 0; index -= 1) {
     const event = conversation.events[index]!;
     const data = event.data;
-    if (data.type !== "message" || data.role !== "assistant") continue;
-    return [
-      event.seq,
-      event.createdAt,
-      data.messageId,
-      data.redacted ? "redacted" : (data.text?.length ?? 0),
-    ].join(":");
+    if (data.type === "message" && data.role === "assistant") {
+      return [
+        event.seq,
+        event.createdAt,
+        data.messageId,
+        data.redacted ? "redacted" : (data.text?.length ?? 0),
+      ].join(":");
+    }
+    if (data.type === "assistant_message") {
+      const lastPart = data.parts.at(-1);
+      return [
+        event.seq,
+        event.createdAt,
+        data.parts.length,
+        lastPart?.redacted ? "redacted" : (lastPart?.text?.length ?? 0),
+      ].join(":");
+    }
   }
   return "empty";
 }
 
+/** Build a compact visible-tail key so metadata-only polls do not look new. */
 export function transcriptBottomVersion(
   conversation: ConversationTranscript | undefined,
 ): string {
   if (!conversation) return "empty";
 
-  // Read only the live tail event. Rebuilding the full transcript model on every
-  // poll is too expensive while the reader is typing, and earlier history must
-  // not look like a new bottom update when it is prepended.
-  const last = conversation.events.at(-1);
+  // Scan only for the last event that adds or changes a rendered transcript row.
+  // This avoids rebuilding the transcript while ignoring routing metadata.
+  let last: ConversationReportEvent | undefined;
+  for (let index = conversation.events.length - 1; index >= 0; index -= 1) {
+    const event = conversation.events[index]!;
+    if (!changesVisibleTranscript(event)) continue;
+    last = event;
+    break;
+  }
 
   return [
     conversation.conversationId,
@@ -94,6 +109,21 @@ export function transcriptBottomVersion(
     last?.createdAt ?? "",
     eventTailVersion(last),
   ].join("|");
+}
+
+function changesVisibleTranscript(event: ConversationReportEvent): boolean {
+  const data = event.data;
+  if (data.type === "turn_lifecycle") return data.state === "failed";
+  return (
+    data.type === "message" ||
+    data.type === "assistant_message" ||
+    data.type === "tool_calls" ||
+    data.type === "subagent" ||
+    data.type === "structured_event" ||
+    data.type === "attachments_delivered" ||
+    data.type === "compaction" ||
+    data.type === "handoff"
+  );
 }
 
 function eventTailVersion(event: ConversationReportEvent | undefined): string {
@@ -178,13 +208,15 @@ function eventTailVersion(event: ConversationReportEvent | undefined): string {
         ":",
       );
     case "guardian_action_reviewed":
-      return [data.type, data.turnId, data.toolCallId, data.decision].join(
-        ":",
-      );
+      return [data.type, data.turnId, data.toolCallId, data.decision].join(":");
     case "turn_context":
-      return [data.type, data.turnId, data.pluginName, data.kind, data.version].join(
-        ":",
-      );
+      return [
+        data.type,
+        data.turnId,
+        data.pluginName,
+        data.kind,
+        data.version,
+      ].join(":");
     default:
       return `${(data as { type?: string }).type ?? "unknown"}:${event.seq}`;
   }
@@ -196,6 +228,15 @@ export function shouldAutoPinTranscriptBottom(input: {
   following: boolean;
 }): boolean {
   return input.enabled && input.following;
+}
+
+/** Pin a terminal Junior reply only when the reader followed the live turn. */
+export function shouldPinTerminalJuniorReply(input: {
+  enabled: boolean;
+  following: boolean;
+  wasEnabled: boolean;
+}): boolean {
+  return input.wasEnabled && !input.enabled && input.following;
 }
 
 /**
@@ -281,6 +322,7 @@ export function usePinnedTranscriptBottom(input: {
   const prependSnapshotRef = useRef<PrependSnapshot | null>(null);
   const pinRequestVersionRef = useRef(input.pinRequestVersion ?? 0);
   const juniorMessageVersionRef = useRef(input.juniorMessageVersion);
+  const terminalEnabledRef = useRef(input.enabled);
   const versionRef = useRef(input.version);
   const programmaticScrollGenerationRef = useRef(0);
   const [following, setFollowing] = useState(false);
@@ -545,14 +587,32 @@ export function usePinnedTranscriptBottom(input: {
   }, [scrollToBottom, setFollowingIntent]);
 
   // A Junior reply can arrive in the same poll that completes the conversation.
-  // Pin it independently from live-follow state so the terminal reply is visible.
+  // Pin that terminal reply only if the reader was already following the live turn.
   useBrowserLayoutEffect(() => {
     if (juniorMessageVersionRef.current === input.juniorMessageVersion) return;
     juniorMessageVersionRef.current = input.juniorMessageVersion;
+    if (
+      !shouldPinTerminalJuniorReply({
+        enabled: input.enabled,
+        following: followingRef.current,
+        wasEnabled: terminalEnabledRef.current,
+      })
+    ) {
+      return;
+    }
     setFollowingIntent(true);
     setHasPendingUpdate(false);
     scrollToBottom("auto");
-  }, [input.juniorMessageVersion, scrollToBottom, setFollowingIntent]);
+  }, [
+    input.enabled,
+    input.juniorMessageVersion,
+    scrollToBottom,
+    setFollowingIntent,
+  ]);
+
+  useBrowserLayoutEffect(() => {
+    terminalEnabledRef.current = input.enabled;
+  }, [input.enabled]);
 
   useBrowserLayoutEffect(() => {
     const version = input.pinRequestVersion ?? 0;

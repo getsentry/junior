@@ -6,6 +6,7 @@ import {
   programmaticSettleScrollAction,
   scrollTopAfterPrepend,
   shouldAutoPinTranscriptBottom,
+  shouldPinTerminalJuniorReply,
   shouldShowJumpToLatest,
   transcriptFollowIntent,
   transcriptBottomVersion,
@@ -86,6 +87,26 @@ describe("transcript bottom pinning", () => {
 
     expect(before).toBe("empty");
     expect(after).not.toBe(before);
+  });
+
+  it("changes the Junior message version for assistant message events", () => {
+    const version = transcriptJuniorMessageVersion(
+      activeTurn({
+        events: [
+          {
+            seq: 1,
+            createdAt: "2026-01-01T00:00:02.000Z",
+            data: {
+              type: "assistant_message",
+              parts: [{ type: "reasoning", text: "final reply" }],
+            },
+          },
+        ],
+        status: "completed",
+      }),
+    );
+
+    expect(version).not.toBe("empty");
   });
 
   it("keeps the Junior message version stable for later non-message events", () => {
@@ -174,6 +195,28 @@ describe("transcript bottom pinning", () => {
     );
 
     expect(after).not.toBe(before);
+  });
+
+  it("keeps the tail version stable for metadata-only events", () => {
+    const current = activeTurn();
+    const before = transcriptBottomVersion(current);
+    const after = transcriptBottomVersion(
+      activeTurn({
+        events: [
+          ...current.events,
+          {
+            seq: 1,
+            createdAt: "2026-01-01T00:00:02.000Z",
+            data: {
+              type: "message_handled",
+              messageId: "assistant-1",
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(after).toBe(before);
   });
 
   it("keeps the tail version stable when only polling timestamps change", () => {
@@ -292,6 +335,30 @@ describe("transcript bottom pinning", () => {
     );
 
     expect(after).not.toBe(before);
+  });
+
+  it("pins only terminal Junior replies that finish a followed live turn", () => {
+    expect(
+      shouldPinTerminalJuniorReply({
+        enabled: false,
+        following: true,
+        wasEnabled: true,
+      }),
+    ).toBe(true);
+    expect(
+      shouldPinTerminalJuniorReply({
+        enabled: true,
+        following: true,
+        wasEnabled: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldPinTerminalJuniorReply({
+        enabled: false,
+        following: false,
+        wasEnabled: true,
+      }),
+    ).toBe(false);
   });
 
   it("does not auto-pin after live mode turns off", () => {
