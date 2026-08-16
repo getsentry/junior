@@ -1,11 +1,10 @@
 import { memo, useMemo, useRef, type ReactNode } from "react";
 
 import { unavailableTranscriptLabel } from "../format";
-import { conversationTranscriptMessages } from "./eventTranscript";
+import { transcriptMessagesFromEvents } from "./eventTranscript";
 import type {
   ConversationTranscript,
   TranscriptViewMessage,
-  TranscriptViewPart,
   TranscriptViewSubagentPart,
 } from "../types";
 import { TranscriptSubagentView } from "./TranscriptSubagentView";
@@ -70,18 +69,10 @@ export const ConversationTranscriptView = memo(function ConversationTranscriptVi
   responding?: boolean;
   view: TranscriptViewMode;
 }) {
-  // Rebuild from events, then reuse unchanged message objects so memoized rows
-  // can skip work when only the live tail advanced.
-  const previousMessagesRef = useRef<TranscriptViewMessage[]>([]);
-  const messages = useMemo(() => {
-    const next = conversationTranscriptMessages(props.conversation);
-    const stable = reuseUnchangedTranscriptMessages(
-      previousMessagesRef.current,
-      next,
-    );
-    previousMessagesRef.current = stable;
-    return stable;
-  }, [props.conversation]);
+  // Event arrays stay stable across metadata-only polls. Project the transcript
+  // only when event content changes, not when timing metadata refreshes.
+  const events = props.conversation.events;
+  const messages = useMemo(() => transcriptMessagesFromEvents(events), [events]);
 
   return (
     <section className="min-w-0 py-1">
@@ -97,92 +88,6 @@ export const ConversationTranscriptView = memo(function ConversationTranscriptVi
     </section>
   );
 });
-
-function reuseUnchangedTranscriptMessages(
-  previous: readonly TranscriptViewMessage[],
-  next: TranscriptViewMessage[],
-): TranscriptViewMessage[] {
-  if (previous.length === 0) return next;
-  if (previous === next) return next;
-
-  const previousByKey = new Map(
-    previous.map((message) => [transcriptMessageStableKey(message), message]),
-  );
-  let changed = previous.length !== next.length;
-  const stable = next.map((message) => {
-    const prior = previousByKey.get(transcriptMessageStableKey(message));
-    if (prior && sameTranscriptMessage(prior, message)) return prior;
-    changed = true;
-    return message;
-  });
-  return changed ? stable : previous.slice();
-}
-
-function transcriptMessageStableKey(message: TranscriptViewMessage): string {
-  return `${message.sourceSeq}:${message.role}:${message.messageId ?? ""}`;
-}
-
-function sameTranscriptMessage(
-  left: TranscriptViewMessage,
-  right: TranscriptViewMessage,
-): boolean {
-  return (
-    left.sourceSeq === right.sourceSeq &&
-    left.role === right.role &&
-    left.messageId === right.messageId &&
-    left.timestamp === right.timestamp &&
-    left.outcome === right.outcome &&
-    left.pending === right.pending &&
-    left.delivery === right.delivery &&
-    left.eventType === right.eventType &&
-    left.explicitMention === right.explicitMention &&
-    left.context === right.context &&
-    left.source === right.source &&
-    sameJsonValue(left.actorIdentity, right.actorIdentity) &&
-    sameJsonValue(left.contexts, right.contexts) &&
-    sameJsonValue(left.route, right.route) &&
-    sameTranscriptParts(left.parts, right.parts)
-  );
-}
-
-function sameTranscriptParts(
-  left: readonly TranscriptViewPart[],
-  right: readonly TranscriptViewPart[],
-): boolean {
-  if (left === right) return true;
-  if (left.length !== right.length) return false;
-  for (let index = 0; index < left.length; index += 1) {
-    if (!sameJsonValue(left[index], right[index])) return false;
-  }
-  return true;
-}
-
-function sameJsonValue(left: unknown, right: unknown): boolean {
-  if (Object.is(left, right)) return true;
-  if (left == null || right == null) return left === right;
-  if (typeof left !== typeof right) return false;
-  if (typeof left !== "object") return left === right;
-
-  if (Array.isArray(left) || Array.isArray(right)) {
-    if (!Array.isArray(left) || !Array.isArray(right)) return false;
-    if (left.length !== right.length) return false;
-    for (let index = 0; index < left.length; index += 1) {
-      if (!sameJsonValue(left[index], right[index])) return false;
-    }
-    return true;
-  }
-
-  const leftRecord = left as Record<string, unknown>;
-  const rightRecord = right as Record<string, unknown>;
-  const leftKeys = Object.keys(leftRecord);
-  const rightKeys = Object.keys(rightRecord);
-  if (leftKeys.length !== rightKeys.length) return false;
-  for (const key of leftKeys) {
-    if (!Object.prototype.hasOwnProperty.call(rightRecord, key)) return false;
-    if (!sameJsonValue(leftRecord[key], rightRecord[key])) return false;
-  }
-  return true;
-}
 
 function SegmentEvents(props: {
   onOpenSubagentTranscript?: (args: {
@@ -225,7 +130,7 @@ function SegmentEvents(props: {
   );
 }
 
-function VisibleTranscriptEntries(props: {
+const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(props: {
   onOpenSubagentTranscript?: (args: {
     part: TranscriptViewSubagentPart;
     conversation: ConversationTranscript;
@@ -234,9 +139,13 @@ function VisibleTranscriptEntries(props: {
   conversation: ConversationTranscript;
   view: TranscriptViewMode;
 }) {
+  const entries = useMemo(
+    () => groupTranscriptMessages(props.transcript),
+    [props.transcript],
+  );
   return (
     <TranscriptEntryList
-      entries={groupTranscriptMessages(props.transcript)}
+      entries={entries}
       keyPrefix={props.conversation.conversationId}
       renderContext={(entry) => (
         <TranscriptRailEvent
@@ -318,7 +227,7 @@ function VisibleTranscriptEntries(props: {
       )}
     />
   );
-}
+});
 
 function TranscriptEntryList(props: {
   entries: TranscriptEntry[];

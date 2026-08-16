@@ -29,6 +29,8 @@ export function buildConversationTranscript(
     });
   }
 
+  if (historyPages.length === 0) return detail;
+
   return {
     ...detail,
     events: orderedEvents([
@@ -204,90 +206,28 @@ function withoutModelUsage(
 }
 
 /**
- * Keep the previous detail object when a live poll only refreshes metadata.
- * Poll responses always mint a new `generatedAt`, and that alone must not force
- * the dashboard to rebuild the transcript tree while the reader is typing.
+ * Reuse an unchanged event array without holding back fresh detail metadata.
+ * Reporting events are immutable by sequence, so sequence and timestamp form a
+ * cheap poll version. This avoids a deep walk through every event payload.
  */
-export function reuseUnchangedConversationDetail(
+export function reuseConversationEventReferences(
   previous: ConversationDetailReport | undefined,
   next: ConversationDetailReport,
 ): ConversationDetailReport {
-  if (!previous) return next;
-  if (previous === next) return previous;
-  if (!sameConversationDetailContent(previous, next)) return next;
-  return previous;
+  if (!previous || previous.events === next.events) return next;
+  if (!sameConversationEventVersion(previous.events, next.events)) return next;
+  return { ...next, events: previous.events };
 }
 
-function sameConversationDetailContent(
-  previous: ConversationDetailReport,
-  next: ConversationDetailReport,
-): boolean {
-  // Ignore poll-only metadata: generatedAt, lastSeenAt, lastProgressAt, and
-  // cumulativeDurationMs refresh while the event body is unchanged.
-  return (
-    previous.conversationId === next.conversationId &&
-    previous.status === next.status &&
-    previous.displayTitle === next.displayTitle &&
-    previous.visibility === next.visibility &&
-    previous.isParticipant === next.isParticipant &&
-    previous.surface === next.surface &&
-    previous.channel === next.channel &&
-    previous.channelName === next.channelName &&
-    previous.startedAt === next.startedAt &&
-    previous.archivedAt === next.archivedAt &&
-    previous.previousCursor === next.previousCursor &&
-    previous.sentryConversationUrl === next.sentryConversationUrl &&
-    sameJsonValue(previous.eventHistory, next.eventHistory) &&
-    sameJsonValue(previous.actorIdentity, next.actorIdentity) &&
-    sameJsonValue(previous.annotations, next.annotations) &&
-    sameJsonValue(previous.modelUsage, next.modelUsage) &&
-    sameJsonValue(previous.auxiliaryCosts, next.auxiliaryCosts) &&
-    sameJsonValue(previous.sourceTask, next.sourceTask) &&
-    sameConversationEvents(previous.events, next.events)
-  );
-}
-
-function sameConversationEvents(
+function sameConversationEventVersion(
   previous: ConversationReportEvent[],
   next: ConversationReportEvent[],
 ): boolean {
-  if (previous === next) return true;
   if (previous.length !== next.length) return false;
   for (let index = 0; index < previous.length; index += 1) {
     const left = previous[index]!;
     const right = next[index]!;
-    if (left === right) continue;
-    if (left.seq !== right.seq || left.createdAt !== right.createdAt) {
-      return false;
-    }
-    if (!sameJsonValue(left.data, right.data)) return false;
-  }
-  return true;
-}
-
-function sameJsonValue(left: unknown, right: unknown): boolean {
-  if (Object.is(left, right)) return true;
-  if (left == null || right == null) return left === right;
-  if (typeof left !== typeof right) return false;
-  if (typeof left !== "object") return left === right;
-
-  if (Array.isArray(left) || Array.isArray(right)) {
-    if (!Array.isArray(left) || !Array.isArray(right)) return false;
-    if (left.length !== right.length) return false;
-    for (let index = 0; index < left.length; index += 1) {
-      if (!sameJsonValue(left[index], right[index])) return false;
-    }
-    return true;
-  }
-
-  const leftRecord = left as Record<string, unknown>;
-  const rightRecord = right as Record<string, unknown>;
-  const leftKeys = Object.keys(leftRecord);
-  const rightKeys = Object.keys(rightRecord);
-  if (leftKeys.length !== rightKeys.length) return false;
-  for (const key of leftKeys) {
-    if (!Object.prototype.hasOwnProperty.call(rightRecord, key)) return false;
-    if (!sameJsonValue(leftRecord[key], rightRecord[key])) return false;
+    if (left.seq !== right.seq || left.createdAt !== right.createdAt) return false;
   }
   return true;
 }

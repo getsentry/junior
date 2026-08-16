@@ -11,7 +11,7 @@ import {
   conversationHistoryVersion,
   loadCompleteConversationTranscript,
   nextConversationHistoryCursor,
-  reuseUnchangedConversationDetail,
+  reuseConversationEventReferences,
   type ConversationHistoryPage,
 } from "../src/client/conversations/transcript";
 
@@ -261,7 +261,7 @@ describe("conversation transcript", () => {
     expect(complete.events.map((item) => item.seq)).toEqual([1, 2, 3, 4]);
   });
 
-  it("keeps the previous detail object when a live poll only refreshes metadata", () => {
+  it("reuses events while keeping fresh poll metadata", () => {
     const previous = detail();
     const next = {
       ...previous,
@@ -271,10 +271,13 @@ describe("conversation transcript", () => {
       lastSeenAt: "2026-07-23T00:00:02.000Z",
     };
 
-    expect(reuseUnchangedConversationDetail(previous, next)).toBe(previous);
+    const result = reuseConversationEventReferences(previous, next);
+    expect(result).toBe(next);
+    expect(result.events).toBe(previous.events);
+    expect(result.generatedAt).toBe("2026-07-23T00:00:02.000Z");
   });
 
-  it("returns the next detail object when the event body changes", () => {
+  it("keeps the next events when their version changes", () => {
     const previous = detail();
     const next = {
       ...previous,
@@ -282,6 +285,6 @@ describe("conversation transcript", () => {
       generatedAt: "2026-07-23T00:00:02.000Z",
     };
 
-    expect(reuseUnchangedConversationDetail(previous, next)).toBe(next);
+    expect(reuseConversationEventReferences(previous, next)).toBe(next);
   });
 });
