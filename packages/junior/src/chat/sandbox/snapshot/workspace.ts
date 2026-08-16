@@ -151,22 +151,34 @@ async function stopBuilder(
 }
 
 /**
- * Drop stale ready pointers after Vercel no longer has the snapshot id.
- * Next resolve starts a durable multi-slice rebuild for the same profile.
+ * Drop stale ready pointers after Vercel no longer has the snapshot id, then
+ * rebuild on the durable multi-slice path for the same profile.
  */
-export async function invalidateMissingWorkspaceSnapshot(params: {
+export async function rebuildMissingWorkspaceSnapshot(params: {
   workspace: Workspace;
   runtime: string;
   snapshotId: string;
-}): Promise<void> {
+  signal?: AbortSignal;
+  shouldYield?: () => boolean;
+  turnDeadlineAtMs?: number;
+  applyNetworkPolicy(sandbox: SandboxSession): Promise<unknown>;
+  prepareRepositories?(
+    sandbox: SandboxSession,
+    workspace: Workspace,
+    signal?: AbortSignal,
+  ): Promise<void>;
+  removeCredentialRoute: boolean;
+}): Promise<Snapshot> {
   const value = profile.create(params.runtime, params.workspace);
-  if (!value) return;
-  await clearCachedSnapshot(value.hash);
-  await invalidateMissingReadySnapshot({
-    workspaceId: params.workspace.id,
-    profileHash: value.hash,
-    snapshotId: params.snapshotId,
-  });
+  if (value) {
+    await clearCachedSnapshot(value.hash);
+    await invalidateMissingReadySnapshot({
+      workspaceId: params.workspace.id,
+      profileHash: value.hash,
+      snapshotId: params.snapshotId,
+    });
+  }
+  return await resolveWorkspaceSnapshot(params);
 }
 
 async function markFailed(
