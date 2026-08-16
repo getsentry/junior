@@ -46,6 +46,7 @@ import {
   conversationHistoryVersion,
   loadCompleteConversationTranscript,
   nextConversationHistoryCursor,
+  reuseConversationEventReferences,
   type ConversationHistoryPage,
 } from "./transcript";
 
@@ -127,6 +128,16 @@ export function conversationDetailQueryOptions(
     enabled: Boolean(conversationId),
     queryKey: conversationDetailQueryKey(conversationId),
     queryFn: ({ signal }) => readConversationData(conversationId!, signal),
+    // Keep immutable events stable across metadata-only polls. Consumers can
+    // skip transcript work while status and timing metadata still stay fresh.
+    structuralSharing: (previous, next) => {
+      if (!next || typeof next !== "object") return next;
+      if (!previous || typeof previous !== "object") return next;
+      return reuseConversationEventReferences(
+        previous as ConversationDetailReport,
+        next as ConversationDetailReport,
+      );
+    },
     refetchInterval: (query) =>
       query.state.data?.status === "active" ? 2_000 : false,
     retry: false,

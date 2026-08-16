@@ -473,7 +473,7 @@ test("opens and closes a conversation in the mobile workspace", async ({
         element.style.getPropertyValue("--dashboard-viewport-offset-top"),
       ),
     )
-    .toBe("140px");
+    .toBe("0px");
 
   await page.evaluate(() => {
     Object.defineProperties(window.visualViewport, {
@@ -488,7 +488,7 @@ test("opens and closes a conversation in the mobile workspace", async ({
         element.style.getPropertyValue("--dashboard-viewport-offset-top"),
       ),
     )
-    .toBe("180px");
+    .toBe("0px");
 
   await composer.blur();
   await transcript.evaluate((element) => {
