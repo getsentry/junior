@@ -1,199 +1,271 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { randomUUID } from "node:crypto";
+import { Sandbox } from "@vercel/sandbox";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { getDb } from "@/chat/db";
+import { getVercelSandboxCredentials } from "@/chat/sandbox/credentials";
+import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
+import { createSandboxRuntime } from "@/chat/sandbox/session";
+import { isWorkspaceSnapshotWaitingError } from "@/chat/sandbox/snapshot/waiting-error";
 import {
-  vercelSandboxFixture,
-  vercelSandboxModule,
-} from "../fixtures/vercel-sandbox";
-
-vi.mock("@vercel/sandbox", () => vercelSandboxModule);
+  disconnectStateAdapter,
+  getStateAdapter,
+} from "@/chat/state/adapter";
+import { getWorkspace, updateWorkspace } from "@/chat/workspaces/store";
+import { juniorWorkspaces } from "@/db/schema";
 
 const ORIGINAL_ENV = { ...process.env };
-let disconnectStateAdapter: (() => Promise<void>) | undefined;
+const MARKER_PATH = `${SANDBOX_WORKSPACE_ROOT}/marker/setup.txt`;
+const LIVE_TEST_TIMEOUT_MS = 20 * 60 * 1000;
 
-describe("Workspace snapshot lifecycle", () => {
-  beforeEach(() => {
-    process.env = {
-      ...ORIGINAL_ENV,
-      JUNIOR_STATE_ADAPTER: "memory",
-    };
-    vercelSandboxFixture.reset();
-    vi.clearAllMocks();
+function sandboxCredentialsReady(): boolean {
+  if (process.env.VERCEL_OIDC_TOKEN?.trim()) return true;
+  return Boolean(
+    process.env.VERCEL_TOKEN?.trim() &&
+      process.env.VERCEL_TEAM_ID?.trim() &&
+      process.env.VERCEL_PROJECT_ID?.trim(),
+  );
+}
+
+function setupScript(label: string): string {
+  return [
+    "set -euo pipefail",
+    `mkdir -p "${SANDBOX_WORKSPACE_ROOT}/marker"`,
+    `printf '%s\\n' '${label}' > "${MARKER_PATH}"`,
+  ].join("\n");
+}
+
+async function stopNamedSandbox(
+  name: string | null | undefined,
+): Promise<void> {
+  if (!name) return;
+  try {
+    const credentials = getVercelSandboxCredentials();
+    const sandbox = await Sandbox.get({
+      name,
+      resume: false,
+      ...(credentials ?? {}),
+    });
+    await sandbox.stop();
+  } catch {
+    // Builder may already be stopped after snapshot or a failed start.
+  }
+}
+
+async function stopWorkspaceBuilders(workspaceId: string): Promise<void> {
+  const workspace = await getWorkspace(getDb(), workspaceId);
+  await stopNamedSandbox(workspace?.snapshotBuild?.sandboxName);
+}
+
+async function readMarker(
+  session: Awaited<ReturnType<ReturnType<typeof createSandboxRuntime>["acquire"]>>,
+): Promise<string> {
+  const result = await session.runCommand({
+    cmd: "cat",
+    args: [MARKER_PATH],
   });
+  expect(result.exitCode).toBe(0);
+  return result.stdout.trim();
+}
 
-  afterEach(async () => {
-    await disconnectStateAdapter?.();
-    disconnectStateAdapter = undefined;
-    process.env = { ...ORIGINAL_ENV };
-  });
+/**
+ * Real Vercel Sandbox proof for the durable workspace snapshot control plane.
+ * Integration may only fake Slack + LLMs — not @vercel/sandbox.
+ * Skips when sandbox credentials are absent (local/fork); CI injects them.
+ */
+describe.skipIf(!sandboxCredentialsReady())(
+  "Workspace snapshot lifecycle",
+  () => {
+    const trackedWorkspaceIds: string[] = [];
 
-  it("continues a cold build across check-ins and boots its ready snapshot", async () => {
-    const [
-      { getDb },
-      state,
-      schema,
-      store,
-      { createSandboxRuntime },
-      waiting,
-    ] = await Promise.all([
-      import("@/chat/db"),
-      import("@/chat/state/adapter"),
-      import("@/db/schema"),
-      import("@/chat/workspaces/store"),
-      import("@/chat/sandbox/session"),
-      import("@/chat/sandbox/snapshot/waiting-error"),
-    ]);
-    disconnectStateAdapter = state.disconnectStateAdapter;
-
-    const now = new Date("2026-08-16T18:00:00.000Z");
-    const workspaceId = "33333333-3333-4333-8333-333333333333";
-    const db = getDb();
-    await db.insert(schema.juniorWorkspaces).values({
-      id: workspaceId,
-      name: "snapshot-lifecycle",
-      setupScript: "echo ready",
-      createdAt: now,
-      updatedAt: now,
+    beforeEach(async () => {
+      process.env = {
+        ...ORIGINAL_ENV,
+        JUNIOR_STATE_ADAPTER: "memory",
+      };
+      await getStateAdapter().connect();
     });
 
-    const workspace = (await store.getWorkspace(db, workspaceId))!;
-    const runtime = createSandboxRuntime({
-      workspace,
-      skills: [],
-      referenceFiles: [],
-      shouldYield: () => true,
+    afterEach(async () => {
+      for (const workspaceId of trackedWorkspaceIds.splice(0)) {
+        await stopWorkspaceBuilders(workspaceId);
+      }
+      await disconnectStateAdapter();
+      process.env = { ...ORIGINAL_ENV };
     });
 
-    for (const phase of [
-      "created",
-      "dependencies_installed",
-      "repositories_prepared",
-      "repositories_prepared",
-    ]) {
-      await expect(runtime.acquire()).rejects.toSatisfy(
-        waiting.isWorkspaceSnapshotWaitingError,
-      );
-      const current = await store.getWorkspace(db, workspaceId);
-      expect(current?.snapshotBuild?.phase).toBe(phase);
-    }
+    it(
+      "continues a cold build across check-ins and boots its ready snapshot",
+      async () => {
+        const now = new Date();
+        const workspaceId = randomUUID();
+        trackedWorkspaceIds.push(workspaceId);
+        const db = getDb();
+        await db.insert(juniorWorkspaces).values({
+          id: workspaceId,
+          name: `snapshot-lifecycle-${workspaceId.slice(0, 8)}`,
+          setupScript: setupScript("ready"),
+          createdAt: now,
+          updatedAt: now,
+        });
 
-    const session = await runtime.acquire();
-    const ready = await store.getWorkspace(db, workspaceId);
+        const workspace = (await getWorkspace(db, workspaceId))!;
+        // One slice per acquire so SQL phase advances are visible.
+        const slicing = createSandboxRuntime({
+          workspace,
+          skills: [],
+          referenceFiles: [],
+          shouldYield: () => true,
+        });
 
-    expect(session.sandboxId).toMatch(/^runtime-sandbox-/);
-    expect(runtime.sandboxRef()).toMatchObject({
-      profileHash: ready?.snapshot?.profileHash,
-      workspaceId,
-    });
-    expect(ready?.snapshot).toMatchObject({
-      id: "workspace-snapshot-1",
-      runtime: "node22",
-    });
-    expect(ready?.snapshotBuild).toBeNull();
-    expect(vercelSandboxFixture.snapshotBoots()).toEqual([
-      "workspace-snapshot-1",
-    ]);
+        try {
+          for (const phase of [
+            "created",
+            "dependencies_installed",
+            "repositories_prepared",
+          ] as const) {
+            await expect(slicing.acquire()).rejects.toSatisfy(
+              isWorkspaceSnapshotWaitingError,
+            );
+            const current = await getWorkspace(db, workspaceId);
+            expect(current?.snapshotBuild?.status).toBe("building");
+            expect(current?.snapshotBuild?.phase).toBe(phase);
+            expect(current?.snapshotBuild?.sandboxName).toBeTruthy();
+            expect(current?.snapshotBuild?.commandId).toBeNull();
+          }
 
-    const [builder] = vercelSandboxFixture.persistentSandboxes();
-    expect(vercelSandboxFixture.persistentSandboxes()).toHaveLength(1);
-    expect(builder?.snapshot).toHaveBeenCalledTimes(1);
-    expect(builder?.stop).toHaveBeenCalledTimes(1);
-    runtime.close();
-  });
+          // Detach setup on the next slice, then poll until ready and boot.
+          const finishing = createSandboxRuntime({
+            workspace: (await getWorkspace(db, workspaceId))!,
+            skills: [],
+            referenceFiles: [],
+            shouldYield: () => false,
+          });
+          try {
+            const session = await finishing.acquire();
+            try {
+              const ready = await getWorkspace(db, workspaceId);
 
-  it("reuses a retained ready snapshot when setup script reverts", async () => {
-    const [
-      { getDb },
-      state,
-      schema,
-      store,
-      profile,
-      { createSandboxRuntime },
-    ] = await Promise.all([
-      import("@/chat/db"),
-      import("@/chat/state/adapter"),
-      import("@/db/schema"),
-      import("@/chat/workspaces/store"),
-      import("@/chat/sandbox/snapshot/profile"),
-      import("@/chat/sandbox/session"),
-    ]);
-    disconnectStateAdapter = state.disconnectStateAdapter;
-
-    const now = new Date("2026-08-16T18:00:00.000Z");
-    const workspaceId = "44444444-4444-4444-8444-444444444444";
-    const db = getDb();
-    await db.insert(schema.juniorWorkspaces).values({
-      id: workspaceId,
-      name: "snapshot-profile-reuse",
-      setupScript: "echo alpha",
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    const recipeA = (await store.getWorkspace(db, workspaceId))!;
-    const profileA = profile.create("node22", recipeA)!;
-    await store.updateWorkspace(workspaceId, {
-      name: recipeA.name,
-      setupScript: "echo beta",
-      repos: [],
-    });
-    const recipeB = (await store.getWorkspace(db, workspaceId))!;
-    const profileB = profile.create("node22", recipeB)!;
-    expect(profileB.hash).not.toBe(profileA.hash);
-
-    // B is newer. Resolve must still select A after the recipe reverts.
-    await db.insert(schema.juniorSnapshots).values([
-      {
-        id: "snapshot-row-a",
-        workspaceId,
-        profileHash: profileA.hash,
-        status: "ready",
-        snapshotId: "vercel-snapshot-a",
-        // Deployed legacy rows may omit these details.
-        runtime: null,
-        dependencyCount: null,
-        buildDurationMs: 1_000,
-        generatedAt: new Date("2026-08-16T17:00:00.000Z"),
-        createdAt: new Date("2026-08-16T17:00:00.000Z"),
-        updatedAt: new Date("2026-08-16T17:00:00.000Z"),
+              expect(ready?.snapshotBuild).toBeNull();
+              expect(ready?.snapshot?.id).toBeTruthy();
+              expect(ready?.snapshot?.runtime).toBe("node22");
+              expect(finishing.sandboxRef()).toMatchObject({
+                profileHash: ready?.snapshot?.profileHash,
+                workspaceId,
+              });
+              expect(await readMarker(session)).toBe("ready");
+            } finally {
+              await session.stop().catch(() => undefined);
+            }
+          } finally {
+            finishing.close();
+          }
+        } finally {
+          slicing.close();
+        }
       },
-      {
-        id: "snapshot-row-b",
-        workspaceId,
-        profileHash: profileB.hash,
-        status: "ready",
-        snapshotId: "vercel-snapshot-b",
-        runtime: "node22",
-        dependencyCount: 0,
-        buildDurationMs: 2_000,
-        generatedAt: now,
-        createdAt: now,
-        updatedAt: now,
+      LIVE_TEST_TIMEOUT_MS,
+    );
+
+    it(
+      "reuses a retained ready snapshot when setup script reverts",
+      async () => {
+        const now = new Date();
+        const workspaceId = randomUUID();
+        trackedWorkspaceIds.push(workspaceId);
+        const db = getDb();
+        await db.insert(juniorWorkspaces).values({
+          id: workspaceId,
+          name: `snapshot-reuse-${workspaceId.slice(0, 8)}`,
+          setupScript: setupScript("alpha"),
+          createdAt: now,
+          updatedAt: now,
+        });
+
+        const recipeA = (await getWorkspace(db, workspaceId))!;
+        let snapshotIdA = "";
+        let profileHashA = "";
+
+        const buildA = createSandboxRuntime({
+          workspace: recipeA,
+          skills: [],
+          referenceFiles: [],
+          shouldYield: () => false,
+        });
+        try {
+          const sessionA = await buildA.acquire();
+          try {
+            const readyA = await getWorkspace(db, workspaceId);
+            expect(readyA?.snapshot?.id).toBeTruthy();
+            snapshotIdA = readyA!.snapshot!.id;
+            profileHashA = readyA!.snapshot!.profileHash;
+            expect(await readMarker(sessionA)).toBe("alpha");
+          } finally {
+            await sessionA.stop().catch(() => undefined);
+          }
+        } finally {
+          buildA.close();
+        }
+
+        await updateWorkspace(workspaceId, {
+          name: recipeA.name,
+          setupScript: setupScript("beta"),
+          repos: [],
+        });
+        const recipeB = (await getWorkspace(db, workspaceId))!;
+        // Start B only far enough to prove it is a different profile build.
+        const startB = createSandboxRuntime({
+          workspace: recipeB,
+          skills: [],
+          referenceFiles: [],
+          shouldYield: () => true,
+        });
+        try {
+          await expect(startB.acquire()).rejects.toSatisfy(
+            isWorkspaceSnapshotWaitingError,
+          );
+          const buildingB = await getWorkspace(db, workspaceId);
+          expect(buildingB?.snapshotBuild?.status).toBe("building");
+          expect(buildingB?.snapshotBuild?.profileHash).not.toBe(profileHashA);
+          // Ready A stays while B builds.
+          expect(buildingB?.snapshot?.id).toBe(snapshotIdA);
+        } finally {
+          startB.close();
+          await stopWorkspaceBuilders(workspaceId);
+        }
+
+        await updateWorkspace(workspaceId, {
+          name: recipeA.name,
+          setupScript: recipeA.setupScript,
+          repos: [],
+        });
+        const reverted = (await getWorkspace(db, workspaceId))!;
+        const reuse = createSandboxRuntime({
+          workspace: reverted,
+          skills: [],
+          referenceFiles: [],
+          shouldYield: () => false,
+        });
+        try {
+          const session = await reuse.acquire();
+          try {
+            const ready = await getWorkspace(db, workspaceId);
+
+            expect(ready?.snapshot?.id).toBe(snapshotIdA);
+            expect(ready?.snapshot?.profileHash).toBe(profileHashA);
+            expect(ready?.snapshotBuild).toBeNull();
+            expect(reuse.sandboxRef()).toMatchObject({
+              profileHash: profileHashA,
+              workspaceId,
+            });
+            expect(await readMarker(session)).toBe("alpha");
+          } finally {
+            await session.stop().catch(() => undefined);
+          }
+        } finally {
+          reuse.close();
+        }
       },
-    ]);
-
-    const runtime = createSandboxRuntime({
-      workspace: recipeB,
-      skills: [],
-      referenceFiles: [],
-    });
-    await runtime.acquire();
-
-    await store.updateWorkspace(workspaceId, {
-      name: recipeA.name,
-      setupScript: recipeA.setupScript,
-      repos: [],
-    });
-    const reverted = (await store.getWorkspace(db, workspaceId))!;
-    await runtime.switchWorkspace(reverted);
-
-    expect(vercelSandboxFixture.snapshotBoots()).toEqual([
-      "vercel-snapshot-b",
-      "vercel-snapshot-a",
-    ]);
-    expect(runtime.sandboxRef()).toMatchObject({
-      profileHash: profileA.hash,
-      workspaceId,
-    });
-    expect(vercelSandboxFixture.snapshotCount).toBe(0);
-    runtime.close();
-  });
-});
+      LIVE_TEST_TIMEOUT_MS,
+    );
+  },
+);
