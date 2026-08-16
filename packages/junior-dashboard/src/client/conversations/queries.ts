@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import {
   queryOptions,
   useInfiniteQuery,
@@ -46,6 +46,7 @@ import {
   conversationHistoryVersion,
   loadCompleteConversationTranscript,
   nextConversationHistoryCursor,
+  reuseUnchangedConversationDetail,
   type ConversationHistoryPage,
 } from "./transcript";
 
@@ -127,6 +128,16 @@ export function conversationDetailQueryOptions(
     enabled: Boolean(conversationId),
     queryKey: conversationDetailQueryKey(conversationId),
     queryFn: ({ signal }) => readConversationData(conversationId!, signal),
+    // Live polls always mint a new generatedAt. Keep the previous object when
+    // the visible transcript body did not change so React can skip the rebuild.
+    structuralSharing: (previous, next) => {
+      if (!next || typeof next !== "object") return next;
+      if (!previous || typeof previous !== "object") return next;
+      return reuseUnchangedConversationDetail(
+        previous as ConversationDetailReport,
+        next as ConversationDetailReport,
+      );
+    },
     refetchInterval: (query) =>
       query.state.data?.status === "active" ? 2_000 : false,
     retry: false,
@@ -463,13 +474,25 @@ export function useConversationData(conversationId: string | undefined) {
   });
 
   const historyPages = history.data?.pages;
-  const data = useMemo(
+  const builtData = useMemo(
     () =>
       detail.data
         ? buildConversationTranscript(detail.data, historyPages ?? [])
         : undefined,
     [detail.data, historyPages],
   );
+  // Preserve the previous transcript object across no-op rebuilds so consumers
+  // memoized on `data` do not re-render while the reader is typing.
+  const stableDataRef = useRef(builtData);
+  if (builtData) {
+    stableDataRef.current = reuseUnchangedConversationDetail(
+      stableDataRef.current,
+      builtData,
+    );
+  } else {
+    stableDataRef.current = undefined;
+  }
+  const data = builtData ? stableDataRef.current : undefined;
   const outbox = useQuery({
     enabled: Boolean(conversationId),
     // Local-only cache. Never replace optimistic rows with an empty fetch result.

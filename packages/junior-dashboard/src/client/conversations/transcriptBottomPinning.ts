@@ -9,8 +9,9 @@ import {
   type RefObject,
 } from "react";
 
-import type { ConversationTranscript, TranscriptViewPart } from "../types";
-import { conversationTranscriptMessages } from "./eventTranscript";
+import type { ConversationReportEvent } from "@sentry/junior/api/schema";
+
+import type { ConversationTranscript } from "../types";
 
 const BOTTOM_PROXIMITY_PX = 96;
 const MOBILE_MEDIA_QUERY = "(max-width: 767px)";
@@ -62,20 +63,112 @@ export function transcriptBottomVersion(
 ): string {
   if (!conversation) return "empty";
 
-  const messages = conversationTranscriptMessages(conversation);
-  const lastMessage = messages.at(-1);
-  const lastPart = lastMessage?.parts.at(-1);
+  // Read only the live tail event. Rebuilding the full transcript model on every
+  // poll is too expensive while the reader is typing, and earlier history must
+  // not look like a new bottom update when it is prepended.
+  const last = conversation.events.at(-1);
 
   return [
     conversation.conversationId,
     conversation.status,
-    lastMessage?.sourceSeq ?? "",
-    lastMessage?.role ?? "",
-    lastMessage?.outcome ?? "",
-    lastMessage?.timestamp ?? "",
-    lastMessage?.parts.length ?? 0,
-    transcriptPartVersion(lastPart),
+    last?.seq ?? "",
+    last?.createdAt ?? "",
+    eventTailVersion(last),
   ].join("|");
+}
+
+function eventTailVersion(event: ConversationReportEvent | undefined): string {
+  if (!event) return "";
+  const data = event.data;
+  switch (data.type) {
+    case "message":
+      return [
+        data.type,
+        data.role,
+        data.messageId,
+        data.redacted ? "redacted" : (data.text?.length ?? 0),
+        data.eventType ?? "",
+      ].join(":");
+    case "assistant_message": {
+      const parts = data.parts;
+      const lastPart = parts.at(-1);
+      return [
+        data.type,
+        parts.length,
+        lastPart?.redacted ? "redacted" : (lastPart?.text?.length ?? 0),
+      ].join(":");
+    }
+    case "tool_calls": {
+      const call = data.calls.at(-1);
+      return [
+        data.type,
+        data.calls.length,
+        call?.toolCallId ?? "",
+        call?.name ?? "",
+        call?.status ?? "",
+        call?.output === undefined ? "" : "output",
+      ].join(":");
+    }
+    case "subagent":
+      return [
+        data.type,
+        data.childConversationId,
+        data.status,
+        data.subagentKind,
+        data.parentToolCallId ?? "",
+      ].join(":");
+    case "turn_lifecycle":
+      return [
+        data.type,
+        data.turnId,
+        data.state,
+        "failureKind" in data ? data.failureKind : "",
+      ].join(":");
+    case "structured_event":
+      return [
+        data.type,
+        data.namespace,
+        data.name,
+        data.version,
+        data.presentation.title,
+        data.presentation.preview?.length ?? 0,
+      ].join(":");
+    case "message_handled":
+      return [data.type, data.messageId].join(":");
+    case "attachments_delivered":
+      return [
+        data.type,
+        data.attachments.length,
+        ...data.attachments.map(
+          (attachment) =>
+            `${attachment.id}:${attachment.filename}:${attachment.bytes}`,
+        ),
+      ].join(":");
+    case "compaction":
+      return [data.type, data.summary?.length ?? 0, event.createdAt].join(":");
+    case "handoff":
+      return [
+        data.type,
+        data.modelProfile,
+        data.modelId,
+        data.summary?.length ?? 0,
+        event.createdAt,
+      ].join(":");
+    case "turn_routed":
+      return [data.type, data.turnId, data.modelProfile, data.modelId].join(
+        ":",
+      );
+    case "guardian_action_reviewed":
+      return [data.type, data.turnId, data.toolCallId, data.decision].join(
+        ":",
+      );
+    case "turn_context":
+      return [data.type, data.turnId, data.pluginName, data.kind, data.version].join(
+        ":",
+      );
+    default:
+      return `${(data as { type?: string }).type ?? "unknown"}:${event.seq}`;
+  }
 }
 
 /** Require both live mode and reader intent before moving the viewport. */
@@ -469,64 +562,6 @@ export function scrollTopAfterPrepend(
   scrollHeight: number,
 ): number {
   return previous.scrollTop + scrollHeight - previous.scrollHeight;
-}
-
-function transcriptPartVersion(part: TranscriptViewPart | undefined): string {
-  if (!part) return "";
-  if (part.type === "text") {
-    return [
-      part.type,
-      part.text?.length ?? 0,
-      part.redacted ? "redacted" : "",
-    ].join(":");
-  }
-  if (part.type === "tool_call") {
-    return [
-      part.type,
-      part.id,
-      part.status,
-      part.startedTimestamp ?? "",
-      part.input === undefined ? "" : "input",
-      part.output === undefined ? "" : "output",
-    ].join(":");
-  }
-  if (part.type === "reasoning") {
-    return [
-      part.type,
-      part.text?.length ?? 0,
-      part.redacted ? "redacted" : "",
-    ].join(":");
-  }
-  if (part.type === "subagent") {
-    return [
-      part.type,
-      part.id,
-      part.childConversationId,
-      part.subagentKind,
-      part.status,
-    ].join(":");
-  }
-  if (part.type === "structured_event") {
-    return [
-      part.type,
-      part.namespace,
-      part.name,
-      part.version,
-      part.presentation.title,
-      part.presentation.preview ?? "",
-      part.presentation.details?.length ?? 0,
-    ].join(":");
-  }
-  if (part.type === "attachments_delivered") {
-    return [
-      part.type,
-      ...part.attachments.map(
-        (attachment) =>
-          `${attachment.id}:${attachment.filename}:${attachment.contentType}:${attachment.bytes}`,
-      ),
-    ].join(":");
-  }
-  return [part.type, part.event.type, part.event.createdAt].join(":");
 }
 
 function scrollRootFor(element: HTMLElement | null): ScrollRoot | null {

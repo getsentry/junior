@@ -1,9 +1,14 @@
+import { memo } from "react";
+
 import { HighlightedCode } from "../code";
 import { parseMarkdownBlocks, transcriptRoleKind } from "../format";
 import { TranscriptMarkdown } from "./TranscriptMarkdown";
 
 /** Render transcript prose as Markdown with explicit fenced code blocks. */
-export function TranscriptText(props: { role?: string; text: string }) {
+export const TranscriptText = memo(function TranscriptText(props: {
+  role?: string;
+  text: string;
+}) {
   const roleKind = transcriptRoleKind(props.role ?? "");
   const blocks = parseMarkdownBlocks(props.text);
 
@@ -30,4 +35,4 @@ export function TranscriptText(props: { role?: string; text: string }) {
       })}
     </div>
   );
-}
+});

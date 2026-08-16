@@ -15,19 +15,13 @@ import {
 } from "lucide-react";
 
 import { Tooltip } from "../components/Tooltip";
-import { transcriptMessageActorLabel } from "../format";
-import type { ConversationTranscript, TranscriptViewMessage } from "../types";
+import { actorLabel } from "../format";
 import type { ConversationMailboxMessage } from "./conversationOutbox";
 import {
   TranscriptHeadingMeta,
   TranscriptHeadingRow,
 } from "./TranscriptHeadingRow";
-import {
-  conversationTranscriptMessages,
-  unresolvedPendingTranscriptMessages,
-} from "./eventTranscript";
 import { SlackMark } from "./SlackMark";
-import { showsSlackSourceIcon } from "./transcriptSource";
 
 const MAX_EXPANDED_PENDING_ROWS = 3;
 const COLLAPSED_PENDING_ROW_COUNT = 2;
@@ -121,28 +115,16 @@ function PendingRow(props: {
   cancelDisabled: boolean;
   cancelError: boolean;
   cancelPending: boolean;
-  conversation: ConversationTranscript;
   message: ConversationMailboxMessage;
   onCancel?(message: ConversationMailboxMessage): void;
   onRetry?(message: ConversationMailboxMessage): void;
 }) {
   const text = props.message.text ?? "";
   const redacted = Boolean(props.message.redacted);
-  const projected: TranscriptViewMessage = {
-    actorIdentity: props.message.actorIdentity,
-    delivery: props.message.delivery,
-    messageId: props.message.messageId,
-    parts: redacted
-      ? [{ type: "text", redacted: true }]
-      : [{ type: "text", text }],
-    pending: true,
-    role: "user",
-    source: props.message.source,
-    sourceSeq: 0,
-    timestamp: Date.parse(props.message.createdAt),
-  };
-  const roleLabel = transcriptMessageActorLabel(props.conversation, projected);
-  const showSlack = showsSlackSourceIcon(projected, props.conversation);
+  // Pending rows are always the local user message. Avoid rebuilding a full
+  // transcript projection just to label the stack above the composer.
+  const roleLabel = actorLabel(props.message.actorIdentity) ?? "User";
+  const showSlack = props.message.source === "slack";
   const canRetry =
     props.message.clientStatus === "failed" &&
     Boolean(props.message.idempotencyKey) &&
@@ -244,7 +226,8 @@ export function PendingMailboxStack(props: {
   cancelError?: boolean;
   cancelPending?: boolean;
   cancelTargetInboundMessageId?: string;
-  conversation: ConversationTranscript;
+  /** Message ids already present in committed history. */
+  committedMessageIds?: readonly string[];
   messages: readonly ConversationMailboxMessage[];
   onCancelMessage?: (message: ConversationMailboxMessage) => void;
   /** Fires after expand/collapse changes the stack height above the composer. */
@@ -264,15 +247,12 @@ export function PendingMailboxStack(props: {
     }
     onLayoutChangeRef.current?.();
   }, [expanded]);
-  const unresolvedIds = new Set(
-    unresolvedPendingTranscriptMessages(
-      conversationTranscriptMessages(props.conversation),
-      props.messages,
-    ).map((message) => message.messageId),
-  );
+  const committedIds = new Set(props.committedMessageIds ?? []);
   // Preserve mailbox order and clientStatus from the merged source rows.
-  const rows = props.messages.filter((message) =>
-    unresolvedIds.has(message.messageId),
+  // History wins on messageId so a send does not appear twice once workers
+  // persist the user message.
+  const rows = props.messages.filter(
+    (message) => !committedIds.has(message.messageId),
   );
   if (rows.length === 0) return null;
 
@@ -302,7 +282,6 @@ export function PendingMailboxStack(props: {
                 props.cancelPending &&
                 props.cancelTargetInboundMessageId === message.inboundMessageId,
               )}
-              conversation={props.conversation}
               key={message.messageId ?? `${message.inboundMessageId}:${index}`}
               message={message}
               onCancel={
@@ -326,7 +305,6 @@ export function PendingMailboxStack(props: {
               props.cancelPending &&
               props.cancelTargetInboundMessageId === message.inboundMessageId,
             )}
-            conversation={props.conversation}
             key={message.messageId ?? `${message.inboundMessageId}:${index}`}
             message={message}
             onCancel={

@@ -2,6 +2,7 @@ import {
   useCallback,
   useDeferredValue,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -92,6 +93,10 @@ export function ConversationPage(props: {
     : undefined;
   // Keep live flags and mailbox chrome urgent. Only the heavy transcript body is deferred.
   const live = conversationIsLive(visualStatus, detail.data);
+  const mailboxCommittedIds = useMemo(
+    () => committedMessageIds(detail.data),
+    [detail.data],
+  );
   const requestPin = useCallback(() => {
     setPinRequestVersion((version) => version + 1);
   }, []);
@@ -250,8 +255,10 @@ export function ConversationPage(props: {
       </div>
       {detail.data?.isParticipant ? (
         <ConversationReplyFooter
-          conversation={detail.data}
           conversationId={conversationId}
+          // Only pass committed ids for mailbox de-dupe. The full transcript is
+          // too large to re-enter the footer on every live poll while typing.
+          committedMessageIds={mailboxCommittedIds}
           live={live}
           onPinRequest={requestPin}
           pendingAuthorization={detail.pendingAuthorization}
@@ -272,7 +279,7 @@ export function ConversationPage(props: {
  * on every live transcript poll. Keeps composer props stable while typing.
  */
 function ConversationReplyFooter(props: {
-  conversation: ConversationTranscript;
+  committedMessageIds: readonly string[];
   conversationId: string;
   live: boolean;
   onPinRequest: () => void;
@@ -382,7 +389,7 @@ function ConversationReplyFooter(props: {
           cancelError={cancelError}
           cancelPending={cancelPendingMessages.isPending}
           cancelTargetInboundMessageId={cancelTargetInboundMessageId}
-          conversation={props.conversation}
+          committedMessageIds={props.committedMessageIds}
           messages={props.pendingMessages}
           onCancelMessage={onCancelMessage}
           onLayoutChange={onMailboxLayoutChange}
@@ -428,3 +435,16 @@ function conversationIsLive(
   if (detail) return detail.status === "active";
   return visualStatus === "active";
 }
+
+function committedMessageIds(
+  detail: ConversationDetailReport | undefined,
+): readonly string[] {
+  if (!detail) return EMPTY_MESSAGE_IDS;
+  const ids: string[] = [];
+  for (const event of detail.events) {
+    if (event.data.type === "message") ids.push(event.data.messageId);
+  }
+  return ids;
+}
+
+const EMPTY_MESSAGE_IDS: readonly string[] = [];
