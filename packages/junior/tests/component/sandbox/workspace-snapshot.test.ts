@@ -93,8 +93,10 @@ vi.mock("@/chat/workspaces/store", () => ({
   getWorkspace: getWorkspaceMock,
 }));
 
-import { CooperativeTurnYieldError } from "@/chat/runtime/turn";
-import { resolveWorkspaceSnapshot } from "@/chat/sandbox/snapshot/workspace";
+import {
+  resolveWorkspaceSnapshot,
+  WorkspaceSnapshotWaitingError,
+} from "@/chat/sandbox/snapshot/workspace";
 import type { Workspace } from "@/chat/workspaces/types";
 
 const workspace: Workspace = {
@@ -203,14 +205,15 @@ describe("Workspace snapshot wait", () => {
     expect(sleepMock).toHaveBeenCalled();
   });
 
-  it("soft-yields so the conversation worker can requeue", async () => {
+  it("soft-yields a waiting error after advancing one slice", async () => {
     sandboxCreateMock.mockResolvedValue({ name: "junior-ws-1" });
     setWorkspaceSnapshotBuildMock.mockResolvedValue(undefined);
 
     await expect(
       resolve({ shouldYield: () => true }),
-    ).rejects.toBeInstanceOf(CooperativeTurnYieldError);
-    expect(sandboxCreateMock).not.toHaveBeenCalled();
+    ).rejects.toBeInstanceOf(WorkspaceSnapshotWaitingError);
+    // First slice still starts the builder before the soft yield.
+    expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
   });
 
   it("boots from a SQL ready row when Redis misses", async () => {

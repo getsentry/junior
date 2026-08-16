@@ -287,6 +287,7 @@ describe("Workspace tools", () => {
       name: "sentry",
       setupScript: "",
       snapshot: null,
+      snapshotBuild: null,
       repos: [{ provider: "github", repo: "getsentry/sentry" }],
     };
     const db = getDb();
@@ -323,7 +324,10 @@ describe("Workspace tools", () => {
     const tools = createWorkspaceTools(context);
     await expect(
       tools.switchWorkspace!.execute!({ name: workspace.name }, {}),
-    ).resolves.toMatchObject({ workspace: { id: workspace.id } });
+    ).resolves.toMatchObject({
+      workspace: { id: workspace.id },
+      status: "ready",
+    });
 
     expect(switchWorkspace).toHaveBeenCalledWith(workspace, undefined);
     const date = now.toISOString().slice(0, 10);
@@ -333,6 +337,62 @@ describe("Workspace tools", () => {
       metric: "workspace_switch",
       name: workspace.id,
       namespace: "junior",
+    });
+  });
+
+  it("returns timed_out building when the snapshot wait soft-yields", async () => {
+    const { WorkspaceSnapshotWaitingError } = await import(
+      "@/chat/sandbox/snapshot/workspace"
+    );
+    const now = new Date();
+    const workspace = {
+      id: "22222222-2222-4222-8222-222222222222",
+      name: "sentry-building",
+      setupScript: "devenv sync",
+      snapshot: null,
+      snapshotBuild: null,
+      repos: [{ provider: "github", repo: "getsentry/sentry" }],
+    };
+    const db = getDb();
+    await db.insert(juniorWorkspaces).values({
+      id: workspace.id,
+      name: workspace.name,
+      setupScript: workspace.setupScript,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await db.insert(juniorWorkspaceRepos).values({
+      workspaceId: workspace.id,
+      ...workspace.repos[0]!,
+    });
+    const switchWorkspace = vi
+      .fn()
+      .mockRejectedValue(new WorkspaceSnapshotWaitingError(workspace.name));
+    const context = {
+      destination: {
+        platform: "local",
+        conversationId: "local:test:workspace-building",
+      },
+      source: createLocalSource("local:test:workspace-building"),
+      egress: {
+        async fetch() {
+          return new Response("ok");
+        },
+      },
+      workspace: {} as ToolRuntimeContext["workspace"],
+      workspaces: {
+        activeWorkspaceId: () => undefined,
+        switch: switchWorkspace,
+      },
+    } satisfies ToolRuntimeContext;
+
+    const tools = createWorkspaceTools(context);
+    await expect(
+      tools.switchWorkspace!.execute!({ name: workspace.name }, {}),
+    ).resolves.toMatchObject({
+      workspace: { id: workspace.id },
+      status: "building",
+      timed_out: true,
     });
   });
 });

@@ -156,6 +156,14 @@ export function isSandboxCommandStreamInterruptedError(
 
 /** Wrap raw sandbox setup failures into one stable user-facing error contract. */
 export function wrapSandboxSetupError(error: unknown): Error {
+  // Cooperative control-plane signals must keep their type through setup.
+  if (
+    error instanceof Error &&
+    (error.name === "WorkspaceSnapshotWaitingError" ||
+      (error as { code?: string }).code === "workspace_snapshot_waiting")
+  ) {
+    return error;
+  }
   try {
     const details = getSandboxErrorDetails(error);
     if (details.summary) {

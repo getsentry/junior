@@ -22,7 +22,6 @@ import {
   createSandboxSession,
   type SandboxSession,
 } from "@/chat/sandbox/workspace";
-import { CooperativeTurnYieldError } from "@/chat/runtime/turn";
 import { getTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import { sleep } from "@/chat/sleep";
 import { getStateAdapter } from "@/chat/state/adapter";
@@ -40,6 +39,48 @@ const WAIT_POLL_MS = 5_000;
  * persist the pause and requeue, matching conversation soft yield.
  */
 const WAIT_YIELD_BUFFER_MS = 40_000;
+
+/**
+ * Soft deadline hit while a Workspace snapshot is still building.
+ * Complete the tool with timed_out/building so the agent can yield at a
+ * continuable boundary and requeue. Do not throw CooperativeTurnYieldError
+ * mid-tool: that parks a non-continuable assistant toolCall and fails.
+ */
+export class WorkspaceSnapshotWaitingError extends Error {
+  readonly code = "workspace_snapshot_waiting";
+  readonly workspaceName: string;
+
+  constructor(workspaceName: string) {
+    super(
+      `Workspace ${workspaceName} snapshot is still building; yielded for requeue`,
+    );
+    this.name = "WorkspaceSnapshotWaitingError";
+    this.workspaceName = workspaceName;
+  }
+}
+
+export function isWorkspaceSnapshotWaitingError(
+  error: unknown,
+): error is WorkspaceSnapshotWaitingError {
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+  while (current && !seen.has(current)) {
+    if (current instanceof WorkspaceSnapshotWaitingError) return true;
+    if (
+      current instanceof Error &&
+      (current.name === "WorkspaceSnapshotWaitingError" ||
+        (current as { code?: string }).code === "workspace_snapshot_waiting")
+    ) {
+      return true;
+    }
+    seen.add(current);
+    current =
+      typeof current === "object"
+        ? (current as { cause?: unknown }).cause
+        : undefined;
+  }
+  return false;
+}
 
 function buildLockKey(profileHash: string): string {
   return `${BUILD_LOCK_PREFIX}:${profileHash}`;
@@ -402,8 +443,9 @@ function shouldYieldWait(params: {
  *
  * Cold builds live in a 24h builder sandbox. This function only advances one
  * slice per loop, then sleeps. Near the host/turn soft deadline it throws
- * CooperativeTurnYieldError so the conversation worker requeues like an agent
- * turn. The next wake resumes the same SQL job.
+ * WorkspaceSnapshotWaitingError so the tool can return timed_out/building and
+ * the agent can yield at a continuable boundary. The next wake attaches the
+ * same SQL job when switchWorkspace runs again.
  */
 export async function resolveWorkspaceSnapshot(params: {
   workspace: Workspace;
@@ -421,19 +463,14 @@ export async function resolveWorkspaceSnapshot(params: {
 }): Promise<Snapshot> {
   for (;;) {
     params.signal?.throwIfAborted();
-    if (shouldYieldWait(params)) {
-      throw new CooperativeTurnYieldError(
-        `Workspace ${params.workspace.name} snapshot wait yielded for requeue`,
-      );
-    }
 
+    // Always advance at least one slice before soft-yield so a fresh wake
+    // cannot spin on timed_out without starting or polling the builder.
     const snapshot = await advanceWorkspaceSnapshot(params);
     if (snapshot) return snapshot;
 
     if (shouldYieldWait(params)) {
-      throw new CooperativeTurnYieldError(
-        `Workspace ${params.workspace.name} snapshot wait yielded for requeue`,
-      );
+      throw new WorkspaceSnapshotWaitingError(params.workspace.name);
     }
     await sleep(WAIT_POLL_MS, params.signal);
   }

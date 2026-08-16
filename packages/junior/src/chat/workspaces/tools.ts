@@ -2,6 +2,7 @@ import { z } from "zod";
 import { getDb } from "@/chat/db";
 import { logWarn } from "@/chat/logging";
 import { getPlugins } from "@/chat/plugins/agent-hooks";
+import { isWorkspaceSnapshotWaitingError } from "@/chat/sandbox/snapshot/workspace";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -293,7 +294,7 @@ export function createWorkspaceTools(
         readOnlyHint: false,
       },
       description:
-        "Replace the current sandbox with a named preconfigured repository workspace. Files in the prior sandbox do not carry over.",
+        "Replace the current sandbox with a named preconfigured repository workspace. Files in the prior sandbox do not carry over. Cold snapshot builds may return timed_out while still building; call switchWorkspace again to continue waiting.",
       inputSchema: z
         .object({
           name: z.string().trim().min(1).describe("Exact workspace name."),
@@ -301,14 +302,29 @@ export function createWorkspaceTools(
         .strict(),
       outputSchema: juniorToolOutputSchema.extend({
         workspace: workspaceSchema,
+        status: z.enum(["ready", "building"]).optional(),
       }),
       async execute({ name }, options) {
         const workspace = await getWorkspaceByName(getDb(), name);
         if (!workspace)
           throw new ToolInputError(`Workspace not found: ${name}`);
-        await context.workspaces!.switch(workspace, options.signal);
+        try {
+          await context.workspaces!.switch(workspace, options.signal);
+        } catch (error) {
+          // Soft deadline while the builder is still running. Return a normal
+          // timed_out tool result so the agent yields after a toolResult
+          // boundary and requeues. Do not throw CooperativeTurnYieldError here.
+          if (isWorkspaceSnapshotWaitingError(error)) {
+            return {
+              workspace: view(workspace),
+              status: "building" as const,
+              timed_out: true as const,
+            };
+          }
+          throw error;
+        }
         await tryRecordWorkspaceSwitchStat(workspace);
-        return { workspace: view(workspace) };
+        return { workspace: view(workspace), status: "ready" as const };
       },
     }),
   };

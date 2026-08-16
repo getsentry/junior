@@ -1170,8 +1170,14 @@ describe("createTestSandbox", () => {
         networkPolicy: policy,
       });
     });
-    resolveMock.mockImplementationOnce(async (params: any) => {
-      await params.prepareWorkspace?.(buildSandbox);
+    // Workspace builds run provider prep inside the multi-slice builder via
+    // prepareRepositories + applyNetworkPolicy, not baseline resolve.
+    resolveWorkspaceMock.mockImplementationOnce(async (params: any) => {
+      await params.applyNetworkPolicy(buildSandbox);
+      await params.prepareRepositories?.(buildSandbox, params.workspace);
+      if (params.removeCredentialRoute) {
+        await buildSandbox.update({ networkPolicy: "allow-all" });
+      }
       return {
         snapshotId: "snap_workspace",
         profileHash: "profile-workspace",
@@ -1187,7 +1193,7 @@ describe("createTestSandbox", () => {
         id: "workspace-1",
         name: "sentry",
         setupScript: "",
-      snapshot: null,
+        snapshot: null,
         repos: [],
       },
       skills: [],
@@ -1251,8 +1257,12 @@ describe("createTestSandbox", () => {
     const providerStarted = new Promise<void>((resolve) => {
       markProviderStarted = resolve;
     });
-    resolveMock.mockImplementationOnce(async (params: any) => {
-      await params.prepareWorkspace?.(buildSandbox);
+    resolveWorkspaceMock.mockImplementationOnce(async (params: any) => {
+      await params.prepareRepositories?.(
+        buildSandbox,
+        params.workspace,
+        params.signal,
+      );
       return {
         snapshotId: "snap_workspace_provider",
         profileHash: "profile-workspace-provider",
@@ -1262,12 +1272,15 @@ describe("createTestSandbox", () => {
       };
     });
     hashMock.mockReturnValue("profile-workspace-provider");
+    sandboxCreateMock.mockResolvedValueOnce(
+      makeSandbox("sbx_workspace_provider_active"),
+    );
     const runtime = createSandboxRuntime({
       workspace: {
         id: "workspace-provider",
         name: "provider",
         setupScript: "",
-      snapshot: null,
+        snapshot: null,
         repos: [],
       },
       skills: [],
