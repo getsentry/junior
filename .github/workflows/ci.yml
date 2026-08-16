@@ -145,8 +145,8 @@ jobs:
     name: test / junior ${{ matrix.suite }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
-    # Live workspace snapshot builds install sandbox runtime deps (docker).
-    timeout-minutes: 45
+    # Two live snapshot cases each have a one-hour product budget.
+    timeout-minutes: 135
     if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.core == 'true' || needs.changes.outputs.plugins == 'true' || needs.changes.outputs.full == 'true'
     permissions:
       actions: read

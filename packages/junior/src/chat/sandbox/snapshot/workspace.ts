@@ -34,7 +34,8 @@ import { withLock } from "@/chat/state/locks";
 import { getWorkspace } from "@/chat/workspaces/store";
 import type { Workspace, WorkspaceSnapshotBuild } from "@/chat/workspaces/types";
 
-const BUILD_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+const BUILD_TIMEOUT_MS = 60 * 60 * 1000;
+const BUILD_TIMEOUT_ERROR = "Workspace snapshot build timed out after 1 hour";
 const BUILD_LOCK_TTL_MS = 2 * 60 * 1000;
 const BUILD_LOCK_PREFIX = "junior:workspace_snapshot_start";
 /** Poll interval while waiting for a detached setup command. */
@@ -160,6 +161,18 @@ async function markFailed(
   await stopBuilder(build.sandboxName);
 }
 
+async function requireRemainingBuildTime(
+  workspace: Workspace,
+  build: WorkspaceSnapshotBuild,
+): Promise<number> {
+  const remainingMs =
+    build.startedAt.getTime() + BUILD_TIMEOUT_MS - Date.now();
+  if (remainingMs > 0) return remainingMs;
+
+  await markFailed(workspace, build, BUILD_TIMEOUT_ERROR);
+  throw new Error(BUILD_TIMEOUT_ERROR);
+}
+
 /** Poll a detached setup command; snapshot and stop the builder when it exits. */
 async function finishBuild(
   workspace: Workspace,
@@ -174,12 +187,8 @@ async function finishBuild(
   const build = activeBuild(loaded);
   if (!build?.commandId || !build.sandboxName) return null;
 
+  await requireRemainingBuildTime(workspace, build);
   const sandbox = await getBuilderSandbox(build.sandboxName, signal);
-  try {
-    await sandbox.extendTimeout(BUILD_TIMEOUT_MS, { signal });
-  } catch {
-    // Keep polling even if extend is unavailable on this runtime.
-  }
   const command = await sandbox.getCommand(build.commandId, { signal });
   if (command.exitCode == null) {
     return null;
@@ -193,7 +202,9 @@ async function finishBuild(
     );
   }
 
+  await requireRemainingBuildTime(workspace, build);
   const snapshot = await sandbox.snapshot({ signal });
+  await requireRemainingBuildTime(workspace, build);
   const createdAtMs = Date.now();
   const buildDurationMs = Math.max(0, createdAtMs - build.startedAt.getTime());
   await setCachedSnapshot({
@@ -294,15 +305,10 @@ async function continueBuild(params: {
   const build = activeBuild(loaded);
   if (!build?.sandboxName || build.commandId) return;
 
+  const remainingMs = await requireRemainingBuildTime(params.workspace, build);
   const sandbox = await getBuilderSandbox(build.sandboxName, params.signal);
   const session = createSandboxSession(sandbox);
   try {
-    try {
-      await sandbox.extendTimeout(BUILD_TIMEOUT_MS, { signal: params.signal });
-    } catch {
-      // Best-effort keepalive for the prep slice.
-    }
-
     if (build.phase === "created") {
       await install.dependencies(
         session,
@@ -314,6 +320,7 @@ async function continueBuild(params: {
         params.value.postinstall,
         params.signal,
       );
+      await requireRemainingBuildTime(params.workspace, build);
       await setWorkspaceSnapshotBuild(params.workspace.id, {
         ...build,
         phase: "dependencies_installed",
@@ -330,6 +337,7 @@ async function continueBuild(params: {
         prepareRepositories: params.prepareRepositories,
         removeCredentialRoute: params.removeCredentialRoute,
       });
+      await requireRemainingBuildTime(params.workspace, build);
       await setWorkspaceSnapshotBuild(params.workspace.id, {
         ...build,
         phase: "repositories_prepared",
@@ -340,7 +348,7 @@ async function continueBuild(params: {
     const command = await sandbox.runCommand({
       ...workspaceSetupCommand(params.workspace),
       detached: true,
-      timeoutMs: BUILD_TIMEOUT_MS,
+      timeoutMs: remainingMs,
       signal: params.signal,
     });
     await setWorkspaceSnapshotBuild(params.workspace.id, {
@@ -350,6 +358,10 @@ async function continueBuild(params: {
       error: null,
     });
   } catch (error) {
+    // Timeout handling already marked the build failed and stopped the builder.
+    if (error instanceof Error && error.message === BUILD_TIMEOUT_ERROR) {
+      throw error;
+    }
     // Keep the builder + SQL phase so the next check-in retries this slice.
     if (isSandboxApiTransientError(error)) {
       throw error;
@@ -457,7 +469,7 @@ function shouldYieldWait(params: {
 /**
  * Resolve a Workspace snapshot, waiting across short control-plane slices.
  *
- * Cold builds live in a 24h builder sandbox. This function only advances one
+ * Cold builds have one hour across all slices. This function advances one
  * slice per loop, then sleeps. Near the host/turn soft deadline it throws
  * WorkspaceSnapshotWaitingError so the tool can return timed_out and the host
  * can yield at a toolResult boundary, then continue the same wait.
