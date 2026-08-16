@@ -27,10 +27,11 @@ type ProfileMenuProps = {
   spend?: PersonalSpendReport;
   userPages: PluginUserPageLink[];
   /**
-   * `popover` is the desktop header control. `inline` expands the profile
-   * links in place for the mobile navigation sheet.
+   * `popover` is the desktop header control.
+   * `sheet-links` is plain account destinations for the mobile nav sheet.
+   * `sheet-identity` is the quiet signed-in strip at the bottom of that sheet.
    */
-  variant?: "popover" | "inline";
+  variant?: "popover" | "sheet-links" | "sheet-identity";
 };
 
 const HOVER_OPEN_DELAY_MS = 80;
@@ -214,47 +215,20 @@ export function ProfileMenu({
     </>
   );
 
-  if (variant === "inline") {
-    // Mobile nav sheet: one continuous section, not a nested popover card.
+  if (variant === "sheet-links") {
+    // Mobile drawer prior art (Gmail/Linear/Material): plain destination rows
+    // matching primary nav. No purple hero avatar, spend card, or icon stack.
     const sheetItemClass =
-      "flex w-full items-center gap-3 rounded-lg border-0 bg-transparent px-3 py-3 text-left font-mono text-sm font-medium tracking-normal text-dashboard-text no-underline transition-colors hover:bg-white/[0.035] focus-visible:bg-white/[0.035] focus-visible:outline-none";
+      "rounded-lg border-0 bg-transparent px-3 py-3 text-left font-mono text-sm font-medium tracking-normal text-dashboard-text no-underline transition-colors hover:bg-white/[0.035] focus-visible:bg-white/[0.035] focus-visible:outline-none";
     return (
-      <div aria-label={`Account menu for ${name}`} className="grid gap-1">
-        <div className="flex min-w-0 items-center gap-3 px-3 py-2">
-          <span
-            aria-hidden="true"
-            className="grid size-10 shrink-0 place-items-center rounded-full bg-[#beaaff] text-sm font-bold tracking-wide text-black"
-          >
-            {initials(identity.user.name, email)}
-          </span>
-          <div className="min-w-0">
-            <p className="m-0 truncate text-sm font-semibold text-dashboard-text">
-              {name}
-            </p>
-            {name !== email ? (
-              <p className="mt-0.5 mb-0 truncate font-mono text-xs text-dashboard-text-muted">
-                {email}
-              </p>
-            ) : null}
-            <p className="mt-1 mb-0 font-mono text-[11px] tabular-nums text-dashboard-text-muted">
-              7d{" "}
-              <span className="text-dashboard-text">{sevenDaySpend}</span>
-              <span className="mx-1.5 text-white/20">·</span>
-              30d{" "}
-              <span className="text-dashboard-text">{thirtyDaySpend}</span>
-            </p>
-          </div>
-        </div>
+      <nav aria-label={`Account menu for ${name}`} className="grid gap-1">
         <Link className={sheetItemClass} to={peoplePath(email)}>
-          <UserRound aria-hidden="true" size={16} strokeWidth={2} />
           My profile
         </Link>
         <Link className={sheetItemClass} to="/settings">
-          <Settings aria-hidden="true" size={16} strokeWidth={2} />
           Settings
         </Link>
         <Link className={sheetItemClass} to="/settings/api-tokens">
-          <KeyRound aria-hidden="true" size={16} strokeWidth={2} />
           API tokens
         </Link>
         {profilePages.map((page) => (
@@ -263,20 +237,44 @@ export function ProfileMenu({
             key={`${page.pluginName}:${page.id}`}
             to={pluginUserPagePath(page.pluginName, page.id)}
           >
-            <Boxes aria-hidden="true" size={16} strokeWidth={2} />
             {page.label}
           </Link>
         ))}
         <button
-          className={cn(sheetItemClass, "cursor-pointer")}
+          className={cn(sheetItemClass, "w-full cursor-pointer")}
           onClick={() => {
             void onSignOut();
           }}
           type="button"
         >
-          <LogOut aria-hidden="true" size={16} strokeWidth={2} />
           Log out
         </button>
+      </nav>
+    );
+  }
+
+  if (variant === "sheet-identity") {
+    return (
+      <div
+        aria-label={`Signed in as ${name}`}
+        className="flex min-w-0 items-center gap-2.5 px-1"
+      >
+        <span
+          aria-hidden="true"
+          className="grid size-6 shrink-0 place-items-center rounded-full bg-white/[0.08] text-[10px] font-semibold tracking-wide text-dashboard-text-muted"
+        >
+          {initials(identity.user.name, email)}
+        </span>
+        <div className="min-w-0">
+          <p className="m-0 truncate text-xs font-medium text-dashboard-text">
+            {name}
+          </p>
+          {name !== email ? (
+            <p className="mt-0.5 mb-0 truncate font-mono text-[11px] text-dashboard-text-muted">
+              {email}
+            </p>
+          ) : null}
+        </div>
       </div>
     );
   }

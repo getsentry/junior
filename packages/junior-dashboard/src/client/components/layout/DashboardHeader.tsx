@@ -38,7 +38,9 @@ export function DashboardHeader(props: {
   mobileLive?: boolean;
   mobileNavigationOpen: boolean;
   mobileTitle?: string;
-  /** Expanded account block for the mobile navigation sheet. */
+  /** Quiet signed-in strip pinned above the sheet version footer. */
+  mobileIdentity?: ReactNode;
+  /** Plain account destinations inside the mobile navigation sheet. */
   mobileProfile?: ReactNode;
   navItems: DashboardHeaderNavItem[];
   onMobileNavigationOpenChange(open: boolean): void;
@@ -255,36 +257,50 @@ export function DashboardHeader(props: {
               <X aria-hidden="true" size={20} strokeWidth={2} />
             </button>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3">
-            <nav aria-label="Primary" className="grid gap-1">
-              <Link
-                aria-current={props.workspaceActive ? "page" : undefined}
-                className={sheetLinkClass({ isActive: props.workspaceActive })}
-                to="/"
-              >
-                Conversations
-              </Link>
-              {props.navItems.map((item) => (
-                <NavLink className={sheetLinkClass} key={item.key} to={item.to}>
-                  {item.label}
-                </NavLink>
-              ))}
-            </nav>
-            <MobileSecondaryNavigationSlot />
-            {props.mobileProfile ?? props.profile ? (
-              <section
-                aria-label="Account"
-                className="mt-5 border-t border-white/[0.07] pt-4"
-              >
-                {props.mobileProfile ?? props.profile}
-              </section>
+          <div className="flex min-h-0 flex-1 flex-col">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3">
+              <nav aria-label="Primary" className="grid gap-1">
+                <Link
+                  aria-current={props.workspaceActive ? "page" : undefined}
+                  className={sheetLinkClass({
+                    isActive: props.workspaceActive,
+                  })}
+                  to="/"
+                >
+                  Conversations
+                </Link>
+                {props.navItems.map((item) => (
+                  <NavLink
+                    className={sheetLinkClass}
+                    key={item.key}
+                    to={item.to}
+                  >
+                    {item.label}
+                  </NavLink>
+                ))}
+              </nav>
+              <MobileSecondaryNavigationSlot />
+              {props.mobileProfile ? (
+                <div className="mt-4 border-t border-white/[0.07] pt-3">
+                  {props.mobileProfile}
+                </div>
+              ) : null}
+            </div>
+            {props.mobileIdentity || props.version ? (
+              <div className="border-t border-white/[0.07] px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+                {props.mobileIdentity ? (
+                  <div className={props.version ? "mb-2.5" : undefined}>
+                    {props.mobileIdentity}
+                  </div>
+                ) : null}
+                {props.version ? (
+                  <p className="m-0 font-mono text-xs text-dashboard-text-muted">
+                    junior version {props.version}
+                  </p>
+                ) : null}
+              </div>
             ) : null}
           </div>
-          {props.version ? (
-            <p className="m-0 border-t border-white/[0.07] px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] font-mono text-xs text-dashboard-text-muted">
-              junior version {props.version}
-            </p>
-          ) : null}
         </div>
       ) : null}
     </header>

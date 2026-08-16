@@ -152,6 +152,17 @@ export function DashboardShell() {
               mobileNavigationOpen={mobileNavigationOpen}
               navItems={primaryNavItems}
               onMobileNavigationOpenChange={setMobileNavigationOpen}
+              mobileIdentity={
+                loggedIn ? (
+                  <ProfileMenu
+                    identity={data!.me}
+                    onSignOut={signOut}
+                    spend={personalSpendQuery.data}
+                    userPages={userPages}
+                    variant="sheet-identity"
+                  />
+                ) : undefined
+              }
               mobileProfile={
                 loggedIn ? (
                   <ProfileMenu
@@ -159,7 +170,7 @@ export function DashboardShell() {
                     onSignOut={signOut}
                     spend={personalSpendQuery.data}
                     userPages={userPages}
-                    variant="inline"
+                    variant="sheet-links"
                   />
                 ) : undefined
               }

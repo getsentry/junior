@@ -56,6 +56,9 @@ test("opens and closes a conversation in the mobile workspace", async ({
   await expect(
     page.getByLabel("Account menu for Dashboard User"),
   ).toBeVisible();
+  await expect(
+    page.getByLabel("Signed in as Dashboard User"),
+  ).toBeVisible();
   await expect(page.getByRole("link", { name: "My profile" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Settings" })).toBeVisible();
   await expect(page.getByRole("link", { name: "API tokens" })).toBeVisible();
