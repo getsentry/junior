@@ -150,7 +150,12 @@ export function DashboardHeader(props: {
           className="flex min-w-0 max-w-full items-center justify-self-center text-inherit no-underline md:justify-self-start"
           to="/"
         >
-          <JuniorLogo />
+          <span className="truncate font-mono text-sm font-semibold md:hidden">
+            {getDashboardAgentName()}
+          </span>
+          <span className="hidden md:block">
+            <JuniorLogo />
+          </span>
         </Link>
         <nav
           aria-label="Primary"
@@ -194,10 +199,10 @@ export function DashboardHeader(props: {
           <div className="flex items-center justify-between gap-3 border-b border-white/[0.07] bg-dashboard-surface-raised px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top))]">
             <Link
               aria-label={`${getDashboardAgentName()} home`}
-              className="flex min-w-0 items-center text-inherit no-underline"
+              className="min-w-0 truncate font-mono text-sm font-semibold text-inherit no-underline"
               to="/"
             >
-              <JuniorLogo />
+              {getDashboardAgentName()}
             </Link>
             <button
               aria-label="Close navigation"
