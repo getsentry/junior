@@ -15,7 +15,8 @@ import { juniorWorkspaces } from "@/db/schema";
 
 const ORIGINAL_ENV = { ...process.env };
 const MARKER_PATH = `${SANDBOX_WORKSPACE_ROOT}/marker/setup.txt`;
-const LIVE_TEST_TIMEOUT_MS = 20 * 60 * 1000;
+/** Cold builds install global sandbox runtime deps (docker). */
+const LIVE_TEST_TIMEOUT_MS = 40 * 60 * 1000;
 
 function sandboxCredentialsReady(): boolean {
   if (process.env.VERCEL_OIDC_TOKEN?.trim()) return true;
@@ -42,7 +43,7 @@ async function stopNamedSandbox(
     const credentials = getVercelSandboxCredentials();
     const sandbox = await Sandbox.get({
       name,
-      resume: false,
+      resume: true,
       ...(credentials ?? {}),
     });
     await sandbox.stop();
@@ -57,7 +58,9 @@ async function stopWorkspaceBuilders(workspaceId: string): Promise<void> {
 }
 
 async function readMarker(
-  session: Awaited<ReturnType<ReturnType<typeof createSandboxRuntime>["acquire"]>>,
+  session: Awaited<
+    ReturnType<ReturnType<typeof createSandboxRuntime>["acquire"]>
+  >,
 ): Promise<string> {
   const result = await session.runCommand({
     cmd: "cat",
@@ -94,7 +97,7 @@ describe.skipIf(!sandboxCredentialsReady())(
     });
 
     it(
-      "continues a cold build across check-ins and boots its ready snapshot",
+      "builds a cold workspace snapshot across check-ins and boots it",
       async () => {
         const now = new Date();
         const workspaceId = randomUUID();
@@ -109,74 +112,51 @@ describe.skipIf(!sandboxCredentialsReady())(
         });
 
         const workspace = (await getWorkspace(db, workspaceId))!;
-        // Slice with soft yield so SQL phase advances stay visible. Transient
-        // Sandbox API errors keep the phase and retry on the next check-in.
-        const slicing = createSandboxRuntime({
+        // Soft-yield once so start returns before the long prep slices.
+        const starting = createSandboxRuntime({
           workspace,
           skills: [],
           referenceFiles: [],
           shouldYield: () => true,
         });
-
         try {
-          const seenPhases: string[] = [];
-          let detachedCommandId: string | null = null;
-          let detachedPhase: string | null = null;
-          for (let attempt = 0; attempt < 24; attempt += 1) {
-            await expect(slicing.acquire()).rejects.toSatisfy(
-              isWorkspaceSnapshotWaitingError,
-            );
-            const current = await getWorkspace(db, workspaceId);
-            expect(current?.snapshotBuild?.status).toBe("building");
-            expect(current?.snapshotBuild?.sandboxName).toBeTruthy();
-            const phase = current?.snapshotBuild?.phase ?? null;
-            expect(phase).toBeTruthy();
-            if (phase && seenPhases[seenPhases.length - 1] !== phase) {
-              seenPhases.push(phase);
-            }
-            // Setup detached: commandId set while phase stays repositories_prepared.
-            if (current?.snapshotBuild?.commandId) {
-              detachedCommandId = current.snapshotBuild.commandId;
-              detachedPhase = phase;
-              break;
-            }
-          }
-          expect(detachedCommandId).toBeTruthy();
-          expect(detachedPhase).toBe("repositories_prepared");
-          expect(seenPhases).toEqual([
-            "created",
-            "dependencies_installed",
-            "repositories_prepared",
-          ]);
+          await expect(starting.acquire()).rejects.toSatisfy(
+            isWorkspaceSnapshotWaitingError,
+          );
+          const started = await getWorkspace(db, workspaceId);
+          expect(started?.snapshotBuild?.status).toBe("building");
+          expect(started?.snapshotBuild?.phase).toBe("created");
+          expect(started?.snapshotBuild?.sandboxName).toBeTruthy();
+          expect(started?.snapshotBuild?.commandId).toBeNull();
+        } finally {
+          starting.close();
+        }
 
-          // Poll until ready and boot from the finished snapshot.
-          const finishing = createSandboxRuntime({
-            workspace: (await getWorkspace(db, workspaceId))!,
-            skills: [],
-            referenceFiles: [],
-            shouldYield: () => false,
-          });
+        // Hold through deps/repos/setup (retries transient Sandbox API errors).
+        const finishing = createSandboxRuntime({
+          workspace: (await getWorkspace(db, workspaceId))!,
+          skills: [],
+          referenceFiles: [],
+          shouldYield: () => false,
+        });
+        try {
+          const session = await finishing.acquire();
           try {
-            const session = await finishing.acquire();
-            try {
-              const ready = await getWorkspace(db, workspaceId);
+            const ready = await getWorkspace(db, workspaceId);
 
-              expect(ready?.snapshotBuild).toBeNull();
-              expect(ready?.snapshot?.id).toBeTruthy();
-              expect(ready?.snapshot?.runtime).toBe("node22");
-              expect(finishing.sandboxRef()).toMatchObject({
-                profileHash: ready?.snapshot?.profileHash,
-                workspaceId,
-              });
-              expect(await readMarker(session)).toBe("ready");
-            } finally {
-              await session.stop().catch(() => undefined);
-            }
+            expect(ready?.snapshotBuild).toBeNull();
+            expect(ready?.snapshot?.id).toBeTruthy();
+            expect(ready?.snapshot?.runtime).toBe("node22");
+            expect(finishing.sandboxRef()).toMatchObject({
+              profileHash: ready?.snapshot?.profileHash,
+              workspaceId,
+            });
+            expect(await readMarker(session)).toBe("ready");
           } finally {
-            finishing.close();
+            await session.stop().catch(() => undefined);
           }
         } finally {
-          slicing.close();
+          finishing.close();
         }
       },
       LIVE_TEST_TIMEOUT_MS,

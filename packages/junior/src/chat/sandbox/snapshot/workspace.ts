@@ -125,9 +125,11 @@ async function getBuilderSandbox(
   signal?: AbortSignal,
 ): Promise<Sandbox> {
   const credentials = getVercelSandboxCredentials();
+  // Resume the named builder session. resume:false leaves no active session for
+  // runCommand/getCommand and surfaces as transient Sandbox API 500s.
   return await Sandbox.get({
     name: sandboxName,
-    resume: false,
+    resume: true,
     signal,
     ...(credentials ?? {}),
   });
