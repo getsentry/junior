@@ -15,6 +15,9 @@ export type MobileViewportMetrics = {
  * Map layout + visual viewport into shell geometry.
  * Only follow visualViewport offset/height while the keyboard is open so
  * rubber-band pans cannot move the fixed conversation shell.
+ *
+ * Focus-time Safari pan freezes while typing stay in the live-poll lag work
+ * (see #1594). This helper only owns the closed-keyboard rubber-band case.
  */
 export function mobileViewportMetrics(input: {
   layoutHeight: number;
