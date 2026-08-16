@@ -9,12 +9,14 @@ CREATE TABLE "junior_snapshots" (
 	"build_duration_ms" integer,
 	"generated_at" timestamp with time zone,
 	"build_started_at" timestamp with time zone,
+	"build_phase" text,
 	"build_sandbox_name" text,
 	"build_command_id" text,
 	"build_error" text,
 	"created_at" timestamp with time zone NOT NULL,
 	"updated_at" timestamp with time zone NOT NULL,
-	CONSTRAINT "junior_snapshots_status_check" CHECK ("junior_snapshots"."status" in ('building', 'failed', 'ready'))
+	CONSTRAINT "junior_snapshots_status_check" CHECK ("junior_snapshots"."status" in ('building', 'failed', 'ready')),
+	CONSTRAINT "junior_snapshots_build_phase_check" CHECK ("junior_snapshots"."build_phase" is null or "junior_snapshots"."build_phase" in ('created', 'dependencies_installed', 'repositories_prepared'))
 );
 --> statement-breakpoint
 ALTER TABLE "junior_snapshots" ADD CONSTRAINT "junior_snapshots_workspace_id_junior_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."junior_workspaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -34,6 +36,7 @@ INSERT INTO "junior_snapshots" (
 	"build_duration_ms",
 	"generated_at",
 	"build_started_at",
+	"build_phase",
 	"build_sandbox_name",
 	"build_command_id",
 	"build_error",
@@ -50,6 +53,7 @@ SELECT
 	0,
 	"snapshot_build_duration_ms",
 	"snapshot_generated_at",
+	NULL,
 	NULL,
 	NULL,
 	NULL,
