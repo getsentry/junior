@@ -453,6 +453,32 @@ test("opens and closes a conversation in the mobile workspace", async ({
   await expect(composer).toBeFocused();
 
   const shell = page.locator("main").first();
+  // Rubber-band pans can change visualViewport.offsetTop while the keyboard is
+  // closed. The fixed shell must stay pinned to the layout viewport.
+  await page.evaluate(() => {
+    Object.defineProperties(window.visualViewport, {
+      height: { configurable: true, value: window.innerHeight },
+      offsetTop: { configurable: true, value: 48 },
+    });
+    window.visualViewport?.dispatchEvent(new Event("scroll"));
+  });
+  await expect
+    .poll(() =>
+      shell.evaluate((element) =>
+        element.style.getPropertyValue("--dashboard-viewport-offset-top"),
+      ),
+    )
+    .toBe("0px");
+  await expect
+    .poll(() =>
+      shell.evaluate(
+        (element) =>
+          element.style.getPropertyValue("--dashboard-viewport-height") ===
+          `${window.innerHeight}px`,
+      ),
+    )
+    .toBe(true);
+
   await page.evaluate(() => {
     Object.defineProperties(window.visualViewport, {
       height: { configurable: true, value: 520 },

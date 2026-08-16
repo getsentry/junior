@@ -114,7 +114,7 @@ export function ConversationPage(props: {
     <div className="grid min-h-0 min-w-0 grid-rows-[minmax(7rem,1fr)_minmax(0,auto)]">
       <div
         aria-label="Conversation transcript"
-        className="min-h-0 overflow-y-auto overscroll-contain px-3 pb-3 md:px-7 md:pb-5"
+        className="min-h-0 overflow-y-auto overscroll-contain touch-pan-y px-3 pb-3 md:px-7 md:pb-5"
         tabIndex={0}
       >
         <section className="min-w-0">
@@ -363,7 +363,7 @@ function ConversationReplyFooter(props: {
   }, []);
 
   return (
-    <div className="flex w-full min-h-0 max-h-[min(55dvh,24rem)] flex-col overflow-hidden self-end px-2 pt-1.5 pb-[calc(0.375rem+env(safe-area-inset-bottom))] md:max-h-none md:overflow-visible md:self-auto md:px-7 md:py-4 md:pb-4">
+    <div className="flex w-full min-h-0 max-h-[min(55dvh,24rem)] flex-col overflow-hidden self-end px-2 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] md:max-h-none md:overflow-visible md:self-auto md:px-7 md:py-4 md:pb-4">
       {/* Queue chrome may scroll; keep the composer pinned below it on mobile. */}
       <div className="min-h-0 min-w-0 shrink overflow-y-auto overscroll-contain md:overflow-visible">
         {props.live ? (
