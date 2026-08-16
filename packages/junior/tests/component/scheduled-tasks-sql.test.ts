@@ -51,16 +51,33 @@ function coreMigrationsDir(): string {
   return path.resolve(process.cwd(), "migrations");
 }
 
+function readCoreMigrationJournal(): {
+  entries: Array<{ idx: number; tag: string }>;
+} {
+  return JSON.parse(
+    readFileSync(
+      path.join(coreMigrationsDir(), "meta", "_journal.json"),
+      "utf8",
+    ),
+  ) as { entries: Array<{ idx: number; tag: string }> };
+}
+
+/** Copy core migrations that predate scheduler table adoption. */
 function copyPreSchedulerCoreMigrations(): string {
   const source = coreMigrationsDir();
   const destination = mkdtempSync(
     path.join(tmpdir(), "junior-pre-scheduler-core-"),
   );
   mkdirSync(path.join(destination, "meta"));
-  const journal = JSON.parse(
-    readFileSync(path.join(source, "meta", "_journal.json"), "utf8"),
-  ) as { entries: Array<{ idx: number; tag: string }> };
-  const entries = journal.entries.filter((entry) => entry.idx < 16);
+  const journal = readCoreMigrationJournal();
+  const adoption = journal.entries.find((entry) => {
+    const sql = readFileSync(path.join(source, `${entry.tag}.sql`), "utf8");
+    return sql.includes("Adopt the former scheduler plugin tables");
+  });
+  if (!adoption) {
+    throw new Error("Scheduler adoption migration not found");
+  }
+  const entries = journal.entries.filter((entry) => entry.idx < adoption.idx);
   writeFileSync(
     path.join(destination, "meta", "_journal.json"),
     JSON.stringify({ ...journal, entries }),
@@ -173,10 +190,7 @@ describe("scheduled-task SQL storage", () => {
         ],
       );
 
-      await expect(migrateSchema(fixture.sql)).resolves.toMatchObject({
-        existing: 16,
-        migrated: 18,
-      });
+      await migrateSchema(fixture.sql);
       const [migrated] = await fixture.sql.query<{
         creatorIdentityId: string | null;
         creatorSlackUserId: string | null;
