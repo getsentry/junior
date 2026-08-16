@@ -13,12 +13,16 @@ export interface ResolvedSlackChannelTarget {
   channelName?: string;
 }
 
+// Slack channel names max out at 80 chars. Mentions add `<#id|…>` markup around
+// that name, so the model-facing param must clear bare-name length.
+const SLACK_CHANNEL_REF_MAX_LENGTH = 160;
+
 /** Model-facing Slack channel id or known channel name parameter. */
 export const slackChannelRefParam = z
   .string()
   .trim()
   .min(1)
-  .max(80)
+  .max(SLACK_CHANNEL_REF_MAX_LENGTH)
   .describe(
     "Slack channel id (`C123`), mention (`<#C123>` / `<#C123|name>`), Junior slack reference (`slack:C123`), or a channel name Junior already knows in this workspace.",
   );
