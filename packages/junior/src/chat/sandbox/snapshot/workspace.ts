@@ -45,8 +45,10 @@ const WAIT_POLL_MS = 5_000;
 /** Brief backoff when the Sandbox API returns a transient 5xx. */
 const TRANSIENT_API_RETRY_MS = 2_000;
 /**
- * Leave headroom before the hard request/turn deadline so the worker can
- * persist the pause and requeue, matching conversation soft yield.
+ * When no worker `shouldYield` is wired, leave headroom before the hard
+ * request/turn deadline so this tool can return timed_out and persist.
+ * Do not apply this on top of worker soft-yield — that already reserves
+ * requeue time, and a second buffer makes the host busy-retry switchWorkspace.
  */
 const WAIT_YIELD_BUFFER_MS = 40_000;
 
@@ -487,7 +489,10 @@ function shouldYieldWait(params: {
   shouldYield?: () => boolean;
   turnDeadlineAtMs?: number;
 }): boolean {
-  if (params.shouldYield?.()) return true;
+  // Worker soft-yield already encodes request + soft-yield deadlines. Match it
+  // exactly so host continue can requeue instead of busy-retrying early.
+  if (params.shouldYield) return params.shouldYield();
+
   const requestDeadline = getTurnRequestDeadline()?.deadlineAtMs;
   const deadlineAtMs =
     params.turnDeadlineAtMs === undefined

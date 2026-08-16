@@ -1230,6 +1230,10 @@ async function executeAgentRunInPrivacyContext(
                 "Workspace snapshot wait yielded for requeue",
               );
             }
+            // Still waiting but soft yield is not due yet. Poll instead of
+            // immediately re-entering switchWorkspace (avoids a busy loop if
+            // wait yield and worker shouldYield disagree for a beat).
+            await sleep(5_000, hookSignal);
           }
 
           const handoffUpdate = applyPendingHandoff();
