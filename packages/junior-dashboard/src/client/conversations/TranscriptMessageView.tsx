@@ -59,7 +59,7 @@ export function TranscriptMessageView(props: {
       />
       {props.view === "raw" ? (
         <HighlightedCode
-          code={rawText || "{}"}
+          code={rawText}
           language={detectLanguage(rawText)}
         />
       ) : (
