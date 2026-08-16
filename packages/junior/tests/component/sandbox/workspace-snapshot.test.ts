@@ -11,6 +11,7 @@ const {
   installDependenciesMock,
   installPostinstallMock,
   prepareRepositoriesMock,
+  sleepMock,
 } = vi.hoisted(() => ({
   sandboxCreateMock: vi.fn(),
   sandboxGetMock: vi.fn(),
@@ -22,6 +23,7 @@ const {
   installDependenciesMock: vi.fn(),
   installPostinstallMock: vi.fn(),
   prepareRepositoriesMock: vi.fn(),
+  sleepMock: vi.fn(),
 }));
 
 vi.mock("@vercel/sandbox", () => ({
@@ -67,6 +69,16 @@ vi.mock("@/chat/sandbox/snapshot/resolve", () => ({
 vi.mock("@/chat/sandbox/workspace", () => ({
   createSandboxSession: (sandbox: unknown) => sandbox,
 }));
+vi.mock("@/chat/sandbox/snapshot/store", () => ({
+  setWorkspaceSnapshotBuild: setWorkspaceSnapshotBuildMock,
+  setWorkspaceSnapshot: setWorkspaceSnapshotMock,
+}));
+vi.mock("@/chat/sleep", () => ({
+  sleep: sleepMock,
+}));
+vi.mock("@/chat/runtime/request-deadline", () => ({
+  getTurnRequestDeadline: () => undefined,
+}));
 
 const lock = { threadId: "workspace-snapshot", lockId: "lock" };
 vi.mock("@/chat/state/adapter", () => ({
@@ -79,14 +91,10 @@ vi.mock("@/chat/state/adapter", () => ({
 }));
 vi.mock("@/chat/workspaces/store", () => ({
   getWorkspace: getWorkspaceMock,
-  setWorkspaceSnapshotBuild: setWorkspaceSnapshotBuildMock,
-  setWorkspaceSnapshot: setWorkspaceSnapshotMock,
 }));
 
-import {
-  resolveWorkspaceSnapshot,
-  WorkspaceSnapshotBuildingError,
-} from "@/chat/sandbox/workspace-snapshot";
+import { CooperativeTurnYieldError } from "@/chat/runtime/turn";
+import { resolveWorkspaceSnapshot } from "@/chat/sandbox/snapshot/workspace";
 import type { Workspace } from "@/chat/workspaces/types";
 
 const workspace: Workspace = {
@@ -98,16 +106,20 @@ const workspace: Workspace = {
   snapshotBuild: null,
 };
 
-function resolve() {
+function resolve(extra?: {
+  shouldYield?: () => boolean;
+  turnDeadlineAtMs?: number;
+}) {
   return resolveWorkspaceSnapshot({
     workspace,
     runtime: "node22",
     applyNetworkPolicy: vi.fn(async () => undefined),
     removeCredentialRoute: false,
+    ...extra,
   });
 }
 
-describe("Workspace snapshot check-in", () => {
+describe("Workspace snapshot wait", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     getWorkspaceMock.mockResolvedValue(workspace);
@@ -115,63 +127,17 @@ describe("Workspace snapshot check-in", () => {
     installDependenciesMock.mockResolvedValue(undefined);
     installPostinstallMock.mockResolvedValue(undefined);
     prepareRepositoriesMock.mockResolvedValue(undefined);
+    sleepMock.mockResolvedValue(undefined);
   });
 
-  it("creates the builder first, preps on the next check-in, then snapshots", async () => {
+  it("waits across start, prep, poll, then snapshots and stops the builder", async () => {
     sandboxCreateMock.mockResolvedValue({ name: "junior-ws-1" });
 
     let recordedBuild: Workspace["snapshotBuild"];
     setWorkspaceSnapshotBuildMock.mockImplementation(async (_id, build) => {
-      recordedBuild = build;
+      recordedBuild = { ...build };
     });
 
-    // Check-in 1: create builder only.
-    await expect(resolve()).rejects.toBeInstanceOf(
-      WorkspaceSnapshotBuildingError,
-    );
-    expect(sandboxCreateMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        persistent: true,
-        timeout: 24 * 60 * 60 * 1000,
-      }),
-    );
-    expect(installDependenciesMock).not.toHaveBeenCalled();
-    expect(setWorkspaceSnapshotBuildMock).toHaveBeenCalledWith(
-      workspace.id,
-      expect.objectContaining({
-        status: "building",
-        sandboxName: expect.any(String),
-        commandId: null,
-      }),
-    );
-
-    // Check-in 2: install/clone, detach setup.
-    const detachedCommand = { cmdId: "cmd-1" };
-    const builder = {
-      extendTimeout: vi.fn(async () => undefined),
-      runCommand: vi.fn(async () => detachedCommand),
-    };
-    sandboxGetMock.mockResolvedValue(builder);
-    getWorkspaceMock.mockResolvedValue({
-      ...workspace,
-      snapshotBuild: recordedBuild!,
-    });
-
-    await expect(resolve()).rejects.toBeInstanceOf(
-      WorkspaceSnapshotBuildingError,
-    );
-    expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
-    expect(installDependenciesMock).toHaveBeenCalledTimes(1);
-    expect(prepareRepositoriesMock).toHaveBeenCalledTimes(1);
-    expect(builder.runCommand).toHaveBeenCalledWith(
-      expect.objectContaining({
-        detached: true,
-        timeoutMs: 24 * 60 * 60 * 1000,
-      }),
-    );
-    expect(recordedBuild!.commandId).toBe("cmd-1");
-
-    // Check-in 3: setup still running.
     const command: {
       exitCode: number | null;
       stderr: ReturnType<typeof vi.fn>;
@@ -180,29 +146,45 @@ describe("Workspace snapshot check-in", () => {
       stderr: vi.fn(),
     };
     const stopMock = vi.fn(async () => undefined);
-    const resumed = {
+    const detachedCommand = { cmdId: "cmd-1" };
+    const builder = {
       extendTimeout: vi.fn(async () => undefined),
+      runCommand: vi.fn(async () => detachedCommand),
       getCommand: vi.fn(async () => command),
       snapshot: vi.fn(async () => ({ snapshotId: "snap-sentry" })),
       stop: stopMock,
     };
-    sandboxGetMock.mockResolvedValue(resumed);
-    getWorkspaceMock.mockResolvedValue({
-      ...workspace,
-      snapshotBuild: recordedBuild!,
+    sandboxGetMock.mockResolvedValue(builder);
+
+    // After each sleep, surface the latest SQL build row to the next slice.
+    sleepMock.mockImplementation(async () => {
+      getWorkspaceMock.mockResolvedValue({
+        ...workspace,
+        snapshotBuild: recordedBuild ?? null,
+      });
+      // After prep has stored a command id, the next poll finishes setup.
+      if (recordedBuild?.commandId) {
+        command.exitCode = 0;
+      }
     });
 
-    await expect(resolve()).rejects.toBeInstanceOf(
-      WorkspaceSnapshotBuildingError,
-    );
-    expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
-    expect(installDependenciesMock).toHaveBeenCalledTimes(1);
-
-    // Check-in 4: setup done → snapshot + stop builder.
-    command.exitCode = 0;
     const snapshot = await resolve();
     expect(snapshot.snapshotId).toBe("snap-sentry");
-    expect(resumed.snapshot).toHaveBeenCalledTimes(1);
+    expect(sandboxCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        persistent: true,
+        timeout: 24 * 60 * 60 * 1000,
+      }),
+    );
+    expect(installDependenciesMock).toHaveBeenCalledTimes(1);
+    expect(prepareRepositoriesMock).toHaveBeenCalledTimes(1);
+    expect(builder.runCommand).toHaveBeenCalledWith(
+      expect.objectContaining({
+        detached: true,
+        timeoutMs: 24 * 60 * 60 * 1000,
+      }),
+    );
+    expect(builder.snapshot).toHaveBeenCalledTimes(1);
     expect(setCachedSnapshotMock).toHaveBeenCalledWith(
       expect.objectContaining({
         profileHash: "profile-sentry",
@@ -218,6 +200,17 @@ describe("Workspace snapshot check-in", () => {
       }),
     );
     expect(stopMock).toHaveBeenCalled();
+    expect(sleepMock).toHaveBeenCalled();
+  });
+
+  it("soft-yields so the conversation worker can requeue", async () => {
+    sandboxCreateMock.mockResolvedValue({ name: "junior-ws-1" });
+    setWorkspaceSnapshotBuildMock.mockResolvedValue(undefined);
+
+    await expect(
+      resolve({ shouldYield: () => true }),
+    ).rejects.toBeInstanceOf(CooperativeTurnYieldError);
+    expect(sandboxCreateMock).not.toHaveBeenCalled();
   });
 
   it("boots from a SQL ready row when Redis misses", async () => {

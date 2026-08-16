@@ -149,7 +149,7 @@ vi.mock("@/chat/sandbox/snapshot/resolve", () => ({
   resolve: resolveMock,
   isMissingError: missingErrorMock,
 }));
-vi.mock("@/chat/sandbox/workspace-snapshot", () => ({
+vi.mock("@/chat/sandbox/snapshot/workspace", () => ({
   resolveWorkspaceSnapshot: resolveWorkspaceMock,
 }));
 

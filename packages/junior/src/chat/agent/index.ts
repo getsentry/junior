@@ -74,7 +74,10 @@ import {
 } from "@/chat/pi/transcript";
 import { createTracedStreamFn } from "@/chat/pi/traced-stream";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
-import { isTurnInputCommitLostError } from "@/chat/runtime/turn";
+import {
+  CooperativeTurnYieldError,
+  isTurnInputCommitLostError,
+} from "@/chat/runtime/turn";
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import { buildTurnResult } from "@/chat/services/turn-result";
 import { decideReply } from "@/chat/services/assistant-reply";
@@ -1606,6 +1609,14 @@ async function executeAgentRunInPrivacyContext(
               // A durable auth pause is a successful span outcome. Persistence
               // failures throw and remain terminal at the outer boundary.
               return await runResume.parkForAuth(error, turnUsage);
+            }
+            if (error instanceof CooperativeTurnYieldError) {
+              // Mid-tool soft yield (e.g. Workspace snapshot wait). Park at the
+              // last safe boundary so the conversation worker requeues.
+              runResume.captureResumeSnapshot(
+                runResume.getResumeSnapshot(currentAgentMessages()),
+              );
+              throw error;
             }
             throw error;
           }

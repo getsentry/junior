@@ -15,30 +15,31 @@ import {
   type Snapshot,
 } from "@/chat/sandbox/snapshot/resolve";
 import {
+  setWorkspaceSnapshot,
+  setWorkspaceSnapshotBuild,
+} from "@/chat/sandbox/snapshot/store";
+import {
   createSandboxSession,
   type SandboxSession,
 } from "@/chat/sandbox/workspace";
+import { CooperativeTurnYieldError } from "@/chat/runtime/turn";
+import { getTurnRequestDeadline } from "@/chat/runtime/request-deadline";
+import { sleep } from "@/chat/sleep";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { withLock } from "@/chat/state/locks";
-import {
-  getWorkspace,
-  setWorkspaceSnapshot,
-  setWorkspaceSnapshotBuild,
-} from "@/chat/workspaces/store";
+import { getWorkspace } from "@/chat/workspaces/store";
 import type { Workspace, WorkspaceSnapshotBuild } from "@/chat/workspaces/types";
 
 const BUILD_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 const BUILD_LOCK_TTL_MS = 2 * 60 * 1000;
 const BUILD_LOCK_PREFIX = "junior:workspace_snapshot_start";
-
-export class WorkspaceSnapshotBuildingError extends Error {
-  constructor(workspace: string) {
-    super(
-      `Workspace ${workspace} snapshot is still building. Try switching again later.`,
-    );
-    this.name = "WorkspaceSnapshotBuildingError";
-  }
-}
+/** Poll interval while waiting for a detached setup command. */
+const WAIT_POLL_MS = 5_000;
+/**
+ * Leave headroom before the hard request/turn deadline so the worker can
+ * persist the pause and requeue, matching conversation soft yield.
+ */
+const WAIT_YIELD_BUFFER_MS = 40_000;
 
 function buildLockKey(profileHash: string): string {
   return `${BUILD_LOCK_PREFIX}:${profileHash}`;
@@ -114,7 +115,9 @@ async function getBuilderSandbox(
   });
 }
 
-async function stopBuilder(sandboxName: string | null | undefined): Promise<void> {
+async function stopBuilder(
+  sandboxName: string | null | undefined,
+): Promise<void> {
   if (!sandboxName) return;
   try {
     const sandbox = await getBuilderSandbox(sandboxName);
@@ -302,8 +305,11 @@ async function continueBuild(params: {
   }
 }
 
-/** Start or check one long-running Workspace snapshot build. */
-export async function resolveWorkspaceSnapshot(params: {
+/**
+ * Advance one control-plane slice: boot if ready, else start/prep/poll.
+ * Returns a Snapshot when ready; null while still building.
+ */
+async function advanceWorkspaceSnapshot(params: {
   workspace: Workspace;
   runtime: string;
   signal?: AbortSignal;
@@ -314,7 +320,7 @@ export async function resolveWorkspaceSnapshot(params: {
     signal?: AbortSignal,
   ): Promise<void>;
   removeCredentialRoute: boolean;
-}): Promise<Snapshot> {
+}): Promise<Snapshot | null> {
   const value = profile.create(params.runtime, params.workspace);
   if (!value) {
     throw new Error(
@@ -324,7 +330,6 @@ export async function resolveWorkspaceSnapshot(params: {
   const cached = snapshotFromCache(await getCachedSnapshot(value.hash), value);
   if (cached) return cached;
 
-  // SQL is durable truth for ready artifacts when Redis misses.
   const latest =
     (await getWorkspace(getDb(), params.workspace.id)) ?? params.workspace;
   const sqlCached = await snapshotFromSql(latest, value);
@@ -357,10 +362,8 @@ export async function resolveWorkspaceSnapshot(params: {
 
       const build = activeBuild(workspace, value.hash);
       if (build && !build.commandId) {
-        // Builder exists; this check-in owns install/clone + detached setup.
         await continueBuild({ ...params, workspace, value });
       } else if (!build) {
-        // Create-only start. Prep waits for the next check-in.
         await startBuild({
           workspace,
           value,
@@ -373,6 +376,65 @@ export async function resolveWorkspaceSnapshot(params: {
     { ttlMs: BUILD_LOCK_TTL_MS, keepAlive: true },
   );
 
-  if (locked.acquired && locked.value) return locked.value;
-  throw new WorkspaceSnapshotBuildingError(params.workspace.name);
+  if (locked.acquired) return locked.value ?? null;
+  // Another worker holds the lock; wait and retry on the next poll.
+  return null;
+}
+
+function shouldYieldWait(params: {
+  shouldYield?: () => boolean;
+  turnDeadlineAtMs?: number;
+}): boolean {
+  if (params.shouldYield?.()) return true;
+  const requestDeadline = getTurnRequestDeadline()?.deadlineAtMs;
+  const deadlineAtMs =
+    params.turnDeadlineAtMs === undefined
+      ? requestDeadline
+      : requestDeadline === undefined
+        ? params.turnDeadlineAtMs
+        : Math.min(params.turnDeadlineAtMs, requestDeadline);
+  if (deadlineAtMs === undefined) return false;
+  return Date.now() >= deadlineAtMs - WAIT_YIELD_BUFFER_MS;
+}
+
+/**
+ * Resolve a Workspace snapshot, waiting across short control-plane slices.
+ *
+ * Cold builds live in a 24h builder sandbox. This function only advances one
+ * slice per loop, then sleeps. Near the host/turn soft deadline it throws
+ * CooperativeTurnYieldError so the conversation worker requeues like an agent
+ * turn. The next wake resumes the same SQL job.
+ */
+export async function resolveWorkspaceSnapshot(params: {
+  workspace: Workspace;
+  runtime: string;
+  signal?: AbortSignal;
+  shouldYield?: () => boolean;
+  turnDeadlineAtMs?: number;
+  applyNetworkPolicy(sandbox: SandboxSession): Promise<unknown>;
+  prepareRepositories?(
+    sandbox: SandboxSession,
+    workspace: Workspace,
+    signal?: AbortSignal,
+  ): Promise<void>;
+  removeCredentialRoute: boolean;
+}): Promise<Snapshot> {
+  for (;;) {
+    params.signal?.throwIfAborted();
+    if (shouldYieldWait(params)) {
+      throw new CooperativeTurnYieldError(
+        `Workspace ${params.workspace.name} snapshot wait yielded for requeue`,
+      );
+    }
+
+    const snapshot = await advanceWorkspaceSnapshot(params);
+    if (snapshot) return snapshot;
+
+    if (shouldYieldWait(params)) {
+      throw new CooperativeTurnYieldError(
+        `Workspace ${params.workspace.name} snapshot wait yielded for requeue`,
+      );
+    }
+    await sleep(WAIT_POLL_MS, params.signal);
+  }
 }

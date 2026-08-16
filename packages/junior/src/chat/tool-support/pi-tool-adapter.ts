@@ -16,6 +16,7 @@ import {
   AuthorizationFlowDisabledError,
   AuthorizationPauseError,
 } from "@/chat/services/auth-pause";
+import { CooperativeTurnYieldError } from "@/chat/runtime/turn";
 import type { PluginAuthOrchestration } from "@/chat/services/plugin-auth-orchestration";
 import { buildReportedProgressStatus } from "@/chat/runtime/report-progress";
 import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";
@@ -365,7 +366,8 @@ export function createPiAgentTools(
             });
             if (
               error instanceof AuthorizationPauseError ||
-              error instanceof AuthorizationFlowDisabledError
+              error instanceof AuthorizationFlowDisabledError ||
+              error instanceof CooperativeTurnYieldError
             ) {
               throw error;
             }

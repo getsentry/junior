@@ -18,7 +18,6 @@ import {
 } from "@/chat/sandbox/errors";
 import { buildNonInteractiveShellScript } from "@/chat/sandbox/noninteractive-command";
 import { prepareWorkspaceSnapshot } from "@/chat/sandbox/prepare-workspace";
-import { resolveWorkspaceSnapshot } from "@/chat/sandbox/workspace-snapshot";
 import { getSandboxResources } from "@/chat/sandbox/resources";
 import { hash as profileHash } from "@/chat/sandbox/snapshot/profile";
 import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
@@ -27,6 +26,8 @@ import {
   resolve as resolveSnapshot,
   type Snapshot,
 } from "@/chat/sandbox/snapshot/resolve";
+import { recordResolvedWorkspaceSnapshot } from "@/chat/sandbox/snapshot/store";
+import { resolveWorkspaceSnapshot } from "@/chat/sandbox/snapshot/workspace";
 import { syncSkillsToSandbox } from "@/chat/sandbox/skill-sync";
 import {
   createSandboxSession,
@@ -38,7 +39,6 @@ import {
 import { sleep } from "@/chat/sleep";
 import type { SkillMetadata } from "@/chat/skills";
 import type { SandboxRef } from "@/chat/sandbox/ref";
-import { recordResolvedWorkspaceSnapshot } from "@/chat/workspaces/store";
 import type { Workspace } from "@/chat/workspaces/types";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 const DEFAULT_MAX_OUTPUT_LENGTH = 30_000;
@@ -126,6 +126,9 @@ interface SandboxRuntimeOptions {
   skills: SkillMetadata[];
   referenceFiles: string[];
   timeoutMs?: number;
+  /** Durable-worker soft yield; Workspace snapshot waits requeue through this. */
+  shouldYield?: () => boolean;
+  turnDeadlineAtMs?: number;
   traceContext?: LogContext;
   commandEnv?: () => Promise<Record<string, string>>;
   createNetworkPolicy?: (
@@ -487,23 +490,25 @@ export function createSandboxRuntime(
           "app.sandbox.runtime": runtime,
         },
         async () => {
-          const snapshot =
-            workspace?.setupScript.trim()
-              ? await resolveWorkspaceSnapshot({
-                  workspace,
-                  runtime,
-                  signal,
-                  applyNetworkPolicy,
-                  prepareRepositories: options.onWorkspacePrepare,
-                  removeCredentialRoute: Boolean(options.createNetworkPolicy),
-                })
-              : await resolveSnapshot({
-                  runtime,
-                  timeoutMs,
-                  signal,
-                  workspace,
-                  prepareWorkspace,
-                });
+          // Workspace recipes always use the durable multi-slice builder.
+          // Baseline (no workspace) stays on the fast inline resolve path.
+          const snapshot = workspace
+            ? await resolveWorkspaceSnapshot({
+                workspace,
+                runtime,
+                signal,
+                shouldYield: options.shouldYield,
+                turnDeadlineAtMs: options.turnDeadlineAtMs,
+                applyNetworkPolicy,
+                prepareRepositories: options.onWorkspacePrepare,
+                removeCredentialRoute: Boolean(options.createNetworkPolicy),
+              })
+            : await resolveSnapshot({
+                runtime,
+                timeoutMs,
+                signal,
+                prepareWorkspace,
+              });
           signal?.throwIfAborted();
           setSnapshotAttributes(snapshot);
           const created = await createSandboxFromResolvedSnapshot({
