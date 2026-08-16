@@ -72,30 +72,33 @@ test("opens and closes a conversation in the mobile workspace", async ({
   await expect(page).toHaveURL(
     `${server.baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770003600.000200")}`,
   );
+  // One shell row: back + title + overflow. No duplicate title chrome.
   await expect(
     page.getByRole("heading", { name: "Investigate checkout latency" }),
   ).toBeVisible();
-  // Shell header shows the truncated conversation title, not a generic label.
   await expect(
-    page
-      .locator("header.relative")
-      .getByText("Investigate checkout latency", { exact: true }),
-  ).toBeVisible();
-  await expect(page.getByText("Conversation", { exact: true })).toHaveCount(0);
-  await expect(
-    page.getByRole("link", { name: "Close conversation" }),
+    page.getByRole("link", { name: "Back to conversations" }),
   ).toBeVisible();
   await expect(page.getByLabel("Junior home")).toBeHidden();
-  const transcript = page.getByLabel("Conversation transcript");
-  await expect(transcript.getByText("1.9k tokens")).toBeHidden();
-  await expect(page.getByRole("button", { name: "Archive" })).toBeHidden();
+  await expect(
+    page.getByRole("button", { name: "Open navigation" }),
+  ).toBeHidden();
   await expect(page.getByPlaceholder("Search transcript…")).toBeHidden();
   await expect(
     page.getByRole("group", { name: "Transcript view" }),
+  ).toBeHidden();
+  const menu = page.getByRole("button", { name: "Conversation menu" });
+  await expect(menu).toBeVisible();
+  await menu.click();
+  await expect(
+    page.getByRole("button", { name: "Search transcript" }),
   ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Event log" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "App menu" })).toBeVisible();
+  await page.getByRole("button", { name: "Close conversation menu" }).click();
+  const transcript = page.getByLabel("Conversation transcript");
+  await expect(transcript.getByText("1.9k tokens")).toBeHidden();
   await expect(page.getByRole("note")).toBeHidden();
-  await page.getByRole("button", { name: "Search transcript" }).focus();
-  await expect(page.getByRole("tooltip")).toHaveCount(0);
 
   const pending = page.getByLabel("Pending messages");
   await expect(pending).toBeVisible();
@@ -230,16 +233,16 @@ test("opens and closes a conversation in the mobile workspace", async ({
     )
     .toBeLessThanOrEqual(1);
 
+  await page.getByRole("button", { name: "Conversation menu" }).click();
   await page.getByRole("button", { name: "Search transcript" }).click();
   await expect(page.getByPlaceholder("Search transcript…")).toBeVisible();
+  await page.getByRole("button", { name: "Conversation menu" }).click();
   await page.getByRole("button", { name: "Event log" }).click();
+  await page.getByRole("button", { name: "Conversation menu" }).click();
   await page.getByRole("button", { name: "Hide search" }).click();
   await expect(page.getByPlaceholder("Search transcript…")).toBeHidden();
-  await expect(
-    page.getByRole("group", { name: "Transcript view" }),
-  ).toBeVisible();
 
-  await page.getByRole("link", { name: "Close conversation" }).click();
+  await page.getByRole("link", { name: "Back to conversations" }).click();
   await expect(page).toHaveURL(`${server.baseURL}/`);
   await expect(
     page.getByRole("heading", { name: "Conversations" }),

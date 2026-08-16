@@ -1,10 +1,14 @@
-import { Menu, X } from "lucide-react";
+import { ArrowLeft, Menu, X } from "lucide-react";
 import { useEffect, useRef, type ReactNode } from "react";
 import { Link, NavLink } from "react-router";
 
 import { getDashboardAgentName } from "../../agentName";
 import { JuniorLogo } from "../JuniorLogo";
-import { MobileSecondaryNavigationSlot } from "./DashboardChrome";
+import {
+  MobileHeaderActionsSlot,
+  MobileSecondaryNavigationSlot,
+  useRegisterOpenMobileNavigation,
+} from "./DashboardChrome";
 import {
   cn,
   dashboardContainerClass,
@@ -29,7 +33,9 @@ const focusableSelector = [
 /** Render the primary dashboard shell header and optional mobile nav sheet. */
 export function DashboardHeader(props: {
   compact?: boolean;
-  mobileCloseTo?: string;
+  /** Back target used on mobile conversation detail. */
+  mobileBackTo?: string;
+  mobileLive?: boolean;
   mobileNavigationOpen: boolean;
   mobileTitle?: string;
   /** Expanded account block for the mobile navigation sheet. */
@@ -46,6 +52,11 @@ export function DashboardHeader(props: {
   const previousFocusRef = useRef<HTMLElement | undefined>(undefined);
   const onOpenChangeRef = useRef(props.onMobileNavigationOpenChange);
   onOpenChangeRef.current = props.onMobileNavigationOpenChange;
+  const conversationMode = Boolean(props.mobileTitle && props.mobileBackTo);
+
+  useRegisterOpenMobileNavigation(() => {
+    onOpenChangeRef.current(true);
+  });
 
   const navLinkClass = ({ isActive }: { isActive: boolean }) =>
     cn(
@@ -137,29 +148,48 @@ export function DashboardHeader(props: {
           props.compact ? "md:px-4" : "md:px-8",
         )}
       >
-        <button
-          aria-controls="mobile-navigation"
-          aria-expanded={props.mobileNavigationOpen}
-          aria-hidden={props.mobileNavigationOpen || undefined}
-          aria-label="Open navigation"
-          className="grid size-10 cursor-pointer place-items-center rounded-lg border-0 bg-transparent text-dashboard-text transition-colors hover:bg-white/[0.06] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#beaaff]/70 md:hidden"
-          onClick={() => props.onMobileNavigationOpenChange(true)}
-          ref={openButtonRef}
-          tabIndex={props.mobileNavigationOpen ? -1 : undefined}
-          type="button"
-        >
-          <Menu aria-hidden="true" size={20} strokeWidth={2} />
-        </button>
-        {props.mobileTitle ? (
-          <div className="col-start-2 row-start-1 min-w-0 truncate text-center font-display text-sm font-medium text-dashboard-text md:hidden">
-            {props.mobileTitle}
+        {conversationMode && props.mobileBackTo ? (
+          <Link
+            aria-label="Back to conversations"
+            className="grid size-10 place-items-center rounded-lg text-dashboard-text no-underline transition-colors hover:bg-white/[0.06] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#beaaff]/70 md:hidden"
+            to={props.mobileBackTo}
+          >
+            <ArrowLeft aria-hidden="true" size={20} strokeWidth={2} />
+          </Link>
+        ) : (
+          <button
+            aria-controls="mobile-navigation"
+            aria-expanded={props.mobileNavigationOpen}
+            aria-hidden={props.mobileNavigationOpen || undefined}
+            aria-label="Open navigation"
+            className="grid size-10 cursor-pointer place-items-center rounded-lg border-0 bg-transparent text-dashboard-text transition-colors hover:bg-white/[0.06] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#beaaff]/70 md:hidden"
+            onClick={() => props.onMobileNavigationOpenChange(true)}
+            ref={openButtonRef}
+            tabIndex={props.mobileNavigationOpen ? -1 : undefined}
+            type="button"
+          >
+            <Menu aria-hidden="true" size={20} strokeWidth={2} />
+          </button>
+        )}
+        {conversationMode ? (
+          <div className="col-start-2 row-start-1 flex min-w-0 items-center gap-2 md:hidden">
+            <h1 className="m-0 min-w-0 truncate text-left font-display text-sm font-medium text-dashboard-text">
+              {props.mobileTitle}
+            </h1>
+            {props.mobileLive ? (
+              <span
+                aria-label="Conversation is live"
+                className="inline-flex size-2 shrink-0 rounded-full bg-emerald-300"
+                title="Live"
+              />
+            ) : null}
           </div>
         ) : null}
         <Link
           aria-label={`${getDashboardAgentName()} home`}
           className={cn(
             "col-start-2 row-start-1 min-w-0 max-w-full items-center justify-self-center text-inherit no-underline md:col-start-1 md:flex md:justify-self-start",
-            props.mobileTitle ? "hidden" : "flex",
+            conversationMode ? "hidden" : "flex",
           )}
           to="/"
         >
@@ -182,15 +212,7 @@ export function DashboardHeader(props: {
             </NavLink>
           ))}
         </nav>
-        {props.mobileCloseTo ? (
-          <Link
-            aria-label="Close conversation"
-            className="grid size-10 place-items-center justify-self-end rounded-lg text-dashboard-text no-underline transition-colors hover:bg-white/[0.06] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#beaaff]/70 md:hidden"
-            to={props.mobileCloseTo}
-          >
-            <X aria-hidden="true" size={20} strokeWidth={2} />
-          </Link>
-        ) : null}
+        {conversationMode ? <MobileHeaderActionsSlot /> : null}
         {props.profile ? (
           <div className="col-start-3 hidden justify-self-end md:block">
             {props.profile}

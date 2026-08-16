@@ -82,13 +82,16 @@ export function DashboardShell() {
     location.pathname.startsWith("/conversations/");
   const conversationId = conversationIdFromPath(location.pathname);
   const conversationsQuery = useConversationsData();
-  const mobileConversationTitle = useMemo(() => {
+  const mobileConversation = useMemo(() => {
     if (!conversationId) return undefined;
-    const conversation = buildConversations(
+    return buildConversations(
       conversationsQuery.data?.conversations ?? [],
     ).find((item) => item.id === conversationId);
-    return conversationDisplayTitle(conversation);
   }, [conversationId, conversationsQuery.data?.conversations]);
+  const mobileConversationTitle = conversationId
+    ? conversationDisplayTitle(mobileConversation)
+    : undefined;
+  const mobileConversationLive = mobileConversation?.status === "active";
   const primaryNavItems = [
     ...(loggedIn
       ? [{ key: "tasks", label: "Tasks", to: "/tasks" }]
@@ -143,7 +146,8 @@ export function DashboardShell() {
           header={
             <DashboardHeader
               compact={workspace}
-              mobileCloseTo={conversationId ? "/" : undefined}
+              mobileBackTo={conversationId ? "/" : undefined}
+              mobileLive={mobileConversationLive}
               mobileTitle={mobileConversationTitle}
               mobileNavigationOpen={mobileNavigationOpen}
               navItems={primaryNavItems}

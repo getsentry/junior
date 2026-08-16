@@ -27,12 +27,55 @@ export function ConversationHeaderActions(props: {
   archive: ConversationArchiveAction;
   copyAction?: ReactNode;
   detailsOpen: boolean;
+  /** `bar` is the desktop icon row. `menu` stacks actions for mobile overflow. */
+  layout?: "bar" | "menu";
   onDetailsClick(): void;
   onSearchClick(): void;
   onViewChange(value: TranscriptViewMode): void;
   searchOpen: boolean;
   view: TranscriptViewMode;
 }) {
+  const layout = props.layout ?? "bar";
+  if (layout === "menu") {
+    return (
+      <div className="grid gap-0.5">
+        <MenuActionButton
+          label={props.searchOpen ? "Hide search" : "Search transcript"}
+          onClick={props.onSearchClick}
+        >
+          {props.searchOpen ? (
+            <X aria-hidden="true" size={16} strokeWidth={2} />
+          ) : (
+            <Search aria-hidden="true" size={16} strokeWidth={2} />
+          )}
+        </MenuActionButton>
+        <MenuActionButton
+          label="Conversation"
+          onClick={() => props.onViewChange("rich")}
+          pressed={props.view === "rich"}
+        >
+          <MessagesSquare aria-hidden="true" size={16} strokeWidth={2} />
+        </MenuActionButton>
+        <MenuActionButton
+          label="Event log"
+          onClick={() => props.onViewChange("raw")}
+          pressed={props.view === "raw"}
+        >
+          <ScrollText aria-hidden="true" size={16} strokeWidth={2} />
+        </MenuActionButton>
+        {props.copyAction}
+        <ArchiveConversationButton {...props.archive} layout="menu" />
+        <MenuActionButton
+          label="Conversation details"
+          onClick={props.onDetailsClick}
+          pressed={props.detailsOpen}
+        >
+          <Info aria-hidden="true" size={16} strokeWidth={2} />
+        </MenuActionButton>
+      </div>
+    );
+  }
+
   return (
     <div className="flex shrink-0 items-center gap-0.5">
       <TranscriptSearchToggle
@@ -41,7 +84,7 @@ export function ConversationHeaderActions(props: {
       />
       <TranscriptViewToggle onChange={props.onViewChange} value={props.view} />
       {props.copyAction}
-      <ArchiveConversationButton {...props.archive} />
+      <ArchiveConversationButton {...props.archive} layout="bar" />
       <HeaderIconButton
         label="Conversation details"
         onClick={props.onDetailsClick}
@@ -153,13 +196,52 @@ export function TranscriptSearchToggle(props: {
   );
 }
 
-function ArchiveConversationButton(props: ConversationArchiveAction) {
+function MenuActionButton(props: {
+  children: ReactNode;
+  label: string;
+  onClick(): void;
+  pressed?: boolean;
+}) {
+  return (
+    <button
+      aria-label={props.label}
+      aria-pressed={props.pressed}
+      className={cn(
+        "flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold text-dashboard-text transition-colors hover:bg-white/10 focus-visible:bg-white/10 focus-visible:outline-none",
+        props.pressed && "bg-white/[0.08]",
+      )}
+      onClick={props.onClick}
+      type="button"
+    >
+      {props.children}
+      <span>{props.label}</span>
+    </button>
+  );
+}
+
+function ArchiveConversationButton(
+  props: ConversationArchiveAction & { layout: "bar" | "menu" },
+) {
   const label = props.pending
     ? "Saving archive state"
     : props.archived
       ? "Unarchive"
       : "Archive";
   const Icon = props.archived ? ArchiveRestore : Archive;
+  if (props.layout === "menu") {
+    return (
+      <button
+        aria-label={label}
+        className="flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold text-dashboard-text transition-colors hover:bg-white/10 focus-visible:bg-white/10 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+        disabled={props.disabled}
+        onClick={props.onClick}
+        type="button"
+      >
+        <Icon aria-hidden="true" size={16} strokeWidth={2} />
+        <span>{label}</span>
+      </button>
+    );
+  }
   return (
     <IconButtonTooltip label={label}>
       <Button
