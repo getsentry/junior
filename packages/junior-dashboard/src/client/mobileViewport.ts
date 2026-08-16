@@ -1,5 +1,7 @@
 import { useEffect, type RefObject } from "react";
 
+import { acquireBodyScrollLock, releaseBodyScrollLock } from "./bodyScrollLock";
+
 const viewportHeightProperty = "--dashboard-viewport-height";
 const viewportOffsetTopProperty = "--dashboard-viewport-offset-top";
 // Ignore small visualViewport shrink from rubber-band and transient chrome.
@@ -65,32 +67,22 @@ export function useMobileViewportHeight(
 
     const mobile = window.matchMedia("(max-width: 767px)");
     const viewport = window.visualViewport;
-    const html = document.documentElement;
-    const body = document.body;
-    const previousHtmlOverflow = html.style.overflow;
-    const previousBodyOverflow = body.style.overflow;
-    const previousHtmlOverscroll = html.style.overscrollBehavior;
-    const previousBodyOverscroll = body.style.overscrollBehavior;
     let frame: number | undefined;
     let lastHeight = "";
     let lastOffsetTop = "";
     let appliedOffsetTopPx = 0;
     let documentScrollLocked = false;
 
+    // Share the dashboard body-scroll lock with drawers and the mobile nav
+    // sheet so independent restore paths cannot leave overflow stuck hidden.
     const setDocumentScrollLocked = (locked: boolean) => {
       if (documentScrollLocked === locked) return;
       documentScrollLocked = locked;
       if (locked) {
-        html.style.overflow = "hidden";
-        body.style.overflow = "hidden";
-        html.style.overscrollBehavior = "none";
-        body.style.overscrollBehavior = "none";
+        acquireBodyScrollLock();
         return;
       }
-      html.style.overflow = previousHtmlOverflow;
-      body.style.overflow = previousBodyOverflow;
-      html.style.overscrollBehavior = previousHtmlOverscroll;
-      body.style.overscrollBehavior = previousBodyOverscroll;
+      releaseBodyScrollLock();
     };
 
     const clearViewportProperties = () => {

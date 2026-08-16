@@ -3,6 +3,10 @@ import { useEffect, useRef, type ReactNode } from "react";
 import { Link, NavLink } from "react-router";
 
 import { getDashboardAgentName } from "../../agentName";
+import {
+  acquireBodyScrollLock,
+  releaseBodyScrollLock,
+} from "../../bodyScrollLock";
 import { JuniorLogo } from "../JuniorLogo";
 import {
   MobileHeaderActionsSlot,
@@ -92,8 +96,7 @@ export function DashboardHeader(props: {
       document.activeElement instanceof HTMLElement
         ? document.activeElement
         : (openButtonRef.current ?? undefined);
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    acquireBodyScrollLock();
     const focusFrame = requestAnimationFrame(() => {
       sheetRef.current
         ?.querySelector<HTMLElement>("[data-mobile-nav-close]")
@@ -133,7 +136,7 @@ export function DashboardHeader(props: {
       cancelAnimationFrame(focusFrame);
       mobile.removeEventListener("change", closeWhenDesktop);
       window.removeEventListener("keydown", onKeyDown);
-      document.body.style.overflow = previousOverflow;
+      releaseBodyScrollLock();
       const previousFocus = previousFocusRef.current;
       previousFocusRef.current = undefined;
       if (previousFocus?.isConnected) previousFocus.focus();
