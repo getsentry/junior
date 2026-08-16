@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { Sandbox } from "@vercel/sandbox";
 import { getDb } from "@/chat/db";
 import { getVercelSandboxCredentials } from "@/chat/sandbox/credentials";
+import { isSandboxApiTransientError } from "@/chat/sandbox/errors";
 import {
   prepareWorkspaceRepositories,
   workspaceSetupCommand,
@@ -38,6 +39,8 @@ const BUILD_LOCK_TTL_MS = 2 * 60 * 1000;
 const BUILD_LOCK_PREFIX = "junior:workspace_snapshot_start";
 /** Poll interval while waiting for a detached setup command. */
 const WAIT_POLL_MS = 5_000;
+/** Brief backoff when the Sandbox API returns a transient 5xx. */
+const TRANSIENT_API_RETRY_MS = 2_000;
 /**
  * Leave headroom before the hard request/turn deadline so the worker can
  * persist the pause and requeue, matching conversation soft yield.
@@ -345,6 +348,10 @@ async function continueBuild(params: {
       error: null,
     });
   } catch (error) {
+    // Keep the builder + SQL phase so the next check-in retries this slice.
+    if (isSandboxApiTransientError(error)) {
+      throw error;
+    }
     const message = error instanceof Error ? error.message : String(error);
     await markFailed(params.workspace, build, message);
     throw error;
@@ -472,7 +479,21 @@ export async function resolveWorkspaceSnapshot(params: {
 
     // Always advance at least one slice before soft-yield so a fresh wake
     // cannot spin on timed_out without starting or polling the builder.
-    const snapshot = await advanceWorkspaceSnapshot(params);
+    let snapshot: Snapshot | null;
+    try {
+      snapshot = await advanceWorkspaceSnapshot(params);
+    } catch (error) {
+      // Transient Sandbox API errors leave the SQL phase unchanged. Retry in
+      // this wait loop (or after soft yield) instead of failing the build.
+      if (!isSandboxApiTransientError(error)) {
+        throw error;
+      }
+      if (shouldYieldWait(params)) {
+        throw new WorkspaceSnapshotWaitingError(params.workspace.name);
+      }
+      await sleep(TRANSIENT_API_RETRY_MS, params.signal);
+      continue;
+    }
     if (snapshot) return snapshot;
 
     if (shouldYieldWait(params)) {

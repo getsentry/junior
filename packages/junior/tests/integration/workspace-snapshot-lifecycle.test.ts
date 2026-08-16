@@ -109,7 +109,8 @@ describe.skipIf(!sandboxCredentialsReady())(
         });
 
         const workspace = (await getWorkspace(db, workspaceId))!;
-        // One slice per acquire so SQL phase advances are visible.
+        // Slice with soft yield so SQL phase advances stay visible. Transient
+        // Sandbox API errors keep the phase and retry on the next check-in.
         const slicing = createSandboxRuntime({
           workspace,
           skills: [],
@@ -118,22 +119,37 @@ describe.skipIf(!sandboxCredentialsReady())(
         });
 
         try {
-          for (const phase of [
-            "created",
-            "dependencies_installed",
-            "repositories_prepared",
-          ] as const) {
+          const seenPhases: string[] = [];
+          let detachedCommandId: string | null = null;
+          let detachedPhase: string | null = null;
+          for (let attempt = 0; attempt < 24; attempt += 1) {
             await expect(slicing.acquire()).rejects.toSatisfy(
               isWorkspaceSnapshotWaitingError,
             );
             const current = await getWorkspace(db, workspaceId);
             expect(current?.snapshotBuild?.status).toBe("building");
-            expect(current?.snapshotBuild?.phase).toBe(phase);
             expect(current?.snapshotBuild?.sandboxName).toBeTruthy();
-            expect(current?.snapshotBuild?.commandId).toBeNull();
+            const phase = current?.snapshotBuild?.phase ?? null;
+            expect(phase).toBeTruthy();
+            if (phase && seenPhases[seenPhases.length - 1] !== phase) {
+              seenPhases.push(phase);
+            }
+            // Setup detached: commandId set while phase stays repositories_prepared.
+            if (current?.snapshotBuild?.commandId) {
+              detachedCommandId = current.snapshotBuild.commandId;
+              detachedPhase = phase;
+              break;
+            }
           }
+          expect(detachedCommandId).toBeTruthy();
+          expect(detachedPhase).toBe("repositories_prepared");
+          expect(seenPhases).toEqual([
+            "created",
+            "dependencies_installed",
+            "repositories_prepared",
+          ]);
 
-          // Detach setup on the next slice, then poll until ready and boot.
+          // Poll until ready and boot from the finished snapshot.
           const finishing = createSandboxRuntime({
             workspace: (await getWorkspace(db, workspaceId))!,
             skills: [],

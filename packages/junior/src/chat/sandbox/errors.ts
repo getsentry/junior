@@ -137,6 +137,37 @@ export function isSnapshottingError(error: unknown): boolean {
   });
 }
 
+/** Detect transient Vercel Sandbox API failures that should retry without failing the job. */
+export function isSandboxApiTransientError(error: unknown): boolean {
+  return findInErrorChain(error, (candidate) => {
+    const details = getSandboxErrorDetails(candidate);
+    const searchable =
+      `${details.searchableText} ${details.summary}`.toLowerCase();
+    if (
+      searchable.includes("internal_server_error") ||
+      searchable.includes("status=500") ||
+      searchable.includes("status code 500") ||
+      searchable.includes("status=502") ||
+      searchable.includes("status code 502") ||
+      searchable.includes("status=503") ||
+      searchable.includes("status code 503") ||
+      searchable.includes("status=504") ||
+      searchable.includes("status code 504")
+    ) {
+      return true;
+    }
+
+    if (!isRecord(candidate)) {
+      return false;
+    }
+    const response = candidate.response;
+    if (isRecord(response) && typeof response.status === "number") {
+      return response.status >= 500 && response.status < 600;
+    }
+    return false;
+  });
+}
+
 /** Detect interrupted command streams where no reliable exit status is available. */
 export function isSandboxCommandStreamInterruptedError(
   error: unknown,

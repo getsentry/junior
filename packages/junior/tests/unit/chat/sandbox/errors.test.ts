@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { isSandboxUnavailableError } from "@/chat/sandbox/errors";
+import {
+  isSandboxApiTransientError,
+  isSandboxUnavailableError,
+} from "@/chat/sandbox/errors";
 
 describe("isSandboxUnavailableError", () => {
   it("treats an invalid sandbox session token as unavailable", () => {
@@ -23,5 +26,41 @@ describe("isSandboxUnavailableError", () => {
     });
 
     expect(isSandboxUnavailableError(error)).toBe(false);
+  });
+});
+
+describe("isSandboxApiTransientError", () => {
+  it("treats Sandbox API 500 responses as transient", () => {
+    const error = Object.assign(new Error("Status code 500 is not ok"), {
+      response: {
+        status: 500,
+        statusText: "Internal Server Error",
+        url: "https://vercel.com/api/v2/sandboxes/sessions/sbx_x/cmd",
+      },
+      json: {
+        error: {
+          code: "internal_server_error",
+          message: "An unexpected internal error occurred",
+        },
+      },
+    });
+
+    expect(isSandboxApiTransientError(error)).toBe(true);
+    expect(
+      isSandboxApiTransientError(
+        new Error("sandbox setup failed (status=500)", { cause: error }),
+      ),
+    ).toBe(true);
+  });
+
+  it("does not treat permanent client errors as transient", () => {
+    const error = Object.assign(new Error("Status code 404 is not ok"), {
+      response: {
+        status: 404,
+        url: "https://vercel.com/api/v2/sandboxes/sessions/sbx_x",
+      },
+    });
+
+    expect(isSandboxApiTransientError(error)).toBe(false);
   });
 });
