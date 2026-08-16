@@ -272,9 +272,12 @@ export function DashboardHeader(props: {
             </nav>
             <MobileSecondaryNavigationSlot />
             {props.mobileProfile ?? props.profile ? (
-              <div className="mt-3 border-t border-white/[0.07] pt-3">
+              <section
+                aria-label="Account"
+                className="mt-5 border-t border-white/[0.07] pt-4"
+              >
                 {props.mobileProfile ?? props.profile}
-              </div>
+              </section>
             ) : null}
           </div>
           {props.version ? (
