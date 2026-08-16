@@ -58,6 +58,25 @@ export function isNearScrollBottom(
 }
 
 /** Build a compact transcript-tail key so polling without content changes does not look new. */
+/** Build a version that changes only when a visible Junior message appears. */
+export function transcriptJuniorMessageVersion(
+  conversation: ConversationTranscript | undefined,
+): string {
+  if (!conversation) return "empty";
+  for (let index = conversation.events.length - 1; index >= 0; index -= 1) {
+    const event = conversation.events[index]!;
+    const data = event.data;
+    if (data.type !== "message" || data.role !== "assistant") continue;
+    return [
+      event.seq,
+      event.createdAt,
+      data.messageId,
+      data.redacted ? "redacted" : (data.text?.length ?? 0),
+    ].join(":");
+  }
+  return "empty";
+}
+
 export function transcriptBottomVersion(
   conversation: ConversationTranscript | undefined,
 ): string {
@@ -247,6 +266,7 @@ export function usePinnedTranscriptBottom(input: {
   conversationId?: string;
   enabled: boolean;
   historyVersion: string;
+  juniorMessageVersion: string;
   loadingPreviousPage: boolean;
   pinRequestVersion?: number;
   version: string;
@@ -260,6 +280,7 @@ export function usePinnedTranscriptBottom(input: {
   const previousScrollTopRef = useRef<number | null>(null);
   const prependSnapshotRef = useRef<PrependSnapshot | null>(null);
   const pinRequestVersionRef = useRef(input.pinRequestVersion ?? 0);
+  const juniorMessageVersionRef = useRef(input.juniorMessageVersion);
   const versionRef = useRef(input.version);
   const programmaticScrollGenerationRef = useRef(0);
   const [following, setFollowing] = useState(false);
@@ -522,6 +543,16 @@ export function usePinnedTranscriptBottom(input: {
     setHasPendingUpdate(false);
     scrollToBottom(preferredExplicitScrollBehavior());
   }, [scrollToBottom, setFollowingIntent]);
+
+  // A Junior reply can arrive in the same poll that completes the conversation.
+  // Pin it independently from live-follow state so the terminal reply is visible.
+  useBrowserLayoutEffect(() => {
+    if (juniorMessageVersionRef.current === input.juniorMessageVersion) return;
+    juniorMessageVersionRef.current = input.juniorMessageVersion;
+    setFollowingIntent(true);
+    setHasPendingUpdate(false);
+    scrollToBottom("auto");
+  }, [input.juniorMessageVersion, scrollToBottom, setFollowingIntent]);
 
   useBrowserLayoutEffect(() => {
     const version = input.pinRequestVersion ?? 0;

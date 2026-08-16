@@ -9,6 +9,7 @@ import {
   shouldShowJumpToLatest,
   transcriptFollowIntent,
   transcriptBottomVersion,
+  transcriptJuniorMessageVersion,
 } from "../src/client/conversations/transcriptBottomPinning";
 import type { ConversationTranscript } from "../src/client/types";
 
@@ -60,6 +61,55 @@ describe("transcript bottom pinning", () => {
         scrollTop: 1_000,
       }),
     ).toBe(false);
+  });
+
+  it("changes the Junior message version when a reply appears", () => {
+    const before = transcriptJuniorMessageVersion(
+      activeTurn({
+        events: [
+          {
+            seq: 0,
+            createdAt: "2026-01-01T00:00:01.000Z",
+            data: {
+              type: "message",
+              messageId: "user-1",
+              role: "user",
+              text: "check the deployment",
+            },
+          },
+        ],
+      }),
+    );
+    const after = transcriptJuniorMessageVersion(
+      activeTurn({ status: "completed" }),
+    );
+
+    expect(before).toBe("empty");
+    expect(after).not.toBe(before);
+  });
+
+  it("keeps the Junior message version stable for later non-message events", () => {
+    const current = activeTurn();
+    const before = transcriptJuniorMessageVersion(current);
+    const after = transcriptJuniorMessageVersion(
+      activeTurn({
+        events: [
+          ...current.events,
+          {
+            seq: 1,
+            createdAt: "2026-01-01T00:00:02.000Z",
+            data: {
+              type: "turn_lifecycle",
+              turnId: "turn-1",
+              state: "succeeded",
+            },
+          },
+        ],
+        status: "completed",
+      }),
+    );
+
+    expect(after).toBe(before);
   });
 
   it("changes the tail version when streamed text grows", () => {
