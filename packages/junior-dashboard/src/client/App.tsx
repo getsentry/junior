@@ -22,6 +22,7 @@ import {
   setDashboardTimeZone,
 } from "./format";
 import { ConversationWorkspace } from "./conversations/ConversationWorkspace";
+import { useConversationData } from "./conversations/queries";
 import { useMobileViewportHeight } from "./mobileViewport";
 import { ComponentsPage } from "./pages/dev/ComponentsPage";
 import { LocationDetailPage } from "./pages/locations/LocationDetailPage";
@@ -82,6 +83,8 @@ export function DashboardShell() {
     location.pathname.startsWith("/conversations/");
   const conversationId = conversationIdFromPath(location.pathname);
   const conversationsQuery = useConversationsData();
+  // Detail query shares the page cache so titles outside the top-50 feed stay accurate.
+  const conversationDetail = useConversationData(conversationId);
   const mobileConversation = useMemo(() => {
     if (!conversationId) return undefined;
     return buildConversations(
@@ -89,7 +92,8 @@ export function DashboardShell() {
     ).find((item) => item.id === conversationId);
   }, [conversationId, conversationsQuery.data?.conversations]);
   const mobileConversationTitle = conversationId
-    ? conversationDisplayTitle(mobileConversation)
+    ? conversationDetail.data?.displayTitle?.trim() ||
+      conversationDisplayTitle(mobileConversation)
     : undefined;
   const primaryNavItems = [
     ...(loggedIn

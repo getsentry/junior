@@ -42,6 +42,7 @@ export function ConversationHeaderActions(props: {
         <MenuActionButton
           label={props.searchOpen ? "Hide search" : "Search transcript"}
           onClick={props.onSearchClick}
+          pressed={props.searchOpen}
         >
           {props.searchOpen ? (
             <X aria-hidden="true" size={16} strokeWidth={2} />
