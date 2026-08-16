@@ -116,6 +116,15 @@ export async function setCachedSnapshot(entry: CachedSnapshot): Promise<void> {
   );
 }
 
+/** Drop one profile's hot cache entry so the next resolve cannot reuse it. */
+export async function clearCachedSnapshot(
+  profileHash: string,
+): Promise<void> {
+  const state = getStateAdapter();
+  await state.connect();
+  await state.delete(profileCacheKey(profileHash));
+}
+
 async function build(
   value: profile.Profile,
   runtime: string,

@@ -27,7 +27,10 @@ import {
   type Snapshot,
 } from "@/chat/sandbox/snapshot/resolve";
 import { recordResolvedWorkspaceSnapshot } from "@/chat/sandbox/snapshot/store";
-import { resolveWorkspaceSnapshot } from "@/chat/sandbox/snapshot/workspace";
+import {
+  invalidateMissingWorkspaceSnapshot,
+  resolveWorkspaceSnapshot,
+} from "@/chat/sandbox/snapshot/workspace";
 import { syncSkillsToSandbox } from "@/chat/sandbox/skill-sync";
 import {
   createSandboxSession,
@@ -438,13 +441,40 @@ export function createSandboxRuntime(
     } catch (error) {
       if (!isMissingError(error)) throw error;
       setSpanAttributes({ "app.sandbox.snapshot.rebuild_after_missing": true });
+      // Workspace recipes rebuild on the durable multi-slice path. Baseline
+      // (no workspace) stays on the fast inline rebuild path.
+      if (params.workspace) {
+        await invalidateMissingWorkspaceSnapshot({
+          workspace: params.workspace,
+          runtime,
+          snapshotId: snapshot.snapshotId,
+        });
+        const rebuilt = await resolveWorkspaceSnapshot({
+          workspace: params.workspace,
+          runtime,
+          signal,
+          shouldYield: options.shouldYield,
+          turnDeadlineAtMs: options.turnDeadlineAtMs,
+          applyNetworkPolicy,
+          prepareRepositories: options.onWorkspacePrepare,
+          removeCredentialRoute: Boolean(options.createNetworkPolicy),
+        });
+        if (!rebuilt.snapshotId) throw error;
+        signal?.throwIfAborted();
+        const session = await createSandboxFromSnapshot(
+          rebuilt.snapshotId,
+          sandboxCredentials,
+          sandboxName,
+          signal,
+        );
+        return { session, snapshot: rebuilt };
+      }
       const rebuilt = await resolveSnapshot({
         runtime,
         timeoutMs,
         forceRebuild: true,
         staleSnapshotId: snapshot.snapshotId,
         signal,
-        workspace: params.workspace,
         prepareWorkspace: params.prepareWorkspace,
       });
       if (!rebuilt.snapshotId) throw error;

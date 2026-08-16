@@ -11,11 +11,13 @@ import { getSandboxResources } from "@/chat/sandbox/resources";
 import * as install from "@/chat/sandbox/snapshot/install";
 import * as profile from "@/chat/sandbox/snapshot/profile";
 import {
+  clearCachedSnapshot,
   getCachedSnapshot,
   setCachedSnapshot,
   type Snapshot,
 } from "@/chat/sandbox/snapshot/resolve";
 import {
+  invalidateMissingReadySnapshot,
   loadSnapshotsForProfile,
   setWorkspaceSnapshot,
   setWorkspaceSnapshotBuild,
@@ -146,6 +148,25 @@ async function stopBuilder(
   } catch {
     // Builder may already be finalized after snapshot or timeout.
   }
+}
+
+/**
+ * Drop stale ready pointers after Vercel no longer has the snapshot id.
+ * Next resolve starts a durable multi-slice rebuild for the same profile.
+ */
+export async function invalidateMissingWorkspaceSnapshot(params: {
+  workspace: Workspace;
+  runtime: string;
+  snapshotId: string;
+}): Promise<void> {
+  const value = profile.create(params.runtime, params.workspace);
+  if (!value) return;
+  await clearCachedSnapshot(value.hash);
+  await invalidateMissingReadySnapshot({
+    workspaceId: params.workspace.id,
+    profileHash: value.hash,
+    snapshotId: params.snapshotId,
+  });
 }
 
 async function markFailed(

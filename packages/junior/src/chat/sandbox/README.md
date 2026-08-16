@@ -53,12 +53,13 @@ traffic through verified host egress.
   snapshot. Operators manage recipes from `/system/workspaces` or
   `/api/workspaces`. Workspace snapshot lifecycle lives in `junior_snapshots`
   (`building` | `failed` | `ready`) with full ready details for the dashboard
-  and for Redis miss recovery. Cold builds use a long-lived builder Sandbox and
+  and for Redis miss recovery. Cold builds use a one-hour builder Sandbox and
   short control-plane check-ins (create builder, install deps, clone repos,
-  detach setup, poll). Prep slices leave durable markers so a mid-prep death
-  resumes cleanly. `switchWorkspace` waits while budget remains, then returns
-  `timed_out` near the host deadline. The host continues that wait across soft
-  yields without model mediation.
+  detach setup, poll). SQL `build_phase` checkpoints each slice so a mid-prep
+  death resumes cleanly. `switchWorkspace` waits while budget remains, then
+  returns `timed_out` near the host deadline. The host continues that wait
+  across soft yields without model mediation. Missing ready snapshot ids drop
+  the stale SQL/Redis pointers and rebuild on the same durable path.
 - Workspace repositories clone to fixed `repos/{name}` paths. Setup scripts
   receive `JUNIOR_WORKSPACE_ROOT` and `JUNIOR_REPOS_ROOT` so they do not depend
   on the provider's absolute Sandbox path.

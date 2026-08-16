@@ -137,7 +137,18 @@ export async function loadSnapshotsForProfile(
 export async function clearNonReadySnapshots(
   db: JuniorDatabase,
   workspaceId: string,
-): Promise<void> {
+): Promise<string[]> {
+  const builders = await db
+    .select({
+      sandboxName: juniorSnapshots.buildSandboxName,
+    })
+    .from(juniorSnapshots)
+    .where(
+      and(
+        eq(juniorSnapshots.workspaceId, workspaceId),
+        ne(juniorSnapshots.status, "ready"),
+      ),
+    );
   // TODO: garbage-collect retired Vercel snapshots once retention policy exists.
   await db
     .delete(juniorSnapshots)
@@ -147,6 +158,34 @@ export async function clearNonReadySnapshots(
         ne(juniorSnapshots.status, "ready"),
       ),
     );
+  return builders
+    .map((row) => row.sandboxName)
+    .filter((name): name is string => Boolean(name));
+}
+
+/**
+ * Drop one ready SQL row whose Vercel snapshot id is gone.
+ * Prior ready rows for other ids stay for later GC.
+ */
+export async function invalidateMissingReadySnapshot(params: {
+  workspaceId: string;
+  profileHash: string;
+  snapshotId: string;
+}): Promise<void> {
+  const executor = getSqlExecutor();
+  await executor.transaction(async () => {
+    const db = executor.db();
+    await db
+      .delete(juniorSnapshots)
+      .where(
+        and(
+          eq(juniorSnapshots.workspaceId, params.workspaceId),
+          eq(juniorSnapshots.profileHash, params.profileHash),
+          eq(juniorSnapshots.status, "ready"),
+          eq(juniorSnapshots.snapshotId, params.snapshotId),
+        ),
+      );
+  });
 }
 
 /** Record the full Sandbox snapshot after a successful Workspace prepare. */

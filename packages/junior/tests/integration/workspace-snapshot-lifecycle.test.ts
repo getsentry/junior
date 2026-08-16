@@ -15,8 +15,8 @@ import { juniorWorkspaces } from "@/db/schema";
 
 const ORIGINAL_ENV = { ...process.env };
 const MARKER_PATH = `${SANDBOX_WORKSPACE_ROOT}/marker/setup.txt`;
-/** Product budget is one hour; leave cleanup headroom for the live proof. */
-const LIVE_TEST_TIMEOUT_MS = 65 * 60 * 1000;
+/** Cold builds install global sandbox runtime deps (docker). */
+const LIVE_TEST_TIMEOUT_MS = 40 * 60 * 1000;
 
 function sandboxCredentialsReady(): boolean {
   if (process.env.VERCEL_OIDC_TOKEN?.trim()) return true;

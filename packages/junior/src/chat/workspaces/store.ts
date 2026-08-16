@@ -3,6 +3,8 @@ import { and, asc, eq, sql } from "drizzle-orm";
 import { getSqlExecutor } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorWorkspaceRepos, juniorWorkspaces } from "@/db/schema";
+import { Sandbox } from "@vercel/sandbox";
+import { getVercelSandboxCredentials } from "@/chat/sandbox/credentials";
 import {
   clearNonReadySnapshots,
   loadLatestSnapshots,
@@ -101,6 +103,21 @@ function isUniqueViolation(error: unknown): boolean {
         : undefined;
   }
   return false;
+}
+
+/** Best-effort stop after recipe change abandons an in-flight builder. */
+async function stopAbandonedBuilder(sandboxName: string): Promise<void> {
+  try {
+    const credentials = getVercelSandboxCredentials();
+    const sandbox = await Sandbox.get({
+      name: sandboxName,
+      resume: true,
+      ...(credentials ?? {}),
+    });
+    await sandbox.stop();
+  } catch {
+    // Builder may already be stopped after snapshot, timeout, or failure.
+  }
 }
 
 /** List Workspace recipes by stable name. */
@@ -270,12 +287,16 @@ export async function updateWorkspace(
         .where(eq(juniorWorkspaces.id, id))
         .returning();
       await replaceWorkspaceRepos(db, id, recipe.repos);
+      let abandonedBuilders: string[] = [];
       if (snapshotChanged) {
-        await clearNonReadySnapshots(db, id);
+        abandonedBuilders = await clearNonReadySnapshots(db, id);
       }
-      return rows[0];
+      return { row: rows[0], abandonedBuilders };
     });
     if (!updated) return undefined;
+    await Promise.all(
+      updated.abandonedBuilders.map((name) => stopAbandonedBuilder(name)),
+    );
   } catch (error) {
     if (isUniqueViolation(error)) {
       throw new WorkspaceValidationError(
