@@ -118,7 +118,6 @@ async function finishBuild(
     profileHash: value.hash,
     runtime,
     dependencyCount: value.dependencyCount,
-    previousSnapshotIds: [],
   });
   return {
     snapshotId: snapshot.snapshotId,

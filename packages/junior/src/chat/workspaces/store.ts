@@ -1,9 +1,13 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { getSqlExecutor } from "@/chat/db";
 import { logException } from "@/chat/logging";
 import type { JuniorDatabase } from "@/db/db";
-import { juniorWorkspaceRepos, juniorWorkspaces } from "@/db/schema";
+import {
+  juniorSnapshots,
+  juniorWorkspaceRepos,
+  juniorWorkspaces,
+} from "@/db/schema";
 import type {
   Workspace,
   WorkspaceSnapshot,
@@ -15,61 +19,53 @@ import {
   type WorkspaceRecipeInput,
 } from "./validation";
 
-function previousSnapshotIdsFromRow(
-  value: typeof juniorWorkspaces.$inferSelect.previousSnapshotIds,
-): string[] {
-  return Array.isArray(value)
-    ? value.filter((entry): entry is string => typeof entry === "string")
-    : [];
-}
+type SnapshotRow = typeof juniorSnapshots.$inferSelect;
 
-function snapshotFromRow(
-  row: typeof juniorWorkspaces.$inferSelect,
-): WorkspaceSnapshot | null {
+function snapshotFromRow(row: SnapshotRow | undefined): WorkspaceSnapshot | null {
   if (
+    !row ||
+    row.status !== "ready" ||
     !row.snapshotId ||
-    !row.snapshotGeneratedAt ||
-    row.snapshotBuildDurationMs == null ||
-    !row.snapshotProfileHash ||
-    !row.snapshotRuntime ||
-    row.snapshotDependencyCount == null
+    !row.generatedAt ||
+    row.buildDurationMs == null ||
+    !row.runtime ||
+    row.dependencyCount == null
   ) {
     return null;
   }
   return {
     id: row.snapshotId,
-    generatedAt: row.snapshotGeneratedAt,
-    buildDurationMs: row.snapshotBuildDurationMs,
-    profileHash: row.snapshotProfileHash,
-    runtime: row.snapshotRuntime,
-    dependencyCount: row.snapshotDependencyCount,
-    previousSnapshotIds: previousSnapshotIdsFromRow(row.previousSnapshotIds),
+    generatedAt: row.generatedAt,
+    buildDurationMs: row.buildDurationMs,
+    profileHash: row.profileHash,
+    runtime: row.runtime,
+    dependencyCount: row.dependencyCount,
   };
 }
 
 function snapshotBuildFromRow(
-  row: typeof juniorWorkspaces.$inferSelect,
+  row: SnapshotRow | undefined,
 ): WorkspaceSnapshotBuild | null {
-  if (
-    !row.snapshotStatus ||
-    !row.snapshotBuildProfileHash ||
-    !row.snapshotBuildStartedAt
-  ) {
-    return null;
-  }
+  if (!row || !row.buildStartedAt) return null;
   return {
-    status: row.snapshotStatus,
-    profileHash: row.snapshotBuildProfileHash,
-    startedAt: row.snapshotBuildStartedAt,
-    sandboxName: row.snapshotBuildSandboxName,
-    commandId: row.snapshotBuildCommandId,
-    error: row.snapshotBuildError,
+    status: row.status,
+    profileHash: row.profileHash,
+    startedAt: row.buildStartedAt,
+    sandboxName: row.buildSandboxName,
+    commandId: row.buildCommandId,
+    error: row.buildError,
   };
 }
+
+type WorkspaceSnapshotRows = {
+  ready: SnapshotRow | undefined;
+  build: SnapshotRow | undefined;
+};
 
 function workspaceFromRows(
   row: typeof juniorWorkspaces.$inferSelect,
   repos: Array<typeof juniorWorkspaceRepos.$inferSelect>,
+  snapshots: WorkspaceSnapshotRows,
 ): Workspace {
   return {
     id: row.id,
@@ -79,8 +75,8 @@ function workspaceFromRows(
       provider: repo.provider,
       repo: repo.repo,
     })),
-    snapshot: snapshotFromRow(row),
-    snapshotBuild: snapshotBuildFromRow(row),
+    snapshot: snapshotFromRow(snapshots.ready),
+    snapshotBuild: snapshotBuildFromRow(snapshots.build),
   };
 }
 
@@ -96,6 +92,63 @@ async function loadWorkspaceRepos(
       asc(juniorWorkspaceRepos.provider),
       asc(juniorWorkspaceRepos.repo),
     );
+}
+
+function emptySnapshotRows(): WorkspaceSnapshotRows {
+  return { ready: undefined, build: undefined };
+}
+
+function collectSnapshotRows(rows: SnapshotRow[]): WorkspaceSnapshotRows {
+  const result = emptySnapshotRows();
+  for (const row of rows) {
+    if (!result.ready && row.status === "ready") {
+      result.ready = row;
+    }
+    if (!result.build && row.status !== "ready") {
+      result.build = row;
+    }
+    if (result.ready && result.build) break;
+  }
+  return result;
+}
+
+/** Latest ready artifact and latest in-flight/failed build per workspace. */
+async function loadLatestSnapshotsByWorkspace(
+  db: JuniorDatabase,
+  workspaceIds: string[],
+): Promise<Map<string, WorkspaceSnapshotRows>> {
+  const byWorkspace = new Map<string, WorkspaceSnapshotRows>();
+  if (workspaceIds.length === 0) return byWorkspace;
+  const rows = await db
+    .select()
+    .from(juniorSnapshots)
+    .where(inArray(juniorSnapshots.workspaceId, workspaceIds))
+    .orderBy(desc(juniorSnapshots.updatedAt), desc(juniorSnapshots.createdAt));
+  const grouped = new Map<string, SnapshotRow[]>();
+  for (const row of rows) {
+    const list = grouped.get(row.workspaceId);
+    if (list) list.push(row);
+    else grouped.set(row.workspaceId, [row]);
+  }
+  for (const workspaceId of workspaceIds) {
+    byWorkspace.set(
+      workspaceId,
+      collectSnapshotRows(grouped.get(workspaceId) ?? []),
+    );
+  }
+  return byWorkspace;
+}
+
+async function loadLatestSnapshots(
+  db: JuniorDatabase,
+  workspaceId: string,
+): Promise<WorkspaceSnapshotRows> {
+  const rows = await db
+    .select()
+    .from(juniorSnapshots)
+    .where(eq(juniorSnapshots.workspaceId, workspaceId))
+    .orderBy(desc(juniorSnapshots.updatedAt), desc(juniorSnapshots.createdAt));
+  return collectSnapshotRows(rows);
 }
 
 async function replaceWorkspaceRepos(
@@ -160,10 +213,15 @@ export async function listWorkspaces(db: JuniorDatabase): Promise<Workspace[]> {
         asc(juniorWorkspaceRepos.repo),
       ),
   ]);
+  const snapshots = await loadLatestSnapshotsByWorkspace(
+    db,
+    workspaces.map((workspace) => workspace.id),
+  );
   return workspaces.map((workspace) =>
     workspaceFromRows(
       workspace,
       repos.filter((repo) => repo.workspaceId === workspace.id),
+      snapshots.get(workspace.id) ?? emptySnapshotRows(),
     ),
   );
 }
@@ -208,6 +266,7 @@ export async function getWorkspaceByName(
   return workspaceFromRows(
     workspace,
     await loadWorkspaceRepos(db, workspace.id),
+    await loadLatestSnapshots(db, workspace.id),
   );
 }
 
@@ -226,6 +285,7 @@ export async function getWorkspace(
   return workspaceFromRows(
     workspace,
     await loadWorkspaceRepos(db, workspace.id),
+    await loadLatestSnapshots(db, workspace.id),
   );
 }
 
@@ -302,34 +362,24 @@ export async function updateWorkspace(
         .set({
           name: recipe.name,
           setupScript: recipe.setupScript,
-          ...(snapshotChanged
-            ? {
-                snapshotId: null,
-                snapshotGeneratedAt: null,
-                snapshotBuildDurationMs: null,
-                snapshotProfileHash: null,
-                snapshotRuntime: null,
-                snapshotDependencyCount: null,
-                // Keep prior ids for later GC; do not delete Vercel snapshots here.
-                previousSnapshotIds: existing.snapshotId
-                  ? [
-                      ...previousSnapshotIdsFromRow(existing.previousSnapshotIds),
-                      existing.snapshotId,
-                    ]
-                  : previousSnapshotIdsFromRow(existing.previousSnapshotIds),
-                snapshotStatus: null,
-                snapshotBuildProfileHash: null,
-                snapshotBuildStartedAt: null,
-                snapshotBuildSandboxName: null,
-                snapshotBuildCommandId: null,
-                snapshotBuildError: null,
-              }
-            : {}),
           updatedAt: now,
         })
         .where(eq(juniorWorkspaces.id, id))
         .returning();
       await replaceWorkspaceRepos(db, id, recipe.repos);
+      if (snapshotChanged) {
+        // Drop in-flight/failed rows for the old recipe. Keep ready rows so
+        // their Vercel snapshot ids remain available for later GC.
+        // TODO: garbage-collect retired Vercel snapshots once retention policy exists.
+        await db
+          .delete(juniorSnapshots)
+          .where(
+            and(
+              eq(juniorSnapshots.workspaceId, id),
+              ne(juniorSnapshots.status, "ready"),
+            ),
+          );
+      }
       return rows[0];
     });
     if (!updated) return undefined;
@@ -366,47 +416,86 @@ export async function setWorkspaceSnapshot(
   const executor = getSqlExecutor();
   await executor.transaction(async () => {
     const db = executor.db();
-    const existingRows = await db
-      .select({
-        snapshotId: juniorWorkspaces.snapshotId,
-        previousSnapshotIds: juniorWorkspaces.previousSnapshotIds,
-      })
+    const workspaceRows = await db
+      .select({ id: juniorWorkspaces.id })
       .from(juniorWorkspaces)
       .where(eq(juniorWorkspaces.id, workspaceId))
       .limit(1);
-    const existing = existingRows[0];
-    if (!existing) return;
+    if (!workspaceRows[0]) return;
 
-    const previousSnapshotIds = previousSnapshotIdsFromRow(
-      existing.previousSnapshotIds,
-    );
+    const now = new Date();
+    const existing = await db
+      .select()
+      .from(juniorSnapshots)
+      .where(
+        and(
+          eq(juniorSnapshots.workspaceId, workspaceId),
+          eq(juniorSnapshots.profileHash, snapshot.profileHash),
+        ),
+      )
+      .orderBy(desc(juniorSnapshots.updatedAt), desc(juniorSnapshots.createdAt))
+      .limit(1);
+    const current = existing[0];
+
+    // Keep prior ready rows with different snapshot ids for later GC.
     // TODO: garbage-collect retired Vercel snapshots once retention policy exists.
-    if (
-      existing.snapshotId &&
-      existing.snapshotId !== snapshot.id &&
-      !previousSnapshotIds.includes(existing.snapshotId)
-    ) {
-      previousSnapshotIds.push(existing.snapshotId);
+    if (current && current.status !== "ready") {
+      await db
+        .update(juniorSnapshots)
+        .set({
+          status: "ready",
+          snapshotId: snapshot.id,
+          runtime: snapshot.runtime,
+          dependencyCount: snapshot.dependencyCount,
+          buildDurationMs: snapshot.buildDurationMs,
+          generatedAt: snapshot.generatedAt,
+          buildSandboxName: null,
+          buildCommandId: null,
+          buildError: null,
+          updatedAt: now,
+        })
+        .where(eq(juniorSnapshots.id, current.id));
+      return;
     }
 
-    await db
-      .update(juniorWorkspaces)
-      .set({
-        snapshotId: snapshot.id,
-        snapshotGeneratedAt: snapshot.generatedAt,
-        snapshotBuildDurationMs: snapshot.buildDurationMs,
-        snapshotProfileHash: snapshot.profileHash,
-        snapshotRuntime: snapshot.runtime,
-        snapshotDependencyCount: snapshot.dependencyCount,
-        previousSnapshotIds,
-        snapshotStatus: "ready",
-        snapshotBuildProfileHash: snapshot.profileHash,
-        snapshotBuildError: null,
-        snapshotBuildSandboxName: null,
-        snapshotBuildCommandId: null,
-        updatedAt: new Date(),
-      })
-      .where(eq(juniorWorkspaces.id, workspaceId));
+    if (
+      current &&
+      current.status === "ready" &&
+      current.snapshotId === snapshot.id
+    ) {
+      await db
+        .update(juniorSnapshots)
+        .set({
+          runtime: snapshot.runtime,
+          dependencyCount: snapshot.dependencyCount,
+          buildDurationMs: snapshot.buildDurationMs,
+          generatedAt: snapshot.generatedAt,
+          buildSandboxName: null,
+          buildCommandId: null,
+          buildError: null,
+          updatedAt: now,
+        })
+        .where(eq(juniorSnapshots.id, current.id));
+      return;
+    }
+
+    await db.insert(juniorSnapshots).values({
+      id: randomUUID(),
+      workspaceId,
+      profileHash: snapshot.profileHash,
+      status: "ready",
+      snapshotId: snapshot.id,
+      runtime: snapshot.runtime,
+      dependencyCount: snapshot.dependencyCount,
+      buildDurationMs: snapshot.buildDurationMs,
+      generatedAt: snapshot.generatedAt,
+      buildStartedAt: null,
+      buildSandboxName: null,
+      buildCommandId: null,
+      buildError: null,
+      createdAt: now,
+      updatedAt: now,
+    });
   });
 }
 
@@ -416,19 +505,64 @@ export async function setWorkspaceSnapshotBuild(
   build: WorkspaceSnapshotBuild,
 ): Promise<void> {
   const executor = getSqlExecutor();
-  await executor
-    .db()
-    .update(juniorWorkspaces)
-    .set({
-      snapshotStatus: build.status,
-      snapshotBuildProfileHash: build.profileHash,
-      snapshotBuildStartedAt: build.startedAt,
-      snapshotBuildSandboxName: build.sandboxName,
-      snapshotBuildCommandId: build.commandId,
-      snapshotBuildError: build.error,
-      updatedAt: new Date(),
-    })
-    .where(eq(juniorWorkspaces.id, workspaceId));
+  await executor.transaction(async () => {
+    const db = executor.db();
+    const workspaceRows = await db
+      .select({ id: juniorWorkspaces.id })
+      .from(juniorWorkspaces)
+      .where(eq(juniorWorkspaces.id, workspaceId))
+      .limit(1);
+    if (!workspaceRows[0]) return;
+
+    const now = new Date();
+    const existing = await db
+      .select()
+      .from(juniorSnapshots)
+      .where(
+        and(
+          eq(juniorSnapshots.workspaceId, workspaceId),
+          eq(juniorSnapshots.profileHash, build.profileHash),
+        ),
+      )
+      .orderBy(desc(juniorSnapshots.updatedAt), desc(juniorSnapshots.createdAt))
+      .limit(1);
+    const current = existing[0];
+
+    // Never overwrite a ready artifact row with build state. Insert a new
+    // in-flight row so prior ready snapshot ids remain for GC.
+    if (current && current.status !== "ready") {
+      await db
+        .update(juniorSnapshots)
+        .set({
+          status: build.status,
+          buildStartedAt: build.startedAt,
+          buildSandboxName: build.sandboxName,
+          buildCommandId: build.commandId,
+          buildError: build.error,
+          updatedAt: now,
+        })
+        .where(eq(juniorSnapshots.id, current.id));
+      return;
+    }
+
+    await db.insert(juniorSnapshots).values({
+      id: randomUUID(),
+      workspaceId,
+      profileHash: build.profileHash,
+      status: build.status,
+      snapshotId: null,
+      runtime: null,
+      dependencyCount: null,
+      buildDurationMs: null,
+      generatedAt: null,
+      buildStartedAt: build.startedAt,
+      buildSandboxName: build.sandboxName,
+      buildCommandId: build.commandId,
+      buildError: build.error,
+      createdAt: now,
+      updatedAt: now,
+    });
+  });
 }
 
 /** Persist dashboard snapshot facts when resolve returned a concrete entry. */
@@ -461,7 +595,6 @@ export async function recordResolvedWorkspaceSnapshot(
       profileHash: snapshot.profileHash,
       runtime: snapshot.runtime,
       dependencyCount: snapshot.dependencyCount,
-      previousSnapshotIds: [],
     });
   } catch (error) {
     // Dashboard enrichment must not fail a prepared Workspace Sandbox.

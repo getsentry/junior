@@ -220,7 +220,6 @@ describe("workspace admin API", () => {
       profileHash: profileHash!,
       runtime: SANDBOX_RUNTIME,
       dependencyCount: 0,
-      previousSnapshotIds: [],
     });
 
     const detailResponse = await app.request(
@@ -261,7 +260,6 @@ describe("workspace admin API", () => {
       profileHash: profileHash!,
       runtime: SANDBOX_RUNTIME,
       dependencyCount: 0,
-      previousSnapshotIds: [],
     });
 
     const renameResponse = await app.request(

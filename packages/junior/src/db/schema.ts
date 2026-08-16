@@ -21,6 +21,7 @@ import {
   juniorSchedulerTasks,
 } from "./schema/scheduled-tasks";
 import { juniorUsers } from "./schema/users";
+import { juniorSnapshots } from "./schema/snapshots";
 import { juniorWorkspaceRepos, juniorWorkspaces } from "./schema/workspaces";
 
 export {
@@ -38,6 +39,7 @@ export {
   juniorDestinations,
   juniorEventTasks,
   juniorIdentities,
+  juniorSnapshots,
   juniorStats,
   juniorTaskExecutions,
   juniorSchedulerRuns,
@@ -62,6 +64,7 @@ export const juniorSqlSchema = {
   juniorDestinations,
   juniorEventTasks,
   juniorIdentities,
+  juniorSnapshots,
   juniorStats,
   juniorTaskExecutions,
   juniorSchedulerRuns,

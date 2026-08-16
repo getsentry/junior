@@ -178,7 +178,6 @@ describe("Workspace snapshot check-in", () => {
         id: "snap-sentry",
         runtime: "node22",
         dependencyCount: 0,
-        previousSnapshotIds: [],
       }),
     );
   });
