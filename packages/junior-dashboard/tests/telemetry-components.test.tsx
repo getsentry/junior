@@ -74,11 +74,14 @@ function conversation(
   };
 }
 
-function renderTranscript(detail: ConversationTranscript): string {
+function renderTranscript(
+  detail: ConversationTranscript,
+  view: "raw" | "rich" = "rich",
+): string {
   return renderToStaticMarkup(
     <QueryClientProvider client={client}>
       <TranscriptSearchProvider query="">
-        <ConversationTranscriptView conversation={detail} view="rich" />
+        <ConversationTranscriptView conversation={detail} view={view} />
       </TranscriptSearchProvider>
     </QueryClientProvider>,
   );
@@ -899,6 +902,22 @@ describe("dashboard canonical-event components", () => {
       "Junior could not deliver this message to its destination.",
     );
     expect(html).not.toContain("Agent response failed");
+  });
+
+  it("does not invent an object for an empty raw message", () => {
+    const html = renderTranscript(
+      conversation([
+        event(0, {
+          type: "message",
+          messageId: "assistant-1",
+          role: "assistant",
+          text: "",
+        }),
+      ]),
+      "raw",
+    );
+
+    expect(html).not.toContain("{}");
   });
 
   it("renders one in-progress row for a tool start", () => {

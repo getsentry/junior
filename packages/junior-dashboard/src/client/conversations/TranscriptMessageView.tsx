@@ -60,7 +60,7 @@ export const TranscriptMessageView = memo(
         />
         {props.view === "raw" ? (
           <HighlightedCode
-            code={rawText || "{}"}
+            code={rawText}
             language={detectLanguage(rawText)}
           />
         ) : (
