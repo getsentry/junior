@@ -1,10 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import {
-  acquireBodyScrollLock,
-  releaseBodyScrollLock,
-  resetBodyScrollLockForTests,
-} from "../src/client/bodyScrollLock";
+import { createBodyScrollLock } from "../src/client/bodyScrollLock";
 
 type StyleBag = {
   overflow: string;
@@ -35,16 +31,12 @@ function installDocumentMock(initial: {
 }
 
 describe("bodyScrollLock", () => {
-  beforeEach(() => {
-    resetBodyScrollLockForTests();
-  });
-
   afterEach(() => {
-    resetBodyScrollLockForTests();
     vi.unstubAllGlobals();
   });
 
   it("locks html and body overflow once and restores the original styles", () => {
+    const lock = createBodyScrollLock();
     const { bodyStyle, htmlStyle } = installDocumentMock({
       bodyOverflow: "auto",
       bodyOverscroll: "auto",
@@ -52,13 +44,13 @@ describe("bodyScrollLock", () => {
       htmlOverscroll: "contain",
     });
 
-    acquireBodyScrollLock();
+    lock.acquire();
     expect(bodyStyle.overflow).toBe("hidden");
     expect(htmlStyle.overflow).toBe("hidden");
     expect(bodyStyle.overscrollBehavior).toBe("none");
     expect(htmlStyle.overscrollBehavior).toBe("none");
 
-    releaseBodyScrollLock();
+    lock.release();
     expect(bodyStyle.overflow).toBe("auto");
     expect(htmlStyle.overflow).toBe("scroll");
     expect(bodyStyle.overscrollBehavior).toBe("auto");
@@ -66,32 +58,34 @@ describe("bodyScrollLock", () => {
   });
 
   it("keeps the page locked until nested holders all release", () => {
+    const lock = createBodyScrollLock();
     const { bodyStyle } = installDocumentMock();
 
     // Workspace shell + open mobile nav both hold the lock.
-    acquireBodyScrollLock();
-    acquireBodyScrollLock();
+    lock.acquire();
+    lock.acquire();
     expect(bodyStyle.overflow).toBe("hidden");
 
     // Leaving the workspace first must not unlock under the still-open nav.
-    releaseBodyScrollLock();
+    lock.release();
     expect(bodyStyle.overflow).toBe("hidden");
 
-    releaseBodyScrollLock();
+    lock.release();
     expect(bodyStyle.overflow).toBe("");
   });
 
   it("does not restore a nested capture of hidden after coordinated release", () => {
+    const lock = createBodyScrollLock();
     const { bodyStyle } = installDocumentMock();
 
     // Shell locks first (as on mobile workspace).
-    acquireBodyScrollLock();
+    lock.acquire();
     // Nav sheet acquires while already locked — must not snapshot "hidden".
-    acquireBodyScrollLock();
+    lock.acquire();
 
     // Navigate away: shell cleanup, then nav cleanup on pathname change.
-    releaseBodyScrollLock();
-    releaseBodyScrollLock();
+    lock.release();
+    lock.release();
 
     expect(bodyStyle.overflow).toBe("");
   });
