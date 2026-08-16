@@ -17,11 +17,15 @@ describe("slack ids", () => {
     expect(parseSlackChannelId("slack:")).toBeUndefined();
   });
 
-  it("parses channel ids from Junior slack references", () => {
+  it("parses channel ids from Junior slack references and Slack mentions", () => {
     expect(parseSlackChannelReferenceId("slack:C123")).toBe("C123");
     expect(parseSlackChannelReferenceId(" slack:C123:1700000000.100 ")).toBe(
       "C123",
     );
+    expect(parseSlackChannelReferenceId("<#C123>")).toBe("C123");
+    expect(parseSlackChannelReferenceId("<#C123|proj-foo>")).toBe("C123");
+    expect(parseSlackChannelReferenceId("#proj-foo")).toBeUndefined();
+    expect(parseSlackChannelReferenceId("proj-foo")).toBeUndefined();
     expect(parseSlackChannelReferenceId("slack:C123:not-a-ts")).toBeUndefined();
   });
 

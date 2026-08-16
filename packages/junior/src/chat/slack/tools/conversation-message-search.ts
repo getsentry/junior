@@ -70,7 +70,7 @@ async function resolveSearchFilters(input: {
   let channelId: string | undefined;
 
   if (input.channel_id != null && input.channel_id.trim() !== "") {
-    const target = await resolveSlackChannelRef({
+    const target = resolveSlackChannelRef({
       field: "channel_id",
       value: input.channel_id,
     });

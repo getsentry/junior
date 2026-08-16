@@ -119,7 +119,7 @@ export function createSlackChannelListMessagesTool(context: SlackToolContext) {
       inclusive,
       max_pages,
     }) => {
-      const target = await resolveOptionalSlackChannelRef({
+      const target = resolveOptionalSlackChannelRef({
         field: "channel_id",
         value: channel_id,
         defaultChannelId: context.destinationChannelId,
@@ -168,7 +168,7 @@ export function createSlackChannelListMessagesTool(context: SlackToolContext) {
 
       let result: Awaited<ReturnType<typeof listChannelMessages>> | undefined;
       let joined = false;
-      let channelName = access.channelName ?? target.channelName;
+      let channelName = access.channelName;
       let readError: unknown;
       try {
         result = await readHistory();
