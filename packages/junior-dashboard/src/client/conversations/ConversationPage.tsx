@@ -252,7 +252,6 @@ export function ConversationPage(props: {
         <ConversationReplyFooter
           conversation={detail.data}
           conversationId={conversationId}
-          live={live}
           onPinRequest={requestPin}
           pendingAuthorization={detail.pendingAuthorization}
           pendingGeneratedAt={detail.pendingGeneratedAt}
@@ -274,7 +273,6 @@ export function ConversationPage(props: {
 function ConversationReplyFooter(props: {
   conversation: ConversationTranscript;
   conversationId: string;
-  live: boolean;
   onPinRequest: () => void;
   pendingAuthorization?: ConversationPendingMessagesReport["authorization"];
   pendingGeneratedAt?: string;
@@ -366,15 +364,6 @@ function ConversationReplyFooter(props: {
     <div className="flex w-full min-h-0 max-h-[min(55dvh,24rem)] flex-col overflow-hidden self-end px-2 pt-1.5 pb-[calc(0.375rem+env(safe-area-inset-bottom))] md:max-h-none md:overflow-visible md:self-auto md:px-7 md:py-4 md:pb-4">
       {/* Queue chrome may scroll; keep the composer pinned below it on mobile. */}
       <div className="min-h-0 min-w-0 shrink overflow-y-auto overscroll-contain md:overflow-visible">
-        {props.live ? (
-          <div className="mb-1.5 flex items-center gap-2 font-sans text-xs text-dashboard-text-muted md:hidden">
-            <span
-              aria-hidden="true"
-              className="size-1.5 shrink-0 animate-pulse rounded-full bg-emerald-300"
-            />
-            <span>Junior is working…</span>
-          </div>
-        ) : null}
         {props.pendingAuthorization ? (
           <PendingAuthorization authorization={props.pendingAuthorization} />
         ) : null}
