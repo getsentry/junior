@@ -16,7 +16,6 @@ import {
 } from "@/chat/sandbox/snapshot/resolve";
 import {
   createSandboxSession,
-  stopSession,
   type SandboxSession,
 } from "@/chat/sandbox/workspace";
 import { getStateAdapter } from "@/chat/state/adapter";
@@ -26,7 +25,7 @@ import {
   setWorkspaceSnapshot,
   setWorkspaceSnapshotBuild,
 } from "@/chat/workspaces/store";
-import type { Workspace } from "@/chat/workspaces/types";
+import type { Workspace, WorkspaceSnapshotBuild } from "@/chat/workspaces/types";
 
 const BUILD_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 const BUILD_LOCK_TTL_MS = 2 * 60 * 1000;
@@ -34,7 +33,9 @@ const BUILD_LOCK_PREFIX = "junior:workspace_snapshot_start";
 
 export class WorkspaceSnapshotBuildingError extends Error {
   constructor(workspace: string) {
-    super(`Workspace ${workspace} snapshot is still building. Try switching again later.`);
+    super(
+      `Workspace ${workspace} snapshot is still building. Try switching again later.`,
+    );
     this.name = "WorkspaceSnapshotBuildingError";
   }
 }
@@ -63,41 +64,106 @@ function snapshotFromCache(
   };
 }
 
+/** Boot from a durable SQL ready row and refresh the Redis hot cache. */
+async function snapshotFromSql(
+  workspace: Workspace,
+  value: profile.Profile,
+): Promise<Snapshot | null> {
+  const ready = workspace.snapshot;
+  if (!ready || ready.profileHash !== value.hash) return null;
+  if (profile.isStale(value, ready.generatedAt.getTime())) return null;
+  await setCachedSnapshot({
+    profileHash: ready.profileHash,
+    snapshotId: ready.id,
+    runtime: ready.runtime,
+    createdAtMs: ready.generatedAt.getTime(),
+    dependencyCount: ready.dependencyCount,
+    buildDurationMs: ready.buildDurationMs,
+  });
+  return {
+    snapshotId: ready.id,
+    profileHash: ready.profileHash,
+    dependencyCount: ready.dependencyCount,
+    cacheHit: true,
+    resolveOutcome: "cache_hit",
+    createdAtMs: ready.generatedAt.getTime(),
+    buildDurationMs: ready.buildDurationMs,
+  };
+}
+
+function activeBuild(
+  workspace: Workspace,
+  profileHash: string,
+): WorkspaceSnapshotBuild | null {
+  const build = workspace.snapshotBuild;
+  if (!build || build.profileHash !== profileHash) return null;
+  if (build.status !== "building" || !build.sandboxName) return null;
+  return build;
+}
+
+async function getBuilderSandbox(
+  sandboxName: string,
+  signal?: AbortSignal,
+): Promise<Sandbox> {
+  const credentials = getVercelSandboxCredentials();
+  return await Sandbox.get({
+    name: sandboxName,
+    resume: false,
+    signal,
+    ...(credentials ?? {}),
+  });
+}
+
+async function stopBuilder(sandboxName: string | null | undefined): Promise<void> {
+  if (!sandboxName) return;
+  try {
+    const sandbox = await getBuilderSandbox(sandboxName);
+    await sandbox.stop();
+  } catch {
+    // Builder may already be finalized after snapshot or timeout.
+  }
+}
+
+async function markFailed(
+  workspace: Workspace,
+  build: WorkspaceSnapshotBuild,
+  error: string,
+): Promise<void> {
+  await setWorkspaceSnapshotBuild(workspace.id, {
+    ...build,
+    status: "failed",
+    error,
+  });
+  await stopBuilder(build.sandboxName);
+}
+
+/** Poll a detached setup command; snapshot and stop the builder when it exits. */
 async function finishBuild(
   workspace: Workspace,
   value: profile.Profile,
   runtime: string,
   signal?: AbortSignal,
 ): Promise<Snapshot | null> {
-  const build = workspace.snapshotBuild;
-  if (
-    build?.status !== "building" ||
-    build.profileHash !== value.hash ||
-    !build.sandboxName ||
-    !build.commandId
-  ) {
-    return null;
-  }
+  const build = activeBuild(workspace, value.hash);
+  if (!build?.commandId || !build.sandboxName) return null;
 
-  const credentials = getVercelSandboxCredentials();
-  const sandbox = await Sandbox.get({
-    name: build.sandboxName,
-    resume: false,
-    signal,
-    ...(credentials ?? {}),
-  });
+  const sandbox = await getBuilderSandbox(build.sandboxName, signal);
+  try {
+    await sandbox.extendTimeout(BUILD_TIMEOUT_MS, { signal });
+  } catch {
+    // Keep polling even if extend is unavailable on this runtime.
+  }
   const command = await sandbox.getCommand(build.commandId, { signal });
   if (command.exitCode == null) {
     return null;
   }
   if (command.exitCode !== 0) {
-    const error = (await command.stderr({ signal })).trim() || `exit ${command.exitCode}`;
-    await setWorkspaceSnapshotBuild(workspace.id, {
-      ...build,
-      status: "failed",
-      error,
-    });
-    throw new Error(`Workspace ${workspace.name} snapshot setup failed: ${error}`);
+    const error =
+      (await command.stderr({ signal })).trim() || `exit ${command.exitCode}`;
+    await markFailed(workspace, build, error);
+    throw new Error(
+      `Workspace ${workspace.name} snapshot setup failed: ${error}`,
+    );
   }
 
   const snapshot = await sandbox.snapshot({ signal });
@@ -119,6 +185,7 @@ async function finishBuild(
     runtime,
     dependencyCount: value.dependencyCount,
   });
+  await stopBuilder(build.sandboxName);
   return {
     snapshotId: snapshot.snapshotId,
     profileHash: value.hash,
@@ -131,57 +198,34 @@ async function finishBuild(
   };
 }
 
+/** Create the long-lived builder only. Prep runs on a later check-in. */
 async function startBuild(params: {
   workspace: Workspace;
   value: profile.Profile;
   runtime: string;
   signal?: AbortSignal;
-  applyNetworkPolicy(sandbox: SandboxSession): Promise<unknown>;
-  prepareRepositories?(
-    sandbox: SandboxSession,
-    workspace: Workspace,
-    signal?: AbortSignal,
-  ): Promise<void>;
-  removeCredentialRoute: boolean;
 }): Promise<void> {
   const { workspace, value, signal } = params;
   const credentials = getVercelSandboxCredentials();
   const resources = getSandboxResources();
   const name = builderName();
-  const sandbox = await Sandbox.create({
-    name,
-    persistent: true,
-    timeout: BUILD_TIMEOUT_MS,
-    runtime: params.runtime,
-    signal,
-    ...(credentials ?? {}),
-    ...(resources ? { resources } : {}),
-  });
-  const session = createSandboxSession(sandbox);
   const startedAt = new Date();
   try {
-    await install.dependencies(session, value.dependencies, signal);
-    await install.postinstall(session, value.postinstall, signal);
-    await prepareWorkspaceRepositories({
-      sandbox: session,
-      workspace,
+    await Sandbox.create({
+      name,
+      persistent: true,
+      timeout: BUILD_TIMEOUT_MS,
+      runtime: params.runtime,
       signal,
-      applyNetworkPolicy: params.applyNetworkPolicy,
-      prepareRepositories: params.prepareRepositories,
-      removeCredentialRoute: params.removeCredentialRoute,
-    });
-    const command = await sandbox.runCommand({
-      ...workspaceSetupCommand(workspace),
-      detached: true,
-      timeoutMs: BUILD_TIMEOUT_MS,
-      signal,
+      ...(credentials ?? {}),
+      ...(resources ? { resources } : {}),
     });
     await setWorkspaceSnapshotBuild(workspace.id, {
       status: "building",
       profileHash: value.hash,
       startedAt,
       sandboxName: name,
-      commandId: command.cmdId,
+      commandId: null,
       error: null,
     });
   } catch (error) {
@@ -193,7 +237,67 @@ async function startBuild(params: {
       commandId: null,
       error: error instanceof Error ? error.message : String(error),
     });
-    await stopSession(session);
+    await stopBuilder(name);
+    throw error;
+  }
+}
+
+/**
+ * Run install + clone on the existing builder, then detach setup.
+ * One check-in owns this slice so the start path stays create-only.
+ */
+async function continueBuild(params: {
+  workspace: Workspace;
+  value: profile.Profile;
+  signal?: AbortSignal;
+  applyNetworkPolicy(sandbox: SandboxSession): Promise<unknown>;
+  prepareRepositories?(
+    sandbox: SandboxSession,
+    workspace: Workspace,
+    signal?: AbortSignal,
+  ): Promise<void>;
+  removeCredentialRoute: boolean;
+}): Promise<void> {
+  const build = activeBuild(params.workspace, params.value.hash);
+  if (!build?.sandboxName || build.commandId) return;
+
+  const sandbox = await getBuilderSandbox(build.sandboxName, params.signal);
+  const session = createSandboxSession(sandbox);
+  try {
+    try {
+      await sandbox.extendTimeout(BUILD_TIMEOUT_MS, { signal: params.signal });
+    } catch {
+      // Best-effort keepalive for the prep slice.
+    }
+    await install.dependencies(
+      session,
+      params.value.dependencies,
+      params.signal,
+    );
+    await install.postinstall(session, params.value.postinstall, params.signal);
+    await prepareWorkspaceRepositories({
+      sandbox: session,
+      workspace: params.workspace,
+      signal: params.signal,
+      applyNetworkPolicy: params.applyNetworkPolicy,
+      prepareRepositories: params.prepareRepositories,
+      removeCredentialRoute: params.removeCredentialRoute,
+    });
+    const command = await sandbox.runCommand({
+      ...workspaceSetupCommand(params.workspace),
+      detached: true,
+      timeoutMs: BUILD_TIMEOUT_MS,
+      signal: params.signal,
+    });
+    await setWorkspaceSnapshotBuild(params.workspace.id, {
+      ...build,
+      status: "building",
+      commandId: command.cmdId,
+      error: null,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await markFailed(params.workspace, build, message);
     throw error;
   }
 }
@@ -213,10 +317,18 @@ export async function resolveWorkspaceSnapshot(params: {
 }): Promise<Snapshot> {
   const value = profile.create(params.runtime, params.workspace);
   if (!value) {
-    throw new Error(`Workspace ${params.workspace.name} has no snapshot profile`);
+    throw new Error(
+      `Workspace ${params.workspace.name} has no snapshot profile`,
+    );
   }
   const cached = snapshotFromCache(await getCachedSnapshot(value.hash), value);
   if (cached) return cached;
+
+  // SQL is durable truth for ready artifacts when Redis misses.
+  const latest =
+    (await getWorkspace(getDb(), params.workspace.id)) ?? params.workspace;
+  const sqlCached = await snapshotFromSql(latest, value);
+  if (sqlCached) return sqlCached;
 
   const state = getStateAdapter();
   await state.connect();
@@ -232,6 +344,9 @@ export async function resolveWorkspaceSnapshot(params: {
 
       const workspace =
         (await getWorkspace(getDb(), params.workspace.id)) ?? params.workspace;
+      const sqlInsideLock = await snapshotFromSql(workspace, value);
+      if (sqlInsideLock) return sqlInsideLock;
+
       const finished = await finishBuild(
         workspace,
         value,
@@ -240,13 +355,18 @@ export async function resolveWorkspaceSnapshot(params: {
       );
       if (finished) return finished;
 
-      if (
-        workspace.snapshotBuild?.status !== "building" ||
-        workspace.snapshotBuild.profileHash !== value.hash ||
-        !workspace.snapshotBuild.sandboxName ||
-        !workspace.snapshotBuild.commandId
-      ) {
-        await startBuild({ ...params, workspace, value });
+      const build = activeBuild(workspace, value.hash);
+      if (build && !build.commandId) {
+        // Builder exists; this check-in owns install/clone + detached setup.
+        await continueBuild({ ...params, workspace, value });
+      } else if (!build) {
+        // Create-only start. Prep waits for the next check-in.
+        await startBuild({
+          workspace,
+          value,
+          runtime: params.runtime,
+          signal: params.signal,
+        });
       }
       return null;
     },
