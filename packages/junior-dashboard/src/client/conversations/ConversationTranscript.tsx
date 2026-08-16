@@ -72,7 +72,7 @@ export const ConversationTranscriptView = memo(function ConversationTranscriptVi
   const messages = conversationTranscriptMessages(props.conversation);
 
   return (
-    <section className="min-w-0 py-1">
+    <section className="min-w-0 pt-1">
       <div className="min-w-0">
         <SegmentEvents
           onOpenSubagentTranscript={props.onOpenSubagentTranscript}
