@@ -4,7 +4,11 @@ import { getSqlExecutor } from "@/chat/db";
 import { logException } from "@/chat/logging";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorWorkspaceRepos, juniorWorkspaces } from "@/db/schema";
-import type { Workspace, WorkspaceSnapshot } from "./types";
+import type {
+  Workspace,
+  WorkspaceSnapshot,
+  WorkspaceSnapshotBuild,
+} from "./types";
 import {
   normalizeWorkspaceRecipe,
   WorkspaceValidationError,
@@ -30,6 +34,26 @@ function snapshotFromRow(
   };
 }
 
+function snapshotBuildFromRow(
+  row: typeof juniorWorkspaces.$inferSelect,
+): WorkspaceSnapshotBuild | null {
+  if (
+    !row.snapshotStatus ||
+    !row.snapshotBuildProfileHash ||
+    !row.snapshotBuildStartedAt
+  ) {
+    return null;
+  }
+  return {
+    status: row.snapshotStatus,
+    profileHash: row.snapshotBuildProfileHash,
+    startedAt: row.snapshotBuildStartedAt,
+    sandboxName: row.snapshotBuildSandboxName,
+    commandId: row.snapshotBuildCommandId,
+    error: row.snapshotBuildError,
+  };
+}
+
 function workspaceFromRows(
   row: typeof juniorWorkspaces.$inferSelect,
   repos: Array<typeof juniorWorkspaceRepos.$inferSelect>,
@@ -43,6 +67,7 @@ function workspaceFromRows(
       repo: repo.repo,
     })),
     snapshot: snapshotFromRow(row),
+    snapshotBuild: snapshotBuildFromRow(row),
   };
 }
 
@@ -270,6 +295,12 @@ export async function updateWorkspace(
                 snapshotGeneratedAt: null,
                 snapshotBuildDurationMs: null,
                 snapshotProfileHash: null,
+                snapshotStatus: null,
+                snapshotBuildProfileHash: null,
+                snapshotBuildStartedAt: null,
+                snapshotBuildSandboxName: null,
+                snapshotBuildCommandId: null,
+                snapshotBuildError: null,
               }
             : {}),
           updatedAt: now,
@@ -319,6 +350,30 @@ export async function setWorkspaceSnapshot(
       snapshotGeneratedAt: snapshot.generatedAt,
       snapshotBuildDurationMs: snapshot.buildDurationMs,
       snapshotProfileHash: snapshot.profileHash,
+      snapshotStatus: "ready",
+      snapshotBuildProfileHash: snapshot.profileHash,
+      snapshotBuildError: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(juniorWorkspaces.id, workspaceId));
+}
+
+/** Record a Workspace snapshot build that can continue outside one function invocation. */
+export async function setWorkspaceSnapshotBuild(
+  workspaceId: string,
+  build: WorkspaceSnapshotBuild,
+): Promise<void> {
+  const executor = getSqlExecutor();
+  await executor
+    .db()
+    .update(juniorWorkspaces)
+    .set({
+      snapshotStatus: build.status,
+      snapshotBuildProfileHash: build.profileHash,
+      snapshotBuildStartedAt: build.startedAt,
+      snapshotBuildSandboxName: build.sandboxName,
+      snapshotBuildCommandId: build.commandId,
+      snapshotBuildError: build.error,
       updatedAt: new Date(),
     })
     .where(eq(juniorWorkspaces.id, workspaceId));

@@ -18,6 +18,7 @@ import {
 } from "@/chat/sandbox/errors";
 import { buildNonInteractiveShellScript } from "@/chat/sandbox/noninteractive-command";
 import { prepareWorkspaceSnapshot } from "@/chat/sandbox/prepare-workspace";
+import { resolveWorkspaceSnapshot } from "@/chat/sandbox/workspace-snapshot";
 import { getSandboxResources } from "@/chat/sandbox/resources";
 import { hash as profileHash } from "@/chat/sandbox/snapshot/profile";
 import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
@@ -486,13 +487,23 @@ export function createSandboxRuntime(
           "app.sandbox.runtime": runtime,
         },
         async () => {
-          const snapshot = await resolveSnapshot({
-            runtime,
-            timeoutMs,
-            signal,
-            workspace,
-            prepareWorkspace,
-          });
+          const snapshot =
+            workspace?.setupScript.trim()
+              ? await resolveWorkspaceSnapshot({
+                  workspace,
+                  runtime,
+                  signal,
+                  applyNetworkPolicy,
+                  prepareRepositories: options.onWorkspacePrepare,
+                  removeCredentialRoute: Boolean(options.createNetworkPolicy),
+                })
+              : await resolveSnapshot({
+                  runtime,
+                  timeoutMs,
+                  signal,
+                  workspace,
+                  prepareWorkspace,
+                });
           signal?.throwIfAborted();
           setSnapshotAttributes(snapshot);
           const created = await createSandboxFromResolvedSnapshot({

@@ -5,6 +5,7 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import type { WorkspaceSnapshotStatus } from "@/chat/workspaces/types";
 import { timestamptz } from "./timestamps";
 
 /** Named recipe used to prepare a reusable Sandbox. */
@@ -19,6 +20,12 @@ export const juniorWorkspaces = pgTable(
     snapshotGeneratedAt: timestamptz("snapshot_generated_at"),
     snapshotBuildDurationMs: integer("snapshot_build_duration_ms"),
     snapshotProfileHash: text("snapshot_profile_hash"),
+    snapshotStatus: text("snapshot_status").$type<WorkspaceSnapshotStatus>(),
+    snapshotBuildProfileHash: text("snapshot_build_profile_hash"),
+    snapshotBuildStartedAt: timestamptz("snapshot_build_started_at"),
+    snapshotBuildSandboxName: text("snapshot_build_sandbox_name"),
+    snapshotBuildCommandId: text("snapshot_build_command_id"),
+    snapshotBuildError: text("snapshot_build_error"),
     createdAt: timestamptz("created_at").notNull(),
     updatedAt: timestamptz("updated_at").notNull(),
   },
