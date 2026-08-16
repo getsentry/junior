@@ -8,6 +8,7 @@ const {
   setCachedSnapshotMock,
   setWorkspaceSnapshotBuildMock,
   setWorkspaceSnapshotMock,
+  loadSnapshotsForProfileMock,
   installDependenciesMock,
   installPostinstallMock,
   prepareRepositoriesMock,
@@ -20,6 +21,7 @@ const {
   setCachedSnapshotMock: vi.fn(),
   setWorkspaceSnapshotBuildMock: vi.fn(),
   setWorkspaceSnapshotMock: vi.fn(),
+  loadSnapshotsForProfileMock: vi.fn(),
   installDependenciesMock: vi.fn(),
   installPostinstallMock: vi.fn(),
   prepareRepositoriesMock: vi.fn(),
@@ -72,6 +74,58 @@ vi.mock("@/chat/sandbox/workspace", () => ({
 vi.mock("@/chat/sandbox/snapshot/store", () => ({
   setWorkspaceSnapshotBuild: setWorkspaceSnapshotBuildMock,
   setWorkspaceSnapshot: setWorkspaceSnapshotMock,
+  loadSnapshotsForProfile: loadSnapshotsForProfileMock,
+  snapshotFromRow: (row: unknown) => {
+    if (!row || typeof row !== "object") return null;
+    const value = row as {
+      status?: string;
+      snapshotId?: string;
+      generatedAt?: Date;
+      buildDurationMs?: number | null;
+      profileHash?: string;
+      runtime?: string | null;
+      dependencyCount?: number | null;
+    };
+    if (
+      value.status !== "ready" ||
+      !value.snapshotId ||
+      !value.generatedAt ||
+      value.buildDurationMs == null ||
+      !value.profileHash
+    ) {
+      return null;
+    }
+    return {
+      id: value.snapshotId,
+      generatedAt: value.generatedAt,
+      buildDurationMs: value.buildDurationMs,
+      profileHash: value.profileHash,
+      runtime: value.runtime ?? "node22",
+      dependencyCount: value.dependencyCount ?? 0,
+    };
+  },
+  snapshotBuildFromRow: (row: unknown) => {
+    if (!row || typeof row !== "object") return null;
+    const value = row as {
+      status?: "building" | "failed" | "ready";
+      phase?: "created" | "dependencies_installed" | "repositories_prepared";
+      profileHash?: string;
+      startedAt?: Date;
+      sandboxName?: string | null;
+      commandId?: string | null;
+      error?: string | null;
+    };
+    if (!value.startedAt || !value.profileHash || !value.status) return null;
+    return {
+      status: value.status,
+      phase: value.phase ?? "created",
+      profileHash: value.profileHash,
+      startedAt: value.startedAt,
+      sandboxName: value.sandboxName ?? null,
+      commandId: value.commandId ?? null,
+      error: value.error ?? null,
+    };
+  },
 }));
 vi.mock("@/chat/sleep", () => ({
   sleep: sleepMock,
@@ -124,6 +178,10 @@ describe("Workspace snapshot wait", () => {
     vi.clearAllMocks();
     getWorkspaceMock.mockResolvedValue(workspace);
     getCachedSnapshotMock.mockResolvedValue(null);
+    loadSnapshotsForProfileMock.mockResolvedValue({
+      ready: undefined,
+      build: undefined,
+    });
     installDependenciesMock.mockResolvedValue(undefined);
     installPostinstallMock.mockResolvedValue(undefined);
     prepareRepositoriesMock.mockResolvedValue(undefined);
@@ -160,9 +218,19 @@ describe("Workspace snapshot wait", () => {
 
     // After each sleep, surface the latest SQL build row to the next slice.
     sleepMock.mockImplementation(async () => {
-      getWorkspaceMock.mockResolvedValue({
-        ...workspace,
-        snapshotBuild: recordedBuild ?? null,
+      loadSnapshotsForProfileMock.mockResolvedValue({
+        ready: undefined,
+        build: recordedBuild
+          ? {
+              status: recordedBuild.status,
+              phase: recordedBuild.phase,
+              profileHash: recordedBuild.profileHash,
+              startedAt: recordedBuild.startedAt,
+              sandboxName: recordedBuild.sandboxName,
+              commandId: recordedBuild.commandId,
+              error: recordedBuild.error,
+            }
+          : undefined,
       });
       // After prep has stored a command id, the next poll finishes setup.
       if (recordedBuild?.commandId) {
@@ -212,16 +280,17 @@ describe("Workspace snapshot wait", () => {
   });
 
   it("boots legacy SQL ready rows that omit runtime and dependency count", async () => {
-    getWorkspaceMock.mockResolvedValue({
-      ...workspace,
-      snapshot: {
-        id: "snap-legacy",
+    loadSnapshotsForProfileMock.mockResolvedValue({
+      ready: {
+        status: "ready",
+        snapshotId: "snap-legacy",
         generatedAt: new Date("2026-03-01T00:00:00.000Z"),
         buildDurationMs: 9_000,
         profileHash: "profile-sentry",
-        runtime: "node22",
-        dependencyCount: 0,
+        runtime: null,
+        dependencyCount: null,
       },
+      build: undefined,
     });
 
     const snapshot = await resolve();
@@ -241,16 +310,17 @@ describe("Workspace snapshot wait", () => {
   });
 
   it("boots from a SQL ready row when Redis misses", async () => {
-    getWorkspaceMock.mockResolvedValue({
-      ...workspace,
-      snapshot: {
-        id: "snap-sql",
+    loadSnapshotsForProfileMock.mockResolvedValue({
+      ready: {
+        status: "ready",
+        snapshotId: "snap-sql",
         generatedAt: new Date("2026-03-01T00:00:00.000Z"),
         buildDurationMs: 12_000,
         profileHash: "profile-sentry",
         runtime: "node22",
         dependencyCount: 0,
       },
+      build: undefined,
     });
 
     const snapshot = await resolve();

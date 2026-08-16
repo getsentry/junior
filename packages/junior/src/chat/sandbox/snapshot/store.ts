@@ -114,6 +114,25 @@ export async function loadLatestSnapshots(
   return collectSnapshotRows(rows);
 }
 
+/** Ready + in-flight rows for one workspace profile hash. */
+export async function loadSnapshotsForProfile(
+  db: JuniorDatabase,
+  workspaceId: string,
+  profileHash: string,
+): Promise<WorkspaceSnapshotRows> {
+  const rows = await db
+    .select()
+    .from(juniorSnapshots)
+    .where(
+      and(
+        eq(juniorSnapshots.workspaceId, workspaceId),
+        eq(juniorSnapshots.profileHash, profileHash),
+      ),
+    )
+    .orderBy(desc(juniorSnapshots.updatedAt), desc(juniorSnapshots.createdAt));
+  return collectSnapshotRows(rows);
+}
+
 /** Drop in-flight/failed rows when a recipe changes. Keep ready rows for GC. */
 export async function clearNonReadySnapshots(
   db: JuniorDatabase,

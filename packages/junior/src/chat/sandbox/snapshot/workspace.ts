@@ -15,8 +15,11 @@ import {
   type Snapshot,
 } from "@/chat/sandbox/snapshot/resolve";
 import {
+  loadSnapshotsForProfile,
   setWorkspaceSnapshot,
   setWorkspaceSnapshotBuild,
+  snapshotBuildFromRow,
+  snapshotFromRow,
 } from "@/chat/sandbox/snapshot/store";
 import { WorkspaceSnapshotWaitingError } from "@/chat/sandbox/snapshot/waiting-error";
 import {
@@ -65,13 +68,28 @@ function snapshotFromCache(
   };
 }
 
+/** Load ready + build rows for this workspace profile hash. */
+async function loadProfileSnapshots(
+  workspaceId: string,
+  profileHash: string,
+): Promise<{
+  ready: ReturnType<typeof snapshotFromRow>;
+  build: WorkspaceSnapshotBuild | null;
+}> {
+  const rows = await loadSnapshotsForProfile(getDb(), workspaceId, profileHash);
+  return {
+    ready: snapshotFromRow(rows.ready),
+    build: snapshotBuildFromRow(rows.build),
+  };
+}
+
 /** Boot from a durable SQL ready row and refresh the Redis hot cache. */
 async function snapshotFromSql(
-  workspace: Workspace,
+  workspaceId: string,
   value: profile.Profile,
 ): Promise<Snapshot | null> {
-  const ready = workspace.snapshot;
-  if (!ready || ready.profileHash !== value.hash) return null;
+  const { ready } = await loadProfileSnapshots(workspaceId, value.hash);
+  if (!ready) return null;
   if (profile.isStale(value, ready.generatedAt.getTime())) return null;
   await setCachedSnapshot({
     profileHash: ready.profileHash,
@@ -93,12 +111,9 @@ async function snapshotFromSql(
 }
 
 function activeBuild(
-  workspace: Workspace,
-  profileHash: string,
+  build: WorkspaceSnapshotBuild | null,
 ): WorkspaceSnapshotBuild | null {
-  const build = workspace.snapshotBuild;
-  if (!build || build.profileHash !== profileHash) return null;
-  if (build.status !== "building" || !build.sandboxName) return null;
+  if (!build || build.status !== "building" || !build.sandboxName) return null;
   return build;
 }
 
@@ -147,7 +162,11 @@ async function finishBuild(
   runtime: string,
   signal?: AbortSignal,
 ): Promise<Snapshot | null> {
-  const build = activeBuild(workspace, value.hash);
+  const { build: loaded } = await loadProfileSnapshots(
+    workspace.id,
+    value.hash,
+  );
+  const build = activeBuild(loaded);
   if (!build?.commandId || !build.sandboxName) return null;
 
   const sandbox = await getBuilderSandbox(build.sandboxName, signal);
@@ -263,7 +282,11 @@ async function continueBuild(params: {
   ): Promise<void>;
   removeCredentialRoute: boolean;
 }): Promise<void> {
-  const build = activeBuild(params.workspace, params.value.hash);
+  const { build: loaded } = await loadProfileSnapshots(
+    params.workspace.id,
+    params.value.hash,
+  );
+  const build = activeBuild(loaded);
   if (!build?.sandboxName || build.commandId) return;
 
   const sandbox = await getBuilderSandbox(build.sandboxName, params.signal);
@@ -353,9 +376,7 @@ async function advanceWorkspaceSnapshot(params: {
   const cached = snapshotFromCache(await getCachedSnapshot(value.hash), value);
   if (cached) return cached;
 
-  const latest =
-    (await getWorkspace(getDb(), params.workspace.id)) ?? params.workspace;
-  const sqlCached = await snapshotFromSql(latest, value);
+  const sqlCached = await snapshotFromSql(params.workspace.id, value);
   if (sqlCached) return sqlCached;
 
   const state = getStateAdapter();
@@ -370,11 +391,11 @@ async function advanceWorkspaceSnapshot(params: {
       );
       if (cachedInsideLock) return cachedInsideLock;
 
-      const workspace =
-        (await getWorkspace(getDb(), params.workspace.id)) ?? params.workspace;
-      const sqlInsideLock = await snapshotFromSql(workspace, value);
+      const sqlInsideLock = await snapshotFromSql(params.workspace.id, value);
       if (sqlInsideLock) return sqlInsideLock;
 
+      const workspace =
+        (await getWorkspace(getDb(), params.workspace.id)) ?? params.workspace;
       const finished = await finishBuild(
         workspace,
         value,
@@ -383,7 +404,11 @@ async function advanceWorkspaceSnapshot(params: {
       );
       if (finished) return finished;
 
-      const build = activeBuild(workspace, value.hash);
+      const { build: loaded } = await loadProfileSnapshots(
+        workspace.id,
+        value.hash,
+      );
+      const build = activeBuild(loaded);
       if (build && !build.commandId) {
         await continueBuild({ ...params, workspace, value });
       } else if (!build) {
