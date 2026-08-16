@@ -232,10 +232,10 @@ export function DashboardHeader(props: {
           className="fixed inset-0 z-50 flex flex-col bg-[#070707] md:hidden"
           id="mobile-navigation"
           onClick={(event) => {
-            // Close on any in-sheet route tap, including the current page.
+            // Close on route taps and sheet actions such as Log out.
             if (
               event.target instanceof Element &&
-              event.target.closest("a[href]")
+              event.target.closest("a[href], [data-mobile-nav-dismiss]")
             ) {
               onOpenChangeRef.current(false);
             }

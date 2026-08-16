@@ -280,4 +280,19 @@ test("opens and closes a conversation in the mobile workspace", async ({
   await expect(
     page.getByRole("heading", { name: "Conversations" }),
   ).toBeVisible();
+
+  // Log out dismisses the sheet before the sign-out request completes.
+  let finishSignOut: (() => void) | undefined;
+  const signOutGate = new Promise<void>((resolve) => {
+    finishSignOut = resolve;
+  });
+  await page.route("**/api/auth/sign-out", async (route) => {
+    await signOutGate;
+    await route.fulfill({ json: {} });
+  });
+  await page.getByRole("button", { name: "Open navigation" }).click();
+  const openNavigationSheet = page.getByRole("dialog", { name: "Navigation" });
+  await openNavigationSheet.getByRole("button", { name: "Log out" }).click();
+  await expect(openNavigationSheet).toBeHidden();
+  finishSignOut?.();
 });

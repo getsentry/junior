@@ -268,6 +268,7 @@ export function ProfileMenu({
         ))}
         <button
           className={cn(sheetItemClass, "w-full cursor-pointer")}
+          data-mobile-nav-dismiss
           onClick={() => {
             void onSignOut();
           }}
