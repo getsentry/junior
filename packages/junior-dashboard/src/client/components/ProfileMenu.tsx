@@ -257,16 +257,16 @@ export function ProfileMenu({
     return (
       <div
         aria-label={`Signed in as ${name}`}
-        className="flex min-w-0 items-center gap-2.5 px-1"
+        className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 px-1"
       >
         <span
           aria-hidden="true"
-          className="grid size-6 shrink-0 place-items-center rounded-full bg-white/[0.08] text-[10px] font-semibold tracking-wide text-dashboard-text-muted"
+          className="grid size-7 shrink-0 place-items-center rounded-full bg-[#beaaff] text-[11px] font-bold tracking-wide text-black shadow-sm shadow-black/40"
         >
           {initials(identity.user.name, email)}
         </span>
         <div className="min-w-0">
-          <p className="m-0 truncate text-xs font-medium text-dashboard-text">
+          <p className="m-0 truncate text-xs font-semibold text-dashboard-text">
             {name}
           </p>
           {name !== email ? (
@@ -274,6 +274,20 @@ export function ProfileMenu({
               {email}
             </p>
           ) : null}
+        </div>
+        <div className="flex shrink-0 items-center gap-2.5 font-mono text-[10px] tabular-nums text-dashboard-text-muted">
+          <span className="whitespace-nowrap">
+            7d{" "}
+            <span className="font-semibold text-dashboard-text">
+              {sevenDaySpend}
+            </span>
+          </span>
+          <span className="whitespace-nowrap">
+            30d{" "}
+            <span className="font-semibold text-dashboard-text">
+              {thirtyDaySpend}
+            </span>
+          </span>
         </div>
       </div>
     );
