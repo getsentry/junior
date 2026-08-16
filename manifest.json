@@ -1,0 +1,59 @@
+{
+  "commitSha": "16c3ba27f9cecebb26c0198e1b7654dc332496bd",
+  "mode": "path",
+  "reasons": [
+    "packages/junior-dashboard/e2e/conversations.spec.ts",
+    "packages/junior-dashboard/src/app.ts",
+    "packages/junior-dashboard/src/assets/junior-avatar-line.png",
+    "packages/junior-dashboard/src/assets/junior-avatar.png",
+    "packages/junior-dashboard/src/client/components/layout/DashboardHeader.tsx",
+    "packages/junior-dashboard/src/client/conversations/ConversationComposer.tsx",
+    "packages/junior-dashboard/src/client/conversations/ConversationPage.tsx",
+    "packages/junior-dashboard/src/client/conversations/ConversationTranscript.tsx",
+    "packages/junior-dashboard/src/client/conversations/PendingMailboxStack.tsx",
+    "packages/junior-dashboard/src/client/conversations/TranscriptMessageView.tsx",
+    "packages/junior-dashboard/src/client/conversations/TranscriptText.tsx",
+    "packages/junior-dashboard/src/client/conversations/TranscriptTypingIndicator.tsx",
+    "packages/junior-dashboard/src/client/conversations/TranscriptView.tsx",
+    "packages/junior-dashboard/src/client/conversations/eventTranscript.ts",
+    "packages/junior-dashboard/src/client/conversations/queries.ts",
+    "packages/junior-dashboard/src/client/conversations/transcript.ts",
+    "packages/junior-dashboard/src/client/conversations/transcriptBottomPinning.ts",
+    "packages/junior-dashboard/src/client/conversations/transcriptRenderModel.ts",
+    "packages/junior-dashboard/src/client/mobileViewport.ts",
+    "packages/junior-dashboard/tests/conversation-transcript.test.ts"
+  ],
+  "scenarioIds": [
+    "conversations",
+    "conversation-detail",
+    "system",
+    "component-gallery"
+  ],
+  "shots": [
+    {
+      "file": "conversations__desktop.png",
+      "label": "Conversations · desktop"
+    },
+    {
+      "file": "conversations__mobile.png",
+      "label": "Conversations · mobile"
+    },
+    {
+      "file": "conversation-detail__desktop.png",
+      "label": "Conversation detail · desktop"
+    },
+    {
+      "file": "conversation-detail__mobile.png",
+      "label": "Conversation detail · mobile"
+    },
+    {
+      "file": "system__desktop.png",
+      "label": "System · desktop"
+    },
+    {
+      "file": "component-gallery__desktop.png",
+      "label": "Component gallery · desktop"
+    }
+  ],
+  "skipped": false
+}
