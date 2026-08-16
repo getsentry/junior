@@ -65,6 +65,7 @@ export function snapshotBuildFromRow(
   if (!row || !row.buildStartedAt) return null;
   return {
     status: row.status,
+    phase: row.buildPhase ?? "created",
     profileHash: row.profileHash,
     startedAt: row.buildStartedAt,
     sandboxName: row.buildSandboxName,
@@ -257,6 +258,7 @@ export async function setWorkspaceSnapshotBuild(
         .set({
           status: build.status,
           buildStartedAt: build.startedAt,
+          buildPhase: build.phase,
           buildSandboxName: build.sandboxName,
           buildCommandId: build.commandId,
           buildError: build.error,
@@ -277,6 +279,7 @@ export async function setWorkspaceSnapshotBuild(
       buildDurationMs: null,
       generatedAt: null,
       buildStartedAt: build.startedAt,
+      buildPhase: build.phase,
       buildSandboxName: build.sandboxName,
       buildCommandId: build.commandId,
       buildError: build.error,

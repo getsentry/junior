@@ -7,7 +7,10 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import type { WorkspaceSnapshotStatus } from "@/chat/workspaces/types";
+import type {
+  WorkspaceSnapshotBuildPhase,
+  WorkspaceSnapshotStatus,
+} from "@/chat/workspaces/types";
 import { timestamptz } from "./timestamps";
 import { juniorWorkspaces } from "./workspaces";
 
@@ -32,6 +35,7 @@ export const juniorSnapshots = pgTable(
     generatedAt: timestamptz("generated_at"),
     // In-flight builder refs for check-in across function invocations.
     buildStartedAt: timestamptz("build_started_at"),
+    buildPhase: text("build_phase").$type<WorkspaceSnapshotBuildPhase>(),
     buildSandboxName: text("build_sandbox_name"),
     buildCommandId: text("build_command_id"),
     buildError: text("build_error"),
@@ -42,6 +46,10 @@ export const juniorSnapshots = pgTable(
     check(
       "junior_snapshots_status_check",
       sql`${table.status} in ('building', 'failed', 'ready')`,
+    ),
+    check(
+      "junior_snapshots_build_phase_check",
+      sql`${table.buildPhase} is null or ${table.buildPhase} in ('created', 'dependencies_installed', 'repositories_prepared')`,
     ),
     // Ready Vercel snapshot ids are unique. Nulls stay allowed for in-flight rows.
     uniqueIndex("junior_snapshots_snapshot_id_uidx").on(table.snapshotId),

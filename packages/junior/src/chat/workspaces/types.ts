@@ -15,10 +15,15 @@ export interface WorkspaceSnapshot {
 }
 
 export type WorkspaceSnapshotStatus = "building" | "failed" | "ready";
+export type WorkspaceSnapshotBuildPhase =
+  | "created"
+  | "dependencies_installed"
+  | "repositories_prepared";
 
 /** Current snapshot build for one Workspace recipe. */
 export interface WorkspaceSnapshotBuild {
   status: WorkspaceSnapshotStatus;
+  phase: WorkspaceSnapshotBuildPhase;
   profileHash: string;
   startedAt: Date;
   sandboxName: string | null;

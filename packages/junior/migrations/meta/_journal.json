@@ -232,6 +232,13 @@
       "when": 1786894714727,
       "tag": "0032_workspace_snapshots_table",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1786903541412,
+      "tag": "0033_lean_menace",
+      "breakpoints": true
     }
   ]
 }

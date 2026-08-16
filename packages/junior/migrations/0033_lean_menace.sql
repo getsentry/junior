@@ -1,0 +1,2 @@
+ALTER TABLE "junior_snapshots" ADD COLUMN "build_phase" text;--> statement-breakpoint
+ALTER TABLE "junior_snapshots" ADD CONSTRAINT "junior_snapshots_build_phase_check" CHECK ("junior_snapshots"."build_phase" is null or "junior_snapshots"."build_phase" in ('created', 'dependencies_installed', 'repositories_prepared'));

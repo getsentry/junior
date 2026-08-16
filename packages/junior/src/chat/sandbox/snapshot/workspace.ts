@@ -6,7 +6,6 @@ import {
   prepareWorkspaceRepositories,
   workspaceSetupCommand,
 } from "@/chat/sandbox/prepare-workspace";
-import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import { getSandboxResources } from "@/chat/sandbox/resources";
 import * as install from "@/chat/sandbox/snapshot/install";
 import * as profile from "@/chat/sandbox/snapshot/profile";
@@ -41,9 +40,6 @@ const WAIT_POLL_MS = 5_000;
  * persist the pause and requeue, matching conversation soft yield.
  */
 const WAIT_YIELD_BUFFER_MS = 40_000;
-const BUILD_MARKER_DIR = `${SANDBOX_WORKSPACE_ROOT}/.junior/snapshot-build`;
-const DEPS_MARKER = `${BUILD_MARKER_DIR}/deps.done`;
-const REPOS_MARKER = `${BUILD_MARKER_DIR}/repos.done`;
 
 function buildLockKey(profileHash: string): string {
   return `${BUILD_LOCK_PREFIX}:${profileHash}`;
@@ -144,32 +140,6 @@ async function markFailed(
   await stopBuilder(build.sandboxName);
 }
 
-async function markerExists(
-  session: SandboxSession,
-  path: string,
-  signal?: AbortSignal,
-): Promise<boolean> {
-  try {
-    await session.fs.readFile(path, { encoding: "utf-8", signal });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function writeMarker(
-  session: SandboxSession,
-  path: string,
-  signal?: AbortSignal,
-): Promise<void> {
-  await session.runCommand({
-    cmd: "bash",
-    args: ["-c", `mkdir -p -- ${BUILD_MARKER_DIR} && : > ${path}`],
-    cwd: SANDBOX_WORKSPACE_ROOT,
-    signal,
-  });
-}
-
 /** Poll a detached setup command; snapshot and stop the builder when it exits. */
 async function finishBuild(
   workspace: Workspace,
@@ -255,6 +225,7 @@ async function startBuild(params: {
     });
     await setWorkspaceSnapshotBuild(workspace.id, {
       status: "building",
+      phase: "created",
       profileHash: value.hash,
       startedAt,
       sandboxName: name,
@@ -264,6 +235,7 @@ async function startBuild(params: {
   } catch (error) {
     await setWorkspaceSnapshotBuild(workspace.id, {
       status: "failed",
+      phase: "created",
       profileHash: value.hash,
       startedAt,
       sandboxName: name,
@@ -277,7 +249,7 @@ async function startBuild(params: {
 
 /**
  * Advance one prep slice on the builder: deps, then repos, then detach setup.
- * Each slice leaves a durable marker so a mid-prep death resumes cleanly.
+ * SQL records the last completed slice so later check-ins can resume.
  */
 async function continueBuild(params: {
   workspace: Workspace;
@@ -303,7 +275,7 @@ async function continueBuild(params: {
       // Best-effort keepalive for the prep slice.
     }
 
-    if (!(await markerExists(session, DEPS_MARKER, params.signal))) {
+    if (build.phase === "created") {
       await install.dependencies(
         session,
         params.value.dependencies,
@@ -314,11 +286,14 @@ async function continueBuild(params: {
         params.value.postinstall,
         params.signal,
       );
-      await writeMarker(session, DEPS_MARKER, params.signal);
+      await setWorkspaceSnapshotBuild(params.workspace.id, {
+        ...build,
+        phase: "dependencies_installed",
+      });
       return;
     }
 
-    if (!(await markerExists(session, REPOS_MARKER, params.signal))) {
+    if (build.phase === "dependencies_installed") {
       await prepareWorkspaceRepositories({
         sandbox: session,
         workspace: params.workspace,
@@ -327,7 +302,10 @@ async function continueBuild(params: {
         prepareRepositories: params.prepareRepositories,
         removeCredentialRoute: params.removeCredentialRoute,
       });
-      await writeMarker(session, REPOS_MARKER, params.signal);
+      await setWorkspaceSnapshotBuild(params.workspace.id, {
+        ...build,
+        phase: "repositories_prepared",
+      });
       return;
     }
 

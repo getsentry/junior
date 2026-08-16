@@ -134,8 +134,10 @@ describe("Workspace snapshot wait", () => {
     sandboxCreateMock.mockResolvedValue({ name: "junior-ws-1" });
 
     let recordedBuild: Workspace["snapshotBuild"];
+    const recordedPhases: string[] = [];
     setWorkspaceSnapshotBuildMock.mockImplementation(async (_id, build) => {
       recordedBuild = { ...build };
+      recordedPhases.push(build.phase);
     });
 
     const command: {
@@ -147,35 +149,12 @@ describe("Workspace snapshot wait", () => {
     };
     const stopMock = vi.fn(async () => undefined);
     const detachedCommand = { cmdId: "cmd-1" };
-    const markerPaths = new Set<string>();
     const builder = {
       extendTimeout: vi.fn(async () => undefined),
-      runCommand: vi.fn(async (input: { args?: string[] }) => {
-        const script = input.args?.at(-1) ?? "";
-        if (script.includes("deps.done")) {
-          markerPaths.add("deps.done");
-          return { exitCode: 0, stdout: async () => "", stderr: async () => "" };
-        }
-        if (script.includes("repos.done")) {
-          markerPaths.add("repos.done");
-          return { exitCode: 0, stdout: async () => "", stderr: async () => "" };
-        }
-        return detachedCommand;
-      }),
+      runCommand: vi.fn(async () => detachedCommand),
       getCommand: vi.fn(async () => command),
       snapshot: vi.fn(async () => ({ snapshotId: "snap-sentry" })),
       stop: stopMock,
-      fs: {
-        readFile: vi.fn(async (path: string) => {
-          if (path.endsWith("deps.done") && markerPaths.has("deps.done")) {
-            return "";
-          }
-          if (path.endsWith("repos.done") && markerPaths.has("repos.done")) {
-            return "";
-          }
-          throw new Error("missing");
-        }),
-      },
     };
     sandboxGetMock.mockResolvedValue(builder);
 
@@ -201,6 +180,12 @@ describe("Workspace snapshot wait", () => {
     );
     expect(installDependenciesMock).toHaveBeenCalledTimes(1);
     expect(prepareRepositoriesMock).toHaveBeenCalledTimes(1);
+    expect(recordedPhases).toEqual([
+      "created",
+      "dependencies_installed",
+      "repositories_prepared",
+      "repositories_prepared",
+    ]);
     expect(builder.runCommand).toHaveBeenCalledWith(
       expect.objectContaining({
         detached: true,
