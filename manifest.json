@@ -1,0 +1,56 @@
+{
+  "commitSha": "49a4e37eb8ff23ab157b6044a944dfb6746a395c",
+  "mode": "path",
+  "reasons": [
+    "packages/junior-dashboard/e2e/conversations-mobile.spec.ts",
+    "packages/junior-dashboard/e2e/conversations.spec.ts",
+    "packages/junior-dashboard/src/client/App.tsx",
+    "packages/junior-dashboard/src/client/bodyScrollLock.ts",
+    "packages/junior-dashboard/src/client/components/Drawer.tsx",
+    "packages/junior-dashboard/src/client/components/LoadingView.tsx",
+    "packages/junior-dashboard/src/client/components/ProfileMenu.tsx",
+    "packages/junior-dashboard/src/client/components/layout/DashboardChrome.tsx",
+    "packages/junior-dashboard/src/client/components/layout/DashboardHeader.tsx",
+    "packages/junior-dashboard/src/client/conversations/ConversationHeader.tsx",
+    "packages/junior-dashboard/src/client/conversations/ConversationHeaderActions.tsx",
+    "packages/junior-dashboard/src/client/conversations/ConversationPage.tsx",
+    "packages/junior-dashboard/src/client/conversations/ConversationWorkspace.tsx",
+    "packages/junior-dashboard/src/client/conversations/CopyMarkdownButton.tsx",
+    "packages/junior-dashboard/src/client/mobileViewport.ts",
+    "packages/junior-dashboard/tests/bodyScrollLock.test.ts",
+    "packages/junior-dashboard/tests/mobileViewport.test.ts"
+  ],
+  "scenarioIds": [
+    "conversations",
+    "conversation-detail",
+    "system",
+    "component-gallery"
+  ],
+  "shots": [
+    {
+      "file": "conversations__desktop.png",
+      "label": "Conversations · desktop"
+    },
+    {
+      "file": "conversations__mobile.png",
+      "label": "Conversations · mobile"
+    },
+    {
+      "file": "conversation-detail__desktop.png",
+      "label": "Conversation detail · desktop"
+    },
+    {
+      "file": "conversation-detail__mobile.png",
+      "label": "Conversation detail · mobile"
+    },
+    {
+      "file": "system__desktop.png",
+      "label": "System · desktop"
+    },
+    {
+      "file": "component-gallery__desktop.png",
+      "label": "Component gallery · desktop"
+    }
+  ],
+  "skipped": false
+}
