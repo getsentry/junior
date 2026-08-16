@@ -230,13 +230,21 @@ export function shouldAutoPinTranscriptBottom(input: {
   return input.enabled && input.following;
 }
 
-/** Pin a terminal Junior reply only when the reader followed the live turn. */
-export function shouldPinTerminalJuniorReply(input: {
+/** Keep a terminal pin pending until the deferred Junior reply arrives. */
+export function terminalReplyPinState(input: {
   enabled: boolean;
   following: boolean;
+  juniorMessageChanged: boolean;
+  pending: boolean;
   wasEnabled: boolean;
-}): boolean {
-  return input.wasEnabled && !input.enabled && input.following;
+}): { pending: boolean; pin: boolean } {
+  if (input.enabled) return { pending: false, pin: false };
+  const pending =
+    input.pending || (input.wasEnabled && !input.enabled && input.following);
+  if (pending && input.juniorMessageChanged) {
+    return { pending: false, pin: true };
+  }
+  return { pending, pin: false };
 }
 
 /**
@@ -323,6 +331,7 @@ export function usePinnedTranscriptBottom(input: {
   const pinRequestVersionRef = useRef(input.pinRequestVersion ?? 0);
   const juniorMessageVersionRef = useRef(input.juniorMessageVersion);
   const terminalEnabledRef = useRef(input.enabled);
+  const terminalPinPendingRef = useRef(false);
   const versionRef = useRef(input.version);
   const programmaticScrollGenerationRef = useRef(0);
   const [following, setFollowing] = useState(false);
@@ -586,20 +595,22 @@ export function usePinnedTranscriptBottom(input: {
     scrollToBottom(preferredExplicitScrollBehavior());
   }, [scrollToBottom, setFollowingIntent]);
 
-  // A Junior reply can arrive in the same poll that completes the conversation.
-  // Pin that terminal reply only if the reader was already following the live turn.
+  // Detail status updates before the deferred transcript. Save follow intent at
+  // completion, then consume it when the terminal Junior reply arrives.
   useBrowserLayoutEffect(() => {
-    if (juniorMessageVersionRef.current === input.juniorMessageVersion) return;
+    const juniorMessageChanged =
+      juniorMessageVersionRef.current !== input.juniorMessageVersion;
     juniorMessageVersionRef.current = input.juniorMessageVersion;
-    if (
-      !shouldPinTerminalJuniorReply({
-        enabled: input.enabled,
-        following: followingRef.current,
-        wasEnabled: terminalEnabledRef.current,
-      })
-    ) {
-      return;
-    }
+    const state = terminalReplyPinState({
+      enabled: input.enabled,
+      following: followingRef.current,
+      juniorMessageChanged,
+      pending: terminalPinPendingRef.current,
+      wasEnabled: terminalEnabledRef.current,
+    });
+    terminalEnabledRef.current = input.enabled;
+    terminalPinPendingRef.current = state.pending;
+    if (!state.pin) return;
     setFollowingIntent(true);
     setHasPendingUpdate(false);
     scrollToBottom("auto");
@@ -609,10 +620,6 @@ export function usePinnedTranscriptBottom(input: {
     scrollToBottom,
     setFollowingIntent,
   ]);
-
-  useBrowserLayoutEffect(() => {
-    terminalEnabledRef.current = input.enabled;
-  }, [input.enabled]);
 
   useBrowserLayoutEffect(() => {
     const version = input.pinRequestVersion ?? 0;

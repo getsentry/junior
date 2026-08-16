@@ -6,8 +6,8 @@ import {
   programmaticSettleScrollAction,
   scrollTopAfterPrepend,
   shouldAutoPinTranscriptBottom,
-  shouldPinTerminalJuniorReply,
   shouldShowJumpToLatest,
+  terminalReplyPinState,
   transcriptFollowIntent,
   transcriptBottomVersion,
   transcriptJuniorMessageVersion,
@@ -337,28 +337,49 @@ describe("transcript bottom pinning", () => {
     expect(after).not.toBe(before);
   });
 
-  it("pins only terminal Junior replies that finish a followed live turn", () => {
+  it("keeps a terminal pin pending until the deferred reply arrives", () => {
+    const completion = terminalReplyPinState({
+      enabled: false,
+      following: true,
+      juniorMessageChanged: false,
+      pending: false,
+      wasEnabled: true,
+    });
+    expect(completion).toEqual({ pending: true, pin: false });
+
     expect(
-      shouldPinTerminalJuniorReply({
-        enabled: false,
-        following: true,
-        wasEnabled: true,
-      }),
-    ).toBe(true);
-    expect(
-      shouldPinTerminalJuniorReply({
-        enabled: true,
-        following: true,
-        wasEnabled: true,
-      }),
-    ).toBe(false);
-    expect(
-      shouldPinTerminalJuniorReply({
+      terminalReplyPinState({
         enabled: false,
         following: false,
+        juniorMessageChanged: true,
+        pending: completion.pending,
+        wasEnabled: false,
+      }),
+    ).toEqual({ pending: false, pin: true });
+  });
+
+  it("does not queue a terminal pin when the reader paused follow", () => {
+    expect(
+      terminalReplyPinState({
+        enabled: false,
+        following: false,
+        juniorMessageChanged: false,
+        pending: false,
         wasEnabled: true,
       }),
-    ).toBe(false);
+    ).toEqual({ pending: false, pin: false });
+  });
+
+  it("does not pin Junior replies while the turn is live", () => {
+    expect(
+      terminalReplyPinState({
+        enabled: true,
+        following: true,
+        juniorMessageChanged: true,
+        pending: false,
+        wasEnabled: true,
+      }),
+    ).toEqual({ pending: false, pin: false });
   });
 
   it("does not auto-pin after live mode turns off", () => {
