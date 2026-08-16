@@ -281,7 +281,7 @@ test("opens and closes a conversation in the mobile workspace", async ({
     page.getByRole("heading", { name: "Conversations" }),
   ).toBeVisible();
 
-  // Log out dismisses the sheet before the sign-out request completes.
+  // Log out must POST and dismiss the sheet before the response completes.
   let finishSignOut: (() => void) | undefined;
   const signOutGate = new Promise<void>((resolve) => {
     finishSignOut = resolve;
@@ -292,7 +292,13 @@ test("opens and closes a conversation in the mobile workspace", async ({
   });
   await page.getByRole("button", { name: "Open navigation" }).click();
   const openNavigationSheet = page.getByRole("dialog", { name: "Navigation" });
+  const signOutRequest = page.waitForRequest(
+    (request) =>
+      request.url().endsWith("/api/auth/sign-out") &&
+      request.method() === "POST",
+  );
   await openNavigationSheet.getByRole("button", { name: "Log out" }).click();
+  await signOutRequest;
   await expect(openNavigationSheet).toBeHidden();
   finishSignOut?.();
 });
