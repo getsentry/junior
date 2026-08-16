@@ -173,6 +173,8 @@ test("opens and closes a conversation in the mobile workspace", async ({
     )
     .toBe(true);
 
+  // Keyboard open tracks height. Offset freezes while the composer is focused
+  // so Safari focus pans cannot chase the fixed shell.
   await page.evaluate(() => {
     Object.defineProperties(window.visualViewport, {
       height: { configurable: true, value: 520 },
@@ -187,6 +189,18 @@ test("opens and closes a conversation in the mobile workspace", async ({
       ),
     )
     .toBe("520px");
+  await expect
+    .poll(() =>
+      shell.evaluate((element) =>
+        element.style.getPropertyValue("--dashboard-viewport-offset-top"),
+      ),
+    )
+    .toBe("0px");
+
+  await composer.blur();
+  await page.evaluate(() => {
+    window.visualViewport?.dispatchEvent(new Event("resize"));
+  });
   await expect
     .poll(() =>
       shell.evaluate((element) =>
@@ -209,8 +223,6 @@ test("opens and closes a conversation in the mobile workspace", async ({
       ),
     )
     .toBe("180px");
-
-  await composer.blur();
   await transcript.evaluate((element) => {
     element.scrollTop = 0;
   });
