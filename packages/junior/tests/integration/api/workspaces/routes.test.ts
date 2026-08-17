@@ -9,14 +9,17 @@ import {
 } from "@/api/schema";
 import { closeDb, getDb, getSqlExecutor } from "@/chat/db";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
-import { create as createSnapshotProfile, hash as workspaceProfileHash } from "@/chat/sandbox/snapshot/profile";
+import {
+  create as createSnapshotProfile,
+  hash as workspaceProfileHash,
+} from "@/chat/sandbox/snapshot/profile";
 import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
+import { setWorkspaceSnapshot } from "@/chat/sandbox/snapshot/store";
 import { getStateAdapter } from "@/chat/state/adapter";
 import {
   createWorkspace,
   getWorkspace,
   getWorkspaceByName,
-  setWorkspaceSnapshot,
   updateWorkspace,
 } from "@/chat/workspaces/store";
 
@@ -42,24 +45,27 @@ describe("workspace admin API", () => {
   it("creates, lists, updates, and deletes Workspace recipes", async () => {
     const app = authenticatedApi();
 
-    const createResponse = await app.request("http://localhost/api/workspaces", {
-      body: JSON.stringify({
-        name: "Sentry",
-        setupScript: "pnpm install",
-        repos: [
-          {
-            provider: "github",
-            repo: "getsentry/sentry"
-          },
-          {
-            provider: "github",
-            repo: "getsentry/getsentry"
-          },
-        ]
-      }),
-      headers: { "content-type": "application/json" },
-      method: "POST"
-    });
+    const createResponse = await app.request(
+      "http://localhost/api/workspaces",
+      {
+        body: JSON.stringify({
+          name: "Sentry",
+          setupScript: "pnpm install",
+          repos: [
+            {
+              provider: "github",
+              repo: "getsentry/sentry",
+            },
+            {
+              provider: "github",
+              repo: "getsentry/getsentry",
+            },
+          ],
+        }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      },
+    );
     expect(createResponse.status).toBe(201);
     const created = workspaceSchema.parse(await createResponse.json());
     expect(created).toMatchObject({
@@ -69,14 +75,14 @@ describe("workspace admin API", () => {
         {
           provider: "github",
           repo: "getsentry/getsentry",
-          checkoutPath: "repos/getsentry"
+          checkoutPath: "repos/getsentry",
         },
         {
           provider: "github",
           repo: "getsentry/sentry",
-          checkoutPath: "repos/sentry"
+          checkoutPath: "repos/sentry",
         },
-      ]
+      ],
     });
 
     const listResponse = await app.request("http://localhost/api/workspaces");
@@ -96,12 +102,12 @@ describe("workspace admin API", () => {
           repos: [
             {
               provider: "github",
-              repo: "getsentry/sentry"
+              repo: "getsentry/sentry",
             },
-          ]
+          ],
         }),
         headers: { "content-type": "application/json" },
-        method: "PUT"
+        method: "PUT",
       },
     );
     expect(updateResponse.status).toBe(200);
@@ -114,9 +120,9 @@ describe("workspace admin API", () => {
         {
           provider: "github",
           repo: "getsentry/sentry",
-          checkoutPath: "repos/sentry"
+          checkoutPath: "repos/sentry",
         },
-      ]
+      ],
     });
 
     const deleteResponse = await app.request(
@@ -133,7 +139,7 @@ describe("workspace admin API", () => {
     );
     expect(missing.status).toBe(404);
     expect(apiErrorSchema.parse(await missing.json())).toEqual({
-      error: "Workspace not found."
+      error: "Workspace not found.",
     });
   });
 
@@ -196,14 +202,17 @@ describe("workspace admin API", () => {
 
   it("returns SQL-backed snapshot metadata on Workspace detail", async () => {
     const app = authenticatedApi();
-    const createResponse = await app.request("http://localhost/api/workspaces", {
-      body: JSON.stringify({
-        name: "snapshot-duration",
-        repos: [{ provider: "github", repo: "getsentry/sentry" }],
-      }),
-      headers: { "content-type": "application/json" },
-      method: "POST",
-    });
+    const createResponse = await app.request(
+      "http://localhost/api/workspaces",
+      {
+        body: JSON.stringify({
+          name: "snapshot-duration",
+          repos: [{ provider: "github", repo: "getsentry/sentry" }],
+        }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      },
+    );
     expect(createResponse.status).toBe(201);
     const created = workspaceSchema.parse(await createResponse.json());
     expect(created.snapshot).toBeNull();
@@ -218,6 +227,8 @@ describe("workspace admin API", () => {
       generatedAt: new Date("2026-03-01T00:00:00.000Z"),
       buildDurationMs: 12_345,
       profileHash: profileHash!,
+      runtime: SANDBOX_RUNTIME,
+      dependencyCount: 0,
     });
 
     const detailResponse = await app.request(
@@ -236,14 +247,17 @@ describe("workspace admin API", () => {
 
   it("preserves snapshot metadata for a rename and clears it after the recipe changes", async () => {
     const app = authenticatedApi();
-    const createResponse = await app.request("http://localhost/api/workspaces", {
-      body: JSON.stringify({
-        name: "snapshot-stale",
-        repos: [{ provider: "github", repo: "getsentry/sentry" }],
-      }),
-      headers: { "content-type": "application/json" },
-      method: "POST",
-    });
+    const createResponse = await app.request(
+      "http://localhost/api/workspaces",
+      {
+        body: JSON.stringify({
+          name: "snapshot-stale",
+          repos: [{ provider: "github", repo: "getsentry/sentry" }],
+        }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      },
+    );
     expect(createResponse.status).toBe(201);
     const created = workspaceSchema.parse(await createResponse.json());
     const workspace = await getWorkspace(getDb(), created.id);
@@ -256,6 +270,8 @@ describe("workspace admin API", () => {
       generatedAt: new Date("2026-03-01T00:00:00.000Z"),
       buildDurationMs: 9_000,
       profileHash: profileHash!,
+      runtime: SANDBOX_RUNTIME,
+      dependencyCount: 0,
     });
 
     const renameResponse = await app.request(
@@ -299,6 +315,26 @@ describe("workspace admin API", () => {
       id: created.id,
       snapshot: null,
     });
+
+    const revertResponse = await app.request(
+      `http://localhost/api/workspaces/${created.id}`,
+      {
+        body: JSON.stringify({
+          name: "snapshot-renamed",
+          repos: [{ provider: "github", repo: "getsentry/sentry" }],
+        }),
+        headers: { "content-type": "application/json" },
+        method: "PUT",
+      },
+    );
+    expect(revertResponse.status).toBe(200);
+    const revertedDetail = await app.request(
+      `http://localhost/api/workspaces/${created.id}`,
+    );
+    expect(workspaceSchema.parse(await revertedDetail.json())).toMatchObject({
+      id: created.id,
+      snapshot: { id: "snap_old", buildDurationMs: 9_000 },
+    });
   });
 
   it("rejects invalid recipes with the stable error contract", async () => {
@@ -307,10 +343,10 @@ describe("workspace admin API", () => {
       {
         body: JSON.stringify({
           name: "bad name",
-          repos: [{ provider: "github", repo: "getsentry/sentry" }]
+          repos: [{ provider: "github", repo: "getsentry/sentry" }],
         }),
         headers: { "content-type": "application/json" },
-        method: "POST"
+        method: "POST",
       },
     );
 
@@ -328,9 +364,9 @@ describe("workspace admin API", () => {
       repos: [
         {
           provider: "github",
-          repo: "getsentry/junior"
+          repo: "getsentry/junior",
         },
-      ]
+      ],
     });
 
     await executor.execute(`
@@ -354,9 +390,9 @@ FOR EACH ROW EXECUTE FUNCTION junior_test_reject_workspace_repo()
           repos: [
             {
               provider: "github",
-              repo: "getsentry/sentry"
+              repo: "getsentry/sentry",
             },
-          ]
+          ],
         }),
       ).rejects.toThrow(/junior_workspace_repos/);
       expect(
@@ -370,9 +406,9 @@ FOR EACH ROW EXECUTE FUNCTION junior_test_reject_workspace_repo()
           repos: [
             {
               provider: "github",
-              repo: "getsentry/sentry"
+              repo: "getsentry/sentry",
             },
-          ]
+          ],
         }),
       ).rejects.toThrow(/junior_workspace_repos/);
       expect(await getWorkspace(getDb(), original.id)).toEqual(original);
@@ -393,25 +429,25 @@ FOR EACH ROW EXECUTE FUNCTION junior_test_reject_workspace_repo()
       repos: [
         {
           provider: "github",
-          repo: "getsentry/sentry"
+          repo: "getsentry/sentry",
         },
-      ]
+      ],
     };
     const first = await app.request("http://localhost/api/workspaces", {
       body: JSON.stringify(body),
       headers: { "content-type": "application/json" },
-      method: "POST"
+      method: "POST",
     });
     expect(first.status).toBe(201);
 
     const second = await app.request("http://localhost/api/workspaces", {
       body: JSON.stringify(body),
       headers: { "content-type": "application/json" },
-      method: "POST"
+      method: "POST",
     });
     expect(second.status).toBe(400);
     expect(apiErrorSchema.parse(await second.json())).toEqual({
-      error: "Workspace name already exists: shared"
+      error: "Workspace name already exists: shared",
     });
   });
 });
