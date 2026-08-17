@@ -75,14 +75,26 @@ describe("mobileViewportMetrics", () => {
 });
 
 describe("mobileViewportOffsetTop", () => {
+  it("docks to the keyboard offset on first focus resize", () => {
+    expect(
+      mobileViewportOffsetTop({
+        editableFocused: true,
+        nextOffsetTop: 140,
+        previousOffsetTop: 0,
+        source: "resize",
+      }),
+    ).toBe(140);
+  });
+
   it("keeps the shell still while Safari pans a focused editor", () => {
     expect(
       mobileViewportOffsetTop({
         editableFocused: true,
-        nextOffsetTop: 128,
-        previousOffsetTop: 0,
+        nextOffsetTop: 180,
+        previousOffsetTop: 140,
+        source: "scroll",
       }),
-    ).toBe(0);
+    ).toBe(140);
   });
 
   it("accepts the settled offset after the editor loses focus", () => {
@@ -90,8 +102,20 @@ describe("mobileViewportOffsetTop", () => {
       mobileViewportOffsetTop({
         editableFocused: false,
         nextOffsetTop: 0,
-        previousOffsetTop: 128,
+        previousOffsetTop: 140,
+        source: "focusout",
       }),
     ).toBe(0);
+  });
+
+  it("follows blur-time scroll offsets when no editor is focused", () => {
+    expect(
+      mobileViewportOffsetTop({
+        editableFocused: false,
+        nextOffsetTop: 180,
+        previousOffsetTop: 140,
+        source: "scroll",
+      }),
+    ).toBe(180);
   });
 });

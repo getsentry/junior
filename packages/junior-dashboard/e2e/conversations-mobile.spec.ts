@@ -23,29 +23,36 @@ test.beforeEach(async ({ page }) => {
  * Focused composers must stay in the bottom of the visual viewport.
  * Hit-test near the bottom edge so a mid-screen/centered regression fails
  * without using banned bounding-box layout APIs.
+ *
+ * Sample in layout coordinates: shell top is offsetTop, height is visualHeight,
+ * so the visible bottom is offsetTop + visualHeight.
  */
 async function expectFocusedComposerAtVisualViewportBottom(
   composer: import("@playwright/test").Locator,
   visualHeightPx: number,
+  offsetTopPx = 0,
 ) {
   await expect(composer).toBeFocused();
   await expect
     .poll(() =>
-      composer.evaluate((node, heightPx) => {
-        const form = node.closest("form");
-        if (!(node instanceof HTMLElement) || !form) return "missing-form";
-        if (document.activeElement !== node) return "not-focused";
+      composer.evaluate(
+        (node, geometry) => {
+          const form = node.closest("form");
+          if (!(node instanceof HTMLElement) || !form) return "missing-form";
+          if (document.activeElement !== node) return "not-focused";
 
-        // Sample just above the bottom edge of the simulated visual viewport.
-        const sampleY = heightPx - 12;
-        const sampleX = Math.max(24, Math.floor(window.innerWidth / 2));
-        const hit = document.elementFromPoint(sampleX, sampleY);
-        if (!hit) return "no-hit";
-        if (hit === node || form.contains(hit) || node.contains(hit)) {
-          return "composer-at-bottom";
-        }
-        return "composer-not-at-bottom";
-      }, visualHeightPx),
+          // Sample just above the bottom edge of the simulated visual viewport.
+          const sampleY = geometry.offsetTopPx + geometry.heightPx - 12;
+          const sampleX = Math.max(24, Math.floor(window.innerWidth / 2));
+          const hit = document.elementFromPoint(sampleX, sampleY);
+          if (!hit) return "no-hit";
+          if (hit === node || form.contains(hit) || node.contains(hit)) {
+            return "composer-at-bottom";
+          }
+          return "composer-not-at-bottom";
+        },
+        { heightPx: visualHeightPx, offsetTopPx },
+      ),
     )
     .toBe("composer-at-bottom");
 }
@@ -87,10 +94,12 @@ test("keeps the new conversation composer above the mobile keyboard", async ({
     .toBe("pinned-footer");
 
   const shell = page.locator("main").first();
+  // First focus often opens the keyboard with a non-zero visual offset. Dock to
+  // that rectangle so the input stays on the visible bottom, not mid-screen.
   await page.evaluate(() => {
     Object.defineProperties(window.visualViewport, {
       height: { configurable: true, value: 520 },
-      offsetTop: { configurable: true, value: 0 },
+      offsetTop: { configurable: true, value: 140 },
     });
     window.visualViewport?.dispatchEvent(new Event("resize"));
   });
@@ -101,7 +110,14 @@ test("keeps the new conversation composer above the mobile keyboard", async ({
       ),
     )
     .toBe("520px");
-  await expectFocusedComposerAtVisualViewportBottom(composer, 520);
+  await expect
+    .poll(() =>
+      shell.evaluate((element) =>
+        element.style.getPropertyValue("--dashboard-viewport-offset-top"),
+      ),
+    )
+    .toBe("140px");
+  await expectFocusedComposerAtVisualViewportBottom(composer, 520, 140);
 });
 
 test("opens and closes a conversation in the mobile workspace", async ({
@@ -258,8 +274,8 @@ test("opens and closes a conversation in the mobile workspace", async ({
     )
     .toBe(true);
 
-  // Keyboard open tracks height. Offset freezes while the composer is focused
-  // so Safari focus pans cannot chase the fixed shell.
+  // First keyboard open docks to the visual viewport (height + offset) so the
+  // focused composer lands on the visible bottom, not the layout bottom.
   await page.evaluate(() => {
     Object.defineProperties(window.visualViewport, {
       height: { configurable: true, value: 520 },
@@ -280,22 +296,11 @@ test("opens and closes a conversation in the mobile workspace", async ({
         element.style.getPropertyValue("--dashboard-viewport-offset-top"),
       ),
     )
-    .toBe("0px");
-  // Focused reply input must stay docked at the bottom of the visual viewport.
-  await expectFocusedComposerAtVisualViewportBottom(composer, 520);
-
-  await composer.blur();
-  await page.evaluate(() => {
-    window.visualViewport?.dispatchEvent(new Event("resize"));
-  });
-  await expect
-    .poll(() =>
-      shell.evaluate((element) =>
-        element.style.getPropertyValue("--dashboard-viewport-offset-top"),
-      ),
-    )
     .toBe("140px");
+  // Focused reply input must stay docked at the bottom of the visual viewport.
+  await expectFocusedComposerAtVisualViewportBottom(composer, 520, 140);
 
+  // Scroll-driven Safari pans while focused must not chase the shell.
   await page.evaluate(() => {
     Object.defineProperties(window.visualViewport, {
       height: { configurable: true, value: 520 },
@@ -309,7 +314,35 @@ test("opens and closes a conversation in the mobile workspace", async ({
         element.style.getPropertyValue("--dashboard-viewport-offset-top"),
       ),
     )
+    .toBe("140px");
+  await expectFocusedComposerAtVisualViewportBottom(composer, 520, 140);
+
+  await composer.blur();
+  await page.evaluate(() => {
+    window.visualViewport?.dispatchEvent(new Event("resize"));
+  });
+  await expect
+    .poll(() =>
+      shell.evaluate((element) =>
+        element.style.getPropertyValue("--dashboard-viewport-offset-top"),
+      ),
+    )
     .toBe("180px");
+
+  await page.evaluate(() => {
+    Object.defineProperties(window.visualViewport, {
+      height: { configurable: true, value: 520 },
+      offsetTop: { configurable: true, value: 200 },
+    });
+    window.visualViewport?.dispatchEvent(new Event("scroll"));
+  });
+  await expect
+    .poll(() =>
+      shell.evaluate((element) =>
+        element.style.getPropertyValue("--dashboard-viewport-offset-top"),
+      ),
+    )
+    .toBe("200px");
   await transcript.evaluate((element) => {
     element.scrollTop = 0;
   });
