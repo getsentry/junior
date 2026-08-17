@@ -19,6 +19,37 @@ test.beforeEach(async ({ page }) => {
   await mockDashboardApis(page);
 });
 
+/**
+ * Focused composers must stay in the bottom of the visual viewport.
+ * Hit-test near the bottom edge so a mid-screen/centered regression fails
+ * without using banned bounding-box layout APIs.
+ */
+async function expectFocusedComposerAtVisualViewportBottom(
+  composer: import("@playwright/test").Locator,
+  visualHeightPx: number,
+) {
+  await expect(composer).toBeFocused();
+  await expect
+    .poll(() =>
+      composer.evaluate((node, heightPx) => {
+        const form = node.closest("form");
+        if (!(node instanceof HTMLElement) || !form) return "missing-form";
+        if (document.activeElement !== node) return "not-focused";
+
+        // Sample just above the bottom edge of the simulated visual viewport.
+        const sampleY = heightPx - 12;
+        const sampleX = Math.max(24, Math.floor(window.innerWidth / 2));
+        const hit = document.elementFromPoint(sampleX, sampleY);
+        if (!hit) return "no-hit";
+        if (hit === node || form.contains(hit) || node.contains(hit)) {
+          return "composer-at-bottom";
+        }
+        return "composer-not-at-bottom";
+      }, visualHeightPx),
+    )
+    .toBe("composer-at-bottom");
+}
+
 test("keeps the new conversation composer above the mobile keyboard", async ({
   page,
 }) => {
@@ -70,7 +101,7 @@ test("keeps the new conversation composer above the mobile keyboard", async ({
       ),
     )
     .toBe("520px");
-  await expect(composer).toBeFocused();
+  await expectFocusedComposerAtVisualViewportBottom(composer, 520);
 });
 
 test("opens and closes a conversation in the mobile workspace", async ({
@@ -250,6 +281,8 @@ test("opens and closes a conversation in the mobile workspace", async ({
       ),
     )
     .toBe("0px");
+  // Focused reply input must stay docked at the bottom of the visual viewport.
+  await expectFocusedComposerAtVisualViewportBottom(composer, 520);
 
   await composer.blur();
   await page.evaluate(() => {
