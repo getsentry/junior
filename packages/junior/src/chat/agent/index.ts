@@ -1238,10 +1238,11 @@ async function executeAgentRunInPrivacyContext(
 
           const handoffUpdate = applyPendingHandoff();
           const pendingMessages = await drainSteeringMessages();
+          // Always compact the live agent transcript. nextTurn.context.messages
+          // was captured before the snapshot-wait loop and would drop wait
+          // tool-calls/results if used as the compaction source.
           const capacityUpdate = await applyActiveContextCompaction(
-            handoffUpdate
-              ? currentAgentMessages()
-              : (nextTurn.context.messages as PiMessage[]),
+            currentAgentMessages(),
             hookSignal,
             pendingMessages,
             true,

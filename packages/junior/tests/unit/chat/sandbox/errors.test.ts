@@ -51,6 +51,13 @@ describe("isAbortError", () => {
       false,
     );
     expect(isAbortError(new Error("Status code 404 is not ok"))).toBe(false);
+    // Setup stderr can contain "aborted" without being a host cancel.
+    expect(
+      isAbortError(new Error("deps failed: Transaction aborted")),
+    ).toBe(false);
+    expect(
+      isAbortError(new Error("npm error signal SIGABORTED")),
+    ).toBe(false);
   });
 });
 

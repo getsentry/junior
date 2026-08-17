@@ -149,16 +149,17 @@ export function isAbortError(error: unknown): boolean {
     if (!(candidate instanceof Error)) {
       return false;
     }
+    // Prefer Error.name over message text. Setup stderr can contain "aborted"
+    // on real failures (dnf/npm), and those must still markFailed.
     if (candidate.name === "AbortError") return true;
     // Production cancel reasons are plain Errors via signal.reason:
     // api-turns/cancellation.ts → "API Turn cancelled"
     // runtime/agent-runner.ts → "executeAgentRun timed out after …"
     const message = candidate.message.toLowerCase();
     return (
-      message.includes("aborted") ||
-      message.includes("api turn cancelled") ||
-      message.includes("api turn canceled") ||
-      message.includes("executeagentrun timed out after")
+      message === "api turn cancelled" ||
+      message === "api turn canceled" ||
+      message.startsWith("executeagentrun timed out after")
     );
   });
 }

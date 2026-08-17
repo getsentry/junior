@@ -110,9 +110,12 @@ async function loadProfileSnapshots(
 async function snapshotFromSql(
   workspaceId: string,
   value: profile.Profile,
+  ignoreSnapshotId?: string,
 ): Promise<Snapshot | null> {
   const { ready } = await loadProfileSnapshots(workspaceId, value.hash);
   if (!ready) return null;
+  // Skip a known-missing Vercel id even if SQL still points at it (delete failed).
+  if (ignoreSnapshotId && ready.id === ignoreSnapshotId) return null;
   if (profile.isStale(value, ready.generatedAt.getTime())) return null;
   try {
     // SQL is source of truth; a hot-cache write must not block boot.
@@ -193,16 +196,28 @@ export async function rebuildMissingWorkspaceSnapshot(params: {
 }): Promise<Snapshot> {
   const value = profile.create(params.runtime, params.workspace);
   if (value) {
-    // Drop the durable SQL pointer first. Clearing Redis before SQL can leave a
-    // stale ready row that boots again if the delete throws.
-    await invalidateMissingReadySnapshot({
-      workspaceId: params.workspace.id,
-      profileHash: value.hash,
-      snapshotId: params.snapshotId,
-    });
-    await clearCachedSnapshot(value.hash);
+    // Best-effort drop of the durable SQL pointer + Redis. Resolve still
+    // ignores this snapshotId so a failed delete cannot re-boot the missing id.
+    try {
+      await invalidateMissingReadySnapshot({
+        workspaceId: params.workspace.id,
+        profileHash: value.hash,
+        snapshotId: params.snapshotId,
+      });
+    } catch {
+      // Leave the stale ready row; ignoreSnapshotId covers this call and the
+      // next missing-boot will retry invalidate.
+    }
+    try {
+      await clearCachedSnapshot(value.hash);
+    } catch {
+      // Best-effort Redis clear only.
+    }
   }
-  return await resolveWorkspaceSnapshot(params);
+  return await resolveWorkspaceSnapshot({
+    ...params,
+    ignoreSnapshotId: params.snapshotId,
+  });
 }
 
 async function markFailed(
@@ -326,6 +341,7 @@ async function startBuild(params: {
   const resources = getSandboxResources();
   const name = builderName();
   const startedAt = new Date();
+  let created = false;
   try {
     await Sandbox.create({
       name,
@@ -336,6 +352,7 @@ async function startBuild(params: {
       ...(credentials ?? {}),
       ...(resources ? { resources } : {}),
     });
+    created = true;
     await setWorkspaceSnapshotBuild(workspace.id, {
       status: "building",
       phase: "created",
@@ -346,21 +363,27 @@ async function startBuild(params: {
       error: null,
     });
   } catch (error) {
-    // Abort before the building row is durable must not invent a failed job.
-    if (isCancelOrTransient(error, signal)) {
-      await stopBuilder(name);
-      throw error;
+    // Any failure after create must stop the VM. Success leaves it for check-in.
+    try {
+      // Abort before the building row is durable must not invent a failed job.
+      if (!isCancelOrTransient(error, signal)) {
+        try {
+          await setWorkspaceSnapshotBuild(workspace.id, {
+            status: "failed",
+            phase: "created",
+            profileHash: value.hash,
+            startedAt,
+            sandboxName: name,
+            commandId: null,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        } catch {
+          // Failed-row write is best-effort; stopBuilder still runs below.
+        }
+      }
+    } finally {
+      if (created) await stopBuilder(name);
     }
-    await setWorkspaceSnapshotBuild(workspace.id, {
-      status: "failed",
-      phase: "created",
-      profileHash: value.hash,
-      startedAt,
-      sandboxName: name,
-      commandId: null,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    await stopBuilder(name);
     throw error;
   }
 }
@@ -463,6 +486,7 @@ async function advanceWorkspaceSnapshot(params: {
   workspace: Workspace;
   runtime: string;
   signal?: AbortSignal;
+  ignoreSnapshotId?: string;
   applyNetworkPolicy(sandbox: SandboxSession): Promise<unknown>;
   prepareRepositories?(
     sandbox: SandboxSession,
@@ -478,9 +502,13 @@ async function advanceWorkspaceSnapshot(params: {
     );
   }
   const cached = snapshotFromCache(await getCachedSnapshot(value.hash), value);
-  if (cached) return cached;
+  if (cached && cached.snapshotId !== params.ignoreSnapshotId) return cached;
 
-  const sqlCached = await snapshotFromSql(params.workspace.id, value);
+  const sqlCached = await snapshotFromSql(
+    params.workspace.id,
+    value,
+    params.ignoreSnapshotId,
+  );
   if (sqlCached) return sqlCached;
 
   const state = getStateAdapter();
@@ -489,20 +517,39 @@ async function advanceWorkspaceSnapshot(params: {
     state,
     buildLockKey(value.hash),
     async () => {
-      const cachedInsideLock = snapshotFromCache(
-        await getCachedSnapshot(value.hash),
-        value,
-      );
-      if (cachedInsideLock) return cachedInsideLock;
-
-      const sqlInsideLock = await snapshotFromSql(params.workspace.id, value);
-      if (sqlInsideLock) return sqlInsideLock;
-
+      // Re-load recipe under the lock and recompute the profile. A concurrent
+      // recipe edit must not store contents under a stale hash.
       const workspace =
         (await getWorkspace(getDb(), params.workspace.id)) ?? params.workspace;
+      const lockedValue =
+        profile.create(params.runtime, workspace) ?? value;
+      if (lockedValue.hash !== value.hash) {
+        // Caller holds a stale recipe view; outer resolve will retry with the
+        // fresh profile on the next loop / switch.
+        return null;
+      }
+
+      const cachedInsideLock = snapshotFromCache(
+        await getCachedSnapshot(lockedValue.hash),
+        lockedValue,
+      );
+      if (
+        cachedInsideLock &&
+        cachedInsideLock.snapshotId !== params.ignoreSnapshotId
+      ) {
+        return cachedInsideLock;
+      }
+
+      const sqlInsideLock = await snapshotFromSql(
+        workspace.id,
+        lockedValue,
+        params.ignoreSnapshotId,
+      );
+      if (sqlInsideLock) return sqlInsideLock;
+
       const finished = await finishBuild(
         workspace,
-        value,
+        lockedValue,
         params.runtime,
         params.signal,
       );
@@ -510,15 +557,19 @@ async function advanceWorkspaceSnapshot(params: {
 
       const { build: loaded } = await loadProfileSnapshots(
         workspace.id,
-        value.hash,
+        lockedValue.hash,
       );
       const build = activeBuild(loaded);
       if (build && !build.commandId) {
-        await continueBuild({ ...params, workspace, value });
+        await continueBuild({
+          ...params,
+          workspace,
+          value: lockedValue,
+        });
       } else if (!build) {
         await startBuild({
           workspace,
-          value,
+          value: lockedValue,
           runtime: params.runtime,
           signal: params.signal,
         });
@@ -566,6 +617,8 @@ export async function resolveWorkspaceSnapshot(params: {
   signal?: AbortSignal;
   shouldYield?: () => boolean;
   turnDeadlineAtMs?: number;
+  /** Known-missing Vercel snapshot id; never boot it even if SQL still points at it. */
+  ignoreSnapshotId?: string;
   applyNetworkPolicy(sandbox: SandboxSession): Promise<unknown>;
   prepareRepositories?(
     sandbox: SandboxSession,
@@ -577,27 +630,32 @@ export async function resolveWorkspaceSnapshot(params: {
   for (;;) {
     params.signal?.throwIfAborted();
 
+    // Recipe may change between slices; always resolve against the latest row.
+    const workspace =
+      (await getWorkspace(getDb(), params.workspace.id)) ?? params.workspace;
+    const slice = { ...params, workspace };
+
     // Always advance at least one slice before soft-yield so a fresh wake
     // cannot spin on timed_out without starting or polling the builder.
     let snapshot: Snapshot | null;
     try {
-      snapshot = await advanceWorkspaceSnapshot(params);
+      snapshot = await advanceWorkspaceSnapshot(slice);
     } catch (error) {
       // Transient Sandbox API errors leave the SQL phase unchanged. Retry in
       // this wait loop (or after soft yield) instead of failing the build.
       if (!isSandboxApiTransientError(error)) {
         throw error;
       }
-      if (shouldYieldWait(params)) {
-        throw new WorkspaceSnapshotWaitingError(params.workspace.name);
+      if (shouldYieldWait(slice)) {
+        throw new WorkspaceSnapshotWaitingError(workspace.name);
       }
       await sleep(TRANSIENT_API_RETRY_MS, params.signal);
       continue;
     }
     if (snapshot) return snapshot;
 
-    if (shouldYieldWait(params)) {
-      throw new WorkspaceSnapshotWaitingError(params.workspace.name);
+    if (shouldYieldWait(slice)) {
+      throw new WorkspaceSnapshotWaitingError(workspace.name);
     }
     await sleep(WAIT_POLL_MS, params.signal);
   }
