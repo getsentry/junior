@@ -114,14 +114,19 @@ async function snapshotFromSql(
   const { ready } = await loadProfileSnapshots(workspaceId, value.hash);
   if (!ready) return null;
   if (profile.isStale(value, ready.generatedAt.getTime())) return null;
-  await setCachedSnapshot({
-    profileHash: ready.profileHash,
-    snapshotId: ready.id,
-    runtime: ready.runtime,
-    createdAtMs: ready.generatedAt.getTime(),
-    dependencyCount: ready.dependencyCount,
-    buildDurationMs: ready.buildDurationMs,
-  });
+  try {
+    // SQL is source of truth; a hot-cache write must not block boot.
+    await setCachedSnapshot({
+      profileHash: ready.profileHash,
+      snapshotId: ready.id,
+      runtime: ready.runtime,
+      createdAtMs: ready.generatedAt.getTime(),
+      dependencyCount: ready.dependencyCount,
+      buildDurationMs: ready.buildDurationMs,
+    });
+  } catch {
+    // Best-effort Redis warm only.
+  }
   return {
     snapshotId: ready.id,
     profileHash: ready.profileHash,
@@ -188,12 +193,14 @@ export async function rebuildMissingWorkspaceSnapshot(params: {
 }): Promise<Snapshot> {
   const value = profile.create(params.runtime, params.workspace);
   if (value) {
-    await clearCachedSnapshot(value.hash);
+    // Drop the durable SQL pointer first. Clearing Redis before SQL can leave a
+    // stale ready row that boots again if the delete throws.
     await invalidateMissingReadySnapshot({
       workspaceId: params.workspace.id,
       profileHash: value.hash,
       snapshotId: params.snapshotId,
     });
+    await clearCachedSnapshot(value.hash);
   }
   return await resolveWorkspaceSnapshot(params);
 }
@@ -203,12 +210,17 @@ async function markFailed(
   build: WorkspaceSnapshotBuild,
   error: string,
 ): Promise<void> {
-  await setWorkspaceSnapshotBuild(workspace.id, {
-    ...build,
-    status: "failed",
-    error,
-  });
-  await stopBuilder(build.sandboxName);
+  try {
+    await setWorkspaceSnapshotBuild(workspace.id, {
+      ...build,
+      status: "failed",
+      error,
+    });
+  } finally {
+    // Always stop the builder even if the SQL write fails, so the VM cannot
+    // stay up untracked until the 1h provider timeout.
+    await stopBuilder(build.sandboxName);
+  }
 }
 
 async function requireRemainingBuildTime(

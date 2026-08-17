@@ -138,27 +138,21 @@ export async function clearNonReadySnapshots(
   db: JuniorDatabase,
   workspaceId: string,
 ): Promise<string[]> {
-  const builders = await db
-    .select({
-      sandboxName: juniorSnapshots.buildSandboxName,
-    })
-    .from(juniorSnapshots)
-    .where(
-      and(
-        eq(juniorSnapshots.workspaceId, workspaceId),
-        ne(juniorSnapshots.status, "ready"),
-      ),
-    );
+  // DELETE … RETURNING so concurrent startBuild inserts cannot be deleted
+  // without capturing their builder name for stop.
   // TODO: garbage-collect retired Vercel snapshots once retention policy exists.
-  await db
+  const deleted = await db
     .delete(juniorSnapshots)
     .where(
       and(
         eq(juniorSnapshots.workspaceId, workspaceId),
         ne(juniorSnapshots.status, "ready"),
       ),
-    );
-  return builders
+    )
+    .returning({
+      sandboxName: juniorSnapshots.buildSandboxName,
+    });
+  return deleted
     .map((row) => row.sandboxName)
     .filter((name): name is string => Boolean(name));
 }
