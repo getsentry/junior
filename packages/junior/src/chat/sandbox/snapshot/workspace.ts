@@ -222,53 +222,69 @@ async function finishBuild(
   const build = activeBuild(loaded);
   if (!build?.commandId || !build.sandboxName) return null;
 
-  await requireRemainingBuildTime(workspace, build);
-  const sandbox = await getBuilderSandbox(build.sandboxName, signal);
-  const command = await sandbox.getCommand(build.commandId, { signal });
-  if (command.exitCode == null) {
-    return null;
-  }
-  if (command.exitCode !== 0) {
-    const error =
-      (await command.stderr({ signal })).trim() || `exit ${command.exitCode}`;
-    await markFailed(workspace, build, error);
-    throw new Error(
-      `Workspace ${workspace.name} snapshot setup failed: ${error}`,
-    );
-  }
+  try {
+    await requireRemainingBuildTime(workspace, build);
+    const sandbox = await getBuilderSandbox(build.sandboxName, signal);
+    const command = await sandbox.getCommand(build.commandId, { signal });
+    if (command.exitCode == null) {
+      return null;
+    }
+    if (command.exitCode !== 0) {
+      const error =
+        (await command.stderr({ signal })).trim() || `exit ${command.exitCode}`;
+      throw new Error(
+        `Workspace ${workspace.name} snapshot setup failed: ${error}`,
+      );
+    }
 
-  await requireRemainingBuildTime(workspace, build);
-  const snapshot = await sandbox.snapshot({ signal });
-  await requireRemainingBuildTime(workspace, build);
-  const createdAtMs = Date.now();
-  const buildDurationMs = Math.max(0, createdAtMs - build.startedAt.getTime());
-  await setCachedSnapshot({
-    profileHash: value.hash,
-    snapshotId: snapshot.snapshotId,
-    runtime,
-    createdAtMs,
-    dependencyCount: value.dependencyCount,
-    buildDurationMs,
-  });
-  await setWorkspaceSnapshot(workspace.id, {
-    id: snapshot.snapshotId,
-    generatedAt: new Date(createdAtMs),
-    buildDurationMs,
-    profileHash: value.hash,
-    runtime,
-    dependencyCount: value.dependencyCount,
-  });
-  await stopBuilder(build.sandboxName);
-  return {
-    snapshotId: snapshot.snapshotId,
-    profileHash: value.hash,
-    dependencyCount: value.dependencyCount,
-    cacheHit: false,
-    resolveOutcome: "rebuilt",
-    rebuildReason: "cache_miss",
-    createdAtMs,
-    buildDurationMs,
-  };
+    await requireRemainingBuildTime(workspace, build);
+    const snapshot = await sandbox.snapshot({ signal });
+    await requireRemainingBuildTime(workspace, build);
+    const createdAtMs = Date.now();
+    const buildDurationMs = Math.max(
+      0,
+      createdAtMs - build.startedAt.getTime(),
+    );
+    await setCachedSnapshot({
+      profileHash: value.hash,
+      snapshotId: snapshot.snapshotId,
+      runtime,
+      createdAtMs,
+      dependencyCount: value.dependencyCount,
+      buildDurationMs,
+    });
+    await setWorkspaceSnapshot(workspace.id, {
+      id: snapshot.snapshotId,
+      generatedAt: new Date(createdAtMs),
+      buildDurationMs,
+      profileHash: value.hash,
+      runtime,
+      dependencyCount: value.dependencyCount,
+    });
+    await stopBuilder(build.sandboxName);
+    return {
+      snapshotId: snapshot.snapshotId,
+      profileHash: value.hash,
+      dependencyCount: value.dependencyCount,
+      cacheHit: false,
+      resolveOutcome: "rebuilt",
+      rebuildReason: "cache_miss",
+      createdAtMs,
+      buildDurationMs,
+    };
+  } catch (error) {
+    // Timeout handling already marked the build failed and stopped the builder.
+    if (error instanceof Error && error.message === BUILD_TIMEOUT_ERROR) {
+      throw error;
+    }
+    // Keep the builder + SQL phase so the next check-in retries this poll.
+    if (isSandboxApiTransientError(error)) {
+      throw error;
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    await markFailed(workspace, build, message);
+    throw error;
+  }
 }
 
 /** Create the long-lived builder only. Prep runs on later check-ins. */

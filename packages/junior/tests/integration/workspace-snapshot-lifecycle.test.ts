@@ -10,6 +10,7 @@ import {
   disconnectStateAdapter,
   getStateAdapter,
 } from "@/chat/state/adapter";
+import { setWorkspaceSnapshotBuild } from "@/chat/sandbox/snapshot/store";
 import { getWorkspace, updateWorkspace } from "@/chat/workspaces/store";
 import { juniorWorkspaces } from "@/db/schema";
 
@@ -259,6 +260,73 @@ describe.skipIf(!sandboxCredentialsReady())(
           }
         } finally {
           reuse.close();
+        }
+      },
+      LIVE_TEST_TIMEOUT_MS,
+    );
+
+    it(
+      "marks the build failed when the detached builder is gone",
+      async () => {
+        const now = new Date();
+        const workspaceId = randomUUID();
+        trackedWorkspaceIds.push(workspaceId);
+        const db = getDb();
+        await db.insert(juniorWorkspaces).values({
+          id: workspaceId,
+          name: `snapshot-dead-builder-${workspaceId.slice(0, 8)}`,
+          setupScript: setupScript("dead"),
+          createdAt: now,
+          updatedAt: now,
+        });
+
+        const workspace = (await getWorkspace(db, workspaceId))!;
+        const starting = createSandboxRuntime({
+          workspace,
+          skills: [],
+          referenceFiles: [],
+          shouldYield: () => true,
+        });
+        try {
+          await expect(starting.acquire()).rejects.toSatisfy(
+            isWorkspaceSnapshotWaitingError,
+          );
+        } finally {
+          starting.close();
+        }
+
+        const started = (await getWorkspace(db, workspaceId))!;
+        const build = started.snapshotBuild;
+        expect(build?.status).toBe("building");
+        expect(build?.sandboxName).toBeTruthy();
+        expect(build?.profileHash).toBeTruthy();
+
+        // Put the job on the finish/poll path, then remove the builder VM.
+        await setWorkspaceSnapshotBuild(workspaceId, {
+          status: "building",
+          phase: "repositories_prepared",
+          profileHash: build!.profileHash,
+          startedAt: build!.startedAt,
+          sandboxName: build!.sandboxName,
+          commandId: "cmd_missing_after_builder_stop",
+          error: null,
+        });
+        await stopNamedSandbox(build!.sandboxName);
+
+        const finishing = createSandboxRuntime({
+          workspace: (await getWorkspace(db, workspaceId))!,
+          skills: [],
+          referenceFiles: [],
+          shouldYield: () => false,
+        });
+        try {
+          await expect(finishing.acquire()).rejects.toBeInstanceOf(Error);
+          const failed = await getWorkspace(db, workspaceId);
+          expect(failed?.snapshotBuild?.status).toBe("failed");
+          expect(failed?.snapshotBuild?.error).toBeTruthy();
+          expect(failed?.snapshot).toBeNull();
+        } finally {
+          finishing.close();
         }
       },
       LIVE_TEST_TIMEOUT_MS,
