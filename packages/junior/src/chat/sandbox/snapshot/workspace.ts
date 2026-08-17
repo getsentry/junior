@@ -341,7 +341,6 @@ async function startBuild(params: {
   const resources = getSandboxResources();
   const name = builderName();
   const startedAt = new Date();
-  let created = false;
   try {
     await Sandbox.create({
       name,
@@ -352,7 +351,6 @@ async function startBuild(params: {
       ...(credentials ?? {}),
       ...(resources ? { resources } : {}),
     });
-    created = true;
     await setWorkspaceSnapshotBuild(workspace.id, {
       status: "building",
       phase: "created",
@@ -382,7 +380,9 @@ async function startBuild(params: {
         }
       }
     } finally {
-      if (created) await stopBuilder(name);
+      // Create can provision the named VM before its request rejects. Always
+      // look up the deterministic name so that failure cannot leak a builder.
+      await stopBuilder(name);
     }
     throw error;
   }
