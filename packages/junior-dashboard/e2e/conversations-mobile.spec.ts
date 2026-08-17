@@ -19,6 +19,31 @@ test.beforeEach(async ({ page }) => {
   await mockDashboardApis(page);
 });
 
+test("keeps the new conversation composer above the mobile keyboard", async ({
+  page,
+}) => {
+  await page.setViewportSize({ height: 844, width: 390 });
+  await page.goto(server.baseURL);
+  await page.getByRole("button", { name: "New conversation" }).click();
+
+  const composer = page.getByLabel("Start a conversation");
+  await composer.focus();
+  await page.evaluate(() => {
+    Object.defineProperties(window.visualViewport, {
+      height: { configurable: true, value: 520 },
+      offsetTop: { configurable: true, value: 0 },
+    });
+    window.visualViewport?.dispatchEvent(new Event("resize"));
+  });
+
+  const composerKeyboardGap = async () => {
+    const box = await composer.boundingBox();
+    return box ? 520 - (box.y + box.height) : Number.POSITIVE_INFINITY;
+  };
+  await expect.poll(composerKeyboardGap).toBeGreaterThanOrEqual(0);
+  await expect.poll(composerKeyboardGap).toBeLessThanOrEqual(8);
+});
+
 test("opens and closes a conversation in the mobile workspace", async ({
   page,
 }) => {

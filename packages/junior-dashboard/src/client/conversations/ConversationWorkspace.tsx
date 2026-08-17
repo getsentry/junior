@@ -171,7 +171,7 @@ function NewConversationView(props: {
   const isPublic = visibility === "public";
 
   return (
-    <div className="grid min-h-full place-items-center px-4 py-8 pb-[max(2rem,env(safe-area-inset-bottom))] md:px-8 md:pb-8">
+    <div className="grid min-h-full items-end justify-items-center px-4 pt-8 pb-[max(0.375rem,env(safe-area-inset-bottom))] md:place-items-center md:px-8 md:py-8">
       <div className="w-full max-w-2xl">
         <div className="mb-5">
           <h2 className="m-0 font-display text-2xl font-medium tracking-[-0.03em] text-dashboard-text md:text-3xl">
