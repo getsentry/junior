@@ -16,30 +16,28 @@ test("rejects a new integration test that mocks a Junior module", () => {
       integrationTest('vi.mock("@/chat/runtime", () => ({}));'),
     ]),
     [
-      `${TEST_PATH}: integration tests must not use vi.mock or vi.doMock; fake only Slack and LLMs through shared harnesses (1 found, 0 allowed)`,
+      `${TEST_PATH}: integration tests must not mock Junior-owned @/ modules (1 found, 0 allowed)`,
     ],
   );
 });
 
-test("rejects dynamic mocks", () => {
+test("rejects dynamic mocks of Junior modules", () => {
   assert.deepEqual(
     checkIntegrationTestArchitecture([
       integrationTest("vi.doMock(\n  '@/chat/runtime',\n  () => ({}),\n);"),
     ]),
     [
-      `${TEST_PATH}: integration tests must not use vi.mock or vi.doMock; fake only Slack and LLMs through shared harnesses (1 found, 0 allowed)`,
+      `${TEST_PATH}: integration tests must not mock Junior-owned @/ modules (1 found, 0 allowed)`,
     ],
   );
 });
 
-test("rejects external package mocks", () => {
+test("allows external mocks", () => {
   assert.deepEqual(
     checkIntegrationTestArchitecture([
-      integrationTest('vi.mock("@vercel/sandbox", () => ({}));'),
+      integrationTest('vi.mock("external-provider", () => ({}));'),
     ]),
-    [
-      `${TEST_PATH}: integration tests must not use vi.mock or vi.doMock; fake only Slack and LLMs through shared harnesses (1 found, 0 allowed)`,
-    ],
+    [],
   );
 });
 
@@ -49,7 +47,7 @@ test("rejects Pi agent mocks", () => {
       integrationTest('vi.mock("@earendil-works/pi-agent-core", () => ({}));'),
     ]),
     [
-      `${TEST_PATH}: integration tests must not use vi.mock or vi.doMock; fake only Slack and LLMs through shared harnesses (1 found, 0 allowed)`,
+      `${TEST_PATH}: integration tests must not mock Pi's agent (1 found, 0 allowed)`,
     ],
   );
 });

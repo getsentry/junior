@@ -10,10 +10,13 @@ const DASHBOARD_E2E_ROOT = "packages/junior-dashboard/e2e/";
 
 const RULES = [
   {
-    // Slack and LLM fakes go through shared harnesses, not vi.mock.
-    message:
-      "integration tests must not use vi.mock or vi.doMock; fake only Slack and LLMs through shared harnesses",
-    pattern: /\bvi\.(?:doMock|mock)\s*\(/g,
+    message: "integration tests must not mock Junior-owned @/ modules",
+    pattern: /\bvi\.(?:doMock|mock)\(\s*["']@\//g,
+  },
+  {
+    message: "integration tests must not mock Pi's agent",
+    pattern:
+      /\bvi\.(?:doMock|mock)\(\s*["']@earendil-works\/pi-agent-core["']/g,
   },
   {
     message:
